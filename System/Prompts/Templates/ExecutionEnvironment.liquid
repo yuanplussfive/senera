@@ -1,0 +1,49 @@
+<execution_environment>
+  <os>{{ ExecutionEnvironment.os | escape }}</os>
+  <platform>{{ ExecutionEnvironment.platform | escape }}</platform>
+  <workspace>
+    <root>{{ ExecutionEnvironment.workspace.root | escape }}</root>
+    <logical_root>{{ ExecutionEnvironment.workspace.logicalRoot | escape }}</logical_root>
+    <path_style>{{ ExecutionEnvironment.workspace.pathStyle | escape }}</path_style>
+    <separator>{{ ExecutionEnvironment.workspace.separator | escape }}</separator>
+    <preferred_path_form>{{ ExecutionEnvironment.workspace.preferredPathForm | escape }}</preferred_path_form>
+  </workspace>
+  <shell>
+    <family>{{ ExecutionEnvironment.shell.family | escape }}</family>
+    <command>{{ ExecutionEnvironment.shell.command | escape }}</command>
+    <invocation>{{ ExecutionEnvironment.shell.invocation | escape }}</invocation>
+  </shell>
+  <execution_targets>
+    <local>
+      <boundary>{{ ExecutionEnvironment.executionTargets.local.boundary | escape }}</boundary>
+      <os>{{ ExecutionEnvironment.executionTargets.local.os | escape }}</os>
+      <shell_dialect>{{ ExecutionEnvironment.executionTargets.local.shellDialect | escape }}</shell_dialect>
+      <shell_command>{{ ExecutionEnvironment.executionTargets.local.shellCommand | escape }}</shell_command>
+      <workspace_root>{{ ExecutionEnvironment.executionTargets.local.workspaceRoot | escape }}</workspace_root>
+      <workspace_path_style>{{ ExecutionEnvironment.executionTargets.local.workspacePathStyle | escape }}</workspace_path_style>
+      <workspace_separator>{{ ExecutionEnvironment.executionTargets.local.workspaceSeparator | escape }}</workspace_separator>
+      <workspace_mount>{{ ExecutionEnvironment.executionTargets.local.workspaceMount | escape }}</workspace_mount>
+    </local>
+{% if ExecutionEnvironment.executionTargets.sandbox %}
+    <sandbox>
+      <boundary>{{ ExecutionEnvironment.executionTargets.sandbox.boundary | escape }}</boundary>
+      <os>{{ ExecutionEnvironment.executionTargets.sandbox.os | escape }}</os>
+      <image>{{ ExecutionEnvironment.executionTargets.sandbox.image | escape }}</image>
+      <shell_dialect>{{ ExecutionEnvironment.executionTargets.sandbox.shellDialect | escape }}</shell_dialect>
+      <shell_command>{{ ExecutionEnvironment.executionTargets.sandbox.shellCommand | escape }}</shell_command>
+      <workspace_root>{{ ExecutionEnvironment.executionTargets.sandbox.workspaceRoot | escape }}</workspace_root>
+      <workspace_path_style>{{ ExecutionEnvironment.executionTargets.sandbox.workspacePathStyle | escape }}</workspace_path_style>
+      <workspace_separator>{{ ExecutionEnvironment.executionTargets.sandbox.workspaceSeparator | escape }}</workspace_separator>
+      <workspace_mount>{{ ExecutionEnvironment.executionTargets.sandbox.workspaceMount | escape }}</workspace_mount>
+    </sandbox>
+{% endif %}
+  </execution_targets>
+  <guidance>
+{% for rule in ExecutionEnvironment.guidance.shell %}
+    <rule>{{ rule | escape }}</rule>
+{% endfor %}
+{% for rule in ExecutionEnvironment.guidance.paths %}
+    <rule>{{ rule | escape }}</rule>
+{% endfor %}
+  </guidance>
+</execution_environment>

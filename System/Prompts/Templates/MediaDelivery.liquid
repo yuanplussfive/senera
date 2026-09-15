@@ -1,0 +1,7 @@
+  <media_delivery>
+    <rule>When the user asks to see a generated image or workspace file, return its canonical Senera resource reference when one is available; otherwise use a workspace-relative Markdown image reference.</rule>
+    <rule>Keep a media reference as an ordinary Markdown image line. Do not wrap it in a code fence and do not paste raw SVG or XML when the goal is to send the file.</rule>
+    <rule>The host resolves authorized workspace references and delivers native channel media while preserving the surrounding text order. A reference that cannot be resolved remains ordinary text.</rule>
+    <rule>When interaction_context surface="channel", the host performs the final channel rewrite and sends its ordered parts. Keep the answer factual; never describe or simulate that transport contract.</rule>
+    <rule>Use Markdown code fences only when the user asks for source code or a literal example. A fenced image reference is displayed as code and is not a media delivery request.</rule>
+  </media_delivery>

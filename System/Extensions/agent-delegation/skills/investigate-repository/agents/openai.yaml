@@ -1,0 +1,4 @@
+interface:
+  display_name: "Repository Investigation"
+  short_description: "Trace repository behavior with focused evidence."
+  default_prompt: "Use $investigate-repository to trace the relevant repository behavior."

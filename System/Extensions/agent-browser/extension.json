@@ -1,0 +1,189 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "agent-browser",
+  "version": "1.0.0",
+  "displayName": { "zh-CN": "受控浏览器", "en-US": "Controlled Browser" },
+  "description": {
+    "zh-CN": "通过隔离浏览器会话读取和操作公开网页；启动参数、认证状态、用户资料和浏览器内部能力均由 Senera 宿主控制。",
+    "en-US": "Reads and operates public web pages through isolated browser sessions while Senera controls launch options, authentication state, profiles, and browser internals."
+  },
+  "priority": 91,
+  "configuration": { "schema": "config.schema.json", "ui": "ui.schema.json" },
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserOpen.tool.json",
+      "capability": "system.tool.agent-browser.BrowserOpen",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserRead.tool.json",
+      "capability": "system.tool.agent-browser.BrowserRead",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserSnapshot.tool.json",
+      "capability": "system.tool.agent-browser.BrowserSnapshot",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserClick.tool.json",
+      "capability": "system.tool.agent-browser.BrowserClick",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserFill.tool.json",
+      "capability": "system.tool.agent-browser.BrowserFill",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserType.tool.json",
+      "capability": "system.tool.agent-browser.BrowserType",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserPress.tool.json",
+      "capability": "system.tool.agent-browser.BrowserPress",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserCheck.tool.json",
+      "capability": "system.tool.agent-browser.BrowserCheck",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserUncheck.tool.json",
+      "capability": "system.tool.agent-browser.BrowserUncheck",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserSelect.tool.json",
+      "capability": "system.tool.agent-browser.BrowserSelect",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserScroll.tool.json",
+      "capability": "system.tool.agent-browser.BrowserScroll",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserWait.tool.json",
+      "capability": "system.tool.agent-browser.BrowserWait",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserWaitForSelector.tool.json",
+      "capability": "system.tool.agent-browser.BrowserWaitForSelector",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserWaitForText.tool.json",
+      "capability": "system.tool.agent-browser.BrowserWaitForText",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserWaitForLoad.tool.json",
+      "capability": "system.tool.agent-browser.BrowserWaitForLoad",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserScreenshot.tool.json",
+      "capability": "system.tool.agent-browser.BrowserScreenshot",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserComputer.tool.json",
+      "capability": "system.tool.agent-browser.BrowserComputer",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserDownload.tool.json",
+      "capability": "system.tool.agent-browser.BrowserDownload",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserGetText.tool.json",
+      "capability": "system.tool.agent-browser.BrowserGetText",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserGetUrl.tool.json",
+      "capability": "system.tool.agent-browser.BrowserGetUrl",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserGetTitle.tool.json",
+      "capability": "system.tool.agent-browser.BrowserGetTitle",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserClose.tool.json",
+      "capability": "system.tool.agent-browser.BrowserClose",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserBack.tool.json",
+      "capability": "system.tool.agent-browser.BrowserBack",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserForward.tool.json",
+      "capability": "system.tool.agent-browser.BrowserForward",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserReload.tool.json",
+      "capability": "system.tool.agent-browser.BrowserReload",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserTabNew.tool.json",
+      "capability": "system.tool.agent-browser.BrowserTabNew",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserTabList.tool.json",
+      "capability": "system.tool.agent-browser.BrowserTabList",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserTabSwitch.tool.json",
+      "capability": "system.tool.agent-browser.BrowserTabSwitch",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserTabClose.tool.json",
+      "capability": "system.tool.agent-browser.BrowserTabClose",
+      "recommendedForSkills": ["browser-automation"]
+    }
+  ]
+}

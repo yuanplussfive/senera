@@ -1,0 +1,4 @@
+interface:
+  display_name: "Primary Source Research"
+  short_description: "Research technical questions from authoritative sources."
+  default_prompt: "Use $research-primary-sources to research this technical question."

@@ -1,0 +1,498 @@
+import { z } from "zod";
+import type { ConfigFormDocument } from "../Config/AgentConfigFormDocument.js";
+import type { AgentExtensionLocalizedText } from "../Extensions/AgentExtensionLocalization.js";
+import { AgentWebContentModeValues } from "./AgentWebTypes.js";
+
+export const AgentWebSearchProviderValues = ["exa", "tavily", "brave", "searxng", "duckduckgo"] as const;
+export type AgentWebSearchProvider = (typeof AgentWebSearchProviderValues)[number];
+
+export const AgentWebToolsConfigurationLimits = {
+  requestTimeoutMs: { min: 1_000, max: 15 * 60 * 1_000 },
+  searchCacheMaxEntries: { min: 0, max: 4_096 },
+} as const;
+
+export const DefaultAgentWebToolsConfiguration = {
+  search: {
+    provider: "exa" as const,
+    endpoint: "",
+    exaApiKey: "",
+    tavilyApiKey: "",
+    braveApiKey: "",
+    defaultMaxResults: 8,
+    maxMaxResults: 20,
+    responseMaxBytes: 2_000_000,
+    cacheTtlSeconds: 60,
+    cacheMaxEntries: 256,
+    requestTimeoutMs: 180_000,
+    maxOperationTimeoutMs: 900_000,
+    allowPrivateNetworks: false,
+    allowSyntheticProxyAddresses: true,
+  },
+  fetch: {
+    responseMaxBytes: 5_000_000,
+    markdownMaxChars: 120_000,
+    maxRedirects: 5,
+    maxUrlLength: 4_096,
+    maxLinks: 128,
+    maxExtractBlocks: 12,
+    defaultContentMode: "auto" as const,
+    requestTimeoutMs: 180_000,
+    maxOperationTimeoutMs: 900_000,
+    allowPrivateNetworks: false,
+    allowSyntheticProxyAddresses: true,
+    userAgent: "Senera-WebTools/1.0",
+  },
+} as const;
+
+export const AgentWebToolsConfigurationSchema = z
+  .object({
+    search: z
+      .object({
+        provider: z.enum(AgentWebSearchProviderValues).default(DefaultAgentWebToolsConfiguration.search.provider),
+        endpoint: z
+          .string()
+          .trim()
+          .refine((value) => value === "" || isValidUrl(value), "Endpoint must be an absolute URL or empty.")
+          .default(DefaultAgentWebToolsConfiguration.search.endpoint),
+        exaApiKey: z.string().trim().max(4_096).default(DefaultAgentWebToolsConfiguration.search.exaApiKey),
+        tavilyApiKey: z.string().trim().max(4_096).default(DefaultAgentWebToolsConfiguration.search.tavilyApiKey),
+        braveApiKey: z.string().trim().max(4_096).default(DefaultAgentWebToolsConfiguration.search.braveApiKey),
+        defaultMaxResults: z
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .default(DefaultAgentWebToolsConfiguration.search.defaultMaxResults),
+        maxMaxResults: z.number().int().min(1).max(100).default(DefaultAgentWebToolsConfiguration.search.maxMaxResults),
+        responseMaxBytes: z
+          .number()
+          .int()
+          .min(1_024)
+          .max(64 * 1024 * 1024)
+          .default(DefaultAgentWebToolsConfiguration.search.responseMaxBytes),
+        cacheTtlSeconds: z
+          .number()
+          .int()
+          .min(0)
+          .max(86_400)
+          .default(DefaultAgentWebToolsConfiguration.search.cacheTtlSeconds),
+        cacheMaxEntries: z
+          .number()
+          .int()
+          .min(AgentWebToolsConfigurationLimits.searchCacheMaxEntries.min)
+          .max(AgentWebToolsConfigurationLimits.searchCacheMaxEntries.max)
+          .default(DefaultAgentWebToolsConfiguration.search.cacheMaxEntries),
+        requestTimeoutMs: z
+          .number()
+          .int()
+          .min(AgentWebToolsConfigurationLimits.requestTimeoutMs.min)
+          .max(AgentWebToolsConfigurationLimits.requestTimeoutMs.max)
+          .default(DefaultAgentWebToolsConfiguration.search.requestTimeoutMs),
+        maxOperationTimeoutMs: z
+          .number()
+          .int()
+          .min(AgentWebToolsConfigurationLimits.requestTimeoutMs.min)
+          .max(AgentWebToolsConfigurationLimits.requestTimeoutMs.max)
+          .default(DefaultAgentWebToolsConfiguration.search.maxOperationTimeoutMs),
+        allowPrivateNetworks: z.boolean().default(DefaultAgentWebToolsConfiguration.search.allowPrivateNetworks),
+        allowSyntheticProxyAddresses: z
+          .boolean()
+          .default(DefaultAgentWebToolsConfiguration.search.allowSyntheticProxyAddresses),
+      })
+      .strict()
+      .default(DefaultAgentWebToolsConfiguration.search),
+    fetch: z
+      .object({
+        responseMaxBytes: z
+          .number()
+          .int()
+          .min(1_024)
+          .max(256 * 1024 * 1024)
+          .default(DefaultAgentWebToolsConfiguration.fetch.responseMaxBytes),
+        markdownMaxChars: z
+          .number()
+          .int()
+          .min(1_024)
+          .max(10_000_000)
+          .default(DefaultAgentWebToolsConfiguration.fetch.markdownMaxChars),
+        maxRedirects: z.number().int().min(0).max(20).default(DefaultAgentWebToolsConfiguration.fetch.maxRedirects),
+        maxUrlLength: z
+          .number()
+          .int()
+          .min(256)
+          .max(32_768)
+          .default(DefaultAgentWebToolsConfiguration.fetch.maxUrlLength),
+        maxLinks: z.number().int().min(0).max(2_000).default(DefaultAgentWebToolsConfiguration.fetch.maxLinks),
+        maxExtractBlocks: z
+          .number()
+          .int()
+          .min(1)
+          .max(256)
+          .default(DefaultAgentWebToolsConfiguration.fetch.maxExtractBlocks),
+        defaultContentMode: z
+          .enum(AgentWebContentModeValues)
+          .default(DefaultAgentWebToolsConfiguration.fetch.defaultContentMode),
+        requestTimeoutMs: z
+          .number()
+          .int()
+          .min(AgentWebToolsConfigurationLimits.requestTimeoutMs.min)
+          .max(AgentWebToolsConfigurationLimits.requestTimeoutMs.max)
+          .default(DefaultAgentWebToolsConfiguration.fetch.requestTimeoutMs),
+        maxOperationTimeoutMs: z
+          .number()
+          .int()
+          .min(AgentWebToolsConfigurationLimits.requestTimeoutMs.min)
+          .max(AgentWebToolsConfigurationLimits.requestTimeoutMs.max)
+          .default(DefaultAgentWebToolsConfiguration.fetch.maxOperationTimeoutMs),
+        allowPrivateNetworks: z.boolean().default(DefaultAgentWebToolsConfiguration.fetch.allowPrivateNetworks),
+        allowSyntheticProxyAddresses: z
+          .boolean()
+          .default(DefaultAgentWebToolsConfiguration.fetch.allowSyntheticProxyAddresses),
+        userAgent: z.string().trim().min(1).max(256).default(DefaultAgentWebToolsConfiguration.fetch.userAgent),
+      })
+      .strict()
+      .default(DefaultAgentWebToolsConfiguration.fetch),
+  })
+  .strict()
+  .superRefine((configuration, context) => {
+    if (configuration.search.defaultMaxResults > configuration.search.maxMaxResults) {
+      context.addIssue({
+        code: "custom",
+        path: ["search", "defaultMaxResults"],
+        message: "defaultMaxResults must not exceed maxMaxResults.",
+      });
+    }
+    if (configuration.search.maxOperationTimeoutMs < configuration.search.requestTimeoutMs) {
+      context.addIssue({
+        code: "custom",
+        path: ["search", "maxOperationTimeoutMs"],
+        message: "Maximum operation timeout must not be lower than the default request timeout.",
+      });
+    }
+    if (configuration.fetch.maxOperationTimeoutMs < configuration.fetch.requestTimeoutMs) {
+      context.addIssue({
+        code: "custom",
+        path: ["fetch", "maxOperationTimeoutMs"],
+        message: "Maximum operation timeout must not be lower than the default request timeout.",
+      });
+    }
+  });
+
+export type AgentWebToolsConfiguration = z.output<typeof AgentWebToolsConfigurationSchema>;
+
+export const AgentWebToolsConfigurationUi = {
+  form: {
+    version: 1,
+    sections: [
+      {
+        id: "search",
+        label: { "zh-CN": "搜索服务", "en-US": "Search provider" },
+        description: {
+          "zh-CN": "默认通过 Exa Remote MCP 搜索，无需密钥。可选服务在填写访问密钥后立即生效。",
+          "en-US":
+            "Exa Remote MCP is the keyless default. Optional providers become available as soon as an access key is added.",
+        },
+        fields: [
+          {
+            path: ["search", "provider"],
+            label: { "zh-CN": "搜索服务", "en-US": "Provider" },
+            type: "string",
+            options: [...AgentWebSearchProviderValues],
+            optionLabels: {
+              exa: { "zh-CN": "Exa（推荐）", "en-US": "Exa (recommended)" },
+              tavily: { "zh-CN": "Tavily", "en-US": "Tavily" },
+              brave: { "zh-CN": "Brave Search", "en-US": "Brave Search" },
+              searxng: { "zh-CN": "SearXNG", "en-US": "SearXNG" },
+              duckduckgo: { "zh-CN": "DuckDuckGo（兼容）", "en-US": "DuckDuckGo (compatibility)" },
+            },
+            required: true,
+            essential: true,
+          },
+          {
+            path: ["search", "endpoint"],
+            label: { "zh-CN": "服务地址", "en-US": "Endpoint" },
+            description: {
+              "zh-CN": "通常留空。SearXNG 必须填写实例地址；其他服务可填写兼容的自定义地址。",
+              "en-US":
+                "Usually leave empty. SearXNG requires an instance URL; other providers may use a compatible custom endpoint.",
+            },
+            type: "string",
+            required: false,
+            essential: false,
+          },
+          {
+            path: ["search", "exaApiKey"],
+            label: { "zh-CN": "Exa 访问密钥", "en-US": "Exa access key" },
+            description: {
+              "zh-CN": "留空时使用无需密钥的 Exa Remote MCP；填写后自动使用 Exa 官方 API。",
+              "en-US": "Leave empty to use keyless Exa Remote MCP. Add a key to use the Exa API automatically.",
+            },
+            type: "string",
+            secret: true,
+            required: false,
+            essential: false,
+            level: "advanced",
+          },
+          {
+            path: ["search", "tavilyApiKey"],
+            label: { "zh-CN": "Tavily 访问密钥", "en-US": "Tavily access key" },
+            type: "string",
+            secret: true,
+            required: false,
+            essential: false,
+            level: "advanced",
+          },
+          {
+            path: ["search", "braveApiKey"],
+            label: { "zh-CN": "Brave 访问密钥", "en-US": "Brave access key" },
+            type: "string",
+            secret: true,
+            required: false,
+            essential: false,
+            level: "advanced",
+          },
+          {
+            path: ["search", "defaultMaxResults"],
+            label: { "zh-CN": "默认结果数", "en-US": "Default result count" },
+            type: "number",
+            min: 1,
+            max: 100,
+            step: 1,
+            required: true,
+            essential: true,
+          },
+          {
+            path: ["search", "maxMaxResults"],
+            label: { "zh-CN": "结果数上限", "en-US": "Maximum result count" },
+            type: "number",
+            min: 1,
+            max: 100,
+            step: 1,
+            required: true,
+            essential: true,
+          },
+          {
+            path: ["search", "responseMaxBytes"],
+            label: { "zh-CN": "搜索响应上限", "en-US": "Search response limit" },
+            type: "number",
+            min: 1_024,
+            max: 64 * 1024 * 1024,
+            step: 1,
+            required: true,
+            essential: true,
+          },
+          {
+            path: ["search", "cacheTtlSeconds"],
+            label: { "zh-CN": "搜索缓存时间", "en-US": "Search cache TTL" },
+            type: "number",
+            min: 0,
+            max: 86_400,
+            step: 1,
+            required: true,
+            essential: false,
+          },
+          {
+            path: ["search", "cacheMaxEntries"],
+            label: { "zh-CN": "缓存条目上限", "en-US": "Maximum cached queries" },
+            type: "number",
+            min: AgentWebToolsConfigurationLimits.searchCacheMaxEntries.min,
+            max: AgentWebToolsConfigurationLimits.searchCacheMaxEntries.max,
+            step: 1,
+            required: true,
+            essential: false,
+          },
+          {
+            path: ["search", "requestTimeoutMs"],
+            label: { "zh-CN": "搜索请求超时（毫秒）", "en-US": "Search request timeout (ms)" },
+            type: "number",
+            min: AgentWebToolsConfigurationLimits.requestTimeoutMs.min,
+            max: AgentWebToolsConfigurationLimits.requestTimeoutMs.max,
+            step: 1_000,
+            required: true,
+            essential: true,
+          },
+          {
+            path: ["search", "maxOperationTimeoutMs"],
+            label: { "zh-CN": "模型操作超时上限（毫秒）", "en-US": "Model operation timeout limit (ms)" },
+            description: {
+              "zh-CN": "模型可通过单次 WebSearch 调用的 timeoutMs 覆盖默认值，但不能超过此上限。",
+              "en-US":
+                "The model may override the default with timeoutMs on an individual WebSearch call, up to this limit.",
+            },
+            type: "number",
+            min: AgentWebToolsConfigurationLimits.requestTimeoutMs.min,
+            max: AgentWebToolsConfigurationLimits.requestTimeoutMs.max,
+            step: 1_000,
+            required: true,
+            essential: true,
+          },
+          {
+            path: ["search", "allowPrivateNetworks"],
+            label: { "zh-CN": "允许访问私有网络", "en-US": "Allow private network access" },
+            description: {
+              "zh-CN": "仅用于受信的内网搜索服务；默认关闭。",
+              "en-US": "Only enable for a trusted internal search service; disabled by default.",
+            },
+            type: "boolean",
+            required: true,
+            essential: false,
+          },
+          {
+            path: ["search", "allowSyntheticProxyAddresses"],
+            label: { "zh-CN": "允许代理映射地址", "en-US": "Allow proxy-mapped addresses" },
+            description: {
+              "zh-CN": "允许本机代理将公开域名映射到 198.18.0.0/15；不会放开本机或局域网地址。",
+              "en-US":
+                "Allows public domains mapped to 198.18.0.0/15 by a local proxy without allowing localhost or private networks.",
+            },
+            type: "boolean",
+            required: true,
+            essential: false,
+          },
+        ],
+      },
+      {
+        id: "fetch",
+        label: { "zh-CN": "网页读取", "en-US": "Web fetch" },
+        description: {
+          "zh-CN": "控制网页读取、正文提取、重定向和响应大小边界。",
+          "en-US": "Control web fetch, article extraction, redirects, and response-size boundaries.",
+        },
+        fields: [
+          {
+            path: ["fetch", "responseMaxBytes"],
+            label: { "zh-CN": "响应字节上限", "en-US": "Response byte limit" },
+            type: "number",
+            min: 1_024,
+            max: 256 * 1024 * 1024,
+            step: 1,
+            required: true,
+            essential: true,
+          },
+          {
+            path: ["fetch", "markdownMaxChars"],
+            label: { "zh-CN": "Markdown 上限", "en-US": "Markdown character limit" },
+            type: "number",
+            min: 1_024,
+            max: 10_000_000,
+            step: 1,
+            required: true,
+            essential: true,
+          },
+          {
+            path: ["fetch", "maxRedirects"],
+            label: { "zh-CN": "最大重定向次数", "en-US": "Maximum redirects" },
+            type: "number",
+            min: 0,
+            max: 20,
+            step: 1,
+            required: true,
+            essential: true,
+          },
+          {
+            path: ["fetch", "maxUrlLength"],
+            label: { "zh-CN": "URL 长度上限", "en-US": "URL length limit" },
+            type: "number",
+            min: 256,
+            max: 32_768,
+            step: 1,
+            required: true,
+            essential: false,
+          },
+          {
+            path: ["fetch", "maxLinks"],
+            label: { "zh-CN": "链接数量上限", "en-US": "Maximum links" },
+            type: "number",
+            min: 0,
+            max: 2_000,
+            step: 1,
+            required: true,
+            essential: false,
+          },
+          {
+            path: ["fetch", "maxExtractBlocks"],
+            label: { "zh-CN": "相关段落数量", "en-US": "Relevant content blocks" },
+            type: "number",
+            min: 1,
+            max: 256,
+            step: 1,
+            required: true,
+            essential: false,
+          },
+          {
+            path: ["fetch", "defaultContentMode"],
+            label: { "zh-CN": "默认内容模式", "en-US": "Default content mode" },
+            type: "string",
+            options: [...AgentWebContentModeValues],
+            required: true,
+            essential: false,
+          },
+          {
+            path: ["fetch", "requestTimeoutMs"],
+            label: { "zh-CN": "读取请求超时（毫秒）", "en-US": "Fetch request timeout (ms)" },
+            type: "number",
+            min: AgentWebToolsConfigurationLimits.requestTimeoutMs.min,
+            max: AgentWebToolsConfigurationLimits.requestTimeoutMs.max,
+            step: 1_000,
+            required: true,
+            essential: true,
+          },
+          {
+            path: ["fetch", "maxOperationTimeoutMs"],
+            label: { "zh-CN": "模型操作超时上限（毫秒）", "en-US": "Model operation timeout limit (ms)" },
+            description: {
+              "zh-CN": "模型可通过单次 WebFetch 调用的 timeoutMs 覆盖默认值，但不能超过此上限。",
+              "en-US":
+                "The model may override the default with timeoutMs on an individual WebFetch call, up to this limit.",
+            },
+            type: "number",
+            min: AgentWebToolsConfigurationLimits.requestTimeoutMs.min,
+            max: AgentWebToolsConfigurationLimits.requestTimeoutMs.max,
+            step: 1_000,
+            required: true,
+            essential: true,
+          },
+          {
+            path: ["fetch", "allowPrivateNetworks"],
+            label: { "zh-CN": "允许私有网络", "en-US": "Allow private networks" },
+            description: {
+              "zh-CN": "仅适用于明确受信的内网部署；默认关闭以防止 SSRF。",
+              "en-US": "Only enable for trusted internal deployments; disabled by default for SSRF protection.",
+            },
+            type: "boolean",
+            required: true,
+            essential: true,
+          },
+          {
+            path: ["fetch", "allowSyntheticProxyAddresses"],
+            label: { "zh-CN": "允许代理映射地址", "en-US": "Allow proxy-mapped addresses" },
+            description: {
+              "zh-CN": "允许本机代理将公开域名映射到 198.18.0.0/15；不会放开本机或局域网地址。",
+              "en-US":
+                "Allows public domains mapped to 198.18.0.0/15 by a local proxy without allowing localhost or private networks.",
+            },
+            type: "boolean",
+            required: true,
+            essential: false,
+          },
+          {
+            path: ["fetch", "userAgent"],
+            label: { "zh-CN": "User-Agent", "en-US": "User-Agent" },
+            type: "string",
+            required: true,
+            essential: false,
+          },
+        ],
+      },
+    ],
+  },
+} satisfies ConfigFormDocument<AgentExtensionLocalizedText>;
+
+function isValidUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}

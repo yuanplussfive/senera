@@ -1,0 +1,86 @@
+{
+  "name": "WorkspaceRead",
+  "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "path": { "type": "string", "description": "Path to the file to read (relative or absolute)" },
+      "offset": { "type": "number", "description": "Line number to start reading from (1-indexed)" },
+      "limit": { "type": "number", "description": "Maximum number of lines to read" }
+    },
+    "required": ["path"],
+    "additionalProperties": {}
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "content": {
+        "type": "array",
+        "items": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string", "const": "text" },
+                "text": { "type": "string" },
+                "textSignature": { "type": "string" }
+              },
+              "required": ["type", "text"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string", "const": "image" },
+                "data": { "type": "string" },
+                "mimeType": { "type": "string" }
+              },
+              "required": ["type", "data", "mimeType"],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "details": {}
+    },
+    "required": ["content"],
+    "additionalProperties": false
+  },
+  "observationProjection": "observations/WorkspaceRead.projection.json",
+  "permissions": ["filesystem:workspace:read"],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "Parallel",
+    "Capabilities": { "Cancellation": true }
+  },
+  "resources": [{ "Capability": "senera.workspace.path", "Pointer": "/path", "Parameters": { "Intent": "read" } }],
+  "sources": [],
+  "search": {
+    "Summary": "读取工作区中的文本文件或受支持图像，并使用 offset/limit 继续读取大文件。",
+    "Tags": ["工作区", "文件读取", "代码搜索", "read"],
+    "Capabilities": [
+      {
+        "Id": "workspace.file.read",
+        "Title": "Workspace file read",
+        "Description": "Read one workspace file through Senera's authorized execution environment.",
+        "Facets": {
+          "Actions": ["read", "continue"],
+          "Targets": ["workspace-file", "text-file", "image-file"],
+          "Inputs": ["path", "offset", "limit"],
+          "Outputs": ["file-content", "truncation-metadata"],
+          "Effects": ["none"]
+        },
+        "Aliases": ["read", "读取文件", "查看文件", "read file"],
+        "Risk": { "SideEffect": "none", "Permission": "workspace-read" }
+      }
+    ],
+    "UseCases": ["读取工作区中的文本文件或受支持图像，并使用 offset/limit 继续读取大文件。"],
+    "Avoid": ["不要用于修改文件、执行构建或运行任意命令。"]
+  },
+  "evidenceCapabilities": []
+}

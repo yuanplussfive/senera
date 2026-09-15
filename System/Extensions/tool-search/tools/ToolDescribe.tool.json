@@ -1,0 +1,65 @@
+{
+  "name": "ToolDescribe",
+  "loading": "Bootstrap",
+  "observationProjection": "observations/default.projection.json",
+  "description": "查看候选工具的参数、输出、权限和执行边界；不会加载或调用工具。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "tools": {
+        "type": "array",
+        "items": { "type": "string" },
+        "minItems": 1,
+        "maxItems": 12,
+        "description": "需要说明的准确工具名。"
+      },
+      "catalogRevision": {
+        "type": "string",
+        "description": "ToolSearch 返回的 catalogRevision；提供后可检测目录是否已变化。"
+      }
+    },
+    "required": ["tools"],
+    "additionalProperties": false,
+    "definitions": {}
+  },
+  "permissions": [],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "Parallel",
+    "Capabilities": { "Cancellation": true }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "tools",
+      "Title": "Tools",
+      "Description": "Capabilities contributed by the currently loaded extension catalog."
+    }
+  ],
+  "search": {
+    "Summary": "查看候选工具的紧凑调用契约与执行边界。",
+    "Capabilities": [
+      {
+        "Id": "tool.catalog-describe",
+        "Title": "Tool contract description",
+        "Description": "Describe registered tool contracts without modifying the active tool set.",
+        "Facets": {
+          "Actions": ["inspect", "describe", "compare"],
+          "Targets": ["tool-catalog", "tool-contract"],
+          "Inputs": ["tool-name"],
+          "Outputs": ["tool-contract", "tool-boundary"],
+          "Effects": ["read-only"]
+        },
+        "Aliases": ["查看工具参数", "inspect tool", "describe tool"],
+        "Risk": { "SideEffect": "read-only", "Permission": "none" }
+      }
+    ],
+    "UseCases": ["候选工具相近，需要确认参数或副作用时。"],
+    "Tags": ["工具说明", "契约查看", "工具选择"]
+  },
+  "evidenceCapabilities": []
+}

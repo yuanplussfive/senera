@@ -1,0 +1,29 @@
+{
+  "formatVersion": 6,
+  "id": "senera-node-runtime",
+  "version": "1.2.0",
+  "targets": {
+    "x64": {
+      "sourceImage": "docker.io/library/node:24-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03",
+      "runtimeImage": "senera.local/senera-node-runtime:1.2.0-x64",
+      "registryImage": "ghcr.io/yuanplussfive/senera:sandbox-runtime-1.2.0",
+      "probes": [
+        { "id": "bash", "command": "bash", "arguments": ["--version"] },
+        { "id": "git", "command": "git", "arguments": ["--version"] },
+        { "id": "node", "command": "node", "arguments": ["--version"] },
+        { "id": "npm", "command": "npm", "arguments": ["--version"] },
+        { "id": "python", "command": "python", "arguments": ["--version"] },
+        { "id": "pip", "command": "pip", "arguments": ["--version"] },
+        { "id": "rg", "command": "rg", "arguments": ["--version"] },
+        { "id": "jq", "command": "jq", "arguments": ["--version"] },
+        { "id": "curl", "command": "curl", "arguments": ["--version"] },
+        { "id": "ssh", "command": "ssh", "arguments": ["-V"] },
+        {
+          "id": "terminal-sidecar",
+          "command": "/usr/local/bin/node",
+          "arguments": ["/opt/senera-terminal-sidecar/bin/senera-terminal-sidecar.js", "--probe"]
+        }
+      ]
+    }
+  }
+}

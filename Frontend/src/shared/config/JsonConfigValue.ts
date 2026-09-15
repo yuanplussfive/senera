@@ -1,0 +1,199 @@
+import { ConfigSecretContract } from "../../api/generatedEventCatalog";
+import type { ConfigFormFieldData, ConfigFormFieldOptionValue } from "../../api/eventTypes";
+
+export type JsonConfigObject = Record<string, unknown>;
+
+export function writeJsonConfigFieldValue(
+  document: JsonConfigObject,
+  pathParts: readonly string[],
+  value: unknown,
+): JsonConfigObject {
+  const clone = cloneJsonValue(document) as JsonConfigObject;
+  if (value === undefined) deleteValueAtPath(clone, pathParts);
+  else setValueAtPath(clone, pathParts, value);
+  return clone;
+}
+
+export function readDraftOrEffectiveValue(value: JsonConfigObject, field: ConfigFormFieldData): unknown {
+  const draftValue = readValueAtPath(value, field.path);
+  if (draftValue !== undefined) return draftValue;
+  return field.configured ? undefined : field.effectiveValue;
+}
+
+export function normalizeJsonConfigFieldValue(field: ConfigFormFieldData, value: unknown): unknown {
+  if (value === undefined) return undefined;
+  if (field.type === "boolean") return Boolean(value);
+  if (field.type === "number") return typeof value === "number" && Number.isFinite(value) ? value : 0;
+  if (field.type === "array") {
+    return Array.isArray(value)
+      ? value.map((item) =>
+          field.itemType === "table"
+            ? isJsonConfigObject(item)
+              ? item
+              : {}
+            : coerceArrayItem(item, field.itemType ?? "string"),
+        )
+      : [];
+  }
+  if (field.type === "record") return isJsonConfigObject(value) ? value : {};
+  if (field.type === "string") return String(value ?? "");
+  return value;
+}
+
+export function readValueAtPath(source: unknown, pathParts: readonly string[]): unknown {
+  let current = source;
+  for (const part of pathParts) {
+    current = isJsonConfigObject(current) ? current[part] : undefined;
+  }
+  return current;
+}
+
+export function readRelativeItemPath(parentPath: readonly string[], childPath: readonly string[]): string[] {
+  return childPath.slice(parentPath.length);
+}
+
+export function readArrayItemTitle(field: ConfigFormFieldData, record: Record<string, unknown>, index: number): string {
+  const title = field.itemLabelPath ? readValueAtPath(record, field.itemLabelPath) : undefined;
+  if (typeof title === "string" && title.trim()) return title;
+  const id = readValueAtPath(record, ["Id"]);
+  if (typeof id === "string" && id.trim()) return id;
+  return `${field.label} ${index + 1}`;
+}
+
+export function coerceArrayItem(value: unknown, itemType: string): unknown {
+  if (itemType === "number") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (itemType === "boolean") return Boolean(value);
+  return String(value ?? "");
+}
+
+export function defaultArrayItem(itemType: string): unknown {
+  if (itemType === "number") return 0;
+  if (itemType === "boolean") return false;
+  if (itemType === "record" || itemType === "table") return {};
+  return "";
+}
+
+export function optionLabel(field: ConfigFormFieldData, option: ConfigFormFieldOptionValue): string {
+  return field.optionLabels?.[String(option)] ?? String(option);
+}
+
+export function sameOptionValue(left: unknown, right: ConfigFormFieldOptionValue): boolean {
+  return String(left) === String(right);
+}
+
+export function sameJsonValue(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((item, index) => sameJsonValue(item, right[index]))
+    );
+  }
+  if (!isJsonConfigObject(left) || !isJsonConfigObject(right)) return false;
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every((key) => Object.prototype.hasOwnProperty.call(right, key) && sameJsonValue(left[key], right[key]))
+  );
+}
+
+export function isRedactedConfigSecretValue(value: unknown): boolean {
+  return value === ConfigSecretContract.RedactedPlaceholder;
+}
+
+/**
+ * Compares a local draft against a redacted config snapshot. A redacted
+ * placeholder on the snapshot side matches any non-empty draft string because
+ * the real secret is stored server-side and the draft's non-empty value is
+ * unchanged; an empty draft string is a real edit (clearing the secret).
+ * Used only to confirm a save landed, never to detect user edits.
+ */
+export function sameJsonValueReconciled(draft: unknown, snapshot: unknown): boolean {
+  if (Object.is(draft, snapshot)) return true;
+  if (isRedactedConfigSecretValue(snapshot)) {
+    return typeof draft === "string" && draft.length > 0;
+  }
+  if (Array.isArray(draft) || Array.isArray(snapshot)) {
+    return (
+      Array.isArray(draft) &&
+      Array.isArray(snapshot) &&
+      draft.length === snapshot.length &&
+      draft.every((item, index) => sameJsonValueReconciled(item, snapshot[index]))
+    );
+  }
+  if (!isJsonConfigObject(draft) || !isJsonConfigObject(snapshot)) return false;
+  const draftKeys = Object.keys(draft);
+  const snapshotKeys = Object.keys(snapshot);
+  return (
+    draftKeys.length === snapshotKeys.length &&
+    draftKeys.every(
+      (key) =>
+        Object.prototype.hasOwnProperty.call(snapshot, key) && sameJsonValueReconciled(draft[key], snapshot[key]),
+    )
+  );
+}
+
+export function readNumberDraftCommitValue(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed || isIncompleteNumberDraft(trimmed)) return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function readNumberDraftBlurValue(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "-" || trimmed === "+") return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function cloneJsonValue(value: unknown): unknown {
+  return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+}
+
+export function isJsonConfigObject(value: unknown): value is JsonConfigObject {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function setValueAtPath(document: JsonConfigObject, pathParts: readonly string[], value: unknown): void {
+  const lastKey = pathParts[pathParts.length - 1];
+  if (!lastKey) return;
+
+  let current: JsonConfigObject = document;
+  for (const part of pathParts.slice(0, -1)) {
+    const next = current[part];
+    if (!isJsonConfigObject(next)) current[part] = {};
+    current = current[part] as JsonConfigObject;
+  }
+  current[lastKey] = value;
+}
+
+function deleteValueAtPath(document: JsonConfigObject, pathParts: readonly string[]): void {
+  const lastKey = pathParts[pathParts.length - 1];
+  if (!lastKey) return;
+
+  const parents: Array<{ parent: JsonConfigObject; key: string }> = [];
+  let current = document;
+  for (const part of pathParts.slice(0, -1)) {
+    const next = current[part];
+    if (!isJsonConfigObject(next)) return;
+    parents.push({ parent: current, key: part });
+    current = next;
+  }
+  delete current[lastKey];
+  for (const { parent, key } of parents.reverse()) {
+    const child = parent[key];
+    if (!isJsonConfigObject(child) || Object.keys(child).length > 0) break;
+    delete parent[key];
+  }
+}
+
+function isIncompleteNumberDraft(value: string): boolean {
+  return value === "-" || value === "+" || value.endsWith(".") || /[eE][+-]?$/.test(value);
+}

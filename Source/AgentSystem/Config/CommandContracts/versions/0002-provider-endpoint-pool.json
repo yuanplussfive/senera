@@ -1,0 +1,10 @@
+{
+  "formatVersion": 1,
+  "operations": {
+    "provider.endpoint.upsert": {
+      "schema": "model-provider-endpoint-v2",
+      "semantics": "json-merge-patch",
+      "identityFields": ["Id"]
+    }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://schemas.senera.ai/tool-observation-projection/v2.json",
+  "schemaVersion": 2,
+  "maxTokens": 128000,
+  "maxOmissions": 128,
+  "artifactFallback": {
+    "strategy": "reference",
+    "requiredWhenTruncated": true
+  },
+  "sources": [
+    {
+      "source": "summary",
+      "mode": "text",
+      "priority": "essential",
+      "maxTokens": 384,
+      "limits": {
+        "maxDepth": 1,
+        "maxArrayItems": 0,
+        "maxObjectProperties": 0,
+        "maxNodes": 2
+      },
+      "requiredForCompletion": true
+    },
+    {
+      "source": "result",
+      "mode": "json",
+      "priority": "normal",
+      "maxTokens": 128000,
+      "limits": {
+        "maxDepth": 12,
+        "maxArrayItems": 512,
+        "maxObjectProperties": 512,
+        "maxNodes": 4096
+      },
+      "requiredForCompletion": true
+    }
+  ]
+}

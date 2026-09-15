@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agent Orchestration"
+  short_description: "Coordinate bounded child-agent work."
+  default_prompt: "Use $agent-orchestration to coordinate independent child-agent work."

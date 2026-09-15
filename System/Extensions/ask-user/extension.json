@@ -1,0 +1,23 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "ask-user",
+  "version": "1.0.0",
+  "displayName": {
+    "zh-CN": "询问用户",
+    "en-US": "Ask User"
+  },
+  "description": {
+    "zh-CN": "在执行过程中向用户请求结构化补充信息或确认。",
+    "en-US": "Requests structured input or confirmation from the user during execution."
+  },
+  "priority": 20,
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/AskUserTool.tool.json",
+      "capability": "conversation.ask_user",
+      "recommendedForSkills": []
+    }
+  ]
+}

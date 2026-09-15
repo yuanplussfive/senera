@@ -1,0 +1,18 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "todo",
+  "version": "1.0.0",
+  "displayName": { "zh-CN": "任务清单", "en-US": "Task List" },
+  "description": { "zh-CN": "维护本轮任务清单。", "en-US": "Maintains the task list for this turn." },
+  "priority": 2,
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/Todo.tool.json",
+      "capability": "system.tool.todo.Todo",
+      "childGrant": "internal",
+      "recommendedForSkills": []
+    }
+  ]
+}

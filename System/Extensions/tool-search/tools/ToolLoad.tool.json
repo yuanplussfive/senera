@@ -1,0 +1,65 @@
+{
+  "name": "ToolLoad",
+  "loading": "Bootstrap",
+  "observationProjection": "observations/default.projection.json",
+  "description": "在 BAML 工具规划模式中将已注册工具加载到当前会话，供后续规划直接调用。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "tools": {
+        "type": "array",
+        "items": { "type": "string" },
+        "minItems": 1,
+        "maxItems": 12,
+        "description": "需要加载的准确工具名。"
+      },
+      "catalogRevision": {
+        "type": "string",
+        "description": "ToolSearch 返回的 catalogRevision；过期目录不会变更会话工具集。"
+      }
+    },
+    "required": ["tools"],
+    "additionalProperties": false,
+    "definitions": {}
+  },
+  "permissions": [],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "Parallel",
+    "Capabilities": { "Cancellation": true }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "tools",
+      "Title": "Tools",
+      "Description": "Capabilities contributed by the currently loaded extension catalog."
+    }
+  ],
+  "search": {
+    "Summary": "在需要显式加载的规划协议中，将选定工具加入当前会话的可调用集合。",
+    "Capabilities": [
+      {
+        "Id": "tool.catalog-load",
+        "Title": "Tool session load",
+        "Description": "Load registered tools into the current session without invoking them.",
+        "Facets": {
+          "Actions": ["load", "enable"],
+          "Targets": ["tool-catalog", "session-tools"],
+          "Inputs": ["tool-name", "catalog-revision"],
+          "Outputs": ["loaded-tool"],
+          "Effects": ["context-load"]
+        },
+        "Aliases": ["加载工具", "enable tool", "load tool"],
+        "Risk": { "SideEffect": "context-load", "Permission": "none" }
+      }
+    ],
+    "UseCases": ["当前规划协议要求显式加载，且已经通过 ToolDescribe 确认工具契约时。"],
+    "Tags": ["工具加载", "会话工具", "按需加载"]
+  },
+  "evidenceCapabilities": []
+}

@@ -1,0 +1,183 @@
+import { AlertCircle, KeyRound, LogIn } from "lucide-react";
+import { useState, type FormEvent, type ReactNode } from "react";
+import { frontendMessage } from "../i18n/frontendMessageCatalog";
+import { LoadingSignal, RefreshOrbit, Spinner } from "../shared/ui";
+import { InlineError, RetryButton } from "../shared/ui/StateView";
+import { LogoLockup } from "../shared/ui/Logo";
+import type { ServerAuthenticationState } from "./useServerAuthentication";
+import { ServerAuthenticationError, type ServerAuthorizedAuthentication } from "../api/authClient";
+
+export function ServerAuthenticationBoundary({
+  state,
+  onLogin,
+  onRetry,
+  children,
+}: {
+  state: ServerAuthenticationState;
+  onLogin: (credentials: { loginName: string; password: string }) => Promise<void>;
+  onRetry: () => Promise<void>;
+  children: (authentication: ServerAuthorizedAuthentication) => ReactNode;
+}): JSX.Element {
+  if (state.status === "authenticated") {
+    return <>{children(state.authentication)}</>;
+  }
+  return <ServerAuthenticationGate state={state} onLogin={onLogin} onRetry={onRetry} />;
+}
+
+export function ServerAuthenticationGate({
+  state,
+  onLogin,
+  onRetry,
+}: {
+  state: ServerAuthenticationState;
+  onLogin: (credentials: { loginName: string; password: string }) => Promise<void>;
+  onRetry: () => Promise<void>;
+}): JSX.Element {
+  if (state.status === "loading") {
+    return <ServerAuthenticationLoading />;
+  }
+  if (state.status === "revalidating") {
+    return (
+      <AuthenticationStatus
+        tone="loading"
+        icon={<RefreshOrbit size="md" />}
+        messageKey="auth.reconnecting"
+        descriptionKey="auth.reconnectingDescription"
+      />
+    );
+  }
+  if (state.status === "failed") {
+    return (
+      <AuthenticationStatus
+        tone="failed"
+        icon={<AlertCircle className="h-4 w-4 text-brick-600" aria-hidden="true" />}
+        message={readServerFailureMessage(state.error) ?? frontendMessage("auth.connectionFailed")}
+        actionLabel={frontendMessage("auth.retry")}
+        onAction={() => void onRetry()}
+      />
+    );
+  }
+  return <LoginForm onLogin={onLogin} />;
+}
+
+export function ServerAuthenticationLoading(): JSX.Element {
+  return <AuthenticationStatus tone="loading" icon={<LoadingSignal size="lg" />} messageKey="auth.loading" />;
+}
+
+function LoginForm({
+  onLogin,
+}: {
+  onLogin: (credentials: { loginName: string; password: string }) => Promise<void>;
+}): JSX.Element {
+  const [loginName, setLoginName] = useState("");
+  const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  const submit = (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault();
+    setSubmitting(true);
+    setFailed(false);
+    void onLogin({ loginName, password })
+      .catch(() => setFailed(true))
+      .finally(() => {
+        setSubmitting(false);
+        setPassword("");
+      });
+  };
+
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-paper-100 px-4 py-8 text-ink-900">
+      <form className="w-full max-w-[360px] border border-line bg-surface-panel p-5 shadow-soft" onSubmit={submit}>
+        <LogoLockup className="mb-5" />
+        <div className="flex items-center gap-3">
+          <span className="grid h-9 w-9 place-items-center bg-accent-surface text-accent-content">
+            <KeyRound className="h-4 w-4" aria-hidden="true" />
+          </span>
+          <h1 className="text-[16px] font-semibold leading-6 text-ink-950">{frontendMessage("auth.title")}</h1>
+        </div>
+        <label className="mt-5 block">
+          <span className="mb-1.5 block text-[12px] font-medium text-ink-600">{frontendMessage("auth.loginName")}</span>
+          <input
+            autoComplete="username"
+            autoFocus
+            className="h-10 w-full border border-ink-200 bg-paper-50 px-3 text-[13px] outline-none transition focus:border-ink-400 focus:ring-2 focus:ring-accent-focus"
+            value={loginName}
+            onChange={(event) => setLoginName(event.target.value)}
+            required
+          />
+        </label>
+        <label className="mt-4 block">
+          <span className="mb-1.5 block text-[12px] font-medium text-ink-600">{frontendMessage("auth.password")}</span>
+          <input
+            type="password"
+            autoComplete="current-password"
+            className="h-10 w-full border border-ink-200 bg-paper-50 px-3 text-[13px] outline-none transition focus:border-ink-400 focus:ring-2 focus:ring-accent-focus"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            required
+          />
+        </label>
+        {failed ? <InlineError className="mt-3">{frontendMessage("auth.loginFailed")}</InlineError> : null}
+        <button
+          type="submit"
+          disabled={submitting}
+          className="mt-5 inline-flex h-10 w-full items-center justify-center gap-2 bg-ink-900 px-3 text-[13px] font-medium text-paper-50 transition hover:bg-ink-800 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {submitting ? <Spinner size="md" /> : <LogIn className="h-4 w-4" aria-hidden="true" />}
+          {submitting ? frontendMessage("auth.signingIn") : frontendMessage("auth.signIn")}
+        </button>
+      </form>
+    </main>
+  );
+}
+
+function AuthenticationStatus({
+  tone,
+  icon,
+  messageKey,
+  descriptionKey,
+  message,
+  actionLabel,
+  onAction,
+}: {
+  tone: "loading" | "failed";
+  icon: JSX.Element;
+  messageKey?: "auth.loading" | "auth.connectionFailed" | "auth.reconnecting";
+  descriptionKey?: "auth.reconnectingDescription";
+  message?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}): JSX.Element {
+  const failed = tone === "failed";
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-[var(--theme-bg)] px-4 py-8 text-ink-900">
+      <div
+        role={failed ? "alert" : "status"}
+        aria-busy={failed ? undefined : true}
+        className="senera-auth-status w-full max-w-[440px] px-5 py-6 text-center"
+        data-authentication-tone={tone}
+      >
+        {failed ? <LogoLockup className="mb-6" /> : null}
+        <div className="flex flex-col items-center gap-3">
+          <span className="senera-auth-status__signal text-ink-500">{icon}</span>
+          <div className="min-w-0 flex-1">
+            {message || messageKey ? (
+              <p className="text-[13px] font-medium text-ink-800">{message ?? frontendMessage(messageKey!)}</p>
+            ) : null}
+            {descriptionKey ? (
+              <p className="mt-1 text-[12px] leading-5 text-ink-500">{frontendMessage(descriptionKey)}</p>
+            ) : null}
+          </div>
+          {actionLabel && onAction ? <RetryButton onRetry={onAction} label={actionLabel} className="mt-1" /> : null}
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function readServerFailureMessage(error: Error): string | undefined {
+  if (!(error instanceof ServerAuthenticationError)) return undefined;
+  const message = error.message.trim();
+  return message || undefined;
+}

@@ -1,0 +1,62 @@
+{
+  "name": "AgentInput",
+  "description": "向活动子代理排队后续输入，或立即引导其改变当前方向；也用于回答子代理的决策请求。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "target": { "type": "string", "minLength": 1, "description": "Child-run ID returned by AgentSpawn." },
+      "message": { "type": "string", "minLength": 1 },
+      "interrupt": {
+        "default": false,
+        "description": "True redirects active work; false queues a follow-up after the current assignment.",
+        "type": "boolean"
+      }
+    },
+    "required": ["target", "message"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": { "accepted": { "type": "boolean" }, "run": { "type": "object" } },
+    "required": ["accepted", "run"],
+    "additionalProperties": false
+  },
+  "observationProjection": "observations/AgentLifecycle.projection.json",
+  "permissions": ["orchestration:manage"],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "Unassessed",
+    "Scheduling": "SelfManaged",
+    "Capabilities": { "Progress": true, "ResumableEvents": true }
+  },
+  "resources": [],
+  "sources": [
+    { "Id": "orchestration", "Title": "Orchestration", "Description": "Child-agent runs managed by Senera." }
+  ],
+  "search": {
+    "Summary": "向子代理排队输入、立即转向或回复决策请求。",
+    "Capabilities": [
+      {
+        "Id": "orchestration.agent-input",
+        "Title": "Child-agent input",
+        "Description": "Queue a follow-up or steer an active child run.",
+        "Facets": {
+          "Actions": ["send", "steer", "respond"],
+          "Targets": ["child-run"],
+          "Inputs": ["message", "interrupt-mode"],
+          "Outputs": ["accepted", "child-run-state"],
+          "Effects": ["queue-input", "may-redirect-run"]
+        },
+        "Aliases": ["给子代理消息", "send input"],
+        "Risk": { "SideEffect": "model-input", "Permission": "orchestration" }
+      }
+    ],
+    "UseCases": ["给活动子代理补充信息。", "回答 awaiting_supervisor 状态的决策请求。"],
+    "Avoid": ["普通等待不要发送空泛催促。"],
+    "Tags": ["子代理", "输入", "转向"]
+  },
+  "evidenceCapabilities": []
+}
