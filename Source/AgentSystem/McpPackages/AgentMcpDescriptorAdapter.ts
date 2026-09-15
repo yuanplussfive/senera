@@ -1,4 +1,5 @@
 import type { AgentMcpExecution } from "./AgentMcpPackageSchema.js";
+import type { AgentMcpHostRequirements } from "./AgentMcpHostRequirements.js";
 import type { AgentMcpPackageServer, AgentMcpPackageSourceKind } from "./AgentMcpPackageTypes.js";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
 import {
@@ -19,6 +20,7 @@ export interface AgentMcpDescriptorProjection {
   readonly description?: AgentExtensionLocalizedText;
   readonly descriptorKind: "mcpb" | "registry" | "legacy" | "connection";
   readonly execution?: AgentMcpExecution;
+  readonly requirements?: AgentMcpHostRequirements;
   readonly servers: readonly AgentMcpPackageServer[];
 }
 

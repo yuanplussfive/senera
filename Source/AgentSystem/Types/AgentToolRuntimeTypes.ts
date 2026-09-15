@@ -2,6 +2,7 @@ import type { AgentMcpRuntimeEndpoint } from "../McpPackages/AgentMcpPackageType
 import type { AgentPromptContractView } from "../Prompt/AgentPromptContractTypes.js";
 import type { AgentExtensionOwner } from "./AgentExtensionRuntimeTypes.js";
 import type { AgentToolObservationProjectionManifest } from "./AgentToolObservationProjectionTypes.js";
+import type { AgentInteractionSurface } from "../Interaction/AgentInteractionContext.js";
 import type {
   AgentToolDiscoverySource,
   ToolApprovalManifest,
@@ -52,6 +53,8 @@ export interface RegisteredTool {
   evidenceCapabilities: ToolEvidenceCapabilityManifest[];
   approval?: ToolApprovalManifest;
   artifactPolicy?: ToolArtifactPolicyManifest;
+  /** Explicit UI/runtime surfaces for which this tool may be exposed. Omitted means all surfaces. */
+  interactionSurfaces?: readonly AgentInteractionSurface[];
 }
 
 /**

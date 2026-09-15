@@ -23,6 +23,7 @@ import {
   createAgentMcpDefaultLocalExecution,
   type AgentMcpExecution,
 } from "./AgentMcpPackageSchema.js";
+import { AgentMcpHostRequirementsSchema, type AgentMcpHostRequirements } from "./AgentMcpHostRequirements.js";
 import { AgentMcpServerRuntimes } from "./AgentMcpPackageTypes.js";
 
 const SeneraExecutionMetadataKey = "ai.senera/execution";
@@ -39,6 +40,8 @@ export const AgentMcpBundleDescriptorAdapter: AgentMcpDescriptorAdapter = {
     const declaredName = requireMcpString(manifest.name, "MCPB name", ["name"]);
     const serverId = AgentExtensionNameSchema.safeParse(declaredName).success ? declaredName : context.directoryName;
     const server = requireMcpRecord(manifest.server, "MCPB server", ["server"]);
+    const metadata =
+      manifest._meta === undefined ? undefined : requireMcpRecord(manifest._meta, "MCPB _meta", ["_meta"]);
     const userConfig = projectUserConfig(manifest.user_config);
     const definitions = new Map(userConfig.map((input) => [input.id, input]));
     const mcpConfig =
@@ -49,6 +52,7 @@ export const AgentMcpBundleDescriptorAdapter: AgentMcpDescriptorAdapter = {
     const args = projectStringArray(mcpConfig?.args, ["server", "mcp_config", "args"]);
     const env = projectStringRecord(mcpConfig?.env, ["server", "mcp_config", "env"], definitions);
     const entryPoint = optionalMcpString(server.entry_point, "MCPB entry point", ["server", "entry_point"]);
+    const requirements = projectRequirements(metadata);
     const fallback = command ? { command, args: [] } : deriveMcpBundleCommand(server.type, entryPoint, context);
     const commandExpression = projectMcpBundleExpression(fallback.command, definitions);
     const argExpressions = (command ? args : [...fallback.args, ...args]).map((value) =>
@@ -59,7 +63,8 @@ export const AgentMcpBundleDescriptorAdapter: AgentMcpDescriptorAdapter = {
       displayName: readMcpLocalizedText(manifest.display_name, "MCPB display_name", ["display_name"]),
       description: readMcpLocalizedText(manifest.description, "MCPB description", ["description"]),
       descriptorKind: "mcpb",
-      execution: projectExecution(manifest._meta),
+      execution: projectExecution(metadata),
+      ...(requirements ? { requirements } : {}),
       servers: [
         {
           name: serverId,
@@ -211,8 +216,8 @@ function projectStringRecord(
   );
 }
 
-function projectExecution(meta: unknown): AgentMcpExecution {
-  if (isRecord(meta) && meta[SeneraExecutionMetadataKey] !== undefined) {
+function projectExecution(meta: Record<string, unknown> | undefined): AgentMcpExecution {
+  if (meta?.[SeneraExecutionMetadataKey] !== undefined) {
     const execution = requireMcpRecord(meta[SeneraExecutionMetadataKey], SeneraExecutionMetadataKey, ["_meta"]);
     const targets = Array.isArray(execution.targets)
       ? execution.targets.map((target) => AgentMcpExecutionTargetSchema.parse(target))
@@ -224,6 +229,13 @@ function projectExecution(meta: unknown): AgentMcpExecution {
     return { targets, preferred };
   }
   return createAgentMcpDefaultLocalExecution();
+}
+
+const SeneraRequirementsMetadataKey = "ai.senera/requirements";
+
+function projectRequirements(meta: Record<string, unknown> | undefined): AgentMcpHostRequirements | undefined {
+  const value = meta?.[SeneraRequirementsMetadataKey];
+  return value === undefined ? undefined : AgentMcpHostRequirementsSchema.parse(value);
 }
 
 function runtimeExpression(key: "packageRoot" | "workspaceRoot"): AgentExtensionValueExpression {

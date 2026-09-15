@@ -88,6 +88,14 @@ async function runMcpTool(callTool: (options: AgentMcpToolCallOptions) => Promis
     config: { ModelProviders: [] },
     executionEnv: {} as SeneraExecutionEnv,
     clientPool: pool,
+    resourcePublisher: {
+      publishBytes: async ({ bytes, name, mime }) => ({
+        resourceUri: "senera://resource/upl_test-resource",
+        name,
+        mime,
+        size: bytes.byteLength,
+      }),
+    },
   });
   const tool = registeredMcpTool();
   try {

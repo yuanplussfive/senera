@@ -88,6 +88,7 @@ import type { AgentContinuityIdentityContext } from "../Continuity/AgentContinui
 import { AgentResidentSpeechRuntime } from "../ResidentSpeech/AgentResidentSpeechRuntime.js";
 import { AgentResidentSpeechCapabilities } from "../ResidentSpeech/AgentResidentSpeechTypes.js";
 import type { AgentPluginHost } from "../Plugins/AgentPluginHost.js";
+import type { AgentMcpHostCapabilitySnapshot } from "../McpPackages/AgentMcpHostRequirements.js";
 
 export interface AgentSystemRuntimeCompositionOptions {
   workspaceRoot: string;
@@ -131,6 +132,8 @@ export interface AgentSystemRuntimeCompositionOptions {
   pluginHost?: AgentPluginHost;
   /** Shared with orchestration so delegated leases and Pi tool claims converge. */
   resourceCoordinator?: AgentToolResourceLeaseCoordinator;
+  /** Host capabilities used to preflight MCP packages before launch. */
+  mcpHostCapabilities?: AgentMcpHostCapabilitySnapshot;
 }
 
 export function composeAgentSystemRuntime(options: AgentSystemRuntimeCompositionOptions) {
@@ -385,6 +388,7 @@ export function createAgentRuntimeAgentServices(
     toolPermissionGate,
     diagnostics: options.piDiagnostics,
     uploadStore: infrastructure.uploadStore,
+    resourceResolver: infrastructure.resourceResolver,
     beforeCompaction: options.continuityLifecycle
       ? (sessionId) => options.continuityLifecycle!.beforeCompaction(sessionId)
       : undefined,

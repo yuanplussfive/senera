@@ -31,7 +31,9 @@ export interface McpServerSettingsItem {
   source: "bundled" | "workspace";
   descriptorKind: "mcpb" | "registry" | "legacy" | "connection";
   transport: "stdio" | "http";
-  status: "configured" | "needs_input";
+  status: "configured" | "needs_input" | "unavailable";
+  unavailableCapabilities?: string[];
+  unavailableCapabilityDetails?: { id: string; reason?: string }[];
   inputs: McpInputStatus[];
 }
 

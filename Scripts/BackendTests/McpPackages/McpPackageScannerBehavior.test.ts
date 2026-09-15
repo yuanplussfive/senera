@@ -35,6 +35,9 @@ describe("standard MCP package discovery", () => {
       path.resolve("McpServers", "weather", "manifest.json"),
     );
     expect(packages.every((package_) => package_.execution?.preferred === "local")).toBe(true);
+    expect(packages.find((package_) => package_.name === "zavora-computer-use")?.requirements).toEqual({
+      hostCapabilities: ["interactive-desktop"],
+    });
     expect(packages.find((package_) => package_.name === "weather")?.servers[0]?.inputs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: "QWEATHER_API_KEY", secret: true, provenance: "mcpb" }),

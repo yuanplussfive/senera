@@ -64,6 +64,7 @@ import { resolveServerConfigSource, resolveServerRuntimeConfigPath } from "./Ser
 import { seedRuntimeConfigForSource } from "./RuntimeConfigBootstrap.js";
 import { AgentMcpInputService } from "../Source/AgentSystem/Credentials/AgentMcpInputService.js";
 import { AgentMcpManagementService } from "../Source/AgentSystem/McpPackages/AgentMcpManagementService.js";
+import { detectAgentMcpHostCapabilities } from "../Source/AgentSystem/McpPackages/AgentMcpHostRequirements.js";
 import { AgentWorkspaceRuntime } from "../Source/AgentSystem/Runtime/AgentWorkspaceRuntime.js";
 import { AgentRunDispatchGateway } from "../Source/AgentSystem/Orchestration/AgentRunDispatchPort.js";
 import { AgentGoalMicroLoopDispatchActionPort } from "../Source/AgentSystem/Agenda/AgentGoalMicroLoopDispatchActionPort.js";
@@ -334,11 +335,13 @@ async function startSeneraServerRuntime(
   const configSnapshot = (): AgentSystemConfig => projectRuntimeConfig(configService.snapshot().value);
   const mcpInputs = AgentMcpInputService.open(workspaceRoot);
   deferResourceCleanup(() => mcpInputs.close());
+  const mcpHostCapabilities = detectAgentMcpHostCapabilities();
   const mcpManagement = new AgentMcpManagementService({
     workspaceRoot,
     resourcesRoot: resourceRoot,
     inputs: mcpInputs,
     config: configSnapshot,
+    hostCapabilities: mcpHostCapabilities,
   });
   const runtimeSnapshot = () => {
     const snapshot = configService.snapshot();
@@ -473,7 +476,6 @@ async function startSeneraServerRuntime(
     claimBatchSize: schedulerConfiguration.polling.claimBatchSize,
   });
   deferResourceCleanup(() => schedules.stop());
-  const orchestration = { delegation, workflows, schedules };
   const persistence = resolvePersistenceConfig(initialConfig);
   const repository = createRepository(workspaceRoot, initialConfig, upgradeSession, logger);
   deferResourceCleanup(() => repository.close());
@@ -586,7 +588,7 @@ async function startSeneraServerRuntime(
     sandboxGuestWorkspaceRoot,
     mcpInputs,
     workspaceRuntime,
-    orchestration,
+    orchestration: { delegation, schedules },
     continuityMemory,
     continuityIdentity: continuityRuntime.identity,
     identityDisplayValues,
@@ -599,6 +601,7 @@ async function startSeneraServerRuntime(
     selfService,
     pluginHost,
     resourceCoordinator,
+    mcpHostCapabilities,
   });
   deferResourceCleanup(() => runtimeCache.clear());
   const { selfHttpApi } = platform;

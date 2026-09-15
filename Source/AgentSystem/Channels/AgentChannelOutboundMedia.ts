@@ -14,12 +14,12 @@ export const AgentChannelOutboundMediaDefaults = Object.freeze({
   maxScannedCharacters: 128 * 1024,
   maxResourceManifestEntries: 32,
   maxResourceManifestValueLength: 4_096,
-  maxValueDepth: 8,
-  maxValueNodes: 512,
 });
 
 export interface AgentChannelOutboundMediaOptions {
   readonly resourceResolver?: AgentResourceResolverLike;
+  /** Host-derived mapping for Markdown references explicitly present in the answer. */
+  readonly resourceManifest?: AgentChannelMarkdownResourceManifest;
   readonly maxMedia?: number;
   readonly maxInlineBytes?: number;
 }
@@ -77,7 +77,15 @@ export type AgentChannelOutboundSegment =
 /** Structured final payload returned by the host-owned channel rewriter. */
 export type AgentChannelFinalPart =
   | { readonly kind: "text"; readonly text: string }
-  | { readonly kind: "resource"; readonly uri: string; readonly alt?: string }
+  | {
+      readonly kind: "resource";
+      readonly uri: string;
+      readonly alt?: string;
+      /** Optional host/model-declared media metadata for extensionless URLs. */
+      readonly mediaKind?: AgentChannelMedia["kind"];
+      readonly mime?: string;
+      readonly fileName?: string;
+    }
   | { readonly kind: "code"; readonly language?: string; readonly code: string };
 
 interface ReferenceHints {
@@ -88,12 +96,6 @@ interface ReferenceHints {
   readonly mimeType?: string;
   readonly fileName?: string;
   readonly altText?: string;
-}
-
-interface TextReplacement {
-  readonly start: number;
-  readonly end: number;
-  readonly text: string;
 }
 
 interface MarkdownImageSpan {
@@ -113,45 +115,6 @@ const MarkdownParser = new MarkdownIt({
   linkify: false,
   typographer: false,
 });
-
-/**
- * Projects channel-safe native media without exposing arbitrary model paths.
- * Local paths are accepted only after the host resource resolver authorizes the
- * workspace boundary; canonical Senera resources retain their URI identity.
- */
-export async function projectAgentChannelOutboundMedia(
-  content: string,
-  options: AgentChannelOutboundMediaOptions = {},
-): Promise<AgentChannelOutboundMediaProjection> {
-  const collector = new OutboundMediaCollector(options);
-  const replacements: TextReplacement[] = [];
-  const projectedImages: Array<{ span: MarkdownImageSpan; media: AgentChannelMedia }> = [];
-
-  // Keep parsing bounded. A large answer remains fully available as text, but
-  // only its leading window is eligible for native media projection.
-  const scannedContent = content.slice(0, AgentChannelOutboundMediaDefaults.maxScannedCharacters);
-  for (const occurrence of readMarkdownImageOccurrences(scannedContent)) {
-    const target = getTokenAttribute(occurrence.token, "src");
-    if (!target) continue;
-    const media = await collector.addReference(target, {
-      imageHint: true,
-      altText: boundedAltText(occurrence.span.altText || occurrence.token.content),
-    });
-    if (!media) continue;
-    // Native media already carries the visual payload. Keeping the alt text in
-    // the caption makes QQ show the same information twice, so remove the
-    // complete Markdown image node from the text projection.
-    replacements.push({ ...markdownImageRemovalSpan(scannedContent, occurrence.span), text: "" });
-    projectedImages.push({ span: occurrence.span, media });
-  }
-
-  const caption = applyReplacements(content, replacements);
-  return {
-    caption: normalizeCaption(caption),
-    media: collector.media,
-    segments: projectOrderedSegments(content, projectedImages),
-  };
-}
 
 /**
  * Describes explicit Markdown image targets for the host-owned final
@@ -249,44 +212,33 @@ function boundedOptionalManifestValue(value: string | undefined): string | undef
   return value;
 }
 
-/** Resolves structured final parts while also normalizing media accidentally
- * left inside a text part by a provider. The Markdown parser is shared with
- * the legacy projection path, so a malformed serializer response cannot make
- * an otherwise resolvable image degrade to literal Markdown in QQ. */
+/** Resolves structured final parts. Markdown is promoted to native media only
+ * when the host supplied a manifest for that exact answer. This preserves the
+ * publication decision while preventing model-context placeholders from being
+ * sent as literal channel text. */
 export async function projectAgentChannelFinalParts(
   parts: readonly AgentChannelFinalPart[],
   options: AgentChannelOutboundMediaOptions = {},
 ): Promise<AgentChannelOutboundMediaProjection> {
   const collector = new OutboundMediaCollector(options);
   const segments: AgentChannelOutboundSegment[] = [];
+  const emittedMedia = new Set<string>();
   for (const part of parts) {
     if (part.kind === "text") {
-      // Structured parts are explicit delivery boundaries. Keep each text
-      // part separate, but still extract a Markdown image if a provider put
-      // one in a text part instead of returning a resource part.
-      const projectedImages: Array<{ span: MarkdownImageSpan; media: AgentChannelMedia }> = [];
-      for (const occurrence of readMarkdownImageOccurrences(part.text)) {
-        const target = getTokenAttribute(occurrence.token, "src");
-        if (!target) continue;
-        const media = await collector.addReference(target, {
-          imageHint: true,
-          altText: boundedAltText(occurrence.span.altText || occurrence.token.content),
-        });
-        if (media) projectedImages.push({ span: occurrence.span, media });
-      }
-      if (projectedImages.length > 0) {
-        segments.push(...projectOrderedSegments(part.text, projectedImages));
-      } else {
-        pushTextSegment(segments, part.text);
-      }
+      await projectChannelTextPart(part.text, collector, segments, emittedMedia, options.resourceManifest);
       continue;
     }
     if (part.kind === "resource") {
-      const media = await collector.addReference(part.uri, { altText: boundedAltText(part.alt ?? "") });
+      const media = await collector.addReference(part.uri, {
+        altText: boundedAltText(part.alt ?? ""),
+        mediaKind: part.mediaKind,
+        mimeType: part.mime,
+        fileName: part.fileName,
+      });
       if (media) {
-        segments.push({ kind: "media", media });
+        pushMediaSegment(segments, emittedMedia, media);
       } else {
-        pushTextSegment(segments, part.alt ? `${part.alt}\n${part.uri}` : part.uri);
+        pushTextSegment(segments, unresolvedResourceText(part));
       }
       continue;
     }
@@ -300,7 +252,7 @@ export async function projectAgentChannelFinalParts(
         fileName: "senera-artifact.svg",
       });
       if (media) {
-        segments.push({ kind: "media", media });
+        pushMediaSegment(segments, emittedMedia, media);
       } else {
         pushTextSegment(segments, code);
       }
@@ -315,79 +267,162 @@ export async function projectAgentChannelFinalParts(
   return { caption: normalizeCaption(caption), media: collector.media, segments };
 }
 
-/** Extracts native media from a raw tool/MCP result. Text is intentionally not
- * returned here: tool progress already names the invocation and the channel
- * should receive the image as a focused native attachment. */
-export async function projectAgentChannelMediaFromValue(
-  value: unknown,
-  options: AgentChannelOutboundMediaOptions = {},
-): Promise<AgentChannelOutboundMediaProjection> {
-  const collector = new OutboundMediaCollector(options);
-  const seen = new WeakSet<object>();
-  const state = { depth: 0, nodes: 0 };
-  await collectMediaValue(value, collector, seen, state, {});
-  return {
-    caption: "",
-    media: collector.media,
-    segments: collector.media.map((media) => ({ kind: "media", media }) satisfies AgentChannelOutboundSegment),
-  };
-}
-
-function projectOrderedSegments(
+async function projectChannelTextPart(
   content: string,
-  images: readonly { span: MarkdownImageSpan; media: AgentChannelMedia }[],
-): AgentChannelOutboundSegment[] {
-  if (images.length === 0) {
-    const text = normalizeCaption(content);
-    return text ? [{ kind: "text", content: text }] : [];
+  collector: OutboundMediaCollector,
+  segments: AgentChannelOutboundSegment[],
+  emittedMedia: Set<string>,
+  manifest: AgentChannelMarkdownResourceManifest | undefined,
+): Promise<void> {
+  const occurrences = readMarkdownImageOccurrences(content);
+  if (occurrences.length === 0) {
+    pushTextSegment(segments, sanitizeChannelText(content));
+    return;
   }
-  const segments: AgentChannelOutboundSegment[] = [];
-  const emittedMedia = new Set<string>();
+
   let cursor = 0;
-  for (const image of [...images].sort((left, right) => left.span.start - right.span.start)) {
-    appendMergedTextSegment(segments, content.slice(cursor, image.span.start));
-    const mediaKey = agentChannelMediaIdentity(image.media);
-    if (!emittedMedia.has(mediaKey)) {
-      emittedMedia.add(mediaKey);
-      segments.push({ kind: "media", media: image.media });
+  for (const occurrence of occurrences) {
+    const destination = normalizeMarkdownReference(occurrence.span.destination);
+    const reference = findManifestReference(manifest, destination);
+    const marker = isInternalProjectionMarker(destination);
+    const nonDisplayableReference = isNonDisplayableResourceReference(destination);
+    if (!reference && !marker && !nonDisplayableReference) continue;
+
+    const projectionSpan = markdownImageProjectionSpan(content, occurrence.span);
+    const altText = boundedAltText(occurrence.span.altText || occurrence.token.content);
+    let media: AgentChannelMedia | undefined;
+    if (reference) {
+      const target = manifestReferenceTarget(reference);
+      if (target) {
+        media = await collector.addReference(target.value, {
+          imageHint: true,
+          mediaKind: target.mediaKind,
+          mimeType: target.mime,
+          fileName: target.fileName,
+          altText,
+        });
+      }
     }
-    cursor = image.span.end;
+
+    pushTextSegment(segments, sanitizeChannelText(content.slice(cursor, projectionSpan.start)));
+    if (media) {
+      pushMediaSegment(segments, emittedMedia, media);
+    } else if (shouldRemoveUnresolvedImage(reference, marker, nonDisplayableReference)) {
+      pushTextSegment(segments, altText);
+    } else {
+      pushTextSegment(segments, sanitizeChannelText(content.slice(projectionSpan.start, projectionSpan.end)));
+    }
+    cursor = projectionSpan.end;
   }
-  appendMergedTextSegment(segments, content.slice(cursor));
-  return segments;
+  pushTextSegment(segments, sanitizeChannelText(content.slice(cursor)));
 }
 
-function markdownImageRemovalSpan(content: string, span: MarkdownImageSpan): Pick<TextReplacement, "start" | "end"> {
+function findManifestReference(
+  manifest: AgentChannelMarkdownResourceManifest | undefined,
+  destination: string,
+): AgentChannelMarkdownResourceReference | undefined {
+  const normalized = normalizeMarkdownReference(destination);
+  return manifest?.references.find((reference) => sameMarkdownDestination(reference.source, normalized));
+}
+
+function manifestReferenceTarget(
+  reference: AgentChannelMarkdownResourceReference,
+): { value: string; mediaKind?: AgentChannelMedia["kind"]; mime?: string; fileName?: string } | undefined {
+  switch (reference.kind) {
+    case "senera":
+      return {
+        value: reference.resourceUri,
+        ...(reference.mime ? { mime: reference.mime } : {}),
+        ...(reference.name ? { fileName: reference.name } : {}),
+      };
+    case "http":
+      return { value: reference.url, mediaKind: "image" };
+    case "workspace":
+      return { value: reference.absolutePath, mime: reference.mime, fileName: reference.name };
+    case "unresolved":
+      return undefined;
+  }
+}
+
+function shouldRemoveUnresolvedImage(
+  reference: AgentChannelMarkdownResourceReference | undefined,
+  marker: boolean,
+  nonDisplayableReference: boolean,
+): boolean {
+  if (marker || nonDisplayableReference) return true;
+  return reference?.kind === "senera" || reference?.kind === "workspace";
+}
+
+function markdownImageProjectionSpan(content: string, span: MarkdownImageSpan): MarkdownImageSpan {
   const lineStart = content.lastIndexOf("\n", span.start - 1) + 1;
   const lineEnd = content.indexOf("\n", span.end);
   const lineEndOffset = lineEnd >= 0 ? lineEnd : content.length;
   const before = content.slice(lineStart, span.start).trim();
   const after = content.slice(span.end, lineEndOffset).trim();
-  if (before || after) return { start: span.start, end: span.end };
-  if (lineEnd >= 0) return { start: span.start, end: lineEnd + 1 };
-  return { start: lineStart > 0 ? lineStart - 1 : span.start, end: span.end };
+  if (before || after) return span;
+  return {
+    ...span,
+    start: lineStart > 0 ? lineStart - 1 : lineStart,
+    end: lineEnd >= 0 ? lineEnd + 1 : lineEndOffset,
+  };
+}
+
+function pushMediaSegment(
+  segments: AgentChannelOutboundSegment[],
+  emittedMedia: Set<string>,
+  media: AgentChannelMedia,
+): void {
+  const key = agentChannelMediaIdentity(media);
+  if (emittedMedia.has(key)) return;
+  emittedMedia.add(key);
+  segments.push({ kind: "media", media });
+}
+
+function unresolvedResourceText(part: Extract<AgentChannelFinalPart, { kind: "resource" }>): string {
+  if (isNonDisplayableResourceReference(part.uri)) return boundedAltText(part.alt);
+  return part.alt ? `${part.alt}\n${part.uri}` : part.uri;
+}
+
+const InlineProjectionMarkerPattern = /\[inline media omitted[^\]\r\n]*\]/iu;
+const InlineProjectionMarkerReplacePattern = /\[inline media omitted[^\]\r\n]*\]/giu;
+const EncodedProjectionMarkerPattern = /\[encoded payload omitted[^\]\r\n]*\]/iu;
+const EncodedProjectionMarkerReplacePattern = /\[encoded payload omitted[^\]\r\n]*\]/giu;
+const TruncatedProjectionMarkerPattern = /\[truncated originalChars=\d+ omittedChars=\d+ sha1=[a-f0-9]+\]/iu;
+const TruncatedProjectionMarkerReplacePattern = /\[truncated originalChars=\d+ omittedChars=\d+ sha1=[a-f0-9]+\]/giu;
+const ImageDataAccountingMarkerPattern = /\[image data omitted from text token accounting\]/iu;
+const ImageDataAccountingMarkerReplacePattern = /\[image data omitted from text token accounting\]/giu;
+const EmptyMarkdownImagePattern = /!\[[^\]\r\n]{0,4096}\]\(\s*(?:<\s*>)?\s*\)/gu;
+
+function sanitizeChannelText(value: string): string {
+  return value
+    .replace(InlineProjectionMarkerReplacePattern, "")
+    .replace(EncodedProjectionMarkerReplacePattern, "")
+    .replace(TruncatedProjectionMarkerReplacePattern, "")
+    .replace(ImageDataAccountingMarkerReplacePattern, "")
+    .replace(EmptyMarkdownImagePattern, "");
+}
+
+function isInternalProjectionMarker(value: string): boolean {
+  return (
+    InlineProjectionMarkerPattern.test(value) ||
+    EncodedProjectionMarkerPattern.test(value) ||
+    TruncatedProjectionMarkerPattern.test(value) ||
+    ImageDataAccountingMarkerPattern.test(value)
+  );
+}
+
+function isNonDisplayableResourceReference(value: string): boolean {
+  return (
+    normalizeAgentResourceUri(value) !== undefined ||
+    parseInlineData(value) !== undefined ||
+    /^data:/iu.test(value.trim())
+  );
 }
 
 function pushTextSegment(segments: AgentChannelOutboundSegment[], value: string): void {
   const content = normalizeCaption(value);
   if (!content) return;
   segments.push({ kind: "text", content });
-}
-
-/**
- * Legacy Markdown projection treats the remaining caption as one authored
- * text stream. Keep its historical coalescing behavior for the fallback path;
- * structured final parts use pushTextSegment so their boundaries survive.
- */
-function appendMergedTextSegment(segments: AgentChannelOutboundSegment[], value: string): void {
-  const content = normalizeCaption(value);
-  if (!content) return;
-  const previous = segments.at(-1);
-  if (previous?.kind === "text") {
-    segments[segments.length - 1] = { kind: "text", content: `${previous.content}\n${content}` };
-    return;
-  }
-  pushTextSegment(segments, content);
 }
 
 class OutboundMediaCollector {
@@ -507,115 +542,6 @@ class OutboundMediaCollector {
     this.seen.set(key, media);
     this.media.push(media);
     return media;
-  }
-}
-
-async function collectMediaValue(
-  value: unknown,
-  collector: OutboundMediaCollector,
-  seen: WeakSet<object>,
-  state: { depth: number; nodes: number },
-  hints: ReferenceHints,
-): Promise<void> {
-  if (
-    state.depth > AgentChannelOutboundMediaDefaults.maxValueDepth ||
-    state.nodes >= AgentChannelOutboundMediaDefaults.maxValueNodes
-  ) {
-    return;
-  }
-  if (typeof value === "string") {
-    await collectMediaText(value, collector, hints);
-    return;
-  }
-  if (!value || typeof value !== "object") return;
-  if (seen.has(value)) return;
-  seen.add(value);
-  state.nodes += 1;
-
-  if (Array.isArray(value)) {
-    for (const entry of value) {
-      state.depth += 1;
-      await collectMediaValue(entry, collector, seen, state, hints);
-      state.depth -= 1;
-    }
-    return;
-  }
-
-  const record = value as Record<string, unknown>;
-  const type = stringValue(record.type)?.toLowerCase();
-  const mime = normalizeMime(
-    stringValue(record.mimeType) ?? stringValue(record.mediaType) ?? stringValue(record.contentType),
-  );
-  const fileName = hints.fileName ?? stringValue(record.fileName) ?? stringValue(record.filename);
-  const declaredKind = mediaKindForType(type) ?? hints.mediaKind;
-  const imageHint = hints.imageHint === true || declaredKind === "image" || isImageKey(fileName);
-  const mediaKind = declaredKind ?? mediaKindForMime(mime);
-  const altText = hints.altText ?? stringValue(record.alt) ?? stringValue(record.altText) ?? stringValue(record.name);
-
-  const directData = stringValue(record.dataBase64) ?? stringValue(record.base64) ?? stringValue(record.blob);
-  if (directData && mime && mediaKind)
-    collector.addInlineBase64(directData, { mimeType: mime, mediaKind, fileName, altText, imageHint });
-  const data = stringValue(record.data);
-  if (data) {
-    if (parseInlineData(data)) {
-      await collector.addReference(data, { imageHint, mediaKind, mimeType: mime, fileName, altText });
-    } else if (mime && mediaKind && (imageHint || type !== undefined)) {
-      collector.addInlineBase64(data, { mimeType: mime, mediaKind, fileName, altText, imageHint });
-    }
-  }
-
-  for (const [key, child] of Object.entries(record)) {
-    const keyHint = imageHint || isImageKey(key);
-    const childHints: ReferenceHints = {
-      imageHint: keyHint,
-      mediaKind,
-      mimeType: mime,
-      fileName: fileName ?? (keyHint ? stringValue(record.name) : undefined),
-      altText,
-    };
-    if (typeof child === "string") {
-      if (key === "data" || key === "dataBase64" || key === "base64" || key === "blob") continue;
-      if (isMediaReferenceKey(key)) {
-        await collector.addReference(child, childHints);
-        continue;
-      }
-      await collectMediaText(child, collector, childHints);
-      continue;
-    }
-    state.depth += 1;
-    await collectMediaValue(child, collector, seen, state, childHints);
-    state.depth -= 1;
-  }
-}
-
-async function collectMediaText(
-  value: string,
-  collector: OutboundMediaCollector,
-  hints: ReferenceHints,
-): Promise<void> {
-  const text = value.slice(0, AgentChannelOutboundMediaDefaults.maxScannedCharacters);
-  const inline = parseInlineData(text);
-  if (inline && (hints.imageHint === true || resolveMediaKind(inline.mime, hints.mediaKind) !== "file")) {
-    await collector.addReference(text, {
-      ...hints,
-      mediaKind: hints.mediaKind ?? mediaKindForMime(inline.mime),
-    });
-    return;
-  }
-  const resourceUri = normalizeAgentResourceUri(text);
-  if (resourceUri) {
-    await collector.addReference(resourceUri, { ...hints, imageHint: hints.imageHint ?? false });
-    return;
-  }
-  for (const occurrence of readMarkdownImageOccurrences(text)) {
-    const target = getTokenAttribute(occurrence.token, "src");
-    if (!target) continue;
-    await collector.addReference(target, {
-      ...hints,
-      imageHint: true,
-      mediaKind: "image",
-      altText: boundedAltText(occurrence.span.altText || occurrence.token.content) || hints.altText,
-    });
   }
 }
 
@@ -812,15 +738,6 @@ function unescapeMarkdownDestination(value: string): string {
   return value.replace(/\\([!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~])/gu, "$1");
 }
 
-function applyReplacements(content: string, replacements: readonly TextReplacement[]): string {
-  if (replacements.length === 0) return content;
-  const ordered = [...replacements].sort((left, right) => right.start - left.start);
-  let result = content;
-  for (const replacement of ordered)
-    result = `${result.slice(0, replacement.start)}${replacement.text}${result.slice(replacement.end)}`;
-  return result;
-}
-
 function normalizeCaption(content: string): string {
   return content
     .replace(/[ \t]+\n/gu, "\n")
@@ -945,29 +862,6 @@ function resolveMediaKind(
   return hinted ?? inferred;
 }
 
-function mediaKindForType(value: string | undefined): AgentChannelMedia["kind"] | undefined {
-  switch (value) {
-    case "image":
-    case "image_url":
-    case "imageurl":
-      return "image";
-    case "video":
-    case "video_url":
-    case "videourl":
-      return "video";
-    case "audio":
-    case "audio_url":
-    case "audiourl":
-      return "audio";
-    case "file":
-    case "file_url":
-    case "fileurl":
-      return "file";
-    default:
-      return undefined;
-  }
-}
-
 function mediaKindForUrl(value: string): AgentChannelMedia["kind"] | undefined {
   try {
     const pathname = new URL(value).pathname.toLowerCase();
@@ -990,36 +884,6 @@ const MediaExtensions = Object.freeze({
 function normalizeMime(value: string | undefined): string | undefined {
   const normalized = value?.split(";", 1)[0]?.trim().toLowerCase();
   return normalized || undefined;
-}
-
-function isImageKey(value: string | undefined): boolean {
-  if (!value) return false;
-  const normalized = value.toLowerCase();
-  return ["image", "img", "screenshot", "thumbnail", "picture", "photo", "avatar", "cover", "icon"].some((part) =>
-    normalized.includes(part),
-  );
-}
-
-function isMediaReferenceKey(value: string): boolean {
-  return MediaReferenceKeys.has(value.toLowerCase());
-}
-
-const MediaReferenceKeys = new Set([
-  "uri",
-  "resourceuri",
-  "url",
-  "image_url",
-  "imageurl",
-  "video_url",
-  "videourl",
-  "audio_url",
-  "audiourl",
-  "file_url",
-  "fileurl",
-]);
-
-function stringValue(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 function boundedAltText(value: string | undefined): string {

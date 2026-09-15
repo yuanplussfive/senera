@@ -19,14 +19,10 @@ import { errorMessage } from "../Core/AgentErrors.js";
 import { agentUnknownRecordOrEmpty } from "../Core/AgentUnknownValue.js";
 import { createAgentMcpSamplingHandler, type AgentMcpSamplingHandler } from "./AgentMcpSamplingRuntime.js";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
-import { extractAgentMcpText, projectAgentMcpToolFeedback } from "./AgentMcpToolResultAdapter.js";
+import { extractAgentMcpText, projectAgentMcpToolFeedbackWithResources } from "./AgentMcpToolResultAdapter.js";
+import type { AgentResourcePublisher } from "../Resources/AgentResourcePublisher.js";
 
-export {
-  projectAgentMcpArtifactPayload,
-  projectAgentMcpToolFeedback,
-  projectAgentMcpToolResult,
-  extractAgentMcpText,
-} from "./AgentMcpToolResultAdapter.js";
+export { extractAgentMcpText } from "./AgentMcpToolResultAdapter.js";
 
 export interface AgentMcpToolRunnerOptions {
   config: AgentSystemConfig;
@@ -36,6 +32,7 @@ export interface AgentMcpToolRunnerOptions {
   onToolsChanged?: AgentMcpToolsChangedHandler;
   clientPool?: AgentMcpToolClientPool;
   sampling?: AgentMcpSamplingHandler;
+  resourcePublisher: AgentResourcePublisher;
 }
 
 export class AgentMcpToolRunner {
@@ -138,7 +135,7 @@ export class AgentMcpToolRunner {
           ? await callPooledTool()
           : await withAgentMcpToolClient({ ...connection, signal: context.signal }, callTool);
 
-      const projection = projectAgentMcpToolFeedback(result);
+      const projection = await projectAgentMcpToolFeedbackWithResources(result, this.options.resourcePublisher);
       if (agentUnknownRecordOrEmpty(result).isError === true) {
         const failure = mcpToolFailure(extractAgentMcpText(result) || `MCP tool ${handler.tool} failed.`, {
           toolName: tool.name,

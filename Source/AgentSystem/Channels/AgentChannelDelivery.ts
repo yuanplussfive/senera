@@ -4,7 +4,6 @@ import type {
   AgentChannelSource,
   AgentChannelSendReplyOptions,
 } from "./AgentChannelTypes.js";
-import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 
 export const AgentChannelDeliveryDefaults = Object.freeze({
   /** Attempts per individual send before it is dropped and reported. */
@@ -16,7 +15,6 @@ export const AgentChannelDeliveryDefaults = Object.freeze({
   laneQueueLimit: 32,
   /** Retry after a platform flood-control reply (seconds multiplier). */
   floodRetryMultiplierMs: 1_000,
-  onDroppedMessagePrefix: agentErrorMessage("channels.delivery.droppedPrefix"),
 });
 
 export interface AgentChannelDeliveryOptions {
@@ -35,6 +33,21 @@ export interface AgentChannelDeliveryOptions {
   ) => void;
 }
 
+export type AgentChannelDeliveryFailureCode = "queue_full" | "stopped" | "unsupported" | "retry_exhausted";
+
+export type AgentChannelDeliveryReceipt =
+  | {
+      readonly status: "sent";
+      readonly messageId: string;
+      readonly attempts: number;
+    }
+  | {
+      readonly status: "failed";
+      readonly code: AgentChannelDeliveryFailureCode;
+      readonly attempts: number;
+      readonly error: unknown;
+    };
+
 interface LaneMaterial {
   readonly queue: SendJob[];
   running: boolean;
@@ -45,7 +58,7 @@ interface SendJob {
   content: string;
   options?: AgentChannelSendReplyOptions;
   attempt: number;
-  backoffUntil: number;
+  readonly resolve: (receipt: AgentChannelDeliveryReceipt) => void;
 }
 
 /**
@@ -84,25 +97,63 @@ export class AgentChannelDelivery {
     );
   }
 
-  /** Enqueues one send. Returns false when the lane queue is full. */
+  /** Enqueues one send. Returns false when delivery is stopped or the lane is full. */
   enqueue(source: AgentChannelSource, content: string, options?: AgentChannelSendReplyOptions): boolean {
-    if (this.stopped) return false;
+    const result = this.enqueueJob(source, content, options);
+    void result.completion;
+    return result.accepted;
+  }
+
+  /**
+   * Enqueues a send and resolves only after the adapter accepted it or the
+   * delivery policy gave up. Callers that own a user-facing activity should
+   * use this method so a dropped upload cannot be reported as success.
+   */
+  enqueueAndWait(
+    source: AgentChannelSource,
+    content: string,
+    options?: AgentChannelSendReplyOptions,
+  ): Promise<AgentChannelDeliveryReceipt> {
+    return this.enqueueJob(source, content, options).completion;
+  }
+
+  private enqueueJob(
+    source: AgentChannelSource,
+    content: string,
+    options?: AgentChannelSendReplyOptions,
+  ): { accepted: boolean; completion: Promise<AgentChannelDeliveryReceipt> } {
+    if (this.stopped) {
+      return {
+        accepted: false,
+        completion: Promise.resolve({
+          status: "failed",
+          code: "stopped",
+          attempts: 0,
+          error: new Error("Delivery is stopped."),
+        }),
+      };
+    }
     const laneId = laneKey(source);
-    let lane = this.lanes.get(laneId);
-    if (!lane) {
-      lane = { queue: [], running: false };
-      this.lanes.set(laneId, lane);
-    }
+    const lane = this.lanes.get(laneId) ?? { queue: [], running: false };
+    this.lanes.set(laneId, lane);
     if (lane.queue.length >= this.laneQueueLimit) {
-      this.reportDropped(source, content, new Error("Lane queue is full."), options);
-      return false;
+      const error = new Error("Lane queue is full.");
+      this.reportDropped(source, content, error, options);
+      return {
+        accepted: false,
+        completion: Promise.resolve({ status: "failed", code: "queue_full", attempts: 0, error }),
+      };
     }
-    lane.queue.push({ source, content, options, attempt: 0, backoffUntil: 0 });
+    let resolve: (receipt: AgentChannelDeliveryReceipt) => void = () => undefined;
+    const completion = new Promise<AgentChannelDeliveryReceipt>((settle) => {
+      resolve = settle;
+    });
+    lane.queue.push({ source, content, options, attempt: 0, resolve });
     if (!lane.running) {
       lane.running = true;
-      void this.pumpLane(laneId, lane).catch(() => undefined);
+      void this.pumpLane(laneId, lane);
     }
-    return true;
+    return { accepted: true, completion };
   }
 
   async flush(): Promise<void> {
@@ -113,6 +164,12 @@ export class AgentChannelDelivery {
 
   stop(): void {
     this.stopped = true;
+    const error = new Error("Delivery is stopped.");
+    for (const lane of this.lanes.values()) {
+      for (const job of lane.queue) {
+        job.resolve({ status: "failed", code: "stopped", attempts: job.attempt, error });
+      }
+    }
     this.lanes.clear();
   }
 
@@ -124,48 +181,52 @@ export class AgentChannelDelivery {
   }
 
   private async pumpLane(laneId: string, lane: LaneMaterial): Promise<void> {
-    try {
-      while (!this.stopped && lane.queue.length > 0) {
-        const job = lane.queue.shift();
-        if (!job) break;
-        if (job.backoffUntil > Date.now()) {
-          await waitUntil(job.backoffUntil);
-        }
-        await this.deliver(job, lane);
+    while (!this.stopped && lane.queue.length > 0) {
+      const job = lane.queue.shift();
+      if (!job) continue;
+      try {
+        job.resolve(await this.deliver(job));
+      } catch (error) {
+        this.reportError(error, job.source);
+        this.reportDropped(job.source, job.content, error, job.options);
+        job.resolve({ status: "failed", code: "retry_exhausted", attempts: job.attempt + 1, error });
       }
-    } catch (error) {
-      this.reportError(error, lane.queue[0]?.source);
-    } finally {
-      lane.running = false;
-      if (lane.queue.length === 0) this.lanes.delete(laneId);
+    }
+    lane.running = false;
+    if (lane.queue.length === 0) this.lanes.delete(laneId);
+    else if (!this.stopped) {
+      lane.running = true;
+      void this.pumpLane(laneId, lane);
     }
   }
 
-  private async deliver(job: SendJob, lane: LaneMaterial): Promise<void> {
-    try {
-      // The lane accepts one send at a time; only the head job is attempted.
-      const result = await this.options.adapter.send(job.source, job.content, job.options);
-      if (result.kind === "sent" || result.kind === "edited") return;
-      // Unsupported sends are not retryable.
-      return;
-    } catch (error) {
-      const retryDelay = this.resolveRetryDelay(error, job);
-      if (retryDelay < 0) {
+  private async deliver(job: SendJob): Promise<AgentChannelDeliveryReceipt> {
+    while (true) {
+      try {
+        // The lane accepts one send at a time; only the head job is attempted.
+        const result = await this.options.adapter.send(job.source, job.content, job.options);
+        if (result.kind === "sent" || result.kind === "edited") {
+          return { status: "sent", messageId: result.messageId, attempts: job.attempt + 1 };
+        }
+        const error = new Error("Channel adapter does not support this delivery.");
         this.reportDropped(job.source, job.content, error, job.options);
-        return;
-      }
-      const due = Date.now() + retryDelay;
-      job.attempt += 1;
-      job.backoffUntil = due;
-      lane.queue.unshift(job);
-      if (retryDelay > 0) {
-        await this.sleep(due - Date.now());
+        return { status: "failed", code: "unsupported", attempts: job.attempt + 1, error };
+      } catch (error) {
+        const retryDelay = this.resolveRetryDelay(error, job);
+        if (retryDelay < 0) {
+          this.reportDropped(job.source, job.content, error, job.options);
+          return { status: "failed", code: "retry_exhausted", attempts: job.attempt + 1, error };
+        }
+        job.attempt += 1;
+        if (retryDelay > 0) {
+          await this.sleep(retryDelay);
+        }
       }
     }
   }
 
   private resolveRetryDelay(error: unknown, job: SendJob): number {
-    if (job.attempt >= this.maxAttempts) return -1;
+    if (job.attempt + 1 >= this.maxAttempts) return -1;
     if (isNonRetryableError(error)) return -1;
     if (isFloodControlError(error)) {
       return floodRetryDelay(error, this.floodRetryMultiplierMs);
@@ -199,17 +260,27 @@ export function isNonRetryableError(error: unknown): boolean {
 }
 
 export function isFloodControlError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  const marker = (error as { floodRetryAfterSeconds?: unknown }).floodRetryAfterSeconds;
-  if (typeof marker === "number" && Number.isFinite(marker)) return true;
-  return /flood|rate.?limit|too many requests|429/i.test(error.message);
+  const typed = deliveryErrorRecord(error);
+  if (!typed) return false;
+  return (
+    typed.channelErrorCode === "rate_limited" ||
+    (typeof typed.floodRetryAfterSeconds === "number" && Number.isFinite(typed.floodRetryAfterSeconds))
+  );
 }
 
 function floodRetryDelay(error: unknown, multiplierMs: number): number {
-  const marker = (error as { floodRetryAfterSeconds?: unknown }).floodRetryAfterSeconds;
+  const marker = deliveryErrorRecord(error)?.floodRetryAfterSeconds;
   const seconds = typeof marker === "number" && Number.isFinite(marker) ? marker : undefined;
   if (seconds !== undefined && seconds > 0) return seconds * multiplierMs;
   return multiplierMs;
+}
+
+function deliveryErrorRecord(
+  error: unknown,
+): { readonly channelErrorCode?: unknown; readonly floodRetryAfterSeconds?: unknown } | undefined {
+  return typeof error === "object" && error !== null
+    ? (error as { channelErrorCode?: unknown; floodRetryAfterSeconds?: unknown })
+    : undefined;
 }
 
 function laneKey(source: AgentChannelSource): string {
@@ -225,19 +296,16 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function waitUntil(millis: number): Promise<void> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(resolve, Math.max(0, millis - Date.now()));
-    timer.unref?.();
-  });
-}
-
 /** Marks an error as a flood-control event with the platform-provided window. */
 export function createFloodError(
   message: string,
   retryAfterSeconds?: number,
-): Error & { floodRetryAfterSeconds?: number } {
-  const error = new Error(message) as Error & { floodRetryAfterSeconds?: number };
+): Error & { channelErrorCode: "rate_limited"; floodRetryAfterSeconds?: number } {
+  const error = new Error(message) as Error & {
+    channelErrorCode: "rate_limited";
+    floodRetryAfterSeconds?: number;
+  };
+  error.channelErrorCode = "rate_limited";
   if (Number.isFinite(retryAfterSeconds)) error.floodRetryAfterSeconds = retryAfterSeconds;
   return error;
 }

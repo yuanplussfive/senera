@@ -10,6 +10,7 @@ import type { AgentPiDiagnosticSink } from "./AgentPiDiagnostics.js";
 import type { AgentPiSelectedPromptTemplateFrame } from "./AgentPiPromptFrameProjector.js";
 import type { AgentSkillLibraryCatalog } from "../Skills/AgentSkillLibraryCatalog.js";
 import type { AgentPiToolProjectionContext } from "./AgentPiTypes.js";
+import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 import type { AgentPiTurnState } from "./AgentPiTurnState.js";
 import {
   AgentPiPromptDisclosureLedger,
@@ -22,6 +23,7 @@ export interface AgentPiCodingAgentSessionFrame {
   /** Stable logical cache affinity; independent from the physical Pi file. */
   logicalCacheScope?: string;
   requestId?: string;
+  interaction?: AgentInteractionContext;
   step?: number;
   onEvent?: AgentEventSink;
   diagnostics?: AgentPiDiagnosticSink;
@@ -102,6 +104,7 @@ export function projectAgentPiToolContext(frame: AgentPiCodingAgentSessionFrame)
   return {
     sessionId: frame.sessionId,
     requestId: frame.requestId,
+    interaction: frame.interaction,
     step: frame.step,
     onEvent: frame.onEvent,
     turnState: frame.turnState,

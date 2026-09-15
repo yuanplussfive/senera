@@ -137,6 +137,33 @@ describe("Tool result presentation", () => {
     expect(presentation.headline).toContain("inline media omitted");
     expect(result.result).toContain(encoded);
   });
+
+  test("exposes published MCP resources without exposing provider-local identities", () => {
+    const result = fixture({
+      result: {
+        text: "Generated image",
+        content: [
+          {
+            type: "resource",
+            uri: "senera://resource/upl_0123456789abcdef0123456789abcdef",
+            mimeType: "image/png",
+            name: "upl_abcdef0123456789abcdef0123456789.png",
+          },
+        ],
+      },
+    });
+
+    const presentation = projectAgentToolResultPresentation(result);
+
+    expect(presentation.resources).toEqual([
+      {
+        uri: "senera://resource/upl_0123456789abcdef0123456789abcdef",
+        name: "upl_abcdef0123456789abcdef0123456789.png",
+        mime: "image/png",
+        origin: "tool",
+      },
+    ]);
+  });
 });
 
 function fixture(input: {

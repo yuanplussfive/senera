@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { Transform, type TransformCallback, type Readable } from "node:stream";
+import { Readable, Transform, type TransformCallback } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { AgentErrorMessageKey } from "../I18n/AgentMessageCatalog.js";
 import type { ResolvedAgentUploadsConfig } from "../Types/AgentConfigTypes.js";
@@ -29,6 +29,7 @@ import {
   AgentUploadStatus,
   type AgentResolvedUpload,
 } from "./AgentUploadTypes.js";
+import type { AgentResourcePublishInput, AgentResourcePublisher } from "../Resources/AgentResourcePublisher.js";
 
 const MILLISECONDS_PER_HOUR = 60 * 60 * 1_000;
 const MILLISECONDS_PER_MINUTE = 60 * 1_000;
@@ -141,7 +142,7 @@ interface AgentUploadRootState {
   lock: Promise<void>;
 }
 
-export class AgentUploadStore {
+export class AgentUploadStore implements AgentResourcePublisher {
   private readonly rootStates = new Map<string, AgentUploadRootState>();
   private readonly now: () => Date;
 
@@ -237,6 +238,19 @@ export class AgentUploadStore {
       state.activeUploadIds.delete(resourceId);
       state.activeUploads = Math.max(0, state.activeUploads - 1);
     }
+  }
+
+  /**
+   * Publishes host-received bytes through the same quota, MIME detection,
+   * manifest, integrity, and retention path as a user upload.
+   */
+  async publishBytes(input: AgentResourcePublishInput): Promise<AgentUploadAttachment> {
+    const bytes = Buffer.from(input.bytes);
+    return this.save({
+      stream: Readable.from([bytes]),
+      originalName: input.name,
+      declaredMime: input.mime,
+    });
   }
 
   async resolve(resourceUri: string): Promise<AgentResolvedUpload | undefined> {

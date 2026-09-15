@@ -12,6 +12,8 @@ Settings discovery uses shared revision-driven snapshots. The System extension s
 
 `AgentMcpPackageDiscovery` opens each server, reads `tools/list`, and validates every declaration and JSON Schema before publication. `AgentMcpPackageToolProjector` maps validated declarations into the common registry without adding package-specific runtime code.
 
+Packages may declare semantic host requirements through `ai.senera/requirements.hostCapabilities` in an MCPB manifest (or `requirements` in a legacy `.mcp.json`). The host probes these capabilities before spawning a server. Missing capabilities produce a typed `unavailable` record and are omitted from discovery failures; this keeps headless deployments quiet without encoding operating-system branches in package code. `interactive-desktop` is the first built-in capability and is detected from the active Linux X11/Wayland session while desktop hosts remain eligible.
+
 Standard MCP `readOnlyHint` annotations are preserved in the registry. A package may additionally project explicit Senera resource claims when it can identify workspace or host resources from arguments. Scheduling uses those declarations rather than package names or tool-name rules.
 
 MCP tools use the normal bounded parallel scheduler when no runtime metadata is declared. A tool may opt into resource claims or a lower tool-level limit with the namespaced `tools/list` metadata key `ai.senera/runtime`, for example `{ "scheduling": "parallel", "maxConcurrency": 3 }`. Only `parallel` and `resource-claims` are accepted for external MCP tools; host-owned orchestration tools retain the separate `SelfManaged` contract.

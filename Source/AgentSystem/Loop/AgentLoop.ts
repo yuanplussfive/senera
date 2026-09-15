@@ -21,6 +21,7 @@ import type { AgentSystemPromptLayer } from "../Orchestration/AgentRunDispatchPo
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
 import {
+  AgentInteractionSurfaces,
   normalizeAgentInteractionContext,
   type AgentInteractionContext,
 } from "../Interaction/AgentInteractionContext.js";
@@ -155,7 +156,9 @@ export class AgentLoop {
         step,
         input: request.input,
         attachments: request.attachments,
-        interaction: normalizeAgentInteractionContext(request.interaction ?? { surface: "console" }),
+        interaction: normalizeAgentInteractionContext(
+          request.interaction ?? { surface: AgentInteractionSurfaces.Console },
+        ),
         prompt: prompt.systemPrompt,
         turnContext: prompt.turnContext,
         conversationEntries: [...(request.conversationEntries ?? [])],
@@ -217,12 +220,22 @@ export class AgentLoop {
       runtimeFingerprint: this.options.preparationFingerprint,
       userInput: request.input,
       allowedToolNames: request.allowedToolNames,
+      interactionSurface: request.interaction?.surface,
     })
       ? request.preparation
       : undefined;
     const initialLoadedToolNames =
       cached?.loadedToolNames ??
-      (await this.options.runtime.services.retrieval.resolveInitialLoadedTools(request.input, request.loadedToolNames));
+      (request.interaction
+        ? await this.options.runtime.services.retrieval.resolveInitialLoadedTools(
+            request.input,
+            request.loadedToolNames,
+            request.interaction,
+          )
+        : await this.options.runtime.services.retrieval.resolveInitialLoadedTools(
+            request.input,
+            request.loadedToolNames,
+          ));
     const prepared: AgentPreparedTurn = cached
       ? {
           loadedToolNames: [...cached.loadedToolNames],
@@ -236,6 +249,7 @@ export class AgentLoop {
                 query: request.input,
                 authorizedToolNames: request.allowedToolNames,
                 limit: 6,
+                ...(request.interaction ? { interaction: request.interaction } : {}),
               }) ?? [])
             : [],
         }
@@ -246,6 +260,7 @@ export class AgentLoop {
           logicalCacheScope,
           loadedToolNames: initialLoadedToolNames,
           allowedToolNames: request.allowedToolNames,
+          interaction: request.interaction,
           pinnedSkills: request.pinnedSkills,
           signal: request.signal,
         });
@@ -257,6 +272,7 @@ export class AgentLoop {
             runtimeFingerprint: this.options.preparationFingerprint,
             userInput: request.input,
             allowedToolNames: request.allowedToolNames,
+            interactionSurface: request.interaction?.surface,
             loadedToolNames: prepared.loadedToolNames,
             toolAccessGrant: prepared.toolAccessGrant,
             rootCommand: prepared.rootCommand,

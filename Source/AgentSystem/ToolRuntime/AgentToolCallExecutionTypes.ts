@@ -8,6 +8,7 @@ import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentResourceAccessGrant } from "../Execution/SeneraResourceAccess.js";
 import type { AgentToolCapabilityCacheEntry } from "../ToolSearch/AgentToolCapabilitySessionCache.js";
+import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 
 export type AgentToolCallExecutionResult =
   | {
@@ -37,6 +38,7 @@ export interface SuspendChildRunControlResult {
 }
 
 export interface AgentToolCallExecutionContext {
+  interaction?: AgentInteractionContext;
   sessionId?: string;
   logicalCacheScope?: string;
   requestId?: string;

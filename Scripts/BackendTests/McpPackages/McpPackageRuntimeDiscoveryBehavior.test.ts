@@ -53,7 +53,6 @@ describe("MCP package runtime discovery", () => {
           artifactFallback: { strategy: "reference" },
           sources: expect.arrayContaining([expect.objectContaining({ source: "result", mode: "auto" })]),
         });
-        expect(runtime.registry.getTool("mcp__zavora_computer_use__doctor")).toBeDefined();
         const input = "查询北京今天的天气";
         const activeSkills = await runtime.skillActivation.activate({ input });
         const recommendedTools = runtime.skillActivation.recommendedToolNames(activeSkills);

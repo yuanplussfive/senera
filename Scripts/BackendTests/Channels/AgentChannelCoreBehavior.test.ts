@@ -8,7 +8,6 @@ import {
 import {
   analyzeChannelMarkdownStructure,
   convertAgentChannelMarkdown,
-  requiresChannelFinalRewrite,
   splitAgentChannelContent,
   splitChannelTextByParagraphs,
   ensureClosedFences,
@@ -22,15 +21,14 @@ import {
   AgentChannelRunRenderer,
   AgentChannelRunRendererDefaults,
 } from "../../../Source/AgentSystem/Channels/AgentChannelRunRenderer.js";
+import { createAgentChannelActivity } from "../../../Source/AgentSystem/Channels/AgentChannelActivity.js";
 import type {
   AgentChannelAdapter,
   AgentChannelSource,
 } from "../../../Source/AgentSystem/Channels/AgentChannelTypes.js";
 import {
   agentChannelMediaIdentity,
-  projectAgentChannelMediaFromValue,
   projectAgentChannelFinalParts,
-  projectAgentChannelOutboundMedia,
 } from "../../../Source/AgentSystem/Channels/AgentChannelOutboundMedia.js";
 import { parseAgentChannelFinalDelivery } from "../../../Source/AgentSystem/Channels/AgentChannelFinalResponse.js";
 import {
@@ -122,6 +120,35 @@ describe("channel finalization context", () => {
     expect(history[0]?.content.length).toBeLessThanOrEqual(12_000);
     expect(history[0]?.parts[0]?.kind === "text" && history[0].parts[0].text.length).toBeLessThanOrEqual(8_192);
   });
+
+  test("retains bounded media metadata for extensionless resources", () => {
+    const metadata = appendAgentChannelFinalizationRecord(undefined, {
+      id: "request-media-metadata",
+      createdAt: "2026-09-03T00:00:00.000Z",
+      platform: "qq",
+      chatType: "direct",
+      content: "已发送文件",
+      parts: [
+        {
+          kind: "resource",
+          uri: "https://cdn.example/download?id=1",
+          mediaKind: "file",
+          mime: "application/pdf",
+          fileName: "report.pdf",
+        },
+      ],
+    });
+
+    expect(readAgentChannelFinalizationHistory(metadata)[0]?.parts).toEqual([
+      {
+        kind: "resource",
+        uri: "https://cdn.example/download?id=1",
+        mediaKind: "file",
+        mime: "application/pdf",
+        fileName: "report.pdf",
+      },
+    ]);
+  });
 });
 
 describe("channel session mapping store", () => {
@@ -167,18 +194,6 @@ describe("channel text pipeline", () => {
     const converted = convertAgentChannelMarkdown("*bold* and `code`\n```ts\nconst x = 1 * 2\n```", "markdown_v2");
     expect(converted).toContain("\\*bold\\*");
     expect(converted).toContain("const x = 1 * 2");
-  });
-
-  test("requires a model rewrite for code fences and explicit resources", () => {
-    expect(requiresChannelFinalRewrite("")).toBe(false);
-    expect(requiresChannelFinalRewrite("纯文本回答，没有任何特殊内容。")).toBe(false);
-    expect(requiresChannelFinalRewrite("行内 `code` 和普通链接 https://example.com 不算")).toBe(false);
-    expect(requiresChannelFinalRewrite("普通链接 [官网](https://example.com) 不触发")).toBe(false);
-    expect(requiresChannelFinalRewrite("```ts\nconst x = 1;\n```")).toBe(true);
-    expect(requiresChannelFinalRewrite("前文\n~~~\ncode\n~~~")).toBe(true);
-    expect(requiresChannelFinalRewrite("看图 ![截图](https://cdn.example/a.png)")).toBe(true);
-    expect(requiresChannelFinalRewrite("见 senera://resource/r1")).toBe(true);
-    expect(requiresChannelFinalRewrite("[下载](E:/senera/archive.zip)")).toBe(true);
   });
 
   test("analyzes markdown structure for code, media, and resource evidence", () => {
@@ -303,6 +318,40 @@ describe("channel delivery pump", () => {
       mediaCount: 1,
     });
     await delivery.stop();
+  });
+
+  test("resolves a failure receipt instead of reporting a false success", async () => {
+    const failure = Object.assign(new Error("media upload failed"), { retryable: false });
+    const adapter = recordingAdapter([]);
+    adapter.send = async () => {
+      throw failure;
+    };
+    const delivery = new AgentChannelDelivery({ adapter });
+
+    const receipt = delivery.enqueueAndWait(TestChannelSource, "payload");
+    await expect(receipt).resolves.toMatchObject({
+      status: "failed",
+      code: "retry_exhausted",
+      attempts: 1,
+      error: failure,
+    });
+    await delivery.stop();
+  });
+
+  test("resolves queued work as stopped when the lane is closed", async () => {
+    let release: (() => void) | undefined;
+    const adapter = recordingAdapter([]);
+    adapter.send = () =>
+      new Promise((resolve) => {
+        release = () => resolve({ kind: "sent", messageId: "late" });
+      });
+    const delivery = new AgentChannelDelivery({ adapter });
+    const active = delivery.enqueueAndWait(TestChannelSource, "active");
+    const queued = delivery.enqueueAndWait(TestChannelSource, "queued");
+    delivery.stop();
+    await expect(queued).resolves.toMatchObject({ status: "failed", code: "stopped" });
+    release?.();
+    await expect(active).resolves.toMatchObject({ status: "sent", messageId: "late" });
   });
 });
 
@@ -505,7 +554,7 @@ describe("channel run renderer", () => {
     await delivery.stop();
   });
 
-  test("keeps plain-text answers on the local paragraph path", async () => {
+  test("serializes plain-text answers through the host final boundary", async () => {
     const source: AgentChannelSource = { ...TestChannelSource, platform: "qq" };
     const sent: Array<{ content: string }> = [];
     const adapter: AgentChannelAdapter = {
@@ -558,8 +607,58 @@ describe("channel run renderer", () => {
     await renderer.handleEvent({ kind: "run.completed", context: { requestId: "req-plain" }, data: {} } as never);
     await delivery.flush();
 
-    expect(rewrites).toBe(0);
+    expect(rewrites).toBe(1);
     expect(sent.map(({ content }) => content)).toEqual(["第一段纯文本。", "第二段纯文本。", "第三段纯文本。"]);
+    await delivery.stop();
+  });
+
+  test("keeps host failure notices on the deterministic delivery path", async () => {
+    const sent: string[] = [];
+    const channelAdapter: AgentChannelAdapter = {
+      kind: "qq",
+      capabilities: {
+        splitsLongMessages: true,
+        maxMessageLength: 4096,
+        supportsEdit: false,
+        supportsDraft: false,
+        markdown: "plain",
+        commandPrefix: "/",
+      },
+      bind: () => undefined,
+      connect: async () => undefined,
+      disconnect: async () => undefined,
+      getConnectionState: () => "connected",
+      send: async (_source, content) => {
+        sent.push(content);
+        return { kind: "sent", messageId: `m${sent.length}` };
+      },
+      handleWebhookUpdate: async () => false,
+    };
+    const delivery = new AgentChannelDelivery({ adapter: channelAdapter });
+    let rewrites = 0;
+    const renderer = new AgentChannelRunRenderer({
+      adapter: channelAdapter,
+      delivery,
+      source: TestChannelSource,
+      finalResponseRewriter: {
+        rewrite: async () => {
+          rewrites += 1;
+          return { parts: [{ kind: "text", text: "unexpected rewrite" }] };
+        },
+      },
+    });
+
+    await renderer.handleEvent({ kind: "run.started", context: { requestId: "req-failed" }, data: {} } as never);
+    await renderer.handleEvent({
+      kind: "run.failed",
+      context: { requestId: "req-failed" },
+      data: { message: "upstream failed" },
+    } as never);
+    await delivery.flush();
+
+    expect(rewrites).toBe(0);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("upstream failed");
     await delivery.stop();
   });
 
@@ -813,7 +912,7 @@ describe("channel run renderer", () => {
     await delivery.stop();
   });
 
-  test("projects final markdown images into native media delivery", async () => {
+  test("delivers media only when an activity explicitly publishes it", async () => {
     const sent: Array<{ content: string; options?: Parameters<AgentChannelAdapter["send"]>[2] }> = [];
     const adapter: AgentChannelAdapter = {
       kind: "qq",
@@ -839,14 +938,17 @@ describe("channel run renderer", () => {
     const delivery = new AgentChannelDelivery({ adapter });
     const renderer = new AgentChannelRunRenderer({ adapter, delivery, source: TestChannelSource });
     const dataUri = "data:image/png;base64,iVBORw0KGgo=";
-
-    await renderer.handleEvent({ kind: "run.started", context: { requestId: "req-1" }, data: {} } as never);
-    await renderer.handleEvent({
-      kind: "assistant.message.created",
-      context: { requestId: "req-1" },
-      data: { kind: "final_answer", content: `结果\n![截图](${dataUri})`, terminal: true },
-    } as never);
-    await renderer.handleEvent({ kind: "run.completed", context: { requestId: "req-1" }, data: {} } as never);
+    await renderer.deliverActivity(
+      createAgentChannelActivity({
+        activityId: "activity-explicit-media",
+        source: TestChannelSource,
+        parts: [
+          { kind: "text", content: "结果" },
+          { kind: "media", media: { kind: "image", data: dataUri, contentType: "image/png" } },
+        ],
+        publication: { mode: "current_turn", resourceUris: [] },
+      }),
+    );
     await delivery.flush();
 
     expect(sent).toHaveLength(2);
@@ -861,107 +963,7 @@ describe("channel run renderer", () => {
     await delivery.stop();
   });
 
-  test("keeps unresolved Senera resources as Markdown text", async () => {
-    const source = "说明文字\n![未找到的图片](senera://resource/missing-image)";
-    const projection = await projectAgentChannelOutboundMedia(source, {
-      resourceResolver: {
-        resolve: async () => undefined,
-      },
-    });
-
-    expect(projection.media).toEqual([]);
-    expect(projection.caption).toBe(source);
-  });
-
-  test("projects authorized local workspace image paths from Markdown", async () => {
-    const source = "前文\n![醍醐骑车](</E:/senera/tihao-bike.svg>)\n后文";
-    const resolvedPaths: string[] = [];
-    const projection = await projectAgentChannelOutboundMedia(source, {
-      resourceResolver: {
-        resolve: async () => undefined,
-        resolveWorkspacePath: async (filePath) => {
-          resolvedPaths.push(filePath);
-          return {
-            filePath: "E:/senera/tihao-bike.svg",
-            name: "tihao-bike.svg",
-            mime: "image/svg+xml",
-            size: 128,
-            sha256: "b".repeat(64),
-          };
-        },
-      },
-    });
-
-    expect(resolvedPaths).toEqual(["E:/senera/tihao-bike.svg"]);
-    expect(projection.media).toMatchObject([
-      {
-        kind: "image",
-        path: "E:/senera/tihao-bike.svg",
-        contentType: "image/svg+xml",
-        filename: "tihao-bike.svg",
-      },
-    ]);
-    expect(projection.segments).toEqual([
-      { kind: "text", content: "前文" },
-      { kind: "media", media: projection.media[0] },
-      { kind: "text", content: "后文" },
-    ]);
-  });
-
-  test("projects workspace-relative image paths without guessing an extension", async () => {
-    const source = "前文\n![醍醐骑车](./tihao-bike.svg)\n后文";
-    const resolvedPaths: string[] = [];
-    const projection = await projectAgentChannelOutboundMedia(source, {
-      resourceResolver: {
-        resolve: async () => undefined,
-        resolveWorkspacePath: async (filePath) => {
-          resolvedPaths.push(filePath);
-          return {
-            filePath: "E:/senera/tihao-bike.svg",
-            name: "tihao-bike.svg",
-            mime: "image/svg+xml",
-            size: 128,
-            sha256: "c".repeat(64),
-          };
-        },
-      },
-    });
-
-    expect(resolvedPaths).toEqual(["./tihao-bike.svg"]);
-    expect(projection.media[0]).toMatchObject({
-      kind: "image",
-      path: "E:/senera/tihao-bike.svg",
-      contentType: "image/svg+xml",
-      filename: "tihao-bike.svg",
-    });
-    expect(projection.segments.map((segment) => segment.kind)).toEqual(["text", "media", "text"]);
-  });
-
-  test("keeps Windows drive paths out of URL protocol detection", async () => {
-    const source = "![醍醐骑车](E:/senera/tihao-bike.svg)";
-    const resolvedPaths: string[] = [];
-    const projection = await projectAgentChannelOutboundMedia(source, {
-      resourceResolver: {
-        resolve: async () => undefined,
-        resolveWorkspacePath: async (filePath) => {
-          resolvedPaths.push(filePath);
-          return {
-            filePath: "E:/senera/tihao-bike.svg",
-            name: "tihao-bike.svg",
-            mime: "image/svg+xml",
-            size: 128,
-            sha256: "d".repeat(64),
-          };
-        },
-      },
-    });
-
-    expect(resolvedPaths).toEqual(["E:/senera/tihao-bike.svg"]);
-    expect(projection.media).toMatchObject([{ kind: "image", path: "E:/senera/tihao-bike.svg" }]);
-    expect(projection.caption).toBe("");
-  });
-
-  test("preserves text and Markdown media order in the channel delivery stream", async () => {
+  test("preserves text and explicitly published media order in the channel delivery stream", async () => {
     const sent: Array<{ content: string; options?: Parameters<AgentChannelAdapter["send"]>[2] }> = [];
     const adapter: AgentChannelAdapter = {
       kind: "qq",
@@ -987,18 +989,18 @@ describe("channel run renderer", () => {
     const delivery = new AgentChannelDelivery({ adapter });
     const renderer = new AgentChannelRunRenderer({ adapter, delivery, source: TestChannelSource });
     const image = "data:image/png;base64,iVBORw0KGgo=";
-
-    await renderer.handleEvent({ kind: "run.started", context: { requestId: "req-order" }, data: {} } as never);
-    await renderer.handleEvent({
-      kind: "assistant.message.created",
-      context: { requestId: "req-order" },
-      data: {
-        kind: "final_answer",
-        content: `前文\n![截图](${image})\n后文`,
-        terminal: true,
-      },
-    } as never);
-    await renderer.handleEvent({ kind: "run.completed", context: { requestId: "req-order" }, data: {} } as never);
+    await renderer.deliverActivity(
+      createAgentChannelActivity({
+        activityId: "activity-order",
+        source: TestChannelSource,
+        parts: [
+          { kind: "text", content: "前文" },
+          { kind: "media", media: { kind: "image", data: image, contentType: "image/png" } },
+          { kind: "text", content: "后文" },
+        ],
+        publication: { mode: "current_turn", resourceUris: [] },
+      }),
+    );
     await delivery.flush();
 
     expect(sent).toHaveLength(3);
@@ -1009,55 +1011,6 @@ describe("channel run renderer", () => {
     expect(sent[2]?.content).toBe("后文");
     expect(sent[2]?.options?.media).toBeUndefined();
     await delivery.stop();
-  });
-
-  test("removes repeated Markdown references after reusing the canonical media", async () => {
-    const image = "data:image/png;base64,iVBORw0KGgo=";
-    const projection = await projectAgentChannelOutboundMedia(
-      `前文\n![第一次引用](${image})\n中间\n![再次引用](${image})\n后文`,
-    );
-
-    expect(projection.media).toHaveLength(1);
-    expect(projection.caption).toBe("前文\n中间\n后文");
-    expect(projection.segments.map((segment) => segment.kind)).toEqual(["text", "media", "text"]);
-    expect(projection.segments[0]).toEqual({ kind: "text", content: "前文" });
-    expect(projection.segments[2]).toEqual({ kind: "text", content: "中间\n后文" });
-  });
-
-  test("does not promote ordinary links or code samples to native media", async () => {
-    const source = "[普通链接](https://example.com/image.png)\n`![代码](https://example.com/code.png)`";
-    const projection = await projectAgentChannelOutboundMedia(source);
-
-    expect(projection.media).toEqual([]);
-    expect(projection.caption).toBe(source);
-  });
-
-  test("keeps fenced Markdown image examples as literal text", async () => {
-    const source = "```md\n![示例](./tihao-bike.svg)\n```";
-    const projection = await projectAgentChannelOutboundMedia(source, {
-      resourceResolver: {
-        resolve: async () => undefined,
-        resolveWorkspacePath: async () => {
-          throw new Error("fenced image must not be resolved");
-        },
-      },
-    });
-
-    expect(projection.media).toEqual([]);
-    expect(projection.caption).toBe(source);
-  });
-
-  test("projects MCP audio, video, and file blocks from their MIME types", async () => {
-    const projection = await projectAgentChannelMediaFromValue({
-      content: [
-        { type: "audio", mimeType: "audio/wav", data: "UklGRg==" },
-        { type: "video", mimeType: "video/mp4", data: "AAAA" },
-        { type: "file", mimeType: "application/pdf", data: "JVBERg==" },
-      ],
-    });
-
-    expect(projection.media.map((item) => item.kind)).toEqual(["audio", "video", "file"]);
-    expect(projection.media.map((item) => item.contentType)).toEqual(["audio/wav", "video/mp4", "application/pdf"]);
   });
 
   test("sends one canonical MCP image when tool and answer reference the same resource", async () => {
@@ -1101,27 +1054,25 @@ describe("channel run renderer", () => {
       source: TestChannelSource,
       resourceResolver: resolver,
     });
-
-    await renderer.handleEvent({ kind: "run.started", context: { requestId: "req-1" }, data: {} } as never);
-    await renderer.handleEvent({
-      kind: "tool.call.result.detail",
-      context: { requestId: "req-1" },
-      data: {
-        value: {
-          content: [{ type: "image", mimeType: "image/png", uri: "senera://resource/artifact-image" }],
-        },
-      },
-    } as never);
-    await renderer.handleEvent({
-      kind: "assistant.message.created",
-      context: { requestId: "req-1" },
-      data: {
-        kind: "final_answer",
-        content: "![同一张图](senera://resource/artifact-image)",
-        terminal: true,
-      },
-    } as never);
-    await renderer.handleEvent({ kind: "run.completed", context: { requestId: "req-1" }, data: {} } as never);
+    await renderer.deliverActivity(
+      createAgentChannelActivity({
+        activityId: "activity-resource",
+        source: TestChannelSource,
+        parts: [
+          {
+            kind: "media",
+            media: {
+              kind: "image",
+              resourceUri: "senera://resource/artifact-image",
+              contentHash: "a".repeat(64),
+              path: "E:/senera/.tmp/test-image.png",
+              contentType: "image/png",
+            },
+          },
+        ],
+        publication: { mode: "current_turn", resourceUris: ["senera://resource/artifact-image"] },
+      }),
+    );
     await delivery.flush();
 
     expect(sent).toHaveLength(1);
@@ -1130,7 +1081,7 @@ describe("channel run renderer", () => {
     await delivery.stop();
   });
 
-  test("serializes concurrent terminal events and deduplicates inline/resource representations by content hash", async () => {
+  test("deduplicates explicitly published media representations by content hash", async () => {
     const sent: Array<{ content: string; options?: Parameters<AgentChannelAdapter["send"]>[2] }> = [];
     const adapter: AgentChannelAdapter = {
       kind: "qq",
@@ -1154,48 +1105,35 @@ describe("channel run renderer", () => {
       handleWebhookUpdate: async () => false,
     };
     const delivery = new AgentChannelDelivery({ adapter });
-    const inline = "data:image/png;base64,iVBORw0KGgo=";
-    const inlineProjection = await projectAgentChannelOutboundMedia(`![图](${inline})`);
-    const hash = inlineProjection.media[0]?.contentHash;
-    expect(hash).toBeTruthy();
-    const renderer = new AgentChannelRunRenderer({
-      adapter,
-      delivery,
-      source: TestChannelSource,
-      resourceResolver: {
-        resolve: async (resourceUri: string) => ({
-          resourceUri,
-          filePath: "E:/senera/.tmp/hash-image.png",
-          name: "hash-image.png",
-          mime: "image/png",
-          size: 4,
-          sha256: hash!,
-          origin: "artifact" as const,
-        }),
-      },
-    });
-
-    const toolEvent = {
-      kind: "tool.call.result.detail",
-      context: { requestId: "req-1" },
-      data: { value: { content: [{ type: "image", mimeType: "image/png", data: "iVBORw0KGgo=" }] } },
-    } as never;
-    const finalEvent = {
-      kind: "assistant.message.created",
-      context: { requestId: "req-1" },
-      data: { kind: "final_answer", content: `结果\n![图](senera://resource/hash-image)`, terminal: true },
-    } as never;
-    await Promise.all([
-      renderer.handleEvent({ kind: "run.started", context: { requestId: "req-1" }, data: {} } as never),
-      renderer.handleEvent(toolEvent),
-      renderer.handleEvent(finalEvent),
-      renderer.handleEvent({ kind: "run.completed", context: { requestId: "req-1" }, data: {} } as never),
-    ]);
+    const hash = "b".repeat(64);
+    const media = {
+      kind: "image" as const,
+      resourceUri: "senera://resource/hash-image",
+      contentHash: hash,
+      path: "E:/senera/.tmp/hash-image.png",
+      contentType: "image/png",
+    };
+    const renderer = new AgentChannelRunRenderer({ adapter, delivery, source: TestChannelSource });
+    await renderer.deliverActivity(
+      createAgentChannelActivity({
+        activityId: "activity-dedup",
+        source: TestChannelSource,
+        parts: [
+          { kind: "text", content: "结果" },
+          { kind: "media", media },
+          { kind: "media", media: { ...media, resourceUri: "senera://resource/alias" } },
+        ],
+        publication: {
+          mode: "current_turn",
+          resourceUris: ["senera://resource/hash-image", "senera://resource/alias"],
+        },
+      }),
+    );
     await delivery.flush();
 
     expect(sent.filter((entry) => entry.options?.media?.length).length).toBe(1);
     expect(sent.filter((entry) => entry.content.trim() === "结果").length).toBe(1);
-    expect(agentChannelMediaIdentity(inlineProjection.media[0]!)).toBe(
+    expect(agentChannelMediaIdentity(media)).toBe(
       agentChannelMediaIdentity({
         kind: "image",
         contentHash: hash,

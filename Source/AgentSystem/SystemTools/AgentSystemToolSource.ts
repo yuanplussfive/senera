@@ -334,6 +334,7 @@ export class AgentSystemExtensionCatalog {
           inputSchema: source.inputSchema,
           outputSchema: source.outputSchema,
           observationProjection: source.observation,
+          surfaces: source.surfaces,
         }),
         arguments: this.contracts.project(source.inputSchema),
         outputSchema: source.outputSchema,
@@ -349,6 +350,7 @@ export class AgentSystemExtensionCatalog {
       evidenceCapabilities: source.evidenceCapabilities,
       approval: source.approval,
       artifactPolicy: source.artifacts,
+      interactionSurfaces: source.surfaces,
     };
   }
 

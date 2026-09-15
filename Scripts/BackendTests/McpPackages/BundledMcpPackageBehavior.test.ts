@@ -107,10 +107,14 @@ describe("bundled MCP package behavior", () => {
       size: "1536x1024",
     });
     expect(execution.data).toMatchObject({ mode: "images", model: "gpt-image-2", size: "1536x1024" });
-    expect(execution.data.markdown).toContain("senera://resource/imagen-1");
+    expect(execution.data.markdown).not.toContain("senera://resource/");
+    const images = Array.isArray(execution.data.images) ? execution.data.images : [];
+    expect(images).toEqual([expect.objectContaining({ source: "artifact" })]);
+    expect(images[0]).not.toHaveProperty("markdown");
     expect(execution.artifactPayload?.rawResponse).toMatchObject({ data: [{ b64_json: imageBase64 }] });
     expect(execution.artifactPayload?.assets?.[0]).toMatchObject({
-      id: "imagen-1",
+      id: expect.stringMatching(/^asset_[a-f0-9]{32}$/u),
+      fileName: expect.stringMatching(/^asset_[a-f0-9]{32}\.png$/u),
       mediaType: "image/png",
       dataBase64: imageBase64,
     });
@@ -144,6 +148,36 @@ describe("bundled MCP package behavior", () => {
     expect(execution.data).toMatchObject({ mode: "chat", text: expect.stringContaining("Here is the image") });
     expect(execution.data.markdown).toContain("https://cdn.example.test/sunset.png");
     expect(execution.artifactPayload?.assets).toEqual([]);
+  });
+
+  test("imagen removes inline provider payloads when chat mode returns base64", async () => {
+    const imageBase64 = Buffer.from("chat-image").toString("base64");
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        choices: [{ message: { content: `Here is the image:\n\n![Generated](data:image/png;base64,${imageBase64})` } }],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const execution = await executeBundledTool(
+      "imagen",
+      "generate",
+      { prompt: "A sunset", mode: "chat" },
+      {
+        IMAGEN_API_KEY: "test-key",
+        IMAGEN_API_URL: "https://example.test/v1",
+        IMAGEN_REQUEST_MODE: "images",
+      },
+    );
+
+    expect(execution.data.text).toBe("Here is the image:");
+    expect(execution.data.text).not.toContain(imageBase64);
+    expect(execution.artifactPayload?.assets).toEqual([
+      expect.objectContaining({
+        id: expect.stringMatching(/^asset_[a-f0-9]{32}$/u),
+        dataBase64: imageBase64,
+      }),
+    ]);
   });
 });
 

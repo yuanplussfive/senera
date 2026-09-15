@@ -2,6 +2,7 @@ import type { ToolSearchCapabilityManifest } from "../Types/AgentToolContractTyp
 import type { AgentToolSearchMemoryEvidence } from "./AgentToolSearchMemory.js";
 import type { AgentToolSearchRerankDocument } from "./AgentToolSearchReranker.js";
 import type { AgentToolCapabilityCacheState } from "./AgentToolCapabilitySessionCache.js";
+import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 
 export const AgentToolSearchResultModes = {
   Ranked: "ranked",
@@ -12,6 +13,7 @@ export type AgentToolSearchResultMode = (typeof AgentToolSearchResultModes)[keyo
 
 export interface AgentToolSearchOptions {
   query: string;
+  interaction?: AgentInteractionContext;
   preferredSourceIds?: readonly string[];
   plannerTags?: readonly string[];
   includeLoaded?: boolean;

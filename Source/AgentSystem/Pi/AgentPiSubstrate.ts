@@ -49,6 +49,7 @@ import type {
 } from "./AgentPiSessionManagement.js";
 import type { AgentPiRuntimeService, AgentPiSessionOptions, AgentPiSessionResult } from "./AgentPiRuntimeTypes.js";
 import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
+import type { AgentResourceResolverLike } from "../Resources/AgentResourceResolver.js";
 import type { AgentPiPlanningCompilerFactory } from "./AgentPiPlanningCompiler.js";
 import { projectSeneraProcessBackendsToToolTargets } from "../ToolRuntime/AgentToolExecutionPlan.js";
 import type { AgentResidentSpeechSessionRuntime } from "../ResidentSpeech/AgentResidentSpeechTypes.js";
@@ -83,6 +84,7 @@ export interface AgentPiSubstrateOptions {
   sessionPool?: AgentPiCodingAgentSessionPool;
   diagnostics?: AgentPiDiagnosticSink;
   uploadStore?: AgentUploadStore;
+  resourceResolver?: AgentResourceResolverLike;
   /** Shared with delegated child runs so tool claims cross session boundaries. */
   resourceClaims?: AgentToolResourceClaimProjectorPort;
   resourceCapabilities?: AgentToolResourceCapabilityRegistry;
@@ -169,6 +171,7 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
         modelSupportsImages: this.provider.model.input.includes("image"),
         executeToolCall: options.toolCallExecutor.execute.bind(options.toolCallExecutor),
         recordToolArtifacts: options.artifactRecorder.record.bind(options.artifactRecorder),
+        resourceResolver: options.resourceResolver,
         attributionEnabled: () => resolveAgentPromptConfig(options.config).BamlToolAttribution,
         executionScheduler: new AgentToolExecutionScheduler({
           maxConcurrentCallsPerRun: toolExecution.MaxConcurrentCallsPerRun,
@@ -203,7 +206,11 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
         ? context.toolAccessGrant?.authorizedToolNames
         : context.toolAccessGrant?.exposedToolNames;
     return this.toolProjector
-      .createToolSet(visibleToolNames ?? context.visibleToolNames, context.toolAccessGrant?.preferredToolNames)
+      .createToolSet(
+        visibleToolNames ?? context.visibleToolNames,
+        context.toolAccessGrant?.preferredToolNames,
+        context.interaction,
+      )
       .activeToolNames.slice();
   }
 
@@ -216,6 +223,7 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
     const activeToolSet = this.toolProjector.createToolSet(
       toolAccessGrant.authorizedToolNames,
       toolAccessGrant.preferredToolNames,
+      options.interaction,
     );
     const allTools = this.toolProjector.createToolSet();
     const contextPolicy = this.contextPolicy.createFrame({
@@ -272,6 +280,7 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
         sessionId,
         logicalCacheScope,
         requestId: options.requestId,
+        interaction: options.interaction,
         step: options.step,
         onEvent: options.onEvent,
         diagnostics: options.diagnostics ?? this.options.diagnostics,

@@ -9,6 +9,7 @@ import {
   parseAgentToolAccessGrant,
   type AgentToolAccessGrant,
 } from "../ToolRuntime/AgentToolAccessGrant.js";
+import type { AgentInteractionSurface } from "../Interaction/AgentInteractionContext.js";
 
 const ToolAccessGrantSnapshotSchema = z.object({}).passthrough();
 const CapabilityNeedSchema = z
@@ -95,6 +96,7 @@ const TurnPreparationSnapshotSchema = z
     runtimeFingerprint: z.string(),
     inputDigest: z.string(),
     toolAuthorizationCeiling: z.array(z.string()).nullable(),
+    interactionSurface: z.enum(["console", "channel"]).optional(),
     piBranchBoundaryId: z.string().optional(),
     loadedToolNames: z.array(z.string()),
     toolAccessGrant: ToolAccessGrantSnapshotSchema,
@@ -107,6 +109,7 @@ export interface AgentTurnPreparationSnapshot {
   runtimeFingerprint: string;
   inputDigest: string;
   toolAuthorizationCeiling: string[] | null;
+  interactionSurface?: AgentInteractionSurface;
   piBranchBoundaryId?: string;
   loadedToolNames: string[];
   toolAccessGrant: AgentToolAccessGrant;
@@ -122,6 +125,7 @@ export function createAgentTurnPreparationSnapshot(input: {
   toolAccessGrant: AgentToolAccessGrant;
   rootCommand: AgentRootCommand;
   activeSkills: readonly AgentActivatedSkill[];
+  interactionSurface?: AgentInteractionSurface;
 }): AgentTurnPreparationSnapshot {
   const toolAccessGrant = cloneAgentToolAccessGrant(input.toolAccessGrant);
   const toolAuthorizationCeiling = normalizeToolAuthorizationCeiling(input.allowedToolNames);
@@ -132,6 +136,7 @@ export function createAgentTurnPreparationSnapshot(input: {
     runtimeFingerprint: input.runtimeFingerprint,
     inputDigest: sha256Hex(input.userInput),
     toolAuthorizationCeiling,
+    ...(input.interactionSurface ? { interactionSurface: input.interactionSurface } : {}),
     loadedToolNames: [...input.loadedToolNames],
     toolAccessGrant,
     rootCommand: cloneRootCommand(input.rootCommand, toolAccessGrant),
@@ -141,13 +146,19 @@ export function createAgentTurnPreparationSnapshot(input: {
 
 export function isAgentTurnPreparationReusable(
   snapshot: AgentTurnPreparationSnapshot | undefined,
-  input: { runtimeFingerprint?: string; userInput: string; allowedToolNames?: readonly string[] },
+  input: {
+    runtimeFingerprint?: string;
+    userInput: string;
+    allowedToolNames?: readonly string[];
+    interactionSurface?: AgentInteractionSurface;
+  },
 ): snapshot is AgentTurnPreparationSnapshot {
   return Boolean(
     snapshot &&
     input.runtimeFingerprint &&
     snapshot.runtimeFingerprint === input.runtimeFingerprint &&
     snapshot.inputDigest === sha256Hex(input.userInput) &&
+    snapshot.interactionSurface === input.interactionSurface &&
     hasSameToolAuthorizationCeiling(
       snapshot.toolAuthorizationCeiling,
       normalizeToolAuthorizationCeiling(input.allowedToolNames),

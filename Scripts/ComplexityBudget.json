@@ -51,7 +51,7 @@
     },
     {
       "path": "Scripts/BackendTests/Channels/AgentChannelCoreBehavior.test.ts",
-      "baselineLines": 1223,
+      "baselineLines": 1161,
       "owner": "channel-runtime",
       "splitTarget": "Split renderer, delivery, and session mapping coverage into focused test files."
     },
@@ -87,13 +87,13 @@
     },
     {
       "path": "Source/AgentSystem/Channels/AgentChannelOutboundMedia.ts",
-      "baselineLines": 1045,
+      "baselineLines": 926,
       "owner": "channel-runtime",
       "splitTarget": "Split media identity, resource projection, and ordered delivery into focused modules."
     },
     {
       "path": "Source/AgentSystem/Channels/AgentChannelService.ts",
-      "baselineLines": 1020,
+      "baselineLines": 1018,
       "owner": "channel-runtime",
       "splitTarget": "Extract command routing, lifecycle synchronization, and delivery orchestration into focused modules."
     },

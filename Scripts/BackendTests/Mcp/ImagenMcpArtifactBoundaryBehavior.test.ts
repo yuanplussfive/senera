@@ -5,13 +5,14 @@ import { AgentMcpToolClientPool } from "../../../Source/AgentSystem/Mcp/AgentMcp
 import { AgentMcpToolRunner } from "../../../Source/AgentSystem/Mcp/AgentMcpToolRunner.js";
 import type { AgentMcpToolClient } from "../../../Source/AgentSystem/Mcp/AgentMcpToolClient.js";
 import { AgentToolExecutionArtifactRecorder } from "../../../Source/AgentSystem/Artifacts/AgentToolExecutionArtifactRecorder.js";
-import { resolveArtifactsConfig } from "../../../Source/AgentSystem/Defaults/AgentAppDefaults.js";
+import { resolveArtifactsConfig, resolveUploadsConfig } from "../../../Source/AgentSystem/Defaults/AgentAppDefaults.js";
 import type { SeneraExecutionEnv } from "../../../Source/AgentSystem/Execution/SeneraExecutionTypes.js";
 import { AgentToolExecutionReporter } from "../../../Source/AgentSystem/ToolRuntime/AgentToolExecutionReporter.js";
 import { AgentToolSuccessOutcome } from "../../../Source/AgentSystem/ToolRuntime/AgentToolResultOutcome.js";
 import type { AgentToolRunnerContext } from "../../../Source/AgentSystem/ToolRuntime/AgentToolRunner.js";
 import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
+import { AgentUploadStore } from "../../../Source/AgentSystem/Uploads/AgentUploadStore.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 
 const temporaryDirectories: string[] = [];
@@ -40,35 +41,104 @@ describe("Imagen MCP artifact boundary", () => {
       expect.objectContaining({
         ok: true,
         result: expect.objectContaining({
-          text: expect.stringContaining("senera://resource/mcp-content-2"),
+          text: "Generated image",
           content: expect.arrayContaining([
+            expect.objectContaining({ type: "text", text: "Generated image" }),
             expect.objectContaining({
-              type: "image",
-              uri: "senera://resource/mcp-content-2",
+              type: "resource",
+              uri: expect.stringMatching(/^senera:\/\/resource\/upl_[a-f0-9]{32}$/u),
+              mimeType: "image/png",
             }),
           ]),
         }),
       }),
     );
-    expect(execution.artifactPayload?.assets).toEqual([
+    expect(execution.artifactPayload?.assets).toBeUndefined();
+    expect(execution.artifactPayload?.evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "resource",
+          locator: "https://example.test/source.png",
+        }),
+      ]),
+    );
+    expect(JSON.stringify(execution.artifactPayload?.rawResponse)).not.toContain(imageBase64);
+    expect(JSON.stringify(execution.artifactPayload?.rawResponse)).toContain("senera://resource/upl_");
+  });
+
+  test("publishes MCP binary content before model projection and removes temporary identities", async () => {
+    const workspaceRoot = createTemporaryDirectory("senera-mcp-resource-publish");
+    temporaryDirectories.push(workspaceRoot);
+    const imageBase64 = Buffer.from("standard-mcp-image").toString("base64");
+    const uploadStore = new AgentUploadStore({
+      workspaceRoot,
+      config: resolveUploadsConfig({ ModelProviders: [] }),
+    });
+    const execution = await runMcpTool(
       {
-        id: "mcp-content-2",
-        fileName: "mcp-content-2.png",
-        mediaType: "image/png",
-        dataBase64: imageBase64,
+        content: [
+          { type: "text", text: "Generated image" },
+          { type: "image", data: imageBase64, mimeType: "image/png" },
+        ],
       },
-    ]);
-    expect(execution.artifactPayload?.evidence).toEqual([
+      uploadStore,
+    );
+
+    const result = execution.response && "result" in execution.response ? execution.response.result : undefined;
+    expect(result).toEqual(
       expect.objectContaining({
-        kind: "resource",
-        locator: "https://example.test/source.png",
-      }),
-    ]);
-    expect(execution.artifactPayload?.rawResponse).toEqual(
-      expect.objectContaining({
-        content: expect.arrayContaining([expect.objectContaining({ type: "image", data: imageBase64 })]),
+        text: "Generated image",
+        content: expect.arrayContaining([
+          expect.objectContaining({ type: "text", text: "Generated image" }),
+          expect.objectContaining({
+            type: "resource",
+            uri: expect.stringMatching(/^senera:\/\/resource\/upl_[a-f0-9]{32}$/u),
+            mimeType: "image/png",
+          }),
+        ]),
       }),
     );
+    expect(JSON.stringify(result)).not.toContain("mcp-content-2");
+    expect(execution.artifactPayload?.assets).toBeUndefined();
+    expect(JSON.stringify(execution.artifactPayload?.rawResponse)).not.toContain(imageBase64);
+
+    const resourceUri = (result as { content: Array<{ uri?: string }> }).content.find((item) => item.uri)?.uri;
+    expect(resourceUri).toMatch(/^senera:\/\/resource\/upl_[a-f0-9]{32}$/u);
+    if (!resourceUri) throw new Error("MCP resource URI was not projected.");
+    const resolved = await uploadStore.resolve(resourceUri);
+    expect(resolved?.manifest).toEqual(
+      expect.objectContaining({ resourceUri, mime: "image/png", size: Buffer.from(imageBase64, "base64").length }),
+    );
+  });
+
+  test("publishes every image in a multi-image result through the upload quota", async () => {
+    const execution = await runMcpTool({
+      content: Array.from({ length: 8 }, (_, index) => ({
+        type: "image",
+        data: Buffer.from(`image-${index}`).toString("base64"),
+        mimeType: "image/png",
+      })),
+    });
+
+    expect(execution.response).toEqual(
+      expect.objectContaining({
+        ok: true,
+        result: {
+          content: expect.arrayContaining(
+            Array.from({ length: 8 }, () =>
+              expect.objectContaining({
+                type: "resource",
+                uri: expect.stringMatching(/^senera:\/\/resource\/upl_[a-f0-9]{32}$/u),
+                mimeType: "image/png",
+              }),
+            ),
+          ),
+        },
+      }),
+    );
+    const content = (execution.response as { result: { content: Array<{ uri?: string }> } }).result.content;
+    const resourceUris = content.flatMap((item) => (item.uri ? [item.uri] : []));
+    expect(new Set(resourceUris).size).toBe(8);
   });
 
   test("projects inline media in text content without knowing the producing tool", async () => {
@@ -105,13 +175,14 @@ describe("Imagen MCP artifact boundary", () => {
         result: { providerValue: { ok: true } },
       }),
     );
-    expect(execution.artifactPayload?.assets).toEqual([
-      expect.objectContaining({ id: "mcp-content-2", mediaType: "audio/wav" }),
-    ]);
+    expect(execution.artifactPayload?.assets).toBeUndefined();
     expect(execution.artifactPayload?.evidence).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: "mcp-content", locator: "$.content[0]" }),
-        expect.objectContaining({ kind: "mcp-content", locator: "$.content[1]" }),
+        expect.objectContaining({
+          kind: "resource",
+          locator: expect.stringMatching(/^senera:\/\/resource\/upl_[a-f0-9]{32}$/u),
+        }),
         expect.objectContaining({ kind: "mcp-content", locator: "$.content[2]" }),
       ]),
     );
@@ -147,11 +218,8 @@ describe("Imagen MCP artifact boundary", () => {
     expect(recorded?.artifact?.evidence).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          kind: "mcp-content",
-          locator: expect.stringMatching(/^senera:\/\/resource\/res_[a-f0-9]{32}$/u),
-          modelSlots: expect.arrayContaining([
-            expect.objectContaining({ name: "asset_uri", value: expect.stringMatching(/^senera:\/\/resource\/res_/u) }),
-          ]),
+          kind: "resource",
+          locator: expect.stringMatching(/^senera:\/\/resource\/upl_[a-f0-9]{32}$/u),
         }),
       ]),
     );
@@ -181,120 +249,17 @@ describe("Imagen MCP artifact boundary", () => {
     });
   });
 
-  test("archives provider response and image bytes without returning them to the model", async () => {
-    const imageBytes = Buffer.from("fake-png");
-    const imageBase64 = imageBytes.toString("base64");
-    const providerResponse = {
-      api_key: "provider-secret",
-      data: [{ b64_json: imageBase64, revised_prompt: "A small blue bird." }],
-    };
-    const modelResult = {
-      mode: "images",
-      model: "gpt-image-2",
-      size: "1536x1024",
-      text: "Image generated.",
-      markdown: "![Generated image](senera://resource/imagen-1)",
-      images: [
-        {
-          index: 0,
-          alt: "Generated image",
-          markdown: "![Generated image](senera://resource/imagen-1)",
-          source: "artifact",
-          mediaType: "image/png",
-        },
-      ],
-    };
-    const execution = await runMcpTool({
-      structuredContent: modelResult,
-      _meta: {
-        "ai.senera/artifact": {
-          rawResponse: providerResponse,
-          assets: [
-            {
-              id: "imagen-1",
-              fileName: "imagen-1.png",
-              mediaType: "image/png",
-              dataBase64: imageBase64,
-            },
-          ],
-        },
-      },
-    });
-
-    expect(execution.response).toEqual(expect.objectContaining({ ok: true, result: modelResult }));
-    expect(JSON.stringify(execution.response)).not.toContain(imageBase64);
-    expect(JSON.stringify(execution.response)).not.toContain("provider-secret");
-    expect(execution.artifactPayload).toEqual({
-      rawResponse: providerResponse,
-      assets: [
-        {
-          id: "imagen-1",
-          fileName: "imagen-1.png",
-          mediaType: "image/png",
-          dataBase64: imageBase64,
-        },
-      ],
-    });
-
-    const workspaceRoot = createTemporaryDirectory("senera-imagen-artifact");
-    temporaryDirectories.push(workspaceRoot);
-    const recorder = new AgentToolExecutionArtifactRecorder({
-      workspaceRoot,
-      config: resolveArtifactsConfig({
-        ModelProviders: [],
-        Artifacts: { RootDir: ".senera/artifacts" },
-      } satisfies AgentSystemConfig),
-      model: "test-model",
-    });
-    const [recorded] = await recorder.record({
-      requestId: "request-imagen",
-      step: 1,
-      results: [
-        {
-          callId: "call-imagen",
-          name: "mcp__imagen__ImageGenerate",
-          arguments: { prompt: "A small blue bird." },
-          process: { exitCode: 0, signal: null, stdout: "", stderr: "" },
-          artifactPayload: execution.artifactPayload,
-          result: modelResult,
-          outcome: AgentToolSuccessOutcome,
-          artifactPolicy: { Redact: { Keys: ["api_key"] } },
-        },
-      ],
-    });
-
-    expect(recorded).not.toHaveProperty("artifactPayload");
-    expect(JSON.stringify(recorded?.result)).not.toContain(imageBase64);
-    expect(JSON.stringify(recorded?.result)).not.toContain("provider-secret");
-    expect(recorded?.result).toMatchObject({
-      markdown: expect.stringMatching(/senera:\/\/resource\/res_[a-f0-9]{32}/u),
-    });
-    expect(recorded?.artifact?.assets).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: "raw-response", fileName: "response.json" }),
-        expect.objectContaining({ id: "imagen-1", fileName: "imagen-1.png", mediaType: "image/png" }),
-      ]),
-    );
-
-    const rawResponsePath = path.join(recorded!.artifact!.artifactPath, "assets", "response.json");
-    expect(await fs.readFile(rawResponsePath, "utf8")).not.toContain("provider-secret");
-    expect(await fs.readFile(rawResponsePath, "utf8")).toContain(imageBase64);
-    expect(await fs.readFile(path.join(recorded!.artifact!.artifactPath, "assets", "imagen-1.png"))).toEqual(
-      imageBytes,
-    );
-  });
-
-  test("ignores malformed artifact metadata while preserving the safe tool result", async () => {
+  test("does not derive resources from provider-specific metadata", async () => {
     const execution = await runMcpTool({
       structuredContent: { text: "safe result" },
       _meta: {
         "ai.senera/artifact": {
           assets: [
             {
-              id: "imagen-1",
-              fileName: "imagen-1.png",
+              id: "provider-local-id",
+              fileName: "provider-local.png",
               mediaType: "image/png",
-              dataBase64: "not-base64",
+              dataBase64: Buffer.from("provider-local-bytes").toString("base64"),
             },
           ],
         },
@@ -302,11 +267,7 @@ describe("Imagen MCP artifact boundary", () => {
     });
 
     expect(execution.response).toEqual(expect.objectContaining({ ok: true, result: { text: "safe result" } }));
-    expect(execution.artifactPayload).toEqual(
-      expect.objectContaining({
-        rawResponse: expect.objectContaining({ structuredContent: { text: "safe result" } }),
-      }),
-    );
+    expect(execution.artifactPayload?.assets).toBeUndefined();
   });
 
   test("keeps raw responses and plugin assets on distinct artifact paths", async () => {
@@ -364,7 +325,13 @@ describe("Imagen MCP artifact boundary", () => {
   });
 });
 
-async function runMcpTool(value: unknown) {
+async function runMcpTool(value: unknown, resourcePublisher?: AgentUploadStore) {
+  let publisher = resourcePublisher;
+  if (!publisher) {
+    const workspaceRoot = createTemporaryDirectory("senera-mcp-runner-resource");
+    temporaryDirectories.push(workspaceRoot);
+    publisher = new AgentUploadStore({ workspaceRoot, config: resolveUploadsConfig({ ModelProviders: [] }) });
+  }
   const client = {
     closed: false,
     callTool: async () => value,
@@ -375,6 +342,7 @@ async function runMcpTool(value: unknown) {
     config: { ModelProviders: [] },
     executionEnv: {} as SeneraExecutionEnv,
     clientPool: pool,
+    resourcePublisher: publisher,
   });
   const tool = registeredMcpTool();
   try {

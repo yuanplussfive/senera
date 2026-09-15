@@ -115,4 +115,45 @@ describe("plugin settings presentation", () => {
     expect(screen.queryByText("2026")).not.toBeInTheDocument();
     expect(screen.queryByText("MCP 修改已自动同步")).not.toBeInTheDocument();
   });
+
+  it("shows the host capabilities that keep an MCP server unavailable", async () => {
+    const user = userEvent.setup();
+    renderWithFrontendProviders(
+      React.createElement(McpServersSection, {
+        systemConfig: {
+          socketStatus: "open",
+          mcpServers: [
+            {
+              id: "zavora-computer-use",
+              packageName: "zavora-computer-use",
+              displayName: { "zh-CN": "Zavora 桌面控制", "en-US": "Zavora Computer Use" },
+              description: { "zh-CN": "桌面控制服务。", "en-US": "Desktop control service." },
+              source: "bundled",
+              descriptorKind: "mcpb",
+              transport: "stdio",
+              status: "unavailable",
+              unavailableCapabilities: ["interactive-desktop"],
+              unavailableCapabilityDetails: [
+                {
+                  id: "interactive-desktop",
+                  reason: "Linux requires DISPLAY or WAYLAND_DISPLAY for local desktop control.",
+                },
+              ],
+              inputs: [],
+            },
+          ],
+          toolSettingsSynced: { systemTools: true, mcpServers: true },
+          mcpInputOperation: null,
+          refreshToolSettings: vi.fn(),
+          restartMcpServer: vi.fn(() => true),
+          updateMcpInputs: vi.fn(),
+        },
+      }),
+    );
+
+    await user.click(screen.getByText("Zavora 桌面控制"));
+    expect(screen.getByText("缺少的宿主能力")).toBeVisible();
+    expect(screen.getByText("interactive-desktop")).toBeVisible();
+    expect(screen.getByText("Linux requires DISPLAY or WAYLAND_DISPLAY for local desktop control.")).toBeVisible();
+  });
 });

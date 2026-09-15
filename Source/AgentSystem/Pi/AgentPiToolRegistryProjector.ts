@@ -21,6 +21,7 @@ import type { AgentToolAccessGrant } from "../ToolRuntime/AgentToolAccessGrant.j
 import type { AgentPiToolCallPreflightInput } from "./AgentPiToolCallPreflight.js";
 import { projectAgentToolDescription } from "../ToolRuntime/AgentToolInteractionProjector.js";
 import { projectAgentToolCapabilityArguments } from "../ToolSearch/AgentToolCapabilityArgumentProjection.js";
+import { isAgentToolAvailableForInteraction } from "../ToolRuntime/AgentToolInteractionAvailability.js";
 
 export interface AgentPiToolRuntimeContractProjector {
   projectToolInvocationSchema(tool: RegisteredTool, schema: Readonly<Record<string, unknown>>): Record<string, unknown>;
@@ -72,6 +73,7 @@ export class AgentPiToolRegistryProjector {
     return this.createToolSet(
       visibleToolNames ?? context.visibleToolNames,
       exposure?.preferredToolNames ?? toolAccessGrant?.preferredToolNames,
+      context.interaction,
     ).materialize(() => context);
   }
 
@@ -82,9 +84,10 @@ export class AgentPiToolRegistryProjector {
   createToolSet(
     visibleToolNames?: AgentPiToolProjectionContext["visibleToolNames"],
     preferredToolNames: readonly string[] = [],
+    interaction?: AgentPiToolProjectionContext["interaction"],
   ): AgentPiToolSet {
     const runtimeTargets = this.options.availableExecutionTargets?.() ?? ["Sandbox", "Local"];
-    const tools = this.visibleTools(visibleToolNames, preferredToolNames, runtimeTargets).filter((tool) =>
+    const tools = this.visibleTools(visibleToolNames, preferredToolNames, runtimeTargets, interaction).filter((tool) =>
       this.options.toolPlanningMode === "native"
         ? tool.loading === ToolLoadingModes.Bootstrap && !isAgentToolExposureMutationMetaToolName(tool.name)
         : true,
@@ -132,9 +135,11 @@ export class AgentPiToolRegistryProjector {
     visibleToolNames?: AgentPiToolProjectionContext["visibleToolNames"],
     preferredToolNames: readonly string[] = [],
     runtimeTargets: readonly ToolExecutionTarget[] = ["Sandbox", "Local"],
+    interaction?: AgentPiToolProjectionContext["interaction"],
   ): RegisteredTool[] {
     const registered = this.options.registry
       .listTools()
+      .filter((tool) => isAgentToolAvailableForInteraction(tool, interaction))
       .filter((tool) => resolveAvailableAgentToolExecutionTargets(tool, runtimeTargets).length > 0);
     if (!visibleToolNames) {
       return this.options.toolPlanningMode === "native"

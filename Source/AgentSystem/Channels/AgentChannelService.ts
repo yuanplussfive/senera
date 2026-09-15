@@ -30,9 +30,9 @@ import { AgentChannelRunRenderer } from "./AgentChannelRunRenderer.js";
 import type { AgentChannelAdapterRegistry } from "./AgentChannelAdapterRegistry.js";
 import { resolveAgentChannelSessionId, serializeAgentChannelLane } from "./AgentChannelSessionIdentity.js";
 import type { AgentResourceResolverLike } from "../Resources/AgentResourceResolver.js";
-import { renderAgentChannelCommandHelp, resolveAgentChannelCommand } from "./AgentChannelCommandRegistry.js";
+import { renderAgentChannelCommandHelp } from "./AgentChannelCommandRegistry.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
-import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
+import { AgentInteractionSurfaces, type AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 import type { AgentChannelFinalResponseRewriter } from "./AgentChannelFinalResponse.js";
 import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
 import {
@@ -40,6 +40,19 @@ import {
   type AgentProfileRouteRegistry,
 } from "../Conversation/AgentConversationSpace.js";
 import type { AgentChannelFinalizationRecord } from "./AgentChannelFinalizationTypes.js";
+import type { AgentChannelActivity } from "./AgentChannelActivity.js";
+import {
+  commandArguments,
+  createShortId,
+  describe,
+  isChannelTerminalEvent,
+  parseChannelCommand,
+  renderInboundInput,
+  summarizeCompletion,
+  timeout,
+} from "./AgentChannelServiceHelpers.js";
+
+export { isChannelTerminalEvent, parseChannelCommand, summarizeCompletion } from "./AgentChannelServiceHelpers.js";
 
 export const AgentChannelServiceDefaults = Object.freeze({
   enabled: false,
@@ -126,12 +139,21 @@ export interface AgentChannelStatus {
   readonly error?: string;
 }
 
-export interface AgentChannelProactiveDeliveryRequest {
+export type AgentChannelProactiveDeliveryRequest = {
   readonly deliveryId: string;
   readonly sessionId: string;
-  readonly content: string;
   readonly createdAt: string;
-}
+} & (
+  | {
+      readonly content: string;
+      readonly activity?: never;
+    }
+  | {
+      /** Structured activity used by host jobs that already know publication intent. */
+      readonly activity: AgentChannelActivity;
+      readonly content?: never;
+    }
+);
 
 interface ActiveChannel {
   readonly kind: AgentChannelKind;
@@ -639,7 +661,7 @@ export class AgentChannelService {
       sessionId: lane.sessionId,
       input: instruction,
       interaction: {
-        surface: "channel",
+        surface: AgentInteractionSurfaces.Channel,
         platform: source.platform,
         chatType: source.chatType,
         spaceId: conversationSpace.id,
@@ -697,8 +719,8 @@ export class AgentChannelService {
       onFinalized: (record) => this.options.sessionManager.recordChannelFinalization?.(sessionId, record),
       onPreviewFailed: (error) =>
         this.log("warn", "channels.preview_failed", { kind: channel.kind, message: describe(error) }),
-      onMediaFailed: (error) =>
-        this.log("warn", "channels.media_projection_failed", { kind: channel.kind, message: describe(error) }),
+      onDeliveryFailed: (error) =>
+        this.log("error", "channels.send_dropped", { kind: channel.kind, source, message: describe(error) }),
       onFinalRewriteFailed: (error) =>
         this.log("warn", "channels.final_rewrite_failed", { kind: channel.kind, message: describe(error) }),
       onFinalRewriteTiming: (timing) =>
@@ -746,7 +768,7 @@ export class AgentChannelService {
           },
         },
         interaction: {
-          surface: "channel",
+          surface: AgentInteractionSurfaces.Channel,
           platform: channel.kind,
           chatType: source.chatType,
           spaceId: conversationSpace.id,
@@ -847,7 +869,9 @@ export class AgentChannelService {
     const finalizationHistory = await this.loadFinalizationHistory(request.sessionId, lane.platform);
     const renderer = this.createRenderer(channel, source, request.sessionId, request.deliveryId, finalizationHistory);
     try {
-      const accepted = await renderer.deliverProactive(request.content);
+      const accepted = request.activity
+        ? await renderer.deliverActivity(request.activity)
+        : await renderer.deliverProactive(request.content);
       if (!accepted) {
         this.log("warn", "channels.proactive_delivery_backpressure", {
           kind: lane.platform,
@@ -936,8 +960,8 @@ export class AgentChannelService {
         sessionId ? this.options.sessionManager.recordChannelFinalization?.(sessionId, record) : undefined,
       onPreviewFailed: (error) =>
         this.log("warn", "channels.preview_failed", { kind: channel.kind, message: describe(error) }),
-      onMediaFailed: (error) =>
-        this.log("warn", "channels.media_projection_failed", { kind: channel.kind, message: describe(error) }),
+      onDeliveryFailed: (error) =>
+        this.log("error", "channels.send_dropped", { kind: channel.kind, source, message: describe(error) }),
       onFinalRewriteFailed: (error) =>
         this.log("warn", "channels.final_rewrite_failed", { kind: channel.kind, message: describe(error) }),
       onFinalRewriteTiming: (timing) =>
@@ -975,7 +999,7 @@ export class AgentChannelService {
     return createAgentConversationSpace({
       sessionId,
       address: {
-        surface: "channel",
+        surface: AgentInteractionSurfaces.Channel,
         platform: source.platform,
         chatType: source.chatType,
         chatId: source.chatId,
@@ -990,55 +1014,4 @@ export class AgentChannelService {
   private log(level: "info" | "warn" | "error", message: string, details?: Record<string, unknown>): void {
     this.options.onLog?.(level, message, details);
   }
-}
-
-export function parseChannelCommand(text: string, prefix: string): AgentChannelCommand | undefined {
-  if (!prefix || !text.startsWith(prefix)) return undefined;
-  const body = text.slice(prefix.length).split(/\s+/)[0] ?? "";
-  const command = body.split("@")[0]?.toLowerCase();
-  if (!command || command.length === 0) return undefined;
-  return resolveAgentChannelCommand(command);
-}
-
-function commandArguments(text: string, prefix: string): string {
-  const body = prefix && text.startsWith(prefix) ? text.slice(prefix.length) : text;
-  return body.replace(/^\S+\s*/, "").trim();
-}
-
-function renderInboundInput(text: string, attachments?: readonly AgentChannelAttachment[]): string {
-  const media =
-    attachments?.flatMap((attachment) => {
-      const name = attachment.filename || attachment.contentType || "媒体附件";
-      const target = attachment.url ? `：${attachment.url}` : "";
-      const transcript = attachment.transcript?.trim();
-      return [`[${name}${target}]`, ...(transcript ? [`[语音转写：${transcript}]`] : [])];
-    }) ?? [];
-  const parts = [text, ...media].filter((part) => part.length > 0);
-  return parts.join("\n").trim();
-}
-
-export function isChannelTerminalEvent(event: AgentDomainEvent): boolean {
-  const kinds = new Set(["run.completed", "run.failed", "run.cancelled"]);
-  return kinds.has(event.kind);
-}
-
-export function summarizeCompletion(record: AgentChildRunRecord): string {
-  if (record.error) return `任务 ${record.task} 失败：${record.error}`;
-  const answer = record.finalAnswer?.trim() || "（无最终回答）";
-  return `任务：${record.task}\n${answer}`;
-}
-
-function createShortId(): string {
-  return Math.random().toString(36).slice(2, 10);
-}
-
-function timeout(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    timer.unref?.();
-  });
-}
-
-function describe(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

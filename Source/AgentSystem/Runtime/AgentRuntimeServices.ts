@@ -65,6 +65,9 @@ export interface AgentPromptContextService {
     requestId?: string;
   }): Promise<AgentContinuityMemoryPromptContext>;
   promptWorkflow(sessionId?: string): AgentWorkflowPromptContext;
+  interactionToolNames?(
+    interaction?: import("../Interaction/AgentInteractionContext.js").AgentInteractionContext,
+  ): string[];
 }
 
 export interface AgentExecutionService {
@@ -127,6 +130,7 @@ export function createDefaultAgentRuntimeServices(dependencies: AgentRuntimeServ
         return await dependencies.continuityMemory.promptContext(input);
       },
       promptWorkflow: (sessionId) => dependencies.workflow?.promptContext(sessionId) ?? EmptyAgentWorkflowPromptContext,
+      interactionToolNames: (interaction) => dependencies.promptContextBuilder.interactionToolNames(interaction),
     },
     executionLedger: dependencies.executionLedger,
   };

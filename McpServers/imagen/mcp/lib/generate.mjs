@@ -1,9 +1,8 @@
-const DefaultModel = "gpt-image-2";
-import { createResourceUri } from "./resource-uri.mjs";
+import crypto from "node:crypto";
 
+const DefaultModel = "gpt-image-2";
 const DefaultSize = "1536x1024";
 const DefaultBaseUrl = "https://api.openai.com/v1";
-const ArtifactMetaKey = "ai.senera/artifact";
 
 const RequestRoutes = Object.freeze({
   images: "images/generations",
@@ -28,7 +27,6 @@ export default async function generateImage(input, context) {
       rawResponse,
       assets: projection.assets,
     },
-    artifactMetaKey: ArtifactMetaKey,
   };
 }
 
@@ -182,18 +180,27 @@ function projectImageResponse(response, request) {
 
 function projectChatResponse(response, request) {
   const message = response?.choices?.[0]?.message;
-  const text = readChatText(message, response) ?? "Image generation completed.";
+  const sourceText = readChatText(message, response) ?? "Image generation completed.";
   const assets = [];
-  const candidates = collectChatImageCandidates(message, response, text);
+  const candidates = collectChatImageCandidates(message, response, sourceText);
   const images = candidates.flatMap((candidate, index) => {
     const image = projectImageCandidate(candidate, index, request, assets);
     return image ? [image] : [];
   });
+  const text = assets.length > 0 ? stripInlineImagePayload(sourceText) : sourceText;
   const markdown = ensureMarkdownImages(text, images);
   return {
     data: projectData(request, text, images, undefined, markdown),
     assets,
   };
+}
+
+function stripInlineImagePayload(value) {
+  return value
+    .replace(/!\[[^\]]*\]\(\s*data:image\/[^)]*\)/giu, "")
+    .replace(/data:image\/[^;]+;base64,[a-z0-9+/=\s]+/giu, "")
+    .replace(/\n{3,}/gu, "\n\n")
+    .trim();
 }
 
 function projectData(request, text, images, revisedPrompt, markdown = undefined) {
@@ -217,8 +224,7 @@ function projectImageCandidate(candidate, index, request, assets) {
     readDataUrl(url)?.mediaType ??
     formatMime(request.outputFormat);
   if (!url && !base64) return undefined;
-  const id = `imagen-${index + 1}`;
-  const sourceUrl = base64 ? createResourceUri(id) : url;
+  const id = base64 ? createGeneratedAssetId() : undefined;
   if (base64) {
     assets.push({
       id,
@@ -230,7 +236,7 @@ function projectImageCandidate(candidate, index, request, assets) {
   return {
     index,
     alt: `Generated image ${index + 1}`,
-    markdown: `![Generated image ${index + 1}](${sourceUrl})`,
+    ...(url && !base64 ? { markdown: `![Generated image ${index + 1}](${url})` } : {}),
     source: base64 ? "artifact" : "url",
     ...(mediaType ? { mediaType } : {}),
   };
@@ -355,6 +361,10 @@ function formatExtension(mime) {
   return mime === "image/jpeg" ? "jpg" : mime === "image/webp" ? "webp" : "png";
 }
 
+function createGeneratedAssetId() {
+  return `asset_${crypto.randomBytes(16).toString("hex")}`;
+}
+
 function readMarkdownUrl(markdown) {
   return /\]\(([^)]+)\)$/u.exec(markdown)?.[1];
 }
@@ -363,4 +373,4 @@ function truncate(value, maxLength) {
   return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
 }
 
-export { ArtifactMetaKey, DefaultModel, DefaultSize, RequestRoutes };
+export { DefaultModel, DefaultSize, RequestRoutes };

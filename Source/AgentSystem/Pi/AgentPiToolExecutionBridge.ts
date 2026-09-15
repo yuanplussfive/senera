@@ -32,12 +32,14 @@ import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/Ag
 import { markAgentToolArtifactUnavailable } from "../Artifacts/AgentToolArtifactAvailability.js";
 import { escapeXml as escapeXmlText } from "../Prompt/AgentTurnRequestComposer.js";
 import { projectAgentToolCapabilityArguments } from "../ToolSearch/AgentToolCapabilityArgumentProjection.js";
+import type { AgentResourceResolverLike } from "../Resources/AgentResourceResolver.js";
 
 export interface AgentPiToolExecutionBridgeOptions {
   model: string;
   modelSupportsImages?: boolean;
   executeToolCall: AgentToolCallExecutor["execute"];
   recordToolArtifacts: AgentToolExecutionArtifactRecorder["record"];
+  resourceResolver?: Pick<AgentResourceResolverLike, "resolve">;
   executionScheduler?: Pick<AgentToolExecutionScheduler, "run">;
   /** Enables attribution="tool" wrapping of BAML observation content. */
   attributionEnabled?: () => boolean;
@@ -114,6 +116,7 @@ export class AgentPiToolExecutionBridge {
         },
         {
           sessionId,
+          interaction: input.context.interaction,
           logicalCacheScope: turnState.context.logicalCacheScope,
           requestId,
           step,
@@ -339,7 +342,11 @@ export class AgentPiToolExecutionBridge {
     );
     const content = this.wrapObservationContent(JSON.stringify(observation));
     reservation.commit(content);
-    const images = await projectArtifactImages(result, this.options.modelSupportsImages === true);
+    const images = await projectToolImages(
+      result,
+      this.options.modelSupportsImages === true,
+      this.options.resourceResolver,
+    );
 
     return {
       content: [
@@ -368,25 +375,43 @@ function projectToolResourceOwner(
   };
 }
 
-async function projectArtifactImages(result: ExecutedToolCallResult, enabled: boolean): Promise<ImageContent[]> {
-  if (!enabled || !result.artifact?.assets) return [];
-  const artifactRoot = path.resolve(result.artifact.artifactPath);
-  const imageAssets = result.artifact.assets.filter((asset) => asset.mediaType.startsWith("image/"));
-  return Promise.all(
-    imageAssets.map(async (asset) => {
+async function projectToolImages(
+  result: ExecutedToolCallResult,
+  enabled: boolean,
+  resourceResolver?: Pick<AgentResourceResolverLike, "resolve">,
+): Promise<ImageContent[]> {
+  if (!enabled) return [];
+
+  const images: ImageContent[] = [];
+  const seenResources = new Set<string>();
+  const artifactRoot = result.artifact ? path.resolve(result.artifact.artifactPath) : undefined;
+  if (artifactRoot) {
+    for (const asset of result.artifact?.assets ?? []) {
+      if (!asset.mediaType.startsWith("image/")) continue;
       const filePath = path.resolve(artifactRoot, asset.relativePath);
       const relativePath = path.relative(artifactRoot, filePath);
       if (relativePath === ".." || relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath)) {
         throw new Error(`Tool artifact image path must remain inside its artifact: ${asset.relativePath}`);
       }
       const data = await readFile(filePath);
-      return {
-        type: "image",
-        data: data.toString("base64"),
-        mimeType: asset.mediaType,
-      } satisfies ImageContent;
-    }),
-  );
+      images.push({ type: "image", data: data.toString("base64"), mimeType: asset.mediaType });
+      seenResources.add(asset.resourceUri);
+    }
+  }
+
+  if (!resourceResolver) return images;
+  for (const resource of result.presentation?.resources ?? []) {
+    if (resource.origin !== "tool" || !resource.mime.startsWith("image/") || seenResources.has(resource.uri)) {
+      continue;
+    }
+    const resolved = await resourceResolver.resolve(resource.uri);
+    if (!resolved) throw new Error(`Published tool resource is unavailable: ${resource.uri}`);
+    const data = await readFile(resolved.filePath);
+    images.push({ type: "image", data: data.toString("base64"), mimeType: resolved.mime });
+    seenResources.add(resource.uri);
+  }
+
+  return images;
 }
 
 function assertExecutedToolIdentity(input: AgentPiToolExecutionInput, result: ExecutedToolCallResult): void {

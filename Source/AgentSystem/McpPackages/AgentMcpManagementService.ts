@@ -11,6 +11,11 @@ import {
   type AgentSystemSettingsSnapshot,
   type AgentSystemToolSettingsItem,
 } from "./AgentMcpManagementCatalog.js";
+import {
+  detectAgentMcpHostCapabilities,
+  missingAgentMcpHostCapabilities,
+  type AgentMcpHostCapabilitySnapshot,
+} from "./AgentMcpHostRequirements.js";
 
 export type { AgentSystemSettingsSnapshot, AgentSystemToolSettingsItem } from "./AgentMcpManagementCatalog.js";
 
@@ -22,7 +27,9 @@ export interface AgentMcpServerSettingsItem {
   readonly source: AgentMcpPackage["source"];
   readonly transport: "stdio" | "http";
   readonly descriptorKind: AgentMcpPackage["descriptorKind"];
-  readonly status: "configured" | "needs_input";
+  readonly status: "configured" | "needs_input" | "unavailable";
+  readonly unavailableCapabilities?: readonly string[];
+  readonly unavailableCapabilityDetails?: readonly { readonly id: string; readonly reason?: string }[];
   readonly inputs: readonly AgentMcpInputStatus[];
 }
 
@@ -31,6 +38,7 @@ export interface AgentMcpManagementServiceOptions {
   readonly resourcesRoot: string;
   readonly inputs: AgentMcpInputService;
   readonly config: () => AgentSystemConfig;
+  readonly hostCapabilities?: AgentMcpHostCapabilitySnapshot;
 }
 
 export interface AgentMcpSettingsSnapshot {
@@ -40,10 +48,12 @@ export interface AgentMcpSettingsSnapshot {
 
 export class AgentMcpManagementService {
   private readonly catalog: AgentMcpManagementCatalog;
+  private readonly hostCapabilities: AgentMcpHostCapabilitySnapshot;
   private mcpSettingsCache?: AgentMcpSettingsSnapshot;
 
   constructor(private readonly options: AgentMcpManagementServiceOptions) {
     this.catalog = new AgentMcpManagementCatalog(options);
+    this.hostCapabilities = options.hostCapabilities ?? detectAgentMcpHostCapabilities();
   }
 
   systemSettingsSnapshot(): AgentSystemSettingsSnapshot {
@@ -71,6 +81,12 @@ export class AgentMcpManagementService {
     const revision = sha256HexOfCanonicalJson({
       packages: packages.revision,
       inputs: this.options.inputs.revision(),
+      hostCapabilities: {
+        available: [...this.hostCapabilities.available].sort(),
+        diagnostics: [...this.hostCapabilities.diagnostics.entries()].sort(([left], [right]) =>
+          left.localeCompare(right),
+        ),
+      },
     });
     if (this.mcpSettingsCache?.revision === revision) return this.mcpSettingsCache;
     const servers = packages.packages
@@ -123,6 +139,11 @@ export class AgentMcpManagementService {
 
   private projectServer(package_: AgentMcpPackage, server: AgentMcpPackageServer): AgentMcpServerSettingsItem {
     const inputs = this.options.inputs.statuses(server.name, server.inputs);
+    const unavailableCapabilities = missingAgentMcpHostCapabilities(package_.requirements, this.hostCapabilities);
+    const unavailableCapabilityDetails = unavailableCapabilities.map((id) => {
+      const reason = this.hostCapabilities.diagnostics.get(id);
+      return reason ? { id, reason } : { id };
+    });
     return {
       id: server.name,
       packageName: package_.name,
@@ -131,7 +152,14 @@ export class AgentMcpManagementService {
       source: package_.source,
       descriptorKind: package_.descriptorKind,
       transport: server.configuration.type,
-      status: inputs.some((input) => input.required && !input.configured) ? "needs_input" : "configured",
+      status:
+        unavailableCapabilities.length > 0
+          ? "unavailable"
+          : inputs.some((input) => input.required && !input.configured)
+            ? "needs_input"
+            : "configured",
+      ...(unavailableCapabilities.length > 0 ? { unavailableCapabilities } : {}),
+      ...(unavailableCapabilityDetails.length > 0 ? { unavailableCapabilityDetails } : {}),
       inputs,
     };
   }

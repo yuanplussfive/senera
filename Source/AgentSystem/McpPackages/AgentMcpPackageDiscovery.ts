@@ -17,6 +17,11 @@ import { createAgentMcpExecutionProfile } from "../Mcp/AgentMcpExecutionProfile.
 import type { AgentExtensionValueResolver } from "../Extensions/AgentExtensionValueExpression.js";
 import { AgentMcpInputsRequiredError } from "./AgentMcpValueExpression.js";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
+import {
+  detectAgentMcpHostCapabilities,
+  missingAgentMcpHostCapabilities,
+  type AgentMcpHostCapabilitySnapshot,
+} from "./AgentMcpHostRequirements.js";
 
 export interface AgentDiscoveredMcpServer {
   readonly package_: AgentMcpPackage;
@@ -32,12 +37,19 @@ export interface AgentMcpPackageDiscoveryFailure {
   readonly error: unknown;
 }
 
-export interface AgentUnavailableMcpServer {
-  readonly packageName: string;
-  readonly serverName: string;
-  readonly reason: "needs_input";
-  readonly inputIds: readonly string[];
-}
+export type AgentUnavailableMcpServer =
+  | {
+      readonly packageName: string;
+      readonly serverName: string;
+      readonly reason: "needs_input";
+      readonly inputIds: readonly string[];
+    }
+  | {
+      readonly packageName: string;
+      readonly serverName: string;
+      readonly reason: "missing_host_capability";
+      readonly missingCapabilities: readonly string[];
+    };
 
 export interface AgentMcpPackageDiscoveryResult {
   readonly servers: readonly AgentDiscoveredMcpServer[];
@@ -47,6 +59,7 @@ export interface AgentMcpPackageDiscoveryResult {
 
 type AgentMcpPackageDiscoveryOutcome =
   | { readonly status: "fulfilled"; readonly server: AgentDiscoveredMcpServer }
+  | { readonly status: "unavailable"; readonly server: AgentUnavailableMcpServer }
   | { readonly status: "rejected"; readonly failure: AgentMcpPackageDiscoveryFailure };
 
 export interface AgentMcpPackageDiscoveryOptions {
@@ -54,6 +67,7 @@ export interface AgentMcpPackageDiscoveryOptions {
   readonly sampling?: AgentMcpSamplingHandler;
   readonly onToolsChanged?: AgentMcpToolsChangedHandler;
   readonly inputs?: AgentExtensionValueResolver;
+  readonly hostCapabilities?: AgentMcpHostCapabilitySnapshot;
 }
 
 export class AgentMcpPackageDiscoveryError extends AgentBaseError {
@@ -68,11 +82,15 @@ export class AgentMcpPackageDiscoveryError extends AgentBaseError {
 }
 
 export class AgentMcpPackageDiscovery {
+  private readonly hostCapabilities: AgentMcpHostCapabilitySnapshot;
+
   constructor(
     private readonly config: AgentSystemConfig,
     private readonly executionEnv: SeneraExecutionEnv,
     private readonly options: AgentMcpPackageDiscoveryOptions = {},
-  ) {}
+  ) {
+    this.hostCapabilities = options.hostCapabilities ?? detectAgentMcpHostCapabilities();
+  }
 
   async discover(packages: readonly AgentMcpPackage[]): Promise<AgentMcpPackageDiscoveryResult> {
     const outcomes = await Promise.all(
@@ -86,9 +104,8 @@ export class AgentMcpPackageDiscovery {
     return {
       servers: outcomes.flatMap((outcome) => (outcome.status === "fulfilled" ? [outcome.server] : [])),
       unavailableServers: outcomes.flatMap((outcome) => {
-        if (outcome.status === "fulfilled" || !(outcome.failure.error instanceof AgentMcpInputsRequiredError)) {
-          return [];
-        }
+        if (outcome.status === "unavailable") return [outcome.server];
+        if (outcome.status !== "rejected" || !(outcome.failure.error instanceof AgentMcpInputsRequiredError)) return [];
         return [
           {
             packageName: outcome.failure.packageName,
@@ -106,6 +123,18 @@ export class AgentMcpPackageDiscovery {
     package_: AgentMcpPackage,
     server: AgentMcpPackageServer,
   ): Promise<AgentMcpPackageDiscoveryOutcome> {
+    const missingCapabilities = missingAgentMcpHostCapabilities(package_.requirements, this.hostCapabilities);
+    if (missingCapabilities.length > 0) {
+      return {
+        status: "unavailable",
+        server: {
+          packageName: package_.name,
+          serverName: server.name,
+          reason: "missing_host_capability",
+          missingCapabilities,
+        },
+      };
+    }
     try {
       return { status: "fulfilled", server: await this.discoverServer(package_, server) };
     } catch (error) {

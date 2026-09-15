@@ -15,6 +15,7 @@ import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprova
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentToolResourceLeaseOwner } from "../ToolRuntime/AgentToolResourceScheduler.js";
 import type { AgentToolCapabilityCacheEntry } from "../ToolSearch/AgentToolCapabilitySessionCache.js";
+import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 
 export {
   AgentPiToolResultStatuses,
@@ -28,6 +29,7 @@ export type AgentPiToolResult = AgentToolResult<AgentPiToolDetails>;
 export type AgentPiToolUpdate = AgentToolUpdateCallback<AgentPiToolDetails>;
 
 export interface AgentPiToolProjectionContext {
+  interaction?: AgentInteractionContext;
   sessionId?: string;
   requestId?: string;
   step?: number;

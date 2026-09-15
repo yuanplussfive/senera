@@ -337,6 +337,7 @@ export class AgentPiTurnExecutor {
         userInput: command.input,
         sessionId: command.sessionId,
         logicalCacheScope: command.logicalCacheScope,
+        interaction: command.interaction,
         loadedTools: loadedToolNames,
         execution: { value: [...runtimeProjection.executedTools] },
         activeSkills: command.activeSkills,

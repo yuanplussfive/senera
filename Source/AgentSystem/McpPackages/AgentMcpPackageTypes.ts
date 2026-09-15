@@ -1,5 +1,6 @@
 import type { AgentSourceDiagnostic } from "../Diagnostics/AgentSourceDiagnostic.js";
 import type { AgentMcpExecution } from "./AgentMcpPackageSchema.js";
+import type { AgentMcpHostRequirements } from "./AgentMcpHostRequirements.js";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
 import type { AgentExtensionValueExpression } from "../Extensions/AgentExtensionValueExpression.js";
 import type { AgentMcpInputDefinition } from "./AgentMcpInputDefinition.js";
@@ -28,6 +29,7 @@ export interface AgentMcpPackage {
   readonly source: AgentMcpPackageSourceKind;
   readonly descriptorKind: "mcpb" | "registry" | "legacy" | "connection";
   readonly execution?: AgentMcpExecution;
+  readonly requirements?: AgentMcpHostRequirements;
   readonly servers: readonly AgentMcpPackageServer[];
 }
 
