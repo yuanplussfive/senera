@@ -200,7 +200,7 @@ jobs:
           echo "exists=true" >> "$GITHUB_OUTPUT"
       - id: release
         if: steps.tag-state.outputs.exists != 'true'
-        uses: googleapis/release-please-action@v4
+        uses: googleapis/release-please-action@v5
         with:
           config-file: Build/Release/ReleasePleaseConfig.json
           manifest-file: Build/Release/ReleasePleaseManifest.json
@@ -236,8 +236,8 @@ jobs:
       github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
     outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name || steps.release-state.outputs.current_tag }}
+      release_created: ${{ steps.release.outputs.release_created == 'true' || steps.release-retry.outputs.release_created == 'true' }}
+      tag_name: ${{ steps.release.outputs.tag_name || steps.release-retry.outputs.tag_name || steps.release-state.outputs.current_tag }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -268,23 +268,47 @@ jobs:
             echo "::warning::Git tag ${current_tag} is missing; release PR creation is disabled until the current manifest release is recovered."
           fi
       - id: release
-        uses: googleapis/release-please-action@v4
+        continue-on-error: true
+        uses: googleapis/release-please-action@v5
         with:
           config-file: Build/Release/ReleasePleaseConfig.json
           manifest-file: Build/Release/ReleasePleaseManifest.json
           skip-github-pull-request: ${{ steps.release-state.outputs.skip_pull_request }}
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+      - name: Wait before retrying release-please
+        if: steps.release.outcome == 'failure' && steps.release.outputs.release_created != 'true'
+        run: sleep 10
+      - id: release-retry
+        name: Retry release-please after transient GitHub API failure
+        if: steps.release.outcome == 'failure' && steps.release.outputs.release_created != 'true'
+        continue-on-error: true
+        uses: googleapis/release-please-action@v5
+        with:
+          config-file: Build/Release/ReleasePleaseConfig.json
+          manifest-file: Build/Release/ReleasePleaseManifest.json
+          skip-github-pull-request: ${{ steps.release-state.outputs.skip_pull_request }}
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+      - name: Require release-please success
+        if: >-
+          steps.release.outcome == 'failure' &&
+          steps.release.outputs.release_created != 'true' &&
+          steps.release-retry.outcome == 'failure' &&
+          steps.release-retry.outputs.release_created != 'true'
+        run: |
+          echo "release-please failed twice without producing a release. Rerun Product Release after GitHub API recovery." >&2
+          exit 1
       - name: Require current manifest release before opening the next release PR
         if: >-
           steps.release-state.outputs.skip_pull_request == 'true' &&
-          steps.release.outputs.release_created != 'true'
+          steps.release.outputs.release_created != 'true' &&
+          steps.release-retry.outputs.release_created != 'true'
         env:
           CURRENT_TAG: ${{ steps.release-state.outputs.current_tag }}
         run: |
           echo "::error::Release Please manifest points to ${CURRENT_TAG}, but that GitHub release/tag is missing. Create or recover ${CURRENT_TAG}, then rerun Product Release."
           exit 1
       - name: Enable auto-merge for the generated release pull request
-        if: steps.release.outputs.prs_created == 'true'
+        if: steps.release.outputs.prs_created == 'true' || steps.release-retry.outputs.prs_created == 'true'
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
           BASE_BRANCH: ${{ github.event.workflow_run.head_branch }}
