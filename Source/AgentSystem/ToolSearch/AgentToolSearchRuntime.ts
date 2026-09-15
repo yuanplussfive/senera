@@ -45,8 +45,6 @@ import type { AgentSkillSelectionLearningEvidence } from "../Skills/AgentSkillSe
 import { AgentSkillLearningRuntime } from "./AgentSkillLearningRuntime.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { createAgentToolSearchProjectId } from "./AgentToolSearchProject.js";
-import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
-import { resolveAgentToolOwner } from "../Types/AgentToolOwner.js";
 import { isAgentToolAvailableForInteraction } from "../ToolRuntime/AgentToolInteractionAvailability.js";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 import { AgentToolSearchResultModes, type AgentToolSearchResultMode } from "./AgentToolSearchTypes.js";
@@ -56,10 +54,8 @@ import {
 } from "./AgentToolCapabilityReusePolicy.js";
 import {
   AgentCapabilitySearchIndex,
-  createAgentCapabilityEmbeddingIdentity,
   type AgentCapabilityEmbeddingClient,
   type AgentCapabilityRerankClient,
-  type AgentCapabilitySearchDocument,
 } from "./AgentCapabilitySearchIndex.js";
 import { AgentToolSearchTokenizer } from "./AgentToolSearchTokenizer.js";
 import { AgentToolSearchDocumentBuilder } from "./AgentToolSearchDocumentBuilder.js";
@@ -77,9 +73,16 @@ import {
 import { AgentToolAssessmentStatuses } from "../ToolRuntime/AgentToolResultOutcome.js";
 import {
   AgentCapabilityEmbeddingCachePolicy,
-  CurrentSetProjectors,
   ReusableCapabilityMatchPolicy,
 } from "./AgentToolSearchRuntimePolicies.js";
+import {
+  createAgentCapabilityCatalogRevision,
+  createAgentToolCatalogIdentity,
+  listAgentDiscoverySourceIds,
+  projectCurrentLoadedTools,
+  readAgentRegistryRevision,
+  refreshAgentCapabilityEmbeddingCache,
+} from "./AgentToolSearchRuntimeCatalog.js";
 
 export type { LoadedToolsState } from "./AgentToolSearchRuntimeTypes.js";
 export { AgentToolMetaToolNames } from "./AgentToolSearchRuntimeTypes.js";
@@ -289,7 +292,7 @@ export class AgentToolSearchRuntime {
   }): Promise<LoadedToolsState> {
     const bootstrap = this.bootstrapToolNames(options.interaction);
     const current = this.existingToolNames(
-      this.projectCurrentLoadedTools(
+      projectCurrentLoadedTools(
         options.currentLoadedTools,
         options.currentSetPolicy ?? AgentToolSearchCurrentSetPolicies.Retain,
       ),
@@ -513,7 +516,7 @@ export class AgentToolSearchRuntime {
       signal?: AbortSignal;
     },
   ): Promise<AgentToolProcessRunResult> {
-    const parsed = createToolSearchArgumentsSchema(this.discoverySourceIds()).safeParse(args);
+    const parsed = createToolSearchArgumentsSchema(listAgentDiscoverySourceIds(this.registry)).safeParse(args);
     if (!parsed.success) {
       return invalidToolMetaArgumentsResult(AgentToolMetaToolNames.Search, parsed.error.issues);
     }
@@ -751,33 +754,6 @@ export class AgentToolSearchRuntime {
     return this.toolCatalogSnapshot().identity;
   }
 
-  private availableToolCatalogIdentity(
-    tools: readonly ReturnType<AgentExtensionRegistry["listTools"]>[number][],
-  ): string {
-    const runtimeTargets = this.options.availableExecutionTargets();
-    return sha256HexOfCanonicalJson(
-      tools
-        .map((tool) => {
-          const owner = resolveAgentToolOwner(tool);
-          return {
-            name: tool.name,
-            owner: {
-              name: owner.name,
-              title: owner.title,
-              description: owner.description,
-              revision: owner.revision,
-            },
-            loading: tool.loading,
-            sources: tool.sources,
-            search: tool.search,
-            contractDigest: tool.contract?.digest,
-            executionTargets: resolveAvailableAgentToolExecutionTargets(tool, runtimeTargets),
-          };
-        })
-        .sort((left, right) => left.name.localeCompare(right.name)),
-    );
-  }
-
   private existingToolNames(toolNames: readonly string[], interaction?: AgentInteractionContext): string[] {
     const available = new Set(
       this.availableTools()
@@ -785,13 +761,6 @@ export class AgentToolSearchRuntime {
         .map((tool) => tool.name),
     );
     return toolNames.filter((name) => available.has(name));
-  }
-
-  private projectCurrentLoadedTools(
-    current: LoadedToolsState | undefined,
-    policy: AgentToolSearchCurrentSetPolicy,
-  ): string[] {
-    return CurrentSetProjectors[policy](current);
   }
 
   private mergeVisibleTools(toolNames: readonly string[], interaction?: AgentInteractionContext): string[] {
@@ -840,7 +809,7 @@ export class AgentToolSearchRuntime {
       .filter(isAgentSkillModelInvocable)
       .map(buildSkillCapabilityDocument);
     const capabilityDocuments = [...toolDocuments, ...skillDocuments];
-    const identity = this.capabilityCatalogRevision(capabilityDocuments);
+    const identity = createAgentCapabilityCatalogRevision(capabilityDocuments);
     if (this.capabilities && this.capabilityCatalogIdentity === identity) return this.capabilities;
     const embedding =
       this.config.Embedding.Enabled && this.options.embedding
@@ -852,7 +821,7 @@ export class AgentToolSearchRuntime {
         : undefined;
     const rerank =
       this.config.Rerank.Enabled && this.options.rerank ? { client: this.options.rerank.client } : undefined;
-    this.refreshEmbeddingCache(capabilityDocuments, embedding?.model);
+    refreshAgentCapabilityEmbeddingCache(this.capabilityEmbeddingCache, capabilityDocuments, embedding?.model);
     this.capabilities = new AgentCapabilitySearchIndex(capabilityDocuments, {
       tokenizer: new AgentToolSearchTokenizer(),
       embeddingCache: this.capabilityEmbeddingCache,
@@ -881,7 +850,7 @@ export class AgentToolSearchRuntime {
   }
 
   private toolCatalogSnapshot(): AgentToolCatalogSnapshot {
-    const registryRevision = readRegistryRevision(this.registry.revision);
+    const registryRevision = readAgentRegistryRevision(this.registry.revision);
     const runtimeTargets = this.options.availableExecutionTargets();
     const runtimeTargetsKey = [...new Set(runtimeTargets)].sort().join("\u0000");
     const cached = this.toolCatalog;
@@ -899,39 +868,10 @@ export class AgentToolSearchRuntime {
       registryRevision,
       runtimeTargetsKey,
       tools,
-      identity: this.availableToolCatalogIdentity(tools),
+      identity: createAgentToolCatalogIdentity(tools, runtimeTargets),
     } satisfies AgentToolCatalogSnapshot;
     if (registryRevision !== undefined) this.toolCatalog = snapshot;
     return snapshot;
-  }
-
-  private refreshEmbeddingCache(documents: readonly AgentCapabilitySearchDocument[], model: string | undefined): void {
-    const capacity = Math.max(
-      AgentCapabilityEmbeddingCachePolicy.MinimumEntries,
-      documents.length * AgentCapabilityEmbeddingCachePolicy.CatalogGenerations,
-    );
-    this.capabilityEmbeddingCache.resize(capacity);
-    const activeIdentities = new Set(
-      model ? documents.map((document) => createAgentCapabilityEmbeddingIdentity(model, document)) : [],
-    );
-    this.capabilityEmbeddingCache.retain(activeIdentities);
-  }
-
-  private capabilityCatalogRevision(documents: readonly AgentCapabilitySearchDocument[]): string {
-    return sha256HexOfCanonicalJson(
-      documents
-        .map((document) => ({
-          id: document.id,
-          kind: document.kind,
-          revision: document.revision,
-          semanticText: document.semanticText,
-        }))
-        .sort((left, right) => left.id.localeCompare(right.id)),
-    );
-  }
-
-  private discoverySourceIds(): string[] {
-    return this.registry.listDiscoverySources().map((source) => source.id);
   }
 
   private resolveAuthorizedTools(
@@ -971,10 +911,6 @@ function uniqueToolNames(toolNames: readonly string[]): string[] {
 
 function readCatalogStatus(requestedRevision: string | undefined, catalogRevision: string): "current" | "stale" {
   return requestedRevision === undefined || requestedRevision === catalogRevision ? "current" : "stale";
-}
-
-function readRegistryRevision(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 
 function buildPlannedToolSearchQuery(options: {

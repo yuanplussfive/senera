@@ -476,7 +476,6 @@ async function startSeneraServerRuntime(
     claimBatchSize: schedulerConfiguration.polling.claimBatchSize,
   });
   deferResourceCleanup(() => schedules.stop());
-  const orchestration = { delegation, workflows, schedules };
   const persistence = resolvePersistenceConfig(initialConfig);
   const repository = createRepository(workspaceRoot, initialConfig, upgradeSession, logger);
   deferResourceCleanup(() => repository.close());
@@ -589,7 +588,7 @@ async function startSeneraServerRuntime(
     sandboxGuestWorkspaceRoot,
     mcpInputs,
     workspaceRuntime,
-    orchestration,
+    orchestration: { delegation, schedules },
     continuityMemory,
     continuityIdentity: continuityRuntime.identity,
     identityDisplayValues,
