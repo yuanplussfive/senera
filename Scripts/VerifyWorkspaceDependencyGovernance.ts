@@ -540,6 +540,7 @@ function inspectRootNpmPolicy(): string[] {
 }
 
 function inspectReleaseWorkflowGates(): string[] {
+  const releasePleaseAction = "googleapis/release-please-action@v5";
   return [
     ...inspectTextIncludes(productReleaseWorkflow, ".github/workflows/release.yml", [
       "workflow_run:",
@@ -555,7 +556,7 @@ function inspectReleaseWorkflowGates(): string[] {
       "name: Inspect recovered release tag",
       "name: Require recovered release source",
       "group: product-release-${{ github.repository }}",
-      "googleapis/release-please-action@v4",
+      releasePleaseAction,
       "fetch-depth: 0",
       'current_version_sha="$(git log -1 --format=%H -- Build/Release/ReleasePleaseManifest.json)"',
       'current_version_sha" != "$VERIFIED_SHA',
