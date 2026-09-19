@@ -4,8 +4,6 @@ import { ErrorBoundary, SeneraToaster, StateView, TooltipProvider } from "./shar
 import { useAgentSocket, type AgentSocketReconnectPolicy, type SocketStatus } from "./api/useAgentSocket";
 import { buildResourceUploadUrl } from "./api/uploadClient";
 import { useStore } from "./store/sessionStore";
-import { ChatPanel } from "./features/chat/ChatPanel";
-import { SessionList } from "./features/session";
 import { AppShell, readAppShellRenderPlan, type WorkflowDockTool } from "./layout/AppShell";
 import { EventKinds, type EventEnvelope, type WsRequest } from "./api/eventTypes";
 import { useChatCommands, type LastSentMessage } from "./app/useChatCommands";
@@ -40,9 +38,14 @@ const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
 const HTTP_BASE_URL = resolveRuntimeHttpBaseUrl(WS_URL);
 type BackgroundTerminalPanelComponent = (typeof import("./features/terminal"))["BackgroundTerminalPanel"];
 type SettingsOverlayComponentType = (typeof import("./features/settings/SettingsOverlay"))["SettingsOverlay"];
+type SessionListComponent = (typeof import("./features/session/SessionList"))["SessionList"];
 type ThinkingTimelineProps = ComponentProps<
   (typeof import("./features/workflow/ThinkingTimeline"))["ThinkingTimeline"]
 >;
+const LazySessionList = lazy(() =>
+  import("./features/session/SessionList").then((module) => ({ default: module.SessionList })),
+);
+const LazyChatPanel = lazy(() => import("./features/chat/ChatPanel").then((module) => ({ default: module.ChatPanel })));
 const LazyThinkingTimeline = lazy(() =>
   import("./features/workflow/ThinkingTimeline").then((module) => ({ default: module.ThinkingTimeline })),
 );
@@ -394,7 +397,7 @@ export function App({
 
   // sessionPanel(常驻侧栏)与 sessionDrawer(移动端抽屉)共用同一份会话列表行为。
   const sessionListSharedProps: Omit<
-    ComponentProps<typeof SessionList>,
+    ComponentProps<SessionListComponent>,
     "presentation" | "onClosePanel" | "onSessionSelected"
   > = {
     onNewSession: handleNewSession,
@@ -420,80 +423,92 @@ export function App({
         <TooltipProvider delayDuration={300}>
           <WorkspaceResourceProvider httpBaseUrl={HTTP_BASE_URL} csrfToken={uploadCsrfToken}>
             <AppShell
-              sessionPanel={<SessionList presentation="auto" {...sessionListSharedProps} />}
+              sessionPanel={
+                <Suspense fallback={null}>
+                  <LazySessionList presentation="auto" {...sessionListSharedProps} />
+                </Suspense>
+              }
               sessionDrawer={
-                <SessionList
-                  presentation="panel"
-                  {...sessionListSharedProps}
-                  onClosePanel={() => setSessionDrawerOpen(false)}
-                  onSessionSelected={() => setSessionDrawerOpen(false)}
-                />
+                <Suspense fallback={null}>
+                  <LazySessionList
+                    presentation="panel"
+                    {...sessionListSharedProps}
+                    onClosePanel={() => setSessionDrawerOpen(false)}
+                    onSessionSelected={() => setSessionDrawerOpen(false)}
+                  />
+                </Suspense>
               }
               chatPanel={
                 <ErrorBoundary resetKey={activeId}>
-                  <ChatPanel
-                    userProfile={userProfile}
-                    modelConfig={{
-                      modelProviders,
-                      selectedModelProviderId,
-                      defaultModelProviderId,
-                      onSelectModelProvider: selectModelProvider,
-                      selectedThinkingLevel,
-                      onSelectThinkingLevel: selectThinkingLevel,
-                      onApplyDefaultModel: applyDefaultModelToActiveSession,
-                      onAddModel: () => {
-                        void settingsController
-                          .openSettings("model-service")
-                          .catch(() => toast.error(frontendMessage("settings.loadFailed")));
-                      },
-                    }}
-                    presetConfig={{
-                      presets,
-                      worldPackages: presetWorldPackages,
-                      activePresetName,
-                      presetsEnabled,
-                      presetRootDir,
-                      presetOperations: settingsRuntime.controller.presetOperations,
-                      onRefreshPresets: settingsRuntime.controller.refreshPresets,
-                      onSavePreset: settingsRuntime.controller.savePreset,
-                      onDeletePreset: settingsRuntime.controller.deletePreset,
-                      onSetActivePreset: settingsRuntime.controller.setActivePreset,
-                    }}
-                    runtime={{
-                      socketStatus: status,
-                      uploadUrl,
-                      uploadCsrfToken,
-                      sandboxStatus,
-                    }}
-                    messageActions={{
-                      onSend: handleSend,
-                      onCancel: handleCancel,
-                      onForkFromMessage: handleForkFromMessage,
-                      onRegenerate: handleRegenerate,
-                      onEditUserMessage: handleEditUserMessage,
-                      onDeleteFromMessage: handleDeleteFromMessage,
-                      onViewWorkflow: handleViewWorkflow,
-                      onResolveApproval: handleResolveApproval,
-                      onResolveApprovalBatch: handleResolveApprovalBatch,
-                      onResolveInteractionInput: handleResolveInteractionInput,
-                    }}
-                    navigationActions={{
-                      onOpenSessionPanel: appShellRenderPlan.showChatSessionPanelAction
-                        ? handleOpenSessionPanel
-                        : undefined,
-                      onOpenWorkflowPanel:
-                        appShellRenderPlan.showChatWorkflowPanelAction &&
-                        (hasPersistentWorkflowPanel ? rightPanelCollapsed : !workflowDrawerOpen)
-                          ? handleOpenWorkflowPanel
+                  <Suspense
+                    fallback={
+                      <StateView status="loading" title={frontendMessage("ui.loading")} className="h-full min-h-0" />
+                    }
+                  >
+                    <LazyChatPanel
+                      userProfile={userProfile}
+                      modelConfig={{
+                        modelProviders,
+                        selectedModelProviderId,
+                        defaultModelProviderId,
+                        onSelectModelProvider: selectModelProvider,
+                        selectedThinkingLevel,
+                        onSelectThinkingLevel: selectThinkingLevel,
+                        onApplyDefaultModel: applyDefaultModelToActiveSession,
+                        onAddModel: () => {
+                          void settingsController
+                            .openSettings("model-service")
+                            .catch(() => toast.error(frontendMessage("settings.loadFailed")));
+                        },
+                      }}
+                      presetConfig={{
+                        presets,
+                        worldPackages: presetWorldPackages,
+                        activePresetName,
+                        presetsEnabled,
+                        presetRootDir,
+                        presetOperations: settingsRuntime.controller.presetOperations,
+                        onRefreshPresets: settingsRuntime.controller.refreshPresets,
+                        onSavePreset: settingsRuntime.controller.savePreset,
+                        onDeletePreset: settingsRuntime.controller.deletePreset,
+                        onSetActivePreset: settingsRuntime.controller.setActivePreset,
+                      }}
+                      runtime={{
+                        socketStatus: status,
+                        uploadUrl,
+                        uploadCsrfToken,
+                        sandboxStatus,
+                      }}
+                      messageActions={{
+                        onSend: handleSend,
+                        onCancel: handleCancel,
+                        onForkFromMessage: handleForkFromMessage,
+                        onRegenerate: handleRegenerate,
+                        onEditUserMessage: handleEditUserMessage,
+                        onDeleteFromMessage: handleDeleteFromMessage,
+                        onViewWorkflow: handleViewWorkflow,
+                        onResolveApproval: handleResolveApproval,
+                        onResolveApprovalBatch: handleResolveApprovalBatch,
+                        onResolveInteractionInput: handleResolveInteractionInput,
+                      }}
+                      navigationActions={{
+                        onOpenSessionPanel: appShellRenderPlan.showChatSessionPanelAction
+                          ? handleOpenSessionPanel
                           : undefined,
-                      onRetryHistory: requestSessionHistory,
-                      onOpenSettings: (section, returnFocus) => {
-                        void settingsController
-                          .openSettings(section, returnFocus)
-                          .catch(() => toast.error(frontendMessage("settings.loadFailed")));
-                      },
-                    }}
-                  />
+                        onOpenWorkflowPanel:
+                          appShellRenderPlan.showChatWorkflowPanelAction &&
+                          (hasPersistentWorkflowPanel ? rightPanelCollapsed : !workflowDrawerOpen)
+                            ? handleOpenWorkflowPanel
+                            : undefined,
+                        onRetryHistory: requestSessionHistory,
+                        onOpenSettings: (section, returnFocus) => {
+                          void settingsController
+                            .openSettings(section, returnFocus)
+                            .catch(() => toast.error(frontendMessage("settings.loadFailed")));
+                        },
+                      }}
+                    />
+                  </Suspense>
                 </ErrorBoundary>
               }
               workflowPanel={<DeferredThinkingTimeline presentation="dock" />}

@@ -1,4 +1,5 @@
 import type { ElementType, ReactNode } from "react";
+import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import ArrowsUpDownIcon from "@heroicons/react/24/outline/ArrowsUpDownIcon";
 import ChatBubbleLeftRightIcon from "@heroicons/react/24/outline/ChatBubbleLeftRightIcon";
 import CircleStackIcon from "@heroicons/react/24/outline/CircleStackIcon";
@@ -11,6 +12,10 @@ import WrenchScrewdriverIcon from "@heroicons/react/24/outline/WrenchScrewdriver
 import { cn } from "../../lib/util";
 import { SwitchTrack, Tooltip } from "../../shared/ui";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import type { ModelsDevModelMetadata } from "../../api/eventTypes";
+import { ModelsDevMetadataDetails } from "./ModelConfigPrimitives";
+import { ModelsDevCapabilityItemByKey } from "./ModelsDevCapabilityIcons";
+import { ModelsDevExtraCapabilityKeys, readModelsDevCapabilityKeys } from "./modelsDevCapabilities";
 import type { ModelCapabilitiesDraft, ModelToolPlanningMode } from "./modelConfigTypes";
 
 export function ToolPlanningModeControl({
@@ -67,30 +72,121 @@ export function ToolPlanningModeControl({
   );
 }
 
-export function CapabilityIconStrip({ capabilities }: { capabilities: Required<ModelCapabilitiesDraft> }): JSX.Element {
-  const enabledItems = ModelCapabilityIconItems.filter((item) => capabilities[item.key]);
-  if (enabledItems.length === 0) {
+/** Keep the compact list readable without expanding every capability into a full sentence. */
+const VisibleCapabilityIconCount = 3;
+const VisibleCapabilityLabelCount = 4;
+
+/**
+ * One capabilities chip per row: resolved capability flags plus the models.dev
+ * facts the flags do not cover, deduplicated so a model never shows the same
+ * capability twice.
+ */
+export function CapabilityIconStrip({
+  capabilities,
+  metadata,
+  labels = false,
+}: {
+  capabilities: Required<ModelCapabilitiesDraft>;
+  metadata?: ModelsDevModelMetadata;
+  labels?: boolean;
+}): JSX.Element {
+  const items = [
+    ...ModelCapabilityIconItems.filter((item) => capabilities[item.key] && (!labels || item.key !== "StreamingUsage")),
+    ...readModelsDevCapabilityKeys(metadata)
+      .filter((key) => ModelsDevExtraCapabilityKeys[key])
+      .map((key) => ({ key, ...ModelsDevCapabilityItemByKey[key] })),
+  ];
+  if (items.length === 0) {
     return <span className="text-[10px] text-ink-500">{frontendMessage("config.model.noCapabilities")}</span>;
   }
-  const visibleItems = enabledItems.slice(0, 3);
-  const remainingCount = enabledItems.length - visibleItems.length;
-  const summary = enabledItems.map((item) => item.label).join(" · ");
+  const visibleItems = items.slice(0, labels ? VisibleCapabilityLabelCount : VisibleCapabilityIconCount);
+  const remainingItems = items.slice(visibleItems.length);
+  const summary = items.map((item) => item.label).join(" · ");
 
-  return (
-    <Tooltip content={summary} side="top">
-      <span
-        className="inline-flex h-5 items-center gap-1 rounded-sm bg-ink-900/[0.045] px-1.5 text-ink-500"
-        data-model-capability-summary
-        data-capability-count={enabledItems.length}
-        role="img"
-        aria-label={summary}
-      >
-        {visibleItems.map((item) => (
-          <item.Icon key={item.key} className="h-3 w-3" aria-hidden="true" />
-        ))}
-        {remainingCount > 0 ? <span className="text-[9px] font-medium leading-none">+{remainingCount}</span> : null}
-      </span>
+  const summaryContent = (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1.5 text-content-secondary",
+        labels ? "flex-wrap gap-1" : "h-5 rounded-sm bg-ink-900/[0.045] px-1.5 text-ink-500",
+      )}
+      data-model-capability-summary
+      data-capability-count={items.length}
+      role="img"
+      aria-label={summary}
+    >
+      {visibleItems.map((item) =>
+        labels ? (
+          <span
+            key={item.key}
+            className="inline-flex h-[18px] max-w-24 items-center truncate rounded-[5px] bg-ink-900/[0.045] px-1.5 text-[10.5px] leading-none text-content-secondary"
+          >
+            {item.label}
+          </span>
+        ) : (
+          <item.Icon key={item.key} className="h-3 w-3" aria-hidden={true} />
+        ),
+      )}
+      {remainingItems.length > 0 ? (
+        labels ? (
+          <RemainingCapabilityTooltip items={remainingItems} />
+        ) : (
+          <span className="text-[9px] font-medium leading-none">+{remainingItems.length}</span>
+        )
+      ) : null}
+    </span>
+  );
+
+  return labels ? (
+    summaryContent
+  ) : (
+    <Tooltip
+      content={
+        <div className="max-w-xs space-y-1 text-left text-[11px] leading-4">
+          <div className="text-[11.5px] font-medium">{summary}</div>
+          <ModelsDevMetadataDetails metadata={metadata} />
+        </div>
+      }
+      side="top"
+    >
+      {summaryContent}
     </Tooltip>
+  );
+}
+
+function RemainingCapabilityTooltip({ items }: { items: readonly { key: string; label: string }[] }): JSX.Element {
+  return (
+    <TooltipPrimitive.Root delayDuration={120}>
+      <TooltipPrimitive.Trigger asChild>
+        <span
+          tabIndex={0}
+          data-capability-overflow
+          className="inline-flex h-[18px] min-w-[18px] cursor-help items-center justify-center rounded-[5px] bg-ink-900/[0.045] px-1.5 text-[10.5px] leading-none text-content-muted outline-none transition hover:bg-ink-900/[0.075] hover:text-content-secondary focus-visible:ring-2 focus-visible:ring-accent-focus"
+          aria-label={items.map((item) => item.label).join("、")}
+        >
+          +{items.length}
+        </span>
+      </TooltipPrimitive.Trigger>
+      <TooltipPrimitive.Portal>
+        <TooltipPrimitive.Content
+          side="top"
+          align="start"
+          sideOffset={8}
+          className="z-50 max-w-64 rounded-lg border border-ink-700/70 bg-ink-900 p-2 shadow-[0_8px_24px_-12px_rgba(24,25,28,0.45)]"
+        >
+          <div className="flex flex-wrap gap-1">
+            {items.map((item) => (
+              <span
+                key={item.key}
+                className="inline-flex h-5 items-center rounded-full border border-paper-50/15 bg-paper-50/10 px-2 text-[10.5px] leading-none text-paper-50"
+              >
+                {item.label}
+              </span>
+            ))}
+          </div>
+          <TooltipPrimitive.Arrow className="fill-ink-900" width={8} height={4} />
+        </TooltipPrimitive.Content>
+      </TooltipPrimitive.Portal>
+    </TooltipPrimitive.Root>
   );
 }
 

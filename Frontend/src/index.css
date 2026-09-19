@@ -175,6 +175,7 @@
   --surface-panel: rgb(var(--color-paper-50));
   --surface-raised: var(--theme-elevated-bg);
   --surface-subtle: rgb(var(--color-paper-100));
+  --surface-soft: color-mix(in srgb, var(--surface-subtle) 50%, var(--surface-panel));
   --surface-muted: rgb(var(--color-paper-200));
   --surface-hover: rgb(var(--color-ink-900) / 0.05);
   --content-strong: rgb(var(--color-ink-950));
@@ -629,18 +630,6 @@ textarea::-webkit-scrollbar-track {
    card or exposing implementation diagnostics. */
 [data-error-boundary] {
   isolation: isolate;
-}
-
-.senera-error-boundary__pulse {
-  position: absolute;
-  top: -1px;
-  left: 0;
-  width: 5rem;
-  height: 2px;
-  border-radius: 999px;
-  background: var(--accent-solid);
-  transform-origin: left center;
-  animation: senera-error-boundary-pulse 2.4s cubic-bezier(0.22, 0.7, 0.2, 1) infinite;
 }
 
 /* State views (StateView / ErrorBanner) enter with a short container settle.
@@ -1398,24 +1387,6 @@ html[data-motion-level="none"] .senera-loading-spin {
   }
 }
 
-@keyframes senera-error-boundary-pulse {
-  0%,
-  100% {
-    opacity: 0.48;
-    transform: scaleX(0.72);
-  }
-
-  42% {
-    opacity: 0.9;
-    transform: scaleX(1);
-  }
-
-  68% {
-    opacity: 0.58;
-    transform: scaleX(0.84);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .shimmer,
   .senera-loading-pulse,
@@ -1435,12 +1406,6 @@ html[data-motion-level="none"] .senera-loading-spin {
 
   .senera-spinner {
     animation: none;
-  }
-
-  .senera-error-boundary__pulse {
-    animation: none;
-    opacity: 0.62;
-    transform: none;
   }
 
   .senera-state-enter {
@@ -1671,6 +1636,25 @@ html[data-senera-window-controls="custom"] [data-settings-workbench] {
   box-sizing: border-box;
   height: 100%;
   padding-top: var(--senera-top-chrome-height);
+}
+
+/* The settings rail owns the surface title. It lifts into the titlebar band so the
+   title sits level with the window controls, while every other column keeps the
+   offset above and stays where it was. Paired with the padding-top rule, so a
+   surface without the custom frame keeps the whole workbench flush at the top. */
+html[data-senera-window-controls="custom"] [data-settings-navigation-rail] {
+  margin-top: calc(var(--senera-top-chrome-height) * -1);
+}
+
+/* Full-height split workspaces (such as model-service) manage their own column headers flush to the top
+   so middle provider rail and detail column align seamlessly with the navigation rail and window controls. */
+html[data-senera-window-controls="custom"] [data-settings-workbench][data-settings-section="model-service"] {
+  padding-top: var(--senera-top-chrome-height);
+}
+html[data-senera-window-controls="custom"]
+  [data-settings-workbench][data-settings-section="model-service"]
+  [data-settings-navigation-rail] {
+  margin-top: calc(var(--senera-top-chrome-height) * -1);
 }
 
 html[data-senera-window-controls="custom"] [data-settings-loading][data-settings-loading-presentation="desktop"] {

@@ -1,8 +1,13 @@
+import { lazy, Suspense } from "react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { WebSettingsController } from "../../app/useWebSettingsController";
-import { AppIcon, Dialog, DialogContent, IconButton } from "../../shared/ui";
+import { AppIcon, Dialog, DialogContent, IconButton, StateView } from "../../shared/ui";
 import { DiscardDraftDialog } from "./DiscardDraftDialog";
-import { SettingsWorkbench, type SettingsWorkbenchProps } from "./SettingsWorkbench";
+import type { SettingsWorkbenchProps } from "./SettingsWorkbenchContracts";
+
+const LazySettingsWorkbench = lazy(() =>
+  import("./SettingsWorkbench").then((module) => ({ default: module.SettingsWorkbench })),
+);
 
 export function SettingsOverlay({
   controller,
@@ -28,7 +33,7 @@ export function SettingsOverlay({
             showHeader={false}
             showClose={false}
             contentInitial={false}
-            className="h-[min(900px,calc(100dvh-48px))] max-h-[calc(100dvh-48px)] w-[min(1440px,calc(100vw-64px))] max-w-none overflow-hidden p-0 max-sm:h-dvh max-sm:max-h-dvh max-sm:w-screen max-sm:rounded-none max-sm:border-0"
+            className="h-[min(660px,calc(100dvh-32px))] max-h-[calc(100dvh-32px)] w-[min(1080px,calc(100vw-32px))] max-w-none overflow-hidden p-0 shadow-[var(--theme-overlay-shadow)] max-sm:h-dvh max-sm:max-h-dvh max-sm:w-screen max-sm:rounded-none max-sm:border-0"
             bodyClassName="min-h-0 flex-1 overflow-hidden"
             onPointerDownOutside={(event) => event.preventDefault()}
             onInteractOutside={(event) => event.preventDefault()}
@@ -45,22 +50,24 @@ export function SettingsOverlay({
               controller.returnFocusRef.current?.focus({ preventScroll: true });
             }}
           >
-            <SettingsWorkbench
-              {...workbench}
-              section={section}
-              onSectionChange={controller.changeSection}
-              onPendingChangesChange={controller.setPendingChanges}
-              shellActions={
-                <IconButton
-                  label={frontendMessage("settings.overlay.close")}
-                  size="sm"
-                  tone="muted"
-                  onClick={controller.requestClose}
-                >
-                  <AppIcon icon="close" size={16} aria-hidden="true" />
-                </IconButton>
-              }
-            />
+            <Suspense fallback={<StateView status="loading" className="h-full" />}>
+              <LazySettingsWorkbench
+                {...workbench}
+                section={section}
+                onSectionChange={controller.changeSection}
+                onPendingChangesChange={controller.setPendingChanges}
+                shellActions={
+                  <IconButton
+                    label={frontendMessage("settings.overlay.close")}
+                    size="sm"
+                    tone="muted"
+                    onClick={controller.requestClose}
+                  >
+                    <AppIcon icon="close" size={16} aria-hidden="true" />
+                  </IconButton>
+                }
+              />
+            </Suspense>
           </DialogContent>
         ) : null}
       </Dialog>

@@ -279,7 +279,7 @@ function InteractionControl({
         checked={value === true}
         disabled={disabled}
         onChange={(event) => onChange(event.target.checked)}
-        className="h-4 w-4 accent-accent-solid"
+        className="h-4 w-4 accent-content-strong"
       />
     );
   }
@@ -298,7 +298,7 @@ function InteractionControl({
                   event.target.checked ? [...selected, option.value] : selected.filter((item) => item !== option.value),
                 )
               }
-              className="h-3.5 w-3.5 accent-accent-solid"
+              className="h-3.5 w-3.5 accent-content-strong"
             />
             {option.label}
           </span>

@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { FluidHoverHighlight, motionTimings, useFluidHover, useMotionLevel } from "../../shared/motion";
-import { AppIcon, IconButton, LogoLockup, LogoMark, ScrollArea, Sheet, SheetContent } from "../../shared/ui";
+import { AppIcon, IconButton, ScrollArea, Sheet, SheetContent } from "../../shared/ui";
 import { DiscardDraftDialog } from "./DiscardDraftDialog";
 import type { groupSettingsSectionResults } from "./settingsPresentation";
 import type { SettingsSectionDefinition, SettingsSectionId } from "./types";
@@ -18,7 +18,7 @@ export interface SettingsWorkbenchLayoutProps {
   overlay?: ReactNode;
   shellActions?: ReactNode;
   shellRef: Ref<HTMLDivElement>;
-  showSectionHeader: boolean;
+  showSectionHeader?: boolean;
 }
 
 export function SettingsWorkbenchLayout({
@@ -31,13 +31,14 @@ export function SettingsWorkbenchLayout({
   overlay,
   shellActions,
   shellRef,
-  showSectionHeader,
+  showSectionHeader = false,
 }: SettingsWorkbenchLayoutProps): JSX.Element {
   return (
     <div
       ref={shellRef}
       className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-surface-canvas text-content-primary outline-none"
       data-settings-workbench
+      data-settings-section={activeSection.id}
       data-settings-layout={layout}
       tabIndex={-1}
     >
@@ -65,21 +66,20 @@ export function SettingsWorkbenchLayout({
 
       <div className="flex min-h-0 flex-1">
         {layout === "persistent" ? (
-          <aside className="flex w-[224px] shrink-0 flex-col border-r border-line-subtle bg-surface-sidebar">
+          <aside
+            className="relative z-20 flex w-[224px] shrink-0 flex-col bg-surface-sidebar"
+            data-settings-navigation-rail
+          >
             <div
-              className="flex h-[60px] shrink-0 items-center gap-3 border-b border-line-subtle px-4"
+              className="flex h-[var(--senera-top-chrome-height)] shrink-0 items-center gap-2 border-b border-line-subtle px-3"
               data-window-drag-region
             >
-              <div className="min-w-0 flex-1">
-                <LogoLockup className="max-w-full" />
-                <div className="mt-1 flex items-center gap-1.5">
-                  <span className="h-1 w-1 rounded-full bg-accent-solid" aria-hidden="true" />
-                  <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-content-muted">
-                    {frontendMessage("settings.header.title")}
-                  </span>
-                </div>
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="min-w-0 truncate pl-2.5 text-[13px] font-semibold text-content-primary">
+                  {frontendMessage("settings.header.title")}
+                </span>
+                {shellActions}
               </div>
-              {shellActions}
             </div>
             {navigation}
           </aside>
@@ -101,8 +101,7 @@ export function SettingsWorkbenchLayout({
         >
           <div className="flex h-full min-h-0 flex-col bg-surface-canvas">
             <div className="flex h-[var(--senera-top-chrome-height)] shrink-0 items-center gap-2 border-b border-line-subtle px-4">
-              <LogoMark size={18} />
-              <div className="min-w-0 flex-1 text-[14px] font-semibold text-content-strong">
+              <div className="min-w-0 flex-1 text-[13px] font-semibold text-content-primary">
                 {frontendMessage("settings.header.title")}
               </div>
               <IconButton
@@ -152,7 +151,7 @@ export function SettingsNavigation({
   let navigationIndex = 0;
   return (
     <>
-      <div className="shrink-0 px-3 pb-2.5 pt-3">
+      <div className="shrink-0 px-3 pb-2 pt-1.5">
         <label className="flex h-8 items-center gap-2 rounded-md border border-transparent bg-surface-hover px-2.5 text-content-muted transition-[background-color,border-color,box-shadow] focus-within:border-accent-border focus-within:bg-surface-panel focus-within:ring-2 focus-within:ring-accent-focus">
           <AppIcon icon="search" size={14} aria-hidden="true" />
           <input
@@ -174,7 +173,7 @@ export function SettingsNavigation({
           ) : null}
         </label>
       </div>
-      <ScrollArea className="min-h-0 flex-1" viewportClassName="px-2 pb-4 pt-1">
+      <ScrollArea className="min-h-0 flex-1" viewportClassName="px-3 pb-4 pt-1">
         <nav
           ref={navigationListRef}
           className="relative space-y-4"
@@ -280,7 +279,7 @@ function SettingsNavItem({
       <AppIcon
         icon={section.icon}
         size={16}
-        className={cn("relative z-[1]", active ? "text-accent-content" : "text-content-muted")}
+        className={cn("relative z-[1]", active ? "text-content-primary" : "text-content-muted")}
         aria-hidden="true"
       />
       <span className="relative z-[1] min-w-0">

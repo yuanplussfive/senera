@@ -78,7 +78,9 @@ export function MenuSelect({
             {leading ? (
               <span className="grid h-4 w-4 shrink-0 place-items-center text-content-muted">{leading}</span>
             ) : null}
-            <span className={cn("min-w-0 flex-1 truncate", !display && "text-content-muted")}>
+            <span
+              className={cn("flex min-w-0 flex-1 items-center truncate leading-none", !display && "text-content-muted")}
+            >
               {display ?? placeholder}
             </span>
           </span>

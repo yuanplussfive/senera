@@ -110,6 +110,7 @@ const semanticColorAliases = {
   "--surface-panel": "rgb(var(--color-paper-50))",
   "--surface-raised": "var(--theme-elevated-bg)",
   "--surface-subtle": "rgb(var(--color-paper-100))",
+  "--surface-soft": "color-mix(in srgb, var(--surface-subtle) 50%, var(--surface-panel))",
   "--surface-muted": "rgb(var(--color-paper-200))",
   "--content-strong": "rgb(var(--color-ink-950))",
   "--content-primary": "rgb(var(--color-ink-900))",

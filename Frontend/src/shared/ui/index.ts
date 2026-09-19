@@ -80,6 +80,7 @@ export {
   SheetTrigger,
 } from "./Sheet";
 export type { SheetContentProps } from "./Sheet";
+export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "./Popover";
 export { Tooltip, TooltipProvider } from "./Tooltip";
 export { useClipboardCopy, writeClipboardText } from "./useClipboardCopy";
 export type { ClipboardCopyOptions, ClipboardCopyResult, ClipboardWriter } from "./useClipboardCopy";

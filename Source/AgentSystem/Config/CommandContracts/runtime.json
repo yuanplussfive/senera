@@ -1,14 +1,14 @@
 {
   "formatVersion": 1,
   "id": "agent-config-commands",
-  "version": 2,
-  "name": "provider-endpoint-pool",
-  "definitionChecksum": "1f735e000d01c23149e05b127a0f917c63101508e66ba915a9ff7eea28573ae1",
+  "version": 3,
+  "name": "provider-default-endpoint",
+  "definitionChecksum": "0db94ef15910cb80cf7fab363b5b722c09261fe49159bf15bd3a0bf1355d9e28",
   "definition": {
     "formatVersion": 1,
     "operations": {
       "provider.endpoint.upsert": {
-        "schema": "model-provider-endpoint-v2",
+        "schema": "model-provider-endpoint-v3",
         "semantics": "json-merge-patch",
         "identityFields": [
           "Id"

@@ -41,6 +41,33 @@ test("connection actions do not reset a draft when provider objects are remateri
   expect(renderCount).toBeLessThan(5);
 });
 
+test("provider default endpoint changes settle into the active draft", async () => {
+  const handleRef = { current: null };
+  const view = render(
+    React.createElement(ActionsHarness, {
+      handleRef,
+      state: {
+        ...createState("alpha"),
+        providers: [{ ...createState("alpha").providers[0], DefaultEndpoint: "ChatCompletions" }],
+      },
+    }),
+  );
+
+  await act(async () => {
+    view.rerender(
+      React.createElement(ActionsHarness, {
+        handleRef,
+        state: {
+          ...createState("alpha"),
+          providers: [{ ...createState("alpha").providers[0], DefaultEndpoint: "Responses" }],
+        },
+      }),
+    );
+  });
+
+  expect(handleRef.current.actions.connectionDraft?.DefaultEndpoint).toBe("Responses");
+});
+
 test("provider settings focus the first enabled provider when no selection exists", async () => {
   const handleRef = { current: null };
   const state = createMultiState();
@@ -143,12 +170,16 @@ test("new provider presets remain editable after the identity snapshot arrives",
       Id: "beta",
       Enabled: true,
       Kind: "OpenAICompatible",
+      DefaultEndpoint: "ClaudeMessages",
       BaseUrl: "https://preset.example.test/v1",
       ApiKey: "",
       ApiVersion: "2023-06-01",
       Headers: {},
     });
   });
+  expect(onUpsertProviderEndpoint).toHaveBeenCalledWith(
+    expect.objectContaining({ Id: "beta", DefaultEndpoint: "ClaudeMessages" }),
+  );
 
   await act(async () => {
     view.rerender(
@@ -230,9 +261,11 @@ test("provider connection commits the latest draft and immediate patches", async
     );
   });
   await act(async () => {
-    handleRef.current.actions.confirmDraft({ Enabled: false });
+    handleRef.current.actions.confirmDraft({ Enabled: false, DefaultEndpoint: "Responses" });
   });
-  expect(onUpsertProviderEndpoint).toHaveBeenLastCalledWith(expect.objectContaining({ Id: "alpha", Enabled: false }));
+  expect(onUpsertProviderEndpoint).toHaveBeenLastCalledWith(
+    expect.objectContaining({ Id: "alpha", DefaultEndpoint: "Responses", Enabled: false }),
+  );
 });
 
 test("provider connection sends the newest draft after an in-flight save completes", async () => {

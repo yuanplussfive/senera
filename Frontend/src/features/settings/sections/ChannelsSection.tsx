@@ -35,9 +35,9 @@ const ChannelEntryMarks: Record<ChannelSectionId, string> = {
 
 const ChannelStatusPresentation = {
   stopped: { label: "settings.channels.disconnected", text: "text-content-muted", dot: "bg-ink-300" },
-  connecting: { label: "settings.channels.connecting", text: "text-amber-600", dot: "bg-amber-500" },
-  connected: { label: "settings.channels.connected", text: "text-emerald-600", dot: "bg-emerald-500" },
-  reconnecting: { label: "settings.channels.reconnecting", text: "text-amber-600", dot: "bg-amber-500" },
+  connecting: { label: "settings.channels.connecting", text: "text-umber-600", dot: "bg-umber-500" },
+  connected: { label: "settings.channels.connected", text: "text-moss-600", dot: "bg-moss-500" },
+  reconnecting: { label: "settings.channels.reconnecting", text: "text-umber-600", dot: "bg-umber-500" },
   degraded: { label: "settings.channels.degraded", text: "text-brick-600", dot: "bg-brick-500" },
 } as const;
 

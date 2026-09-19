@@ -48,6 +48,8 @@ type DialogContentSnapshot = {
   contentTransition?: Transition;
   contentVariants?: Variants;
   description?: string;
+  footer?: ReactNode;
+  footerClassName?: string;
   motionPreset: DialogMotionPreset;
   panelClassName?: string;
   showClose: boolean;
@@ -61,6 +63,8 @@ const DialogContentFrame = forwardRef<
     title?: string;
     description?: string;
     bodyClassName?: string;
+    footer?: ReactNode;
+    footerClassName?: string;
     frameClassName?: string;
     panelClassName?: string;
     showClose: boolean;
@@ -79,6 +83,8 @@ const DialogContentFrame = forwardRef<
       title,
       description,
       bodyClassName,
+      footer,
+      footerClassName,
       frameClassName: _frameClassName,
       panelClassName,
       showClose,
@@ -100,6 +106,8 @@ const DialogContentFrame = forwardRef<
       contentTransition,
       contentVariants,
       description,
+      footer,
+      footerClassName,
       motionPreset,
       panelClassName,
       showClose,
@@ -127,7 +135,7 @@ const DialogContentFrame = forwardRef<
           transition={content.contentTransition}
         >
           {content.showHeader ? (
-            <div className="flex select-none items-start gap-4 bg-surface-panel px-6 pb-3 pt-5">
+            <div className="flex select-none items-start gap-4 bg-surface-panel px-6 pb-4 pt-5">
               <div className="min-w-0 flex-1">
                 <DialogPrimitive.Title className="text-[16px] font-medium leading-6 text-content-strong">
                   {content.title ?? ""}
@@ -143,7 +151,7 @@ const DialogContentFrame = forwardRef<
                   <button
                     type="button"
                     className={cn(
-                      "grid h-8 w-8 flex-shrink-0 place-items-center rounded-[var(--overlay-radius)] text-content-muted",
+                      "grid h-6 w-6 flex-shrink-0 place-items-center rounded-md text-content-muted",
                       "cursor-pointer",
                       "transition-colors duration-[var(--menu-item-dur)] ease-out",
                       "hover:bg-surface-hover hover:text-content-primary",
@@ -151,7 +159,7 @@ const DialogContentFrame = forwardRef<
                     )}
                     aria-label={frontendMessage("ui.close")}
                   >
-                    <AppIcon icon="close" size={18} aria-hidden="true" />
+                    <AppIcon icon="close" size={14} aria-hidden="true" />
                   </button>
                 </DialogClose>
               ) : null}
@@ -165,6 +173,11 @@ const DialogContentFrame = forwardRef<
             </>
           )}
           <div className={content.bodyClassName}>{content.children}</div>
+          {content.footer ? (
+            <div className={cn("shrink-0 px-6 pb-3.5 pt-4", content.footerClassName)} data-dialog-footer>
+              {content.footer}
+            </div>
+          ) : null}
         </MotionDialogContent>
       </div>
     );
@@ -178,6 +191,8 @@ export const DialogContent = forwardRef<
     title?: string;
     description?: string;
     bodyClassName?: string;
+    footer?: ReactNode;
+    footerClassName?: string;
     frameClassName?: string;
     placement?: "center" | "inset";
     motionPreset?: DialogMotionPreset;
@@ -195,6 +210,8 @@ export const DialogContent = forwardRef<
       title,
       description,
       bodyClassName,
+      footer,
+      footerClassName,
       frameClassName,
       placement = "center",
       motionPreset = "modal",
@@ -227,11 +244,13 @@ export const DialogContent = forwardRef<
             "flex flex-col overflow-hidden [will-change:opacity,transform]",
             placement === "inset" && "min-h-0 flex-1",
             className,
-            "rounded-[var(--overlay-radius)] border border-line bg-surface-panel",
+            "rounded-xl border border-line bg-surface-panel",
           )}
           title={title}
           description={description}
           bodyClassName={bodyClassName}
+          footer={footer}
+          footerClassName={footerClassName}
           motionPreset={motionPreset}
           showClose={showClose}
           showHeader={showHeader}
@@ -261,7 +280,7 @@ export interface DialogActionButtonProps extends Omit<ButtonProps, "variant" | "
 
 export function DialogActions({ children, className }: DialogActionsProps): JSX.Element {
   return (
-    <div className={cn("flex justify-end gap-2.5 pt-4", className)} data-dialog-actions>
+    <div className={cn("flex justify-end gap-2.5", className)} data-dialog-actions>
       {children}
     </div>
   );
@@ -275,7 +294,12 @@ export const DialogActionButton = forwardRef<HTMLButtonElement, DialogActionButt
         type={type}
         size="sm"
         variant={variant === "primary" ? "default" : variant === "danger" ? "destructive" : "outline"}
-        className={cn("min-w-[96px]", className)}
+        className={cn(
+          "min-w-[96px]",
+          variant === "primary" &&
+            "bg-content-strong text-content-inverse shadow-soft hover:bg-content-strong/90 hover:shadow-soft active:bg-content-strong/80",
+          className,
+        )}
         {...props}
       />
     );

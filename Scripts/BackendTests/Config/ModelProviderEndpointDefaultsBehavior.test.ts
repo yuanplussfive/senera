@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { projectEffectiveConfig } from "../../../Source/AgentSystem/Config/AgentConfigEffectiveProjector.js";
+import { upsertProviderEndpoint } from "../../../Source/AgentSystem/Config/AgentProviderEndpointConfigCommands.js";
 import {
   AgentProviderModelConfigCommandError,
   setDefaultProviderModel,
@@ -19,11 +20,39 @@ describe("model provider endpoint defaults", () => {
   it("keeps built-in endpoints disabled until they are explicitly configured", () => {
     expect(resolveModelProviderEndpointConfigs({ ModelProviders: [] })).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ Id: "openai", Enabled: false }),
-        expect.objectContaining({ Id: "deepseek", Enabled: false }),
-        expect.objectContaining({ Id: "anthropic", Enabled: false }),
-        expect.objectContaining({ Id: "gemini", Enabled: false }),
+        expect.objectContaining({ Id: "openai", Enabled: false, DefaultEndpoint: "ChatCompletions" }),
+        expect.objectContaining({ Id: "deepseek", Enabled: false, DefaultEndpoint: "ChatCompletions" }),
+        expect.objectContaining({ Id: "anthropic", Enabled: false, DefaultEndpoint: "ClaudeMessages" }),
+        expect.objectContaining({ Id: "gemini", Enabled: false, DefaultEndpoint: "GoogleGenerateContent" }),
       ]),
+    );
+  });
+
+  it("persists a configured provider default endpoint and exposes it in the effective projection", () => {
+    const updated = upsertProviderEndpoint(
+      {
+        DefaultModelProviderId: "custom/model",
+        ModelProviders: [{ Id: "custom/model", ProviderId: "custom", Endpoint: "Responses", Model: "model" }],
+      },
+      {
+        commandId: "provider-default-endpoint",
+        endpoint: {
+          Id: "custom",
+          BaseUrl: "https://models.example.test/v1",
+          DefaultEndpoint: "Responses",
+        },
+      },
+    );
+
+    expect(updated.ModelProviderEndpoints).toEqual([
+      {
+        Id: "custom",
+        BaseUrl: "https://models.example.test/v1",
+        DefaultEndpoint: "Responses",
+      },
+    ]);
+    expect(projectEffectiveConfig(updated).ModelProviderEndpoints).toEqual(
+      expect.arrayContaining([expect.objectContaining({ Id: "custom", DefaultEndpoint: "Responses" })]),
     );
   });
 

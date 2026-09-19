@@ -329,7 +329,7 @@ export function TerminalSearchOverlay(props: {
   return (
     <div
       role="search"
-      className="absolute right-2 top-2 z-20 flex h-9 w-[min(320px,calc(100%-16px))] items-center gap-1 rounded border border-[var(--terminal-border)] bg-[var(--terminal-elevated)] px-2 shadow-xl"
+      className="absolute right-2 top-2 z-20 flex h-9 w-[min(320px,calc(100%-16px))] items-center gap-1 rounded border border-[var(--terminal-border)] bg-[var(--terminal-elevated)] px-2 shadow-soft"
     >
       <Search className="h-3.5 w-3.5 shrink-0 text-[var(--terminal-subtle)]" aria-hidden="true" />
       <input

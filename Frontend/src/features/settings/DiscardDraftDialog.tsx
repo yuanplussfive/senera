@@ -27,6 +27,19 @@ export function DiscardDraftDialog({
         showClose={false}
         className="w-[min(500px,calc(100vw_-_32px))]"
         bodyClassName="px-8 pb-7 pt-1"
+        footerClassName="px-8"
+        footer={
+          <DialogActions>
+            <DialogActionButton close autoFocus>
+              <AppIcon icon="undo" size={14} aria-hidden="true" />
+              {continueLabel}
+            </DialogActionButton>
+            <DialogActionButton variant="danger" onClick={onDiscard}>
+              <AppIcon icon="close" size={14} aria-hidden="true" />
+              {confirmLabel}
+            </DialogActionButton>
+          </DialogActions>
+        }
       >
         <div className="flex items-start gap-2.5 py-1 text-[12.5px] leading-5 text-ink-600">
           <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-brick-50 text-brick-600">
@@ -34,16 +47,6 @@ export function DiscardDraftDialog({
           </span>
           <span>{consequence}</span>
         </div>
-        <DialogActions className="mt-6">
-          <DialogActionButton close autoFocus>
-            <AppIcon icon="undo" size={14} aria-hidden="true" />
-            {continueLabel}
-          </DialogActionButton>
-          <DialogActionButton variant="danger" onClick={onDiscard}>
-            <AppIcon icon="close" size={14} aria-hidden="true" />
-            {confirmLabel}
-          </DialogActionButton>
-        </DialogActions>
       </DialogContent>
     </Dialog>
   );

@@ -48,7 +48,9 @@ export function MenuMultiSelect({
             "disabled:pointer-events-none disabled:opacity-55",
           )}
         >
-          <span className={cn("min-w-0 flex-1 truncate", !display && "text-ink-350")}>{display || placeholder}</span>
+          <span className={cn("flex min-w-0 flex-1 items-center truncate leading-none", !display && "text-ink-350")}>
+            {display || placeholder}
+          </span>
           <AppIcon icon="chevron-down" size={14} className="text-ink-350" aria-hidden="true" />
         </button>
       </DropdownMenuTrigger>

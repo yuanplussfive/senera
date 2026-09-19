@@ -119,12 +119,11 @@ interface ModelProviderIconProps {
 }
 
 export function ModelProviderIcon({ icon, className, size = 16 }: ModelProviderIconProps): JSX.Element | null {
-  if (!icon) return null;
-
+  const targetIcon = icon || DefaultModelProviderIconName;
   const style = { height: size, width: size };
   return (
     <img
-      src={readModelProviderIconSrc(icon)}
+      src={readModelProviderIconSrc(targetIcon)}
       alt=""
       aria-hidden="true"
       className={cn("block shrink-0 object-contain align-middle", className)}
@@ -153,7 +152,11 @@ export function readCustomModelProviderIconSource(value: string | undefined): st
   const candidate = value?.trim();
   if (!candidate) return undefined;
   if ([...candidate].some((character) => isUnsafeCustomIconCharacter(character))) return undefined;
-  if (/^https?:\/\//iu.test(candidate) || /^data:image\//iu.test(candidate) || candidate.startsWith("/")) {
+  if (
+    /^https?:\/\//iu.test(candidate) ||
+    /^data:image\//iu.test(candidate) ||
+    (candidate.startsWith("/") && !candidate.startsWith("//"))
+  ) {
     return candidate;
   }
   return undefined;
@@ -238,4 +241,18 @@ function normalizeModelProviderIconName(value: string): string {
     .toLowerCase()
     .replace(/\.svg$/u, "");
   return ModelProviderIconNameSet.has(candidate) ? candidate : DefaultModelProviderIconName;
+}
+
+export function ProviderMark({
+  icon,
+  label: _label,
+  size = 18,
+  className,
+}: {
+  icon?: string;
+  label?: string;
+  size?: number;
+  className?: string;
+}): JSX.Element {
+  return <ModelProviderIcon icon={icon || DefaultModelProviderIconName} size={size} className={className} />;
 }

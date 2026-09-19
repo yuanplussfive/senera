@@ -33,6 +33,15 @@ export function RenameDialog({
         description={title}
         className="w-[min(440px,calc(100vw-28px))]"
         bodyClassName="p-4"
+        footerClassName="px-4"
+        footer={
+          <DialogActions>
+            <DialogActionButton close>{frontendMessage("ui.cancel")}</DialogActionButton>
+            <DialogActionButton type="submit" form="session-rename-form" variant="primary">
+              {frontendMessage("session.save")}
+            </DialogActionButton>
+          </DialogActions>
+        }
         onOpenAutoFocus={(event) => {
           event.preventDefault();
           inputRef.current?.focus();
@@ -41,6 +50,7 @@ export function RenameDialog({
         onEscapeKeyDown={() => onOpenChange(false)}
       >
         <form
+          id="session-rename-form"
           onSubmit={(event) => {
             event.preventDefault();
             onSubmit();
@@ -53,12 +63,6 @@ export function RenameDialog({
             onChange={(event) => onValueChange(event.target.value)}
             className="h-10 w-full rounded-lg border border-ink-200 bg-paper-50 px-3 text-[13px] text-ink-900 outline-none transition placeholder:text-ink-300 focus:border-ink-300 focus:ring-2 focus:ring-accent-focus"
           />
-          <DialogActions>
-            <DialogActionButton close>{frontendMessage("ui.cancel")}</DialogActionButton>
-            <DialogActionButton type="submit" variant="primary">
-              {frontendMessage("session.save")}
-            </DialogActionButton>
-          </DialogActions>
         </form>
       </DialogContent>
     </Dialog>
@@ -80,6 +84,21 @@ export function ConfirmationDialog({
         description={intent?.description}
         className="w-[min(480px,calc(100vw-28px))]"
         bodyClassName="p-4"
+        footerClassName="px-4"
+        footer={
+          <DialogActions>
+            <DialogActionButton close>{frontendMessage("ui.cancel")}</DialogActionButton>
+            <DialogActionButton
+              onClick={() => {
+                intent?.onConfirm();
+                onOpenChange(false);
+              }}
+              variant="danger"
+            >
+              {intent?.confirmLabel}
+            </DialogActionButton>
+          </DialogActions>
+        }
         onCloseAutoFocus={(event) => restoreDialogFocus(event, returnFocus)}
         onEscapeKeyDown={() => onOpenChange(false)}
       >
@@ -95,18 +114,6 @@ export function ConfirmationDialog({
             </div>
           </div>
         </div>
-        <DialogActions className="mt-4">
-          <DialogActionButton close>{frontendMessage("ui.cancel")}</DialogActionButton>
-          <DialogActionButton
-            onClick={() => {
-              intent?.onConfirm();
-              onOpenChange(false);
-            }}
-            variant="danger"
-          >
-            {intent?.confirmLabel}
-          </DialogActionButton>
-        </DialogActions>
       </DialogContent>
     </Dialog>
   );

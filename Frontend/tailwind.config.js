@@ -15,6 +15,7 @@ export default {
           panel: "var(--surface-panel)",
           raised: "var(--surface-raised)",
           subtle: "var(--surface-subtle)",
+          soft: "var(--surface-soft)",
           muted: "var(--surface-muted)",
           hover: "var(--surface-hover)",
         },

@@ -88,6 +88,7 @@
               "Id": "",
               "Icon": "",
               "Enabled": true,
+              "DefaultEndpoint": "ChatCompletions",
               "BaseUrl": "",
               "Headers": {}
             },
@@ -135,6 +136,21 @@
                 "type": "number",
                 "min": 0,
                 "step": 1,
+                "required": false,
+                "essential": false
+              },
+              {
+                "path": ["DefaultEndpoint"],
+                "label": "新模型默认协议",
+                "description": "添加新模型时预选的请求协议；已有模型的协议不会被修改。",
+                "type": "string",
+                "options": ["ChatCompletions", "Responses", "ClaudeMessages", "GoogleGenerateContent"],
+                "optionLabels": {
+                  "ChatCompletions": "OpenAI Chat Completions",
+                  "Responses": "OpenAI Responses",
+                  "ClaudeMessages": "Anthropic Claude Messages",
+                  "GoogleGenerateContent": "Google Gemini Generate Content"
+                },
                 "required": false,
                 "essential": false
               },
@@ -403,14 +419,14 @@
               {
                 "path": ["Endpoint"],
                 "label": "请求协议",
-                "description": "选择模型请求使用的接口协议。",
+                "description": "大多数兼容 OpenAI 的服务请选择 Chat Completions；只有上游明确要求时才选择其他协议。",
                 "type": "string",
                 "options": ["ChatCompletions", "Responses", "ClaudeMessages", "GoogleGenerateContent"],
                 "optionLabels": {
-                  "ChatCompletions": "Chat Completions",
-                  "Responses": "Responses",
-                  "ClaudeMessages": "Claude Messages",
-                  "GoogleGenerateContent": "Google Generate Content"
+                  "ChatCompletions": "OpenAI Chat Completions",
+                  "Responses": "OpenAI Responses",
+                  "ClaudeMessages": "Anthropic Claude Messages",
+                  "GoogleGenerateContent": "Google Gemini Generate Content"
                 },
                 "required": true,
                 "essential": true

@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft } from "lucide-react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { SettingsSystemConfigHandle } from "../SettingsContracts";
 
 import { classifySettingsContentLayout, useObservedLayout } from "../../../shared/responsive";
 import { cn } from "../../../lib/util";
-import { StateView } from "../../../shared/ui";
+import { AppIcon, StateView } from "../../../shared/ui";
 import {
   findItemField,
   findTopField,
@@ -16,7 +15,7 @@ import {
 } from "../../chat/modelConfigData";
 import type { ModelProviderDraft, ProviderEndpointDraft } from "../../chat/modelConfigTypes";
 import { DiscardDraftDialog } from "../DiscardDraftDialog";
-import { AddProviderDialog, RenameProviderDialog } from "./ProviderConnectionDialogs";
+import { AddProviderDialog, EditProviderDialog, RenameProviderDialog } from "./ProviderConnectionDialogs";
 import { ProviderConnectionEditor } from "./ProviderConnectionEditor";
 import { ProviderConnectionList } from "./ProviderConnectionList";
 import { ProviderModelManagementSurface } from "./ProviderModelManagementSurface";
@@ -43,6 +42,8 @@ export function ModelServiceSection({
   const [modelPendingRemoval, setModelPendingRemoval] = useState<ModelProviderDraft | null>(null);
   const [providerPendingRemoval, setProviderPendingRemoval] = useState<ProviderEndpointDraft | null>(null);
   const [pendingProviderSelection, setPendingProviderSelection] = useState<ProviderEndpointDraft | null>(null);
+  const [providerConfigOpen, setProviderConfigOpen] = useState(false);
+  const [providerConfigSaveRequested, setProviderConfigSaveRequested] = useState(false);
   const { ref: layoutRef, layout } = useObservedLayout<HTMLDivElement, "compact" | "standard" | "wide">(
     classifySettingsContentLayout,
     "standard",
@@ -118,6 +119,22 @@ export function ModelServiceSection({
   });
 
   useEffect(() => {
+    if (!providerConfigSaveRequested) return;
+    if (actions.localError) {
+      setProviderConfigSaveRequested(false);
+      return;
+    }
+    if (actions.dirty || actions.saving) return;
+    setProviderConfigSaveRequested(false);
+    setProviderConfigOpen(false);
+  }, [actions.dirty, actions.localError, actions.saving, providerConfigSaveRequested]);
+
+  const handleProviderConfigOpenChange = (open: boolean): void => {
+    if (!open) setProviderConfigSaveRequested(false);
+    setProviderConfigOpen(open);
+  };
+
+  useEffect(() => {
     onDirtyChange?.(actions.dirty);
     return () => onDirtyChange?.(false);
   }, [actions.dirty, onDirtyChange]);
@@ -145,6 +162,7 @@ export function ModelServiceSection({
   const modelSurface = (
     <ProviderModelManagementSurface
       disabled={actions.saving}
+      defaultModelEndpoint={selectedProvider?.DefaultEndpoint}
       operations={systemConfig.providerModelOperations}
       onFetchProviderModels={systemConfig.fetchProviderModels}
       onRequestRemoveModel={setModelPendingRemoval}
@@ -162,12 +180,12 @@ export function ModelServiceSection({
       initialManualAdd={false}
       showProviderList={false}
       showFetchAction
-      fetchEndpoint={actions.connectionDraft ? toProviderEndpointInput(actions.connectionDraft) : undefined}
+      fetchEndpoint={actions.connectionDraft ? toProviderEndpointInput(actions.connectionDraft, false) : undefined}
       embedded
     />
   );
   const providerList = (
-    <section className="flex min-h-0 flex-col overflow-hidden bg-[var(--theme-config-list-bg)]">
+    <section className="flex min-h-0 flex-col overflow-hidden border-r border-line-subtle/70 bg-surface-subtle">
       <ProviderConnectionList
         providers={state.providers}
         catalogs={systemConfig.providerModelCatalogs}
@@ -185,29 +203,34 @@ export function ModelServiceSection({
           }
           if (layout === "compact") setMobileDetailOpen(true);
         }}
-        onRename={actions.setRenameTarget}
-        onDelete={setProviderPendingRemoval}
       />
     </section>
   );
   const detail = (
-    <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-paper-50">
-      <div className="shrink-0">
-        <ProviderConnectionEditor
-          acceptedProvider={actions.acceptedProvider}
-          dirty={actions.dirty}
-          draftProvider={actions.connectionDraft}
-          localError={actions.localError}
-          operation={actions.providerOperation}
-          providerIndex={actions.selectedProviderIndex}
-          disabled={false}
-          onReadApiKey={systemConfig.readProviderApiKey}
-          onChange={actions.updateDraftProvider}
-          onConfirm={actions.confirmDraft}
-          onDelete={actions.acceptedProvider ? () => setProviderPendingRemoval(actions.acceptedProvider!) : undefined}
-        />
+    <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-surface-soft">
+      <div className="shrink-0 border-b border-line-subtle/70">
+        <div className="mx-auto w-full max-w-[800px] px-6 sm:px-8">
+          <ProviderConnectionEditor
+            acceptedProvider={actions.acceptedProvider}
+            dirty={actions.dirty}
+            draftProvider={actions.connectionDraft}
+            localError={actions.localError}
+            operation={actions.providerOperation}
+            providerIndex={actions.selectedProviderIndex}
+            disabled={false}
+            onReadApiKey={systemConfig.readProviderApiKey}
+            onChange={actions.updateDraftProvider}
+            onConfirm={actions.confirmDraft}
+            onEdit={() => setProviderConfigOpen(true)}
+            onDelete={actions.acceptedProvider ? () => setProviderPendingRemoval(actions.acceptedProvider!) : undefined}
+          />
+        </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden border-t border-ink-200/70">{modelSurface}</div>
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <div className="mx-auto flex h-full w-full max-w-[800px] flex-col px-6 sm:px-8">
+          <div className="min-h-0 flex-1 overflow-hidden">{modelSurface}</div>
+        </div>
+      </div>
     </section>
   );
 
@@ -221,7 +244,7 @@ export function ModelServiceSection({
               className="flex h-11 shrink-0 items-center gap-1.5 border-b border-ink-200/70 px-3 text-left text-[12.5px] font-medium text-ink-600 transition hover:bg-ink-900/[0.025] hover:text-ink-900"
               onClick={() => setMobileDetailOpen(false)}
             >
-              <ChevronLeft className="h-4 w-4" />
+              <AppIcon icon="chevron-right" size={16} className="rotate-180" aria-hidden="true" />
               {frontendMessage("settings.model.serviceBack")}
             </button>
             <div className="min-h-0 flex-1 overflow-hidden">{detail}</div>
@@ -231,14 +254,9 @@ export function ModelServiceSection({
         )}
       </div>
     ) : (
-      <div
-        className={cn(
-          "grid h-full min-h-0 overflow-hidden bg-paper-50",
-          layout === "standard" ? "grid-cols-[230px_minmax(0,1fr)]" : "grid-cols-[250px_minmax(0,1fr)]",
-        )}
-      >
+      <div className={cn("grid h-full min-h-0 overflow-hidden bg-surface-sidebar", "grid-cols-[230px_minmax(0,1fr)]")}>
         {providerList}
-        <div className="min-h-0 min-w-0 overflow-hidden border-l border-ink-200/70">{detail}</div>
+        <div className="min-h-0 min-w-0 overflow-hidden">{detail}</div>
       </div>
     );
 
@@ -251,7 +269,21 @@ export function ModelServiceSection({
         pending={actions.addPending}
         error={actions.addError}
         onOpenChange={(open) => (open ? actions.setShowAddDialog(true) : actions.dismissAddDialog())}
-        onAdd={actions.addProvider}
+        onAdd={(provider, endpoint) => {
+          actions.addProvider({ ...provider, DefaultEndpoint: endpoint });
+        }}
+      />
+      <EditProviderDialog
+        open={providerConfigOpen}
+        provider={actions.connectionDraft}
+        pending={actions.saving}
+        error={actions.localError}
+        onReadApiKey={systemConfig.readProviderApiKey}
+        onOpenChange={handleProviderConfigOpenChange}
+        onSave={(patch) => {
+          setProviderConfigSaveRequested(true);
+          actions.confirmDraft(patch);
+        }}
       />
       <RenameProviderDialog
         provider={actions.renameTarget}

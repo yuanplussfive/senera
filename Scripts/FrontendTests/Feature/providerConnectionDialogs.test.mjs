@@ -1,8 +1,12 @@
 import React from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { frontendMessage } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
-import { AddProviderDialog } from "../../../Frontend/src/features/settings/sections/ProviderConnectionDialogs.tsx";
+import {
+  AddProviderDialog,
+  EditProviderDialog,
+} from "../../../Frontend/src/features/settings/sections/ProviderConnectionDialogs.tsx";
 import { DiscardDraftDialog } from "../../../Frontend/src/features/settings/DiscardDraftDialog.tsx";
 
 afterEach(() => {
@@ -37,6 +41,51 @@ test("pending provider additions cannot be dismissed as if the command were canc
   view.rerender(renderDialog(false));
   fireEvent.click(screen.getByRole("button", { name: frontendMessage("settings.action.cancel") }));
   expect(onOpenChange).toHaveBeenCalledWith(false);
+});
+
+test("provider editing saves headers and the default endpoint from the shared form", async () => {
+  const user = userEvent.setup();
+  const onSave = vi.fn();
+  render(
+    React.createElement(EditProviderDialog, {
+      open: true,
+      provider: {
+        Id: "proxy-api",
+        Kind: "OpenAICompatible",
+        DefaultEndpoint: "ChatCompletions",
+        BaseUrl: "https://example.com/v1",
+        ApiKey: "sk-original",
+        Headers: {},
+      },
+      onSave,
+      onOpenChange: vi.fn(),
+    }),
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "更多设置" }));
+  fireEvent.click(screen.getByRole("button", { name: frontendMessage("settings.provider.addHeader") }));
+  fireEvent.change(screen.getByPlaceholderText(frontendMessage("settings.provider.headerName")), {
+    target: { value: "X-Trace" },
+  });
+  fireEvent.change(screen.getByPlaceholderText(frontendMessage("settings.provider.headerValue")), {
+    target: { value: "enabled" },
+  });
+  await user.click(
+    screen.getByRole("button", {
+      name: `${frontendMessage("settings.provider.defaultEndpointLabel")}: ${frontendMessage("settings.provider.endpointChatCompletions")}`,
+    }),
+  );
+  await user.click(
+    await screen.findByRole("menuitem", { name: frontendMessage("settings.provider.endpointResponses") }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: frontendMessage("settings.action.save") }));
+
+  expect(onSave).toHaveBeenCalledWith({
+    ApiKey: "sk-original",
+    BaseUrl: "https://example.com/v1",
+    DefaultEndpoint: "Responses",
+    Headers: { "X-Trace": "enabled" },
+  });
 });
 
 test("discard confirmation explains the consequence and keeps the safe action first", () => {

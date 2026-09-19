@@ -72,6 +72,8 @@ export interface AgentModelProviderEndpointConfig {
   Icon?: string;
   Enabled?: boolean;
   Kind?: "OpenAICompatible";
+  /** Protocol used when a new model is created for this provider. */
+  DefaultEndpoint?: AgentModelEndpointKind;
   BaseUrl?: string;
   ApiKey?: string;
   ApiVersion?: string;
@@ -87,6 +89,7 @@ export interface ResolvedAgentModelProviderEndpointConfig {
   Icon: string;
   Enabled: boolean;
   Kind: "OpenAICompatible";
+  DefaultEndpoint?: AgentModelEndpointKind;
   BaseUrl: string;
   ApiKey: string;
   ApiVersion: string;

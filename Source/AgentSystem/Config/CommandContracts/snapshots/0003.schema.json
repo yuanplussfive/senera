@@ -1,0 +1,140 @@
+{
+  "formatVersion": 1,
+  "version": 3,
+  "operations": {
+    "provider.endpoint.upsert": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "Id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "Icon": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "Enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "Kind": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "OpenAICompatible"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "DefaultEndpoint": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "Responses",
+                "ChatCompletions",
+                "ClaudeMessages",
+                "GoogleGenerateContent"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "BaseUrl": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uri"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ApiKey": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ApiVersion": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "Headers": {
+          "anyOf": [
+            {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ProviderId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "Priority": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "Id"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

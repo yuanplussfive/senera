@@ -44,7 +44,7 @@ export function SwitchTrack({ checked, disabled = false, size = "sm", className 
       className={cn(
         "relative inline-block shrink-0 rounded-full transition-[background-color,opacity] duration-150 ease-out",
         trackSizeClassName[size],
-        checked ? "bg-accent-solid" : "bg-ink-300",
+        checked ? "bg-content-strong" : "bg-ink-300",
         disabled && "opacity-45",
         className,
       )}
