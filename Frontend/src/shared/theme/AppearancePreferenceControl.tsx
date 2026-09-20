@@ -1,6 +1,6 @@
 import { Check, Monitor, Moon, Palette, Sun } from "lucide-react";
 import { motion } from "framer-motion";
-import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
 import { useFrontendLocale } from "../../i18n/useFrontendLocale";
 import { cn } from "../../lib/util";
 import { SettingsControlRow } from "../ui/SettingsControlRow";
@@ -9,7 +9,6 @@ import { motionSprings, useMotionLevel } from "../motion";
 import {
   appearanceFontFamilies,
   appearanceFontFamilyStacks,
-  colorSchemes,
   fontScaleRange,
   fontScaleValues,
   readFontScaleAnchor,
@@ -31,6 +30,7 @@ import {
   readSchemeSwatchStrip,
   themeModeLabels,
 } from "./appearancePresentation";
+import { colorSchemeGroups } from "./themeData";
 import { useAppearance, useSetAppearancePreference } from "./useAppearance";
 
 const themeModeValues = [
@@ -73,14 +73,26 @@ export function AppearancePreferenceControl({ className }: { className?: string 
             {frontendMessage("settings.appearance.paletteHint")}
           </p>
         </div>
-        <div className="grid grid-cols-1 divide-y divide-line-subtle border-y border-line-subtle sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-3">
-          {colorSchemes.map((scheme) => (
-            <ColorSchemeOption
-              key={scheme}
-              scheme={scheme}
-              selected={preference.colorScheme === scheme}
-              onSelect={() => setPreference({ colorScheme: scheme, customAccentColor: undefined })}
-            />
+        <div className="space-y-4">
+          {colorSchemeGroups.map(({ label, items }) => (
+            <div key={label}>
+              <div className="mb-2 flex items-center gap-2 px-0.5">
+                <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-content-muted">
+                  {frontendMessage(label as FrontendMessageKey)}
+                </span>
+                <span className="h-px flex-1 bg-line-subtle" aria-hidden="true" />
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {items.map((scheme) => (
+                  <ColorSchemeOption
+                    key={scheme}
+                    scheme={scheme}
+                    selected={preference.colorScheme === scheme}
+                    onSelect={() => setPreference({ colorScheme: scheme, customAccentColor: undefined })}
+                  />
+                ))}
+              </div>
+            </div>
           ))}
         </div>
         <CustomAccentControl
@@ -139,7 +151,7 @@ function ThemeModePicker({ value, onChange }: { value: ThemeMode; onChange: (val
   return (
     <div
       className={cn(
-        "grid grid-cols-3 overflow-hidden rounded-md border border-line bg-surface-panel",
+        "grid grid-cols-3 gap-1 rounded-full border border-line-subtle bg-surface-muted/60 p-1",
         appearanceControlWidthClass,
       )}
     >
@@ -152,9 +164,9 @@ function ThemeModePicker({ value, onChange }: { value: ThemeMode; onChange: (val
             aria-pressed={selected}
             aria-label={themeModeLabels[option]}
             className={cn(
-              "flex h-9 min-w-0 items-center justify-center gap-1.5 px-2 text-[12px] text-content-secondary transition-colors",
+              "flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-full px-2 text-[12px] text-content-secondary transition-[background-color,color,box-shadow]",
               selected
-                ? "bg-accent-surface font-medium text-accent-content"
+                ? "bg-surface-panel font-medium text-content-primary shadow-soft"
                 : "hover:bg-surface-hover hover:text-content-primary",
             )}
             onClick={() => onChange(option)}
@@ -183,33 +195,32 @@ function ColorSchemeOption({
       type="button"
       aria-pressed={selected}
       className={cn(
-        "group relative flex min-w-0 items-center gap-2.5 px-2.5 py-2.5 text-left transition-colors",
-        selected ? "bg-accent-surface/45" : "hover:bg-surface-hover",
+        "group relative flex min-w-0 flex-col gap-2 rounded-[9px] border px-3 py-3 text-left transition-[background-color,border-color,box-shadow]",
+        selected
+          ? "border-accent-border-strong bg-accent-surface/45 shadow-[inset_0_0_0_1px_var(--accent-border-strong)]"
+          : "border-line-subtle bg-surface-panel/55 hover:border-line-strong hover:bg-surface-panel",
       )}
       onClick={onSelect}
     >
-      <span
-        className="flex h-5 w-14 shrink-0 overflow-hidden rounded-[3px] border border-line-subtle"
-        aria-hidden="true"
-      >
+      <span className="flex min-w-0 items-start justify-between gap-2">
+        <span className="min-w-0 truncate text-[12px] font-medium text-content-primary">
+          {colorSchemeLabels[scheme]}
+        </span>
+        <span className="flex shrink-0 items-center gap-1.5">
+          <span
+            className="h-2 w-2 rounded-full"
+            style={{ background: readAccentSwatch(recommendedAccent) }}
+            aria-hidden="true"
+          />
+          {selected ? <Check className="h-3.5 w-3.5 text-accent-content" aria-hidden="true" /> : null}
+        </span>
+      </span>
+      <span className="flex h-4 w-full overflow-hidden rounded-[4px] border border-line-subtle" aria-hidden="true">
         {readSchemeSwatchStrip(scheme).map((color, index) => (
           <span key={`${scheme}-${index}`} className="min-w-0 flex-1" style={{ background: color }} />
         ))}
       </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[12px] font-medium text-content-primary">{colorSchemeLabels[scheme]}</span>
-        <span className="mt-0.5 block truncate text-[10px] leading-4 text-content-muted">
-          {readColorSchemeStory(scheme)}
-        </span>
-      </span>
-      <span className="flex shrink-0 items-center gap-1.5">
-        <span
-          className="h-2 w-2 rounded-full"
-          style={{ background: readAccentSwatch(recommendedAccent) }}
-          aria-hidden="true"
-        />
-        {selected ? <Check className="h-3.5 w-3.5 shrink-0 text-accent-content" aria-hidden="true" /> : null}
-      </span>
+      <span className="block truncate text-[10px] leading-4 text-content-muted">{readColorSchemeStory(scheme)}</span>
     </button>
   );
 }

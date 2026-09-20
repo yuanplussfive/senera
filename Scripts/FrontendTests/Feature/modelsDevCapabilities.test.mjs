@@ -3,7 +3,11 @@ import {
   readModelsDevCapabilities,
   readModelsDevCapabilityKeys,
 } from "../../../Frontend/src/features/chat/modelsDevCapabilities.ts";
-import { createModelDraft, defaultModelCapabilities } from "../../../Frontend/src/features/chat/modelConfigData.ts";
+import {
+  createModelDraft,
+  defaultModelCapabilities,
+  toProviderEndpointInput,
+} from "../../../Frontend/src/features/chat/modelConfigData.ts";
 
 const template = {
   Capabilities: {
@@ -119,6 +123,29 @@ describe("createModelDraft with models.dev metadata", () => {
     expect(draft.ContextWindowTokens).toBe(128000);
     expect(draft.MaxModelOutputTokens).toBe(-1);
     expect(draft.Capabilities).toMatchObject({ Chat: true, ToolCalling: true });
+  });
+
+  it("uses the persisted provider default endpoint for new models", () => {
+    const draft = createModelDraft({
+      provider: { Id: "anthropic", DefaultEndpoint: "ClaudeMessages" },
+      modelInfo: { id: "claude-sonnet" },
+      modelField,
+      endpointOptions: [
+        { value: "ChatCompletions", label: "ChatCompletions" },
+        { value: "ClaudeMessages", label: "ClaudeMessages" },
+      ],
+    });
+    expect(draft.Endpoint).toBe("ClaudeMessages");
+  });
+
+  it("keeps the persisted default endpoint out of ad hoc discovery requests", () => {
+    const provider = {
+      Id: "anthropic",
+      DefaultEndpoint: "ClaudeMessages",
+      BaseUrl: "https://api.anthropic.com/v1",
+    };
+    expect(toProviderEndpointInput(provider, false)).not.toHaveProperty("DefaultEndpoint");
+    expect(toProviderEndpointInput(provider)).toMatchObject({ DefaultEndpoint: "ClaudeMessages" });
   });
 
   it("applies explicit API capability negatives over template defaults", () => {

@@ -21,6 +21,22 @@ export function DeleteMessageDialog({
         description={frontendMessage("chat.deleteDialog.description")}
         className="w-[min(420px,calc(100vw-28px))]"
         bodyClassName="px-4 pb-4 pt-3"
+        footerClassName="px-4"
+        footer={
+          <DialogActions>
+            <DialogActionButton close>{frontendMessage("ui.cancel")}</DialogActionButton>
+            <DialogActionButton
+              onClick={() => {
+                if (!message) return;
+                onConfirm(message);
+                onOpenChange(false);
+              }}
+              variant="danger"
+            >
+              {frontendMessage("chat.deleteDialog.confirm")}
+            </DialogActionButton>
+          </DialogActions>
+        }
       >
         <div className="space-y-3">
           <p className="text-[12.5px] leading-5 text-ink-600">{frontendMessage("chat.deleteDialog.warning")}</p>
@@ -33,19 +49,6 @@ export function DeleteMessageDialog({
             </div>
           ) : null}
         </div>
-        <DialogActions className="mt-5">
-          <DialogActionButton close>{frontendMessage("ui.cancel")}</DialogActionButton>
-          <DialogActionButton
-            onClick={() => {
-              if (!message) return;
-              onConfirm(message);
-              onOpenChange(false);
-            }}
-            variant="danger"
-          >
-            {frontendMessage("chat.deleteDialog.confirm")}
-          </DialogActionButton>
-        </DialogActions>
       </DialogContent>
     </Dialog>
   );

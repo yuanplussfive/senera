@@ -37,6 +37,21 @@ test("compact provider navigation combines accurate search and add controls in o
   ).toBeInTheDocument();
 });
 
+test("provider search keeps an explicit empty state when no provider matches", async () => {
+  const user = userEvent.setup();
+  const props = createProps();
+  renderWithFrontendProviders(
+    React.createElement(TooltipProvider, { delayDuration: 0 }, React.createElement(ProviderConnectionList, props)),
+  );
+
+  await user.type(
+    screen.getByRole("textbox", { name: frontendMessage("settings.provider.searchPlaceholder") }),
+    "does-not-exist",
+  );
+
+  expect(screen.getByText(frontendMessage("settings.provider.searchEmpty"))).toBeInTheDocument();
+});
+
 function createProps(overrides = {}) {
   return {
     providers: [{ Id: "openai", Enabled: true }],

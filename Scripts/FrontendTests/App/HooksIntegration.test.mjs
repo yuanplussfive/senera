@@ -54,6 +54,16 @@ test("useSandboxRuntimeStatus ingests only sandbox status snapshots", async () =
 
   expect(handleRef.current.sandboxStatus.state).toBe("ready");
   expect(handleRef.current.sandboxStatus.effectiveMode).toBe("sandbox");
+
+  const acceptedStatus = handleRef.current.sandboxStatus;
+  act(() => {
+    expect(
+      handleRef.current.ingestSandboxEvent(
+        event(EventKinds.SandboxStatusSnapshot, "sandbox", { state: "future-state" }),
+      ),
+    ).toBe(true);
+  });
+  expect(handleRef.current.sandboxStatus).toBe(acceptedStatus);
 });
 
 test("useSessionCatalogSync sends open-connection and manual refresh requests", async () => {
@@ -93,12 +103,7 @@ test("useSessionCatalogSync sends open-connection and manual refresh requests", 
     "profile.update",
   ]);
   expect(send.mock.calls.at(-1)?.[0].profile.name).toBe("Alice");
-  expect(readTestToastCalls()).toEqual([
-    expect.objectContaining({
-      variant: "success",
-      title: "恢复 2 个会话",
-    }),
-  ]);
+  expect(readTestToastCalls()).toEqual([]);
 
   send.mockClear();
   act(() => handleRef.current.refreshSessionCatalog());

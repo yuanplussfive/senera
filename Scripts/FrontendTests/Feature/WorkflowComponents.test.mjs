@@ -106,7 +106,7 @@ test("cancelled run summary does not masquerade as a new Thinking run", () => {
   expect(trigger).toHaveAccessibleName(frontendMessage("workflow.run.status.cancelled"));
   expect(trigger).toHaveTextContent(frontendMessage("workflow.run.status.cancelled"));
   expect(trigger).not.toHaveTextContent("Thinking");
-  expect(trigger?.querySelector(".senera-spinner-trace")).not.toBeInTheDocument();
+  expect(trigger?.querySelector(".senera-spinner")).not.toBeInTheDocument();
 });
 
 test("cancelling run summary exposes the stopping state while settlement is pending", () => {
@@ -117,7 +117,7 @@ test("cancelling run summary exposes the stopping state while settlement is pend
   expect(trigger).toHaveAttribute("data-run-status", "cancelling");
   expect(trigger).toHaveAccessibleName(frontendMessage("workflow.run.status.cancelling"));
   expect(trigger).toHaveTextContent(frontendMessage("workflow.run.status.cancelling"));
-  expect(trigger?.querySelector(".senera-spinner-trace")).toBeInTheDocument();
+  expect(trigger?.querySelector(".senera-spinner")).toBeInTheDocument();
   expect(trigger?.querySelector(".lucide-chevron-down")).not.toBeInTheDocument();
 });
 
@@ -265,8 +265,9 @@ test("chat header exposes one neutral workflow tool entry for panel toggling", a
   );
 
   const expandButton = screen.getByRole("button", { name: frontendMessage("workflow.panel.expand") });
+  expect(document.querySelector("[data-testid='chat-header']")).toHaveClass("h-[var(--senera-top-chrome-height)]");
   expect(document.querySelector("[data-workflow-dock]")).not.toBeInTheDocument();
-  expect(document.querySelector("[data-workspace-tool-dock]")).toContainElement(expandButton);
+  expect(document.querySelector('[data-workflow-dock-trigger="header"]')).toContainElement(expandButton);
   expect(document.querySelector("[data-window-controls-inset]")).toBeInTheDocument();
   expect(expandButton).toHaveAttribute("aria-expanded", "false");
   expect(expandButton.className).not.toMatch(/terra|blue|indigo|violet/);
@@ -290,7 +291,7 @@ test("persistent workflow panel owns its tool header and only collapse control",
 
   const collapseButton = screen.getByRole("button", { name: frontendMessage("workflow.panel.collapse") });
   expect(screen.getAllByRole("button", { name: frontendMessage("workflow.panel.collapse") })).toHaveLength(1);
-  expect(document.querySelector("[data-workspace-tool-dock]")).toContainElement(
+  expect(document.querySelector("[data-workflow-panel-title]")).toContainElement(
     screen.getByText(frontendMessage("workflow.panel.title")),
   );
   await user.click(collapseButton);

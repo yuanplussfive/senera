@@ -1,14 +1,48 @@
 import React from "react";
-import { cleanup, screen } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
 
 const { PresetControl } = await import("../../../Frontend/src/features/chat/PresetPanel.tsx");
+const { PresetSidebar } = await import("../../../Frontend/src/features/chat/PresetSidebar.tsx");
 
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+});
+
+test("preset sidebar keeps the fluid hover gap from selecting a preset", async () => {
+  const onSelect = vi.fn();
+  renderWithFrontendProviders(
+    React.createElement(PresetSidebar, {
+      activePreset: null,
+      busy: false,
+      enabled: true,
+      filterText: "",
+      onCreate: vi.fn(),
+      onFilterTextChange: vi.fn(),
+      onRefresh: vi.fn(),
+      onSelect,
+      presets: createPresetControlProps().presets,
+      selectedName: "writer.json",
+    }),
+  );
+
+  const list = document.querySelector("[data-preset-list]");
+  const row = document.querySelector("[data-preset-list-item]");
+  expect(list).toBeInTheDocument();
+  expect(row).toBeInTheDocument();
+  vi.spyOn(list, "getBoundingClientRect").mockReturnValue(createRect(0));
+  vi.spyOn(row, "getBoundingClientRect").mockReturnValue(createRect(8));
+
+  fireEvent.pointerMove(list, { clientY: 20, pointerType: "mouse" });
+  await waitFor(() => expect(document.querySelector("[data-preset-fluid-hover]")).toBeInTheDocument());
+
+  fireEvent.click(list);
+  expect(onSelect).not.toHaveBeenCalled();
+  fireEvent.click(row);
+  expect(onSelect).toHaveBeenCalledWith("writer.json");
 });
 
 test("preset control saves a structured persona card with activation", async () => {
@@ -138,5 +172,19 @@ function createPresetControlProps(overrides = {}) {
     onDelete: vi.fn(() => null),
     onSetActive: vi.fn(() => null),
     ...overrides,
+  };
+}
+
+function createRect(top) {
+  return {
+    bottom: top + 36,
+    height: 36,
+    left: 0,
+    right: 220,
+    top,
+    width: 220,
+    x: 0,
+    y: top,
+    toJSON: () => ({}),
   };
 }

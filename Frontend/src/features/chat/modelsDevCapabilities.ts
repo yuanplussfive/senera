@@ -23,6 +23,16 @@ export function readModelsDevCapabilityKeys(metadata: ModelsDevModelMetadata | u
 }
 
 /**
+ * Capabilities the local flags do not cover, so a capability summary shows them
+ * next to the resolved flags instead of dropping the models.dev fact.
+ */
+export const ModelsDevExtraCapabilityKeys: Partial<Record<ModelsDevCapabilityKey, true>> = {
+  structuredOutput: true,
+  audio: true,
+  attachment: true,
+};
+
+/**
  * Projects models.dev facts onto the local capability flags. Only explicit
  * values are applied; modality arrays are ignored while empty so that
  * providers without modality data keep the local defaults.

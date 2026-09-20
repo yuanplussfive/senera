@@ -196,7 +196,7 @@ async function renameActiveSession(page, title) {
 function newSessionButton(page) {
   return page
     .locator("[data-session-sidebar]:visible")
-    .locator("[data-window-drag-region]")
+    .locator("[data-session-header]")
     .getByRole("button", { name: "新建对话" });
 }
 

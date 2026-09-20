@@ -12,6 +12,7 @@ export const dialogPresenceExitMs = 180;
 
 export const motionSprings = {
   snappy: { type: "spring", stiffness: 520, damping: 42 } satisfies Transition,
+  fluidHover: { type: "spring", duration: 0.08, bounce: 0 } satisfies Transition,
   soft: { type: "spring", stiffness: 360, damping: 34 } satisfies Transition,
   drawer: { type: "spring", stiffness: 420, damping: 40, mass: 1 } satisfies Transition,
   // Brand motion: a quick settle with almost no wobble. Used for feedback
@@ -21,6 +22,7 @@ export const motionSprings = {
 
 export const motionTimings = {
   fast: { duration: 0.12, ease: easeOut } satisfies Transition,
+  chatSwitch: { duration: 0.1, ease: easeOut } satisfies Transition,
   base: { duration: 0.16, ease: easeOut } satisfies Transition,
   dialog: { duration: 0.16, ease: easeOut } satisfies Transition,
   modalOpen: { duration: 0.16, ease: easeOut } satisfies Transition,
@@ -33,6 +35,11 @@ export const motionTimings = {
   panelClose: { duration: 0.22, ease: easeOut } satisfies Transition,
   section: { duration: 0.16, ease: easeOut } satisfies Transition,
   feedback: { duration: 0.2, ease: easeOut } satisfies Transition,
+  menuOpen: { duration: 0.22, ease: [0.2, 0.8, 0.2, 1] } satisfies Transition,
+  menuClose: { duration: 0.19, ease: [0.4, 0, 0.2, 1] } satisfies Transition,
+  menuCheck: { duration: 0.22, ease: [0.2, 0.9, 0.2, 1.25] } satisfies Transition,
+  menuItem: { duration: 0.15, ease: "linear" } satisfies Transition,
+  iconRotate: { duration: 0.2, ease: [0.4, 0, 0.2, 1] } satisfies Transition,
 };
 
 export const motionDurations = {
@@ -42,17 +49,6 @@ export const motionDurations = {
   signalLoopMs: 1600,
   loadingRailMs: 1200,
 } as const;
-
-export const motionRules = {
-  maxStaggerItems: 20,
-  defaultStagger: 0.02,
-  maxStagger: 0.03,
-};
-
-export function readStagger(count: number, requested = motionRules.defaultStagger): number {
-  if (count > motionRules.maxStaggerItems) return 0;
-  return Math.min(requested, motionRules.maxStagger);
-}
 
 export function readListItemVariants(level: MotionLevel): Variants {
   if (level === "none") {
@@ -76,11 +72,10 @@ export function readListItemVariants(level: MotionLevel): Variants {
   };
 }
 
-export function readListTransition(level: MotionLevel, delay = 0): Transition {
+export function readListTransition(level: MotionLevel): Transition {
   if (level === "none") return { duration: 0 };
   return {
     ...motionTimings.base,
-    delay,
     layout: motionSprings.snappy,
   };
 }

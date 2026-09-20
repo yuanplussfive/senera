@@ -7,6 +7,7 @@ import enUsMessages from "../../../Frontend/src/i18n/messages/en-US.json" with {
 import zhCnMessages from "../../../Frontend/src/i18n/messages/zh-CN.json" with { type: "json" };
 import {
   FrontendDefaultLocale,
+  FrontendLocalePreferences,
   FrontendLocales,
   frontendMessage,
 } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
@@ -59,6 +60,35 @@ describe("frontend locale store", () => {
     storage.setItem(frontendLocaleStorageKey, FrontendLocales.ZhCn);
     storageEvents.dispatch(frontendLocaleStorageKey);
     expect(store.getSnapshot()).toBe(FrontendLocales.EnUs);
+  });
+
+  test("resolves and follows the system language without replacing the preference", () => {
+    const storage = createMemoryStorage({ [frontendLocaleStorageKey]: FrontendLocalePreferences.System });
+    const languageEvents = createStorageEventTarget();
+    const navigatorState = {
+      languages: [FrontendLocales.EnUs, FrontendLocales.ZhCn],
+      language: FrontendLocales.EnUs,
+    };
+    const listener = vi.fn();
+    const store = createFrontendLocaleStore({
+      readStorage: () => storage,
+      readWindow: () => languageEvents.window,
+      readNavigator: () => navigatorState,
+    });
+    const unsubscribe = store.subscribe(listener);
+
+    expect(store.getPreferenceSnapshot()).toBe(FrontendLocalePreferences.System);
+    expect(store.getSnapshot()).toBe(FrontendLocales.EnUs);
+
+    navigatorState.languages = [FrontendLocales.ZhCn, FrontendLocales.EnUs];
+    navigatorState.language = FrontendLocales.ZhCn;
+    languageEvents.dispatchLanguageChange();
+
+    expect(store.getPreferenceSnapshot()).toBe(FrontendLocalePreferences.System);
+    expect(store.getSnapshot()).toBe(FrontendLocales.ZhCn);
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    unsubscribe();
   });
 });
 
@@ -113,18 +143,24 @@ function createMemoryStorage(initial = {}) {
 }
 
 function createStorageEventTarget() {
-  const listeners = new Set();
+  const listeners = {
+    languagechange: new Set(),
+    storage: new Set(),
+  };
   return {
     window: {
       addEventListener(type, listener) {
-        if (type === "storage") listeners.add(listener);
+        listeners[type]?.add(listener);
       },
       removeEventListener(type, listener) {
-        if (type === "storage") listeners.delete(listener);
+        listeners[type]?.delete(listener);
       },
     },
     dispatch(key) {
-      for (const listener of listeners) listener({ key });
+      for (const listener of listeners.storage) listener({ key });
+    },
+    dispatchLanguageChange() {
+      for (const listener of listeners.languagechange) listener();
     },
   };
 }

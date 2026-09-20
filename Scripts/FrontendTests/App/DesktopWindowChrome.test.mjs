@@ -48,12 +48,10 @@ describe("desktop window chrome", () => {
 
     expect(document.querySelector("[data-desktop-window-controls]")).toHaveClass("z-40", "text-content-muted");
     const maximizeButton = screen.getByRole("button", { name: "最大化窗口" });
-    expect(maximizeButton.querySelector(".lucide-square")).toBeInTheDocument();
-    expect(maximizeButton.querySelector(".lucide-maximize-2")).not.toBeInTheDocument();
+    expect(maximizeButton.querySelector("svg")).toBeInTheDocument();
     expect(document.querySelectorAll("[data-window-control] svg")).toHaveLength(3);
     for (const icon of document.querySelectorAll("[data-window-control] svg")) {
       expect(icon).toHaveClass("h-4", "w-4");
-      expect(icon).toHaveAttribute("stroke-width", "2");
     }
 
     const closeButton = screen.getByRole("button", { name: "关闭窗口" });

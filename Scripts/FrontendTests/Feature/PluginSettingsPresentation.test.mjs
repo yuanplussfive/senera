@@ -6,7 +6,51 @@ import { McpServersSection } from "../../../Frontend/src/features/settings/secti
 import { SystemToolsSection } from "../../../Frontend/src/features/settings/sections/SystemToolsSection.tsx";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
 
+const McpSecretDebounceMs = 350;
+
 afterEach(() => cleanup());
+
+function createImagenMcpServer() {
+  return {
+    id: "imagen",
+    packageName: "@senera/imagen-mcp",
+    displayName: { "zh-CN": "Imagen", "en-US": "Imagen" },
+    description: { "zh-CN": "图像生成服务。", "en-US": "Image generation service." },
+    source: "bundled",
+    descriptorKind: "mcpb",
+    transport: "http",
+    status: "configured",
+    inputs: [
+      {
+        id: "IMAGEN_API_KEY",
+        title: "Imagen API Key",
+        description: "用于请求图像生成服务。",
+        type: "string",
+        required: true,
+        secret: true,
+        multiple: false,
+        configured: true,
+        stored: true,
+        source: "vault",
+        provenance: "mcpb",
+        updatedAt: "2026-08-18T00:00:00.000Z",
+      },
+    ],
+  };
+}
+
+function createMcpSectionSystemConfig(overrides = {}) {
+  return {
+    socketStatus: "open",
+    mcpServers: [createImagenMcpServer()],
+    toolSettingsSynced: { systemTools: true, mcpServers: true },
+    mcpInputOperation: null,
+    refreshToolSettings: vi.fn(),
+    restartMcpServer: vi.fn(() => true),
+    updateMcpInputs: vi.fn(() => "request-1"),
+    ...overrides,
+  };
+}
 
 describe("plugin settings presentation", () => {
   it("keeps system extension internals out of the default tool directory", async () => {
@@ -155,5 +199,69 @@ describe("plugin settings presentation", () => {
     expect(screen.getByText("缺少的宿主能力")).toBeVisible();
     expect(screen.getByText("interactive-desktop")).toBeVisible();
     expect(screen.getByText("Linux requires DISPLAY or WAYLAND_DISPLAY for local desktop control.")).toBeVisible();
+  });
+
+  it("commits MCP secrets on blur instead of auto-saving keystrokes", async () => {
+    const user = userEvent.setup();
+    const updateMcpInputs = vi.fn(() => "request-1");
+    renderWithFrontendProviders(
+      React.createElement(McpServersSection, {
+        systemConfig: createMcpSectionSystemConfig({ updateMcpInputs }),
+      }),
+    );
+
+    await user.click(screen.getByText("Imagen"));
+    const secretField = screen.getByLabelText("Imagen API Key");
+    expect(secretField).toHaveAttribute("type", "password");
+    expect(secretField).toHaveAttribute("placeholder", "输入新 Secret 以替换");
+
+    await user.type(secretField, "sk-live-key");
+    // Keystrokes alone must not write a partial secret to the vault.
+    await new Promise((resolve) => setTimeout(resolve, McpSecretDebounceMs + 200));
+    expect(updateMcpInputs).not.toHaveBeenCalled();
+
+    await user.tab();
+    expect(updateMcpInputs).toHaveBeenCalledTimes(1);
+    expect(updateMcpInputs).toHaveBeenCalledWith("imagen", { IMAGEN_API_KEY: "sk-live-key" }, []);
+    // The committed value stays in the field instead of blanking it.
+    expect(secretField).toHaveValue("sk-live-key");
+    expect(secretField).toHaveAttribute("type", "password");
+  });
+
+  it("reveals the secret through the eye toggle without committing", async () => {
+    const user = userEvent.setup();
+    const updateMcpInputs = vi.fn(() => "request-2");
+    renderWithFrontendProviders(
+      React.createElement(McpServersSection, {
+        systemConfig: createMcpSectionSystemConfig({ updateMcpInputs }),
+      }),
+    );
+
+    await user.click(screen.getByText("Imagen"));
+    const secretField = screen.getByLabelText("Imagen API Key");
+    await user.type(secretField, "sk-live-key");
+    await user.click(screen.getByRole("button", { name: "显示 Secret" }));
+    expect(secretField).toHaveAttribute("type", "text");
+    expect(secretField).toHaveValue("sk-live-key");
+    // Toggling reveal must not blur the input and trigger a commit.
+    expect(updateMcpInputs).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "隐藏 Secret" }));
+    expect(secretField).toHaveAttribute("type", "password");
+  });
+
+  it("clears a stored secret through the field action", async () => {
+    const user = userEvent.setup();
+    const updateMcpInputs = vi.fn(() => "request-3");
+    renderWithFrontendProviders(
+      React.createElement(McpServersSection, {
+        systemConfig: createMcpSectionSystemConfig({ updateMcpInputs }),
+      }),
+    );
+
+    await user.click(screen.getByText("Imagen"));
+    await user.click(screen.getByRole("button", { name: "清除已保存的 Secret" }));
+    expect(updateMcpInputs).toHaveBeenCalledTimes(1);
+    expect(updateMcpInputs).toHaveBeenCalledWith("imagen", {}, ["IMAGEN_API_KEY"]);
   });
 });

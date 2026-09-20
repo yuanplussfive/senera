@@ -11,7 +11,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-test("session rows expose an independent selection button", async () => {
+test("session rows expose an independent selection button without inline actions", async () => {
   const onClick = vi.fn();
   const user = userEvent.setup();
   renderWithFrontendProviders(
@@ -21,7 +21,6 @@ test("session rows expose an independent selection button", async () => {
       title: "Release plan",
       accent: "idle",
       onClick,
-      showInlineActions: true,
       onRename: vi.fn(),
       onClose: vi.fn(),
     }),
@@ -35,10 +34,10 @@ test("session rows expose an independent selection button", async () => {
   await user.click(selection);
 
   expect(onClick).toHaveBeenCalledTimes(1);
-  expect(screen.getByRole("button", { name: "more" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "more" })).not.toBeInTheDocument();
 });
 
-test("desktop session rows omit the duplicate overflow action", () => {
+test("session rows keep the shared row height without inline overflow actions", () => {
   renderWithFrontendProviders(
     React.createElement(SessionRow, {
       active: false,
@@ -46,14 +45,13 @@ test("desktop session rows omit the duplicate overflow action", () => {
       title: "Hidden actions",
       accent: "idle",
       onClick: vi.fn(),
-      showInlineActions: false,
       onRename: vi.fn(),
       onClose: vi.fn(),
     }),
   );
 
   const selection = screen.getByRole("button", { name: "打开会话：Hidden actions" });
-  expect(selection.closest("[data-session-row]")).toHaveClass("h-9");
+  expect(selection.closest("[data-session-row]")).toHaveClass("h-11");
   expect(screen.queryByText("1 message")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "more" })).not.toBeInTheDocument();
 });

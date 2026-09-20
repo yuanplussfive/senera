@@ -1,5 +1,5 @@
 import React from "react";
-import { cleanup, screen } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -34,6 +34,59 @@ describe("model capability controls", () => {
     expect(summary.querySelectorAll("svg")).toHaveLength(3);
     expect(summary).toHaveTextContent("+2");
     expect(summary).toHaveAccessibleName(/对话.*图像输出/);
+  });
+
+  it("renders compact model-list capabilities as text pills", () => {
+    renderWithFrontendProviders(
+      React.createElement(CapabilityIconStrip, {
+        labels: true,
+        capabilities: {
+          Chat: true,
+          Embedding: false,
+          Rerank: false,
+          Vision: true,
+          ImageOutput: false,
+          Reasoning: false,
+          ToolCalling: true,
+          DeveloperRole: true,
+          StreamingUsage: false,
+        },
+      }),
+    );
+
+    expect(screen.getByText("对话")).toBeInTheDocument();
+    expect(screen.getByText("识图")).toBeInTheDocument();
+    expect(screen.getByText("工具调用")).toBeInTheDocument();
+    expect(screen.getByText("Developer 角色")).toBeInTheDocument();
+  });
+
+  it("shows remaining labels from a dedicated overflow tooltip", async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithFrontendProviders(
+      React.createElement(CapabilityIconStrip, {
+        labels: true,
+        capabilities: {
+          Chat: true,
+          Embedding: true,
+          Rerank: true,
+          Vision: true,
+          ImageOutput: true,
+          Reasoning: false,
+          ToolCalling: false,
+          DeveloperRole: false,
+          StreamingUsage: false,
+        },
+      }),
+    );
+
+    const overflow = container.querySelector("[data-capability-overflow]");
+    expect(overflow).toHaveTextContent("+1");
+    await user.hover(overflow);
+    await waitFor(() => {
+      const tooltip = document.querySelector('[role="tooltip"]');
+      expect(tooltip).not.toBeNull();
+      expect(tooltip).toHaveTextContent("图像输出");
+    });
   });
 
   it("uses switch semantics for capability editing and retains the selected planning mode", async () => {

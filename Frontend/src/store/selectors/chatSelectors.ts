@@ -2,6 +2,9 @@ import { useStore } from "../sessionStore";
 import type { RunRecord } from "../sessionStore";
 import { useShallow } from "zustand/react/shallow";
 import { readActiveRun } from "../session/sessionProjectorCore";
+import { readSessionHydrationState } from "../session/sessionHydration";
+
+export type { SessionHydrationState } from "../session/sessionHydration";
 
 /**
  * Optimized selector for chat state - prevents unnecessary re-renders
@@ -15,6 +18,14 @@ export function useChatState(sessionId: string | null) {
       historyLoading: sessionId ? !!s.historyLoadingIds[sessionId] : false,
       historyFailed: sessionId ? !!s.historyFailedIds[sessionId] : false,
       historyHydrating: sessionId ? !!s.historyHydration?.[sessionId] : false,
+      catalogSynced: s.catalogSynced.sessions,
+      hydrationState: readSessionHydrationState({
+        catalogSynced: s.catalogSynced.sessions,
+        session: sessionId ? s.sessions[sessionId] : null,
+        historyLoaded: sessionId ? !!s.historyLoadedIds[sessionId] : false,
+        historyLoading: sessionId ? !!s.historyLoadingIds[sessionId] : false,
+        historyFailed: sessionId ? !!s.historyFailedIds[sessionId] : false,
+      }),
     })),
   );
 }

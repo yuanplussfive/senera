@@ -91,3 +91,110 @@ test("history refresh does not replace an active stream with older replay output
   expect(run?.streamingRaw).toBe("当前实时文本");
   expect(state.sessions[TestSessionId]?.activeRequestId).toBe(TestRequestId);
 });
+
+test("a live run failure that races history replay does not clear the conversation", () => {
+  const state = createTestState({
+    sessions: {
+      [TestSessionId]: {
+        sessionId: TestSessionId,
+        title: "配置 QQ 渠道",
+        status: "ready",
+        createdAt: "2026-07-09T00:00:00.000Z",
+        updatedAt: "2026-07-09T00:00:01.000Z",
+        entryCount: 1,
+        messageCount: 1,
+        messages: [
+          {
+            id: `${TestRequestId}-user`,
+            role: "user",
+            content: "帮我配置一下qq渠道",
+            createdAt: "2026-07-09T00:00:01.000Z",
+            requestId: TestRequestId,
+          },
+        ],
+        runs: [],
+        activeRequestId: TestRequestId,
+      },
+    },
+    sessionOrder: [TestSessionId],
+    activeSessionId: TestSessionId,
+  });
+
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionSnapshot,
+      {
+        sessionId: TestSessionId,
+        status: "running",
+        createdAt: "2026-07-09T00:00:00.000Z",
+        updatedAt: "2026-07-09T00:00:01.000Z",
+        entryCount: 1,
+        messageCount: 1,
+        turnCount: 1,
+        activeRequestId: TestRequestId,
+      },
+      { requestId: undefined, phase: "session" },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionHistoryStarted,
+      { sessionId: TestSessionId, totalEntries: 1, messageCount: 1 },
+      { requestId: undefined, phase: "session" },
+    ),
+  );
+
+  // The run can finish on the server while the reconnecting client is still
+  // waiting for history.run.started to arrive.
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.RunFailed,
+      { message: "QQ 配置失败", code: "channel_connect_failed" },
+      { eventId: "live-run-failed", requestId: TestRequestId, layer: "error", phase: "run" },
+    ),
+  );
+
+  expect(state.historyLoadingIds[TestSessionId]).toBe(true);
+  expect(state.historyFailedIds[TestSessionId]).toBeUndefined();
+  expect(state.sessions[TestSessionId]?.messages).toHaveLength(1);
+
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionHistorySteps,
+      {
+        sessionId: TestSessionId,
+        runs: [
+          {
+            requestId: TestRequestId,
+            input: "帮我配置一下qq渠道",
+            startedAt: "2026-07-09T00:00:01.000Z",
+            endedAt: "2026-07-09T00:00:02.000Z",
+            status: "failed",
+            traces: [],
+          },
+        ],
+      },
+      { requestId: undefined, phase: "session" },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionHistoryCompleted,
+      { sessionId: TestSessionId },
+      { requestId: undefined, phase: "session" },
+    ),
+  );
+
+  expect(state.historyLoadedIds[TestSessionId]).toBe(true);
+  expect(state.historyFailedIds[TestSessionId]).toBeUndefined();
+  expect(state.sessions[TestSessionId]?.messages).toHaveLength(1);
+  expect(state.sessions[TestSessionId]?.runs[0]).toMatchObject({
+    requestId: TestRequestId,
+    status: "failed",
+  });
+});

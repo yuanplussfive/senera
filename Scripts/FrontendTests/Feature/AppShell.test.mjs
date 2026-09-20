@@ -100,8 +100,8 @@ test("app shell derives integrated workspace surfaces across responsive modes", 
     workflowPanelLayout: "inline",
     showChatWorkflowPanelAction: false,
   });
-  expect(readWorkflowDockWidthConstraints(1024, 246)).toEqual({ min: 302, max: 418 });
-  expect(readWorkflowDockWidthConstraints(1600, 246)).toEqual({ min: 302, max: 640 });
+  expect(readWorkflowDockWidthConstraints(1024, 266)).toEqual({ min: 302, max: 398 });
+  expect(readWorkflowDockWidthConstraints(1600, 266)).toEqual({ min: 302, max: 640 });
   expect(clampWorkflowDockWidth(900, { min: 302, max: 640 })).toBe(640);
   expect(readAppShellResponsiveEntryPlan(mobile)).toEqual({
     sidebarCollapsed: null,
@@ -295,15 +295,15 @@ test("session sidebar width follows its accessible resize handle", () => {
   const resizeHandle = screen.getByRole("separator", { name: "调整会话栏宽度" });
   expect(resizeHandle).toHaveAttribute("aria-valuemin", "208");
   expect(resizeHandle).toHaveAttribute("aria-valuemax", "360");
-  expect(resizeHandle).toHaveAttribute("aria-valuenow", "246");
+  expect(resizeHandle).toHaveAttribute("aria-valuenow", "266");
 
   fireEvent.keyDown(resizeHandle, { key: "ArrowRight" });
-  expect(resizeHandle).toHaveAttribute("aria-valuenow", "262");
+  expect(resizeHandle).toHaveAttribute("aria-valuenow", "282");
 
   fireEvent.pointerDown(resizeHandle, { pointerId: 3, clientX: 400 });
   fireEvent.pointerMove(resizeHandle, { pointerId: 3, clientX: 350 });
   fireEvent.pointerUp(resizeHandle, { pointerId: 3, clientX: 350 });
-  expect(resizeHandle).toHaveAttribute("aria-valuenow", "212");
+  expect(resizeHandle).toHaveAttribute("aria-valuenow", "232");
 });
 
 test("desktop overlay opens from a floating capsule and switches accessible horizontal tabs", async () => {
@@ -336,6 +336,9 @@ test("desktop overlay opens from a floating capsule and switches accessible hori
   expect(document.querySelector("[data-workflow-panel-surface]")).not.toBeInTheDocument();
   expect(document.querySelectorAll("[data-workflow-dock-tool]")).toHaveLength(4);
   expect(document.querySelector("[data-workflow-dock-capsule]")).toBeInTheDocument();
+  expect(document.querySelector("[data-workflow-dock-capsule]")).toHaveStyle({
+    top: "calc(var(--senera-top-chrome-height) + var(--senera-top-rail-gap))",
+  });
   expect(dock).toHaveStyle({ right: "12px" });
   expect(document.querySelector("[data-workflow-dock-gutter]")).toBeInTheDocument();
   expect(dock.querySelector("[data-window-drag-region]")).not.toBeInTheDocument();
@@ -375,7 +378,7 @@ test("desktop overlay opens from a floating capsule and switches accessible hori
   expect(dock).toHaveStyle({ right: "0px" });
   expect(document.querySelector("[data-workflow-dock-capsule]")).not.toBeInTheDocument();
   expect(resizeHandle).toHaveAttribute("aria-valuemin", "302");
-  expect(resizeHandle).toHaveAttribute("aria-valuemax", "418");
+  expect(resizeHandle).toHaveAttribute("aria-valuemax", "398");
   fireEvent.keyDown(resizeHandle, { key: "Home" });
   expect(useStore.getState().workflowDockWidth).toBe(302);
   fireEvent.keyDown(resizeHandle, { key: "ArrowLeft" });
@@ -383,7 +386,7 @@ test("desktop overlay opens from a floating capsule and switches accessible hori
   fireEvent.pointerDown(resizeHandle, { pointerId: 7, clientX: 400 });
   fireEvent.pointerMove(resizeHandle, { pointerId: 7, clientX: 300 });
   fireEvent.pointerUp(resizeHandle, { pointerId: 7, clientX: 300 });
-  expect(useStore.getState().workflowDockWidth).toBe(418);
+  expect(useStore.getState().workflowDockWidth).toBe(398);
 
   act(() => collapseButton.click());
   expect(document.querySelector("[data-workflow-panel-surface]")).not.toBeInTheDocument();
@@ -393,7 +396,7 @@ test("desktop overlay opens from a floating capsule and switches accessible hori
   act(() => executionToggleAfterCollapse.click());
   expect(document.querySelector("[data-workflow-dock-capsule]")).not.toBeInTheDocument();
   expect(screen.getByRole("tab", { name: "执行" })).toHaveAttribute("aria-selected", "true");
-  expect(useStore.getState().workflowDockWidth).toBe(418);
+  expect(useStore.getState().workflowDockWidth).toBe(398);
 
   const terminalTabAfterReopen = screen.getByRole("tab", { name: "终端" });
   const collapseButtonAfterReopen = screen.getByRole("button", { name: /收起/ });
@@ -450,6 +453,8 @@ test("the responsive right drawer switches from execution to the live terminal",
   const user = userEvent.setup();
 
   expect(await screen.findByRole("tab", { name: "执行" })).toHaveAttribute("aria-selected", "true");
+  expect(document.querySelector('[data-workflow-dock][data-workflow-dock-layout="drawer"]')).toBeInTheDocument();
+  expect(document.querySelector("[data-workflow-dock-capsule]")).not.toBeInTheDocument();
   expect(screen.queryByRole("separator", { name: "调整功能坞宽度" })).not.toBeInTheDocument();
   await user.click(screen.getByRole("tab", { name: "终端" }));
   expect(await screen.findByText("Live terminal")).toBeInTheDocument();

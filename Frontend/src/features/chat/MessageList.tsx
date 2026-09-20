@@ -11,10 +11,13 @@ import {
 } from "react";
 import type { InteractionInputAction, InteractionInputContent } from "../../api/eventTypes";
 import type { ChatMessage, RunRecord, UserProfile } from "../../store/sessionStore";
+import type { CalculateViewLocation } from "react-virtuoso";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { useResponsiveMode } from "../../shared/responsive";
 import { useMotionLevel } from "../../shared/motion";
 import { PerformanceMonitor } from "../../app/PerformanceMonitor";
 import { AssistantTurnRow } from "./AssistantTurnRow";
+import { ChatLoadingSurface } from "./ChatLoadingSurface";
 import { DeleteMessageDialog } from "./DeleteMessageDialog";
 import { MessageRow } from "./MessageRow";
 import { MotionMessageItem } from "./MotionMessageItem";
@@ -32,7 +35,6 @@ import { scheduleIdleTask } from "../../shared/scheduling/scheduleIdleTask";
 import {
   ConversationEventRail,
   projectConversationEvents,
-  readConversationEventIndex,
   type ConversationEventKind,
   type ConversationEventSourceItem,
 } from "./ConversationEventRail";
@@ -61,10 +63,14 @@ const MESSAGE_LIST_BOTTOM_THRESHOLD = 80;
 const MESSAGE_ITEM_DEFAULT_HEIGHT = 132;
 const MESSAGE_LIST_FORWARD_OVERSCAN_PX = 160;
 const MESSAGE_LIST_REVERSE_OVERSCAN_PX = 96;
-const EVENT_NAVIGATION_SETTLE_MS = 320;
 // The rail is navigational chrome, so update it after the message layout settles instead
 // of competing with image decoding and inertial scrolling on every ResizeObserver entry.
 const EVENT_RAIL_HEIGHT_SAMPLE_MS = 160;
+
+const forceCenterEventLocation: CalculateViewLocation = ({ locationParams }) => ({
+  ...locationParams,
+  align: "center",
+});
 
 const LazyMessageListVirtualizer = lazy(() =>
   import("./MessageListVirtualizer").then((module) => ({ default: module.MessageListVirtualizer })),
@@ -81,6 +87,23 @@ function readMeasuredMessageKey(element: HTMLElement): string | null {
   return (
     element.dataset.messageKey ?? element.querySelector<HTMLElement>("[data-message-key]")?.dataset.messageKey ?? null
   );
+}
+
+/** Keep reply navigation inside the chat scroller instead of scrolling every ancestor. */
+export function scrollConversationAnchorIntoView(scroller: HTMLElement, anchor: HTMLElement): void {
+  const scrollerRect = scroller.getBoundingClientRect();
+  const anchorRect = anchor.getBoundingClientRect();
+  const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+  const targetTop = Math.min(
+    maxScrollTop,
+    Math.max(
+      0,
+      scroller.scrollTop + anchorRect.top - scrollerRect.top - (scroller.clientHeight - anchorRect.height) / 2,
+    ),
+  );
+
+  if (Math.abs(targetTop - scroller.scrollTop) < 1) return;
+  scroller.scrollTo({ top: targetTop, behavior: "auto" });
 }
 
 export function MessageList({
@@ -108,7 +131,9 @@ export function MessageList({
   const measuredHeightsRef = useRef<Map<string, number>>(new Map());
   const [eventMeasuredHeights, setEventMeasuredHeights] = useState<ReadonlyMap<string, number>>(new Map());
   const eventHeightSampleTimerRef = useRef<number | null>(null);
-  const eventNavigationTimerRef = useRef<number | null>(null);
+  const eventNavigationTokenRef = useRef(0);
+  const eventNavigationLockRef = useRef(false);
+  const eventNavigationSettleFrameRef = useRef<number | null>(null);
   const activeEventSessionRef = useRef(sessionId);
   const previousStreamingRunIdRef = useRef<string | null>(null);
   const highlightedRunIdsRef = useRef<Set<string>>(new Set());
@@ -213,6 +238,12 @@ export function MessageList({
   useEffect(() => {
     measuredHeightsRef.current.clear();
     setEventMeasuredHeights(new Map());
+    eventNavigationTokenRef.current += 1;
+    eventNavigationLockRef.current = false;
+    if (eventNavigationSettleFrameRef.current !== null) {
+      window.cancelAnimationFrame(eventNavigationSettleFrameRef.current);
+      eventNavigationSettleFrameRef.current = null;
+    }
   }, [sessionId]);
 
   const scheduleEventHeightSnapshot = useCallback((): void => {
@@ -235,7 +266,12 @@ export function MessageList({
   useEffect(
     () => () => {
       if (eventHeightSampleTimerRef.current !== null) window.clearTimeout(eventHeightSampleTimerRef.current);
-      if (eventNavigationTimerRef.current !== null) window.clearTimeout(eventNavigationTimerRef.current);
+      eventNavigationTokenRef.current += 1;
+      eventNavigationLockRef.current = false;
+      if (eventNavigationSettleFrameRef.current !== null) {
+        window.cancelAnimationFrame(eventNavigationSettleFrameRef.current);
+        eventNavigationSettleFrameRef.current = null;
+      }
     },
     [],
   );
@@ -308,6 +344,7 @@ export function MessageList({
   const showScrollButton = !isAtBottom && renderedItems.length > 0;
 
   useEffect(() => {
+    if (eventNavigationLockRef.current) return;
     const lastEventIndex = Math.max(0, conversationEvents.length - 1);
     const sessionChanged = activeEventSessionRef.current !== sessionId;
     activeEventSessionRef.current = sessionId;
@@ -316,31 +353,67 @@ export function MessageList({
     );
   }, [conversationEvents.length, isAtBottom, sessionId]);
 
+  const updateActiveEventIndex = useCallback((index: number): void => {
+    if (eventNavigationLockRef.current) return;
+    setActiveEventIndex(index);
+  }, []);
+
   const navigateToEvent = useCallback(
     (event: (typeof conversationEvents)[number]): void => {
+      const navigationToken = eventNavigationTokenRef.current + 1;
+      eventNavigationTokenRef.current = navigationToken;
+      eventNavigationLockRef.current = true;
+      if (eventNavigationSettleFrameRef.current !== null) {
+        window.cancelAnimationFrame(eventNavigationSettleFrameRef.current);
+        eventNavigationSettleFrameRef.current = null;
+      }
       beginManualScroll();
-      autoScroll.ref.current?.scrollToIndex({
-        index: event.itemIndex,
-        align: "start",
-        behavior: reduceMotion || disableMotion ? "auto" : "smooth",
-      });
       const nextIndex = conversationEvents.findIndex((candidate) => candidate.id === event.id);
       if (nextIndex >= 0) setActiveEventIndex(nextIndex);
-      if (eventNavigationTimerRef.current !== null) window.clearTimeout(eventNavigationTimerRef.current);
-      eventNavigationTimerRef.current = window.setTimeout(
-        () => {
-          eventNavigationTimerRef.current = null;
+
+      const finishNavigation = (): void => {
+        if (eventNavigationTokenRef.current !== navigationToken) return;
+        let framesRemaining = 1;
+        const settle = (): void => {
+          eventNavigationSettleFrameRef.current = null;
+          if (eventNavigationTokenRef.current !== navigationToken) return;
+          const scroller = chatScrollerRef.current;
           const anchor = event.anchorId ? document.getElementById(event.anchorId) : null;
-          if (anchor && chatScrollerRef.current?.contains(anchor)) {
-            anchor.scrollIntoView({
-              block: "center",
-              behavior: reduceMotion || disableMotion ? "auto" : "smooth",
-            });
+          const anchorReady = !event.anchorId || (scroller !== null && anchor !== null && scroller.contains(anchor));
+          if (!anchorReady && framesRemaining > 0) {
+            framesRemaining -= 1;
+            eventNavigationSettleFrameRef.current = window.requestAnimationFrame(settle);
+            return;
           }
+          if (scroller && anchor && scroller.contains(anchor)) {
+            // Virtuoso owns row discovery; this one direct scroll owns exact reply alignment.
+            scrollConversationAnchorIntoView(scroller, anchor);
+          }
+          if (framesRemaining > 0) {
+            framesRemaining -= 1;
+            eventNavigationSettleFrameRef.current = window.requestAnimationFrame(settle);
+            return;
+          }
+          eventNavigationLockRef.current = false;
           endManualScroll();
-        },
-        reduceMotion || disableMotion ? 0 : EVENT_NAVIGATION_SETTLE_MS,
-      );
+        };
+        eventNavigationSettleFrameRef.current = window.requestAnimationFrame(settle);
+      };
+
+      const behavior = reduceMotion || disableMotion ? "auto" : "smooth";
+      const handle = autoScroll.ref.current;
+      if (!handle) {
+        finishNavigation();
+        return;
+      }
+
+      handle.scrollIntoView({
+        index: event.itemIndex,
+        align: "center",
+        behavior,
+        calculateViewLocation: forceCenterEventLocation,
+        done: finishNavigation,
+      });
     },
     [autoScroll.ref, beginManualScroll, conversationEvents, disableMotion, endManualScroll, reduceMotion],
   );
@@ -359,9 +432,6 @@ export function MessageList({
             atBottomStateChange={(atBottom) => {
               autoScroll.atBottomStateChange(atBottom);
               setIsAtBottom(atBottom);
-            }}
-            rangeChanged={(range) => {
-              setActiveEventIndex(readConversationEventIndex(conversationEvents, range.startIndex));
             }}
             totalListHeightChanged={autoScroll.totalListHeightChanged}
             defaultItemHeight={MESSAGE_ITEM_DEFAULT_HEIGHT}
@@ -455,7 +525,7 @@ export function MessageList({
           defaultItemHeight={MESSAGE_ITEM_DEFAULT_HEIGHT}
           activeEventIndex={activeEventIndex}
           scroller={chatScroller}
-          onActiveEventChange={setActiveEventIndex}
+          onActiveEventChange={updateActiveEventIndex}
           onNavigate={navigateToEvent}
         />
         <ScrollToBottomButton visible={showScrollButton} onClick={scrollToBottom} />
@@ -476,7 +546,11 @@ export function MessageList({
 }
 
 function MessageListVirtualizerLoadingState(): JSX.Element {
-  return <div className="min-h-0 flex-1" aria-busy="true" data-message-list-loading />;
+  return (
+    <div className="min-h-0 flex-1" data-message-list-loading>
+      <ChatLoadingSurface label={frontendMessage("ui.loading")} />
+    </div>
+  );
 }
 
 function shouldDeferTerminalMessage(message: ChatMessage, run: RunRecord): boolean {
@@ -524,6 +598,9 @@ function readStreamingConversationEventKind(
 }
 
 function readTurnEventProgress(messageIndex: number, messageCount: number, kind: ChatMessage["kind"]): number {
-  if (kind === "AssistantFinal" || kind === "AssistantAsk" || kind === "Error") return 0.82;
+  if (kind === "AssistantFinal" || kind === "AssistantAsk" || kind === "Error") {
+    // Keep multiple terminal landmarks inside one virtual row strictly ordered.
+    return 0.7 + (0.24 * (messageIndex + 1)) / (messageCount + 1);
+  }
   return (messageIndex + 1) / (messageCount + 1);
 }

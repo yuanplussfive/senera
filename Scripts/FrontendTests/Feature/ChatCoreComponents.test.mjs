@@ -146,6 +146,9 @@ test("chat composer sends trimmed text and switches queue mode while a run is ac
     ),
   );
 
+  expect(screen.getByRole("button", { name: frontendMessage("chat.composer.cancelRunning") })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "inject-current-run" })).not.toBeInTheDocument();
+
   await user.type(screen.getByRole("textbox", { name: "输入消息" }), "steer now");
   await user.keyboard("{Enter}");
   expect(onSend).toHaveBeenLastCalledWith("steer now", undefined, "steer");
@@ -391,6 +394,9 @@ test("a cancelled run remains renderable when the local message list is empty", 
 
   expect(screen.queryByRole("button", { name: "整理日志" })).not.toBeInTheDocument();
   expect(document.querySelector("[data-message-list-loading]")).not.toBeNull();
+  const loadingStatus = screen.getByRole("status");
+  expect(loadingStatus).toHaveAttribute("aria-busy", "true");
+  expect(loadingStatus).toHaveTextContent(frontendMessage("ui.loading"));
 });
 
 test("chat panel shows the conversation skeleton before history loading is marked", () => {
@@ -420,6 +426,24 @@ test("chat panel shows the conversation skeleton before history loading is marke
   expect(screen.getByRole("status", { name: "正在恢复 6 条历史消息" })).toBeVisible();
   expect(document.querySelector("[data-history-skeleton]")).not.toBeNull();
   expect(screen.queryByRole("button", { name: "整理日志" })).not.toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "输入消息" })).toBeDisabled();
+});
+
+test("chat panel does not own the application catalog loading barrier", () => {
+  resetChatStore({
+    activeSessionId: null,
+    sessionOrder: [],
+    sessions: {},
+    catalogSynced: { sessions: false, presets: false },
+  });
+
+  renderWithFrontendProviders(React.createElement(ChatPanel, createChatPanelProps()));
+
+  expect(document.querySelector("[data-session-catalog-loading]")).not.toBeNull();
+  expect(document.querySelector("[data-chat-loading-surface]")).toBeNull();
+  expect(screen.queryByText("今天想做点什么？")).not.toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "输入消息" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "send" })).toBeDisabled();
 });
 
 test("chat panel mounts and updates aggregate state without external-store warnings", async () => {

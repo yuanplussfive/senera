@@ -71,9 +71,7 @@ test("conversation shows a live thinking stage before the first tool decision", 
   expect(document.querySelector("[data-feed-elapsed]")).not.toBeInTheDocument();
   expect(screen.queryByText(frontendMessage("workflow.feed.running"))).not.toBeInTheDocument();
   expect(screen.queryByText(frontendMessage("workflow.feed.stepCount", { count: 0 }))).not.toBeInTheDocument();
-  expect(
-    document.querySelector("[data-feed-marker-status='running'] [class~='motion-safe:animate-spin']"),
-  ).toBeInTheDocument();
+  expect(document.querySelector("[data-feed-marker-status='running'] .senera-spinner")).toBeInTheDocument();
   expect(document.querySelector("[data-feed-marker-status='running']")).toHaveClass(
     "bg-accent-surface",
     "text-accent-content",
@@ -96,7 +94,7 @@ test("active tool stages keep their action icon and a running child row without 
     document.querySelector("[data-tool-action-icon='search'][data-tool-action-status='running']"),
   ).toBeInTheDocument();
   expect(
-    document.querySelector("[data-tool-batch-activity-item][data-state='loading'] .motion-safe\\:animate-spin"),
+    document.querySelector("[data-tool-batch-activity-item][data-state='loading'] .senera-spinner"),
   ).toBeInTheDocument();
 });
 
@@ -235,5 +233,6 @@ test("execution feed contains failed events and respects reduced motion", () => 
     "border-brick-400",
   );
   expect(screen.getByText("Prepare context").parentElement?.parentElement).not.toHaveClass("bg-brick-50");
-  expect(document.querySelector("[data-execution-feed] .animate-spin")).not.toBeInTheDocument();
+  expect(document.documentElement).toHaveAttribute("data-motion-level", "reduced");
+  expect(document.querySelector("[data-execution-feed] .senera-spinner")).toBeInTheDocument();
 });

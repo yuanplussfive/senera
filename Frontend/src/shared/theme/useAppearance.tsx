@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore, type ReactNode } from "react";
-import { useMotionLevel } from "../motion/MotionProvider";
+import { useMotionLevel } from "../motion/MotionLevelContext";
 import type { MotionLevel } from "../motion/types";
 import { type AppearancePreferenceUpdate, type AppearanceSnapshot } from "./themeModel";
 import { createAppearanceStore } from "./themeStore";

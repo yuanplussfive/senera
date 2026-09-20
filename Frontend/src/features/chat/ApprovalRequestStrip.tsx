@@ -119,7 +119,7 @@ function ApprovalGroupView({
   };
 
   return (
-    <section className="rounded-lg border border-line bg-surface-raised px-3 py-2.5 shadow-panel">
+    <section className="rounded-[9px] border border-line-subtle bg-surface-muted/60 px-3 py-2.5 shadow-none">
       <div className="flex min-w-0 items-center gap-2">
         <ShieldCheck className="h-4 w-4 shrink-0 text-umber-600" />
         <span className="min-w-0 truncate text-[12.5px] font-semibold text-content-primary">

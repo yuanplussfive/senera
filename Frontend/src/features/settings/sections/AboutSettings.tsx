@@ -1,9 +1,8 @@
 import { useEffect } from "react";
-import { Check, Copy, Download, ExternalLink, RefreshCw, RotateCw } from "lucide-react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import { cn } from "../../../lib/util";
 import { MotionIconSwap } from "../../../shared/motion";
-import { Button, IconButton, LogoMark, useClipboardCopy } from "../../../shared/ui";
+import { AppIcon, Button, IconButton, LogoMark, useClipboardCopy } from "../../../shared/ui";
 import type { SettingsEnvironment } from "../SettingsWorkbenchContracts";
 
 export function AboutSettings({ environment }: { environment: SettingsEnvironment }): JSX.Element {
@@ -115,13 +114,13 @@ function RuntimeUpdateControl({ update }: { update: NonNullable<SettingsEnvironm
         onClick={() => void (snapshot.action === "none" ? update.check() : update.apply())}
       >
         {snapshot.action === "download" ? (
-          <Download className="h-3.5 w-3.5" />
+          <AppIcon icon="download" size={14} aria-hidden="true" />
         ) : snapshot.action === "reload" ? (
-          <RefreshCw className="h-3.5 w-3.5" />
+          <AppIcon icon="refresh" size={14} aria-hidden="true" />
         ) : snapshot.action === "operator" ? (
-          <ExternalLink className="h-3.5 w-3.5" />
+          <AppIcon icon="external-link" size={14} aria-hidden="true" />
         ) : (
-          <RotateCw className="h-3.5 w-3.5" />
+          <AppIcon icon="refresh" size={14} aria-hidden="true" />
         )}
         {actionLabel}
       </Button>
@@ -195,7 +194,11 @@ function CommandRow({ label, command }: { label: string; command: string }): JSX
         onClick={() => void copyText(command)}
       >
         <MotionIconSwap stateKey={copied ? "copied" : "copy"}>
-          {copied ? <Check className="h-3.5 w-3.5 text-accent-content" /> : <Copy className="h-3.5 w-3.5" />}
+          {copied ? (
+            <AppIcon icon="check" size={14} className="text-accent-content" aria-hidden="true" />
+          ) : (
+            <AppIcon icon="copy" size={14} aria-hidden="true" />
+          )}
         </MotionIconSwap>
       </IconButton>
     </div>

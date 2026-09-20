@@ -40,6 +40,7 @@ export const States: Story = () => (
           values={[]}
           placeholder="选择服务区域"
           options={regionOptions}
+          emptyState="当前没有可选区域"
           ariaLabel="空的服务区域选择"
           onChange={() => undefined}
         />
@@ -58,3 +59,37 @@ export const States: Story = () => (
     </div>
   </main>
 );
+
+export const Sizes: Story = () => {
+  const [smallRegions, setSmallRegions] = useState<readonly string[]>(["us"]);
+  const [standardRegions, setStandardRegions] = useState<readonly string[]>(["us", "eu"]);
+
+  return (
+    <main className="min-h-[420px] bg-surface-canvas p-6 text-content-primary sm:p-10">
+      <div className="mx-auto grid max-w-[560px] gap-6">
+        <div className="grid gap-2">
+          <span className="text-[13px] font-medium text-content-primary">紧凑尺寸</span>
+          <MenuMultiSelect
+            values={smallRegions}
+            placeholder="选择服务区域"
+            options={regionOptions}
+            size="sm"
+            ariaLabel="紧凑尺寸服务区域"
+            onChange={setSmallRegions}
+          />
+        </div>
+        <div className="grid gap-2">
+          <span className="text-[13px] font-medium text-content-primary">标准尺寸</span>
+          <MenuMultiSelect
+            values={standardRegions}
+            placeholder="选择服务区域"
+            options={regionOptions}
+            size="md"
+            ariaLabel="标准尺寸服务区域"
+            onChange={setStandardRegions}
+          />
+        </div>
+      </div>
+    </main>
+  );
+};

@@ -74,12 +74,10 @@ export function ConversationEventRail({
     if (!scroller) return;
     const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
     setScrollable(maxScrollTop > 1);
-    const readingPosition = Math.min(
-      1,
-      Math.max(0, (scroller.scrollTop + scroller.clientHeight * 0.28) / Math.max(1, scroller.scrollHeight)),
-    );
-    onActiveEventChange(readConversationEventPositionIndex(markers, readingPosition));
-  }, [markers, onActiveEventChange, scroller]);
+    // A short list has no scroll position to infer. Keep the explicit rail selection stable.
+    if (maxScrollTop <= 1) return;
+    onActiveEventChange(readConversationEventScrollSpyIndex(events, markers, scroller));
+  }, [events, markers, onActiveEventChange, scroller]);
 
   const scheduleScrollMetricsSync = useCallback((): void => {
     if (scrollFrameRef.current !== null) return;
@@ -98,6 +96,10 @@ export function ConversationEventRail({
     return () => {
       resizeObserver.disconnect();
       scroller.removeEventListener("scroll", scheduleScrollMetricsSync);
+      if (scrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollFrameRef.current);
+        scrollFrameRef.current = null;
+      }
     };
   }, [events.length, measuredHeights, scheduleScrollMetricsSync, scroller, syncScrollMetrics]);
 
@@ -115,7 +117,6 @@ export function ConversationEventRail({
   const navigateToEvent = (eventIndex: number): void => {
     const event = events[eventIndex];
     if (!event) return;
-    onActiveEventChange(eventIndex);
     onNavigate(event);
   };
 
@@ -135,6 +136,7 @@ export function ConversationEventRail({
       className={cn("chat-event-rail", !scrollable && events.length < 2 && "chat-event-rail--idle")}
       aria-label={frontendMessage("chat.eventRail.ariaLabel")}
       data-chat-event-rail
+      data-testid="chat-event-rail"
       onKeyDown={navigateByKeyboard}
     >
       <button
@@ -278,6 +280,40 @@ export function readConversationEventPositionIndex(
     if (events[index]!.position <= position) return index;
   }
   return 0;
+}
+
+function readConversationEventScrollSpyIndex(
+  events: readonly ConversationEventLandmark[],
+  markers: readonly Pick<ConversationEventMarker, "position">[],
+  scroller: HTMLElement,
+): number {
+  const scrollerRect = scroller.getBoundingClientRect();
+  const readingLine = scrollerRect.top + scroller.clientHeight * 0.28;
+  let lastVisibleAnchorIndex = -1;
+  let firstVisibleAnchorIndex = -1;
+
+  events.forEach((event, index) => {
+    if (!event.anchorId) return;
+    const anchor = document.getElementById(event.anchorId);
+    if (!anchor || !scroller.contains(anchor)) return;
+    const anchorRect = anchor.getBoundingClientRect();
+    if (anchorRect.bottom < scrollerRect.top || anchorRect.top > scrollerRect.bottom) return;
+    if (anchorRect.top <= readingLine) lastVisibleAnchorIndex = index;
+    else if (firstVisibleAnchorIndex < 0) firstVisibleAnchorIndex = index;
+  });
+
+  if (lastVisibleAnchorIndex >= 0) return lastVisibleAnchorIndex;
+  if (firstVisibleAnchorIndex >= 0) return firstVisibleAnchorIndex;
+
+  const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+  const readingPosition =
+    maxScrollTop - scroller.scrollTop <= 1
+      ? 1
+      : Math.min(
+          1,
+          Math.max(0, (scroller.scrollTop + scroller.clientHeight * 0.28) / Math.max(1, scroller.scrollHeight)),
+        );
+  return readConversationEventPositionIndex(markers, readingPosition);
 }
 
 function readConversationEventLabel(kind: ConversationEventKind): string {

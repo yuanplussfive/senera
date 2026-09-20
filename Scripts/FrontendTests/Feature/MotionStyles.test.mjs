@@ -7,6 +7,15 @@ const transitionsCss = readFileSync(
   path.join(resolveWorkspaceRoot(process.cwd()), "Frontend", "src", "styles", "transitions.css"),
   "utf8",
 );
+const indexCss = readFileSync(path.join(resolveWorkspaceRoot(process.cwd()), "Frontend", "src", "index.css"), "utf8");
+const dropdownMenuSource = readFileSync(
+  path.join(resolveWorkspaceRoot(process.cwd()), "Frontend", "src", "shared", "ui", "DropdownMenu.tsx"),
+  "utf8",
+);
+const contextMenuSource = readFileSync(
+  path.join(resolveWorkspaceRoot(process.cwd()), "Frontend", "src", "shared", "ui", "ContextMenu.tsx"),
+  "utf8",
+);
 
 describe("shared motion styles", () => {
   test("keeps Radix transform origins and shared timing tokens", () => {
@@ -16,17 +25,39 @@ describe("shared motion styles", () => {
     expect(transitionsCss).toContain("var(--menu-close-dur)");
   });
 
+  test("lets Radix update menu transform origins after collision flipping", () => {
+    expect(dropdownMenuSource).not.toContain("transformOrigin");
+    expect(contextMenuSource).not.toContain("transformOrigin");
+  });
+
   test("keeps reduced menu feedback while reserving instant motion for none", () => {
     expect(transitionsCss).toMatch(
-      /html\[data-motion-level="reduced"\] \.menu-surface\[data-state="open"\][\s\S]*?animation-name: menu-surface-fade-in;/,
+      /html\[data-motion-level="reduced"\] \.menu-surface\[data-state="open"\][\s\S]*?animation-name: menu-surface-fade-in(?:,|;)/,
+    );
+    expect(transitionsCss).toContain(
+      "animation-duration: var(--menu-reduced-open-dur), var(--menu-reduced-open-dur) !important;",
     );
     expect(transitionsCss).toMatch(
       /html\[data-motion-level="none"\] \.menu-surface\[data-state\][\s\S]*?animation-duration: 0\.001ms !important;/,
     );
+    expect(indexCss).toContain('html[data-motion-level="reduced"] .menu-surface [role^="menuitem"]');
+    expect(indexCss).toContain('html[data-motion-level="none"] button[role="switch"]');
   });
 
   test("prevents closed overlays from intercepting input and animates persistent menu checks", () => {
     expect(transitionsCss).toMatch(/\.dialog-presence\[data-state="closed"\][\s\S]*?pointer-events: none !important;/);
     expect(transitionsCss).toContain('[data-state="checked"] .menu-check');
+  });
+
+  test("ports the menu surface transition and origin motion", () => {
+    expect(indexCss).toMatch(
+      /\.menu-surface\s*\{[\s\S]*?transform: translateY\(-6px\) scale\(0\.965\);[\s\S]*?visibility: hidden;/,
+    );
+    expect(indexCss).toContain("@starting-style");
+    expect(indexCss).toContain("var(--menu-check-opacity-dur)");
+    expect(indexCss).toMatch(/\.menu-surface\[data-state="closed"\][\s\S]*?pointer-events: none !important;/);
+    expect(indexCss).toContain("menu-surface-presence-out");
+    expect(transitionsCss).toContain("translateY(-6px) scale(0.965)");
+    expect(transitionsCss).toContain("translateY(-3px) scale(0.985)");
   });
 });
