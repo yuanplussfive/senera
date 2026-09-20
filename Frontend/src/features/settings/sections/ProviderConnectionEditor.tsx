@@ -212,6 +212,7 @@ export function ProviderConnectionEditor({
               <input
                 value={baseUrlDraft}
                 disabled={disabled}
+                aria-label={frontendMessage("settings.provider.apiUrl")}
                 placeholder="https://.../v1"
                 spellCheck={false}
                 className="h-full min-w-0 flex-1 bg-transparent font-mono text-[12px] text-content-primary outline-none placeholder:font-sans placeholder:text-content-muted"
