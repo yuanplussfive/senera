@@ -124,7 +124,7 @@ export function ModelProviderIcon({ icon, className, size = 16 }: ModelProviderI
   const style = { height: size, width: size };
   return (
     <img
-      src={readModelProviderIconSrc(targetIcon)}
+      src={encodeURI(readModelProviderIconSrc(targetIcon))}
       alt=""
       aria-hidden="true"
       className={cn("block shrink-0 object-contain align-middle", className)}
