@@ -79,7 +79,6 @@ export function useSessionCatalogSync({
     for (const request of buildConnectionOpenSyncRequests(state.userProfile)) {
       send(request);
     }
-
   }, [invalidateSessionHistoryCache, onServerSessionsReset, resetCatalogSyncState, send, status]);
 
   return { refreshSessionCatalog };

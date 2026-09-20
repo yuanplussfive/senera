@@ -107,8 +107,7 @@ export function resolveSendTargetSession({
       };
     }
   }
-  const activeSessionMissingFromCatalog =
-    activeSessionId && catalogSynced && !sessions[activeSessionId];
+  const activeSessionMissingFromCatalog = activeSessionId && catalogSynced && !sessions[activeSessionId];
   if (!activeSessionId || missingOnServerIds[activeSessionId] || activeSessionMissingFromCatalog) {
     return { kind: "ready", sessionId: createSessionId(), shouldCreateSession: true };
   }

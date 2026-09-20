@@ -127,8 +127,9 @@ describe("Session history replay behavior", () => {
     const runChunks = events.filter((event) => event.kind === AgentEventKinds.SessionRunHistoryChunk);
     expect(runChunks).toHaveLength(3);
     expect(
-      runChunks.every((event) =>
-        Buffer.byteLength(JSON.stringify({ sessionId, events: readRecord(event.data)?.events ?? [] })) <= 1_000,
+      runChunks.every(
+        (event) =>
+          Buffer.byteLength(JSON.stringify({ sessionId, events: readRecord(event.data)?.events ?? [] })) <= 1_000,
       ),
     ).toBe(true);
   });
