@@ -1,6 +1,13 @@
 import { type ReactNode } from "react";
 import { cn } from "../../lib/util";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./DropdownMenu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "./DropdownMenu";
 import { AppIcon } from "./AppIcon";
 
 export interface MenuSelectOption {
@@ -92,20 +99,17 @@ export function MenuSelect({
         className={cn("scrollbar-thin max-h-[320px] min-w-[240px] overflow-y-auto", contentClassName)}
       >
         {options.length > 0 ? (
-          options.map((option, index) => (
-            <DropdownMenuItem
-              key={`${option.value || "empty"}-${index}`}
-              disabled={option.disabled}
-              icon={
-                <span className="grid h-3.5 w-3.5 place-items-center" aria-hidden="true">
-                  {option.value === value ? <AppIcon icon="check" size={14} aria-hidden="true" /> : null}
-                </span>
-              }
-              onSelect={() => onChange(option.value)}
-            >
-              {renderOption ? renderOption(option) : option.label}
-            </DropdownMenuItem>
-          ))
+          <DropdownMenuRadioGroup value={value} onValueChange={(next) => next !== value && onChange(next)}>
+            {options.map((option, index) => (
+              <DropdownMenuRadioItem
+                key={`${option.value || "empty"}-${index}`}
+                value={option.value}
+                disabled={option.disabled}
+              >
+                {renderOption ? renderOption(option) : option.label}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
         ) : emptyState != null ? (
           <DropdownMenuItem disabled>{emptyState}</DropdownMenuItem>
         ) : null}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { SettingsSystemConfigHandle } from "../SettingsContracts";
 
@@ -44,6 +44,12 @@ export function ModelServiceSection({
   const [pendingProviderSelection, setPendingProviderSelection] = useState<ProviderEndpointDraft | null>(null);
   const [providerConfigOpen, setProviderConfigOpen] = useState(false);
   const [providerConfigSaveRequested, setProviderConfigSaveRequested] = useState(false);
+  const [editorLocalDirty, setEditorLocalDirty] = useState(false);
+  const editorLocalDirtyRef = useRef(false);
+  const handleEditorLocalDirtyChange = (dirty: boolean): void => {
+    editorLocalDirtyRef.current = dirty;
+    setEditorLocalDirty(dirty);
+  };
   const { ref: layoutRef, layout } = useObservedLayout<HTMLDivElement, "compact" | "standard" | "wide">(
     classifySettingsContentLayout,
     "standard",
@@ -135,9 +141,9 @@ export function ModelServiceSection({
   };
 
   useEffect(() => {
-    onDirtyChange?.(actions.dirty);
+    onDirtyChange?.(actions.dirty || editorLocalDirty);
     return () => onDirtyChange?.(false);
-  }, [actions.dirty, onDirtyChange]);
+  }, [actions.dirty, editorLocalDirty, onDirtyChange]);
 
   if (!systemConfig)
     return (
@@ -196,6 +202,10 @@ export function ModelServiceSection({
         disabled={false}
         onRequestAdd={() => actions.setShowAddDialog(true)}
         onSelect={(provider) => {
+          if (provider.Id !== actions.acceptedProvider?.Id && editorLocalDirtyRef.current) {
+            setPendingProviderSelection(provider);
+            return;
+          }
           const selected = actions.commitAndSelectProvider(provider);
           if (!selected) {
             setPendingProviderSelection(provider);
@@ -221,6 +231,7 @@ export function ModelServiceSection({
             onReadApiKey={systemConfig.readProviderApiKey}
             onChange={actions.updateDraftProvider}
             onConfirm={actions.confirmDraft}
+            onLocalDraftChange={handleEditorLocalDirtyChange}
             onEdit={() => setProviderConfigOpen(true)}
             onDelete={actions.acceptedProvider ? () => setProviderPendingRemoval(actions.acceptedProvider!) : undefined}
           />

@@ -11,6 +11,8 @@ import {
   DropdownMenuLabel,
   DropdownMenuMeta,
   DropdownMenuSeparator,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -202,6 +204,29 @@ export const WithCheckboxItems: Story = () => {
           <DropdownMenuCheckboxItem checked={minimap} onCheckedChange={setMinimap}>
             显示缩略图
           </DropdownMenuCheckboxItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+};
+
+export const WithRadioItems: Story = () => {
+  const [density, setDensity] = useState("comfortable");
+
+  return (
+    <div className="flex min-h-[400px] items-center justify-center p-8">
+      <DropdownMenu defaultOpen>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline">行距</Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuRadioGroup value={density} onValueChange={setDensity}>
+            <DropdownMenuRadioItem value="compact">紧凑</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="comfortable">舒适</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="spacious" disabled>
+              宽松（不可用）
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

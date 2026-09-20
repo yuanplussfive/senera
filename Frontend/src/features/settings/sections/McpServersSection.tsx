@@ -477,6 +477,7 @@ function McpInputControl({
     return (
       <SecretInput
         value={String(formatDraftValue(value))}
+        size="sm"
         disabled={disabled}
         placeholder={
           secretReplaced
@@ -484,7 +485,7 @@ function McpInputControl({
             : (input.placeholder ?? frontendMessage("settings.mcp.inputPlaceholder"))
         }
         ariaLabel={input.title}
-        className="h-9 pl-9 text-[12.5px] font-mono tracking-tight"
+        className="pl-9 text-[12.5px] font-mono tracking-tight"
         showClearButton={clearable}
         clearButtonLabel={frontendMessage("settings.mcp.clearSecret")}
         onChange={(next) => onChange(next)}
@@ -500,6 +501,7 @@ function McpInputControl({
       <Icon className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-350" />
       <Input
         type={input.type === "number" ? "number" : "text"}
+        size="sm"
         autoComplete="off"
         spellCheck={false}
         min={input.min}
@@ -508,7 +510,7 @@ function McpInputControl({
         disabled={disabled}
         placeholder={input.placeholder ?? frontendMessage("settings.mcp.inputPlaceholder")}
         aria-label={input.title}
-        className="h-9 rounded-md pl-9 text-[12.5px]"
+        className="pl-9 text-[12.5px]"
         onBlur={onCommit}
         onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
           if (event.key === "Enter") onCommit();

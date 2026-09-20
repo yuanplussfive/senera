@@ -13,6 +13,7 @@ import {
   FormLabel,
   Input,
   MenuSelect,
+  SecretInput,
 } from "../../../shared/ui";
 import { ModelProviderIcon } from "../../chat/ModelProviderIcon";
 import { isRedactedConfigSecret, normalizeProviderEndpointDraft } from "../../chat/modelConfigData";
@@ -142,11 +143,14 @@ function ProviderConfigDialog({
   );
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
-  const [showKey, setShowKey] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [headers, setHeaders] = useState<HeaderRow[]>([]);
   const apiKeyTouched = useRef(false);
   const firstPreset = providerPresets[0];
+  const providerRef = useRef(provider);
+  const firstPresetRef = useRef(firstPreset);
+  providerRef.current = provider;
+  firstPresetRef.current = firstPreset;
   const preset = providerPresets.find((entry) => entry.id === presetId) ?? providerPresets[0];
   const duplicate =
     !editing && providerId.trim()
@@ -156,31 +160,34 @@ function ProviderConfigDialog({
   const invalid = !providerId.trim() || duplicate || duplicateHeaderNames.size > 0;
 
   useEffect(() => {
+    const currentProvider = providerRef.current;
+    const currentFirstPreset = firstPresetRef.current;
     if (!open) return;
     apiKeyTouched.current = false;
-    setShowKey(false);
     setMoreOpen(false);
-    if (editing && provider) {
-      setProviderId(provider.Id);
-      setDefaultEndpoint(provider.DefaultEndpoint ?? firstPreset?.endpoint ?? "ChatCompletions");
-      setBaseUrl(provider.BaseUrl ?? "");
-      setApiKey(isRedactedConfigSecret(provider.ApiKey ?? "") ? "" : (provider.ApiKey ?? ""));
-      setHeaders(toHeaderRows(provider.Headers ?? {}));
-      setMoreOpen(Object.keys(provider.Headers ?? {}).length > 0);
+    if (editing && currentProvider) {
+      setProviderId(currentProvider.Id);
+      setDefaultEndpoint(currentProvider.DefaultEndpoint ?? currentFirstPreset?.endpoint ?? "ChatCompletions");
+      setBaseUrl(currentProvider.BaseUrl ?? "");
+      setApiKey(isRedactedConfigSecret(currentProvider.ApiKey ?? "") ? "" : (currentProvider.ApiKey ?? ""));
+      setHeaders(toHeaderRows(currentProvider.Headers ?? {}));
+      setMoreOpen(Object.keys(currentProvider.Headers ?? {}).length > 0);
       return;
     }
     setProviderId("");
-    setPresetId(firstPreset?.id ?? "");
-    setDefaultEndpoint(firstPreset?.endpoint ?? "ChatCompletions");
-    setBaseUrl(firstPreset?.baseUrl ?? "");
+    setPresetId(currentFirstPreset?.id ?? "");
+    setDefaultEndpoint(currentFirstPreset?.endpoint ?? "ChatCompletions");
+    setBaseUrl(currentFirstPreset?.baseUrl ?? "");
     setApiKey("");
-    setHeaders(toHeaderRows(firstPreset?.headers ?? {}));
+    setHeaders(toHeaderRows(currentFirstPreset?.headers ?? {}));
   }, [editing, open, provider?.DefaultEndpoint, provider?.Id]);
 
   useEffect(() => {
-    if (!open || !editing || !provider || !onReadApiKey || !isRedactedConfigSecret(provider.ApiKey ?? "")) return;
+    const currentProvider = providerRef.current;
+    if (!open || !editing || !currentProvider || !onReadApiKey || !isRedactedConfigSecret(currentProvider.ApiKey ?? ""))
+      return;
     let current = true;
-    void onReadApiKey(provider.Id).then(
+    void onReadApiKey(currentProvider.Id).then(
       (value) => {
         if (current && !apiKeyTouched.current) setApiKey(value);
       },
@@ -233,9 +240,6 @@ function ProviderConfigDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         title={frontendMessage(editing ? "settings.provider.editTitle" : "settings.provider.addCustomTitle")}
-        description={frontendMessage(
-          editing ? "settings.provider.editDescription" : "settings.provider.addCustomDescription",
-        )}
         className="w-[min(520px,calc(100vw_-_32px))]"
         bodyClassName="scrollbar-thin flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-5 pt-5"
         footer={
@@ -265,6 +269,7 @@ function ProviderConfigDialog({
               autoFocus={!editing}
               value={providerId}
               placeholder={frontendMessage("settings.provider.namePlaceholder")}
+              aria-label={frontendMessage("settings.provider.nameLabel")}
               aria-invalid={duplicate}
               disabled={pending || editing}
               className="h-9 rounded-[7px] px-[11px] text-[13px]"
@@ -353,8 +358,6 @@ function ProviderConfigDialog({
                     setDefaultEndpoint(nextPreset.endpoint);
                     setBaseUrl(nextPreset.baseUrl);
                     setHeaders(toHeaderRows(nextPreset.headers ?? {}));
-                    if (!providerId || providerPresets.some((entry) => entry.id === providerId))
-                      setProviderId(nextPreset.id);
                   }
                 }}
               />
@@ -379,29 +382,21 @@ function ProviderConfigDialog({
             <FormLabel className="text-[12px] text-content-secondary">
               {frontendMessage("settings.provider.apiKey")}
             </FormLabel>
-            <div className="flex h-9 min-w-0 overflow-hidden rounded-[7px] border border-line bg-surface-panel transition-[border-color,box-shadow] focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus">
-              <input
-                type={showKey ? "text" : "password"}
-                value={apiKey}
-                disabled={pending}
-                placeholder={frontendMessage("settings.provider.apiKeyPlaceholder")}
-                spellCheck={false}
-                className="h-full min-w-0 flex-1 bg-transparent px-[11px] font-mono text-[12.5px] text-content-primary outline-none placeholder:text-content-muted"
-                onChange={(event) => {
-                  apiKeyTouched.current = true;
-                  setApiKey(event.currentTarget.value);
-                }}
-              />
-              <button
-                type="button"
-                disabled={apiKey.length === 0}
-                className="grid h-9 w-9 shrink-0 place-items-center text-ink-400 transition hover:bg-ink-900/[0.035] hover:text-ink-800 disabled:pointer-events-none disabled:opacity-40"
-                onClick={() => setShowKey((current) => !current)}
-                aria-label={frontendMessage(showKey ? "config.provider.hideApiKey" : "config.provider.showApiKey")}
-              >
-                <AppIcon icon={showKey ? "eye-off" : "eye"} size={14} />
-              </button>
-            </div>
+            <SecretInput
+              key={`${open ? "open" : "closed"}-${provider?.Id ?? "new"}`}
+              value={apiKey}
+              disabled={pending}
+              placeholder={frontendMessage("settings.provider.apiKeyPlaceholder")}
+              ariaLabel={frontendMessage("settings.provider.apiKey")}
+              showLabel={frontendMessage("config.provider.showApiKey")}
+              hideLabel={frontendMessage("config.provider.hideApiKey")}
+              hideRevealWhenEmpty
+              className="font-mono text-[12.5px] px-[11px]"
+              onChange={(value) => {
+                apiKeyTouched.current = true;
+                setApiKey(value);
+              }}
+            />
           </FormField>
 
           <div className="pt-1">

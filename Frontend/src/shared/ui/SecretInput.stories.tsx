@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Story } from "@ladle/react";
+import { AppIcon } from "./AppIcon";
 import { SecretInput } from "./SecretInput";
 
 export const Basic: Story = () => {
@@ -95,6 +96,37 @@ export const WithClearButton: Story = () => {
   );
 };
 
+export const WithTrailingAction: Story = () => {
+  const [value, setValue] = useState("sk-example-key-1234567890");
+  return (
+    <main className="min-h-[320px] bg-surface-canvas p-6 text-content-primary sm:p-10">
+      <div className="mx-auto max-w-[560px]">
+        <h1 className="text-[18px] font-semibold text-content-strong">带尾部操作</h1>
+        <div className="mt-6">
+          <SecretInput
+            value={value}
+            ariaLabel="可粘贴的 API 密钥"
+            showLabel="显示 API 密钥"
+            hideLabel="隐藏 API 密钥"
+            onChange={setValue}
+            trailing={
+              <button
+                type="button"
+                aria-label="粘贴 API 密钥"
+                className="grid h-8 w-7 place-items-center rounded text-content-muted hover:bg-surface-hover hover:text-content-primary"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => setValue("sk-pasted-example-1234567890")}
+              >
+                <AppIcon icon="copy" size={13} />
+              </button>
+            }
+          />
+        </div>
+      </div>
+    </main>
+  );
+};
+
 export const States: Story = () => {
   const [value, setValue] = useState("sk-example-key-1234567890");
   return (
@@ -111,8 +143,19 @@ export const States: Story = () => {
         </div>
 
         <div>
+          <label className="mb-1.5 block text-[12px] font-medium text-content-secondary">标准尺寸</label>
+          <SecretInput size="md" value={value} ariaLabel="标准尺寸" onChange={setValue} />
+        </div>
+
+        <div>
           <label className="mb-1.5 block text-[12px] font-medium text-content-secondary">空值状态</label>
-          <SecretInput value="" placeholder="输入密钥..." ariaLabel="空值状态" onChange={() => {}} />
+          <SecretInput
+            value=""
+            placeholder="输入密钥..."
+            ariaLabel="空值状态"
+            hideRevealWhenEmpty
+            onChange={() => {}}
+          />
         </div>
 
         <div>

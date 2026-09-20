@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { SettingsConfigCommands } from "../SettingsContracts";
 import { cn } from "../../../lib/util";
@@ -10,6 +10,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
+  SecretInput,
   Switch,
   Tooltip,
 } from "../../../shared/ui";
@@ -37,6 +38,7 @@ export function ProviderConnectionEditor({
   onReadApiKey,
   onChange,
   onConfirm,
+  onLocalDraftChange,
   onEdit,
   onDelete,
 }: {
@@ -50,18 +52,39 @@ export function ProviderConnectionEditor({
   onReadApiKey?: (providerId: string) => Promise<string>;
   onChange: (patch: Partial<ProviderEndpointDraft>) => void;
   onConfirm: (patch?: Partial<ProviderEndpointDraft>) => void;
+  onLocalDraftChange?: (dirty: boolean) => void;
   onEdit?: () => void;
   onDelete?: () => void;
 }): JSX.Element {
-  const [showKey, setShowKey] = useState(false);
-  const [apiKeyDraft, setApiKeyDraft] = useState<string | null>(null);
-  const [revealedApiKey, setRevealedApiKey] = useState<string | null>(null);
   const provider = draftProvider;
   const providerId = provider?.Id;
+  const [apiKeyDraft, setApiKeyDraft] = useState<string | null>(null);
+  const [revealedApiKey, setRevealedApiKey] = useState<string | null>(null);
+  const [baseUrlDraft, setBaseUrlDraft] = useState(provider?.BaseUrl ?? "");
   const acceptedProviderApiKey = acceptedProvider?.ApiKey;
+  const apiKeyDraftRef = useRef(apiKeyDraft);
+  const baseUrlDraftRef = useRef(baseUrlDraft);
+  const apiKeyDirtyRef = useRef(false);
+  const baseUrlDirtyRef = useRef(false);
+  const logoDirtyRef = useRef(false);
+  const localDraftDirtyRef = useRef(false);
+  const onLocalDraftChangeRef = useRef(onLocalDraftChange);
+  apiKeyDraftRef.current = apiKeyDraft;
+  baseUrlDraftRef.current = baseUrlDraft;
+  onLocalDraftChangeRef.current = onLocalDraftChange;
+
+  const setLocalFieldDirty = useCallback((field: "apiKey" | "baseUrl" | "logo", dirty: boolean): void => {
+    if (field === "apiKey") apiKeyDirtyRef.current = dirty;
+    else if (field === "baseUrl") baseUrlDirtyRef.current = dirty;
+    else logoDirtyRef.current = dirty;
+    const nextDirty = apiKeyDirtyRef.current || baseUrlDirtyRef.current || logoDirtyRef.current;
+    if (nextDirty === localDraftDirtyRef.current) return;
+    localDraftDirtyRef.current = nextDirty;
+    onLocalDraftChangeRef.current?.(nextDirty);
+  }, []);
 
   useEffect(() => {
-    setShowKey(false);
+    if (apiKeyDirtyRef.current) return;
     setApiKeyDraft(null);
     const snapshotApiKey = acceptedProviderApiKey;
     if (typeof snapshotApiKey === "string" && !isRedactedConfigSecret(snapshotApiKey)) {
@@ -83,6 +106,23 @@ export function ProviderConnectionEditor({
       current = false;
     };
   }, [acceptedProviderApiKey, onReadApiKey, providerId]);
+
+  useEffect(() => {
+    if (baseUrlDirtyRef.current) return;
+    setBaseUrlDraft(provider?.BaseUrl ?? "");
+  }, [provider?.BaseUrl, providerId]);
+
+  useEffect(() => {
+    return () => {
+      baseUrlDirtyRef.current = false;
+      apiKeyDirtyRef.current = false;
+      logoDirtyRef.current = false;
+      if (localDraftDirtyRef.current) {
+        localDraftDirtyRef.current = false;
+        onLocalDraftChangeRef.current?.(false);
+      }
+    };
+  }, [providerId]);
 
   if (!provider || !acceptedProvider || providerIndex < 0) {
     return (
@@ -112,6 +152,7 @@ export function ProviderConnectionEditor({
               disabled={disabled || pending}
               onChange={onChange}
               onConfirm={onConfirm}
+              onLocalDraftChange={(dirty) => setLocalFieldDirty("logo", dirty)}
             />
             <div className="min-w-0">
               <span className="block truncate text-[22px] font-semibold leading-7 text-content-primary">
@@ -119,11 +160,7 @@ export function ProviderConnectionEditor({
               </span>
               <div className="mt-1 flex min-w-0 items-center gap-2 text-[11px] text-content-muted">
                 <span className="inline-flex max-w-full truncate rounded-md bg-surface-subtle px-2 py-0.5 text-[12px] text-content-secondary">
-                  {provider.Kind
-                    ? provider.Kind === "OpenAICompatible"
-                      ? frontendMessage("settings.provider.presetOpenAICompatible")
-                      : formatLogoName(provider.Kind)
-                    : frontendMessage("settings.provider.protocolUnspecified")}
+                  {providerProtocolLabel(provider.DefaultEndpoint)}
                 </span>
               </div>
             </div>
@@ -167,52 +204,82 @@ export function ProviderConnectionEditor({
         </div>
         <div className="grid gap-4 py-5">
           <ConnectionField
-            label={frontendMessage("settings.provider.apiKey")}
-            hint={frontendMessage("settings.provider.apiKeyHint")}
+            label={frontendMessage("settings.provider.apiUrl")}
+            hint={frontendMessage("settings.provider.apiUrlHint")}
             inline
           >
             <div className="flex h-11 min-w-0 items-center overflow-hidden rounded-[10px] border border-line-subtle bg-surface-panel px-3 transition-[border-color,box-shadow] focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus">
               <input
-                type={showKey ? "text" : "password"}
-                value={displayedApiKey}
+                value={baseUrlDraft}
                 disabled={disabled}
-                placeholder="sk-..."
+                placeholder="https://.../v1"
                 spellCheck={false}
                 className="h-full min-w-0 flex-1 bg-transparent font-mono text-[12px] text-content-primary outline-none placeholder:font-sans placeholder:text-content-muted"
                 onChange={(event) => {
                   const value = event.currentTarget.value;
-                  setApiKeyDraft(value);
-                  onChange({ ApiKey: value });
+                  baseUrlDraftRef.current = value;
+                  setBaseUrlDraft(value);
+                  setLocalFieldDirty("baseUrl", true);
                 }}
-                onBlur={() => onConfirm()}
+                onBlur={() => {
+                  if (!baseUrlDirtyRef.current) return;
+                  onConfirm({ BaseUrl: baseUrlDraftRef.current });
+                  setLocalFieldDirty("baseUrl", false);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter") return;
+                  event.preventDefault();
+                  if (!baseUrlDirtyRef.current) return;
+                  onConfirm({ BaseUrl: baseUrlDraftRef.current });
+                  setLocalFieldDirty("baseUrl", false);
+                  event.currentTarget.blur();
+                }}
               />
-              <div className="flex items-center gap-0.5">
-                <Tooltip
-                  content={frontendMessage(showKey ? "config.provider.hideApiKey" : "config.provider.showApiKey")}
-                  side="top"
-                >
-                  <button
-                    type="button"
-                    disabled={displayedApiKey.length === 0}
-                    className="grid h-6 w-6 shrink-0 place-items-center rounded text-content-muted transition hover:bg-surface-hover hover:text-content-primary disabled:pointer-events-none disabled:opacity-30 active:scale-[0.95]"
-                    onClick={() => setShowKey((current) => !current)}
-                    aria-label={frontendMessage(showKey ? "config.provider.hideApiKey" : "config.provider.showApiKey")}
-                  >
-                    <AppIcon icon={showKey ? "eye-off" : "eye"} size={14} />
-                  </button>
-                </Tooltip>
+            </div>
+          </ConnectionField>
+          <ConnectionField
+            label={frontendMessage("settings.provider.apiKey")}
+            hint={frontendMessage("settings.provider.apiKeyHint")}
+            inline
+          >
+            <SecretInput
+              key={providerId ?? "empty"}
+              size="md"
+              value={displayedApiKey}
+              disabled={disabled}
+              placeholder="sk-..."
+              ariaLabel={frontendMessage("settings.provider.apiKey")}
+              showLabel={frontendMessage("config.provider.showApiKey")}
+              hideLabel={frontendMessage("config.provider.hideApiKey")}
+              hideRevealWhenEmpty
+              className="font-mono text-[12px] placeholder:font-sans"
+              onChange={(value) => {
+                apiKeyDraftRef.current = value;
+                setApiKeyDraft(value);
+                setLocalFieldDirty("apiKey", true);
+              }}
+              onBlur={() => {
+                if (apiKeyDirtyRef.current && apiKeyDraftRef.current !== null) {
+                  onConfirm({ ApiKey: apiKeyDraftRef.current });
+                }
+                setLocalFieldDirty("apiKey", false);
+              }}
+              trailing={
                 <Tooltip content={frontendMessage("clipboard.pasteFromClipboard")} side="top">
                   <button
                     type="button"
                     disabled={disabled}
-                    className="grid h-6 w-6 shrink-0 place-items-center rounded text-content-muted transition hover:bg-surface-hover hover:text-content-primary disabled:pointer-events-none disabled:opacity-30 active:scale-[0.95]"
+                    className="grid h-8 w-7 shrink-0 place-items-center rounded text-content-muted transition hover:bg-surface-hover hover:text-content-primary disabled:pointer-events-none disabled:opacity-30 active:scale-[0.95]"
+                    onMouseDown={(event) => event.preventDefault()}
                     onClick={async () => {
                       try {
                         const clipText = await navigator.clipboard.readText();
                         if (clipText) {
+                          apiKeyDraftRef.current = clipText;
                           setApiKeyDraft(clipText);
-                          onChange({ ApiKey: clipText });
+                          setLocalFieldDirty("apiKey", true);
                           onConfirm({ ApiKey: clipText });
+                          setLocalFieldDirty("apiKey", false);
                         }
                       } catch {
                         // ignore if clipboard permission denied
@@ -223,27 +290,8 @@ export function ProviderConnectionEditor({
                     <AppIcon icon="copy" size={13} />
                   </button>
                 </Tooltip>
-              </div>
-            </div>
-          </ConnectionField>
-          <ConnectionField
-            label={frontendMessage("settings.provider.apiUrl")}
-            hint={frontendMessage("settings.provider.apiUrlHint")}
-            inline
-          >
-            <div className="flex h-11 min-w-0 items-center overflow-hidden rounded-[10px] border border-line-subtle bg-surface-panel px-3 transition-[border-color,box-shadow] focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus">
-              <input
-                value={provider.BaseUrl ?? ""}
-                disabled={disabled}
-                placeholder="https://.../v1"
-                spellCheck={false}
-                className="h-full min-w-0 flex-1 bg-transparent font-mono text-[12px] text-content-primary outline-none placeholder:font-sans placeholder:text-content-muted"
-                onChange={(event) => {
-                  onChange({ BaseUrl: event.currentTarget.value });
-                }}
-                onBlur={() => onConfirm()}
-              />
-            </div>
+              }
+            />
           </ConnectionField>
         </div>
 
@@ -262,23 +310,49 @@ function ProviderAvatarPicker({
   disabled,
   onChange,
   onConfirm,
+  onLocalDraftChange,
 }: {
   provider: ProviderEndpointDraft;
   disabled: boolean;
   onChange: (patch: Partial<ProviderEndpointDraft>) => void;
   onConfirm: (patch?: Partial<ProviderEndpointDraft>) => void;
+  onLocalDraftChange: (dirty: boolean) => void;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
   const iconValue = provider.Icon?.trim() ?? "";
   const builtInCandidate = ModelProviderIconNames.find(
     (name) => name === iconValue.toLowerCase().replace(/\.svg$/u, ""),
   );
-  const customLogoDraft = builtInCandidate ? "" : iconValue;
-  const customLogo = readCustomModelProviderIconSource(customLogoDraft) ?? "";
-  const builtInLogo = customLogo ? "" : (builtInCandidate ?? "");
+  const [customLogoDraft, setCustomLogoDraft] = useState(() => (builtInCandidate ? "" : iconValue));
+  const customLogoDraftRef = useRef(customLogoDraft);
+  const customLogoDirtyRef = useRef(false);
+  const onLocalDraftChangeRef = useRef(onLocalDraftChange);
+  customLogoDraftRef.current = customLogoDraft;
+  onLocalDraftChangeRef.current = onLocalDraftChange;
+
+  useEffect(() => {
+    if (customLogoDirtyRef.current) return;
+    const nextDraft = builtInCandidate ? "" : iconValue;
+    customLogoDraftRef.current = nextDraft;
+    setCustomLogoDraft(nextDraft);
+  }, [builtInCandidate, iconValue, provider.Id]);
+
+  useEffect(() => {
+    return () => {
+      customLogoDirtyRef.current = false;
+      onLocalDraftChangeRef.current(false);
+    };
+  }, [provider.Id]);
+
+  const effectiveIconValue = customLogoDirtyRef.current ? customLogoDraft.trim() : iconValue;
+  const effectiveBuiltInCandidate = ModelProviderIconNames.find(
+    (name) => name === effectiveIconValue.toLowerCase().replace(/\.svg$/u, ""),
+  );
+  const customLogo = readCustomModelProviderIconSource(effectiveIconValue) ?? "";
+  const builtInLogo = customLogo ? "" : (effectiveBuiltInCandidate ?? "");
   const inferredLogo = inferModelProviderEndpointIcon(provider.Id);
   const activeIcon = customLogo || builtInLogo || inferredLogo;
-  const isAuto = !iconValue;
+  const isAuto = !effectiveIconValue;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -312,6 +386,10 @@ function ProviderAvatarPicker({
             type="button"
             disabled={isAuto}
             onClick={() => {
+              customLogoDraftRef.current = "";
+              setCustomLogoDraft("");
+              customLogoDirtyRef.current = false;
+              onLocalDraftChange(false);
               onChange({ Icon: undefined });
               onConfirm({ Icon: undefined });
               setOpen(false);
@@ -334,6 +412,10 @@ function ProviderAvatarPicker({
                 type="button"
                 title={formatLogoName(name)}
                 onClick={() => {
+                  customLogoDraftRef.current = "";
+                  setCustomLogoDraft("");
+                  customLogoDirtyRef.current = false;
+                  onLocalDraftChange(false);
                   onChange({ Icon: name });
                   onConfirm({ Icon: name });
                   setOpen(false);
@@ -359,18 +441,34 @@ function ProviderAvatarPicker({
         </div>
         <div className="flex flex-col gap-1">
           <Input
+            size="sm"
             value={customLogoDraft}
             disabled={disabled}
             placeholder={frontendMessage("settings.provider.logoCustomPlaceholder")}
             spellCheck={false}
             aria-label={frontendMessage("settings.provider.logoCustom")}
-            className="h-8 text-[12px] font-mono"
-            onChange={(event) => onChange({ Icon: event.currentTarget.value || undefined })}
-            onBlur={() => onConfirm()}
+            className="text-[12px] font-mono"
+            onChange={(event) => {
+              const value = event.currentTarget.value;
+              customLogoDraftRef.current = value;
+              setCustomLogoDraft(value);
+              customLogoDirtyRef.current = true;
+              onLocalDraftChange(true);
+            }}
+            onBlur={() => {
+              if (!customLogoDirtyRef.current) return;
+              onConfirm({ Icon: customLogoDraftRef.current || undefined });
+              customLogoDirtyRef.current = false;
+              onLocalDraftChange(false);
+            }}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
                 event.preventDefault();
-                onConfirm();
+                if (customLogoDirtyRef.current) {
+                  onConfirm({ Icon: customLogoDraftRef.current || undefined });
+                  customLogoDirtyRef.current = false;
+                  onLocalDraftChange(false);
+                }
                 setOpen(false);
               }
             }}
@@ -389,6 +487,19 @@ function formatLogoName(value: string): string {
     .replace(/([a-z])([A-Z])/gu, "$1 $2")
     .replace(/[-_]+/gu, " ")
     .replace(/\b\w/gu, (character) => character.toUpperCase());
+}
+
+function providerProtocolLabel(endpoint: ProviderEndpointDraft["DefaultEndpoint"]): string {
+  switch (endpoint ?? "ChatCompletions") {
+    case "Responses":
+      return frontendMessage("settings.provider.endpointResponses");
+    case "ChatCompletions":
+      return frontendMessage("settings.provider.endpointChatCompletions");
+    case "ClaudeMessages":
+      return frontendMessage("settings.provider.endpointClaudeMessages");
+    case "GoogleGenerateContent":
+      return frontendMessage("settings.provider.endpointGoogleGenerateContent");
+  }
 }
 
 const brandedLogoNames: Readonly<Record<string, string>> = {

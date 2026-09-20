@@ -11,6 +11,7 @@ export const DropdownMenuSub = DropdownMenuPrimitive.Sub;
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
 export const DropdownMenuPortal = DropdownMenuPrimitive.Portal;
 export const DropdownMenuGroup = DropdownMenuPrimitive.Group;
+export const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup;
 
 interface ContentProps extends React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content> {
   className?: string;
@@ -167,14 +168,7 @@ export const DropdownMenuCheckboxItem = forwardRef<
     <DropdownMenuPrimitive.CheckboxItem
       ref={ref}
       checked={checked}
-      className={cn(
-        "group relative flex min-h-9 cursor-pointer select-none items-center gap-2.5 rounded-[var(--menu-item-radius)] px-2 py-2 text-left text-[14px] leading-5 outline-none",
-        "transition-[background-color,color,transform] duration-[var(--menu-item-dur)] ease-[var(--menu-item-ease)] active:scale-[0.985] motion-reduce:active:scale-100",
-        isCoarsePointer && "min-h-11",
-        "text-content-primary data-[highlighted]:bg-surface-hover/60 data-[highlighted]:text-content-primary",
-        "data-[disabled]:pointer-events-none data-[disabled]:opacity-45",
-        className,
-      )}
+      className={menuItemClassName({ className, isCoarsePointer })}
       {...props}
     >
       <span className="grid h-[18px] w-[18px] shrink-0 place-items-center">
@@ -187,3 +181,27 @@ export const DropdownMenuCheckboxItem = forwardRef<
   );
 });
 DropdownMenuCheckboxItem.displayName = "DropdownMenuCheckboxItem";
+
+export const DropdownMenuRadioItem = forwardRef<
+  HTMLDivElement,
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.RadioItem>
+>(({ className, children, value, ...props }, ref) => {
+  const { isCoarsePointer } = useResponsiveMode();
+
+  return (
+    <DropdownMenuPrimitive.RadioItem
+      ref={ref}
+      value={value}
+      className={menuItemClassName({ className, isCoarsePointer })}
+      {...props}
+    >
+      <span className="grid h-[18px] w-[18px] shrink-0 place-items-center">
+        <DropdownMenuPrimitive.ItemIndicator asChild>
+          <AppIcon icon="check" size={16} className="menu-check text-accent-content" aria-hidden="true" />
+        </DropdownMenuPrimitive.ItemIndicator>
+      </span>
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+    </DropdownMenuPrimitive.RadioItem>
+  );
+});
+DropdownMenuRadioItem.displayName = "DropdownMenuRadioItem";
