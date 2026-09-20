@@ -21,6 +21,9 @@ test("model provider icon sources stay inside the bundled icon allow-list", () =
     "/app/icons/model-providers/sparkles.svg",
   );
   expect(readModelProviderIconSrc("javascript:alert(1)", "/app/")).toBe("/app/icons/model-providers/sparkles.svg");
+  expect(readModelProviderIconSrc(String.fromCharCode(0xd800), "/app/")).toBe(
+    "/app/icons/model-providers/sparkles.svg",
+  );
   expect(readModelProviderIconSrc("//cdn.example.test/provider.svg", "/app/")).toBe(
     "/app/icons/model-providers/sparkles.svg",
   );

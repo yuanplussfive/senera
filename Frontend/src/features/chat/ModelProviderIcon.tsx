@@ -168,6 +168,7 @@ function isUnsafeCustomIconCharacter(character: string): boolean {
   return (
     codePoint === undefined ||
     (codePoint >= 0 && codePoint <= 0x1f) ||
+    (codePoint >= 0xd800 && codePoint <= 0xdfff) ||
     codePoint === 0x22 ||
     codePoint === 0x27 ||
     codePoint === 0x3c ||
