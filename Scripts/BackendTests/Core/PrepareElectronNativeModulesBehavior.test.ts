@@ -1,5 +1,11 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, test } from "vitest";
-import { nativeModuleArtifactRelativePaths } from "../../../Build/PrepareElectronNativeModules.js";
+import {
+  nativeModuleArtifactRelativePaths,
+  workspaceHasElectronNativeArtifacts,
+} from "../../../Build/PrepareElectronNativeModules.js";
 
 describe("Electron native module preparation", () => {
   test("prefers the N-API prebuild supplied by current better-sqlite3 releases", () => {
@@ -15,5 +21,16 @@ describe("Electron native module preparation", () => {
       "prebuilds/linuxmusl-arm64.node",
       "build/Release/better_sqlite3.node",
     ]);
+  });
+
+  test("detects when the workspace already has N-API prebuilds", () => {
+    const emptyWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), "senera-electron-native-"));
+    try {
+      expect(workspaceHasElectronNativeArtifacts(emptyWorkspace)).toBe(false);
+    } finally {
+      fs.rmSync(emptyWorkspace, { recursive: true, force: true });
+    }
+
+    expect(workspaceHasElectronNativeArtifacts(process.cwd())).toBe(true);
   });
 });

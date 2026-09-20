@@ -3,6 +3,7 @@ import path from "node:path";
 import fs from "node:fs";
 import {
   DesktopRuntimePathResolutionError,
+  resolveDesktopApplicationRoot,
   resolveDesktopResourceRoot,
   resolveDesktopWorkspaceRoot,
 } from "../Apps/Desktop/DesktopRuntimePathResolver.js";
@@ -53,6 +54,25 @@ fs.mkdirSync(temporaryRoot, { recursive: true });
 
 const distDesktopRoot = path.join(workspaceRoot, "Dist", "Apps", "Desktop");
 const packagedResourceRoot = path.join(workspaceRoot, "resources");
+const packagedAppRoot = path.join(packagedResourceRoot, "app.asar");
+
+assert.equal(
+  resolveDesktopApplicationRoot({
+    appPath: distDesktopRoot,
+    isPackaged: false,
+    resourceRoot: workspaceRoot,
+  }),
+  workspaceRoot,
+);
+
+assert.equal(
+  resolveDesktopApplicationRoot({
+    appPath: packagedAppRoot,
+    isPackaged: true,
+    resourceRoot: packagedResourceRoot,
+  }),
+  packagedAppRoot,
+);
 
 assert.equal(
   resolveDesktopResourceRoot({

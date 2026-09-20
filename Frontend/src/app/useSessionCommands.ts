@@ -15,17 +15,9 @@ export interface UseSessionCommandsOptions {
 
 export interface SessionCommandsHandle {
   closeSession: (sessionId: string) => void;
-  closeSessions: (sessionIds: string[]) => void;
-  compactSession: (sessionId: string) => void;
   createSession: () => void;
-  exportSession: (sessionId: string, format: "jsonl" | "html") => void;
-  inspectSessionRuntime: (sessionId: string) => void;
   renameSession: (sessionId: string, title: string) => boolean;
   updateUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
-}
-
-export function readUniqueSessionIds(sessionIds: readonly string[]): string[] {
-  return [...new Set(sessionIds)].filter(Boolean);
 }
 
 export function normalizeSessionTitle(title: string): string | null {
@@ -56,7 +48,6 @@ export function useSessionCommands({
   status,
   defaultModelProviderId,
 }: UseSessionCommandsOptions): SessionCommandsHandle {
-  const clearAllSessions = useStore((state) => state.clearAllSessions);
   const registerSession = useStore((state) => state.registerCreatingSession);
   const removeSession = useStore((state) => state.removeSession);
   const renameStoreSession = useStore((state) => state.renameSession);
@@ -101,33 +92,6 @@ export function useSessionCommands({
     [removeSession, send],
   );
 
-  const closeSessions = useCallback(
-    (sessionIds: string[]): void => {
-      const uniqueIds = readUniqueSessionIds(sessionIds);
-      if (uniqueIds.length === 0) return;
-
-      const sentIds: string[] = [];
-      uniqueIds.forEach((sessionId) => {
-        const ok = send({ type: "session.close", sessionId });
-        if (ok) {
-          sentIds.push(sessionId);
-        }
-      });
-
-      if (sentIds.length > 0) {
-        clearAllSessions(sentIds);
-      }
-      if (sentIds.length < uniqueIds.length) {
-        toast.error(
-          frontendMessage("session.bulkDeletePartialFailed", {
-            count: uniqueIds.length - sentIds.length,
-          }),
-        );
-      }
-    },
-    [clearAllSessions, send],
-  );
-
   const renameSession = useCallback(
     (sessionId: string, title: string): boolean => {
       const nextTitle = normalizeSessionTitle(title);
@@ -143,31 +107,6 @@ export function useSessionCommands({
     [renameStoreSession, send, status],
   );
 
-  const sendPiSessionCommand = useCallback(
-    (request: Extract<WsRequest, { type: "session.compact" | "session.runtime_status" | "session.export" }>): void => {
-      if (status !== "open" || !send(request)) {
-        toast.error(frontendMessage("session.piCommandDisconnected"));
-      }
-    },
-    [send, status],
-  );
-
-  const compactSession = useCallback(
-    (sessionId: string): void => sendPiSessionCommand({ type: "session.compact", sessionId }),
-    [sendPiSessionCommand],
-  );
-
-  const inspectSessionRuntime = useCallback(
-    (sessionId: string): void => sendPiSessionCommand({ type: "session.runtime_status", sessionId }),
-    [sendPiSessionCommand],
-  );
-
-  const exportSession = useCallback(
-    (sessionId: string, format: "jsonl" | "html"): void =>
-      sendPiSessionCommand({ type: "session.export", sessionId, format }),
-    [sendPiSessionCommand],
-  );
-
   const updateUserProfile = useCallback(
     (profile: Pick<UserProfile, "name" | "avatarDataUrl">): void => {
       setUserProfile(profile);
@@ -180,11 +119,7 @@ export function useSessionCommands({
 
   return {
     closeSession,
-    closeSessions,
-    compactSession,
     createSession,
-    exportSession,
-    inspectSessionRuntime,
     renameSession,
     updateUserProfile,
   };

@@ -21,7 +21,7 @@ npm run maintenance.artifacts.json
 
 同一原因，标准无头镜像不会启动 `zavora-computer-use`。MCP manifest 声明的宿主能力会在进程启动前统一预检；没有 `DISPLAY`/Wayland 图形会话时，Zavora 显示为“当前环境不可用”，不会产生原生库加载或 MCP discovery 失败。若需要 Linux 桌面控制，请在带 X11/Wayland 的宿主或 WSLg 会话中运行 Zavora；若 Senera 必须保持无头，把 Zavora 放在宿主侧并通过认证的 Streamable HTTP MCP sidecar 接入。仅向镜像添加 X11 动态库不能让它控制宿主 Windows 桌面。
 
-如果确实要制作专用的 Linux 图形镜像，除了 Zavora 发布包要求的 Node 20+ 和原生桌面库，还必须把真实的 X11/Wayland socket、认证信息、`XDG_RUNTIME_DIR` 以及 AT-SPI/DBus 会话以受控方式提供给容器；使用虚拟显示时还要维护 Xvfb 生命周期。这个镜像应作为单独部署变体维护，不应把 GUI 库、显示 socket 或宿主权限加入标准无头镜像。
+如果确实要制作专用的 Linux 图形镜像，除了 Senera 固定使用的 Node.js 24 运行时和原生桌面库，还必须把真实的 X11/Wayland socket、认证信息、`XDG_RUNTIME_DIR` 以及 AT-SPI/DBus 会话以受控方式提供给容器；使用虚拟显示时还要维护 Xvfb 生命周期。这个镜像应作为单独部署变体维护，不应把 GUI 库、显示 socket 或宿主权限加入标准无头镜像。
 
 镜像入口默认在权限准备阶段以 root 运行后通过 `exec` 降权为 `node`；`compose.yaml` 显式设置 `SENERA_CONTAINER_RUNTIME_USER: root`，主进程保持 root 运行，使容器内嵌入的沙箱 Worker 能访问 Docker Engine。嵌入 Worker 只接受版本化 Worker 协议允许的镜像、挂载和资源策略，主服务通过进程内私有 Unix Socket 访问它。
 

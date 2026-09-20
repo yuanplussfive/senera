@@ -1,9 +1,11 @@
 import { cva } from "class-variance-authority";
 import { AlertTriangle, BookOpenText, Check, Plus, RefreshCw, Search } from "lucide-react";
+import { useCallback, useRef } from "react";
 import type { PresetItem } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
-import { Button, IconButton, RefreshOrbit, ScrollArea, StateView } from "../../shared/ui";
+import { FluidHoverHighlight, useFluidHover, useMotionLevel } from "../../shared/motion";
+import { Button, IconButton, ScrollArea, StateView } from "../../shared/ui";
 import { useStore } from "../../store/sessionStore";
 
 const presetListItemClass = cva(
@@ -12,7 +14,11 @@ const presetListItemClass = cva(
     variants: {
       active: {
         true: "bg-accent-surface text-accent-content",
-        false: "text-content-secondary hover:bg-surface-hover hover:text-content-primary",
+        false: "text-content-secondary hover:text-content-primary",
+      },
+      fluidHover: {
+        true: "hover:bg-transparent",
+        false: "hover:bg-surface-hover",
       },
     },
   },
@@ -41,6 +47,10 @@ export function PresetSidebar({
   onRefresh: () => void;
   onSelect: (name: string) => void;
 }): JSX.Element {
+  const { disableMotion } = useMotionLevel();
+  const listRef = useRef<HTMLDivElement>(null);
+  const hover = useFluidHover(listRef, { axis: "y", gapClick: false });
+
   return (
     <aside className="flex h-[210px] min-h-0 w-full min-w-0 shrink-0 flex-col border-b border-line bg-surface-subtle sm:h-full sm:w-[244px] sm:border-b-0 sm:border-r">
       <div className="flex items-start justify-between gap-2 border-b border-line-subtle px-3 py-3">
@@ -65,10 +75,10 @@ export function PresetSidebar({
           tooltip={frontendMessage("preset.ui.refresh")}
           size="md"
           tone="muted"
-          disabled={busy}
+          loading={busy}
           onClick={onRefresh}
         >
-          {busy ? <RefreshOrbit size="sm" /> : <RefreshCw className="h-3.5 w-3.5" />}
+          <RefreshCw className="h-3.5 w-3.5" />
         </IconButton>
       </div>
 
@@ -96,12 +106,19 @@ export function PresetSidebar({
       </div>
 
       <ScrollArea className="min-h-0 flex-1">
-        <div className="space-y-0.5 p-2">
-          {presets.map((preset) => (
+        <div ref={listRef} className="relative space-y-0.5 p-2" data-preset-list {...hover.handlers}>
+          <FluidHoverHighlight hover={hover} hidden={disableMotion} className="rounded-lg" data-preset-fluid-hover />
+          {presets.map((preset, index) => (
             <PresetListItem
               key={preset.name}
+              index={index}
               preset={preset}
               active={selectedName === preset.name}
+              fluidHoverEnabled={!disableMotion}
+              onFocus={() => {
+                if (!disableMotion) hover.setActiveIndex(index);
+              }}
+              registerItem={hover.registerItem}
               onClick={() => onSelect(preset.name)}
             />
           ))}
@@ -113,16 +130,33 @@ export function PresetSidebar({
 }
 
 function PresetListItem({
+  index,
   preset,
   active,
+  fluidHoverEnabled,
+  onFocus,
+  registerItem,
   onClick,
 }: {
+  index: number;
   preset: PresetItem;
   active: boolean;
+  fluidHoverEnabled: boolean;
+  onFocus: () => void;
+  registerItem: (index: number, node: HTMLButtonElement | null) => void;
   onClick: () => void;
 }): JSX.Element {
+  const setItemRef = useCallback((node: HTMLButtonElement | null) => registerItem(index, node), [index, registerItem]);
+
   return (
-    <button type="button" className={presetListItemClass({ active })} onClick={onClick}>
+    <button
+      ref={setItemRef}
+      type="button"
+      className={cn("relative z-10", presetListItemClass({ active, fluidHover: fluidHoverEnabled }))}
+      data-preset-list-item
+      onClick={onClick}
+      onFocus={onFocus}
+    >
       <span
         className={cn(
           "grid h-7 w-7 shrink-0 place-items-center rounded-md",

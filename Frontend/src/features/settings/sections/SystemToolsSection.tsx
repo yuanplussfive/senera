@@ -16,12 +16,14 @@ import SparklesIcon from "@heroicons/react/24/outline/SparklesIcon";
 import UsersIcon from "@heroicons/react/24/outline/UsersIcon";
 import WrenchScrewdriverIcon from "@heroicons/react/24/outline/WrenchScrewdriverIcon";
 import type { SystemExtensionSettingsItem } from "../../../api/eventTypes";
+import { useRef } from "react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import { resolveFrontendLocalizedText, type FrontendLocale } from "../../../i18n/frontendLocaleModel";
 import { useFrontendLocale } from "../../../i18n/useFrontendLocale";
 import { cn } from "../../../lib/util";
 import { JsonConfigSettingsView } from "../../../shared/config/JsonConfigForm";
 import { isJsonConfigObject } from "../../../shared/config/JsonConfigValue";
+import { FluidHoverHighlight, useFluidHover, useMotionLevel } from "../../../shared/motion";
 import { IconButton, InlineError, ScrollArea, StateView, Switch } from "../../../shared/ui";
 import type { SettingsSystemConfigHandle } from "../SettingsContracts";
 import { projectSystemExtensionConfigurationSections } from "../systemExtensionConfigurationPresentation";
@@ -38,6 +40,13 @@ export function SystemToolsSection({
   systemConfig?: SettingsSystemConfigHandle;
 }): JSX.Element {
   const locale = useFrontendLocale();
+  const { disableMotion } = useMotionLevel();
+  const extensionListRef = useRef<HTMLDivElement>(null);
+  const extensionHover = useFluidHover(extensionListRef, {
+    axis: "y",
+    gapClick: false,
+    isItemDisabled: (element) => element.querySelector("button:disabled") !== null,
+  });
   // The channel gateway has a dedicated settings section; keep it out of the
   // generic extension directory so both edits stay in one place.
   const extensions = (systemConfig?.systemExtensions ?? EmptyExtensions).filter(
@@ -126,10 +135,18 @@ export function SystemToolsSection({
           />
         ) : (
           <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full">
-            <div className="mx-auto w-full max-w-[980px] px-6 lg:px-8" data-system-extension-list>
-              {extensions.map((extension) => (
+            <div
+              ref={extensionListRef}
+              className="relative mx-auto w-full max-w-[980px] px-6 lg:px-8"
+              data-system-extension-list
+              {...extensionHover.handlers}
+            >
+              <FluidHoverHighlight hover={extensionHover} hidden={disableMotion} className="rounded-md" />
+              {extensions.map((extension, index) => (
                 <ExtensionRow
                   key={extension.id}
+                  itemRef={extensionHover.getItemRef(index)}
+                  fluidHoverEnabled={!disableMotion}
                   extension={extension}
                   locale={locale}
                   directory
@@ -224,6 +241,8 @@ export function SystemToolsSection({
 }
 
 function ExtensionRow({
+  itemRef,
+  fluidHoverEnabled,
   extension,
   locale,
   directory = false,
@@ -233,6 +252,8 @@ function ExtensionRow({
   onToggle,
   disabled,
 }: {
+  itemRef?: (element: HTMLElement | null) => void;
+  fluidHoverEnabled?: boolean;
   extension: SystemExtensionSettingsItem;
   locale: FrontendLocale;
   directory?: boolean;
@@ -247,13 +268,18 @@ function ExtensionRow({
   const Icon = extensionIcon(extension.id);
   return (
     <div
+      ref={itemRef}
       className={cn(
+        "relative z-10",
         directory
           ? "flex min-h-[68px] w-full min-w-0 items-center gap-3 border-b border-line px-1 py-3 text-left transition-colors"
           : "flex min-h-[58px] w-full min-w-0 items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors",
         !directory && selected
           ? "bg-accent-surface text-accent-content"
-          : "text-content-secondary hover:bg-surface-hover hover:text-content-primary",
+          : cn(
+              "text-content-secondary hover:text-content-primary",
+              fluidHoverEnabled ? "hover:bg-transparent" : "hover:bg-surface-hover",
+            ),
         !enabled && "text-ink-450",
       )}
     >

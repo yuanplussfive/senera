@@ -492,7 +492,7 @@ function ExecutionStatusIcon({
     status === "completed"
       ? "bg-moss-500"
       : status === "failed" || status === "blocked"
-        ? "bg-red-500"
+        ? "bg-brick-500"
         : "bg-content-disabled";
   return <span className={cn("mt-1 h-1.5 w-1.5 shrink-0 rounded-full", className)} aria-hidden="true" />;
 }

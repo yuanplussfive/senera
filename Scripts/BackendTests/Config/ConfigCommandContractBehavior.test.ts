@@ -8,7 +8,7 @@ describe("configuration command contracts", () => {
   it("loads the generated versioned runtime contract", () => {
     expect(loadAgentConfigCommandRuntimeContract(runtimeContract)).toMatchObject({
       id: "agent-config-commands",
-      version: 2,
+      version: 3,
       definition: {
         operations: {
           "provider.endpoint.upsert": {
@@ -24,10 +24,11 @@ describe("configuration command contracts", () => {
     expect(
       AgentProviderEndpointPatchSchema.parse({
         Id: "custom",
+        DefaultEndpoint: "ClaudeMessages",
         ApiKey: null,
         Headers: null,
       }),
-    ).toEqual({ Id: "custom", ApiKey: null, Headers: null });
+    ).toEqual({ Id: "custom", DefaultEndpoint: "ClaudeMessages", ApiKey: null, Headers: null });
     expect(AgentProviderEndpointPatchSchema.safeParse({ Id: null }).success).toBe(false);
     expect(AgentProviderEndpointPatchSchema.safeParse({ Id: "custom", unknown: true }).success).toBe(false);
   });

@@ -16,13 +16,15 @@ import {
 import { Check, Copy, ExternalLink, Maximize2 } from "lucide-react";
 import Markdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { toast } from "sonner";
 import { cn } from "../../lib/util";
 import { buildResourceContentUrl } from "../../api/uploadClient";
 import { parseResourceId } from "../../api/resourceUri";
+import { downloadUrl } from "../../lib/download";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { MotionIconSwap } from "../motion";
 import { ImagePreviewDialog } from "../media/ImagePreviewDialog";
-import { Spinner, Tooltip, useClipboardCopy } from "../ui";
+import { AppIcon, IconButton, Spinner, Tooltip, useClipboardCopy } from "../ui";
 import { CollapsibleCodeBlock } from "./CollapsibleCodeBlock";
 import { type CodeArtifact, readCodeArtifact } from "./CodeArtifactModel";
 import { MarkdownCitationLink } from "./MarkdownCitationLink";
@@ -233,11 +235,32 @@ function MarkdownImagePreview({
           open={previewOpen}
           source={source}
           title={frontendMessage("chat.attachment.imagePreview", { name: imageLabel })}
+          headerActions={
+            <IconButton
+              label={frontendMessage("chat.attachment.downloadImage")}
+              tooltip={frontendMessage("chat.attachment.downloadImage")}
+              tooltipSide="bottom"
+              size="md"
+              className="text-content-secondary hover:bg-surface-hover hover:text-content-primary"
+              onClick={() => {
+                void downloadUrl(source, readImageFileName(imageLabel, source)).catch(() => {
+                  toast.error(frontendMessage("chat.attachment.downloadFailed"));
+                });
+              }}
+            >
+              <AppIcon icon="download" size={16} />
+            </IconButton>
+          }
           onOpenChange={setPreviewOpen}
         />
       ) : null}
     </>
   );
+}
+
+function readImageFileName(label: string, source: string): string {
+  const candidate = label.trim() || source.split(/[?#]/u, 1)[0].split(/[\\/]/u).pop() || "image";
+  return /\.[a-z0-9]{2,5}$/iu.test(candidate) ? candidate : `${candidate}.png`;
 }
 
 function transformMarkdownUrl(value: string): string {

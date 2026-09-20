@@ -20,7 +20,10 @@ afterEach(() => {
 });
 
 test("useChatCommands creates a missing session and sends its first message as one transaction", () => {
-  useStore.setState({ selectedModelProviderId: "model-primary" });
+  useStore.setState({
+    selectedModelProviderId: "model-primary",
+    catalogSynced: { sessions: true, presets: false },
+  });
   const send = vi.fn(() => true);
   const serverKnownSessionIdsRef = { current: new Set() };
   const lastSendRef = { current: null };
@@ -77,6 +80,18 @@ test("useChatCommands blocks sends while history is recovering without mutating 
       title: frontendMessage("chat.historyRecovering"),
     }),
   );
+});
+
+test("useChatCommands blocks sends until the startup session catalog arrives", () => {
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  renderChatCommands({ activeSessionId: null, handleRef, send });
+
+  act(() => handleRef.current.sendMessage("Wait for the catalog"));
+
+  expect(send).not.toHaveBeenCalled();
+  expect(useStore.getState().sessionOrder).toEqual([]);
+  expect(readTestToastCalls()).toEqual([]);
 });
 
 test("useChatCommands preserves local state and retry context when message delivery fails", () => {
@@ -381,30 +396,6 @@ test.each([
     expect.objectContaining({
       variant: "error",
       title: frontendMessage("session.renameDisconnected"),
-    }),
-  );
-});
-
-test("useSessionCommands keeps failed bulk deletions and reports the partial result", () => {
-  registerTestSession("session-a");
-  registerTestSession("session-b");
-  const serverKnownSessionIdsRef = { current: new Set(["session-a", "session-b"]) };
-  const send = vi.fn((request) => request.sessionId !== "session-b");
-  const handleRef = { current: null };
-  renderSessionCommands({ handleRef, send, serverKnownSessionIdsRef, status: "open" });
-
-  act(() => handleRef.current.closeSessions(["session-a", "session-a", "session-b", ""]));
-
-  expect(send.mock.calls.map(([request]) => request.sessionId)).toEqual(["session-a", "session-b"]);
-  expect(useStore.getState().sessions["session-a"]).toBeDefined();
-  expect(useStore.getState().pendingDeletedSessionIds["session-a"]).toBe(true);
-  expect(useStore.getState().sessionOrder).toEqual(["session-b"]);
-  expect(useStore.getState().sessions["session-b"]).toBeDefined();
-  expect(serverKnownSessionIdsRef.current).toEqual(new Set(["session-a", "session-b"]));
-  expect(readTestToastCalls()).toContainEqual(
-    expect.objectContaining({
-      variant: "error",
-      title: frontendMessage("session.bulkDeletePartialFailed", { count: 1 }),
     }),
   );
 });

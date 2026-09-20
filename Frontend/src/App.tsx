@@ -1,11 +1,9 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { toast } from "sonner";
-import { ErrorBoundary, SeneraToaster, TooltipProvider } from "./shared/ui";
+import { ErrorBoundary, SeneraToaster, StateView, TooltipProvider } from "./shared/ui";
 import { useAgentSocket, type AgentSocketReconnectPolicy, type SocketStatus } from "./api/useAgentSocket";
 import { buildResourceUploadUrl } from "./api/uploadClient";
 import { useStore } from "./store/sessionStore";
-import { ChatPanel } from "./features/chat/ChatPanel";
-import { SessionList } from "./features/session";
 import { AppShell, readAppShellRenderPlan, type WorkflowDockTool } from "./layout/AppShell";
 import { EventKinds, type EventEnvelope, type WsRequest } from "./api/eventTypes";
 import { useChatCommands, type LastSentMessage } from "./app/useChatCommands";
@@ -26,21 +24,28 @@ import { useWebSettingsController } from "./app/useWebSettingsController";
 import { useExecutionResourceCommands } from "./app/useExecutionResourceCommands";
 import { TerminalPanelStatus, TerminalRuntimeBoundary } from "./features/terminal/TerminalPanelStatus";
 import { loadWebSettingsOverlayComponent } from "./app/applicationModuleLoaders";
-import { SettingsSurfaceLoading } from "./app/SurfaceLoading";
+import { ApplicationSurfaceLoading, SettingsSurfaceLoading } from "./app/SurfaceLoading";
 import { scheduleIdleTask } from "./shared/scheduling/scheduleIdleTask";
 import { frontendMessage } from "./i18n/frontendMessageCatalog";
+import { isSessionHydratedForStartup, readSessionHydrationState } from "./store/session/sessionHydration";
 import { AppMotionProvider } from "./shared/motion/MotionProvider";
 import { AppAppearanceProvider } from "./shared/theme/useAppearance";
 import { WorkspaceResourceProvider } from "./shared/workspace/WorkspaceResourceProvider";
 import { useRuntimeUpdate } from "./app/runtimeUpdate";
+import { readDesktopBridge } from "./app/desktopBridge";
 
 const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
 const HTTP_BASE_URL = resolveRuntimeHttpBaseUrl(WS_URL);
 type BackgroundTerminalPanelComponent = (typeof import("./features/terminal"))["BackgroundTerminalPanel"];
 type SettingsOverlayComponentType = (typeof import("./features/settings/SettingsOverlay"))["SettingsOverlay"];
+type SessionListComponent = (typeof import("./features/session/SessionList"))["SessionList"];
 type ThinkingTimelineProps = ComponentProps<
   (typeof import("./features/workflow/ThinkingTimeline"))["ThinkingTimeline"]
 >;
+const LazySessionList = lazy(() =>
+  import("./features/session/SessionList").then((module) => ({ default: module.SessionList })),
+);
+const LazyChatPanel = lazy(() => import("./features/chat/ChatPanel").then((module) => ({ default: module.ChatPanel })));
 const LazyThinkingTimeline = lazy(() =>
   import("./features/workflow/ThinkingTimeline").then((module) => ({ default: module.ThinkingTimeline })),
 );
@@ -104,12 +109,25 @@ export function App({
   const [workflowDockTool, setWorkflowDockTool] = useState<WorkflowDockTool>("execution");
   const [terminalPanelLoadState, setTerminalPanelLoadState] = useState<TerminalPanelLoadState>({ status: "idle" });
   const [terminalRuntimeRevision, setTerminalRuntimeRevision] = useState(0);
+  const [startupReleased, setStartupReleased] = useState(false);
+  const startupCatalogSynced = useStore((state) => state.catalogSynced.sessions);
+  const startupHydrationState = useStore((state) => {
+    const session = state.activeSessionId ? state.sessions[state.activeSessionId] : null;
+    return readSessionHydrationState({
+      catalogSynced: state.catalogSynced.sessions,
+      session,
+      historyLoaded: state.activeSessionId ? !!state.historyLoadedIds[state.activeSessionId] : false,
+      historyLoading: state.activeSessionId ? !!state.historyLoadingIds[state.activeSessionId] : false,
+      historyFailed: state.activeSessionId ? !!state.historyFailedIds[state.activeSessionId] : false,
+    });
+  });
   const uploadUrl = useMemo(() => buildResourceUploadUrl(HTTP_BASE_URL), []);
   const appShellRenderPlan = readAppShellRenderPlan(responsiveMode);
+  const runtimeSurface = readDesktopBridge()?.isDesktop ? "desktop" : "web";
   const runtimeUpdate = useRuntimeUpdate({
     httpBaseUrl: HTTP_BASE_URL,
     currentVersion: __SENERA_APP_VERSION__,
-    surface: "web",
+    surface: runtimeSurface,
   });
   const [SettingsOverlayComponent, setSettingsOverlayComponent] = useState<SettingsOverlayComponentType | null>(null);
   const prepareSettingsOverlay = useCallback(async (): Promise<void> => {
@@ -156,7 +174,7 @@ export function App({
   const lastSendRef = useRef<LastSentMessage | null>(null);
   const settingsEventHandlerRef = useRef<(env: EventEnvelope) => boolean>(() => false);
   const executionResourceEventHandlerRef = useRef<(env: EventEnvelope) => boolean>(() => false);
-  const { ingestSandboxEvent } = useSandboxRuntimeStatus();
+  const { sandboxStatus, ingestSandboxEvent } = useSandboxRuntimeStatus();
 
   const handleOpenSessionPanel = useCallback((): void => {
     if (hasPersistentSessionPanel) {
@@ -250,6 +268,7 @@ export function App({
   sendRef.current = send;
   statusRef.current = status;
   const settingsRuntime = useSettingsRuntime({ httpBaseUrl: HTTP_BASE_URL, sendRef, statusRef, status });
+  const settingsReady = Boolean(settingsRuntime.systemConfig.configSnapshot);
   settingsEventHandlerRef.current = settingsRuntime.ingestSettingsEvent;
   const executionResourceCommands = useExecutionResourceCommands({
     activeSessionId: activeId,
@@ -280,11 +299,7 @@ export function App({
 
   const {
     closeSession: handleCloseSession,
-    closeSessions: handleCloseSessions,
-    compactSession: handleCompactSession,
     createSession: handleNewSession,
-    exportSession: handleExportSession,
-    inspectSessionRuntime: handleInspectSessionRuntime,
     renameSession: handleRenameSession,
     updateUserProfile: handleUpdateUserProfile,
   } = useSessionCommands({
@@ -326,6 +341,18 @@ export function App({
     statusRef.current = status;
   }, [status]);
 
+  useEffect(() => {
+    if (startupReleased) return;
+    if (
+      settingsController.section !== null ||
+      (startupCatalogSynced && isSessionHydratedForStartup(startupHydrationState)) ||
+      status === "closed" ||
+      status === "error"
+    ) {
+      setStartupReleased(true);
+    }
+  }, [settingsController.section, startupCatalogSynced, startupHydrationState, startupReleased, status]);
+
   const handleToggleSessionPanelShortcut = useCallback((): void => {
     if (hasPersistentSessionPanel) {
       toggleSidebar();
@@ -338,6 +365,9 @@ export function App({
     onNewSession: handleNewSession,
     onToggleSessionPanel: handleToggleSessionPanelShortcut,
   });
+
+  if (!startupReleased) return <ApplicationSurfaceLoading />;
+
   const TerminalPanel = terminalPanelLoadState.status === "ready" ? terminalPanelLoadState.Component : undefined;
   const terminalPanel = TerminalPanel ? (
     <TerminalRuntimeBoundary
@@ -368,15 +398,11 @@ export function App({
 
   // sessionPanel(常驻侧栏)与 sessionDrawer(移动端抽屉)共用同一份会话列表行为。
   const sessionListSharedProps: Omit<
-    ComponentProps<typeof SessionList>,
+    ComponentProps<SessionListComponent>,
     "presentation" | "onClosePanel" | "onSessionSelected"
   > = {
     onNewSession: handleNewSession,
     onCloseSession: handleCloseSession,
-    onCloseSessions: handleCloseSessions,
-    onCompactSession: handleCompactSession,
-    onExportSession: handleExportSession,
-    onInspectSessionRuntime: handleInspectSessionRuntime,
     onRenameSession: handleRenameSession,
     userProfile,
     onUpdateUserProfile: handleUpdateUserProfile,
@@ -398,86 +424,120 @@ export function App({
         <TooltipProvider delayDuration={300}>
           <WorkspaceResourceProvider httpBaseUrl={HTTP_BASE_URL} csrfToken={uploadCsrfToken}>
             <AppShell
-              sessionPanel={<SessionList presentation="auto" {...sessionListSharedProps} />}
+              sessionPanel={
+                <Suspense fallback={null}>
+                  <LazySessionList presentation="auto" {...sessionListSharedProps} />
+                </Suspense>
+              }
               sessionDrawer={
-                <SessionList
-                  presentation="panel"
-                  {...sessionListSharedProps}
-                  onClosePanel={() => setSessionDrawerOpen(false)}
-                  onSessionSelected={() => setSessionDrawerOpen(false)}
-                />
+                <Suspense fallback={null}>
+                  <LazySessionList
+                    presentation="panel"
+                    {...sessionListSharedProps}
+                    onClosePanel={() => setSessionDrawerOpen(false)}
+                    onSessionSelected={() => setSessionDrawerOpen(false)}
+                  />
+                </Suspense>
               }
               chatPanel={
                 <ErrorBoundary resetKey={activeId}>
-                  <ChatPanel
-                    userProfile={userProfile}
-                    modelConfig={{
-                      modelProviders,
-                      selectedModelProviderId,
-                      defaultModelProviderId,
-                      onSelectModelProvider: selectModelProvider,
-                      selectedThinkingLevel,
-                      onSelectThinkingLevel: selectThinkingLevel,
-                      onApplyDefaultModel: applyDefaultModelToActiveSession,
-                      onAddModel: () => {
-                        void settingsController
-                          .openSettings("model-service")
-                          .catch(() => toast.error(frontendMessage("settings.loadFailed")));
-                      },
-                    }}
-                    presetConfig={{
-                      presets,
-                      worldPackages: presetWorldPackages,
-                      activePresetName,
-                      presetsEnabled,
-                      presetRootDir,
-                      presetOperations: settingsRuntime.controller.presetOperations,
-                      onRefreshPresets: settingsRuntime.controller.refreshPresets,
-                      onSavePreset: settingsRuntime.controller.savePreset,
-                      onDeletePreset: settingsRuntime.controller.deletePreset,
-                      onSetActivePreset: settingsRuntime.controller.setActivePreset,
-                    }}
-                    runtime={{
-                      socketStatus: status,
-                      uploadUrl,
-                      uploadCsrfToken,
-                    }}
-                    messageActions={{
-                      onSend: handleSend,
-                      onCancel: handleCancel,
-                      onForkFromMessage: handleForkFromMessage,
-                      onRegenerate: handleRegenerate,
-                      onEditUserMessage: handleEditUserMessage,
-                      onDeleteFromMessage: handleDeleteFromMessage,
-                      onViewWorkflow: handleViewWorkflow,
-                      onResolveApproval: handleResolveApproval,
-                      onResolveApprovalBatch: handleResolveApprovalBatch,
-                      onResolveInteractionInput: handleResolveInteractionInput,
-                    }}
-                    navigationActions={{
-                      onOpenSessionPanel: appShellRenderPlan.showChatSessionPanelAction
-                        ? handleOpenSessionPanel
-                        : undefined,
-                      onOpenWorkflowPanel:
-                        appShellRenderPlan.showChatWorkflowPanelAction &&
-                        (hasPersistentWorkflowPanel ? rightPanelCollapsed : !workflowDrawerOpen)
-                          ? handleOpenWorkflowPanel
+                  <Suspense
+                    fallback={
+                      <StateView status="loading" title={frontendMessage("ui.loading")} className="h-full min-h-0" />
+                    }
+                  >
+                    <LazyChatPanel
+                      userProfile={userProfile}
+                      modelConfig={{
+                        modelProviders,
+                        selectedModelProviderId,
+                        defaultModelProviderId,
+                        onSelectModelProvider: selectModelProvider,
+                        selectedThinkingLevel,
+                        onSelectThinkingLevel: selectThinkingLevel,
+                        onApplyDefaultModel: applyDefaultModelToActiveSession,
+                        onAddModel: () => {
+                          void settingsController
+                            .openSettings("model-service")
+                            .catch(() => toast.error(frontendMessage("settings.loadFailed")));
+                        },
+                      }}
+                      presetConfig={{
+                        presets,
+                        worldPackages: presetWorldPackages,
+                        activePresetName,
+                        presetsEnabled,
+                        presetRootDir,
+                        presetOperations: settingsRuntime.controller.presetOperations,
+                        onRefreshPresets: settingsRuntime.controller.refreshPresets,
+                        onSavePreset: settingsRuntime.controller.savePreset,
+                        onDeletePreset: settingsRuntime.controller.deletePreset,
+                        onSetActivePreset: settingsRuntime.controller.setActivePreset,
+                      }}
+                      runtime={{
+                        socketStatus: status,
+                        uploadUrl,
+                        uploadCsrfToken,
+                        sandboxStatus,
+                      }}
+                      messageActions={{
+                        onSend: handleSend,
+                        onCancel: handleCancel,
+                        onForkFromMessage: handleForkFromMessage,
+                        onRegenerate: handleRegenerate,
+                        onEditUserMessage: handleEditUserMessage,
+                        onDeleteFromMessage: handleDeleteFromMessage,
+                        onViewWorkflow: handleViewWorkflow,
+                        onResolveApproval: handleResolveApproval,
+                        onResolveApprovalBatch: handleResolveApprovalBatch,
+                        onResolveInteractionInput: handleResolveInteractionInput,
+                      }}
+                      navigationActions={{
+                        onOpenSessionPanel: appShellRenderPlan.showChatSessionPanelAction
+                          ? handleOpenSessionPanel
                           : undefined,
-                      onRetryHistory: requestSessionHistory,
-                    }}
-                  />
+                        onOpenWorkflowPanel:
+                          appShellRenderPlan.showChatWorkflowPanelAction &&
+                          (hasPersistentWorkflowPanel ? rightPanelCollapsed : !workflowDrawerOpen)
+                            ? handleOpenWorkflowPanel
+                            : undefined,
+                        onRetryHistory: requestSessionHistory,
+                        onOpenSettings: (section, returnFocus) => {
+                          void settingsController
+                            .openSettings(section, returnFocus)
+                            .catch(() => toast.error(frontendMessage("settings.loadFailed")));
+                        },
+                      }}
+                    />
+                  </Suspense>
                 </ErrorBoundary>
               }
               workflowPanel={<DeferredThinkingTimeline presentation="dock" />}
               workflowDrawer={<DeferredThinkingTimeline presentation="panel" hidePanelTitle />}
               terminalPanel={terminalPanel}
               eventPanel={
-                <Suspense fallback={<div className="h-full bg-surface-panel" />}>
+                <Suspense
+                  fallback={
+                    <StateView
+                      status="loading"
+                      title={frontendMessage("observability.title")}
+                      className="h-full min-h-0 bg-surface-panel"
+                    />
+                  }
+                >
                   <LazyEventObservabilityPanel />
                 </Suspense>
               }
               statePanel={
-                <Suspense fallback={<div className="h-full bg-surface-panel" />}>
+                <Suspense
+                  fallback={
+                    <StateView
+                      status="loading"
+                      title={frontendMessage("continuity.title")}
+                      className="h-full min-h-0 bg-surface-panel"
+                    />
+                  }
+                >
                   <LazyContinuityPanel send={send} connected={status === "open"} />
                 </Suspense>
               }
@@ -494,7 +554,7 @@ export function App({
               onRefreshSession={activeId ? handleRefreshActiveSession : undefined}
             />
             {settingsController.section !== null || settingsController.closeConfirmationOpen ? (
-              SettingsOverlayComponent ? (
+              SettingsOverlayComponent && settingsReady ? (
                 <SettingsOverlayComponent
                   controller={settingsController}
                   workbench={{
@@ -502,7 +562,7 @@ export function App({
                       appVersion: __SENERA_APP_VERSION__,
                       frontendVersion: __SENERA_FRONTEND_VERSION__,
                       mode: import.meta.env.MODE,
-                      surface: "web",
+                      surface: runtimeSurface,
                       runtimeUpdate,
                     },
                     values: { defaultSidebarCollapsed, defaultRightPanelCollapsed },
@@ -530,7 +590,15 @@ export function App({
 
 function DeferredThinkingTimeline(props: ThinkingTimelineProps): JSX.Element {
   return (
-    <Suspense fallback={<div className="h-full w-full" aria-busy="true" />}>
+    <Suspense
+      fallback={
+        <StateView
+          status="loading"
+          title={frontendMessage("workflow.panel.loadingGraph")}
+          className="h-full min-h-0 w-full"
+        />
+      }
+    >
       <LazyThinkingTimeline {...props} />
     </Suspense>
   );

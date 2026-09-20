@@ -12,12 +12,12 @@ import { cn } from "../../lib/util";
 import { Tooltip } from "../../shared/ui";
 import { readModelsDevCapabilityKeys, type ModelsDevCapabilityKey } from "./modelsDevCapabilities";
 
-interface ModelsDevCapabilityItem {
+export interface ModelsDevCapabilityItem {
   label: string;
   Icon: ElementType<{ className?: string; "aria-hidden"?: boolean }>;
 }
 
-const ModelsDevCapabilityItemByKey: Record<ModelsDevCapabilityKey, ModelsDevCapabilityItem> = {
+export const ModelsDevCapabilityItemByKey: Record<ModelsDevCapabilityKey, ModelsDevCapabilityItem> = {
   toolCalling: { label: frontendMessage("config.model.catalog.tools"), Icon: WrenchScrewdriverIcon },
   reasoning: { label: frontendMessage("config.model.catalog.reasoning"), Icon: LightBulbIcon },
   structuredOutput: { label: frontendMessage("config.model.catalog.structured"), Icon: CodeBracketIcon },

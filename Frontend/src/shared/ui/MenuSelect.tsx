@@ -1,7 +1,14 @@
-import { Check, ChevronDown } from "lucide-react";
 import { type ReactNode } from "react";
 import { cn } from "../../lib/util";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./DropdownMenu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "./DropdownMenu";
+import { AppIcon } from "./AppIcon";
 
 export interface MenuSelectOption {
   value: string;
@@ -78,11 +85,13 @@ export function MenuSelect({
             {leading ? (
               <span className="grid h-4 w-4 shrink-0 place-items-center text-content-muted">{leading}</span>
             ) : null}
-            <span className={cn("min-w-0 flex-1 truncate", !display && "text-content-muted")}>
+            <span
+              className={cn("flex min-w-0 flex-1 items-center truncate leading-none", !display && "text-content-muted")}
+            >
               {display ?? placeholder}
             </span>
           </span>
-          {trailing ?? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-content-muted" />}
+          {trailing ?? <AppIcon icon="chevron-down" size={14} className="text-content-muted" aria-hidden="true" />}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -90,20 +99,17 @@ export function MenuSelect({
         className={cn("scrollbar-thin max-h-[320px] min-w-[240px] overflow-y-auto", contentClassName)}
       >
         {options.length > 0 ? (
-          options.map((option, index) => (
-            <DropdownMenuItem
-              key={`${option.value || "empty"}-${index}`}
-              disabled={option.disabled}
-              icon={
-                <span className="grid h-3.5 w-3.5 place-items-center" aria-hidden="true">
-                  {option.value === value ? <Check className="h-3.5 w-3.5" /> : null}
-                </span>
-              }
-              onSelect={() => onChange(option.value)}
-            >
-              {renderOption ? renderOption(option) : option.label}
-            </DropdownMenuItem>
-          ))
+          <DropdownMenuRadioGroup value={value} onValueChange={(next) => next !== value && onChange(next)}>
+            {options.map((option, index) => (
+              <DropdownMenuRadioItem
+                key={`${option.value || "empty"}-${index}`}
+                value={option.value}
+                disabled={option.disabled}
+              >
+                {renderOption ? renderOption(option) : option.label}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
         ) : emptyState != null ? (
           <DropdownMenuItem disabled>{emptyState}</DropdownMenuItem>
         ) : null}

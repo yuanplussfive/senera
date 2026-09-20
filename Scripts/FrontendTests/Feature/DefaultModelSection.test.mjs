@@ -29,13 +29,13 @@ describe("DefaultModelSection", () => {
     expect(container.querySelector('[data-model-assignment-icon="embedding"]')?.tagName).toBe("svg");
 
     await user.click(screen.getByRole("button", { name: /默认模型: Chat Alpha/ }));
-    expect(screen.queryByRole("menuitem", { name: /embedding-alpha/ })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("menuitem", { name: /Chat Beta/ }));
+    expect(screen.queryByRole("menuitemradio", { name: /embedding-alpha/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("menuitemradio", { name: /Chat Beta/ }));
     expect(setDefaultProviderModel).toHaveBeenCalledWith("chat-b");
 
     await user.click(screen.getByRole("button", { name: /Planner 模型: Chat Alpha/ }));
-    expect(screen.queryByRole("menuitem", { name: /embedding-alpha/ })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("menuitem", { name: /Chat Beta/ }));
+    expect(screen.queryByRole("menuitemradio", { name: /embedding-alpha/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("menuitemradio", { name: /Chat Beta/ }));
     expect(updateDraft).toHaveBeenCalledWith(
       expect.objectContaining({
         ActionPlanner: { Client: { ModelProviderId: "chat-b" } },
@@ -44,8 +44,8 @@ describe("DefaultModelSection", () => {
     );
 
     await user.click(screen.getByRole("button", { name: /嵌入模型: embedding-alpha/ }));
-    expect(screen.queryByRole("menuitem", { name: /Chat Alpha/ })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("menuitem", { name: /embedding-beta/ }));
+    expect(screen.queryByRole("menuitemradio", { name: /Chat Alpha/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("menuitemradio", { name: /embedding-beta/ }));
     expect(updateDraft).toHaveBeenLastCalledWith(
       expect.objectContaining({
         VectorModels: {
@@ -96,7 +96,7 @@ describe("DefaultModelSection", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "添加候选模型" }));
-    await user.click(screen.getByRole("menuitem", { name: /Chat Alpha/ }));
+    await user.click(screen.getByRole("menuitemradio", { name: /Chat Alpha/ }));
     expect(updateDraft).toHaveBeenLastCalledWith(
       expect.objectContaining({
         Extensions: {

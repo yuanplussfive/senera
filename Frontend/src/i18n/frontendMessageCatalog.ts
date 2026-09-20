@@ -5,11 +5,15 @@ import { getFrontendLocale } from "./frontendLocaleStore.js";
 
 export {
   FrontendDefaultLocale,
+  FrontendLocalePreferences,
   FrontendLocales,
   isFrontendLocale,
+  isFrontendLocalePreference,
   resolveFrontendLocale,
+  resolveFrontendLocalePreference,
+  resolveFrontendSystemLocale,
 } from "./frontendLocaleModel.js";
-export type { FrontendLocale } from "./frontendLocaleModel.js";
+export type { FrontendLocale, FrontendLocalePreference } from "./frontendLocaleModel.js";
 export type FrontendMessageKey = keyof typeof FrontendMessagesZhCn;
 export type FrontendMessageParams = Readonly<Record<string, string | number | boolean | null | undefined>>;
 

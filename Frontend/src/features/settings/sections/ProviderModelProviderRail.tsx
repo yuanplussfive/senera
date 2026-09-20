@@ -1,10 +1,10 @@
-import { Plus } from "lucide-react";
 import { motion } from "framer-motion";
+import { useRef } from "react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import { cn } from "../../../lib/util";
-import { motionTimings, useMotionLevel } from "../../../shared/motion";
-import { IconButton, ScrollArea } from "../../../shared/ui";
-import { inferModelProviderEndpointIcon, ModelProviderIcon } from "../../chat/ModelProviderIcon";
+import { FluidHoverHighlight, motionTimings, useFluidHover, useMotionLevel } from "../../../shared/motion";
+import { AppIcon, IconButton, ScrollArea } from "../../../shared/ui";
+import { inferModelProviderEndpointIcon, ProviderMark } from "../../chat/ModelProviderIcon";
 import type { ModelProviderDraft } from "../../chat/modelConfigTypes";
 import type { ModelServiceState } from "./modelServiceState";
 
@@ -25,6 +25,14 @@ export function ProviderModelProviderRail({
 }): JSX.Element {
   const { reduceMotion, disableMotion } = useMotionLevel();
   const animateSelection = !reduceMotion && !disableMotion;
+  const providerListRef = useRef<HTMLDivElement>(null);
+  const providerHover = useFluidHover(providerListRef, {
+    axis: "y",
+    gapClick: false,
+    isItemDisabled: (element) => element.hasAttribute("disabled"),
+  });
+  // Selected provider owns its surface through the layoutId indicator.
+  const selectedProviderIndex = providers.findIndex((provider) => provider.Id === selectedProviderId);
   return (
     <section className="flex min-h-0 flex-col overflow-hidden bg-paper-50">
       <div className="flex shrink-0 items-center justify-between border-b border-ink-200/55 px-3 py-3">
@@ -44,21 +52,30 @@ export function ProviderModelProviderRail({
           disabled={disabled}
           onClick={onAdd}
         >
-          <Plus className="h-3.5 w-3.5" />
+          <AppIcon icon="plus" size={14} aria-hidden="true" />
         </IconButton>
       </div>
       <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full p-2">
-        <div className="space-y-1">
-          {providers.map((provider) => (
+        <div ref={providerListRef} className="relative space-y-1" {...providerHover.handlers}>
+          <FluidHoverHighlight
+            hover={providerHover}
+            hidden={disableMotion || providerHover.activeIndex === selectedProviderIndex}
+            className="rounded-md"
+          />
+          {providers.map((provider, index) => (
             <button
               key={provider.Id}
               type="button"
+              ref={providerHover.getItemRef(index)}
               disabled={disabled}
               className={cn(
-                "relative grid w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-md px-2.5 py-2 text-left text-[12px] disabled:pointer-events-none disabled:opacity-60",
+                "relative z-10 grid w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-md px-2.5 py-2 text-left text-[12px] disabled:pointer-events-none disabled:opacity-60",
                 provider.Id === selectedProviderId
                   ? "text-content-primary"
-                  : "text-content-secondary hover:bg-paper-100 hover:text-content-primary",
+                  : cn(
+                      "text-content-secondary hover:text-content-primary",
+                      disableMotion ? "hover:bg-paper-100" : "hover:bg-transparent",
+                    ),
               )}
               aria-pressed={provider.Id === selectedProviderId}
               onClick={() => onSelect(provider.Id)}
@@ -72,7 +89,11 @@ export function ProviderModelProviderRail({
                 />
               ) : null}
               <span className="relative z-[1] grid h-7 w-7 place-items-center">
-                <ModelProviderIcon icon={provider.Icon || inferModelProviderEndpointIcon(provider.Id)} size={17} />
+                <ProviderMark
+                  icon={provider.Icon || inferModelProviderEndpointIcon(provider.Id)}
+                  label={provider.Id}
+                  size={18}
+                />
               </span>
               <span className="relative z-[1] min-w-0">
                 <span className="block truncate font-medium">

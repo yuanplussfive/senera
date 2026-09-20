@@ -267,7 +267,7 @@ test("active tool batches keep settled rows while unfinished calls remain visibl
     "items-center",
   );
   expect(
-    document.querySelector("[data-tool-batch-activity-item][data-state='loading'] .motion-safe\\:animate-spin"),
+    document.querySelector("[data-tool-batch-activity-item][data-state='loading'] .senera-spinner"),
   ).toBeInTheDocument();
   expect(screen.queryByText("WebSearch")).not.toBeInTheDocument();
 });

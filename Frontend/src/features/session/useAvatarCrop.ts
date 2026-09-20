@@ -20,12 +20,13 @@ export type LoadedAvatarImage = {
   height: number;
 };
 
-export function useLoadedAvatarImage(source: string): LoadedAvatarImage | null {
+export function useLoadedAvatarImage(source: string | null): LoadedAvatarImage | null {
   const [image, setImage] = useState<LoadedAvatarImage | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setImage(null);
+    if (!source) return;
     const element = new Image();
     element.onload = () => {
       if (cancelled) return;

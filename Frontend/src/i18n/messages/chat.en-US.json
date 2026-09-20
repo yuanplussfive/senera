@@ -1,5 +1,8 @@
 {
   "chat.composer.toolkit.tooltip": "Tools",
   "chat.composer.toolkit.fileAndImage": "Files & images",
-  "chat.composer.toolkit.preset": "Role presets"
+  "chat.composer.toolkit.preset": "Role presets",
+  "chat.composer.toolkit.plugins": "Plugins",
+  "chat.composer.toolkit.skills": "Skills",
+  "chat.composer.toolkit.webSearch": "Web search"
 }

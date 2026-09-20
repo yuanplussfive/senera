@@ -1,6 +1,6 @@
 import type { Story } from "@ladle/react";
-import { Inbox } from "lucide-react";
-import { InlineError, RetryButton, StateView } from "./StateView";
+import { ErrorBanner, InlineError, RetryButton, StateView } from "./StateView";
+import { AppIcon } from "./AppIcon";
 import { Skeleton } from "./Skeleton";
 import { Spinner } from "./Spinner";
 
@@ -31,7 +31,7 @@ export const Empty: Story = () => (
   <div className="h-64 border border-line-subtle">
     <StateView
       status="empty"
-      icon={<Inbox aria-hidden="true" className="h-5 w-5 text-content-muted" />}
+      icon={<AppIcon icon="folder" size={16} aria-hidden="true" />}
       description="添加供应商后填写连接信息"
     />
   </div>
@@ -43,6 +43,25 @@ export const InlineErrorRow: Story = () => (
     <InlineError announce="polite" onRetry={() => undefined} retryLabel="重新获取">
       模型列表获取失败，连接可能已断开，这里演示一条较长的错误信息的折行表现
     </InlineError>
+  </div>
+);
+
+export const Banner: Story = () => (
+  <div className="flex max-w-xl flex-col gap-6 p-8">
+    <ErrorBanner
+      title="历史同步失败"
+      description="这段会话还在后端，重新同步后会恢复消息。"
+      onRetry={() => undefined}
+    />
+    <ErrorBanner
+      title="资源读取失败"
+      description="文件可能已被移动或删除。"
+      action={
+        <button type="button" className="text-[12px] font-medium text-accent-content hover:text-accent-content-hover">
+          重新选择
+        </button>
+      }
+    />
   </div>
 );
 

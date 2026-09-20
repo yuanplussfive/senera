@@ -55,8 +55,12 @@ export function ChildRunOverview({ childRun }: ChildRunOverviewProps): JSX.Eleme
     .find((message) => message.direction === "child_to_parent" && message.content.trim());
 
   return (
-    <section className="space-y-3" data-child-run-overview aria-live="polite">
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-y border-line-subtle py-2.5">
+    <section className="space-y-3" data-child-run-overview>
+      <div
+        className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-y border-line-subtle py-2.5"
+        role="status"
+        aria-live="polite"
+      >
         <div className={cn("flex min-w-0 items-center gap-2 text-[12.5px] font-medium", presentation.textClass)}>
           <span className={cn("h-2 w-2 shrink-0 rounded-full", presentation.dotClass)} aria-hidden="true" />
           <span>{frontendMessage(presentation.label)}</span>

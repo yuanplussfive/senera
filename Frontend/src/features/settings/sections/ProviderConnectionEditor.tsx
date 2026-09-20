@@ -1,60 +1,31 @@
-import { EyeOff, Plus, RotateCcw, ScanEye, Server, SlidersHorizontal, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { SettingsConfigCommands } from "../SettingsContracts";
 import { cn } from "../../../lib/util";
 import {
+  AppIcon,
   Button,
-  Dialog,
-  DialogActionButton,
-  DialogActions,
-  DialogContent,
   FormHint,
   Input,
-  MenuSelect,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  SecretInput,
   Switch,
+  Tooltip,
 } from "../../../shared/ui";
 import {
   inferModelProviderEndpointIcon,
   ModelProviderIcon,
   ModelProviderIconNames,
+  ProviderMark,
   readCustomModelProviderIconSource,
 } from "../../chat/ModelProviderIcon";
-import { DetailTitle, EmptyDetail, IconAction, inputClassName } from "../../chat/ModelConfigPrimitives";
+import { EmptyDetail, IconAction } from "../../chat/ModelConfigPrimitives";
 import { providerIdLabel, isRedactedConfigSecret } from "../../chat/modelConfigData";
 import type { ProviderEndpointDraft } from "../../chat/modelConfigTypes";
 import { ProviderFormError } from "./ProviderConnectionFeedback";
 import { isProtectedProvider } from "./ProviderConnectionIdentity";
-
-interface HeaderRow {
-  id: number;
-  name: string;
-  value: string;
-}
-
-let headerRowSeed = 0;
-
-function toHeaderRows(headers: Record<string, string>): HeaderRow[] {
-  return Object.entries(headers).map(([name, value]) => ({ id: ++headerRowSeed, name, value }));
-}
-
-function rowsToHeaders(rows: readonly HeaderRow[]): Record<string, string> {
-  return Object.fromEntries(rows.filter((row) => row.name.trim()).map((row) => [row.name, row.value]));
-}
-
-// Case-insensitive: HTTP header names are case-insensitive, so "Auth"/"auth"
-// would collide at the transport layer even though the object keeps both.
-function readDuplicateHeaderNames(rows: readonly HeaderRow[]): ReadonlySet<string> {
-  const seen = new Set<string>();
-  const duplicates = new Set<string>();
-  for (const row of rows) {
-    const name = row.name.trim().toLowerCase();
-    if (!name) continue;
-    if (seen.has(name)) duplicates.add(name);
-    seen.add(name);
-  }
-  return duplicates;
-}
 
 export function ProviderConnectionEditor({
   acceptedProvider,
@@ -67,6 +38,8 @@ export function ProviderConnectionEditor({
   onReadApiKey,
   onChange,
   onConfirm,
+  onLocalDraftChange,
+  onEdit,
   onDelete,
 }: {
   acceptedProvider: ProviderEndpointDraft | null;
@@ -79,19 +52,39 @@ export function ProviderConnectionEditor({
   onReadApiKey?: (providerId: string) => Promise<string>;
   onChange: (patch: Partial<ProviderEndpointDraft>) => void;
   onConfirm: (patch?: Partial<ProviderEndpointDraft>) => void;
+  onLocalDraftChange?: (dirty: boolean) => void;
+  onEdit?: () => void;
   onDelete?: () => void;
 }): JSX.Element {
-  const [showKey, setShowKey] = useState(false);
-  const [apiKeyDraft, setApiKeyDraft] = useState<string | null>(null);
-  const [revealedApiKey, setRevealedApiKey] = useState<string | null>(null);
-  const [requestConfigOpen, setRequestConfigOpen] = useState(false);
-  const [requestHeadersDraft, setRequestHeadersDraft] = useState<HeaderRow[]>([]);
   const provider = draftProvider;
   const providerId = provider?.Id;
+  const [apiKeyDraft, setApiKeyDraft] = useState<string | null>(null);
+  const [revealedApiKey, setRevealedApiKey] = useState<string | null>(null);
+  const [baseUrlDraft, setBaseUrlDraft] = useState(provider?.BaseUrl ?? "");
   const acceptedProviderApiKey = acceptedProvider?.ApiKey;
+  const apiKeyDraftRef = useRef(apiKeyDraft);
+  const baseUrlDraftRef = useRef(baseUrlDraft);
+  const apiKeyDirtyRef = useRef(false);
+  const baseUrlDirtyRef = useRef(false);
+  const logoDirtyRef = useRef(false);
+  const localDraftDirtyRef = useRef(false);
+  const onLocalDraftChangeRef = useRef(onLocalDraftChange);
+  apiKeyDraftRef.current = apiKeyDraft;
+  baseUrlDraftRef.current = baseUrlDraft;
+  onLocalDraftChangeRef.current = onLocalDraftChange;
+
+  const setLocalFieldDirty = useCallback((field: "apiKey" | "baseUrl" | "logo", dirty: boolean): void => {
+    if (field === "apiKey") apiKeyDirtyRef.current = dirty;
+    else if (field === "baseUrl") baseUrlDirtyRef.current = dirty;
+    else logoDirtyRef.current = dirty;
+    const nextDirty = apiKeyDirtyRef.current || baseUrlDirtyRef.current || logoDirtyRef.current;
+    if (nextDirty === localDraftDirtyRef.current) return;
+    localDraftDirtyRef.current = nextDirty;
+    onLocalDraftChangeRef.current?.(nextDirty);
+  }, []);
 
   useEffect(() => {
-    setShowKey(false);
+    if (apiKeyDirtyRef.current) return;
     setApiKeyDraft(null);
     const snapshotApiKey = acceptedProviderApiKey;
     if (typeof snapshotApiKey === "string" && !isRedactedConfigSecret(snapshotApiKey)) {
@@ -114,10 +107,27 @@ export function ProviderConnectionEditor({
     };
   }, [acceptedProviderApiKey, onReadApiKey, providerId]);
 
+  useEffect(() => {
+    if (baseUrlDirtyRef.current) return;
+    setBaseUrlDraft(provider?.BaseUrl ?? "");
+  }, [provider?.BaseUrl, providerId]);
+
+  useEffect(() => {
+    return () => {
+      baseUrlDirtyRef.current = false;
+      apiKeyDirtyRef.current = false;
+      logoDirtyRef.current = false;
+      if (localDraftDirtyRef.current) {
+        localDraftDirtyRef.current = false;
+        onLocalDraftChangeRef.current?.(false);
+      }
+    };
+  }, [providerId]);
+
   if (!provider || !acceptedProvider || providerIndex < 0) {
     return (
       <EmptyDetail
-        icon={<Server className="h-5 w-5" />}
+        icon={<AppIcon icon="server" size={20} />}
         title={frontendMessage("settings.provider.selectTitle")}
         text={frontendMessage("settings.provider.selectDescription")}
       />
@@ -129,97 +139,161 @@ export function ProviderConnectionEditor({
   const pending = operation?.status === "pending";
   const operationError = operation?.status === "error" ? operation.message : null;
   const errorMessage = localError ?? operationError;
-  const duplicateHeaderNames = readDuplicateHeaderNames(requestHeadersDraft);
+  const ghostIconActionClassName =
+    "grid h-7 w-7 shrink-0 place-items-center rounded-md border border-transparent bg-transparent text-content-secondary transition hover:border-line-subtle hover:bg-surface-hover hover:text-content-primary disabled:pointer-events-none disabled:opacity-45 active:scale-[0.95]";
 
   return (
-    <div className="bg-paper-50">
-      <div className="mx-auto w-full max-w-[980px] px-5 py-4 lg:px-7">
-        <DetailTitle
-          icon={<ModelProviderIcon icon={provider.Icon || inferModelProviderEndpointIcon(provider.Id)} size={22} />}
-          title={providerIdLabel(provider)}
-          actions={
-            <>
-              <Switch
-                checked={provider.Enabled !== false}
-                size="sm"
-                disabled={disabled || pending}
-                ariaLabel={frontendMessage("settings.provider.connectionToggle")}
-                onCheckedChange={(next) => onConfirm({ Enabled: next })}
-              />
-              {errorMessage && dirty ? (
-                <Button size="sm" variant="outline" disabled={disabled || pending} onClick={() => onConfirm()}>
-                  <RotateCcw className="h-3.5 w-3.5" />
-                  {frontendMessage("settings.action.retry")}
-                </Button>
-              ) : null}
-              <IconAction
-                label={frontendMessage("settings.provider.apiConfig")}
-                disabled={disabled}
-                onClick={() => {
-                  setRequestHeadersDraft(toHeaderRows(provider.Headers ?? {}));
-                  setRequestConfigOpen(true);
-                }}
-              >
-                <SlidersHorizontal className="h-3.5 w-3.5" />
-              </IconAction>
-              {onDelete ? (
-                <IconAction
-                  label={frontendMessage("settings.provider.delete")}
-                  danger
-                  disabled={disabled || protectedProvider}
-                  onClick={onDelete}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </IconAction>
-              ) : null}
-            </>
-          }
-        />
-
-        <div className="grid gap-2.5">
-          <ConnectionField label={frontendMessage("settings.provider.apiKey")}>
-            <div className="flex h-9 min-w-0 overflow-hidden rounded-md border border-ink-200/80 bg-paper-50 transition-[border-color,box-shadow] focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus">
-              <input
-                type={showKey ? "text" : "password"}
-                value={displayedApiKey}
-                disabled={disabled}
-                placeholder="sk-..."
-                spellCheck={false}
-                className={cn(inputClassName, "h-full font-mono")}
-                onChange={(event) => {
-                  const value = event.currentTarget.value;
-                  setApiKeyDraft(value);
-                  onChange({ ApiKey: value });
-                }}
-                onBlur={() => onConfirm()}
-              />
-              <button
-                type="button"
-                disabled={displayedApiKey.length === 0}
-                className="grid h-9 w-9 shrink-0 place-items-center text-ink-450 transition hover:bg-ink-900/[0.035] hover:text-ink-800 disabled:pointer-events-none disabled:opacity-40"
-                onClick={() => setShowKey((current) => !current)}
-                aria-label={frontendMessage(showKey ? "config.provider.hideApiKey" : "config.provider.showApiKey")}
-              >
-                {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <ScanEye className="h-3.5 w-3.5" />}
-              </button>
+    <div className="bg-surface-soft text-content-primary">
+      <div className="w-full px-0 py-4">
+        <div className="flex min-w-0 items-start justify-between gap-4 border-b border-line-subtle/70 pb-5">
+          <div className="flex min-w-0 items-center gap-4">
+            <ProviderAvatarPicker
+              provider={provider}
+              disabled={disabled || pending}
+              onChange={onChange}
+              onConfirm={onConfirm}
+              onLocalDraftChange={(dirty) => setLocalFieldDirty("logo", dirty)}
+            />
+            <div className="min-w-0">
+              <span className="block truncate text-[22px] font-semibold leading-7 text-content-primary">
+                {providerIdLabel(provider)}
+              </span>
+              <div className="mt-1 flex min-w-0 items-center gap-2 text-[11px] text-content-muted">
+                <span className="inline-flex max-w-full truncate rounded-md bg-surface-subtle px-2 py-0.5 text-[12px] text-content-secondary">
+                  {providerProtocolLabel(provider.DefaultEndpoint)}
+                </span>
+              </div>
             </div>
-          </ConnectionField>
-          <ConnectionField label={frontendMessage("settings.provider.apiUrl")}>
-            <div className="flex h-9 min-w-0 overflow-hidden rounded-md border border-ink-200/80 bg-paper-50 transition-[border-color,box-shadow] focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus">
-              <input
-                value={provider.BaseUrl ?? ""}
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <Switch
+              checked={provider.Enabled !== false}
+              size="sm"
+              disabled={disabled || pending}
+              ariaLabel={frontendMessage("settings.provider.connectionToggle")}
+              onCheckedChange={(next) => onConfirm({ Enabled: next })}
+            />
+            {errorMessage && dirty ? (
+              <Button size="sm" variant="outline" disabled={disabled || pending} onClick={() => onConfirm()}>
+                <AppIcon icon="refresh" size={14} />
+                {frontendMessage("settings.action.retry")}
+              </Button>
+            ) : null}
+            {onEdit ? (
+              <IconAction
+                label={frontendMessage("settings.provider.edit")}
                 disabled={disabled}
+                className={ghostIconActionClassName}
+                onClick={onEdit}
+              >
+                <AppIcon icon="settings" size={14} />
+              </IconAction>
+            ) : null}
+            {onDelete ? (
+              <IconAction
+                label={frontendMessage("settings.provider.delete")}
+                danger
+                disabled={disabled || protectedProvider}
+                className={ghostIconActionClassName}
+                onClick={onDelete}
+              >
+                <AppIcon icon="trash" size={14} />
+              </IconAction>
+            ) : null}
+          </div>
+        </div>
+        <div className="grid gap-4 py-5">
+          <ConnectionField
+            label={frontendMessage("settings.provider.apiUrl")}
+            hint={frontendMessage("settings.provider.apiUrlHint")}
+            inline
+          >
+            <div className="flex h-11 min-w-0 items-center overflow-hidden rounded-[10px] border border-line-subtle bg-surface-panel px-3 transition-[border-color,box-shadow] focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus">
+              <input
+                value={baseUrlDraft}
+                disabled={disabled}
+                aria-label={frontendMessage("settings.provider.apiUrl")}
                 placeholder="https://.../v1"
                 spellCheck={false}
-                className={cn(inputClassName, "h-full font-mono")}
+                className="h-full min-w-0 flex-1 bg-transparent font-mono text-[12px] text-content-primary outline-none placeholder:font-sans placeholder:text-content-muted"
                 onChange={(event) => {
-                  onChange({ BaseUrl: event.currentTarget.value });
+                  const value = event.currentTarget.value;
+                  baseUrlDraftRef.current = value;
+                  setBaseUrlDraft(value);
+                  setLocalFieldDirty("baseUrl", true);
                 }}
-                onBlur={() => onConfirm()}
+                onBlur={() => {
+                  if (!baseUrlDirtyRef.current) return;
+                  onConfirm({ BaseUrl: baseUrlDraftRef.current });
+                  setLocalFieldDirty("baseUrl", false);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter") return;
+                  event.preventDefault();
+                  if (!baseUrlDirtyRef.current) return;
+                  onConfirm({ BaseUrl: baseUrlDraftRef.current });
+                  setLocalFieldDirty("baseUrl", false);
+                  event.currentTarget.blur();
+                }}
               />
             </div>
           </ConnectionField>
-          <ProviderLogoField provider={provider} disabled={disabled} onChange={onChange} onConfirm={onConfirm} />
+          <ConnectionField
+            label={frontendMessage("settings.provider.apiKey")}
+            hint={frontendMessage("settings.provider.apiKeyHint")}
+            inline
+          >
+            <SecretInput
+              key={providerId ?? "empty"}
+              size="md"
+              value={displayedApiKey}
+              disabled={disabled}
+              placeholder="sk-..."
+              ariaLabel={frontendMessage("settings.provider.apiKey")}
+              showLabel={frontendMessage("config.provider.showApiKey")}
+              hideLabel={frontendMessage("config.provider.hideApiKey")}
+              hideRevealWhenEmpty
+              className="font-mono text-[12px] placeholder:font-sans"
+              onChange={(value) => {
+                apiKeyDraftRef.current = value;
+                setApiKeyDraft(value);
+                setLocalFieldDirty("apiKey", true);
+              }}
+              onBlur={() => {
+                if (apiKeyDirtyRef.current && apiKeyDraftRef.current !== null) {
+                  onConfirm({ ApiKey: apiKeyDraftRef.current });
+                }
+                setLocalFieldDirty("apiKey", false);
+              }}
+              trailing={
+                <Tooltip content={frontendMessage("clipboard.pasteFromClipboard")} side="top">
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    className="grid h-8 w-7 shrink-0 place-items-center rounded text-content-muted transition hover:bg-surface-hover hover:text-content-primary disabled:pointer-events-none disabled:opacity-30 active:scale-[0.95]"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={async () => {
+                      try {
+                        const clipText = await navigator.clipboard.readText();
+                        if (clipText) {
+                          apiKeyDraftRef.current = clipText;
+                          setApiKeyDraft(clipText);
+                          setLocalFieldDirty("apiKey", true);
+                          onConfirm({ ApiKey: clipText });
+                          setLocalFieldDirty("apiKey", false);
+                        }
+                      } catch {
+                        // ignore if clipboard permission denied
+                      }
+                    }}
+                    aria-label={frontendMessage("clipboard.pasteFromClipboard")}
+                  >
+                    <AppIcon icon="copy" size={13} />
+                  </button>
+                </Tooltip>
+              }
+            />
+          </ConnectionField>
         </div>
 
         {errorMessage ? (
@@ -228,150 +302,182 @@ export function ProviderConnectionEditor({
           </div>
         ) : null}
       </div>
-      <Dialog
-        open={requestConfigOpen}
-        onOpenChange={(open) => {
-          // Save-on-close, but never commit a duplicate-name collapse: rowsToHeaders
-          // is last-wins, so ESC/X with duplicates would silently drop a header.
-          // Match the disabled Confirm button — discard the invalid in-dialog edits
-          // (reopening reseeds from the saved headers) instead of corrupting them.
-          if (!open && duplicateHeaderNames.size === 0) {
-            onConfirm({ Headers: rowsToHeaders(requestHeadersDraft) });
-          }
-          setRequestConfigOpen(open);
-        }}
-      >
-        <DialogContent
-          title={frontendMessage("settings.provider.apiConfig")}
-          description={frontendMessage("settings.provider.customHeadersDescription")}
-          className="h-[min(680px,calc(100dvh_-_32px))] w-[min(600px,calc(100vw_-_32px))]"
-          bodyClassName="flex min-h-0 flex-1 flex-col px-8 pb-7 pt-3"
-        >
-          <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto">
-            <div className="mb-3 flex items-center gap-2">
-              <span className="text-[12px] font-semibold text-ink-800">
-                {frontendMessage("settings.provider.customHeaders")}
-              </span>
-              <span className="font-mono text-[10.5px] text-ink-500">{"{}"}</span>
-            </div>
-            <HeadersEditor
-              rows={requestHeadersDraft}
-              disabled={disabled}
-              duplicateNames={duplicateHeaderNames}
-              onChange={setRequestHeadersDraft}
-            />
-            {duplicateHeaderNames.size > 0 ? (
-              <div className="mt-3">
-                <ProviderFormError message={frontendMessage("settings.provider.duplicateHeaderName")} />
-              </div>
-            ) : null}
-            <FormHint className="mt-3">{frontendMessage("settings.provider.customHeadersHint")}</FormHint>
-          </div>
-          <DialogActions className="mt-auto">
-            <DialogActionButton
-              variant="primary"
-              disabled={disabled || duplicateHeaderNames.size > 0}
-              onClick={() => {
-                onConfirm({ Headers: rowsToHeaders(requestHeadersDraft) });
-                setRequestConfigOpen(false);
-              }}
-            >
-              {frontendMessage("settings.action.confirm")}
-            </DialogActionButton>
-          </DialogActions>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
 
-const CUSTOM_LOGO_OPTION = "__custom__";
-
-function ProviderLogoField({
+function ProviderAvatarPicker({
   provider,
   disabled,
   onChange,
   onConfirm,
+  onLocalDraftChange,
 }: {
   provider: ProviderEndpointDraft;
   disabled: boolean;
   onChange: (patch: Partial<ProviderEndpointDraft>) => void;
   onConfirm: (patch?: Partial<ProviderEndpointDraft>) => void;
+  onLocalDraftChange: (dirty: boolean) => void;
 }): JSX.Element {
+  const [open, setOpen] = useState(false);
   const iconValue = provider.Icon?.trim() ?? "";
   const builtInCandidate = ModelProviderIconNames.find(
     (name) => name === iconValue.toLowerCase().replace(/\.svg$/u, ""),
   );
-  // Keep the raw value while the user types a URL. The renderer still applies
-  // the stricter image-source allow-list, but a controlled input must not erase
-  // the first character of a partially entered address.
-  const customLogoDraft = builtInCandidate ? "" : iconValue;
-  const customLogo = readCustomModelProviderIconSource(customLogoDraft) ?? "";
-  const builtInLogo = customLogo ? "" : (builtInCandidate ?? "");
-  const selectedValue = customLogo ? CUSTOM_LOGO_OPTION : builtInLogo;
+  const [customLogoDraft, setCustomLogoDraft] = useState(() => (builtInCandidate ? "" : iconValue));
+  const customLogoDraftRef = useRef(customLogoDraft);
+  const customLogoDirtyRef = useRef(false);
+  const onLocalDraftChangeRef = useRef(onLocalDraftChange);
+  customLogoDraftRef.current = customLogoDraft;
+  onLocalDraftChangeRef.current = onLocalDraftChange;
+
+  useEffect(() => {
+    if (customLogoDirtyRef.current) return;
+    const nextDraft = builtInCandidate ? "" : iconValue;
+    customLogoDraftRef.current = nextDraft;
+    setCustomLogoDraft(nextDraft);
+  }, [builtInCandidate, iconValue, provider.Id]);
+
+  useEffect(() => {
+    return () => {
+      customLogoDirtyRef.current = false;
+      onLocalDraftChangeRef.current(false);
+    };
+  }, [provider.Id]);
+
+  const effectiveIconValue = customLogoDirtyRef.current ? customLogoDraft.trim() : iconValue;
+  const effectiveBuiltInCandidate = ModelProviderIconNames.find(
+    (name) => name === effectiveIconValue.toLowerCase().replace(/\.svg$/u, ""),
+  );
+  const customLogo = readCustomModelProviderIconSource(effectiveIconValue) ?? "";
+  const builtInLogo = customLogo ? "" : (effectiveBuiltInCandidate ?? "");
   const inferredLogo = inferModelProviderEndpointIcon(provider.Id);
-  const logoOptions = [
-    {
-      value: "",
-      label: frontendMessage("settings.provider.logoAuto"),
-      description: frontendMessage("settings.provider.logoAutoDescription"),
-    },
-    ...(customLogo
-      ? [
-          {
-            value: CUSTOM_LOGO_OPTION,
-            label: frontendMessage("settings.provider.logoCustom"),
-            description: customLogo,
-          },
-        ]
-      : []),
-    ...ModelProviderIconNames.map((name) => ({ value: name, label: formatLogoName(name) })),
-  ];
+  const activeIcon = customLogo || builtInLogo || inferredLogo;
+  const isAuto = !effectiveIconValue;
 
   return (
-    <ConnectionField label={frontendMessage("settings.provider.logoLabel")}>
-      <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(180px,0.62fr)_minmax(0,1fr)]">
-        <MenuSelect
-          value={selectedValue}
-          placeholder={frontendMessage("settings.provider.logoAuto")}
-          ariaLabel={frontendMessage("settings.provider.logoLabel")}
-          options={logoOptions}
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
           disabled={disabled}
-          size="md"
-          leading={<ModelProviderIcon icon={customLogo || builtInLogo || inferredLogo} size={16} />}
-          contentClassName="max-h-[280px] w-[280px]"
-          renderValue={(_value, option) => (
-            <span className="inline-flex min-w-0 items-center gap-2">
-              <span className="truncate">{option?.label ?? frontendMessage("settings.provider.logoAuto")}</span>
-            </span>
-          )}
-          renderOption={(option) => (
-            <span className="inline-flex min-w-0 items-center gap-2">
-              <ModelProviderIcon
-                icon={option.value === CUSTOM_LOGO_OPTION ? customLogo : option.value || inferredLogo}
-                size={16}
-              />
-              <span className="min-w-0 truncate">{option.label}</span>
-            </span>
-          )}
-          onChange={(value) =>
-            onChange({
-              Icon: value === CUSTOM_LOGO_OPTION ? customLogoDraft || undefined : value || undefined,
-            })
-          }
-        />
-        <Input
-          value={customLogoDraft}
-          disabled={disabled}
-          placeholder={frontendMessage("settings.provider.logoCustomPlaceholder")}
-          spellCheck={false}
-          aria-label={frontendMessage("settings.provider.logoCustom")}
-          onChange={(event) => onChange({ Icon: event.currentTarget.value || undefined })}
-          onBlur={() => onConfirm()}
-        />
-        <FormHint className="sm:col-span-2">{frontendMessage("settings.provider.logoHint")}</FormHint>
-      </div>
-    </ConnectionField>
+          aria-label={frontendMessage("settings.provider.logoLabel")}
+          className="group relative flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-line-subtle bg-surface-subtle outline-none transition-[border-color,box-shadow] duration-150 hover:border-line-strong hover:shadow-soft focus-visible:border-accent-border focus-visible:ring-2 focus-visible:ring-accent-focus disabled:pointer-events-none disabled:opacity-50"
+        >
+          <ProviderMark icon={activeIcon} label={provider.Id} size={38} />
+          <span
+            className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full border border-ink-200 bg-paper-50 text-ink-500 shadow-sm transition-colors group-hover:bg-content-strong group-hover:text-content-inverse"
+            aria-hidden="true"
+          >
+            <AppIcon icon="pencil" size={10} />
+          </span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        side="bottom"
+        sideOffset={8}
+        className="w-[300px] border-line-subtle bg-surface-panel p-3.5"
+      >
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-[12.5px] font-semibold text-content-strong">
+            {frontendMessage("settings.provider.logoLabel")}
+          </span>
+          <button
+            type="button"
+            disabled={isAuto}
+            onClick={() => {
+              customLogoDraftRef.current = "";
+              setCustomLogoDraft("");
+              customLogoDirtyRef.current = false;
+              onLocalDraftChange(false);
+              onChange({ Icon: undefined });
+              onConfirm({ Icon: undefined });
+              setOpen(false);
+            }}
+            className="text-[11px] text-content-muted transition hover:text-accent-content disabled:pointer-events-none disabled:opacity-40"
+          >
+            {frontendMessage("settings.provider.logoAuto")}
+          </button>
+        </div>
+
+        <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.12em] text-content-muted">
+          {frontendMessage("settings.group.model")}
+        </div>
+        <div className="scrollbar-thin mb-3 grid max-h-[190px] grid-cols-5 gap-1.5 overflow-y-auto p-0.5">
+          {ModelProviderIconNames.map((name) => {
+            const isSelected = builtInLogo === name;
+            return (
+              <button
+                key={name}
+                type="button"
+                title={formatLogoName(name)}
+                onClick={() => {
+                  customLogoDraftRef.current = "";
+                  setCustomLogoDraft("");
+                  customLogoDirtyRef.current = false;
+                  onLocalDraftChange(false);
+                  onChange({ Icon: name });
+                  onConfirm({ Icon: name });
+                  setOpen(false);
+                }}
+                className={cn(
+                  "flex aspect-square flex-col items-center justify-center gap-1 rounded-lg border p-1 transition",
+                  isSelected
+                    ? "border-accent-border bg-accent-surface ring-1 ring-accent-focus"
+                    : "border-line-subtle bg-surface-subtle hover:border-accent-border hover:bg-surface-hover",
+                )}
+              >
+                <ModelProviderIcon icon={name} size={18} />
+                <span className="max-w-[44px] truncate text-[9.5px] text-content-secondary leading-none">
+                  {formatLogoName(name)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-content-muted">
+          {frontendMessage("settings.provider.logoCustom")}
+        </div>
+        <div className="flex flex-col gap-1">
+          <Input
+            size="sm"
+            value={customLogoDraft}
+            disabled={disabled}
+            placeholder={frontendMessage("settings.provider.logoCustomPlaceholder")}
+            spellCheck={false}
+            aria-label={frontendMessage("settings.provider.logoCustom")}
+            className="text-[12px] font-mono"
+            onChange={(event) => {
+              const value = event.currentTarget.value;
+              customLogoDraftRef.current = value;
+              setCustomLogoDraft(value);
+              customLogoDirtyRef.current = true;
+              onLocalDraftChange(true);
+            }}
+            onBlur={() => {
+              if (!customLogoDirtyRef.current) return;
+              onConfirm({ Icon: customLogoDraftRef.current || undefined });
+              customLogoDirtyRef.current = false;
+              onLocalDraftChange(false);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                if (customLogoDirtyRef.current) {
+                  onConfirm({ Icon: customLogoDraftRef.current || undefined });
+                  customLogoDirtyRef.current = false;
+                  onLocalDraftChange(false);
+                }
+                setOpen(false);
+              }
+            }}
+          />
+          <FormHint className="text-[10px] leading-tight">{frontendMessage("settings.provider.logoHint")}</FormHint>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -382,6 +488,19 @@ function formatLogoName(value: string): string {
     .replace(/([a-z])([A-Z])/gu, "$1 $2")
     .replace(/[-_]+/gu, " ")
     .replace(/\b\w/gu, (character) => character.toUpperCase());
+}
+
+function providerProtocolLabel(endpoint: ProviderEndpointDraft["DefaultEndpoint"]): string {
+  switch (endpoint ?? "ChatCompletions") {
+    case "Responses":
+      return frontendMessage("settings.provider.endpointResponses");
+    case "ChatCompletions":
+      return frontendMessage("settings.provider.endpointChatCompletions");
+    case "ClaudeMessages":
+      return frontendMessage("settings.provider.endpointClaudeMessages");
+    case "GoogleGenerateContent":
+      return frontendMessage("settings.provider.endpointGoogleGenerateContent");
+  }
 }
 
 const brandedLogoNames: Readonly<Record<string, string>> = {
@@ -410,69 +529,35 @@ const brandedLogoNames: Readonly<Record<string, string>> = {
   zhipu: "Zhipu",
 };
 
-function ConnectionField({ label, children }: { label: string; children: React.ReactNode }): JSX.Element {
-  return (
-    <label className="grid min-w-0 gap-1.5 sm:grid-cols-[96px_minmax(0,1fr)] sm:items-center sm:gap-3">
-      <span className="text-[11.5px] font-medium text-ink-600">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-function HeadersEditor({
-  disabled,
-  rows,
-  duplicateNames,
-  onChange,
+function ConnectionField({
+  label,
+  hint,
+  inline = false,
+  children,
 }: {
-  disabled: boolean;
-  rows: readonly HeaderRow[];
-  duplicateNames: ReadonlySet<string>;
-  onChange: (rows: HeaderRow[]) => void;
+  label: string;
+  hint?: string;
+  inline?: boolean;
+  children: React.ReactNode;
 }): JSX.Element {
-  const updateRow = (id: number, patch: Partial<Pick<HeaderRow, "name" | "value">>): void => {
-    onChange(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
-  };
   return (
-    <div className="grid gap-2">
-      {rows.map((row) => (
-        <div key={row.id} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-          <Input
-            value={row.name}
-            placeholder={frontendMessage("settings.provider.headerName")}
-            disabled={disabled}
-            aria-invalid={duplicateNames.has(row.name.trim().toLowerCase())}
-            onChange={(event) => updateRow(row.id, { name: event.currentTarget.value })}
-          />
-          <Input
-            value={isRedactedConfigSecret(row.value) ? "" : row.value}
-            placeholder={frontendMessage(
-              isRedactedConfigSecret(row.value)
-                ? "settings.provider.headerValueStored"
-                : "settings.provider.headerValue",
-            )}
-            disabled={disabled}
-            onChange={(event) => updateRow(row.id, { value: event.currentTarget.value })}
-          />
-          <IconAction
-            label={frontendMessage("settings.provider.deleteHeader")}
-            danger
-            disabled={disabled}
-            onClick={() => onChange(rows.filter((entry) => entry.id !== row.id))}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </IconAction>
-        </div>
-      ))}
-      <Button
-        variant="outline"
-        disabled={disabled}
-        className="w-fit border-dashed"
-        onClick={() => onChange([...rows, { id: ++headerRowSeed, name: "", value: "" }])}
-      >
-        <Plus className="h-3.5 w-3.5" />
-        {frontendMessage("settings.provider.addHeader")}
-      </Button>
+    <div
+      className={cn(
+        "grid min-w-0 gap-1.5",
+        inline && "sm:max-w-[520px] sm:grid-cols-[72px_minmax(0,1fr)] sm:items-center sm:gap-3",
+      )}
+    >
+      <div className="flex items-center gap-1.5 text-[13.5px] font-medium text-content-primary">
+        <span>{label}</span>
+        {hint ? (
+          <Tooltip content={hint} side="top">
+            <span className="inline-flex cursor-help text-content-muted opacity-70 transition-opacity hover:opacity-100">
+              <AppIcon icon="alert" size={12} className="rotate-180" />
+            </span>
+          </Tooltip>
+        ) : null}
+      </div>
+      {children}
     </div>
   );
 }

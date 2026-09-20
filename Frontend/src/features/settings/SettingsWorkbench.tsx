@@ -57,7 +57,6 @@ export function SettingsWorkbench({
   );
   const pendingChanges = configDraftState.dirty || entityDraftDirty;
   const showSectionHeader = !usesOwnSectionHeader(section) || environment.surface === "desktop";
-
   useEffect(() => {
     onPendingChangesChange?.(pendingChanges);
   }, [onPendingChangesChange, pendingChanges]);

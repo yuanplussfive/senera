@@ -60,12 +60,14 @@ export function createModelDraft({
   modelInfo,
   modelField,
   endpointOptions,
+  defaultEndpoint,
   modelsDev,
 }: {
   provider: ProviderEndpointDraft;
   modelInfo: ProviderModelInfo;
   modelField: ConfigFormFieldData | undefined;
   endpointOptions: Array<{ value: string; label: string }>;
+  defaultEndpoint?: ModelProviderDraft["Endpoint"];
   modelsDev?: ModelsDevModelMetadata;
 }): ModelProviderDraft {
   const template = cloneRecord(modelField?.defaultItem ?? {});
@@ -79,7 +81,8 @@ export function createModelDraft({
     ...(modelsDev?.outputLimit ? { MaxModelOutputTokens: modelsDev.outputLimit } : {}),
     Id: modelConfigId(provider.Id, modelId),
     ProviderId: provider.Id,
-    Endpoint: readString(template.Endpoint) ?? endpointOptions[0]?.value ?? "",
+    Endpoint:
+      defaultEndpoint ?? provider.DefaultEndpoint ?? readString(template.Endpoint) ?? endpointOptions[0]?.value ?? "",
     Model: modelId,
   });
 }
@@ -146,6 +149,7 @@ export function normalizeProviderEndpointDraft(value: unknown): ProviderEndpoint
     ...optionalString("Icon", record.Icon),
     ...(typeof record.Enabled === "boolean" ? { Enabled: record.Enabled } : {}),
     ...optionalString("Kind", record.Kind),
+    ...optionalEndpoint("DefaultEndpoint", record.DefaultEndpoint),
     ...optionalString("BaseUrl", record.BaseUrl),
     ...optionalString("ApiKey", record.ApiKey),
     ...optionalString("ApiVersion", record.ApiVersion),
@@ -179,7 +183,10 @@ export function normalizeModelGroupStrategy(value: unknown): ModelGroupStrategyD
   };
 }
 
-export function toProviderEndpointInput(provider: ProviderEndpointDraft): ProviderModelEndpointInput {
+export function toProviderEndpointInput(
+  provider: ProviderEndpointDraft,
+  includeDefaultEndpoint = true,
+): ProviderModelEndpointInput {
   const headers = provider.Headers
     ? Object.fromEntries(Object.entries(provider.Headers).filter(([key]) => key.trim()))
     : undefined;
@@ -188,6 +195,7 @@ export function toProviderEndpointInput(provider: ProviderEndpointDraft): Provid
     ...optionalString("Icon", provider.Icon),
     ...(typeof provider.Enabled === "boolean" ? { Enabled: provider.Enabled } : {}),
     ...(provider.Kind === "OpenAICompatible" ? { Kind: "OpenAICompatible" as const } : {}),
+    ...(includeDefaultEndpoint ? optionalEndpoint("DefaultEndpoint", provider.DefaultEndpoint) : {}),
     ...optionalString("BaseUrl", provider.BaseUrl),
     ...optionalString("ApiKey", provider.ApiKey),
     ...optionalString("ApiVersion", provider.ApiVersion),
@@ -566,6 +574,21 @@ export function cloneRecord(value: unknown): Record<string, unknown> {
 export function optionalString<TKey extends string>(key: TKey, value: unknown): Partial<Record<TKey, string>> {
   const text = readString(value);
   return text === undefined ? {} : ({ [key]: text } as Partial<Record<TKey, string>>);
+}
+
+function optionalEndpoint<TKey extends string>(
+  key: TKey,
+  value: unknown,
+): Partial<Record<TKey, ProviderModelEndpointInput["DefaultEndpoint"]>> {
+  if (
+    value !== "Responses" &&
+    value !== "ChatCompletions" &&
+    value !== "ClaudeMessages" &&
+    value !== "GoogleGenerateContent"
+  ) {
+    return {};
+  }
+  return { [key]: value } as Partial<Record<TKey, ProviderModelEndpointInput["DefaultEndpoint"]>>;
 }
 
 export function optionalNumber<TKey extends string>(key: TKey, value: unknown): Partial<Record<TKey, number>> {

@@ -11,6 +11,7 @@ import WrenchScrewdriverIcon from "@heroicons/react/24/outline/WrenchScrewdriver
 import { ArrowDown, ArrowUp, Check, Plus, Trash2 } from "lucide-react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { ConfigFormFieldData } from "../../../api/eventTypes";
+import { MotionListItem } from "../../../shared/motion";
 import { IconButton, MenuSelect, Spinner, StateView, Switch } from "../../../shared/ui";
 import { findTopField } from "../../chat/modelConfigData";
 import {
@@ -108,7 +109,7 @@ export function DefaultModelSection({
 
   return (
     <div className="bg-transparent px-0 py-3 sm:py-4">
-      <section className="mx-auto w-full max-w-[1120px]">
+      <section className="mx-auto w-full max-w-[720px]">
         <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-line-subtle pb-4">
           <div className="min-w-0">
             <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-content-strong">
@@ -120,29 +121,34 @@ export function DefaultModelSection({
           </div>
         </header>
 
-        <div className="mt-4 space-y-5">
+        <div className="mt-4 space-y-4">
           {assignmentGroups.map((group) => (
-            <section key={group.id} data-model-assignment-group>
-              <div className="flex items-center border-b border-line-subtle pb-2">
-                <h3 className="text-[12.5px] font-semibold text-content-primary">{group.label}</h3>
-              </div>
-              <div className="divide-y divide-line-subtle">
-                {group.fields.map((field) => (
-                  <ModelAssignmentRow
-                    key={field.modelSelection.id}
-                    allFields={allFields}
-                    defaultModelId={defaultModelId}
-                    draftState={draftState}
-                    field={field}
-                    modelTemplate={modelTemplate}
-                    pendingModelId={pendingModelId}
-                    state={state}
-                    systemConfig={systemConfig}
-                    onDefaultModelPending={setPendingModelId}
-                  />
-                ))}
-              </div>
-            </section>
+            <MotionListItem key={group.id}>
+              <section
+                data-model-assignment-group
+                className="overflow-hidden rounded-xl border border-line-subtle bg-surface-panel shadow-[0_1px_2px_rgba(43,40,32,0.02)]"
+              >
+                <div className="flex items-center border-b border-line-subtle/80 bg-surface-subtle px-4 py-2.5">
+                  <h3 className="text-[12.5px] font-semibold text-content-primary">{group.label}</h3>
+                </div>
+                <div className="divide-y divide-line-subtle/60 px-4">
+                  {group.fields.map((field) => (
+                    <ModelAssignmentRow
+                      key={field.modelSelection.id}
+                      allFields={allFields}
+                      defaultModelId={defaultModelId}
+                      draftState={draftState}
+                      field={field}
+                      modelTemplate={modelTemplate}
+                      pendingModelId={pendingModelId}
+                      state={state}
+                      systemConfig={systemConfig}
+                      onDefaultModelPending={setPendingModelId}
+                    />
+                  ))}
+                </div>
+              </section>
+            </MotionListItem>
           ))}
         </div>
       </section>
@@ -452,17 +458,17 @@ function PoolCandidateLabel({
 
 function AssignmentLabel({ field }: { field: RuntimeModelAssignmentField }): JSX.Element {
   return (
-    <div className="min-w-0">
-      <span className="sr-only">
+    <div className="flex min-w-0 items-start gap-2.5">
+      <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-line-subtle bg-surface-subtle text-content-secondary">
         <AssignmentRoleIcon field={field} />
       </span>
-      <div className="min-w-0 pt-0.5">
+      <div className="min-w-0 flex-1 pt-0.5">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
           <span className="text-[13px] font-medium text-content-primary">{field.label}</span>
           <ConfigFieldRequirementLabel required={field.modelSelection.required} />
         </div>
         {field.description ? (
-          <p className="mt-0.5 text-[11.5px] leading-5 text-content-secondary">{field.description}</p>
+          <p className="mt-0.5 text-[11.5px] leading-relaxed text-content-muted">{field.description}</p>
         ) : null}
       </div>
     </div>

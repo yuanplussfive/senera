@@ -9,6 +9,7 @@ import { resolveRuntimeHttpBaseUrl, resolveRuntimeWebSocketUrl } from "./config/
 import { FrontendI18nProvider, useFrontendLocale } from "./i18n/useFrontendLocale";
 import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
 import { AuthenticatedSurface } from "./app/AuthenticatedSurface";
+import { ApplicationSurfaceLoading, SettingsSurfaceLoading } from "./app/SurfaceLoading";
 import { useAuthenticatedApplicationPreload } from "./app/useAuthenticatedApplicationPreload";
 import { installViteDynamicImportRecovery } from "./app/viteDynamicImportRecovery";
 import "./styles/fonts.css";
@@ -74,13 +75,16 @@ function ApplicationRoot(): JSX.Element {
     const result = await revalidateAuthentication();
     return result === "anonymous" || result === "rejected" ? "stop" : "retry";
   }, [revalidateAuthentication]);
+  const authenticationLoadingFallback =
+    surface === "settings" ? <SettingsSurfaceLoading presentation="desktop" /> : <ApplicationSurfaceLoading />;
 
   const authenticatedContent = (
-    <Suspense fallback={<AuthenticationBoundaryLoading />}>
+    <Suspense fallback={authenticationLoadingFallback}>
       <LazyServerAuthenticationBoundary
         state={authentication.state}
         onLogin={authentication.login}
         onRetry={authentication.refresh}
+        loadingFallback={authenticationLoadingFallback}
       >
         {(resolvedAuthentication) => (
           <AuthenticatedSurface
@@ -110,8 +114,4 @@ function ApplicationRoot(): JSX.Element {
       )}
     </FrontendI18nProvider>
   );
-}
-
-function AuthenticationBoundaryLoading(): JSX.Element {
-  return <main className="min-h-screen bg-paper-100" aria-busy="true" />;
 }

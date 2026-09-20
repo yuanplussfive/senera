@@ -1,14 +1,12 @@
 import { useMemo, useRef, useState } from "react";
-import { Activity, Archive, FileCode2, FileJson2, PencilLine, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { useResponsiveMode } from "../../shared/responsive";
 import { useStore, type SessionRecord, type UserProfile } from "../../store/sessionStore";
 import { cn } from "../../lib/util";
 import { ConfirmationDialog, RenameDialog } from "./SessionDialogs";
 import { UserFooter } from "./ProfileFooter";
 import { SessionHeader } from "./SessionChrome";
 import { SessionPanelBody } from "./SessionPanelBody";
-import type { ConfirmationIntent, SessionMenuSection } from "./types";
+import type { ConfirmationIntent } from "./types";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { EventSourceChannel } from "../../api/eventTypes";
 import type { SettingsSectionId } from "../settings/types";
@@ -16,10 +14,6 @@ import type { SettingsSectionId } from "../settings/types";
 interface Props {
   onNewSession: () => void;
   onCloseSession: (id: string) => void;
-  onCloseSessions: (ids: string[]) => void;
-  onCompactSession: (id: string) => void;
-  onExportSession: (id: string, format: "jsonl" | "html") => void;
-  onInspectSessionRuntime: (id: string) => void;
   onRenameSession: (id: string, title: string) => boolean;
   userProfile: UserProfile;
   onUpdateUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
@@ -42,10 +36,6 @@ type SessionChannelFilter = "all" | EventSourceChannel;
 export function SessionList({
   onNewSession,
   onCloseSession,
-  onCloseSessions,
-  onCompactSession,
-  onExportSession,
-  onInspectSessionRuntime,
   onRenameSession,
   userProfile,
   onUpdateUserProfile,
@@ -60,16 +50,12 @@ export function SessionList({
   const sessions = useStore((s) => s.sessions);
   const order = useStore((s) => s.sessionOrder);
   const active = useStore((s) => s.activeSessionId);
-  const moveSession = useStore((s) => s.moveSession);
   const historyLoadingIds = useStore((s) => s.historyLoadingIds);
   const missingOnServerIds = useStore((s) => s.missingOnServerIds);
   const sessionCatalogSynced = useStore((s) => s.catalogSynced.sessions);
   const select = useStore((s) => s.selectSession);
   const toggleSidebar = useStore((s) => s.toggleSidebar);
   const sidebarCollapsed = useStore((s) => s.sidebarCollapsed);
-  const { viewport } = useResponsiveMode();
-  const showInlineRowActions = viewport === "mobile" || viewport === "tablet";
-
   const [confirmation, setConfirmation] = useState<ConfirmationIntent | null>(null);
   const [renaming, setRenaming] = useState<RenameIntent | null>(null);
   const dialogReturnFocusRef = useRef<HTMLElement | null>(null);
@@ -96,9 +82,6 @@ export function SessionList({
       }),
     [channelFilter, normalizedSearchQuery, sessionList],
   );
-
-  const activeSession = active ? sessions[active] : undefined;
-  const piSessionCommandDisabled = !activeSession || socketStatus !== "open" || Boolean(activeSession.activeRequestId);
 
   const openRename = (session: SessionRecord, returnFocus: HTMLElement | null = null): void => {
     dialogReturnFocusRef.current = returnFocus?.isConnected ? returnFocus : null;
@@ -136,99 +119,19 @@ export function SessionList({
     });
   };
 
-  const confirmDeleteAllSessions = (): void => {
-    const ids = sessionList.map((session) => session.sessionId);
-    if (ids.length === 0) return;
-    setConfirmation({
-      title: frontendMessage("session.deleteAllHistory"),
-      description: frontendMessage("session.deleteAllDescription", { count: ids.length }),
-      confirmLabel: frontendMessage("session.deleteAllConfirm"),
-      tone: "danger",
-      details: [frontendMessage("session.deleteAllDetailRequests"), frontendMessage("session.deleteAllDetailRefresh")],
-      onConfirm: () => {
-        onCloseSessions(ids);
-        toast.success(frontendMessage("session.bulkDeleteRequested", { count: ids.length }));
-      },
-    });
-  };
-
-  const menuSections = [
-    {
-      section: frontendMessage("session.currentSection"),
-      items: [
-        {
-          id: "rename",
-          label: frontendMessage("session.renameCurrent"),
-          icon: <PencilLine className="h-3.5 w-3.5" />,
-          disabled: !activeSession,
-          onSelect: () => activeSession && openRename(activeSession),
-        },
-        {
-          id: "delete-current",
-          label: frontendMessage("session.deleteCurrentTitle"),
-          icon: <Trash2 className="h-3.5 w-3.5" />,
-          destructive: true,
-          disabled: !activeSession,
-          onSelect: () => activeSession && confirmDeleteSession(activeSession),
-        },
-      ],
-    },
-    {
-      section: frontendMessage("session.piSection"),
-      items: [
-        {
-          id: "pi-status",
-          label: frontendMessage("session.piStatus"),
-          icon: <Activity className="h-3.5 w-3.5" />,
-          disabled: piSessionCommandDisabled,
-          onSelect: () => activeSession && onInspectSessionRuntime(activeSession.sessionId),
-        },
-        {
-          id: "pi-compact",
-          label: frontendMessage("session.piCompact"),
-          icon: <Archive className="h-3.5 w-3.5" />,
-          disabled: piSessionCommandDisabled,
-          onSelect: () => activeSession && onCompactSession(activeSession.sessionId),
-        },
-        {
-          id: "pi-export-jsonl",
-          label: frontendMessage("session.piExportJsonl"),
-          icon: <FileJson2 className="h-3.5 w-3.5" />,
-          disabled: piSessionCommandDisabled,
-          onSelect: () => activeSession && onExportSession(activeSession.sessionId, "jsonl"),
-        },
-        {
-          id: "pi-export-html",
-          label: frontendMessage("session.piExportHtml"),
-          icon: <FileCode2 className="h-3.5 w-3.5" />,
-          disabled: piSessionCommandDisabled,
-          onSelect: () => activeSession && onExportSession(activeSession.sessionId, "html"),
-        },
-      ],
-    },
-    {
-      section: frontendMessage("session.historySection"),
-      items: [
-        {
-          id: "delete-all",
-          label: frontendMessage("session.deleteAllHistory"),
-          icon: <Trash2 className="h-3.5 w-3.5" />,
-          destructive: true,
-          disabled: sessionList.length === 0,
-          onSelect: confirmDeleteAllSessions,
-        },
-      ],
-    },
-  ] satisfies readonly SessionMenuSection[];
-
   const compactSidebar = presentation === "auto" && sidebarCollapsed;
-  const panelWidthClass = compactSidebar ? "w-[58px]" : "w-full";
+  const compactFrame = presentation === "auto" && !compactSidebar;
+  const panelWidthClass = compactSidebar ? "w-[58px]" : presentation === "auto" ? "w-[calc(100%-1.25rem)]" : "w-full";
 
   const content = (
     <aside
       className={cn(
         "flex h-full shrink-0 flex-col bg-surface-sidebar transition-[width] duration-300 ease-[cubic-bezier(.32,.72,.35,1)]",
-        presentation === "auto" ? "overflow-hidden border-r border-line-subtle" : "border-r border-line-subtle",
+        presentation === "auto"
+          ? compactSidebar
+            ? "m-2.5 h-[calc(100%-1.25rem)] overflow-hidden rounded-[12px] border border-line-subtle [box-shadow:var(--theme-surface-shadow)]"
+            : "m-2.5 h-[calc(100%-1.25rem)] w-[calc(100%-1.25rem)] gap-2.5 overflow-hidden rounded-[12px] border border-line-subtle p-[10px] pt-3 [box-shadow:var(--theme-surface-shadow)]"
+          : "border-r border-line-subtle",
         panelWidthClass,
       )}
       data-session-sidebar
@@ -238,29 +141,28 @@ export function SessionList({
     >
       <SessionHeader
         collapsed={compactSidebar}
-        menuSections={menuSections}
+        compactFrame={compactFrame}
+        channelFilter={channelFilter}
+        onChannelFilterChange={setChannelFilter}
         onNewSession={onNewSession}
         onToggleSidebar={onClosePanel ?? toggleSidebar}
       />
 
       {compactSidebar ? null : (
         <SessionPanelBody
+          compactFrame={compactFrame}
           sessions={filteredSessions}
           totalSessionCount={sessionList.length}
           catalogSynced={sessionCatalogSynced}
           query={searchQuery}
           onQueryChange={setSearchQuery}
-          channelFilter={channelFilter}
-          onChannelFilterChange={setChannelFilter}
           activeSessionId={active}
           historyLoadingIds={historyLoadingIds}
-          showInlineRowActions={showInlineRowActions}
           onNewSession={onNewSession}
           onSelectSession={(sessionId) => {
             select(sessionId);
             onSessionSelected?.();
           }}
-          onMoveSession={moveSession}
           onRenameSession={openRename}
           onDeleteSession={confirmDeleteSession}
         />
@@ -268,6 +170,7 @@ export function SessionList({
 
       <UserFooter
         collapsed={compactSidebar}
+        compactFrame={compactFrame}
         profile={userProfile}
         socketStatus={socketStatus}
         onSettingsIntent={onSettingsIntent}
