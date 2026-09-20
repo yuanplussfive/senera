@@ -7,11 +7,13 @@ import userEvent from "@testing-library/user-event";
 import { WebSocket as NodeWebSocket } from "ws";
 import { afterAll, afterEach, beforeAll, expect, test, vi } from "vitest";
 import { frontendMessage } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
+import { readSessionHydrationState } from "../../../Frontend/src/store/session/sessionHydration.ts";
 import { useStore } from "../../../Frontend/src/store/sessionStore.ts";
 import { resetFrontendStore } from "../../FrontendTests/frontendStoreTestHarness.mjs";
 import { createAgentProtocolIntegrationHarness } from "../AgentProtocol/AgentProtocolIntegrationHarness.ts";
 
 let harness = null;
+const integrationWaitOptions = { timeout: 10_000 };
 
 beforeAll(async () => {
   harness = await createAgentProtocolIntegrationHarness();
@@ -37,6 +39,19 @@ test("the complete UI sends a message and restores the server-owned conversation
 
   const { App } = await import("../../../Frontend/src/App.tsx");
   const firstMount = render(React.createElement(App));
+  await waitFor(() => {
+    const state = useStore.getState();
+    const session = state.activeSessionId ? state.sessions[state.activeSessionId] : null;
+    expect(
+      readSessionHydrationState({
+        catalogSynced: state.catalogSynced.sessions,
+        session,
+        historyLoaded: state.activeSessionId ? Boolean(state.historyLoadedIds[state.activeSessionId]) : false,
+        historyLoading: state.activeSessionId ? Boolean(state.historyLoadingIds[state.activeSessionId]) : false,
+        historyFailed: state.activeSessionId ? Boolean(state.historyFailedIds[state.activeSessionId]) : false,
+      }),
+    ).toBe("ready");
+  }, integrationWaitOptions);
   const composer = await screen.findByPlaceholderText("跟 senera 说点什么");
   const user = userEvent.setup();
 
@@ -49,11 +64,11 @@ test("the complete UI sends a message and restores the server-owned conversation
       requestId: expect.any(String),
       status: "completed",
     });
-  });
+  }, integrationWaitOptions);
   await waitFor(() => {
     expectVisibleText("验证完整界面链路");
     expectVisibleText("E2E response: 验证完整界面链路");
-  });
+  }, integrationWaitOptions);
 
   firstMount.unmount();
   resetFrontendStore();
@@ -62,12 +77,12 @@ test("the complete UI sends a message and restores the server-owned conversation
   await waitFor(() => {
     expectVisibleText("验证完整界面链路");
     expectVisibleText("E2E response: 验证完整界面链路");
-  });
+  }, integrationWaitOptions);
   await waitFor(() => {
     const state = useStore.getState();
     expect(state.activeSessionId).toEqual(expect.any(String));
     expect(state.historyLoadedIds[state.activeSessionId]).toBe(true);
-  });
+  }, integrationWaitOptions);
 });
 
 test("switching recovered sessions keeps each server-owned conversation isolated", async () => {
