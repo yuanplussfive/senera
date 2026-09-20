@@ -7,6 +7,10 @@ import {
 } from "../../../Source/AgentSystem/Prompt/AgentPromptTemplateContextNormalizer.js";
 import type { AgentWorkflowPromptContext } from "../../../Source/AgentSystem/Prompt/AgentWorkflowPromptContext.js";
 import { AgentPromptRenderer } from "../../../Source/AgentSystem/Prompt/AgentPromptRenderer.js";
+import {
+  renderAgentContinuityPromptWire,
+  renderAgentWorkflowPromptWire,
+} from "../../../Source/AgentSystem/Prompt/AgentPromptContextWireRenderer.js";
 
 const renderer = new AgentPromptRenderer();
 const templatePath = (name: string) => path.resolve(process.cwd(), "System", "Prompts", "Templates", name);
@@ -91,9 +95,11 @@ describe("prompt template context normalization", () => {
       parentGoalId: null,
       ownerSessionId: null,
     });
+    const wire = renderAgentWorkflowPromptWire(workflow, { estimateTokens: (text) => text.length });
     expect(() =>
       renderer.renderFileSync(templatePath("WorkflowContext.liquid"), {
         Workflow: workflow,
+        WorkflowWire: wire.text,
       }),
     ).not.toThrow();
   });
@@ -120,9 +126,11 @@ describe("prompt template context normalization", () => {
       ],
     });
 
+    const wire = renderAgentContinuityPromptWire(continuity, { estimateTokens: (text) => text.length });
     expect(() =>
       renderer.renderFileSync(templatePath("ContinuityMemory.liquid"), {
         ContinuityMemory: continuity,
+        ContinuityWire: wire.text,
       }),
     ).not.toThrow();
   });
