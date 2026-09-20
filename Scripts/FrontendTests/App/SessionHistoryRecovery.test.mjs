@@ -109,7 +109,14 @@ test("does not mark completed history as failed when the socket closes", () => {
     historyLoadingIds: { completed: false, pending: true },
   });
 
-  render(React.createElement(HistoryRecoveryHarness, { activeSessionId: null, handleRef, send: vi.fn(() => true), status: "closed" }));
+  render(
+    React.createElement(HistoryRecoveryHarness, {
+      activeSessionId: null,
+      handleRef,
+      send: vi.fn(() => true),
+      status: "closed",
+    }),
+  );
 
   expect(useStore.getState().historyFailedIds.completed).toBeUndefined();
   expect(useStore.getState().historyFailedIds.pending).toBe(true);
