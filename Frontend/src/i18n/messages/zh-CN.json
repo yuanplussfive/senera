@@ -1447,7 +1447,7 @@
   "settings.provider.logoAutoDescription": "按供应商名称选择内置标识",
   "settings.provider.logoCustom": "自定义图片",
   "settings.provider.logoCustomPlaceholder": "粘贴 HTTPS 图片地址",
-  "settings.provider.logoHint": "可选内置标识，或粘贴 HTTPS、同源路径和 data:image 图片地址。留空会按名称自动识别。",
+  "settings.provider.logoHint": "可选内置标识，或粘贴 HTTPS、同源路径和 PNG/JPEG/GIF/WEBP/AVIF 图片地址。留空会按名称自动识别。",
   "settings.provider.pendingDraftError": "当前连接表单有未确认修改，请先确认或取消。",
   "settings.provider.statusReady": "服务已就绪",
   "settings.provider.apiKeyHint": "凭据加密存储于本地钥匙串，发起模型调用时直连端点",

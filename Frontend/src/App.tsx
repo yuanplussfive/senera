@@ -344,13 +344,14 @@ export function App({
   useEffect(() => {
     if (startupReleased) return;
     if (
+      settingsController.section !== null ||
       (startupCatalogSynced && isSessionHydratedForStartup(startupHydrationState)) ||
       status === "closed" ||
       status === "error"
     ) {
       setStartupReleased(true);
     }
-  }, [startupCatalogSynced, startupHydrationState, startupReleased, status]);
+  }, [settingsController.section, startupCatalogSynced, startupHydrationState, startupReleased, status]);
 
   const handleToggleSessionPanelShortcut = useCallback((): void => {
     if (hasPersistentSessionPanel) {

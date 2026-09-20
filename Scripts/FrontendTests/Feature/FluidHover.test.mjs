@@ -4,7 +4,10 @@ import { expect, test } from "vitest";
 
 const { pickNearest } = await import("../../../Frontend/src/shared/motion/useFluidHover.ts");
 
-const FrontendSourceRoot = path.resolve(process.cwd(), "Frontend", "src");
+const FrontendSourceRoot =
+  path.basename(process.cwd()) === "Frontend"
+    ? path.resolve(process.cwd(), "src")
+    : path.resolve(process.cwd(), "Frontend", "src");
 
 /**
  * The hover layer paints exactly one background. A `bg-*` utility next to it in

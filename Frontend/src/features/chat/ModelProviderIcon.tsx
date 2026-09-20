@@ -38,6 +38,7 @@ interface ModelProviderIconRuleDocument {
 }
 
 const ModelProviderIconRuleConfig = iconRules as ModelProviderIconRuleDocument;
+const SafeRasterDataImagePattern = /^data:image\/(?:avif|gif|jpe?g|png|webp);base64,[a-z0-9+/]+={0,2}$/iu;
 
 export const ModelProviderIconNames = ModelProviderIconRuleConfig.icons;
 const ModelProviderIconNameSet = new Set(ModelProviderIconNames);
@@ -146,7 +147,7 @@ export function readModelProviderIconSrc(icon: string, baseUrl: string = import.
 /**
  * Provider marks may point at a user-owned image. Keep this deliberately
  * narrow: the value is ultimately assigned to an <img> src, so only image
- * URLs, data images, and same-origin paths are accepted as custom sources.
+ * URLs, raster data images, and same-origin paths are accepted as custom sources.
  */
 export function readCustomModelProviderIconSource(value: string | undefined): string | undefined {
   const candidate = value?.trim();
@@ -154,7 +155,7 @@ export function readCustomModelProviderIconSource(value: string | undefined): st
   if ([...candidate].some((character) => isUnsafeCustomIconCharacter(character))) return undefined;
   if (
     /^https?:\/\//iu.test(candidate) ||
-    /^data:image\//iu.test(candidate) ||
+    SafeRasterDataImagePattern.test(candidate) ||
     (candidate.startsWith("/") && !candidate.startsWith("//"))
   ) {
     return candidate;

@@ -1447,7 +1447,7 @@
   "settings.provider.logoAutoDescription": "Infer a bundled mark from the provider name",
   "settings.provider.logoCustom": "Custom image",
   "settings.provider.logoCustomPlaceholder": "Paste an HTTPS image URL",
-  "settings.provider.logoHint": "Choose a bundled mark or paste an HTTPS, same-origin, or data:image source. Leave empty to infer it from the name.",
+  "settings.provider.logoHint": "Choose a bundled mark or paste an HTTPS, same-origin, or raster image source. Leave empty to infer it from the name.",
   "settings.provider.pendingDraftError": "The current connection form has unconfirmed changes. Save or cancel them first.",
   "settings.provider.statusReady": "Ready",
   "settings.provider.apiKeyHint": "Stored securely on your device, sent directly to endpoint during model calls.",
