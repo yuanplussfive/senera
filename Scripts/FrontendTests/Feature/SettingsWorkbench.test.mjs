@@ -387,6 +387,183 @@ describe("SettingsWorkbench", () => {
     expect(screen.queryByText(/已启用.*已配置模型/)).not.toBeInTheDocument();
   });
 
+  it("shows the provider's actual default protocol instead of its compatibility kind", () => {
+    const provider = {
+      Id: "anthropic",
+      Kind: "OpenAICompatible",
+      DefaultEndpoint: "ClaudeMessages",
+      Enabled: true,
+      BaseUrl: "https://api.anthropic.com/v1",
+      ApiKey: "sk-ant-test",
+    };
+
+    renderWithFrontendProviders(
+      React.createElement(ProviderConnectionEditor, {
+        acceptedProvider: provider,
+        dirty: false,
+        draftProvider: provider,
+        disabled: false,
+        localError: null,
+        providerIndex: 0,
+        onChange: vi.fn(),
+        onConfirm: vi.fn(),
+      }),
+    );
+
+    expect(screen.getByText("Anthropic Claude Messages")).toBeInTheDocument();
+    expect(screen.queryByText("OpenAI 兼容协议")).not.toBeInTheDocument();
+  });
+
+  it("uses Chat Completions for legacy custom providers without a saved default", () => {
+    const provider = {
+      Id: "custom-proxy",
+      Kind: "OpenAICompatible",
+      Enabled: true,
+      BaseUrl: "https://proxy.example.test/v1",
+      ApiKey: "test-key",
+    };
+
+    renderWithFrontendProviders(
+      React.createElement(ProviderConnectionEditor, {
+        acceptedProvider: provider,
+        dirty: false,
+        draftProvider: provider,
+        disabled: false,
+        localError: null,
+        providerIndex: 0,
+        onChange: vi.fn(),
+        onConfirm: vi.fn(),
+      }),
+    );
+
+    expect(screen.getByText("OpenAI Chat Completions")).toBeInTheDocument();
+    expect(screen.queryByText("未指定协议")).not.toBeInTheDocument();
+  });
+
+  it("keeps provider fields local while typing and commits API URL before API key on blur", () => {
+    const onChange = vi.fn();
+    const onConfirm = vi.fn();
+    const onLocalDraftChange = vi.fn();
+    renderWithFrontendProviders(
+      React.createElement(ProviderConnectionEditor, {
+        acceptedProvider: {
+          Id: "custom-proxy",
+          Enabled: true,
+          BaseUrl: "https://proxy.example.test/v1",
+          ApiKey: "sk-original",
+        },
+        dirty: false,
+        draftProvider: {
+          Id: "custom-proxy",
+          Enabled: true,
+          BaseUrl: "https://proxy.example.test/v1",
+          ApiKey: "sk-original",
+        },
+        disabled: false,
+        localError: null,
+        providerIndex: 0,
+        onChange,
+        onConfirm,
+        onLocalDraftChange,
+      }),
+    );
+
+    const apiUrl = screen.getByPlaceholderText("https://.../v1");
+    const apiKey = screen.getByPlaceholderText("sk-...");
+    expect(apiUrl.compareDocumentPosition(apiKey) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    fireEvent.change(apiUrl, { target: { value: "https://proxy.example.test/v2" } });
+    fireEvent.change(apiKey, { target: { value: "sk-local-draft" } });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(apiUrl).toHaveValue("https://proxy.example.test/v2");
+    expect(apiKey).toHaveValue("sk-local-draft");
+    expect(onLocalDraftChange).toHaveBeenCalledTimes(1);
+    expect(onLocalDraftChange).toHaveBeenCalledWith(true);
+
+    fireEvent.blur(apiUrl);
+    expect(onConfirm).toHaveBeenCalledWith({ BaseUrl: "https://proxy.example.test/v2" });
+    fireEvent.blur(apiKey);
+    expect(onConfirm).toHaveBeenCalledWith({ ApiKey: "sk-local-draft" });
+    expect(onLocalDraftChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("keeps a focused provider field local until an explicit commit", () => {
+    const onConfirm = vi.fn();
+    const props = {
+      acceptedProvider: {
+        Id: "custom-proxy",
+        Enabled: true,
+        BaseUrl: "https://proxy.example.test/v1",
+        ApiKey: "sk-original",
+      },
+      dirty: false,
+      draftProvider: {
+        Id: "custom-proxy",
+        Enabled: true,
+        BaseUrl: "https://proxy.example.test/v1",
+        ApiKey: "sk-original",
+      },
+      disabled: false,
+      localError: null,
+      providerIndex: 0,
+      onChange: vi.fn(),
+      onConfirm,
+    };
+    const view = renderWithFrontendProviders(React.createElement(ProviderConnectionEditor, props));
+    fireEvent.change(screen.getByPlaceholderText("https://.../v1"), {
+      target: { value: "https://proxy.example.test/v2" },
+    });
+
+    view.rerender(
+      React.createElement(
+        TooltipProvider,
+        { delayDuration: 0 },
+        React.createElement(ProviderConnectionEditor, {
+          ...props,
+          acceptedProvider: { ...props.acceptedProvider, Id: "other-provider" },
+          draftProvider: { ...props.draftProvider, Id: "other-provider", BaseUrl: "https://other.example.test/v1" },
+        }),
+      ),
+    );
+
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("keeps custom provider logo input local until blur", () => {
+    const onChange = vi.fn();
+    const onConfirm = vi.fn();
+    renderWithFrontendProviders(
+      React.createElement(ProviderConnectionEditor, {
+        acceptedProvider: {
+          Id: "custom-proxy",
+          Enabled: true,
+          BaseUrl: "https://proxy.example.test/v1",
+        },
+        dirty: false,
+        draftProvider: {
+          Id: "custom-proxy",
+          Enabled: true,
+          BaseUrl: "https://proxy.example.test/v1",
+        },
+        disabled: false,
+        localError: null,
+        providerIndex: 0,
+        onChange,
+        onConfirm,
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "供应商标识" }));
+    const logoInput = screen.getByRole("textbox", { name: "自定义图片" });
+    fireEvent.change(logoInput, { target: { value: "https://assets.example.test/logo.svg" } });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onConfirm).not.toHaveBeenCalled();
+
+    fireEvent.blur(logoInput);
+    expect(onConfirm).toHaveBeenCalledWith({ Icon: "https://assets.example.test/logo.svg" });
+  });
+
   it("debounces System extension configuration through the shared settings draft", async () => {
     const systemConfig = createSystemConfig({
       systemExtensions: [

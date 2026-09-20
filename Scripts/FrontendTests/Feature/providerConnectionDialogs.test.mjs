@@ -28,7 +28,7 @@ test("pending provider additions cannot be dismissed as if the command were canc
 
   const view = render(renderDialog(true));
   const cancel = screen.getByRole("button", { name: frontendMessage("settings.action.cancel") });
-  const providerId = screen.getByPlaceholderText(frontendMessage("settings.provider.namePlaceholder"));
+  const providerId = screen.getByRole("textbox", { name: frontendMessage("settings.provider.nameLabel") });
 
   expect(cancel).toBeDisabled();
   expect(providerId).toBeDisabled();
@@ -41,6 +41,49 @@ test("pending provider additions cannot be dismissed as if the command were canc
   view.rerender(renderDialog(false));
   fireEvent.click(screen.getByRole("button", { name: frontendMessage("settings.action.cancel") }));
   expect(onOpenChange).toHaveBeenCalledWith(false);
+});
+
+test("changing the protocol does not invent a provider name", async () => {
+  const user = userEvent.setup();
+  render(
+    React.createElement(AddProviderDialog, {
+      open: true,
+      providers: [],
+      onAdd: vi.fn(),
+      onOpenChange: vi.fn(),
+    }),
+  );
+
+  const nameInput = screen.getByRole("textbox", { name: frontendMessage("settings.provider.nameLabel") });
+  await user.click(
+    screen.getByRole("button", {
+      name: `${frontendMessage("settings.provider.presetLabel")}: ${frontendMessage("settings.provider.endpointChatCompletions")}`,
+    }),
+  );
+  await user.click(
+    screen.getByRole("menuitemradio", { name: frontendMessage("settings.provider.endpointClaudeMessages") }),
+  );
+
+  expect(nameInput).toHaveValue("");
+});
+
+test("hides the API key reveal button until a key is entered", () => {
+  render(
+    React.createElement(AddProviderDialog, {
+      open: true,
+      providers: [],
+      onAdd: vi.fn(),
+      onOpenChange: vi.fn(),
+    }),
+  );
+
+  expect(screen.queryByRole("button", { name: frontendMessage("config.provider.showApiKey") })).not.toBeInTheDocument();
+
+  fireEvent.change(screen.getByPlaceholderText(frontendMessage("settings.provider.apiKeyPlaceholder")), {
+    target: { value: "sk-test" },
+  });
+
+  expect(screen.getByRole("button", { name: frontendMessage("config.provider.showApiKey") })).toBeInTheDocument();
 });
 
 test("provider editing saves headers and the default endpoint from the shared form", async () => {
@@ -76,7 +119,7 @@ test("provider editing saves headers and the default endpoint from the shared fo
     }),
   );
   await user.click(
-    await screen.findByRole("menuitem", { name: frontendMessage("settings.provider.endpointResponses") }),
+    await screen.findByRole("menuitemradio", { name: frontendMessage("settings.provider.endpointResponses") }),
   );
   fireEvent.click(screen.getByRole("button", { name: frontendMessage("settings.action.save") }));
 

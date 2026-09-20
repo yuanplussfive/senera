@@ -310,6 +310,53 @@ test("provider connection sends the newest draft after an in-flight save complet
   expect(onUpsertProviderEndpoint).toHaveBeenLastCalledWith(expect.objectContaining({ Id: "alpha", ApiKey: "latest" }));
 });
 
+test("provider connection keeps a newer draft when the active save fails", async () => {
+  const handleRef = { current: null };
+  const onUpsertProviderEndpoint = vi.fn().mockReturnValueOnce("first-save").mockReturnValueOnce("retry-save");
+  const view = render(
+    React.createElement(ActionsHarness, {
+      handleRef,
+      onUpsertProviderEndpoint,
+      state: createState("alpha"),
+    }),
+  );
+
+  await act(async () => {
+    handleRef.current.actions.confirmDraft({ ApiKey: "first" });
+    handleRef.current.actions.confirmDraft({ ApiKey: "latest" });
+  });
+
+  await act(async () => {
+    view.rerender(
+      React.createElement(ActionsHarness, {
+        handleRef,
+        onUpsertProviderEndpoint,
+        operations: {
+          alpha: {
+            commandId: "first-save",
+            kind: "provider.endpoint.upsert",
+            status: "error",
+            message: "alpha rejected",
+            updatedAt: "2026-07-12T00:00:00.000Z",
+          },
+        },
+        state: createState("alpha"),
+      }),
+    );
+  });
+
+  expect(handleRef.current.actions.connectionDraft?.ApiKey).toBe("latest");
+  expect(handleRef.current.actions.dirty).toBe(true);
+  expect(handleRef.current.actions.localError).toBe("alpha rejected");
+
+  await act(async () => {
+    handleRef.current.actions.confirmDraft();
+  });
+
+  expect(onUpsertProviderEndpoint).toHaveBeenCalledTimes(2);
+  expect(onUpsertProviderEndpoint).toHaveBeenLastCalledWith(expect.objectContaining({ Id: "alpha", ApiKey: "latest" }));
+});
+
 test("provider reset follows the saved snapshot when the response arrives", async () => {
   const handleRef = { current: null };
   const onUpsertProviderEndpoint = vi.fn(() => "save-request");

@@ -28,6 +28,15 @@ describe("model provider endpoint defaults", () => {
     );
   });
 
+  it("gives custom endpoints the default Chat Completions protocol", () => {
+    expect(
+      resolveModelProviderEndpointCatalog({
+        ModelProviderEndpoints: [{ Id: "custom", BaseUrl: "https://models.example.test/v1" }],
+        ModelProviders: [],
+      }).resolve("custom"),
+    ).toMatchObject({ DefaultEndpoint: "ChatCompletions" });
+  });
+
   it("persists a configured provider default endpoint and exposes it in the effective projection", () => {
     const updated = upsertProviderEndpoint(
       {
