@@ -12,11 +12,6 @@ import type { AgentSkillLibraryCatalog } from "../Skills/AgentSkillLibraryCatalo
 import type { AgentPiToolProjectionContext } from "./AgentPiTypes.js";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 import type { AgentPiTurnState } from "./AgentPiTurnState.js";
-import {
-  AgentPiPromptDisclosureLedger,
-  type AgentPiPromptDisclosurePlan,
-  type AgentPiPromptDisclosureState,
-} from "./AgentPiPromptDisclosure.js";
 
 export interface AgentPiCodingAgentSessionFrame {
   sessionId?: string;
@@ -28,12 +23,15 @@ export interface AgentPiCodingAgentSessionFrame {
   onEvent?: AgentEventSink;
   diagnostics?: AgentPiDiagnosticSink;
   systemPrompt?: string;
-  turnContext?: string;
+  /** Request-local host state injected only by the Pi context hook. */
+  liveContext?: string;
   turnState?: AgentPiTurnState;
   activeSkills?: readonly AgentActivatedSkill[];
   roleplayPresetActive?: boolean;
   /** Explicit UI-controlled preface rewrite; independent from roleplay presets. */
   prefaceRewriteEnabled?: boolean;
+  /** Explicit UI-controlled final-answer rewrite; independent from roleplay presets. */
+  finalResponseRewriteEnabled?: boolean;
   skillCatalogFingerprint: string;
   /** Stable model-facing Skill directory; package bodies remain on demand. */
   skillLibraryCatalog?: AgentSkillLibraryCatalog;
@@ -55,16 +53,16 @@ export interface AgentPiCodingAgentSessionFrame {
 export class AgentPiMutableSessionFrame {
   private value: AgentPiCodingAgentSessionFrame;
   private skills: readonly Skill[] = [];
-  private readonly promptDisclosure = new AgentPiPromptDisclosureLedger();
+  private updateRevision = 0;
 
   constructor(value: AgentPiCodingAgentSessionFrame) {
     this.value = { ...value };
   }
 
   update(value: AgentPiCodingAgentSessionFrame, skills: readonly Skill[]): void {
-    if (this.value.sessionId !== value.sessionId) this.promptDisclosure.reset();
     this.value = { ...value };
     this.skills = [...skills];
+    this.updateRevision += 1;
   }
 
   snapshot(): AgentPiCodingAgentSessionFrame {
@@ -75,28 +73,9 @@ export class AgentPiMutableSessionFrame {
     return this.skills;
   }
 
-  promptDisclosurePlan(): AgentPiPromptDisclosurePlan {
-    const snapshot = this.snapshot();
-    return this.promptDisclosure.plan({
-      skills: this.skills,
-      selectedPromptTemplates: snapshot.selectedPromptTemplates,
-    });
-  }
-
-  commitPromptDisclosure(plan: AgentPiPromptDisclosurePlan): void {
-    this.promptDisclosure.commit(plan);
-  }
-
-  restorePromptDisclosure(state: AgentPiPromptDisclosureState): void {
-    this.promptDisclosure.restore(state);
-  }
-
-  promptDisclosureState(): AgentPiPromptDisclosureState {
-    return this.promptDisclosure.state();
-  }
-
-  resetPromptDisclosure(): void {
-    this.promptDisclosure.reset();
+  /** Changes only when a leased turn replaces the current host frame. */
+  revision(): number {
+    return this.updateRevision;
   }
 }
 
@@ -117,6 +96,7 @@ export function projectAgentPiToolContext(frame: AgentPiCodingAgentSessionFrame)
     tokenBudget: frame.tokenBudget,
     thinkingLevel: frame.turnState?.context.thinkingLevel,
     reusableCapabilities: frame.turnState?.context.reusableCapabilities,
+    reusableCapabilityLookup: frame.turnState?.context.reusableCapabilityLookup,
     signal: frame.signal,
   };
 }

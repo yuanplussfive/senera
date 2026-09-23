@@ -87,13 +87,21 @@ export function resolveAgentDefaults(
         ...AgentDefaults.ToolSearch.Memory,
         ...defaults?.ToolSearch?.Memory,
       },
+      Tokenize: {
+        ...AgentDefaults.ToolSearch.Tokenize,
+        ...defaults?.ToolSearch?.Tokenize,
+      },
       Ranking: {
         ...AgentDefaults.ToolSearch.Ranking,
         ...defaults?.ToolSearch?.Ranking,
-        MemoryExpansion: {
-          ...AgentDefaults.ToolSearch.Ranking.MemoryExpansion,
-          ...defaults?.ToolSearch?.Ranking?.MemoryExpansion,
+        ChannelWeights: {
+          ...AgentDefaults.ToolSearch.Ranking.ChannelWeights,
+          ...defaults?.ToolSearch?.Ranking?.ChannelWeights,
         },
+      },
+      Disclosure: {
+        ...AgentDefaults.ToolSearch.Disclosure,
+        ...defaults?.ToolSearch?.Disclosure,
       },
       Rerank: {
         ...AgentDefaults.ToolSearch.Rerank,
@@ -102,22 +110,6 @@ export function resolveAgentDefaults(
           ...AgentDefaults.ToolSearch.Rerank.FeatureWeights,
           ...defaults?.ToolSearch?.Rerank?.FeatureWeights,
         },
-      },
-    },
-    VectorModels: {
-      Embedding: {
-        ...AgentDefaults.VectorModels.Embedding,
-        ...defaults?.VectorModels?.Embedding,
-        TimeoutMs: secondsToMilliseconds(
-          defaults?.VectorModels?.Embedding?.TimeoutSeconds ?? AgentDefaults.VectorModels.Embedding.TimeoutSeconds,
-        ),
-      },
-      Rerank: {
-        ...AgentDefaults.VectorModels.Rerank,
-        ...defaults?.VectorModels?.Rerank,
-        TimeoutMs: secondsToMilliseconds(
-          defaults?.VectorModels?.Rerank?.TimeoutSeconds ?? AgentDefaults.VectorModels.Rerank.TimeoutSeconds,
-        ),
       },
     },
     ToolLearning: {

@@ -3,8 +3,12 @@ import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
 import type { AgentResourceAccessIntent } from "../Execution/SeneraResourceAccess.js";
 import type { AgentResourceAccessRequest } from "../Execution/SeneraResourceAccess.js";
 import type { ToolResourceArgumentManifest } from "../Types/AgentToolContractTypes.js";
-import type { AgentToolResourceCapability } from "./AgentToolResourceCapabilityRegistry.js";
+import type {
+  AgentToolResourceCapability,
+  AgentToolResourceManifestValidator,
+} from "./AgentToolResourceCapabilityRegistry.js";
 import { AgentToolResourceCapabilityIds } from "./AgentToolResourceCapabilityIds.js";
+import { AgentToolResourceQueryShapes } from "./AgentToolResourceDiscovery.js";
 import {
   parseAgentJsonPointer,
   readAgentJsonPointer,
@@ -86,8 +90,16 @@ export const AgentWorkspacePathClaimDomain: AgentToolResourceClaimDomain = Objec
   overlaps: workspacePathsOverlap,
 });
 
+export const AgentToolWorkspacePathResourceManifestValidator: AgentToolResourceManifestValidator = Object.freeze({
+  id: AgentToolResourceCapabilityIds.WorkspacePath,
+  validateManifest(resource: ToolResourceArgumentManifest) {
+    parseWorkspacePathParameters(resource);
+  },
+});
+
 export class AgentToolWorkspacePathResourceCapability implements AgentToolResourceCapability {
   readonly id = AgentToolResourceCapabilityIds.WorkspacePath;
+  readonly discovery = { queryShapes: [AgentToolResourceQueryShapes.Path] };
   private readonly claimDomain = AgentWorkspacePathClaimDomain;
 
   constructor(
@@ -95,8 +107,12 @@ export class AgentToolWorkspacePathResourceCapability implements AgentToolResour
       Partial<Pick<SeneraExecutionEnv, "inspectResourcePath">>,
   ) {}
 
+  validateManifest(resource: ToolResourceArgumentManifest): void {
+    AgentToolWorkspacePathResourceManifestValidator.validateManifest(resource);
+  }
+
   async project(input: WorkspacePathResourceInput) {
-    const parameters = WorkspacePathParametersSchema.parse(input.resource.Parameters ?? {});
+    const parameters = parseWorkspacePathParameters(input.resource);
     if (!parameters.PathPointers) {
       const resolved = await this.resolveSingle(input, resolveIntent(parameters, input.args), input.value);
       return { target: "argument" as const, value: resolved.path };
@@ -108,7 +124,7 @@ export class AgentToolWorkspacePathResourceCapability implements AgentToolResour
   }
 
   async claim(input: WorkspacePathResourceInput) {
-    const parameters = WorkspacePathParametersSchema.parse(input.resource.Parameters ?? {});
+    const parameters = parseWorkspacePathParameters(input.resource);
     const intent = resolveIntent(parameters, input.args);
     const paths = await this.resolvePaths(input, parameters);
     return paths.map((pathValue) => ({
@@ -121,7 +137,7 @@ export class AgentToolWorkspacePathResourceCapability implements AgentToolResour
   }
 
   async inspect(input: WorkspacePathResourceInput): Promise<readonly AgentResourceAccessRequest[]> {
-    const parameters = WorkspacePathParametersSchema.parse(input.resource.Parameters ?? {});
+    const parameters = parseWorkspacePathParameters(input.resource);
     const intent = resolveIntent(parameters, input.args);
     const paths = await this.resolveInputPaths(input, parameters);
     const executionEnv = this.executionEnv;
@@ -192,6 +208,13 @@ export class AgentToolWorkspacePathResourceCapability implements AgentToolResour
     }
     return projected;
   }
+}
+
+function parseWorkspacePathParameters(resource: ToolResourceArgumentManifest): WorkspacePathParameters {
+  if (resource.Binding !== undefined) {
+    throw new TypeError(`${AgentToolResourceCapabilityIds.WorkspacePath} does not support resource bindings.`);
+  }
+  return WorkspacePathParametersSchema.parse(resource.Parameters ?? {});
 }
 
 function resolveIntent(

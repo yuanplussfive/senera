@@ -254,7 +254,7 @@ describe("temporal memory", () => {
     }
   });
 
-  test("returns a sealed day digest instead of expanding covered episode text", () => {
+  test("returns a sealed day digest instead of expanding covered episode text", async () => {
     const fixture = createFixture();
     const sources = new SqliteAgentMemorySourceRepository(fixture.kernel);
     try {
@@ -285,7 +285,7 @@ describe("temporal memory", () => {
         memberKind: "digest",
       });
 
-      const result = recallContinuity(
+      const result = await recallContinuity(
         { from: "2026-08-29", to: "2026-08-29" },
         {
           store: new AgentContinuitySqliteStore(fixture.kernel),

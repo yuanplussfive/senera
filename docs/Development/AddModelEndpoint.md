@@ -70,7 +70,7 @@ endpoint 必须返回 Senera 内部统一的模型结果形态，不能把供应
 
 - 供应商保存 base URL、API key、headers、协议类型。
 - 模型保存模型名、能力标签、运行参数。
-- 需要 embedding / rerank / vision 的功能应该选择带对应能力的模型，而不是重复写 API key。
+- 需要 vision 的功能应该选择带对应能力的模型，而不是重复写 API key。ToolSearch 的语义检索使用内建本地 embedding，不属于模型 endpoint 配置。
 
 改配置时必须同步：
 
@@ -98,7 +98,6 @@ npm run verify.suite -- workspace core
 ```bash
 node Dist/Scripts/VerifyModelProviderEndpointConfig.js
 node Dist/Scripts/VerifyModelTimeoutConfig.js
-node Dist/Scripts/VerifyVectorModelClient.js
 ```
 
 真实外部 API 探测不要进入普通 CI。它可以读取本地私有配置，但必须保持在显式手动脚本里。

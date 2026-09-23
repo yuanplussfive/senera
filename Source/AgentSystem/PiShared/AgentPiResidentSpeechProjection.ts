@@ -13,10 +13,13 @@ export function shouldProjectResidentSpeech(input: {
   readonly focus: AgentResidentSpeechFocus;
   readonly prefaceRewriteEnabled: boolean | undefined;
   readonly roleplayPresetActive: boolean | undefined;
+  readonly finalResponseRewriteEnabled?: boolean | undefined;
   readonly hasRegisteredToolCalls: boolean;
 }): boolean {
   const modeEligible =
-    input.focus.mode === "action_preface" ? input.prefaceRewriteEnabled === true : input.roleplayPresetActive === true;
+    input.focus.mode === "action_preface"
+      ? input.prefaceRewriteEnabled === true
+      : input.roleplayPresetActive === true || input.finalResponseRewriteEnabled === true;
   if (!modeEligible) return false;
   if (input.focus.mode === "final_response" && !input.hasRegisteredToolCalls) return false;
   return true;

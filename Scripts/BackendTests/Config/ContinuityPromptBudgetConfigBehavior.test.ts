@@ -47,6 +47,7 @@ describe("continuity prompt budget configuration", () => {
 
     expect(resolved.Recall.PromptBudget).toEqual({
       MaxProfileEntries: 32,
+      MaxDigestEntries: 3,
       MaxFactEntries: 10,
       MaxRelationEntries: 24,
       MaxEventEntries: 8,

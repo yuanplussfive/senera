@@ -42,6 +42,7 @@ import type { AgentInferenceBudgetPort } from "../ModelEndpoints/AgentInferenceB
 import type { AgentPluginHost } from "../Plugins/AgentPluginHost.js";
 import type { AgentToolResourceLeaseCoordinator } from "../ToolRuntime/AgentToolResourceScheduler.js";
 import type { AgentMcpHostCapabilitySnapshot } from "../McpPackages/AgentMcpHostRequirements.js";
+import type { AgentPiCompactionCandidateStore } from "../Pi/AgentPiCompactionCandidateStore.js";
 
 export interface AgentSystemRuntimeSharedOptions {
   modelProviderId?: string;
@@ -66,6 +67,7 @@ export interface AgentSystemRuntimeSharedOptions {
   agenda?: AgentAgendaService;
   worldRuntime?: AgentWorldSnapshotProvider;
   inferenceBudget?: AgentInferenceBudgetPort;
+  piCompactionCandidateStore?: AgentPiCompactionCandidateStore;
   identityDisplayValues?: () => AgentIdentityDisplayValues;
   /** Host services bound to the `senera` self-service command tool. */
   selfService?: import("../SelfService/AgentSelfServiceTypes.js").AgentSelfServicePort;
@@ -106,6 +108,7 @@ export class AgentSystemRuntime {
   private readonly promptTierCache = new AgentPromptTierRenderCache();
   private closePromise: Promise<void> | undefined;
   private initialization: Promise<void> | undefined;
+  private toolSearchPrewarm: AgentToolSearchPrewarmTask | undefined;
 
   private constructor(options: AgentSystemRuntimeCompositionOptions) {
     this.workspaceRoot = options.workspaceRoot;
@@ -300,6 +303,11 @@ export class AgentSystemRuntime {
     for (const skill of skillScanner.scanRoot(resolveAgentWorkspaceLayout(runtime.workspaceRoot).skillRoot)) {
       runtime.registry.registerSkill(skill);
     }
+    // Capability vectors are content-addressed. Start with the static catalog
+    // while MCP discovery is doing I/O; a later catalog revision retains these
+    // vectors and derives only newly discovered capabilities. This overlaps
+    // cold CPU work with startup rather than putting it on the first search.
+    runtime.scheduleToolSearchPrewarm();
     return runtime;
   }
 
@@ -348,13 +356,45 @@ export class AgentSystemRuntime {
       isDeferredToolReference: (toolName) =>
         [...deferredMcpServerNames].some((serverName) => isAgentMcpPackageToolNameForServer(toolName, serverName)),
     });
+    // The active prewarm detects the revised catalog and retains any static
+    // content-addressed vectors it already completed. If it finished during
+    // discovery, this schedules just the missing MCP-derived inputs.
+    this.scheduleToolSearchPrewarm();
   }
 
-  private applyMcpToolsChanged(change: AgentMcpToolsChanged): Promise<void> {
-    return this.mcpPackageCatalog.update(change);
+  private async applyMcpToolsChanged(change: AgentMcpToolsChanged): Promise<void> {
+    await this.mcpPackageCatalog.update(change);
+    this.scheduleToolSearchPrewarm();
+  }
+
+  private scheduleToolSearchPrewarm(): void {
+    if (this.closePromise || this.toolSearchPrewarm) return;
+
+    const controller = new AbortController();
+    const task: AgentToolSearchPrewarmTask = {
+      controller,
+      promise: yieldAgentToolSearchPrewarm()
+        .then(() => this.prewarmToolSearch(controller.signal))
+        .finally(() => {
+          if (this.toolSearchPrewarm === task) this.toolSearchPrewarm = undefined;
+        }),
+    };
+    this.toolSearchPrewarm = task;
+  }
+
+  private async prewarmToolSearch(signal: AbortSignal): Promise<void> {
+    try {
+      await this.toolSearch.prewarm(signal);
+    } catch (error) {
+      if (signal.aborted) return;
+      this.logger?.warn("routing.embedding.prewarm_failed", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private async closeResources(): Promise<void> {
+    const prewarm = this.stopToolSearchPrewarm();
     const infrastructure = this.composition.infrastructure;
     const closeOperations: Array<() => void | Promise<void>> = [
       () => this.piSubstrate.close(),
@@ -366,6 +406,11 @@ export class AgentSystemRuntime {
       ...(infrastructure.ownsExecutionResources ? [() => this.executionResources.close()] : []),
     ];
     const failures: unknown[] = [];
+    try {
+      await prewarm;
+    } catch (error) {
+      failures.push(error);
+    }
     for (const close of closeOperations) {
       try {
         await close();
@@ -376,4 +421,20 @@ export class AgentSystemRuntime {
     if (failures.length === 1) throw failures[0];
     if (failures.length > 1) throw new AggregateError(failures, "Agent runtime shutdown failed.");
   }
+
+  private stopToolSearchPrewarm(): Promise<void> {
+    const task = this.toolSearchPrewarm;
+    if (!task) return Promise.resolve();
+    task.controller.abort("Agent runtime is closing.");
+    return task.promise;
+  }
+}
+
+interface AgentToolSearchPrewarmTask {
+  readonly controller: AbortController;
+  readonly promise: Promise<void>;
+}
+
+function yieldAgentToolSearchPrewarm(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
 }

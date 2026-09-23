@@ -15,6 +15,7 @@ import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 import type { AgentToolResourceLeaseOwner } from "../ToolRuntime/AgentToolResourceScheduler.js";
 import type { AgentToolCapabilityCacheEntry } from "../ToolSearch/AgentToolCapabilitySessionCache.js";
+import type { AgentResidentState } from "../Continuity/AgentResidentState.js";
 
 export interface AgentPiTurnRequest {
   sessionId?: string;
@@ -26,7 +27,7 @@ export interface AgentPiTurnRequest {
   attachments?: AgentUploadAttachment[];
   interaction?: AgentInteractionContext;
   prompt: string;
-  turnContext?: string;
+  liveContext?: string;
   conversationEntries: AgentConversationEntry[];
   rootCommand: AgentRootCommand;
   approvalMode: AgentExecutionApprovalMode;
@@ -35,8 +36,13 @@ export interface AgentPiTurnRequest {
   activeSkills: AgentActivatedSkill[];
   /** Host-confirmed dynamic capabilities prepared for this turn. */
   reusableCapabilities?: readonly AgentToolCapabilityCacheEntry[];
+  /** Cross-request lookup used by the execution bridge to accept a dynamic
+   * tool whose contract was confirmed earlier in the session. */
+  reusableCapabilityLookup?: (toolName: string) => AgentToolCapabilityCacheEntry | undefined;
   roleplayPresetActive?: boolean;
   prefaceRewriteEnabled?: boolean;
+  /** Explicit UI-controlled final-answer rewrite; independent from roleplay presets. */
+  finalResponseRewriteEnabled?: boolean;
   onPiBranchBoundary?: (entryId: string) => void | Promise<void>;
   /** Full text of the final assistant message emitted by the Pi session. */
   onFinalResponseAvailable?: (content: string) => void | Promise<void>;
@@ -44,6 +50,8 @@ export interface AgentPiTurnRequest {
   inheritProjectContext?: boolean;
   /** Assignment owner for child sessions; absent for ordinary conversations. */
   resourceOwner?: AgentToolResourceLeaseOwner;
+  /** Durable resident stance entering this turn; seeds the live in-turn stance. */
+  seedResidentState?: AgentResidentState;
 }
 
 export interface AgentPiTurnResult {

@@ -5,6 +5,7 @@ import type {
 import type { RegisteredTool } from "./AgentToolRuntimeTypes.js";
 import type { RegisteredSkill } from "../Skills/AgentSkillTypes.js";
 import type { ToolArtifactPolicyManifest } from "./AgentToolContractTypes.js";
+import type { AgentToolContentPolicy } from "./AgentToolContentPolicyTypes.js";
 import type { AgentToolResultSummary } from "./AgentToolResultSummaryTypes.js";
 import type { SeneraOutputSpoolDescriptor } from "../Execution/SeneraOutputSpool.js";
 import type { AgentToolExecutionPlan } from "../ToolRuntime/AgentToolExecutionPlan.js";
@@ -106,12 +107,38 @@ export interface ExecutedToolCallResult {
   outputCapture?: SeneraOutputSpoolDescriptor;
   semanticProjectionRequest?: AgentToolSemanticProjectionRequest;
   semanticProjection?: AgentToolSemanticProjection;
+  /** Declarative content ownership copied from the registered tool. */
+  contentPolicy?: AgentToolContentPolicy;
   result: unknown;
   outcome: AgentToolExecutionOutcome;
   artifact?: ExecutedToolCallArtifact;
+  /** Explicit inline-path marker. It is separate from `inlinePayload` because
+   * `undefined` is a valid tool result. */
+  inlineResult?: true;
+  /** Verbatim result payload (post-redaction) inlined into the model context
+   * when the result fits the inline token budget. Absent means the model must
+   * use the artifact for complete details. */
+  inlinePayload?: unknown;
+  /** Transient model-only view; complete content remains in Artifact/result. */
+  observationResult?: unknown;
   presentation?: AgentToolResultPresentation;
   artifactPolicy?: ToolArtifactPolicyManifest;
   workspaceCapture?: ToolWorkspaceCaptureResult;
+}
+
+/**
+ * `undefined` is a valid tool result. Keep the inline decision as explicit
+ * state instead of inferring it from the payload value.
+ */
+export function isAgentToolResultInline(result: Pick<ExecutedToolCallResult, "inlineResult">): boolean {
+  return result.inlineResult === true;
+}
+
+/** Removes the request-only observation view before a result enters turn history. */
+export function projectAgentToolResultForHistory(result: ExecutedToolCallResult): ExecutedToolCallResult {
+  if (!Object.hasOwn(result, "observationResult")) return result;
+  const { observationResult: _observationResult, ...historyResult } = result;
+  return historyResult;
 }
 
 export const AgentToolResultPresentationProtocol = defineSeneraProtocol("tool_result_presentation", 1);
@@ -119,8 +146,9 @@ export const AgentToolResultPresentationProtocol = defineSeneraProtocol("tool_re
 export type AgentToolResultPresentationStatus = AgentToolAssessmentStatus;
 
 /**
- * User-facing projection of a tool result. The raw result remains on
- * ExecutedToolCallResult.result for inspection and model observation.
+ * User-facing projection of a tool result. Small results remain inline;
+ * Artifact-backed results retain their complete payload in the Artifact and
+ * carry a compact retrieval reference through runtime state.
  */
 export interface AgentToolResultPresentation {
   type: typeof AgentToolResultPresentationProtocol.type;

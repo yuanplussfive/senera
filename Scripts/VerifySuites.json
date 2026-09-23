@@ -32,7 +32,6 @@
         "VerifyOpenAiCompatibleMessageProjection.js",
         "VerifyAgentConfigFormProjection.js",
         "VerifyModelTimeoutConfig.js",
-        "VerifyVectorModelClient.js",
         "VerifyAgentRuntimeServices.js",
         "VerifyMemorySourceIdempotency.js",
         "VerifyPiResourceProjection.js",

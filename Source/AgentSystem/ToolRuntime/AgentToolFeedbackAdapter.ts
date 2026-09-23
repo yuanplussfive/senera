@@ -29,7 +29,12 @@ export function createAgentToolEvidenceCandidates(
 
   const source = options.source?.trim() || "Tool result";
   const candidates: AgentToolEvidenceCandidate[] = [];
-  projectRootCandidate(value, source, candidates);
+  // Root candidate carries real information only when the result is a plain
+  // string; structured results get their provenance from declared evidence,
+  // asset links, and URL candidates instead of a generic placeholder.
+  if (typeof value === "string") {
+    projectRootCandidate(value, source, candidates);
+  }
   collectUrlCandidates(value, "$", source, candidates, new Set<string>(), 0);
   return candidates.slice(0, AutomaticEvidenceLimits.maxRecords);
 }
@@ -74,21 +79,19 @@ export function attachAgentToolEvidenceAssets(
   });
 }
 
-function projectRootCandidate(value: unknown, source: string, candidates: AgentToolEvidenceCandidate[]): void {
-  const text = typeof value === "string" ? value.trim() : "";
-  const shape = Array.isArray(value) ? "array" : isAgentUnknownRecord(value) ? "object" : typeof value;
+function projectRootCandidate(value: string, source: string, candidates: AgentToolEvidenceCandidate[]): void {
+  const text = value.trim();
+  if (!text) return;
   candidates.push({
     key: "result:$",
     kind: "tool-output",
     locator: "$",
-    display: text
-      ? previewAgentText(text, AutomaticEvidenceLimits.maxDisplayCharacters)
-      : "Tool returned structured output",
+    display: previewAgentText(text, AutomaticEvidenceLimits.maxDisplayCharacters),
     label: "Tool result",
     source,
     confidence: 1,
     artifactRefs: ["raw"],
-    metadata: { automatic: true, shape },
+    metadata: { automatic: true, shape: "string" },
   });
 }
 
@@ -133,7 +136,7 @@ function collectUrlCandidates(
   }
 }
 
-function isEmptyFeedback(value: unknown): boolean {
+export function isEmptyFeedback(value: unknown): boolean {
   return (
     value === undefined ||
     value === null ||

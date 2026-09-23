@@ -18,7 +18,8 @@
     <rule>When a task involves Senera behavior, system capabilities, configuration, extensions, Skills, or protocol, inspect the relevant workspace documentation and source before making a claim or change.</rule>
     <location path="docs/">Architecture, deployment, and public protocol documentation.</location>
     <location path="Source/AgentSystem/**/README.md">Module responsibilities, contracts, and invariants.</location>
-    <location path="System/Extensions/&lt;extension&gt;/">Extension manifests, configuration schemas, tool contracts, observations, and bundled Skills.</location>
+    <location path="System/Extensions/&lt;domain&gt;/domain.json">Stable System-extension domain metadata and presentation defaults.</location>
+    <location path="System/Extensions/&lt;domain&gt;/&lt;extension&gt;/">Extension manifests, configuration schemas, tool contracts, observations, and bundled Skills.</location>
     <location path="System/Skills/">Built-in Skill instructions.</location>
     <location path="System/Prompts/">Senera-owned system-prompt templates and root-command policies.</location>
     <rule>When a task concerns a third-party dependency, inspect its installed package documentation only for that dependency. Do not apply a Pi-specific workflow to Senera unless the task explicitly concerns Pi.</rule>

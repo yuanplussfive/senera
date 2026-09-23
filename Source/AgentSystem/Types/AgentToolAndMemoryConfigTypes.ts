@@ -6,24 +6,30 @@ import type { AgentContinuityAuthority } from "../Continuity/AgentContinuityDoma
 import type { AgentContinuityRecallAnchorPolicy } from "../Continuity/AgentContinuityRecallAnchorPolicy.js";
 import type { AgentContinuityRuleConsolidationConfig } from "../Continuity/AgentContinuityRuleConsolidationPolicy.js";
 
-export const AgentToolSearchMemoryExpansionModes = {
-  Disabled: "disabled",
-  Fallback: "fallback",
-  Augment: "augment",
-} as const;
+export const AgentToolSearchChannelWeightKeys = [
+  "bm25",
+  "exact",
+  "example",
+  "fuzzy",
+  "semantic",
+  "structural",
+  "memory",
+] as const;
 
-export type AgentToolSearchMemoryExpansionMode =
-  (typeof AgentToolSearchMemoryExpansionModes)[keyof typeof AgentToolSearchMemoryExpansionModes];
+export type AgentToolSearchChannelWeightKey = (typeof AgentToolSearchChannelWeightKeys)[number];
 
 export interface AgentToolSearchConfig {
   Fuzzy?: {
     Enabled?: boolean;
     MinScore?: number;
-    CandidateLimit?: number;
   };
   Embedding?: {
     Enabled?: boolean;
-    ScoreThreshold?: number;
+  };
+  Tokenize?: {
+    /** Retrieval-only stopwords removed from query tokens before lexical and
+     * fuzzy matching. Empty disables filtering. */
+    Stopwords?: string[];
   };
   Memory?: {
     MaxEpisodes?: number;
@@ -31,20 +37,14 @@ export interface AgentToolSearchConfig {
   };
   Ranking?: {
     RrfK?: number;
-    MmrLambda?: number;
-    MmrCandidateScoreRatio?: number;
-    MinScore?: number;
-    MaxResults?: number;
-    MemoryExpansion?: {
-      Mode?: AgentToolSearchMemoryExpansionMode;
-      MinConfidence?: number;
-      MinEvidence?: number;
-      MaxResults?: number;
-    };
+    ChannelWeights?: Partial<Record<AgentToolSearchChannelWeightKey, number>>;
+  };
+  Disclosure?: {
+    /** Model-facing BPE budget for a single ToolSearch discovery wire. */
+    TokenBudget?: number;
   };
   Rerank?: {
     Enabled?: boolean;
-    CandidateLimit?: number;
     ScoreScale?: number;
     FeatureWeights?: Record<string, number>;
   };
@@ -54,11 +54,12 @@ export interface ResolvedAgentToolSearchConfig {
   Fuzzy: {
     Enabled: boolean;
     MinScore: number;
-    CandidateLimit: number;
   };
   Embedding: {
     Enabled: boolean;
-    ScoreThreshold: number;
+  };
+  Tokenize: {
+    Stopwords: string[];
   };
   Memory: {
     MaxEpisodes: number;
@@ -66,78 +67,16 @@ export interface ResolvedAgentToolSearchConfig {
   };
   Ranking: {
     RrfK: number;
-    MmrLambda: number;
-    MmrCandidateScoreRatio: number;
-    MinScore: number;
-    MaxResults: number;
-    MemoryExpansion: {
-      Mode: AgentToolSearchMemoryExpansionMode;
-      MinConfidence: number;
-      MinEvidence: number;
-      MaxResults: number;
-    };
+    ChannelWeights: Record<string, number>;
+  };
+  Disclosure: {
+    TokenBudget: number;
   };
   Rerank: {
     Enabled: boolean;
-    CandidateLimit: number;
     ScoreScale: number;
     FeatureWeights: Record<string, number>;
   };
-}
-
-export interface AgentVectorModelHttpConfig {
-  Enabled?: boolean;
-  ProviderId?: string;
-  Model?: string;
-  TimeoutSeconds?: number;
-  MaxNetworkRetries?: number;
-}
-
-export interface AgentVectorEmbeddingConfig extends AgentVectorModelHttpConfig {
-  Dimensions?: number;
-  BatchSize?: number;
-  InputMaxChars?: number;
-}
-
-export interface AgentVectorRerankConfig extends AgentVectorModelHttpConfig {
-  EndpointPath?: string;
-  CandidateLimit?: number;
-  TopK?: number;
-}
-
-export interface AgentVectorModelsConfig {
-  Embedding?: AgentVectorEmbeddingConfig;
-  Rerank?: AgentVectorRerankConfig;
-}
-
-export interface ResolvedAgentVectorModelHttpConfig {
-  Enabled: boolean;
-  BaseUrl: string;
-  ApiKey: string;
-  Model: string;
-  TimeoutMs: number;
-  MaxNetworkRetries: number;
-  RetryBaseDelayMs: number;
-  RetryMaxDelayMs: number;
-  RetryAfterMaxDelayMs: number;
-  Headers: Record<string, string>;
-}
-
-export interface ResolvedAgentVectorEmbeddingConfig extends ResolvedAgentVectorModelHttpConfig {
-  Dimensions: number;
-  BatchSize: number;
-  InputMaxChars: number;
-}
-
-export interface ResolvedAgentVectorRerankConfig extends ResolvedAgentVectorModelHttpConfig {
-  EndpointPath: string;
-  CandidateLimit: number;
-  TopK: number;
-}
-
-export interface ResolvedAgentVectorModelsConfig {
-  Embedding: ResolvedAgentVectorEmbeddingConfig;
-  Rerank: ResolvedAgentVectorRerankConfig;
 }
 
 export interface AgentToolLearningConfig {
@@ -354,6 +293,7 @@ export interface AgentContinuityLearningRecallConfig {
 
 export interface AgentContinuityPromptBudgetConfig {
   MaxProfileEntries: number;
+  MaxDigestEntries: number;
   MaxFactEntries: number;
   MaxRelationEntries: number;
   MaxEventEntries: number;

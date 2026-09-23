@@ -13,8 +13,14 @@ import { errorMessage } from "../Core/AgentErrors.js";
 import type { AgentToolProcessRunResult } from "./AgentToolProcessTypes.js";
 import {
   AgentExecutionResourcePurposes,
+  type AgentExecutionResourceOwner,
   type AgentExecutionResourceSnapshot,
 } from "../ExecutionResources/AgentExecutionResourceTypes.js";
+import {
+  AgentExecutionResourceCursorLedger,
+  projectAgentExecutionResourceCollection,
+  projectAgentExecutionResourceResult,
+} from "./AgentExecutionResourceResultProjector.js";
 
 const ResourceIdSchema = z
   .string()
@@ -97,50 +103,113 @@ export interface AgentExecutionResourceHostHandlers {
   stopAll: AgentHostToolHandler;
 }
 
+interface ResourceObservation {
+  readonly snapshot: AgentExecutionResourceSnapshot;
+  readonly fromCursor: number;
+  readonly includeInvocation?: boolean;
+}
+
 export function createAgentExecutionResourceHostHandlers(
   broker: AgentExecutionResourceBroker,
 ): AgentExecutionResourceHostHandlers {
+  const cursors = new AgentExecutionResourceCursorLedger();
   return {
-    startTerminal: withValidatedArguments(TerminalStartArgumentsSchema, (args, context) =>
-      startTerminalResource(broker, args, context),
+    startTerminal: withValidatedArguments(
+      TerminalStartArgumentsSchema,
+      async (args, context) => {
+        const snapshot = await startTerminalResource(broker, args, context);
+        cursors.record(resourceOwner(context), snapshot);
+        return { snapshot, fromCursor: snapshot.cursor, includeInvocation: true } satisfies ResourceObservation;
+      },
+      (value, context) => resourceSnapshotResult(broker, value, context),
     ),
     inspect: withValidatedArguments(
       ResourceInspectArgumentsSchema,
-      (args, context) => broker.inspect(args.resourceId, resourceOwner(context), args.cursor),
-      (snapshot, context) => resourceSnapshotResult(broker, snapshot, context),
+      (args, context) => inspectResource(broker, cursors, args.resourceId, args.cursor, context),
+      (value, context) => resourceSnapshotResult(broker, value, context),
     ),
     wait: withValidatedArguments(
       ResourceWaitArgumentsSchema,
       (args, context) =>
-        broker.wait(
+        waitForResource(
+          broker,
+          cursors,
           args.resourceId,
-          resourceOwner(context),
-          args.cursor ?? 0,
+          args.cursor,
           resolveAgentExecutionResourceWaitTimeoutMs(context.config, args.timeoutMs),
-          context.signal,
+          context,
         ),
-      (snapshot, context) => resourceSnapshotResult(broker, snapshot, context),
+      (value, context) => resourceSnapshotResult(broker, value, context),
     ),
-    write: withValidatedArguments(ResourceWriteArgumentsSchema, (args, context) => {
-      const input = args.appendNewline ? `${args.input}${process.platform === "win32" ? "\r\n" : "\n"}` : args.input;
-      return broker.write(args.resourceId, resourceOwner(context), Buffer.from(input, "utf8"));
-    }),
-    signal: withValidatedArguments(ResourceSignalArgumentsSchema, (args, context) =>
-      broker.signal(args.resourceId, resourceOwner(context), args.signal),
+    write: withValidatedArguments(
+      ResourceWriteArgumentsSchema,
+      async (args, context) => {
+        const input = args.appendNewline ? `${args.input}${process.platform === "win32" ? "\r\n" : "\n"}` : args.input;
+        const snapshot = await broker.write(args.resourceId, resourceOwner(context), Buffer.from(input, "utf8"));
+        cursors.record(resourceOwner(context), snapshot);
+        return { snapshot, fromCursor: snapshot.cursor } satisfies ResourceObservation;
+      },
+      (value, context) => resourceSnapshotResult(broker, value, context),
+    ),
+    signal: withValidatedArguments(
+      ResourceSignalArgumentsSchema,
+      async (args, context) => {
+        const snapshot = await broker.signal(args.resourceId, resourceOwner(context), args.signal);
+        cursors.record(resourceOwner(context), snapshot);
+        return { snapshot, fromCursor: snapshot.cursor } satisfies ResourceObservation;
+      },
+      (value, context) => resourceSnapshotResult(broker, value, context),
     ),
     list: withValidatedArguments(ResourceListArgumentsSchema, (_args, context) => ({
-      resources: broker.list(resourceOwner(context)),
+      resources: projectAgentExecutionResourceCollection(broker.list(resourceOwner(context))).resources,
     })),
-    resize: withValidatedArguments(ResourceResizeArgumentsSchema, (args, context) =>
-      broker.resize(args.resourceId, resourceOwner(context), {
-        columns: args.columns,
-        rows: args.rows,
-      }),
+    resize: withValidatedArguments(
+      ResourceResizeArgumentsSchema,
+      async (args, context) => {
+        const snapshot = await broker.resize(args.resourceId, resourceOwner(context), {
+          columns: args.columns,
+          rows: args.rows,
+        });
+        cursors.record(resourceOwner(context), snapshot);
+        return { snapshot, fromCursor: snapshot.cursor } satisfies ResourceObservation;
+      },
+      (value, context) => resourceSnapshotResult(broker, value, context),
     ),
-    stopAll: withValidatedArguments(ResourceListArgumentsSchema, async (_args, context) => ({
-      resources: await broker.stopAll(resourceOwner(context)),
-    })),
+    stopAll: withValidatedArguments(ResourceListArgumentsSchema, async (_args, context) => {
+      const snapshots = await broker.stopAll(resourceOwner(context));
+      snapshots.forEach((snapshot) => cursors.record(resourceOwner(context), snapshot));
+      return projectAgentExecutionResourceCollection(snapshots);
+    }),
   };
+}
+
+function inspectResource(
+  broker: AgentExecutionResourceBroker,
+  cursors: AgentExecutionResourceCursorLedger,
+  resourceId: string,
+  explicitCursor: number | undefined,
+  context: AgentHostToolContext,
+): ResourceObservation {
+  const owner = resourceOwner(context);
+  const fromCursor = cursors.resolve(owner, resourceId, explicitCursor);
+  const snapshot = broker.inspect(resourceId, owner, fromCursor);
+  cursors.record(owner, snapshot);
+  return { snapshot, fromCursor };
+}
+
+async function waitForResource(
+  broker: AgentExecutionResourceBroker,
+  cursors: AgentExecutionResourceCursorLedger,
+  resourceId: string,
+  explicitCursor: number | undefined,
+  timeoutMs: number,
+  context: AgentHostToolContext,
+): Promise<ResourceObservation> {
+  const owner = resourceOwner(context);
+  const fromCursor = cursors.resolve(owner, resourceId, explicitCursor);
+  const snapshot = await broker.wait(resourceId, owner, fromCursor, timeoutMs, context.signal);
+  cursors.record(owner, snapshot);
+  return { snapshot, fromCursor };
 }
 
 function requireExecutionPlan(context: AgentHostToolContext) {
@@ -229,15 +298,20 @@ function withValidatedArguments<TSchema extends z.ZodType<Record<string, unknown
 
 function resourceSnapshotResult(
   broker: AgentExecutionResourceBroker,
-  snapshot: AgentExecutionResourceSnapshot,
+  observation: ResourceObservation,
   context: AgentHostToolContext,
 ): AgentToolProcessRunResult {
-  const result = toolProcessSuccessResult(snapshot);
-  const outputCapture = broker.takeOutputCapture(snapshot.resourceId, resourceOwner(context));
+  const result = toolProcessSuccessResult(
+    projectAgentExecutionResourceResult(observation.snapshot, {
+      fromCursor: observation.fromCursor,
+      includeInvocation: observation.includeInvocation,
+    }),
+  );
+  const outputCapture = broker.takeOutputCapture(observation.snapshot.resourceId, resourceOwner(context));
   return outputCapture ? { ...result, outputCapture } : result;
 }
 
-function resourceOwner(context: AgentHostToolContext) {
+function resourceOwner(context: AgentHostToolContext): AgentExecutionResourceOwner {
   return {
     workspaceRoot: context.workspaceRoot,
     sessionId: context.sessionId,

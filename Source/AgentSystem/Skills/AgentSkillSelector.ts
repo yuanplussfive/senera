@@ -76,29 +76,8 @@ export class AgentSkillSelector {
       });
     });
     const learned = this.mergeLearningEvidence([...merged.values()], skillsByName, options.learningEvidence ?? []);
-    const reranked = await this.capabilityIndex.rerank(
-      options.query,
-      AgentCapabilityKinds.Skill,
-      learned.map((selection) => selection.skill.name),
-      options.signal,
-    );
-    const rerankBySkill = new Map(reranked.map((entry) => [entry.name, entry]));
     return this.evidenceFrontier(
-      learned
-        .map((selection) => {
-          const rerank = rerankBySkill.get(selection.skill.name);
-          return rerank
-            ? {
-                ...selection,
-                score: selection.score + rerank.normalizedRankScore,
-                matchedFields: mergeMatchedFields([
-                  ...selection.matchedFields,
-                  { term: options.query, fields: ["semanticRerank"] },
-                ]),
-              }
-            : selection;
-        })
-        .sort((left, right) => right.score - left.score || this.compareSkillOrder(left.skill, right.skill)),
+      [...learned].sort((left, right) => right.score - left.score || this.compareSkillOrder(left.skill, right.skill)),
     );
   }
 

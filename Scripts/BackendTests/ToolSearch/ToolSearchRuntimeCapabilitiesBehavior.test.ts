@@ -59,6 +59,6 @@ test("ToolSearch rebuilds discovery from the execution targets currently availab
       "IsolatedAuditTool",
     );
   } finally {
-    runtime.close();
+    await runtime.close();
   }
 });

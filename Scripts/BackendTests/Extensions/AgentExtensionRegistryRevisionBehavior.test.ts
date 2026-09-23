@@ -82,6 +82,65 @@ describe("Agent extension registry revision", () => {
     expect(registry.getTool("Inspect")).toBe(mcp);
     expect(registry.getSkill("inspect-workflow")).toBe(workspaceSkill);
   });
+
+  test("rejects an incomplete resource selector while the extension is registered", () => {
+    const registry = new AgentExtensionRegistry();
+    const invalid = createTool({
+      name: "InvalidWorkspacePatch",
+      title: "Invalid patch",
+      summary: "Writes a workspace file.",
+      tags: ["workspace"],
+      actions: ["write"],
+      targets: ["workspace"],
+      priority: 1,
+    });
+    invalid.handler = {
+      kind: "HostCapability",
+      capability: invalid.name,
+      resources: [
+        {
+          Capability: "senera.workspace.path",
+          Pointer: "/path",
+          Parameters: { Intent: { Default: "replace" } },
+        },
+      ],
+    };
+
+    expect(() => registry.registerToolExtension(invalid.owner, [invalid])).toThrow(/resources\[0\]/u);
+    expect(registry.revision).toBe(0);
+  });
+
+  test("rejects incomplete Dynamic discovery declarations during registration", () => {
+    const registry = new AgentExtensionRegistry();
+    const undocumented = createTool({
+      name: "UndocumentedDynamic",
+      title: "Undocumented dynamic",
+      summary: "Temporary summary",
+      tags: ["test"],
+      actions: ["inspect"],
+      targets: ["test"],
+      priority: 1,
+    });
+    undocumented.search = { Summary: " ", Capabilities: [] };
+    expect(() => registry.registerToolExtension(undocumented.owner, [undocumented])).toThrow(
+      /must declare search\.Summary/u,
+    );
+
+    const undigested = createTool({
+      name: "UndigestedDynamic",
+      title: "Undigested dynamic",
+      summary: "A dynamic tool without a contract digest.",
+      tags: ["test"],
+      actions: ["inspect"],
+      targets: ["test"],
+      priority: 1,
+    });
+    undigested.contract = undefined;
+    expect(() => registry.registerToolExtension(undigested.owner, [undigested])).toThrow(
+      /must declare a non-empty contract digest/u,
+    );
+    expect(registry.revision).toBe(0);
+  });
 });
 
 function skill(name: string, kind: "system" | "standalone", id: string): RegisteredSkill {

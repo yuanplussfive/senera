@@ -215,6 +215,10 @@ describe("Pi session management", () => {
         getContextUsage: vi.fn(() => ({ tokens: 80, contextWindow: 1_000, percent: 8 })),
         waitForIdle,
       },
+      compactionCandidateStatus: () => ({
+        phase: "ready",
+        updatedAt: "2026-09-19T00:00:00.000Z",
+      }),
     });
 
     try {
@@ -223,6 +227,10 @@ describe("Pi session management", () => {
           sessionId: "active-session",
           cached: true,
           contextUsage: { tokens: 80, contextWindow: 1_000, percent: 8 },
+          compactionCandidate: {
+            phase: "ready",
+            updatedAt: "2026-09-19T00:00:00.000Z",
+          },
         }),
       );
       expect(waitForIdle).not.toHaveBeenCalled();

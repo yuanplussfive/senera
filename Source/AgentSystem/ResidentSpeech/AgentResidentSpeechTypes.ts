@@ -2,6 +2,7 @@ import type { AssistantMessage, AssistantMessageEventStream, Context } from "@ea
 import type { AgentModelUsageSink } from "../ModelEndpoints/AgentModelUsage.js";
 import type { AgentModelTimingSink } from "../ModelEndpoints/AgentModelTiming.js";
 import type { AgentModelInputInspection } from "../Text/AgentTurnTokenBudget.js";
+import type { AgentResidentState } from "../Continuity/AgentResidentState.js";
 
 export const AgentResidentActionSpeechCapability = "resident-speech.action";
 export const AgentResidentFinalSpeechCapability = "resident-speech.final";
@@ -12,6 +13,9 @@ export const AgentResidentSpeechCapabilities = [
 ] as const;
 
 export type AgentResidentSpeechMode = "action_preface" | "final_response";
+
+/** Shape of the rewrite: full persona reshape when a card is present, vocabulary-light polish otherwise. */
+export type AgentResidentSpeechProjectionTier = "reshape" | "polish";
 
 export interface AgentResidentSpeechAction {
   readonly callId: string;
@@ -47,6 +51,10 @@ export interface AgentResidentSpeechProjectionInput {
   readonly message: AssistantMessage;
   readonly focus: AgentResidentSpeechFocus;
   readonly spokenUtterances: readonly AgentResidentSpeechUtterance[];
+  /** Host-derived live stance (mood/bearing/target) for the speaking moment. */
+  readonly residentStance?: AgentResidentState;
+  /** Rewrite shape: reshape (card present) rewrites with persona, polish keeps facts and tones only. */
+  readonly projectionTier?: AgentResidentSpeechProjectionTier;
   readonly enabled: boolean;
   readonly signal?: AbortSignal;
   readonly sessionId: string;

@@ -25,7 +25,7 @@ export const ToolSearchCapabilitySchema = z
     Title: z.string().min(1).optional(),
     Description: z.string().min(1).optional(),
     Facets: ToolSearchCapabilityFacetsSchema.optional(),
-    Aliases: z.array(z.string().min(1)).optional(),
+    Aliases: z.array(z.string().trim().min(1)).optional(),
     Risk: ToolSearchCapabilityRiskSchema.optional(),
     Metadata: z.record(z.string(), z.unknown()).optional(),
   })

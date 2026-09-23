@@ -5,20 +5,12 @@ import {
   type Skill,
 } from "@earendil-works/pi-agent-core";
 import { AgentPromptWireEncodings, renderAgentPromptWireBlocks } from "../Prompt/AgentPromptContextWireRenderer.js";
-import type { AgentPiPromptDisclosurePlan } from "./AgentPiPromptDisclosure.js";
-import { agentPiPromptTemplateDisclosureKey, agentPiSkillDisclosureKey } from "./AgentPiPromptDisclosure.js";
+import { sha256Hex } from "../Core/AgentHash.js";
 
 export interface AgentPiPromptFrameInput {
   systemPrompt: string;
   skills: readonly Skill[];
   selectedPromptTemplates: readonly AgentPiSelectedPromptTemplateFrame[];
-  /**
-   * When supplied, only newly seen resource revisions include full content;
-   * resources already disclosed in this physical Pi session become compact
-   * references. Omitting it preserves the standalone full projection used by
-   * diagnostics and callers that do not own a session ledger.
-   */
-  disclosure?: AgentPiPromptDisclosurePlan;
 }
 
 export interface AgentPiSelectedPromptTemplateFrame {
@@ -57,44 +49,26 @@ export function projectSelectedPromptTemplateFrame(input: {
 }
 
 function renderResourceFrame(input: AgentPiPromptFrameInput): string {
-  const disclosure = input.disclosure;
-  const newTemplates = disclosure?.newPromptTemplates ?? input.selectedPromptTemplates;
-  const reusedTemplates = disclosure?.reusedPromptTemplates ?? [];
-  // The Pi `<skill>` wrapper remains the official invocation protocol. Its
-  // Senera metadata is projected through the same wire even for standalone
-  // callers that do not own a disclosure ledger.
-  const newSkills = disclosure?.newSkills ?? input.skills;
-  const reusedSkills = disclosure?.reusedSkills ?? [];
-  if (
-    input.selectedPromptTemplates.length === 0 &&
-    newTemplates.length === 0 &&
-    reusedTemplates.length === 0 &&
-    newSkills.length === 0 &&
-    reusedSkills.length === 0
-  ) {
-    return "";
-  }
+  if (input.selectedPromptTemplates.length === 0 && input.skills.length === 0) return "";
 
   const blocks = [
-    ...(newTemplates.length > 0 || reusedTemplates.length > 0
+    ...(input.selectedPromptTemplates.length > 0
       ? [
           {
             id: "prompt_templates",
             value: {
-              selected: newTemplates.map((template) => projectPromptTemplate(template, "newly-disclosed")),
-              reused: reusedTemplates,
+              active: input.selectedPromptTemplates.map(projectPromptTemplate),
             },
             allowedEncodings: [AgentPromptWireEncodings.Toon, AgentPromptWireEncodings.CompactJson],
           } as const,
         ]
       : []),
-    ...(newSkills.length > 0 || reusedSkills.length > 0
+    ...(input.skills.length > 0
       ? [
           {
             id: "skills",
             value: {
-              newlyDisclosed: newSkills.map((skill) => projectSkillMetadata(skill, "newly-disclosed")),
-              activeReferences: reusedSkills,
+              active: input.skills.map(projectSkillMetadata),
             },
             allowedEncodings: [AgentPromptWireEncodings.Toon, AgentPromptWireEncodings.CompactJson],
           } as const,
@@ -108,7 +82,7 @@ function renderResourceFrame(input: AgentPiPromptFrameInput): string {
         "senera.resources=v1",
         "state=volatile",
         "provenance=host-projected;not-user-input",
-        "rule=selected-resources-are-active-constraints;references-do-not-repeat-bodies",
+        "rule=selected-resources-are-active-constraints;the-complete-active-body-is-present-in-this-request",
         "rule=skill-location-is-logical;read-package-resources-with-SeneraCommand-skills-read(name,path,revision)",
       ],
       blocks,
@@ -125,20 +99,18 @@ function renderResourceFrame(input: AgentPiPromptFrameInput): string {
 
 function renderSkillBlocks(input: AgentPiPromptFrameInput): string[] {
   // Keep the official AgentSkills wrapper: Pi resolves relative references
-  // from its location attribute and treats this block as an invocation.
-  if (!input.disclosure) return input.skills.map((skill) => formatSkillInvocation(skill));
-  return input.disclosure.newSkills.map((skill) => formatSkillInvocation(skill));
+  // from its location attribute and treats this block as an invocation. A live
+  // overlay has no durable transcript dependency, so every active Skill body
+  // is supplied with the request that needs it.
+  return input.skills.map((skill) => formatSkillInvocation(skill));
 }
 
-function projectPromptTemplate(
-  frame: AgentPiSelectedPromptTemplateFrame,
-  state: "newly-disclosed" | "active-reference",
-): Record<string, unknown> {
+function projectPromptTemplate(frame: AgentPiSelectedPromptTemplateFrame): Record<string, unknown> {
   return {
     kind: "prompt-template",
     name: frame.name,
-    state,
-    revision: disclosureDigest(agentPiPromptTemplateDisclosureKey(frame)),
+    state: "active",
+    revision: resourceRevision(frame.name, frame.content),
     ...(frame.description ? { description: frame.description } : {}),
     ...(frame.resourceKinds.length > 0 ? { resourceKinds: frame.resourceKinds } : {}),
     ...(frame.workflowRoles.length > 0 ? { workflowRoles: frame.workflowRoles } : {}),
@@ -148,19 +120,19 @@ function projectPromptTemplate(
   };
 }
 
-function projectSkillMetadata(skill: Skill, state: string): Record<string, unknown> {
+function projectSkillMetadata(skill: Skill): Record<string, unknown> {
   return {
     kind: "skill",
     name: skill.name,
     description: skill.description,
     location: skill.filePath,
-    state,
-    revision: disclosureDigest(agentPiSkillDisclosureKey(skill)),
+    state: "active",
+    revision: resourceRevision(`${skill.name}\u0000${skill.filePath}`, skill.content),
   };
 }
 
-function disclosureDigest(key: string): string {
-  return key.slice(0, 12);
+function resourceRevision(identity: string, content: string): string {
+  return sha256Hex(`${identity}\u0000${content}`).slice(0, 12);
 }
 
 function hasPromptText(value: string): boolean {

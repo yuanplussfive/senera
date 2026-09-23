@@ -28,7 +28,7 @@ describe("agent prompt context compiler", () => {
     expect(context.ContextLayers).toEqual([
       { name: "kernel", source: "runtime", stability: "stable", included: true },
       { name: "persona", source: "preset", stability: "stable", included: false },
-      { name: "profile", source: "profile", stability: "turn", included: false },
+      { name: "profile", source: "profile", stability: "stable", included: false },
       { name: "lore", source: "preset", stability: "turn", included: false },
       { name: "facts", source: "continuity", stability: "turn", included: false },
       { name: "graph", source: "continuity", stability: "turn", included: false },
@@ -52,7 +52,7 @@ describe("agent prompt context compiler", () => {
     expect(second.ContextRevisions.volatile).not.toBe(first.ContextRevisions.volatile);
   });
 
-  test("changes only the volatile revision when recalled facts change", () => {
+  test("does not churn the live revision when historical facts remain explicitly recallable", () => {
     const first = compile();
     const second = compile({
       continuityMemory: {
@@ -77,7 +77,10 @@ describe("agent prompt context compiler", () => {
     });
 
     expect(second.ContextRevisions.stable).toBe(first.ContextRevisions.stable);
-    expect(second.ContextRevisions.volatile).not.toBe(first.ContextRevisions.volatile);
+    // Historical facts are no longer copied into the live request overlay.
+    // Their source-backed recall path remains authoritative, so a new catalog
+    // entry must not invalidate an otherwise identical provider prefix.
+    expect(second.ContextRevisions.volatile).toBe(first.ContextRevisions.volatile);
   });
 
   test("keeps persona identity stable when only retrieved lore changes", () => {

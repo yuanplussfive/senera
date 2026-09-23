@@ -27,6 +27,18 @@ const baseProps = {
   onMotionLevelChange: vi.fn(),
 };
 
+const SystemToolsTestDomain = {
+  id: "execute",
+  displayName: { "zh-CN": "执行与交互", "en-US": "Execute and Interact" },
+  description: { "zh-CN": "运行受控命令。", "en-US": "Run governed commands." },
+  presentation: {
+    category: "execute",
+    icon: "terminal",
+    group: { id: "execute", title: { "zh-CN": "执行任务", "en-US": "Run tasks" } },
+    activity: { action: { "zh-CN": "执行", "en-US": "Run" } },
+  },
+};
+
 beforeEach(() => {
   setFrontendLocale(FrontendLocales.ZhCn);
   HTMLElement.prototype.scrollIntoView = vi.fn();
@@ -266,12 +278,15 @@ describe("SettingsWorkbench", () => {
       systemExtensions: [
         {
           id: "execution",
+          settingsSurface: "system-tools",
+          domain: SystemToolsTestDomain,
           version: "1.0.0",
           displayName: { "zh-CN": "命令执行", "en-US": "Shell Commands" },
           description: {
             "zh-CN": "在受控执行环境中运行命令。",
             "en-US": "Runs commands in a controlled execution environment.",
           },
+          presentation: SystemToolsTestDomain.presentation,
           enabled: true,
           configured: false,
           tools: [
@@ -280,6 +295,12 @@ describe("SettingsWorkbench", () => {
               description: "Runs a command.",
               loading: "always",
               capability: "shell.run",
+              presentation: {
+                category: "shell-command",
+                icon: "terminal",
+                group: { id: "shell", title: { "zh-CN": "运行命令", "en-US": "Run commands" } },
+                activity: { action: { "zh-CN": "运行命令", "en-US": "Run" } },
+              },
             },
           ],
           skillCount: 0,
@@ -360,9 +381,12 @@ describe("SettingsWorkbench", () => {
       systemExtensions: [
         {
           id: "execution",
+          settingsSurface: "system-tools",
+          domain: SystemToolsTestDomain,
           version: "1.0.0",
           displayName: { "zh-CN": "命令执行", "en-US": "Shell Commands" },
           description: { "zh-CN": "运行命令。", "en-US": "Runs commands." },
+          presentation: SystemToolsTestDomain.presentation,
           enabled: true,
           configured: false,
           tools: [],
@@ -429,12 +453,15 @@ describe("SettingsWorkbench", () => {
       systemExtensions: [
         {
           id: "execution",
+          settingsSurface: "system-tools",
+          domain: SystemToolsTestDomain,
           version: "1.0.0",
           displayName: { "zh-CN": "命令执行", "en-US": "Shell Commands" },
           description: {
             "zh-CN": "在受控执行环境中运行命令。",
             "en-US": "Runs commands in a controlled execution environment.",
           },
+          presentation: SystemToolsTestDomain.presentation,
           enabled: true,
           configured: false,
           tools: [],

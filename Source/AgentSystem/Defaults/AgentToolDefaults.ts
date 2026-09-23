@@ -1,23 +1,14 @@
 import type {
-  AgentVectorEmbeddingConfig,
-  AgentVectorRerankConfig,
   AgentSystemConfig,
   ResolvedAgentContinuityLearningConfig,
   ResolvedAgentPresetsConfig,
   ResolvedAgentToolLearningConfig,
   ResolvedAgentToolSearchConfig,
-  ResolvedAgentVectorModelsConfig,
-  AgentModelRuntimeDefaultsConfig,
 } from "../Types/AgentConfigTypes.js";
 import type { AgentContinuityPromptBudgetConfig } from "../Types/AgentToolAndMemoryConfigTypes.js";
 import { resolveAgentDefaults } from "./AgentDefaultResolver.js";
-import {
-  resolveModelProviderConfig,
-  resolveModelProviderEndpointCatalog,
-  resolveModelProviderRuntimeDefaults,
-} from "./AgentModelProviderDefaults.js";
+import { resolveModelProviderConfig } from "./AgentModelProviderDefaults.js";
 import { mergeActionPlannerClientConfig, resolveActionPlannerClientConfig } from "./AgentPlannerDefaults.js";
-import { optionalSecondsToMilliseconds } from "./AgentTimeDefaults.js";
 import { mergeAgentContinuityRecallRanking } from "../Continuity/AgentContinuityRecallPolicy.js";
 
 export function resolveToolSearchConfig(config: AgentSystemConfig): ResolvedAgentToolSearchConfig {
@@ -31,6 +22,10 @@ export function resolveToolSearchConfig(config: AgentSystemConfig): ResolvedAgen
       ...defaults.ToolSearch.Embedding,
       ...config.ToolSearch?.Embedding,
     },
+    Tokenize: {
+      ...defaults.ToolSearch.Tokenize,
+      ...config.ToolSearch?.Tokenize,
+    },
     Memory: {
       ...defaults.ToolSearch.Memory,
       ...config.ToolSearch?.Memory,
@@ -38,10 +33,14 @@ export function resolveToolSearchConfig(config: AgentSystemConfig): ResolvedAgen
     Ranking: {
       ...defaults.ToolSearch.Ranking,
       ...config.ToolSearch?.Ranking,
-      MemoryExpansion: {
-        ...defaults.ToolSearch.Ranking.MemoryExpansion,
-        ...config.ToolSearch?.Ranking?.MemoryExpansion,
+      ChannelWeights: {
+        ...defaults.ToolSearch.Ranking.ChannelWeights,
+        ...config.ToolSearch?.Ranking?.ChannelWeights,
       },
+    },
+    Disclosure: {
+      ...defaults.ToolSearch.Disclosure,
+      ...config.ToolSearch?.Disclosure,
     },
     Rerank: {
       ...defaults.ToolSearch.Rerank,
@@ -50,56 +49,6 @@ export function resolveToolSearchConfig(config: AgentSystemConfig): ResolvedAgen
         ...defaults.ToolSearch.Rerank.FeatureWeights,
         ...config.ToolSearch?.Rerank?.FeatureWeights,
       },
-    },
-  };
-}
-
-export function resolveVectorModelsConfig(config: AgentSystemConfig): ResolvedAgentVectorModelsConfig {
-  const defaults = resolveAgentDefaults(config);
-  const { TimeoutSeconds: embeddingTimeoutSeconds, ...configuredEmbedding } = config.VectorModels?.Embedding ?? {};
-  const { TimeoutSeconds: rerankTimeoutSeconds, ...configuredRerank } = config.VectorModels?.Rerank ?? {};
-  const embedding = {
-    ...defaults.VectorModels.Embedding,
-    ...configuredEmbedding,
-    TimeoutMs: optionalSecondsToMilliseconds(embeddingTimeoutSeconds) ?? defaults.VectorModels.Embedding.TimeoutMs,
-  };
-  const rerank = {
-    ...defaults.VectorModels.Rerank,
-    ...configuredRerank,
-    TimeoutMs: optionalSecondsToMilliseconds(rerankTimeoutSeconds) ?? defaults.VectorModels.Rerank.TimeoutMs,
-  };
-  const endpointCatalog = resolveModelProviderEndpointCatalog(config);
-  const embeddingEndpoint = endpointCatalog.resolveKnown(embedding.ProviderId);
-  const rerankEndpoint = endpointCatalog.resolveKnown(rerank.ProviderId);
-
-  return {
-    Embedding: {
-      ...resolveVectorHttpConfig(
-        embedding,
-        embeddingEndpoint,
-        defaults.ModelRuntime,
-        hasConfiguredVectorCapability(
-          config,
-          defaults.ModelRuntime,
-          embedding.ProviderId,
-          embedding.Model,
-          "Embedding",
-        ),
-      ),
-      Dimensions: embedding.Dimensions,
-      BatchSize: embedding.BatchSize,
-      InputMaxChars: embedding.InputMaxChars,
-    },
-    Rerank: {
-      ...resolveVectorHttpConfig(
-        rerank,
-        rerankEndpoint,
-        defaults.ModelRuntime,
-        hasConfiguredVectorCapability(config, defaults.ModelRuntime, rerank.ProviderId, rerank.Model, "Rerank"),
-      ),
-      EndpointPath: rerank.EndpointPath,
-      CandidateLimit: rerank.CandidateLimit,
-      TopK: rerank.TopK,
     },
   };
 }
@@ -273,40 +222,4 @@ export function resolvePresetsConfig(config: AgentSystemConfig): ResolvedAgentPr
       ...config.Presets?.PromptBudget,
     },
   };
-}
-
-function resolveVectorHttpConfig(
-  config: (Required<AgentVectorEmbeddingConfig> | Required<AgentVectorRerankConfig>) & { TimeoutMs: number },
-  endpoint: ReturnType<typeof resolveModelProviderEndpointCatalog>["endpoints"][number],
-  retryPolicy: Pick<
-    ReturnType<typeof resolveAgentDefaults>["ModelRuntime"],
-    "RetryBaseDelayMs" | "RetryMaxDelayMs" | "RetryAfterMaxDelayMs"
-  >,
-  hasConfiguredModelCapability: boolean,
-) {
-  return {
-    Enabled: config.Enabled && endpoint.Enabled && hasConfiguredModelCapability,
-    BaseUrl: endpoint.BaseUrl,
-    ApiKey: endpoint.ApiKey,
-    Model: config.Model,
-    TimeoutMs: config.TimeoutMs,
-    MaxNetworkRetries: config.MaxNetworkRetries,
-    RetryBaseDelayMs: retryPolicy.RetryBaseDelayMs,
-    RetryMaxDelayMs: retryPolicy.RetryMaxDelayMs,
-    RetryAfterMaxDelayMs: retryPolicy.RetryAfterMaxDelayMs,
-    Headers: { ...endpoint.Headers },
-  };
-}
-
-function hasConfiguredVectorCapability(
-  config: AgentSystemConfig,
-  defaults: AgentModelRuntimeDefaultsConfig,
-  providerId: string,
-  model: string,
-  capability: "Embedding" | "Rerank",
-): boolean {
-  return config.ModelProviders.some((provider) => {
-    const resolved = resolveModelProviderRuntimeDefaults(defaults, provider);
-    return provider.ProviderId === providerId && provider.Model === model && resolved.Capabilities[capability] === true;
-  });
 }

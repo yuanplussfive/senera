@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { AgentSystemRuntime } from "../Source/AgentSystem/Runtime/AgentSystemRuntime.js";
 import { parseControllerDecision } from "../Source/AgentSystem/Interaction/AgentControllerDecision.js";
 import { parsePiToolArgumentsDraft } from "../Source/AgentSystem/Pi/AgentPiAssistantMessageSchema.js";
+import { AgentPiNativeToolBridgeName } from "../Source/AgentSystem/Pi/AgentPiNativeToolBridge.js";
+import { createAgentToolAccessGrant } from "../Source/AgentSystem/ToolRuntime/AgentToolAccessGrant.js";
+import { ToolLoadingModes } from "../Source/AgentSystem/Types/AgentToolContractTypes.js";
 import { createIsolatedVerificationRuntimeConfig } from "./VerificationRuntimeConfig.js";
 
 void main();
@@ -20,22 +23,44 @@ async function main(): Promise<void> {
     const commandToolName = "ShellCommandTool";
     const patchToolName = "WorkspaceApplyPatch";
     const visibleTools = [commandToolName, patchToolName];
-    const toolDefinitions = runtime.services.pi.toolDefinitions({
-      visibleToolNames: visibleTools,
+    const toolAccessGrant = createAgentToolAccessGrant({
+      authorizedToolNames: visibleTools,
+      exposedToolNames: visibleTools,
+      preferredToolNames: visibleTools,
     });
-    const command = toolDefinitions.find((tool) => tool.name === commandToolName);
-    const patch = toolDefinitions.find((tool) => tool.name === patchToolName);
+    const command = runtime.registry.getTool(commandToolName);
+    const patch = runtime.registry.getTool(patchToolName);
 
-    assert.ok(command, `${commandToolName} Pi tool should be projected.`);
-    assert.ok(patch, `${patchToolName} Pi tool should be projected.`);
-    assert.deepEqual(schemaFieldNames(command.parameters), ["command", "cwd", "timeoutMs", "justification"]);
-    assert.deepEqual(schemaFieldNames(patch.parameters), ["operations", "dryRun", "fuzzFactor"]);
+    assert.ok(command, `${commandToolName} must be registered.`);
+    assert.ok(patch, `${patchToolName} must be registered.`);
+    assert.equal(command.loading, ToolLoadingModes.Bootstrap);
+    assert.equal(patch.loading, ToolLoadingModes.Bootstrap);
+    assert.deepEqual(schemaFieldNames(command.contract?.arguments?.jsonSchema ?? {}), [
+      "command",
+      "cwd",
+      "timeoutMs",
+      "justification",
+    ]);
+    assert.deepEqual(schemaFieldNames(patch.contract?.arguments?.jsonSchema ?? {}), ["operations"]);
 
-    const contract = runtime.registry.getTool(commandToolName)?.contract?.arguments;
+    const contract = command.contract?.arguments;
     assert.deepEqual(
       contract?.properties.map((property) => property.name),
       ["command", "cwd", "timeoutMs", "justification"],
     );
+
+    const nativeDefinitions = runtime.services.pi.toolDefinitions({ toolAccessGrant });
+    assert.equal(
+      nativeDefinitions.some((tool) => tool.name === commandToolName),
+      true,
+    );
+    assert.equal(
+      nativeDefinitions.some((tool) => tool.name === patchToolName),
+      true,
+    );
+    const bridge = nativeDefinitions.find((tool) => tool.name === AgentPiNativeToolBridgeName);
+    assert.ok(bridge, "Native Pi tools must include the dynamic-tool execution bridge.");
+    assert.deepEqual(schemaFieldNames(bridge.parameters), ["tool", "arguments"]);
 
     const action = parseControllerDecision(
       {
@@ -99,7 +124,7 @@ async function main(): Promise<void> {
 
     console.log("Tool signature mapping and Pi tool-call validation verified.");
   } finally {
-    runtime.toolSearch.close();
+    await runtime.close();
     await isolatedConfig.dispose();
   }
 }

@@ -88,6 +88,7 @@ const WorkspaceToolsExtension = {
 const WorkspaceReadSearch = workspaceToolSearch({
   commandAlias: "read",
   summary: "读取工作区中的文本文件或受支持图像，并使用 offset/limit 继续读取大文件。",
+  tags: ["工作区", "文件读取", "文本文件", "图像文件"],
   capabilityId: "workspace.file.read",
   title: "Workspace file read",
   description: "Read one workspace file through Senera's authorized execution environment.",
@@ -101,6 +102,7 @@ const WorkspaceReadSearch = workspaceToolSearch({
 const WorkspaceGrepSearch = workspaceToolSearch({
   commandAlias: "grep",
   summary: "使用 Pi 原生 grep 和随包 ripgrep 搜索工作区内容，遵循 .gitignore。",
+  tags: ["工作区", "内容搜索", "代码搜索"],
   capabilityId: "workspace.content.search",
   title: "Workspace content search",
   description: "Search workspace file contents with Pi's grep result and truncation semantics.",
@@ -114,6 +116,7 @@ const WorkspaceGrepSearch = workspaceToolSearch({
 const WorkspaceFindSearch = workspaceToolSearch({
   commandAlias: "find",
   summary: "按 glob 查找工作区文件，包含隐藏文件并遵循嵌套 .gitignore。",
+  tags: ["工作区", "文件查找", "文件索引"],
   capabilityId: "workspace.file.find",
   title: "Workspace file find",
   description: "Find workspace files by glob with Pi's result and truncation semantics.",
@@ -127,6 +130,7 @@ const WorkspaceFindSearch = workspaceToolSearch({
 const WorkspaceListSearch = workspaceToolSearch({
   commandAlias: "ls",
   summary: "按字母顺序列出工作区目录，包含点文件并标识子目录。",
+  tags: ["工作区", "目录浏览", "目录列出"],
   capabilityId: "workspace.directory.list",
   title: "Workspace directory list",
   description: "List one workspace directory with Pi's sorting and truncation semantics.",
@@ -225,6 +229,7 @@ function workspaceToolMetadata(description: string, search: ToolSearchManifest):
 function workspaceToolSearch(input: {
   commandAlias: string;
   summary: string;
+  tags: string[];
   capabilityId: string;
   title: string;
   description: string;
@@ -236,7 +241,7 @@ function workspaceToolSearch(input: {
 }): ToolSearchManifest {
   return {
     Summary: input.summary,
-    Tags: ["工作区", "文件读取", "代码搜索", input.commandAlias],
+    Tags: [...new Set([...input.tags, input.commandAlias])],
     Capabilities: [
       {
         Id: input.capabilityId,

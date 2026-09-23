@@ -1,7 +1,5 @@
 import type { FileInfo } from "@earendil-works/pi-agent-core";
-import { applyPatch } from "diff";
 import path from "node:path";
-import { errorMessage } from "../Core/AgentErrors.js";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
 import {
   resolveWorkspacePath,
@@ -30,33 +28,23 @@ interface PlannedFileDelete {
   readonly target: WorkspacePatchTarget;
 }
 
-interface PlannedDirectoryCreate {
-  readonly target: WorkspacePatchTarget;
-}
-
-interface PlannedDirectoryDelete {
-  readonly target: WorkspacePatchTarget;
-  readonly recursive: boolean;
-}
-
 export interface WorkspacePatchOperationSummary {
   readonly kind: WorkspacePatchOperation["kind"];
   readonly path?: string;
   readonly source?: string;
   readonly destination?: string;
+  /** Number of times the replaced fragment appeared in the baseline; 1 means a unique match. */
+  readonly matches?: number;
   readonly changedPaths: string[];
 }
 
 export interface WorkspacePatchPlan {
   readonly workspaceRoot: string;
-  readonly dryRun: boolean;
-  readonly fuzzFactor: number;
   readonly operations: WorkspacePatchOperationSummary[];
   readonly writes: Map<string, PlannedFileWrite>;
   readonly deletes: Map<string, PlannedFileDelete>;
-  readonly createDirectories: Map<string, PlannedDirectoryCreate>;
-  readonly deleteDirectories: Map<string, PlannedDirectoryDelete>;
   readonly preconditions: Map<string, WorkspacePatchPrecondition>;
+  readonly pendingFiles: Map<string, PendingFileState>;
 }
 
 type PendingFileState = PlannedFileWrite | typeof DeleteFile;
@@ -66,7 +54,6 @@ interface OperationPlanningInput<TOperation extends WorkspacePatchOperation = Wo
   readonly workspaceRoot: string;
   readonly files: SeneraExecutionEnv;
   readonly plan: WorkspacePatchPlan;
-  readonly pendingFiles: Map<string, PendingFileState>;
 }
 
 export async function buildWorkspacePatchPlan(
@@ -76,20 +63,16 @@ export async function buildWorkspacePatchPlan(
 ): Promise<WorkspacePatchPlan> {
   const plan: WorkspacePatchPlan = {
     workspaceRoot: path.resolve(workspaceRoot),
-    dryRun: args.dryRun === true,
-    fuzzFactor: args.fuzzFactor ?? 0,
     operations: [],
     writes: new Map(),
     deletes: new Map(),
-    createDirectories: new Map(),
-    deleteDirectories: new Map(),
     preconditions: new Map(),
+    pendingFiles: new Map(),
   };
-  const pendingFiles = new Map<string, PendingFileState>();
   for (const [index, operation] of args.operations.entries()) {
-    await planOperation({ operation, workspaceRoot, files, plan, pendingFiles }, index);
+    await planOperation({ operation, workspaceRoot, files, plan }, index);
   }
-  rejectDirectoryDeleteConflicts(plan);
+  materializePendingFiles(plan);
   return plan;
 }
 
@@ -101,30 +84,25 @@ export function collectWorkspacePatchChangedPaths(plan: WorkspacePatchPlan): str
   return [...paths].sort();
 }
 
+function materializePendingFiles(plan: WorkspacePatchPlan): void {
+  for (const [relativePath, state] of plan.pendingFiles) {
+    if (state !== DeleteFile) plan.writes.set(relativePath, state);
+  }
+}
+
 async function planOperation(input: OperationPlanningInput, index: number): Promise<void> {
   const pointer = `/operations/${index}`;
   switch (input.operation.kind) {
     case "add":
-      await planAdd({ ...input, operation: input.operation }, pointer);
-      return;
+      return planAdd({ ...input, operation: input.operation }, pointer);
     case "update":
-      await planUpdate({ ...input, operation: input.operation }, pointer);
-      return;
-    case "replace":
-      await planReplace({ ...input, operation: input.operation }, pointer);
-      return;
+      return planUpdate({ ...input, operation: input.operation }, pointer);
+    case "write":
+      return planWrite({ ...input, operation: input.operation }, pointer);
     case "delete":
-      await planDelete({ ...input, operation: input.operation }, pointer);
-      return;
+      return planDelete({ ...input, operation: input.operation }, pointer);
     case "move":
-      await planMove({ ...input, operation: input.operation }, pointer);
-      return;
-    case "createDirectory":
-      await planCreateDirectory({ ...input, operation: input.operation }, pointer);
-      return;
-    case "deleteDirectory":
-      await planDeleteDirectory({ ...input, operation: input.operation }, pointer);
-      return;
+      return planMove({ ...input, operation: input.operation }, pointer);
   }
 }
 
@@ -143,7 +121,7 @@ async function planAdd(
     });
   }
   addMissingPrecondition(input.plan, target, `${pointer}/path`);
-  addWrite(input.plan, input.pendingFiles, { target, content: input.operation.content }, `${pointer}/path`);
+  addWrite(input.plan, { target, content: input.operation.content });
   input.plan.operations.push({ kind: "add", path: target.relativePath, changedPaths: [target.relativePath] });
 }
 
@@ -152,41 +130,44 @@ async function planUpdate(
   pointer: string,
 ): Promise<void> {
   const target = await resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
-  ensurePathUnused(input.plan, target, `${pointer}/path`);
-  const content = await readExistingFile(
-    input.files,
-    target,
-    `${pointer}/path`,
-    input.plan,
-    input.operation.expectedSha256,
-  );
-  const patched = applyHunkPatch({
-    oldPath: target.relativePath,
-    newPath: target.relativePath,
-    source: content,
-    hunkPatch: input.operation.patch,
-    fuzzFactor: input.plan.fuzzFactor,
-    pointer: `${pointer}/patch`,
+  const baseline = await baselineContent(input.files, input.plan, target, `${pointer}/path`);
+  const replaced = replaceFirstMatch(baseline, input.operation.oldStr, input.operation.newStr);
+  if (replaced.matches === 0) {
+    throw new WorkspaceApplyPatchError({
+      message: agentErrorMessage("workspacePatch.oldStrNotFound", { path: target.relativePath }),
+      pointer: `${pointer}/oldStr`,
+      suggestion: agentErrorMessage("workspacePatch.oldStrNotFoundSuggestion"),
+    });
+  }
+  addWrite(input.plan, { target, content: replaced.content });
+  input.plan.operations.push({
+    kind: "update",
+    path: target.relativePath,
+    matches: replaced.matches,
+    changedPaths: [target.relativePath],
   });
-  addWrite(input.plan, input.pendingFiles, { target, content: patched }, `${pointer}/path`);
-  input.plan.operations.push({ kind: "update", path: target.relativePath, changedPaths: [target.relativePath] });
 }
 
-async function planReplace(
-  input: OperationPlanningInput<Extract<WorkspacePatchOperation, { kind: "replace" }>>,
+async function planWrite(
+  input: OperationPlanningInput<Extract<WorkspacePatchOperation, { kind: "write" }>>,
   pointer: string,
 ): Promise<void> {
   const target = await resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
   ensurePathUnused(input.plan, target, `${pointer}/path`);
-  await captureExistingFilePrecondition(
-    input.files,
-    target,
-    `${pointer}/path`,
-    input.plan,
-    input.operation.expectedSha256,
-  );
-  addWrite(input.plan, input.pendingFiles, { target, content: input.operation.content }, `${pointer}/path`);
-  input.plan.operations.push({ kind: "replace", path: target.relativePath, changedPaths: [target.relativePath] });
+  const existing = await fileInfoOrUndefined(input.files, target.relativePath, `${pointer}/path`);
+  if (existing) {
+    if (existing.kind !== "file") {
+      throw new WorkspaceApplyPatchError({
+        message: agentErrorMessage("workspacePatch.writeTargetNotFile", { path: target.relativePath }),
+        pointer: `${pointer}/path`,
+      });
+    }
+    await captureExistingFilePrecondition(input.files, target, `${pointer}/path`, input.plan);
+  } else {
+    addMissingPrecondition(input.plan, target, `${pointer}/path`);
+  }
+  addWrite(input.plan, { target, content: input.operation.content });
+  input.plan.operations.push({ kind: "write", path: target.relativePath, changedPaths: [target.relativePath] });
 }
 
 async function planDelete(
@@ -194,24 +175,31 @@ async function planDelete(
   pointer: string,
 ): Promise<void> {
   const target = await resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
-  ensurePathUnused(input.plan, target, `${pointer}/path`);
-  const stat = await requiredFileInfo(input.files, target, `${pointer}/path`);
-  if (stat.kind !== "file") {
+  const pending = input.plan.pendingFiles.get(target.relativePath);
+  if (pending === DeleteFile) {
     throw new WorkspaceApplyPatchError({
-      message: agentErrorMessage("workspacePatch.deleteFileOnly", { path: target.relativePath }),
+      message: agentErrorMessage("workspacePatch.duplicateOperation", { path: target.relativePath }),
       pointer: `${pointer}/path`,
-      suggestion: agentErrorMessage("workspacePatch.deleteFileOnlySuggestion"),
+      suggestion: agentErrorMessage("workspacePatch.duplicateOperationSuggestion"),
     });
   }
-  await captureExistingFilePrecondition(
-    input.files,
-    target,
-    `${pointer}/path`,
-    input.plan,
-    input.operation.expectedSha256,
-  );
-  input.plan.deletes.set(target.relativePath, { target });
-  input.pendingFiles.set(target.relativePath, DeleteFile);
+  if (!pending) {
+    const stat = await requiredFileInfo(input.files, target, `${pointer}/path`);
+    if (stat.kind !== "file") {
+      throw new WorkspaceApplyPatchError({
+        message: agentErrorMessage("workspacePatch.deleteFileOnly", { path: target.relativePath }),
+        pointer: `${pointer}/path`,
+        suggestion: agentErrorMessage("workspacePatch.deleteFileOnlySuggestion"),
+      });
+    }
+    await captureExistingFilePrecondition(input.files, target, `${pointer}/path`, input.plan);
+  }
+  input.plan.pendingFiles.set(target.relativePath, DeleteFile);
+  if (input.plan.preconditions.get(target.relativePath)?.state === "missing") {
+    input.plan.deletes.delete(target.relativePath);
+  } else {
+    input.plan.deletes.set(target.relativePath, { target });
+  }
   input.plan.operations.push({ kind: "delete", path: target.relativePath, changedPaths: [target.relativePath] });
 }
 
@@ -229,13 +217,7 @@ async function planMove(
   }
   ensurePathUnused(input.plan, source, `${pointer}/source`);
   ensurePathUnused(input.plan, destination, `${pointer}/destination`);
-  const content = await readExistingFile(
-    input.files,
-    source,
-    `${pointer}/source`,
-    input.plan,
-    input.operation.expectedSha256,
-  );
+  const content = await baselineContent(input.files, input.plan, source, `${pointer}/source`);
   const destinationExisting = await fileInfoOrUndefined(
     input.files,
     destination.relativePath,
@@ -248,24 +230,9 @@ async function planMove(
     });
   }
   addMissingPrecondition(input.plan, destination, `${pointer}/destination`);
-  const contentAtDestination = input.operation.patch
-    ? applyHunkPatch({
-        oldPath: source.relativePath,
-        newPath: destination.relativePath,
-        source: content,
-        hunkPatch: input.operation.patch,
-        fuzzFactor: input.plan.fuzzFactor,
-        pointer: `${pointer}/patch`,
-      })
-    : content;
+  input.plan.pendingFiles.set(source.relativePath, DeleteFile);
   input.plan.deletes.set(source.relativePath, { target: source });
-  input.pendingFiles.set(source.relativePath, DeleteFile);
-  addWrite(
-    input.plan,
-    input.pendingFiles,
-    { target: destination, content: contentAtDestination },
-    `${pointer}/destination`,
-  );
+  addWrite(input.plan, { target: destination, content });
   input.plan.operations.push({
     kind: "move",
     source: source.relativePath,
@@ -274,115 +241,39 @@ async function planMove(
   });
 }
 
-async function planCreateDirectory(
-  input: OperationPlanningInput<Extract<WorkspacePatchOperation, { kind: "createDirectory" }>>,
+function replaceFirstMatch(source: string, oldStr: string, newStr: string): { content: string; matches: number } {
+  const first = source.indexOf(oldStr);
+  if (first < 0) return { content: source, matches: 0 };
+  let matches = 0;
+  let from = 0;
+  for (;;) {
+    const found = source.indexOf(oldStr, from);
+    if (found < 0) break;
+    matches += 1;
+    from = found + oldStr.length;
+  }
+  return {
+    content: `${source.slice(0, first)}${newStr}${source.slice(first + oldStr.length)}`,
+    matches,
+  };
+}
+
+async function baselineContent(
+  files: SeneraExecutionEnv,
+  plan: WorkspacePatchPlan,
+  target: WorkspacePatchTarget,
   pointer: string,
-): Promise<void> {
-  const target = await resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
-  ensureNotWorkspaceRoot(target, `${pointer}/path`, agentErrorMessage("workspacePatch.createDirectoryRoot"));
-  const existing = await fileInfoOrUndefined(input.files, target.relativePath, `${pointer}/path`);
-  if (existing && existing.kind !== "directory") {
+): Promise<string> {
+  const pending = plan.pendingFiles.get(target.relativePath);
+  if (pending === DeleteFile) {
     throw new WorkspaceApplyPatchError({
-      message: agentErrorMessage("workspacePatch.directoryTargetNotDirectory", { path: target.relativePath }),
-      pointer: `${pointer}/path`,
-    });
-  }
-  ensurePathUnused(input.plan, target, `${pointer}/path`, {
-    allowExistingDirectoryCreate: existing?.kind === "directory",
-  });
-  input.plan.createDirectories.set(target.relativePath, { target });
-  input.plan.operations.push({
-    kind: "createDirectory",
-    path: target.relativePath,
-    changedPaths: [target.relativePath],
-  });
-}
-
-async function planDeleteDirectory(
-  input: OperationPlanningInput<Extract<WorkspacePatchOperation, { kind: "deleteDirectory" }>>,
-  pointer: string,
-): Promise<void> {
-  const target = await resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
-  ensureNotWorkspaceRoot(target, `${pointer}/path`, agentErrorMessage("workspacePatch.deleteDirectoryRoot"));
-  ensurePathUnused(input.plan, target, `${pointer}/path`);
-  const stat = await requiredFileInfo(input.files, target, `${pointer}/path`);
-  if (stat.kind !== "directory") {
-    throw new WorkspaceApplyPatchError({
-      message: agentErrorMessage("workspacePatch.deleteDirectoryOnly", { path: target.relativePath }),
-      pointer: `${pointer}/path`,
-      suggestion: agentErrorMessage("workspacePatch.deleteDirectoryOnlySuggestion"),
-    });
-  }
-  input.plan.deleteDirectories.set(target.relativePath, {
-    target,
-    recursive: input.operation.recursive === true,
-  });
-  input.plan.operations.push({
-    kind: "deleteDirectory",
-    path: target.relativePath,
-    changedPaths: [target.relativePath],
-  });
-}
-
-function applyHunkPatch(input: {
-  readonly oldPath: string;
-  readonly newPath: string;
-  readonly source: string;
-  readonly hunkPatch: string;
-  readonly fuzzFactor: number;
-  readonly pointer: string;
-}): string {
-  const hunkPatch = normalizeHunkPatch(input.hunkPatch, input.pointer);
-  const patchText = [`--- a/${input.oldPath}`, `+++ b/${input.newPath}`, hunkPatch].join("\n");
-  try {
-    const result = applyPatch(input.source, patchText, {
-      autoConvertLineEndings: true,
-      fuzzFactor: input.fuzzFactor,
-    });
-    if (result === false) {
-      throw new WorkspaceApplyPatchError({
-        message: agentErrorMessage("workspacePatch.patchApplyFailed", { path: input.oldPath }),
-        pointer: input.pointer,
-        suggestion: agentErrorMessage("workspacePatch.patchApplyFailedSuggestion"),
-      });
-    }
-    return result;
-  } catch (error) {
-    if (error instanceof WorkspaceApplyPatchError) throw error;
-    throw new WorkspaceApplyPatchError({
-      message: errorMessage(error),
-      pointer: input.pointer,
-      suggestion: agentErrorMessage("workspacePatch.patchStructureSuggestion"),
-    });
-  }
-}
-
-function normalizeHunkPatch(value: string, pointer: string): string {
-  const normalized = value.replace(/\r\n/g, "\n");
-  if (/^(diff --git|--- |\+\+\+ )/m.test(normalized)) {
-    throw new WorkspaceApplyPatchError({
-      message: agentErrorMessage("workspacePatch.patchHeaderOnly"),
+      message: agentErrorMessage("workspacePatch.duplicateOperation", { path: target.relativePath }),
       pointer,
-      suggestion: agentErrorMessage("workspacePatch.patchHeaderOnlySuggestion"),
+      suggestion: agentErrorMessage("workspacePatch.duplicateOperationSuggestion"),
     });
   }
-  const hunkStart = /^@@\s+-\d+(?:,\d+)?\s+\+\d+(?:,\d+)?\s+@@/m.exec(normalized);
-  if (!hunkStart) {
-    throw new WorkspaceApplyPatchError({
-      message: agentErrorMessage("workspacePatch.patchMissingHunkHeader"),
-      pointer,
-      suggestion: agentErrorMessage("workspacePatch.patchMissingHunkHeaderSuggestion"),
-    });
-  }
-  if (normalized.slice(0, hunkStart.index).trim().length > 0) {
-    throw new WorkspaceApplyPatchError({
-      message: agentErrorMessage("workspacePatch.patchNonEmptyBeforeHeader"),
-      pointer,
-      suggestion: agentErrorMessage("workspacePatch.patchNonEmptyBeforeHeaderSuggestion"),
-    });
-  }
-  const hunkPatch = normalized.slice(hunkStart.index);
-  return hunkPatch.endsWith("\n") ? hunkPatch : `${hunkPatch}\n`;
+  if (pending) return pending.content;
+  return readExistingFile(files, target, pointer, plan);
 }
 
 async function requiredFileInfo(
@@ -430,23 +321,8 @@ async function resolveTarget(workspaceRoot: string, value: string, pointer: stri
   return { input: value, relativePath };
 }
 
-function ensureNotWorkspaceRoot(target: WorkspacePatchTarget, pointer: string, message: string): void {
-  if (!target.relativePath || target.relativePath === ".") throw new WorkspaceApplyPatchError({ message, pointer });
-}
-
-function ensurePathUnused(
-  plan: WorkspacePatchPlan,
-  target: WorkspacePatchTarget,
-  pointer: string,
-  options: { readonly allowExistingDirectoryCreate?: boolean } = {},
-): void {
-  if (options.allowExistingDirectoryCreate && plan.createDirectories.has(target.relativePath)) return;
-  const used =
-    plan.writes.has(target.relativePath) ||
-    plan.deletes.has(target.relativePath) ||
-    plan.createDirectories.has(target.relativePath) ||
-    plan.deleteDirectories.has(target.relativePath);
-  if (used) {
+function ensurePathUnused(plan: WorkspacePatchPlan, target: WorkspacePatchTarget, pointer: string): void {
+  if (plan.pendingFiles.has(target.relativePath)) {
     throw new WorkspaceApplyPatchError({
       message: agentErrorMessage("workspacePatch.duplicateOperation", { path: target.relativePath }),
       pointer,
@@ -455,43 +331,6 @@ function ensurePathUnused(
   }
 }
 
-function addWrite(
-  plan: WorkspacePatchPlan,
-  pendingFiles: Map<string, PendingFileState>,
-  write: PlannedFileWrite,
-  pointer: string,
-): void {
-  if (pendingFiles.has(write.target.relativePath)) {
-    throw new WorkspaceApplyPatchError({
-      message: agentErrorMessage("workspacePatch.duplicateWrite", { path: write.target.relativePath }),
-      pointer,
-    });
-  }
-  plan.writes.set(write.target.relativePath, write);
-  pendingFiles.set(write.target.relativePath, write);
-}
-
-function rejectDirectoryDeleteConflicts(plan: WorkspacePatchPlan): void {
-  for (const deletion of plan.deleteDirectories.values()) {
-    for (const changedPath of collectWorkspacePatchChangedPaths(plan)) {
-      if (
-        changedPath === deletion.target.relativePath ||
-        !isInsideDirectory(changedPath, deletion.target.relativePath)
-      ) {
-        continue;
-      }
-      throw new WorkspaceApplyPatchError({
-        message: agentErrorMessage("workspacePatch.directoryDeleteConflict", {
-          directoryPath: deletion.target.relativePath,
-          changedPath,
-        }),
-        pointer: "/operations",
-        suggestion: agentErrorMessage("workspacePatch.directoryDeleteConflictSuggestion"),
-      });
-    }
-  }
-}
-
-function isInsideDirectory(filePath: string, directoryPath: string): boolean {
-  return filePath === directoryPath || filePath.startsWith(`${directoryPath}/`);
+function addWrite(plan: WorkspacePatchPlan, write: PlannedFileWrite): void {
+  plan.pendingFiles.set(write.target.relativePath, write);
 }

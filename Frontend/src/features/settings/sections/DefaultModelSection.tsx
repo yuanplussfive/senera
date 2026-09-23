@@ -1,12 +1,10 @@
 import { useMemo, useState, type ElementType } from "react";
 import ArrowsRightLeftIcon from "@heroicons/react/24/outline/ArrowsRightLeftIcon";
-import BarsArrowUpIcon from "@heroicons/react/24/outline/BarsArrowUpIcon";
 import ChatBubbleBottomCenterTextIcon from "@heroicons/react/24/outline/ChatBubbleBottomCenterTextIcon";
 import CircleStackIcon from "@heroicons/react/24/outline/CircleStackIcon";
 import CpuChipIcon from "@heroicons/react/24/outline/CpuChipIcon";
 import EyeIcon from "@heroicons/react/24/outline/EyeIcon";
 import QueueListIcon from "@heroicons/react/24/outline/QueueListIcon";
-import ViewfinderCircleIcon from "@heroicons/react/24/outline/ViewfinderCircleIcon";
 import WrenchScrewdriverIcon from "@heroicons/react/24/outline/WrenchScrewdriverIcon";
 import { ArrowDown, ArrowUp, Check, Plus, Trash2 } from "lucide-react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
@@ -184,7 +182,6 @@ function ModelAssignmentRow({
   }
   const selection = readRuntimeModelAssignmentSelection({
     field,
-    allFields,
     candidates,
     defaultModelId,
     draft: draftState.draft,
@@ -516,22 +513,12 @@ const assignmentRoleIcons: Readonly<Record<string, ElementType<{ className?: str
   "final-answer": ChatBubbleBottomCenterTextIcon,
   "tool-learning": WrenchScrewdriverIcon,
   "continuity-learning": CircleStackIcon,
-  embedding: ViewfinderCircleIcon,
-  rerank: BarsArrowUpIcon,
 };
 
 function AssignmentRoleIcon({ field }: { field: RuntimeModelAssignmentField }): JSX.Element {
   const selection = field.modelSelection;
   const Icon =
     assignmentRoleIcons[selection.id] ??
-    (isRuntimeModelPoolAssignment(field)
-      ? QueueListIcon
-      : selection.capability === "Embedding"
-        ? ViewfinderCircleIcon
-        : selection.capability === "Rerank"
-          ? BarsArrowUpIcon
-          : selection.capability === "Vision"
-            ? EyeIcon
-            : CpuChipIcon);
+    (isRuntimeModelPoolAssignment(field) ? QueueListIcon : selection.capability === "Vision" ? EyeIcon : CpuChipIcon);
   return <Icon className="h-3.5 w-3.5" data-model-assignment-icon={selection.id} />;
 }

@@ -11,6 +11,7 @@ import { AgentSkillSelector } from "../../../Source/AgentSystem/Skills/AgentSkil
 import { AgentCapabilitySearchIndex } from "../../../Source/AgentSystem/ToolSearch/AgentCapabilitySearchIndex.js";
 import { buildSkillCapabilityDocument } from "../../../Source/AgentSystem/ToolSearch/AgentCapabilityDocumentBuilder.js";
 import { AgentToolSearchTokenizer } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchTokenizer.js";
+import { createTool } from "../ToolSearch/ToolSearchTestFixtures.js";
 
 describe("Skill activation", () => {
   test("activates pinned Skills before semantic routing and rejects missing pins", async () => {
@@ -185,17 +186,16 @@ describe("Skill activation", () => {
     ];
     const index = new AgentCapabilitySearchIndex(skills.map(buildSkillCapabilityDocument), {
       tokenizer: new AgentToolSearchTokenizer(),
-      rerank: {
+      embedding: {
         client: {
-          rerank: async ({ documents }) => ({
-            model: "rerank-test",
-            results: [...documents].reverse().map((document, resultIndex) => ({
-              id: document.id,
-              index: documents.findIndex((candidate) => candidate.id === document.id),
-              score: 1 - resultIndex / documents.length,
-            })),
-          }),
+          async embed(request) {
+            return {
+              model: "test-embed",
+              vectors: request.input.map((text) => (text.includes("workspace") ? [1, 0] : [0, 1])),
+            };
+          },
         },
+        model: "test-embed",
       },
     });
 
@@ -204,13 +204,44 @@ describe("Skill activation", () => {
       skills,
     });
 
-    expect(selected.map((selection) => selection.skill.name)).toEqual([
-      "beta-workspace-search",
-      "alpha-workspace-search",
-    ]);
-    expect(selected[0]?.matchedFields).toContainEqual({
-      term: "search workspace records",
-      fields: ["semanticRerank"],
+    expect(selected.length).toBe(2);
+  });
+
+  test("derives Skill recommendation routes from the registered tool loading declaration", async () => {
+    const registry = new AgentExtensionRegistry();
+    const direct = createTool({
+      name: "WorkspaceApplyPatch",
+      title: "Apply patch",
+      summary: "Modify workspace files.",
+      tags: ["workspace", "patch"],
+      actions: ["patch"],
+      targets: ["workspace"],
+      priority: 1,
+      loading: "Bootstrap",
+    });
+    const dynamic = createTool({
+      name: "mcp__image__generate",
+      title: "Generate image",
+      summary: "Generate an image from a prompt.",
+      tags: ["image", "generate"],
+      actions: ["generate"],
+      targets: ["image"],
+      priority: 1,
+      loading: "Dynamic",
+    });
+    registry.registerToolExtension(direct.owner, [direct]);
+    registry.registerToolExtension(dynamic.owner, [dynamic]);
+    registry.registerSkill({
+      ...skill("creative-workspace", "Edit a workspace and generate visual assets."),
+      recommendedTools: [direct.name, dynamic.name],
+    });
+
+    const service = new AgentSkillActivationService(registry);
+    const activated = await service.activate({ input: "/creative-workspace complete the task" });
+
+    expect(service.recommendedToolRouting(activated)).toEqual({
+      directToolNames: [direct.name],
+      dynamicToolNames: [dynamic.name],
     });
   });
 });

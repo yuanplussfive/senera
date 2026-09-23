@@ -5,7 +5,6 @@ import {
 } from "../Source/AgentSystem/Runtime/AgentRuntimeModule.js";
 import { AgentSystemRuntime } from "../Source/AgentSystem/Runtime/AgentSystemRuntime.js";
 import { projectAgentDelegatedRolePromptContext } from "../Source/AgentSystem/Loop/AgentTurnPromptRenderer.js";
-import type { LoadedToolsState } from "../Source/AgentSystem/ToolSearch/AgentToolSearchRuntime.js";
 import { createIsolatedVerificationRuntimeConfig } from "./VerificationRuntimeConfig.js";
 import {
   renderAgentPromptContextWires,
@@ -16,6 +15,7 @@ import {
   normalizeAgentContinuityTemplateContext,
   normalizeAgentWorkflowTemplateContext,
 } from "../Source/AgentSystem/Prompt/AgentPromptTemplateContextNormalizer.js";
+import { ToolLoadingModes } from "../Source/AgentSystem/Types/AgentToolContractTypes.js";
 
 const workspaceRoot = process.cwd();
 const isolatedConfig = await createIsolatedVerificationRuntimeConfig(workspaceRoot);
@@ -49,14 +49,10 @@ try {
     workflowSkills.some((skill) => skill.name === "agent-orchestration"),
     true,
   );
-  assert.deepEqual(runtime.services.promptContext.recommendedSkillTools(workflowSkills), [
-    "AgentSpawn",
-    "AgentList",
-    "AgentWait",
-    "AgentInput",
-    "AgentStop",
-    "AgentResume",
-  ]);
+  assert.deepEqual(runtime.services.promptContext.recommendedSkillToolRouting(workflowSkills), {
+    directToolNames: ["AgentSpawn", "AgentList", "AgentWait", "AgentInput", "AgentStop", "AgentResume"],
+    dynamicToolNames: [],
+  });
   const investigationSkills = await runtime.services.promptContext.activateSkills({
     input: "现在的 shell 工具怎么实现的，读取 SeneraShellPlatform 的片段并分析",
   });
@@ -67,14 +63,23 @@ try {
 
   const toolCatalog = runtime.services.promptContext.toolCatalog();
   assert.ok(toolCatalog.length > 0);
-  const visibleToolName = toolCatalog[0].name;
-  assert.ok(runtime.services.pi.activeToolNames().includes(visibleToolName));
-  assert.ok(runtime.services.pi.toolDefinitions().some((tool) => tool.name === visibleToolName));
+  const bootstrapToolName = toolCatalog.find(
+    (tool) => runtime.registry.getTool(tool.name)?.loading === ToolLoadingModes.Bootstrap,
+  )?.name;
+  const dynamicToolName = toolCatalog.find(
+    (tool) => runtime.registry.getTool(tool.name)?.loading === ToolLoadingModes.Dynamic,
+  )?.name;
+  assert.ok(bootstrapToolName, "The runtime must expose at least one Bootstrap tool.");
+  assert.ok(dynamicToolName, "The runtime must register at least one Dynamic tool.");
+  assert.ok(runtime.services.pi.activeToolNames().includes(bootstrapToolName));
+  assert.ok(runtime.services.pi.toolDefinitions().some((tool) => tool.name === bootstrapToolName));
+  assert.ok(!runtime.services.pi.activeToolNames().includes(dynamicToolName));
+  assert.ok(!runtime.services.pi.toolDefinitions().some((tool) => tool.name === dynamicToolName));
 
   const baseContext = runtime.services.promptContext.buildBaseContext({
-    loadedToolNames: [visibleToolName],
+    loadedToolNames: [bootstrapToolName],
   });
-  assert.ok(baseContext.ToolCards.some((tool) => tool.name === visibleToolName));
+  assert.ok(baseContext.ToolCards.some((tool) => tool.name === bootstrapToolName));
   assert.equal(baseContext.ExecutionEnvironment.workspace.root, workspaceRoot);
   assert.equal(baseContext.ExecutionEnvironment.workspace.logicalRoot, ".");
   assert.equal(baseContext.ExecutionEnvironment.workspace.preferredPathForm, "workspace-relative");
@@ -123,28 +128,27 @@ try {
     false,
   );
 
-  const discoverySources = runtime.registry.listDiscoverySources();
   const toolSearchDefinition = runtime.services.pi.toolDefinitions().find((tool) => tool.name === "ToolSearch");
   assert.ok(toolSearchDefinition);
   const toolSearchProperties = readRecord(toolSearchDefinition.parameters.properties);
-  const preferredSourcesSchema = readRecord(toolSearchProperties.preferredSources);
-  const preferredSourceItems = readRecord(preferredSourcesSchema.items);
-  assert.deepEqual(
-    preferredSourceItems.enum,
-    discoverySources.map((source) => source.id),
-  );
-  for (const source of discoverySources) {
-    assert.ok(toolSearchDefinition.description.includes(`${source.id}: ${source.title}`));
-  }
+  assert.ok(toolSearchProperties.query);
+  assert.equal(toolSearchProperties.catalogRevision, undefined);
+  assert.equal(toolSearchProperties.preferredSources, undefined);
+  assert.equal(toolSearchProperties.includeLoaded, undefined);
 
   assert.ok(runtime.services.pi.activeToolNames().includes("ShellCommandTool"));
   assert.ok(runtime.services.pi.activeToolNames().includes("WorkspaceApplyPatch"));
   const initialLoadedTools = await runtime.toolSearch.resolveInitialLoadedTools(
     "shell command terminal execute workspace inspection",
   );
-  for (const toolName of ["ShellCommandTool", "ToolSearch", "ToolDescribe", "ToolLoad", "ToolUnload"]) {
-    assert.ok(initialLoadedTools.includes(toolName), `${toolName} must be loaded at session start.`);
-  }
+  const projectedBootstrapToolNames = runtime.services.pi
+    .activeToolNames()
+    .filter((toolName) => runtime.registry.getTool(toolName) !== undefined);
+  assert.deepEqual(
+    [...initialLoadedTools].sort(),
+    [...projectedBootstrapToolNames].sort(),
+    "The initial tool set must contain exactly the Bootstrap tools projected for the active planning mode.",
+  );
 
   const answerRootCommand = runtime.services.promptContext.buildRootCommand({
     decision: { action: "answer" },
@@ -161,13 +165,7 @@ try {
   });
   assert.ok(loadedTools.includes("ToolSearch"));
 
-  let observedAutoSearch:
-    | {
-        requestId: string;
-        query: string;
-        loadedToolNames: LoadedToolsState;
-      }
-    | undefined;
+  let observedFinishedRequest: string | undefined;
 
   const runtimeModule: AgentRuntimeModule = {
     id: "verify.retrieval-observer",
@@ -176,13 +174,9 @@ try {
         service: "retrieval",
         create: () => ({
           ...services.retrieval,
-          rememberAutoSearch: (requestId, query, loadedToolNames) => {
-            observedAutoSearch = {
-              requestId,
-              query,
-              loadedToolNames,
-            };
-            return services.retrieval.rememberAutoSearch(requestId, query, loadedToolNames);
+          finishRequest: (requestId) => {
+            observedFinishedRequest = requestId;
+            return services.retrieval.finishRequest(requestId);
           },
         }),
       },
@@ -190,27 +184,19 @@ try {
   };
 
   const services = new AgentRuntimeModuleComposer().compose(runtime.services, [runtimeModule]);
-  services.retrieval.rememberAutoSearch("verify-runtime-services", "项目结构", loadedTools);
+  services.retrieval.finishRequest("verify-runtime-services");
 
-  assert.deepEqual(observedAutoSearch, {
-    requestId: "verify-runtime-services",
-    query: "项目结构",
-    loadedToolNames: loadedTools,
-  });
+  assert.equal(observedFinishedRequest, "verify-runtime-services");
 
-  observedAutoSearch = undefined;
+  observedFinishedRequest = undefined;
   const runtimeWithModule = AgentSystemRuntime.load({
     workspaceRoot,
     configPath,
     runtimeModules: [runtimeModule],
     toolSearchMemoryStore: isolatedConfig.createToolSearchMemoryStore(),
   });
-  runtimeWithModule.services.retrieval.rememberAutoSearch("verify-runtime-module", "模块装配", loadedTools);
-  assert.deepEqual(observedAutoSearch, {
-    requestId: "verify-runtime-module",
-    query: "模块装配",
-    loadedToolNames: loadedTools,
-  });
+  runtimeWithModule.services.retrieval.finishRequest("verify-runtime-module");
+  assert.equal(observedFinishedRequest, "verify-runtime-module");
 
   await Promise.all([runtime.close(), runtimeWithModule.close()]);
 
@@ -226,11 +212,9 @@ function readRecord(value: unknown): Record<string, unknown> {
 
 function projectTemplateWireContext(wires: AgentPromptContextWireSet): Record<string, string> {
   return {
-    VolatileWire: wires.volatile.text,
-    SceneWire: wires.scene.text,
-    ContinuityWire: wires.continuity.text,
-    ContinuityFactsWire: wires.continuityFacts.text,
-    ResidentProfileWire: wires.residentProfile.text,
-    WorkflowWire: wires.workflow.text,
+    StableProfileWire: wires.stableProfile.text,
+    LiveStateWire: wires.liveState.text,
+    LoreWire: "",
+    ResidentStateWire: "",
   };
 }

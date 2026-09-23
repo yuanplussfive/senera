@@ -1,5 +1,5 @@
 import { AgentXmlCodec } from "./AgentXmlCodec.js";
-import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
+import { isAgentToolResultInline, type ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import { createXmlProtocolSpec, type AgentXmlProtocolSpec } from "./AgentXmlPolicy.js";
 
 /**
@@ -30,67 +30,82 @@ export class AgentToolResultXmlRenderer {
         [this.protocol.toolResult.request]: {
           [this.protocol.toolResult.arguments]: entry.arguments,
         },
-        [this.protocol.toolResult.response]: {
-          [this.protocol.toolResult.result]: entry.artifact ? undefined : entry.result,
-          artifact: entry.artifact
-            ? {
-                artifactId: entry.artifact.artifactId,
-                artifactUri: entry.artifact.artifactUri,
-                summary: entry.artifact.summary,
-                evidence: {
-                  item: entry.artifact.evidence.map((evidence) => ({
-                    evidenceUri: evidence.evidenceUri,
-                    kind: evidence.kind,
-                    locator: evidence.locator,
-                    display: evidence.display,
-                    label: evidence.label,
-                    source: evidence.source,
-                    confidence: evidence.confidence,
-                    slots: {
-                      item: evidence.modelSlots.map((slot) => ({
-                        name: slot.name,
-                        value: slot.value,
-                      })),
-                    },
-                  })),
-                },
-                delta: {
-                  item: entry.artifact.delta.map((delta) => ({
-                    kind: delta.kind,
-                    status: delta.status,
-                    summary: delta.summary,
-                  })),
-                },
-                workspace: entry.artifact.workspace
-                  ? {
-                      patch: {
-                        generated: entry.artifact.workspace.changes.some(
-                          (change) => change.patch?.status === "generated",
-                        ),
-                        changeCount: entry.artifact.workspace.changes.filter(
-                          (change) => change.patch?.status === "generated",
-                        ).length,
-                      },
-                      changes: {
-                        item: entry.artifact.workspace.changes.map((change) => ({
-                          path: change.path,
-                          status: change.status,
-                          beforeHash: change.beforeHash,
-                          afterHash: change.afterHash,
-                          patch: change.patch
-                            ? {
-                                status: change.patch.status,
-                                reason: change.patch.reason,
-                              }
-                            : undefined,
-                        })),
-                      },
-                    }
-                  : undefined,
-              }
-            : undefined,
-        },
+        [this.protocol.toolResult.response]: this.projectResponse(entry),
       })),
     });
+  }
+
+  private projectResponse(entry: ExecutedToolCallResult): Record<string, unknown> {
+    // Inline path: the verbatim result is already in context, so the artifact
+    // is reduced to an addressing reference.
+    if (isAgentToolResultInline(entry)) {
+      return {
+        [this.protocol.toolResult.result]: entry.inlinePayload,
+        artifact: entry.artifact
+          ? {
+              artifactId: entry.artifact.artifactId,
+              artifactUri: entry.artifact.artifactUri,
+            }
+          : undefined,
+      };
+    }
+    return {
+      [this.protocol.toolResult.result]: entry.artifact ? undefined : entry.result,
+      artifact: entry.artifact
+        ? {
+            artifactId: entry.artifact.artifactId,
+            artifactUri: entry.artifact.artifactUri,
+            summary: entry.artifact.summary,
+            evidence: {
+              item: entry.artifact.evidence.map((evidence) => ({
+                evidenceUri: evidence.evidenceUri,
+                kind: evidence.kind,
+                locator: evidence.locator,
+                display: evidence.display,
+                label: evidence.label,
+                source: evidence.source,
+                confidence: evidence.confidence,
+                slots: {
+                  item: evidence.modelSlots.map((slot) => ({
+                    name: slot.name,
+                    value: slot.value,
+                  })),
+                },
+              })),
+            },
+            delta: {
+              item: entry.artifact.delta.map((delta) => ({
+                kind: delta.kind,
+                status: delta.status,
+                summary: delta.summary,
+              })),
+            },
+            workspace: entry.artifact.workspace
+              ? {
+                  patch: {
+                    generated: entry.artifact.workspace.changes.some((change) => change.patch?.status === "generated"),
+                    changeCount: entry.artifact.workspace.changes.filter(
+                      (change) => change.patch?.status === "generated",
+                    ).length,
+                  },
+                  changes: {
+                    item: entry.artifact.workspace.changes.map((change) => ({
+                      path: change.path,
+                      status: change.status,
+                      beforeHash: change.beforeHash,
+                      afterHash: change.afterHash,
+                      patch: change.patch
+                        ? {
+                            status: change.patch.status,
+                            reason: change.patch.reason,
+                          }
+                        : undefined,
+                    })),
+                  },
+                }
+              : undefined,
+          }
+        : undefined,
+    };
   }
 }

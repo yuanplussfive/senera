@@ -170,6 +170,7 @@ export class AgentPiBamlToolProvider {
         focus,
         prefaceRewriteEnabled: frame.prefaceRewriteEnabled,
         roleplayPresetActive: frame.roleplayPresetActive,
+        finalResponseRewriteEnabled: frame.finalResponseRewriteEnabled,
         hasRegisteredToolCalls: turnState.hasRegisteredToolCalls(),
       })
     ) {
@@ -183,6 +184,8 @@ export class AgentPiBamlToolProvider {
       message,
       focus,
       spokenUtterances: turnState.residentSpeechHistory(),
+      residentStance: turnState.currentResidentStance(),
+      projectionTier: frame.roleplayPresetActive === true ? "reshape" : "polish",
       enabled: true,
       signal,
       sessionId: requireAgentPiPromptCacheSessionId(frame.sessionId),

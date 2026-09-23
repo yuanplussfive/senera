@@ -103,6 +103,15 @@ describe("world runtime clock serialization", () => {
       expect(new AgentWorldClock(database, ledger).state(world.id)?.lastAdvancedAt.toString()).toBe(
         laterObservation.toString(),
       );
+
+      // A delayed notification can arrive after another wake has already
+      // committed a later clock instant. It must converge on the durable
+      // state instead of failing the entire world wake or regressing time.
+      const staleSnapshot = runtime.snapshot(firstWake);
+      expect(staleSnapshot.time.instant.toString()).toBe(laterObservation.toString());
+      expect(new AgentWorldClock(database, ledger).state(world.id)?.lastAdvancedAt.toString()).toBe(
+        laterObservation.toString(),
+      );
     } finally {
       runtime?.stop();
       database.close();

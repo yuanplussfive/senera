@@ -71,16 +71,17 @@ export class AgentWorldRuntime implements AgentWorldSnapshotProvider {
   }
 
   snapshot(now: Temporal.Instant = this.options.now?.() ?? Temporal.Now.instant()): AgentWorldTreeProjection {
+    const effectiveNow = this.effectiveNow(now);
     if (this.wakeActive) {
       // A wake owns clock advancement until its pass completes. Keep a later
       // observation for the coalescing loop, but never let a synchronous
       // snapshot write a newer clock that the in-flight pass could regress.
-      this.pendingWakeAt = laterInstant(this.pendingWakeAt, now);
-      return this.project(now);
+      this.pendingWakeAt = laterInstant(this.pendingWakeAt, effectiveNow);
+      return this.project(effectiveNow);
     }
-    this.advance(now);
-    const snapshot = this.project(now);
-    if (this.sink) this.scheduleNextWake(now);
+    const advancement = this.advance(effectiveNow);
+    const snapshot = this.project(advancement.to);
+    if (this.sink) this.scheduleNextWake(advancement.to);
     return snapshot;
   }
 
@@ -90,14 +91,15 @@ export class AgentWorldRuntime implements AgentWorldSnapshotProvider {
 
   /** Processes one world wake and coalesces concurrent callers into one pass. */
   wake(now: Temporal.Instant = this.options.now?.() ?? Temporal.Now.instant()): Promise<AgentWorldTreeProjection> {
+    const effectiveNow = this.effectiveNow(now);
     if (this.wakeInFlight) {
-      this.pendingWakeAt = laterInstant(this.pendingWakeAt, now);
+      this.pendingWakeAt = laterInstant(this.pendingWakeAt, effectiveNow);
       return this.wakeInFlight;
     }
     this.wakeBlocked = false;
     this.pendingWakeAt = undefined;
     this.wakeActive = true;
-    const operation = this.performWake(now);
+    const operation = this.performWake(effectiveNow);
     this.wakeInFlight = operation;
     void operation.then(
       () => {
@@ -138,11 +140,12 @@ export class AgentWorldRuntime implements AgentWorldSnapshotProvider {
       const agenda = this.options.agenda.snapshot(config.TimeZone, new Date(now.epochMilliseconds));
       const world = agenda.world;
       const clockState = this.options.clock.state(world.id);
-      const from = clockState?.lastAdvancedAt ?? now;
+      const effectiveNow = laterInstant(clockState?.lastAdvancedAt, now);
+      const from = clockState?.lastAdvancedAt ?? effectiveNow;
       // Habit effects are wake-source work; clock advancement must not
       // execute them as a side effect of reading a snapshot.
-      this.refreshClock({ worldId: world.id, now });
-      return { worldId: world.id, from, to: now };
+      this.refreshClock({ worldId: world.id, now: effectiveNow });
+      return { worldId: world.id, from, to: effectiveNow };
     } finally {
       this.advancing = false;
     }
@@ -184,12 +187,14 @@ export class AgentWorldRuntime implements AgentWorldSnapshotProvider {
     let currentNow = now;
     try {
       let snapshot = await this.performWakePass(currentNow, sink);
+      currentNow = snapshot.time.instant;
       while (true) {
         const pending = this.pendingWakeAt;
         this.pendingWakeAt = undefined;
         if (!pending || Temporal.Instant.compare(pending, currentNow) <= 0) return snapshot;
         currentNow = pending;
         snapshot = await this.performWakePass(currentNow, sink);
+        currentNow = snapshot.time.instant;
       }
     } catch (error) {
       this.wakeBlocked = true;
@@ -329,6 +334,18 @@ export class AgentWorldRuntime implements AgentWorldSnapshotProvider {
         }),
       ],
     });
+  }
+
+  /**
+   * Reads the durable clock before accepting an external observation. This
+   * lets new and outgoing runtime instances converge on one monotonic time
+   * base even while a hot reload or shutdown overlaps their asynchronous
+   * wake work.
+   */
+  private effectiveNow(now: Temporal.Instant): Temporal.Instant {
+    const config = this.options.config();
+    const world = this.options.agenda.snapshot(config.TimeZone, new Date(now.epochMilliseconds)).world;
+    return laterInstant(this.options.clock.state(world.id)?.lastAdvancedAt, now);
   }
 }
 

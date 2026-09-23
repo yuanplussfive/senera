@@ -3,6 +3,7 @@ import { SeneraLocalExecutionEnv } from "../../../Source/AgentSystem/Execution/S
 import { AgentToolHostCapabilityRegistry } from "../../../Source/AgentSystem/ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import { toolProcessSuccessResult } from "../../../Source/AgentSystem/ToolRuntime/AgentToolProcessEnvelope.js";
 import { AgentToolRunner } from "../../../Source/AgentSystem/ToolRuntime/AgentToolRunner.js";
+import { AgentJsonSchemaPromptContractProjector } from "../../../Source/AgentSystem/ToolContracts/AgentJsonSchemaPromptContractProjector.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
 import {
@@ -54,6 +55,75 @@ describe("Tool output contract validation", () => {
       removeDirectory(workspaceRoot);
     }
   });
+
+  test("validates the provider shape before a resource projection changes it", async () => {
+    const workspaceRoot = createTemporaryDirectory("senera-output-contract-projection");
+    const tool = registeredTool(workspaceRoot);
+    const capabilities = new AgentToolHostCapabilityRegistry().register("test.output", async () =>
+      toolProcessSuccessResult(
+        { answer: "senera://resource/upl_projected" },
+        { validationResult: { answer: "provider-value" } },
+      ),
+    );
+    const runner = new AgentToolRunner(
+      {} as AgentSystemConfig,
+      workspaceRoot,
+      capabilities,
+      { getTool: () => tool },
+      new SeneraLocalExecutionEnv({ workspaceRoot }),
+    );
+
+    try {
+      const result = await runner.run(tool, {});
+      expect(result.response).toEqual(
+        expect.objectContaining({ ok: true, result: { answer: "senera://resource/upl_projected" } }),
+      );
+      expect(result).not.toHaveProperty("validationResult");
+    } finally {
+      await runner.close();
+      removeDirectory(workspaceRoot);
+    }
+  });
+
+  test("projects parameter validation failures into actionable schema-detail messages", async () => {
+    const workspaceRoot = createTemporaryDirectory("senera-argument-contract");
+    const tool = argumentContractTool(workspaceRoot);
+    const capabilities = new AgentToolHostCapabilityRegistry().register("test.argument", async () =>
+      toolProcessSuccessResult({ ok: "done" }),
+    );
+    const runner = new AgentToolRunner(
+      {} as AgentSystemConfig,
+      workspaceRoot,
+      capabilities,
+      { getTool: () => tool },
+      new SeneraLocalExecutionEnv({ workspaceRoot }),
+    );
+
+    try {
+      const result = await runner.run(tool, {});
+      const error = result.response.ok ? undefined : result.response.error;
+      expect(error).toMatchObject({
+        code: AgentExecutionErrorCodes.InvalidToolArguments,
+        details: {
+          phase: AgentToolProcessErrorPhases.SchemaValidation,
+          toolName: "ArgumentContractTool",
+          issues: expect.arrayContaining([
+            expect.objectContaining({ keyword: "required", path: ["city"], pointer: "/city" }),
+          ]),
+        },
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({ code: "required", path: ["city"], pointer: "/city" }),
+        ]),
+      });
+      // The model can locate the exact field and expected value without guessing.
+      expect(error?.message).toContain("ArgumentContractTool.city");
+      expect(error?.message).toMatch(/must have required property 'city'/);
+      expect(error?.message).not.toMatch(/^Invalid arguments for ArgumentContractTool/);
+    } finally {
+      await runner.close();
+      removeDirectory(workspaceRoot);
+    }
+  });
 });
 
 function registeredTool(workspaceRoot: string): RegisteredTool {
@@ -85,5 +155,23 @@ function registeredTool(workspaceRoot: string): RegisteredTool {
     sources: [],
     childGrant: "inherit",
     evidenceCapabilities: [],
+  };
+}
+
+function argumentContractTool(workspaceRoot: string): RegisteredTool {
+  const base = registeredTool(workspaceRoot);
+  const contracts = new AgentJsonSchemaPromptContractProjector();
+  return {
+    ...base,
+    name: "ArgumentContractTool",
+    contract: {
+      digest: "argument-contract-v1",
+      arguments: contracts.project({
+        type: "object",
+        properties: { city: { type: "string", description: "目标城市。" } },
+        required: ["city"],
+        additionalProperties: false,
+      }),
+    },
   };
 }

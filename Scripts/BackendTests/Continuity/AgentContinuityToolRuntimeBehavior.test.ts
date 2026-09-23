@@ -13,6 +13,12 @@ import { AgentTemporalMemorySqliteStore } from "../../../Source/AgentSystem/Temp
 import type { AgentHostToolContext } from "../../../Source/AgentSystem/ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 import { testContinuityIdentity } from "./AgentContinuityTestFixtures.js";
+import {
+  AgentContinuitySemanticRecall,
+  type AgentContinuitySemanticEmbeddingClient,
+} from "../../../Source/AgentSystem/Continuity/AgentContinuitySemanticRecall.js";
+import { AgentLocalEmbeddingModelName } from "../../../Source/AgentSystem/ToolSearch/AgentLocalEmbeddingClient.js";
+import { AgentCancellationError } from "../../../Source/AgentSystem/Core/AgentCancellation.js";
 
 const workspaces = new Set<string>();
 
@@ -21,7 +27,156 @@ afterEach(() => {
   workspaces.clear();
 });
 
-describe("continuity tool runtime", () => {
+describe("continuity tool runtime", async () => {
+  test("recall ranks by persisted local embedding evidence when enabled", async () => {
+    const workspaceRoot = createWorkspace();
+    const kernel = new AgentSqliteDatabaseKernel({
+      databasePath: databasePath(workspaceRoot),
+      contract: AgentMemoryDatabaseContract,
+    });
+    const store = new AgentContinuitySqliteStore(kernel);
+    const sourceRepository = new SqliteAgentMemorySourceRepository(kernel);
+    try {
+      const uri = "senera://continuity-learning/semantic-only";
+      store.recordObservation({
+        id: "semantic-only",
+        uri,
+        kind: "learning.record",
+        summary: "用户只喝无糖美式咖啡。",
+        payload: { kind: "fact", until: "permanent" },
+        sourceRefs: ["senera://memory-source/semantic-only"],
+        watermark: "wm-semantic-only",
+        scope: { kind: "workspace", id: workspaceRoot },
+        authority: "user_explicit",
+        confidence: 1,
+        occurredAt: "2026-08-23T01:00:00.000Z",
+        observedAt: "2026-08-23T01:00:01.000Z",
+        createdAtMs: Date.parse("2026-08-23T01:00:01.000Z"),
+      });
+      const client: AgentContinuitySemanticEmbeddingClient = {
+        embed: async (request) => ({
+          model: AgentLocalEmbeddingModelName,
+          vectors: request.input.map(() => [1, 0, 0]),
+        }),
+      };
+      const semanticRecall = new AgentContinuitySemanticRecall({
+        store,
+        client,
+        model: () => AgentLocalEmbeddingModelName,
+        scoreFloor: () => 0,
+      });
+      await semanticRecall.embedObservations([{ uri, summary: "用户只喝无糖美式咖啡。" }]);
+
+      const result = await recallContinuity(
+        { query: "我想喝一杯拿铁" },
+        {
+          store,
+          sourceRepository,
+          temporalMemoryStore: new AgentTemporalMemorySqliteStore(kernel),
+          timeZone: "Asia/Shanghai",
+          identity: testContinuityIdentity(workspaceRoot),
+          ranking: AgentContinuityRecallRankingDefaults,
+          semanticRecall,
+          semantic: { Enabled: true, TimeoutMs: 1000, ScoreFloor: 0, MinQueryCharacters: 0 },
+        },
+      );
+
+      const hit = result.records.item.find((record) => record.recordUri === uri);
+      expect(hit).toBeDefined();
+      expect(hit!.matchedBy.item).toContain("embedding");
+    } finally {
+      kernel.close();
+    }
+  });
+
+  test("stops semantic recall when its caller cancels", async () => {
+    const fixture = createSemanticRecallFixture();
+    try {
+      let markQueryStarted: (() => void) | undefined;
+      const queryStarted = new Promise<void>((resolve) => {
+        markQueryStarted = resolve;
+      });
+      const semanticRecall = new AgentContinuitySemanticRecall({
+        store: fixture.store,
+        client: blockingSemanticQueryClient(() => markQueryStarted?.()),
+        model: () => AgentLocalEmbeddingModelName,
+        scoreFloor: () => 0,
+      });
+      await semanticRecall.embedObservations([fixture.observation]);
+
+      const controller = new AbortController();
+      const pending = recallContinuity(
+        { query: "无糖美式咖啡" },
+        semanticRecallOptions(fixture, semanticRecall, { signal: controller.signal }),
+      );
+      await queryStarted;
+      controller.abort(new AgentCancellationError("Recall cancelled by the caller."));
+
+      await expect(pending).rejects.toMatchObject({
+        name: "AgentCancellationError",
+        message: "Recall cancelled by the caller.",
+      });
+    } finally {
+      fixture.kernel.close();
+    }
+  });
+
+  test("reports a semantic timeout while retaining lexical recall", async () => {
+    const fixture = createSemanticRecallFixture();
+    try {
+      const semanticRecall = new AgentContinuitySemanticRecall({
+        store: fixture.store,
+        client: blockingSemanticQueryClient(),
+        model: () => AgentLocalEmbeddingModelName,
+        scoreFloor: () => 0,
+      });
+      await semanticRecall.embedObservations([fixture.observation]);
+
+      const result = await recallContinuity(
+        { query: "无糖美式咖啡" },
+        semanticRecallOptions(fixture, semanticRecall, { timeoutMs: 1 }),
+      );
+
+      expect(result.records.item).toEqual(
+        expect.arrayContaining([expect.objectContaining({ recordUri: fixture.observation.uri })]),
+      );
+      expect(result.retrieval).toEqual({
+        semantic: expect.objectContaining({ status: "timeout", indexedCount: 0, compatibleCount: 0 }),
+      });
+    } finally {
+      fixture.kernel.close();
+    }
+  });
+
+  test("reports a semantic provider failure instead of hiding lexical-only recall", async () => {
+    const fixture = createSemanticRecallFixture();
+    try {
+      const semanticRecall = new AgentContinuitySemanticRecall({
+        store: fixture.store,
+        client: vectorEmbeddingClient(),
+        model: () => AgentLocalEmbeddingModelName,
+        scoreFloor: () => 0,
+      });
+      await semanticRecall.embedObservations([fixture.observation]);
+      semanticRecall.setClient({
+        embed: async () => {
+          throw new Error("semantic provider unavailable");
+        },
+      });
+
+      const result = await recallContinuity({ query: "无糖美式咖啡" }, semanticRecallOptions(fixture, semanticRecall));
+
+      expect(result.records.item).toEqual(
+        expect.arrayContaining([expect.objectContaining({ recordUri: fixture.observation.uri })]),
+      );
+      expect(result.retrieval).toEqual({
+        semantic: expect.objectContaining({ status: "request_failed", indexedCount: 1, compatibleCount: 0 }),
+      });
+    } finally {
+      fixture.kernel.close();
+    }
+  });
+
   test("turns explicit writes into tool evidence instead of a parallel database record", async () => {
     const workspaceRoot = createWorkspace();
     const result = await writeContinuityHostTool(
@@ -46,7 +201,7 @@ describe("continuity tool runtime", () => {
     });
   });
 
-  test("recalls learning records and exposes their physical source references", () => {
+  test("recalls learning records and exposes their physical source references", async () => {
     const workspaceRoot = createWorkspace();
     const kernel = new AgentSqliteDatabaseKernel({
       databasePath: databasePath(workspaceRoot),
@@ -75,7 +230,7 @@ describe("continuity tool runtime", () => {
         createdAtMs: Date.parse("2026-08-23T01:00:01.000Z"),
       });
 
-      const result = recallContinuity(
+      const result = await recallContinuity(
         { query: "The user prefers concise Chinese responses." },
         {
           store,
@@ -100,7 +255,7 @@ describe("continuity tool runtime", () => {
     }
   });
 
-  test("recalls a completed physical episode before its learning record exists", () => {
+  test("recalls a completed physical episode before its learning record exists", async () => {
     const workspaceRoot = createWorkspace();
     const kernel = new AgentSqliteDatabaseKernel({
       databasePath: databasePath(workspaceRoot),
@@ -131,7 +286,7 @@ describe("continuity tool runtime", () => {
         executedTools: [],
       });
 
-      const result = recallContinuity(
+      const result = await recallContinuity(
         { query: "住在上海" },
         {
           store: new AgentContinuitySqliteStore(kernel),
@@ -166,7 +321,7 @@ describe("continuity tool runtime", () => {
     }
   });
 
-  test("expands a physical match into an explicit neighboring-turn window", () => {
+  test("expands a physical match into an explicit neighboring-turn window", async () => {
     const workspaceRoot = createWorkspace();
     const kernel = new AgentSqliteDatabaseKernel({
       databasePath: databasePath(workspaceRoot),
@@ -207,7 +362,7 @@ describe("continuity tool runtime", () => {
         .find((source) => source.sourceKind === "user_message");
       expect(anchorSource).toBeDefined();
 
-      const result = recallContinuity(
+      const result = await recallContinuity(
         { refs: [anchorSource!.uri], before: 1, after: 1 },
         {
           store: new AgentContinuitySqliteStore(kernel),
@@ -233,7 +388,7 @@ describe("continuity tool runtime", () => {
         "助手回复 3",
       ]);
 
-      const reread = recallContinuity(
+      const reread = await recallContinuity(
         { refs: [result.episodes.item[1]!.episodeRef] },
         {
           store: new AgentContinuitySqliteStore(kernel),
@@ -252,7 +407,7 @@ describe("continuity tool runtime", () => {
     }
   });
 
-  test("dereferences a source reference without requiring a duplicate natural-language query", () => {
+  test("dereferences a source reference without requiring a duplicate natural-language query", async () => {
     const workspaceRoot = createWorkspace();
     const kernel = new AgentSqliteDatabaseKernel({
       databasePath: databasePath(workspaceRoot),
@@ -277,7 +432,7 @@ describe("continuity tool runtime", () => {
         createdAtMs: Date.parse("2026-08-23T01:00:01.000Z"),
       });
 
-      const result = recallContinuity(
+      const result = await recallContinuity(
         { refs: ["senera://continuity-learning/reference-only"] },
         {
           store,
@@ -298,7 +453,7 @@ describe("continuity tool runtime", () => {
     }
   });
 
-  test("applies a requested time range to exact learning references", () => {
+  test("applies a requested time range to exact learning references", async () => {
     const workspaceRoot = createWorkspace();
     const kernel = new AgentSqliteDatabaseKernel({
       databasePath: databasePath(workspaceRoot),
@@ -356,7 +511,7 @@ describe("continuity tool runtime", () => {
         });
       }
 
-      const result = recallContinuity(
+      const result = await recallContinuity(
         {
           refs: ["senera://continuity-learning/outside"],
           from: "2026-08-23",
@@ -398,4 +553,102 @@ function toolContext(workspaceRoot: string): AgentHostToolContext {
     requestId: "request-1",
     toolCallId: "call-1",
   } as AgentHostToolContext;
+}
+
+function createSemanticRecallFixture(): {
+  readonly workspaceRoot: string;
+  readonly kernel: AgentSqliteDatabaseKernel;
+  readonly store: AgentContinuitySqliteStore;
+  readonly sourceRepository: SqliteAgentMemorySourceRepository;
+  readonly temporalMemoryStore: AgentTemporalMemorySqliteStore;
+  readonly observation: { readonly uri: string; readonly summary: string };
+} {
+  const workspaceRoot = createWorkspace();
+  const kernel = new AgentSqliteDatabaseKernel({
+    databasePath: databasePath(workspaceRoot),
+    contract: AgentMemoryDatabaseContract,
+  });
+  const store = new AgentContinuitySqliteStore(kernel);
+  const observation = {
+    uri: "senera://continuity-learning/semantic-cancellation",
+    summary: "用户喜欢无糖美式咖啡。",
+  };
+  store.recordObservation({
+    id: "semantic-cancellation",
+    uri: observation.uri,
+    kind: "learning.record",
+    summary: observation.summary,
+    payload: { kind: "fact", until: "permanent" },
+    sourceRefs: ["senera://memory-source/semantic-cancellation"],
+    watermark: "wm-semantic-cancellation",
+    scope: { kind: "workspace", id: workspaceRoot },
+    authority: "user_explicit",
+    confidence: 1,
+    occurredAt: "2026-08-23T01:00:00.000Z",
+    observedAt: "2026-08-23T01:00:01.000Z",
+    createdAtMs: Date.parse("2026-08-23T01:00:01.000Z"),
+  });
+  return {
+    workspaceRoot,
+    kernel,
+    store,
+    sourceRepository: new SqliteAgentMemorySourceRepository(kernel),
+    temporalMemoryStore: new AgentTemporalMemorySqliteStore(kernel),
+    observation,
+  };
+}
+
+function semanticRecallOptions(
+  fixture: ReturnType<typeof createSemanticRecallFixture>,
+  semanticRecall: AgentContinuitySemanticRecall,
+  input: { readonly signal?: AbortSignal; readonly timeoutMs?: number } = {},
+) {
+  return {
+    store: fixture.store,
+    sourceRepository: fixture.sourceRepository,
+    temporalMemoryStore: fixture.temporalMemoryStore,
+    timeZone: "Asia/Shanghai",
+    identity: testContinuityIdentity(fixture.workspaceRoot),
+    ranking: AgentContinuityRecallRankingDefaults,
+    semanticRecall,
+    semantic: {
+      Enabled: true,
+      TimeoutMs: input.timeoutMs ?? 1_000,
+      ScoreFloor: 0,
+      MinQueryCharacters: 0,
+    },
+    ...(input.signal ? { signal: input.signal } : {}),
+  };
+}
+
+function vectorEmbeddingClient(): AgentContinuitySemanticEmbeddingClient {
+  return {
+    embed: async (request) => ({
+      model: AgentLocalEmbeddingModelName,
+      vectors: request.input.map(() => [1, 0, 0]),
+    }),
+  };
+}
+
+function blockingSemanticQueryClient(onQueryStarted?: () => void): AgentContinuitySemanticEmbeddingClient {
+  return {
+    embed: async (request) => {
+      if (request.role === "document") {
+        return { model: AgentLocalEmbeddingModelName, vectors: request.input.map(() => [1, 0, 0]) };
+      }
+      onQueryStarted?.();
+      return new Promise((_, reject) => {
+        const signal = request.signal;
+        if (!signal) {
+          reject(new Error("The semantic query should receive an abort signal."));
+          return;
+        }
+        if (signal.aborted) {
+          reject(signal.reason);
+          return;
+        }
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      });
+    },
+  };
 }

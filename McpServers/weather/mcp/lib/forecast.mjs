@@ -5,7 +5,7 @@ let credentialCursor = 0;
 export default async function execute(input, context) {
   const config = configuration(context.environment);
   const credential = nextCredential(config.credentials);
-  const language = input.language ?? config.language;
+  const language = config.language;
   const locationResponse = await qweather(
     config,
     credential,
@@ -24,8 +24,7 @@ export default async function execute(input, context) {
     context.signal,
   );
   const days = input.days ?? 1;
-  const forecast =
-    days > 1 ? await forecastRequest(config, credential, locationId, days, language, context.signal) : [];
+  const forecast = days > 1 ? await forecastRequest(config, credential, locationId, days, context.signal) : [];
   const data = projectWeather(input.location, location, record(current.now), forecast, config.unit);
   return { data, summary: `${data.resolvedLocation}: ${data.condition}` };
 }
@@ -42,13 +41,13 @@ function configuration(environment) {
   };
 }
 
-async function forecastRequest(config, credential, location, days, language, signal) {
+async function forecastRequest(config, credential, location, days, signal) {
   const period = forecastPeriods.find((candidate) => candidate >= days) ?? forecastPeriods.at(-1);
   const response = await qweather(
     config,
     credential,
     `/v7/weather/${period}d`,
-    { location, lang: language, unit: config.unit === "imperial" ? "i" : "m" },
+    { location, lang: config.language, unit: config.unit === "imperial" ? "i" : "m" },
     signal,
   );
   return array(response.daily).slice(0, days);

@@ -18,6 +18,7 @@ import { projectAgentToolResourceArguments } from "./AgentToolResourceArgumentPr
 import { createAgentDefaultToolResourceCapabilities } from "./AgentToolResourceCapabilities.js";
 import { updateSeneraOutputSpoolState } from "../Execution/SeneraOutputSpool.js";
 import {
+  formatAgentToolContractValidationIssue,
   projectAgentToolContractDiagnostics,
   validateToolContractValue,
   validateToolSignatureArguments,
@@ -180,13 +181,14 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     }
     const argumentContract = tool.contract?.arguments;
     if (argumentContract) {
+      const validationSchema = this.hostCapabilities.projectRuntimeValidationSchema(tool, argumentContract.jsonSchema);
       const issues = validateToolSignatureArguments({
-        contract: argumentContract,
+        contract: { ...argumentContract, jsonSchema: validationSchema },
         args: invocation.arguments,
       });
       if (issues.length > 0) {
         return this.failure(
-          `Invalid arguments for ${tool.name}.`,
+          issues.map((issue) => formatAgentToolContractValidationIssue(issue, tool.name)).join("; "),
           { toolName: tool.name, issues },
           AgentExecutionErrorCodes.InvalidToolArguments,
           AgentToolProcessErrorPhases.SchemaValidation,
@@ -326,12 +328,12 @@ export class AgentToolRunner implements AgentToolRunnerLike {
 
   private validateSuccessfulResult(tool: RegisteredTool, result: AgentToolProcessRunResult): AgentToolProcessRunResult {
     const outputSchema = tool.contract?.outputSchema;
-    if (!result.response.ok || !outputSchema) return result;
+    if (!result.response.ok || !outputSchema) return stripValidationResult(result);
     const issues = validateToolContractValue({
       schema: outputSchema,
-      value: result.response.result,
+      value: "validationResult" in result ? result.validationResult : result.response.result,
     });
-    if (issues.length === 0) return result;
+    if (issues.length === 0) return stripValidationResult(result);
     const failure = this.failure(
       agentErrorMessage("tool.resultInvalid", { toolName: tool.name }),
       { toolName: tool.name, issues },
@@ -339,7 +341,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       AgentToolProcessErrorPhases.ResponseValidation,
       projectAgentToolContractDiagnostics(issues),
     );
-    return { ...result, response: failure.response };
+    return { ...stripValidationResult(result), response: failure.response };
   }
 
   private async runHostCapability(
@@ -421,4 +423,10 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       ...(diagnostics?.length ? { diagnostics: [...diagnostics] } : {}),
     });
   }
+}
+
+function stripValidationResult(result: AgentToolProcessRunResult): AgentToolProcessRunResult {
+  if (!("validationResult" in result)) return result;
+  const { validationResult: _validationResult, ...withoutValidationResult } = result;
+  return withoutValidationResult;
 }

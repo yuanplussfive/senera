@@ -17,6 +17,7 @@ export const AgentToolObservationProjectionSources = {
   Limitations: "limitations",
   Outcome: "outcome",
   SemanticDigest: "semanticDigest",
+  Perception: "perception",
 } as const;
 
 export type AgentToolObservationProjectionSource =

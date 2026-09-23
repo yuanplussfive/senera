@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, test } from "vitest";
 import { z } from "zod";
 import { AgentBundledHostToolInputContracts } from "../../../Source/AgentSystem/SystemTools/AgentBundledHostToolInputContracts.js";
-import { AgentSystemExtensionManifestSchema } from "../../../Source/AgentSystem/SystemTools/AgentSystemExtensionManifest.js";
+import { discoverAgentSystemExtensionPackages } from "../../../Source/AgentSystem/SystemTools/AgentSystemExtensionDiscovery.js";
 import { ensureObjectRootJsonSchema } from "../../../Source/AgentSystem/ToolContracts/AgentJsonSchemaObjectRoot.js";
 
 describe("bundled Host Tool input contracts", () => {
@@ -43,6 +43,26 @@ describe("bundled Host Tool input contracts", () => {
     }
   });
 
+  test("publishes the workspace apply patch contract in its five-operation form", () => {
+    const contractPath = discoverContributions().get("workspace.apply_patch");
+    expect(contractPath).toBeDefined();
+    const inputSchema = (readJson(contractPath!) as { inputSchema: { properties?: Record<string, unknown> } })
+      .inputSchema;
+    const operations = inputSchema.properties?.operations as {
+      items?: { oneOf?: Array<{ properties?: { kind?: { const?: string } } }> };
+    };
+    const kinds = operations.items?.oneOf?.map(
+      (branch) => (branch.properties?.kind as { const?: string } | undefined)?.const,
+    );
+    expect(kinds).toEqual(["add", "update", "write", "delete", "move"]);
+
+    const update = operations.items?.oneOf?.find(
+      (branch) => (branch.properties?.kind as { const?: string })?.const === "update",
+    );
+    expect(Object.keys(update?.properties ?? {})).toContain("oldStr");
+    expect(Object.keys(update?.properties ?? {})).toContain("newStr");
+  });
+
   test("accepts canonical arrays and rejects XML projection wrappers", () => {
     const byCapability = new Map(AgentBundledHostToolInputContracts.map((entry) => [entry.capability, entry.input]));
     const artifact = byCapability.get("artifact.memory.read")!;
@@ -80,10 +100,7 @@ describe("bundled Host Tool input contracts", () => {
 function discoverContributions(): Map<string, string> {
   const root = path.resolve("System", "Extensions");
   const contributions = new Map<string, string>();
-  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const packageRoot = path.join(root, entry.name);
-    const manifest = AgentSystemExtensionManifestSchema.parse(readJson(path.join(packageRoot, "extension.json")));
+  for (const { packageRoot, manifest } of discoverAgentSystemExtensionPackages(root)) {
     for (const contribution of manifest.contributions ?? []) {
       if (contribution.kind === "hostTool") {
         contributions.set(contribution.capability, path.resolve(packageRoot, contribution.contract));

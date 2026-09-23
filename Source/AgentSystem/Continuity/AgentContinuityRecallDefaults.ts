@@ -10,6 +10,7 @@ import { projectAgentContinuityRuleConsolidationConfig } from "./AgentContinuity
 
 export const AgentContinuityPromptBudgetDefaults = {
   MaxProfileEntries: 32,
+  MaxDigestEntries: 3,
   MaxFactEntries: 24,
   MaxRelationEntries: 24,
   MaxEventEntries: 8,
@@ -81,12 +82,14 @@ export const AgentContinuityRecallRankingDefaults = {
 } satisfies ResolvedAgentContinuityRecallRankingConfig;
 
 /**
- * Semantic recall is an explicit opt-in channel. The deterministic lexical
- * and graph indexes are the baseline and do not require a model or vector
- * endpoint.
+ * Semantic recall is on by default because the hosting runtime always supplies
+ * an offline local bilingual encoder (falling back to a configured remote
+ * embedding endpoint when enabled), so no model/vector endpoint is required.
+ * The deterministic lexical and graph indexes remain the baseline; semantic
+ * adds cosine evidence on top and degrades gracefully to them on any failure.
  */
 export const AgentContinuitySemanticRecallDefaults = {
-  Enabled: false,
+  Enabled: true,
   TimeoutMs: 30_000,
   ScoreFloor: 0.3,
   MinQueryCharacters: 2,

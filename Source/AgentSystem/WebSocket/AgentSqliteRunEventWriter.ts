@@ -1,5 +1,6 @@
 import path from "node:path";
 import { Worker } from "node:worker_threads";
+import { resolveAgentWorkerThreadEntry, resolveAgentWorkerThreadExecArgv } from "../Core/AgentWorkerThread.js";
 import type { AgentEventEnvelope } from "../Events/AgentEventBase.js";
 import {
   AgentEventPersistenceStates,
@@ -155,13 +156,13 @@ export class AgentSqliteRunEventWriter implements AgentRunEventWriter {
       import.meta.url.endsWith(".ts") ? "./AgentSqliteRunEventWriterWorker.ts" : "./AgentSqliteRunEventWriterWorker.js",
       import.meta.url,
     );
-    const worker = new Worker(resolveWorkerEntry(workerUrl), {
+    const worker = new Worker(resolveAgentWorkerThreadEntry(workerUrl), {
       workerData: {
         databasePath: this.databasePath,
         drainBatchSize: this.drainBatchSize,
         committedRetentionMs: this.committedRetentionMs,
       },
-      execArgv: process.execArgv.filter((argument) => !argument.startsWith("--input-type")),
+      execArgv: resolveAgentWorkerThreadExecArgv(),
     });
     this.worker = worker;
     worker.on("message", (message: WorkerResponse) => this.handleResponse(message));
@@ -310,16 +311,6 @@ function normalizeDelay(value: number | undefined): number {
 function normalizePositiveInteger(value: number, name: string): number {
   if (!Number.isSafeInteger(value) || value <= 0) throw new RangeError(`${name} must be a positive safe integer.`);
   return value;
-}
-
-function resolveWorkerEntry(workerUrl: URL): URL {
-  if (!workerUrl.pathname.endsWith(".ts")) return workerUrl;
-  const tsxApiUrl = import.meta.resolve("tsx/esm/api");
-  const source = [
-    `import { tsImport } from ${JSON.stringify(tsxApiUrl)};`,
-    `await tsImport(${JSON.stringify(workerUrl.href)}, import.meta.url);`,
-  ].join("\n");
-  return new URL(`data:text/javascript,${encodeURIComponent(source)}`);
 }
 
 function createError(error: { readonly name: string; readonly message: string; readonly code?: string }): Error {

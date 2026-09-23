@@ -135,7 +135,9 @@ export class AgentMcpToolRunner {
           ? await callPooledTool()
           : await withAgentMcpToolClient({ ...connection, signal: context.signal }, callTool);
 
-      const projection = await projectAgentMcpToolFeedbackWithResources(result, this.options.resourcePublisher);
+      const projection = await projectAgentMcpToolFeedbackWithResources(result, this.options.resourcePublisher, {
+        signal: context.signal,
+      });
       if (agentUnknownRecordOrEmpty(result).isError === true) {
         const failure = mcpToolFailure(extractAgentMcpText(result) || `MCP tool ${handler.tool} failed.`, {
           toolName: tool.name,
@@ -147,6 +149,7 @@ export class AgentMcpToolRunner {
       }
       return toolProcessSuccessResult(projection.result, {
         ...(projection.artifactPayload ? { artifactPayload: projection.artifactPayload } : {}),
+        ...(projection.validationResult === undefined ? {} : { validationResult: projection.validationResult }),
       });
     } catch (error) {
       return mcpToolFailure(

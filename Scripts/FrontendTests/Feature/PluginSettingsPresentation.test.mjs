@@ -6,6 +6,30 @@ import { McpServersSection } from "../../../Frontend/src/features/settings/secti
 import { SystemToolsSection } from "../../../Frontend/src/features/settings/sections/SystemToolsSection.tsx";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
 
+const ExploreDomain = {
+  id: "explore",
+  displayName: { "zh-CN": "探索与检索", "en-US": "Explore and Retrieve" },
+  description: { "zh-CN": "读取工作区和外部资源。", "en-US": "Read workspace and external resources." },
+  presentation: {
+    category: "explore",
+    icon: "search",
+    group: { id: "explore", title: { "zh-CN": "探索资源", "en-US": "Explore resources" } },
+    activity: { action: { "zh-CN": "探索", "en-US": "Explore" } },
+  },
+};
+
+const ExecuteDomain = {
+  id: "execute",
+  displayName: { "zh-CN": "执行与交互", "en-US": "Execute and Interact" },
+  description: { "zh-CN": "运行受控命令。", "en-US": "Run governed commands." },
+  presentation: {
+    category: "execute",
+    icon: "terminal",
+    group: { id: "execute", title: { "zh-CN": "执行任务", "en-US": "Run tasks" } },
+    activity: { action: { "zh-CN": "执行", "en-US": "Run" } },
+  },
+};
+
 afterEach(() => cleanup());
 
 describe("plugin settings presentation", () => {
@@ -26,9 +50,17 @@ describe("plugin settings presentation", () => {
           systemExtensions: [
             {
               id: "workspace-tools",
+              settingsSurface: "system-tools",
+              domain: ExploreDomain,
               version: "1.0.0",
               displayName: { "zh-CN": "工作区工具", "en-US": "Workspace tools" },
               description: { "zh-CN": "读取、搜索和浏览当前工作区。", "en-US": "Read and search the workspace." },
+              presentation: {
+                category: "workspace",
+                icon: "file-text",
+                group: { id: "workspace", title: { "zh-CN": "浏览工作区", "en-US": "Explore workspace" } },
+                activity: { action: { "zh-CN": "浏览", "en-US": "Explore" } },
+              },
               enabled: true,
               configured: false,
               tools: [
@@ -37,8 +69,28 @@ describe("plugin settings presentation", () => {
                   description: "读取工作区内的文本文件。",
                   loading: "eager",
                   capability: "system.tool.workspace-tools.WorkspaceRead",
+                  presentation: {
+                    category: "workspace-read",
+                    icon: "file-text",
+                    group: { id: "workspace", title: { "zh-CN": "浏览工作区", "en-US": "Explore workspace" } },
+                    activity: { action: { "zh-CN": "读取文件", "en-US": "Read" } },
+                  },
                 },
               ],
+              skillCount: 0,
+              mcpServerCount: 0,
+            },
+            {
+              id: "shell",
+              settingsSurface: "system-tools",
+              domain: ExecuteDomain,
+              version: "1.0.0",
+              displayName: { "zh-CN": "命令执行", "en-US": "Shell Commands" },
+              description: { "zh-CN": "在受控环境中运行命令。", "en-US": "Run commands in a governed environment." },
+              presentation: ExecuteDomain.presentation,
+              enabled: true,
+              configured: false,
+              tools: [],
               skillCount: 0,
               mcpServerCount: 0,
             },
@@ -52,6 +104,12 @@ describe("plugin settings presentation", () => {
 
     expect(screen.getAllByText("工作区工具")).toHaveLength(1);
     expect(container.querySelector("[data-system-extension-directory]")).toBeInTheDocument();
+    expect(
+      [...container.querySelectorAll("[data-system-extension-domain]")].map(
+        (element) => element.dataset.systemExtensionDomain,
+      ),
+    ).toEqual(["execute", "explore"]);
+    expect(container.querySelector("[data-system-extension-domain='explore']")).toHaveTextContent("探索与检索");
     expect(container.querySelector("[data-system-extension-tools]")).not.toBeInTheDocument();
     await user.click(screen.getByText("工作区工具"));
     expect(container.querySelector("[data-system-extension-tools]")).toBeInTheDocument();

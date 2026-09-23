@@ -9,11 +9,28 @@ import type {
   RunActivityState,
 } from "./generatedEventCatalog";
 import type { ProviderModelConfigOperationKind } from "./providerModelCommandTypes";
-import type { FrontendLocalizedText } from "../i18n/frontendLocaleModel";
 import type { BackendLocalizedMessage } from "../i18n/backendMessage";
 import type { ModelThinkingLevel, ModelThinkingProfile } from "./modelThinkingTypes";
+import type { ConfigFormSnapshotData } from "./configFormEventTypes";
 
 export type { ModelThinkingLevel, ModelThinkingProfile, ModelThinkingProfileConfig } from "./modelThinkingTypes";
+export type {
+  ConfigFormFieldData,
+  ConfigFormFieldOptionValue,
+  ConfigFormFieldType,
+  ConfigFormModelCapability,
+  ConfigFormModelSelectionData,
+  ConfigFormSectionData,
+  ConfigFormSnapshotData,
+  ConfigFormValueSource,
+} from "./configFormEventTypes";
+export type {
+  SystemExtensionConfigurationSettings,
+  SystemExtensionSettingsItem,
+  SystemExtensionToolSettingsItem,
+  SystemToolSettingsItem,
+  SystemToolSnapshotData,
+} from "./systemExtensionEventTypes";
 export type {
   WorkspaceSnapshotData,
   WorkspaceSwitchFailedData,
@@ -161,48 +178,6 @@ export interface SessionChannelMetadata {
   messageId?: string;
 }
 
-export interface SystemToolSettingsItem {
-  name: string;
-  title: string;
-  description: string;
-  extension: string;
-  loading: string;
-}
-
-export interface SystemExtensionToolSettingsItem {
-  name: string;
-  description: FrontendLocalizedText;
-  loading: string;
-  capability: string;
-}
-
-export interface SystemExtensionConfigurationSettings {
-  configured: boolean;
-  value: Record<string, unknown>;
-  effectiveValue: Record<string, unknown>;
-  defaults: Record<string, unknown>;
-  sections: ConfigFormSectionData<FrontendLocalizedText>[];
-}
-
-export interface SystemExtensionSettingsItem {
-  id: string;
-  version: string;
-  displayName: FrontendLocalizedText;
-  description: FrontendLocalizedText;
-  enabled: boolean;
-  configured: boolean;
-  priority?: number;
-  tools: SystemExtensionToolSettingsItem[];
-  skillCount: number;
-  mcpServerCount: number;
-  configuration?: SystemExtensionConfigurationSettings;
-}
-
-export interface SystemToolSnapshotData {
-  extensions: SystemExtensionSettingsItem[];
-  tools: SystemToolSettingsItem[];
-}
-
 export type ChannelStatusItem = {
   kind: "telegram" | "qq" | "discord";
   enabled: boolean;
@@ -319,6 +294,7 @@ export interface SessionRuntimeStatusData {
       contextUsage?: SessionContextUsage;
     };
     contextUsage?: SessionContextUsage;
+    compactionCandidate?: SessionCompactionCandidateStatus;
   };
 }
 
@@ -326,6 +302,12 @@ export interface SessionContextUsage {
   tokens: number | null;
   contextWindow: number;
   percent: number | null;
+}
+
+export interface SessionCompactionCandidateStatus {
+  phase: "idle" | "preparing" | "ready" | "applying" | "failed";
+  updatedAt: string;
+  failurePhase?: "preparation" | "application";
 }
 
 export interface SessionExportedData {
@@ -462,8 +444,6 @@ export type ModelToolPlanningMode = "native" | "baml";
 
 export interface ModelCapabilitiesData {
   Chat?: boolean;
-  Embedding?: boolean;
-  Rerank?: boolean;
   Vision?: boolean;
   ImageOutput?: boolean;
   Reasoning?: boolean;
@@ -654,89 +634,6 @@ export interface ConfigDiagnosticData {
   severity: "warning" | "error";
   message: string;
   details?: unknown;
-}
-
-export type ConfigFormFieldType = "boolean" | "string" | "number" | "array" | "table" | "record";
-
-export type ConfigFormFieldOptionValue = string | number | boolean;
-
-export type ConfigFormValueSource = "explicit" | "inherited" | "default" | "missing";
-
-export type ConfigFormModelCapability =
-  | "Chat"
-  | "Embedding"
-  | "Rerank"
-  | "Vision"
-  | "ImageOutput"
-  | "Reasoning"
-  | "ToolCalling"
-  | "DeveloperRole"
-  | "StreamingUsage";
-
-export interface ConfigFormModelSelectionData {
-  id: string;
-  capability: ConfigFormModelCapability;
-  valueKind: "model-id" | "provider-model";
-  mutation: "config" | "default-model";
-  cardinality?: "one" | "many";
-  providerPath?: string[];
-  inheritance?: {
-    source: "parent-model" | "default-model";
-    path?: string[];
-  };
-  required: boolean;
-}
-
-export interface ConfigFormSnapshotData {
-  version: 1;
-  sections: ConfigFormSectionData[];
-}
-
-export interface ConfigFormSectionData<TText = string> {
-  name: string;
-  label: TText;
-  description?: TText;
-  icon?: string;
-  keyCount: number;
-  fields: ConfigFormFieldData<TText>[];
-}
-
-export interface ConfigFormFieldData<TText = string> {
-  label: TText;
-  section: string;
-  key: string;
-  path: string[];
-  type: ConfigFormFieldType;
-  itemType?: ConfigFormFieldType;
-  value: unknown;
-  effectiveValue: unknown;
-  configured: boolean;
-  missing: boolean;
-  valueSource: ConfigFormValueSource;
-  description?: TText;
-  placeholder?: TText;
-  options?: ConfigFormFieldOptionValue[];
-  optionLabels?: Record<string, TText>;
-  optionSource?: {
-    catalog: "skills";
-  };
-  min?: number;
-  max?: number;
-  minLength?: number;
-  maxLength?: number;
-  step?: number;
-  secret?: boolean;
-  multiline?: boolean;
-  required: boolean;
-  essential: boolean;
-  addLabel?: string;
-  itemLabelPath?: string[];
-  itemFields?: ConfigFormFieldData<TText>[];
-  defaultValue?: unknown;
-  defaultItem?: Record<string, unknown>;
-  keyPlaceholder?: string;
-  valuePlaceholder?: string;
-  modelSelection?: ConfigFormModelSelectionData;
 }
 
 export interface ConfigSnapshotData {

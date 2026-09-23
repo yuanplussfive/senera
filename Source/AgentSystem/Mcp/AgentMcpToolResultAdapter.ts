@@ -1,17 +1,19 @@
 import { agentUnknownRecordOrEmpty, isAgentUnknownRecord } from "../Core/AgentUnknownValue.js";
 import type { AgentToolArtifactPayload, AgentToolEvidenceCandidate } from "../Types/ToolRuntimeTypes.js";
-import { extension as mimeExtension } from "mime-types";
 import type { AgentPublishedResource, AgentResourcePublisher } from "../Resources/AgentResourcePublisher.js";
-import { createAgentUploadId } from "../Uploads/AgentUploadLocator.js";
+import { AgentResourceMaterializer } from "../Resources/AgentResourceMaterializer.js";
 import { projectAgentModelText } from "../Text/AgentModelPayloadProjection.js";
+import { isAgentBase64 } from "../Core/AgentBase64.js";
 
 export interface AgentMcpToolResultProjection {
   readonly result: unknown;
   readonly artifactPayload?: AgentToolArtifactPayload;
+  readonly validationResult?: unknown;
 }
 
 interface AgentMcpToolFeedbackOptions {
   readonly rawResponse?: unknown;
+  readonly validationResult?: unknown;
 }
 
 /**
@@ -31,9 +33,9 @@ function projectAgentMcpToolFeedback(
   const hasStructuredContent = envelope.structuredContent !== undefined;
   const content = projectMcpContent(envelope.content, { captureEvidence: hasStructuredContent });
   const structuredContent = envelope.structuredContent;
-  // structuredContent is the MCP tool's opaque, schema-governed value. Do not
-  // merge content blocks into it: doing so would invalidate a declared
-  // outputSchema and would guess the meaning of plugin-defined fields.
+  // structuredContent remains shape-compatible with the MCP output schema. The
+  // host may replace only transport-level binary values with canonical resource
+  // URIs; it never merges content blocks or interprets domain field names.
   const result = hasStructuredContent ? structuredContent : projectMcpContentResult(content);
   const artifactPayload: AgentToolArtifactPayload = {
     rawResponse: options.rawResponse ?? envelope,
@@ -42,6 +44,9 @@ function projectAgentMcpToolFeedback(
 
   return {
     result,
+    ...(hasStructuredContent
+      ? { validationResult: "validationResult" in options ? options.validationResult : structuredContent }
+      : {}),
     ...(artifactPayload ? { artifactPayload } : {}),
   };
 }
@@ -54,26 +59,37 @@ function projectAgentMcpToolFeedback(
 export async function projectAgentMcpToolFeedbackWithResources(
   value: unknown,
   publisher: AgentResourcePublisher,
+  options: { readonly signal?: AbortSignal } = {},
 ): Promise<AgentMcpToolResultProjection> {
+  const materializer = new AgentResourceMaterializer(publisher);
   const envelope = agentUnknownRecordOrEmpty(value);
+  const originalStructuredContent = envelope.structuredContent;
   const content = Array.isArray(envelope.content) ? envelope.content : [];
-  const publishedByContent = new Map<string, AgentPublishedResource>();
   const publishedByIndex = new Map<number, AgentPublishedResource>();
   const canonicalContent: unknown[] = [];
   for (const [index, item] of content.entries()) {
     const record = agentUnknownRecordOrEmpty(item);
-    const published = await publishMcpBinaryContent(record, publisher, publishedByContent);
-    if (!published) {
-      canonicalContent.push(item);
+    const published = await publishMcpBinaryContent(record, materializer, options.signal);
+    if (published) {
+      publishedByIndex.set(index, published);
+      canonicalContent.push(canonicalMcpResourceBlock(record, published));
       continue;
     }
-    publishedByIndex.set(index, published);
-    canonicalContent.push(canonicalMcpResourceBlock(record, published));
+    canonicalContent.push(await materializeMcpTextContent(record, materializer, options.signal));
   }
-  const projected = projectAgentMcpToolFeedback(
-    { ...envelope, content: canonicalContent },
-    { rawResponse: sanitizeMcpEnvelope(value, publishedByIndex) },
-  );
+  const structuredContent =
+    envelope.structuredContent === undefined
+      ? undefined
+      : await materializer.materializeValue(envelope.structuredContent, options);
+  const canonicalEnvelope = {
+    ...envelope,
+    ...(Array.isArray(envelope.content) ? { content: canonicalContent } : {}),
+    ...(structuredContent ? { structuredContent: structuredContent.value } : {}),
+  };
+  const projected = projectAgentMcpToolFeedback(canonicalEnvelope, {
+    rawResponse: sanitizeMcpEnvelope(canonicalEnvelope, publishedByIndex),
+    ...(originalStructuredContent === undefined ? {} : { validationResult: originalStructuredContent }),
+  });
   return projected;
 }
 
@@ -190,8 +206,8 @@ function projectResourceLink(value: Record<string, unknown>, projected: Projecte
 
 async function publishMcpBinaryContent(
   record: Record<string, unknown>,
-  publisher: AgentResourcePublisher,
-  publishedByContent: Map<string, AgentPublishedResource>,
+  materializer: AgentResourceMaterializer,
+  signal?: AbortSignal,
 ): Promise<AgentPublishedResource | undefined> {
   const type = typeof record.type === "string" ? record.type : "";
   const data =
@@ -202,17 +218,24 @@ async function publishMcpBinaryContent(
         : undefined;
   if (!data) return undefined;
 
-  const key = `${data.mimeType}\u0000${data.data}`;
-  const existing = publishedByContent.get(key);
-  if (existing) return existing;
-
-  const published = await publisher.publishBytes({
-    bytes: Buffer.from(data.data, "base64"),
-    name: resourceFileName(data.mimeType),
-    mime: data.mimeType,
-  });
-  publishedByContent.set(key, published);
+  const published = await materializer.materializeBase64(data.data, data.mimeType, undefined, signal);
   return published;
+}
+
+async function materializeMcpTextContent(
+  record: Record<string, unknown>,
+  materializer: AgentResourceMaterializer,
+  signal?: AbortSignal,
+): Promise<unknown> {
+  if (record.type === "text" && typeof record.text === "string") {
+    const text = await materializer.materializeText(record.text, { signal });
+    return text.changed ? { ...record, text: text.value } : record;
+  }
+  if (record.type !== "resource" || !isAgentUnknownRecord(record.resource)) return record;
+  const resource = record.resource;
+  if (typeof resource.text !== "string") return record;
+  const text = await materializer.materializeText(resource.text, { signal });
+  return text.changed ? { ...record, resource: { ...resource, text: text.value } } : record;
 }
 
 function canonicalMcpResourceBlock(record: Record<string, unknown>, published: AgentPublishedResource): unknown {
@@ -245,18 +268,14 @@ function sanitizeMcpEnvelope(value: unknown, publishedByIndex: ReadonlyMap<numbe
 function readBinaryContent(record: Record<string, unknown>): { data: string; mimeType: string } | undefined {
   const data = typeof record.data === "string" ? record.data.trim() : "";
   const mimeType = typeof record.mimeType === "string" ? record.mimeType.trim() : "";
-  return data && mimeType && isBase64(data) ? { data, mimeType } : undefined;
+  return data && mimeType && isAgentBase64(data) ? { data, mimeType } : undefined;
 }
 
 function readResourceBlob(value: unknown): { data: string; mimeType: string } | undefined {
   const resource = agentUnknownRecordOrEmpty(value);
   const data = typeof resource.blob === "string" ? resource.blob.trim() : "";
   const mimeType = typeof resource.mimeType === "string" ? resource.mimeType.trim() : "";
-  return data && mimeType && isBase64(data) ? { data, mimeType } : undefined;
-}
-
-function resourceFileName(mimeType: string): string {
-  return `${createAgentUploadId()}.${mediaTypeExtension(mimeType)}`;
+  return data && mimeType && isAgentBase64(data) ? { data, mimeType } : undefined;
 }
 
 function mcpContentEvidence(
@@ -319,20 +338,4 @@ function projectMcpContentResult(content: ProjectedMcpContent): unknown {
     ...(text ? { text } : {}),
     content: content.blocks,
   };
-}
-
-function isBase64(value: string): boolean {
-  const normalized = value.replace(/\s+/gu, "");
-  return (
-    normalized.length > 0 &&
-    normalized.length % 4 === 0 &&
-    /^(?:[a-z0-9+/]{4})*(?:[a-z0-9+/]{2}==|[a-z0-9+/]{3}=)?$/iu.test(normalized)
-  );
-}
-
-function mediaTypeExtension(mediaType: string): string {
-  const known = mimeExtension(mediaType);
-  if (known) return known;
-  const subtype = mediaType.split("/", 2)[1]?.replace(/[^a-z0-9]+/giu, "");
-  return subtype || "bin";
 }

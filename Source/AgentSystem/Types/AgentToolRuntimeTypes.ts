@@ -2,6 +2,9 @@ import type { AgentMcpRuntimeEndpoint } from "../McpPackages/AgentMcpPackageType
 import type { AgentPromptContractView } from "../Prompt/AgentPromptContractTypes.js";
 import type { AgentExtensionOwner } from "./AgentExtensionRuntimeTypes.js";
 import type { AgentToolObservationProjectionManifest } from "./AgentToolObservationProjectionTypes.js";
+import type { AgentToolContentPolicy } from "./AgentToolContentPolicyTypes.js";
+import type { AgentToolPerceptionDeclaration } from "./AgentToolPerceptionTypes.js";
+import type { AgentToolPresentation } from "./AgentToolPresentationTypes.js";
 import type { AgentInteractionSurface } from "../Interaction/AgentInteractionContext.js";
 import type {
   AgentToolDiscoverySource,
@@ -11,6 +14,7 @@ import type {
   ToolEvidenceCapabilityManifest,
   ToolExecutionManifest,
   ToolLoadingMode,
+  ToolPlanningMode,
   ToolResourceArgumentManifest,
   ToolRuntimeManifest,
   ToolSearchManifest,
@@ -40,6 +44,8 @@ export interface RegisteredTool {
   owner: AgentExtensionOwner;
   name: string;
   loading: ToolLoadingMode;
+  /** Omitted means the tool's contract is portable across all planner protocols. */
+  planningModes?: readonly ToolPlanningMode[];
   descriptionFile?: string;
   contract?: RegisteredToolContract;
   permissions: string[];
@@ -47,6 +53,11 @@ export interface RegisteredTool {
   execution: ToolExecutionManifest;
   runtime: ToolRuntimeManifest;
   observationProjection?: AgentToolObservationProjectionManifest;
+  /** Declarative ownership and content-processing policy for model observations. */
+  contentPolicy?: AgentToolContentPolicy;
+  perception?: AgentToolPerceptionDeclaration;
+  /** Declarative workflow UI metadata inherited from the owning System domain. */
+  presentation?: AgentToolPresentation;
   sources: readonly AgentToolDiscoverySource[];
   search?: ToolSearchManifest;
   childGrant: AgentToolChildGrantMode;

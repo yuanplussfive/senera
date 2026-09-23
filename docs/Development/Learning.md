@@ -31,7 +31,7 @@ Tool/Skill 路由先写 `learning_episodes` observation，再转为：
 
 ## 诊断
 
-`LearningManage` 是只读 Bootstrap System Tool：
+`LearningManage` 是只读 Dynamic System Tool；需要学习诊断时先经 `ToolSearch` / `ToolDescribe` 发现并读取其合同：
 
 - `status`：按 domain/state 汇总 episode，并返回 Skill term 数量。
 - `list`：读取指定数量的最近 episode。

@@ -1,0 +1,79 @@
+{
+  "name": "ExecutionResourceSignal",
+  "loading": "Bootstrap",
+  "presentation": {
+    "category": "execution-signal",
+    "icon": "activity",
+    "activity": {
+      "action": { "zh-CN": "控制进程", "en-US": "Control process" },
+      "argumentPath": "/signal",
+      "detailPaths": ["/resourceId"]
+    }
+  },
+  "observationProjection": "observations/resource.projection.json",
+  "description": "向后台进程树发送 interrupt、terminate 或 kill 信号。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "resourceId": {
+        "type": "string"
+      },
+      "signal": {
+        "type": "string",
+        "enum": ["interrupt", "terminate", "kill"]
+      }
+    },
+    "required": ["resourceId", "signal"],
+    "additionalProperties": false,
+    "definitions": {}
+  },
+  "permissions": ["process:shell"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "SelfManaged",
+    "Capabilities": {
+      "Cancellation": true
+    }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "execution",
+      "Title": "Execution",
+      "Description": "Shell commands, processes, terminals, builds, tests, and other executable workloads."
+    }
+  ],
+  "search": {
+    "Summary": "向后台进程树发送 interrupt、terminate 或 kill 信号。",
+    "Capabilities": [
+      {
+        "Id": "execution.resource-signal",
+        "Title": "Control execution resource",
+        "Description": "向后台进程树发送中断、终止或强制结束信号。",
+        "Facets": {
+          "Actions": ["interrupt", "terminate", "kill"],
+          "Targets": ["execution-resource", "process-tree"],
+          "Effects": ["process-control"]
+        },
+        "Aliases": ["中断后台进程", "终止后台进程", "终止后台终端", "结束后台任务"]
+      }
+    ],
+    "UseCases": ["后台命令需要停止、被卡住，或用户明确要求中断当前执行时。"],
+    "Tags": ["后台进程", "进程信号", "取消"]
+  },
+  "evidenceCapabilities": [],
+  "artifacts": {
+    "Summary": {
+      "Template": "{{ toolName }} resource {{ result.resourceId }}: {{ result.state }}",
+      "ArtifactTemplate": "- resourceId: {{ result.resourceId }}\n  state: {{ result.state }}\n  cursor: {{ result.cursor }}{% if result.exitCode != blank %}\n  exitCode: {{ result.exitCode }}{% endif %}{% if result.signal %}\n  signal: {{ result.signal }}{% endif %}{% if result.historyTruncated %}\n  outputHistoryTruncated: true{% endif %}{% for update in result.updates %}{% if update.kind == 'output' %}\n\n[{{ update.stream }} cursor={{ update.cursor }}]\n{{ update.text }}{% elsif update.kind == 'state' %}\n\n[state cursor={{ update.cursor }}] {{ update.state }}{% if update.reason %}: {{ update.reason }}{% endif %}{% endif %}{% endfor %}"
+    }
+  }
+}

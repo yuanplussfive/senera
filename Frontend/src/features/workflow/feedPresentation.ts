@@ -1,4 +1,5 @@
 import type { AppIconName } from "../../shared/ui/AppIcon";
+import { AgentToolPresentationAppIcons } from "../../shared/workspace/agentToolPresentationIcons";
 import type { FeedGroup, FeedItemKind } from "./feedModel";
 import type { ToolStageIconName } from "./toolStageIconContract";
 
@@ -17,20 +18,4 @@ export const FeedGroupIconCatalog = {
   trace: "git-branch",
 } as const satisfies Record<FeedGroupVariant, AppIconName>;
 
-export const ToolStageIconCatalog = {
-  tools: "tools",
-  search: "search",
-  blocks: "package",
-  "file-text": "file-text",
-  pencil: "pencil",
-  terminal: "terminal",
-  clock: "clock",
-  activity: "activity",
-  "git-branch": "git-branch",
-  users: "users",
-  brain: "brain",
-  "calendar-clock": "calendar-clock",
-  image: "image",
-  "message-question": "message-question",
-  globe: "globe",
-} as const satisfies Record<ToolStageIconName, AppIconName>;
+export const ToolStageIconCatalog = AgentToolPresentationAppIcons satisfies Record<ToolStageIconName, AppIconName>;

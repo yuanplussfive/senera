@@ -99,8 +99,6 @@ function createProvider(
     Headers: {},
     Capabilities: {
       Chat: true,
-      Embedding: false,
-      Rerank: false,
       Vision: false,
       ImageOutput: false,
       Reasoning: false,

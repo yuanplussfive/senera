@@ -15,6 +15,7 @@ import type { ArtifactManifestRecord } from "../../../Source/AgentSystem/Memory/
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentSystemConfigTypes.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 import { AgentTokenProjector } from "../../../Source/AgentSystem/Text/AgentTokenProjection.js";
+import { projectAgentToolResultEventValue } from "../../../Source/AgentSystem/ToolRuntime/AgentToolResultEventProjection.js";
 import { AgentExecutionErrorCodes } from "../../../Source/AgentSystem/Xml/AgentXmlStatus.js";
 import {
   AgentToolExecutionStatuses,
@@ -114,8 +115,31 @@ describe("artifact output capture", () => {
     expect(result?.artifact?.files.stdout).toBeDefined();
     expect(await fs.readFile(result!.artifact!.files.stdout, "utf8")).toBe("complete stdout\n");
     expect(await fs.readFile(result!.artifact!.files.stderr, "utf8")).toBe("complete stderr\n");
-    expect(JSON.parse(await fs.readFile(result!.artifact!.files.manifest, "utf8"))).toMatchObject({
-      schemaVersion: 3,
+    expect(result?.process).toEqual({ exitCode: 0, signal: null, stdout: "", stderr: "" });
+    expect(result).not.toHaveProperty("outputCapture");
+    const manifestSource = await fs.readFile(result!.artifact!.files.manifest, "utf8");
+    expect(manifestSource).not.toContain("complete stdout");
+    expect(manifestSource).not.toContain("complete stderr");
+    const manifest = JSON.parse(manifestSource) as ArtifactManifestRecord;
+    expect(manifest).toMatchObject({
+      schemaVersion: 4,
+      payloadHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      process: {
+        exitCode: 0,
+        signal: null,
+        streams: expect.arrayContaining([
+          expect.objectContaining({
+            stream: "stdout",
+            ref: "stdout",
+            byteLength: Buffer.byteLength("complete stdout\n"),
+          }),
+          expect.objectContaining({
+            stream: "stderr",
+            ref: "stderr",
+            byteLength: Buffer.byteLength("complete stderr\n"),
+          }),
+        ]),
+      },
       outputCapture: { refs: ["stdout", "stderr"] },
       contents: expect.arrayContaining([
         expect.objectContaining({
@@ -126,7 +150,158 @@ describe("artifact output capture", () => {
         }),
       ]),
     });
+    const recalled = await readArtifactMemories(
+      { artifactUris: [manifest.artifactUri], refs: ["stdout", "stderr"] },
+      new Map([[manifest.artifactId, manifest]]),
+      {
+        workspaceRoot,
+        artifactRoot: path.resolve(workspaceRoot, config.RootDir),
+        maxBytes: 1_024,
+        startByte: 0,
+        maxArtifacts: 16,
+        maxRefs: 8,
+        maxConcurrency: 4,
+      },
+    );
+    expect(recalled.artifacts.item[0]?.memories.item).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ ref: "stdout", content: "complete stdout\n" }),
+        expect.objectContaining({ ref: "stderr", content: "complete stderr\n" }),
+      ]),
+    );
     await expect(fs.stat(spool.descriptor.directory)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  test("reclaims a matching retry spool after restoring a published Artifact", async () => {
+    const workspaceRoot = createTemporaryDirectory("senera-artifact-output-retry");
+    temporaryDirectories.push(workspaceRoot);
+    const config = resolveArtifactsConfig({
+      ModelProviders: [],
+      Artifacts: { RootDir: ".senera/artifacts" },
+    } satisfies AgentSystemConfig);
+    const recorder = new AgentToolExecutionArtifactRecorder({ workspaceRoot, config, model: "test-model" });
+    const stdout = "completed output\n";
+    const createCapture = async (id: string) => {
+      const spool = await createSeneraOutputSpool(path.join(workspaceRoot, "spool"), id);
+      spool.write("stdout", Buffer.from(stdout));
+      await spool.close();
+      return spool.descriptor;
+    };
+    const record = (outputCapture: Awaited<ReturnType<typeof createCapture>>) =>
+      recorder.record({
+        requestId: "request-output-retry",
+        step: 1,
+        results: [
+          {
+            callId: "call-output-retry",
+            name: "ShellCommandTool",
+            arguments: { command: "echo complete" },
+            process: { exitCode: 0, signal: null, stdout, stderr: "" },
+            outputCapture,
+            result: { state: "completed" },
+            outcome: AgentToolSuccessOutcome,
+            artifactPolicy: {},
+          },
+        ],
+      });
+
+    const firstCapture = await createCapture("first");
+    const [first] = await record(firstCapture);
+    const retryCapture = await createCapture("retry");
+    const [retried] = await record(retryCapture);
+
+    expect(retried?.artifact?.artifactId).toBe(first?.artifact?.artifactId);
+    await expect(fs.stat(retryCapture.directory)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  test.each([
+    { label: "10 KiB streams", bytesPerStream: 10 * 1024 },
+    { label: "100 KiB streams", bytesPerStream: 100 * 1024 },
+  ])("projects $label into a compact Artifact-backed event result", async ({ bytesPerStream }) => {
+    const workspaceRoot = createTemporaryDirectory("senera-artifact-token-projection");
+    temporaryDirectories.push(workspaceRoot);
+    const config = resolveArtifactsConfig({
+      ModelProviders: [],
+      Artifacts: {
+        RootDir: ".senera/artifacts",
+        InlineResultMaxTokens: 512,
+        InlineResultMaxBytes: 1024,
+      },
+    } satisfies AgentSystemConfig);
+    const recorder = new AgentToolExecutionArtifactRecorder({ workspaceRoot, config, model: "gpt-4o" });
+    const stdout = createExecutionLog("stdout", bytesPerStream);
+    const stderr = createExecutionLog("stderr", bytesPerStream);
+    const result = {
+      resourceId: "res_token_projection",
+      kind: "terminal",
+      state: "completed",
+      fromCursor: 0,
+      cursor: 2,
+      oldestCursor: 0,
+      updates: [
+        {
+          kind: "output",
+          cursor: 1,
+          stream: "stdout",
+          text: stdout,
+          byteLength: bytesPerStream,
+          totalBytes: bytesPerStream,
+        },
+        {
+          kind: "output",
+          cursor: 2,
+          stream: "stderr",
+          text: stderr,
+          byteLength: bytesPerStream,
+          totalBytes: bytesPerStream,
+        },
+      ],
+      exitCode: 0,
+    };
+    const [recorded] = await recorder.record({
+      requestId: `request-token-${bytesPerStream}`,
+      step: 1,
+      results: [
+        {
+          callId: `call-token-${bytesPerStream}`,
+          name: "ShellCommandTool",
+          arguments: { command: "npm test", cwd: workspaceRoot },
+          process: { exitCode: 0, signal: null, stdout, stderr },
+          result,
+          outcome: AgentToolSuccessOutcome,
+          artifactPolicy: {},
+        },
+      ],
+    });
+
+    expect(recorded?.artifact).toBeDefined();
+    expect(recorded?.inlinePayload).toBeUndefined();
+    expect(recorded?.process).toEqual({ exitCode: 0, signal: null, stdout: "", stderr: "" });
+    const artifactEventResult = projectAgentToolResultEventValue(recorded!);
+    expect(artifactEventResult).toMatchObject({
+      type: "senera.artifact_backed_tool_result.v1",
+      artifactUri: recorded!.artifact!.artifactUri,
+    });
+    expect(JSON.stringify(artifactEventResult)).not.toContain(stdout);
+    expect(JSON.parse(await fs.readFile(recorded!.artifact!.files.raw, "utf8"))).toEqual(result);
+
+    const projector = new AgentTokenProjector("gpt-4o");
+    const legacyPayload = {
+      arguments: { command: "npm test", cwd: workspaceRoot },
+      result,
+      process: { exitCode: 0, signal: null, stdout, stderr },
+    };
+    const artifactBackedPayload = {
+      arguments: recorded!.arguments,
+      result: artifactEventResult,
+      process: recorded!.process,
+      artifactUri: recorded!.artifact!.artifactUri,
+    };
+    const legacyTokens = projector.countJson(legacyPayload);
+    const artifactBackedTokens = projector.countJson(artifactBackedPayload);
+
+    expect(artifactBackedTokens).toBeLessThan(legacyTokens);
+    expect(1 - artifactBackedTokens / legacyTokens).toBeGreaterThan(0.98);
   });
 
   test("redacts stream content across spool chunks using the declared transform", async () => {
@@ -378,7 +553,12 @@ describe("artifact output capture", () => {
           callId: "call-redaction-failure",
           name: "ShellCommandTool",
           arguments: { command: "echo secret" },
-          process: { exitCode: 0, signal: null, stdout: "", stderr: "" },
+          process: {
+            exitCode: 0,
+            signal: null,
+            stdout: "output that must remain recoverable\n",
+            stderr: "",
+          },
           outputCapture: spool.descriptor,
           result: { ok: true },
           outcome: AgentToolSuccessOutcome,
@@ -395,6 +575,8 @@ describe("artifact output capture", () => {
       artifactAvailability: { status: "unavailable", reason: "recording_failed" },
     });
     expect(recorded).not.toHaveProperty("artifact");
+    expect(recorded?.process.stdout).toBe("output that must remain recoverable\n");
+    expect(recorded?.outputCapture).toEqual(spool.descriptor);
     expect(warn).toHaveBeenCalledWith(
       "tool.artifact.recording_failed",
       expect.objectContaining({
@@ -561,3 +743,16 @@ describe("artifact output capture", () => {
     });
   });
 });
+
+function createExecutionLog(stream: "stdout" | "stderr", bytes: number): string {
+  const lines: string[] = [];
+  let byteLength = 0;
+  for (let index = 0; byteLength < bytes; index += 1) {
+    const line = `${stream.toUpperCase()} request=${index.toString(36)} file=packages/app/src/module-${(
+      index % 97
+    ).toString(36)}.ts elapsed=${10 + (index % 997)}ms status=${index % 31 === 0 ? "warning" : "ok"}\n`;
+    lines.push(line);
+    byteLength += Buffer.byteLength(line, "utf8");
+  }
+  return Buffer.from(lines.join(""), "utf8").subarray(0, bytes).toString("utf8");
+}

@@ -1,7 +1,7 @@
 import type { AssistantMessage, Context, Message } from "@earendil-works/pi-ai";
 import { AgentKeyedLeaseQueue } from "../Core/AgentKeyedLeaseQueue.js";
 import { sha256Hex, sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
-import { isAgentPiTurnContextWireContent } from "../Pi/AgentPiTurnContextMessage.js";
+import { isAgentPiContextOverlayWireContent } from "../Pi/AgentPiTurnContextMessage.js";
 import type { RegisteredSidecarTool } from "../Types/AgentToolRuntimeTypes.js";
 import {
   projectAgentResidentSpeechCommittedMessage,
@@ -9,7 +9,12 @@ import {
   projectAgentResidentSpeechSourceMessage,
   projectAgentResidentSpeechSystemPrompt,
 } from "./AgentResidentSpeechPromptProjector.js";
-import type { AgentResidentSpeechFocus, AgentResidentSpeechUtterance } from "./AgentResidentSpeechTypes.js";
+import type {
+  AgentResidentSpeechFocus,
+  AgentResidentSpeechProjectionTier,
+  AgentResidentSpeechUtterance,
+} from "./AgentResidentSpeechTypes.js";
+import type { AgentResidentState } from "../Continuity/AgentResidentState.js";
 
 export type AgentResidentSpeechSourceLineage = "initial" | "append" | "rebase";
 
@@ -42,6 +47,8 @@ export class AgentResidentSpeechSessionLedger {
       readonly contract: RegisteredSidecarTool;
       readonly focus: AgentResidentSpeechFocus;
       readonly spokenUtterances: readonly AgentResidentSpeechUtterance[];
+      readonly residentStance?: AgentResidentState;
+      readonly projectionTier?: AgentResidentSpeechProjectionTier;
       readonly signal?: AbortSignal;
     },
     operation: (context: AgentResidentSpeechSessionContext) => Promise<AgentResidentSpeechTransactionResult<T>>,
@@ -69,6 +76,8 @@ export class AgentResidentSpeechSessionLedger {
         const scene = projectAgentResidentSpeechSceneMessage({
           focus: input.focus,
           spokenUtterances: input.spokenUtterances,
+          residentStance: input.residentStance,
+          projectionTier: input.projectionTier,
           lineage,
           sourceMessages: sourceDelta,
           timestamp: input.message.timestamp,
@@ -105,7 +114,7 @@ function currentTurnMessages(messages: readonly Message[]): readonly Message[] {
 }
 
 function isTurnContextMessage(message: Extract<Message, { role: "user" }>): boolean {
-  return typeof message.content === "string" && isAgentPiTurnContextWireContent(message.content);
+  return typeof message.content === "string" && isAgentPiContextOverlayWireContent(message.content);
 }
 
 function isFingerprintPrefix(prefix: readonly string[], value: readonly string[]): boolean {

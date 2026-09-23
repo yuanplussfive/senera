@@ -46,7 +46,7 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     label: "OpenAI",
     icon: "openai",
     match: "prefix",
-    values: ["gpt-", "o1", "o3", "o4", "text-embedding-", "dall-e", "gpt-image"],
+    values: ["gpt-", "o1", "o3", "o4", "dall-e", "gpt-image"],
     capabilities: { Chat: true },
   },
   {
@@ -218,14 +218,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     capabilities: { Chat: true },
   },
   {
-    id: "voyage",
-    label: "Voyage AI",
-    icon: "voyage",
-    match: "prefix",
-    values: ["voyage-"],
-    capabilities: { Embedding: true, Chat: false },
-  },
-  {
     id: "yuanbao",
     labelKey: "model.catalog.yuanbao",
     icon: "yuanbao",
@@ -289,22 +281,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "fireworks",
     match: "prefix",
     values: ["accounts/", "fireworks/"],
-  },
-  {
-    id: "embedding",
-    labelKey: "model.catalog.embedding",
-    icon: "baai",
-    match: "includes",
-    values: ["embedding", "embed-", "e5-", "gte-", "mxbai", "nomic-embed", "text2vec", "voyage-"],
-    capabilities: { Embedding: true, Chat: false },
-  },
-  {
-    id: "rerank",
-    labelKey: "model.catalog.rerank",
-    icon: "cohere",
-    match: "includes",
-    values: ["rerank", "re-rank", "ranker", "cross-encoder"],
-    capabilities: { Rerank: true, Chat: false },
   },
   {
     id: "vision",
@@ -424,14 +400,6 @@ export function inferModelCatalogProvider(providerHint: string | undefined): Pro
   );
 }
 
-export function inferModelCatalogIcon(modelName?: string, providerHint?: string): string | undefined {
-  return inferModelCatalogRule(modelName)?.icon ?? inferModelCatalogProvider(providerHint)?.icon;
-}
-
-export function inferProviderCatalogIcon(providerHint?: string): string | undefined {
-  return inferModelCatalogProvider(providerHint)?.icon;
-}
-
 export function inferModelCatalogGroup(modelName?: string, providerHint?: string): ModelCatalogGroup | undefined {
   const modelRule = inferModelCatalogRule(modelName);
   if (modelRule) {
@@ -455,42 +423,8 @@ export function inferModelCatalogCapabilities(
   const setTrue = (key: keyof ModelCapabilitiesDraft): void => {
     capabilities[key] = true;
   };
-  const setFalse = (key: keyof ModelCapabilitiesDraft): void => {
-    capabilities[key] = false;
-  };
 
-  const isRerankModel = matchesAny(source, ["rerank", "re-rank", "ranker", "cross-encoder"]);
-  const isEmbeddingModel =
-    !isRerankModel &&
-    matchesAny(source, [
-      "embedding",
-      "embed-",
-      "text2vec",
-      "bge-",
-      "bge_",
-      "e5-",
-      "gte-",
-      "mxbai",
-      "nomic-embed",
-      "voyage-",
-    ]);
-  if (isEmbeddingModel) {
-    setTrue("Embedding");
-    capabilities.Chat = false;
-    setFalse("Vision");
-    setFalse("ImageOutput");
-    setFalse("ToolCalling");
-  }
-  if (isRerankModel) {
-    setTrue("Rerank");
-    capabilities.Chat = false;
-    setFalse("Vision");
-    setFalse("ImageOutput");
-    setFalse("ToolCalling");
-  }
   if (
-    !isEmbeddingModel &&
-    !isRerankModel &&
     matchesAny(source, [
       "gemini",
       "gemma-3",

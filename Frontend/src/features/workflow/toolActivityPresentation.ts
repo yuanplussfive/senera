@@ -1,6 +1,6 @@
+import { resolveFrontendLocalizedText } from "../../i18n/frontendLocaleModel";
 import type { ToolEventOrigin } from "../../api/eventTypes";
-import RawToolActivityMap from "./toolActivityPresentation.map.json";
-import { isRecord, readStringArray } from "./presentationMapParsing";
+import type { AgentToolPresentation } from "../../../../Source/AgentSystem/Types/AgentToolPresentationTypes";
 
 export type ToolActivityStatus = "active" | "completed" | "failed";
 
@@ -11,34 +11,6 @@ export interface ToolActivityInput {
   readonly status: ToolActivityStatus;
 }
 
-interface ToolActivityPresentation {
-  readonly action: string;
-}
-
-interface ToolActivityRule extends ToolActivityPresentation {
-  readonly id: string;
-  readonly invocationName?: string;
-  readonly exactCapabilities?: readonly string[];
-  readonly capabilityPrefixes?: readonly string[];
-  readonly exactToolNames?: readonly string[];
-  readonly toolNamePrefixes?: readonly string[];
-  readonly argumentPath?: string;
-  readonly detailPaths?: readonly string[];
-}
-
-interface ToolActivityMap {
-  readonly version: 4;
-  readonly default: ToolActivityPresentation;
-  readonly mcp: ToolActivityPresentation;
-  readonly rules: readonly ToolActivityRule[];
-}
-
-const ToolActivityMap = parseToolActivityMap(RawToolActivityMap);
-
-export function projectToolActivity(input: ToolActivityInput): string {
-  return projectToolActivityInspection(input).label;
-}
-
 export interface ToolActivityInspection {
   readonly label: string;
   readonly category: string;
@@ -46,28 +18,39 @@ export interface ToolActivityInspection {
   readonly argumentPreview?: string;
 }
 
+const GenericSystemCategory = "system";
+const GenericMcpCategory = "mcp";
+
+/**
+ * Runtime events are authoritative. The workflow has no knowledge of
+ * extension names, capability prefixes, or tool-name conventions; packages
+ * describe their own presentation at registration time.
+ */
+export function projectToolActivity(input: ToolActivityInput): string {
+  return projectToolActivityInspection(input).label;
+}
+
 export function projectToolActivityInspection(input: ToolActivityInput): ToolActivityInspection {
-  const rule = resolveRule(input.toolName, input.origin?.capability);
-  const presentation = input.origin?.kind === "mcp" ? ToolActivityMap.mcp : (rule ?? ToolActivityMap.default);
-  const command = rule?.argumentPath ? readStringAtPath(input.arguments, rule.argumentPath) : undefined;
+  const presentation = input.origin?.presentation;
   const toolName = displayToolName(input.toolName, input.origin);
-  const subjects = uniqueStrings((rule?.detailPaths ?? []).flatMap((path) => readStringsAtPath(input.arguments, path)));
-  const argumentPreview = readActivityArgumentPreview({
-    command,
-    subjects,
-    arguments: input.arguments,
-  });
-  const actionLabel = [
-    presentation.action,
-    rule?.invocationName,
-    input.origin?.kind === "mcp" || !rule ? toolName : undefined,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const command = presentation?.activity.argumentPath
+    ? readStringAtPointer(input.arguments, presentation.activity.argumentPath)
+    : undefined;
+  const subjects = uniqueStrings(
+    (presentation?.activity.detailPaths ?? []).flatMap((pointer) => readStringsAtPointer(input.arguments, pointer)),
+  );
+  const argumentPreview = readActivityArgumentPreview({ command, subjects, arguments: input.arguments });
+  const action = presentation
+    ? resolveFrontendLocalizedText(presentation.activity.action)
+    : genericAction(input.origin);
+  const invocationName = presentation?.activity.invocationName
+    ? resolveFrontendLocalizedText(presentation.activity.invocationName)
+    : undefined;
+  const includeIdentity = !presentation || input.origin?.kind === "mcp";
+  const label = [action, invocationName, includeIdentity ? toolName : undefined].filter(Boolean).join(" · ");
   return {
-    // Completion and failure are expressed by the row marker. Keep copy to one compact action.
-    label: appendArgumentPreview(actionLabel, argumentPreview),
-    category: input.origin?.kind === "mcp" ? "mcp" : (rule?.id ?? "system"),
+    label: appendArgumentPreview(label, argumentPreview),
+    category: presentation?.category ?? (input.origin?.kind === "mcp" ? GenericMcpCategory : GenericSystemCategory),
     subjects,
     argumentPreview,
   };
@@ -80,34 +63,15 @@ export function projectToolBatchAction(
   readonly label: string;
 } {
   const inspection = projectToolActivityInspection(input);
-  return {
-    category: inspection.category,
-    label: inspection.label,
-  };
+  return { category: inspection.category, label: inspection.label };
 }
 
-function resolveRule(toolName: string, capability: string | undefined): ToolActivityRule | undefined {
-  return ToolActivityMap.rules
-    .map((rule) => ({ rule, score: matchScore(rule, toolName, capability) }))
-    .filter((candidate) => candidate.score > 0)
-    .sort((left, right) => right.score - left.score)[0]?.rule;
+export function readToolPresentation(input: Pick<ToolActivityInput, "origin">): AgentToolPresentation | undefined {
+  return input.origin?.presentation;
 }
 
-function matchScore(rule: ToolActivityRule, toolName: string, capability: string | undefined): number {
-  return Math.max(
-    ...(capability
-      ? (rule.exactCapabilities?.filter((value) => value === capability).map((value) => 4_000 + value.length) ?? [])
-      : []),
-    ...(capability
-      ? (rule.capabilityPrefixes
-          ?.filter((value) => capability.startsWith(value))
-          .map((value) => 3_000 + value.length) ?? [])
-      : []),
-    ...(rule.exactToolNames?.filter((value) => value === toolName).map((value) => 2_000 + value.length) ?? []),
-    ...(rule.toolNamePrefixes?.filter((value) => toolName.startsWith(value)).map((value) => 1_000 + value.length) ??
-      []),
-    0,
-  );
+function genericAction(origin: ToolEventOrigin | undefined): string {
+  return origin?.kind === "mcp" ? "Call" : "Use";
 }
 
 function displayToolName(toolName: string, origin: ToolEventOrigin | undefined): string {
@@ -117,23 +81,38 @@ function displayToolName(toolName: string, origin: ToolEventOrigin | undefined):
   return server ? `${server} · ${tool}` : tool;
 }
 
-function readStringAtPath(value: unknown, path: string): string | undefined {
-  return readStringsAtPath(value, path)[0];
+function readStringAtPointer(value: unknown, pointer: string): string | undefined {
+  return readStringsAtPointer(value, pointer)[0];
 }
 
-function readStringsAtPath(value: unknown, path: string): string[] {
-  const segments = path.split(".");
+function readStringsAtPointer(value: unknown, pointer: string): string[] {
+  const tokens = parsePointer(pointer);
   const visit = (current: unknown, index: number): string[] => {
-    if (index >= segments.length) {
+    if (index >= tokens.length) {
       return typeof current === "string" && current.trim() ? [current.trim()] : [];
     }
-    const segment = segments[index];
-    if (segment === "*") {
-      return Array.isArray(current) ? current.flatMap((entry) => visit(entry, index + 1)) : [];
+    const token = tokens[index];
+    if (token === "*") {
+      if (Array.isArray(current)) return current.flatMap((entry) => visit(entry, index + 1));
+      return isRecord(current) ? Object.values(current).flatMap((entry) => visit(entry, index + 1)) : [];
     }
-    return isRecord(current) ? visit(current[segment], index + 1) : [];
+    if (Array.isArray(current)) {
+      return /^(?:0|[1-9]\d*)$/u.test(token) && Number(token) < current.length
+        ? visit(current[Number(token)], index + 1)
+        : [];
+    }
+    return isRecord(current) && Object.hasOwn(current, token) ? visit(current[token], index + 1) : [];
   };
   return visit(value, 0);
+}
+
+function parsePointer(pointer: string): string[] {
+  return pointer === ""
+    ? []
+    : pointer
+        .slice(1)
+        .split("/")
+        .map((token) => token.replace(/~1/gu, "/").replace(/~0/gu, "~"));
 }
 
 function appendArgumentPreview(label: string, argumentPreview: string | undefined): string {
@@ -183,10 +162,13 @@ function isSensitiveArgumentKey(key: string): boolean {
   return /authorization|credential|cookie|password|secret|token|api[-_]?key/iu.test(key);
 }
 
+function uniqueStrings(values: readonly string[]): string[] {
+  return [...new Set(values.map(compactPreview).filter(Boolean))];
+}
+
 function compactArgumentValues(values: readonly string[]): string | undefined {
   const normalized = [...new Set(values.map(compactPreview).filter(Boolean))].slice(0, 3);
-  if (normalized.length === 0) return undefined;
-  return compactPreview(normalized.join(" · "));
+  return normalized.length > 0 ? compactPreview(normalized.join(" · ")) : undefined;
 }
 
 function compactPreview(value: string): string {
@@ -194,60 +176,6 @@ function compactPreview(value: string): string {
   return normalized.length > 96 ? `${normalized.slice(0, 93)}...` : normalized;
 }
 
-function parseToolActivityMap(value: unknown): ToolActivityMap {
-  if (!isRecord(value) || value.version !== 4 || !isRecord(value.default) || !isRecord(value.origins)) {
-    throw new Error("Tool activity presentation map has an unsupported structure.");
-  }
-  const defaultPresentation = parsePresentation(value.default, "default");
-  const mcp = parsePresentation(value.origins.mcp, "MCP origin");
-  const rules = Array.isArray(value.capabilityRules) ? value.capabilityRules.map(parseRule) : [];
-  return {
-    version: 4,
-    default: defaultPresentation,
-    mcp,
-    rules,
-  };
-}
-
-function parseRule(value: unknown): ToolActivityRule {
-  if (!isRecord(value) || typeof value.id !== "string" || !isRecord(value.match)) {
-    throw new Error("Tool activity rule is missing its identity or match.");
-  }
-  const exactCapabilities = readStringArray(value.match.exactCapabilities, "Tool activity match values");
-  const capabilityPrefixes = readStringArray(value.match.capabilityPrefixes, "Tool activity match values");
-  const exactToolNames = readStringArray(value.match.exactToolNames, "Tool activity match values");
-  const toolNamePrefixes = readStringArray(value.match.toolNamePrefixes, "Tool activity match values");
-  if (!exactCapabilities && !capabilityPrefixes && !exactToolNames && !toolNamePrefixes) {
-    throw new Error(`Tool activity rule '${value.id}' has no match.`);
-  }
-  return {
-    id: value.id,
-    invocationName: readOptionalString(value.invocationName, "invocationName"),
-    exactCapabilities,
-    capabilityPrefixes,
-    exactToolNames,
-    toolNamePrefixes,
-    argumentPath: readOptionalString(value.argumentPath, "argumentPath"),
-    detailPaths: readStringArray(value.detailPaths, "Tool activity detailPaths"),
-    ...parsePresentation(value, `rule '${value.id}'`),
-  };
-}
-
-function uniqueStrings(values: readonly string[]): string[] {
-  return [...new Set(values.map((value) => compactPreview(value)).filter(Boolean))];
-}
-
-function parsePresentation(value: unknown, source: string): ToolActivityPresentation {
-  if (!isRecord(value) || typeof value.action !== "string" || !value.action.trim()) {
-    throw new Error(`Tool activity ${source} must declare a compact action.`);
-  }
-  return { action: value.action.trim() };
-}
-
-function readOptionalString(value: unknown, field: string): string | undefined {
-  if (value === undefined) return undefined;
-  if (typeof value !== "string" || !value.trim()) {
-    throw new Error(`Tool activity ${field} must be a non-empty string when provided.`);
-  }
-  return value.trim();
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

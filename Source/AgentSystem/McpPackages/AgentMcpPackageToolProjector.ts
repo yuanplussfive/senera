@@ -19,6 +19,7 @@ import type { AgentExtensionOwner } from "../Types/AgentExtensionRuntimeTypes.js
 import { StandardAgentToolObservationProjection } from "../ToolRuntime/AgentToolObservationProjectionPlan.js";
 import type { ToolSearchCapabilityManifest } from "../Types/AgentToolSearchContractTypes.js";
 import { projectAgentMcpToolRuntime } from "../Mcp/AgentMcpToolRuntimeMetadata.js";
+import { resolveMcpToolLocalization, validateMcpToolLocalization } from "./AgentMcpToolLocalization.js";
 
 const contractProjector = new AgentJsonSchemaPromptContractProjector();
 
@@ -30,6 +31,10 @@ export function projectAgentMcpPackageTools(
   endpoint: AgentMcpRuntimeEndpoint,
 ): RegisteredTool[] {
   const owner = createAgentMcpPackageOwner(package_, server);
+  validateMcpToolLocalization(
+    server.toolLocalization,
+    declarations.map((declaration) => declaration.name),
+  );
   return declarations.map((declaration) => projectMcpTool(owner, package_, server, declaration, execution, endpoint));
 }
 
@@ -42,8 +47,8 @@ function projectMcpTool(
   endpoint: AgentMcpRuntimeEndpoint,
 ): RegisteredTool {
   const title = declaration.annotations?.title?.trim() || declaration.name;
-  const description = declaration.description?.trim();
-  const semanticDescription = description || title;
+  const description = requireMcpToolDescription(server, declaration);
+  const semanticDescription = description;
   const readOnly = declaration.annotations?.readOnlyHint === true;
   const runtimePolicy = projectAgentMcpToolRuntime(declaration);
 
@@ -59,6 +64,7 @@ function projectMcpTool(
         tool: declaration.name,
         inputSchema: declaration.inputSchema,
         outputSchema: declaration.outputSchema,
+        contentPolicy: runtimePolicy.contentPolicy,
       }),
       arguments: contractProjector.project(declaration.inputSchema),
       outputSchema: declaration.outputSchema,
@@ -82,6 +88,7 @@ function projectMcpTool(
       ...(runtimePolicy.maxConcurrency === undefined ? {} : { MaxConcurrency: runtimePolicy.maxConcurrency }),
       Capabilities: { Cancellation: true },
     },
+    ...(runtimePolicy.contentPolicy === undefined ? {} : { contentPolicy: runtimePolicy.contentPolicy }),
     observationProjection: StandardAgentToolObservationProjection,
     sources: [
       {
@@ -92,7 +99,7 @@ function projectMcpTool(
     ],
     search: {
       Summary: semanticDescription,
-      Capabilities: [projectMcpCapability(server.name, declaration, title, description, readOnly)],
+      Capabilities: [projectMcpCapability(server, declaration, title, description, readOnly)],
       UseCases: [semanticDescription],
     },
     childGrant: AgentToolChildGrantModes.Inherit,
@@ -104,18 +111,24 @@ function projectMcpTool(
 }
 
 function projectMcpCapability(
-  serverName: string,
+  server: AgentMcpPackageServer,
   declaration: AgentMcpToolDeclaration,
   title: string,
-  description: string | undefined,
+  description: string,
   readOnly: boolean,
 ): ToolSearchCapabilityManifest {
   const properties = declaration.inputSchema.properties;
   const inputs = isRecord(properties) ? Object.keys(properties).sort() : [];
+  // MCP tool names and descriptions originate with the package/server. Any
+  // localized retrieval vocabulary must therefore travel with that package
+  // through its declared manifest metadata, rather than a host-maintained
+  // table that drifts as third-party servers change.
+  const aliases = resolveMcpToolLocalization(server.toolLocalization, declaration.name);
   return {
-    Id: `mcp.${serverName}.${declaration.name}`,
+    Id: `mcp.${server.name}.${declaration.name}`,
     Title: title,
-    ...(description ? { Description: description } : {}),
+    Description: description,
+    ...(aliases.length > 0 ? { Aliases: [...aliases] } : {}),
     ...(inputs.length > 0 || readOnly
       ? {
           Facets: {
@@ -130,6 +143,14 @@ function projectMcpCapability(
         ? { Risk: { SideEffect: "read-only" } }
         : {}),
   };
+}
+
+function requireMcpToolDescription(server: AgentMcpPackageServer, declaration: AgentMcpToolDeclaration): string {
+  const description = declaration.description?.trim();
+  if (description) return description;
+  throw new Error(
+    `MCP tool ${server.name}/${declaration.name} must declare a non-empty description for ToolSearch discovery.`,
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

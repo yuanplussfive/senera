@@ -23,6 +23,13 @@ export class AgentToolExposureState {
   private readonly authorizedToolNames: ReadonlySet<string>;
   private exposedToolNames: string[];
   private preferredToolNames: string[];
+  /**
+   * Dynamic contracts which the current model turn has actually received.
+   * This deliberately stays outside the exposure snapshot: exposure controls
+   * provider schemas, while confirmation is evidence for the fixed native
+   * execution bridge.
+   */
+  private readonly confirmedContractDigests = new Map<string, string | null>();
   private generation = 0;
   private readonly listeners = new Set<(snapshot: AgentToolExposureSnapshot) => void>();
 
@@ -42,6 +49,15 @@ export class AgentToolExposureState {
 
   exposes(toolName: string): boolean {
     return this.exposedToolNames.includes(toolName);
+  }
+
+  confirmContract(toolName: string, contractDigest: string | undefined): void {
+    if (!this.authorizedToolNames.has(toolName)) return;
+    this.confirmedContractDigests.set(toolName, contractDigest ?? null);
+  }
+
+  hasConfirmedContract(toolName: string, contractDigest: string | undefined): boolean {
+    return this.confirmedContractDigests.get(toolName) === (contractDigest ?? null);
   }
 
   subscribe(listener: (snapshot: AgentToolExposureSnapshot) => void): () => void {
@@ -97,6 +113,7 @@ export class AgentToolExposureState {
     if (removedToolNames.length > 0) {
       this.exposedToolNames = nextExposedToolNames;
       this.preferredToolNames = nextPreferredToolNames;
+      for (const toolName of removedToolNames) this.confirmedContractDigests.delete(toolName);
       this.generation += 1;
       this.publish();
     }

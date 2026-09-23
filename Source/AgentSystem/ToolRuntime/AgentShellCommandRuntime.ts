@@ -19,13 +19,16 @@ import { AgentToolSemanticProjectionKinds } from "./AgentToolSemanticProjection.
 import type { AgentExecutionResourceBroker } from "../ExecutionResources/AgentExecutionResourceBroker.js";
 import {
   AgentExecutionResourceStates,
-  type AgentExecutionResourceEvent,
   type AgentExecutionResourceOwner,
   type AgentExecutionResourceSnapshot,
 } from "../ExecutionResources/AgentExecutionResourceTypes.js";
 import { resolveAgentExecutionResourceInitialYieldMs } from "../ExecutionResources/AgentExecutionResourceConfig.js";
 import { createAgentToolOutputSpool, type AgentToolOutputSpoolFactory } from "./AgentToolOutputSpool.js";
 import type { SeneraOutputSpool, SeneraOutputSpoolDescriptor } from "../Execution/SeneraOutputSpool.js";
+import {
+  collectAgentExecutionResourceOutput,
+  projectAgentExecutionResourceResult,
+} from "./AgentExecutionResourceResultProjector.js";
 
 const ShellExecutionProfileName = "host-shell";
 
@@ -138,7 +141,7 @@ export function createShellCommandHostTool(
         Math.min(resolveAgentExecutionResourceInitialYieldMs(context.config), timeoutMs),
         context.signal,
       );
-      const output = collectShellResourceOutput(result);
+      const output = collectAgentExecutionResourceOutput(result);
       const outputCapture = takeTerminalOutputCapture(broker, result, owner);
       if (result.state === AgentExecutionResourceStates.Failed) {
         const failure = shellFailure({
@@ -163,13 +166,7 @@ export function createShellCommandHostTool(
           command: parsed.data.command.script,
           shellDialect: parsed.data.command.dialect,
           cwd: cwdResult.value,
-          resourceId: result.resourceId,
-          state: result.state,
-          cursor: result.cursor,
-          exitCode: result.exitCode ?? null,
-          signal: result.signal ?? null,
-          events: result.events,
-          ...output,
+          ...projectAgentExecutionResourceResult(result, { fromCursor: started.cursor }),
         }),
         stdout: output.stdout,
         stderr: output.stderr,
@@ -177,7 +174,7 @@ export function createShellCommandHostTool(
         signal: normalizeResourceSignal(result.signal),
         ...(outputCapture ? { outputCapture } : {}),
         semanticProjectionRequest: {
-          kind: AgentToolSemanticProjectionKinds.TerminalExecution,
+          kind: AgentToolSemanticProjectionKinds.Execution,
           command: parsed.data.command.script,
           cwd: cwdResult.value,
         },
@@ -218,37 +215,7 @@ async function waitForInitialShellOutcome(
     if (remainingMs <= 0) break;
     snapshot = await broker.wait(snapshot.resourceId, owner, snapshot.cursor, remainingMs, signal);
   }
-  return broker.inspect(started.resourceId, owner, 0);
-}
-
-function collectShellResourceOutput(snapshot: AgentExecutionResourceSnapshot): {
-  stdout: string;
-  stderr: string;
-  stdoutBytes?: number;
-  stderrBytes?: number;
-  stdoutTruncated?: boolean;
-  stderrTruncated?: boolean;
-} {
-  const output = (stream: "stdout" | "stderr") =>
-    snapshot.events.filter(isOutputEvent).filter((event) => event.stream === stream);
-  const stdout = output("stdout");
-  const stderr = output("stderr");
-  const lastStdout = stdout.at(-1);
-  const lastStderr = stderr.at(-1);
-  return {
-    stdout: stdout.map((event) => event.text).join(""),
-    stderr: stderr.map((event) => event.text).join(""),
-    ...(lastStdout ? { stdoutBytes: lastStdout.totalBytes } : {}),
-    ...(lastStderr ? { stderrBytes: lastStderr.totalBytes } : {}),
-    ...(snapshot.truncated || stdout.some((event) => event.truncated) ? { stdoutTruncated: true } : {}),
-    ...(snapshot.truncated || stderr.some((event) => event.truncated) ? { stderrTruncated: true } : {}),
-  };
-}
-
-function isOutputEvent(
-  event: AgentExecutionResourceEvent,
-): event is Extract<AgentExecutionResourceEvent, { kind: "output" }> {
-  return event.kind === "output";
+  return broker.inspect(started.resourceId, owner, started.cursor);
 }
 
 function isTerminalResourceState(state: AgentExecutionResourceSnapshot["state"]): boolean {

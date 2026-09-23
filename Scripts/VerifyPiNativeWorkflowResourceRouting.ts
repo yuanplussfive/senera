@@ -7,23 +7,27 @@ import { createAgentToolAccessGrant } from "../Source/AgentSystem/ToolRuntime/Ag
 const WorkspaceReadToolName = "WorkspaceRead";
 const workflowSkill = workflowSkillFixture();
 const resolutionCalls: Array<{ preferredTools?: readonly string[]; discover?: boolean }> = [];
-let rememberedLoadedTools: readonly string[] | undefined;
 
 const preparation = new AgentTurnPreparationService({
   services: {
     promptContext: {
       activateSkills: async () => [workflowSkill],
-      recommendedSkillTools: (skills) => skills.flatMap((skill) => skill.recommendedTools),
+      recommendedSkillToolRouting: (skills) => ({
+        directToolNames: skills.flatMap((skill) => skill.recommendedTools),
+        dynamicToolNames: [],
+      }),
       buildRootCommand: ({ decision, loadedToolNames }) =>
         rootCommandFixture(loadedToolNames, decision.action === "use_tools" ? decision.useTools.preferredTools : []),
     },
     retrieval: {
       resolvePlannedLoadedTools: async (options) => {
         resolutionCalls.push(options);
-        return [...new Set([...(options.currentLoadedTools ?? []), ...(options.preferredTools ?? [])])];
-      },
-      rememberAutoSearch: (_requestId, _query, loadedToolNames) => {
-        rememberedLoadedTools = loadedToolNames;
+        return [
+          ...new Set([
+            ...(options.currentLoadedTools ?? []),
+            ...(options.discover ? (options.preferredTools ?? []) : []),
+          ]),
+        ];
       },
     },
   },
@@ -40,12 +44,11 @@ assert.deepEqual(
   ["execution-workflow"],
 );
 assert.equal(resolutionCalls.length, 1);
-assert.deepEqual(resolutionCalls[0]?.preferredTools, [WorkspaceReadToolName]);
-assert.equal(resolutionCalls[0]?.discover, true);
+assert.deepEqual(resolutionCalls[0]?.preferredTools, []);
+assert.equal(resolutionCalls[0]?.discover, false);
 assert.deepEqual(prepared.loadedToolNames, ["SystemTool", WorkspaceReadToolName]);
-assert.deepEqual(rememberedLoadedTools, prepared.loadedToolNames);
 assert.equal(prepared.rootCommand.action, "use_tools");
-assert.deepEqual(prepared.toolAccessGrant.preferredToolNames, [WorkspaceReadToolName]);
+assert.deepEqual(prepared.toolAccessGrant.preferredToolNames, []);
 
 console.log("Pi-native deterministic workflow resource routing verified.");
 
@@ -67,10 +70,11 @@ function workflowSkillFixture(): AgentActivatedSkill {
 }
 
 function rootCommandFixture(loadedToolNames: readonly string[], preferredTools: readonly string[]): AgentRootCommand {
+  const exposed = new Set(loadedToolNames);
   const toolAccessGrant = createAgentToolAccessGrant({
     authorizedToolNames: loadedToolNames,
     exposedToolNames: loadedToolNames,
-    preferredToolNames: preferredTools,
+    preferredToolNames: preferredTools.filter((toolName) => exposed.has(toolName)),
   });
   return {
     authority: "senera_runtime_root",

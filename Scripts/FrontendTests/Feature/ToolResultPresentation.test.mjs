@@ -7,6 +7,7 @@ import { DataView } from "../../../Frontend/src/features/workflow/DataView.tsx";
 import { AgentExecutionStageFeed } from "../../../Frontend/src/features/workflow/AgentExecutionFeed.tsx";
 import { deriveFeedModel } from "../../../Frontend/src/features/workflow/feedModel.ts";
 import { TooltipProvider } from "../../../Frontend/src/shared/ui/Tooltip.tsx";
+import { createSystemToolOrigin } from "./workflowComponentFixtures.mjs";
 
 afterEach(cleanup);
 
@@ -423,6 +424,15 @@ function toolStep() {
     endedAt: "2026-07-10T00:00:01.000Z",
     toolName: "WeatherTool",
     callId: "call_weather",
+    toolOrigin: createSystemToolOrigin({
+      name: "Weather tools",
+      category: "weather",
+      icon: "activity",
+      groupId: "weather",
+      groupTitle: "Weather",
+      action: "Run",
+      invocationName: "WeatherTool",
+    }),
     toolPresentation: {
       type: "senera.tool_result_presentation.v1",
       version: 1,

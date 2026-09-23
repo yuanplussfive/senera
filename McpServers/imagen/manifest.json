@@ -51,6 +51,9 @@
     "ai.senera/execution": {
       "targets": ["local"],
       "preferred": "local"
+    },
+    "ai.senera/tool-i18n": {
+      "ImageGenerate": ["生成图片", "图片生成", "绘画", "文生图", "图像生成"]
     }
   }
 }

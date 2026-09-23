@@ -1,0 +1,28 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "agent-skill-manager",
+  "domain": "knowledge",
+  "settingsSurface": "system-tools",
+  "version": "1.0.0",
+  "displayName": { "zh-CN": "技能管理", "en-US": "Skill Management" },
+  "description": {
+    "zh-CN": "创建、校验、带 revision 保护更新和可恢复归档工作区技能包。",
+    "en-US": "Creates, validates, revision-guards, and recoverably archives workspace Skills."
+  },
+  "priority": 2,
+  "presentation": {
+    "category": "skill",
+    "icon": "blocks",
+    "group": { "id": "skill", "title": { "zh-CN": "技能库", "en-US": "Skills" } },
+    "activity": { "action": { "zh-CN": "管理 Skill", "en-US": "Manage Skill" } }
+  },
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/SkillManage.tool.json",
+      "capability": "system.tool.agent-skill-manager.SkillManage",
+      "recommendedForSkills": ["skill-creator"]
+    }
+  ]
+}

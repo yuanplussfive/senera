@@ -22,6 +22,7 @@ import { SeneraLocalExecutionEnv } from "../Execution/SeneraLocalExecutionEnv.js
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import { projectAgentToolResultPresentation } from "./AgentToolResultPresentation.js";
+import { projectAgentToolResultEventValue } from "./AgentToolResultEventProjection.js";
 import { projectAgentToolInteraction } from "./AgentToolInteractionProjector.js";
 import {
   AgentToolFailureSources,
@@ -311,6 +312,7 @@ export class AgentToolCallExecutor {
         artifactPayload: execution.artifactPayload,
         outputCapture: execution.outputCapture,
         semanticProjectionRequest: execution.semanticProjectionRequest,
+        contentPolicy: tool.contentPolicy,
         result,
         outcome,
         artifactPolicy: tool.artifactPolicy,
@@ -382,11 +384,19 @@ export class AgentToolCallExecutor {
     if (lifecycleEmitted) context.onLifecycleSettled?.(error ? "failed" : "completed");
     if (!context.deferResultDetail) {
       await this.emitLifecycle(context, ({ requestId, step }) =>
-        this.events.toolCallResultDetail(requestId, step, index, result.name, result.callId, result.result, {
-          origin,
-          batchId: context.batchId,
-          presentation,
-        }),
+        this.events.toolCallResultDetail(
+          requestId,
+          step,
+          index,
+          result.name,
+          result.callId,
+          projectAgentToolResultEventValue(result),
+          {
+            origin,
+            batchId: context.batchId,
+            presentation,
+          },
+        ),
       );
     }
   }

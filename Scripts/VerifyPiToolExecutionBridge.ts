@@ -22,10 +22,7 @@ import { AgentToolExposureState } from "../Source/AgentSystem/ToolRuntime/AgentT
 import { AgentPiTurnState } from "../Source/AgentSystem/Pi/AgentPiTurnState.js";
 import { AgentModelUsageLedger } from "../Source/AgentSystem/ModelEndpoints/AgentModelUsage.js";
 import { AgentPiToolPlanCoordinator } from "../Source/AgentSystem/PiShared/AgentPiToolPlanCoordinator.js";
-import {
-  AgentPiToolObservationProtocol,
-  AgentPiToolObservationSourceViewProtocol,
-} from "../Source/AgentSystem/PiShared/AgentPiToolObservationProtocol.js";
+import { AgentPiToolObservationProtocol } from "../Source/AgentSystem/PiShared/AgentPiToolObservationProtocol.js";
 import { AgentTurnTokenBudget } from "../Source/AgentSystem/Text/AgentTurnTokenBudget.js";
 
 class AgentPiToolExecutionBridge extends AgentPiToolExecutionBridgeBase {
@@ -100,7 +97,9 @@ async function verifyToolResultProjection(): Promise<void> {
   const text = result.content[0]?.type === "text" ? result.content[0].text : "";
   assert.equal((JSON.parse(text) as { type?: string }).type, AgentPiToolObservationProtocol.type);
   assert.match(text, /evidence_uri/);
-  assert.match(text, /senera:\/\/artifact\/art_0123456789abcdef01234567/);
+  // v5 renders a fully projected observation without the completeness view;
+  // the artifact coordinate stays on the runtime details.
+  assert.doesNotMatch(text, /senera:\/\/artifact\/art_0123456789abcdef01234567/);
 }
 
 async function verifyLargeToolResultRemainsCanonical(): Promise<void> {
@@ -181,8 +180,8 @@ async function verifyAskUserProjection(): Promise<void> {
   };
   assert.equal(observation.type, AgentPiToolObservationProtocol.type);
   assert.equal(observation.status, "waiting");
-  assert.equal(observation.observation_view?.type, AgentPiToolObservationSourceViewProtocol.type);
-  assert.equal(observation.observation_view?.complete, true);
+  // v5 omits the completeness view for a fully projected control observation.
+  assert.equal(observation.observation_view, undefined);
   assert.equal(observation.detail?.summary, "需要哪个目录？");
   assert.deepEqual(observation.detail?.result, {
     question: "需要哪个目录？",

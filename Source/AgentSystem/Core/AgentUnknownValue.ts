@@ -14,7 +14,7 @@ export function readAgentUnknownRecord(value: unknown): AgentUnknownRecord | und
  * non-record input is a programmer error or protocol violation.
  *
  * Replaces local `readRecord(value, label)` copies in
- * `AgentVectorModelClient` and `AgentToolResourceArgumentProjector`.
+ * `AgentToolResourceArgumentProjector`.
  */
 export function readAgentRecordOrThrow(value: unknown, label: string): AgentUnknownRecord {
   if (!isAgentUnknownRecord(value)) {

@@ -21,6 +21,9 @@ const WorkspaceLayout = {
     channels: ["channels", "channels.sqlite"],
     toolSearch: ["tool-search", "tool-search.sqlite"],
   },
+  caches: {
+    toolSearchEmbeddings: ["tool-search", "embeddings.json"],
+  },
   configSecretKey: ["config", "config-secrets.key"],
   credentialSecretKey: ["credentials", "credentials.key"],
   continuityIdentity: "continuity-identity.json",
@@ -81,6 +84,10 @@ export interface AgentWorkspaceLayout {
     readonly channels: string;
     readonly toolSearch: string;
   };
+  readonly caches: {
+    /** Derived capability vectors; safe to rebuild when missing or stale. */
+    readonly toolSearchEmbeddings: string;
+  };
   readonly configSecretKey: string;
   readonly credentialSecretKey: string;
   /** Stable logical identities used by continuity; never a filesystem path. */
@@ -106,6 +113,9 @@ export function resolveAgentWorkspaceLayout(workspaceRoot: string): AgentWorkspa
     databases: Object.fromEntries(
       Object.entries(WorkspaceLayout.databases).map(([domain, segments]) => [domain, path.join(dataRoot, ...segments)]),
     ) as AgentWorkspaceLayout["databases"],
+    caches: Object.fromEntries(
+      Object.entries(WorkspaceLayout.caches).map(([name, segments]) => [name, path.join(dataRoot, ...segments)]),
+    ) as AgentWorkspaceLayout["caches"],
     configSecretKey: path.join(dataRoot, ...WorkspaceLayout.configSecretKey),
     credentialSecretKey: path.join(dataRoot, ...WorkspaceLayout.credentialSecretKey),
     continuityIdentity: path.join(dataRoot, WorkspaceLayout.continuityIdentity),

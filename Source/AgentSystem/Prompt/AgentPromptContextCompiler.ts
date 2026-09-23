@@ -70,6 +70,7 @@ function buildContextRevisions(input: AgentPromptContextCompilerInput): AgentPro
     stable: sha256HexOfCanonicalJson({
       executionEnvironment: input.executionEnvironment,
       roleplayPreset: stableRoleplayPreset(input.roleplayPreset),
+      residentProfile: input.continuityMemory.residentProfile,
     }),
     context: sha256HexOfCanonicalJson({
       toolCards: input.toolCards,
@@ -78,7 +79,10 @@ function buildContextRevisions(input: AgentPromptContextCompilerInput): AgentPro
     volatile: sha256HexOfCanonicalJson({
       rootCommand: input.rootCommand,
       roleplayLore: input.roleplayPreset.card?.lore ?? [],
-      continuityMemory: input.continuityMemory,
+      continuityState: {
+        activeRules: input.continuityMemory.activeRules,
+        signals: input.continuityMemory.signals,
+      },
       workflow: input.workflow,
       scene: input.scene,
     }),
@@ -102,7 +106,7 @@ function buildLayerManifest(input: AgentPromptContextCompilerInput): readonly Ag
     {
       name: "profile",
       source: "profile",
-      stability: "turn",
+      stability: "stable",
       included: input.continuityMemory.residentProfile.length > 0,
     },
     {
@@ -127,7 +131,7 @@ function buildLayerManifest(input: AgentPromptContextCompilerInput): readonly Ag
       name: "world",
       source: "runtime",
       stability: "event",
-      included: input.workflow.world !== null,
+      included: false,
     },
     {
       name: "scene",

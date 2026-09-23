@@ -19,6 +19,15 @@ import {
 import { AgentPiToolObservationStatuses } from "../PiShared/AgentPiToolObservationStatus.js";
 import { AgentToolObservationPriorityOrder } from "./AgentToolObservationProjectionPlan.js";
 import {
+  AgentToolAdaptiveTextProjector,
+  type AgentToolAdaptiveValueProjectionResult,
+} from "./AgentToolAdaptiveTextProjection.js";
+import {
+  AgentToolContentPolicyCompressionModes,
+  AgentToolContentPolicyOwnerships,
+  type AgentToolContentPolicy,
+} from "../Types/AgentToolContentPolicyTypes.js";
+import {
   AgentToolObservationOmissionReasons,
   AgentToolObservationStructuralProjector,
   selectAgentToolObservationPointer,
@@ -42,10 +51,23 @@ export interface AgentToolObservationContextCompilerInput {
   readonly process: unknown;
   readonly error: unknown;
   readonly result: unknown;
+  /** Optional host content-policy view; complete result remains in Artifact. */
+  readonly projectedResult?: unknown;
+  /** Declarative host-owned content contract used for large text projection. */
+  readonly contentPolicy?: AgentToolContentPolicy;
+  /** Compact current-call purpose; never includes the durable transcript. */
+  readonly compressionQuery?: string;
+  readonly signal?: AbortSignal;
   readonly arguments: unknown;
   readonly artifact: unknown;
   readonly artifactAvailability?: unknown;
   readonly semanticProjection?: unknown;
+  readonly perception?: unknown;
+  /** Host note appended to the observation detail, e.g. dropped wrapper keys. */
+  readonly notice?: unknown;
+  /** Verbatim result already inlined into the model context; folds all
+   * summarization, evidence, and retrieval sources down to the result. */
+  readonly inline?: unknown;
 }
 
 interface ProjectedSource {
@@ -66,6 +88,11 @@ const RuntimeFailureLimits: AgentToolObservationStructuralLimits = {
 
 const RuntimeFailureTokenLimit = 512;
 
+const InlineAllowedSources = new Set<AgentToolObservationProjectionSource>([
+  AgentToolObservationProjectionSources.Result,
+  AgentToolObservationProjectionSources.Error,
+]);
+
 const SourceOutputKeys = {
   [AgentToolObservationProjectionSources.Headline]: "headline",
   [AgentToolObservationProjectionSources.Summary]: "summary",
@@ -83,14 +110,17 @@ const SourceOutputKeys = {
   [AgentToolObservationProjectionSources.Limitations]: "limitations",
   [AgentToolObservationProjectionSources.Outcome]: "outcome",
   [AgentToolObservationProjectionSources.SemanticDigest]: "semantic_digest",
+  [AgentToolObservationProjectionSources.Perception]: "perception",
 } as const satisfies Record<AgentToolObservationProjectionSource, string>;
 
 export class AgentToolObservationContextCompiler {
   private readonly tokenProjector: AgentTokenProjector;
   private readonly structuralProjector = new AgentToolObservationStructuralProjector();
+  private readonly adaptiveTextProjector: AgentToolAdaptiveTextProjector;
 
   constructor(options: AgentToolObservationContextCompilerOptions) {
     this.tokenProjector = new AgentTokenProjector(options.model);
+    this.adaptiveTextProjector = new AgentToolAdaptiveTextProjector(options.model);
   }
 
   compile(
@@ -115,11 +145,13 @@ export class AgentToolObservationContextCompiler {
       output_availability: input.outputAvailability,
       error: requiredFailure?.value,
     });
-    const orderedRules = orderRules(manifest.sources);
+    const orderedRules = orderRules(manifest.sources).filter(
+      (rule) => input.inline === undefined || input.inline === false || InlineAllowedSources.has(rule.source),
+    );
     const projectedSources = orderedRules.flatMap((rule) => {
       const source = this.readSource(rule.source, input, artifact, structuredSummary, manifest.continuation);
       if (source === undefined) return [];
-      return [this.projectSource(source, rule, manifest.maxOmissions, maxTokens)];
+      return [this.projectSource(source, rule, manifest.maxOmissions, maxTokens, input)];
     });
     const failureOmissions = prefixOmissions("error", requiredFailure?.omissions ?? []);
     const initialOmissions = [...failureOmissions, ...projectedSources.flatMap((source) => source.omissions)];
@@ -130,6 +162,9 @@ export class AgentToolObservationContextCompiler {
       (requiredFailure?.omissionCount ?? 0) +
       projectedSources.reduce((total, source) => total + (source.requiredForCompletion ? source.omissionCount : 0), 0);
     const detail = Object.fromEntries(projectedSources.map((source) => [source.key, source.value]));
+    if (typeof input.notice === "string" && input.notice.trim().length > 0) {
+      detail.notice = input.notice.trim();
+    }
     const initialView = sourceView({
       complete:
         requiredOmissionCount === 0 &&
@@ -169,7 +204,7 @@ export class AgentToolObservationContextCompiler {
     detail: Readonly<Record<string, unknown>>,
     tokenLimit: number,
   ) {
-    const observationEnvelope = { ...envelope, observation_view: view };
+    const observationEnvelope = shouldEmitObservationView(view) ? { ...envelope, observation_view: view } : envelope;
     return this.tokenProjector.fitsJson({ ...observationEnvelope, detail: {} }, tokenLimit)
       ? this.tokenProjector.projectJsonMember(observationEnvelope, "detail", detail, tokenLimit)
       : undefined;
@@ -204,29 +239,55 @@ export class AgentToolObservationContextCompiler {
     if (status !== AgentPiToolObservationStatuses.Failure) return undefined;
     const record = readRecord(error);
     if (!record) return undefined;
+    // The error message is the model's primary correction signal and must not
+    // be folded as an ordinary long leaf: a collapsed message forces the model
+    // to guess how to recover. It gets an independent projection with a
+    // bounded preview, while the envelope fields share the remaining budget.
     const structural = this.structuralProjector.project(
       compactObject({
         code: record.code,
         kind: record.kind,
         source: record.source,
         retryable: record.retryable,
-        message: record.message,
         diagnostics: this.projectFailureDiagnostics(record.diagnostics),
       }),
       RuntimeFailureLimits,
       maxOmissions,
     );
-    const tokenProjection = this.tokenProjector.projectJson(structural.value, tokenLimit);
+    const envelopeTokenLimit = structural.complete
+      ? tokenLimit
+      : Math.max(1, tokenLimit - structural.omissionCount * 16);
+    const envelopeProjection = this.tokenProjector.projectJson(structural.value, envelopeTokenLimit);
+    const message = typeof record.message === "string" ? record.message : "";
+    const messageTokenLimit = Math.min(
+      tokenLimit,
+      Math.max(1, tokenLimit - Math.max(0, envelopeProjection.tokenCount)),
+    );
+    const messageProjection = this.tokenProjector.previewText(message, messageTokenLimit);
+    const messageOmitted = messageProjection.truncated ? 1 : 0;
+    const envelopeProjected =
+      envelopeProjection.projectedValue !== null &&
+      typeof envelopeProjection.projectedValue === "object" &&
+      !Array.isArray(envelopeProjection.projectedValue)
+        ? (envelopeProjection.projectedValue as Record<string, unknown>)
+        : {};
+    const omissions = [
+      ...structural.omissions,
+      ...(envelopeProjection.complete
+        ? []
+        : [{ path: "", reason: AgentToolObservationOmissionReasons.TokenLimit } as const]),
+      ...(messageOmitted
+        ? [{ path: "/message", reason: AgentToolObservationOmissionReasons.TokenLimit } as const]
+        : []),
+    ].slice(0, maxOmissions);
     return {
-      value: tokenProjection.projectedValue,
-      complete: structural.complete && tokenProjection.complete,
-      omissionCount: structural.omissionCount + (tokenProjection.complete ? 0 : 1),
-      omissions: [
-        ...structural.omissions,
-        ...(tokenProjection.complete
-          ? []
-          : [{ path: "", reason: AgentToolObservationOmissionReasons.TokenLimit } as const]),
-      ].slice(0, maxOmissions),
+      value: {
+        ...envelopeProjected,
+        message: messageProjection.text,
+      },
+      complete: structural.complete && envelopeProjection.complete && !messageProjection.truncated,
+      omissionCount: structural.omissionCount + (envelopeProjection.complete ? 0 : 1) + messageOmitted,
+      omissions,
     };
   }
 
@@ -264,6 +325,7 @@ export class AgentToolObservationContextCompiler {
     rule: AgentToolObservationProjectionSourceRule,
     maxOmissions: number,
     availableTokens: number,
+    input: AgentToolObservationContextCompilerInput,
   ): ProjectedSource {
     const key = SourceOutputKeys[rule.source];
     if (rule.mode === AgentToolObservationProjectionModes.ArtifactOnly) {
@@ -287,8 +349,12 @@ export class AgentToolObservationContextCompiler {
         omissions: [{ path: `/${key}`, reason: AgentToolObservationOmissionReasons.TypeMismatch }],
       };
     }
-    const structural = this.structuralProjector.project(selected, rule.limits, maxOmissions);
     const sourceTokenLimit = resolveSourceTokenLimit(rule, availableTokens);
+    const adaptive = this.projectAdaptiveSource(selected, rule, sourceTokenLimit, input);
+    const structural = this.structuralProjector.project(adaptive.value, rule.limits, maxOmissions);
+    const adaptiveOmissions = adaptive.changed
+      ? [{ path: "", reason: AgentToolObservationOmissionReasons.ContentProjection } as const]
+      : [];
     if (rule.mode === AgentToolObservationProjectionModes.Text && typeof structural.value === "string") {
       const preview = this.tokenProjector.previewText(structural.value, sourceTokenLimit);
       const tokenOmitted = preview.truncated ? 1 : 0;
@@ -296,9 +362,10 @@ export class AgentToolObservationContextCompiler {
         key,
         requiredForCompletion: rule.requiredForCompletion,
         value: preview.text,
-        complete: structural.complete && !preview.truncated,
-        omissionCount: structural.omissionCount + tokenOmitted,
+        complete: adaptive.complete && structural.complete && !preview.truncated,
+        omissionCount: adaptive.omissionCount + structural.omissionCount + tokenOmitted,
         omissions: [
+          ...prefixOmissions(key, adaptiveOmissions),
           ...prefixOmissions(key, structural.omissions),
           ...(preview.truncated
             ? [{ path: `/${key}`, reason: AgentToolObservationOmissionReasons.TokenLimit } as const]
@@ -312,15 +379,38 @@ export class AgentToolObservationContextCompiler {
       key,
       requiredForCompletion: rule.requiredForCompletion,
       value: tokenProjection.projectedValue,
-      complete: structural.complete && tokenProjection.complete,
-      omissionCount: structural.omissionCount + tokenOmitted,
+      complete: adaptive.complete && structural.complete && tokenProjection.complete,
+      omissionCount: adaptive.omissionCount + structural.omissionCount + tokenOmitted,
       omissions: [
+        ...prefixOmissions(key, adaptiveOmissions),
         ...prefixOmissions(key, structural.omissions),
         ...(tokenProjection.complete
           ? []
           : [{ path: `/${key}`, reason: AgentToolObservationOmissionReasons.TokenLimit } as const]),
       ],
     };
+  }
+
+  private projectAdaptiveSource(
+    selected: unknown,
+    rule: AgentToolObservationProjectionSourceRule,
+    tokenLimit: number,
+    input: AgentToolObservationContextCompilerInput,
+  ): AgentToolAdaptiveValueProjectionResult {
+    const policy = input.contentPolicy;
+    const enabled =
+      rule.source === AgentToolObservationProjectionSources.Result &&
+      policy?.ownership === AgentToolContentPolicyOwnerships.Host &&
+      policy.compression === AgentToolContentPolicyCompressionModes.Bounded;
+    if (!enabled) {
+      return { value: selected, complete: true, changed: false, omissionCount: 0, strategy: "unchanged" };
+    }
+    return this.adaptiveTextProjector.projectTargets(selected, policy.targets, {
+      tokenLimit,
+      query: input.compressionQuery,
+      preserve: policy.preserve,
+      signal: input.signal,
+    });
   }
 
   private readSource(
@@ -350,7 +440,7 @@ export class AgentToolObservationContextCompiler {
       case AgentToolObservationProjectionSources.Workspace:
         return artifact?.workspace;
       case AgentToolObservationProjectionSources.Result:
-        return input.result;
+        return input.projectedResult ?? input.result;
       case AgentToolObservationProjectionSources.Arguments:
         return input.arguments;
       case AgentToolObservationProjectionSources.ArtifactProjection:
@@ -363,6 +453,8 @@ export class AgentToolObservationContextCompiler {
         return input.outcome;
       case AgentToolObservationProjectionSources.SemanticDigest:
         return readAgentString(readRecord(input.semanticProjection)?.text);
+      case AgentToolObservationProjectionSources.Perception:
+        return readAgentString(input.perception);
     }
   }
 }
@@ -382,6 +474,22 @@ function sourceView(input: {
     artifact_uri: input.artifactUri,
     ...(input.artifactAvailability === undefined ? {} : { artifact_availability: input.artifactAvailability }),
   };
+}
+
+/**
+ * v5 omits the completeness declaration for fully projected observations: a
+ * complete view with zero omissions carries no information for the model and
+ * only burns tokens. It is emitted only when something was trimmed, omitted,
+ * or the artifact itself is unavailable.
+ */
+function shouldEmitObservationView(view: AgentUnknownRecord): boolean {
+  const complete = view.complete === true;
+  const omissionCount = readOmissionCount(view.omission_count);
+  return !complete || omissionCount > 0 || view.artifact_availability !== undefined;
+}
+
+function readOmissionCount(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
 }
 
 function projectContinuation(

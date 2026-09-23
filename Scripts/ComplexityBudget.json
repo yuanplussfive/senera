@@ -15,15 +15,9 @@
   "legacyLargeFiles": [
     {
       "path": "Apps/ServerRuntime.ts",
-      "baselineLines": 975,
+      "baselineLines": 976,
       "owner": "runtime-platform",
       "splitTarget": "Extract world runtime assembly into a dedicated server world composition module."
-    },
-    {
-      "path": "Frontend/src/api/eventTypes.ts",
-      "baselineLines": 880,
-      "owner": "frontend-platform",
-      "splitTarget": "Split event type declarations by runtime domain while keeping the public event catalog stable."
     },
     {
       "path": "Frontend/src/features/workflow/AgentExecutionFeed.tsx",
@@ -39,9 +33,27 @@
     },
     {
       "path": "Scripts/BackendTests/Pi/PiToolExecutionBridgeBehavior.test.ts",
-      "baselineLines": 806,
+      "baselineLines": 803,
       "owner": "pi-runtime",
       "splitTarget": "Split bridge contract and failure scenarios into focused test files."
+    },
+    {
+      "path": "Scripts/BackendTests/SystemTools/AgentSystemToolCatalogBehavior.test.ts",
+      "baselineLines": 1048,
+      "owner": "system-extension-contracts",
+      "splitTarget": "Split package registration, manifest validation, and configurable-extension scenarios into focused test files."
+    },
+    {
+      "path": "Scripts/BackendTests/ToolSearch/ToolSearchCore.test.ts",
+      "baselineLines": 1781,
+      "owner": "tool-routing-runtime",
+      "splitTarget": "Split tokenizer and query-shape, confidence-curve, and resource-admission scenarios into focused test files."
+    },
+    {
+      "path": "Scripts/BackendTests/ToolSearch/ToolSearchRuntimeBehavior.test.ts",
+      "baselineLines": 847,
+      "owner": "tool-routing-runtime",
+      "splitTarget": "Split session capability reuse, discovery projection, and learning-observation scenarios into focused test files."
     },
     {
       "path": "Scripts/BackendTests/Channels/AgentChannelAdaptersBehavior.test.ts",
@@ -63,7 +75,7 @@
     },
     {
       "path": "Scripts/FrontendTests/Feature/WorkflowExecutionFeedComponents.test.mjs",
-      "baselineLines": 878,
+      "baselineLines": 869,
       "owner": "frontend-platform",
       "splitTarget": "Split workflow feed and child-run component scenarios into focused test files."
     },
@@ -126,12 +138,6 @@
       "baselineLines": 801,
       "owner": "session-runtime",
       "splitTarget": "Extract model preference admission and snapshot projection from the session store."
-    },
-    {
-      "path": "Source/AgentSystem/ToolSearch/AgentToolSearchRuntime.ts",
-      "baselineLines": 916,
-      "owner": "tool-routing-runtime",
-      "splitTarget": "Extract capability reuse, catalog projection, and embedding index lifecycle into focused modules."
     },
     {
       "path": "Source/AgentSystem/World/AgentHabitScheduler.ts",

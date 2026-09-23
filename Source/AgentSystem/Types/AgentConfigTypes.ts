@@ -76,17 +76,9 @@ export type {
   AgentContinuityRecallRankingConfig,
   AgentToolLearningConfig,
   AgentToolSearchConfig,
-  AgentVectorEmbeddingConfig,
-  AgentVectorModelHttpConfig,
-  AgentVectorModelsConfig,
-  AgentVectorRerankConfig,
   ResolvedAgentContinuityLearningConfig,
   ResolvedAgentContinuityRecallRankingConfig,
   ResolvedAgentToolLearningConfig,
   ResolvedAgentToolSearchConfig,
-  ResolvedAgentVectorEmbeddingConfig,
-  ResolvedAgentVectorModelHttpConfig,
-  ResolvedAgentVectorModelsConfig,
-  ResolvedAgentVectorRerankConfig,
 } from "./AgentToolAndMemoryConfigTypes.js";
 export type { AgentDefaultsConfig, AgentSystemConfig } from "./AgentSystemConfigTypes.js";

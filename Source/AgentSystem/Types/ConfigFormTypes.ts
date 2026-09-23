@@ -20,15 +20,14 @@ export interface AgentConfigFormOptionSource {
 export const AgentConfigFormVersion = 1 as const;
 
 export type AgentConfigFormModelCapability =
-  "Chat" | "Embedding" | "Rerank" | "Vision" | "ImageOutput" | "Reasoning" | "DeveloperRole" | "StreamingUsage";
+  "Chat" | "Vision" | "ImageOutput" | "Reasoning" | "DeveloperRole" | "StreamingUsage";
 
 export interface AgentConfigFormModelSelection {
   id: string;
   capability: AgentConfigFormModelCapability;
-  valueKind: "model-id" | "provider-model";
+  valueKind: "model-id";
   mutation: "config" | "default-model";
   cardinality?: "one" | "many";
-  providerPath?: string[];
   inheritance?: {
     source: "parent-model" | "default-model";
     path?: string[];

@@ -41,8 +41,6 @@ export interface AgentModelProviderConfig {
 
 export interface AgentModelCapabilitiesConfig {
   Chat?: boolean;
-  Embedding?: boolean;
-  Rerank?: boolean;
   Vision?: boolean;
   ImageOutput?: boolean;
   Reasoning?: boolean;

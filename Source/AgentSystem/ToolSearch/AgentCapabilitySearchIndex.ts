@@ -2,14 +2,16 @@ import MiniSearch from "minisearch";
 import fuzzysort, { type Prepared as FuzzyPrepared } from "fuzzysort";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { cosineSimilarity } from "../Vector/AgentVectorSimilarity.js";
-import type {
-  AgentEmbeddingRequest,
-  AgentEmbeddingResult,
-  AgentRerankRequest,
-  AgentRerankResult,
-} from "../Vector/AgentVectorModelClient.js";
+import {
+  AgentEmbeddingPriorities,
+  type AgentEmbeddingPriority,
+  type AgentEmbeddingRequest,
+  type AgentEmbeddingResult,
+} from "../Vector/AgentEmbeddingContract.js";
 import type { AgentToolSearchTokenizer } from "./AgentToolSearchTokenizer.js";
 import { sha256Hex, sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
+import type { AgentCapabilityEmbeddingCacheStore } from "./AgentCapabilityEmbeddingCache.js";
+import { partitionAgentToolSearchScoreCurve } from "./AgentToolSearchConfidence.js";
 
 export const AgentCapabilityKinds = {
   Tool: "tool",
@@ -17,6 +19,12 @@ export const AgentCapabilityKinds = {
 } as const;
 
 export type AgentCapabilityKind = (typeof AgentCapabilityKinds)[keyof typeof AgentCapabilityKinds];
+
+export interface AgentCapabilitySemanticInput {
+  /** Stable structural key, independent of the language used by the text. */
+  readonly id: string;
+  readonly text: string;
+}
 
 export interface AgentCapabilitySearchDocument {
   readonly id: string;
@@ -35,6 +43,12 @@ export interface AgentCapabilitySearchDocument {
   readonly parameters: string;
   /** Short, explicitly declared identifiers and aliases only. Never long-form prose. */
   readonly fuzzyText: string;
+  /**
+   * Separate semantic views derived from the actual capability fields. The
+   * index can choose the strongest view for a query without guessing its
+   * language or maintaining a language-specific branch.
+   */
+  readonly semanticInputs: readonly AgentCapabilitySemanticInput[];
   readonly semanticText: string;
 }
 
@@ -48,51 +62,89 @@ export interface AgentCapabilityLexicalMatch {
 export interface AgentCapabilitySemanticMatch {
   readonly name: string;
   readonly score: number;
+  readonly inputId?: string;
 }
 
 export type AgentCapabilityFuzzyMatch = AgentCapabilitySemanticMatch;
 
-export interface AgentCapabilityRerankMatch extends AgentCapabilitySemanticMatch {
-  readonly rank: number;
-  readonly normalizedRankScore: number;
-}
-
 export interface AgentCapabilityEmbeddingClient {
   embed(request: AgentEmbeddingRequest): Promise<AgentEmbeddingResult>;
-}
-
-export interface AgentCapabilityRerankClient {
-  rerank(request: AgentRerankRequest): Promise<AgentRerankResult>;
+  /**
+   * Largest cohesive document work unit this client can process without
+   * delaying a higher-priority request. The index yields between units.
+   */
+  readonly maxBatchSize?: number;
+  /** Optional local-engine preparation that does not produce retrieval evidence. */
+  prewarm?(signal?: AbortSignal, priority?: AgentEmbeddingPriority): Promise<void>;
+  /** Releases an owned local execution resource when the runtime closes. */
+  close?(): void | Promise<void>;
 }
 
 export interface AgentCapabilitySearchIndexOptions {
   readonly tokenizer: AgentToolSearchTokenizer;
   readonly embeddingCache?: Map<string, readonly number[]>;
+  readonly embeddingCacheStore?: AgentCapabilityEmbeddingCacheStore;
   readonly embedding?: {
     readonly client: AgentCapabilityEmbeddingClient;
     readonly model: string;
-    readonly scoreThreshold: number;
-  };
-  readonly rerank?: {
-    readonly client: AgentCapabilityRerankClient;
   };
   readonly onEmbeddingError?: (error: unknown) => void;
-  readonly onRerankError?: (error: unknown) => void;
+  readonly onEmbeddingCacheError?: (error: unknown) => void;
+}
+
+interface AgentEmbeddingPreparationRequest {
+  readonly priority: AgentEmbeddingPriority;
+  readonly signal?: AbortSignal;
+  readonly inputSelector?: AgentCapabilitySemanticInputSelector;
+  readonly kind?: AgentCapabilityKind;
+  readonly allowedNames?: ReadonlySet<string>;
+}
+
+type AgentCapabilitySemanticInputSelector = (
+  document: AgentCapabilitySearchDocument,
+  input: AgentCapabilitySemanticInput,
+) => boolean;
+
+interface AgentCapabilityEmbeddingInput {
+  readonly document: AgentCapabilitySearchDocument;
+  readonly input: AgentCapabilitySemanticInput;
+}
+
+interface AgentEmbeddingPreparation {
+  readonly priority: AgentEmbeddingPriority;
+  readonly controller: AbortController;
+  readonly promise: Promise<void>;
+}
+
+/** A foreground search may interrupt derived catalog warmup, but never a
+ * foreground embedding request. This is a scheduling transition rather than
+ * a retrieval failure. */
+class AgentEmbeddingPreparationPreemptedError extends Error {
+  constructor() {
+    super("Capability embedding warmup was preempted by a foreground search.");
+    this.name = "AgentEmbeddingPreparationPreemptedError";
+  }
 }
 
 const SearchFields = [
   "name",
   "title",
-  "owner",
-  "sourceText",
   "tags",
   "summary",
   "useCases",
-  "examples",
   "capabilityText",
   "capabilityFacets",
-  "parameters",
 ] satisfies Array<keyof AgentCapabilitySearchDocument>;
+
+const LexicalFieldBoosts = {
+  name: 4,
+  title: 3,
+  tags: 2,
+  summary: 2,
+  useCases: 2,
+  capabilityText: 1.5,
+  capabilityFacets: 1.5,
+} as const;
 
 export class AgentCapabilitySearchIndex {
   private readonly documentsByKind: ReadonlyMap<
@@ -102,7 +154,7 @@ export class AgentCapabilitySearchIndex {
   private readonly lexicalIndex: MiniSearch<AgentCapabilitySearchDocument>;
   private readonly fuzzyTermsByDocument = new Map<string, readonly FuzzyPrepared[]>();
   private readonly embeddingCache: Map<string, readonly number[]>;
-  private embeddingPreparation: Promise<void> | undefined;
+  private embeddingPreparation: AgentEmbeddingPreparation | undefined;
   private embeddingFailureReported = false;
 
   constructor(
@@ -132,12 +184,14 @@ export class AgentCapabilitySearchIndex {
         .map((term) => fuzzysort.prepare(term));
       this.fuzzyTermsByDocument.set(document.id, terms);
     });
+    this.hydrateEmbeddingCache();
   }
 
   lexical(query: string, kind: AgentCapabilityKind, allowedNames?: ReadonlySet<string>): AgentCapabilityLexicalMatch[] {
     return this.lexicalIndex
       .search(query, {
         filter: (result) => result.kind === kind && (!allowedNames || allowedNames.has(String(result.name))),
+        boost: LexicalFieldBoosts,
       })
       .map((result) => ({
         name: String(result.name),
@@ -152,7 +206,7 @@ export class AgentCapabilitySearchIndex {
   fuzzy(
     query: string,
     kind: AgentCapabilityKind,
-    options: { minScore: number; limit: number; allowedNames?: ReadonlySet<string> },
+    options: { minScore: number; allowedNames?: ReadonlySet<string> },
   ): AgentCapabilityFuzzyMatch[] {
     const queryTerms = this.options.tokenizer.tokenize(query).filter((term) => term.length >= 2);
     if (queryTerms.length === 0) return [];
@@ -176,8 +230,7 @@ export class AgentCapabilitySearchIndex {
           },
         ];
       })
-      .sort((left, right) => right.score - left.score || left.name.localeCompare(right.name))
-      .slice(0, options.limit);
+      .sort((left, right) => right.score - left.score || left.name.localeCompare(right.name));
   }
 
   async semantic(
@@ -188,122 +241,321 @@ export class AgentCapabilitySearchIndex {
   ): Promise<AgentCapabilitySemanticMatch[]> {
     throwIfAborted(signal);
     const embedding = this.options.embedding;
-    if (!embedding || query.trim().length === 0) return [];
+    if (!embedding || query.trim().length === 0 || allowedNames?.size === 0) return [];
 
     try {
-      await this.ensureDocumentEmbeddings(signal);
+      await embedding.client.prewarm?.(signal, AgentEmbeddingPriorities.Foreground);
+      throwIfAborted(signal);
+      const primaryInputSelector = this.primarySemanticInputSelector();
+      await this.ensureDocumentEmbeddings({
+        priority: AgentEmbeddingPriorities.Foreground,
+        signal,
+        inputSelector: primaryInputSelector,
+        kind,
+        allowedNames,
+      });
       this.embeddingFailureReported = false;
       throwIfAborted(signal);
-      const queryVector = (await embedding.client.embed({ input: [query], signal })).vectors[0];
+      const queryVector = (
+        await embedding.client.embed({
+          input: [query],
+          role: "query",
+          priority: AgentEmbeddingPriorities.Foreground,
+          signal,
+        })
+      ).vectors[0];
       throwIfAborted(signal);
       if (!queryVector || queryVector.length === 0) {
         throw new Error("Capability embedding response did not contain a query vector.");
       }
 
-      return this.documents
-        .filter((document) => document.kind === kind && (!allowedNames || allowedNames.has(document.name)))
-        .flatMap((document) => {
-          const vector = this.embeddingCache.get(createAgentCapabilityEmbeddingIdentity(embedding.model, document));
-          if (!vector) return [];
-          if (vector.length !== queryVector.length) {
-            throw new Error(
-              `Capability embedding dimension mismatch for ${document.name}: ${vector.length} != ${queryVector.length}.`,
-            );
-          }
-          const score = cosineSimilarity(queryVector, vector);
-          return score >= embedding.scoreThreshold ? [{ name: document.name, score }] : [];
-        })
-        .sort((left, right) => right.score - left.score || left.name.localeCompare(right.name));
+      const primaryMatches = this.semanticScores(queryVector, kind, allowedNames, primaryInputSelector);
+      const auxiliaryCandidateNames = this.auxiliarySemanticCandidateNames(primaryMatches);
+      if (auxiliaryCandidateNames.size === 0) return primaryMatches;
+
+      await this.ensureDocumentEmbeddings({
+        priority: AgentEmbeddingPriorities.Foreground,
+        signal,
+        kind,
+        allowedNames: auxiliaryCandidateNames,
+        inputSelector: (document, input) =>
+          auxiliaryCandidateNames.has(document.name) && !primaryInputSelector(document, input),
+      });
+      return this.semanticScores(
+        queryVector,
+        kind,
+        allowedNames,
+        (document, input) => primaryInputSelector(document, input) || auxiliaryCandidateNames.has(document.name),
+      );
     } catch (error) {
       throwIfAborted(signal);
       if (!this.embeddingFailureReported) {
         this.embeddingFailureReported = true;
         this.options.onEmbeddingError?.(error);
       }
-      return [];
+      // Semantic retrieval is one component of the single discovery
+      // algorithm. The caller may continue with deterministic evidence, but
+      // only after it receives an explicit diagnostic for this degradation.
+      throw error;
     }
   }
 
-  async rerank(
-    query: string,
-    kind: AgentCapabilityKind,
-    names: readonly string[],
-    signal?: AbortSignal,
-  ): Promise<AgentCapabilityRerankMatch[]> {
+  /**
+   * Prepares the primary semantic view for every current capability through
+   * the same in-flight promise used by foreground searches. Auxiliary views
+   * are demand-driven: a foreground query expands them only when primary
+   * retrieval is ambiguous.
+   */
+  async prewarm(signal?: AbortSignal): Promise<void> {
+    const embedding = this.options.embedding;
+    if (!embedding) return;
+    await embedding.client.prewarm?.(signal, AgentEmbeddingPriorities.Background);
     throwIfAborted(signal);
-    const rerank = this.options.rerank;
-    if (!rerank || names.length === 0 || query.trim().length === 0) return [];
-
-    const documents = names.flatMap((name) => {
-      const document = this.document(kind, name);
-      return document ? [{ id: name, text: document.semanticText }] : [];
-    });
-    if (documents.length === 0) return [];
-
-    try {
-      const result = await rerank.client.rerank({ query, documents, signal });
+    const primaryInputSelector = this.primarySemanticInputSelector();
+    while (true) {
       throwIfAborted(signal);
-      return result.results.map((entry, index) => ({
-        name: entry.id,
-        score: entry.score,
-        rank: index + 1,
-        normalizedRankScore: 1 / (index + 1),
-      }));
-    } catch (error) {
-      throwIfAborted(signal);
-      this.options.onRerankError?.(error);
-      return [];
+      try {
+        await this.ensureDocumentEmbeddings({
+          priority: AgentEmbeddingPriorities.Background,
+          signal,
+          inputSelector: primaryInputSelector,
+        });
+        return;
+      } catch (error) {
+        if (!(error instanceof AgentEmbeddingPreparationPreemptedError)) throw error;
+        // Yield before resuming the derived work so the request which
+        // preempted this warmup can claim the embedding lane first.
+        await yieldAgentEmbeddingPreparation(signal);
+      }
     }
+  }
+
+  private semanticScores(
+    queryVector: readonly number[],
+    kind: AgentCapabilityKind,
+    allowedNames: ReadonlySet<string> | undefined,
+    inputSelector: AgentCapabilitySemanticInputSelector,
+  ): AgentCapabilitySemanticMatch[] {
+    const model = this.options.embedding?.model ?? "disabled";
+    return this.documents
+      .filter((document) => document.kind === kind && (!allowedNames || allowedNames.has(document.name)))
+      .flatMap((document) => {
+        const best = this.semanticInputs(document)
+          .filter((input) => inputSelector(document, input))
+          .flatMap((input) => {
+            const vector = this.embeddingCache.get(createAgentCapabilityEmbeddingIdentity(model, document, input.id));
+            if (!vector) return [];
+            if (vector.length !== queryVector.length) {
+              throw new Error(
+                `Capability embedding dimension mismatch for ${document.name}/${input.id}: ${vector.length} != ${queryVector.length}.`,
+              );
+            }
+            return [{ inputId: input.id, score: cosineSimilarity(queryVector, vector) }];
+          })
+          .sort((left, right) => right.score - left.score || left.inputId.localeCompare(right.inputId))[0];
+        return best ? [{ name: document.name, score: best.score, inputId: best.inputId }] : [];
+      })
+      .sort((left, right) => right.score - left.score || left.name.localeCompare(right.name));
   }
 
   document(kind: AgentCapabilityKind, name: string): AgentCapabilitySearchDocument | undefined {
     return this.documentsByKind.get(kind)?.get(name);
   }
 
-  private ensureDocumentEmbeddings(signal?: AbortSignal): Promise<void> {
+  private async ensureDocumentEmbeddings(request: AgentEmbeddingPreparationRequest): Promise<void> {
+    const model = this.options.embedding?.model ?? "disabled";
+    const missing = this.missingEmbeddingInputs(model, request.inputSelector, request.kind, request.allowedNames);
+    if (missing.length === 0) return;
+
     const current = this.embeddingPreparation;
-    if (current) return current;
+    if (current) {
+      if (
+        request.priority === AgentEmbeddingPriorities.Foreground &&
+        current.priority === AgentEmbeddingPriorities.Background
+      ) {
+        current.controller.abort(new AgentEmbeddingPreparationPreemptedError());
+      }
+      try {
+        await waitForAgentEmbeddingPreparation(current.promise, request.signal);
+      } catch (error) {
+        const backgroundPreparationStopped =
+          current.priority === AgentEmbeddingPriorities.Background && current.controller.signal.aborted;
+        if (
+          request.signal?.aborted ||
+          (!(error instanceof AgentEmbeddingPreparationPreemptedError) && !backgroundPreparationStopped)
+        ) {
+          throw error;
+        }
+      }
+      const remaining = this.missingEmbeddingInputs(model, request.inputSelector, request.kind, request.allowedNames);
+      if (remaining.length === 0) return;
+      return this.ensureDocumentEmbeddings(request);
+    }
 
-    const missing = this.documents.filter(
-      (document) =>
-        !this.embeddingCache.has(
-          createAgentCapabilityEmbeddingIdentity(this.options.embedding?.model ?? "disabled", document),
-        ),
-    );
-    if (missing.length === 0) return Promise.resolve();
-
-    const preparation = this.embedDocuments(missing, signal)
-      .catch((error) => {
-        throwIfAborted(signal);
-        throw error;
-      })
-      .finally(() => {
-        if (this.embeddingPreparation === preparation) this.embeddingPreparation = undefined;
-      });
+    const controller = new AbortController();
+    const promise = this.embedDocuments(missing, controller.signal, request.priority);
+    const preparation: AgentEmbeddingPreparation = {
+      priority: request.priority,
+      controller,
+      promise,
+    };
     this.embeddingPreparation = preparation;
-    return preparation;
+    void promise.then(
+      () => {
+        if (this.embeddingPreparation === preparation) this.embeddingPreparation = undefined;
+      },
+      () => {
+        if (this.embeddingPreparation === preparation) this.embeddingPreparation = undefined;
+      },
+    );
+    const unbindCancellation =
+      request.priority === AgentEmbeddingPriorities.Background
+        ? bindAgentEmbeddingPreparationCancellation(request.signal, controller)
+        : undefined;
+    try {
+      await waitForAgentEmbeddingPreparation(preparation.promise, request.signal);
+    } finally {
+      unbindCancellation?.();
+    }
+  }
+
+  private missingEmbeddingInputs(
+    model: string,
+    inputSelector?: AgentCapabilitySemanticInputSelector,
+    kind?: AgentCapabilityKind,
+    allowedNames?: ReadonlySet<string>,
+  ): AgentCapabilityEmbeddingInput[] {
+    return this.documents.flatMap((document) =>
+      (kind !== undefined && document.kind !== kind) || (allowedNames && !allowedNames.has(document.name))
+        ? []
+        : this.semanticInputs(document).flatMap((input) =>
+            (!inputSelector || inputSelector(document, input)) &&
+            !this.embeddingCache.has(createAgentCapabilityEmbeddingIdentity(model, document, input.id))
+              ? [{ document, input }]
+              : [],
+          ),
+    );
+  }
+
+  private primarySemanticInputSelector(): AgentCapabilitySemanticInputSelector {
+    const primaryInputIds = new Map(
+      this.documents.flatMap((document) => {
+        const first = this.semanticInputs(document)[0];
+        return first ? [[document.id, first.id] as const] : [];
+      }),
+    );
+    return (document, input) => primaryInputIds.get(document.id) === input.id;
+  }
+
+  private auxiliarySemanticCandidateNames(matches: readonly AgentCapabilitySemanticMatch[]): ReadonlySet<string> {
+    const embedding = this.options.embedding;
+    if (!embedding || !this.hasAuxiliarySemanticViews()) return new Set();
+    // A second view can only affect a comparison. With one candidate there is
+    // no ranking decision to change, so deriving its long-form views burns
+    // foreground time without improving discovery or disclosure.
+    if (matches.length < 2) return new Set();
+    const curve = partitionAgentToolSearchScoreCurve(matches);
+    // The primary view already covers the full catalog. Expand long-form
+    // views only for a statistically separated leading band; a flat curve
+    // lacks evidence that derived vectors can improve a decision, so it does
+    // not silently become a full-catalog foreground expansion.
+    return new Set((curve.bands.length > 1 ? curve.bands[0] : []).map((entry) => entry.name));
+  }
+
+  private hasAuxiliarySemanticViews(): boolean {
+    return this.documents.some((document) => this.semanticInputs(document).length > 1);
   }
 
   private async embedDocuments(
-    documents: readonly AgentCapabilitySearchDocument[],
+    inputs: readonly AgentCapabilityEmbeddingInput[],
     signal?: AbortSignal,
+    priority: AgentEmbeddingPriority = AgentEmbeddingPriorities.Foreground,
+  ): Promise<void> {
+    await this.embedDocumentsCooperatively(inputs, signal, priority);
+  }
+
+  private async embedDocumentsCooperatively(
+    inputs: readonly AgentCapabilityEmbeddingInput[],
+    signal?: AbortSignal,
+    priority: AgentEmbeddingPriority = AgentEmbeddingPriorities.Foreground,
   ): Promise<void> {
     const embedding = this.options.embedding;
     if (!embedding) return;
-    const result = await embedding.client.embed({
-      input: documents.map((document) => document.semanticText),
-      signal,
-    });
-    if (result.vectors.length !== documents.length) {
-      throw new Error(`Capability embedding response count mismatch: ${result.vectors.length} != ${documents.length}.`);
-    }
-    documents.forEach((document, index) => {
-      const vector = result.vectors[index];
-      if (!vector || vector.length === 0) {
-        throw new Error(`Capability embedding response did not contain a vector for ${document.name}.`);
+
+    let cacheChanged = false;
+    try {
+      const batchSize = resolveAgentEmbeddingBatchSize(embedding.client.maxBatchSize, inputs.length);
+      for (let offset = 0; offset < inputs.length; offset += batchSize) {
+        const batch = inputs.slice(offset, offset + batchSize);
+        throwIfAgentEmbeddingPreparationAborted(signal);
+        const result = await embedding.client.embed({
+          input: batch.map((item) => item.input.text),
+          role: "document",
+          priority,
+          signal,
+        });
+        throwIfAgentEmbeddingPreparationAborted(signal);
+        this.cacheEmbeddingVectors(batch, result.vectors);
+        cacheChanged = true;
+        if (offset + batch.length < inputs.length) await yieldAgentEmbeddingPreparation(signal);
       }
-      this.embeddingCache.set(createAgentCapabilityEmbeddingIdentity(embedding.model, document), vector);
+    } finally {
+      // Persist completed units even when foreground work preempts the rest
+      // of warmup. The cache is content-addressed, so this never changes the
+      // authoritative catalog and avoids recomputing already-derived vectors.
+      if (cacheChanged) this.persistEmbeddingCache();
+    }
+  }
+
+  private cacheEmbeddingVectors(
+    inputs: readonly AgentCapabilityEmbeddingInput[],
+    vectors: readonly (readonly number[])[],
+  ): void {
+    const embedding = this.options.embedding;
+    if (!embedding) return;
+    if (vectors.length !== inputs.length) {
+      throw new Error(`Capability embedding response count mismatch: ${vectors.length} != ${inputs.length}.`);
+    }
+    inputs.forEach(({ document, input }, index) => {
+      const vector = vectors[index];
+      if (!vector || vector.length === 0) {
+        throw new Error(`Capability embedding response did not contain a vector for ${document.name}/${input.id}.`);
+      }
+      this.embeddingCache.set(createAgentCapabilityEmbeddingIdentity(embedding.model, document, input.id), vector);
     });
+  }
+
+  private persistEmbeddingCache(): void {
+    try {
+      this.options.embeddingCacheStore?.replace(this.embeddingCache);
+    } catch (error) {
+      // The vector file is derived state. A write failure must not turn a
+      // successful foreground retrieval into a false negative.
+      this.options.onEmbeddingCacheError?.(error);
+    }
+  }
+
+  private hydrateEmbeddingCache(): void {
+    const embedding = this.options.embedding;
+    const store = this.options.embeddingCacheStore;
+    if (!embedding || !store) return;
+
+    const keys = new Set(
+      this.documents.flatMap((document) =>
+        this.semanticInputs(document).map((input) =>
+          createAgentCapabilityEmbeddingIdentity(embedding.model, document, input.id),
+        ),
+      ),
+    );
+    for (const [key, vector] of store.load(keys)) this.embeddingCache.set(key, vector);
+  }
+
+  private semanticInputs(document: AgentCapabilitySearchDocument): readonly AgentCapabilitySemanticInput[] {
+    return document.semanticInputs.length > 0 ? document.semanticInputs : [{ id: "full", text: document.semanticText }];
+  }
+
+  async close(): Promise<void> {
+    await this.options.embedding?.client.close?.();
   }
 }
 
@@ -311,9 +563,87 @@ function bestFuzzyScore(query: string, targets: readonly FuzzyPrepared[]): numbe
   return targets.reduce((best, target) => Math.max(best, fuzzysort.single(query, target)?.score ?? 0), 0);
 }
 
+function resolveAgentEmbeddingBatchSize(maxBatchSize: number | undefined, inputCount: number): number {
+  if (inputCount < 1) return 1;
+  if (maxBatchSize === undefined) return inputCount;
+  if (!Number.isSafeInteger(maxBatchSize) || maxBatchSize < 1) {
+    throw new Error("Capability embedding client maxBatchSize must be a positive safe integer.");
+  }
+  return Math.min(maxBatchSize, inputCount);
+}
+
+function throwIfAgentEmbeddingPreparationAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) return;
+  if (signal.reason instanceof Error) throw signal.reason;
+  throwIfAborted(signal);
+}
+
+function waitForAgentEmbeddingPreparation<T>(preparation: Promise<T>, signal?: AbortSignal): Promise<T> {
+  throwIfAborted(signal);
+  if (!signal) return preparation;
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const settle = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", onAbort);
+      callback();
+    };
+    const onAbort = () =>
+      settle(() => {
+        try {
+          throwIfAborted(signal);
+        } catch (error) {
+          reject(error);
+        }
+      });
+    signal.addEventListener("abort", onAbort, { once: true });
+    preparation.then(
+      (value) => settle(() => resolve(value)),
+      (error) => settle(() => reject(error)),
+    );
+  });
+}
+
+function bindAgentEmbeddingPreparationCancellation(
+  signal: AbortSignal | undefined,
+  controller: AbortController,
+): () => void {
+  if (!signal) return () => undefined;
+  const abort = () => controller.abort(signal.reason);
+  if (signal.aborted) abort();
+  else signal.addEventListener("abort", abort, { once: true });
+  return () => signal.removeEventListener("abort", abort);
+}
+
+function yieldAgentEmbeddingPreparation(signal?: AbortSignal): Promise<void> {
+  throwIfAgentEmbeddingPreparationAborted(signal);
+  return new Promise<void>((resolve, reject) => {
+    const immediate = setImmediate(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    });
+    const onAbort = () => {
+      clearImmediate(immediate);
+      signal?.removeEventListener("abort", onAbort);
+      try {
+        throwIfAgentEmbeddingPreparationAborted(signal);
+      } catch (error) {
+        reject(error);
+      }
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 export function createAgentCapabilityEmbeddingIdentity(
   model: string,
-  document: Pick<AgentCapabilitySearchDocument, "id" | "semanticText">,
+  document: Pick<AgentCapabilitySearchDocument, "id" | "semanticText" | "semanticInputs">,
+  inputId = "full",
 ): string {
-  return sha256HexOfCanonicalJson([model, document.id, sha256Hex(document.semanticText)]);
+  const input = document.semanticInputs.find((candidate) => candidate.id === inputId) ?? {
+    id: "full",
+    text: document.semanticText,
+  };
+  return sha256HexOfCanonicalJson([model, document.id, input.id, sha256Hex(input.text)]);
 }

@@ -17,8 +17,6 @@ describe("model capability controls", () => {
       React.createElement(CapabilityIconStrip, {
         capabilities: {
           Chat: true,
-          Embedding: true,
-          Rerank: true,
           Vision: true,
           ImageOutput: true,
           Reasoning: false,
@@ -30,9 +28,9 @@ describe("model capability controls", () => {
     );
 
     const summary = container.querySelector("[data-model-capability-summary]");
-    expect(summary).toHaveAttribute("data-capability-count", "5");
+    expect(summary).toHaveAttribute("data-capability-count", "3");
     expect(summary.querySelectorAll("svg")).toHaveLength(3);
-    expect(summary).toHaveTextContent("+2");
+    expect(summary).not.toHaveTextContent(/\+/);
     expect(summary).toHaveAccessibleName(/对话.*图像输出/);
   });
 

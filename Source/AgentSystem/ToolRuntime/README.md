@@ -16,22 +16,26 @@
 - `AgentToolResultOutcome`：把工具终态拆成执行状态、评估状态和输出可用性。`Runtime.ResultAssessment` 在调用前决定是否解释进程退出语义；失败同时携带稳定的 code、kind、source 与 retryable。
 - `AgentToolCatalogProjector` / `AgentToolTagCatalogProjector`：把注册工具投影成模型和 UI 可读目录。
 - `AgentToolObservationProjection` / `AgentToolObservationRenderer`：把工具调用和工具结果投影成 planner timeline 可读观察。
+- `AgentToolContentPolicyDispatcher`：按工具声明选择内容处理策略；它只生成当前模型请求的瞬时视图，Artifact 和持久化结果保持原样。
+- `AgentToolAdaptiveTextProjection`：仅对声明为 `host` 且 `compression=bounded` 的结果文本执行抽取式预算投影。它先按自然句子边界去重，再用词法相关性、`ternlight-mini-cn` 中英向量、稀有度、边界位置和 URI/路径/日期等事实原子选择完整句子；不逐 token 删除，不修改 Artifact。超过有界分段数时保留首尾、事实单元和均匀采样，并把未采样来源计入 omission，避免长尾静默丢失。
 - `AgentToolExecutionScheduler`：按每次运行容量、工具级上限和显式调度模式协调普通工具调用。
 - `AgentToolResourceClaimProjector` / `AgentToolResourceScheduler`：只为 `ResourceClaims` 工具投影运行时租约，并按资源关系协调冲突。
 - `AgentWorkspaceApplyPatchContract`：定义工作区 patch 的参数 schema 和有判别字段的 operation union，是新增操作类型时的唯一合同入口。
-- `AgentWorkspacePatchPlanBuilder`：解析与校验路径、捕获文件前置条件、应用 hunk，并把声明式 operation 编译为无副作用的事务计划。
+- `AgentWorkspacePatchPlanBuilder`：解析与校验路径、捕获文件前置条件、顺序应用 oldStr/newStr 精确替换，并把声明式 operation 编译为无副作用的事务计划。
 - `AgentWorkspaceApplyPatchRuntime`：作为宿主能力入口编排参数校验、规划、托管扩展预检、权限提升和事务提交，不包含具体 operation 分支。
 - `AgentWorkspacePatchTransaction`：在提交前重新校验捕获的文件状态，并负责有补偿能力的目录和文件变更；规划器不得直接写入工作区。
 
 ## 工作区 Patch 边界
 
-工作区 patch 按 `Contract -> PlanBuilder -> ExtensionPreflight -> Transaction` 分阶段执行。Runtime 是唯一组合入口：dry-run 完成规划和扩展候选校验但不提交；正式执行在预检通过后重新校验所有前置条件，再以一个事务批次提交。托管 Skill/MCP 目录的写入权限只在计划中的规范化路径明确落入对应资源域时提升，规划器和事务层都不根据 payload 字段或工具名猜测权限。
+工作区 patch 按 `Contract -> PlanBuilder -> ExtensionPreflight -> Transaction` 分阶段执行。Runtime 是唯一组合入口：规划完成后校验托管扩展候选，再重新校验所有前置条件，最后以一个事务批次提交。模型面只暴露 5 种操作（add / update / write / delete / move），update 采用 `oldStr/newStr` 精确字符串替换并支持同一路径多个顺序应用；并发防护的 SHA-256 前置条件由规划器自动捕获，不向模型暴露。托管 Skill/MCP 目录的写入权限只在计划中的规范化路径明确落入对应资源域时提升，规划器和事务层都不根据 payload 字段或工具名猜测权限。
 
 新增 operation 时必须先扩展判别联合和规划器分派，再由现有事务原语表达写入、删除或目录变更。禁止绕过 `WorkspacePatchPlan` 直接操作执行环境，也禁止在 Runtime 增加特定路径、文件名或扩展类型的 operation 分支。operation summary、JSON Pointer 诊断、changed path 排序和提交前置条件是对外行为合同，重构时必须保持稳定。
 
 ## 资源租约
 
 工具通过 `Handler.Resources` 声明资源 capability、参数 JSON Pointer 和 capability 参数。具体 capability 同时负责参数投影和资源 claim，因此通用调度器不包含工具名、参数名或文件路径特例。
+
+资源 capability 也可以只表达输入形状而不请求调度租约。例如 `senera.network.url` 保留经 schema 校验的公开 URL，交给拥有它的 Browser/Web 工具完成协议、主机和网络策略验证；它让 ToolSearch 依据声明式 URL 资源发现工具，不把 URL 当作工作区路径，也不会虚构文件锁。
 
 当一个资源字段是结构化集合时，capability 参数可以提供 `PathPointers`；它们是相对于该字段的 JSON Pointer 模式，完整的 `*` token 选择数组项或对象键。capability 会同时规范化、授权和投影所有匹配路径，调度器仍只消费最终 claim；例如补丁工具可以声明 `/*/path`、`/*/source` 和 `/*/destination`，无需把操作类型写进调度器。
 
@@ -68,6 +72,10 @@ MCP 工具未声明运行时元数据时直接使用普通的有界并行调度�
 - Pi 可以持有全部 authorized 工具的宿主定义，但 Planner/BAML 只接收当前 exposure snapshot。ToolSearch 成功后更新同一回合的 exposure，下一次模型决策立即看到新工具，无需新会话或下一轮用户消息。
 - 执行器同时校验授权名称与回合绑定的 contract digest。MCP 目录在活动回合中变化时，不允许用旧 Schema 生成的参数执行新契约。
 - 工具执行产物的落盘策略属于 `Artifacts`，ToolRuntime 只产生结构化运行结果。
+- 内容处理不按工具名分支。工具合同通过 `contentPolicy` 声明输出所有权和表示形式：`tool` 表示工具已经完成清洗/摘要，宿主不会二次处理；`host` 才允许调度器执行声明的正文规范化或 prose-only 去重。`structured`、`execution` 和 `asset-reference` 分别交给结构投影、`tokenjuice` 和 Artifact 资源链路。
+- 清洗、压缩和去重只作用于模型观察视图；完整脱敏原文先写入 Artifact。代码块、JSON、日志、URL 和标识符只有在策略的 `preserve` 中声明后才会绕过去重，Shell 默认 `execution + tool-owned`，因此 stdout/stderr 不会被通用正文算法误删。可选内容处理器失败时退化为原值，再由结构化/token 投影兜底，不会把工具成功结果升级为宿主失败。
+- 自适应文本投影只在结果超过当前 source 预算或存在重复单元时启动；小结果保持原文。没有当前调用目的时使用内在信息密度和事实覆盖排序；语义引擎不可用时退化为确定性的完整句子排序，并保留 omission 标记，不返回空结果。
+- `observationResult` 是请求级临时字段：Pi 工具桥用它完成当前模型投影，进入 turn history、run result 或 Artifact 前会移除；因此历史只保留完整结果或 Artifact URI，不会积累另一份清洗副本。
 - 工具名、参数字段和路径语义不得写进通用调度器分支。扩展资源并发语义时注册新的 resource capability，由 capability 投影参数和 claim；调度器只比较规范化 claim。
 - `Runtime.Scheduling=SelfManaged` 只适用于拥有显式领域 permit、取消和关闭语义的编排入口；不能用它给普通工具绕过通用容量控制。
 - `ExecutedToolCallResult.outcome` 是生命周期事件、Pi observation、Artifact、Planner 和工具学习唯一可用的终态合同。`execution.status`、`assessment.status`、`output.availability` 分别描述执行事实、结果评估和输出完整性，任何一轴都不能代替另外两轴。

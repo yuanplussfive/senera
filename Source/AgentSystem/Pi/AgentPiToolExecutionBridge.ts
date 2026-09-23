@@ -7,9 +7,17 @@ import { errorMessage } from "../Core/AgentErrors.js";
 import type { AgentToolExecutionArtifactRecorder } from "../Artifacts/AgentToolExecutionArtifactRecorder.js";
 import type { AskUserControlResult, SuspendChildRunControlResult } from "../ToolRuntime/AgentToolCallExecutionTypes.js";
 import type { AgentToolCallExecutor } from "../ToolRuntime/AgentToolCallExecutor.js";
-import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
+import {
+  isAgentToolResultInline,
+  projectAgentToolResultForHistory,
+  type ExecutedToolCallResult,
+} from "../Types/ToolRuntimeTypes.js";
 import { AgentToolObservationContextCompiler } from "../ToolRuntime/AgentToolObservationContextCompiler.js";
 import { StandardAgentToolObservationProjection } from "../ToolRuntime/AgentToolObservationProjectionPlan.js";
+import {
+  AgentToolPerceptionComposer,
+  type AgentToolPerceptionComposition,
+} from "../ToolRuntime/AgentToolPerceptionComposer.js";
 import { redactArtifactSecrets, redactArtifactToolOutcome } from "../Artifacts/AgentArtifactRedaction.js";
 import { AgentPiToolResultStatuses, type AgentPiToolExecutionInput, type AgentPiToolResult } from "./AgentPiTypes.js";
 import type { AgentToolExecutionScheduler } from "../ToolRuntime/AgentToolExecutionScheduler.js";
@@ -47,6 +55,7 @@ export interface AgentPiToolExecutionBridgeOptions {
 
 export class AgentPiToolExecutionBridge {
   private readonly observationCompiler: AgentToolObservationContextCompiler;
+  private readonly perceptionComposer = new AgentToolPerceptionComposer();
 
   constructor(private readonly options: AgentPiToolExecutionBridgeOptions) {
     this.observationCompiler = new AgentToolObservationContextCompiler({ model: options.model });
@@ -162,8 +171,9 @@ export class AgentPiToolExecutionBridge {
       const result = persisted ?? (executed ? markAgentToolArtifactUnavailable(executed) : undefined);
       if (!result) throw new Error("Tool execution did not produce a persistable result.");
       assertExecutedToolIdentity(input, result);
-      turnState.registerExecutedToolResult(input.toolCallId, result);
-      return await this.projectToolResult(input, result, batchId, projection, reservation);
+      const projected = await this.projectToolResult(input, result, batchId, projection, reservation);
+      turnState.registerExecutedToolResult(input.toolCallId, projectAgentToolResultForHistory(result));
+      return projected;
     } catch (error) {
       if (isCancelledToolExecution(error, input.signal)) {
         reservation.release();
@@ -335,18 +345,23 @@ export class AgentPiToolExecutionBridge {
   ): Promise<AgentPiToolResult> {
     const tool = input.tool;
     const outcome = redactArtifactToolOutcome(result.outcome, result.artifactPolicy);
+    const perception = this.perceptionComposer.compose({
+      declaration: tool.perception,
+      result: redactArtifactSecrets(result.result, result.artifactPolicy),
+      arguments: redactArtifactSecrets(result.arguments, result.artifactPolicy),
+    });
+    const media = await projectToolImages(
+      result,
+      this.options.modelSupportsImages === true,
+      this.options.resourceResolver,
+    );
     const observation = this.observationCompiler.compile(
-      projectToolObservation(result, outcome, batchId),
+      projectToolObservation(result, outcome, batchId, perception, input, media.failure?.message),
       projection,
       reservation.limit,
     );
     const content = this.wrapObservationContent(JSON.stringify(observation));
     reservation.commit(content);
-    const images = await projectToolImages(
-      result,
-      this.options.modelSupportsImages === true,
-      this.options.resourceResolver,
-    );
 
     return {
       content: [
@@ -354,9 +369,9 @@ export class AgentPiToolExecutionBridge {
           type: "text",
           text: content,
         },
-        ...images,
+        ...media.images,
       ],
-      details: projectToolDetails(tool.name, result, outcome),
+      details: projectToolDetails(tool.name, result, outcome, media.failure),
     };
   }
 }
@@ -379,39 +394,52 @@ async function projectToolImages(
   result: ExecutedToolCallResult,
   enabled: boolean,
   resourceResolver?: Pick<AgentResourceResolverLike, "resolve">,
-): Promise<ImageContent[]> {
-  if (!enabled) return [];
+): Promise<AgentToolImagesProjection> {
+  if (!enabled) return { images: [] };
 
   const images: ImageContent[] = [];
   const seenResources = new Set<string>();
-  const artifactRoot = result.artifact ? path.resolve(result.artifact.artifactPath) : undefined;
-  if (artifactRoot) {
-    for (const asset of result.artifact?.assets ?? []) {
-      if (!asset.mediaType.startsWith("image/")) continue;
-      const filePath = path.resolve(artifactRoot, asset.relativePath);
-      const relativePath = path.relative(artifactRoot, filePath);
-      if (relativePath === ".." || relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath)) {
-        throw new Error(`Tool artifact image path must remain inside its artifact: ${asset.relativePath}`);
+  let currentResourceUri: string | undefined;
+  try {
+    const artifactRoot = result.artifact ? path.resolve(result.artifact.artifactPath) : undefined;
+    if (artifactRoot) {
+      for (const asset of result.artifact?.assets ?? []) {
+        if (!asset.mediaType.startsWith("image/")) continue;
+        currentResourceUri = asset.resourceUri;
+        const filePath = path.resolve(artifactRoot, asset.relativePath);
+        const relativePath = path.relative(artifactRoot, filePath);
+        if (relativePath === ".." || relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath)) {
+          throw new Error(`Tool artifact image path must remain inside its artifact: ${asset.relativePath}`);
+        }
+        const data = await readFile(filePath);
+        images.push({ type: "image", data: data.toString("base64"), mimeType: asset.mediaType });
+        seenResources.add(asset.resourceUri);
       }
-      const data = await readFile(filePath);
-      images.push({ type: "image", data: data.toString("base64"), mimeType: asset.mediaType });
-      seenResources.add(asset.resourceUri);
     }
-  }
 
-  if (!resourceResolver) return images;
-  for (const resource of result.presentation?.resources ?? []) {
-    if (resource.origin !== "tool" || !resource.mime.startsWith("image/") || seenResources.has(resource.uri)) {
-      continue;
+    if (!resourceResolver) return { images };
+    for (const resource of result.presentation?.resources ?? []) {
+      if (resource.origin !== "tool" || !resource.mime.startsWith("image/") || seenResources.has(resource.uri)) {
+        continue;
+      }
+      currentResourceUri = resource.uri;
+      const resolved = await resourceResolver.resolve(resource.uri);
+      if (!resolved) throw new Error(`Published tool resource is unavailable: ${resource.uri}`);
+      const data = await readFile(resolved.filePath);
+      images.push({ type: "image", data: data.toString("base64"), mimeType: resolved.mime });
+      seenResources.add(resource.uri);
     }
-    const resolved = await resourceResolver.resolve(resource.uri);
-    if (!resolved) throw new Error(`Published tool resource is unavailable: ${resource.uri}`);
-    const data = await readFile(resolved.filePath);
-    images.push({ type: "image", data: data.toString("base64"), mimeType: resolved.mime });
-    seenResources.add(resource.uri);
+    return { images };
+  } catch (error) {
+    return {
+      images,
+      failure: {
+        code: "media_projection_failed",
+        message: `media_projection_failed: ${errorMessage(error)}`,
+        ...(currentResourceUri ? { resourceUri: currentResourceUri } : {}),
+      },
+    };
   }
-
-  return images;
 }
 
 function assertExecutedToolIdentity(input: AgentPiToolExecutionInput, result: ExecutedToolCallResult): void {
@@ -424,6 +452,9 @@ function projectToolObservation(
   result: ExecutedToolCallResult,
   outcome: AgentToolExecutionOutcome,
   batchId: string,
+  perception: AgentToolPerceptionComposition,
+  input: AgentPiToolExecutionInput,
+  mediaFailureMessage?: string,
 ): import("../ToolRuntime/AgentToolObservationContextCompiler.js").AgentToolObservationContextCompilerInput {
   const error = readAgentToolFailure(outcome);
   return {
@@ -437,10 +468,19 @@ function projectToolObservation(
     executionStatus: outcome.execution.status,
     outputAvailability: outcome.output.availability,
     result: redactArtifactSecrets(result.result, result.artifactPolicy),
+    projectedResult: redactArtifactSecrets(result.observationResult, result.artifactPolicy),
+    contentPolicy: result.contentPolicy,
+    compressionQuery: input.context.turnState?.toolCallPurpose(input.toolCallId),
+    signal: input.signal,
     error,
     artifact: result.artifact,
     artifactAvailability: result.artifactAvailability,
     semanticProjection: result.semanticProjection,
+    perception: perception.phrase,
+    notice: [input.notice, mediaFailureMessage].filter((value): value is string => Boolean(value?.trim())).join(" "),
+    // Verbatim result already inlined into the context by the recorder; folds
+    // all summarization, evidence, and retrieval sources down to the result.
+    inline: isAgentToolResultInline(result),
   };
 }
 
@@ -448,6 +488,7 @@ function projectToolDetails(
   toolName: string,
   result: ExecutedToolCallResult,
   outcome: AgentToolExecutionOutcome,
+  mediaFailure?: AgentToolMediaProjectionFailure,
 ): AgentPiToolResult["details"] {
   const context = {
     toolName,
@@ -464,9 +505,21 @@ function projectToolDetails(
             ...context,
             status: AgentPiToolResultStatuses.Failure,
             error: outcome.assessment.error,
+            ...(mediaFailure ? { mediaProjection: mediaFailure } : {}),
           }
-        : { ...context, status: outcome.assessment.status },
+        : { ...context, status: outcome.assessment.status, ...(mediaFailure ? { mediaProjection: mediaFailure } : {}) },
   };
+}
+
+interface AgentToolMediaProjectionFailure {
+  readonly code: "media_projection_failed";
+  readonly message: string;
+  readonly resourceUri?: string;
+}
+
+interface AgentToolImagesProjection {
+  readonly images: readonly ImageContent[];
+  readonly failure?: AgentToolMediaProjectionFailure;
 }
 
 function isCancelledToolExecution(error: unknown, signal?: AbortSignal): boolean {

@@ -1,5 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
 import { Ajv } from "ajv";
 import { assertArtifactPolicyTemplates } from "../Artifacts/AgentArtifactTemplatePreflight.js";
 import { AgentJsonFileLoader } from "../Config/AgentJsonFileLoader.js";
@@ -17,14 +15,17 @@ import type { RegisteredSkill } from "../Skills/AgentSkillTypes.js";
 import { AgentJsonSchemaPromptContractProjector } from "../ToolContracts/AgentJsonSchemaPromptContractProjector.js";
 import { ensureObjectRootJsonSchema } from "../ToolContracts/AgentJsonSchemaObjectRoot.js";
 import type { RegisteredSidecarTool, RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
+import type { AgentToolPresentation } from "../Types/AgentToolPresentationTypes.js";
+import {
+  AgentSystemExtensionSettingsSurfaces,
+  type AgentSystemExtensionSettingsSurface,
+} from "../Types/AgentSystemExtensionSettingsSurface.js";
 import type { AgentSystemExtensionConfig } from "../Types/AgentSystemConfigTypes.js";
 import {
   AgentSystemExtensionConfigurationReader,
   type AgentSystemExtensionConfigurationSettings,
 } from "./AgentSystemExtensionConfiguration.js";
 import {
-  AgentSystemExtensionManifestFileName,
-  AgentSystemExtensionManifestSchema,
   AgentSystemToolContractSchema,
   AgentToolObservationProjectionSchema,
   type AgentSystemExtensionManifest,
@@ -36,12 +37,16 @@ import {
 } from "./AgentSystemExtensionManifest.js";
 import type { AgentToolObservationProjectionManifest } from "../Types/AgentToolObservationProjectionTypes.js";
 import {
-  assertSystemExtensionRegularDirectory,
-  assertSystemExtensionRegularFile,
   resolveSystemExtensionPackageDirectory,
   resolveSystemExtensionPackageFile,
 } from "./AgentSystemExtensionPackagePath.js";
 import { isAgentSystemExtensionApplicable, type AgentSystemExtensionPlatform } from "./AgentSystemExtensionPlatform.js";
+import {
+  discoverAgentSystemExtensionPackages,
+  type AgentSystemExtensionPackageSource,
+} from "./AgentSystemExtensionDiscovery.js";
+import { resolveAgentSystemToolPresentation } from "./AgentSystemToolPresentation.js";
+import { validateAgentToolResourceManifests } from "../ToolRuntime/AgentToolResourceManifestValidation.js";
 
 export type { AgentSystemExtensionConfigurationSettings } from "./AgentSystemExtensionConfiguration.js";
 
@@ -61,13 +66,26 @@ export interface AgentSystemExtensionToolSettingsItem {
   readonly description: AgentExtensionLocalizedText;
   readonly loading: string;
   readonly capability: string;
+  /** Resolved domain, extension, and Tool-level workflow presentation. */
+  readonly presentation: AgentToolPresentation;
 }
 
 export interface AgentSystemExtensionSettingsItem {
   readonly id: string;
+  /** Declared owner for the package's user-facing settings configuration. */
+  readonly settingsSurface: AgentSystemExtensionSettingsSurface;
+  /** Stable authoring domain; unrelated to extension IDs or capability names. */
+  readonly domain: {
+    readonly id: string;
+    readonly displayName: AgentExtensionLocalizedText;
+    readonly description: AgentExtensionLocalizedText;
+    readonly presentation: AgentToolPresentation;
+  };
   readonly version: string;
   readonly displayName: AgentExtensionLocalizedText;
   readonly description: AgentExtensionLocalizedText;
+  /** Resolved domain and extension-level presentation default. */
+  readonly presentation: AgentToolPresentation;
   readonly enabled: boolean;
   readonly configured: boolean;
   readonly priority?: number;
@@ -90,17 +108,12 @@ export class AgentSystemExtensionCatalog {
   private readonly bindings = new Map<string, Set<string>>();
   private readonly mcpContributions: AgentSystemMcpContribution[] = [];
   private readonly extensions: AgentSystemExtensionSettingsItem[] = [];
+  private readonly dedicatedSettingsSurfaces = new Map<string, string>();
 
   registerRoot(registry: AgentExtensionRegistry, rootPath: string, options: AgentSystemExtensionCatalogOptions): void {
-    const root = path.resolve(rootPath);
-    if (!fs.existsSync(root)) return;
-    assertSystemExtensionRegularDirectory(root, "System extension collection");
-    const packageIds = new Set<string>();
-    for (const entry of fs.readdirSync(root, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
-      if (entry.name.startsWith(".") || !entry.isDirectory() || entry.isSymbolicLink()) continue;
-      this.registerPackage(registry, path.join(root, entry.name), entry.name, options);
-      packageIds.add(entry.name);
-    }
+    const packages = discoverAgentSystemExtensionPackages(rootPath);
+    const packageIds = new Set(packages.map((source) => source.manifest.id));
+    for (const source of packages) this.registerPackage(registry, source, options);
     this.applySkillToolBindings(registry);
     const unknownConfigurations = Object.keys(options.configurations ?? {}).filter((id) => !packageIds.has(id));
     if (unknownConfigurations.length > 0) {
@@ -150,19 +163,11 @@ export class AgentSystemExtensionCatalog {
 
   private registerPackage(
     registry: AgentExtensionRegistry,
-    packageRoot: string,
-    directoryName: string,
+    sourcePackage: AgentSystemExtensionPackageSource,
     options: AgentSystemExtensionCatalogOptions,
   ): void {
-    assertSystemExtensionRegularDirectory(packageRoot, "System extension package");
-    const manifestPath = path.join(packageRoot, AgentSystemExtensionManifestFileName);
-    assertSystemExtensionRegularFile(manifestPath, "System extension manifest");
-    const manifest = deepFreeze(
-      this.json.load(manifestPath, AgentSystemExtensionManifestSchema) as AgentSystemExtensionManifest,
-    );
-    if (manifest.id !== directoryName) {
-      throw new Error(`System extension id ${manifest.id} must match its directory ${directoryName}.`);
-    }
+    const packageRoot = sourcePackage.packageRoot;
+    const manifest = deepFreeze(sourcePackage.manifest);
     if (!isAgentSystemExtensionApplicable(manifest.platforms, options.platform)) return;
     if (this.extensions.some((extension) => extension.id === manifest.id)) {
       throw new Error(`Duplicate System extension id: ${manifest.id}.`);
@@ -170,8 +175,13 @@ export class AgentSystemExtensionCatalog {
 
     const configured = options.configurations?.[manifest.id];
     const enabled = configured?.Enabled ?? true;
+    this.assertDedicatedSettingsSurface(manifest);
     const displayName = resolveAgentExtensionLocalizedText(manifest.displayName);
     const description = resolveAgentExtensionLocalizedText(manifest.description);
+    const extensionPresentation = resolveAgentSystemToolPresentation(
+      sourcePackage.domain.presentation,
+      manifest.presentation,
+    );
     const owner = {
       kind: "system" as const,
       name: manifest.id,
@@ -206,18 +216,20 @@ export class AgentSystemExtensionCatalog {
       }
       const contractPath = resolveSystemExtensionPackageFile(packageRoot, contribution.contract, "host Tool contract");
       const contract = this.readContract(contractPath, packageRoot);
+      const presentation = resolveAgentSystemToolPresentation(extensionPresentation, contract.presentation);
       for (const skill of enabled ? contribution.recommendedForSkills : []) {
         const toolNames = this.bindings.get(skill) ?? new Set<string>();
         toolNames.add(contract.name);
         this.bindings.set(skill, toolNames);
       }
       return {
-        registered: this.project(owner, contract, contribution.capability, contribution.childGrant),
+        registered: this.project(owner, contract, contribution.capability, contribution.childGrant, presentation),
         settings: {
           name: contract.name,
           description: localizeSystemToolDescription(contract.search?.Summary ?? contract.description),
           loading: contract.loading,
           capability: contribution.capability,
+          presentation: deepFreeze(presentation),
         },
       };
     });
@@ -270,9 +282,17 @@ export class AgentSystemExtensionCatalog {
     if (projectedTools.length > 0 || skills.length > 0 || mcpServerCount > 0 || configuration) {
       this.extensions.push({
         id: manifest.id,
+        settingsSurface: manifest.settingsSurface,
+        domain: {
+          id: sourcePackage.domain.id,
+          displayName: sourcePackage.domain.displayName,
+          description: sourcePackage.domain.description,
+          presentation: deepFreeze(sourcePackage.domain.presentation),
+        },
         version: manifest.version,
         displayName: manifest.displayName,
         description: manifest.description,
+        presentation: deepFreeze(extensionPresentation),
         enabled,
         configured: configured !== undefined,
         priority: manifest.priority,
@@ -284,11 +304,23 @@ export class AgentSystemExtensionCatalog {
     }
   }
 
+  private assertDedicatedSettingsSurface(manifest: AgentSystemExtensionManifest): void {
+    if (manifest.settingsSurface === AgentSystemExtensionSettingsSurfaces.SystemTools) return;
+    const occupiedBy = this.dedicatedSettingsSurfaces.get(manifest.settingsSurface);
+    if (occupiedBy) {
+      throw new Error(
+        `System settings surface '${manifest.settingsSurface}' is declared by both ${occupiedBy} and ${manifest.id}.`,
+      );
+    }
+    this.dedicatedSettingsSurfaces.set(manifest.settingsSurface, manifest.id);
+  }
+
   private readContract(
     filePath: string,
     packageRoot: string,
   ): AgentSystemToolContract & { observation: AgentToolObservationProjectionManifest } {
     const loaded = this.json.load(filePath, AgentSystemToolContractSchema) as AgentSystemToolContract;
+    validateAgentToolResourceManifests(loaded.resources);
     const source = deepFreeze({
       ...loaded,
       inputSchema: ensureObjectRootJsonSchema(loaded.inputSchema, `System Tool ${loaded.name} input`),
@@ -323,18 +355,23 @@ export class AgentSystemExtensionCatalog {
     source: AgentSystemToolContract & { observation: AgentToolObservationProjectionManifest },
     capability: string,
     childGrant: RegisteredTool["childGrant"],
+    presentation: NonNullable<RegisteredTool["presentation"]>,
   ): RegisteredTool {
     const description = resolveSystemToolDescription(source.description);
     return {
       owner,
       name: source.name,
       loading: source.loading,
+      ...(source.planningModes ? { planningModes: source.planningModes } : {}),
       contract: deepFreeze({
         digest: sha256HexOfCanonicalJson({
+          planningModes: source.planningModes,
           inputSchema: source.inputSchema,
           outputSchema: source.outputSchema,
           observationProjection: source.observation,
+          contentPolicy: source.contentPolicy,
           surfaces: source.surfaces,
+          resources: source.resources,
         }),
         arguments: this.contracts.project(source.inputSchema),
         outputSchema: source.outputSchema,
@@ -344,6 +381,9 @@ export class AgentSystemExtensionCatalog {
       execution: source.execution,
       runtime: source.runtime,
       observationProjection: source.observation,
+      contentPolicy: source.contentPolicy,
+      perception: source.perception,
+      presentation: deepFreeze(presentation),
       sources: source.sources,
       search: source.search ?? { Summary: description },
       childGrant,

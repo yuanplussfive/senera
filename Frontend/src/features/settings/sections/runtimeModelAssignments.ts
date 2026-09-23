@@ -46,9 +46,6 @@ export function projectSectionConfigFields(
   const hiddenPaths = new Set<string>();
   for (const field of readRuntimeModelAssignmentFields(allSections)) {
     hiddenPaths.add(pathKey(field.path));
-    if (field.modelSelection.providerPath) {
-      hiddenPaths.add(pathKey(field.modelSelection.providerPath));
-    }
     if (field.modelSelection.inheritance?.path) {
       hiddenPaths.add(pathKey(field.modelSelection.inheritance.path));
     }
@@ -101,45 +98,25 @@ export function readRuntimeModelAssignmentCandidates({
 
 export function readRuntimeModelAssignmentSelection({
   field,
-  allFields,
   candidates,
   defaultModelId,
   draft,
 }: {
   field: RuntimeModelAssignmentField;
-  allFields: readonly ConfigFormFieldData[];
   candidates: readonly RuntimeModelAssignmentCandidate[];
   defaultModelId: string;
   draft: JsonConfigObject;
 }): RuntimeModelAssignmentSelection {
   assertSingleModelAssignment(field);
-  if (field.modelSelection.valueKind === "model-id") {
-    const configuredModelId = readString(readPathValue(draft, field.path));
-    if (field.modelSelection.inheritance?.source === "default-model" && !configuredModelId) {
-      return { value: inheritedValue(field), inherited: true };
-    }
-    const modelId = configuredModelId ?? readString(readFieldValue(field, draft)) ?? defaultModelId;
-    if (!modelId || candidates.some((candidate) => candidate.model.Id === modelId)) {
-      return { value: modelId };
-    }
-    return { value: missingValue(field, modelId), unavailableLabel: modelId };
+  const configuredModelId = readString(readPathValue(draft, field.path));
+  if (field.modelSelection.inheritance?.source === "default-model" && !configuredModelId) {
+    return { value: inheritedValue(field), inherited: true };
   }
-
-  const providerPath = field.modelSelection.providerPath;
-  const providerField = providerPath
-    ? allFields.find((candidate) => pathKey(candidate.path) === pathKey(providerPath))
-    : undefined;
-  const providerId = providerPath
-    ? (readString(readPathValue(draft, providerPath)) ?? readString(providerField?.effectiveValue))
-    : undefined;
-  const modelName = readString(readFieldValue(field, draft));
-  if (!providerId || !modelName) return { value: "" };
-  const selected = candidates.find(
-    (candidate) => candidate.provider.Id === providerId && candidate.model.Model === modelName,
-  );
-  if (selected) return { value: selected.model.Id };
-  const label = `${modelName} · ${providerId}`;
-  return { value: missingValue(field, label), unavailableLabel: label };
+  const modelId = configuredModelId ?? readString(readFieldValue(field, draft)) ?? defaultModelId;
+  if (!modelId || candidates.some((candidate) => candidate.model.Id === modelId)) {
+    return { value: modelId };
+  }
+  return { value: missingValue(field, modelId), unavailableLabel: modelId };
 }
 
 export function readRuntimeModelPoolAssignmentSelection({
@@ -171,13 +148,7 @@ export function writeRuntimeModelAssignment(
   candidate: RuntimeModelAssignmentCandidate,
 ): JsonConfigObject {
   assertSingleModelAssignment(field);
-  if (field.modelSelection.valueKind === "model-id") {
-    return writeJsonConfigFieldValue(draft, field.path, candidate.model.Id);
-  }
-  const withModel = writeJsonConfigFieldValue(draft, field.path, candidate.model.Model);
-  return field.modelSelection.providerPath
-    ? writeJsonConfigFieldValue(withModel, field.modelSelection.providerPath, candidate.provider.Id)
-    : withModel;
+  return writeJsonConfigFieldValue(draft, field.path, candidate.model.Id);
 }
 
 export function writeRuntimeModelAssignmentInheritance(
@@ -241,9 +212,6 @@ function namespaceField(
   const modelSelection = field.modelSelection
     ? {
         ...field.modelSelection,
-        ...(field.modelSelection.providerPath
-          ? { providerPath: [...pathPrefix, ...field.modelSelection.providerPath] }
-          : {}),
         ...(field.modelSelection.inheritance?.path
           ? {
               inheritance: {
@@ -281,11 +249,7 @@ function assertSingleModelAssignment(field: RuntimeModelAssignmentField): void {
 }
 
 function assertModelPoolAssignment(field: RuntimeModelAssignmentField): void {
-  if (
-    !isRuntimeModelPoolAssignment(field) ||
-    field.modelSelection.valueKind !== "model-id" ||
-    field.modelSelection.mutation !== "config"
-  ) {
+  if (!isRuntimeModelPoolAssignment(field) || field.modelSelection.mutation !== "config") {
     throw new TypeError(`Model assignment ${field.modelSelection.id} is not an editable model pool.`);
   }
 }

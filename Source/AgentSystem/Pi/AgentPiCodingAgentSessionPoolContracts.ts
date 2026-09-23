@@ -13,6 +13,9 @@ import type { AgentPiPlanningCompilerFactory } from "./AgentPiPlanningCompiler.j
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentToolExposureState } from "../ToolRuntime/AgentToolExposureState.js";
 import type { AgentResidentSpeechProjector } from "../ResidentSpeech/AgentResidentSpeechTypes.js";
+import type { AgentInferenceBudgetPort } from "../ModelEndpoints/AgentInferenceBudget.js";
+import type { AgentPiCompactionCandidateStore } from "./AgentPiCompactionCandidateStore.js";
+import type { AgentPiCompactionCandidateRuntimeStatus } from "./AgentPiCompactionCandidateLifecycle.js";
 
 export interface AgentPiCodingAgentSessionPoolOptions {
   workspaceRoot: string;
@@ -28,6 +31,11 @@ export interface AgentPiCodingAgentSessionPoolOptions {
   maxIdleSessions?: number;
   diagnostics?: AgentPiDiagnosticSink;
   beforeCompaction?: (sessionId: string) => Promise<void>;
+  /** Derived checkpoint cache; never a source of authoritative session history. */
+  compactionCandidateStore?: AgentPiCompactionCandidateStore;
+  /** Shared admission control for non-foreground compaction preparation. */
+  inferenceBudget?: AgentInferenceBudgetPort;
+  inferenceScope?: () => string | undefined;
 }
 
 export interface AgentPiCodingAgentLeaseInput {
@@ -53,6 +61,8 @@ export interface AgentPiPooledCodingSession {
   readonly resourceLoader: DefaultResourceLoader;
   readonly disposeDiagnostics: () => void;
   disposeToolExposure: () => void;
+  /** Runtime-only status; candidate contents remain inside the derived cache. */
+  compactionCandidateStatus?: () => AgentPiCompactionCandidateRuntimeStatus;
   toolExposure?: AgentToolExposureState;
   toolFingerprint: string;
   skillCatalogFingerprint: string;

@@ -18,8 +18,16 @@ import { collectArtifactEvidence } from "./AgentArtifactEvidenceProjection.js";
 import { redactArtifactSecrets, redactArtifactToolOutcome } from "./AgentArtifactRedaction.js";
 import { stableArtifactHash } from "./AgentArtifactStableJson.js";
 import { buildArtifactProjection, buildArtifactSummary } from "./AgentArtifactTemplateProjection.js";
-import { AgentArtifactPublicationSession, publishToolArtifactFiles } from "./AgentToolArtifactFilePublisher.js";
+import {
+  AgentArtifactPublicationSession,
+  finalizeAgentToolOutputCapture,
+  markAgentToolOutputCaptureFailed,
+  publishToolArtifactFiles,
+} from "./AgentToolArtifactFilePublisher.js";
 import { AgentToolResultSummaryCompiler } from "./AgentToolResultSummaryCompiler.js";
+import { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
+import { projectAgentToolResultEventValue } from "../ToolRuntime/AgentToolResultEventProjection.js";
+import { createAgentToolArtifactPayloadHash } from "./AgentToolArtifactPayloadIdentity.js";
 import { writeToolWorkspaceArtifacts } from "./AgentToolWorkspaceArtifactRecorder.js";
 import { toPosixPath } from "./AgentArtifactLocator.js";
 import type { AgentArtifactFileReceipt } from "./AgentArtifactIntegrity.js";
@@ -32,11 +40,8 @@ import {
   type AgentToolSemanticProjection,
   type AgentToolSemanticProjector,
 } from "../ToolRuntime/AgentToolSemanticProjection.js";
-import {
-  attachAgentToolEvidenceAssets,
-  createAgentToolEvidenceCandidates,
-  readAgentToolEvidenceCandidates,
-} from "../ToolRuntime/AgentToolFeedbackAdapter.js";
+import { projectAgentToolArtifactEvidenceCandidates } from "./AgentToolArtifactEvidenceCandidates.js";
+import { AgentToolContentPolicyDispatcher } from "../ToolRuntime/AgentToolContentPolicyDispatcher.js";
 
 export { AgentArtifactPublicationConflictError } from "./AgentArtifactPublicationRecovery.js";
 
@@ -61,12 +66,15 @@ export class AgentToolExecutionArtifactRecorder {
   private readonly recovery: AgentArtifactPublicationRecovery;
   private readonly publicationLeases = new AgentKeyedLeaseQueue<string>();
   private readonly semanticProjector: AgentToolSemanticProjector;
+  private readonly tokenProjector: AgentTokenProjector;
+  private readonly contentPolicyDispatcher = new AgentToolContentPolicyDispatcher();
 
   constructor(private readonly options: AgentToolExecutionArtifactRecorderOptions) {
     this.fileWriter = new AgentArtifactFileWriter(options.workspaceRoot);
     this.summaryCompiler = new AgentToolResultSummaryCompiler({ model: options.model });
     this.recovery = new AgentArtifactPublicationRecovery(this.fileWriter, this.summaryCompiler);
     this.semanticProjector = options.semanticProjector ?? new AgentDefaultToolSemanticProjector();
+    this.tokenProjector = new AgentTokenProjector(options.model);
   }
 
   async record(input: RecordToolArtifactsInput): Promise<ExecutedToolCallResult[]> {
@@ -74,7 +82,7 @@ export class AgentToolExecutionArtifactRecorder {
     const recorded: ExecutedToolCallResult[] = [];
     for (const [index, result] of input.results.entries()) {
       try {
-        const artifact = await this.recordOne({
+        const { artifact, inline, inlinePayload } = await this.recordOne({
           sessionId: input.sessionId,
           requestId: input.requestId,
           step: input.step,
@@ -84,17 +92,30 @@ export class AgentToolExecutionArtifactRecorder {
         });
         artifact.evidence.forEach((entry) => previousEvidence.add(entry.key));
         const semanticProjection = await this.projectSemanticObservation(result);
-        const resultWithoutPayload = { ...result };
-        delete resultWithoutPayload.artifactPayload;
-        const recordedResult = {
+        const resultWithoutPayload = projectArtifactBackedExecution(result);
+        const observationProjection = this.contentPolicyDispatcher.project({
+          value: redactArtifactSecrets(result.result, result.artifactPolicy),
+          policy: result.contentPolicy,
+        });
+        const artifactBackedResult = {
           ...resultWithoutPayload,
           result: projectArtifactAssetLinks(result.result, artifact.assets),
+          ...(inline ? { inlineResult: true as const, inlinePayload } : {}),
+          ...(observationProjection.stats.transformedTargets > 0
+            ? { observationResult: observationProjection.value }
+            : {}),
           artifact,
           ...(semanticProjection ? { semanticProjection } : {}),
         };
+        const presentation = projectAgentToolResultPresentation(artifactBackedResult);
+        const recordedResult = {
+          ...artifactBackedResult,
+          result: projectAgentToolResultEventValue(artifactBackedResult),
+          presentation,
+        };
         recorded.push({
           ...recordedResult,
-          presentation: projectAgentToolResultPresentation(recordedResult),
+          presentation,
         });
       } catch (error) {
         if (error instanceof AgentCancellationError) throw error;
@@ -117,13 +138,14 @@ export class AgentToolExecutionArtifactRecorder {
     const request = result.semanticProjectionRequest;
     if (!request) return undefined;
     try {
+      const process = redactArtifactSecrets(result.process, result.artifactPolicy) as ExecutedToolCallResult["process"];
       const projection = await this.semanticProjector.project({
         request,
         toolName: result.name,
         toolCallId: result.callId,
-        stdout: result.process.stdout,
-        stderr: result.process.stderr,
-        exitCode: result.process.exitCode,
+        stdout: process.stdout,
+        stderr: process.stderr,
+        exitCode: process.exitCode,
       });
       if (projection.kind === "projected") return projection.value;
       this.options.logger?.warn("tool.semantic_projection.failed", {
@@ -151,14 +173,27 @@ export class AgentToolExecutionArtifactRecorder {
     callIndex: number;
     result: ExecutedToolCallResult;
     previousEvidence: Set<string>;
-  }): Promise<ExecutedToolCallArtifact> {
+  }): Promise<{ artifact: ExecutedToolCallArtifact; inline: boolean; inlinePayload?: unknown }> {
     const policy = input.result.artifactPolicy;
     const redactedInput = redactArtifactSecrets(input.result.arguments, policy);
     const redactedRaw = redactArtifactSecrets(input.result.result, policy);
     const redactedOutcome = redactArtifactToolOutcome(input.result.outcome, policy);
+    const redactedRawResponse =
+      input.result.artifactPayload?.rawResponse === undefined
+        ? undefined
+        : redactArtifactSecrets(input.result.artifactPayload.rawResponse, policy);
+    const inline = this.shouldInlinePayload(redactedRaw);
+    const inlinePayload = inline ? redactedRaw : undefined;
     const argsHash = stableArtifactHash(redactedInput);
     const resultHash = stableArtifactHash(redactedRaw);
     const redactionPolicySha256 = stableArtifactHash(policy ?? {});
+    let payloadHash: string;
+    try {
+      payloadHash = await createAgentToolArtifactPayloadHash(input.result, redactedRaw, redactedOutcome);
+    } catch (error) {
+      await markAgentToolOutputCaptureFailed(input.result.outputCapture);
+      throw error;
+    }
     const locator = createAgentArtifactLocator({
       workspaceRoot: this.options.workspaceRoot,
       rootDir: this.options.config.RootDir,
@@ -170,12 +205,13 @@ export class AgentToolExecutionArtifactRecorder {
       toolName: input.result.name,
       argsHash,
       resultHash,
+      payloadHash,
     });
     const releasePublication = await this.publicationLeases.acquire(locator.artifactId);
     try {
       const reservation = await this.fileWriter.reserveArtifactDirectory(locator.absoluteDir);
       if (reservation === AgentArtifactDirectoryReservations.Existing) {
-        return this.recovery.restore({
+        const artifact = await this.recovery.restore({
           locator,
           sessionId: input.sessionId,
           result: input.result,
@@ -186,8 +222,12 @@ export class AgentToolExecutionArtifactRecorder {
           redactedOutcome,
           argsHash,
           resultHash,
+          payloadHash,
           redactionPolicySha256,
+          inline,
         });
+        await finalizeAgentToolOutputCapture(input.result.outputCapture);
+        return { artifact, inline, inlinePayload };
       }
       const publication = new AgentArtifactPublicationSession({
         fileWriter: this.fileWriter,
@@ -201,13 +241,18 @@ export class AgentToolExecutionArtifactRecorder {
           input.result.artifactPayload,
           locator,
           this.fileWriter,
-          policy,
         );
         const evidence = collectArtifactEvidence(
           redactedRaw,
           policy,
           locator.artifactId,
-          projectToolEvidenceCandidates(input.result, redactedRaw, policy, materializedPayload?.assets),
+          projectAgentToolArtifactEvidenceCandidates({
+            result: input.result,
+            redactedResult: redactedRaw,
+            policy,
+            assets: materializedPayload?.assets,
+            inline,
+          }),
         );
         const workspaceArtifacts = input.result.workspaceCapture
           ? await writeToolWorkspaceArtifacts({
@@ -307,9 +352,11 @@ export class AgentToolExecutionArtifactRecorder {
           result: input.result,
           argsHash,
           resultHash,
+          payloadHash,
           redactionPolicySha256,
           redactedInput,
           redactedRaw,
+          redactedRawResponse,
           redactedOutcome,
           workspaceRoot: locator.workspaceRoot,
           rootDir: locator.rootDir,
@@ -319,7 +366,7 @@ export class AgentToolExecutionArtifactRecorder {
           artifactAssetReceipts: materializedPayload?.receipts,
         });
         await publication.commit();
-        return artifact;
+        return { artifact, inline, inlinePayload };
       } catch (error) {
         await publication.fail();
         throw error;
@@ -328,28 +375,64 @@ export class AgentToolExecutionArtifactRecorder {
       releasePublication();
     }
   }
+
+  private shouldInlinePayload(value: unknown): boolean {
+    const limit = this.options.config.InlineResultMaxTokens;
+    if (limit <= 0) return false;
+    // Two-dimensional gate: the model receives the verbatim result, so both the
+    // token budget (what the context window actually costs) and a raw UTF-8 size
+    // bound (against high-compression text that tokenizes efficiently) must hold.
+    const rawSize = estimateInlineUtf8Bytes(value);
+    const fitsBudget =
+      rawSize !== undefined &&
+      rawSize <= this.options.config.InlineResultMaxBytes &&
+      this.tokenProjector.countJson(value) <= limit;
+    return fitsBudget;
+  }
 }
 
-function projectToolEvidenceCandidates(
+function estimateInlineUtf8Bytes(value: unknown): number | undefined {
+  if (typeof value === "string") return Buffer.byteLength(value, "utf8");
+  try {
+    const serialized = JSON.stringify(value);
+    return typeof serialized === "string" ? Buffer.byteLength(serialized, "utf8") : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function projectArtifactBackedExecution(
   result: ExecutedToolCallResult,
-  redactedRaw: unknown,
-  policy: ExecutedToolCallResult["artifactPolicy"],
-  assets: readonly AgentToolArtifactAssetReference[] | undefined,
-) {
-  const declared = readAgentToolEvidenceCandidates(
-    redactArtifactSecrets(result.artifactPayload?.evidence ?? [], policy),
-  );
-  const automatic = createAgentToolEvidenceCandidates(redactedRaw, {
-    source: `${result.name} result`,
-  });
-  return attachAgentToolEvidenceAssets([...declared, ...automatic], assets);
+): Omit<
+  ExecutedToolCallResult,
+  "artifactPayload" | "outputCapture" | "semanticProjectionRequest" | "workspaceCapture"
+> {
+  const {
+    artifactPayload: _artifactPayload,
+    outputCapture: _outputCapture,
+    semanticProjectionRequest: _semanticProjectionRequest,
+    workspaceCapture: _workspaceCapture,
+    observationResult: _observationResult,
+    ...persisted
+  } = result;
+  const hasDurableOutput =
+    result.outputCapture !== undefined || result.process.stdout.length > 0 || result.process.stderr.length > 0;
+  return hasDurableOutput
+    ? {
+        ...persisted,
+        process: {
+          ...result.process,
+          stdout: "",
+          stderr: "",
+        },
+      }
+    : persisted;
 }
 
 async function materializeArtifactPayload(
   payload: ExecutedToolCallResult["artifactPayload"],
   locator: ReturnType<typeof createAgentArtifactLocator>,
   fileWriter: AgentArtifactFileWriter,
-  policy: ExecutedToolCallResult["artifactPolicy"],
 ): Promise<
   | {
       assets: AgentToolArtifactAssetReference[];
@@ -361,23 +444,6 @@ async function materializeArtifactPayload(
   const assets: AgentToolArtifactAssetReference[] = [];
   const receipts = new Map<string, AgentArtifactFileReceipt>();
   const usedFileNames = new Set<string>();
-  if (payload.rawResponse !== undefined) {
-    const fileName = allocateAssetFileName("response", "json", usedFileNames);
-    const relativePath = path.join("assets", fileName);
-    const absolutePath = path.join(locator.absoluteDir, relativePath);
-    const receipt = await fileWriter.writeJson(absolutePath, redactArtifactSecrets(payload.rawResponse, policy));
-    receipts.set(path.resolve(receipt.filePath), receipt);
-    assets.push(
-      createArtifactAssetReference({
-        id: "raw-response",
-        fileName,
-        mediaType: "application/json",
-        relativePath,
-        receipt,
-        locator,
-      }),
-    );
-  }
   const uniqueAssets = [...new Map((payload.assets ?? []).map((asset) => [asset.id, asset])).values()];
   for (const [index, asset] of uniqueAssets.entries()) {
     const extension = assetExtension(asset.mediaType, asset.fileName);

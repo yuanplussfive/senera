@@ -139,6 +139,7 @@ export const EventSpecs = {
         "/data/status",
         "/data/piSessionState",
         "/data/runtime/contextUsage",
+        "/data/runtime/compactionCandidate",
         "/data/runtime/stats/userMessages",
         "/data/runtime/stats/assistantMessages",
         "/data/runtime/stats/toolCalls",

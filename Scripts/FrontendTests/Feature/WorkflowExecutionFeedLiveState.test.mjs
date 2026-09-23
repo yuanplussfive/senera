@@ -9,7 +9,8 @@ const { AgentExecutionFeed, AgentExecutionStageFeed } =
   await import("../../../Frontend/src/features/workflow/AgentExecutionFeed.tsx");
 const { frontendMessage } = await import("../../../Frontend/src/i18n/frontendMessageCatalog.ts");
 const { AppMotionProvider } = await import("../../../Frontend/src/shared/motion/MotionProvider.tsx");
-const { createRun, createStep, createToolBatchRun } = await import("./workflowComponentFixtures.mjs");
+const { createRun, createStep, createSystemToolOrigin, createToolBatchRun } =
+  await import("./workflowComponentFixtures.mjs");
 
 beforeEach(() => {
   removeRadixPortalResidue();
@@ -87,6 +88,14 @@ test("active tool stages keep their action icon and a running child row without 
   const toolStep = run.steps.find((step) => step.toolName === "WorkspaceGrep");
   toolStep.status = "running";
   toolStep.startedAt = "2026-07-11T00:00:00.000Z";
+  toolStep.toolOrigin = createSystemToolOrigin({
+    name: "Workspace tools",
+    category: "workspace-grep",
+    icon: "search",
+    groupId: "workspace",
+    groupTitle: "Explore workspace",
+    action: "Search",
+  });
 
   renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run }));
 
@@ -119,6 +128,15 @@ test("tool chains keep evidence resources out of the activity rows", () => {
   const run = createToolBatchRun(["WebSearch"]);
   const step = run.steps.find((candidate) => candidate.toolName === "WebSearch");
   step.toolArgs = { query: "research article" };
+  step.toolOrigin = createSystemToolOrigin({
+    name: "Web tools",
+    category: "web-search",
+    icon: "globe",
+    groupId: "web",
+    groupTitle: "Web research",
+    action: "Search",
+    argumentPath: "/query",
+  });
   step.toolPresentation = {
     evidence: [
       {

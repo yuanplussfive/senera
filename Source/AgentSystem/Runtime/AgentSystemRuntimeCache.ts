@@ -25,6 +25,7 @@ import type { AgentInferenceBudgetPort } from "../ModelEndpoints/AgentInferenceB
 import type { AgentPluginHost } from "../Plugins/AgentPluginHost.js";
 import type { AgentToolResourceLeaseCoordinator } from "../ToolRuntime/AgentToolResourceScheduler.js";
 import type { AgentMcpHostCapabilitySnapshot } from "../McpPackages/AgentMcpHostRequirements.js";
+import type { AgentPiCompactionCandidateStore } from "../Pi/AgentPiCompactionCandidateStore.js";
 
 export interface AgentSystemRuntimeCacheSnapshot {
   version: number;
@@ -68,6 +69,7 @@ export interface AgentSystemRuntimeCacheRuntimeFactoryInput {
   agenda?: AgentAgendaService;
   worldRuntime?: AgentWorldSnapshotProvider;
   inferenceBudget?: AgentInferenceBudgetPort;
+  piCompactionCandidateStore?: AgentPiCompactionCandidateStore;
   identityDisplayValues?: () => AgentIdentityDisplayValues;
   /** Host services bound to the `senera` self-service command tool. */
   selfService?: import("../SelfService/AgentSelfServiceTypes.js").AgentSelfServicePort;

@@ -21,12 +21,11 @@ describe("DefaultModelSection", () => {
     );
 
     expect(screen.getByText("模型职责")).toBeVisible();
-    expect(screen.getAllByText("必填")).toHaveLength(3);
-    expect(container.querySelectorAll("[data-model-assignment-group]")).toHaveLength(3);
-    expect(container.querySelectorAll("[data-model-assignment-row]")).toHaveLength(3);
+    expect(screen.getAllByText("必填")).toHaveLength(2);
+    expect(container.querySelectorAll("[data-model-assignment-group]")).toHaveLength(2);
+    expect(container.querySelectorAll("[data-model-assignment-row]")).toHaveLength(2);
     expect(container.querySelector('[data-model-assignment-icon="assistant"]')?.tagName).toBe("svg");
     expect(container.querySelector('[data-model-assignment-icon="planner"]')?.tagName).toBe("svg");
-    expect(container.querySelector('[data-model-assignment-icon="embedding"]')?.tagName).toBe("svg");
 
     await user.click(screen.getByRole("button", { name: /默认模型: Chat Alpha/ }));
     expect(screen.queryByRole("menuitem", { name: /embedding-alpha/ })).not.toBeInTheDocument();
@@ -39,21 +38,6 @@ describe("DefaultModelSection", () => {
     expect(updateDraft).toHaveBeenCalledWith(
       expect.objectContaining({
         ActionPlanner: { Client: { ModelProviderId: "chat-b" } },
-      }),
-      "immediate",
-    );
-
-    await user.click(screen.getByRole("button", { name: /嵌入模型: embedding-alpha/ }));
-    expect(screen.queryByRole("menuitem", { name: /Chat Alpha/ })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("menuitem", { name: /embedding-beta/ }));
-    expect(updateDraft).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        VectorModels: {
-          Embedding: {
-            ProviderId: "provider-b",
-            Model: "embedding-beta",
-          },
-        },
       }),
       "immediate",
     );
@@ -126,7 +110,6 @@ function createDraftState(updateDraft) {
         createModel("embedding-a", "provider-a", "embedding-alpha", { Chat: false, Embedding: true }),
         createModel("embedding-b", "provider-b", "embedding-beta", { Chat: false, Embedding: true }),
       ],
-      VectorModels: { Embedding: { ProviderId: "provider-a", Model: "embedding-alpha" } },
     },
     diagnostics: [],
     dirty: false,
@@ -179,22 +162,6 @@ function createSystemConfig(setDefaultProviderModel, { includeChildModelPool = f
               mutation: "config",
               required: true,
             }),
-          ]),
-          createSection("retrieval", [
-            createField(["VectorModels", "Embedding", "ProviderId"], "嵌入供应商", undefined, "provider-a"),
-            createField(
-              ["VectorModels", "Embedding", "Model"],
-              "嵌入模型",
-              {
-                id: "embedding",
-                capability: "Embedding",
-                valueKind: "provider-model",
-                mutation: "config",
-                providerPath: ["VectorModels", "Embedding", "ProviderId"],
-                required: true,
-              },
-              "embedding-alpha",
-            ),
           ]),
         ],
       },
@@ -282,7 +249,7 @@ function createField(path, label, modelSelection, effectiveValue) {
         ? "models"
         : path[0] === "ActionPlanner"
           ? "planning"
-          : "retrieval",
+          : "other",
     key: path.at(-1),
     path,
     type: path.length === 1 && path[0] !== "DefaultModelProviderId" ? "array" : "string",

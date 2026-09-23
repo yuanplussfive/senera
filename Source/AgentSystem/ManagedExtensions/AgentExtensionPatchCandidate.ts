@@ -14,11 +14,6 @@ interface ExtensionPatchTarget {
 export interface AgentExtensionPatchPlan {
   readonly writes: ReadonlyMap<string, { readonly target: ExtensionPatchTarget; readonly content: string }>;
   readonly deletes: ReadonlyMap<string, { readonly target: ExtensionPatchTarget }>;
-  readonly createDirectories: ReadonlyMap<string, { readonly target: ExtensionPatchTarget }>;
-  readonly deleteDirectories: ReadonlyMap<
-    string,
-    { readonly target: ExtensionPatchTarget; readonly recursive: boolean }
-  >;
 }
 
 export interface AgentExtensionPatchValidation {
@@ -94,10 +89,6 @@ function materializeCandidate(
   sourcePath: string,
   candidatePath: string,
 ): void {
-  for (const directory of plan.createDirectories.values()) {
-    const target = projectCandidatePath(workspaceRoot, sourcePath, candidatePath, directory.target.relativePath);
-    if (target) fs.mkdirSync(target, { recursive: true });
-  }
   for (const write of plan.writes.values()) {
     const target = projectCandidatePath(workspaceRoot, sourcePath, candidatePath, write.target.relativePath);
     if (target) writeFileAtomicSync(target, write.content);
@@ -105,10 +96,6 @@ function materializeCandidate(
   for (const deletion of plan.deletes.values()) {
     const target = projectCandidatePath(workspaceRoot, sourcePath, candidatePath, deletion.target.relativePath);
     if (target) fs.rmSync(target);
-  }
-  for (const deletion of plan.deleteDirectories.values()) {
-    const target = projectCandidatePath(workspaceRoot, sourcePath, candidatePath, deletion.target.relativePath);
-    if (target) fs.rmSync(target, { recursive: deletion.recursive });
   }
 }
 

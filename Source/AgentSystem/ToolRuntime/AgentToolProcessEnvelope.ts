@@ -86,7 +86,7 @@ export function createToolProcessFailureResponse(error: AgentToolProcessError): 
 
 export function toolProcessSuccessResult(
   result: unknown,
-  options: { readonly artifactPayload?: AgentToolArtifactPayload } = {},
+  options: { readonly artifactPayload?: AgentToolArtifactPayload; readonly validationResult?: unknown } = {},
 ): AgentToolProcessRunResult {
   return {
     response: createToolProcessSuccessResponse(result),
@@ -95,6 +95,7 @@ export function toolProcessSuccessResult(
     exitCode: null,
     signal: null,
     ...(options.artifactPayload ? { artifactPayload: options.artifactPayload } : {}),
+    ...(options.validationResult === undefined ? {} : { validationResult: options.validationResult }),
   };
 }
 

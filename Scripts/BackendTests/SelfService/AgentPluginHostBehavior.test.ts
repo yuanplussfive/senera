@@ -295,6 +295,30 @@ describe("senera plugin host", () => {
     expect(host.list().find((entry) => entry.id === "solo")?.error).toMatch(/未提供审批传输注册表/);
   });
 
+  test("third-party plugin tools require approval; bundled tools are trusted", async () => {
+    const root = createTemporaryRoot();
+    writePlugin(root, "bundle-tool", { id: "bundle-tool", source: "bundled" });
+    writePlugin(root, "user-tool", { id: "user-tool", source: "user" });
+    const loader = loaderByManifest((id, context) => {
+      context.registerTool([pluginToolFixture(id === "bundle-tool" ? "BundleTool" : "UserTool")]);
+    });
+
+    const host = new AgentPluginHost({
+      sources: sourcesFor(root),
+      enabled: ["user-tool"],
+      loadEntry: loader.load,
+    });
+    host.discover();
+    await host.load();
+
+    const registry = new AgentExtensionRegistry();
+    host.applyTools(registry);
+    expect(registry.getTool("BundleTool")?.owner.requiresApproval).toBe(false);
+    expect(registry.getTool("BundleTool")?.owner.trusted).toBe(true);
+    expect(registry.getTool("UserTool")?.owner.requiresApproval).toBe(true);
+    expect(registry.getTool("UserTool")?.owner.trusted).toBe(false);
+  });
+
   test("runs onStart and onShutdown hooks in registration order", async () => {
     const root = createTemporaryRoot();
     writePlugin(root, "hooker", { id: "hooker", source: "bundled" });
@@ -536,7 +560,7 @@ function portPluginsFor(host: AgentPluginHost): NonNullable<AgentSelfServicePort
 function pluginToolFixture(name: string): RegisteredTool {
   return {
     name,
-    loading: "eager",
+    loading: "Bootstrap",
     permissions: [],
     handler: { kind: "HostCapability", capability: name },
     execution: { Workspace: "ReadOnly" },

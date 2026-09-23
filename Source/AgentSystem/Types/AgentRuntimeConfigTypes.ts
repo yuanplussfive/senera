@@ -165,7 +165,8 @@ export interface ResolvedAgentPresetsConfig extends Required<Omit<AgentPresetsCo
 
 export interface AgentArtifactsConfig {
   RootDir?: string;
-  SummaryMaxChars?: number;
+  InlineResultMaxTokens?: number;
+  InlineResultMaxBytes?: number;
   RawJsonMaxBytes?: number;
   TextFileMaxBytes?: number;
   MemoryReadMaxArtifacts?: number;
@@ -183,7 +184,8 @@ export interface AgentArtifactsConfig {
 
 export interface ResolvedAgentArtifactsConfig {
   RootDir: string;
-  SummaryMaxChars: number;
+  InlineResultMaxTokens: number;
+  InlineResultMaxBytes: number;
   RawJsonMaxBytes: number;
   TextFileMaxBytes: number;
   MemoryReadMaxArtifacts: number;
@@ -237,6 +239,8 @@ export interface AgentPromptConfig {
   TimeZone?: string;
   /** Rewrite the short preface shown before tool execution; independent of presets. */
   PrefaceRewrite?: boolean;
+  /** Rewrite the settled final answer independently of presets (polish tier when no card). */
+  FinalResponseRewrite?: boolean;
   /** Re-anchor persona before the reference stage when a preset is active. */
   RoleCheck?: boolean;
   /** Wrap BAML tool observations with attribution="tool" at the projection exit. */
@@ -248,6 +252,8 @@ export interface ResolvedAgentPromptConfig {
   TimeZone: string;
   /** Optional for backwards-compatible embedders; resolver always supplies false/true. */
   PrefaceRewrite?: boolean;
+  /** Optional for backwards-compatible embedders; resolver always supplies false/true. */
+  FinalResponseRewrite?: boolean;
   RoleCheck: boolean;
   BamlToolAttribution: boolean;
 }

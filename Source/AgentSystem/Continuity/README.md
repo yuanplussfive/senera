@@ -25,7 +25,7 @@ Continuity 将完成回合的物理来源建模为可追溯的学习记录、稳
 - 本地召回采用有界级联：先执行原始查询，再仅在结果缺失或歧义时尝试会话上下文与一轮伪相关反馈。候选阶段必须保留基线的直接证据、分数和首位，近失配只用于诊断，不能制造“改进”。反馈的词项统计统一覆盖学习事实和物理事件，并按 URI 去重。
 - 关系检索先由本地 MiniSearch/Jieba/模糊匹配生成 query plan，再在已确认实体上执行至多一跳扩展；直接命中的关系 ID 优先于泛化邻边。图扩展只拓宽候选，不会直接断言事实或触发通知。
 - Recall 生命周期采用轻量分层策略：配置中的 TurnValueClassifier 只在本地分类器对回合价值做出高置信度判断后跳过文本事实/事件检索，画像、Goal、信号和规则评估仍然执行；索引由按 scope 的数据库 revision 和 TTL 控制复用。
-- resident profile 只包含稳定画像键值，但作为最新 `senera.turn_context` 的可变快照渲染；画像更新不会重建人格与执行内核的稳定前缀。
+- resident profile 只包含稳定画像键值，并投影到可缓存的 stable system tier；画像自身发生变化时才更新该 tier。规则和关联 signal 则作为请求级 live overlay 发送，历史 facts/events/digests/evidence 不会随每轮重复注入。
 - 事实学习动态目录同时提供 `profileCatalog`（用户）和 `agentProfileCatalog`（Resident），模型可复用同一主体的精确键来更新画像，避免自我演化产生重复键或把用户偏好写到 Resident 身上。
 - 会话内对话示例由本地来源索引按相关度选择，不调用模型；示例只作为带边界的引用风格资料，复用事件槽位与字符预算，永不替代事实或规则证据。
 - 完成回合后，AgentMemoryService 通过微任务调用连续性预取，只预热本地确定性索引，不调用模型、不写入 ledger，也不阻塞已完成回合的提交；预取目录与正式请求共享同一 scope 快照。物理 episode 检索直接读取 memory_episodes/memory_sources，学习门控跳过或延迟时仍可按引用召回。
@@ -59,4 +59,5 @@ Continuity 将完成回合的物理来源建模为可追溯的学习记录、稳
 
 - MemoryWriteTool 只产生明确记忆意图及其有效期的物理工具证据；完成回合学习器负责持久化，工具不建立第二套写入表。
 - MemoryRecallTool 同时检索 learning.record 和物理 episode/source 事件；命中后仍只通过 senera://memory-source/... 解引用正文，不把整段历史自动塞进提示词。
+- MemoryRecallTool 将调用方取消作为终止信号传入语义检索；语义超时或提供方故障仍可返回词法证据，但会在 `retrieval.semantic` 中给出紧凑状态，避免把降级结果伪装成完整语义召回。
 - 不要重新引入旧版 assertion 候选池、向量记忆、worldbook 或 MEMORY.md 分支。规则 maturity 是规范头的证据状态，不是第二套待晋升记录。

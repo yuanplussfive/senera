@@ -9,6 +9,7 @@ export const AgentToolObservationOmissionReasons = {
   TypeMismatch: "type_mismatch",
   UnsupportedValue: "unsupported_value",
   ArtifactPolicy: "artifact_policy",
+  ContentProjection: "content_projection",
   TokenLimit: "token_limit",
 } as const;
 

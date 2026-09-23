@@ -10,7 +10,11 @@ import {
   AgentPiCompactionSummaryFormatter,
   DefaultAgentPiCompactionSummaryFormatterOptions,
 } from "../../../Source/AgentSystem/Pi/AgentPiCompactionSummaryFormatter.js";
-import { compilePiToolObservation, piToolResultMessage } from "../Support/PiToolObservationFixtures.js";
+import {
+  compilePiToolObservation,
+  boundPiToolObservationView,
+  piToolResultMessage,
+} from "../Support/PiToolObservationFixtures.js";
 import { buildAgentPiCompactionPromptJson } from "../../../Source/AgentSystem/PiShared/AgentPiCompactionPrompt.js";
 import { AgentPiCompactionSummaryBridgeCustomType } from "../../../Source/AgentSystem/Pi/AgentPiCompactionSummaryBridge.js";
 import { AgentPiNativeToolBridgeName } from "../../../Source/AgentSystem/Pi/AgentPiNativeToolBridge.js";
@@ -202,11 +206,10 @@ describe("Pi compaction projection policy", () => {
     });
     const oversizedObservation = {
       ...observation,
-      observation_view: {
-        ...observation.observation_view,
+      observation_view: boundPiToolObservationView(observation, {
         complete: false,
         artifact_uri: "senera://artifact/large-result",
-      },
+      }),
       detail: {
         ...observation.detail,
         result: { text: "payload-".repeat(20_000) },

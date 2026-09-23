@@ -8,7 +8,10 @@ export interface ModelRequestLifetime {
   dispose: () => void;
 }
 
-export function createModelRequestLifetime(config: ModelProviderConfig, parent?: AbortSignal): ModelRequestLifetime {
+export function createModelRequestLifetime(
+  config: Pick<ModelProviderConfig, "MaxRequestMs">,
+  parent?: AbortSignal,
+): ModelRequestLifetime {
   if (config.MaxRequestMs === -1) {
     return parent
       ? {

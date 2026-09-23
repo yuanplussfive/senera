@@ -2,19 +2,24 @@ import { reduceExecution, type CompactResult, type ToolExecutionInput } from "to
 import { errorMessage } from "../Core/AgentErrors.js";
 
 export const AgentToolSemanticProjectionKinds = {
-  TerminalExecution: "terminal_execution",
+  Execution: "execution",
 } as const;
 
 export type AgentToolSemanticProjectionKind =
   (typeof AgentToolSemanticProjectionKinds)[keyof typeof AgentToolSemanticProjectionKinds];
 
-export interface AgentTerminalExecutionSemanticProjectionRequest {
-  readonly kind: typeof AgentToolSemanticProjectionKinds.TerminalExecution;
+/**
+ * A compact description of any host process whose complete transcript is
+ * durable in an Artifact. It intentionally identifies the operation without
+ * making individual tool implementations own their own reducer protocol.
+ */
+export interface AgentExecutionSemanticProjectionRequest {
+  readonly kind: typeof AgentToolSemanticProjectionKinds.Execution;
   readonly command: string;
   readonly cwd: string;
 }
 
-export type AgentToolSemanticProjectionRequest = AgentTerminalExecutionSemanticProjectionRequest;
+export type AgentToolSemanticProjectionRequest = AgentExecutionSemanticProjectionRequest;
 
 export interface AgentToolSemanticProjection {
   readonly kind: AgentToolSemanticProjectionKind;

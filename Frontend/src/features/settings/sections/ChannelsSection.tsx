@@ -16,8 +16,7 @@ import { projectSystemExtensionConfigurationSections } from "../systemExtensionC
 import { readSettingsExtensionDraft, writeSettingsExtensionDraft } from "./SystemToolsSection";
 import type { ConfigSettingsDraftState, ConfigDraftSaveMode } from "./configSettingsDraftState";
 import { projectSectionConfigFields } from "./runtimeModelAssignments";
-
-const ChannelsExtensionId = "agent-channels";
+import { AgentSystemExtensionSettingsSurfaces } from "../../../../../Source/AgentSystem/Types/AgentSystemExtensionSettingsSurface";
 
 const ChannelSectionIds = ["telegram", "qq", "discord"] as const;
 
@@ -67,7 +66,8 @@ export function ChannelsSection({
 }): JSX.Element {
   const locale = useFrontendLocale();
   const extensions = systemConfig?.systemExtensions ?? [];
-  const channelExtension = extensions.find((extension) => extension.id === ChannelsExtensionId) ?? null;
+  const channelExtension =
+    extensions.find((extension) => extension.settingsSurface === AgentSystemExtensionSettingsSurfaces.Channels) ?? null;
   const connected = systemConfig?.socketStatus === "open";
   const draft = channelExtension ? readSettingsExtensionDraft(draftState.draft, channelExtension) : null;
   const enabled = draft?.enabled ?? true;

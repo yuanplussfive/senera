@@ -1,5 +1,6 @@
 import type { ToolArtifactPolicyManifest } from "./AgentArtifactContractTypes.js";
 import type { ToolSearchManifest } from "./AgentToolSearchContractTypes.js";
+import type { AgentToolContentPolicy } from "./AgentToolContentPolicyTypes.js";
 
 export type {
   ToolArtifactConditionManifest,
@@ -46,6 +47,16 @@ export const ToolLoadingModes = {
 } as const;
 
 export type ToolLoadingMode = (typeof ToolLoadingModes)[keyof typeof ToolLoadingModes];
+
+/**
+ * A planner protocol controls how a provider receives and executes tool
+ * schemas. This is separate from Loading: Loading selects direct versus
+ * discovery invocation, while PlanningModes declares which protocols can
+ * faithfully represent that contract.
+ */
+export const ToolPlanningModes = ["native", "baml"] as const;
+
+export type ToolPlanningMode = (typeof ToolPlanningModes)[number];
 
 export const AgentToolChildGrantModes = {
   Inherit: "inherit",
@@ -139,6 +150,7 @@ export type ToolHandlerManifest =
 export interface ToolManifest {
   Name: string;
   Loading?: ToolLoadingMode;
+  PlanningModes?: ToolPlanningMode[];
   DescriptionFile?: string;
   Permissions?: string[];
   Handler: ToolHandlerManifest;
@@ -149,4 +161,5 @@ export interface ToolManifest {
   Approval?: ToolApprovalManifest;
   Artifacts?: ToolArtifactPolicyManifest;
   ArtifactPolicyFile?: string;
+  ContentPolicy?: AgentToolContentPolicy;
 }

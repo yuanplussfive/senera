@@ -1,7 +1,11 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { describe, expect, test } from "vitest";
 import { projectAgentPiContextForPressure } from "../../../Source/AgentSystem/Pi/AgentPiContextPressureProjection.js";
-import { compilePiToolObservation, piToolResultMessage } from "../Support/PiToolObservationFixtures.js";
+import {
+  compilePiToolObservation,
+  boundPiToolObservationView,
+  piToolResultMessage,
+} from "../Support/PiToolObservationFixtures.js";
 
 describe("Pi context pressure projection", () => {
   test("projects old Artifact-backed results while keeping the active turn intact", () => {
@@ -12,11 +16,10 @@ describe("Pi context pressure projection", () => {
           arguments: { input: "argument-".repeat(1_000) },
           process: { stdout: "stdout-".repeat(1_000) },
         }),
-        observation_view: {
-          ...compilePiToolObservation().observation_view,
+        observation_view: boundPiToolObservationView(compilePiToolObservation(), {
           complete: false,
           artifact_uri: "senera://artifact/old",
-        },
+        }),
       },
       { toolCallId: "old-call", toolName: "OldTool" },
     );
@@ -65,11 +68,10 @@ describe("Pi context pressure projection", () => {
     const message = piToolResultMessage(
       {
         ...observation,
-        observation_view: {
-          ...observation.observation_view,
+        observation_view: boundPiToolObservationView(observation, {
           complete: false,
           artifact_uri: "senera://artifact/observed",
-        },
+        }),
       },
       { toolCallId: "call-observed", toolName: "ObservedTool" },
     );
@@ -90,7 +92,7 @@ describe("Pi context pressure projection", () => {
     const message = piToolResultMessage(
       {
         ...observation,
-        observation_view: { ...observation.observation_view, complete: false, artifact_uri: undefined },
+        observation_view: boundPiToolObservationView(observation, { complete: false, artifact_uri: undefined }),
       },
       { toolCallId: "call-1", toolName: "Tool" },
     );
@@ -107,7 +109,13 @@ describe("Pi context pressure projection", () => {
     const observation = compilePiToolObservation();
     const message = {
       ...piToolResultMessage(
-        { ...observation, observation_view: { ...observation.observation_view, complete: false } },
+        {
+          ...observation,
+          observation_view: boundPiToolObservationView(observation, {
+            complete: false,
+            artifact_uri: "senera://artifact/call-image",
+          }),
+        },
         { toolCallId: "call-image", toolName: "ImageTool" },
       ),
       content: [
@@ -115,7 +123,10 @@ describe("Pi context pressure projection", () => {
           type: "text" as const,
           text: JSON.stringify({
             ...observation,
-            observation_view: { ...observation.observation_view, complete: false },
+            observation_view: boundPiToolObservationView(observation, {
+              complete: false,
+              artifact_uri: "senera://artifact/call-image",
+            }),
           }),
         },
         { type: "image" as const, data: "a".repeat(10_000), mimeType: "image/png" },

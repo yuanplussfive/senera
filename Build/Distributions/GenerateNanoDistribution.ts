@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import {
   AgentSandboxDistributionContractSchema,
   resolveAgentSandboxDistributionTarget,
@@ -244,13 +245,14 @@ function copySelectedFiles(sourceRoot: string, outputRoot: string, pathspecs: re
     ["ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", ...pathspecs],
     { cwd: sourceRoot, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
   );
-  const files = output
+  const selectedFiles = output
     .split("\0")
     .filter(Boolean)
     // `git ls-files --cached` retains paths deleted in the working tree. Nano
     // projects the actual source tree, so those paths must not be copied.
     .filter((relativePath) => existsSync(resolveContainedPath(sourceRoot, relativePath)))
     .sort((left, right) => left.localeCompare(right));
+  const files = expandRelativeModuleClosure(sourceRoot, selectedFiles);
   if (files.length === 0) throw new Error("Nano file projection selected no files.");
 
   for (const relativePath of files) {
@@ -262,6 +264,118 @@ function copySelectedFiles(sourceRoot: string, outputRoot: string, pathspecs: re
     copyFileSync(sourcePath, destinationPath);
     chmodSync(destinationPath, stats.mode & 0o777);
   }
+}
+
+/**
+ * Nano starts from the intentional distribution surface, then closes it over
+ * source-relative modules. App assembly is routinely split into focused
+ * modules, and requiring every split to be duplicated in a pathspec creates a
+ * release-only failure mode. Package imports remain package-manager owned;
+ * only source files that must travel with their importer are added here.
+ */
+function expandRelativeModuleClosure(sourceRoot: string, selectedFiles: readonly string[]): string[] {
+  const files = new Set(selectedFiles);
+  const pending = [...files].filter(isModuleSourceFile);
+  while (pending.length > 0) {
+    const relativePath = pending.pop();
+    if (!relativePath) continue;
+    const sourcePath = resolveContainedPath(sourceRoot, relativePath);
+    const source = readFileSync(sourcePath, "utf8");
+    for (const specifier of relativeModuleSpecifiers(sourcePath, source)) {
+      const dependency = resolveRelativeModuleSource(sourceRoot, sourcePath, specifier);
+      if (files.has(dependency)) continue;
+      files.add(dependency);
+      if (isModuleSourceFile(dependency)) pending.push(dependency);
+    }
+  }
+  return [...files].sort((left, right) => left.localeCompare(right));
+}
+
+function relativeModuleSpecifiers(filePath: string, source: string): readonly string[] {
+  const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true);
+  const specifiers = new Set<string>();
+  const addSpecifier = (value: ts.Expression | undefined): void => {
+    if (value && ts.isStringLiteralLike(value) && value.text.startsWith(".")) specifiers.add(value.text);
+  };
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node)) {
+      const clause = node.importClause;
+      const runtimeBinding =
+        !clause ||
+        (!clause.isTypeOnly &&
+          (Boolean(clause.name) ||
+            Boolean(clause.namedBindings && ts.isNamespaceImport(clause.namedBindings)) ||
+            Boolean(
+              clause.namedBindings &&
+              ts.isNamedImports(clause.namedBindings) &&
+              clause.namedBindings.elements.some((element) => !element.isTypeOnly),
+            )));
+      if (runtimeBinding) addSpecifier(node.moduleSpecifier);
+    } else if (ts.isExportDeclaration(node)) {
+      const runtimeBinding =
+        !node.isTypeOnly &&
+        (!node.exportClause ||
+          ts.isNamespaceExport(node.exportClause) ||
+          node.exportClause.elements.some((element) => !element.isTypeOnly));
+      if (runtimeBinding) addSpecifier(node.moduleSpecifier);
+    } else if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
+      addSpecifier(node.moduleReference.expression);
+    } else if (
+      ts.isCallExpression(node) &&
+      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+        (ts.isIdentifier(node.expression) && node.expression.text === "require"))
+    ) {
+      addSpecifier(node.arguments[0]);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return [...specifiers];
+}
+
+function resolveRelativeModuleSource(sourceRoot: string, sourcePath: string, specifier: string): string {
+  const unresolved = path.resolve(path.dirname(sourcePath), specifier);
+  const relative = path.relative(sourceRoot, unresolved);
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error(`Nano relative module import escapes the source root: ${toPosixPath(sourcePath)} -> ${specifier}`);
+  }
+  const candidates = relativeModuleCandidates(unresolved);
+  const resolved = candidates.find((candidate) => existsSync(candidate) && lstatSync(candidate).isFile());
+  if (!resolved) {
+    throw new Error(`Nano could not resolve relative module import: ${toPosixPath(sourcePath)} -> ${specifier}`);
+  }
+  return toPosixPath(path.relative(sourceRoot, resolved));
+}
+
+function relativeModuleCandidates(unresolved: string): readonly string[] {
+  const candidates = new Set<string>([unresolved]);
+  const extension = path.extname(unresolved);
+  const replacementExtensions = new Map<string, readonly string[]>([
+    [".js", [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx"]],
+    [".jsx", [".tsx", ".ts", ".jsx", ".js"]],
+    [".mjs", [".mts", ".mjs"]],
+    [".cjs", [".cts", ".cjs"]],
+  ]).get(extension);
+  if (replacementExtensions) {
+    const stem = unresolved.slice(0, -extension.length);
+    for (const replacement of replacementExtensions) candidates.add(`${stem}${replacement}`);
+  } else if (!extension) {
+    for (const suffix of [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".d.ts", ".json"]) {
+      candidates.add(`${unresolved}${suffix}`);
+      candidates.add(path.join(unresolved, `index${suffix}`));
+    }
+  }
+  return [...candidates];
+}
+
+function isModuleSourceFile(relativePath: string): boolean {
+  return [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"].some((extension) =>
+    relativePath.endsWith(extension),
+  );
+}
+
+function toPosixPath(value: string): string {
+  return value.split(path.sep).join("/");
 }
 
 function projectFiles(sourceRoot: string, outputRoot: string, projections: readonly FileProjection[]): void {

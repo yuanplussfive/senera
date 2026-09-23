@@ -24,6 +24,9 @@ describe("agent workspace layout", () => {
       channels: path.join(root, ".senera", "data", "channels", "channels.sqlite"),
       toolSearch: path.join(root, ".senera", "data", "tool-search", "tool-search.sqlite"),
     });
+    expect(layout.caches).toEqual({
+      toolSearchEmbeddings: path.join(root, ".senera", "data", "tool-search", "embeddings.json"),
+    });
     expect(layout.configSecretKey).toBe(path.join(root, ".senera", "data", "config", "config-secrets.key"));
     expect(layout.credentialSecretKey).toBe(path.join(root, ".senera", "data", "credentials", "credentials.key"));
   });

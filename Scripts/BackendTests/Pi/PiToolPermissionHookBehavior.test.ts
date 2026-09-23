@@ -10,12 +10,14 @@ import { AgentToolExposureState } from "../../../Source/AgentSystem/ToolRuntime/
 import { AgentModelUsageLedger } from "../../../Source/AgentSystem/ModelEndpoints/AgentModelUsage.js";
 import { AgentPiToolPlanCoordinator } from "../../../Source/AgentSystem/PiShared/AgentPiToolPlanCoordinator.js";
 import { AgentTurnTokenBudget } from "../../../Source/AgentSystem/Text/AgentTurnTokenBudget.js";
+import { createTool } from "../ToolSearch/ToolSearchTestFixtures.js";
 
 describe("Pi tool permission hook behavior", () => {
   test("blocks a registered request that is outside the authoritative access grant", async () => {
     const authorize = vi.fn();
     const hook = new AgentPiToolPermissionHook({
       registry: { getTool: () => ({ name: "ToolB" }) } as unknown as AgentExtensionRegistry,
+      toolPlanningMode: "native",
       permissionGate: { authorize } as unknown as AgentToolPermissionGate,
       executionCapabilities: () => createSeneraExecutionRuntimeCapabilities(),
       resourceCapabilities: new AgentToolResourceCapabilityRegistry(),
@@ -45,10 +47,23 @@ describe("Pi tool permission hook behavior", () => {
     };
     const snapshot = structuredClone(input);
     const authorize = vi.fn(async (request) => {
-      expect(request.arguments).toBe(input);
+      expect(request.arguments).toEqual(input);
+    });
+    const shell = createTool({
+      name: "ShellCommandTool",
+      title: "Shell command",
+      summary: "Run one shell command.",
+      tags: ["shell"],
+      actions: ["execute"],
+      targets: ["process"],
+      priority: 1,
+      loading: "Bootstrap",
     });
     const hook = new AgentPiToolPermissionHook({
-      registry: { getTool: () => undefined } as unknown as AgentExtensionRegistry,
+      registry: {
+        getTool: (name: string) => (name === shell.name ? shell : undefined),
+      } as unknown as AgentExtensionRegistry,
+      toolPlanningMode: "native",
       permissionGate: { authorize } as unknown as AgentToolPermissionGate,
       executionCapabilities: () => createSeneraExecutionRuntimeCapabilities(),
       resourceCapabilities: new AgentToolResourceCapabilityRegistry(),
@@ -71,6 +86,16 @@ describe("Pi tool permission hook behavior", () => {
 
   test("uses the active turn state as the approval-mode authority", async () => {
     const grant = toolAccessGrant(["TestTool"], ["TestTool"]);
+    const testTool = createTool({
+      name: "TestTool",
+      title: "Test tool",
+      summary: "Run the test tool.",
+      tags: ["test"],
+      actions: ["execute"],
+      targets: ["test"],
+      priority: 1,
+      loading: "Bootstrap",
+    });
     const turnState = new AgentPiTurnState({
       approvalMode: "agent",
       sessionId: "session-turn-mode",
@@ -90,7 +115,10 @@ describe("Pi tool permission hook behavior", () => {
     turnState.registerToolBatch("batch-turn-mode", [{ toolCallId: "call-turn-mode", toolName: "TestTool", input: {} }]);
     const authorize = vi.fn(async () => ({ action: "allow" as const, rule: "test", reason: "ok", riskSignals: [] }));
     const hook = new AgentPiToolPermissionHook({
-      registry: { getTool: () => undefined } as unknown as AgentExtensionRegistry,
+      registry: {
+        getTool: (name: string) => (name === testTool.name ? testTool : undefined),
+      } as unknown as AgentExtensionRegistry,
+      toolPlanningMode: "native",
       permissionGate: { authorize } as unknown as AgentToolPermissionGate,
       executionCapabilities: () => createSeneraExecutionRuntimeCapabilities(),
       resourceCapabilities: new AgentToolResourceCapabilityRegistry(),
@@ -106,5 +134,70 @@ describe("Pi tool permission hook behavior", () => {
     );
 
     expect(authorize).toHaveBeenCalledWith(expect.objectContaining({ approvalMode: "agent" }));
+  });
+
+  test("allows an authorized Bootstrap tool without requiring dynamic exposure", async () => {
+    const shell = createTool({
+      name: "ShellCommandTool",
+      title: "Shell command",
+      summary: "Run one shell command.",
+      tags: ["shell"],
+      actions: ["execute"],
+      targets: ["process"],
+      priority: 1,
+      loading: "Bootstrap",
+    });
+    const authorize = vi.fn(async () => ({ action: "allow" as const, rule: "test", reason: "ok", riskSignals: [] }));
+    const hook = new AgentPiToolPermissionHook({
+      registry: {
+        getTool: (name: string) => (name === shell.name ? shell : undefined),
+      } as unknown as AgentExtensionRegistry,
+      toolPlanningMode: "native",
+      permissionGate: { authorize } as unknown as AgentToolPermissionGate,
+      executionCapabilities: () => createSeneraExecutionRuntimeCapabilities(),
+      resourceCapabilities: new AgentToolResourceCapabilityRegistry(),
+    });
+    const grant = toolAccessGrant([shell.name], []);
+
+    const result = await hook.authorize(
+      {
+        approvalMode: "agent",
+        sessionId: "session-direct",
+        requestId: "request-direct",
+        step: 1,
+        toolAccessGrant: grant,
+        toolExposure: new AgentToolExposureState(grant),
+      },
+      { toolCallId: "call-direct", toolName: shell.name, input: {} },
+    );
+
+    expect(result).toBeUndefined();
+    expect(authorize).toHaveBeenCalledOnce();
+  });
+
+  test("blocks a stale authorization entry for a tool no longer in the registry", async () => {
+    const authorize = vi.fn();
+    const hook = new AgentPiToolPermissionHook({
+      registry: { getTool: () => undefined } as unknown as AgentExtensionRegistry,
+      toolPlanningMode: "native",
+      permissionGate: { authorize } as unknown as AgentToolPermissionGate,
+      executionCapabilities: () => createSeneraExecutionRuntimeCapabilities(),
+      resourceCapabilities: new AgentToolResourceCapabilityRegistry(),
+    });
+
+    const result = await hook.authorize(
+      {
+        approvalMode: "agent",
+        sessionId: "session-stale-tool",
+        requestId: "request-stale-tool",
+        step: 1,
+        toolAccessGrant: toolAccessGrant(["RemovedTool"], ["RemovedTool"]),
+      },
+      { toolCallId: "call-stale-tool", toolName: "RemovedTool", input: {} },
+    );
+
+    expect(result).toMatchObject({ block: true });
+    expect(result?.reason).toContain("RemovedTool");
+    expect(authorize).not.toHaveBeenCalled();
   });
 });

@@ -4,30 +4,15 @@ import type { AgentToolSearchRerankDocument } from "./AgentToolSearchReranker.js
 import type { AgentToolCapabilityCacheState } from "./AgentToolCapabilitySessionCache.js";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 
-export const AgentToolSearchResultModes = {
-  Ranked: "ranked",
-  Catalog: "catalog",
-} as const;
-
-export type AgentToolSearchResultMode = (typeof AgentToolSearchResultModes)[keyof typeof AgentToolSearchResultModes];
-
 export interface AgentToolSearchOptions {
+  /** Original user task. Declaration identity and complete examples are
+   * compared against this value without discarding supplied resource values. */
   query: string;
   interaction?: AgentInteractionContext;
-  preferredSourceIds?: readonly string[];
   plannerTags?: readonly string[];
-  includeLoaded?: boolean;
   loadedToolNames?: readonly string[];
   authorizedToolNames?: readonly string[];
   memoryEvidence?: readonly AgentToolSearchMemoryEvidence[];
-  semanticEvidence?: readonly AgentToolSearchSemanticEvidence[];
-  /** Explicit discovery keeps every eligible Dynamic tool visible. */
-  resultMode?: AgentToolSearchResultMode;
-}
-
-export interface AgentToolSearchSemanticEvidence {
-  toolName: string;
-  score: number;
 }
 
 export interface AgentToolSearchResult {
@@ -40,6 +25,11 @@ export interface AgentToolSearchResult {
   parameterSummary: string;
   permissions: string[];
   score: number;
+  /** Raw cosine evidence from the local semantic channel, when that channel
+   * participated in this retrieval. This stays internal to the runtime
+   * result; the model-facing projection deliberately exposes only ranked
+   * confidence. */
+  semanticScore?: number;
   ranks: Record<string, number>;
   matchedTerms: string[];
   matchedCapabilities: AgentToolSearchCapabilityMatch[];
@@ -51,6 +41,47 @@ export interface AgentToolSearchResult {
     readonly exposure: "visible" | "discoverable";
   };
 }
+
+/**
+ * Search execution and model disclosure deliberately have different scopes.
+ * Every retrieval channel contributes to the same candidate set; the
+ * confidence planner then assigns a query-relative tier. `match` is the
+ * strongest evidence band, `maybe` retains independent but uncertain
+ * coverage, and `omitted` is available only for compact source-level
+ * disclosure.
+ */
+export interface AgentToolSearchDiscovery {
+  readonly match: readonly AgentToolSearchResult[];
+  readonly maybe: readonly AgentToolSearchResult[];
+  readonly omitted: readonly AgentToolSearchResult[];
+  readonly status?: AgentToolSearchDiscoveryStatus;
+  readonly reason?: AgentToolSearchEmptyReason;
+  readonly diagnostics?: readonly AgentToolSearchDiagnostic[];
+  readonly catalogRevision?: string;
+}
+
+export const AgentToolSearchDiscoveryStatuses = {
+  Empty: "empty",
+  Stale: "stale",
+} as const;
+
+export type AgentToolSearchDiscoveryStatus =
+  (typeof AgentToolSearchDiscoveryStatuses)[keyof typeof AgentToolSearchDiscoveryStatuses];
+
+export const AgentToolSearchEmptyReasons = {
+  NoAvailableTools: "no_available_tools",
+  NotAuthorized: "not_authorized",
+  NoMatch: "no_match",
+  CatalogChanged: "catalog_changed",
+} as const;
+
+export type AgentToolSearchEmptyReason = (typeof AgentToolSearchEmptyReasons)[keyof typeof AgentToolSearchEmptyReasons];
+
+export const AgentToolSearchDiagnostics = {
+  SemanticUnavailable: "semantic_unavailable",
+} as const;
+
+export type AgentToolSearchDiagnostic = (typeof AgentToolSearchDiagnostics)[keyof typeof AgentToolSearchDiagnostics];
 
 export interface AgentToolSearchSource {
   id: string;
@@ -79,11 +110,14 @@ export interface AgentToolSearchCapabilityMatch {
 
 export interface ToolSearchDocument extends AgentToolSearchRerankDocument {
   id: string;
+  /** Primary producer-declared intent fields used for exact lexical evidence.
+   * Supporting use-case narrative stays in coreText for recall and reranking. */
+  anchorText: string;
   sourceIds: string[];
   sources: AgentToolSearchSource[];
   capabilities: ToolSearchCapabilityManifest[];
 }
 
-export type AgentToolSearchRankerName = "bm25" | "exact" | "fuzzy" | "semantic" | "memory" | "priority" | "source";
+export type AgentToolSearchRankerName = "bm25" | "exact" | "example" | "fuzzy" | "semantic" | "structural" | "memory";
 export type AgentToolSearchRankMap = Map<string, number>;
 export type AgentToolSearchRankedEntry = { toolName: string; score: number };

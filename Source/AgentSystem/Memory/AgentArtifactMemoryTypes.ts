@@ -8,6 +8,7 @@ export const ReadableArtifactRefs = [
   "evidence",
   "delta",
   "raw",
+  "rawResponse",
   "rawBlob",
   "rawPreview",
   "workspaceDiff",
@@ -41,6 +42,11 @@ export const ReadableArtifactRefDefinitions = {
   },
   raw: {
     file: "raw",
+    format: "json",
+    mediaType: "application/json",
+  },
+  rawResponse: {
+    file: "rawResponse",
     format: "json",
     mediaType: "application/json",
   },

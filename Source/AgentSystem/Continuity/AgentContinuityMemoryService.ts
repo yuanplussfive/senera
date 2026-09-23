@@ -16,6 +16,8 @@ import type { AgentMemorySourceRepository } from "../Memory/AgentMemorySourceRep
 import type { AgentMemoryDeletionImpact } from "../Memory/AgentMemorySourceRepository.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import { errorMessage } from "../Core/AgentErrors.js";
+import { throwAbortReason } from "../Core/AgentCancellation.js";
+import type { AgentResidentState } from "./AgentResidentState.js";
 import type { AgentContinuityLearningRecallConfig } from "../Types/AgentToolAndMemoryConfigTypes.js";
 import { decideAgentContinuityRecall } from "./AgentContinuityRecallGate.js";
 import { agentContinuityRecallCatalogCacheKey, AgentContinuityRecallCatalog } from "./AgentContinuityRecallCatalog.js";
@@ -38,17 +40,13 @@ import type { AgentTurnValueClassification } from "./AgentTurnValueClassifier.js
 import { AgentContinuityGraphSearchIndex } from "./AgentContinuityGraphSearchIndex.js";
 import {
   createAgentContinuityRecallQueryPlan,
-  projectAgentContinuityRecallQueryPlanAudit,
   type AgentContinuityRecallQueryPlan,
 } from "./AgentContinuityRecallQueryPlan.js";
-import { AgentEventKinds } from "../Events/AgentEventCatalog.js";
-import type { AgentDomainEvent, AgentEventSink } from "../Events/AgentEventTypes.js";
+import type { AgentEventSink } from "../Events/AgentEventTypes.js";
 import { isAgentContinuityEventRecallable } from "./AgentContinuityEventRecallPolicy.js";
 import {
   combineRejections,
-  countMatchedBy,
   DisabledContinuityRecallConfig,
-  isSemanticUnavailable,
   projectRuleCatalog,
   projectSignal,
   semanticRecallTimeoutResult,
@@ -77,6 +75,9 @@ import {
   shouldExpandAgentContinuityRecall,
   type AgentContinuityRecallCascadeStage,
 } from "./AgentContinuityRecallCascade.js";
+import { emitAgentContinuityRecallEvents } from "./AgentContinuityRecallEvents.js";
+import { selectAgentContinuityLiveStateSignals } from "./AgentContinuityLiveStateProjection.js";
+import { selectAgentContinuityTemporalDigests } from "./AgentContinuityTemporalDigestProjection.js";
 
 export interface AgentContinuityMemoryServiceOptions {
   readonly identity: AgentContinuityIdentityContext;
@@ -116,11 +117,23 @@ export class AgentContinuityMemoryService {
     this.eventSink = sink;
   }
 
+  /** Reads the durable per-session resident state, or undefined before the first turn. */
+  loadResidentState(sessionId: string): AgentResidentState | undefined {
+    return this.options.store.readResidentState({ kind: "session", id: sessionId });
+  }
+
+  /** Persists the durable per-session resident state for the next turn. */
+  saveResidentState(sessionId: string, state: AgentResidentState, observedAt: string): void {
+    this.options.store.writeResidentState({ kind: "session", id: sessionId }, state, observedAt);
+  }
+
   async promptContext(input: {
     userInput: string;
     sessionId?: string;
     requestId?: string;
+    signal?: AbortSignal;
   }): Promise<AgentContinuityMemoryPromptContext> {
+    throwAbortReason(input.signal);
     const scopes = listAgentContinuityPromptScopes(this.options.identity, input.sessionId);
     const automaticRecallScopes = listAgentContinuityAutomaticRecallScopes(this.options.identity, input.sessionId);
     const now = new Date();
@@ -303,7 +316,13 @@ export class AgentContinuityMemoryService {
       // Embeddings remain an optional final stage and always receive the raw
       // request. Local graph/context terms must never alter vector meaning.
       if (hasQuery && recall.Semantic.Enabled && shouldExpandAgentContinuityRecall(quality, recall.Ranking)) {
-        semanticResult = await this.awaitSemanticScores(recall, input.userInput, observations, eventObservations);
+        semanticResult = await this.awaitSemanticScores(
+          recall,
+          input.userInput,
+          observations,
+          eventObservations,
+          input.signal,
+        );
         const candidate = rankLocal(lexicalQueries, semanticResult?.scores);
         const candidateQuality = assessAgentContinuityRecallQuality([candidate.learning, candidate.events], {
           minimumTextSimilarityScore: recall.Ranking.MinimumTextSimilarityScore,
@@ -326,11 +345,14 @@ export class AgentContinuityMemoryService {
         this.scheduleSemanticIndex(recall, observations, eventObservations);
       }
     }
+    throwAbortReason(input.signal);
     const ranked = rankingResult ? uniqueRankedRecords(rankingResult.records) : [];
     const rankedEvents = eventRankingResult
       ? mergeAgentContinuityRankedRecordsByObservationUri(eventRankingResult.records)
       : [];
-    this.emitRecallEvents({
+    emitAgentContinuityRecallEvents({
+      eventSink: this.eventSink,
+      logger: this.options.logger,
       sessionId: input.sessionId,
       requestId: input.requestId,
       recallStartedAt,
@@ -381,9 +403,20 @@ export class AgentContinuityMemoryService {
           minimumScore: recall.Ranking.MinimumTextSimilarityScore,
         })
       : { examples: [], available: 0, matched: 0 };
+    const temporalDigestCandidates = selectAgentContinuityTemporalDigests({
+      temporalMemoryStore: this.options.temporalMemoryStore,
+      identity: this.options.identity,
+      identityDisplayValues: this.options.identityDisplayValues,
+      query: input.userInput,
+      now,
+      maxEntries: recall.PromptBudget.MaxDigestEntries,
+      similarity: textSimilarity,
+      floor: recall.Ranking.MinimumTextSimilarityScore,
+    });
     const budgeted = applyAgentContinuityPromptBudget(
       {
         profiles: stableSnapshot.residentProfile,
+        digests: temporalDigestCandidates,
         facts: factCatalog,
         relations: graphRecall.relations,
         events: eventCandidates,
@@ -412,6 +445,7 @@ export class AgentContinuityMemoryService {
       graphRelations: budgeted.relations,
       temporalMemory,
       residentProfile: budgeted.profiles,
+      temporalDigests: budgeted.digests ?? [],
       factCatalog: budgeted.facts,
       selection: budgeted.selection,
       rejections: combineRejections(rankingResult?.rejections, eventRankingResult?.rejections),
@@ -445,6 +479,77 @@ export class AgentContinuityMemoryService {
         })),
       ruleCatalog: projectRuleCatalog(state.evaluatedRules),
       signals: state.signals.map(projectSignal),
+    };
+  }
+
+  /**
+   * Builds the request-local continuity surface for the main Pi loop.
+   *
+   * This deliberately does not rank, hydrate, or semantically retrieve old
+   * observations. The durable transcript already carries recent turns; older
+   * facts, events, digests, and evidence remain available through explicit
+   * memory and artifact retrieval. Keeping that material out of every request
+   * prevents a recall result from becoming duplicated historical context.
+   */
+  async liveContext(input: { sessionId?: string } = {}): Promise<AgentContinuityMemoryPromptContext> {
+    const scopes = listAgentContinuityPromptScopes(this.options.identity, input.sessionId);
+    const now = new Date();
+    const recall = this.options.recallConfig?.() ?? DisabledContinuityRecallConfig;
+    const profile = this.options.residentProfile?.promptContext(scopes, now) ?? [];
+    const budgeted = applyAgentContinuityPromptBudget(
+      {
+        profiles: profile,
+        digests: [],
+        facts: [],
+        relations: [],
+        events: [],
+        evidence: [],
+        styleExamples: [],
+        availableFactCount: 0,
+        availableRelationCount: 0,
+        availableEventCount: 0,
+      },
+      recall.PromptBudget,
+    );
+    const stableSnapshot = this.stablePromptSnapshot({
+      sessionId: input.sessionId,
+      residentProfile: budgeted.profiles,
+      revision: stablePromptRevision(budgeted.profiles),
+      createdAt: now.toISOString(),
+    });
+    const state = this.evaluateState(scopes, now, true);
+    const projectedRules = state.evaluatedRules.filter(({ shouldProject }) => shouldProject);
+    const relevantSignals = selectAgentContinuityLiveStateSignals(projectedRules, state.signals);
+
+    return {
+      enabled: true,
+      concepts: [],
+      graph: { scope: [], entities: [], relations: [] },
+      graphRelations: [],
+      temporalMemory: { counts: [], segmentDecisions: [], latestSealed: [] },
+      residentProfile: stableSnapshot.residentProfile,
+      temporalDigests: [],
+      factCatalog: [],
+      selection: budgeted.selection,
+      rejections: { belowSimilarity: 0, belowCandidate: 0, funnelSkipped: 0 },
+      nearMisses: [],
+      pendingRuleDeliveryUris: projectedRules
+        .filter(
+          ({ rule, evaluation }) =>
+            evaluation.status === "triggered" && rule.action.activation === "once" && !rule.lastTriggeredAt,
+        )
+        .map(({ rule }) => rule.uri),
+      evidenceCandidates: [],
+      eventCandidates: [],
+      styleExamples: [],
+      activeRules: projectedRules.map(({ rule, evaluation }) => ({
+        title: rule.title,
+        action: rule.action.summary,
+        status: evaluation.status === "triggered" ? ("triggered" as const) : ("partial" as const),
+        missingSignals: evaluation.missingSignals,
+      })),
+      ruleCatalog: projectRuleCatalog(projectedRules),
+      signals: relevantSignals.map(projectSignal),
     };
   }
 
@@ -657,20 +762,27 @@ export class AgentContinuityMemoryService {
     recallQuery: string,
     observations: readonly AgentContinuityObservation[],
     eventObservations: readonly AgentContinuityObservation[],
+    signal?: AbortSignal,
   ): Promise<AgentContinuitySemanticRecallResult | SemanticRecallTimeoutResult | undefined> {
     const semantic = this.options.semanticRecall;
     if (!semantic || !recall.Semantic.Enabled) return undefined;
+    throwAbortReason(signal);
     const timeoutController = new AbortController();
+    const semanticSignal = signal ? AbortSignal.any([signal, timeoutController.signal]) : timeoutController.signal;
     try {
       return await withTimeout(
         semantic.queryScoresDetailed(recallQuery, [...observations, ...eventObservations], {
           minQueryCharacters: recall.Semantic.MinQueryCharacters,
-          signal: timeoutController.signal,
+          signal: semanticSignal,
         }),
         recall.Semantic.TimeoutMs,
-        () => timeoutController.abort(new AgentContinuitySemanticTimeoutError()),
+        {
+          signal,
+          onTimeout: () => timeoutController.abort(new AgentContinuitySemanticTimeoutError()),
+        },
       );
     } catch (error) {
+      throwAbortReason(signal);
       if (isAgentContinuitySemanticTimeoutError(error)) {
         return semanticRecallTimeoutResult();
       }
@@ -684,98 +796,6 @@ export class AgentContinuityMemoryService {
         compatibleCount: 0,
       };
     }
-  }
-
-  private emitRecallEvents(input: {
-    sessionId?: string;
-    requestId?: string;
-    recallStartedAt: number;
-    rankingResult?: AgentContinuityRankResult;
-    eventRankingResult?: AgentContinuityRankResult;
-    semanticResult: AgentContinuitySemanticRecallResult | SemanticRecallTimeoutResult | undefined;
-    recall: AgentContinuityLearningRecallConfig;
-    originalQuery: string;
-    queryPlan: AgentContinuityRecallQueryPlan | undefined;
-    adaptiveStages: readonly AgentContinuityRecallCascadeStage[];
-  }): void {
-    const sink = this.eventSink;
-    if (!sink || !input.sessionId || !input.requestId) return;
-    const context = { sessionId: input.sessionId, requestId: input.requestId };
-    const degraded =
-      input.semanticResult?.status === "timeout"
-        ? "semantic_timeout"
-        : input.semanticResult && isSemanticUnavailable(input.semanticResult.status)
-          ? "semantic_unavailable"
-          : "none";
-    const queryData = {
-      original: input.originalQuery,
-      ...(input.queryPlan ? { local: projectAgentContinuityRecallQueryPlanAudit(input.queryPlan) } : {}),
-    };
-    void this.emit(sink, {
-      kind: AgentEventKinds.ContinuityRecallQuery,
-      context,
-      data: queryData,
-    });
-    const matchedByCounts = countMatchedBy(input.rankingResult, input.eventRankingResult);
-    const allRankedRecords = mergeAgentContinuityRankedRecordsByObservationUri([
-      ...(input.rankingResult?.records ?? []),
-      ...(input.eventRankingResult?.records ?? []),
-    ]);
-    const eventRankedRecords = mergeAgentContinuityRankedRecordsByObservationUri(
-      input.eventRankingResult?.records ?? [],
-    );
-    const nearMissUris = new Set(
-      [...(input.rankingResult?.nearMisses ?? []), ...(input.eventRankingResult?.nearMisses ?? [])].map(
-        (record) => record.observation.uri,
-      ),
-    );
-    void this.emit(sink, {
-      kind: AgentEventKinds.ContinuityRecallSettled,
-      context,
-      data: {
-        injectedCount: allRankedRecords.length,
-        eventCount: eventRankedRecords.length,
-        matchedByCounts,
-        directCount: allRankedRecords.filter((record) => record.projection === "direct").length,
-        referenceCount: allRankedRecords.filter((record) => record.projection === "reference").length,
-        nearMissCount: nearMissUris.size,
-        belowSimilarity:
-          (input.rankingResult?.rejections.belowSimilarity ?? 0) +
-          (input.eventRankingResult?.rejections.belowSimilarity ?? 0),
-        belowCandidate:
-          (input.rankingResult?.rejections.belowCandidate ?? 0) +
-          (input.eventRankingResult?.rejections.belowCandidate ?? 0),
-        funnelSkipped:
-          (input.rankingResult?.rejections.funnelSkipped ?? 0) +
-          (input.eventRankingResult?.rejections.funnelSkipped ?? 0),
-        degraded,
-        semanticStatus: input.semanticResult?.status ?? (input.recall.Semantic.Enabled ? "unavailable" : "disabled"),
-        semanticIndexedCount: input.semanticResult?.indexedCount ?? 0,
-        semanticCompatibleCount: input.semanticResult?.compatibleCount ?? 0,
-        adaptiveStages: input.adaptiveStages.map((stage) => ({
-          source: stage.source,
-          triggered: stage.triggered,
-          addedTerms: stage.addedTerms,
-          acceptedCount: stage.quality.acceptedCount,
-          candidateCount: stage.quality.candidateCount,
-          topScore: stage.quality.topScore,
-          topMargin: stage.quality.topMargin,
-        })),
-        totalLatencyMs: Date.now() - input.recallStartedAt,
-      },
-    });
-  }
-
-  private emit(sink: AgentEventSink, event: AgentDomainEvent): void {
-    const context = event.context as { readonly sessionId?: string; readonly requestId?: string };
-    void Promise.resolve(sink(event)).catch((error) => {
-      this.options.logger?.warn("continuity.recall.event_publish_failed", {
-        eventKind: event.kind,
-        sessionId: context.sessionId,
-        requestId: context.requestId,
-        message: errorMessage(error),
-      });
-    });
   }
 
   private evaluateState(

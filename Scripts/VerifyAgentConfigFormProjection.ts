@@ -11,13 +11,6 @@ const config: AgentSystemConfig = {
         MaxTokens: -1,
       },
     },
-    VectorModels: {
-      Embedding: {
-        Enabled: true,
-        ProviderId: "main-provider",
-        Model: "qwen3-embedding-0.6b",
-      },
-    },
   },
   DefaultModelProviderId: "main",
   ModelProviderEndpoints: [
@@ -108,16 +101,7 @@ const modelSelections = form.sections.flatMap((section) =>
 );
 assert.deepEqual(
   modelSelections.map((selection) => selection.id),
-  [
-    "assistant",
-    "planner-base",
-    "action-planner",
-    "final-answer",
-    "tool-learning",
-    "continuity-learning",
-    "embedding",
-    "rerank",
-  ],
+  ["assistant", "planner-base", "action-planner", "final-answer", "tool-learning", "continuity-learning"],
 );
 assert.equal(findField(form, ["ToolLearning", "Client", "MaxTokens"]).effectiveValue, -1);
 assert.deepEqual(findField(form, ["ContinuityLearning", "Client", "ModelProviderId"]).modelSelection, {
@@ -128,35 +112,21 @@ assert.deepEqual(findField(form, ["ContinuityLearning", "Client", "ModelProvider
   inheritance: { source: "default-model" },
   required: false,
 });
-assert.deepEqual(findField(form, ["VectorModels", "Embedding", "Model"]).modelSelection?.providerPath, [
-  "VectorModels",
-  "Embedding",
-  "ProviderId",
-]);
+assert.equal(findOptionalField(form, ["VectorModels", "Embedding", "Model"]), undefined);
 assert.equal(findOptionalField(form, ["ActionPlanner", "Client", "Provider"]), undefined);
 assert.equal(findOptionalField(form, ["ActionPlanner", "FinalAnswerClient", "Provider"]), undefined);
-
-const toolSearchMaxResults = findField(form, ["ToolSearch", "Ranking", "MaxResults"]);
-assert.equal(toolSearchMaxResults.type, "number");
-assert.equal(toolSearchMaxResults.effectiveValue, 6);
-assert.equal(toolSearchMaxResults.valueSource, "default");
 
 const toolSearchFuzzy = findField(form, ["ToolSearch", "Fuzzy", "Enabled"]);
 assert.equal(toolSearchFuzzy.type, "boolean");
 assert.equal(toolSearchFuzzy.effectiveValue, true);
 assert.equal(findField(form, ["ToolSearch", "Fuzzy", "MinScore"]).effectiveValue, 0.25);
-assert.equal(findField(form, ["ToolSearch", "Fuzzy", "CandidateLimit"]).effectiveValue, 8);
-
-const memoryExpansionMode = findField(form, ["ToolSearch", "Ranking", "MemoryExpansion", "Mode"]);
-assert.deepEqual(memoryExpansionMode.options, ["disabled", "fallback", "augment"]);
-assert.equal(memoryExpansionMode.effectiveValue, "fallback");
+assert.equal(findOptionalField(form, ["ToolSearch", "Fuzzy", "CandidateLimit"]), undefined);
+assert.equal(findOptionalField(form, ["ToolSearch", "Embedding", "Provider"]), undefined);
+assert.equal(findOptionalField(form, ["ToolSearch", "Embedding", "Languages"]), undefined);
+assert.equal(findField(form, ["ToolSearch", "Disclosure", "TokenBudget"]).effectiveValue, 640);
 
 assert.deepEqual(findField(form, ["ToolExecution", "Environment", "Inherit"]).options, ["all", "allowlist", "none"]);
 
-assert.equal(findField(form, ["VectorModels", "Embedding", "InputMaxChars"]).effectiveValue, -1);
-assert.equal(findField(form, ["VectorModels", "Embedding", "Model"]).valueSource, "inherited");
-assert.equal(findField(form, ["VectorModels", "Rerank", "CandidateLimit"]).effectiveValue, -1);
-assert.equal(findField(form, ["VectorModels", "Rerank", "TopK"]).effectiveValue, -1);
 assert.equal(findOptionalField(form, ["ToolSearch", "Memory", "Kind"]), undefined);
 assert.equal(findField(form, ["AgentLoop", "PiSessions", "Compaction", "Enabled"]).required, false);
 assert.equal(findField(form, ["Server", "HotReload"]).required, false);

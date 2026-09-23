@@ -39,22 +39,21 @@ export class AgentWorldClock {
   }
 
   advance(input: AgentWorldClockAdvanceInput): AgentWorldClockState {
-    const nextWakeAt = input.wakeRequired
-      ? input.now
-      : earliestInstant([
-          nextPhaseBoundary(input.now, input.timeZone, input.dayPhases),
-          nextLocalMidnight(input.now, input.timeZone),
-          ...(input.additionalWakeInstants ?? []).filter((instant) => Temporal.Instant.compare(instant, input.now) > 0),
-        ]);
     const advance = this.db.transaction((): AgentWorldClockState => {
       const existing = this.read(input.worldId);
       if (!existing) {
+        const nextWakeAt = nextWake(input);
         this.write(input.worldId, input.now, nextWakeAt);
         return { worldId: input.worldId, lastAdvancedAt: input.now, nextWakeAt, changed: false };
       }
       if (Temporal.Instant.compare(input.now, existing.lastAdvancedAt) < 0) {
-        throw new Error("World clock cannot advance backwards.");
+        // A delayed wake or an outgoing runtime can observe an instant that
+        // was already superseded by another runtime. The clock is an
+        // authoritative monotonic register, so preserve its newer state
+        // rather than treating an expected stale observation as a failure.
+        return { worldId: input.worldId, ...existing, changed: false };
       }
+      const nextWakeAt = nextWake(input);
       const previous = projectAgentWorldTime({
         instant: existing.lastAdvancedAt,
         timeZone: input.timeZone,
@@ -127,6 +126,16 @@ export class AgentWorldClock {
       )
       .run(worldId, lastAdvancedAt.toString(), nextWakeAt.toString(), lastAdvancedAt.toString());
   }
+}
+
+function nextWake(input: AgentWorldClockAdvanceInput): Temporal.Instant {
+  return input.wakeRequired
+    ? input.now
+    : earliestInstant([
+        nextPhaseBoundary(input.now, input.timeZone, input.dayPhases),
+        nextLocalMidnight(input.now, input.timeZone),
+        ...(input.additionalWakeInstants ?? []).filter((instant) => Temporal.Instant.compare(instant, input.now) > 0),
+      ]);
 }
 
 function nextPhaseBoundary(

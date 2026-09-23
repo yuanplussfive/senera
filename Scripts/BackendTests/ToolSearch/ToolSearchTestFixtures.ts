@@ -44,10 +44,12 @@ export function createTool(options: {
   actions: string[];
   targets: string[];
   priority: number;
+  examples?: string[];
   rootKind?: "System" | "User";
   loading?: ToolLoadingMode;
   executionTargets?: ToolExecutionTarget[];
   interactionSurfaces?: readonly AgentInteractionSurface[];
+  aliases?: string[];
   source?: {
     id: string;
     title: string;
@@ -74,6 +76,7 @@ export function createTool(options: {
     loading: options.loading ?? "Dynamic",
     ...(options.interactionSurfaces ? { interactionSurfaces: options.interactionSurfaces } : {}),
     name: options.name,
+    contract: { digest: `${options.name}.contract` },
     permissions: [],
     sources: [
       {
@@ -100,6 +103,7 @@ export function createTool(options: {
       Summary: options.summary,
       Tags: options.tags,
       UseCases: [options.summary],
+      ...(options.examples ? { Examples: options.examples } : {}),
       Capabilities: [
         {
           Id: `${options.name}.capability`,
@@ -110,6 +114,7 @@ export function createTool(options: {
             Targets: options.targets,
             Effects: ["none"],
           },
+          ...(options.aliases ? { Aliases: options.aliases } : {}),
           Risk: { SideEffect: "none", Permission: "resources-read" },
         },
       ],
@@ -122,32 +127,34 @@ export function createToolSearchConfig(): ResolvedAgentToolSearchConfig {
     Fuzzy: {
       Enabled: true,
       MinScore: 0.25,
-      CandidateLimit: 8,
     },
     Embedding: {
-      Enabled: false,
-      ScoreThreshold: 0,
+      Enabled: true,
     },
     Memory: {
       MaxEpisodes: 100,
       HalfLifeDays: 30,
     },
+    Tokenize: {
+      Stopwords: [],
+    },
     Ranking: {
-      RrfK: 60,
-      MmrLambda: 0.72,
-      MmrCandidateScoreRatio: 0.92,
-      MinScore: 0,
-      MaxResults: 6,
-      MemoryExpansion: {
-        Mode: "fallback",
-        MinConfidence: 0.8,
-        MinEvidence: 3,
-        MaxResults: 2,
+      RrfK: 30,
+      ChannelWeights: {
+        bm25: 1,
+        exact: 0.9,
+        example: 1.1,
+        fuzzy: 0.7,
+        semantic: 0.5,
+        structural: 1,
+        memory: 0.6,
       },
+    },
+    Disclosure: {
+      TokenBudget: 640,
     },
     Rerank: {
       Enabled: true,
-      CandidateLimit: 24,
       ScoreScale: 0.018,
       FeatureWeights: {},
     },

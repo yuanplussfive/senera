@@ -14,6 +14,12 @@ import {
   resolveAgentPiCompactionHeadroom,
   type AgentPiResolvedCompactionSettings,
 } from "./AgentPiCompactionSettings.js";
+import {
+  AgentPiCompactionSummarySources,
+  createAgentPiDeterministicCompactionSummary,
+  type AgentPiCompactionSummarySource,
+} from "./AgentPiCompactionRecovery.js";
+import type { AgentPiCompactionCandidateCoordinator } from "./AgentPiCompactionCandidateCoordinator.js";
 
 export interface AgentPiMidRunCompactionCoordinatorOptions {
   readonly frame: AgentPiMutableSessionFrame;
@@ -23,6 +29,7 @@ export interface AgentPiMidRunCompactionCoordinatorOptions {
     messages: AgentContext["messages"],
     compactionIndexes?: AgentPiCompactionIndexes,
   ) => Promise<AgentContext["messages"]>;
+  readonly compactionCandidates?: Pick<AgentPiCompactionCandidateCoordinator, "projectCurrentContext">;
 }
 
 export interface AgentPiMidRunCompactionPressure {
@@ -73,6 +80,25 @@ export class AgentPiMidRunCompactionCoordinator {
       return undefined;
     }
 
+    const candidateContext = await this.projectReadyCandidate(turn, tokenBudget, pressure, compactionSignal);
+    if (candidateContext) return candidateContext;
+
+    // Artifact-backed pressure projection and a ready candidate are both
+    // request-local. They cost no transcript mutation, so inspect them before
+    // paying for a synchronous formal compaction inside the tool loop.
+    const providerMessages = await this.options.projectProviderMessages(turn.context.messages);
+    throwIfAborted(compactionSignal);
+    const providerPreview = tokenBudget.inspectModelInput({ ...turn.context, messages: providerMessages });
+    if (providerPreview.fits) {
+      await this.options.compactionController.emitDiagnostic(this.options.frame, "compaction.mid_turn.deferred", {
+        reason: "request_projection_fits",
+        rawProjectedTokens: projected.tokenCount,
+        projectedTokens: providerPreview.tokenCount,
+        ...pressure,
+      });
+      return undefined;
+    }
+
     // A large current tool result can leave the rebuilt context above the
     // pressure band. Do not summarize the same history repeatedly when no
     // additional input has accumulated since the last persisted compaction.
@@ -90,13 +116,14 @@ export class AgentPiMidRunCompactionCoordinator {
         previousCompactionTokens: this.lastCompactionAfterTokens,
         ...pressure,
       });
-      if (projected.fits) return undefined;
+      if (providerPreview.fits) return undefined;
       throw new Error(
-        `Pi mid-run compaction cannot continue: the context remains above the pressure band after the last compaction and the next provider input uses ${projected.tokenCount} tokens for a capacity of ${projected.capacityTokens}.`,
+        `Pi mid-run compaction cannot continue: the context remains above the pressure band after the last compaction and the next provider input uses ${providerPreview.tokenCount} tokens for a capacity of ${providerPreview.capacityTokens}.`,
       );
     }
 
-    const run = () => this.compact(turn, session, settings, projected.tokenCount, projected.fits, compactionSignal);
+    const run = () =>
+      this.compact(turn, session, settings, providerPreview.tokenCount, providerPreview.fits, compactionSignal);
     const reporter = this.options.frame.snapshot().turnState?.context.activityReporter;
     try {
       const result = reporter ? await reporter.track(AgentRunActivities.CompactingContext, run) : await run();
@@ -112,6 +139,34 @@ export class AgentPiMidRunCompactionCoordinator {
       if (!projected.fits || error instanceof AgentPiPersistedCompactionError) throw error;
       return undefined;
     }
+  }
+
+  private async projectReadyCandidate(
+    turn: PrepareNextTurnContext,
+    tokenBudget: NonNullable<ReturnType<AgentPiMutableSessionFrame["snapshot"]>["tokenBudget"]>,
+    pressure: AgentPiMidRunCompactionPressure,
+    signal: AbortSignal,
+  ): Promise<AgentContext | undefined> {
+    const candidate = this.options.compactionCandidates?.projectCurrentContext(turn.context.messages);
+    if (!candidate) return undefined;
+    const providerMessages = await this.options.projectProviderMessages(
+      candidate.projection.messages,
+      candidate.indexes,
+    );
+    throwIfAborted(signal);
+    const preview = tokenBudget.inspectModelInput({ ...turn.context, messages: providerMessages });
+    if (!preview.fits) return undefined;
+    await this.options.compactionController.emitDiagnostic(
+      this.options.frame,
+      "compaction.mid_turn.candidate_projected",
+      {
+        candidateId: candidate.candidate.id,
+        projectedTokens: preview.tokenCount,
+        capacityTokens: preview.capacityTokens,
+        ...pressure,
+      },
+    );
+    return { ...turn.context, messages: candidate.projection.messages };
   }
 
   private async compact(
@@ -143,18 +198,31 @@ export class AgentPiMidRunCompactionCoordinator {
       summarizedMessages: summarizedMessages.length,
       firstKeptEntryId: preparation.firstKeptEntryId,
     });
-    const summary = await this.options.compactionController.compileSummary(
-      this.options.frame,
-      {
-        mode: "compact",
-        messages: summarizedMessages,
-        previousSummary: preparation.previousSummary,
-        artifactIndex: indexes.artifactIndex,
-        toolCallIndex: indexes.toolCallIndex,
-        continuityLedger: indexes.continuityLedger,
-      },
-      signal,
-    );
+    const summaryInput = {
+      mode: "compact" as const,
+      messages: summarizedMessages,
+      previousSummary: preparation.previousSummary,
+      artifactIndex: indexes.artifactIndex,
+      toolCallIndex: indexes.toolCallIndex,
+      continuityLedger: indexes.continuityLedger,
+    };
+    let summary: string;
+    let summarySource: AgentPiCompactionSummarySource = AgentPiCompactionSummarySources.model;
+    try {
+      summary = await this.options.compactionController.compileSummary(this.options.frame, summaryInput, signal);
+    } catch (error) {
+      throwIfAborted(signal);
+      summary = createAgentPiDeterministicCompactionSummary(summaryInput, {
+        model: this.options.frame.snapshot().tokenBudget?.model ?? "default",
+        reason: "mid_turn",
+      });
+      summarySource = AgentPiCompactionSummarySources.deterministicRecovery;
+      await this.options.compactionController.emitDiagnostic(this.options.frame, "compaction.mid_turn.recovered", {
+        message: errorMessage(error),
+        summarizedMessages: summarizedMessages.length,
+        firstKeptEntryId: preparation.firstKeptEntryId,
+      });
+    }
     throwIfAborted(signal);
 
     const tokenBudget = this.options.frame.snapshot().tokenBudget;
@@ -191,7 +259,7 @@ export class AgentPiMidRunCompactionCoordinator {
         summary,
         preparation.firstKeptEntryId,
         preparation.tokensBefore,
-        indexes,
+        { ...indexes, summarySource },
         true,
       );
       persisted = true;

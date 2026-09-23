@@ -33,7 +33,9 @@ Pi 负责会话树、流式文本、工具调用、多步循环、compaction 和
 
 ## 提示缓存
 
-主请求使用稳定 system prompt 和 append-only 会话历史。画像、世界、召回、工作流、活动 Skill 与模板不改写 system prompt，而是作为隐藏的 `senera.turn_context` 追加到所属用户消息之后；下一轮因此可以复用稳定内核和全部既有历史前缀。缓存路由键按逻辑会话、模型、调用阶段、稳定 system prompt 与工具合同内容寻址，Native、BAML planning、compaction 和 ResidentSpeech 不共用路由桶。
+主请求使用稳定 system prompt 和 append-only 会话历史。当前场景、已触发规则及其关联 signal、进行中的 Workflow、当前会话身份、活动 Skill 与模板组成请求级 `senera.live_context` overlay：Pi 的 `context` hook 在发送 provider 请求时将它放在当前真实用户消息之后，但绝不写入 Pi JSONL。稳定画像属于 system prefix；历史 facts、events、digests、evidence 与风格示例不再每轮自动复制，而是由 Memory/Artifact 工具按需召回。缓存路由键按逻辑会话、模型、调用阶段、稳定 system prompt 与工具合同内容寻址，Native、BAML planning、compaction 和 ResidentSpeech 不共用路由桶。
+
+历史 JSONL 可能仍保留旧版 append-only `senera.turn_context` 作为审计和迁移证据。运行态恢复、provider 投影、自动压缩和 tree summary 都会剥离这类宿主快照；因此遗留快照既不会再次发给模型，也不会污染 Pi 在 usage 缺失时的本地压力估算。
 
 Continuity 学习、对话片段边界、时间摘要、频道最终改写和 ResidentSpeech 等辅助调用也使用独立的身份域和静态合同 revision。当前 episode、摘要条目和工具结果只进入动态 user payload，不进入缓存身份。首个请求、模型切换、稳定预设或项目上下文变化、工具 Schema 集合变化仍会产生必要的冷写；缓存键不能用来掩盖协议变化。供应商 TTL 通过 Pi 的兼容层发送，不能根据模型名称在业务代码中猜测。所有 Native provider 请求（包括 `AgentRequiredNativeToolCall` 的短链路）同时通过 Pi adapter 的 `onPayload` 和可注入 `fetch` 记录最终 payload 摘要、真实 HTTP body 摘要（不记录密钥或正文）和稳定前缀字节数；`prompt_cache` 诊断只把供应商 usage 中的 `cacheRead`/`cacheWrite` 解释为 `hit`/`miss`，没有 usage 时保持 `requested`，适配器明确不支持时为 `unsupported`。因此同一个 logical cache scope 只代表请求亲和性，物理 `sessionId`、逻辑缓存域和供应商 scope 始终分开，绝不伪造缓存命中，也能验证请求体是否真的保持稳定。
 
@@ -104,7 +106,7 @@ try {
 
 项目上下文属于 runtime-owned host state，普通 workspace 写入工具不能修改；它应由部署、用户或专门的受控管理入口维护。文件不存在表示没有项目级补充指令，不触发兼容回退或目录猜测。
 
-自动压缩完全由 Coding Agent 根据所选 provider 返回的 context usage 与原生 compaction 设置触发。Native 路径记录供应商上报 usage；BAML 路径汇总 planning compiler usage。两者都写入 Senera ledger。Senera 只通过 Pi compaction hook 提供结构化摘要文本和 Artifact 索引，不维护第二套会话压缩状态机。当前 turn collector 在同一有序事件队列中处理真实 `compaction_start` / `compaction_end`，并通过 `AgentPiCompactionActivityObserver` 发出 `compacting_context` 开始与终态事件。
+自动压缩完全由 Coding Agent 根据所选 provider 返回的 context usage 与原生 compaction 设置触发。Native 路径记录供应商上报 usage；BAML 路径汇总 planning compiler usage。两者都写入 Senera ledger。Senera 只通过 Pi compaction hook 提供结构化摘要文本和 Artifact 索引，不维护第二套权威会话历史或压缩状态机。`agent_settled` 后可以在后台准备一个可丢弃的 compaction candidate：它只保存模型摘要和索引的派生缓存，使用前会校验 Pi 分支前缀、真实摘要模型路由、BAML prompt revision 与 formatter/projection revision。前台请求不会取消这个不可变快照；候选完成后只在 agent 空闲、Pi 没有正在进行的正式压缩、且没有排队消息时，通过 Pi 的正式 `compact()` 入口提交，仍由 `session_before_compact/session_compact` 原子写入 JSONL 和索引。正式提交以 Pi 的 `compaction_end` 为准：取消会恢复同一已校验候选，失败会删除该派生缓存，成功后才清除整个旧 epoch；三种情况都不改写 Pi 的原始历史。若边界不安全，候选保留并等待下一次 `agent_settled`，不打断用户队列。正常请求继续使用原始历史以维持稳定前缀缓存；只有进入压力带时才临时投影 candidate。模型或 thinking 路由变化、rewind、tree、正式 compaction 和关停会使相应 candidate 失效，Pi JSONL、Artifact 和 Continuity ledger 始终是可恢复的权威来源。当前 turn collector 在同一有序事件队列中处理真实 `compaction_start` / `compaction_end`，并通过 `AgentPiCompactionActivityObserver` 发出 `compacting_context` 开始与终态事件。
 
 工具循环中的上下文压力由 `AgentPiMidRunCompactionCoordinator` 在 Pi 的公开 `prepareNextTurnWithContext` 边界检查。它只在完整工具批次结束后，用“上一供应商输入占用 + 本轮 assistant/toolResult 增量”判断压力，不重复 BPE 估算整棵历史；真正请求前 Native 与 BAML 仍分别校验各自最终 provider payload。工具批次建立 reservation 时先扣除完整 assistant 消息和空 tool-result 外壳，剩余容量才分配给 observation，因预算截断的 observation 继续携带 Artifact URI。压缩摘要及其 Artifact/tool-call 检索索引会先作为同一候选快照完成 provider 投影和容量验证，验证通过后才追加到会话，避免预演使用旧索引而低估最终输入。
 

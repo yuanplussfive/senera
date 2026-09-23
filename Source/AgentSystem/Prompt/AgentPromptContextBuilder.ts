@@ -29,7 +29,11 @@ import { EmptyAgentSceneContext } from "./AgentSceneContextCompiler.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 import { isAgentToolScopedToInteractionSurface } from "../ToolRuntime/AgentToolInteractionAvailability.js";
-import { ToolLoadingModes } from "../Types/AgentToolContractTypes.js";
+import {
+  isAgentToolDirectlyInvocable,
+  isAgentToolSupportedByPlanningMode,
+} from "../ToolRuntime/AgentToolInvocationRouting.js";
+import type { AgentModelToolPlanningMode } from "../ModelEndpoints/AgentModelEndpointContract.js";
 
 export type {
   AgentPromptContext,
@@ -46,6 +50,7 @@ export class AgentPromptContextBuilder {
 
   constructor(
     private readonly registry: AgentExtensionRegistry,
+    private readonly toolPlanningMode: AgentModelToolPlanningMode,
     private readonly workspaceRoot: string = process.cwd(),
     private readonly executionCapabilities: () => SeneraExecutionRuntimeCapabilities = () =>
       createSeneraExecutionRuntimeCapabilities(),
@@ -110,8 +115,7 @@ export class AgentPromptContextBuilder {
     return this.availableTools()
       .filter(
         (tool) =>
-          tool.loading === ToolLoadingModes.Bootstrap &&
-          isAgentToolScopedToInteractionSurface(tool, interaction.surface),
+          isAgentToolDirectlyInvocable(tool) && isAgentToolScopedToInteractionSurface(tool, interaction.surface),
       )
       .map((tool) => tool.name);
   }
@@ -128,6 +132,7 @@ export class AgentPromptContextBuilder {
     const runtimeTargets = projectSeneraProcessBackendsToToolTargets(capabilities.processBackends);
     return this.registry
       .listTools()
+      .filter((tool) => isAgentToolSupportedByPlanningMode(tool, this.toolPlanningMode))
       .filter((tool) => resolveAvailableAgentToolExecutionTargets(tool, runtimeTargets).length > 0);
   }
 

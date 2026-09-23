@@ -1,12 +1,13 @@
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { AgentContinuitySemanticRecall } from "../../../Source/AgentSystem/Continuity/AgentContinuitySemanticRecall.js";
+import type { AgentContinuitySemanticEmbeddingClientLike } from "../../../Source/AgentSystem/Continuity/AgentContinuitySemanticRecall.js";
 import { AgentContinuitySqliteStore } from "../../../Source/AgentSystem/Continuity/AgentContinuitySqliteStore.js";
 import { agentContinuityObservationUri } from "../../../Source/AgentSystem/Continuity/AgentContinuityObservationProjection.js";
 import type {
   AgentEmbeddingRequest,
   AgentEmbeddingResult,
-} from "../../../Source/AgentSystem/Vector/AgentVectorModelClient.js";
+} from "../../../Source/AgentSystem/Vector/AgentEmbeddingContract.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 
 const workspaces = new Set<string>();
@@ -34,6 +35,7 @@ describe("continuity semantic recall", () => {
 
       const changed = [{ ...observations[0]!, summary: "用户只喝无糖美式咖啡。" }];
       await expect(recall.embedObservations(changed)).resolves.toBe(1);
+      expect(client.roles.every((role) => role === "document")).toBe(true);
       expect(store.listObservationEmbeddings(observations.map(({ uri }) => uri)).size).toBe(2);
     } finally {
       store.close();
@@ -62,6 +64,7 @@ describe("continuity semantic recall", () => {
       await recall.embedObservations([coffee, latte]);
 
       const scores = await recall.queryScores("我想喝咖啡", [coffee, latte]);
+      expect(client.roles.at(-1)).toBe("query");
       expect(scores.get(coffee.uri)).toBeCloseTo(1, 5);
       expect(scores.has(latte.uri)).toBe(false);
     } finally {
@@ -129,6 +132,41 @@ describe("continuity semantic recall", () => {
       store.close();
     }
   });
+
+  test("resolves the client lazily from a getter after construction", async () => {
+    const store = createStore();
+    try {
+      const client = recordingClient();
+      let active: typeof client | undefined = undefined;
+      const recall = createRecall(store, () => active, "test-embed");
+      const observation = { uri: "senera://continuity-learning/coffee", summary: "用户喜欢无糖咖啡。" };
+
+      await expect(recall.embedObservations([observation])).resolves.toBe(0);
+
+      active = client;
+      await expect(
+        recall.embedObservations([{ uri: "senera://continuity-learning/latte", summary: "用户偶尔喝拿铁。" }]),
+      ).resolves.toBe(1);
+      expect(store.listObservationEmbeddings([observation.uri, "senera://continuity-learning/latte"]).size).toBe(1);
+    } finally {
+      store.close();
+    }
+  });
+
+  test("setClient rebinds the client after construction", async () => {
+    const store = createStore();
+    try {
+      const recall = createRecall(store, undefined, "test-embed");
+      const observation = { uri: "senera://continuity-learning/coffee", summary: "用户喜欢无糖咖啡。" };
+      await expect(recall.embedObservations([observation])).resolves.toBe(0);
+
+      recall.setClient(recordingClient());
+      await recall.embedObservations([observation]);
+      expect(store.listObservationEmbeddings([observation.uri]).size).toBe(1);
+    } finally {
+      store.close();
+    }
+  });
 });
 
 function createStore(): AgentContinuitySqliteStore {
@@ -139,7 +177,7 @@ function createStore(): AgentContinuitySqliteStore {
 
 function createRecall(
   store: AgentContinuitySqliteStore,
-  client: { embed(request: AgentEmbeddingRequest): Promise<AgentEmbeddingResult> } | undefined,
+  client: AgentContinuitySemanticEmbeddingClientLike,
   model: string,
 ): AgentContinuitySemanticRecall {
   return new AgentContinuitySemanticRecall({
@@ -154,12 +192,16 @@ function createRecall(
 function recordingClient(): {
   embed: (request: AgentEmbeddingRequest) => Promise<AgentEmbeddingResult>;
   embeds: string[][];
+  roles: AgentEmbeddingRequest["role"][];
 } {
   const embeds: string[][] = [];
+  const roles: AgentEmbeddingRequest["role"][] = [];
   return {
     embeds,
+    roles,
     embed: async (request) => {
       embeds.push([...request.input]);
+      roles.push(request.role);
       return {
         model: "test-embed",
         vectors: request.input.map((text) => (text.includes("咖啡") ? [1, 0] : [0, 1])),

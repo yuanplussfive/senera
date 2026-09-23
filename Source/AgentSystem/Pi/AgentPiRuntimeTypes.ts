@@ -22,12 +22,15 @@ export interface AgentPiSessionOptions extends Omit<AgentPiToolProjectionContext
   logicalCacheScope?: string;
   input?: string;
   systemPrompt?: string;
-  turnContext?: string;
+  /** Host state injected only into the current provider request. */
+  liveContext?: string;
   interaction?: AgentInteractionContext;
   turnState?: AgentPiTurnState;
   activeSkills?: readonly AgentActivatedSkill[];
   roleplayPresetActive?: boolean;
   prefaceRewriteEnabled?: boolean;
+  /** Explicit UI-controlled final-answer rewrite; independent from roleplay presets. */
+  finalResponseRewriteEnabled?: boolean;
   rootCommand?: AgentRootCommand;
   diagnostics?: AgentPiDiagnosticSink;
   tokenBudget?: AgentTurnTokenBudget;

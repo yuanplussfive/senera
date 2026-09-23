@@ -1,5 +1,6 @@
 import { cosineSimilarity } from "../Vector/AgentVectorSimilarity.js";
-import type { AgentEmbeddingRequest, AgentEmbeddingResult } from "../Vector/AgentVectorModelClient.js";
+import type { AgentEmbeddingRequest, AgentEmbeddingResult } from "../Vector/AgentEmbeddingContract.js";
+import { awaitWithAbortSignal, throwAbortReason } from "../Core/AgentCancellation.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import type { AgentContinuitySqliteStore } from "./AgentContinuitySqliteStore.js";
@@ -18,9 +19,18 @@ export interface AgentContinuitySemanticEmbeddingClient {
   embed(request: AgentEmbeddingRequest): Promise<AgentEmbeddingResult>;
 }
 
+/**
+ * The embedding client may be supplied directly or as a lazy resolver. The
+ * resolver form lets the runtime bind providers that are registered *after*
+ * composition (e.g. memory plugins discovered later), so the client is resolved
+ * at call time rather than frozen at construction.
+ */
+export type AgentContinuitySemanticEmbeddingClientLike =
+  AgentContinuitySemanticEmbeddingClient | (() => AgentContinuitySemanticEmbeddingClient | undefined) | undefined;
+
 export interface AgentContinuitySemanticRecallOptions {
   readonly store: AgentContinuitySqliteStore;
-  readonly client?: AgentContinuitySemanticEmbeddingClient;
+  readonly client?: AgentContinuitySemanticEmbeddingClientLike;
   /** Current embedding model id; rows persisted for other models are ignored. */
   readonly model: () => string;
   /** Semantic evidence below this cosine similarity contributes nothing. */
@@ -60,8 +70,24 @@ export class AgentContinuitySemanticRecall {
   private writeFailureReported = false;
   private readFailureReported = false;
   private writeTail: Promise<void> = Promise.resolve();
+  private clientOverride: AgentContinuitySemanticEmbeddingClient | undefined;
 
-  constructor(private readonly options: AgentContinuitySemanticRecallOptions) {}
+  constructor(private readonly options: AgentContinuitySemanticRecallOptions) {
+    this.clientOverride =
+      typeof options.client === "object" && options.client !== undefined ? options.client : undefined;
+  }
+
+  /** Rebinds the embedding client after construction (late-bound provider). */
+  setClient(client?: AgentContinuitySemanticEmbeddingClient): void {
+    this.clientOverride = client;
+  }
+
+  private resolveClient(): AgentContinuitySemanticEmbeddingClient | undefined {
+    if (this.clientOverride !== undefined) return this.clientOverride;
+    const candidate = this.options.client;
+    if (typeof candidate === "function") return candidate();
+    return candidate;
+  }
 
   /** Persists embeddings for newly available semantic documents. */
   async embedDocuments(documents: readonly AgentContinuitySemanticDocument[]): Promise<number> {
@@ -81,7 +107,7 @@ export class AgentContinuitySemanticRecall {
   }
 
   private async embedDocumentsNow(documents: readonly AgentContinuitySemanticDocument[]): Promise<number> {
-    const client = this.options.client;
+    const client = this.resolveClient();
     if (!client || documents.length === 0) return 0;
     const model = this.options.model();
     try {
@@ -96,7 +122,7 @@ export class AgentContinuitySemanticRecall {
       });
       if (pending.length === 0) return 0;
 
-      const result = await client.embed({ input: pending.map((document) => document.text) });
+      const result = await client.embed({ input: pending.map((document) => document.text), role: "document" });
       const rows: AgentContinuityObservationEmbedding[] = [];
       pending.forEach((document, index) => {
         const vector = result.vectors[index];
@@ -141,6 +167,7 @@ export class AgentContinuitySemanticRecall {
     observations: readonly { readonly uri: string; readonly summary: string; readonly searchText?: string }[],
     input?: { readonly minQueryCharacters?: number; readonly signal?: AbortSignal },
   ): Promise<AgentContinuitySemanticRecallResult> {
+    throwAbortReason(input?.signal);
     const minQueryCharacters = input?.minQueryCharacters ?? 0;
     if (query.trim().length < minQueryCharacters) {
       return semanticResult(AgentContinuitySemanticRecallStatuses.ShortQuery);
@@ -149,7 +176,7 @@ export class AgentContinuitySemanticRecall {
       return semanticResult(AgentContinuitySemanticRecallStatuses.NoObservations);
     }
 
-    const client = this.options.client;
+    const client = this.resolveClient();
     if (!client) {
       return semanticResult(AgentContinuitySemanticRecallStatuses.NoClient);
     }
@@ -174,8 +201,15 @@ export class AgentContinuitySemanticRecall {
 
     let queryVector: number[] | undefined;
     try {
-      queryVector = (await client.embed({ input: [query], signal: input?.signal })).vectors[0];
+      queryVector = (
+        await awaitWithAbortSignal(
+          client.embed({ input: [query], role: "query", signal: input?.signal }),
+          input?.signal,
+        )
+      ).vectors[0];
+      throwAbortReason(input?.signal);
     } catch (error) {
+      throwAbortReason(input?.signal);
       this.reportReadFailure(error);
       return semanticResult(AgentContinuitySemanticRecallStatuses.RequestFailed, currentModelEmbeddings.length);
     }

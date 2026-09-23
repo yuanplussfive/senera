@@ -56,6 +56,7 @@ export function resolveAgentPromptConfig(config: AgentSystemConfig): ResolvedAge
     UserMessageEnvelope: configured?.UserMessageEnvelope ?? defaults.Prompt.UserMessageEnvelope,
     TimeZone: timeZone || "Asia/Shanghai",
     PrefaceRewrite: configured?.PrefaceRewrite ?? defaults.Prompt.PrefaceRewrite,
+    FinalResponseRewrite: configured?.FinalResponseRewrite ?? defaults.Prompt.FinalResponseRewrite,
     RoleCheck: configured?.RoleCheck ?? defaults.Prompt.RoleCheck,
     BamlToolAttribution: configured?.BamlToolAttribution ?? defaults.Prompt.BamlToolAttribution,
   };

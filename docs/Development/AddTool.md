@@ -47,16 +47,33 @@ The MCP server owns tool schemas through `tools/list`. Use `@modelcontextprotoco
 
 ## System extension
 
-Create `System/Extensions/<id>/extension.json`, one contract per `hostTool` contribution, and at least one package-local observation projection. The manifest owns package metadata and references a capability already registered by Senera. Contracts own tool input/output, execution, runtime, resource, search and artifact policies.
+Create `System/Extensions/<domain>/<extension>/extension.json`, one contract per `hostTool` contribution, and at least one package-local observation projection. Start with the owning `System/Extensions/<domain>/domain.json`; the package directory name must equal `extension.id`, and `extension.domain` must equal the domain manifest ID. The manifest owns package metadata and references a capability already registered by Senera. Contracts own tool input/output, execution, runtime, resource, search and artifact policies.
 
 ```text
-System/Extensions/example/
+System/Extensions/example-domain/example-extension/
   extension.json
   tools/ExampleTool.tool.json
   observations/default.projection.json
 ```
 
 The Tool contract references `observationProjection`. Declare protocol sources and explicit structural limits in that file; do not select payload fields by name in runtime code. Use RFC 6901 `pointer` only when a Tool intentionally projects one subvalue. The runtime centrally preserves identity, status, artifact URI, and the canonical failure envelope. See [Tool Observation Projection](../Architecture/ToolObservationProjection.md).
+
+For result content, optionally declare `contentPolicy` in the same contract. It is a typed, tool-owned choice rather than a host-maintained tool-name table:
+
+```json
+{
+  "contentPolicy": {
+    "ownership": "tool",
+    "kind": "execution",
+    "representation": "preserve",
+    "compression": "none",
+    "deduplication": "none",
+    "preserve": ["code", "json", "logs", "urls", "identifiers"]
+  }
+}
+```
+
+Use `tool` when the implementation already extracts or summarizes its output (for example Shell's `tokenjuice` execution digest or WebFetch's Readability/Markdown projection). Use `host` only when the package wants the shared dispatcher to apply a declared policy such as `web-readable` with `deduplication: "prose-only"` and explicit JSON-pointer `targets`. The dispatcher never changes the Artifact or persisted result; it only supplies `observationResult` for the current model request. Do not declare prose deduplication for logs, source code, JSON, identifiers, or binary/resource payloads.
 
 Host implementation code stays under `Source/AgentSystem/SystemTools` or another host-owned module and is registered in code. A package cannot name a module to import. For a Zod-defined tool, run:
 

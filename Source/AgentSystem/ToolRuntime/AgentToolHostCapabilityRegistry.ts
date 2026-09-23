@@ -88,6 +88,17 @@ export type AgentHostToolHandler = (
 
 export interface AgentHostToolContractProjection {
   projectInvocationSchema?(tool: RegisteredTool, schema: Readonly<Record<string, unknown>>): Record<string, unknown>;
+  /**
+   * Projects the schema used for host-side validation. This is deliberately
+   * separate from the model-facing schema: a host can accept a compatibility
+   * envelope for replayed calls without advertising those fields to new model
+   * requests. The host parser remains responsible for deciding which values
+   * are meaningful after this boundary.
+   */
+  projectRuntimeValidationSchema?(
+    tool: RegisteredTool,
+    schema: Readonly<Record<string, unknown>>,
+  ): Record<string, unknown>;
   projectDescription?(tool: RegisteredTool, description: string): string;
 }
 
@@ -115,6 +126,14 @@ export class AgentToolHostCapabilityRegistry {
 
   projectInvocationSchema(tool: RegisteredTool, schema: Readonly<Record<string, unknown>>): Record<string, unknown> {
     const projection = this.contractProjection(tool)?.projectInvocationSchema;
+    return projection ? projection(tool, schema) : (schema as Record<string, unknown>);
+  }
+
+  projectRuntimeValidationSchema(
+    tool: RegisteredTool,
+    schema: Readonly<Record<string, unknown>>,
+  ): Record<string, unknown> {
+    const projection = this.contractProjection(tool)?.projectRuntimeValidationSchema;
     return projection ? projection(tool, schema) : (schema as Record<string, unknown>);
   }
 

@@ -35,5 +35,4 @@ export {
   resolvePresetsConfig,
   resolveToolLearningConfig,
   resolveToolSearchConfig,
-  resolveVectorModelsConfig,
 } from "./Defaults/AgentToolDefaults.js";

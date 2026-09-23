@@ -13,6 +13,7 @@ import {
   type AgentContinuityMemoryPromptContext,
 } from "../Continuity/AgentContinuityMemoryTypes.js";
 import type { AgentContinuityMemoryService } from "../Continuity/AgentContinuityMemoryService.js";
+import type { AgentResidentState } from "../Continuity/AgentResidentState.js";
 import type { AgentExecutionLedgerService } from "../Goals/AgentExecutionLedgerService.js";
 import {
   EmptyAgentWorkflowPromptContext,
@@ -27,9 +28,6 @@ export interface AgentRetrievalService {
   resolvePlannedLoadedTools(
     options: Parameters<AgentToolSearchRuntime["resolvePlannedLoadedTools"]>[0],
   ): ReturnType<AgentToolSearchRuntime["resolvePlannedLoadedTools"]>;
-  rememberAutoSearch(
-    ...args: Parameters<AgentToolSearchRuntime["rememberAutoSearch"]>
-  ): ReturnType<AgentToolSearchRuntime["rememberAutoSearch"]>;
   finishRequest(
     ...args: Parameters<AgentToolSearchRuntime["finishRequest"]>
   ): ReturnType<AgentToolSearchRuntime["finishRequest"]>;
@@ -42,15 +40,23 @@ export interface AgentRetrievalService {
   reusableCapabilities?(
     options: Parameters<AgentToolSearchRuntime["reusableCapabilities"]>[0],
   ): ReturnType<AgentToolSearchRuntime["reusableCapabilities"]>;
+  getReusableEvidence?(
+    options: Parameters<AgentToolSearchRuntime["getReusableEvidence"]>[0],
+  ): ReturnType<AgentToolSearchRuntime["getReusableEvidence"]>;
+}
+
+export interface AgentResidentStateService {
+  load(sessionId: string): AgentResidentState | undefined;
+  save(sessionId: string, state: AgentResidentState, observedAt: string): void;
 }
 
 export interface AgentPromptContextService {
   activateSkills(
     options: Parameters<AgentSkillActivationService["activate"]>[0],
   ): ReturnType<AgentSkillActivationService["activate"]>;
-  recommendedSkillTools(
-    skills: Parameters<AgentSkillActivationService["recommendedToolNames"]>[0],
-  ): ReturnType<AgentSkillActivationService["recommendedToolNames"]>;
+  recommendedSkillToolRouting(
+    skills: Parameters<AgentSkillActivationService["recommendedToolRouting"]>[0],
+  ): ReturnType<AgentSkillActivationService["recommendedToolRouting"]>;
   buildBaseContext(
     options?: Parameters<AgentPromptContextBuilder["buildBaseContext"]>[0],
   ): ReturnType<AgentPromptContextBuilder["buildBaseContext"]>;
@@ -59,15 +65,14 @@ export interface AgentPromptContextService {
   ): ReturnType<AgentPromptContextBuilder["buildRootCommand"]>;
   promptRoleplayPreset(userInput?: string): ReturnType<AgentPresetManager["promptContext"]>;
   toolCatalog(): ReturnType<AgentToolCatalogProjector["list"]>;
-  promptContinuityMemory(input: {
-    userInput: string;
-    sessionId?: string;
-    requestId?: string;
-  }): Promise<AgentContinuityMemoryPromptContext>;
+  /** Current resident profile and evaluated state only; historical recall stays explicit. */
+  liveContinuityMemory(input?: { sessionId?: string }): Promise<AgentContinuityMemoryPromptContext>;
   promptWorkflow(sessionId?: string): AgentWorkflowPromptContext;
   interactionToolNames?(
     interaction?: import("../Interaction/AgentInteractionContext.js").AgentInteractionContext,
   ): string[];
+  /** Durable per-session resident-state access; absent when continuity memory is disabled. */
+  residentState?: AgentResidentStateService;
 }
 
 export interface AgentExecutionService {
@@ -112,23 +117,30 @@ export function createDefaultAgentRuntimeServices(dependencies: AgentRuntimeServ
     retrieval: {
       resolveInitialLoadedTools: (...args) => dependencies.toolSearch.resolveInitialLoadedTools(...args),
       resolvePlannedLoadedTools: (options) => dependencies.toolSearch.resolvePlannedLoadedTools(options),
-      rememberAutoSearch: (...args) => dependencies.toolSearch.rememberAutoSearch(...args),
       finishRequest: (...args) => dependencies.toolSearch.finishRequest(...args),
       afterToolResults: (options) => dependencies.toolSearch.afterToolResults(options),
       toolUsePatterns: (options) => dependencies.toolSearch.toolUsePatterns(options),
       reusableCapabilities: (options) => dependencies.toolSearch.reusableCapabilities(options),
+      getReusableEvidence: (options) => dependencies.toolSearch.getReusableEvidence(options),
     },
     promptContext: {
       activateSkills: (options) => dependencies.skillActivation.activate(options),
-      recommendedSkillTools: (skills) => dependencies.skillActivation.recommendedToolNames(skills),
+      recommendedSkillToolRouting: (skills) => dependencies.skillActivation.recommendedToolRouting(skills),
       buildBaseContext: (options) => dependencies.promptContextBuilder.buildBaseContext(options),
       buildRootCommand: (options) => dependencies.promptContextBuilder.buildRootCommand(options),
       promptRoleplayPreset: (userInput) => dependencies.presetManager.promptContext(userInput),
       toolCatalog: () => dependencies.toolCatalog.list(),
-      promptContinuityMemory: async (input) => {
+      liveContinuityMemory: async (input) => {
         if (!dependencies.continuityMemory) return EmptyAgentContinuityMemoryPromptContext;
-        return await dependencies.continuityMemory.promptContext(input);
+        return await dependencies.continuityMemory.liveContext(input);
       },
+      residentState: dependencies.continuityMemory
+        ? {
+            load: (sessionId) => dependencies.continuityMemory!.loadResidentState(sessionId),
+            save: (sessionId, state, observedAt) =>
+              dependencies.continuityMemory!.saveResidentState(sessionId, state, observedAt),
+          }
+        : undefined,
       promptWorkflow: (sessionId) => dependencies.workflow?.promptContext(sessionId) ?? EmptyAgentWorkflowPromptContext,
       interactionToolNames: (interaction) => dependencies.promptContextBuilder.interactionToolNames(interaction),
     },

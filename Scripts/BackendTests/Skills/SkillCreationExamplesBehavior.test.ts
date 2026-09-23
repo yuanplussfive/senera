@@ -34,9 +34,8 @@ describe("Skill creation examples", () => {
   test("documents atomic Toolkit resource creation and nested write preconditions", () => {
     const skillCreator = fs.readFileSync(path.resolve("System/Skills/skill-creator/SKILL.md"), "utf8");
     expect(skillCreator).toContain("one atomic `WorkspaceApplyPatch` call");
-    expect(skillCreator).toContain("`createDirectory`");
     expect(skillCreator).toContain("`add`");
-    expect(skillCreator).toContain("does not create missing parent directories");
+    expect(skillCreator).toContain("Parent directories for declared files are created atomically");
     expect(skillCreator).toContain("optional author-owned EOF comment");
   });
 

@@ -1,4 +1,6 @@
 import type { AgentPiCompactionToolCallEntry, AgentPiCompactionToolCallIndex } from "./AgentPiCompactionToolIndex.js";
+import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
+import { defineSeneraProtocol } from "../Core/AgentProtocolIdentity.js";
 import { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
 import { formatXmlBlock } from "../Xml/AgentXmlFormat.js";
 import { AgentCompactionSummaryTags } from "./AgentPiCompactionTags.js";
@@ -49,6 +51,20 @@ const StatusLabels: Readonly<Record<AgentPiCompactionToolCallEntry["status"], st
 
 const NewLine = "\n";
 const SectionSeparator = NewLine + NewLine;
+
+/**
+ * Candidate checkpoints are rendered through this formatter after they are
+ * selected. Keep a concrete revision for that model-facing contract so a
+ * persisted candidate cannot survive a formatting change by accident.
+ */
+export const AgentPiCompactionSummaryFormatterProtocol = defineSeneraProtocol("compaction_summary_formatter", 1);
+
+export const AgentPiCompactionSummaryFormatterRevision = sha256HexOfCanonicalJson({
+  protocol: AgentPiCompactionSummaryFormatterProtocol,
+  tags: AgentCompactionSummaryTags,
+  sectionTitles: CompactionSummarySectionTitles,
+  statusLabels: StatusLabels,
+});
 
 export class AgentPiCompactionSummaryFormatter {
   private readonly tokenProjector: AgentTokenProjector;

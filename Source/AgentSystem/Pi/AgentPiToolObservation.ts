@@ -64,7 +64,7 @@ export function isAgentPiToolResultMessage(
 }
 
 export function readAgentPiToolObservationArtifactUri(observation: AgentPiToolObservation): string | undefined {
-  return observation.observation_view.artifact_uri;
+  return observation.observation_view?.artifact_uri;
 }
 
 export function projectAgentPiToolObservationDetail(

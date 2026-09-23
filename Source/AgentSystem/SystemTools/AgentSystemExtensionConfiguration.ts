@@ -272,16 +272,6 @@ function assertConfigurationModelSelection(
       `System extension ${extensionId} UI model selection ${fieldPath.join(".")} has an incompatible ${cardinality} field type.`,
     );
   }
-  if (selection.providerPath) {
-    assertConfigurationModelSelectionReference(
-      extensionId,
-      rootSchema,
-      fieldPath,
-      "providerPath",
-      selection.providerPath,
-      "string",
-    );
-  }
   if (selection.inheritance?.path) {
     assertConfigurationModelSelectionReference(
       extensionId,
@@ -298,7 +288,7 @@ function assertConfigurationModelSelectionReference(
   extensionId: string,
   rootSchema: Record<string, unknown>,
   fieldPath: readonly string[],
-  referenceName: "providerPath" | "inheritance.path",
+  referenceName: "inheritance.path",
   referencePath: readonly string[],
   expectedType: "boolean" | "string",
 ): void {

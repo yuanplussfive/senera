@@ -35,6 +35,26 @@ describe("tool execution manifest schema", () => {
     }
   });
 
+  test("uses one planner-mode declaration schema across tool contract boundaries", () => {
+    expect(
+      ToolSchema.safeParse({
+        ...tool(["Local"]),
+        PlanningModes: ["native"],
+      }).success,
+    ).toBe(true);
+
+    const duplicate = ToolSchema.safeParse({
+      ...tool(["Local"]),
+      PlanningModes: ["native", "native"],
+    });
+    expect(duplicate.success).toBe(false);
+    if (!duplicate.success) {
+      expect(duplicate.error.issues).toContainEqual(
+        expect.objectContaining({ path: ["PlanningModes", 1], message: expect.stringContaining("once") }),
+      );
+    }
+  });
+
   test("accepts declarative streaming runtime capabilities", () => {
     const result = ToolSchema.safeParse({
       ...tool(["Local"]),

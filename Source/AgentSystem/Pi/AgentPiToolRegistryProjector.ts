@@ -13,15 +13,17 @@ import type { ToolExecutionTarget } from "../Types/AgentToolContractTypes.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import { orderToolNamesByPreference } from "../ToolRuntime/AgentToolAccessGrant.js";
 import { ensureObjectRootJsonSchema } from "../ToolContracts/AgentJsonSchemaObjectRoot.js";
-import { ToolLoadingModes } from "../Types/AgentToolContractTypes.js";
 import type { AgentModelToolPlanningMode } from "../ModelEndpoints/AgentModelEndpointContract.js";
-import { isAgentToolExposureMutationMetaToolName } from "../ToolSearch/AgentToolSearchRuntimeTypes.js";
 import { AgentPiNativeToolBridge } from "./AgentPiNativeToolBridge.js";
 import type { AgentToolAccessGrant } from "../ToolRuntime/AgentToolAccessGrant.js";
 import type { AgentPiToolCallPreflightInput } from "./AgentPiToolCallPreflight.js";
 import { projectAgentToolDescription } from "../ToolRuntime/AgentToolInteractionProjector.js";
 import { projectAgentToolCapabilityArguments } from "../ToolSearch/AgentToolCapabilityArgumentProjection.js";
 import { isAgentToolAvailableForInteraction } from "../ToolRuntime/AgentToolInteractionAvailability.js";
+import {
+  isAgentToolDirectlyInvocable,
+  isAgentToolSupportedByPlanningMode,
+} from "../ToolRuntime/AgentToolInvocationRouting.js";
 
 export interface AgentPiToolRuntimeContractProjector {
   projectToolInvocationSchema(tool: RegisteredTool, schema: Readonly<Record<string, unknown>>): Record<string, unknown>;
@@ -60,7 +62,7 @@ export class AgentPiToolRegistryProjector {
 
   constructor(private readonly options: AgentPiToolRegistryProjectorOptions) {
     this.documentationReader = new AgentPromptDocumentationReader();
-    this.nativeBridge = new AgentPiNativeToolBridge(options.registry, options.execution);
+    this.nativeBridge = new AgentPiNativeToolBridge(options.registry, options.execution, options.toolPlanningMode);
   }
 
   project(context: AgentPiToolProjectionContext = {}): AgentPiToolDefinition[] {
@@ -87,10 +89,8 @@ export class AgentPiToolRegistryProjector {
     interaction?: AgentPiToolProjectionContext["interaction"],
   ): AgentPiToolSet {
     const runtimeTargets = this.options.availableExecutionTargets?.() ?? ["Sandbox", "Local"];
-    const tools = this.visibleTools(visibleToolNames, preferredToolNames, runtimeTargets, interaction).filter((tool) =>
-      this.options.toolPlanningMode === "native"
-        ? tool.loading === ToolLoadingModes.Bootstrap && !isAgentToolExposureMutationMetaToolName(tool.name)
-        : true,
+    const tools = this.visibleTools(visibleToolNames, preferredToolNames, runtimeTargets, interaction).filter(
+      (tool) => this.options.toolPlanningMode !== "native" || isAgentToolDirectlyInvocable(tool),
     );
     const projections = tools.map((tool) => ({ tool, descriptor: this.projectDescriptor(tool, runtimeTargets) }));
     const bridgeEnabled = this.options.toolPlanningMode === "native";
@@ -100,7 +100,13 @@ export class AgentPiToolRegistryProjector {
       ...(bridgeDescriptor ? [stripToolExecutor(bridgeDescriptor)] : []),
     ];
     const activeToolNames = descriptors.map((descriptor) => descriptor.name);
-    const fingerprint = sha256HexOfCanonicalJson(descriptors);
+    // The provider descriptor is deliberately smaller than the execution
+    // contract. Keep the latter in the session fingerprint without exposing
+    // resource claims, handlers, or policy metadata to the model. Otherwise a
+    // hot-reloaded resource declaration can leave an existing Pi session
+    // running a stale closure while its public schema still looks identical.
+    const executionContracts = projections.map(({ tool }) => projectExecutionContractIdentity(tool));
+    const fingerprint = sha256HexOfCanonicalJson({ descriptors, executionContracts });
     return {
       fingerprint,
       activeToolNames,
@@ -115,9 +121,17 @@ export class AgentPiToolRegistryProjector {
     event: AgentPiToolCallPreflightInput,
     toolAccessGrant: AgentToolAccessGrant,
     reusableCapabilities?: AgentPiToolProjectionContext["reusableCapabilities"],
+    toolExposure?: AgentPiToolProjectionContext["toolExposure"],
+    reusableCapabilityLookup?: AgentPiToolProjectionContext["reusableCapabilityLookup"],
   ): AgentPiToolPreflightProjection {
     if (this.options.toolPlanningMode === "native") {
-      const projected = this.nativeBridge.projectPreflight(event, toolAccessGrant, reusableCapabilities);
+      const projected = this.nativeBridge.projectPreflight(
+        event,
+        toolAccessGrant,
+        reusableCapabilities,
+        toolExposure,
+        reusableCapabilityLookup,
+      );
       return { event: projected, bridged: projected !== event };
     }
     const tool = this.options.registry.getTool(event.toolName);
@@ -139,6 +153,7 @@ export class AgentPiToolRegistryProjector {
   ): RegisteredTool[] {
     const registered = this.options.registry
       .listTools()
+      .filter((tool) => isAgentToolSupportedByPlanningMode(tool, this.options.toolPlanningMode))
       .filter((tool) => isAgentToolAvailableForInteraction(tool, interaction))
       .filter((tool) => resolveAvailableAgentToolExecutionTargets(tool, runtimeTargets).length > 0);
     if (!visibleToolNames) {
@@ -222,6 +237,25 @@ export class AgentPiToolRegistryProjector {
 function stripToolExecutor(tool: AgentPiToolDefinition): Omit<AgentPiToolDefinition, "execute"> {
   const { execute: _execute, ...descriptor } = tool;
   return descriptor;
+}
+
+function projectExecutionContractIdentity(tool: RegisteredTool): Record<string, unknown> {
+  return {
+    name: tool.name,
+    ownerRevision: tool.owner.revision,
+    loading: tool.loading,
+    planningModes: tool.planningModes,
+    contractDigest: tool.contract?.digest,
+    handler: tool.handler,
+    execution: tool.execution,
+    runtime: tool.runtime,
+    permissions: tool.permissions,
+    childGrant: tool.childGrant,
+    approval: tool.approval,
+    artifactPolicy: tool.artifactPolicy,
+    contentPolicy: tool.contentPolicy,
+    interactionSurfaces: tool.interactionSurfaces,
+  };
 }
 
 function normalizeToolParams(value: unknown): Record<string, unknown> {

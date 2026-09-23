@@ -40,7 +40,7 @@ describe("turn prompt projection", () => {
         services: {
           promptContext: {
             promptRoleplayPreset: async () => EmptyAgentRoleplayPresetContext,
-            promptContinuityMemory: async () => EmptyAgentContinuityMemoryPromptContext,
+            liveContinuityMemory: async () => EmptyAgentContinuityMemoryPromptContext,
             promptWorkflow: () => EmptyAgentWorkflowPromptContext,
             buildBaseContext: ({ roleplayPreset }: { roleplayPreset: unknown }) => ({
               ExecutionEnvironment: buildAgentExecutionEnvironmentContext(process.cwd()),
@@ -82,6 +82,9 @@ describe("turn prompt projection", () => {
       expect(rendered.text).toContain(marker);
       expect(rendered.systemPrompt).toContain("<senera_kernel>");
       expect(rendered.text).toContain("<interaction_stance>");
+      expect(rendered.text).toContain(
+        "Use discovery or a tool only when the task needs a capability that is not already available or a verified external outcome; answer directly when neither is needed.",
+      );
       expect(rendered.text).not.toContain("<world_truth>");
       expect(rendered.text).not.toContain("The hall has never gone fully dark.");
       expect(rendered.text).not.toContain("<resident_role>");
@@ -125,12 +128,12 @@ describe("turn prompt projection", () => {
       });
       expect(identity.systemPrompt).toBe(baseline.systemPrompt);
       expect(identity.systemPrompt).not.toContain("senera.conversation_space=v1");
-      expect(identity.turnContext).toContain("senera.conversation_space=v1");
-      expect(identity.turnContext).toContain("conversation-space");
-      expect(identity.turnContext).not.toContain("<senera_conversation_space>");
-      expect(identity.turnContext).toContain("senera.turn=v1");
-      expect(identity.turnContext).toContain("gpt-5.6-luna");
-      expect(identity.turnContext).toContain('"platform":"qq"');
+      expect(identity.liveContext).toContain("senera.conversation_space=v1");
+      expect(identity.liveContext).toContain("conversation-space");
+      expect(identity.liveContext).not.toContain("<senera_conversation_space>");
+      expect(identity.liveContext).toContain("senera.turn=v1");
+      expect(identity.liveContext).toContain("gpt-5.6-luna");
+      expect(identity.liveContext).toContain('"platform":"qq"');
     },
   );
 
@@ -190,7 +193,7 @@ describe("turn prompt projection", () => {
         services: {
           promptContext: {
             promptRoleplayPreset: async () => ({ enabled: true, activePresetName: null }),
-            promptContinuityMemory: async () => EmptyAgentContinuityMemoryPromptContext,
+            liveContinuityMemory: async () => EmptyAgentContinuityMemoryPromptContext,
             promptWorkflow: () => EmptyAgentWorkflowPromptContext,
             buildBaseContext: ({ roleplayPreset }: { roleplayPreset: unknown }) => ({
               ExecutionEnvironment: buildAgentExecutionEnvironmentContext(process.cwd()),
@@ -260,7 +263,7 @@ describe("turn prompt projection", () => {
                 },
               };
             },
-            promptContinuityMemory: async () => EmptyAgentContinuityMemoryPromptContext,
+            liveContinuityMemory: async () => EmptyAgentContinuityMemoryPromptContext,
             promptWorkflow: () => EmptyAgentWorkflowPromptContext,
             buildBaseContext: ({ roleplayPreset }: { roleplayPreset: unknown }) => ({
               ExecutionEnvironment: buildAgentExecutionEnvironmentContext(process.cwd()),
@@ -307,7 +310,7 @@ describe("turn prompt projection", () => {
   );
 
   test.each(["native", "baml"] as const)(
-    "projects profile, known facts, and relevant continuity for %s",
+    "keeps profile stable and limits the live overlay to active state for %s",
     async (mode) => {
       const rootCommand = toolRootCommand();
       const continuityMemory = {
@@ -383,7 +386,7 @@ describe("turn prompt projection", () => {
         services: {
           promptContext: {
             promptRoleplayPreset: async () => EmptyAgentRoleplayPresetContext,
-            promptContinuityMemory: async () => continuityMemory,
+            liveContinuityMemory: async () => continuityMemory,
             promptWorkflow: () => workflow,
             buildBaseContext: ({
               roleplayPreset,
@@ -428,17 +431,17 @@ describe("turn prompt projection", () => {
 
       expect(rendered.text).not.toContain("internal-delivery");
 
-      expect(rendered.text).toContain("[senera.profile] encoding=toon");
+      expect(rendered.text).toMatch(/\[senera\.profile\] encoding=(toon|compact-json)/u);
       expect(rendered.text).toContain("居住地点: 上海");
-      expect(rendered.systemPrompt).not.toContain("居住地点: 上海");
-      expect(rendered.turnContext).toContain("[senera.profile] encoding=toon");
-      expect(rendered.turnContext).toContain("居住地点: 上海");
-      expect(rendered.text).toContain("[senera.facts] encoding=toon");
-      expect(rendered.text).toContain("这条完整事实只用于连续性面板诊断。");
+      expect(rendered.systemPrompt).toContain("居住地点: 上海");
+      expect(rendered.liveContext).not.toContain("居住地点: 上海");
+      expect(rendered.liveContext).not.toContain("这条完整事实只用于连续性面板诊断。");
+      expect(rendered.liveContext).not.toContain("senera://memory-source/harbor");
+      expect(rendered.text).not.toContain("这条完整事实只用于连续性面板诊断。");
       expect(rendered.text).not.toContain("validUntil");
-      expect(rendered.text).toContain("senera://memory-source/harbor");
-      expect(rendered.text).toContain("用户已完成运动");
-      expect(rendered.text).toMatch(/\[senera\.memory_selection\] encoding=(toon|compact-json)/u);
+      expect(rendered.text).not.toContain("senera://memory-source/harbor");
+      expect(rendered.text).not.toContain("用户已完成运动");
+      expect(rendered.text).not.toMatch(/\[senera\.memory_selection\] encoding=(toon|compact-json)/u);
       expect(rendered.text).not.toContain("<continuity_memory");
       expect(rendered.text).not.toContain("<known_facts");
       expect(rendered.text).not.toContain("<workflow_context");

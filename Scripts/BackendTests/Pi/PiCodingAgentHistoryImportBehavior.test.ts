@@ -4,6 +4,10 @@ import { describe, expect, test, vi } from "vitest";
 import { AgentPiCodingAgentSession } from "../../../Source/AgentSystem/Pi/AgentPiCodingAgentSession.js";
 import type { AgentPiMutableSessionFrame } from "../../../Source/AgentSystem/Pi/AgentPiCodingAgentSessionFrame.js";
 import {
+  AgentPiTurnContextCustomType,
+  AgentPiTurnContextElementName,
+} from "../../../Source/AgentSystem/Pi/AgentPiTurnContextMessage.js";
+import {
   hasIncompatibleAgentPiToolObservationHistory,
   isAgentPiConversationHistoryEmpty,
   isAgentPiSessionRuntimeContractCurrent,
@@ -43,6 +47,31 @@ describe("Pi Coding Agent history import", () => {
     expect(() => session.setHistory([historicalUserMessage()])).toThrow(
       "Pi Coding Agent history can only be imported into an empty session.",
     );
+  });
+
+  test("keeps legacy host overlays in durable history but out of runtime state", () => {
+    const sessionManager = SessionManager.inMemory();
+    const state = { messages: [] as AgentMessage[] };
+    const session = new AgentPiCodingAgentSession(codingSession(state), sessionManager, sessionFrame(), vi.fn());
+    const legacyOverlay: AgentMessage = {
+      role: "custom",
+      customType: AgentPiTurnContextCustomType,
+      content: `<${AgentPiTurnContextElementName} attribution="root">legacy snapshot</${AgentPiTurnContextElementName}>`,
+      display: false,
+      timestamp: Date.parse("2026-01-01T00:00:01.000Z"),
+    };
+
+    session.setHistory([historicalUserMessage(), legacyOverlay]);
+
+    expect(state.messages).toEqual([historicalUserMessage()]);
+    expect(sessionManager.buildSessionContext().messages).toEqual([
+      historicalUserMessage(),
+      expect.objectContaining({
+        role: "custom",
+        customType: AgentPiTurnContextCustomType,
+        content: legacyOverlay.content,
+      }),
+    ]);
   });
 
   test("stamps the active observation contract without adding model-visible history", () => {

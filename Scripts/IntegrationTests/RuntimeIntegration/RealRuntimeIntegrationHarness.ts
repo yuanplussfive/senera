@@ -278,7 +278,7 @@ export class FakeControllerModelServer {
     const outputs: Record<ModelStage, () => unknown> = {
       [ModelStages.EvolveTurn]: () => evolveTurnOutput(readPlannerInput(payload)),
       [ModelStages.FillPiToolArguments]: () => ({
-        arguments: { query: "shell command", includeLoaded: true },
+        arguments: { query: "shell command" },
         missingInputs: [],
         assumptions: [],
       }),

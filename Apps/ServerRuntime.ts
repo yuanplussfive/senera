@@ -16,7 +16,6 @@ import {
   resolveAgentTodosConfig,
   resolvePresetsConfig,
   resolveUploadsConfig,
-  resolveVectorModelsConfig,
   resolveAgentWorldConfig,
   resolveActionPlannerConfig,
 } from "../Source/AgentSystem/AgentDefaults.js";
@@ -25,11 +24,11 @@ import { AgentUserProfileManager } from "../Source/AgentSystem/Session/AgentUser
 import { AgentSkillScanner } from "../Source/AgentSystem/Skills/AgentSkillScanner.js";
 import { AgentMcpPackageScanner } from "../Source/AgentSystem/McpPackages/AgentMcpPackageScanner.js";
 import { createAgentContinuityRuntime } from "../Source/AgentSystem/Continuity/AgentContinuityRuntime.js";
-import { AgentVectorModelClient } from "../Source/AgentSystem/Vector/AgentVectorModelClient.js";
 import {
-  createAgentWorldSnapshotEvent,
-  createAgentWorldSnapshotEventFromProjection,
-} from "../Source/AgentSystem/World/AgentWorldEventTypes.js";
+  AgentLocalEmbeddingClient,
+  AgentLocalEmbeddingModelName,
+} from "../Source/AgentSystem/ToolSearch/AgentLocalEmbeddingClient.js";
+import { createAgentWorldSnapshotEventFromProjection } from "../Source/AgentSystem/World/AgentWorldEventTypes.js";
 import type { AgentWorldResidentWakeActionPort } from "../Source/AgentSystem/World/AgentWorldResidentWakeRuntime.js";
 import { AgentConfigService, type AgentConfigSourceOptions } from "../Source/AgentSystem/Config/AgentConfigService.js";
 import { AgentEventKinds } from "../Source/AgentSystem/Events/AgentEvent.js";
@@ -39,6 +38,7 @@ import { AgentServerEventLogger } from "../Source/AgentSystem/Diagnostics/AgentS
 import { AgentApprovalRuntime } from "../Source/AgentSystem/Approvals/AgentApprovalRuntime.js";
 import { AgentPiActiveSessionRegistry } from "../Source/AgentSystem/Pi/AgentPiActiveSessionRegistry.js";
 import { AgentPiSessionMutationService } from "../Source/AgentSystem/Pi/AgentPiSessionMutationService.js";
+import { AgentPiCompactionCandidateSqliteStore } from "../Source/AgentSystem/Pi/AgentPiCompactionCandidateStore.js";
 import { createAgentPiDiagnosticLoggerForDetail } from "../Source/AgentSystem/Diagnostics/AgentPiDiagnostics.js";
 import { AgentSystemRuntimeCache } from "../Source/AgentSystem/Runtime/AgentSystemRuntimeCache.js";
 import { AgentSessionApprovalLeaseStore } from "../Source/AgentSystem/Safety/AgentSessionApprovalLeaseStore.js";
@@ -84,9 +84,11 @@ import {
   isTerminalDetachedChildRun,
 } from "../Source/AgentSystem/Orchestration/AgentDelegationSessionWake.js";
 import { AgentWorkflowService } from "../Source/AgentSystem/Orchestration/AgentWorkflowService.js";
-import { AgentSubagentRoleCatalog } from "../Source/AgentSystem/Orchestration/AgentSubagentRoleCatalog.js";
+import {
+  AgentSubagentRoleCatalog,
+  resolveAgentSubagentBuiltinRoleDirectory,
+} from "../Source/AgentSystem/Orchestration/AgentSubagentRoleCatalog.js";
 import { AgentScheduleRuntime } from "../Source/AgentSystem/Orchestration/AgentScheduleRuntime.js";
-import { AgentPresetManager } from "../Source/AgentSystem/Presets/AgentPresetManager.js";
 import type { AgentIdentityDisplayValues } from "../Source/AgentSystem/Text/AgentTextParts.js";
 import {
   AgentScheduledTaskDeliveryGateway,
@@ -97,6 +99,7 @@ import { AgentChannelsDatabase } from "../Source/AgentSystem/Channels/AgentChann
 import { createSeneraServerRuntimePlatform } from "./ServerRuntimePlatform.js";
 import { composeSeneraServerWorldRuntime } from "./ServerWorldRuntime.js";
 import { createSeneraServerRuntimeStop } from "./ServerRuntimeShutdown.js";
+import { bindSeneraServerRuntimeConfigurationSynchronization } from "./ServerRuntimeConfigurationSynchronization.js";
 import { startSeneraServerRuntimeConfigWatcher } from "./ServerRuntimeConfigWatcher.js";
 import { createSeneraServerInferenceBudget } from "./ServerInferenceBudget.js";
 import { ingestAgentChannelAttachment } from "../Source/AgentSystem/Channels/AgentChannelAttachmentIngestor.js";
@@ -431,7 +434,7 @@ async function startSeneraServerRuntime(
   deferResourceCleanup(() => delegationCompletion.stop());
   const workflowRepository = new AgentSqliteWorkflowRepository(orchestrationDatabase);
   const subagentRoles = new AgentSubagentRoleCatalog({
-    builtinRoot: path.join(resourceRoot, "System", "Extensions", "agent-delegation", "agents"),
+    builtinRoot: resolveAgentSubagentBuiltinRoleDirectory(path.join(resourceRoot, "System", "Extensions")),
   });
   const scheduledTasks = new AgentSqliteScheduledTaskStore(orchestrationDatabase);
   const schedulerConfiguration = resolveAgentSchedulerConfiguration(initialConfig);
@@ -487,13 +490,15 @@ async function startSeneraServerRuntime(
   const sessionStore = new AgentSessionStore({ repository });
   const sessionApprovals = new AgentSessionApprovalLeaseStore();
   const todoConfig = resolveAgentTodosConfig(initialConfig);
-  const vectorModelsConfig = resolveVectorModelsConfig(initialConfig);
   const inferenceBudgetRuntime = createSeneraServerInferenceBudget(configSnapshot);
   const { budget: inferenceBudget } = inferenceBudgetRuntime;
-  const vectorClient = new AgentVectorModelClient(vectorModelsConfig, {
-    inferenceBudget,
-    inferenceBudgetScope: inferenceBudgetRuntime.scope,
-  });
+  // Memory semantic recall runs entirely on the local WASM bilingual encoder so
+  // offline Chinese-first workspaces get semantic memory recall without a model
+  // endpoint or any external embedding API.
+  const continuityEmbeddingClient = (() => {
+    const client = new AgentLocalEmbeddingClient();
+    return { client, model: () => AgentLocalEmbeddingModelName };
+  })();
   const continuityRuntime = createAgentContinuityRuntime({
     databasePath: workspaceLayout.databases.memory,
     identityPath: workspaceLayout.continuityIdentity,
@@ -504,8 +509,8 @@ async function startSeneraServerRuntime(
       maxContentCharacters: todoConfig.MaxContentCharacters,
       maxResultCharacters: todoConfig.MaxResultCharacters,
     },
-    embeddingClient: vectorModelsConfig.Embedding.Enabled ? vectorClient : undefined,
-    embeddingModel: () => resolveVectorModelsConfig(configSnapshot()).Embedding.Model,
+    embeddingClient: continuityEmbeddingClient.client,
+    embeddingModel: continuityEmbeddingClient.model,
     inferenceBudget,
     identityDisplayValues,
     logger,
@@ -522,6 +527,7 @@ async function startSeneraServerRuntime(
     todos,
     temporalMemory,
   } = continuityRuntime;
+  const piCompactionCandidateStore = new AgentPiCompactionCandidateSqliteStore(continuityRuntime.database);
   delegation.bindTodoService(todos);
   const worldComposition = await composeSeneraServerWorldRuntime({
     workspaceRoot,
@@ -598,6 +604,7 @@ async function startSeneraServerRuntime(
     agenda,
     worldRuntime,
     inferenceBudget,
+    piCompactionCandidateStore,
     selfService,
     pluginHost,
     resourceCoordinator,
@@ -867,28 +874,22 @@ async function startSeneraServerRuntime(
     }),
   });
   publishChannelServer.current = server;
-  const unsubscribePresetActivation = configService.subscribe((snapshot) => {
-    const manager = new AgentPresetManager({
+  deferResourceCleanup(
+    bindSeneraServerRuntimeConfigurationSynchronization({
       workspaceRoot,
-      config: resolvePresetsConfig(snapshot.value),
-      activation: presetActivation,
-    });
-    void manager
-      .synchronizeActivePreset()
-      .then((card) => {
-        residentDisplayName = card?.title ?? resolveAgentWorldConfig(configSnapshot()).Name;
-        requestWorldWake("preset_activation");
-        return server.broadcast(createAgentWorldSnapshotEvent(worldRuntime));
-      })
-      .catch((error) => logger.error("角色世界同步失败", { error: errorMessage(error) }));
-  });
-  deferResourceCleanup(unsubscribePresetActivation);
-  const unsubscribeChannelConfig = configService.subscribe(() => {
-    void channelService.syncFromConfig().catch((error) => {
-      logger.error("消息渠道配置同步失败", { error: errorMessage(error) });
-    });
-  });
-  deferResourceCleanup(unsubscribeChannelConfig);
+      configService,
+      configSnapshot,
+      presetActivation,
+      channelService,
+      worldRuntime,
+      server,
+      requestWorldWake,
+      setResidentDisplayName: (name) => {
+        residentDisplayName = name;
+      },
+      logger,
+    }),
+  );
   channelService.setEventSink((event) => server.broadcast(event));
   cancelEventWriterCleanup();
   deferResourceCleanup(() => server.stop());

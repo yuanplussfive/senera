@@ -18,7 +18,7 @@ import {
   resolveAgentNativeToolRoute,
 } from "../../../Source/AgentSystem/ModelEndpoints/AgentModelEndpointContract.js";
 import { AgentTokenProjector } from "../../../Source/AgentSystem/Text/AgentTokenProjection.js";
-import { compilePiToolObservation } from "../Support/PiToolObservationFixtures.js";
+import { compilePiToolObservation, boundPiToolObservationView } from "../Support/PiToolObservationFixtures.js";
 
 describe("Pi projection behavior", () => {
   test.each(AgentModelEndpointKinds)("projects %s providers through the BAML planning provider", (endpoint) => {
@@ -158,8 +158,10 @@ describe("Pi projection behavior", () => {
         content: [
           {
             type: "text",
-            text: JSON.stringify(
-              compilePiToolObservation({
+            text: (() => {
+              // Bounded (non-inline) result: v5 keeps the completeness view, so
+              // the artifact URI stays visible in the transcript.
+              const observation = compilePiToolObservation({
                 toolName: "WeatherTool",
                 callId: "call-weather",
                 artifact: {
@@ -176,8 +178,15 @@ describe("Pi projection behavior", () => {
                   ],
                   delta: [],
                 },
-              }),
-            ),
+              });
+              return JSON.stringify({
+                ...observation,
+                observation_view: boundPiToolObservationView(observation, {
+                  complete: false,
+                  artifact_uri: "senera://artifact/weather",
+                }),
+              });
+            })(),
           },
         ],
         isError: false,
@@ -389,6 +398,12 @@ function toolResultWithArtifact(artifactUri: string): AgentMessage {
     callId: "call-visible",
     artifact: { artifactUri, evidence: [], delta: [] },
   });
+  // v5 omits the view for fully projected results, so the artifact URI is only
+  // visible in the transcript when the result is bounded (non-inline).
+  const boundedObservation = {
+    ...observation,
+    observation_view: boundPiToolObservationView(observation, { complete: false, artifact_uri: artifactUri }),
+  };
   return {
     role: "toolResult",
     toolCallId: "call-visible",
@@ -396,7 +411,7 @@ function toolResultWithArtifact(artifactUri: string): AgentMessage {
     content: [
       {
         type: "text",
-        text: JSON.stringify(observation),
+        text: JSON.stringify(boundedObservation),
       },
     ],
     isError: false,

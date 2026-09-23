@@ -24,7 +24,8 @@ import {
   type AgentMcpExecution,
 } from "./AgentMcpPackageSchema.js";
 import { AgentMcpHostRequirementsSchema, type AgentMcpHostRequirements } from "./AgentMcpHostRequirements.js";
-import { AgentMcpServerRuntimes } from "./AgentMcpPackageTypes.js";
+import { AgentMcpServerRuntimes, type AgentMcpPackageToolLocalization } from "./AgentMcpPackageTypes.js";
+import { AgentMcpToolLocalizationMetadataKey } from "./AgentMcpToolLocalization.js";
 
 const SeneraExecutionMetadataKey = "ai.senera/execution";
 
@@ -42,6 +43,7 @@ export const AgentMcpBundleDescriptorAdapter: AgentMcpDescriptorAdapter = {
     const server = requireMcpRecord(manifest.server, "MCPB server", ["server"]);
     const metadata =
       manifest._meta === undefined ? undefined : requireMcpRecord(manifest._meta, "MCPB _meta", ["_meta"]);
+    const toolLocalization = projectToolLocalization(metadata);
     const userConfig = projectUserConfig(manifest.user_config);
     const definitions = new Map(userConfig.map((input) => [input.id, input]));
     const mcpConfig =
@@ -69,6 +71,7 @@ export const AgentMcpBundleDescriptorAdapter: AgentMcpDescriptorAdapter = {
         {
           name: serverId,
           inputs: userConfig,
+          ...(toolLocalization ? { toolLocalization } : {}),
           configuration: {
             type: "stdio",
             ...(server.type === "node" ? { runtime: AgentMcpServerRuntimes.Node } : {}),
@@ -214,6 +217,29 @@ function projectStringRecord(
       projectMcpBundleExpression(requireMcpString(raw, `MCPB environment ${name}`, [...fieldPath, name]), definitions),
     ]),
   );
+}
+
+function projectToolLocalization(
+  meta: Record<string, unknown> | undefined,
+): AgentMcpPackageToolLocalization | undefined {
+  const value = meta?.[AgentMcpToolLocalizationMetadataKey];
+  if (value === undefined) return undefined;
+  const catalog = requireMcpRecord(value, AgentMcpToolLocalizationMetadataKey, [
+    "_meta",
+    AgentMcpToolLocalizationMetadataKey,
+  ]);
+  const localization: Record<string, readonly string[]> = {};
+  for (const [toolName, rawAliases] of Object.entries(catalog)) {
+    if (!Array.isArray(rawAliases) || rawAliases.some((entry) => typeof entry !== "string" || entry.length === 0)) {
+      throw new AgentMcpDescriptorError("MCPB tool-i18n aliases must be non-empty string arrays.", [
+        "_meta",
+        AgentMcpToolLocalizationMetadataKey,
+        toolName,
+      ]);
+    }
+    localization[toolName] = rawAliases as string[];
+  }
+  return localization;
 }
 
 function projectExecution(meta: Record<string, unknown> | undefined): AgentMcpExecution {

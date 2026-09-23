@@ -6,7 +6,7 @@ Senera separates model actions from executable capabilities. Native models send 
 
 At runtime startup:
 
-1. `AgentSystemExtensionCatalog` validates `System/Extensions/<id>/extension.json`, package-contained contracts, and pre-registered host capability references.
+1. `AgentSystemExtensionCatalog` recursively discovers `System/Extensions/<domain>/<extension>/extension.json`, validates each `domain.json`, package-contained contracts, and pre-registered host capability references. Domain, extension, and Tool presentation metadata are carried into tool lifecycle events.
 2. `AgentMcpPackageScanner` adapts MCPB `manifest.json`, Registry `server.json`, and legacy `.mcp.json` packages into one internal endpoint/input model. Conflicting descriptors and ambiguous routes fail instead of using first-match selection.
 3. `AgentMcpPackageDiscovery` connects with the official MCP client, calls `tools/list`, validates returned JSON Schemas, and projects the resulting tools into the registry.
 4. `System/Skills` and workspace `.senera/skills` are scanned as standard `SKILL.md` packages.

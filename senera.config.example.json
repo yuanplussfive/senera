@@ -70,53 +70,22 @@
     "ToolSearch": {
       "Fuzzy": {
         "Enabled": true,
-        "MinScore": 0.25,
-        "CandidateLimit": 8
+        "MinScore": 0.25
       },
       "Memory": {
         "MaxEpisodes": 5000,
         "HalfLifeDays": 30
       },
       "Ranking": {
-        "RrfK": 60,
-        "MmrLambda": 0.72,
-        "MmrCandidateScoreRatio": 0.92,
-        "MinScore": 0,
-        "MaxResults": 6,
-        "MemoryExpansion": {
-          "Mode": "fallback",
-          "MinConfidence": 0.8,
-          "MinEvidence": 3,
-          "MaxResults": 2
-        }
+        "RrfK": 30
+      },
+      "Disclosure": {
+        "TokenBudget": 640
       },
       "Rerank": {
-        "Enabled": false,
-        "CandidateLimit": 24,
+        "Enabled": true,
         "ScoreScale": 0.018,
         "FeatureWeights": {}
-      }
-    },
-    "VectorModels": {
-      "Embedding": {
-        "Enabled": false,
-        "ProviderId": "main",
-        "Model": "qwen3-embedding-0.6b",
-        "TimeoutSeconds": 20,
-        "MaxNetworkRetries": 1,
-        "Dimensions": -1,
-        "BatchSize": 64,
-        "InputMaxChars": -1
-      },
-      "Rerank": {
-        "Enabled": false,
-        "ProviderId": "main",
-        "Model": "qwen3-reranker-0.6b",
-        "TimeoutSeconds": 20,
-        "MaxNetworkRetries": 1,
-        "EndpointPath": "/rerank",
-        "CandidateLimit": -1,
-        "TopK": -1
       }
     },
     "ToolLearning": {
@@ -188,7 +157,8 @@
     },
     "Artifacts": {
       "RootDir": ".senera/artifacts/runs",
-      "SummaryMaxChars": 2400,
+      "InlineResultMaxTokens": 2048,
+      "InlineResultMaxBytes": 16384,
       "RawJsonMaxBytes": 67108864,
       "TextFileMaxBytes": 67108864,
       "MemoryReadMaxArtifacts": 16,

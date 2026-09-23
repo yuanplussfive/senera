@@ -1,16 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { AgentDefaultsConfig, ResolvedAgentModelProviderEndpointConfig } from "../Types/AgentConfigTypes.js";
-import type {
-  AgentModelRuntimeDefaultsConfig,
-  AgentVectorModelsDefaultsConfig,
-  ResolvedAgentDefaultsConfig,
-} from "./AgentDefaultValueTypes.js";
+import type { AgentModelRuntimeDefaultsConfig, ResolvedAgentDefaultsConfig } from "./AgentDefaultValueTypes.js";
 import { moduleDirPath } from "../Core/AgentPath.js";
 import { parseJsonText } from "../Core/AgentJsonParsing.js";
 import { SeneraDefaultTerminationGraceMs } from "../Execution/SeneraTerminationPolicy.js";
 import { AgentPiSessionCacheDefaults } from "../Pi/AgentPiSessionCachePolicy.js";
-import { AgentToolSearchMemoryExpansionModes } from "../Types/AgentToolAndMemoryConfigTypes.js";
 import { AgentModelResponseBudgetDefaults } from "../ModelEndpoints/ModelResponseBudget.js";
 import { SeneraDefaultProcessEnvironmentIncludeOnly } from "../Execution/SeneraProcessEnvironment.js";
 import { AgentToolSemanticAuditModes } from "../Types/AgentRuntimeConfigTypes.js";
@@ -27,6 +22,14 @@ import { AgentPresetPromptBudgetDefaults } from "../Presets/AgentPresetPromptBud
 
 const Mebibyte = 1024 * 1024;
 const DefaultLargePayloadBytes = 64 * Mebibyte;
+// A complete tool result can be useful in the active turn, but a few verbose
+// results should never consume the same context budget as the user's task.
+// Larger payloads remain fully recoverable through their Artifact reference.
+const DefaultInlineResultMaxTokens = 2_048;
+// Byte ceiling guards the inline path against high-compression text that a
+// token budget alone would admit (e.g. repetitive tool logs): the model sees
+// the full serialized JSON, so a raw-size bound keeps that wholesale copy sane.
+const DefaultInlineResultMaxBytes = 16 * 1024;
 const DefaultModelProviderEndpoints = parseJsonText(
   fs.readFileSync(path.join(moduleDirPath(import.meta.url), "AgentDefaultModelProviderEndpoints.json"), "utf8"),
   "Default model provider catalog",
@@ -43,8 +46,6 @@ export const AgentDefaults = {
     Model: "mistral-large-latest",
     Capabilities: {
       Chat: true,
-      Embedding: false,
-      Rerank: false,
       Vision: false,
       ImageOutput: false,
       Reasoning: false,
@@ -83,6 +84,7 @@ export const AgentDefaults = {
       autonomy: 2,
       resident: 1,
       continuity: 1,
+      compaction: 1,
       embedding: 1,
     },
   },
@@ -142,56 +144,106 @@ export const AgentDefaults = {
     Fuzzy: {
       Enabled: true,
       MinScore: 0.25,
-      CandidateLimit: 8,
     },
     Embedding: {
-      Enabled: false,
-      ScoreThreshold: 0,
+      Enabled: true,
+    },
+    Tokenize: {
+      Stopwords: [
+        "a",
+        "an",
+        "the",
+        "and",
+        "or",
+        "but",
+        "of",
+        "to",
+        "in",
+        "on",
+        "at",
+        "for",
+        "with",
+        "by",
+        "from",
+        "as",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "it",
+        "its",
+        "this",
+        "that",
+        "these",
+        "those",
+        "do",
+        "does",
+        "did",
+        "have",
+        "has",
+        "had",
+        "will",
+        "would",
+        "can",
+        "could",
+        "should",
+        "may",
+        "might",
+        "must",
+        "not",
+        "so",
+        "if",
+        "then",
+        "than",
+        "too",
+        "very",
+        "just",
+        "also",
+        "about",
+        "into",
+        "over",
+        "under",
+        "again",
+        "more",
+        "most",
+        "other",
+        "some",
+        "such",
+        "only",
+        "own",
+        "same",
+      ],
     },
     Memory: {
       MaxEpisodes: 5000,
       HalfLifeDays: 30,
     },
     Ranking: {
-      RrfK: 60,
-      MmrLambda: 0.72,
-      MmrCandidateScoreRatio: 0.92,
-      MinScore: 0,
-      MaxResults: 6,
-      MemoryExpansion: {
-        Mode: AgentToolSearchMemoryExpansionModes.Fallback,
-        MinConfidence: 0.8,
-        MinEvidence: 3,
-        MaxResults: 2,
+      RrfK: 30,
+      ChannelWeights: {
+        bm25: 1,
+        exact: 0.9,
+        example: 1.1,
+        fuzzy: 0.7,
+        semantic: 0.5,
+        structural: 1,
+        memory: 0.6,
       },
     },
+    Disclosure: {
+      TokenBudget: 640,
+    },
     Rerank: {
-      Enabled: false,
-      CandidateLimit: 24,
+      // Reranking is a deterministic comparison over the fused candidate set.
+      // It does not invoke a model or network service,
+      // and lets declared actions, targets, and resource syntax disambiguate
+      // generic lexical matches before they reach the agent.
+      Enabled: true,
       ScoreScale: 0.018,
       FeatureWeights: {},
-    },
-  },
-  VectorModels: {
-    Embedding: {
-      Enabled: false,
-      ProviderId: "openai",
-      Model: "qwen3-embedding-0.6b",
-      TimeoutSeconds: 20,
-      MaxNetworkRetries: 1,
-      Dimensions: -1,
-      BatchSize: 64,
-      InputMaxChars: -1,
-    },
-    Rerank: {
-      Enabled: false,
-      ProviderId: "openai",
-      Model: "qwen3-reranker-0.6b",
-      TimeoutSeconds: 20,
-      MaxNetworkRetries: 1,
-      EndpointPath: "/rerank",
-      CandidateLimit: -1,
-      TopK: -1,
     },
   },
   ToolLearning: {
@@ -277,7 +329,10 @@ export const AgentDefaults = {
   },
   Artifacts: {
     RootDir: ".senera/artifacts/runs",
-    SummaryMaxChars: 2400,
+    // Results at or under this token budget are inlined verbatim into the
+    // model context; larger results fall back to summary + evidence-chain.
+    InlineResultMaxTokens: DefaultInlineResultMaxTokens,
+    InlineResultMaxBytes: DefaultInlineResultMaxBytes,
     RawJsonMaxBytes: DefaultLargePayloadBytes,
     TextFileMaxBytes: DefaultLargePayloadBytes,
     MemoryReadMaxArtifacts: 16,
@@ -367,6 +422,7 @@ export const AgentDefaults = {
     UserMessageEnvelope: true,
     TimeZone: "Asia/Shanghai",
     PrefaceRewrite: false,
+    FinalResponseRewrite: false,
     RoleCheck: true,
     BamlToolAttribution: true,
   },
@@ -406,9 +462,8 @@ export const AgentDefaults = {
       SourceCaps: {},
     },
   },
-} as const satisfies Omit<ResolvedAgentDefaultsConfig, "ModelRuntime" | "ToolExecution" | "VectorModels"> & {
+} as const satisfies Omit<ResolvedAgentDefaultsConfig, "ModelRuntime" | "ToolExecution"> & {
   ModelRuntime: AgentModelRuntimeDefaultsConfig;
   ToolExecution: Required<NonNullable<AgentDefaultsConfig["ToolExecution"]>>;
   SandboxRuntime: Required<NonNullable<AgentDefaultsConfig["SandboxRuntime"]>>;
-  VectorModels: AgentVectorModelsDefaultsConfig;
 };

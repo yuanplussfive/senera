@@ -33,16 +33,20 @@ describe("Turn preparation behavior", () => {
     ).toBe(false);
   });
 
-  test("prepares skills, tool exposure, and root authority without a model call", async () => {
-    const resolvePlannedLoadedTools = vi.fn(async () => ["ToolSearch", "WorkspaceListFiles"]);
-    const rememberAutoSearch = vi.fn();
+  test("derives direct Skill recommendations from the registry route without preloading Dynamic tools", async () => {
+    const resolvePlannedLoadedTools = vi.fn(async (options: { currentLoadedTools?: readonly string[] }) => [
+      ...(options.currentLoadedTools ?? []),
+    ]);
     const buildRootCommand = vi.fn(({ loadedToolNames }) => rootCommand(loadedToolNames));
     const service = new AgentTurnPreparationService({
       services: {
-        retrieval: { resolvePlannedLoadedTools, rememberAutoSearch },
+        retrieval: { resolvePlannedLoadedTools },
         promptContext: {
           activateSkills: async () => [],
-          recommendedSkillTools: () => ["WorkspaceListFiles"],
+          recommendedSkillToolRouting: () => ({
+            directToolNames: ["WorkspaceInspect"],
+            dynamicToolNames: ["WorkspaceListFiles"],
+          }),
           buildRootCommand,
         },
       },
@@ -56,10 +60,10 @@ describe("Turn preparation behavior", () => {
 
     expect(resolvePlannedLoadedTools).toHaveBeenCalledWith({
       input: "Inspect the workspace",
-      currentLoadedTools: ["ToolSearch"],
+      currentLoadedTools: ["ToolSearch", "WorkspaceInspect"],
       currentSetPolicy: "retain",
       preferredTools: ["WorkspaceListFiles"],
-      discover: true,
+      discover: false,
       queries: [],
       needs: [],
     });
@@ -72,10 +76,9 @@ describe("Turn preparation behavior", () => {
           needs: [],
         },
       },
-      loadedToolNames: ["ToolSearch", "WorkspaceListFiles"],
+      loadedToolNames: ["ToolSearch", "WorkspaceInspect"],
       allowedToolNames: undefined,
     });
-    expect(rememberAutoSearch).toHaveBeenCalledWith("request-a", "Inspect the workspace", prepared.loadedToolNames);
     expect(prepared.toolAccessGrant.exposedToolNames).toEqual(prepared.loadedToolNames);
   });
 
@@ -97,10 +100,10 @@ describe("Turn preparation behavior", () => {
     const buildRootCommand = vi.fn(({ loadedToolNames }) => rootCommand(loadedToolNames));
     const service = new AgentTurnPreparationService({
       services: {
-        retrieval: { resolvePlannedLoadedTools, rememberAutoSearch: vi.fn(), reusableCapabilities },
+        retrieval: { resolvePlannedLoadedTools, reusableCapabilities },
         promptContext: {
           activateSkills: async () => [],
-          recommendedSkillTools: () => [],
+          recommendedSkillToolRouting: () => ({ directToolNames: [], dynamicToolNames: [] }),
           buildRootCommand,
         },
       },
@@ -115,9 +118,9 @@ describe("Turn preparation behavior", () => {
 
     expect(reusableCapabilities).toHaveBeenCalledWith({
       sessionId: "session-reuse",
+      logicalCacheScope: undefined,
       query: "Inspect the workspace files",
       authorizedToolNames: undefined,
-      limit: 6,
     });
     expect(resolvePlannedLoadedTools).toHaveBeenCalledWith({
       input: "Inspect the workspace files",
@@ -136,10 +139,13 @@ describe("Turn preparation behavior", () => {
     const buildRootCommand = vi.fn(({ loadedToolNames }) => rootCommand(loadedToolNames));
     const service = new AgentTurnPreparationService({
       services: {
-        retrieval: { resolvePlannedLoadedTools, rememberAutoSearch: vi.fn() },
+        retrieval: { resolvePlannedLoadedTools },
         promptContext: {
           activateSkills: async () => [],
-          recommendedSkillTools: () => ["DocumentExtract", "WorkspaceRead", "SkillManage"],
+          recommendedSkillToolRouting: () => ({
+            directToolNames: ["WorkspaceRead", "SkillManage"],
+            dynamicToolNames: ["DocumentExtract"],
+          }),
           buildRootCommand,
         },
       },

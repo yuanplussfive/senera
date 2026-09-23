@@ -9,6 +9,8 @@ export interface AgentToolProcessRunResult {
   exitCode: number | null;
   signal: NodeJS.Signals | null;
   artifactPayload?: AgentToolArtifactPayload;
+  /** Internal provider-shape value used for contract validation before projection. */
+  validationResult?: unknown;
   outputCapture?: SeneraOutputSpoolDescriptor;
   semanticProjectionRequest?: AgentToolSemanticProjectionRequest;
 }

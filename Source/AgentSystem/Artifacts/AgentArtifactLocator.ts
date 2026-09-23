@@ -15,6 +15,7 @@ export const AgentArtifactFileNames = {
   manifest: "manifest.json",
   input: "input.redacted.json",
   raw: "raw.json",
+  rawResponse: "raw.response.json",
   rawPreview: "raw.preview.json",
   summary: "summary.md",
   summaryJson: "summary.json",
@@ -63,6 +64,8 @@ export interface AgentArtifactLocatorInput {
   toolName: string;
   argsHash: string;
   resultHash: string;
+  /** Additional identity for durable fields held outside the public result. */
+  payloadHash?: string;
 }
 
 export class AgentArtifactPathResolver {
@@ -100,6 +103,7 @@ export function createAgentArtifactLocator(input: AgentArtifactLocatorInput): Ag
   const callId = input.callId.trim();
   const argsHash = safeHashSegment(input.argsHash);
   const resultHash = safeHashSegment(input.resultHash);
+  const payloadHash = input.payloadHash ? safeHashSegment(input.payloadHash) : undefined;
   const artifactId = stableArtifactId({
     sessionId: sessionId ?? null,
     requestId,
@@ -109,6 +113,7 @@ export function createAgentArtifactLocator(input: AgentArtifactLocatorInput): Ag
     toolName: input.toolName,
     argsHash,
     resultHash,
+    ...(payloadHash ? { payloadHash } : {}),
   });
   const relativeDir = toPosixPath(
     path.join(
@@ -219,6 +224,7 @@ function stableArtifactId(input: {
   toolName: string;
   argsHash: string;
   resultHash: string;
+  payloadHash?: string;
 }): string {
   const hash = hashText(JSON.stringify(input)).slice(0, 24);
   return `art_${hash}`;

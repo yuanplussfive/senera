@@ -38,7 +38,6 @@ export function readModelsDevCapabilities(
   if (metadata.outputModalities.length > 0) {
     capabilities.Chat = hasModality(metadata.outputModalities, "text");
     capabilities.ImageOutput = hasModality(metadata.outputModalities, "image");
-    capabilities.Embedding = hasModality(metadata.outputModalities, "embedding");
   }
   return capabilities;
 }

@@ -19,7 +19,23 @@ import { AgentContinuityRecordRanker, type AgentContinuityRankedRecord } from ".
 import { listAgentContinuityPromptScopes } from "./AgentContinuityScopes.js";
 import { AgentContinuitySqliteStore } from "./AgentContinuitySqliteStore.js";
 import { resolveAgentWorldConfig, resolveContinuityLearningConfig } from "../AgentDefaults.js";
-import type { ResolvedAgentContinuityRecallRankingConfig } from "../Types/AgentToolAndMemoryConfigTypes.js";
+import type {
+  ResolvedAgentContinuityRecallRankingConfig,
+  ResolvedAgentContinuitySemanticRecallConfig,
+} from "../Types/AgentToolAndMemoryConfigTypes.js";
+import {
+  AgentContinuitySemanticRecall,
+  AgentContinuitySemanticRecallStatuses,
+  type AgentContinuitySemanticRecallResult,
+} from "./AgentContinuitySemanticRecall.js";
+import { AgentLocalEmbeddingClient, AgentLocalEmbeddingModelName } from "../ToolSearch/AgentLocalEmbeddingClient.js";
+import {
+  isAgentContinuitySemanticTimeoutError,
+  semanticRecallTimeoutResult,
+  withTimeout,
+  AgentContinuitySemanticTimeoutError,
+  type SemanticRecallTimeoutResult,
+} from "./AgentContinuityMemoryServiceSupport.js";
 import { buildAgentContinuityEpisodeWindow } from "./AgentContinuityEpisodeWindow.js";
 import type { AgentMemorySourceRepository } from "../Memory/AgentMemorySourceRepository.js";
 import { withAgentContinuitySession, type AgentContinuityIdentityContext } from "./AgentContinuityIdentityStore.js";
@@ -166,8 +182,18 @@ interface ContinuityRecallResult {
       readonly referenceIds: readonly string[];
     };
   };
+  /** Present only when semantic scoring could not contribute to this recall. */
+  readonly retrieval?: {
+    readonly semantic: {
+      readonly status: Exclude<AgentContinuitySemanticRecallResult["status"], "completed"> | "timeout";
+      readonly indexedCount: number;
+      readonly compatibleCount: number;
+    };
+  };
   readonly guidance: string;
 }
+
+type ContinuityRecallSemanticDiagnostic = NonNullable<ContinuityRecallResult["retrieval"]>["semantic"];
 
 /**
  * Produces a physical tool-evidence intent. The completed episode learner is
@@ -195,6 +221,7 @@ export const writeContinuityHostTool: AgentHostToolHandler = async (args, contex
         "This explicit memory intent is now physical tool evidence. The completed-turn learner will persist it through the single learning.record pipeline.",
     });
   } catch (error) {
+    throwIfAborted(context.signal);
     return toolExecutionFailure(error, context.tool.name);
   }
 };
@@ -211,26 +238,37 @@ export const recallContinuityHostTool: AgentHostToolHandler = async (args, conte
   const temporalMemoryStore = new AgentTemporalMemorySqliteStore(database);
   try {
     throwIfAborted(context.signal);
+    const recall = resolveContinuityLearningConfig(context.config).Recall;
+    const semanticRecall = new AgentContinuitySemanticRecall({
+      store,
+      client: () => new AgentLocalEmbeddingClient(),
+      model: () => AgentLocalEmbeddingModelName,
+      scoreFloor: () => recall.Semantic.ScoreFloor,
+    });
     return toolProcessSuccessResult(
-      recallContinuity(parsed.data, {
+      await recallContinuity(parsed.data, {
         store,
         sourceRepository: sources,
         temporalMemoryStore,
         identityDisplayValues: context.identityDisplayValues,
         identity: requireToolContinuityIdentity(context.continuityIdentity, context.sessionId),
         sessionId: context.sessionId,
-        ranking: resolveContinuityLearningConfig(context.config).Recall.Ranking,
+        ranking: recall.Ranking,
+        semanticRecall,
+        semantic: recall.Semantic,
+        signal: context.signal,
         timeZone: resolveAgentWorldConfig(context.config).TimeZone,
       }),
     );
   } catch (error) {
+    throwIfAborted(context.signal);
     return toolExecutionFailure(error, context.tool.name);
   } finally {
     database.close();
   }
 };
 
-export function recallContinuity(
+export async function recallContinuity(
   args: ContinuityRecallToolArguments,
   options: {
     readonly store: AgentContinuitySqliteStore;
@@ -240,9 +278,13 @@ export function recallContinuity(
     readonly identity: AgentContinuityIdentityContext;
     readonly sessionId?: string;
     readonly ranking: ResolvedAgentContinuityRecallRankingConfig;
+    readonly semanticRecall?: AgentContinuitySemanticRecall;
+    readonly semantic?: ResolvedAgentContinuitySemanticRecallConfig;
+    readonly signal?: AbortSignal;
     readonly timeZone: string;
   },
-): ContinuityRecallResult {
+): Promise<ContinuityRecallResult> {
+  throwIfAborted(options.signal);
   const refs = uniqueStrings(args.refs ?? []);
   const range = args.from && args.to ? agentTemporalMemoryRange(args.from, args.to, options.timeZone) : undefined;
   const temporal = new AgentTemporalMemoryRecall(options.temporalMemoryStore, options.identityDisplayValues).read({
@@ -272,16 +314,26 @@ export function recallContinuity(
   const exact = [...observations, ...physicalObservations].filter((observation) =>
     matchesObservationReferences(observation, refs),
   );
+  const semanticResult = await resolveRecallSemanticScores({
+    semanticRecall: options.semanticRecall,
+    semantic: options.semantic,
+    query: args.query,
+    observations: [...observations, ...uncoveredPhysicalObservations],
+    signal: options.signal,
+  });
+  const semanticScores = semanticResult?.scores;
   const ranker = new AgentContinuityRecordRanker(options.ranking);
   const ranked = ranker.rank({
     query: args.query ?? "",
     observations,
     sessionId: options.sessionId,
+    semanticScores,
   }).records;
   const rankedPhysical = ranker.rankEvents({
     query: args.query ?? "",
     observations: uncoveredPhysicalObservations,
     sessionId: options.sessionId,
+    semanticScores,
   }).records;
   const selected = mergeRecordMatches(exact, [...ranked, ...rankedPhysical]);
   const sourceRefs = uniqueStrings([...refs, ...selected.flatMap((entry) => entry.observation.sourceRefs)]);
@@ -306,6 +358,8 @@ export function recallContinuity(
     digests: temporal.digests,
   });
   const continuityCheckpoint = continuityLedger.checkpoints.at(-1);
+  const semanticDiagnostic = projectRecallSemanticDiagnostic(semanticResult);
+  throwIfAborted(options.signal);
   return {
     ...(args.query ? { query: args.query } : {}),
     refs: { item: refs },
@@ -359,6 +413,7 @@ export function recallContinuity(
           },
         }
       : {}),
+    ...(semanticDiagnostic ? { retrieval: { semantic: semanticDiagnostic } } : {}),
     guidance:
       temporal.digests.length > 0
         ? "Temporal digests are ordered from the coarsest complete periods to boundary segments. Follow sourceRefs only when finer evidence is needed."
@@ -533,4 +588,51 @@ function toolExecutionFailure(error: unknown, toolName: string): AgentToolProces
 
 function uniqueSources(sources: readonly AgentMemorySourceRecord[]): AgentMemorySourceRecord[] {
   return [...new Map(sources.map((source) => [source.uri, source])).values()];
+}
+
+async function resolveRecallSemanticScores(input: {
+  readonly semanticRecall: AgentContinuitySemanticRecall | undefined;
+  readonly semantic: ResolvedAgentContinuitySemanticRecallConfig | undefined;
+  readonly query: string | undefined;
+  readonly observations: readonly AgentContinuityObservation[];
+  readonly signal?: AbortSignal;
+}): Promise<AgentContinuitySemanticRecallResult | SemanticRecallTimeoutResult | undefined> {
+  const query = input.query?.trim();
+  if (!input.semanticRecall || !input.semantic?.Enabled || !query || input.observations.length === 0) return undefined;
+  throwIfAborted(input.signal);
+  const timeoutController = new AbortController();
+  const signal = input.signal ? AbortSignal.any([input.signal, timeoutController.signal]) : timeoutController.signal;
+  try {
+    return await withTimeout(
+      input.semanticRecall.queryScoresDetailed(query, input.observations, {
+        minQueryCharacters: input.semantic.MinQueryCharacters,
+        signal,
+      }),
+      input.semantic.TimeoutMs,
+      {
+        signal: input.signal,
+        onTimeout: () => timeoutController.abort(new AgentContinuitySemanticTimeoutError()),
+      },
+    );
+  } catch (error) {
+    throwIfAborted(input.signal);
+    if (isAgentContinuitySemanticTimeoutError(error)) return semanticRecallTimeoutResult();
+    return {
+      status: AgentContinuitySemanticRecallStatuses.RequestFailed,
+      scores: new Map(),
+      indexedCount: 0,
+      compatibleCount: 0,
+    };
+  }
+}
+
+function projectRecallSemanticDiagnostic(
+  result: AgentContinuitySemanticRecallResult | SemanticRecallTimeoutResult | undefined,
+): ContinuityRecallSemanticDiagnostic | undefined {
+  if (!result || result.status === AgentContinuitySemanticRecallStatuses.Completed) return undefined;
+  return {
+    status: result.status,
+    indexedCount: result.indexedCount,
+    compatibleCount: result.compatibleCount,
+  };
 }

@@ -5,6 +5,7 @@ import type {
   AgentToolResultPresentationEvidence,
   AgentToolResultPresentationFact,
 } from "../../../Source/AgentSystem/Types/ToolRuntimeTypes";
+import type { AgentToolPresentation } from "../../../Source/AgentSystem/Types/AgentToolPresentationTypes";
 
 /**
  * Backend protocol DTOs intentionally expose readonly collections. The
@@ -38,6 +39,7 @@ export interface ToolEventOrigin {
   kind: "system" | "mcp";
   name: string;
   capability?: string;
+  presentation?: MutableProjection<AgentToolPresentation>;
   server?: string;
   tool?: string;
 }
@@ -120,7 +122,7 @@ export interface ToolCallResultDetailData {
   callId: string;
   batchId?: string;
   presentation?: ToolResultPresentation;
-  /** Raw tool return value; lifecycle and presentation metadata are separate. */
+  /** Inline tool result, or a durable Artifact reference for a large published result. */
   value: unknown;
   origin?: ToolEventOrigin;
 }

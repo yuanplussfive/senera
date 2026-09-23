@@ -58,7 +58,7 @@ import {
 import { AgentPiNativeToolBridgeName, projectAgentPiNativeToolCallDisplay } from "./AgentPiNativeToolBridge.js";
 
 type NativeModel = Model<AgentNativeToolApi>;
-type NativeStreamOptions = SimpleStreamOptions & {
+type NativeStreamOptions = Omit<SimpleStreamOptions, "toolChoice"> & {
   readonly toolChoice?: ReturnType<typeof projectAgentNativeRequiredToolChoice> | "auto";
   readonly reasoningEffort?: string;
 };
@@ -268,10 +268,9 @@ export class AgentPiNativeToolProvider {
     simple: boolean,
   ): AssistantMessageEventStream {
     const streams = this.apiStreams[model.api];
-    if (!simple || options.toolChoice === undefined) {
-      return simple
-        ? streams.streamSimple(model, context, options)
-        : streams.stream(model, context, options as StreamOptions);
+    if (!simple) return streams.stream(model, context, options as StreamOptions);
+    if (options.toolChoice === undefined) {
+      return streams.streamSimple(model, context, options as SimpleStreamOptions);
     }
 
     // The Responses simple adapter drops adapter-specific toolChoice. Native
@@ -313,6 +312,7 @@ export class AgentPiNativeToolProvider {
         focus,
         prefaceRewriteEnabled: frame.prefaceRewriteEnabled,
         roleplayPresetActive: frame.roleplayPresetActive,
+        finalResponseRewriteEnabled: frame.finalResponseRewriteEnabled,
         hasRegisteredToolCalls: turnState.hasRegisteredToolCalls(),
       })
     ) {
@@ -376,6 +376,8 @@ export class AgentPiNativeToolProvider {
         message,
         focus,
         spokenUtterances: turnState.residentSpeechHistory(),
+        residentStance: turnState.currentResidentStance(),
+        projectionTier: frame.roleplayPresetActive === true ? "reshape" : "polish",
         enabled: true,
         signal,
         sessionId: requireAgentPiPromptCacheSessionId(frame.sessionId),

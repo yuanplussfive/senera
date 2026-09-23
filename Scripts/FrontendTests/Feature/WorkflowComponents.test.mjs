@@ -23,8 +23,16 @@ const { frontendMessage } = await import("../../../Frontend/src/i18n/frontendMes
 const { frontendFeatureMessage } = await import("../../../Frontend/src/i18n/frontendFeatureMessageCatalog.ts");
 const { projectWorkflowActivities, projectWorkflowSteps } =
   await import("../../../Frontend/src/features/workflow/workflowPresentationProjection.ts");
-const { createRun, createSession, createStep, createToolBatchRun, viewportNode, workflowNodeData, workflowNodeLayout } =
-  await import("./workflowComponentFixtures.mjs");
+const {
+  createRun,
+  createSession,
+  createStep,
+  createSystemToolOrigin,
+  createToolBatchRun,
+  viewportNode,
+  workflowNodeData,
+  workflowNodeLayout,
+} = await import("./workflowComponentFixtures.mjs");
 
 function renderWorkflowNode(props) {
   return renderWithFrontendProviders(
@@ -44,19 +52,6 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
-});
-
-test("thinking timeline renders its empty state and opens a focused workflow view", async () => {
-  const user = userEvent.setup();
-  renderWithFrontendProviders(React.createElement(ThinkingTimeline, { presentation: "panel" }));
-
-  expect(screen.getByText(frontendMessage("workflow.panel.emptyTitle"))).toBeInTheDocument();
-  const focusButton = screen.getByRole("button", { name: frontendMessage("workflow.panel.focus") });
-  expect(focusButton).toHaveClass("text-content-muted");
-  expect(document.querySelector("[data-workflow-execution-content]")).toContainElement(focusButton);
-  expect(document.querySelector("[data-window-drag-region]")).not.toContainElement(focusButton);
-  await user.click(focusButton);
-  expect(screen.getByRole("dialog", { name: frontendMessage("workflow.panel.title") })).toBeInTheDocument();
 });
 
 test("completed run summary keeps disclosure semantics when motion is disabled", async () => {
@@ -187,6 +182,15 @@ test("thinking summary keeps web search evidence out of the tool chain", async (
         kind: "tool",
         toolName: "WebSearch",
         status: "done",
+        toolOrigin: createSystemToolOrigin({
+          name: "Web tools",
+          category: "web-search",
+          icon: "globe",
+          groupId: "web",
+          groupTitle: "Web research",
+          action: "Search",
+          argumentPath: "/query",
+        }),
         toolArgs: { query: "React security guidance" },
         toolResult: {
           query: "React security guidance",
@@ -354,7 +358,15 @@ test("dock execution view renders a vertical workflow graph with expandable comp
         kind: "tool",
         title: "WorkspaceRead",
         toolName: "WorkspaceRead",
-        toolOrigin: { kind: "system", name: "Workspace tools", capability: "workspace.file.read" },
+        toolOrigin: createSystemToolOrigin({
+          name: "Workspace tools",
+          category: "workspace-read",
+          icon: "file-text",
+          groupId: "workspace",
+          groupTitle: "Explore workspace",
+          action: "Read",
+          argumentPath: "/path",
+        }),
         toolArgs: { path: "Source/runtime.ts" },
         toolResult: { content: "export const runtime = true;" },
       }),

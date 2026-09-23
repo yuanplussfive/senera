@@ -17,7 +17,6 @@ import type {
 } from "./AgentPiCodingAgentSessionPoolContracts.js";
 import { resolveAgentPiSessionCacheCapacity } from "./AgentPiSessionCachePolicy.js";
 import { AgentPiSessionCustomEntryTypes } from "./AgentPiSessionEntries.js";
-import { emptyAgentPiPromptDisclosureState } from "./AgentPiPromptDisclosure.js";
 import {
   hasIncompatibleAgentPiToolObservationHistory,
   isAgentPiConversationHistoryEmpty,
@@ -32,6 +31,7 @@ import {
   type AgentPiSessionRuntimeStatus,
 } from "./AgentPiSessionManagement.js";
 import { AgentPiDiagnosticSources, emitAgentPiDiagnostic } from "./AgentPiDiagnostics.js";
+import { stripAgentPiContextOverlayMessages } from "./AgentPiTurnContextMessage.js";
 
 export type { AgentPiCodingAgentSessionFrame } from "./AgentPiCodingAgentSessionFrame.js";
 export type {
@@ -110,14 +110,12 @@ export class AgentPiCodingAgentSessionPool {
         this.sessions.get(sessionId)?.sessionManager ?? (await this.openExistingSession(sessionId));
       if (!sessionManager?.getEntry(entryId)) return false;
       sessionManager.branch(entryId);
-      sessionManager.appendCustomEntry(
-        AgentPiSessionCustomEntryTypes.PromptDisclosure,
-        emptyAgentPiPromptDisclosureState(),
-      );
+      this.options.compactionCandidateStore?.removeSession(sessionId);
       const pooled = this.sessions.get(sessionId);
       if (pooled) {
-        pooled.frame.resetPromptDisclosure();
-        pooled.session.agent.state.messages = sessionManager.buildSessionContext().messages;
+        pooled.session.agent.state.messages = stripAgentPiContextOverlayMessages(
+          sessionManager.buildSessionContext().messages,
+        );
       }
       return true;
     } finally {
@@ -161,6 +159,7 @@ export class AgentPiCodingAgentSessionPool {
         return false;
       }
       targetManager.branch(entryId);
+      this.options.compactionCandidateStore?.removeSession(targetSessionId);
       targetManager.appendCustomEntry(AgentPiSessionCustomEntryTypes.ForkBoundary, {
         sourceSessionId,
         entryId,
@@ -181,6 +180,7 @@ export class AgentPiCodingAgentSessionPool {
     try {
       release = await this.leases.acquire(sessionId);
       this.lifecycle.assertOpen();
+      this.options.compactionCandidateStore?.removeSession(sessionId);
       const pooled = this.sessions.get(sessionId);
       if (pooled) {
         this.sessions.delete(sessionId);
@@ -257,6 +257,7 @@ export class AgentPiCodingAgentSessionPool {
       cached: this.sessions.get(sessionId) === pooled,
       stats,
       contextUsage: pooled.session.getContextUsage(),
+      ...(pooled.compactionCandidateStatus ? { compactionCandidate: pooled.compactionCandidateStatus() } : {}),
     };
   }
 

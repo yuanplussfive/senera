@@ -36,53 +36,15 @@ const ConfigFormModelInheritanceSchema = z
 const ConfigFormModelSelectionSchema = z
   .object({
     id: z.string().min(1),
-    capability: z.enum([
-      "Chat",
-      "Embedding",
-      "Rerank",
-      "Vision",
-      "ImageOutput",
-      "Reasoning",
-      "DeveloperRole",
-      "StreamingUsage",
-    ]),
-    valueKind: z.enum(["model-id", "provider-model"]),
+    capability: z.enum(["Chat", "Vision", "ImageOutput", "Reasoning", "DeveloperRole", "StreamingUsage"]),
+    valueKind: z.enum(["model-id"]),
     mutation: z.enum(["config", "default-model"]),
     cardinality: z.enum(["one", "many"]).optional(),
-    providerPath: z.array(z.string().min(1)).min(1).optional(),
     inheritance: ConfigFormModelInheritanceSchema.optional(),
     required: z.boolean(),
   })
   .strict()
   .superRefine((selection, context) => {
-    if (selection.valueKind === "provider-model" && !selection.providerPath) {
-      context.addIssue({
-        code: "custom",
-        message: "providerPath is required when valueKind is provider-model.",
-        path: ["providerPath"],
-      });
-    }
-    if (selection.valueKind === "model-id" && selection.providerPath) {
-      context.addIssue({
-        code: "custom",
-        message: "providerPath is only supported when valueKind is provider-model.",
-        path: ["providerPath"],
-      });
-    }
-    if (selection.mutation === "default-model" && selection.valueKind !== "model-id") {
-      context.addIssue({
-        code: "custom",
-        message: "default-model mutations require model-id values.",
-        path: ["mutation"],
-      });
-    }
-    if (selection.cardinality === "many" && selection.valueKind !== "model-id") {
-      context.addIssue({
-        code: "custom",
-        message: "Multi-model selections require model-id values.",
-        path: ["valueKind"],
-      });
-    }
     if (selection.cardinality === "many" && selection.mutation !== "config") {
       context.addIssue({
         code: "custom",

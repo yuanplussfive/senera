@@ -1,20 +1,6 @@
-export const ToolStageIconNames = [
-  "tools",
-  "search",
-  "blocks",
-  "file-text",
-  "pencil",
-  "terminal",
-  "clock",
-  "activity",
-  "git-branch",
-  "users",
-  "brain",
-  "calendar-clock",
-  "image",
-  "message-question",
-  "globe",
-] as const;
+import { AgentToolPresentationIconNames } from "../../../../Source/AgentSystem/Types/AgentToolPresentationTypes";
+
+export const ToolStageIconNames = AgentToolPresentationIconNames;
 
 export type ToolStageIconName = (typeof ToolStageIconNames)[number];
 

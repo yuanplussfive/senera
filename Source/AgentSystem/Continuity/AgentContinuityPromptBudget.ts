@@ -1,5 +1,6 @@
 import type { AgentContinuityPromptBudgetConfig } from "../Types/AgentToolAndMemoryConfigTypes.js";
 import type {
+  AgentContinuityDigestPromptEntry,
   AgentContinuityEvidenceCandidate,
   AgentContinuityEventCandidate,
   AgentContinuityFactCatalogEntry,
@@ -11,6 +12,7 @@ import type { AgentResidentProfilePromptEntry } from "../Profile/AgentResidentPr
 
 export interface AgentContinuityPromptBudgetInput {
   readonly profiles: readonly AgentResidentProfilePromptEntry[];
+  readonly digests?: readonly AgentContinuityDigestPromptEntry[];
   readonly facts: readonly AgentContinuityFactCatalogEntry[];
   readonly relations: readonly AgentContinuityGraphPromptRelation[];
   readonly events: readonly AgentContinuityEventCandidate[];
@@ -23,6 +25,7 @@ export interface AgentContinuityPromptBudgetInput {
 
 export interface AgentContinuityPromptBudgetResult {
   readonly profiles: readonly AgentResidentProfilePromptEntry[];
+  readonly digests?: readonly AgentContinuityDigestPromptEntry[];
   readonly facts: readonly AgentContinuityFactCatalogEntry[];
   readonly relations: readonly AgentContinuityGraphPromptRelation[];
   readonly events: readonly AgentContinuityEventCandidate[];
@@ -38,6 +41,7 @@ export function applyAgentContinuityPromptBudget(
 ): AgentContinuityPromptBudgetResult {
   const state = { remaining: policy.MaxCharacters, used: 0 };
   const profiles = takeWithinBudget(input.profiles, policy.MaxProfileEntries, profileCharacters, state);
+  const digests = takeWithinBudget(input.digests ?? [], policy.MaxDigestEntries, digestCharacters, state);
   const facts = takeWithinBudget(input.facts, policy.MaxFactEntries, factCharacters, state);
   const relations = takeWithinBudget(input.relations, policy.MaxRelationEntries, relationCharacters, state);
   const styleExamples = takeWithinBudget(
@@ -56,6 +60,7 @@ export function applyAgentContinuityPromptBudget(
 
   return {
     profiles,
+    digests,
     facts,
     relations,
     events,
@@ -63,6 +68,7 @@ export function applyAgentContinuityPromptBudget(
     styleExamples,
     selection: {
       profiles: counts(input.profiles.length, input.profiles.length, profiles.length),
+      digests: counts(input.digests?.length ?? 0, input.digests?.length ?? 0, digests.length),
       facts: counts(input.availableFactCount, input.facts.length, facts.length),
       relations: counts(input.availableRelationCount, input.relations.length, relations.length),
       events: counts(input.availableEventCount, input.events.length, events.length),
@@ -98,6 +104,16 @@ function profileCharacters(entry: AgentResidentProfilePromptEntry): number {
 
 function factCharacters(entry: AgentContinuityFactCatalogEntry): number {
   return entry.claim.length + (entry.validUntil?.length ?? 0);
+}
+
+function digestCharacters(entry: AgentContinuityDigestPromptEntry): number {
+  return (
+    entry.summary.length +
+    entry.topics.reduce((total, topic) => total + topic.length, 0) +
+    entry.openLoops.reduce((total, loop) => total + loop.length, 0) +
+    entry.periodStart.length +
+    entry.periodEnd.length
+  );
 }
 
 function relationCharacters(entry: AgentContinuityGraphPromptRelation): number {

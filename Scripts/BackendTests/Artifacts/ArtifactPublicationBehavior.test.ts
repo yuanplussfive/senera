@@ -4,9 +4,11 @@ import { AgentToolExecutionArtifactRecorder } from "../../../Source/AgentSystem/
 import type { RecordToolArtifactsInput } from "../../../Source/AgentSystem/Artifacts/AgentToolExecutionArtifactRecorder.js";
 import { resolveArtifactsConfig } from "../../../Source/AgentSystem/Defaults/AgentAppDefaults.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentSystemConfigTypes.js";
+import type { AgentArtifactsConfig } from "../../../Source/AgentSystem/Types/AgentRuntimeConfigTypes.js";
 import type { ExecutedToolCallArtifact } from "../../../Source/AgentSystem/Types/ToolRuntimeTypes.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 import { AgentToolSuccessOutcome } from "../../../Source/AgentSystem/ToolRuntime/AgentToolResultOutcome.js";
+import { AgentTokenProjector } from "../../../Source/AgentSystem/Text/AgentTokenProjection.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -16,14 +18,14 @@ afterEach(() => {
 });
 
 describe("artifact publication", () => {
-  test("generates bounded generic evidence for arbitrary tool output", async () => {
+  test("does not add placeholder evidence for structured tool output", async () => {
     const { recorder } = createRecorder();
     const [recorded] = await recorder.record({
-      requestId: "request-generic-evidence",
+      requestId: "request-structured-evidence",
       step: 1,
       results: [
         {
-          callId: "call-generic-evidence",
+          callId: "call-structured-evidence",
           name: "CustomMcpTool",
           arguments: { input: "value" },
           process: { exitCode: 0, signal: null, stdout: "", stderr: "" },
@@ -31,6 +33,80 @@ describe("artifact publication", () => {
             providerSpecificField: { arbitrary: true },
             imageData: "provider-defined-value",
           },
+          outcome: AgentToolSuccessOutcome,
+          artifactPolicy: {},
+        },
+      ],
+    });
+
+    expect(recorded?.artifact?.evidence).toEqual([]);
+  });
+
+  test("inlines small plain output verbatim without automatic evidence", async () => {
+    const { recorder } = createRecorder();
+    const [recorded] = await recorder.record({
+      requestId: "request-inline",
+      step: 1,
+      results: [
+        {
+          callId: "call-inline",
+          name: "CustomMcpTool",
+          arguments: { input: "value" },
+          process: { exitCode: 0, signal: null, stdout: "", stderr: "" },
+          result: "short-lived status: ok",
+          outcome: AgentToolSuccessOutcome,
+          artifactPolicy: {},
+        },
+      ],
+    });
+
+    expect(recorded?.inlinePayload).toEqual("short-lived status: ok");
+    expect(recorded?.artifact?.evidence).toEqual([]);
+  });
+
+  test.each([
+    ["null", null],
+    ["number", 7],
+    ["boolean", false],
+  ] as const)("inlines a small %s result without an Artifact-only detour", async (_kind, result) => {
+    const { recorder } = createRecorder();
+    const [recorded] = await recorder.record({
+      requestId: `request-inline-scalar-${_kind}`,
+      step: 1,
+      results: [
+        {
+          callId: `call-inline-scalar-${_kind}`,
+          name: "CustomMcpTool",
+          arguments: { input: "value" },
+          process: { exitCode: 0, signal: null, stdout: "", stderr: "" },
+          result,
+          outcome: AgentToolSuccessOutcome,
+          artifactPolicy: {},
+        },
+      ],
+    });
+
+    expect(recorded?.inlinePayload).toEqual(result);
+    expect(recorded?.artifact?.evidence).toEqual([]);
+  });
+
+  test("adds bounded generic evidence only for oversized plain string tool output", async () => {
+    const { recorder } = createRecorder();
+    // ~96k mixed-case chars with digits, punctuation and newlines tokenize to far
+    // more than the inline budget; unlike a repeated-common-word string, this is
+    // robust to tokenizer compression so it reliably crosses the inline threshold.
+    const oversizedOutput = "INFO  request=7f3c path=/v1/chat row=2048 elapsed=312ms tokens=8127\n".repeat(3_500);
+    expect(new AgentTokenProjector("default").countJson(oversizedOutput)).toBeGreaterThan(8_192);
+    const [recorded] = await recorder.record({
+      requestId: "request-string-evidence",
+      step: 1,
+      results: [
+        {
+          callId: "call-string-evidence",
+          name: "CustomMcpTool",
+          arguments: { input: "value" },
+          process: { exitCode: 0, signal: null, stdout: "", stderr: "" },
+          result: oversizedOutput,
           outcome: AgentToolSuccessOutcome,
           artifactPolicy: {},
         },
@@ -48,6 +124,35 @@ describe("artifact publication", () => {
     expect(recorded?.artifact?.evidence[0]?.modelSlots).toEqual([]);
   });
 
+  test("skips inline for high-compression text that exceeds the byte ceiling", async () => {
+    // A repetitive string tokenizes under the token budget but its raw size
+    // still exceeds the byte gate; it must route to the evidence chain.
+    const repeated = "provider output ".repeat(4_000); // ~64KB UTF-8, ~8k tokens
+    const projector = new AgentTokenProjector("default");
+    expect(projector.countJson(repeated)).toBeLessThanOrEqual(8_192);
+    expect(Buffer.byteLength(repeated, "utf8")).toBeGreaterThan(16 * 1024);
+    // Raise the token ceiling only for this test so it exercises the
+    // independent byte gate rather than the smaller production token gate.
+    const { recorder } = createRecorder({ InlineResultMaxTokens: 8_192, InlineResultMaxBytes: 16 * 1024 });
+    const [recorded] = await recorder.record({
+      requestId: "request-byte-gate",
+      step: 1,
+      results: [
+        {
+          callId: "call-byte-gate",
+          name: "CustomMcpTool",
+          arguments: { input: "value" },
+          process: { exitCode: 0, signal: null, stdout: "", stderr: "" },
+          result: repeated,
+          outcome: AgentToolSuccessOutcome,
+          artifactPolicy: {},
+        },
+      ],
+    });
+
+    expect(recorded?.artifact?.evidence).toContainEqual(expect.objectContaining({ kind: "tool-output" }));
+  });
+
   test("serializes concurrent retries and reuses one immutable publication", async () => {
     const { recorder } = createRecorder();
     const input = recordInput("call-retry");
@@ -58,6 +163,32 @@ describe("artifact publication", () => {
 
     expect(rightArtifact.artifactId).toBe(leftArtifact.artifactId);
     expect(await fs.readFile(rightArtifact.files.manifest)).toEqual(await fs.readFile(leftArtifact.files.manifest));
+  });
+
+  test("does not reuse an Artifact when an equal public result has different process output", async () => {
+    const { recorder } = createRecorder();
+    const record = (stdout: string): RecordToolArtifactsInput => ({
+      requestId: "request-process-identity",
+      step: 1,
+      results: [
+        {
+          callId: "call-process-identity",
+          name: "PublicationTool",
+          arguments: { query: "same" },
+          process: { exitCode: 0, signal: null, stdout, stderr: "" },
+          result: { value: "same" },
+          outcome: AgentToolSuccessOutcome,
+          artifactPolicy: {},
+        },
+      ],
+    });
+
+    const first = requireArtifact((await recorder.record(record("first process output\n"))).at(0)?.artifact);
+    const second = requireArtifact((await recorder.record(record("second process output\n"))).at(0)?.artifact);
+
+    expect(second.artifactId).not.toBe(first.artifactId);
+    await expect(fs.readFile(first.files.stdout, "utf8")).resolves.toBe("first process output\n");
+    await expect(fs.readFile(second.files.stdout, "utf8")).resolves.toBe("second process output\n");
   });
 
   test("gives distinct calls distinct artifact identities even when arguments and results match", async () => {
@@ -135,12 +266,12 @@ describe("artifact publication", () => {
   });
 });
 
-function createRecorder(): { recorder: AgentToolExecutionArtifactRecorder } {
+function createRecorder(artifacts?: AgentArtifactsConfig): { recorder: AgentToolExecutionArtifactRecorder } {
   const workspaceRoot = createTemporaryDirectory("senera-artifact-publication");
   temporaryDirectories.push(workspaceRoot);
   const config = resolveArtifactsConfig({
     ModelProviders: [],
-    Artifacts: { RootDir: ".senera/artifacts" },
+    Artifacts: { RootDir: ".senera/artifacts", ...artifacts },
   } satisfies AgentSystemConfig);
   return {
     recorder: new AgentToolExecutionArtifactRecorder({ workspaceRoot, config, model: "test-model" }),

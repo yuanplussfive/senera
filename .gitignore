@@ -32,6 +32,15 @@ senera-code-review/
 tmp/
 .tmp/
 Release/
+
+# Local debug / ad-hoc test leftovers (not part of the project)
+/artifacts/
+.trae-html-share-packages/
+final-response-rewrite-enable/
+*.heapsnapshot
+senera.config.json.v*.bak
+pelican-*
+night-heron-*
 !Build/Release/
 Build/Release/*
 !Build/Release/ReleasePleaseConfig.json

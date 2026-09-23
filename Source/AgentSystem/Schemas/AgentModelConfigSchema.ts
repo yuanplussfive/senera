@@ -16,8 +16,6 @@ export const ModelEndpointSchema = z.enum(AgentModelEndpointKinds);
 export const ModelCapabilitiesSchema = z
   .object({
     Chat: z.boolean().optional(),
-    Embedding: z.boolean().optional(),
-    Rerank: z.boolean().optional(),
     Vision: z.boolean().optional(),
     ImageOutput: z.boolean().optional(),
     Reasoning: z.boolean().optional(),

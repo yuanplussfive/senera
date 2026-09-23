@@ -53,6 +53,9 @@
     "ai.senera/execution": {
       "targets": ["local"],
       "preferred": "local"
+    },
+    "ai.senera/tool-i18n": {
+      "forecast": ["天气预报", "查询天气", "天气", "气象预报", "气温"]
     }
   }
 }

@@ -564,7 +564,7 @@ describe("web host tools", () => {
     ).toThrow(/Maximum operation timeout/u);
   });
 
-  test("keeps complete fetched content on the Artifact path instead of the normal observation", () => {
+  test("keeps fetched content on the Artifact path with the retrieval coordinate", () => {
     const fetchTool = createWebSystemTools()[1]!;
     const artifactUri = "senera://artifact/web-fetch";
     const completeContent = "full page content that belongs in the raw Artifact";
@@ -603,7 +603,11 @@ describe("web host tools", () => {
       fetchTool.metadata.observation,
     );
 
-    expect(observation.observation_view.artifact_uri).toBe(artifactUri);
+    // The fetch manifest keeps page content out of the observation; the
+    // retrieval source carries the durable coordinate. v5 omits the
+    // completeness view when nothing was trimmed.
+    expect(observation.observation_view).toBeUndefined();
+    expect(observation.detail.retrieval).toMatchObject({ artifactUri, refs: ["raw"] });
     expect(JSON.stringify(observation)).not.toContain(completeContent);
   });
 });

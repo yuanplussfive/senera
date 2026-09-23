@@ -79,7 +79,7 @@ describe("Pi tool execution bridge behavior", () => {
     const text = readAgentPiMessageTextContent(message);
 
     expect(() => JSON.parse(text)).not.toThrow();
-    expect(JSON.parse(text)).toMatchObject({ type: "senera.tool_observation.v4" });
+    expect(JSON.parse(text)).toMatchObject({ type: "senera.tool_observation.v5" });
   });
 
   test("routes ordinary tools through the execution scheduler", async () => {
@@ -192,11 +192,11 @@ describe("Pi tool execution bridge behavior", () => {
       step: 3,
       results: [expect.objectContaining({ result: { unrecorded: true } })],
     });
-    expect(textContent(result.content[0])).toContain("senera.tool_observation.v4");
+    expect(textContent(result.content[0])).toContain("senera.tool_observation.v5");
     expect(parseObservation(result)).toMatchObject({
-      observation_view: { complete: true, artifact_uri: "senera://artifact/1" },
       detail: { result: { answer: "42" } },
     });
+    expect(parseObservation(result).observation_view).toBeUndefined();
     expect(result.details.senera).toEqual(
       expect.objectContaining({
         toolName: "SearchTool",
@@ -216,7 +216,7 @@ describe("Pi tool execution bridge behavior", () => {
         resourceId: "res_0123456789abcdef0123456789abcdef",
         state: "running",
         cursor: 7,
-        events: [{ kind: "output", stream: "stdout", text: "unique-resource-output" }],
+        updates: [{ kind: "output", stream: "stdout", text: "unique-resource-output" }],
       },
       artifact: artifactFixture("resource summary"),
     });
@@ -235,7 +235,7 @@ describe("Pi tool execution bridge behavior", () => {
     expect(parseObservation(result)).toMatchObject({
       detail: {
         result: {
-          events: [{ text: "unique-resource-output" }],
+          updates: [{ text: "unique-resource-output" }],
         },
         continuation: {
           kind: "cursor",
@@ -416,10 +416,6 @@ describe("Pi tool execution bridge behavior", () => {
     expect(textContent(result.content[0])).toContain("哪个文件");
     expect(parseObservation(result)).toMatchObject({
       status: "waiting",
-      observation_view: {
-        type: "senera.tool_observation_source_view.v4",
-        complete: true,
-      },
       detail: {
         summary: "哪个文件？",
         result: {
@@ -428,6 +424,7 @@ describe("Pi tool execution bridge behavior", () => {
         },
       },
     });
+    expect(parseObservation(result).observation_view).toBeUndefined();
     expect(parseObservation(result)).not.toHaveProperty("control");
     expect(result.details.senera).toEqual({
       toolName: "ReadFile",

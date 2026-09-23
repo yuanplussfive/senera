@@ -56,7 +56,7 @@ export const applyWorkspacePatchHostTool: AgentHostToolHandler = async (args, co
       operationCount: plan.operations.length,
       changedPaths,
     };
-    const totalStages = plan.dryRun ? 2 : 4;
+    const totalStages = 4;
     reporting.reporter.progress({
       message: "Workspace patch planned.",
       completed: 1,
@@ -77,30 +77,24 @@ export const applyWorkspacePatchHostTool: AgentHostToolHandler = async (args, co
       total: totalStages,
       unit: "stage",
     });
-    if (!plan.dryRun) {
-      await validateWorkspacePatchPreconditions(plan, context.executionEnv);
-      reporting.reporter.progress({
-        message: "Workspace patch preconditions validated.",
-        completed: 3,
-        total: totalStages,
-        unit: "stage",
-      });
-      await applyWorkspacePatchTransaction(plan, commitEnv);
-      reporting.reporter.progress({
-        message: "Workspace patch applied.",
-        completed: 4,
-        total: totalStages,
-        unit: "stage",
-      });
-    }
+    await validateWorkspacePatchPreconditions(plan, context.executionEnv);
+    reporting.reporter.progress({
+      message: "Workspace patch preconditions validated.",
+      completed: 3,
+      total: totalStages,
+      unit: "stage",
+    });
+    await applyWorkspacePatchTransaction(plan, commitEnv);
+    reporting.reporter.progress({
+      message: "Workspace patch applied.",
+      completed: 4,
+      total: totalStages,
+      unit: "stage",
+    });
 
     return toolProcessSuccessResult({
-      text: plan.dryRun
-        ? `Workspace patch dry run validated ${plan.operations.length} operation(s) over ${changedPaths.length} path(s).`
-        : `Workspace patch applied ${plan.operations.length} operation(s) over ${changedPaths.length} path(s).`,
-      applied: !plan.dryRun,
-      dryRun: plan.dryRun,
-      fuzzFactor: plan.fuzzFactor,
+      text: `Workspace patch applied ${plan.operations.length} operation(s) over ${changedPaths.length} path(s).`,
+      applied: true,
       operationCount: plan.operations.length,
       changedPaths,
       operations: plan.operations,

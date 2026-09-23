@@ -3,12 +3,18 @@ import { afterEach, describe, expect, test } from "vitest";
 import { AgentContinuityMemoryService } from "../../../Source/AgentSystem/Continuity/AgentContinuityMemoryService.js";
 import { AgentContinuityRecordRanker } from "../../../Source/AgentSystem/Continuity/AgentContinuityRecordRanker.js";
 import { AgentContinuitySqliteStore } from "../../../Source/AgentSystem/Continuity/AgentContinuitySqliteStore.js";
+import { AgentSqliteDatabaseKernel } from "../../../Source/AgentSystem/Database/AgentSqliteDatabaseKernel.js";
+import { resolveAgentWorkspaceLayout } from "../../../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
+import { AgentMemoryDatabaseContract } from "../../../Source/AgentSystem/Memory/AgentMemorySqlSchema.js";
+import { AgentTemporalMemorySqliteStore } from "../../../Source/AgentSystem/TemporalMemory/AgentTemporalMemorySqliteStore.js";
+import { projectAgentTemporalMemoryScope } from "../../../Source/AgentSystem/TemporalMemory/AgentTemporalMemoryIdentity.js";
 import {
   AgentContinuityPromptBudgetDefaults,
   AgentContinuityRecallRankingDefaults,
   AgentContinuitySemanticRecallDefaults,
 } from "../../../Source/AgentSystem/Continuity/AgentContinuityRecallDefaults.js";
 import { AgentContinuityStableSnapshotStore } from "../../../Source/AgentSystem/Continuity/AgentContinuityStableSnapshotStore.js";
+import { AgentContinuitySemanticRecall } from "../../../Source/AgentSystem/Continuity/AgentContinuitySemanticRecall.js";
 import type { AgentContinuityObservation } from "../../../Source/AgentSystem/Continuity/AgentContinuityDomain.js";
 import { AgentEventKinds } from "../../../Source/AgentSystem/Events/AgentEventCatalog.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
@@ -22,6 +28,100 @@ afterEach(() => {
 });
 
 describe("continuity memory service", () => {
+  test("projects only live rule state without recalling historical memory", async () => {
+    const workspaceRoot = createWorkspace();
+    const store = createStore(workspaceRoot);
+    try {
+      const remembered = observation(workspaceRoot, "coffee", "用户喜欢无糖咖啡。");
+      store.recordObservation(remembered);
+      store.upsertSignal({
+        scope: { kind: "workspace", id: workspaceRoot },
+        namespace: "activity",
+        key: "exercise.completed",
+        value: true,
+        valueType: "boolean",
+        authority: "user_explicit",
+        confidence: 1,
+        observedAt: "2026-08-23T01:00:00.000Z",
+        sourceRefs: ["senera://memory-source/exercise"],
+      });
+      store.upsertSignal({
+        scope: { kind: "workspace", id: workspaceRoot },
+        namespace: "private",
+        key: "unrelated",
+        value: "must not be projected",
+        valueType: "string",
+        authority: "user_explicit",
+        confidence: 1,
+        observedAt: "2026-08-23T01:00:00.000Z",
+        sourceRefs: ["senera://memory-source/private"],
+      });
+      store.recordRule({
+        title: "运动后查看天气",
+        condition: {
+          kind: "signal",
+          namespace: "activity",
+          key: "exercise.completed",
+          operator: "equals",
+          value: true,
+        },
+        action: { kind: "recall", summary: "运动后提醒查看天气。", activation: "while_true" },
+        scope: { kind: "workspace", id: workspaceRoot },
+        authority: "user_explicit",
+        confidence: 1,
+        temporal: { kind: "persistent", timeZone: "Asia/Shanghai" },
+        sourceRefs: ["senera://memory-source/weather-rule"],
+      });
+
+      let embeddingCalls = 0;
+      const semanticRecall = new AgentContinuitySemanticRecall({
+        store,
+        client: {
+          embed: async (request) => {
+            embeddingCalls += request.input.length;
+            return { model: "test-embedding", vectors: request.input.map(() => [1, 0]) };
+          },
+        },
+        model: () => "test-embedding",
+        scoreFloor: () => 0,
+      });
+      await semanticRecall.embedObservations([remembered]);
+      embeddingCalls = 0;
+
+      const context = await new AgentContinuityMemoryService({
+        identity: testContinuityIdentity(workspaceRoot),
+        store,
+        semanticRecall,
+        recallConfig: () => ({
+          TurnValueClassifier: {
+            Enabled: false,
+            ConfidenceThreshold: 0.82,
+            MinimumExamplesPerLabel: 3,
+            MaxTrainingEntries: 4096,
+          },
+          Prefetch: { Enabled: false, CacheTtlSeconds: 300 },
+          PromptBudget: AgentContinuityPromptBudgetDefaults,
+          Ranking: AgentContinuityRecallRankingDefaults,
+          Semantic: { ...AgentContinuitySemanticRecallDefaults, Enabled: true },
+        }),
+      }).liveContext({ sessionId: "session-1" });
+
+      expect(embeddingCalls).toBe(0);
+      expect(context.factCatalog).toEqual([]);
+      expect(context.temporalDigests).toEqual([]);
+      expect(context.graphRelations).toEqual([]);
+      expect(context.evidenceCandidates).toEqual([]);
+      expect(context.eventCandidates).toEqual([]);
+      expect(context.styleExamples).toEqual([]);
+      expect(context.activeRules).toEqual([expect.objectContaining({ title: "运动后查看天气", status: "triggered" })]);
+      expect(context.signals).toEqual([
+        expect.objectContaining({ summary: "activity.exercise.completed", valueJson: "true" }),
+      ]);
+    } finally {
+      store.close();
+    }
+  });
+
   test("projects only query-related fact heads without creating a markdown context path", async () => {
     const workspaceRoot = createWorkspace();
     const store = createStore(workspaceRoot);
@@ -517,7 +617,110 @@ describe("continuity memory service", () => {
       store.close();
     }
   });
+
+  test("projects relevant sealed temporal digests as the coarse-grained recall tier", async () => {
+    const workspaceRoot = createWorkspace();
+    const databasePath = resolveAgentWorkspaceLayout(workspaceRoot).databases.memory;
+    const kernel = new AgentSqliteDatabaseKernel({ databasePath, contract: AgentMemoryDatabaseContract });
+    const store = new AgentContinuitySqliteStore(kernel);
+    const temporalStore = new AgentTemporalMemorySqliteStore(kernel);
+    try {
+      seedTemporalDigest(temporalStore, workspaceRoot, {
+        granularity: "day",
+        key: "2026-08-01",
+        periodStart: "2026-08-01T00:00:00.000Z",
+        periodEnd: "2026-08-02T00:00:00.000Z",
+        summary: "用户参加了羽毛球活动并安排了训练计划。",
+        topics: ["羽毛球", "训练计划"],
+      });
+
+      const context = await new AgentContinuityMemoryService({
+        identity: testContinuityIdentity(workspaceRoot),
+        store,
+        temporalMemoryStore: temporalStore,
+      }).promptContext({ userInput: "羽毛球训练", sessionId: "session-1" });
+
+      expect(context.temporalDigests).toHaveLength(1);
+      expect(context.temporalDigests[0]).toMatchObject({
+        granularity: "day",
+        matchedBy: ["text_similarity"],
+        summary: "用户参加了羽毛球活动并安排了训练计划。",
+      });
+      expect(context.factCatalog).toEqual([]);
+    } finally {
+      store.close();
+      kernel.close();
+    }
+  });
+
+  test("omits the digest tier when no sealed digest clears the similarity floor", async () => {
+    const workspaceRoot = createWorkspace();
+    const databasePath = resolveAgentWorkspaceLayout(workspaceRoot).databases.memory;
+    const kernel = new AgentSqliteDatabaseKernel({ databasePath, contract: AgentMemoryDatabaseContract });
+    const store = new AgentContinuitySqliteStore(kernel);
+    const temporalStore = new AgentTemporalMemorySqliteStore(kernel);
+    try {
+      seedTemporalDigest(temporalStore, workspaceRoot, {
+        granularity: "day",
+        key: "2026-08-02",
+        periodStart: "2026-08-02T00:00:00.000Z",
+        periodEnd: "2026-08-03T00:00:00.000Z",
+        summary: "用户整理了低饱和绿色界面设计稿。",
+        topics: ["界面", "设计"],
+      });
+
+      const context = await new AgentContinuityMemoryService({
+        identity: testContinuityIdentity(workspaceRoot),
+        store,
+        temporalMemoryStore: temporalStore,
+      }).promptContext({ userInput: "羽毛球训练", sessionId: "session-1" });
+
+      expect(context.temporalDigests).toEqual([]);
+    } finally {
+      store.close();
+      kernel.close();
+    }
+  });
 });
+
+function seedTemporalDigest(
+  store: AgentTemporalMemorySqliteStore,
+  workspaceRoot: string,
+  input: {
+    readonly granularity: "day";
+    readonly key: string;
+    readonly periodStart: string;
+    readonly periodEnd: string;
+    readonly summary: string;
+    readonly topics: readonly string[];
+  },
+): void {
+  const scope = projectAgentTemporalMemoryScope(testContinuityIdentity(workspaceRoot));
+  const now = "2026-10-01T00:00:00.000Z";
+  const digest = store.ensureDigest({
+    scope,
+    granularity: input.granularity,
+    digestKey: input.key,
+    periodStart: input.periodStart,
+    periodEnd: input.periodEnd,
+    timeZone: "Asia/Shanghai",
+    status: "pending",
+    now,
+  });
+  store.replaceMembers(
+    digest.id,
+    [
+      {
+        memberUri: `senera://memory-episode/${input.key}`,
+        memberKind: "episode",
+        occurredAt: input.periodStart,
+        sourceRevision: input.key,
+      },
+    ],
+    { periodStart: input.periodStart, periodEnd: input.periodEnd, status: "pending", now },
+  );
+  store.seal(digest.id, { summary: input.summary, topics: [...input.topics], openLoops: [] }, now);
+}
 
 function observation(
   workspaceRoot: string,

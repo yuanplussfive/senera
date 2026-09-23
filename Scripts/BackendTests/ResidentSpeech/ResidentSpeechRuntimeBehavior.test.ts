@@ -343,7 +343,7 @@ function createRegistry(): AgentExtensionRegistry {
     name: "resident-speech",
     title: "Resident Speech",
     description: "Resident speech sidecar",
-    rootPath: "System/Extensions/resident-speech",
+    rootPath: "System/Extensions/platform/resident-speech",
     revision: "test",
     trusted: true,
     requiresApproval: false,

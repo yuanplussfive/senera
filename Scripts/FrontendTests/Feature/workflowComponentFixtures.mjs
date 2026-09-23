@@ -43,6 +43,39 @@ export function createStep(overrides = {}) {
   };
 }
 
+/**
+ * Models the presentation contract emitted by the System Tool catalog. Test
+ * scenarios opt into an explicit backend declaration instead of relying on
+ * frontend tool-name inference.
+ */
+export function createSystemToolOrigin({
+  name,
+  category,
+  icon,
+  groupId,
+  groupTitle,
+  action,
+  invocationName,
+  argumentPath,
+  detailPaths,
+}) {
+  return {
+    kind: "system",
+    name,
+    presentation: {
+      category,
+      icon,
+      group: { id: groupId, title: localizedText(groupTitle) },
+      activity: {
+        action: localizedText(action),
+        ...(invocationName ? { invocationName: localizedText(invocationName) } : {}),
+        ...(argumentPath ? { argumentPath } : {}),
+        ...(detailPaths ? { detailPaths } : {}),
+      },
+    },
+  };
+}
+
 export function createToolBatchRun(toolNames) {
   const toolBatch = { id: "batch-actions", size: toolNames.length, executionMode: "parallel" };
   return createRun({
@@ -106,4 +139,8 @@ export function viewportNode(id, data) {
     position: { x: 0, y: 0 },
     data: { layout: workflowNodeLayout("vertical"), ...data },
   };
+}
+
+function localizedText(value) {
+  return { "zh-CN": value, "en-US": value };
 }

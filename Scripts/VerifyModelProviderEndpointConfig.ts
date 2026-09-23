@@ -3,7 +3,6 @@ import {
   resolveActionPlannerConfig,
   resolveModelProviderConfig,
   resolveModelProviderCatalog,
-  resolveVectorModelsConfig,
 } from "../Source/AgentSystem/AgentDefaults.js";
 import { resolveModelProviderEndpointCatalog } from "../Source/AgentSystem/Defaults/AgentModelProviderDefaults.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
@@ -38,16 +37,6 @@ const config: AgentSystemConfig = {
       MaxTokens: 2048,
     },
   },
-  VectorModels: {
-    Embedding: {
-      ProviderId: "shared-provider",
-      Model: "qwen3-embedding-0.6b",
-    },
-    Rerank: {
-      ProviderId: "shared-provider",
-      Model: "qwen3-reranker-0.6b",
-    },
-  },
 };
 
 const provider = resolveModelProviderConfig(config);
@@ -63,15 +52,6 @@ assert.equal(planner.Client.ApiKey, "provider-key");
 assert.equal(planner.PlanningClient.ModelProvider.Endpoint, "ChatCompletions");
 assert.equal(planner.PlanningClient.Model, "mistral-large-latest");
 assert.equal(planner.PlanningClient.MaxTokens, 2048);
-
-const vector = resolveVectorModelsConfig(config);
-assert.equal(vector.Embedding.BaseUrl, "https://provider.test/v1");
-assert.equal(vector.Embedding.ApiKey, "provider-key");
-assert.equal(vector.Embedding.Model, "qwen3-embedding-0.6b");
-assert.deepEqual(vector.Embedding.Headers, { "x-provider": "shared" });
-assert.equal(vector.Rerank.BaseUrl, "https://provider.test/v1");
-assert.equal(vector.Rerank.ApiKey, "provider-key");
-assert.equal(vector.Rerank.Model, "qwen3-reranker-0.6b");
 
 assert.throws(
   () =>
@@ -180,10 +160,6 @@ const disabledProviderConfig: AgentSystemConfig = {
   ActionPlanner: {
     Client: { ModelProviderId: "openai-generic" },
   },
-  VectorModels: {
-    Embedding: { ProviderId: "disabled-provider", Model: "disabled-embedding" },
-    Rerank: { ProviderId: "disabled-provider", Model: "disabled-rerank" },
-  },
 };
 
 const activeCatalog = resolveModelProviderCatalog(disabledProviderConfig);
@@ -193,11 +169,6 @@ assert.deepEqual(
   ["enabled-model"],
 );
 assert.throws(() => activeCatalog.resolve("disabled-model"), /模型配置不存在/);
-
-const disabledVector = resolveVectorModelsConfig(disabledProviderConfig);
-assert.equal(disabledVector.Embedding.Enabled, false);
-assert.equal(disabledVector.Rerank.Enabled, false);
-assert.equal(disabledVector.Embedding.BaseUrl, "https://disabled.example.test/v1");
 
 const allDisabledProviderConfig: AgentSystemConfig = {
   ...disabledProviderConfig,

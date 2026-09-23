@@ -144,15 +144,6 @@ export class AgentToolCapabilitySessionCache {
       .map(freezeEntry);
   }
 
-  invalidateCatalog(catalogRevision: string): void {
-    for (const [sessionId, entries] of this.sessions) {
-      for (const [toolName, entry] of entries) {
-        if (entry.catalogRevision !== catalogRevision) entries.delete(toolName);
-      }
-      if (entries.size === 0) this.sessions.delete(sessionId);
-    }
-  }
-
   clear(sessionId?: string): void {
     if (!sessionId) {
       this.sessions.clear();

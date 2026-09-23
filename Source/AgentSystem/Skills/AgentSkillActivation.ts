@@ -17,6 +17,8 @@ import {
 } from "./AgentSkillInvocation.js";
 import type { AgentSkillSelectionLearningEvidence, AgentSkillSelectionResult } from "./AgentSkillSelector.js";
 import type { RegisteredSkill } from "./AgentSkillTypes.js";
+import { partitionAgentToolsByInvocationRoute } from "../ToolRuntime/AgentToolInvocationRouting.js";
+import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
 
 export interface AgentActivatedSkill {
   name: string;
@@ -42,6 +44,11 @@ export interface AgentPinnedSkillReference {
 export interface AgentActivatedSkillMatchedField {
   term: string;
   fields: string[];
+}
+
+export interface AgentSkillRecommendedToolRouting {
+  readonly directToolNames: readonly string[];
+  readonly dynamicToolNames: readonly string[];
 }
 
 export interface AgentSkillRoutingEvidenceProvider {
@@ -161,8 +168,18 @@ export class AgentSkillActivationService {
     });
   }
 
-  recommendedToolNames(skills: readonly AgentActivatedSkill[]): string[] {
-    return [...new Set(skills.flatMap((skill) => skill.recommendedTools))];
+  recommendedToolRouting(skills: readonly AgentActivatedSkill[]): AgentSkillRecommendedToolRouting {
+    const toolsByName = new Map<string, RegisteredTool>();
+    for (const toolName of skills.flatMap((skill) => skill.recommendedTools)) {
+      if (toolsByName.has(toolName)) continue;
+      const tool = this.registry.getTool(toolName);
+      if (tool) toolsByName.set(toolName, tool);
+    }
+    const partition = partitionAgentToolsByInvocationRoute([...toolsByName.values()]);
+    return {
+      directToolNames: partition.direct.map((tool) => tool.name),
+      dynamicToolNames: partition.discovery.map((tool) => tool.name),
+    };
   }
 
   private buildActivationQuery(options: {

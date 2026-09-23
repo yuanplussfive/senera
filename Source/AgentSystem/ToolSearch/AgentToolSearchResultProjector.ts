@@ -1,98 +1,258 @@
-import { z } from "zod";
-import type { ToolSearchArguments } from "./AgentToolMetaToolProtocol.js";
-import type { AgentToolSearchResult } from "./AgentToolSearchTypes.js";
+import { AgentToolDiscoveryProtocol } from "./AgentToolMetaToolProtocol.js";
+import type { AgentToolSearchDiscovery, AgentToolSearchResult, AgentToolSearchSource } from "./AgentToolSearchTypes.js";
+import { AgentModelTokenEstimator } from "../Text/AgentTextBudget.js";
 
-const ToolSearchResultSchema = z.object({
-  tools: z.object({
-    item: z.array(
-      z.object({
-        name: z.string().trim().min(1),
-        confidence: z.number().optional(),
-        state: z
-          .object({
-            exposure: z.enum(["visible", "discoverable"]),
-            contract: z.enum(["unconfirmed", "confirmed"]),
-            reuse: z.enum(["none", "arguments"]),
-            reusableArguments: z.record(z.string(), z.unknown()).optional(),
-          })
-          .optional(),
-      }),
-    ),
-  }),
-});
-
-export function buildToolSearchResultProjection(args: ToolSearchArguments, results: readonly AgentToolSearchResult[]) {
-  const matchedResults = results.filter(hasMatchEvidence);
-  const bestScore = matchedResults[0]?.score ?? 0;
-  const reusable = results.some((result) => result.state?.reuse === "arguments");
-  return {
-    query: args.query,
-    catalogRevision: "",
-    preferredSources: { item: args.preferredSources ?? [] },
-    tools: {
-      item: results.map((result, index) => projectToolSearchEntry(result, index, bestScore)),
-    },
-    guidance:
-      matchedResults.length > 0
-        ? reusable
-          ? "候选仅用于发现。标记为 confirmed/arguments 的工具已经有可复用参数；保持参数不变时直接调用。其它工具先调用 ToolDescribe 读取准确契约与副作用，再按需加载。"
-          : "候选仅用于发现。先调用 ToolDescribe 读取准确参数契约与副作用，再使用当前运行时提供的工具调用入口；若入口要求加载，则先加载。"
-        : results.length > 0
-          ? "没有直接匹配候选；以下仍列出当前授权范围内可发现的动态工具目录，请选择后调用 ToolDescribe。"
-          : "没有可发现的动态工具。",
-  };
+/**
+ * Tool discovery is intentionally a compact wire contract. Full descriptions,
+ * argument schemas, effects, and provenance remain the responsibility of
+ * ToolDescribe, so broad retrieval never repeats nested JSON contracts.
+ *
+ * match: [toolName, description, state?]
+ * maybe: [toolName, description]
+ * more:  [sourceId, sourceName, omittedToolCount]
+ */
+export interface AgentToolSearchResultProjection {
+  readonly status?: "empty" | "stale";
+  readonly reason?: string;
+  readonly diagnostics?: readonly string[];
+  readonly catalogRevision?: string;
+  readonly match?: readonly AgentToolSearchMatchTuple[];
+  readonly maybe?: readonly AgentToolSearchNameTuple[];
+  readonly more?: readonly AgentToolSearchSourceTuple[];
 }
 
-export function withToolSearchCatalogRevision<T extends Record<string, unknown>>(
-  projection: T,
-  catalogRevision: string,
-): T & { catalogRevision: string } {
-  return { ...projection, catalogRevision };
+export interface AgentToolSearchResultProjectionOptions {
+  /** The active chat model selects the same BPE accounting used elsewhere in the runtime. */
+  readonly model: string;
+  /** Maximum BPE tokens for uncertain candidates; `match` is always retained. */
+  readonly tokenBudget: number;
 }
 
+export type AgentToolSearchNameTuple = readonly [toolName: string, description: string];
+
+export type AgentToolSearchStateTuple = readonly [
+  exposure: "visible" | "discoverable",
+  contract: "confirmed" | "unconfirmed",
+  reuse: "arguments" | "none",
+  reusableArguments?: Record<string, unknown>,
+];
+
+export type AgentToolSearchMatchTuple = readonly [
+  toolName: string,
+  description: string,
+  state?: AgentToolSearchStateTuple,
+];
+
+export type AgentToolSearchSourceTuple = readonly [sourceId: string, sourceName: string, count: number];
+
+/**
+ * Projects all high-confidence matches, then jointly budgets uncertain names
+ * and the source summaries for candidates that stay folded. A greedy
+ * description-only projection can consume the entire budget before it ever
+ * reports `more`; planning both representations together keeps the model
+ * aware of remaining capability domains. There is no candidate-count cutoff.
+ */
+export function buildToolSearchResultProjection(
+  discovery: AgentToolSearchDiscovery,
+  options: AgentToolSearchResultProjectionOptions,
+): AgentToolSearchResultProjection {
+  const tokenBudget = validateTokenBudget(options.tokenBudget);
+  const estimator = new AgentModelTokenEstimator({ model: options.model });
+  const match = discovery.match.map(projectMatch);
+  const { maybe, more } = projectUncertainCandidates({
+    discovery,
+    estimator,
+    tokenBudget,
+  });
+
+  return projectWire(discovery, match, maybe, more);
+}
+
+/** Only `match` candidates can feed capability reuse and routing learning. */
 export function readToolNamesFromSearchResult(result: unknown): string[] {
-  const parsed = ToolSearchResultSchema.safeParse(result);
-  return parsed.success
-    ? parsed.data.tools.item.filter((entry) => (entry.confidence ?? 0) > 0).map((entry) => entry.name)
-    : [];
+  if (!isRecord(result) || !Array.isArray(result.match)) return [];
+  return result.match.flatMap((entry) => {
+    const name = Array.isArray(entry) ? entry[0] : undefined;
+    return typeof name === "string" && name.trim().length > 0 ? [name] : [];
+  });
 }
 
-function projectToolSearchEntry(result: AgentToolSearchResult, index: number, bestScore: number) {
-  const confidence = hasMatchEvidence(result) ? normalizeConfidence(result.score, bestScore) : 0;
-  const base = {
-    name: result.toolName,
-    title: result.title,
-    summary: result.summary,
-    rank: index + 1,
-    confidence,
-    ...(result.state ? { state: result.state } : {}),
-  };
+function projectMatch(result: AgentToolSearchResult): AgentToolSearchMatchTuple {
+  const state = projectState(result);
+  return state ? [result.toolName, result.summary, state] : [result.toolName, result.summary];
+}
 
-  if (confidence <= 0) return base;
+function projectName(result: AgentToolSearchResult): AgentToolSearchNameTuple {
+  return [result.toolName, result.summary];
+}
+
+function projectState(result: AgentToolSearchResult): AgentToolSearchStateTuple | undefined {
+  const state = result.state;
+  if (!state) return undefined;
+  const isDefault = state.exposure === "discoverable" && state.contract === "unconfirmed" && state.reuse === "none";
+  if (isDefault) return undefined;
+  return state.reuse === "arguments" && state.reusableArguments
+    ? [state.exposure, state.contract, state.reuse, state.reusableArguments]
+    : [state.exposure, state.contract, state.reuse];
+}
+
+function projectWire(
+  discovery: AgentToolSearchDiscovery,
+  match: readonly AgentToolSearchMatchTuple[],
+  maybe: readonly AgentToolSearchNameTuple[],
+  more: readonly AgentToolSearchSourceTuple[],
+): AgentToolSearchResultProjection {
+  return {
+    ...(discovery.status ? { status: discovery.status } : {}),
+    ...(discovery.reason ? { reason: discovery.reason } : {}),
+    ...(discovery.diagnostics && discovery.diagnostics.length > 0 ? { diagnostics: discovery.diagnostics } : {}),
+    ...(discovery.catalogRevision ? { catalogRevision: discovery.catalogRevision } : {}),
+    ...(match.length > 0 ? { match } : {}),
+    ...(maybe.length > 0 ? { maybe } : {}),
+    ...(more.length > 0 ? { more } : {}),
+  };
+}
+
+interface UncertainCandidateProjectionOptions {
+  readonly discovery: AgentToolSearchDiscovery;
+  readonly estimator: AgentModelTokenEstimator;
+  readonly tokenBudget: number;
+}
+
+/**
+ * Every tentative candidate is considered in the confidence planner's order.
+ * Its admission is evaluated alongside a fresh source roll-up of everything
+ * still folded, so `more` is not accidentally starved by verbose summaries.
+ * The roll-up is derived from actual withheld candidates and naturally shrinks
+ * as individual tools are named.
+ */
+function projectUncertainCandidates(options: UncertainCandidateProjectionOptions): ProjectedUncertainCandidates {
+  const maybe: AgentToolSearchNameTuple[] = [];
+  const withheld = [...options.discovery.omitted];
+  const candidates = options.discovery.maybe;
+
+  for (const [index, result] of candidates.entries()) {
+    const candidate = projectName(result);
+    const remaining = [...withheld, ...candidates.slice(index + 1)];
+    const currentMore = projectFittingWithheldSources({
+      discovery: options.discovery,
+      results: remaining,
+      maybe,
+      estimator: options.estimator,
+      tokenBudget: options.tokenBudget,
+    });
+    const proposedMaybe = [...maybe, candidate];
+    const proposedMore = projectFittingWithheldSources({
+      discovery: options.discovery,
+      results: remaining,
+      maybe: proposedMaybe,
+      estimator: options.estimator,
+      tokenBudget: options.tokenBudget,
+    });
+    const preservesSourceDisclosure = currentMore.length === 0 || proposedMore.length > 0;
+    if (
+      preservesSourceDisclosure &&
+      fitsBudget(options.estimator, options.tokenBudget, options.discovery, proposedMaybe, proposedMore)
+    ) {
+      maybe.push(candidate);
+    } else {
+      withheld.push(result);
+    }
+  }
 
   return {
-    ...base,
-    sources: {
-      item: result.sources.map((source) => ({ id: source.id, title: source.title })),
-    },
-    matches: {
-      terms: { item: result.matchedTerms },
-      capabilities: {
-        item: result.matchedCapabilities.map((capability) => ({
-          id: capability.id,
-          title: capability.title,
-          facets: { item: capability.matchedFacets },
-        })),
-      },
-    },
+    maybe,
+    more:
+      withheld.length > 0
+        ? projectFittingWithheldSources({
+            discovery: options.discovery,
+            results: withheld,
+            maybe,
+            estimator: options.estimator,
+            tokenBudget: options.tokenBudget,
+          })
+        : [],
   };
 }
 
-function hasMatchEvidence(result: AgentToolSearchResult): boolean {
-  return ["bm25", "exact", "fuzzy", "semantic", "memory"].some((ranker) => result.ranks[ranker] !== undefined);
+interface ProjectedUncertainCandidates {
+  readonly maybe: readonly AgentToolSearchNameTuple[];
+  readonly more: readonly AgentToolSearchSourceTuple[];
 }
 
-function normalizeConfidence(score: number, bestScore: number): number {
-  if (bestScore <= 0 || score <= 0) return 0;
-  return Number(Math.min(1, score / bestScore).toFixed(3));
+interface WithheldSourceProjectionOptions {
+  readonly discovery: AgentToolSearchDiscovery;
+  readonly results: readonly AgentToolSearchResult[];
+  readonly maybe: readonly AgentToolSearchNameTuple[];
+  readonly estimator: AgentModelTokenEstimator;
+  readonly tokenBudget: number;
+}
+
+function projectFittingWithheldSources(options: WithheldSourceProjectionOptions): AgentToolSearchSourceTuple[] {
+  const more: AgentToolSearchSourceTuple[] = [];
+  for (const source of projectWithheldSources(options.results)) {
+    const proposed = [...more, source];
+    if (fitsBudget(options.estimator, options.tokenBudget, options.discovery, options.maybe, proposed)) {
+      more.push(source);
+    }
+  }
+  return more;
+}
+
+function fitsBudget(
+  estimator: AgentModelTokenEstimator,
+  tokenBudget: number,
+  discovery: AgentToolSearchDiscovery,
+  maybe: readonly AgentToolSearchNameTuple[],
+  more: readonly AgentToolSearchSourceTuple[],
+): boolean {
+  // `match` is an actionable proof tier and is deliberately exempt from the
+  // uncertain disclosure budget. Otherwise one verbose producer summary could
+  // suppress every `maybe`/`more` signal and hide the catalog frontier.
+  const wire = projectWire(discovery, [], maybe, more);
+  const payload = { type: AgentToolDiscoveryProtocol.type, ...wire };
+  return estimator.inspect(JSON.stringify(payload), tokenBudget).withinLimit;
+}
+
+function projectWithheldSources(results: readonly AgentToolSearchResult[]): AgentToolSearchSourceTuple[] {
+  const sources = new Map<string, { source: AgentToolSearchSource; toolNames: Set<string>; firstRank: number }>();
+  results.forEach((result, rank) => {
+    if (result.sources.length === 0) {
+      throw new Error(`Tool search result ${result.toolName} is missing effective discovery source metadata.`);
+    }
+    result.sources.forEach((source) => {
+      const current = sources.get(source.id);
+      if (current) {
+        if (current.source.title !== source.title || current.source.description !== source.description) {
+          throw new Error(`Tool discovery source ${source.id} has conflicting metadata.`);
+        }
+        current.toolNames.add(result.toolName);
+      } else {
+        sources.set(source.id, {
+          source,
+          toolNames: new Set([result.toolName]),
+          firstRank: rank,
+        });
+      }
+    });
+  });
+  return [...sources.values()]
+    .sort(
+      (left, right) =>
+        right.toolNames.size - left.toolNames.size ||
+        left.firstRank - right.firstRank ||
+        left.source.id.localeCompare(right.source.id),
+    )
+    .map(({ source, toolNames }) => [source.id, source.title, toolNames.size]);
+}
+
+function validateTokenBudget(value: number): number {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error("ToolSearch disclosure TokenBudget must be a positive safe integer.");
+  }
+  return value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

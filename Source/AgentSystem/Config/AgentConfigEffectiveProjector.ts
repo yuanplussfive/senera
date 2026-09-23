@@ -19,7 +19,6 @@ import {
   resolveAgentPromptConfig,
   resolveAgentWorldConfig,
   resolveAgentInferenceBudgetConfig,
-  resolveVectorModelsConfig,
 } from "../AgentDefaults.js";
 import { mergeActionPlannerClientConfig } from "../Defaults/AgentPlannerDefaults.js";
 
@@ -31,7 +30,6 @@ export function projectEffectiveConfig(config: AgentSystemConfig): AgentSystemCo
     SandboxRuntime: resolveSandboxRuntimeConfig(config),
     ToolExecution: projectResolvedToolExecution(config),
     ToolSearch: resolveToolSearchConfig(config),
-    VectorModels: projectResolvedVectorModels(config),
     ToolLearning: projectResolvedToolLearning(config),
     ContinuityLearning: projectResolvedContinuityLearning(config),
     Presets: resolvePresetsConfig(config),
@@ -53,7 +51,6 @@ export function projectEffectiveConfig(config: AgentSystemConfig): AgentSystemCo
       SandboxRuntime: resolveSandboxRuntimeConfig(config),
       ToolExecution: projectResolvedToolExecution(config),
       ToolSearch: resolveToolSearchConfig(config),
-      VectorModels: projectResolvedVectorModels(config),
       ToolLearning: projectResolvedToolLearning(config),
       ContinuityLearning: projectResolvedContinuityLearning(config),
       Presets: resolvePresetsConfig(config),
@@ -215,39 +212,6 @@ function projectResolvedToolExecution(config: AgentSystemConfig): NonNullable<Ag
       TerminalTtlSeconds: resolved.Resources.TerminalTtlSeconds,
       SweepIntervalSeconds: resolved.Resources.SweepIntervalSeconds,
       TerminationGraceSeconds: resolved.Resources.TerminationGraceSeconds,
-    },
-  };
-}
-
-function projectResolvedVectorModels(config: AgentSystemConfig): NonNullable<AgentSystemConfig["VectorModels"]> {
-  const resolved = resolveVectorModelsConfig(config);
-  const defaults = resolveAgentDefaults(config);
-  return {
-    Embedding: {
-      Enabled: resolved.Embedding.Enabled,
-      ProviderId:
-        config.VectorModels?.Embedding?.ProviderId ??
-        config.Defaults?.VectorModels?.Embedding?.ProviderId ??
-        AgentDefaults.VectorModels.Embedding.ProviderId,
-      Model: resolved.Embedding.Model,
-      TimeoutSeconds: config.VectorModels?.Embedding?.TimeoutSeconds ?? defaults.VectorModels.Embedding.TimeoutSeconds,
-      MaxNetworkRetries: resolved.Embedding.MaxNetworkRetries,
-      Dimensions: resolved.Embedding.Dimensions,
-      BatchSize: resolved.Embedding.BatchSize,
-      InputMaxChars: resolved.Embedding.InputMaxChars,
-    },
-    Rerank: {
-      Enabled: resolved.Rerank.Enabled,
-      ProviderId:
-        config.VectorModels?.Rerank?.ProviderId ??
-        config.Defaults?.VectorModels?.Rerank?.ProviderId ??
-        AgentDefaults.VectorModels.Rerank.ProviderId,
-      Model: resolved.Rerank.Model,
-      TimeoutSeconds: config.VectorModels?.Rerank?.TimeoutSeconds ?? defaults.VectorModels.Rerank.TimeoutSeconds,
-      MaxNetworkRetries: resolved.Rerank.MaxNetworkRetries,
-      EndpointPath: resolved.Rerank.EndpointPath,
-      CandidateLimit: resolved.Rerank.CandidateLimit,
-      TopK: resolved.Rerank.TopK,
     },
   };
 }

@@ -28,6 +28,7 @@ describe("continuity snapshots", () => {
     graphRelations: [],
     temporalMemory: { counts: [], segmentDecisions: [], latestSealed: [] },
     residentProfile: [],
+    temporalDigests: [],
     pendingRuleDeliveryUris: ["senera://continuity-rule/internal-delivery"],
     factCatalog: [
       {

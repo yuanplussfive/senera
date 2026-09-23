@@ -257,7 +257,7 @@ describe("agent delegation capability resolution", () => {
 function toolRegistry<T extends Record<string, ReturnType<typeof registeredTool>>>(tools: T) {
   const skills = new Map(
     new AgentSkillScanner()
-      .scanRoot(path.resolve("System", "Extensions", "agent-delegation", "skills"))
+      .scanRoot(path.resolve("System", "Extensions", "coordinate", "agent-delegation", "skills"))
       .map((skill) => [skill.name, skill] as const),
   );
   return {

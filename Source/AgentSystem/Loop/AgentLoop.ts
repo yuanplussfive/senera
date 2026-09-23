@@ -28,6 +28,8 @@ import {
 import { createAgentPiLogicalCacheScope } from "../Pi/AgentPiPromptCache.js";
 import { createModelProviderMetadata, type AgentEffectiveModelReceipt } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { AgentToolResourceLeaseOwner } from "../ToolRuntime/AgentToolResourceScheduler.js";
+import { aggregateResidentStateSignals } from "../Continuity/AgentResidentSignalAggregator.js";
+import { initialResidentState, nextResidentState } from "../Continuity/AgentResidentState.js";
 
 export interface AgentLoopOptions {
   runtime: AgentSystemRuntime;
@@ -113,6 +115,9 @@ export class AgentLoop {
         ? createAgentPiLogicalCacheScope({ sessionId: request.sessionId, family: "conversation" })
         : undefined);
     const prepared = await this.prepareTurn(request, logicalCacheScope);
+    const residentStateService = this.options.runtime.services.promptContext.residentState;
+    const priorResidentState =
+      request.sessionId && residentStateService ? residentStateService.load(request.sessionId) : undefined;
     const prompt = await this.promptRenderer.render({
       userInput: request.input,
       sessionId: request.sessionId,
@@ -127,6 +132,7 @@ export class AgentLoop {
       rootCommand: prepared.rootCommand,
       toolPlanningMode: resolveAgentModelToolPlanningMode(this.options.runtime.modelProviderConfig),
       systemPromptLayer: request.systemPromptLayer,
+      residentState: priorResidentState,
     });
     await this.emitAll(request.onEvent, [
       ...this.events.promptRendered(
@@ -160,7 +166,7 @@ export class AgentLoop {
           request.interaction ?? { surface: AgentInteractionSurfaces.Console },
         ),
         prompt: prompt.systemPrompt,
-        turnContext: prompt.turnContext,
+        liveContext: prompt.liveContext,
         conversationEntries: [...(request.conversationEntries ?? [])],
         rootCommand: prepared.rootCommand,
         approvalMode: request.approvalMode,
@@ -168,8 +174,17 @@ export class AgentLoop {
         loadedToolNames: prepared.loadedToolNames,
         activeSkills: prepared.activeSkills,
         reusableCapabilities: prepared.reusableCapabilities,
+        reusableCapabilityLookup: request.sessionId
+          ? (toolName) =>
+              this.options.runtime.services.retrieval.getReusableEvidence?.({
+                sessionId: request.sessionId,
+                logicalCacheScope,
+                toolName,
+              })
+          : undefined,
         roleplayPresetActive: prompt.roleplayPreset.card !== undefined,
         prefaceRewriteEnabled: this.options.runtime.promptConfig.PrefaceRewrite === true,
+        finalResponseRewriteEnabled: this.options.runtime.promptConfig.FinalResponseRewrite === true,
         onPiBranchBoundary: request.onPiBranchBoundary,
         onFinalResponseAvailable: async (content) => {
           if (finalAnswerPublished) return;
@@ -182,10 +197,25 @@ export class AgentLoop {
         thinkingLevel: request.thinkingLevel,
         inheritProjectContext: request.inheritProjectContext,
         resourceOwner: request.resourceOwner,
+        seedResidentState: priorResidentState,
       },
       request.onEvent,
       request.signal,
     );
+
+    if (request.sessionId && residentStateService) {
+      const prior = priorResidentState ?? initialResidentState();
+      const signals = aggregateResidentStateSignals({
+        bearing: prior.bearing,
+        executedTools: result.executedTools,
+        // A returned Pi result is the host's confirmed terminal outcome for
+        // this turn. Do not infer completion from response wording or tool
+        // counts: both are unreliable, while this boundary is authoritative.
+        taskConcluded: true,
+      });
+      const next = nextResidentState(prior, signals);
+      residentStateService.save(request.sessionId, next, new Date().toISOString());
+    }
 
     const completed: AgentCompletedRunResult = {
       terminal: { kind: "FinalAnswer", content: result.responseText },
@@ -248,7 +278,6 @@ export class AgentLoop {
                 logicalCacheScope,
                 query: request.input,
                 authorizedToolNames: request.allowedToolNames,
-                limit: 6,
                 ...(request.interaction ? { interaction: request.interaction } : {}),
               }) ?? [])
             : [],

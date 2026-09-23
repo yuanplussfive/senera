@@ -53,6 +53,11 @@ import type { AgentResourceResolverLike } from "../Resources/AgentResourceResolv
 import type { AgentPiPlanningCompilerFactory } from "./AgentPiPlanningCompiler.js";
 import { projectSeneraProcessBackendsToToolTargets } from "../ToolRuntime/AgentToolExecutionPlan.js";
 import type { AgentResidentSpeechSessionRuntime } from "../ResidentSpeech/AgentResidentSpeechTypes.js";
+import type { AgentInferenceBudgetPort } from "../ModelEndpoints/AgentInferenceBudget.js";
+import {
+  AgentPiCompactionCandidateMemoryStore,
+  type AgentPiCompactionCandidateStore,
+} from "./AgentPiCompactionCandidateStore.js";
 
 export type {
   AgentPiRuntimeService,
@@ -90,6 +95,10 @@ export interface AgentPiSubstrateOptions {
   resourceCapabilities?: AgentToolResourceCapabilityRegistry;
   resourceCoordinator?: AgentToolResourceLeaseCoordinator;
   beforeCompaction?: (sessionId: string) => Promise<void>;
+  /** Derived cache only; Pi JSONL remains the durable conversation authority. */
+  compactionCandidateStore?: AgentPiCompactionCandidateStore;
+  inferenceBudget?: AgentInferenceBudgetPort;
+  inferenceScope?: () => string | undefined;
 }
 
 export interface AgentPiToolCallExecutorPort {
@@ -111,6 +120,7 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
   private readonly sessionPool: AgentPiCodingAgentSessionPool;
   private readonly contextPolicy: AgentPiContextPolicy;
   private readonly maxConcurrentToolPreflights: number;
+  private readonly compactionCandidateStore: AgentPiCompactionCandidateStore;
 
   constructor(private readonly options: AgentPiSubstrateOptions) {
     const piSessionsConfig = resolveAgentLoopConfig(options.config).PiSessions;
@@ -126,6 +136,7 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
       defaultThinkingLevel: options.modelProvider.DefaultThinkingLevel,
     });
     this.contextPolicy = new AgentPiContextPolicy(options.modelProvider.Model);
+    this.compactionCandidateStore = options.compactionCandidateStore ?? new AgentPiCompactionCandidateMemoryStore();
     this.promptTemplateProjector = new AgentPiPromptTemplateProjector(options.registry);
     const systemResourcesRoot = path.resolve(options.resourcesPath ?? options.workspaceRoot);
     this.sessionPool =
@@ -144,6 +155,9 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
         compaction: piSessionsConfig.Compaction,
         diagnostics: options.diagnostics,
         beforeCompaction: options.beforeCompaction,
+        compactionCandidateStore: this.compactionCandidateStore,
+        inferenceBudget: options.inferenceBudget,
+        inferenceScope: options.inferenceScope,
       });
     const resourceCapabilities =
       options.resourceCapabilities ??
@@ -155,6 +169,7 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
       });
     this.permissionHook = new AgentPiToolPermissionHook({
       registry: options.registry,
+      toolPlanningMode: this.provider.toolPlanningMode,
       permissionGate: options.toolPermissionGate,
       executionCapabilities: () => options.executionEnv.capabilities,
       resourceCapabilities,
@@ -285,11 +300,12 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
         onEvent: options.onEvent,
         diagnostics: options.diagnostics ?? this.options.diagnostics,
         systemPrompt: options.systemPrompt,
-        turnContext: options.turnContext,
+        liveContext: options.liveContext,
         turnState: options.turnState,
         activeSkills: options.activeSkills,
         roleplayPresetActive: options.roleplayPresetActive === true,
         prefaceRewriteEnabled: options.prefaceRewriteEnabled === true,
+        finalResponseRewriteEnabled: options.finalResponseRewriteEnabled === true,
         skillCatalogFingerprint: skillCatalogFingerprint(this.options.registry.listSkills()),
         skillLibraryCatalog,
         nativeProviderToolNames: this.provider.toolPlanningMode === "native" ? activeToolSet.activeToolNames : [],
@@ -314,6 +330,8 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
               candidate,
               toolAccessGrant,
               options.turnState?.context.reusableCapabilities,
+              toolExposure,
+              options.turnState?.context.reusableCapabilityLookup,
             );
             return this.permissionHook.authorize({ ...options, toolExposure }, projection.event, {
               requireExposure: !projection.bridged,

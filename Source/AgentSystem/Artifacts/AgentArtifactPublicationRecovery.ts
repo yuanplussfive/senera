@@ -9,23 +9,14 @@ import {
   type ReadableArtifactRef,
 } from "../Memory/AgentArtifactMemoryTypes.js";
 import { projectAgentExecutedToolResultStatus, readAgentToolFailure } from "../ToolRuntime/AgentToolResultOutcome.js";
-import type {
-  AgentToolArtifactAssetReference,
-  ExecutedToolCallArtifact,
-  ExecutedToolCallResult,
-} from "../Types/ToolRuntimeTypes.js";
+import type { ExecutedToolCallArtifact, ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import { buildArtifactDelta } from "./AgentArtifactDeltaProjection.js";
 import type { AgentArtifactFileWriter } from "./AgentArtifactFileWriter.js";
 import type { createAgentArtifactLocator } from "./AgentArtifactLocator.js";
 import { collectArtifactEvidence } from "./AgentArtifactEvidenceProjection.js";
 import { buildArtifactSummary } from "./AgentArtifactTemplateProjection.js";
 import type { AgentToolResultSummaryCompiler } from "./AgentToolResultSummaryCompiler.js";
-import { redactArtifactSecrets } from "./AgentArtifactRedaction.js";
-import {
-  attachAgentToolEvidenceAssets,
-  createAgentToolEvidenceCandidates,
-  readAgentToolEvidenceCandidates,
-} from "../ToolRuntime/AgentToolFeedbackAdapter.js";
+import { projectAgentToolArtifactEvidenceCandidates } from "./AgentToolArtifactEvidenceCandidates.js";
 
 export interface RestorePublishedArtifactInput {
   readonly locator: ReturnType<typeof createAgentArtifactLocator>;
@@ -38,7 +29,9 @@ export interface RestorePublishedArtifactInput {
   readonly redactedOutcome: ExecutedToolCallResult["outcome"];
   readonly argsHash: string;
   readonly resultHash: string;
+  readonly payloadHash: string;
   readonly redactionPolicySha256: string;
+  readonly inline: boolean;
 }
 
 export class AgentArtifactPublicationRecovery {
@@ -62,6 +55,7 @@ export class AgentArtifactPublicationRecovery {
       toolName: input.result.name,
       argsHash: input.argsHash,
       resultHash: input.resultHash,
+      payloadHash: input.payloadHash,
       redactionPolicySha256: input.redactionPolicySha256,
     };
     if (!publicationIdentityMatches(identity, expectedIdentity)) {
@@ -81,7 +75,13 @@ export class AgentArtifactPublicationRecovery {
       input.redactedRaw,
       input.policy,
       input.locator.artifactId,
-      projectToolEvidenceCandidates(input.result, input.redactedRaw, input.policy, artifactAssets),
+      projectAgentToolArtifactEvidenceCandidates({
+        result: input.result,
+        redactedResult: input.redactedRaw,
+        policy: input.policy,
+        assets: artifactAssets,
+        inline: input.inline,
+      }),
     );
     const workspace = input.result.workspaceCapture;
     const delta = buildArtifactDelta({
@@ -198,13 +198,21 @@ const ArtifactPublicationIdentitySchema = z
     toolName: z.string().min(1),
     argsHash: z.string().min(1),
     resultHash: z.string().min(1),
+    payloadHash: z.string().min(1),
     redactionPolicySha256: z.string().min(1),
   })
   .passthrough();
 
 type ArtifactPublicationIdentity = Pick<
   z.infer<typeof ArtifactPublicationIdentitySchema>,
-  "artifactId" | "artifactUri" | "callId" | "toolName" | "argsHash" | "resultHash" | "redactionPolicySha256"
+  | "artifactId"
+  | "artifactUri"
+  | "callId"
+  | "toolName"
+  | "argsHash"
+  | "resultHash"
+  | "payloadHash"
+  | "redactionPolicySha256"
 >;
 
 const ArtifactPublicationIdentityFields = [
@@ -214,6 +222,7 @@ const ArtifactPublicationIdentityFields = [
   "toolName",
   "argsHash",
   "resultHash",
+  "payloadHash",
   "redactionPolicySha256",
 ] as const satisfies readonly (keyof ArtifactPublicationIdentity)[];
 
@@ -222,21 +231,6 @@ function publicationIdentityMatches(
   expected: ArtifactPublicationIdentity,
 ): boolean {
   return ArtifactPublicationIdentityFields.every((field) => actual[field] === expected[field]);
-}
-
-function projectToolEvidenceCandidates(
-  result: ExecutedToolCallResult,
-  redactedRaw: unknown,
-  policy: ExecutedToolCallResult["artifactPolicy"],
-  assets: readonly AgentToolArtifactAssetReference[] | undefined,
-) {
-  const declared = readAgentToolEvidenceCandidates(
-    redactArtifactSecrets(result.artifactPayload?.evidence ?? [], policy),
-  );
-  const automatic = createAgentToolEvidenceCandidates(redactedRaw, {
-    source: `${result.name} result`,
-  });
-  return attachAgentToolEvidenceAssets([...declared, ...automatic], assets);
 }
 
 export class AgentArtifactPublicationConflictError extends AgentBaseError {

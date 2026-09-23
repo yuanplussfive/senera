@@ -24,18 +24,46 @@ describe("shouldProjectResidentSpeech", () => {
     const base = {
       focus: finalResponse,
       prefaceRewriteEnabled: true,
+      roleplayPresetActive: false,
       hasRegisteredToolCalls: true,
     };
-    expect(shouldProjectResidentSpeech({ ...base, roleplayPresetActive: true })).toBe(true);
-    expect(shouldProjectResidentSpeech({ ...base, roleplayPresetActive: false })).toBe(false);
+    expect(
+      shouldProjectResidentSpeech({ ...base, roleplayPresetActive: true, finalResponseRewriteEnabled: false }),
+    ).toBe(true);
+    expect(shouldProjectResidentSpeech({ ...base, finalResponseRewriteEnabled: false })).toBe(false);
   });
 
-  test("requires at least one registered tool call for final_response", () => {
+  test("projects final_response without a preset when the final rewrite opt-in is enabled", () => {
     expect(
       shouldProjectResidentSpeech({
         focus: finalResponse,
         prefaceRewriteEnabled: false,
-        roleplayPresetActive: true,
+        roleplayPresetActive: false,
+        finalResponseRewriteEnabled: true,
+        hasRegisteredToolCalls: true,
+      }),
+    ).toBe(true);
+  });
+
+  test("keeps final_response off when both preset and opt-in are absent", () => {
+    expect(
+      shouldProjectResidentSpeech({
+        focus: finalResponse,
+        prefaceRewriteEnabled: true,
+        roleplayPresetActive: false,
+        finalResponseRewriteEnabled: false,
+        hasRegisteredToolCalls: true,
+      }),
+    ).toBe(false);
+  });
+
+  test("requires at least one registered tool call for final_response even when the opt-in is enabled", () => {
+    expect(
+      shouldProjectResidentSpeech({
+        focus: finalResponse,
+        prefaceRewriteEnabled: false,
+        roleplayPresetActive: false,
+        finalResponseRewriteEnabled: true,
         hasRegisteredToolCalls: false,
       }),
     ).toBe(false);
@@ -47,6 +75,7 @@ describe("shouldProjectResidentSpeech", () => {
         focus: finalResponse,
         prefaceRewriteEnabled: false,
         roleplayPresetActive: true,
+        finalResponseRewriteEnabled: false,
         hasRegisteredToolCalls: true,
       }),
     ).toBe(true);

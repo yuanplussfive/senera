@@ -24,6 +24,7 @@ import { decideAgentContinuityLearning } from "./AgentContinuityLearningGate.js"
 import { AgentContinuityLifecycleCoordinator, type AgentContinuityLifecyclePort } from "./AgentContinuityLifecycle.js";
 import { AgentContinuitySemanticRecall } from "./AgentContinuitySemanticRecall.js";
 import type { AgentContinuitySemanticEmbeddingClient } from "./AgentContinuitySemanticRecall.js";
+
 import { agentContinuityObservationUri } from "./AgentContinuityObservationProjection.js";
 import { AgentTurnValueClassifier } from "./AgentTurnValueClassifier.js";
 import { AgentAgendaService } from "../Agenda/AgentAgendaService.js";

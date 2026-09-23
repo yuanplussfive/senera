@@ -17,10 +17,10 @@ export interface AgentPreparedTurn {
 
 export interface AgentTurnPreparationRuntime {
   services: {
-    retrieval: Pick<AgentRetrievalService, "resolvePlannedLoadedTools" | "rememberAutoSearch" | "reusableCapabilities">;
+    retrieval: Pick<AgentRetrievalService, "resolvePlannedLoadedTools" | "reusableCapabilities">;
     promptContext: Pick<
       AgentPromptContextService,
-      "activateSkills" | "recommendedSkillTools" | "buildRootCommand" | "interactionToolNames"
+      "activateSkills" | "recommendedSkillToolRouting" | "buildRootCommand" | "interactionToolNames"
     >;
   };
 }
@@ -44,42 +44,43 @@ export class AgentTurnPreparationService {
       pinnedSkills: input.pinnedSkills,
       signal: input.signal,
     });
-    const preferredToolNames = this.runtime.services.promptContext.recommendedSkillTools(activeSkills);
+    const recommendedToolRouting = this.runtime.services.promptContext.recommendedSkillToolRouting(activeSkills);
     const reusableCapabilities = input.sessionId
       ? (this.runtime.services.retrieval.reusableCapabilities?.({
           sessionId: input.sessionId,
           logicalCacheScope: input.logicalCacheScope,
           query: input.userInput,
           authorizedToolNames: input.allowedToolNames,
-          limit: 6,
           ...(input.interaction ? { interaction: input.interaction } : {}),
         }) ?? [])
       : [];
     const reusableToolNames = reusableCapabilities.map((entry) => entry.toolName);
     const currentLoadedTools = uniqueToolNames([
       ...input.loadedToolNames,
+      ...recommendedToolRouting.directToolNames,
       ...reusableToolNames,
       ...(this.runtime.services.promptContext.interactionToolNames?.(input.interaction) ?? []),
     ]);
-    const discover =
-      reusableCapabilities.length === 0 || preferredToolNames.some((toolName) => !reusableToolNames.includes(toolName));
     const resolvedToolNames = await this.resolveLoadedTools({
       input: input.userInput,
       currentLoadedTools,
       currentSetPolicy: AgentToolSearchCurrentSetPolicies.Retain,
-      preferredTools: preferredToolNames,
-      discover,
+      preferredTools: recommendedToolRouting.dynamicToolNames,
+      // Dynamic capabilities are deliberately not guessed from the raw user
+      // utterance here. Native planning has the fixed discovery bridge, and
+      // BAML has ToolLoad, so both modes can disclose a contract only after
+      // the model intentionally searches and describes it.
+      discover: false,
       ...(input.interaction ? { interaction: input.interaction } : {}),
       ...(input.signal ? { signal: input.signal } : {}),
     });
     const loadedToolNames = intersectAllowedToolNames(resolvedToolNames, input.allowedToolNames);
-    this.runtime.services.retrieval.rememberAutoSearch(input.requestId, input.userInput, loadedToolNames);
 
     const rootCommand = this.runtime.services.promptContext.buildRootCommand({
       decision: {
         action: "use_tools",
         useTools: {
-          preferredTools: preferredToolNames,
+          preferredTools: [...recommendedToolRouting.dynamicToolNames],
           instruction: "",
           needs: [],
         },

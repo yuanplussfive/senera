@@ -1,9 +1,13 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import { getBamlFiles } from "../BamlClient/baml_client/inlinedbaml.js";
+import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
+import { defineSeneraProtocol } from "../Core/AgentProtocolIdentity.js";
 import { readAgentPiToolObservation } from "./AgentPiToolObservationProtocol.js";
 import { projectAgentPiToolObservationForContext } from "./AgentPiToolObservationProjection.js";
 import { renderAgentPromptInputWire } from "../Prompt/AgentPromptContextWireRenderer.js";
 
 export const AgentPiCompactionSummaryBridgeCustomType = "senera.compaction_summary_text";
+export const AgentPiCompactionPromptProtocol = defineSeneraProtocol("pi_compaction", 1);
 
 export interface AgentPiCompactionPromptInput {
   readonly mode: "compact" | "tree";
@@ -31,7 +35,7 @@ export function buildAgentPiCompactionPromptWire(
 ): string {
   return renderAgentPromptInputWire(
     {
-      kind: "pi_compaction",
+      kind: AgentPiCompactionPromptProtocol.name,
       context: {
         mode: input.mode,
         previousSummary: input.previousSummary,
@@ -47,6 +51,26 @@ export function buildAgentPiCompactionPromptWire(
     { estimateTokens: (text) => text.length },
   ).text;
 }
+
+/**
+ * Fingerprints the generated BAML source that is actually loaded at runtime.
+ * A prepared checkpoint is model output, so it must not survive a change to
+ * the prompt contract that created it.
+ */
+function resolveAgentPiCompactionPromptRevision(): string {
+  const source = getBamlFiles()["pi_compaction.baml"];
+  if (typeof source !== "string" || source.trim().length === 0) {
+    throw new Error("The generated Pi compaction BAML source is unavailable.");
+  }
+  return sha256HexOfCanonicalJson({
+    promptProtocol: AgentPiCompactionPromptProtocol,
+    summaryBridgeCustomType: AgentPiCompactionSummaryBridgeCustomType,
+    source,
+  });
+}
+
+/** Immutable revision of the BAML contract loaded by this process. */
+export const AgentPiCompactionPromptRevision = resolveAgentPiCompactionPromptRevision();
 
 /** @deprecated The returned value is a versioned prompt wire, not bare JSON. */
 export const buildAgentPiCompactionPromptJson = buildAgentPiCompactionPromptWire;

@@ -47,6 +47,9 @@ export interface AgentPiToolProjectionContext {
   /** Assignment owner, present only for child-run sessions with a lease. */
   resourceOwner?: AgentToolResourceLeaseOwner;
   reusableCapabilities?: readonly AgentToolCapabilityCacheEntry[];
+  /** Cross-request evidence lookup accepted by the execution bridge for
+   * dynamic tools confirmed earlier in this session. */
+  reusableCapabilityLookup?: (toolName: string) => AgentToolCapabilityCacheEntry | undefined;
 }
 
 export interface AgentPiToolExecutionInput {
@@ -55,6 +58,8 @@ export interface AgentPiToolExecutionInput {
   params: Record<string, unknown>;
   signal?: AbortSignal;
   context: AgentPiToolProjectionContext;
+  /** Host-visible note appended to the observation, e.g. dropped wrapper keys. */
+  notice?: string;
 }
 
 export type AgentPiModelApi = "senera-planning" | AgentNativeToolApi;

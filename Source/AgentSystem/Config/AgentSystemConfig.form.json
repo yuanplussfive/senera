@@ -196,8 +196,6 @@
               "Icon": "",
               "Capabilities": {
                 "Chat": true,
-                "Embedding": false,
-                "Rerank": false,
                 "Vision": false,
                 "ImageOutput": false,
                 "DeveloperRole": false,
@@ -248,20 +246,6 @@
               {
                 "path": ["Capabilities", "Chat"],
                 "label": "对话",
-                "type": "boolean",
-                "required": false,
-                "essential": true
-              },
-              {
-                "path": ["Capabilities", "Embedding"],
-                "label": "向量嵌入",
-                "type": "boolean",
-                "required": false,
-                "essential": true
-              },
-              {
-                "path": ["Capabilities", "Rerank"],
-                "label": "重排序",
                 "type": "boolean",
                 "required": false,
                 "essential": true
@@ -802,7 +786,16 @@
             "type": "boolean",
             "defaultValue": false,
             "required": false,
-            "essential": false
+            "essential": true
+          },
+          {
+            "path": ["Prompt", "FinalResponseRewrite"],
+            "label": "最终回复润色",
+            "description": "开启后无角色卡也可在工具调用后润色最终回复；有角色卡时沿用角色声线，默认关闭。",
+            "type": "boolean",
+            "defaultValue": false,
+            "required": false,
+            "essential": true
           },
           {
             "path": ["World", "Name"],
@@ -2087,6 +2080,16 @@
             "essential": false
           },
           {
+            "path": ["ContinuityLearning", "Recall", "PromptBudget", "MaxDigestEntries"],
+            "label": "时间摘要注入数量",
+            "description": "每轮最多注入的粗粒度时间段摘要大纲。摘要优先于细粒度事实/事件使用上下文预算，适合快速了解近期做了什么。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
             "path": ["ContinuityLearning", "Recall", "PromptBudget", "MaxFactEntries"],
             "label": "事实召回数量",
             "description": "每轮最多直接注入的相关事实数量，按统一召回得分选择。",
@@ -2605,29 +2608,19 @@
             "essential": false
           },
           {
-            "path": ["ToolSearch", "Fuzzy", "CandidateLimit"],
-            "label": "模糊回退候选上限",
-            "type": "number",
-            "min": 1,
-            "step": 1,
-            "required": false,
-            "essential": false
-          },
-          {
             "path": ["ToolSearch", "Embedding", "Enabled"],
-            "label": "工具检索使用向量回退",
-            "description": "默认关闭。启用后仅在本地词法检索无结果时使用已启用且已配置的嵌入模型。",
+            "label": "工具检索使用语义通道",
+            "description": "默认开启。本地中英语义检索与词法、别名、资源结构和历史证据始终共同参与融合。",
             "type": "boolean",
             "required": false,
             "essential": true
           },
           {
-            "path": ["ToolSearch", "Embedding", "ScoreThreshold"],
-            "label": "向量回退分数阈值",
-            "type": "number",
-            "min": -1,
-            "max": 1,
-            "step": 0.01,
+            "path": ["ToolSearch", "Tokenize", "Stopwords"],
+            "label": "检索停用词",
+            "description": "检索时从查询中过滤的英文功能词，减少无意义匹配；留空禁用过滤。",
+            "type": "array",
+            "itemType": "string",
             "required": false,
             "essential": false
           },
@@ -2661,80 +2654,20 @@
             "essential": false
           },
           {
-            "path": ["ToolSearch", "Ranking", "MmrLambda"],
-            "label": "MMR 相关性权重",
-            "type": "number",
-            "min": 0,
-            "max": 1,
-            "step": 0.01,
+            "path": ["ToolSearch", "Ranking", "ChannelWeights"],
+            "label": "检索通道权重",
+            "description": "按通道覆盖加权 RRF 融合权重：bm25、exact、example、fuzzy、semantic、structural、memory、priority。",
+            "type": "record",
+            "itemType": "number",
+            "keyPlaceholder": "bm25",
+            "valuePlaceholder": "1",
             "required": false,
             "essential": false
           },
           {
-            "path": ["ToolSearch", "Ranking", "MmrCandidateScoreRatio"],
-            "label": "MMR 候选分数比例",
-            "type": "number",
-            "min": 0,
-            "max": 1,
-            "step": 0.01,
-            "required": false,
-            "essential": false
-          },
-          {
-            "path": ["ToolSearch", "Ranking", "MinScore"],
-            "label": "工具召回最低分数",
-            "type": "number",
-            "min": 0,
-            "step": 0.001,
-            "required": false,
-            "essential": false
-          },
-          {
-            "path": ["ToolSearch", "Ranking", "MaxResults"],
-            "label": "每次工具召回上限",
-            "description": "限制单次工具检索进入模型上下文的候选数量。",
-            "type": "number",
-            "min": 1,
-            "step": 1,
-            "required": false,
-            "essential": false
-          },
-          {
-            "path": ["ToolSearch", "Ranking", "MemoryExpansion", "Mode"],
-            "label": "工具学习扩展模式",
-            "description": "回退模式仅在词法召回为空时允许学习记忆独立补充候选。",
-            "type": "string",
-            "options": ["disabled", "fallback", "augment"],
-            "optionLabels": {
-              "disabled": "禁用",
-              "fallback": "仅作回退",
-              "augment": "始终补充"
-            },
-            "required": false,
-            "essential": false
-          },
-          {
-            "path": ["ToolSearch", "Ranking", "MemoryExpansion", "MinConfidence"],
-            "label": "学习扩展最低置信度",
-            "type": "number",
-            "min": 0,
-            "max": 1,
-            "step": 0.05,
-            "required": false,
-            "essential": false
-          },
-          {
-            "path": ["ToolSearch", "Ranking", "MemoryExpansion", "MinEvidence"],
-            "label": "学习扩展最低证据量",
-            "type": "number",
-            "min": 0,
-            "step": 1,
-            "required": false,
-            "essential": false
-          },
-          {
-            "path": ["ToolSearch", "Ranking", "MemoryExpansion", "MaxResults"],
-            "label": "学习扩展候选上限",
+            "path": ["ToolSearch", "Disclosure", "TokenBudget"],
+            "label": "工具发现 Token 预算",
+            "description": "按当前模型的 BPE 实际计数。所有高置信匹配始终保留，其余候选按覆盖增益填充，超出的候选按来源折叠。",
             "type": "number",
             "min": 1,
             "step": 1,
@@ -2743,20 +2676,11 @@
           },
           {
             "path": ["ToolSearch", "Rerank", "Enabled"],
-            "label": "工具检索使用远程重排",
-            "description": "默认关闭。仅对有限候选调用已启用且已配置的重排模型。",
+            "label": "启用本地规则重排",
+            "description": "默认开启。对全部融合候选应用本地声明式重排序，综合工具身份、能力契约、资源形态与召回证据；不调用模型或网络。关闭时使用 RRF 融合排序。",
             "type": "boolean",
             "required": false,
             "essential": true
-          },
-          {
-            "path": ["ToolSearch", "Rerank", "CandidateLimit"],
-            "label": "重排序候选数",
-            "type": "number",
-            "min": 1,
-            "step": 1,
-            "required": false,
-            "essential": false
           },
           {
             "path": ["ToolSearch", "Rerank", "ScoreScale"],
@@ -2775,165 +2699,6 @@
             "itemType": "number",
             "keyPlaceholder": "feature",
             "valuePlaceholder": "1",
-            "required": false,
-            "essential": false
-          },
-          {
-            "path": ["VectorModels", "Embedding", "Enabled"],
-            "label": "启用嵌入模型服务",
-            "description": "默认关闭。选择具备嵌入能力的已配置模型后才会允许请求。",
-            "type": "boolean",
-            "required": false,
-            "essential": true
-          },
-          {
-            "path": ["VectorModels", "Embedding", "ProviderId"],
-            "label": "嵌入供应商 ID",
-            "type": "string",
-            "placeholder": "选择供应商",
-            "required": false,
-            "essential": false
-          },
-          {
-            "path": ["VectorModels", "Embedding", "Model"],
-            "label": "嵌入模型",
-            "type": "string",
-            "placeholder": "选择嵌入模型",
-            "required": false,
-            "essential": false,
-            "modelSelection": {
-              "id": "embedding",
-              "capability": "Embedding",
-              "valueKind": "provider-model",
-              "mutation": "config",
-              "providerPath": ["VectorModels", "Embedding", "ProviderId"],
-              "required": true
-            }
-          },
-          {
-            "path": ["VectorModels", "Embedding", "Dimensions"],
-            "label": "嵌入维度",
-            "description": "-1 表示由供应商默认决定。",
-            "type": "number",
-            "min": -1,
-            "step": 1,
-            "required": false,
-            "essential": false
-          },
-          {
-            "path": ["VectorModels", "Embedding", "BatchSize"],
-            "label": "嵌入批量",
-            "type": "number",
-            "min": 1,
-            "step": 1,
-            "required": false,
-            "essential": false
-          },
-          {
-            "path": ["VectorModels", "Embedding", "InputMaxChars"],
-            "label": "嵌入输入上限",
-            "description": "-1 表示不裁剪。",
-            "type": "number",
-            "min": -1,
-            "step": 1000,
-            "required": false,
-            "essential": false
-          },
-          {
-            "path": ["VectorModels", "Embedding", "TimeoutSeconds"],
-            "label": "嵌入请求超时",
-            "description": "单次嵌入请求的超时秒数。",
-            "type": "number",
-            "min": 0.001,
-            "step": 1,
-            "required": false,
-            "essential": false
-          },
-          {
-            "path": ["VectorModels", "Embedding", "MaxNetworkRetries"],
-            "label": "嵌入网络重试",
-            "type": "number",
-            "min": 0,
-            "step": 1,
-            "required": false,
-            "essential": false
-          },
-          {
-            "path": ["VectorModels", "Rerank", "Enabled"],
-            "label": "启用重排模型服务",
-            "description": "默认关闭。选择具备重排能力的已配置模型后才会允许请求。",
-            "type": "boolean",
-            "required": false,
-            "essential": true
-          },
-          {
-            "path": ["VectorModels", "Rerank", "ProviderId"],
-            "label": "重排供应商 ID",
-            "type": "string",
-            "placeholder": "选择供应商",
-            "required": false,
-            "essential": false
-          },
-          {
-            "path": ["VectorModels", "Rerank", "Model"],
-            "label": "重排模型",
-            "type": "string",
-            "placeholder": "选择重排模型",
-            "required": false,
-            "essential": false,
-            "modelSelection": {
-              "id": "rerank",
-              "capability": "Rerank",
-              "valueKind": "provider-model",
-              "mutation": "config",
-              "providerPath": ["VectorModels", "Rerank", "ProviderId"],
-              "required": true
-            }
-          },
-          {
-            "path": ["VectorModels", "Rerank", "EndpointPath"],
-            "label": "重排接口路径",
-            "type": "string",
-            "placeholder": "/rerank",
-            "required": false,
-            "essential": false
-          },
-          {
-            "path": ["VectorModels", "Rerank", "CandidateLimit"],
-            "label": "重排候选上限",
-            "description": "-1 表示不预先裁剪候选。",
-            "type": "number",
-            "min": -1,
-            "step": 1,
-            "required": false,
-            "essential": false
-          },
-          {
-            "path": ["VectorModels", "Rerank", "TopK"],
-            "label": "重排 TopK",
-            "description": "-1 表示不发送 top_n，由供应商决定返回数量。",
-            "type": "number",
-            "min": -1,
-            "step": 1,
-            "required": false,
-            "essential": false
-          },
-          {
-            "path": ["VectorModels", "Rerank", "TimeoutSeconds"],
-            "label": "重排请求超时",
-            "description": "单次重排请求的超时秒数。",
-            "type": "number",
-            "min": 0.001,
-            "step": 1,
-            "required": false,
-            "essential": false
-          },
-          {
-            "path": ["VectorModels", "Rerank", "MaxNetworkRetries"],
-            "label": "重排网络重试",
-            "type": "number",
-            "min": 0,
-            "step": 1,
             "required": false,
             "essential": false
           }
@@ -3027,11 +2792,23 @@
             "essential": false
           },
           {
-            "path": ["Artifacts", "SummaryMaxChars"],
-            "label": "产物摘要字符上限",
+            "path": ["Artifacts", "InlineResultMaxTokens"],
+            "label": "内联结果 Token 阈值",
+            "description": "结果在该 token 预算内时原样内联进模型上下文，避免两步回读。",
             "type": "number",
-            "min": 256,
-            "step": 100,
+            "min": 1,
+            "max": 32768,
+            "step": 64,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Artifacts", "InlineResultMaxBytes"],
+            "label": "内联结果字节上限",
+            "description": "Token 之外的原始 UTF-8 字节硬门禁（单位字节）：压缩率很高的文本即使 token 少也不会整体内联。",
+            "type": "number",
+            "min": 1024,
+            "step": 1024,
             "required": false,
             "essential": false
           },

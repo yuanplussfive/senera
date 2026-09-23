@@ -64,8 +64,7 @@ function projectField(
   locale: FrontendLocale,
   readModelOptions: (capability: ConfigFormModelCapability) => readonly ModelOption[],
 ): ConfigFormFieldData {
-  const options =
-    field.modelSelection?.valueKind === "model-id" ? readModelOptions(field.modelSelection.capability) : undefined;
+  const options = field.modelSelection ? readModelOptions(field.modelSelection.capability) : undefined;
   const configuredModelId = typeof field.effectiveValue === "string" ? field.effectiveValue.trim() : "";
   const projectedOptions = options ? [...options] : undefined;
   const localizedOptionLabels = field.optionLabels

@@ -121,7 +121,7 @@ export type AgentToolDomainEvent =
         callId: string;
         batchId?: string;
         presentation?: AgentToolResultPresentation;
-        /** The tool's raw return value. Execution lifecycle metadata is carried separately. */
+        /** Inline return value, or a durable Artifact reference for large published results. */
         value: unknown;
         origin?: AgentToolEventOrigin;
       };

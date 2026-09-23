@@ -97,11 +97,7 @@ export function createDefaultHostCapabilityRegistry(
 
   if (options.toolSearch) {
     registry
-      .register(
-        AgentHostCapabilityNames.ToolSearch,
-        options.toolSearch.createSearchHostHandler(),
-        options.toolSearch.createHostContractProjection(),
-      )
+      .register(AgentHostCapabilityNames.ToolSearch, options.toolSearch.createSearchHostHandler())
       .register(AgentHostCapabilityNames.ToolDescribe, options.toolSearch.createDescribeHostHandler())
       .register(AgentHostCapabilityNames.ToolLoad, options.toolSearch.createLoadHostHandler())
       .register(AgentHostCapabilityNames.ToolUnload, options.toolSearch.createUnloadHostHandler());

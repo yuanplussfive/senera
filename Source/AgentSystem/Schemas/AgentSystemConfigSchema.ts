@@ -17,12 +17,7 @@ import {
   WorldSchema,
   InferenceBudgetSchema,
 } from "./AgentRuntimeConfigSchema.js";
-import {
-  ContinuityLearningSchema,
-  ToolLearningSchema,
-  ToolSearchSchema,
-  VectorModelsSchema,
-} from "./AgentToolMemoryConfigSchema.js";
+import { ContinuityLearningSchema, ToolLearningSchema, ToolSearchSchema } from "./AgentToolMemoryConfigSchema.js";
 import { CurrentAgentConfigVersion } from "../Config/AgentConfigVersion.js";
 
 const AgentSystemExtensionConfigSchema = z
@@ -46,7 +41,6 @@ const AgentDefaultsSchema = z
     AgentLoop: AgentLoopSchema.optional(),
     Todos: TodosSchema.optional(),
     ToolSearch: ToolSearchSchema.optional(),
-    VectorModels: VectorModelsSchema.optional(),
     ToolLearning: ToolLearningSchema.optional(),
     ContinuityLearning: ContinuityLearningSchema.optional(),
     Presets: PresetsSchema.optional(),
@@ -109,7 +103,6 @@ export const AgentSystemConfigSchema = z
     AgentLoop: AgentLoopSchema.optional(),
     Todos: TodosSchema.optional(),
     ToolSearch: ToolSearchSchema.optional(),
-    VectorModels: VectorModelsSchema.optional(),
     ToolLearning: ToolLearningSchema.optional(),
     ContinuityLearning: ContinuityLearningSchema.optional(),
     Presets: PresetsSchema.optional(),

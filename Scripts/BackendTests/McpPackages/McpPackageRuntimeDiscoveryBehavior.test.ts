@@ -55,16 +55,19 @@ describe("MCP package runtime discovery", () => {
         });
         const input = "查询北京今天的天气";
         const activeSkills = await runtime.skillActivation.activate({ input });
-        const recommendedTools = runtime.skillActivation.recommendedToolNames(activeSkills);
+        const recommendedToolRouting = runtime.skillActivation.recommendedToolRouting(activeSkills);
         const loadedTools = await runtime.toolSearch.resolvePlannedLoadedTools({
           input,
           currentLoadedTools: await runtime.toolSearch.resolveInitialLoadedTools(input),
-          preferredTools: recommendedTools,
+          preferredTools: recommendedToolRouting.dynamicToolNames,
           discover: false,
         });
 
         expect(activeSkills.map((skill) => skill.name)).toContain("weather-forecast");
-        expect(recommendedTools).toEqual(["mcp__weather__forecast"]);
+        expect(recommendedToolRouting).toEqual({
+          directToolNames: [],
+          dynamicToolNames: ["mcp__weather__forecast"],
+        });
         expect(loadedTools).not.toContain("mcp__weather__forecast");
       } finally {
         await runtime.close();
@@ -150,6 +153,9 @@ describe("MCP package runtime discovery", () => {
       const packageRoot = path.join(resourcesRoot, "McpServers", "broken");
       fs.mkdirSync(skillRoot, { recursive: true });
       fs.cpSync(path.resolve("System", "Prompts"), path.join(resourcesRoot, "System", "Prompts"), { recursive: true });
+      fs.cpSync(path.resolve("System", "Extensions"), path.join(resourcesRoot, "System", "Extensions"), {
+        recursive: true,
+      });
       fs.mkdirSync(path.join(packageRoot, "mcp"), { recursive: true });
       fs.writeFileSync(
         path.join(skillRoot, "SKILL.md"),

@@ -102,9 +102,6 @@ export class AgentToolResultSummaryCompiler {
       ...(projectedChanges.omitted > 0
         ? [`${projectedChanges.omitted} change records were omitted from the context projection.`]
         : []),
-      ...(input.deterministicSummary.trim()
-        ? []
-        : ["No tool summary projection produced a dedicated summary for this result."]),
     ]);
 
     return {

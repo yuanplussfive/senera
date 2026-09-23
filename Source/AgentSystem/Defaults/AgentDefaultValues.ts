@@ -4,9 +4,6 @@ export type {
   AgentActionPlannerDefaultsConfig,
   AgentModelRuntimeDefaultsConfig,
   AgentToolLearningDefaultsConfig,
-  AgentVectorModelsDefaultsConfig,
   ResolvedAgentDefaultsConfig,
   ResolvedAgentModelRuntimeDefaultsConfig,
-  ResolvedAgentVectorEmbeddingDefaultsConfig,
-  ResolvedAgentVectorRerankDefaultsConfig,
 } from "./AgentDefaultValueTypes.js";

@@ -111,6 +111,29 @@ describe("Imagen MCP artifact boundary", () => {
     );
   });
 
+  test("publishes multi-megabyte image content without overflowing the base64 validator stack", async () => {
+    const imageBase64 = Buffer.alloc(6 * 1024 * 1024, 0x41).toString("base64");
+    const execution = await runMcpTool({
+      content: [{ type: "image", data: imageBase64, mimeType: "image/png" }],
+    });
+
+    expect(execution.response).toEqual(
+      expect.objectContaining({
+        ok: true,
+        result: {
+          content: [
+            expect.objectContaining({
+              type: "resource",
+              uri: expect.stringMatching(/^senera:\/\/resource\/upl_[a-f0-9]{32}$/u),
+              mimeType: "image/png",
+            }),
+          ],
+        },
+      }),
+    );
+    expect(JSON.stringify(execution.response)).not.toContain(imageBase64);
+  });
+
   test("publishes every image in a multi-image result through the upload quota", async () => {
     const execution = await runMcpTool({
       content: Array.from({ length: 8 }, (_, index) => ({
@@ -148,7 +171,43 @@ describe("Imagen MCP artifact boundary", () => {
     });
 
     expect(JSON.stringify(execution.response)).not.toContain(encoded);
-    expect(JSON.stringify(execution.response)).toContain("inline media omitted");
+    expect(JSON.stringify(execution.response)).toMatch(/senera:\/\/resource\/upl_[a-f0-9]{32}/u);
+  });
+
+  test("materializes structured Base64 only when magic bytes identify media", async () => {
+    const encoded = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+    const execution = await runMcpTool({
+      structuredContent: {
+        output: {
+          image: encoded,
+        },
+      },
+    });
+
+    expect(execution.validationResult).toEqual({
+      output: {
+        image: encoded,
+      },
+    });
+    expect(execution.response).toEqual(
+      expect.objectContaining({
+        ok: true,
+        result: {
+          output: {
+            image: expect.stringMatching(/^senera:\/\/resource\/upl_[a-f0-9]{32}$/u),
+          },
+        },
+      }),
+    );
+    expect(JSON.stringify(execution.response)).not.toContain(encoded);
+    expect(JSON.stringify(execution.artifactPayload?.rawResponse)).not.toContain(encoded);
+  });
+
+  test("does not guess a resource from an undeclared bare Base64 field", async () => {
+    const encoded = Buffer.from("provider-defined-value").toString("base64");
+    const execution = await runMcpTool({ structuredContent: { payload: encoded } });
+
+    expect(execution.response).toEqual(expect.objectContaining({ ok: true, result: { payload: encoded } }));
   });
 
   test("keeps standard content available as evidence beside opaque structured content", async () => {
@@ -314,12 +373,12 @@ describe("Imagen MCP artifact boundary", () => {
       attachment: expect.stringMatching(/^senera:\/\/resource\/res_[a-f0-9]{32}$/u),
     });
     expect(recorded?.artifact?.assets).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: "raw-response", fileName: "response.json" }),
-        expect.objectContaining({ id: "response", fileName: "response-2.json" }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ id: "response", fileName: "response.json" })]),
     );
-    expect(await fs.readFile(path.join(recorded!.artifact!.artifactPath, "assets", "response-2.json"))).toEqual(
+    expect(
+      JSON.parse(await fs.readFile(path.join(recorded!.artifact!.artifactPath, "raw.response.json"), "utf8")),
+    ).toEqual({ source: "mcp" });
+    expect(await fs.readFile(path.join(recorded!.artifact!.artifactPath, "assets", "response.json"))).toEqual(
       jsonBytes,
     );
   });

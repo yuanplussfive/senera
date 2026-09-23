@@ -6,8 +6,6 @@ import type {
   AgentContinuityLearningRuntimeConfig,
   AgentContinuityLearningRecallConfig,
   AgentToolLearningConfig,
-  AgentVectorEmbeddingConfig,
-  AgentVectorRerankConfig,
   ResolvedAgentArtifactsConfig,
   ResolvedAgentConfigStoreConfig,
   ResolvedAgentFrontendConfig,
@@ -29,11 +27,6 @@ import type { AgentModelRuntimeDefaultsConfig } from "../Types/AgentModelConfigT
 
 export type { AgentModelRuntimeDefaultsConfig } from "../Types/AgentModelConfigTypes.js";
 
-export interface AgentVectorModelsDefaultsConfig {
-  Embedding: Required<AgentVectorEmbeddingConfig>;
-  Rerank: Required<AgentVectorRerankConfig>;
-}
-
 export type ResolvedAgentModelRuntimeDefaultsConfig = AgentModelRuntimeDefaultsConfig & {
   TimeoutMs: number;
   FirstTokenTimeoutMs: number;
@@ -41,14 +34,6 @@ export type ResolvedAgentModelRuntimeDefaultsConfig = AgentModelRuntimeDefaultsC
   RetryBaseDelayMs: number;
   RetryMaxDelayMs: number;
   RetryAfterMaxDelayMs: number;
-};
-
-export type ResolvedAgentVectorEmbeddingDefaultsConfig = Required<AgentVectorEmbeddingConfig> & {
-  TimeoutMs: number;
-};
-
-export type ResolvedAgentVectorRerankDefaultsConfig = Required<AgentVectorRerankConfig> & {
-  TimeoutMs: number;
 };
 
 export type AgentActionPlannerClientDefaultsConfig = Required<
@@ -94,10 +79,6 @@ export interface ResolvedAgentDefaultsConfig {
   SandboxRuntime: ResolvedAgentSandboxRuntimeConfig;
   AgentLoop: ResolvedAgentLoopConfig;
   ToolSearch: ResolvedAgentToolSearchConfig;
-  VectorModels: {
-    Embedding: ResolvedAgentVectorEmbeddingDefaultsConfig;
-    Rerank: ResolvedAgentVectorRerankDefaultsConfig;
-  };
   ToolLearning: AgentToolLearningDefaultsConfig;
   Todos: ResolvedAgentTodosConfig;
   ContinuityLearning: AgentContinuityLearningDefaultsConfig;

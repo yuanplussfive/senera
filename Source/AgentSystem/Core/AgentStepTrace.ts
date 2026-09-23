@@ -2,6 +2,7 @@ import type { AgentExecutionResult } from "../ToolRuntime/AgentToolCallExecution
 import type { AgentToolEventOrigin } from "../ToolRuntime/AgentToolEventOrigin.js";
 import type { AgentToolResultPresentation, ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import { projectAgentToolResultPresentation } from "../ToolRuntime/AgentToolResultPresentation.js";
+import { projectAgentToolResultEventValue } from "../ToolRuntime/AgentToolResultEventProjection.js";
 
 /**
  * 精简档执行步骤轨迹：持久化后用于历史回放时重建前端执行图。
@@ -83,7 +84,7 @@ export function buildToolTraces(
       toolArgs: clampField(result.arguments),
       toolPreview: clampPreview(presentation.headline),
       toolPresentation: presentation,
-      toolResult: clampField(result.result),
+      toolResult: clampField(projectAgentToolResultEventValue(result)),
       toolErrorMessage: failed ? clampPreview(result.process.stderr) : undefined,
     };
   });

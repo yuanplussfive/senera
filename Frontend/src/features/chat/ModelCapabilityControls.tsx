@@ -1,7 +1,5 @@
 import type { ElementType, ReactNode } from "react";
-import ArrowsUpDownIcon from "@heroicons/react/24/outline/ArrowsUpDownIcon";
 import ChatBubbleLeftRightIcon from "@heroicons/react/24/outline/ChatBubbleLeftRightIcon";
-import CircleStackIcon from "@heroicons/react/24/outline/CircleStackIcon";
 import CommandLineIcon from "@heroicons/react/24/outline/CommandLineIcon";
 import EyeIcon from "@heroicons/react/24/outline/EyeIcon";
 import LightBulbIcon from "@heroicons/react/24/outline/LightBulbIcon";
@@ -140,20 +138,6 @@ export const ModelCapabilityIconItems = [
     label: frontendMessage("config.model.capability.chat"),
     Icon: ChatBubbleLeftRightIcon,
     icon: <ChatBubbleLeftRightIcon className="h-3.5 w-3.5" />,
-    className: "text-ink-500",
-  },
-  {
-    key: "Embedding",
-    label: frontendMessage("config.model.capability.embedding"),
-    Icon: CircleStackIcon,
-    icon: <CircleStackIcon className="h-3.5 w-3.5" />,
-    className: "text-ink-500",
-  },
-  {
-    key: "Rerank",
-    label: frontendMessage("config.model.capability.rerank"),
-    Icon: ArrowsUpDownIcon,
-    icon: <ArrowsUpDownIcon className="h-3.5 w-3.5" />,
     className: "text-ink-500",
   },
   {

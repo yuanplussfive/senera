@@ -5,69 +5,56 @@ import { toolProcessFailureResult, toolProcessSuccessResult } from "../ToolRunti
 import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 import type { AgentToolMetaToolName } from "./AgentToolSearchRuntimeTypes.js";
 
-export const AgentToolDiscoveryProtocol = defineSeneraProtocol("tool_discovery", 2);
+export const AgentToolDiscoveryProtocol = defineSeneraProtocol("tool_discovery", 5);
+export const AgentToolDescriptionProtocol = defineSeneraProtocol("tool_description", 2);
 
-export function createAgentToolDiscoveryResult<T extends Record<string, unknown>>(
+export const AgentToolCatalogStatuses = {
+  Current: "current",
+  Stale: "stale",
+} as const;
+
+export type AgentToolCatalogStatus = (typeof AgentToolCatalogStatuses)[keyof typeof AgentToolCatalogStatuses];
+
+export function createAgentToolDiscoveryResult<T extends object>(
   fields: T,
 ): T & { type: typeof AgentToolDiscoveryProtocol.type } {
   return { ...fields, type: AgentToolDiscoveryProtocol.type };
 }
 
+export function createAgentToolDescriptionResult<T extends object>(
+  fields: T,
+): T & { type: typeof AgentToolDescriptionProtocol.type } {
+  return { ...fields, type: AgentToolDescriptionProtocol.type };
+}
+
 export const ToolSearchArgumentsSchema = z
   .object({
     query: z.preprocess(coerceStringLike, z.string().trim().min(1)),
-    preferredSources: z.array(z.string().trim().min(1)).min(1).optional(),
-    includeLoaded: z.preprocess(coerceBooleanLike, z.boolean()).optional(),
+  })
+  .strict();
+
+export interface ToolSearchArguments {
+  readonly query: string;
+}
+
+export type ResolvedToolSearchArguments = z.output<typeof ToolSearchArgumentsSchema>;
+
+const ToolMutationArgumentsSchema = z
+  .object({
+    tools: z.array(z.string().trim().min(1)).min(1).max(12),
+    catalogRevision: z.string().trim().min(1).optional(),
   })
   .strict();
 
 export const ToolDescribeArgumentsSchema = z
-  .object({
-    tools: z.array(z.string().trim().min(1)).min(1).max(12),
-    catalogRevision: z.string().trim().min(1).optional(),
-  })
+  .object({ tools: z.array(z.string().trim().min(1)).min(1).max(12) })
   .strict();
+export const ToolLoadArgumentsSchema = ToolMutationArgumentsSchema;
+export const ToolUnloadArgumentsSchema = ToolMutationArgumentsSchema;
 
-export const ToolLoadArgumentsSchema = z
-  .object({
-    tools: z.array(z.string().trim().min(1)).min(1).max(12),
-    catalogRevision: z.string().trim().min(1).optional(),
-  })
-  .strict();
-
-export const ToolUnloadArgumentsSchema = z
-  .object({
-    tools: z.array(z.string().trim().min(1)).min(1).max(12),
-  })
-  .strict();
-
-export type ToolSearchArguments = z.infer<typeof ToolSearchArgumentsSchema>;
 export type ToolDescribeArguments = z.infer<typeof ToolDescribeArgumentsSchema>;
 export type ToolLoadArguments = z.infer<typeof ToolLoadArgumentsSchema>;
 export type ToolUnloadArguments = z.infer<typeof ToolUnloadArgumentsSchema>;
-
-export function createToolSearchArgumentsSchema(sourceIds: readonly string[]) {
-  const knownSources = new Set(sourceIds);
-  return ToolSearchArgumentsSchema.superRefine((arguments_, context) => {
-    const seen = new Set<string>();
-    arguments_.preferredSources?.forEach((sourceId, index) => {
-      if (seen.has(sourceId)) {
-        context.addIssue({
-          code: "custom",
-          path: ["preferredSources", index],
-          message: `Tool discovery source ${sourceId} may only be selected once.`,
-        });
-      } else if (!knownSources.has(sourceId)) {
-        context.addIssue({
-          code: "custom",
-          path: ["preferredSources", index],
-          message: `Unknown tool discovery source: ${sourceId}.`,
-        });
-      }
-      seen.add(sourceId);
-    });
-  });
-}
 
 export function invalidToolMetaArgumentsResult(
   toolName: AgentToolMetaToolName,
@@ -95,14 +82,4 @@ export function okToolMetaResult(result: unknown): AgentToolProcessRunResult {
 
 function coerceStringLike(value: unknown): unknown {
   return typeof value === "number" || typeof value === "boolean" ? String(value) : value;
-}
-
-function coerceBooleanLike(value: unknown): unknown {
-  if (typeof value !== "string") {
-    return value;
-  }
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "true") return true;
-  if (normalized === "false") return false;
-  return value;
 }

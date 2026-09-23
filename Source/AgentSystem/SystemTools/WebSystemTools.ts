@@ -16,6 +16,13 @@ import {
   type ToolSearchManifest,
 } from "../Types/AgentToolContractTypes.js";
 import type { AgentToolObservationProjectionManifest } from "../Types/AgentToolObservationProjectionTypes.js";
+import type { AgentToolContentPolicy } from "../Types/AgentToolContentPolicyTypes.js";
+import {
+  AgentToolPerceptionKinds,
+  AgentToolPerceptionScopes,
+  type AgentToolPerceptionDeclaration,
+} from "../Types/AgentToolPerceptionTypes.js";
+import { AgentToolResourceCapabilityIds } from "../ToolRuntime/AgentToolResourceCapabilityIds.js";
 
 function createWebSearchInput(configuration: AgentWebToolsConfigurationSchemaOutput) {
   return z
@@ -172,6 +179,21 @@ const WebFetchArtifacts = createFetchArtifactPolicy();
 
 const WebSearchObservation = createWebObservationProjection();
 const WebFetchObservation = createWebObservationProjection();
+const WebSearchContentPolicy: AgentToolContentPolicy = {
+  ownership: "tool",
+  kind: "structured",
+  representation: "json",
+  compression: "none",
+  deduplication: "none",
+};
+const WebFetchContentPolicy: AgentToolContentPolicy = {
+  ownership: "tool",
+  kind: "web-readable",
+  representation: "markdown",
+  compression: "none",
+  deduplication: "none",
+  targets: ["/content", "/markdownSummary"],
+};
 
 export function createWebSystemTools(
   extensionConfiguration?: Record<string, unknown>,
@@ -188,6 +210,8 @@ export function createWebSystemTools(
         WebSearchSearch,
         WebSearchArtifacts,
         WebSearchObservation,
+        WebSearchContentPolicy,
+        { kind: AgentToolPerceptionKinds.Retrieved, scope: AgentToolPerceptionScopes.Remote },
       ),
       name: "WebSearch",
       input: webSearchInput,
@@ -199,12 +223,17 @@ export function createWebSystemTools(
     }),
     defineSystemTool({
       extension: WebToolsExtension,
-      metadata: webToolMetadata(
-        "打开公开网页并提取正文、链接和可追溯引用，适合继续核对搜索到的资料。",
-        WebFetchSearch,
-        WebFetchArtifacts,
-        WebFetchObservation,
-      ),
+      metadata: {
+        ...webToolMetadata(
+          "打开公开网页并提取正文、链接和可追溯引用，适合继续核对搜索到的资料。",
+          WebFetchSearch,
+          WebFetchArtifacts,
+          WebFetchObservation,
+          WebFetchContentPolicy,
+          { kind: AgentToolPerceptionKinds.Retrieved, scope: AgentToolPerceptionScopes.Remote },
+        ),
+        resources: [{ Capability: AgentToolResourceCapabilityIds.NetworkUrl, Pointer: "/url" }],
+      },
       name: "WebFetch",
       input: webFetchInput,
       output: WebFetchOutput,
@@ -223,6 +252,8 @@ function webToolMetadata(
   search: ToolSearchManifest,
   artifacts: ToolArtifactPolicyManifest,
   observation: AgentToolObservationProjectionManifest,
+  contentPolicy: AgentToolContentPolicy,
+  perception?: AgentToolPerceptionDeclaration,
 ): AgentSystemToolMetadata {
   return {
     description,
@@ -239,6 +270,8 @@ function webToolMetadata(
     search,
     artifacts,
     observation,
+    contentPolicy,
+    ...(perception ? { perception } : {}),
   };
 }
 

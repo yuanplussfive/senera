@@ -8,8 +8,6 @@ import { createModelDraft, defaultModelCapabilities } from "../../../Frontend/sr
 const template = {
   Capabilities: {
     Chat: true,
-    Embedding: false,
-    Rerank: false,
     Vision: false,
     ImageOutput: false,
     Reasoning: false,
@@ -69,7 +67,6 @@ describe("models.dev capability mapping", () => {
       Vision: true,
       Chat: true,
       ImageOutput: false,
-      Embedding: false,
     });
   });
 
@@ -135,7 +132,6 @@ describe("createModelDraft with models.dev metadata", () => {
     expect(draft.Capabilities).toMatchObject({
       ToolCalling: false,
       Chat: false,
-      Embedding: true,
     });
   });
 });

@@ -75,10 +75,10 @@ describe("Shell command runtime", () => {
         ok: true,
         result: {
           state: "completed",
-          stdout: "hello",
-          stderr: "warning",
-          stdoutBytes: 5,
-          stderrBytes: 7,
+          updates: expect.arrayContaining([
+            expect.objectContaining({ stream: "stdout", text: "hello", byteLength: 5, totalBytes: 5 }),
+            expect.objectContaining({ stream: "stderr", text: "warning", byteLength: 7, totalBytes: 7 }),
+          ]),
         },
       });
       expect(result).toMatchObject({ stdout: "hello", stderr: "warning", exitCode: 0 });
@@ -99,7 +99,7 @@ describe("Shell command runtime", () => {
       const result = await fixture.run({ command: shellCommand("npm run dev") });
       const projected = successResult(result.response);
 
-      expect(projected).toMatchObject({ state: "running", exitCode: null });
+      expect(projected).toMatchObject({ state: "running" });
       expect(projected.resourceId).toEqual(expect.stringMatching(/^res_/));
       expect(projected.cursor).toBeTypeOf("number");
       expect(result.outputCapture).toBeUndefined();

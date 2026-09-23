@@ -1,4 +1,5 @@
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
+import { awaitWithAbortSignal } from "../Core/AgentCancellation.js";
 import type { AgentContinuityLearningRecallConfig } from "../Types/AgentToolAndMemoryConfigTypes.js";
 import { AgentContinuitySemanticRecallStatuses } from "./AgentContinuitySemanticRecall.js";
 import type { AgentResidentProfilePromptEntry } from "../Profile/AgentResidentProfileTypes.js";
@@ -50,7 +51,7 @@ export const DisabledContinuityRecallConfig: AgentContinuityLearningRecallConfig
   Prefetch: { Enabled: false, CacheTtlSeconds: 0 },
   PromptBudget: AgentContinuityPromptBudgetDefaults,
   Ranking: AgentContinuityRecallRankingDefaults,
-  Semantic: AgentContinuitySemanticRecallDefaults,
+  Semantic: { ...AgentContinuitySemanticRecallDefaults, Enabled: false },
 };
 
 export function stablePromptRevision(residentProfile: readonly AgentResidentProfilePromptEntry[]): string {
@@ -205,18 +206,22 @@ export function isAgentContinuitySemanticTimeoutError(error: unknown): error is 
   );
 }
 
-export function withTimeout<T>(work: Promise<T>, timeoutMs: number, onTimeout?: () => void): Promise<T> {
+export function withTimeout<T>(
+  work: Promise<T>,
+  timeoutMs: number,
+  options: { readonly onTimeout?: () => void; readonly signal?: AbortSignal } = {},
+): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(
       () => {
-        onTimeout?.();
+        options.onTimeout?.();
         reject(new AgentContinuitySemanticTimeoutError());
       },
       Math.max(1, timeoutMs),
     );
   });
-  return Promise.race([work, timeout]).finally(() => {
+  return awaitWithAbortSignal(Promise.race([work, timeout]), options.signal).finally(() => {
     if (timer) clearTimeout(timer);
   });
 }

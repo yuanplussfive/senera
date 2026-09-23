@@ -60,6 +60,7 @@ function createSystemToolHandler(definition: AgentSystemToolDefinition): AgentHo
         ? await definition.executeWithArtifacts(input.data, executionContext)
         : await definition.execute(input.data, executionContext);
       const output = isSystemToolExecutionResult(executed) ? executed.result : executed;
+      const process = isSystemToolExecutionResult(executed) ? executed.process : undefined;
       const parsedOutput = definition.output.safeParse(output);
       if (!parsedOutput.success) {
         const diagnostics = parsedOutput.error.issues.map((issue) => ({
@@ -67,25 +68,37 @@ function createSystemToolHandler(definition: AgentSystemToolDefinition): AgentHo
           path: issue.path.map(String),
           message: issue.message,
         }));
-        return toolProcessFailureResult({
-          code: AgentExecutionErrorCodes.ToolExecutionError,
-          message: `${definition.name} returned an invalid result.`,
-          diagnostics,
-          details: {
-            phase: AgentToolProcessErrorPhases.RuntimeExecution,
-            toolName: definition.name,
-            issues: diagnostics,
-          },
-        });
+        return withSystemToolProcess(
+          toolProcessFailureResult({
+            code: AgentExecutionErrorCodes.ToolExecutionError,
+            message: `${definition.name} returned an invalid result.`,
+            diagnostics,
+            details: {
+              phase: AgentToolProcessErrorPhases.RuntimeExecution,
+              toolName: definition.name,
+              issues: diagnostics,
+            },
+          }),
+          process,
+        );
       }
       if (isSystemToolExecutionResult(executed) && executed.failure) {
-        return toolProcessFailureResult(executed.failure);
+        return withSystemToolProcess(
+          {
+            ...toolProcessFailureResult(executed.failure),
+            ...(executed.artifactPayload ? { artifactPayload: executed.artifactPayload } : {}),
+          },
+          process,
+        );
       }
-      return toolProcessSuccessResult(parsedOutput.data, {
-        ...(isSystemToolExecutionResult(executed) && executed.artifactPayload
-          ? { artifactPayload: executed.artifactPayload }
-          : {}),
-      });
+      return withSystemToolProcess(
+        toolProcessSuccessResult(parsedOutput.data, {
+          ...(isSystemToolExecutionResult(executed) && executed.artifactPayload
+            ? { artifactPayload: executed.artifactPayload }
+            : {}),
+        }),
+        process,
+      );
     } catch (error) {
       const diagnostics = errorDiagnostics(error);
       return toolProcessFailureResult({
@@ -99,6 +112,22 @@ function createSystemToolHandler(definition: AgentSystemToolDefinition): AgentHo
         ...(diagnostics.length > 0 ? { diagnostics } : {}),
       });
     }
+  };
+}
+
+function withSystemToolProcess(
+  result: ReturnType<typeof toolProcessSuccessResult> | ReturnType<typeof toolProcessFailureResult>,
+  process: import("./AgentSystemToolDefinition.js").AgentSystemToolExecutionProcess | undefined,
+) {
+  return {
+    ...result,
+    ...(process?.stdout === undefined ? {} : { stdout: process.stdout }),
+    ...(process?.stderr === undefined ? {} : { stderr: process.stderr }),
+    ...(process?.exitCode === undefined ? {} : { exitCode: process.exitCode }),
+    ...(process?.signal === undefined ? {} : { signal: process.signal }),
+    ...(process?.semanticProjectionRequest === undefined
+      ? {}
+      : { semanticProjectionRequest: process.semanticProjectionRequest }),
   };
 }
 

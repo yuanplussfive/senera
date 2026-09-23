@@ -121,7 +121,14 @@ export const PresetsSchema = z
 export const ArtifactsSchema = z
   .object({
     RootDir: z.string().min(1).optional(),
-    SummaryMaxChars: z.number().int().min(256).optional(),
+    InlineResultMaxTokens: z.number().int().positive().max(32_768).optional(),
+    InlineResultMaxBytes: z
+      .number()
+      .int()
+      .positive()
+      .min(1024)
+      .max(16 * 1024 * 1024)
+      .optional(),
     RawJsonMaxBytes: z.number().int().min(1024).optional(),
     TextFileMaxBytes: z.number().int().min(1024).optional(),
     MemoryReadMaxArtifacts: z.number().int().positive().optional(),
@@ -218,6 +225,8 @@ export const PromptSchema = z
     TimeZone: z.string().min(1).optional(),
     /** Rewrite the model-authored preface independently from roleplay presets. */
     PrefaceRewrite: z.boolean().optional(),
+    /** Rewrite the settled final answer independently from roleplay presets (polish tier when no card). */
+    FinalResponseRewrite: z.boolean().optional(),
     /** Re-anchor the persona before the reference stage when a preset is active. */
     RoleCheck: z.boolean().optional(),
     /** Wrap BAML tool observations with attribution="tool" at the projection exit. */

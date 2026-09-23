@@ -56,16 +56,14 @@ describe("settings presentation", () => {
   });
 
   it("keeps search results attached to their groups", () => {
-    const grouped = groupSettingsSectionResults(searchSettingsSectionResults(settingsSections, "模型"));
-    expect(
-      grouped.map(({ group, results }) => ({
+    const groupBy = (query) =>
+      groupSettingsSectionResults(searchSettingsSectionResults(settingsSections, query)).map(({ group, results }) => ({
         label: group.label,
         ids: results.map((result) => result.section.id),
-      })),
-    ).toEqual([
-      { label: "模型", ids: ["model-service", "default-model"] },
-      { label: "能力与运行", ids: ["retrieval"] },
-    ]);
+      }));
+
+    expect(groupBy("模型")).toEqual([{ label: "模型", ids: ["model-service", "default-model"] }]);
+    expect(groupBy("检索")).toEqual([{ label: "能力与运行", ids: ["retrieval"] }]);
   });
 
   it("searches concrete config fields", () => {

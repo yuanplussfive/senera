@@ -43,6 +43,13 @@ import {
 } from "./AgentContinuitySqliteRules.js";
 import { listAgentContinuitySignals, upsertAgentContinuitySignal } from "./AgentContinuitySqliteSignals.js";
 import {
+  clearAgentContinuityResidentState,
+  deleteAgentContinuityResidentStateForSession,
+  readAgentContinuityResidentState,
+  upsertAgentContinuityResidentState,
+} from "./AgentContinuitySqliteResidentState.js";
+import type { AgentResidentState } from "./AgentResidentState.js";
+import {
   listAgentContinuityTurnValueExamples,
   pruneAgentContinuityTurnValueExamples,
   recordAgentContinuityTurnValueExample,
@@ -399,6 +406,18 @@ export class AgentContinuitySqliteStore {
     return listAgentContinuitySignals(this.db, scopes, now);
   }
 
+  readResidentState(scope: AgentContinuityScopeRef): AgentResidentState | undefined {
+    return readAgentContinuityResidentState(this.db, scope);
+  }
+
+  writeResidentState(scope: AgentContinuityScopeRef, state: AgentResidentState, observedAt: string): void {
+    upsertAgentContinuityResidentState(this.db, scope, state, observedAt);
+  }
+
+  clearResidentState(scope: AgentContinuityScopeRef): number {
+    return clearAgentContinuityResidentState(this.db, scope);
+  }
+
   deleteSources(impact: AgentMemoryDeletionImpact): void {
     deleteAgentContinuitySources(this.db, impact, {
       factReconciliation: this.factReconciliation(),
@@ -489,6 +508,7 @@ export class AgentContinuitySqliteStore {
 
   deleteSession(sessionId: string): void {
     deleteAgentContinuitySession(this.db, sessionId);
+    deleteAgentContinuityResidentStateForSession(this.db, sessionId);
     this.invalidateGraphSnapshots();
   }
 

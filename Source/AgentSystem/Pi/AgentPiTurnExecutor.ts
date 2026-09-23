@@ -138,12 +138,14 @@ export class AgentPiTurnExecutor {
       toolExposure,
       activeSkills: projectAgentPiPlanningSkills(command.activeSkills),
       reusableCapabilities: command.reusableCapabilities,
+      reusableCapabilityLookup: command.reusableCapabilityLookup,
       usageLedger,
       toolPlan: new AgentPiToolPlanCoordinator({ onChanged: onToolPlanChanged }),
       tokenBudget,
       thinkingLevel: command.thinkingLevel,
       resourceOwner: command.resourceOwner,
       activityReporter: activities,
+      seedResidentState: command.seedResidentState,
     });
     const collector = new AgentPiRunCollector({
       sessionId: command.sessionId,
@@ -231,7 +233,7 @@ export class AgentPiTurnExecutor {
               step: command.step,
               input: command.input,
               systemPrompt: command.prompt,
-              turnContext: command.turnContext,
+              liveContext: command.liveContext,
               interaction: command.interaction,
               visibleToolNames: command.loadedToolNames,
               toolAccessGrant: command.toolAccessGrant,
@@ -242,6 +244,7 @@ export class AgentPiTurnExecutor {
               activeSkills: command.activeSkills,
               roleplayPresetActive: command.roleplayPresetActive,
               prefaceRewriteEnabled: command.prefaceRewriteEnabled,
+              finalResponseRewriteEnabled: command.finalResponseRewriteEnabled,
               rootCommand: command.rootCommand,
               approvalMode: command.approvalMode,
               tokenBudget,
@@ -347,7 +350,7 @@ export class AgentPiTurnExecutor {
         usageLedger.aggregate() ??
         createLocalTurnUsage(
           this.options.runtime.tokenEstimator,
-          [command.prompt, command.turnContext].filter((value): value is string => Boolean(value)).join("\n\n"),
+          [command.prompt, command.liveContext].filter((value): value is string => Boolean(value)).join("\n\n"),
           responseText,
         );
       await this.emitDiagnostic(command, PiTurnTraceEvents.TurnCompleted, {

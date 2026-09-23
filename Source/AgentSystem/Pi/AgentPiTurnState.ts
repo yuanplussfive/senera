@@ -17,6 +17,13 @@ import type { AgentResidentSpeechUtterance } from "../ResidentSpeech/AgentReside
 import type { AgentToolResourceLeaseOwner } from "../ToolRuntime/AgentToolResourceScheduler.js";
 import type { AgentToolCapabilityCacheEntry } from "../ToolSearch/AgentToolCapabilitySessionCache.js";
 import {
+  addAgentResidentSignal,
+  composeAgentResidentStanceSignals,
+  EmptyAgentResidentSignalCounts,
+  type AgentResidentSignalCounts,
+} from "../Continuity/AgentResidentSignalAggregator.js";
+import { nextResidentState, type AgentResidentState } from "../Continuity/AgentResidentState.js";
+import {
   AgentPiToolCallPreflightCoordinator,
   type AgentPiToolCallPreflight,
   type AgentPiToolCallPreflightInput,
@@ -37,12 +44,17 @@ export interface AgentPiTurnStateOptions {
   readonly toolExposure: AgentToolExposureState;
   readonly activeSkills: readonly AgentPiPlanningSkill[];
   readonly reusableCapabilities?: readonly AgentToolCapabilityCacheEntry[];
+  /** Cross-request evidence lookup for the execution bridge; accepts dynamic
+   * tools whose contract was confirmed earlier in this session. */
+  readonly reusableCapabilityLookup?: (toolName: string) => AgentToolCapabilityCacheEntry | undefined;
   readonly usageLedger: AgentModelUsageLedger;
   readonly toolPlan: AgentPiToolPlanCoordinator;
   readonly tokenBudget: AgentTurnTokenBudget;
   readonly thinkingLevel?: ModelThinkingLevel;
   readonly resourceOwner?: AgentToolResourceLeaseOwner;
   readonly activityReporter?: AgentRunActivityReporter;
+  /** Host-derived resident stance entering this turn; used to derive the live in-turn stance. */
+  readonly seedResidentState?: AgentResidentState;
 }
 
 /** Session-local mutable state shared by one Pi run and its native provider. */
@@ -52,6 +64,7 @@ export class AgentPiTurnState {
   private readonly executorLifecycleStatusByCallId = new Map<string, "completed" | "failed">();
   private readonly resourceAccessGrantsByCallId = new Map<string, AgentResourceAccessGrant>();
   private readonly residentSpeech = new Array<AgentResidentSpeechUtterance>();
+  private residentStanceCounts: AgentResidentSignalCounts = EmptyAgentResidentSignalCounts;
   private registeredToolCalls = false;
   private wrapUpReason?: "child_deadline";
 
@@ -159,6 +172,21 @@ export class AgentPiTurnState {
 
   registerExecutedToolResult(callId: string, result: ExecutedToolCallResult): void {
     this.executedToolResultsByCallId.set(callId, result);
+    this.residentStanceCounts = addAgentResidentSignal(this.residentStanceCounts, result);
+  }
+
+  /**
+   * The resident's live in-turn stance: the durable seed advanced by the tool
+   * outcomes observed so far, using the same pure transition as end-of-turn
+   * persistence. Undefined when no seed state was provided (continuity off).
+   */
+  currentResidentStance(): AgentResidentState | undefined {
+    const seed = this.context.seedResidentState;
+    if (!seed) return undefined;
+    return nextResidentState(
+      seed,
+      composeAgentResidentStanceSignals({ bearing: seed.bearing, counts: this.residentStanceCounts }),
+    );
   }
 
   takeExecutedToolResult(callId: string): ExecutedToolCallResult | undefined {

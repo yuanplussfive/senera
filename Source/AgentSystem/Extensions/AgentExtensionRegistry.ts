@@ -5,8 +5,17 @@ import {
 } from "../Skills/AgentSkillToolBinding.js";
 import type { AgentExtensionOwner } from "../Types/AgentExtensionRuntimeTypes.js";
 import type { RootCommandManifest } from "../Types/AgentRootCommandContractTypes.js";
-import type { AgentToolDiscoverySource } from "../Types/AgentToolContractTypes.js";
 import type { RegisteredSidecarTool, RegisteredTemplate, RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
+import { validateAgentToolResourceManifests } from "../ToolRuntime/AgentToolResourceManifestValidation.js";
+import {
+  isAgentToolDynamicallyDiscoverable,
+  validateAgentToolInvocationRouting,
+} from "../ToolRuntime/AgentToolInvocationRouting.js";
+import {
+  resolveAgentToolSearchDescription,
+  resolveAgentToolSearchSources,
+} from "../ToolSearch/AgentToolSearchDocumentBuilder.js";
+import { ToolSearchSchema } from "../Schemas/AgentToolSearchContractSchema.js";
 
 export class AgentExtensionRegistry {
   private readonly tools = new Map<string, RegisteredTool>();
@@ -140,15 +149,15 @@ export class AgentExtensionRegistry {
   listDiscoverySources(): RegisteredDiscoverySource[] {
     const sources = new Map<string, RegisteredDiscoverySource>();
     for (const tool of this.tools.values()) {
-      for (const source of tool.sources) {
-        const existing = sources.get(source.Id);
+      for (const source of resolveAgentToolSearchSources(tool)) {
+        const existing = sources.get(source.id);
         if (existing && !sameDiscoverySource(existing, source)) {
-          throw new Error(`Discovery source ${source.Id} has conflicting metadata.`);
+          throw new Error(`Discovery source ${source.id} has conflicting metadata.`);
         }
-        sources.set(source.Id, {
-          id: source.Id,
-          title: source.Title,
-          description: source.Description,
+        sources.set(source.id, {
+          id: source.id,
+          title: source.title,
+          description: source.description,
         });
       }
     }
@@ -165,6 +174,9 @@ export class AgentExtensionRegistry {
       if (tool.owner.name !== owner.name || tool.owner.kind !== owner.kind) {
         throw new Error(`Tool ${tool.name} does not belong to extension ${owner.name}.`);
       }
+      validateAgentToolInvocationRouting(tool);
+      validateAgentToolResourceManifests(tool.handler.resources ?? []);
+      validateDynamicToolDeclaration(tool);
     }
     const ownerIdentity = toolOwnerIdentity(owner);
     const previous = this.toolExtensions.get(ownerIdentity);
@@ -222,6 +234,23 @@ export class AgentExtensionRegistry {
 
   private bumpRevision(): void {
     this.revisionValue += 1;
+  }
+}
+
+function validateDynamicToolDeclaration(tool: RegisteredTool): void {
+  if (!isAgentToolDynamicallyDiscoverable(tool)) return;
+
+  // Dynamic tools are selected through their producer-authored discovery card
+  // and executed through a digest-bound contract. Rejecting either omission at
+  // registration prevents a late index-build or ToolCall failure.
+  const search = ToolSearchSchema.safeParse(tool.search);
+  if (!search.success) {
+    throw new Error(`Dynamic tool ${tool.name} has an invalid search declaration: ${search.error.message}`);
+  }
+  resolveAgentToolSearchDescription(tool);
+  const digest = tool.contract?.digest?.trim();
+  if (!digest) {
+    throw new Error(`Dynamic tool ${tool.name} must declare a non-empty contract digest.`);
   }
 }
 
@@ -290,8 +319,8 @@ function compareDescending(left: number | undefined, right: number | undefined):
   return (right ?? 0) - (left ?? 0);
 }
 
-function sameDiscoverySource(left: RegisteredDiscoverySource, right: AgentToolDiscoverySource): boolean {
-  return left.title === right.Title && left.description === right.Description;
+function sameDiscoverySource(left: RegisteredDiscoverySource, right: { title: string; description: string }): boolean {
+  return left.title === right.title && left.description === right.description;
 }
 
 function assertUniqueBy<T>(values: readonly T[], identity: (value: T) => string, label: string): void {

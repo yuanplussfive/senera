@@ -118,7 +118,18 @@ describe("Pi mid-run context compaction", () => {
     const controller = new AgentPiCompactionController({
       planningCompilerFactory: { create: () => ({ compile: vi.fn(), summarize }) },
     });
-    const projectProviderMessages = vi.fn(async (messages: AgentContext["messages"]) => [...messages]);
+    const projectedOverflow = {
+      role: "custom",
+      customType: "test.pre_compaction_overflow",
+      content: "request-local overflow ".repeat(2_000),
+      display: false,
+      timestamp: 6,
+    } satisfies AgentContext["messages"][number];
+    const projectProviderMessages = vi.fn(async (messages: AgentContext["messages"]) =>
+      messages.some((message) => message.role === "compactionSummary")
+        ? [...messages]
+        : [...messages, projectedOverflow],
+    );
     const coordinator = new AgentPiMidRunCompactionCoordinator({
       frame,
       sessionManager: manager,
@@ -144,7 +155,7 @@ describe("Pi mid-run context compaction", () => {
 
     expect(compacted).toBeDefined();
     expect(summarize).toHaveBeenCalledOnce();
-    expect(projectProviderMessages).toHaveBeenCalledTimes(2);
+    expect(projectProviderMessages).toHaveBeenCalledTimes(3);
     expect(manager.getBranch().some((entry) => entry.type === "compaction")).toBe(true);
     expect(state.messages).toEqual(compacted?.messages);
     expect(state.messages.some((message) => message.role === "compactionSummary")).toBe(true);
@@ -307,11 +318,10 @@ describe("Pi mid-run context compaction", () => {
       timestamp: 7,
     } satisfies AgentContext["messages"][number];
     const projectProviderMessages = vi.fn(
-      async (messages: AgentContext["messages"], pendingIndexes?: AgentPiCompactionIndexes) => {
-        const toolCallIndex =
-          pendingIndexes?.toolCallIndex ?? readAgentPiCompactionToolCallIndex(manager.buildContextEntries()).index;
-        return toolCallIndex && toolCallIndex.calls.length > 0 ? [...messages, projectedIndexMessage] : [...messages];
-      },
+      async (
+        messages: AgentContext["messages"],
+        _pendingIndexes?: AgentPiCompactionIndexes,
+      ): Promise<AgentContext["messages"]> => [...messages, projectedIndexMessage],
     );
     const coordinator = new AgentPiMidRunCompactionCoordinator({
       frame,
@@ -339,8 +349,8 @@ describe("Pi mid-run context compaction", () => {
       ),
     ).rejects.toThrow("irreducible projected context");
 
-    expect(projectProviderMessages).toHaveBeenCalledOnce();
-    expect(projectProviderMessages.mock.calls[0]?.[1]?.toolCallIndex.calls).toEqual([
+    expect(projectProviderMessages).toHaveBeenCalledTimes(2);
+    expect(projectProviderMessages.mock.calls[1]?.[1]?.toolCallIndex.calls).toEqual([
       expect.objectContaining({ callId: "call-archived", toolName: "Search" }),
     ]);
     expect(manager.getBranch().some((entry) => entry.type === "compaction")).toBe(false);
@@ -428,13 +438,20 @@ describe("Pi mid-run context compaction", () => {
       abortController.abort(new Error("User stopped the run."));
       throw new Error("summary interrupted");
     });
+    const projectedOverflow = {
+      role: "custom",
+      customType: "test.cancel_overflow",
+      content: "request-local overflow ".repeat(2_000),
+      display: false,
+      timestamp: 3,
+    } satisfies AgentContext["messages"][number];
     const coordinator = new AgentPiMidRunCompactionCoordinator({
       frame,
       sessionManager: manager,
       compactionController: new AgentPiCompactionController({
         planningCompilerFactory: { create: () => ({ compile: vi.fn(), summarize }) },
       }),
-      projectProviderMessages: async (messages) => [...messages],
+      projectProviderMessages: async (messages) => [...messages, projectedOverflow],
     });
     const context: AgentContext = { messages: manager.buildSessionContext().messages, systemPrompt: "system" };
 
@@ -481,10 +498,20 @@ describe("Pi mid-run context compaction", () => {
     });
     const abortController = new AbortController();
     const summarize = vi.fn(async () => "Short durable summary.");
+    const projectedOverflow = {
+      role: "custom",
+      customType: "test.preview_cancel_overflow",
+      content: "request-local overflow ".repeat(2_000),
+      display: false,
+      timestamp: 5,
+    } satisfies AgentContext["messages"][number];
     const projectProviderMessages = vi.fn(
-      async (messages: AgentContext["messages"], pendingIndexes?: AgentPiCompactionIndexes) => {
+      async (
+        messages: AgentContext["messages"],
+        pendingIndexes?: AgentPiCompactionIndexes,
+      ): Promise<AgentContext["messages"]> => {
         if (pendingIndexes) abortController.abort(new Error("User stopped before persistence."));
-        return [...messages];
+        return [...messages, projectedOverflow];
       },
     );
     const coordinator = new AgentPiMidRunCompactionCoordinator({
@@ -513,7 +540,7 @@ describe("Pi mid-run context compaction", () => {
     ).rejects.toThrow("User stopped before persistence.");
 
     expect(summarize).toHaveBeenCalledOnce();
-    expect(projectProviderMessages).toHaveBeenCalledOnce();
+    expect(projectProviderMessages).toHaveBeenCalledTimes(2);
     expect(manager.getBranch().some((entry) => entry.type === "compaction")).toBe(false);
     expect(state.messages).toEqual(context.messages);
   });

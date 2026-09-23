@@ -1,6 +1,12 @@
+import fs from "node:fs";
+import path from "node:path";
 import { describe, expect, test } from "vitest";
 import { AgentSpawnHostContractProjection } from "../../../Source/AgentSystem/Orchestration/AgentSpawnHostContractProjection.js";
-import { AgentSubagentRoleCatalog } from "../../../Source/AgentSystem/Orchestration/AgentSubagentRoleCatalog.js";
+import {
+  AgentSubagentRoleCatalog,
+  resolveAgentSubagentBuiltinRoleDirectory,
+} from "../../../Source/AgentSystem/Orchestration/AgentSubagentRoleCatalog.js";
+import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 
 describe("subagent role catalog", () => {
   test("loads one package-declared default role with explicit workspace policy", () => {
@@ -101,6 +107,21 @@ describe("subagent role catalog", () => {
       expect(role.systemPrompt).not.toMatch(/\b(Claude|Anthropic|Kiro|GPT-\d|training cutoff)\b/i);
     }
   });
+
+  test("resolves the unique role catalog from package metadata instead of a named extension path", () => {
+    const root = createTemporaryDirectory("senera-agent-role-contribution");
+    try {
+      const expected = writeRolePackage(root, "coordinate", "custom-orchestration", "roles");
+      expect(resolveAgentSubagentBuiltinRoleDirectory(root)).toBe(expected);
+
+      writeRolePackage(root, "knowledge", "second-orchestration", "roles");
+      expect(() => resolveAgentSubagentBuiltinRoleDirectory(root)).toThrow(
+        /Expected exactly one System extension agentRoles contribution, found 2/u,
+      );
+    } finally {
+      removeDirectory(root);
+    }
+  });
 });
 
 function subagentDefinition(
@@ -127,4 +148,45 @@ function subagentDefinition(
     fallbackModels: [],
     defaultContext: "fresh" as const,
   };
+}
+
+function writeRolePackage(root: string, domain: string, id: string, rolesPath: string): string {
+  const domainRoot = path.join(root, domain);
+  fs.mkdirSync(domainRoot, { recursive: true });
+  const domainPath = path.join(domainRoot, "domain.json");
+  if (!fs.existsSync(domainPath)) {
+    writeJson(domainPath, {
+      schemaVersion: 1,
+      id: domain,
+      displayName: localized(`${domain} domain`),
+      description: localized(`${domain} extension domain.`),
+      presentation: {
+        category: domain,
+        icon: "tools",
+        group: { id: domain, title: localized(`${domain} tools`) },
+        activity: { action: localized(`Use ${domain}`) },
+      },
+    });
+  }
+  const packageRoot = path.join(domainRoot, id);
+  fs.mkdirSync(path.join(packageRoot, rolesPath), { recursive: true });
+  writeJson(path.join(packageRoot, "extension.json"), {
+    schemaVersion: 1,
+    id,
+    domain,
+    settingsSurface: "system-tools",
+    version: "1.0.0",
+    displayName: localized(`${id} extension`),
+    description: localized(`${id} extension description.`),
+    contributions: [{ kind: "agentRoles", path: rolesPath }],
+  });
+  return path.join(packageRoot, rolesPath);
+}
+
+function localized(value: string) {
+  return { "zh-CN": value, "en-US": value };
+}
+
+function writeJson(filePath: string, value: unknown): void {
+  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }

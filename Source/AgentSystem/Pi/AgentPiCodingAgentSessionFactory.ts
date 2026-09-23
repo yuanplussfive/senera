@@ -32,7 +32,6 @@ import {
 import { AgentPiSkillResolver } from "./AgentPiSkillResolver.js";
 import { resolveAgentPiCompactionSettings } from "./AgentPiCompactionSettings.js";
 import type { AgentPiToolSet } from "./AgentPiToolRegistryProjector.js";
-import { readAgentPiPromptDisclosureState } from "./AgentPiPromptDisclosure.js";
 
 const NativeProviderRetryAttempts = 0;
 const SessionDiagnosticEventTypes = new Set([
@@ -64,7 +63,6 @@ export class AgentPiCodingAgentSessionFactory {
     lastAccess: number,
   ): Promise<AgentPiPooledCodingSession> {
     const frame = new AgentPiMutableSessionFrame(input.frame);
-    await this.restorePromptDisclosureCheckpoint(frame, sessionManager);
     const settingsManager = this.createSettingsManager();
     const projectContext = this.projectContext.refresh();
     const runtimeExtension = this.runtimeExtensions.create(frame, sessionManager);
@@ -87,6 +85,7 @@ export class AgentPiCodingAgentSessionFactory {
       sessionManager,
       frame,
       resourceLoader,
+      compactionCandidateStatus: runtimeExtension.compactionCandidateStatus,
       toolFingerprint: input.allTools.fingerprint,
       skillCatalogFingerprint: input.frame.skillCatalogFingerprint,
       projectContextFingerprint: projectContext.fingerprint,
@@ -119,7 +118,6 @@ export class AgentPiCodingAgentSessionFactory {
       preflight: () => Promise.resolve(undefined),
     };
     const frame = new AgentPiMutableSessionFrame(frameValue);
-    await this.restorePromptDisclosureCheckpoint(frame, sessionManager);
     const settingsManager = this.createSettingsManager();
     const projectContext = this.projectContext.refresh();
     const runtimeExtension = this.runtimeExtensions.create(frame, sessionManager);
@@ -142,6 +140,7 @@ export class AgentPiCodingAgentSessionFactory {
       sessionManager,
       frame,
       resourceLoader,
+      compactionCandidateStatus: runtimeExtension.compactionCandidateStatus,
       toolFingerprint: "",
       skillCatalogFingerprint: frameValue.skillCatalogFingerprint,
       projectContextFingerprint: projectContext.fingerprint,
@@ -309,28 +308,6 @@ export class AgentPiCodingAgentSessionFactory {
       name: "resources.skills.diagnostics",
       details: diagnostics,
     });
-  }
-
-  private async emitPromptDisclosureCheckpointDiagnostic(
-    frame: AgentPiMutableSessionFrame,
-    invalidEntryId: string | undefined,
-  ): Promise<void> {
-    if (!invalidEntryId) return;
-    await emitAgentPiDiagnostic(frame.snapshot().diagnostics ?? this.options.diagnostics, {
-      context: agentPiDiagnosticContext(frame.snapshot()),
-      source: AgentPiDiagnosticSources.Session,
-      name: "prompt.disclosure.checkpoint.invalid",
-      details: { entryId: invalidEntryId },
-    });
-  }
-
-  private async restorePromptDisclosureCheckpoint(
-    frame: AgentPiMutableSessionFrame,
-    sessionManager: SessionManager,
-  ): Promise<void> {
-    const checkpoint = readAgentPiPromptDisclosureState(sessionManager.getBranch());
-    frame.restorePromptDisclosure(checkpoint.state);
-    await this.emitPromptDisclosureCheckpointDiagnostic(frame, checkpoint.invalidEntryId);
   }
 
   private async emitSessionDiagnostic(frame: AgentPiCodingAgentSessionFrame, event: { type: string }): Promise<void> {

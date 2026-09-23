@@ -8,7 +8,10 @@ import type {
 import type { AgentResidentProfilePromptEntry } from "../Profile/AgentResidentProfileTypes.js";
 import type { AgentContinuityConceptRecord } from "./AgentContinuityConceptCatalog.js";
 import type { AgentContinuityGraphPromptRelation, AgentContinuityGraphSnapshot } from "./AgentContinuityGraphTypes.js";
-import type { AgentTemporalMemoryOverview } from "../TemporalMemory/AgentTemporalMemoryTypes.js";
+import type {
+  AgentTemporalMemoryGranularity,
+  AgentTemporalMemoryOverview,
+} from "../TemporalMemory/AgentTemporalMemoryTypes.js";
 import type { AgentContinuityStyleExample } from "./AgentContinuityStyleExamples.js";
 
 export interface AgentContinuityEvidenceCandidate {
@@ -43,6 +46,23 @@ export interface AgentContinuityFactCatalogEntry {
   readonly matchedBy: readonly string[];
 }
 
+/** One coarse-grained temporal summary recalled ahead of fine-grained facts/events. */
+export interface AgentContinuityDigestPromptEntry {
+  readonly id: string;
+  readonly uri: string;
+  readonly granularity: AgentTemporalMemoryGranularity;
+  readonly sessionId: string;
+  readonly periodStart: string;
+  readonly periodEnd: string;
+  readonly summary: string;
+  readonly topics: readonly string[];
+  readonly openLoops: readonly string[];
+  readonly sourceRevision: string;
+  readonly childCount: number;
+  readonly score: number;
+  readonly matchedBy: readonly string[];
+}
+
 export interface AgentContinuityRecallSelectionCount {
   readonly available: number;
   readonly matched: number;
@@ -67,6 +87,7 @@ export interface AgentContinuityNearMissEntry {
 }
 
 export interface AgentContinuityRecallSelection {
+  readonly digests?: AgentContinuityRecallSelectionCount;
   readonly profiles: AgentContinuityRecallSelectionCount;
   readonly facts: AgentContinuityRecallSelectionCount;
   readonly relations: AgentContinuityRecallSelectionCount;
@@ -125,6 +146,8 @@ export interface AgentContinuityMemoryPromptContext {
   /** Observability-only temporal digest health and latest sealed representative for each level. */
   readonly temporalMemory: AgentTemporalMemoryOverview;
   readonly residentProfile: readonly AgentResidentProfilePromptEntry[];
+  /** Coarse-grained temporal summaries recalled ahead of fine-grained facts. */
+  readonly temporalDigests: readonly AgentContinuityDigestPromptEntry[];
   /** Relevant prior dialogue examples, kept outside the stable prompt prefix. */
   readonly styleExamples?: readonly AgentContinuityStyleExample[];
   /** Query-selected current fact heads, ordered by recall relevance. */
@@ -149,6 +172,7 @@ export const EmptyAgentContinuityMemoryPromptContext: AgentContinuityMemoryPromp
   graphRelations: [],
   temporalMemory: { counts: [], segmentDecisions: [], latestSealed: [] },
   residentProfile: [],
+  temporalDigests: [],
   styleExamples: [],
   factCatalog: [],
   selection: {

@@ -6,6 +6,7 @@ import { resolveAgentTurnPromptProfile } from "./AgentTurnPromptProfile.js";
 import type { AgentSystemPromptLayer } from "../Orchestration/AgentRunDispatchPort.js";
 import type { AgentRoleplayPresetContext } from "../Presets/AgentPresetTypes.js";
 import type { AgentContinuityMemoryPromptContext } from "../Continuity/AgentContinuityMemoryTypes.js";
+import type { AgentResidentState } from "../Continuity/AgentResidentState.js";
 import {
   normalizeAgentContinuityTemplateContext,
   normalizeAgentWorkflowTemplateContext,
@@ -16,7 +17,10 @@ import { compileAgentSceneContext } from "../Prompt/AgentSceneContextCompiler.js
 import {
   AgentPromptWireEncodings,
   renderAgentPromptWireBlocks,
-  renderAgentPromptContextWires,
+  renderAgentLiveStateWire,
+  renderAgentStableProfileWire,
+  renderResidentStateWire,
+  renderRoleplayLoreWire,
 } from "../Prompt/AgentPromptContextWireRenderer.js";
 import type { AgentToolCapabilityCacheEntry } from "../ToolSearch/AgentToolCapabilitySessionCache.js";
 import type { AgentEffectiveModelReceipt } from "../ModelEndpoints/AgentModelMetadata.js";
@@ -26,7 +30,8 @@ import { renderAgentWorkbenchContractIndex } from "../SelfService/AgentWorkbench
 export interface AgentRenderedTurnPrompt {
   text: string;
   systemPrompt: string;
-  turnContext: string;
+  /** Request-local data injected by the Pi context hook, never persisted. */
+  liveContext: string;
   tokenCount: number;
   roleplayPreset: AgentRoleplayPresetContext;
   continuityMemory: AgentContinuityMemoryPromptContext;
@@ -65,6 +70,8 @@ export class AgentTurnPromptRenderer {
     rootCommand: AgentRootCommand;
     toolPlanningMode: AgentModelToolPlanningMode;
     systemPromptLayer?: AgentSystemPromptLayer;
+    /** Current host-derived resident stance; rendered as a volatile resident_state wire when present. */
+    residentState?: AgentResidentState;
   }): Promise<AgentRenderedTurnPrompt> {
     const profile = resolveAgentTurnPromptProfile(input.toolPlanningMode);
     const frozenTemplate = this.runtime.registry.getTemplate(profile.frozenTemplateName);
@@ -83,10 +90,8 @@ export class AgentTurnPromptRenderer {
     const toolDescription = this.runtime.config.ToolDocumentation?.ToolDescription;
     const roleplayPreset = await this.runtime.services.promptContext.promptRoleplayPreset(input.userInput);
     const continuityMemory = normalizeAgentContinuityTemplateContext(
-      await this.runtime.services.promptContext.promptContinuityMemory({
-        userInput: input.userInput,
+      await this.runtime.services.promptContext.liveContinuityMemory({
         sessionId: input.sessionId,
-        requestId: input.requestId,
       }),
     );
     const workflow = normalizeAgentWorkflowTemplateContext(
@@ -96,7 +101,7 @@ export class AgentTurnPromptRenderer {
     const wireRenderOptions = {
       estimateTokens: (text: string) => this.runtime.tokenEstimator.estimate(text).tokenCount,
     };
-    const contextWires = renderAgentPromptContextWires(
+    const liveStateWire = renderAgentLiveStateWire(
       {
         scene,
         continuity: continuityMemory,
@@ -104,10 +109,11 @@ export class AgentTurnPromptRenderer {
       },
       wireRenderOptions,
     );
-    // Keep the named template adapters on the same canonical projection as
-    // the merged volatile block. Some integrations render these templates
-    // independently, so leaving their wire variables unset would silently
-    // reintroduce the old field-by-field path.
+    const stableProfileWire = renderAgentStableProfileWire(continuityMemory, wireRenderOptions);
+    const roleplayLoreWire = renderRoleplayLoreWire(roleplayPreset, wireRenderOptions);
+    const residentStateWire = input.residentState
+      ? renderResidentStateWire(input.residentState, wireRenderOptions)
+      : undefined;
     const baseContext = this.runtime.services.promptContext.buildBaseContext({
       loadedToolNames: input.loadedToolNames,
       rootCommand: input.rootCommand,
@@ -139,24 +145,25 @@ export class AgentTurnPromptRenderer {
       delegatedRole.enabled && delegatedRole.mode === "replace"
         ? sha256HexOfCanonicalJson(delegatedRole.content)
         : "append";
-    const stableCacheKey = `${profile.stableTemplateName}:${baseContext.ContextRevisions.stable}:${delegatedRoleRevision}`;
+    const stableCacheKey = `${profile.stableTemplateName}:${baseContext.ContextRevisions.stable}:${stableProfileWire.sourceRevision}:${delegatedRoleRevision}`;
     const frozenPrompt = joinPromptSections(
       await this.runtime.promptRenderer.renderFile(frozenTemplate.path, {}),
       renderAgentWorkbenchContractIndex(),
     );
     const stablePrompt = await this.runtime.promptTierRenderCache.getOrRender(stableCacheKey, () =>
-      this.runtime.promptRenderer.renderFile(stableTemplate.path, { ...baseContext, DelegatedRole: delegatedRole }),
+      this.runtime.promptRenderer.renderFile(stableTemplate.path, {
+        ...baseContext,
+        DelegatedRole: delegatedRole,
+        StableProfileWire: stableProfileWire.text,
+      }),
     );
     const renderedVolatilePrompt = await this.runtime.promptRenderer.renderFile(volatileTemplate.path, {
       ...baseContext,
       DelegatedRole: delegatedRole,
       RoleCheck: this.runtime.promptConfig.RoleCheck,
-      VolatileWire: contextWires.volatile.text,
-      SceneWire: contextWires.scene.text,
-      ContinuityWire: contextWires.continuity.text,
-      ContinuityFactsWire: contextWires.continuityFacts.text,
-      ResidentProfileWire: contextWires.residentProfile.text,
-      WorkflowWire: contextWires.workflow.text,
+      LiveStateWire: liveStateWire.text,
+      LoreWire: roleplayLoreWire.text,
+      ResidentStateWire: residentStateWire?.text ?? "",
     });
     const sessionSpacePrompt = formatSessionSpaceIdentity({
       sessionId: input.sessionId,
@@ -168,7 +175,6 @@ export class AgentTurnPromptRenderer {
       requestId: input.requestId,
       effectiveModel: input.effectiveModel,
     });
-    const stablePromptWithSpace = stablePrompt;
     const volatilePrompt = joinPromptSections(
       renderedVolatilePrompt,
       sessionSpacePrompt,
@@ -185,10 +191,14 @@ export class AgentTurnPromptRenderer {
       {
         frozen: { text: frozenPrompt, revision: sha256HexOfCanonicalJson(frozenPrompt) },
         stable: {
-          text: stablePromptWithSpace,
+          text: stablePrompt,
           revision: sha256HexOfCanonicalJson({
             template: stableTemplate.path,
             contextRevisions: baseContext.ContextRevisions.stable,
+            profile: {
+              sourceRevision: stableProfileWire.sourceRevision,
+              blocks: stableProfileWire.blocks.map((block) => ({ id: block.id, encoding: block.encoding })),
+            },
             delegatedRoleRevision,
           }),
         },
@@ -199,9 +209,19 @@ export class AgentTurnPromptRenderer {
             contextRevisions: baseContext.ContextRevisions.volatile,
             reusableCapabilityRevision,
             turnIdentityRevision,
-            volatileWire: {
-              sourceRevision: contextWires.volatile.sourceRevision,
-              blocks: contextWires.volatile.blocks.map((block) => ({ id: block.id, encoding: block.encoding })),
+            liveState: {
+              sourceRevision: liveStateWire.sourceRevision,
+              blocks: liveStateWire.blocks.map((block) => ({ id: block.id, encoding: block.encoding })),
+              lore: {
+                sourceRevision: roleplayLoreWire.sourceRevision,
+                blocks: roleplayLoreWire.blocks.map((block) => ({ id: block.id, encoding: block.encoding })),
+              },
+              resident: residentStateWire
+                ? {
+                    sourceRevision: residentStateWire.sourceRevision,
+                    blocks: residentStateWire.blocks.map((block) => ({ id: block.id, encoding: block.encoding })),
+                  }
+                : null,
             },
           }),
         },
@@ -211,8 +231,8 @@ export class AgentTurnPromptRenderer {
     const text = harness.text;
     return {
       text,
-      systemPrompt: joinPromptSections(frozenPrompt, stablePromptWithSpace),
-      turnContext: volatilePrompt.trim(),
+      systemPrompt: joinPromptSections(frozenPrompt, stablePrompt),
+      liveContext: volatilePrompt.trim(),
       tokenCount: this.runtime.tokenEstimator.estimate(text).tokenCount,
       roleplayPreset,
       continuityMemory,

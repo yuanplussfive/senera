@@ -53,6 +53,59 @@ describe("Pi tool execution bridge failures", () => {
     });
   });
 
+  test("reports media projection failure without finalizing the observation reservation twice", async () => {
+    const executed = toolResult({
+      callId: "call-media-missing",
+      name: "ImageTool",
+      artifact: {
+        artifactId: "artifact-media",
+        artifactUri: "senera://artifact/media",
+        artifactPath: "E:/workspace/.senera/artifacts/media",
+        relativePath: "media.json",
+        manifestPath: "E:/workspace/.senera/artifacts/media/manifest.json",
+        files: {},
+        summary: "Generated image",
+        assets: [
+          {
+            id: "image-1",
+            resourceUri: "senera://resource/missing-image",
+            fileName: "image.png",
+            mediaType: "image/png",
+            relativePath: "image.png",
+            workspacePath: "E:/workspace/.senera/artifacts/media/image.png",
+            byteLength: 12,
+            sha256: "missing",
+          },
+        ],
+        evidence: [],
+        delta: [],
+      },
+    });
+    const bridge = new AgentPiToolExecutionBridge({
+      modelSupportsImages: true,
+      executeToolCall: async () => ({ kind: "ToolResults", value: [executed] }),
+      recordToolArtifacts: async () => [executed],
+    });
+    const context = createToolContext("ImageTool", "call-media-missing");
+
+    const result = await bridge.execute({
+      tool: registeredTool("ImageTool"),
+      params: {},
+      toolCallId: "call-media-missing",
+      context,
+    });
+
+    expect(parseObservation(result)).toMatchObject({
+      status: "success",
+      detail: { notice: expect.stringContaining("media_projection_failed") },
+    });
+    expect(result.details.senera).toMatchObject({
+      status: AgentPiToolResultStatuses.Success,
+      mediaProjection: { code: "media_projection_failed" },
+    });
+    expect(context.tokenBudget.snapshot().pendingToolReservations).toBe(0);
+  });
+
   test("preserves a successful tool result when Artifact persistence is unavailable", async () => {
     const executed = toolResult({
       callId: "call-artifact",

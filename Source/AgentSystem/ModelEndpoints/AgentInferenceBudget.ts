@@ -8,6 +8,7 @@ export const AgentInferenceLaneIds = Object.freeze({
   Resident: "resident",
   Continuity: "continuity",
   Embedding: "embedding",
+  Compaction: "compaction",
 } as const);
 export type AgentInferenceLaneId = (typeof AgentInferenceLaneIds)[keyof typeof AgentInferenceLaneIds];
 

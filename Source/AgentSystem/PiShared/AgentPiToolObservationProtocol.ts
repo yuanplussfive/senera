@@ -8,8 +8,8 @@ import {
   AgentToolArtifactUnavailableReasons,
 } from "../Types/ToolRuntimeTypes.js";
 
-export const AgentPiToolObservationProtocol = defineSeneraProtocol("tool_observation", 4);
-export const AgentPiToolObservationSourceViewProtocol = defineSeneraProtocol("tool_observation_source_view", 4);
+export const AgentPiToolObservationProtocol = defineSeneraProtocol("tool_observation", 5);
+export const AgentPiToolObservationSourceViewProtocol = defineSeneraProtocol("tool_observation_source_view", 5);
 export const AgentPiToolObservationContractRevision = [
   AgentPiToolObservationProtocol.type,
   AgentPiToolObservationSourceViewProtocol.type,
@@ -72,6 +72,8 @@ const AgentPiToolObservationDetailSchema = z
     limitations: z.unknown().optional(),
     outcome: z.unknown().optional(),
     semantic_digest: z.string().optional(),
+    perception: z.string().optional(),
+    notice: z.string().optional(),
   })
   .strict();
 
@@ -109,7 +111,10 @@ const AgentPiToolObservationSchema = z
     execution_status: z.enum(AgentToolExecutionStatuses),
     output_availability: z.enum(AgentToolOutputAvailabilities),
     error: AgentPiToolObservationErrorSchema.optional(),
-    observation_view: AgentPiToolObservationSourceViewSchema,
+    // Completeness declaration. v5 omits it for fully projected observations:
+    // an absent view means the detail is complete and no retrieval coordinate
+    // is needed.
+    observation_view: AgentPiToolObservationSourceViewSchema.optional(),
     detail: AgentPiToolObservationDetailSchema,
   })
   .strict();
@@ -148,7 +153,12 @@ export function createAgentPiToolObservation(fields: Omit<AgentPiToolObservation
 }
 
 export function isAgentPiObservationSourceBounded(observation: AgentPiToolObservation): boolean {
-  return observation.observation_view.type === AgentPiToolObservationSourceViewProtocol.type;
+  // v5 omits the view for fully projected observations; absence means the
+  // detail is complete, so it is a valid bounded projection.
+  return (
+    observation.observation_view === undefined ||
+    observation.observation_view.type === AgentPiToolObservationSourceViewProtocol.type
+  );
 }
 
 export function assertAgentPiToolObservationBounded(observation: AgentPiToolObservation): void {

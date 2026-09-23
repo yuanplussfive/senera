@@ -5,13 +5,29 @@ import { resolveAgentToolOwner } from "../Types/AgentToolOwner.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import { capabilityFacetEntries, capabilitySearchText } from "./AgentToolSearchCapabilities.js";
 import type { ToolSearchDocument } from "./AgentToolSearchTypes.js";
-import { AgentCapabilityKinds, type AgentCapabilitySearchDocument } from "./AgentCapabilitySearchIndex.js";
+import {
+  AgentCapabilityKinds,
+  type AgentCapabilitySearchDocument,
+  type AgentCapabilitySemanticInput,
+} from "./AgentCapabilitySearchIndex.js";
 
 export function buildToolCapabilityDocument(
   tool: RegisteredTool,
   document: ToolSearchDocument,
 ): AgentCapabilitySearchDocument {
   const owner = resolveAgentToolOwner(tool);
+  const semanticFields = {
+    identity: semanticIdentityText(document),
+    title: document.title,
+    tags: document.tags,
+    facets: document.capabilityFacets,
+    summary: document.summary,
+    useCases: document.whenToUse,
+    examples: document.examples,
+    capabilities: document.capabilityText,
+    parameters: document.params,
+    owner: document.ownerTitle || document.ownerName,
+  };
   return {
     id: capabilityDocumentId(AgentCapabilityKinds.Tool, owner.name, tool.name),
     kind: AgentCapabilityKinds.Tool,
@@ -28,15 +44,8 @@ export function buildToolCapabilityDocument(
     capabilityFacets: document.capabilityFacets,
     parameters: document.params,
     fuzzyText: fuzzyCapabilityText(tool.name, document.title, document.capabilities),
-    semanticText: semanticCapabilityText({
-      title: document.title,
-      summary: document.summary,
-      useCases: document.whenToUse,
-      examples: document.examples,
-      capabilities: document.capabilityText,
-      parameters: document.params,
-      owner: document.ownerTitle || document.ownerName,
-    }),
+    semanticInputs: semanticCapabilityInputs(semanticFields),
+    semanticText: semanticCapabilityText(semanticFields),
   };
 }
 
@@ -55,6 +64,18 @@ export function buildSkillCapabilityDocument(skill: RegisteredSkill): AgentCapab
   const examples = (search?.Examples ?? []).join(" ");
   const title = skill.title ?? search?.Summary ?? skill.name;
   const parameters = skill.recommendedTools.join(" ");
+  const semanticFields = {
+    identity: [skill.name, title, tags, capabilityFacets].filter(Boolean).join(" "),
+    title,
+    tags,
+    facets: capabilityFacets,
+    summary,
+    useCases,
+    examples,
+    capabilities: capabilityText,
+    parameters,
+    owner: skill.source.displayName,
+  };
   return {
     id: capabilityDocumentId(AgentCapabilityKinds.Skill, skill.source.id, skill.name),
     kind: AgentCapabilityKinds.Skill,
@@ -71,15 +92,8 @@ export function buildSkillCapabilityDocument(skill: RegisteredSkill): AgentCapab
     capabilityFacets,
     parameters,
     fuzzyText: fuzzyCapabilityText(skill.name, title, capabilities),
-    semanticText: semanticCapabilityText({
-      title,
-      summary,
-      useCases,
-      examples,
-      capabilities: capabilityText,
-      parameters,
-      owner: skill.source.displayName,
-    }),
+    semanticInputs: semanticCapabilityInputs(semanticFields),
+    semanticText: semanticCapabilityText(semanticFields),
   };
 }
 
@@ -102,6 +116,37 @@ function semanticCapabilityText(fields: Readonly<Record<string, string>>): strin
     .filter(([, value]) => value.trim().length > 0)
     .map(([name, value]) => `${name}: ${value.trim()}`)
     .join("\n");
+}
+
+function semanticCapabilityInputs(fields: Readonly<Record<string, string>>): readonly AgentCapabilitySemanticInput[] {
+  const groups = [
+    // The primary view is intentionally short, but it must carry the
+    // producer's operation description. Names and facets alone cannot bridge
+    // a Chinese request to an English-only MCP description, and they would
+    // also leave a description-only catalog change invisible to the cache
+    // identity. Longer examples and use-case prose stay demand-driven below.
+    ["identity", ["identity", "summary", "capabilities"]],
+    ["intent", ["title", "summary", "useCases", "examples", "capabilities"]],
+    ["contract", ["title", "parameters", "owner"]],
+  ] as const;
+  return groups
+    .map(([id, names]) => ({
+      id,
+      text: semanticCapabilityText(Object.fromEntries(names.map((name) => [name, fields[name] ?? ""]))),
+    }))
+    .filter((input) => input.text.length > 0);
+}
+
+function semanticIdentityText(document: ToolSearchDocument): string {
+  return [
+    document.toolName,
+    document.title,
+    document.identityPhrases.join(" "),
+    document.tags,
+    document.capabilityFacets,
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 function capabilityDocumentId(kind: string, owner: string, name: string): string {

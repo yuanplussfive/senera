@@ -7,6 +7,7 @@ import { AgentPiSessionCustomEntryTypes } from "./AgentPiSessionEntries.js";
 import { isAgentPiConversationHistoryEmpty } from "./AgentPiSessionHistoryPolicy.js";
 import type { AgentPiSession, AgentPiSessionEventListener } from "./AgentPiRuntimeTypes.js";
 import type { AgentPiMutableSessionFrame } from "./AgentPiCodingAgentSessionFrame.js";
+import { stripAgentPiContextOverlayMessages } from "./AgentPiTurnContextMessage.js";
 
 export class AgentPiCodingAgentSession implements AgentPiSession {
   private released = false;
@@ -35,7 +36,7 @@ export class AgentPiCodingAgentSession implements AgentPiSession {
     }
 
     for (const message of messages) appendSessionMessage(this.sessionManager, message);
-    this.session.agent.state.messages = [...messages];
+    this.session.agent.state.messages = stripAgentPiContextOverlayMessages(messages);
   }
 
   async prompt(

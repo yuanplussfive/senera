@@ -37,6 +37,7 @@ export const StandardAgentToolObservationProjection = deepFreeze({
     }),
     source("evidence", "orderedArray", "normal", false, 512, StandardStructuredLimits),
     source("delta", "orderedArray", "normal", false, 384, StandardStructuredLimits),
+    source("perception", "text", "normal", false, 160, CompactTextLimits),
     source("limitations", "orderedArray", "low", false, 192, StandardStructuredLimits),
   ],
 } satisfies AgentToolObservationProjectionManifest);

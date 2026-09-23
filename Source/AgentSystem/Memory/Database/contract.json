@@ -369,6 +369,22 @@
       "snapshot": "snapshots/0046.schema.sql",
       "migrationSha256": "5d720e8daf4033d5f848c71c90137817a63b482b8519b1c930e4c348c669a2a6",
       "snapshotSha256": "755c806d0376f8964d027cfb7f63242f40853788f1f2e612d2bf899b36b29b29"
+    },
+    {
+      "version": 47,
+      "name": "resident-state-ledger",
+      "migration": "migrations/0047-resident-state-ledger.sql",
+      "snapshot": "snapshots/0047.schema.sql",
+      "migrationSha256": "38aa76ce31194c1acb12df9da01b9665333310c6368cae9fecc789371e2b9fb3",
+      "snapshotSha256": "c425c206f334f2927e3c4ef03faa5d3a7a0cc4f77ddb3f66df32c5446724d759"
+    },
+    {
+      "version": 48,
+      "name": "pi-compaction-candidates",
+      "migration": "migrations/0048-pi-compaction-candidates.sql",
+      "snapshot": "snapshots/0048.schema.sql",
+      "migrationSha256": "cbdfa5f42dad8302de221afa960cb32191650f69cc31aa74d159ed5a830b8120",
+      "snapshotSha256": "43675a3be6f971788ceb369e6deeee2f44c07b74135541fb501544aadccdfb3b"
     }
   ]
 }

@@ -11,7 +11,6 @@ import {
   resolveToolLearningConfig,
   resolveToolSearchConfig,
   resolveUploadsConfig,
-  resolveVectorModelsConfig,
 } from "../AgentDefaults.js";
 import { AgentActionPlannerModelClient } from "../ActionPlanner/AgentActionPlannerModelClient.js";
 import { AgentApprovalRuntime } from "../Approvals/AgentApprovalRuntime.js";
@@ -19,6 +18,7 @@ import { AgentToolExecutionArtifactRecorder } from "../Artifacts/AgentToolExecut
 import { AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
 import { AgentConversationProjector } from "../Conversation/AgentConversationProjector.js";
 import { AgentSchemaValidator } from "../Core/AgentSchemaValidator.js";
+import { resolveAgentWorkspaceLayout } from "../Core/AgentWorkspaceLayout.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import { createSeneraExecutionEnvironments } from "../Execution/SeneraExecutionEnvFactory.js";
 import { resolveAgentDockerEngineGuestWorkspaceRoot } from "../Sandbox/DockerEngine/AgentDockerEngineRuntimeContract.js";
@@ -58,6 +58,8 @@ import { createAgentDefaultToolResourceCapabilities } from "../ToolRuntime/Agent
 import { AgentToolResourceClaimProjector } from "../ToolRuntime/AgentToolResourceClaimProjector.js";
 import type { AgentToolResourceLeaseCoordinator } from "../ToolRuntime/AgentToolResourceScheduler.js";
 import { AgentToolSearchRuntime } from "../ToolSearch/AgentToolSearchRuntime.js";
+import { AgentLocalEmbeddingClient, AgentLocalEmbeddingModelName } from "../ToolSearch/AgentLocalEmbeddingClient.js";
+import { AgentCapabilityEmbeddingFileStore } from "../ToolSearch/AgentCapabilityEmbeddingCache.js";
 import type { AgentToolSearchMemoryStore } from "../ToolSearch/AgentToolSearchMemoryTypes.js";
 import { AgentToolSemanticAuditModes, type AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { createXmlProtocolPolicy } from "../Xml/AgentXmlPolicy.js";
@@ -65,7 +67,6 @@ import { AgentRuntimeModuleComposer, type AgentRuntimeModule } from "./AgentRunt
 import { createDefaultAgentRuntimeServices } from "./AgentRuntimeServices.js";
 import type { AgentMcpToolsChangedHandler } from "../Mcp/AgentMcpToolCatalogChange.js";
 import { AgentMcpToolClientPool } from "../Mcp/AgentMcpToolClientPool.js";
-import { AgentVectorModelClient } from "../Vector/AgentVectorModelClient.js";
 import type { AgentExtensionValueResolver } from "../Extensions/AgentExtensionValueExpression.js";
 import type { AgentMcpSamplingHandler } from "../Mcp/AgentMcpSamplingRuntime.js";
 import { createAgentMcpSamplingHandler } from "../Mcp/AgentMcpSamplingRuntime.js";
@@ -89,6 +90,7 @@ import { AgentResidentSpeechRuntime } from "../ResidentSpeech/AgentResidentSpeec
 import { AgentResidentSpeechCapabilities } from "../ResidentSpeech/AgentResidentSpeechTypes.js";
 import type { AgentPluginHost } from "../Plugins/AgentPluginHost.js";
 import type { AgentMcpHostCapabilitySnapshot } from "../McpPackages/AgentMcpHostRequirements.js";
+import type { AgentPiCompactionCandidateStore } from "../Pi/AgentPiCompactionCandidateStore.js";
 
 export interface AgentSystemRuntimeCompositionOptions {
   workspaceRoot: string;
@@ -124,6 +126,8 @@ export interface AgentSystemRuntimeCompositionOptions {
   agenda?: AgentAgendaService;
   worldRuntime?: AgentWorldSnapshotProvider;
   inferenceBudget?: AgentInferenceBudgetPort;
+  /** Shared derived checkpoint cache for Pi sessions in this runtime family. */
+  piCompactionCandidateStore?: AgentPiCompactionCandidateStore;
   identityDisplayValues?: () => AgentIdentityDisplayValues;
   /** Host services bound to the `senera` self-service command tool. */
   selfService?: import("../SelfService/AgentSelfServiceTypes.js").AgentSelfServicePort;
@@ -257,7 +261,6 @@ export function createAgentRuntimeInfrastructure(options: AgentSystemRuntimeComp
     residentSpeech,
     agentLoopConfig: resolveAgentLoopConfig(options.config),
     toolSearchConfig: resolveToolSearchConfig(options.config),
-    vectorModelsConfig: resolveVectorModelsConfig(options.config),
     toolLearningConfig: resolveToolLearningConfig(options.config),
     presetsConfig: resolvePresetsConfig(options.config),
     artifactsConfig: resolveArtifactsConfig(options.config),
@@ -272,19 +275,23 @@ export function createAgentRuntimeAgentServices(
 ) {
   const availableExecutionTargets = () =>
     projectSeneraProcessBackendsToToolTargets(infrastructure.toolExecutionEnv.capabilities.processBackends);
-  const continuityIdentity = options.continuityIdentity;
-  const vectorClient = new AgentVectorModelClient(infrastructure.vectorModelsConfig, {
-    inferenceBudget: options.inferenceBudget,
-    inferenceBudgetScope:
-      options.inferenceBudget && continuityIdentity ? () => continuityIdentity.workspaceId : undefined,
-  });
-  const embedding = infrastructure.vectorModelsConfig.Embedding.Enabled
-    ? {
-        client: vectorClient,
-        model: infrastructure.vectorModelsConfig.Embedding.Model,
-      }
+  const embedding = infrastructure.toolSearchConfig.Embedding.Enabled
+    ? (() => {
+        const client = new AgentLocalEmbeddingClient();
+        const cacheStore = new AgentCapabilityEmbeddingFileStore(
+          resolveAgentWorkspaceLayout(options.workspaceRoot).caches.toolSearchEmbeddings,
+          (error) =>
+            options.logger?.warn("routing.embedding.cache_invalid", {
+              message: error instanceof Error ? error.message : String(error),
+            }),
+        );
+        return {
+          client,
+          model: AgentLocalEmbeddingModelName,
+          cacheStore,
+        };
+      })()
     : undefined;
-  const rerank = infrastructure.vectorModelsConfig.Rerank.Enabled ? { client: vectorClient } : undefined;
   const toolSearch = new AgentToolSearchRuntime(
     infrastructure.registry,
     infrastructure.toolSearchConfig,
@@ -295,13 +302,15 @@ export function createAgentRuntimeAgentServices(
       logger: options.logger,
       memoryStore: options.toolSearchMemoryStore,
       embedding,
-      rerank,
+      embeddingCacheStore: embedding?.cacheStore,
+      resourceDiscovery: infrastructure.resourceCapabilities,
       availableExecutionTargets,
     },
   );
   const skillActivation = new AgentSkillActivationService(infrastructure.registry, toolSearch);
   const promptContextBuilder = new AgentPromptContextBuilder(
     infrastructure.registry,
+    infrastructure.modelProviderConfig.ToolPlanningMode,
     options.workspaceRoot,
     () => infrastructure.toolExecutionEnv.capabilities,
     infrastructure.sandboxGuestWorkspaceRoot,
@@ -392,6 +401,9 @@ export function createAgentRuntimeAgentServices(
     beforeCompaction: options.continuityLifecycle
       ? (sessionId) => options.continuityLifecycle!.beforeCompaction(sessionId)
       : undefined,
+    compactionCandidateStore: options.piCompactionCandidateStore,
+    inferenceBudget: options.inferenceBudget,
+    inferenceScope: () => options.continuityIdentity?.workspaceId,
   });
   const services = new AgentRuntimeModuleComposer().compose(
     createDefaultAgentRuntimeServices({

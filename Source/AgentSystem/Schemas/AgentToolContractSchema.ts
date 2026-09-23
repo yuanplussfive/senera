@@ -10,13 +10,16 @@ import {
   AgentHostToolProtocolVersion,
   ToolExecutionTargets,
   ToolLoadingModes,
+  ToolPlanningModes,
   ToolResultAssessmentPolicies,
   ToolSchedulingModes,
 } from "../Types/AgentToolContractTypes.js";
 import { isAgentJsonPointer } from "../Core/AgentJsonPointerOperations.js";
+import { AgentToolContentPolicySchema } from "./AgentToolContentPolicySchema.js";
 
 export { ToolArtifactPolicySchema } from "./AgentArtifactContractSchema.js";
 export { ToolSearchSchema } from "./AgentToolSearchContractSchema.js";
+export { AgentToolContentPolicySchema } from "./AgentToolContentPolicySchema.js";
 
 export const AgentToolDiscoverySourceSchema = z
   .object({
@@ -117,10 +120,33 @@ export const ToolRuntimeSchema = z
   })
   .strict();
 
+/**
+ * Planner support belongs to the tool contract rather than a provider, tool
+ * name, or package-specific exception. Reuse this schema at every manifest
+ * boundary so the runtime never receives an ambiguous declaration.
+ */
+export const ToolPlanningModesSchema = z
+  .array(z.enum(ToolPlanningModes))
+  .min(1)
+  .superRefine((modes, context) => {
+    const seen = new Set<string>();
+    modes.forEach((mode, index) => {
+      if (seen.has(mode)) {
+        context.addIssue({
+          code: "custom",
+          path: [index],
+          message: `Planning mode ${mode} may only be declared once.`,
+        });
+      }
+      seen.add(mode);
+    });
+  });
+
 export const ToolSchema = z
   .object({
     Name: z.string().min(1),
     Loading: z.enum([ToolLoadingModes.Bootstrap, ToolLoadingModes.Dynamic]).optional(),
+    PlanningModes: ToolPlanningModesSchema.optional(),
     DescriptionFile: z.string().min(1).optional(),
     Permissions: z.array(z.string()).optional(),
     Handler: ToolHandlerSchema,
@@ -131,6 +157,7 @@ export const ToolSchema = z
     Approval: ToolApprovalSchema.optional(),
     Artifacts: ToolArtifactPolicySchema.optional(),
     ArtifactPolicyFile: z.string().min(1).optional(),
+    ContentPolicy: AgentToolContentPolicySchema.optional(),
   })
   .strict()
   .superRefine((tool, context) => {

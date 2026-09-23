@@ -1,89 +1,67 @@
-import { resolveAgentToolOwner } from "../Types/AgentToolOwner.js";
-import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
 import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
-import { AgentJsonSchemaPromptContractProjector } from "../ToolContracts/AgentJsonSchemaPromptContractProjector.js";
 import { projectAgentToolInvocationSchema } from "../ToolRuntime/AgentToolExecutionPlan.js";
 import type { ToolExecutionTarget } from "../Types/AgentToolContractTypes.js";
 import { projectAgentToolInteraction } from "../ToolRuntime/AgentToolInteractionProjector.js";
+import { AgentJsonSchemaPromptContractProjector } from "../ToolContracts/AgentJsonSchemaPromptContractProjector.js";
 
-const OutputSummaryMaxChars = 1_200;
+const OutputSummaryMaxChars = 480;
 const contracts = new AgentJsonSchemaPromptContractProjector();
+
+/**
+ * The outer tool result remains structured, while the contract itself is a
+ * TypeScript-like compact text block. Repeating JSON Schema, XML, property
+ * lists, and use-case objects after the model has selected a name costs many
+ * tokens without adding another execution constraint.
+ *
+ * [exact tool name, human title, compact contract]
+ */
+export type AgentToolDescriptionTuple = readonly [name: string, title: string, spec: string];
 
 export function projectToolDescription(
   tool: RegisteredTool,
   runtimeTargets: readonly ToolExecutionTarget[] = tool.execution.Targets,
-): Record<string, unknown> {
-  const owner = resolveAgentToolOwner(tool);
+): AgentToolDescriptionTuple {
+  const interaction = projectAgentToolInteraction(tool);
   const declaredContract = tool.contract?.arguments;
   const invocationContract = declaredContract
     ? contracts.project(projectAgentToolInvocationSchema(tool, declaredContract.jsonSchema, runtimeTargets))
     : undefined;
-  const interaction = projectAgentToolInteraction(tool);
-  return {
-    name: tool.name,
-    title: interaction.title,
-    summary: interaction.purpose,
-    loading: tool.loading,
-    usage: {
-      purpose: interaction.purpose,
-      useCases: { item: interaction.useCases },
-      examples: { item: interaction.examples },
-      avoid: { item: interaction.avoid },
-      tags: { item: tool.search?.Tags ?? [] },
-    },
-    capabilities: {
-      item: interaction.capabilities.map((capability) => ({
-        id: capability.id,
-        title: capability.title,
-        description: capability.description,
-        aliases: { item: capability.aliases },
-      })),
-    },
-    contract: {
-      typescript: {
-        lines: { item: invocationContract?.tsHintLines ?? [] },
-      },
-      xml: invocationContract?.xmlPreview ?? "",
-      requiredInputs: {
-        item:
-          invocationContract?.properties
-            .filter((property) => property.required)
-            .map((property) => ({ name: property.name, type: property.typeText, description: property.comment })) ?? [],
-      },
-      optionalInputs: {
-        item:
-          invocationContract?.properties
-            .filter((property) => !property.required)
-            .map((property) => ({ name: property.name, type: property.typeText, description: property.comment })) ?? [],
-      },
-      output: summarizeOutputSchema(tool.contract?.outputSchema),
-    },
-    effects: {
-      executionTargets: { item: tool.execution.Targets },
-      network: tool.execution.Network,
-      workspace: tool.execution.Workspace,
-      permissions: { item: tool.permissions },
-      approval: tool.approval?.Mode ?? "allow",
-    },
-    source: {
-      origin: owner.kind,
-      id: owner.name,
-      revision: owner.revision,
-      items: {
-        item: tool.sources.map((source) => ({ id: source.Id, title: source.Title })),
-      },
-    },
-  };
+
+  return [
+    tool.name,
+    interaction.title,
+    projectCompactContract(tool, interaction.purpose, invocationContract?.tsHintLines, runtimeTargets),
+  ];
+}
+
+function projectCompactContract(
+  tool: RegisteredTool,
+  purpose: string,
+  signatureLines: readonly string[] | undefined,
+  runtimeTargets: readonly ToolExecutionTarget[],
+): string {
+  const args = signatureLines?.join("\n") || "arguments: Record<string, unknown>";
+  const permissions = tool.permissions.length > 0 ? `; permissions=${tool.permissions.join("|")}` : "";
+  return [
+    `use: ${purpose}`,
+    `args:\n${args}`,
+    `returns: ${summarizeOutputSchema(tool.contract?.outputSchema)}`,
+    `boundary: targets=${runtimeTargets.join("|") || "none"}; network=${tool.execution.Network}; workspace=${tool.execution.Workspace}; approval=${tool.approval?.Mode ?? "allow"}${permissions}`,
+  ].join("\n");
 }
 
 function summarizeOutputSchema(schema: Readonly<Record<string, unknown>> | undefined): string {
-  if (!schema) return "Unspecified result object.";
+  if (!schema) return "unknown";
+  const type = typeof schema.type === "string" ? schema.type : "object";
   const properties = isRecord(schema.properties) ? Object.keys(schema.properties).sort() : [];
-  const required = Array.isArray(schema.required)
-    ? schema.required.filter((value): value is string => typeof value === "string")
-    : [];
-  const summary = stringifyAgentCanonicalJson({ type: schema.type ?? "object", required, properties });
-  return summary.length <= OutputSummaryMaxChars ? summary : `${summary.slice(0, OutputSummaryMaxChars - 3)}...`;
+  const required = new Set(
+    Array.isArray(schema.required) ? schema.required.filter((value): value is string => typeof value === "string") : [],
+  );
+  const compact =
+    properties.length === 0
+      ? type
+      : `${type}{${properties.map((name) => `${name}${required.has(name) ? "" : "?"}`).join(",")}}`;
+  return compact.length <= OutputSummaryMaxChars ? compact : `${compact.slice(0, OutputSummaryMaxChars - 3)}...`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

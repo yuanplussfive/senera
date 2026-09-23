@@ -5,6 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { pipeline } from "node:stream/promises";
 import { Readable, Transform, type Duplex, type TransformCallback } from "node:stream";
 import { SeneraWorkspaceBoundary, SeneraWorkspaceBoundaryError } from "../Execution/SeneraWorkspaceBoundary.js";
+import { isAgentBase64 } from "../Core/AgentBase64.js";
 import { AgentResourceAccessIntents, type AgentResourceAccessIntent } from "../Safety/AgentResourceAccessPolicy.js";
 import { writeFileAtomic } from "../Core/AgentFs.js";
 import {
@@ -102,9 +103,8 @@ export class AgentArtifactFileWriter {
   }
 
   async writeBase64(filePath: string, value: string): Promise<AgentArtifactFileReceipt> {
-    const normalized = value.replace(/\s+/gu, "");
-    if (!isBase64(normalized)) throw new Error(`Artifact asset is not valid base64: ${filePath}`);
-    const content = Buffer.from(normalized, "base64");
+    if (!isBase64(value)) throw new Error(`Artifact asset is not valid base64: ${filePath}`);
+    const content = Buffer.from(value, "base64");
     const target = await this.prepareTarget(filePath);
     await writeFileAtomic(target.absolutePath, content);
     return {
@@ -253,11 +253,7 @@ function assertJsonBudget(value: number): void {
 }
 
 function isBase64(value: string): boolean {
-  return (
-    value.length > 0 &&
-    value.length % 4 === 0 &&
-    /^(?:[a-z0-9+/]{4})*(?:[a-z0-9+/]{2}==|[a-z0-9+/]{3}=)?$/iu.test(value)
-  );
+  return isAgentBase64(value);
 }
 
 async function readUtf8Prefix(filePath: string, maxBytes: number): Promise<string> {

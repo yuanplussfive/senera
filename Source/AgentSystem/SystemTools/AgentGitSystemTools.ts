@@ -10,7 +10,6 @@ import {
   openAgentHostToolReportingScope,
   type AgentHostToolContext,
 } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
-import { StandardAgentToolObservationProjection } from "../ToolRuntime/AgentToolObservationProjectionPlan.js";
 import { AgentToolResourceCapabilityIds } from "../ToolRuntime/AgentToolResourceCapabilityIds.js";
 import {
   AgentHostToolProtocolVersion,
@@ -18,7 +17,16 @@ import {
   ToolSchedulingModes,
   type ToolSearchManifest,
 } from "../Types/AgentToolContractTypes.js";
-import { defineSystemTool, type AgentSystemToolMetadata } from "./AgentSystemToolDefinition.js";
+import { AgentExecutionErrorCodes } from "../Xml/AgentXmlStatus.js";
+import { AgentToolSemanticProjectionKinds } from "../ToolRuntime/AgentToolSemanticProjection.js";
+import {
+  defineSystemTool,
+  systemToolExecutionResult,
+  type AgentSystemToolExecutionProcess,
+  type AgentSystemToolMetadata,
+} from "./AgentSystemToolDefinition.js";
+import type { AgentToolProcessError } from "../Types/ToolRuntimeTypes.js";
+import type { AgentToolObservationProjectionManifest } from "../Types/AgentToolObservationProjectionTypes.js";
 
 const RepositoryPath = z.string().trim().min(1);
 const GitPath = z.string().trim().min(1);
@@ -92,19 +100,55 @@ const GitMutateInput = z.discriminatedUnion("operation", [
     .strict(),
 ]);
 
+const GitOutputStream = z
+  .object({
+    byteLength: z.number().int().nonnegative(),
+    truncated: z.boolean().optional(),
+  })
+  .strict();
+
 const GitCommandOutput = z
   .object({
     operation: z.string(),
     repository: z.string(),
     exitCode: z.number().int(),
-    stdout: z.string(),
-    stderr: z.string(),
-    stdoutBytes: z.number().int().nonnegative().optional(),
-    stderrBytes: z.number().int().nonnegative().optional(),
-    stdoutTruncated: z.boolean().optional(),
-    stderrTruncated: z.boolean().optional(),
+    output: z
+      .object({
+        stdout: GitOutputStream,
+        stderr: GitOutputStream,
+      })
+      .strict(),
   })
   .strict();
+
+const CompactTextLimits = {
+  maxDepth: 1,
+  maxArrayItems: 4,
+  maxObjectProperties: 8,
+  maxNodes: 16,
+} as const;
+
+const CompactStructuredLimits = {
+  maxDepth: 4,
+  maxArrayItems: 16,
+  maxObjectProperties: 16,
+  maxNodes: 96,
+} as const;
+
+const GitObservationProjection = {
+  schemaVersion: 2,
+  maxTokens: 8_192,
+  maxOmissions: 32,
+  artifactFallback: { strategy: "reference", requiredWhenTruncated: true },
+  sources: [
+    gitObservationSource("headline", "text", "essential", true, 128, CompactTextLimits),
+    gitObservationSource("summary", "text", "high", true, 256, CompactTextLimits),
+    gitObservationSource("semanticDigest", "text", "high", false, 2_048, CompactTextLimits),
+    gitObservationSource("retrieval", "json", "high", true, 128, CompactStructuredLimits),
+    gitObservationSource("result", "json", "normal", true, 1_024, CompactStructuredLimits),
+    gitObservationSource("limitations", "orderedArray", "low", false, 128, CompactStructuredLimits),
+  ],
+} as const satisfies AgentToolObservationProjectionManifest;
 
 const GitExtension = {
   name: "git",
@@ -117,7 +161,19 @@ const GitExtension = {
 } as const;
 
 const GitInspectSearch = gitSearch({
-  aliases: ["git", "git status", "git diff", "git log", "版本控制", "检查提交"],
+  aliases: [
+    "git",
+    "git status",
+    "git diff",
+    "git log",
+    "版本控制",
+    "查看 git 状态",
+    "检查 git 状态",
+    "查看 git 差异",
+    "查看 git 日志",
+    "查看 git 分支",
+    "检查提交",
+  ],
   id: "repository.git.inspect",
   title: "Git repository inspection",
   description: "Inspect status, diffs, history, revisions, and branches without network access.",
@@ -141,9 +197,14 @@ export const GitInspectSystemTool = defineSystemTool({
   input: GitInspectInput,
   output: GitCommandOutput,
   async execute(input, context) {
-    const repository = path.resolve(input.repository);
-    const args = await inspectArguments(input, repository, context.executionEnv);
-    return executeGit(input.operation, repository, args, context);
+    return (await executeGitOperation(input, context, inspectArguments)).result;
+  },
+  async executeWithArtifacts(input, context) {
+    const execution = await executeGitOperation(input, context, inspectArguments);
+    return systemToolExecutionResult(execution.result, {
+      process: execution.process,
+      ...(execution.failure ? { failure: execution.failure } : {}),
+    });
   },
 });
 
@@ -157,9 +218,14 @@ export const GitMutateSystemTool = defineSystemTool({
   input: GitMutateInput,
   output: GitCommandOutput,
   async execute(input, context) {
-    const repository = path.resolve(input.repository);
-    const args = await mutateArguments(input, repository, context.executionEnv);
-    return executeGit(input.operation, repository, args, context);
+    return (await executeGitOperation(input, context, mutateArguments)).result;
+  },
+  async executeWithArtifacts(input, context) {
+    const execution = await executeGitOperation(input, context, mutateArguments);
+    return systemToolExecutionResult(execution.result, {
+      process: execution.process,
+      ...(execution.failure ? { failure: execution.failure } : {}),
+    });
   },
 });
 
@@ -171,7 +237,7 @@ function gitMetadata(
   search: ToolSearchManifest,
 ): AgentSystemToolMetadata {
   return {
-    observation: StandardAgentToolObservationProjection,
+    observation: GitObservationProjection,
     description,
     permissions:
       intent === "inspect"
@@ -198,6 +264,14 @@ function gitMetadata(
       },
     ],
     search,
+    artifacts: {
+      Summary: {
+        Template:
+          "{{ toolName }} {{ result.operation }}: exit {{ result.exitCode }}, stdout {{ result.output.stdout.byteLength }} bytes, stderr {{ result.output.stderr.byteLength }} bytes.",
+        ArtifactTemplate:
+          "- operation: {{ result.operation }}\n  repository: {{ result.repository }}\n  exitCode: {{ result.exitCode }}\n  stdoutBytes: {{ result.output.stdout.byteLength }}\n  stderrBytes: {{ result.output.stderr.byteLength }}",
+      },
+    },
   };
 }
 
@@ -341,12 +415,28 @@ function safeGitReference(value: string): string {
   return value;
 }
 
+async function executeGitOperation<TInput extends z.output<typeof GitInspectInput> | z.output<typeof GitMutateInput>>(
+  input: TInput,
+  context: AgentHostToolContext,
+  resolveArguments: (input: TInput, repository: string, executionEnv: SeneraExecutionEnv) => Promise<string[]>,
+): Promise<GitOperationExecution> {
+  const repository = path.resolve(input.repository);
+  const args = await resolveArguments(input, repository, context.executionEnv);
+  return executeGit(input.operation, repository, args, context);
+}
+
+interface GitOperationExecution {
+  readonly result: z.output<typeof GitCommandOutput>;
+  readonly process: AgentSystemToolExecutionProcess;
+  readonly failure?: AgentToolProcessError;
+}
+
 async function executeGit(
   operation: string,
   repository: string,
   args: readonly string[],
   context: AgentHostToolContext,
-): Promise<z.input<typeof GitCommandOutput>> {
+): Promise<GitOperationExecution> {
   const toolExecution = resolveToolExecutionConfig(context.config);
   const timeoutMs = resolveAgentToolCallTimeoutMs(context.config);
   const reporting = openAgentHostToolReportingScope(context);
@@ -370,22 +460,73 @@ async function executeGit(
   } finally {
     await reporting.close();
   }
-  if (result.exitCode !== 0) {
-    throw new Error(
-      `Git ${operation} failed with exit code ${String(result.exitCode)}: ${result.stderr.trim() || result.stdout.trim()}`,
-    );
-  }
-  return {
-    operation,
-    repository,
-    exitCode: result.exitCode,
+  const output = {
+    stdout: projectGitOutputStream(result.stdout, result.stdoutBytes, result.stdoutTruncated),
+    stderr: projectGitOutputStream(result.stderr, result.stderrBytes, result.stderrTruncated),
+  };
+  const process = {
     stdout: result.stdout,
     stderr: result.stderr,
-    stdoutBytes: result.stdoutBytes,
-    stderrBytes: result.stderrBytes,
-    stdoutTruncated: result.stdoutTruncated,
-    stderrTruncated: result.stderrTruncated,
+    exitCode: result.exitCode,
+    signal: result.signal,
+    semanticProjectionRequest: {
+      kind: AgentToolSemanticProjectionKinds.Execution,
+      command: `git ${operation}`,
+      cwd: repository,
+    },
+  } satisfies AgentSystemToolExecutionProcess;
+  return {
+    result: {
+      operation,
+      repository,
+      exitCode: result.exitCode ?? -1,
+      output,
+    },
+    process,
+    ...(gitProcessFailure(operation, repository, result)
+      ? { failure: gitProcessFailure(operation, repository, result) }
+      : {}),
   };
+}
+
+function projectGitOutputStream(text: string, reportedBytes: number | undefined, truncated: boolean | undefined) {
+  const byteLength = reportedBytes ?? Buffer.byteLength(text, "utf8");
+  return {
+    byteLength,
+    ...(truncated ? { truncated: true } : {}),
+  };
+}
+
+function gitProcessFailure(
+  operation: string,
+  repository: string,
+  result: SeneraShellExecutionResult,
+): AgentToolProcessError | undefined {
+  if (result.exitCode === 0 && !result.signal) return undefined;
+  const signalled = result.signal !== null;
+  return {
+    code: signalled ? AgentExecutionErrorCodes.ToolProcessSignalled : AgentExecutionErrorCodes.ToolProcessExited,
+    message: signalled
+      ? `Git ${operation} was interrupted by ${result.signal}.`
+      : `Git ${operation} failed with exit code ${String(result.exitCode ?? "unknown")}.`,
+    details: {
+      operation,
+      repository,
+      exitCode: result.exitCode,
+      signal: result.signal,
+    },
+  };
+}
+
+function gitObservationSource(
+  source: AgentToolObservationProjectionManifest["sources"][number]["source"],
+  mode: AgentToolObservationProjectionManifest["sources"][number]["mode"],
+  priority: AgentToolObservationProjectionManifest["sources"][number]["priority"],
+  requiredForCompletion: boolean,
+  maxTokens: number,
+  limits: AgentToolObservationProjectionManifest["sources"][number]["limits"],
+) {
+  return { source, mode, priority, requiredForCompletion, maxTokens, limits };
 }
 
 const GitExecutionProfile: SeneraProcessExecutionProfile = Object.freeze({

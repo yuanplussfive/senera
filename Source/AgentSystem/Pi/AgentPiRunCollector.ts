@@ -7,6 +7,7 @@ import { AgentLoopEventFactory } from "../Loop/AgentLoopEventFactory.js";
 import { clampField, type StepTrace } from "../Core/AgentStepTrace.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import { projectAgentToolResultPresentation } from "../ToolRuntime/AgentToolResultPresentation.js";
+import { projectAgentToolResultEventValue } from "../ToolRuntime/AgentToolResultEventProjection.js";
 import type { AgentPiTurnState } from "./AgentPiTurnState.js";
 import { AgentRunActivities } from "../Events/AgentRunEventTypes.js";
 import {
@@ -264,7 +265,7 @@ export class AgentPiRunCollector {
       active.seq,
       event.toolName,
       event.toolCallId,
-      executed?.result ?? event.result,
+      executed ? projectAgentToolResultEventValue(executed) : event.result,
       {
         batchId: this.batchIdFor(event.toolCallId),
         presentation,
@@ -331,7 +332,7 @@ export class AgentPiRunCollector {
       toolArgs: clampField(executed?.arguments ?? active.args),
       toolPreview: executed?.presentation?.headline,
       toolPresentation: executed?.presentation,
-      toolResult: clampField(executed?.result ?? event.result),
+      toolResult: clampField(executed ? projectAgentToolResultEventValue(executed) : event.result),
       toolErrorMessage: event.isError ? readToolErrorMessage(event.result) : undefined,
     };
   }

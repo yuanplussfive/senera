@@ -13,6 +13,10 @@ import type {
 } from "../../../Source/AgentSystem/Pi/AgentPiPlanningCompiler.js";
 import { AgentPiSubstrate } from "../../../Source/AgentSystem/Pi/AgentPiSubstrate.js";
 import { AgentPiTurnState } from "../../../Source/AgentSystem/Pi/AgentPiTurnState.js";
+import {
+  readAgentPiMessageTextContent,
+  readAgentPiToolObservation,
+} from "../../../Source/AgentSystem/Pi/AgentPiToolObservation.js";
 import { AgentSkillScanner } from "../../../Source/AgentSystem/Skills/AgentSkillScanner.js";
 import { listDefaultAgentHostCapabilityNames } from "../../../Source/AgentSystem/AgentDefaultHostCapabilities.js";
 import { AgentSessionApprovalLeaseStore } from "../../../Source/AgentSystem/Safety/AgentSessionApprovalLeaseStore.js";
@@ -278,8 +282,16 @@ describe("Pi Coding Agent production substrate", () => {
       expect(compiler.requests[0]?.model.api).toBe("senera-planning");
       const toolResult = compiler.requests[1]?.context.messages.find((message) => message.role === "toolResult");
       expect(toolResult).toBeDefined();
-      expect(JSON.stringify(toolResult)).toContain("senera.tool_observation.v4");
-      expect(JSON.stringify(toolResult)).toContain(artifactUris[0]);
+      expect(JSON.stringify(toolResult)).toContain("senera.tool_observation.v5");
+      // The small result is inlined verbatim, so the observation carries the
+      // value directly and omits the completeness view.
+      const toolResultObservation = readAgentPiToolObservation(readAgentPiMessageTextContent(toolResult!));
+      expect(toolResultObservation?.detail.result).toEqual({ sum: 42 });
+      expect(toolResultObservation?.observation_view).toBeUndefined();
+      // The durable artifact still exists but the observation needs no
+      // retrieval coordinate for it (the URI only stays on the Pi envelope).
+      expect(JSON.stringify(toolResultObservation)).not.toContain(artifactUris[0]);
+      expect(artifactUris).toHaveLength(1);
     } finally {
       await substrate.close();
       await toolCallExecutor.close();
@@ -515,14 +527,12 @@ describe("Pi Coding Agent production substrate", () => {
       expect(textOccurrences(firstRequest, "FIRST_SKILL_BODY")).toBe(1);
       expect(textOccurrences(firstPrompt, "FIRST_PROJECT_CONTEXT")).toBe(1);
       expect(firstRequest).not.toContain("UNSELECTED_SKILL_BODY");
-      expect(textOccurrences(secondRequest, "FIRST_SKILL_BODY")).toBe(1);
+      expect(textOccurrences(secondRequest, "FIRST_SKILL_BODY")).toBe(0);
       expect(secondPrompt).not.toContain("FIRST_PROJECT_CONTEXT");
       expect(secondPrompt).not.toContain("SECOND_SKILL_BODY");
       expect(textOccurrences(secondRequest, "SECOND_SKILL_BODY")).toBe(1);
-      expect(secondRequest.lastIndexOf("SECOND_SKILL_BODY")).toBeGreaterThan(
-        secondRequest.lastIndexOf("FIRST_SKILL_BODY"),
-      );
-      expect(secondRequest).toContain("the latest senera_turn_context supersedes it");
+      expect(secondRequest).toContain("<senera_live_context");
+      expect(secondRequest).not.toContain("<senera_turn_context");
       expect(textOccurrences(secondPrompt, "SECOND_PROJECT_CONTEXT")).toBe(1);
       expect(secondRequest).not.toContain("UNSELECTED_SKILL_BODY");
     } finally {
@@ -635,6 +645,18 @@ function addNumbersTool(workspaceRoot: string): RegisteredTool {
     execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
     runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, ResultAssessment: "ProcessExit" },
     sources: [],
+    search: {
+      Summary: "Add two numbers for deterministic arithmetic tasks.",
+      Tags: ["arithmetic", "math"],
+      Capabilities: [
+        {
+          Id: "test-math.add",
+          Title: "Add numbers",
+          Description: "Add two numeric values.",
+          Facets: { Actions: ["add"], Targets: ["arithmetic"], Effects: ["none"] },
+        },
+      ],
+    },
     childGrant: "inherit",
     evidenceCapabilities: [],
   };

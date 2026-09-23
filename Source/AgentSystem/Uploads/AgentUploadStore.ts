@@ -30,6 +30,8 @@ import {
   type AgentResolvedUpload,
 } from "./AgentUploadTypes.js";
 import type { AgentResourcePublishInput, AgentResourcePublisher } from "../Resources/AgentResourcePublisher.js";
+import type { AgentResourcePublishBase64Input } from "../Resources/AgentResourcePublisher.js";
+import { throwIfAborted } from "../Core/AgentCancellation.js";
 
 const MILLISECONDS_PER_HOUR = 60 * 60 * 1_000;
 const MILLISECONDS_PER_MINUTE = 60 * 1_000;
@@ -125,6 +127,7 @@ export interface AgentUploadSaveInput {
   stream: Readable;
   originalName: string;
   declaredMime?: string;
+  signal?: AbortSignal;
 }
 
 export interface AgentUploadMaintenanceResult {
@@ -193,7 +196,8 @@ export class AgentUploadStore implements AgentResourcePublisher {
 
       await fsp.mkdir(uploadDir, { recursive: true });
 
-      await pipeline(input.stream, meter, fs.createWriteStream(filePath));
+      throwIfAborted(input.signal);
+      await pipeline(input.stream, meter, fs.createWriteStream(filePath), { signal: input.signal });
       const mime = await detectAgentUploadMime({
         filePath,
         originalName: input.originalName,
@@ -245,11 +249,25 @@ export class AgentUploadStore implements AgentResourcePublisher {
    * manifest, integrity, and retention path as a user upload.
    */
   async publishBytes(input: AgentResourcePublishInput): Promise<AgentUploadAttachment> {
-    const bytes = Buffer.from(input.bytes);
+    const bytes = Buffer.isBuffer(input.bytes) ? input.bytes : Buffer.from(input.bytes);
     return this.save({
       stream: Readable.from([bytes]),
       originalName: input.name,
       declaredMime: input.mime,
+      signal: input.signal,
+    });
+  }
+
+  /**
+   * Decodes provider Base64 incrementally so a large image does not require a
+   * second full in-memory Buffer before it enters the upload pipeline.
+   */
+  async publishBase64(input: AgentResourcePublishBase64Input): Promise<AgentUploadAttachment> {
+    return this.save({
+      stream: Readable.from(readBase64Chunks(input.base64)).pipe(new Base64DecodeTransform()),
+      originalName: input.name,
+      declaredMime: input.mime,
+      signal: input.signal,
     });
   }
 
@@ -501,5 +519,39 @@ class UploadByteMeter extends Transform {
 
   sha256(): string {
     return this.hash.digest("hex");
+  }
+}
+
+class Base64DecodeTransform extends Transform {
+  private carry = "";
+
+  _transform(chunk: Buffer, _encoding: BufferEncoding, callback: TransformCallback): void {
+    const input = this.carry + stripBase64Whitespace(chunk.toString("ascii"));
+    const completeLength = input.length - (input.length % 4);
+    if (completeLength > 0) this.push(Buffer.from(input.slice(0, completeLength), "base64"));
+    this.carry = input.slice(completeLength);
+    callback();
+  }
+
+  _flush(callback: TransformCallback): void {
+    if (this.carry) this.push(Buffer.from(this.carry, "base64"));
+    callback();
+  }
+}
+
+function stripBase64Whitespace(value: string): string {
+  const projected: string[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code !== 0x09 && code !== 0x0a && code !== 0x0c && code !== 0x0d && code !== 0x20) {
+      projected.push(value[index]!);
+    }
+  }
+  return projected.join("");
+}
+
+function* readBase64Chunks(value: string, chunkSize = 64 * 1024): Generator<string> {
+  for (let offset = 0; offset < value.length; offset += chunkSize) {
+    yield value.slice(offset, offset + chunkSize);
   }
 }

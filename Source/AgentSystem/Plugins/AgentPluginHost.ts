@@ -15,7 +15,6 @@ import {
   type AgentPluginListEntry,
   type AgentPluginLoadError,
 } from "./AgentPluginTypes.js";
-
 /** Loads a plugin entry module; the real host uses dynamic `import()`, tests
  * inject a fixture loader. */
 export type AgentPluginEntryLoader = (directory: string, entry: string) => Promise<AgentPluginEntryModule>;
@@ -322,7 +321,10 @@ export function pluginExtensionOwner(plugin: AgentPluginDescriptor): AgentExtens
     revision: plugin.manifest.version,
     priority: 2,
     trusted: plugin.builtin,
-    requiresApproval: false,
+    // Third-party (non-bundled) plugin tools carry the same approval boundary
+    // as third-party MCP servers: every call is adjudicated by the approval
+    // system instead of silently trusted.
+    requiresApproval: !plugin.builtin,
   };
 }
 

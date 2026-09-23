@@ -4,6 +4,9 @@ export interface AgentPiCompactionProjectionPolicy {
   readonly maxDisplayedCalls: number;
   readonly maxSummaryTokens: number;
   readonly maxToolIndexTokens: number;
+  readonly recoveryRecentMessageCount: number;
+  readonly recoveryMessageTokenBudget: number;
+  readonly recoveryPreviousSummaryTokenBudget: number;
 }
 
 export const DefaultAgentPiCompactionProjectionPolicy: Readonly<AgentPiCompactionProjectionPolicy> = Object.freeze({
@@ -12,6 +15,9 @@ export const DefaultAgentPiCompactionProjectionPolicy: Readonly<AgentPiCompactio
   maxDisplayedCalls: 20,
   maxSummaryTokens: 2_048,
   maxToolIndexTokens: 2_048,
+  recoveryRecentMessageCount: 12,
+  recoveryMessageTokenBudget: 256,
+  recoveryPreviousSummaryTokenBudget: 512,
 });
 
 export function normalizeAgentPiCompactionLimit(value: number, name: string): number {

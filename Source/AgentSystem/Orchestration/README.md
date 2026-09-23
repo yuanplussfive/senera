@@ -16,13 +16,13 @@ AgentSpawn / AgentWait / AgentInput / AgentStop / AgentResume
 
 `AgentRunDispatchPort` is the only execution port from orchestration into Session. This module does not construct a second Pi instance, model client, Tool executor, approval runtime, sandbox, or filesystem communication channel.
 
-The bundled role taxonomy and some graph-presentation ideas were adapted from `pi-subagents` 0.40.0 under its MIT license. Attribution is retained in `System/Extensions/agent-delegation/NOTICE.md`. Senera does not load that package at runtime and does not use its process runner, TUI, temporary state, session files, or Tool extensions.
+The bundled role taxonomy and some graph-presentation ideas were adapted from `pi-subagents` 0.40.0 under its MIT license. Attribution is retained in `System/Extensions/coordinate/agent-delegation/NOTICE.md`. Senera does not load that package at runtime and does not use its process runner, TUI, temporary state, session files, or Tool extensions.
 
 ## Native Role Catalog
 
 `AgentSubagentRoleCatalog` reads two explicit sources:
 
-1. Bundled roles under `System/Extensions/agent-delegation/agents`.
+1. The unique package-declared `agentRoles` contribution under `System/Extensions/<domain>/<extension>/`.
 2. Workspace overrides under `.senera/agents`.
 
 Every role is a Markdown document with strict YAML frontmatter. Workspace definitions override bundled definitions only by canonical role ID. Unknown frontmatter fields, empty instructions, symlinks, duplicate aliases, aliases shadowing canonical IDs, and ambiguous aliases fail explicitly. A content revision covers the parsed contract and prompt.

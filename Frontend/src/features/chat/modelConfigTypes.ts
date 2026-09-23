@@ -50,8 +50,6 @@ export interface ModelProviderDraft {
 
 export interface ModelCapabilitiesDraft {
   Chat?: boolean;
-  Embedding?: boolean;
-  Rerank?: boolean;
   Vision?: boolean;
   ImageOutput?: boolean;
   Reasoning?: boolean;

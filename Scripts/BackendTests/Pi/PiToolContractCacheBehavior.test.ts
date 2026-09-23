@@ -151,6 +151,28 @@ describe("Pi tool contract cache behavior", () => {
     expect(projector.createToolSet().fingerprint).not.toBe(first);
   });
 
+  test("changes the tool fingerprint when an internal resource contract changes", () => {
+    const registry = new AgentExtensionRegistry();
+    const projector = toolProjector(registry);
+    registerSystemTools(registry);
+
+    const first = projector.createToolSet().fingerprint;
+    const tool = registry.listTools().find((candidate) => candidate.name === "WorkspaceApplyPatch");
+    if (!tool) throw new Error("Missing WorkspaceApplyPatch.");
+    const replacement = {
+      ...tool,
+      handler: {
+        ...tool.handler,
+        resources: (tool.handler.resources ?? []).map((resource, index) =>
+          index === 0 ? { ...resource, Parameters: { ...resource.Parameters, Intent: "replace" } } : resource,
+        ),
+      },
+    };
+    registry.replaceToolExtension(tool.owner, [replacement]);
+
+    expect(projector.createToolSet().fingerprint).not.toBe(first);
+  });
+
   test("removes the execution selector when a dual-target tool is Local-only at runtime", () => {
     const registry = new AgentExtensionRegistry();
     let availableExecutionTargets: Array<"Local" | "Sandbox"> = ["Local"];

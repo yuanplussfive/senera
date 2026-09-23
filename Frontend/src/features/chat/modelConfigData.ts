@@ -312,8 +312,6 @@ export function defaultModelCapabilities(
     catalog[key] ?? readBoolean(capabilities[key]) ?? inferred[key] ?? fallback;
   return {
     Chat: defaultCapability("Chat", true),
-    Embedding: defaultCapability("Embedding", false),
-    Rerank: defaultCapability("Rerank", false),
     Vision: defaultCapability("Vision", false),
     ImageOutput: defaultCapability("ImageOutput", false),
     Reasoning: defaultCapability("Reasoning", false),
@@ -618,8 +616,6 @@ export function readBoolean(value: unknown): boolean | undefined {
 
 export const ModelCapabilityKeys = [
   "Chat",
-  "Embedding",
-  "Rerank",
   "Vision",
   "ImageOutput",
   "Reasoning",

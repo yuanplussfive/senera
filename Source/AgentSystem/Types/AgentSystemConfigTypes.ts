@@ -18,7 +18,6 @@ import type {
   AgentContinuityLearningConfig,
   AgentToolLearningConfig,
   AgentToolSearchConfig,
-  AgentVectorModelsConfig,
 } from "./AgentToolAndMemoryConfigTypes.js";
 import type {
   AgentModelGroupConfig,
@@ -47,7 +46,6 @@ export interface AgentDefaultsConfig {
   AgentLoop?: AgentLoopConfig;
   Todos?: AgentTodosConfig;
   ToolSearch?: AgentToolSearchConfig;
-  VectorModels?: AgentVectorModelsConfig;
   ToolLearning?: AgentToolLearningConfig;
   ContinuityLearning?: AgentContinuityLearningConfig;
   Presets?: AgentPresetsConfig;
@@ -99,7 +97,6 @@ export interface AgentSystemConfig {
   AgentLoop?: AgentLoopConfig;
   Todos?: AgentTodosConfig;
   ToolSearch?: AgentToolSearchConfig;
-  VectorModels?: AgentVectorModelsConfig;
   ToolLearning?: AgentToolLearningConfig;
   ContinuityLearning?: AgentContinuityLearningConfig;
   Presets?: AgentPresetsConfig;
