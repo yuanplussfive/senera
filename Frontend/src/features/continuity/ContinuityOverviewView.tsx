@@ -1,6 +1,9 @@
 import { ChevronDown } from "lucide-react";
+import { useRef } from "react";
 import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
 import type { RunRecord } from "../../store/sessionStore";
+import { cn } from "../../lib/util";
+import { FluidHoverHighlight, useFluidHover, useMotionLevel } from "../../shared/motion";
 import { ContinuityEmptyText } from "./ContinuityPanelPrimitives";
 
 /** A quiet, editorial index of the context that actually entered this turn. */
@@ -10,6 +13,9 @@ export function ContinuityOverviewView({ run }: { run: RunRecord }): JSX.Element
 
   const selectedCount = sumSelectedContinuityEntries(continuity.selection);
   const anchors = run.recall?.local?.anchorLabels ?? [];
+  const { disableMotion } = useMotionLevel();
+  const anchorsListRef = useRef<HTMLOListElement>(null);
+  const anchorsHover = useFluidHover(anchorsListRef, { axis: "y", gapClick: false });
 
   return (
     <section className="space-y-4 px-4 py-3.5" data-continuity-overview>
@@ -41,11 +47,20 @@ export function ContinuityOverviewView({ run }: { run: RunRecord }): JSX.Element
         {anchors.length === 0 ? (
           <ContinuityEmptyText>{frontendMessage("continuity.overview.emptyAnchors")}</ContinuityEmptyText>
         ) : (
-          <ol className="divide-y divide-line-subtle border-y border-line-subtle">
+          <ol
+            ref={anchorsListRef}
+            className="relative divide-y divide-line-subtle border-y border-line-subtle"
+            {...anchorsHover.handlers}
+          >
+            <FluidHoverHighlight hover={anchorsHover} hidden={disableMotion} />
             {anchors.map((anchor, index) => (
               <li
                 key={anchor}
-                className="flex min-w-0 items-baseline gap-2 py-2 transition-colors hover:bg-surface-hover first:pt-2 last:pb-2"
+                ref={anchorsHover.getItemRef(index)}
+                className={cn(
+                  "relative z-10 flex min-w-0 items-baseline gap-2 py-2 transition-colors first:pt-2 last:pb-2",
+                  disableMotion ? "hover:bg-surface-hover" : "hover:bg-transparent",
+                )}
               >
                 <span className="w-5 shrink-0 font-mono text-[9px] tabular-nums text-content-disabled">
                   {String(index + 1).padStart(2, "0")}
@@ -110,15 +125,28 @@ function SectionHeading({ id, title }: { id: string; title: FrontendMessageKey }
 
 function ProfileAnchors({ run }: { run: RunRecord }): JSX.Element {
   const entries = run.continuity?.residentProfile ?? [];
+  const { disableMotion } = useMotionLevel();
+  const profileListRef = useRef<HTMLUListElement>(null);
+  const profileHover = useFluidHover(profileListRef, { axis: "y", gapClick: false });
   if (entries.length === 0) {
     return <ContinuityEmptyText>{frontendMessage("continuity.emptyResidentProfile")}</ContinuityEmptyText>;
   }
   return (
-    <ul className="space-y-2" aria-label={frontendMessage("continuity.residentProfile")}>
-      {entries.map((entry) => (
+    <ul
+      ref={profileListRef}
+      className="relative space-y-2"
+      aria-label={frontendMessage("continuity.residentProfile")}
+      {...profileHover.handlers}
+    >
+      <FluidHoverHighlight hover={profileHover} hidden={disableMotion} />
+      {entries.map((entry, index) => (
         <li
           key={`${entry.subject}:${entry.key}`}
-          className="min-w-0 border-l border-line-strong pl-2 transition-colors hover:bg-surface-hover"
+          ref={profileHover.getItemRef(index)}
+          className={cn(
+            "relative z-10 min-w-0 border-l border-line-strong pl-2 transition-colors",
+            disableMotion ? "hover:bg-surface-hover" : "hover:bg-transparent",
+          )}
         >
           <p className="text-[9.5px] leading-4 text-content-muted">{entry.key}</p>
           <p className="break-words text-[10.5px] leading-4 text-content-secondary">{entry.claim}</p>

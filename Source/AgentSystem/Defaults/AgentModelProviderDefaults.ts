@@ -243,6 +243,7 @@ function resolveEndpointFields(
     Icon: endpoint.Icon ?? baseline?.Icon ?? "",
     Enabled: endpoint.Enabled ?? baseline?.Enabled ?? true,
     Kind: endpoint.Kind ?? baseline?.Kind ?? "OpenAICompatible",
+    DefaultEndpoint: endpoint.DefaultEndpoint ?? baseline?.DefaultEndpoint ?? "ChatCompletions",
     BaseUrl: endpoint.BaseUrl ?? baseline?.BaseUrl ?? "",
     ApiKey: endpoint.ApiKey ?? baseline?.ApiKey ?? "",
     ApiVersion: endpoint.ApiVersion ?? baseline?.ApiVersion ?? "2023-06-01",

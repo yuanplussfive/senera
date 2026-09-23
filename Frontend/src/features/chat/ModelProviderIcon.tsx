@@ -38,6 +38,7 @@ interface ModelProviderIconRuleDocument {
 }
 
 const ModelProviderIconRuleConfig = iconRules as ModelProviderIconRuleDocument;
+const SafeRasterDataImagePattern = /^data:image\/(?:avif|gif|jpe?g|png|webp);base64,[a-z0-9+/]+={0,2}$/iu;
 
 export const ModelProviderIconNames = ModelProviderIconRuleConfig.icons;
 const ModelProviderIconNameSet = new Set(ModelProviderIconNames);
@@ -119,12 +120,11 @@ interface ModelProviderIconProps {
 }
 
 export function ModelProviderIcon({ icon, className, size = 16 }: ModelProviderIconProps): JSX.Element | null {
-  if (!icon) return null;
-
+  const targetIcon = icon || DefaultModelProviderIconName;
   const style = { height: size, width: size };
   return (
     <img
-      src={readModelProviderIconSrc(icon)}
+      src={encodeURI(readModelProviderIconSrc(targetIcon))}
       alt=""
       aria-hidden="true"
       className={cn("block shrink-0 object-contain align-middle", className)}
@@ -147,13 +147,17 @@ export function readModelProviderIconSrc(icon: string, baseUrl: string = import.
 /**
  * Provider marks may point at a user-owned image. Keep this deliberately
  * narrow: the value is ultimately assigned to an <img> src, so only image
- * URLs, data images, and same-origin paths are accepted as custom sources.
+ * URLs, raster data images, and same-origin paths are accepted as custom sources.
  */
 export function readCustomModelProviderIconSource(value: string | undefined): string | undefined {
   const candidate = value?.trim();
   if (!candidate) return undefined;
   if ([...candidate].some((character) => isUnsafeCustomIconCharacter(character))) return undefined;
-  if (/^https?:\/\//iu.test(candidate) || /^data:image\//iu.test(candidate) || candidate.startsWith("/")) {
+  if (
+    /^https?:\/\//iu.test(candidate) ||
+    SafeRasterDataImagePattern.test(candidate) ||
+    (candidate.startsWith("/") && !candidate.startsWith("//"))
+  ) {
     return candidate;
   }
   return undefined;
@@ -164,6 +168,7 @@ function isUnsafeCustomIconCharacter(character: string): boolean {
   return (
     codePoint === undefined ||
     (codePoint >= 0 && codePoint <= 0x1f) ||
+    (codePoint >= 0xd800 && codePoint <= 0xdfff) ||
     codePoint === 0x22 ||
     codePoint === 0x27 ||
     codePoint === 0x3c ||
@@ -238,4 +243,18 @@ function normalizeModelProviderIconName(value: string): string {
     .toLowerCase()
     .replace(/\.svg$/u, "");
   return ModelProviderIconNameSet.has(candidate) ? candidate : DefaultModelProviderIconName;
+}
+
+export function ProviderMark({
+  icon,
+  label: _label,
+  size = 18,
+  className,
+}: {
+  icon?: string;
+  label?: string;
+  size?: number;
+  className?: string;
+}): JSX.Element {
+  return <ModelProviderIcon icon={icon || DefaultModelProviderIconName} size={size} className={className} />;
 }

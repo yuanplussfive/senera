@@ -188,6 +188,18 @@ export function WorkspaceSettings({
           showClose={false}
           className="w-[min(500px,calc(100vw_-_32px))]"
           bodyClassName="px-8 pb-7 pt-1"
+          footerClassName="px-8"
+          footer={
+            <DialogActions>
+              <DialogActionButton close autoFocus>
+                {frontendMessage("settings.workspace.cancel")}
+              </DialogActionButton>
+              <DialogActionButton variant="danger" onClick={confirmSwitch}>
+                <FolderSearch aria-hidden="true" className="h-3.5 w-3.5" />
+                {frontendMessage("settings.workspace.confirmSwitch")}
+              </DialogActionButton>
+            </DialogActions>
+          }
         >
           <div className="flex items-start gap-2.5 py-1 text-[12.5px] leading-5 text-ink-600">
             <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-brick-50 text-brick-600">
@@ -198,15 +210,6 @@ export function WorkspaceSettings({
           <div className="mt-4 min-w-0 rounded-lg border border-line bg-surface-subtle px-3 py-2.5">
             <div className="font-mono text-[12px] leading-5 break-all text-content-primary">{normalizedPath}</div>
           </div>
-          <DialogActions className="mt-6">
-            <DialogActionButton close autoFocus>
-              {frontendMessage("settings.workspace.cancel")}
-            </DialogActionButton>
-            <DialogActionButton variant="danger" onClick={confirmSwitch}>
-              <FolderSearch aria-hidden="true" className="h-3.5 w-3.5" />
-              {frontendMessage("settings.workspace.confirmSwitch")}
-            </DialogActionButton>
-          </DialogActions>
         </DialogContent>
       </Dialog>
     </div>
@@ -257,7 +260,7 @@ function WorkspaceStateMessage({ tone, text }: { tone: "warn"; text: string }): 
     <div
       className={cn(
         "flex items-center gap-2 rounded-lg border px-3 py-2.5 text-[12px] leading-5",
-        tone === "warn" && "border-amber-500/25 bg-amber-500/10 text-amber-700",
+        tone === "warn" && "border-brick-200 bg-brick-50 text-brick-700",
       )}
       role="status"
     >

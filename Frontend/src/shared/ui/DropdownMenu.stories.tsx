@@ -11,8 +11,14 @@ import {
   DropdownMenuLabel,
   DropdownMenuMeta,
   DropdownMenuSeparator,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "./DropdownMenu";
+import { AppIcon } from "./AppIcon";
 
 export const WithSelection: Story = () => {
   const [showDiagnostics, setShowDiagnostics] = useState(true);
@@ -152,3 +158,77 @@ export const ProfileReference: Story = () => (
     </DropdownMenu>
   </div>
 );
+
+export const WithSubmenu: Story = () => (
+  <div className="flex min-h-[400px] items-center justify-center p-8">
+    <DropdownMenu defaultOpen>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline">账户菜单</Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger icon={<AppIcon icon="language" size={15} />}>语言</DropdownMenuSubTrigger>
+          <DropdownMenuSubContent>
+            <DropdownMenuItem trailing={<AppIcon icon="checkmark" size={15} />}>简体中文</DropdownMenuItem>
+            <DropdownMenuItem>English</DropdownMenuItem>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  </div>
+);
+
+export const WithCheckboxItems: Story = () => {
+  const [showLineNumbers, setShowLineNumbers] = useState(true);
+  const [wordWrap, setWordWrap] = useState(false);
+  const [minimap, setMinimap] = useState(true);
+
+  return (
+    <div className="flex min-h-[400px] items-center justify-center p-8">
+      <DropdownMenu defaultOpen>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline">
+            视图选项
+            <ChevronDown className="h-3.5 w-3.5" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-52">
+          <DropdownMenuLabel>编辑器设置</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuCheckboxItem checked={showLineNumbers} onCheckedChange={setShowLineNumbers}>
+            显示行号
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem checked={wordWrap} onCheckedChange={setWordWrap}>
+            自动换行
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem checked={minimap} onCheckedChange={setMinimap}>
+            显示缩略图
+          </DropdownMenuCheckboxItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+};
+
+export const WithRadioItems: Story = () => {
+  const [density, setDensity] = useState("comfortable");
+
+  return (
+    <div className="flex min-h-[400px] items-center justify-center p-8">
+      <DropdownMenu defaultOpen>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline">行距</Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuRadioGroup value={density} onValueChange={setDensity}>
+            <DropdownMenuRadioItem value="compact">紧凑</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="comfortable">舒适</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="spacious" disabled>
+              宽松（不可用）
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+};

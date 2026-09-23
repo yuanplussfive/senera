@@ -37,7 +37,7 @@ export function ToolActionIcon({
       </MotionIconSwap>
       {live && showLiveIndicator ? (
         <span
-          className="absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-accent-solid ring-2 ring-surface-canvas motion-safe:animate-pulse"
+          className="senera-loading-pulse absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-accent-solid ring-2 ring-surface-canvas"
           data-tool-action-live-indicator
         />
       ) : null}

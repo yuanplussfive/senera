@@ -37,8 +37,6 @@
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "@fontsource-variable/nunito-sans": "^5.3.0",
     "@heroicons/react": "^2.2.0",
-    "@hugeicons/core-free-icons": "^4.2.3",
-    "@hugeicons/react": "^1.1.9",
     "@lezer/highlight": "^1.2.3",
     "@panzoom/panzoom": "^4.6.2",
     "@radix-ui/react-context-menu": "^2.2.16",

@@ -26,6 +26,7 @@ import {
   IconButton,
   Tooltip,
 } from "../../shared/ui";
+import { FluidHoverHighlight, useFluidHover, useMotionLevel } from "../../shared/motion";
 import {
   isTerminalState,
   supportsTerminalCapability,
@@ -53,6 +54,11 @@ export interface TerminalTitlebarProps {
 
 export function TerminalTitlebar(props: TerminalTitlebarProps): JSX.Element {
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const tabListRef = useRef<HTMLDivElement>(null);
+  const { disableMotion } = useMotionLevel();
+  const tabHover = useFluidHover(tabListRef, { axis: "x", gapClick: false });
+  // The selected tab paints its own canvas background; the hover layer yields.
+  const selectedTabIndex = props.resources.findIndex((resource) => resource.resourceId === props.selected?.resourceId);
   const selectedIsActive = Boolean(props.selected && !isTerminalState(props.selected.state));
   const canSignal = Boolean(props.selected && supportsTerminalCapability(props.selected, "signals"));
 
@@ -82,20 +88,28 @@ export function TerminalTitlebar(props: TerminalTitlebarProps): JSX.Element {
         </div>
         {props.resources.length > 0 ? (
           <div
+            ref={tabListRef}
             role="tablist"
             aria-label={frontendMessage("terminal.resource.select")}
-            className="terminal-tablist flex min-w-0 flex-1 items-stretch overflow-x-auto"
+            className="terminal-tablist relative flex min-w-0 flex-1 items-stretch overflow-x-auto"
             data-terminal-tablist
+            {...tabHover.handlers}
           >
+            <FluidHoverHighlight
+              hover={tabHover}
+              hidden={disableMotion || tabHover.activeIndex === selectedTabIndex}
+              surfaceClassName="bg-[var(--terminal-hover)]"
+            />
             {props.resources.map((resource, index) => {
               const selected = resource.resourceId === props.selected?.resourceId;
               const label = terminalTabLabel(resource);
               return (
                 <div
+                  ref={tabHover.getItemRef(index)}
                   key={resource.resourceId}
                   role="presentation"
                   className={cn(
-                    "group relative flex h-full min-w-0 items-center",
+                    "group relative z-10 flex h-full min-w-0 items-center",
                     props.resources.length === 1 ? "flex-1" : "w-[148px] shrink-0",
                     selected &&
                       "bg-[var(--terminal-canvas)] after:absolute after:inset-x-2 after:bottom-0 after:h-px after:bg-[var(--terminal-accent)]",
@@ -117,7 +131,8 @@ export function TerminalTitlebar(props: TerminalTitlebarProps): JSX.Element {
                       onKeyDown={(event) => handleTabKeyDown(event, index)}
                       className={cn(
                         "flex h-full min-w-0 flex-1 items-center gap-2 px-2 text-left text-[11.5px] outline-none",
-                        "text-[var(--terminal-muted)] transition-colors hover:bg-[var(--terminal-hover)] hover:text-[var(--terminal-foreground)]",
+                        "text-[var(--terminal-muted)] transition-colors hover:text-[var(--terminal-foreground)]",
+                        disableMotion && "hover:bg-[var(--terminal-hover)]",
                         "focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--terminal-accent)]",
                         selected && "text-[var(--terminal-foreground)]",
                       )}
@@ -314,7 +329,7 @@ export function TerminalSearchOverlay(props: {
   return (
     <div
       role="search"
-      className="absolute right-2 top-2 z-20 flex h-9 w-[min(320px,calc(100%-16px))] items-center gap-1 rounded border border-[var(--terminal-border)] bg-[var(--terminal-elevated)] px-2 shadow-xl"
+      className="absolute right-2 top-2 z-20 flex h-9 w-[min(320px,calc(100%-16px))] items-center gap-1 rounded border border-[var(--terminal-border)] bg-[var(--terminal-elevated)] px-2 shadow-soft"
     >
       <Search className="h-3.5 w-3.5 shrink-0 text-[var(--terminal-subtle)]" aria-hidden="true" />
       <input

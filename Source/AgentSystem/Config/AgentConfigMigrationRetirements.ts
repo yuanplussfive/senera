@@ -92,6 +92,11 @@ export function migrateAgentConfigRetirementStep(options: AgentConfigRetirementM
       if (isRecord(config.Defaults))
         removeRetiredToolSearchEmbeddingMetadata(config.Defaults, "Defaults.", removedPaths);
       return 27;
+    case 27:
+      removeRetiredPluginConfiguration(config, "", migratedPaths, removedPaths);
+      if (isRecord(config.Defaults))
+        removeRetiredPluginConfiguration(config.Defaults, "Defaults.", migratedPaths, removedPaths);
+      return 28;
     default:
       return undefined;
   }
@@ -338,6 +343,40 @@ function removeRetiredGoalConfiguration(
   removedPaths: string[],
 ): void {
   if (removeProperty(container, "Goals")) removedPaths.push(`${prefix}Goals`);
+}
+
+function removeRetiredPluginConfiguration(
+  container: Record<string, unknown>,
+  prefix: string,
+  migratedPaths: string[],
+  removedPaths: string[],
+): void {
+  if (removeProperty(container, "PluginRoots")) removedPaths.push(`${prefix}PluginRoots`);
+  if (removeProperty(container, "PluginDiscovery")) removedPaths.push(`${prefix}PluginDiscovery`);
+
+  // PluginDocumentation was renamed when plugin configuration moved into system extensions.
+  if (prefix !== "") return;
+  const currentDocumentation = container.ToolDocumentation;
+  if (currentDocumentation !== undefined && !isRecord(currentDocumentation)) {
+    throw new AgentConfigMigrationError("ToolDocumentation must be an object.");
+  }
+  if (isRecord(currentDocumentation) && removeProperty(currentDocumentation, "PromptXml")) {
+    removedPaths.push("ToolDocumentation.PromptXml");
+  }
+  if (!Object.hasOwn(container, "PluginDocumentation")) return;
+  const legacyDocumentation = container.PluginDocumentation;
+  if (!isRecord(legacyDocumentation)) {
+    throw new AgentConfigMigrationError("PluginDocumentation must be an object to migrate to ToolDocumentation.");
+  }
+
+  const merged = { ...legacyDocumentation, ...(isRecord(currentDocumentation) ? currentDocumentation : {}) };
+  if (removeProperty(merged, "PromptXml")) {
+    removedPaths.push("PluginDocumentation.PromptXml");
+  }
+  container.ToolDocumentation = merged;
+  delete container.PluginDocumentation;
+  migratedPaths.push("ToolDocumentation");
+  removedPaths.push("PluginDocumentation");
 }
 
 function removeProperty(container: Record<string, unknown>, key: string): boolean {

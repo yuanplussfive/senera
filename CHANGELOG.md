@@ -2,6 +2,13 @@
 
 这里记录 Senera 每个正式版本中的新增功能、问题修复和兼容性变化。
 
+## [1.15.3](https://github.com/yuanplussfive/senera/compare/v1.15.2...v1.15.3) (2026-09-15)
+
+
+### 问题修复
+
+* **runtime:** stabilize channel delivery and MCP availability ([#130](https://github.com/yuanplussfive/senera/issues/130)) ([f8e0443](https://github.com/yuanplussfive/senera/commit/f8e0443e89cd677b06f42438ce0f16c82259e23c))
+
 ## [1.15.2](https://github.com/yuanplussfive/senera/compare/v1.15.1...v1.15.2) (2026-09-13)
 
 

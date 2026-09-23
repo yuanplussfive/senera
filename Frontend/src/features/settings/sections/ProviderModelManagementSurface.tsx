@@ -27,12 +27,14 @@ import {
   ProviderModelCatalogDialog,
   ProviderModelGroupUnsupportedDialog,
   ProviderModelManualAddDialog,
+  type ManualModelAddOptions,
 } from "./ProviderModelManagementDialogs";
 import { ProviderModelProviderRail } from "./ProviderModelProviderRail";
 import { useProviderModelSaveQueue } from "./useProviderModelSaveQueue";
 
 export function ProviderModelManagementSurface({
   disabled,
+  defaultModelEndpoint,
   endpointOptions = [],
   modelField,
   onFetchProviderModels,
@@ -55,6 +57,7 @@ export function ProviderModelManagementSurface({
   embedded = false,
 }: {
   disabled: boolean;
+  defaultModelEndpoint?: ModelProviderDraft["Endpoint"];
   endpointOptions?: Array<{ value: string; label: string }>;
   modelField?: ConfigFormFieldData;
   operations: SettingsConfigCommands["providerModelOperations"];
@@ -96,7 +99,6 @@ export function ProviderModelManagementSurface({
   const [editingExisting, setEditingExisting] = useState(false);
   const [closeBlocked, setCloseBlocked] = useState(false);
   const [manualOpen, setManualOpen] = useState(initialManualAdd);
-  const [manualModelId, setManualModelId] = useState("");
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState("");
   const [groupUnsupportedDialogOpen, setGroupUnsupportedDialogOpen] = useState(false);
@@ -149,7 +151,7 @@ export function ProviderModelManagementSurface({
       })
     : null;
   const providerFetchEndpoint = selectedProvider
-    ? (fetchEndpoint ?? toProviderEndpointInput(selectedProvider))
+    ? (fetchEndpoint ?? toProviderEndpointInput(selectedProvider, false))
     : undefined;
   const canFetchProviderModels = Boolean(providerFetchEndpoint && providerEnabled(providerFetchEndpoint));
   const modelTemplate = useMemo(() => modelField?.defaultItem ?? {}, [modelField]);
@@ -206,6 +208,7 @@ export function ProviderModelManagementSurface({
         modelInfo,
         modelField,
         endpointOptions: endpointChoices,
+        defaultEndpoint: defaultModelEndpoint,
         modelsDev: modelInfo.modelsDev,
       });
     setEditingModel(draft);
@@ -223,36 +226,48 @@ export function ProviderModelManagementSurface({
     onRequestRemoveModel(model);
   };
 
-  const addManualModel = (): void => {
-    const modelId = manualModelId.trim();
-    if (!modelId) return;
-    const configured = configuredModel(modelId);
+  const addManualModel = (options: ManualModelAddOptions): boolean => {
+    const modelId = options.modelId.trim();
+    const modelName = options.modelName.trim() || modelId;
+    const configured = state.models.find(
+      (model) =>
+        model.ProviderId === selectedProvider.Id &&
+        (model.Id === modelConfigId(selectedProvider.Id, modelId) ||
+          model.Model === modelName ||
+          model.Model === modelId),
+    );
     if (configured) {
       // Already configured: open it for editing. Submitting a fresh template
       // draft here would silently reset every customized field to defaults.
       setManualOpen(false);
-      setManualModelId("");
-      openModel({ id: modelId });
-      return;
+      openModel({ id: configured.Model });
+      return true;
     }
     const model = createModelDraft({
       provider: selectedProvider,
-      modelInfo: { id: modelId },
+      modelInfo: { id: modelName },
       modelField,
       endpointOptions: endpointChoices,
+      defaultEndpoint: defaultModelEndpoint,
     });
-    if (pendingModelIds.has(model.Id)) return;
-    if (
+    const nextModel: ModelProviderDraft = {
+      ...model,
+      Id: modelConfigId(selectedProvider.Id, modelId),
+      Model: modelName,
+      Capabilities: { ...model.Capabilities, ...options.capabilities },
+      ...(options.contextWindowTokens !== undefined ? { ContextWindowTokens: options.contextWindowTokens } : {}),
+      ...(options.maxModelOutputTokens !== undefined ? { MaxModelOutputTokens: options.maxModelOutputTokens } : {}),
+      ...(options.maxOutputTokens !== undefined ? { MaxOutputTokens: options.maxOutputTokens } : {}),
+    };
+    if (pendingModelIds.has(nextModel.Id)) return false;
+    return Boolean(
       onUpsertProviderModel({
         model: {
-          ...model,
-          Endpoint: model.Endpoint as ProviderModelConfigInput["Endpoint"],
+          ...nextModel,
+          Endpoint: nextModel.Endpoint as ProviderModelConfigInput["Endpoint"],
         },
-      })
-    ) {
-      setManualOpen(false);
-      setManualModelId("");
-    }
+      }),
+    );
   };
 
   const addFetchedModel = (modelInfo: ProviderModelInfo): void => {
@@ -261,6 +276,7 @@ export function ProviderModelManagementSurface({
       modelInfo,
       modelField,
       endpointOptions: endpointChoices,
+      defaultEndpoint: defaultModelEndpoint,
       modelsDev: modelInfo.modelsDev,
     });
     if (pendingModelIds.has(model.Id)) return;
@@ -275,8 +291,10 @@ export function ProviderModelManagementSurface({
   return (
     <div
       className={cn(
-        "grid h-full min-h-0 overflow-hidden bg-paper-50",
-        showProviderList ? "grid-cols-[minmax(210px,260px)_minmax(0,1fr)]" : "grid-cols-1",
+        "grid h-full min-h-0 overflow-hidden",
+        embedded
+          ? "w-full bg-surface-soft grid-cols-1"
+          : cn("bg-paper-50", showProviderList ? "grid-cols-[minmax(210px,260px)_minmax(0,1fr)]" : "grid-cols-1"),
       )}
     >
       {showProviderList ? (
@@ -289,7 +307,9 @@ export function ProviderModelManagementSurface({
           onSelect={setSelectedProviderId}
         />
       ) : null}
-      <section className="h-full min-h-0 min-w-0 overflow-hidden bg-paper-50">
+      <section
+        className={cn("min-h-0 min-w-0 h-full overflow-hidden", embedded ? "w-full bg-surface-soft" : "bg-paper-50")}
+      >
         <ProviderModelList
           selectedProvider={selectedProvider}
           catalog={selectedList.catalog}
@@ -443,11 +463,10 @@ export function ProviderModelManagementSurface({
       />
       <ProviderModelManualAddDialog
         disabled={disabled}
-        modelId={manualModelId}
+        modelTemplate={modelTemplate}
         open={manualOpen}
         providerId={selectedProvider.Id}
         onAdd={addManualModel}
-        onModelIdChange={setManualModelId}
         onOpenChange={setManualOpen}
       />
       <ProviderModelGroupUnsupportedDialog

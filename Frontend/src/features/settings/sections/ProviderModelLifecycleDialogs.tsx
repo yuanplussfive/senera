@@ -102,8 +102,30 @@ function ModelRemovalDialog({
             ? frontendMessage("settings.modelLifecycle.removeDefault.description", { model: model.Model })
             : frontendMessage("settings.modelLifecycle.removeModel.description")
         }
-        className="w-[min(480px,calc(100vw_-_28px))] rounded-lg bg-paper-50"
+        className="w-[min(480px,calc(100vw_-_28px))]"
         bodyClassName="p-4"
+        footerClassName="px-4"
+        footer={
+          <DialogActions>
+            <DialogActionButton close>{frontendMessage("settings.modelLifecycle.cancel")}</DialogActionButton>
+            <DialogActionButton
+              disabled={!canConfirm}
+              variant="danger"
+              onClick={() => {
+                if (!model) return;
+                const accepted = onConfirm({
+                  modelId: model.Id,
+                  ...(requiresReplacement ? { replacementDefaultModelId } : {}),
+                });
+                if (accepted) onClose();
+              }}
+            >
+              {requiresReplacement
+                ? frontendMessage("settings.modelLifecycle.confirmReplaceRemoveModel")
+                : frontendMessage("settings.modelLifecycle.confirmRemoveModel")}
+            </DialogActionButton>
+          </DialogActions>
+        }
       >
         {requiresReplacement ? (
           <ReplacementControl
@@ -113,25 +135,6 @@ function ModelRemovalDialog({
             onChange={setReplacementDefaultModelId}
           />
         ) : null}
-        <DialogActions className="mt-5">
-          <DialogActionButton close>{frontendMessage("settings.modelLifecycle.cancel")}</DialogActionButton>
-          <DialogActionButton
-            disabled={!canConfirm}
-            variant="danger"
-            onClick={() => {
-              if (!model) return;
-              const accepted = onConfirm({
-                modelId: model.Id,
-                ...(requiresReplacement ? { replacementDefaultModelId } : {}),
-              });
-              if (accepted) onClose();
-            }}
-          >
-            {requiresReplacement
-              ? frontendMessage("settings.modelLifecycle.confirmReplaceRemoveModel")
-              : frontendMessage("settings.modelLifecycle.confirmRemoveModel")}
-          </DialogActionButton>
-        </DialogActions>
       </DialogContent>
     </Dialog>
   );
@@ -182,8 +185,33 @@ function ProviderRemovalDialog({
       <DialogContent
         title={frontendMessage("settings.modelLifecycle.deleteProvider.title")}
         description={description}
-        className="w-[min(520px,calc(100vw_-_28px))] rounded-lg bg-paper-50"
+        className="w-[min(520px,calc(100vw_-_28px))]"
         bodyClassName="p-4"
+        footerClassName="px-4"
+        footer={
+          <DialogActions>
+            <DialogActionButton close>{frontendMessage("settings.modelLifecycle.cancel")}</DialogActionButton>
+            <DialogActionButton
+              disabled={!canConfirm}
+              variant="danger"
+              onClick={() => {
+                if (!provider) return;
+                const accepted = onConfirm({
+                  providerId: provider.Id,
+                  cascadeModels,
+                  ...(requiresReplacement ? { replacementDefaultModelId } : {}),
+                });
+                if (accepted) onClose();
+              }}
+            >
+              {requiresReplacement
+                ? frontendMessage("settings.modelLifecycle.confirmReplaceDeleteProvider")
+                : cascadeModels
+                  ? frontendMessage("settings.modelLifecycle.confirmCascadeProvider", { count: providerModels.length })
+                  : frontendMessage("settings.modelLifecycle.confirmDeleteProvider")}
+            </DialogActionButton>
+          </DialogActions>
+        }
       >
         <div className="space-y-4">
           {cascadeModels ? (
@@ -209,28 +237,6 @@ function ProviderRemovalDialog({
             />
           ) : null}
         </div>
-        <DialogActions className="mt-5">
-          <DialogActionButton close>{frontendMessage("settings.modelLifecycle.cancel")}</DialogActionButton>
-          <DialogActionButton
-            disabled={!canConfirm}
-            variant="danger"
-            onClick={() => {
-              if (!provider) return;
-              const accepted = onConfirm({
-                providerId: provider.Id,
-                cascadeModels,
-                ...(requiresReplacement ? { replacementDefaultModelId } : {}),
-              });
-              if (accepted) onClose();
-            }}
-          >
-            {requiresReplacement
-              ? frontendMessage("settings.modelLifecycle.confirmReplaceDeleteProvider")
-              : cascadeModels
-                ? frontendMessage("settings.modelLifecycle.confirmCascadeProvider", { count: providerModels.length })
-                : frontendMessage("settings.modelLifecycle.confirmDeleteProvider")}
-          </DialogActionButton>
-        </DialogActions>
       </DialogContent>
     </Dialog>
   );

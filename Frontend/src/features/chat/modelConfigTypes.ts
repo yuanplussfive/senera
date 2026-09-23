@@ -14,6 +14,7 @@ export interface ProviderEndpointDraft {
   Icon?: string;
   Kind?: string;
   Enabled?: boolean;
+  DefaultEndpoint?: ProviderModelEndpointInput["DefaultEndpoint"];
   BaseUrl?: string;
   ApiKey?: string;
   ApiVersion?: string;

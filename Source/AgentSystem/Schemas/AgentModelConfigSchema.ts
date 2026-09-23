@@ -61,6 +61,7 @@ export const ModelProviderEndpointSchema = z
     Icon: z.string().min(1).optional(),
     Enabled: z.boolean().optional(),
     Kind: z.literal("OpenAICompatible").optional(),
+    DefaultEndpoint: ModelEndpointSchema.optional(),
     BaseUrl: z.string().url().optional(),
     ApiKey: z.string().min(1).optional(),
     ApiVersion: z.string().min(1).optional(),

@@ -10,7 +10,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-test("error boundary hides diagnostics and resets after its key changes", async () => {
+test("error boundary keeps diagnostics expanded, toggles them and resets after its key changes", async () => {
   vi.spyOn(console, "error").mockImplementation(() => undefined);
   const preventExpectedError = (event) => event.preventDefault();
   window.addEventListener("error", preventExpectedError);
@@ -26,8 +26,13 @@ test("error boundary hides diagnostics and resets after its key changes", async 
 
     const fallback = screen.getByRole("alert");
     expect(fallback).toHaveTextContent(frontendMessage("app.errorBoundary.title"));
-    expect(fallback).not.toHaveTextContent("private diagnostic");
+    expect(fallback).toHaveTextContent("private diagnostic stack");
+
+    await screen.getByRole("button", { name: frontendMessage("app.errorBoundary.hideDetails") }).click();
     expect(fallback).not.toHaveTextContent("private diagnostic stack");
+
+    await screen.getByRole("button", { name: frontendMessage("app.errorBoundary.details") }).click();
+    expect(fallback).toHaveTextContent("private diagnostic stack");
 
     rerender(
       React.createElement(
@@ -40,6 +45,25 @@ test("error boundary hides diagnostics and resets after its key changes", async 
     await waitFor(() => expect(screen.getByText("Recovered session")).toBeInTheDocument());
   } finally {
     window.removeEventListener("error", preventExpectedError);
+  }
+});
+
+test("error boundary copies the diagnostic trace to the clipboard", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+  const preventExpectedError = (event) => event.preventDefault();
+  window.addEventListener("error", preventExpectedError);
+
+  try {
+    render(React.createElement(ErrorBoundary, null, React.createElement(ThrowingChild, { shouldThrow: true })));
+
+    await screen.getByRole("button", { name: frontendMessage("app.errorBoundary.copyDetails") }).click();
+
+    expect(writeText).toHaveBeenCalledWith("private diagnostic stack");
+  } finally {
+    window.removeEventListener("error", preventExpectedError);
+    delete navigator.clipboard;
   }
 });
 

@@ -1,5 +1,6 @@
 import React from "react";
 import { cleanup, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
 
@@ -64,6 +65,40 @@ test("streaming assistant content renders Markdown before the run completes", as
   expect(document.querySelector("[data-streaming-markdown-renderer]")).toBeInTheDocument();
 });
 
+test("Markdown image previews can download the authenticated image source", async () => {
+  const NativeUrl = globalThis.URL;
+  class DownloadUrl extends NativeUrl {}
+  DownloadUrl.createObjectURL = vi.fn(() => "blob:senera-markdown-download");
+  DownloadUrl.revokeObjectURL = vi.fn();
+  vi.stubGlobal("URL", DownloadUrl);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => ({
+      ok: true,
+      blob: async () => new Blob(["image"]),
+    })),
+  );
+  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+  const user = userEvent.setup();
+
+  renderWithFrontendProviders(
+    React.createElement(AssistantMessageBody, {
+      message: {
+        kind: "AssistantFinal",
+        content: "![diagram.png](https://example.test/diagram.png)",
+      },
+    }),
+  );
+
+  await user.click(await screen.findByRole("button", { name: "查看图片：diagram.png" }));
+  await user.click(screen.getByRole("button", { name: "下载原图" }));
+
+  await waitFor(() =>
+    expect(fetch).toHaveBeenCalledWith("https://example.test/diagram.png", { credentials: "include" }),
+  );
+  expect(DownloadUrl.createObjectURL).toHaveBeenCalledTimes(1);
+});
+
 test("a live turn shows the quiet Thinking indicator before its first tool call", async () => {
   renderWithFrontendProviders(
     React.createElement(StreamingRow, {
@@ -73,7 +108,7 @@ test("a live turn shows the quiet Thinking indicator before its first tool call"
   );
 
   expect(await screen.findByText("Thinking...")).toBeInTheDocument();
-  expect(document.querySelector("[data-ui-chrome] .motion-safe\\:animate-spin")).toBeInTheDocument();
+  expect(document.querySelector("[data-ui-chrome] .senera-spinner")).toBeInTheDocument();
   expect(screen.queryByText("Senera 正在思考…")).not.toBeInTheDocument();
 });
 

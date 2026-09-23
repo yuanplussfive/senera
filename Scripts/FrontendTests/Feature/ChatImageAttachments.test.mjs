@@ -43,6 +43,7 @@ test("sent images use authenticated content URLs and open the full-image dialog"
   const dialogImage = within(dialog).getByRole("img", { name: "first.png" });
   const canvas = within(dialog).getByRole("region", { name: "first.png" });
   const viewer = canvas.closest("[data-image-canvas-viewer]");
+  expect(dialogImage).toHaveAttribute("data-native-context-menu");
   expect(canvas).toHaveClass("overflow-hidden");
   expect(viewer).not.toHaveClass("overflow-auto");
   Object.defineProperties(dialogImage, {
@@ -132,6 +133,43 @@ test("non-image attachments retain the compact file presentation", () => {
   expect(screen.getByText("notes.txt")).toBeVisible();
   expect(screen.getByText("text/plain · 4B")).toBeVisible();
   expect(document.querySelector("[data-message-image-gallery]")).toBeNull();
+});
+
+test("non-image attachments download through the authenticated resource URL", async () => {
+  const NativeUrl = globalThis.URL;
+  class DownloadUrl extends NativeUrl {}
+  DownloadUrl.createObjectURL = vi.fn(() => "blob:senera-file-download");
+  DownloadUrl.revokeObjectURL = vi.fn();
+  vi.stubGlobal("URL", DownloadUrl);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => ({
+      ok: true,
+      blob: async () => new Blob(["text"]),
+    })),
+  );
+  const linkClick = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+  const user = userEvent.setup();
+  renderAttachments({
+    uploadUrl: "http://agent.test/api/resources",
+    attachments: [
+      {
+        resourceUri: "senera://resource/notes",
+        name: "notes.txt",
+        mime: "text/plain",
+        size: 4,
+        status: "uploaded",
+      },
+    ],
+  });
+
+  await user.click(screen.getByRole("button", { name: "下载文件" }));
+
+  await waitFor(() =>
+    expect(fetch).toHaveBeenCalledWith("http://agent.test/api/resources/notes", { credentials: "include" }),
+  );
+  expect(linkClick).toHaveBeenCalledTimes(1);
+  expect(DownloadUrl.createObjectURL).toHaveBeenCalledTimes(1);
 });
 
 test("freshly sent images keep the local pixels visible until the canonical source is ready", async () => {

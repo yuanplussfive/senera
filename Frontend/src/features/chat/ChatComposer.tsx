@@ -3,17 +3,17 @@ import {
   AlertCircle,
   ArrowUp,
   BookUser,
-  Check,
-  ChevronDown,
+  Globe,
   Paperclip,
   Plus,
+  Puzzle,
   RotateCcw,
-  Settings2,
   Square,
+  Wand2,
   X,
 } from "lucide-react";
 import { buildStyles, CircularProgressbar } from "react-circular-progressbar";
-import type { ModelProviderListItem, UploadAttachmentData } from "../../api/eventTypes";
+import type { UploadAttachmentData } from "../../api/eventTypes";
 import type { UploadProgress } from "../../api/uploadClient";
 import { cn, formatFileSize } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
@@ -24,9 +24,7 @@ import { MotionButton, MotionList, MotionListItem } from "../../shared/motion";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   ConversationFrame,
@@ -36,11 +34,12 @@ import {
 } from "../../shared/ui";
 import { FilePreviewIcon } from "./FilePreviewIcon";
 import { PresetControl } from "./PresetPanel";
-import { ModelProviderIcon } from "./ModelProviderIcon";
-import { readChatModelProviders, readSelectedModelProvider } from "./modelProvider";
+import { readSelectedModelProvider } from "./modelProvider";
+import { ChatModelSelector } from "./ChatModelSelector";
 import { ThinkingSelector } from "./ThinkingSelector";
 import type { MessageQueueMode } from "../../app/useChatCommands";
 import type { ChatApprovalConfig, ChatModelConfig, ChatPresetConfig } from "./ChatPanelContracts";
+import type { SettingsSectionId } from "../settings/settingsSectionContract";
 import { useComposerAttachments, type PendingAttachment } from "./useComposerAttachments";
 import type { RuntimeContextUsage, RuntimeUsageSnapshot } from "../observability/runtimeDiagnosticProjection";
 import { useEventJournalStore } from "../observability/eventJournalStore";
@@ -51,6 +50,25 @@ const ApprovalModeControl = lazy(() => import("./ApprovalModeControl"));
 const DESKTOP_TEXTAREA_MAX_HEIGHT = 240;
 const TOUCH_TEXTAREA_MAX_HEIGHT = 160;
 const ACTIVE_LAYER_SELECTOR = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]';
+
+export type ComposerAction = "send" | "follow_up" | "steer" | "cancel" | "cancelling";
+
+export function readComposerAction({
+  running,
+  settling,
+  cancelling,
+  canSubmit,
+}: {
+  running: boolean;
+  settling: boolean;
+  cancelling: boolean;
+  canSubmit: boolean;
+}): ComposerAction {
+  if (cancelling) return "cancelling";
+  if (settling) return "follow_up";
+  if (!running) return "send";
+  return canSubmit ? "steer" : "cancel";
+}
 
 export interface ChatComposerProps {
   disabled: boolean;
@@ -71,6 +89,7 @@ export interface ChatComposerProps {
   runtimeUsage?: RuntimeUsageSnapshot;
   onSend: (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode) => boolean;
   onCancel: () => void;
+  onOpenSettings?: (section: SettingsSectionId, returnFocus?: HTMLElement | null) => void;
 }
 
 export function ChatComposer({
@@ -88,6 +107,7 @@ export function ChatComposer({
   runtime,
   onSend,
   onCancel,
+  onOpenSettings,
 }: ChatComposerProps): JSX.Element {
   const locale = useFrontendLocale();
   const [internalValue, setInternalValue] = useState("");
@@ -96,6 +116,7 @@ export function ChatComposer({
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const openPresetAfterToolkitCloseRef = useRef(false);
+  const pendingSettingsSectionRef = useRef<SettingsSectionId | null>(null);
   const [toolkitOpen, setToolkitOpen] = useState(false);
   const [presetOpen, setPresetOpen] = useState(false);
   const attachments = useComposerAttachments({
@@ -122,6 +143,9 @@ export function ChatComposer({
     }
     return frontendMessage("chat.composer.hintDisconnected", {}, locale);
   }, [cancelling, locale, prefersCompactControls, runtime.socketStatus, running, settling]);
+
+  const canSend = !disabled && !attachments.uploading && value.trim().length > 0;
+  const composerAction = readComposerAction({ running, settling, cancelling, canSubmit: canSend });
 
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
@@ -154,10 +178,17 @@ export function ChatComposer({
   }, [controlledValue]);
 
   useEffect(() => {
-    if (toolkitOpen || !openPresetAfterToolkitCloseRef.current) return;
-    openPresetAfterToolkitCloseRef.current = false;
-    setPresetOpen(true);
-  }, [toolkitOpen]);
+    if (toolkitOpen) return;
+    if (openPresetAfterToolkitCloseRef.current) {
+      openPresetAfterToolkitCloseRef.current = false;
+      setPresetOpen(true);
+      return;
+    }
+    const pendingSection = pendingSettingsSectionRef.current;
+    if (!pendingSection || !onOpenSettings) return;
+    pendingSettingsSectionRef.current = null;
+    onOpenSettings(pendingSection);
+  }, [onOpenSettings, toolkitOpen]);
 
   const submit = (queueMode?: MessageQueueMode): void => {
     const text = value.trim();
@@ -173,7 +204,14 @@ export function ChatComposer({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
-      submit(settling ? "follow_up" : running && e.altKey ? "follow_up" : running ? "steer" : undefined);
+      if (composerAction === "cancel" || composerAction === "cancelling") return;
+      submit(
+        composerAction === "follow_up" || (composerAction === "steer" && e.altKey)
+          ? "follow_up"
+          : composerAction === "steer"
+            ? "steer"
+            : undefined,
+      );
     }
   };
 
@@ -184,10 +222,27 @@ export function ChatComposer({
     el.style.height = `${Math.min(el.scrollHeight, textareaMaxHeight)}px`;
   };
 
-  const canSend = !disabled && !attachments.uploading && value.trim().length > 0;
+  const handleComposerAction = (): void => {
+    switch (composerAction) {
+      case "cancel":
+        onCancel();
+        return;
+      case "cancelling":
+        return;
+      case "follow_up":
+        submit("follow_up");
+        return;
+      case "steer":
+        submit("steer");
+        return;
+      case "send":
+        submit();
+        return;
+    }
+  };
 
   return (
-    <div className="bg-transparent py-3 sm:py-4">
+    <div className="bg-transparent pb-4 pt-3 sm:pb-5 sm:pt-3.5">
       <ConversationFrame mode="composer">
         <div
           onDragEnter={attachments.handleDragEnter}
@@ -195,7 +250,7 @@ export function ChatComposer({
           onDragLeave={attachments.handleDragLeave}
           onDrop={attachments.handleDrop}
           className={cn(
-            "relative flex min-w-0 flex-col rounded-[18px] border border-line bg-surface-raised px-3.5 pb-2.5 pt-2.5 shadow-[var(--shadow-soft)] transition-[background-color,border-color,box-shadow] duration-150",
+            "relative flex min-w-0 flex-col gap-2 rounded-[14px] border border-line-subtle bg-surface-raised px-3.5 pb-2.5 pt-[13px] shadow-[0_12px_32px_-16px_rgb(43_40_32_/_0.10)] transition-[background-color,border-color,box-shadow] duration-150",
             attachments.isDraggingFiles && "border-accent-border bg-accent-surface ring-2 ring-accent-focus",
           )}
           data-chat-composer
@@ -230,10 +285,10 @@ export function ChatComposer({
             placeholder={hint}
             disabled={disabled}
             style={{ maxHeight: textareaMaxHeight }}
-            className="scrollbar-thin min-h-10 w-full resize-none bg-transparent px-1 py-2 text-[14.5px] leading-6 text-content-primary placeholder:text-content-secondary focus:outline-none disabled:opacity-60 sm:min-h-10"
+            className="scrollbar-thin min-h-9 w-full resize-none bg-transparent px-1 py-1.5 text-[14px] leading-5 text-content-primary placeholder:text-content-disabled focus:outline-none disabled:opacity-60 sm:min-h-9"
           />
 
-          <div className="flex min-w-0 items-center gap-2 pt-0.5">
+          <div className="flex min-w-0 items-center gap-1.5">
             <div className="flex min-w-0 flex-1 items-center gap-1">
               <DropdownMenu open={toolkitOpen} onOpenChange={setToolkitOpen}>
                 <DropdownMenuTrigger asChild disabled={disabled || running || cancelling}>
@@ -265,6 +320,34 @@ export function ChatComposer({
                   >
                     {frontendChatMessage("chat.composer.toolkit.preset")}
                   </DropdownMenuItem>
+                  {onOpenSettings ? (
+                    <>
+                      <DropdownMenuItem
+                        icon={<Puzzle className="h-4 w-4" />}
+                        onSelect={() => {
+                          pendingSettingsSectionRef.current = "mcp-servers";
+                        }}
+                      >
+                        {frontendChatMessage("chat.composer.toolkit.plugins")}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        icon={<Wand2 className="h-4 w-4" />}
+                        onSelect={() => {
+                          pendingSettingsSectionRef.current = "system-tools";
+                        }}
+                      >
+                        {frontendChatMessage("chat.composer.toolkit.skills")}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        icon={<Globe className="h-4 w-4" />}
+                        onSelect={() => {
+                          pendingSettingsSectionRef.current = "system-tools";
+                        }}
+                      >
+                        {frontendChatMessage("chat.composer.toolkit.webSearch")}
+                      </DropdownMenuItem>
+                    </>
+                  ) : null}
                 </DropdownMenuContent>
               </DropdownMenu>
               <PresetControl
@@ -282,7 +365,21 @@ export function ChatComposer({
                 onDelete={presetConfig.onDeletePreset}
                 onSetActive={presetConfig.onSetActivePreset}
               />
-              <Suspense fallback={<span className={cn("h-7 w-24 shrink-0", prefersCompactControls && "h-11 w-11")} />}>
+              <Suspense
+                fallback={
+                  <span
+                    className={cn(
+                      "inline-flex h-7 w-24 shrink-0 items-center justify-center text-content-muted",
+                      prefersCompactControls && "h-11 w-11",
+                    )}
+                    role="status"
+                    aria-busy="true"
+                    aria-label={frontendMessage("ui.loading")}
+                  >
+                    <Spinner size="xs" />
+                  </span>
+                }
+              >
                 <ApprovalModeControl
                   disabled={disabled || running || cancelling}
                   mode={approvalConfig.mode}
@@ -294,7 +391,7 @@ export function ChatComposer({
 
             <div className="flex min-w-0 shrink-0 items-center gap-1" data-composer-trailing-controls>
               <RuntimeUsageIndicator activeSessionId={activeSessionId} runtimeUsage={runtimeUsage} />
-              <ModelSelector
+              <ChatModelSelector
                 disabled={disabled || running}
                 models={modelConfig.modelProviders}
                 selectedId={modelConfig.selectedModelProviderId}
@@ -311,7 +408,7 @@ export function ChatComposer({
                 onSelect={modelConfig.onSelectThinkingLevel}
                 prefersCompactControls={prefersCompactControls}
               />
-              {cancelling ? (
+              {composerAction === "cancelling" ? (
                 <Tooltip content={frontendMessage("chat.composer.cancelling")} side="top">
                   <MotionButton
                     disabled
@@ -320,66 +417,60 @@ export function ChatComposer({
                       prefersCompactControls && "min-h-11 min-w-11",
                     )}
                     aria-label={frontendMessage("chat.composer.cancelling")}
+                    data-composer-action="cancelling"
                   >
                     <Spinner size="sm" />
                   </MotionButton>
                 </Tooltip>
-              ) : running && !settling ? (
-                <div className="flex shrink-0 items-center gap-1.5">
-                  <Tooltip
-                    content={frontendMessage("chat.composer.inject")}
-                    side="top"
-                    shortcut={prefersCompactControls ? undefined : "↵"}
+              ) : composerAction === "cancel" ? (
+                <Tooltip
+                  content={frontendMessage("chat.composer.cancelRunning")}
+                  side="top"
+                  shortcut={prefersCompactControls ? undefined : "Esc"}
+                >
+                  <MotionButton
+                    onClick={handleComposerAction}
+                    disabled={disabled}
+                    className={cn(
+                      "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-brick-200 bg-surface-raised text-brick-600 transition-colors duration-150 hover:bg-brick-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brick-200 disabled:pointer-events-none disabled:opacity-50",
+                      prefersCompactControls && "min-h-11 min-w-11",
+                    )}
+                    aria-label={frontendMessage("chat.composer.cancelRunning")}
+                    data-composer-action="cancel"
                   >
-                    <MotionButton
-                      onClick={() => submit("steer")}
-                      disabled={!canSend}
-                      className={cn(
-                        "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-[background-color,border-color,color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-chat-composer-focus-bg)] disabled:pointer-events-none",
-                        prefersCompactControls && "min-h-11 min-w-11",
-                        canSend
-                          ? "border-content-strong bg-content-strong text-content-inverse shadow-panel hover:border-accent-solid hover:bg-accent-solid hover:text-accent-on-solid active:bg-accent-solid-pressed"
-                          : "border-line-subtle bg-surface-muted text-content-disabled",
-                      )}
-                      aria-label="inject-current-run"
-                    >
-                      <ArrowUp className="h-4 w-4" />
-                    </MotionButton>
-                  </Tooltip>
-                  <Tooltip
-                    content={frontendMessage("chat.composer.cancelRunning")}
-                    side="top"
-                    shortcut={prefersCompactControls ? undefined : "Esc"}
-                  >
-                    <MotionButton
-                      onClick={onCancel}
-                      className={cn(
-                        "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-brick-200 bg-surface-raised text-brick-600 transition-colors duration-150 hover:bg-brick-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brick-200",
-                        prefersCompactControls && "min-h-11 min-w-11",
-                      )}
-                      aria-label={frontendMessage("chat.composer.cancelRunning")}
-                    >
-                      <Square className="h-3.5 w-3.5 fill-current" />
-                    </MotionButton>
-                  </Tooltip>
-                </div>
+                    <Square className="h-3.5 w-3.5 fill-current" />
+                  </MotionButton>
+                </Tooltip>
               ) : (
                 <Tooltip
-                  content={frontendMessage(settling ? "chat.composer.followUp" : "chat.composer.send")}
+                  content={frontendMessage(
+                    composerAction === "steer"
+                      ? "chat.composer.inject"
+                      : composerAction === "follow_up"
+                        ? "chat.composer.followUp"
+                        : "chat.composer.send",
+                  )}
                   side="top"
                   shortcut={prefersCompactControls ? undefined : "↵"}
                 >
                   <MotionButton
-                    onClick={() => submit(settling ? "follow_up" : undefined)}
+                    onClick={handleComposerAction}
                     disabled={!canSend}
                     className={cn(
-                      "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-[background-color,border-color,color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-chat-composer-focus-bg)] disabled:pointer-events-none",
+                      "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-0 transition-[background-color,border-color,color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-chat-composer-focus-bg)] disabled:pointer-events-none",
                       prefersCompactControls && "min-h-11 min-w-11",
                       canSend
-                        ? "border-content-strong bg-content-strong text-content-inverse shadow-panel hover:border-accent-solid hover:bg-accent-solid hover:text-accent-on-solid active:bg-accent-solid-pressed"
-                        : "border-line-subtle bg-surface-muted text-content-disabled",
+                        ? "bg-content-strong text-content-inverse hover:bg-accent-solid hover:text-accent-on-solid active:bg-accent-solid-pressed"
+                        : "bg-surface-muted text-content-disabled",
                     )}
-                    aria-label={settling ? "queue-follow-up" : "send"}
+                    aria-label={
+                      composerAction === "steer"
+                        ? "inject-current-run"
+                        : composerAction === "follow_up"
+                          ? "queue-follow-up"
+                          : "send"
+                    }
+                    data-composer-action={composerAction}
                   >
                     <ArrowUp className="h-4 w-4" />
                   </MotionButton>
@@ -406,7 +497,7 @@ function ContextUsageIndicator({ usage }: { usage?: RuntimeContextUsage }): JSX.
   return (
     <Tooltip
       content={
-        <span className="grid gap-0.5 text-left leading-5">
+        <span className="flex items-center gap-1 whitespace-nowrap text-left leading-4 tabular-nums">
           <span className="font-medium">
             {usage && hasTokens
               ? frontendMessage("chat.composer.contextUsageSummary", {
@@ -415,7 +506,8 @@ function ContextUsageIndicator({ usage }: { usage?: RuntimeContextUsage }): JSX.
                 })
               : frontendMessage("chat.composer.contextUsage")}
           </span>
-          <span className="tabular-nums text-ink-300">
+          <span className="text-ink-300">·</span>
+          <span className="text-ink-300">
             {usage && hasTokens
               ? frontendMessage("chat.composer.contextUsageTokens", {
                   used: formatComposerTokenCount(used),
@@ -439,9 +531,7 @@ function ContextUsageIndicator({ usage }: { usage?: RuntimeContextUsage }): JSX.
           usage && hasTokens ? `${roundedPercent}%` : frontendMessage("chat.composer.contextUsagePending")
         }
         data-context-usage-indicator
-        className={cn(
-          "mx-0.5 inline-block h-4 w-4 shrink-0 rounded-full outline-none opacity-75 transition-[filter,opacity] hover:opacity-100 focus-visible:ring-2 focus-visible:ring-accent-focus",
-        )}
+        className="inline-block h-[13px] w-[13px] shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
       >
         <CircularProgressbar
           value={value}
@@ -449,8 +539,8 @@ function ContextUsageIndicator({ usage }: { usage?: RuntimeContextUsage }): JSX.
           className="h-full w-full align-middle"
           aria-hidden="true"
           styles={buildStyles({
-            pathColor: "var(--accent-solid)",
-            trailColor: "var(--line-subtle)",
+            pathColor: "rgb(var(--color-ink-600))",
+            trailColor: "rgb(var(--color-ink-300) / 0.6)",
             strokeLinecap: "round",
             pathTransitionDuration: 0.35,
           })}
@@ -506,7 +596,7 @@ function AttachmentTray({
   onPreviewUnavailable: (id: string) => void;
 }): JSX.Element {
   return (
-    <MotionList className="flex flex-wrap gap-1.5 px-0.5 pb-1">
+    <MotionList className={cn("flex flex-wrap gap-1.5 px-0.5 pb-1", attachments.length === 0 && "hidden")}>
       {attachments.map((entry) => (
         <MotionListItem key={entry.id} layout="position" initial={false} className={cn(entry.previewUrl && "shrink-0")}>
           {entry.previewUrl ? (
@@ -631,7 +721,7 @@ function UploadProgressBar({ progress, className }: { progress?: UploadProgress;
       <span
         className={cn(
           "block h-full origin-left rounded-full bg-accent-solid transition-transform duration-150",
-          ratio === undefined && "animate-pulse",
+          ratio === undefined && "senera-loading-pulse",
         )}
         style={{ transform: `scaleX(${ratio ?? 1})` }}
       />
@@ -648,121 +738,4 @@ function readProgressRatio(progress?: UploadProgress): number | undefined {
   const ratio =
     progress?.ratio ?? (progress?.total && progress.total > 0 ? progress.loaded / progress.total : undefined);
   return typeof ratio === "number" && Number.isFinite(ratio) ? Math.min(1, Math.max(0, ratio)) : undefined;
-}
-
-function ModelSelector({
-  disabled,
-  models,
-  selectedId,
-  defaultModelId,
-  onSelect,
-  onUseDefault,
-  onAddModel,
-  prefersCompactControls,
-}: {
-  disabled: boolean;
-  models: ModelProviderListItem[];
-  selectedId: string | null;
-  defaultModelId?: string | null;
-  onSelect: (id: string) => void;
-  onUseDefault?: () => void;
-  onAddModel?: () => void;
-  prefersCompactControls: boolean;
-}): JSX.Element {
-  const chatModels = useMemo(() => readChatModelProviders(models), [models]);
-  const selected = useMemo(() => readSelectedModelProvider(chatModels, selectedId) ?? null, [chatModels, selectedId]);
-  const label = selected ? readModelSelectorLabel(selected) : frontendMessage("chat.composer.selectModel");
-  const defaultModel = useMemo(
-    () => readSelectedModelProvider(chatModels, defaultModelId ?? null) ?? null,
-    [chatModels, defaultModelId],
-  );
-  const usesDefault = Boolean(defaultModel && defaultModel.id === selected?.id);
-  const selectorDisabled = disabled || (chatModels.length === 0 && !onAddModel);
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild disabled={selectorDisabled}>
-        <MotionButton
-          className={cn(
-            "group inline-flex h-8 min-w-0 max-w-[190px] items-center gap-1 rounded-md border-0 bg-transparent px-1.5 text-[11.5px] font-medium",
-            prefersCompactControls && "h-9 max-w-[122px] px-1",
-            "text-content-muted shadow-none transition-colors hover:bg-surface-hover hover:text-content-primary data-[state=open]:bg-surface-hover data-[state=open]:text-content-primary",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
-            selectorDisabled && "pointer-events-none opacity-55",
-          )}
-          aria-label={frontendMessage("chat.composer.selectModel")}
-          data-composer-model-selector
-        >
-          <span className="truncate">{label}</span>
-          <ChevronDown className="h-3 w-3 shrink-0 text-content-muted opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100" />
-        </MotionButton>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" side="top" className="w-[min(280px,calc(100vw-24px))]">
-        <DropdownMenuLabel>{frontendMessage("chat.model.currentConversation")}</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {chatModels.length > 0 ? (
-          <DropdownMenuGroup className="max-h-[min(360px,calc(100dvh-200px))] overflow-y-auto pr-1 scrollbar-thin">
-            {chatModels.map((model) => {
-              const active = model.id === selected?.id;
-              return (
-                <DropdownMenuItem
-                  key={model.id}
-                  onSelect={() => onSelect(model.id)}
-                  className="h-10 py-2"
-                  icon={
-                    active ? (
-                      <Check className="h-3.5 w-3.5 text-accent-content" />
-                    ) : (
-                      <ModelProviderIcon icon={model.icon} size={14} />
-                    )
-                  }
-                >
-                  <span className="min-w-0 truncate text-[13px] text-content-primary">
-                    {readModelSelectorLabel(model)}
-                  </span>
-                </DropdownMenuItem>
-              );
-            })}
-          </DropdownMenuGroup>
-        ) : (
-          <div className="px-2 py-3 text-[12px] text-content-muted">{frontendMessage("config.model.noConfigured")}</div>
-        )}
-        {!usesDefault && defaultModel && onUseDefault ? (
-          <>
-            <DropdownMenuSeparator />
-            <div className="px-2 py-1.5 text-[11px] text-content-muted">
-              {frontendMessage("chat.model.defaultHint", { model: readModelSelectorLabel(defaultModel) })}
-            </div>
-            <DropdownMenuItem
-              onSelect={onUseDefault}
-              className="h-10 py-2"
-              icon={<RotateCcw className="h-3.5 w-3.5 text-accent-content" />}
-            >
-              <span className="min-w-0 truncate text-[13px] text-content-primary">
-                {frontendMessage("chat.model.useDefault")}
-              </span>
-            </DropdownMenuItem>
-          </>
-        ) : null}
-        {onAddModel ? (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onSelect={onAddModel}
-              className="h-10 bg-surface-muted py-2"
-              icon={<Settings2 className="h-3.5 w-3.5 text-content-secondary" />}
-            >
-              <span className="min-w-0 truncate text-[13px] text-content-primary">
-                {frontendMessage("config.model.addModel")}
-              </span>
-            </DropdownMenuItem>
-          </>
-        ) : null}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function readModelSelectorLabel(model: ModelProviderListItem | null | undefined): string {
-  return model?.model.trim() || "...";
 }

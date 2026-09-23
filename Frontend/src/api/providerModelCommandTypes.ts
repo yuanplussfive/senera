@@ -10,6 +10,7 @@ export interface ProviderModelEndpointInput {
   Icon?: string;
   Enabled?: boolean;
   Kind?: "OpenAICompatible";
+  DefaultEndpoint?: ProviderModelEndpointKind;
   BaseUrl?: string;
   ApiKey?: string;
   ApiVersion?: string;

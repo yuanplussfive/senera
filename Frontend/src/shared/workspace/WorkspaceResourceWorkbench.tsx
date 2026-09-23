@@ -12,7 +12,7 @@ import { cn, formatFileSize } from "../../lib/util";
 import { motionDurations } from "../../shared/motion";
 import { CodeTextEditor } from "../code/CodeTextEditor";
 import { ImageCanvasViewer } from "../media/ImageCanvasViewer";
-import { Dialog, DialogContent, Spinner, Tooltip } from "../ui";
+import { Dialog, DialogContent, Spinner, StateView, Tooltip } from "../ui";
 import { formatWorkspaceResourceLocation, type WorkspaceResourceLocator } from "./WorkspaceResourceLocator";
 import { resolveWorkspaceEditorLanguage } from "./WorkspaceResourceEditorLanguage";
 import type { WorkspaceResourceController } from "./WorkspaceResourceProvider";
@@ -130,6 +130,7 @@ export function WorkspaceResourceWorkbench({
       >
         <ResourceHeader
           dirty={dirty}
+          loading={loadState.status === "loading"}
           locator={locator}
           resource={resource}
           saveState={saveState}
@@ -168,6 +169,7 @@ export function WorkspaceResourceWorkbench({
 
 function ResourceHeader({
   dirty,
+  loading,
   locator,
   onClose,
   onDownload,
@@ -177,6 +179,7 @@ function ResourceHeader({
   saveState,
 }: {
   readonly dirty: boolean;
+  readonly loading: boolean;
   readonly locator: WorkspaceResourceLocator;
   readonly onClose: () => void;
   readonly onDownload: () => void;
@@ -210,7 +213,12 @@ function ResourceHeader({
         </span>
       ) : null}
       <div className="flex shrink-0 items-center gap-0.5">
-        <ResourceIconButton label={frontendMessage("resource.reload")} disabled={!resource || dirty} onClick={onReload}>
+        <ResourceIconButton
+          label={frontendMessage("resource.reload")}
+          loading={loading}
+          disabled={!resource || dirty}
+          onClick={onReload}
+        >
           <RefreshCw className="h-4 w-4" />
         </ResourceIconButton>
         <ResourceIconButton label={frontendMessage("resource.download")} disabled={!resource} onClick={onDownload}>
@@ -219,6 +227,7 @@ function ResourceHeader({
         {resource?.editable ? (
           <ResourceIconButton
             label={frontendMessage("resource.save")}
+            loading={saveState === "saving"}
             disabled={!dirty || saveState === "saving"}
             onClick={onSave}
           >
@@ -339,29 +348,18 @@ function WorkspaceImageStage({
 }
 
 function ResourceLoading(): JSX.Element {
-  return (
-    <div className="grid h-full place-items-center" role="status">
-      <Spinner size="md" className="text-content-muted" />
-    </div>
-  );
+  return <StateView status="loading" className="h-full" />;
 }
 
 function ResourceError({ message, onRetry }: { readonly message: string; readonly onRetry?: () => void }): JSX.Element {
   return (
-    <div className="grid h-full place-items-center px-6 text-center">
-      <div className="max-w-lg">
-        <p className="text-[13px] leading-5 text-content-secondary">{message}</p>
-        {onRetry ? (
-          <button
-            type="button"
-            className="mt-3 text-[12px] font-medium text-accent-content hover:text-accent-content-hover"
-            onClick={onRetry}
-          >
-            {frontendMessage("resource.retry")}
-          </button>
-        ) : null}
-      </div>
-    </div>
+    <StateView
+      status="error"
+      className="h-full"
+      description={message}
+      onRetry={onRetry}
+      retryLabel={frontendMessage("resource.retry")}
+    />
   );
 }
 
@@ -401,12 +399,14 @@ function ResourceIconButton({
   className,
   disabled,
   label,
+  loading = false,
   onClick,
 }: {
   readonly children: ReactNode;
   readonly className?: string;
   readonly disabled?: boolean;
   readonly label: string;
+  readonly loading?: boolean;
   readonly onClick: () => void;
 }): JSX.Element {
   return (
@@ -420,10 +420,11 @@ function ResourceIconButton({
           "disabled:cursor-not-allowed disabled:opacity-35",
           className,
         )}
-        disabled={disabled}
+        disabled={disabled || loading}
+        aria-busy={loading || undefined}
         onClick={onClick}
       >
-        {children}
+        {loading ? <Spinner size="sm" /> : children}
       </button>
     </Tooltip>
   );

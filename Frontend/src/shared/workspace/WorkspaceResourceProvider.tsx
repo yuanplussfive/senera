@@ -1,5 +1,17 @@
-import { createContext, lazy, Suspense, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  lazy,
+  Suspense,
+  useCallback,
+  useContext,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { Spinner } from "../ui";
+import { useInertSiblings } from "../ui/useInertSiblings";
 import type { WorkspaceResourceLocator } from "./WorkspaceResourceLocator";
 
 const LazyWorkspaceResourceWorkbench = lazy(() =>
@@ -51,8 +63,20 @@ export function useWorkspaceResourceController(): WorkspaceResourceController | 
 }
 
 function WorkspaceResourceLoadingFallback(): JSX.Element {
+  const overlayRef = useRef<HTMLDivElement>(null);
+  useInertSiblings(overlayRef);
+
   return (
-    <div className="fixed inset-0 z-[60] grid place-items-center bg-[var(--theme-dialog-backdrop)]" role="status">
+    <div
+      ref={overlayRef}
+      className="fixed inset-0 z-[60] grid place-items-center bg-[var(--theme-dialog-backdrop)]"
+      role="dialog"
+      aria-modal="true"
+      aria-busy="true"
+      aria-label={frontendMessage("ui.loading")}
+      tabIndex={-1}
+      data-workspace-resource-loading
+    >
       <Spinner size="sm" className="text-content-secondary" />
     </div>
   );

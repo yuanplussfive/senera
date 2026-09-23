@@ -115,9 +115,6 @@
   --theme-selection-fg: var(--content-primary);
   --theme-skeleton-a: rgb(43 40 32 / 0.035);
   --theme-skeleton-b: rgb(43 40 32 / 0.09);
-  --senera-motion-signal-loop: 1600ms;
-  --senera-motion-signal-bar: 1100ms;
-  --senera-motion-loading-rail: 1200ms;
   --senera-motion-feedback: 200ms;
   --senera-signal-violet: rgb(var(--color-accent-500));
   --senera-signal-gold: rgb(var(--color-umber-500));
@@ -145,6 +142,8 @@
   --theme-code-token-name: rgb(var(--color-ink-800));
   --theme-code-token-punctuation: rgb(var(--color-ink-500));
   --theme-code-token-invalid: rgb(var(--color-brick-700));
+  --senera-top-chrome-height: 52px;
+  --senera-top-rail-gap: 12px;
   --theme-config-nav-bg: rgb(244 244 241);
   --theme-config-list-bg: rgb(248 248 246);
   --theme-config-header-bg: rgb(239 238 235);
@@ -166,7 +165,7 @@
   --theme-tool-line-height: 1.5;
   --theme-chat-composer-bg: rgb(var(--color-paper-100) / 0.8);
   --theme-chat-composer-focus-bg: rgb(var(--color-paper-50));
-  --theme-session-active-bg: var(--accent-surface);
+  --theme-session-active-bg: rgb(var(--color-paper-300));
   --theme-tooltip-bg: rgb(var(--color-ink-900));
   --theme-tooltip-fg: rgb(var(--color-paper-50));
   --theme-tooltip-border: rgb(var(--color-paper-50) / 0.18);
@@ -176,6 +175,7 @@
   --surface-panel: rgb(var(--color-paper-50));
   --surface-raised: var(--theme-elevated-bg);
   --surface-subtle: rgb(var(--color-paper-100));
+  --surface-soft: color-mix(in srgb, var(--surface-subtle) 50%, var(--surface-panel));
   --surface-muted: rgb(var(--color-paper-200));
   --surface-hover: rgb(var(--color-ink-900) / 0.05);
   --content-strong: rgb(var(--color-ink-950));
@@ -229,13 +229,24 @@
   --modal-scale-close: 0.96;
   --modal-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --dialog-presence-exit-dur: 320ms;
-  --menu-open-dur: 140ms;
-  --menu-close-dur: 90ms;
+  --overlay-radius: 10px;
+  --menu-surface-radius: 16px;
+  --menu-item-radius: 10px;
+  --menu-open-dur: 220ms;
+  --menu-close-dur: 130ms;
   --menu-reduced-open-dur: 120ms;
-  --menu-check-dur: 140ms;
-  --menu-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --menu-exit-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --menu-check-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --menu-item-dur: 150ms;
+  --menu-check-dur: 220ms;
+  --menu-open-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --menu-close-ease: cubic-bezier(0.3, 0, 0.8, 0.15);
+  --menu-check-opacity-dur: 160ms;
+  --menu-item-ease: linear;
+  --menu-ease-out: var(--menu-open-ease);
+  --menu-exit-ease: var(--menu-close-ease);
+  --menu-check-ease: cubic-bezier(0.2, 0.9, 0.2, 1.25);
+  --icon-rotate-dur: 200ms;
+  --icon-rotate-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --menu-surface-shadow: 0 4px 16.4px rgb(var(--color-ink-950) / 0.1);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -586,22 +597,67 @@ textarea::-webkit-scrollbar-track {
   container-type: inline-size;
 }
 
-/* Recovery keeps the app's signal language without turning a render failure
-   into a blocking card or exposing implementation diagnostics. */
+.app-loading-shell {
+  box-sizing: border-box;
+}
+
+.settings-loading-shell {
+  box-sizing: border-box;
+  container-name: settings-loading;
+  container-type: inline-size;
+}
+
+.settings-loading-sidebar,
+.settings-loading-header--persistent {
+  display: none;
+}
+
+@container settings-loading (min-width: 800px) {
+  .settings-loading-sidebar {
+    display: flex;
+  }
+
+  .settings-loading-header--compact {
+    display: none;
+  }
+
+  .settings-loading-header--persistent {
+    display: block;
+  }
+}
+
+/* Recovery keeps status quiet without turning a render failure into a blocking
+   card or exposing implementation diagnostics. */
 [data-error-boundary] {
   isolation: isolate;
 }
 
-.senera-error-boundary__pulse {
-  position: absolute;
-  top: -1px;
-  left: 0;
-  width: 5rem;
-  height: 2px;
-  border-radius: 999px;
-  background: var(--accent-solid);
-  transform-origin: left center;
-  animation: senera-error-boundary-pulse 2.4s cubic-bezier(0.22, 0.7, 0.2, 1) infinite;
+/* State views (StateView / ErrorBanner) enter with a short container settle.
+   StateView uses --state-enter-delay once so its contents arrive together. */
+.senera-state-enter {
+  animation: senera-state-enter 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--state-enter-delay, 0ms);
+}
+
+@keyframes senera-state-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+html[data-motion-level="reduced"] .senera-state-enter {
+  animation-duration: 0.12s;
+  animation-delay: 0ms;
+}
+
+html[data-motion-level="none"] .senera-state-enter {
+  animation: none;
 }
 
 .conversation-frame {
@@ -772,11 +828,11 @@ textarea::-webkit-scrollbar-track {
   top: 50%;
   inset-inline-end: 10px;
   display: none;
-  width: 44px;
+  width: 40px;
   max-height: calc(100% - 64px);
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   pointer-events: auto;
   transform: translateY(-50%);
 }
@@ -785,14 +841,14 @@ textarea::-webkit-scrollbar-track {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 1px;
+  gap: 0;
 }
 
 .chat-event-rail__step {
   display: flex;
-  width: 28px;
-  height: 28px;
-  margin-inline-end: -6px;
+  width: 32px;
+  height: 32px;
+  margin-inline-end: -8px;
   padding: 0;
   align-items: center;
   justify-content: center;
@@ -810,10 +866,10 @@ textarea::-webkit-scrollbar-track {
 }
 
 .chat-event-rail__step svg {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
   stroke-width: 2;
-  stroke-linecap: round;
+  stroke-linecap: square;
   stroke-linejoin: round;
 }
 
@@ -844,10 +900,10 @@ textarea::-webkit-scrollbar-track {
 .chat-event-rail__event {
   position: relative;
   display: flex;
-  width: 28px;
-  height: 13px;
+  width: 40px;
+  height: 12px;
   padding: 0;
-  padding-inline: 4px;
+  padding-inline: 10px;
   align-items: center;
   justify-content: flex-end;
   border: 0;
@@ -858,8 +914,8 @@ textarea::-webkit-scrollbar-track {
 
 .chat-event-rail__tick {
   display: block;
-  width: 7px;
-  height: 3px;
+  width: 6px;
+  height: 1px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--content-muted) 84%, transparent);
   opacity: 0.76;
@@ -871,18 +927,22 @@ textarea::-webkit-scrollbar-track {
 }
 
 .chat-event-rail__event[data-kind="user_request"] .chat-event-rail__tick {
-  width: 13px;
+  width: 12px;
   background: color-mix(in srgb, var(--content-secondary) 88%, transparent);
 }
 
+.chat-event-rail__event:nth-child(even) .chat-event-rail__tick {
+  width: 12px;
+}
+
 .chat-event-rail__event[data-active="true"] .chat-event-rail__tick {
-  width: 18px;
-  background: var(--accent-solid);
+  width: 16px;
+  background: var(--content-primary);
   opacity: 1;
 }
 
 .chat-event-rail__events:hover .chat-event-rail__event[data-active="true"] .chat-event-rail__tick {
-  background: var(--accent-solid);
+  background: var(--content-primary);
 }
 
 .chat-event-rail__event:is(:hover, :focus-visible) .chat-event-rail__tick,
@@ -890,7 +950,6 @@ textarea::-webkit-scrollbar-track {
   width: 16px;
   background: var(--content-strong);
   opacity: 1;
-  transform: scaleY(1.12);
 }
 
 .chat-event-rail__event:focus-visible {
@@ -906,29 +965,28 @@ textarea::-webkit-scrollbar-track {
   position: absolute;
   z-index: 5;
   top: 50%;
-  right: 52px;
-  display: flex;
-  width: min(300px, calc(100vw - 96px));
-  padding: 14px 17px;
-  flex-direction: column;
-  align-items: flex-start;
-  border: 1px solid color-mix(in srgb, var(--line-default) 72%, transparent);
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--surface-muted) 72%, var(--surface-raised));
-  box-shadow: 0 10px 30px -20px rgb(var(--color-ink-950) / 0.3);
+  right: calc(100% + 8px);
+  display: block;
+  width: max-content;
+  max-width: min(420px, calc(100vw - 96px));
+  padding: 2px 8px;
+  border: 0;
+  outline: 1px solid color-mix(in srgb, var(--line-default) 46%, transparent);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.04);
   color: var(--content-primary);
   text-align: left;
-  white-space: normal;
+  white-space: nowrap;
   pointer-events: none;
   transform: translateY(-50%);
-  backdrop-filter: blur(12px) saturate(1.02);
-  animation: chat-event-rail-preview-in 120ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: chat-event-rail-preview-in 120ms ease;
 }
 
 @keyframes chat-event-rail-preview-in {
   from {
     opacity: 0;
-    transform: translate(4px, -50%) scale(0.98);
+    transform: translate(4px, -50%);
   }
 
   to {
@@ -938,17 +996,24 @@ textarea::-webkit-scrollbar-track {
 }
 
 .chat-event-rail__preview-meta {
-  margin-bottom: 6px;
+  display: inline;
+  margin: 0 6px 0 0;
   color: var(--content-secondary);
   font-size: calc(12px * var(--theme-font-scale-safe));
   line-height: 1.35;
 }
 
 .chat-event-rail__preview-body {
-  display: -webkit-box;
+  display: inline-block;
+  max-width: min(360px, calc(100vw - 140px));
   overflow: hidden;
   overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
+  color: var(--content-primary);
+  font-size: calc(14px * var(--theme-font-scale-safe));
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
 }
 
 .thinking-tool-popover {
@@ -968,13 +1033,6 @@ textarea::-webkit-scrollbar-track {
   background: color-mix(in srgb, var(--surface-raised) 94%, var(--surface-sidebar));
   box-shadow: 0 14px 34px -26px color-mix(in srgb, var(--content-primary) 42%, transparent);
   backdrop-filter: blur(12px) saturate(1.03);
-}
-
-.chat-event-rail__preview-body {
-  color: var(--content-primary);
-  font-size: calc(13.5px * var(--theme-font-scale-safe));
-  line-height: 1.5;
-  -webkit-line-clamp: 3;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -1005,7 +1063,7 @@ textarea::-webkit-scrollbar-track {
 }
 
 .streaming-complete-highlight {
-  animation: streaming-complete-highlight 640ms ease-out 1;
+  animation: streaming-complete-highlight 160ms ease-out 1;
   border-radius: 18px;
 }
 
@@ -1020,11 +1078,28 @@ html[data-motion-level="none"] *::after {
   scroll-behavior: auto !important;
 }
 
+/* reduced 级别只保留颜色/透明度类状态反馈，移除位移、缩放与布局类过渡 */
+html[data-motion-level="reduced"] *,
+html[data-motion-level="reduced"] *::before,
+html[data-motion-level="reduced"] *::after {
+  transition-property:
+    color, background-color, border-color, outline-color, text-decoration-color, opacity, box-shadow, fill, stroke !important;
+  transition-duration: 120ms !important;
+  transition-delay: 0s !important;
+}
+
 html[data-motion-level="none"] *,
 html[data-motion-level="none"] *::before,
 html[data-motion-level="none"] *::after {
   transition-duration: 0s !important;
   transition-delay: 0s !important;
+}
+
+html[data-motion-level="reduced"] .menu-surface [role^="menuitem"],
+html[data-motion-level="none"] .menu-surface [role^="menuitem"],
+html[data-motion-level="reduced"] button[role="switch"],
+html[data-motion-level="none"] button[role="switch"] {
+  transform: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1034,6 +1109,10 @@ html[data-motion-level="none"] *::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
+    transition-property:
+      color, background-color, border-color, outline-color, text-decoration-color, opacity, box-shadow, fill, stroke !important;
+    transition-duration: 120ms !important;
+    transition-delay: 0s !important;
   }
 }
 
@@ -1059,190 +1138,51 @@ html[data-motion-level="none"] *::after {
   animation: shimmer 1.8s linear infinite;
 }
 
-/* ----- Senera resonance motion -------------------------------------------
-   A wordless, asymmetric double trace derived from the brand mark. It uses
-   a moving stroke rather than a logo or a generic spinner so loading can sit
-   inside any surface without becoming a second card. */
-.senera-resonance-trace {
+.senera-spinner {
   display: block;
-  overflow: visible;
-  color: rgb(var(--color-accent-500));
-}
-
-.senera-resonance-trace-shadow,
-.senera-resonance-trace-wave {
-  fill: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.senera-resonance-trace-shadow {
-  stroke: currentColor;
-  stroke-width: 4.5;
-  opacity: 0.1;
-}
-
-.senera-resonance-trace-wave {
-  stroke-width: 2.2;
-  stroke-dashoffset: 0;
-  animation: senera-resonance-drift var(--senera-motion-signal-loop) linear infinite;
-}
-
-.senera-resonance-trace-wave-primary {
-  stroke: var(--senera-signal-violet);
-  stroke-dasharray: 54 142;
-}
-
-.senera-resonance-trace-wave-secondary {
-  stroke: var(--senera-signal-gold);
-  stroke-dasharray: 32 164;
-  animation-delay: -0.36s;
-  opacity: 0.9;
-}
-
-.senera-resonance-trace-node {
-  fill: var(--senera-signal-gold);
-  opacity: 0.92;
-  transform-box: fill-box;
+  color: currentColor;
   transform-origin: center;
-  animation: senera-resonance-node var(--senera-motion-signal-loop) ease-in-out infinite;
+  animation: senera-spinner-rotate 800ms linear infinite;
 }
 
-.senera-resonance-trace-impact {
-  fill: none;
-  stroke: var(--senera-signal-gold);
-  stroke-width: 1.1;
-  opacity: 0;
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: senera-resonance-impact var(--senera-motion-signal-loop) cubic-bezier(0.22, 0.7, 0.2, 1) infinite;
-}
-
-.senera-resonance-trace.is-settled .senera-resonance-trace-wave,
-.senera-resonance-trace.is-settled .senera-resonance-trace-node,
-.senera-resonance-trace.is-settled .senera-resonance-trace-impact {
-  animation: none;
-}
-
-.senera-resonance-trace.is-settled .senera-resonance-trace-wave {
-  stroke-dasharray: none;
-  opacity: 0.76;
-}
-
-.senera-resonance-trace.is-settled .senera-resonance-trace-node {
-  opacity: 0.72;
-}
-
-.senera-resonance-trace.is-settled .senera-resonance-trace-impact {
-  opacity: 0;
-}
-
-.senera-refresh-orbit {
-  display: block;
-  overflow: visible;
-  color: rgb(var(--color-accent-500));
-}
-
-.senera-refresh-orbit-track {
+.senera-spinner-track,
+.senera-spinner-indicator {
   fill: none;
   stroke: currentColor;
-  stroke-width: 0.85;
   stroke-linecap: round;
-  stroke-dasharray: 1 4;
-  opacity: 0.28;
+  stroke-width: 1.75;
 }
 
-.senera-refresh-orbit-track-secondary {
+.senera-spinner-track {
   opacity: 0.2;
 }
 
-.senera-refresh-orbit-particle {
-  transform-box: fill-box;
-  transform-origin: center;
+.senera-spinner-indicator {
+  stroke-dasharray: 24 14;
 }
 
-.senera-refresh-orbit-particle-primary {
-  fill: var(--senera-signal-violet);
+.senera-loading-pulse {
+  animation: senera-loading-pulse 1.6s ease-in-out infinite;
 }
 
-.senera-refresh-orbit-particle-secondary {
-  fill: var(--senera-signal-gold);
+.senera-loading-spin {
+  animation: senera-spinner-rotate 800ms linear infinite;
 }
 
-.senera-refresh-orbit-collision {
-  fill: none;
-  stroke: var(--senera-signal-gold);
-  stroke-width: 1.05;
-  opacity: 0;
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: senera-refresh-collision 1.15s cubic-bezier(0.22, 0.7, 0.2, 1) infinite;
+html[data-motion-level="reduced"] .shimmer,
+html[data-motion-level="none"] .shimmer,
+html[data-motion-level="reduced"] .senera-loading-pulse,
+html[data-motion-level="none"] .senera-loading-pulse,
+html[data-motion-level="reduced"] .senera-loading-spin,
+html[data-motion-level="none"] .senera-loading-spin {
+  animation: none;
 }
 
-.senera-spinner-trace {
-  display: block;
-  overflow: visible;
-  color: currentColor;
-}
-
-/* Compatibility marker for existing state selectors. The trace itself owns
-   the motion; never rotate the whole SVG. */
-.senera-spinner-trace.motion-safe\:animate-spin {
-  animation: none !important;
-}
-
-.senera-spinner-trace path {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.75;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-dasharray: 18 44;
-  animation: senera-spinner-drift var(--senera-motion-signal-bar) linear infinite;
-}
-
-.senera-loading-rail {
-  height: 2px;
-  overflow: hidden;
-  background: rgb(var(--color-accent-500) / 0.1);
-}
-
-.senera-loading-rail::after {
-  display: block;
-  width: 30%;
-  height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, transparent, var(--senera-signal-violet), var(--senera-signal-gold), transparent);
-  content: "";
-  animation: senera-loading-rail var(--senera-motion-loading-rail) ease-in-out infinite;
-}
-
-/* Authentication is a connection state, not a modal panel. The short baseline
-   below the signal gives the standalone page a quiet point of orientation. */
-.senera-auth-status {
-  position: relative;
-  isolation: isolate;
-}
-
+/* Authentication is a connection state, not a modal panel. */
 .senera-auth-status__signal {
-  position: relative;
   display: grid;
   min-height: 28px;
   place-items: center;
-}
-
-.senera-auth-status[data-authentication-tone="loading"] .senera-auth-status__signal::after {
-  position: absolute;
-  bottom: -9px;
-  left: 50%;
-  width: 48px;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--senera-signal-gold), var(--senera-signal-violet), transparent);
-  content: "";
-  opacity: 0.5;
-  transform: translateX(-50%) scaleX(0.62);
-  transform-origin: center;
-  animation: senera-auth-pulse 1.4s ease-in-out infinite;
 }
 
 .senera-save-status {
@@ -1334,8 +1274,7 @@ html[data-motion-level="none"] *::after {
 }
 
 /* ----- Senera status strip -----------------------------------------------
-   A toast is a transient line of feedback, not a second content card. It
-   keeps a small footprint and uses the same resonance trace as loading. */
+   A toast is a transient line of feedback, not a second content card. */
 .senera-toast {
   --senera-toast-accent: rgb(var(--color-accent-500));
   width: max-content !important;
@@ -1364,8 +1303,8 @@ html[data-motion-level="none"] *::after {
 
 .senera-toast-icon {
   display: inline-flex !important;
-  width: 38px !important;
-  height: 16px !important;
+  width: 17px !important;
+  height: 17px !important;
   margin: 0 3px 0 0 !important;
   align-items: center;
   justify-content: flex-start;
@@ -1421,67 +1360,6 @@ html[data-motion-level="none"] *::after {
   color: var(--content-secondary) !important;
 }
 
-@keyframes senera-resonance-drift {
-  from {
-    stroke-dashoffset: 0;
-  }
-
-  to {
-    stroke-dashoffset: -196;
-  }
-}
-
-@keyframes senera-resonance-node {
-  0%,
-  100% {
-    opacity: 0.42;
-    transform: scale(0.78);
-  }
-
-  52% {
-    opacity: 1;
-    transform: scale(1.25);
-  }
-}
-
-@keyframes senera-resonance-impact {
-  0%,
-  48% {
-    opacity: 0;
-    transform: scale(0.35);
-  }
-
-  58% {
-    opacity: 0.62;
-    transform: scale(0.85);
-  }
-
-  73%,
-  100% {
-    opacity: 0;
-    transform: scale(1.85);
-  }
-}
-
-@keyframes senera-refresh-collision {
-  0%,
-  40% {
-    opacity: 0;
-    transform: scale(0.35);
-  }
-
-  48% {
-    opacity: 0.78;
-    transform: scale(0.86);
-  }
-
-  62%,
-  100% {
-    opacity: 0;
-    transform: scale(1.9);
-  }
-}
-
 @keyframes senera-save-progress-sweep {
   0% {
     transform: translateX(-115%);
@@ -1492,77 +1370,28 @@ html[data-motion-level="none"] *::after {
   }
 }
 
-@keyframes senera-spinner-drift {
-  from {
-    stroke-dashoffset: 0;
-  }
-
+@keyframes senera-spinner-rotate {
   to {
-    stroke-dashoffset: -62;
+    transform: rotate(360deg);
   }
 }
 
-@keyframes senera-loading-rail {
-  0% {
-    transform: translateX(-120%);
-  }
-
-  100% {
-    transform: translateX(320%);
-  }
-}
-
-@keyframes senera-error-boundary-pulse {
+@keyframes senera-loading-pulse {
   0%,
   100% {
-    opacity: 0.48;
-    transform: scaleX(0.72);
-  }
-
-  42% {
-    opacity: 0.9;
-    transform: scaleX(1);
-  }
-
-  68% {
-    opacity: 0.58;
-    transform: scaleX(0.84);
-  }
-}
-
-@keyframes senera-auth-pulse {
-  0%,
-  100% {
-    opacity: 0.22;
-    transform: translateX(-50%) scaleX(0.62);
+    opacity: 0.52;
   }
 
   50% {
-    opacity: 0.72;
-    transform: translateX(-50%) scaleX(1);
+    opacity: 1;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .senera-resonance-trace-wave {
+  .shimmer,
+  .senera-loading-pulse,
+  .senera-loading-spin {
     animation: none;
-    stroke-dasharray: none;
-    opacity: 0.72;
-  }
-
-  .senera-resonance-trace-node {
-    animation: none;
-    opacity: 0.72;
-  }
-
-  .senera-resonance-trace-impact {
-    animation: none;
-    opacity: 0;
-  }
-
-  .senera-refresh-orbit-collision {
-    animation: none;
-    opacity: 0;
   }
 
   .senera-save-status::after {
@@ -1575,31 +1404,12 @@ html[data-motion-level="none"] *::after {
     transform: none;
   }
 
-  .senera-spinner-trace path,
-  .senera-loading-rail::after {
+  .senera-spinner {
     animation: none;
   }
 
-  .senera-spinner-trace path {
-    stroke-dasharray: none;
-    opacity: 0.72;
-  }
-
-  .senera-loading-rail::after {
-    transform: translateX(0);
-    opacity: 0.72;
-  }
-
-  .senera-auth-status[data-authentication-tone="loading"] .senera-auth-status__signal::after {
+  .senera-state-enter {
     animation: none;
-    opacity: 0.42;
-    transform: translateX(-50%);
-  }
-
-  .senera-error-boundary__pulse {
-    animation: none;
-    opacity: 0.62;
-    transform: none;
   }
 }
 
@@ -1620,6 +1430,105 @@ html[data-motion-level="none"] *::after {
   }
   100% {
     background-position: 200% 0;
+  }
+}
+
+/* ----- 菜单动效 ----- */
+.menu-surface {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.965);
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--menu-close-dur) var(--menu-close-ease),
+    transform var(--menu-open-dur) var(--menu-open-ease),
+    visibility 0s linear var(--menu-open-dur);
+  will-change: transform, opacity;
+}
+
+.menu-surface[data-state="open"] {
+  opacity: 1;
+  transform: none;
+  visibility: visible;
+  pointer-events: auto;
+  transition-delay: 0s;
+  animation: menu-surface-presence-in var(--menu-open-dur) linear both;
+}
+
+.menu-surface[data-state="closed"] {
+  pointer-events: none !important;
+  animation: menu-surface-presence-out var(--menu-close-dur) linear both;
+}
+
+@starting-style {
+  .menu-surface[data-state="open"] {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.965);
+  }
+}
+
+.menu-check {
+  opacity: 0;
+  transform: scale(0.5);
+  transition:
+    opacity var(--menu-check-opacity-dur) var(--menu-item-ease),
+    transform var(--menu-check-dur) var(--menu-check-ease);
+}
+
+[data-state="checked"] .menu-check,
+[data-state="indeterminate"] .menu-check {
+  opacity: 1;
+  transform: scale(1);
+}
+
+html[data-motion-level="reduced"] .menu-surface,
+html[data-motion-level="none"] .menu-surface {
+  transition: none;
+}
+
+html[data-motion-level="reduced"] .menu-surface[data-state="open"] {
+  animation-duration: var(--menu-reduced-open-dur);
+}
+
+html[data-motion-level="reduced"] .menu-surface[data-state="closed"] {
+  animation-duration: var(--menu-close-dur);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-surface[data-state="open"] {
+    animation-duration: var(--menu-reduced-open-dur);
+  }
+
+  .menu-surface[data-state="closed"] {
+    animation-duration: var(--menu-close-dur);
+  }
+}
+
+html[data-motion-level="none"] .menu-surface[data-state] {
+  animation-duration: 0.001ms !important;
+}
+
+html[data-motion-level="reduced"] .menu-check,
+html[data-motion-level="none"] .menu-check {
+  transition: none;
+}
+
+/* Radix Presence waits for animationend; this no-op track keeps transition exits mounted. */
+@keyframes menu-surface-presence-in {
+  from {
+    outline-color: transparent;
+  }
+  to {
+    outline-color: transparent;
+  }
+}
+
+@keyframes menu-surface-presence-out {
+  from {
+    outline-color: transparent;
+  }
+  to {
+    outline-color: transparent;
   }
 }
 
@@ -1671,6 +1580,7 @@ html[data-motion-level="none"]::view-transition-new(root) {
 /* Electron desktop chrome -------------------------------------------------- */
 html[data-senera-window-controls="custom"] {
   --senera-titlebar-height: 52px;
+  --senera-top-chrome-height: var(--senera-titlebar-height);
   --senera-window-controls-width: 138px;
   --senera-window-controls-gap: 12px;
 }
@@ -1698,7 +1608,7 @@ html[data-senera-window-controls="custom"] [data-window-controls-inset] {
 
 html[data-senera-window-controls="custom"] [data-workflow-dock-titlebar-spacer] {
   display: block;
-  height: var(--senera-titlebar-height);
+  height: var(--senera-top-chrome-height);
 }
 
 html[data-senera-desktop-window="true"]
@@ -1725,5 +1635,38 @@ html[data-senera-window-controls="custom"] [data-workspace-main] {
 html[data-senera-window-controls="custom"] [data-settings-workbench] {
   box-sizing: border-box;
   height: 100%;
-  padding-top: var(--senera-titlebar-height);
+  padding-top: var(--senera-top-chrome-height);
+}
+
+/* The settings rail owns the surface title. It lifts into the titlebar band so the
+   title sits level with the window controls, while every other column keeps the
+   offset above and stays where it was. Paired with the padding-top rule, so a
+   surface without the custom frame keeps the whole workbench flush at the top. */
+html[data-senera-window-controls="custom"] [data-settings-navigation-rail] {
+  margin-top: calc(var(--senera-top-chrome-height) * -1);
+}
+
+/* Full-height split workspaces (such as model-service) manage their own column headers flush to the top
+   so middle provider rail and detail column align seamlessly with the navigation rail and window controls. */
+html[data-senera-window-controls="custom"] [data-settings-workbench][data-settings-section="model-service"] {
+  padding-top: var(--senera-top-chrome-height);
+}
+html[data-senera-window-controls="custom"]
+  [data-settings-workbench][data-settings-section="model-service"]
+  [data-settings-navigation-rail] {
+  margin-top: calc(var(--senera-top-chrome-height) * -1);
+}
+
+html[data-senera-window-controls="custom"] [data-settings-loading][data-settings-loading-presentation="desktop"] {
+  box-sizing: border-box;
+  padding-top: var(--senera-top-chrome-height);
+}
+
+html[data-senera-window-controls="custom"] [data-application-loading] {
+  box-sizing: border-box;
+  padding-top: var(--senera-top-chrome-height);
+}
+
+html[data-senera-window-controls="custom"][data-senera-desktop-surface="settings"] [data-authentication-loading] {
+  padding-top: var(--senera-top-chrome-height);
 }

@@ -2,6 +2,7 @@ import { lazy, Suspense, useMemo, useState } from "react";
 import { ChevronDown, GitBranch } from "lucide-react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { formatDateTime } from "../../lib/util";
+import { StateView } from "../../shared/ui/StateView";
 import type { RunRecord } from "../../store/sessionStore";
 import { ContinuityEmptyText, formatContinuityConfidence } from "./ContinuityPanelPrimitives";
 import { ContinuityFactCatalog } from "./ContinuityFactCatalog";
@@ -94,7 +95,13 @@ function GraphRelations({
           <ContinuityEmptyText>{frontendMessage("continuity.emptyGraphRelations")}</ContinuityEmptyText>
         ) : (
           <>
-            <Suspense fallback={<div className="h-72 border border-line-subtle bg-surface-subtle" aria-busy="true" />}>
+            <Suspense
+              fallback={
+                <div className="h-72 border border-line-subtle bg-surface-subtle">
+                  <StateView status="loading" title={frontendMessage("continuity.graphMap")} className="min-h-0 py-4" />
+                </div>
+              }
+            >
               <LazyContinuityGraphMap
                 graph={graph}
                 promptRelations={continuity.graphRelations}

@@ -232,7 +232,7 @@ export function AgentExecutionStageFold({ run }: { run: RunRecord }): JSX.Elemen
     >
       <button
         type="button"
-        className="execution-stage-fold__trigger group flex w-full min-w-0 items-center gap-2 rounded-md py-1 text-left text-content-secondary transition-colors hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
+        className="execution-stage-fold__trigger group inline-flex max-w-full min-w-0 items-center gap-2 rounded-md py-1 text-left text-content-secondary transition-colors hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
         aria-expanded={open}
         aria-controls={contentId}
         aria-label={presentation.accessibleTitle}
@@ -240,7 +240,7 @@ export function AgentExecutionStageFold({ run }: { run: RunRecord }): JSX.Elemen
         data-execution-stage-fold-trigger
       >
         <ToolActionIcon icon={presentation.icon} status={presentation.status} size="xs" showLiveIndicator={false} />
-        <span className="min-w-0 flex-1 truncate text-[length:var(--theme-chat-assistant-font-size-scaled)] leading-[var(--theme-chat-assistant-line-height)]">
+        <span className="min-w-0 truncate text-[length:var(--theme-chat-assistant-font-size-scaled)] leading-[var(--theme-chat-assistant-line-height)]">
           {presentation.title}
         </span>
         <ChevronRight

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ConfigFormFieldData } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
-import { MenuSelect, Switch } from "../ui";
+import { MenuSelect, SecretInput, Switch } from "../ui";
 import { JsonConfigArrayFieldControl } from "./JsonConfigArrayFieldControl";
 import { jsonConfigInputClassName } from "./JsonConfigControlStyles";
 import { JsonConfigRecordField } from "./JsonConfigRecordField";
@@ -59,6 +59,17 @@ export function renderJsonConfigFieldInput(
     );
   }
   if (field.type === "string") {
+    if (field.secret) {
+      return (
+        <SecretInput
+          value={typeof value === "string" ? value : ""}
+          placeholder={field.placeholder}
+          disabled={disabled}
+          ariaLabel={field.label}
+          onChange={onChange}
+        />
+      );
+    }
     return field.multiline ? (
       <textarea
         value={typeof value === "string" ? value : ""}
@@ -70,7 +81,7 @@ export function renderJsonConfigFieldInput(
       />
     ) : (
       <input
-        type={field.secret ? "password" : "text"}
+        type="text"
         value={typeof value === "string" ? value : ""}
         placeholder={field.placeholder}
         disabled={disabled}

@@ -1031,7 +1031,7 @@
           "properties": {
             "ConfigVersion": {
               "type": "number",
-              "const": 27
+              "const": 28
             },
             "Defaults": {
               "type": "object",
@@ -3007,6 +3007,15 @@
                     "type": "string",
                     "const": "OpenAICompatible"
                   },
+                  "DefaultEndpoint": {
+                    "type": "string",
+                    "enum": [
+                      "Responses",
+                      "ChatCompletions",
+                      "ClaudeMessages",
+                      "GoogleGenerateContent"
+                    ]
+                  },
                   "BaseUrl": {
                     "type": "string",
                     "format": "uri"
@@ -4901,6 +4910,22 @@
                 {
                   "type": "string",
                   "const": "OpenAICompatible"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "DefaultEndpoint": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "Responses",
+                    "ChatCompletions",
+                    "ClaudeMessages",
+                    "GoogleGenerateContent"
+                  ]
                 },
                 {
                   "type": "null"

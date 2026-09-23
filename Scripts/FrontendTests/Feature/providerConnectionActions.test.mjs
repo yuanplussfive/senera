@@ -41,6 +41,33 @@ test("connection actions do not reset a draft when provider objects are remateri
   expect(renderCount).toBeLessThan(5);
 });
 
+test("provider default endpoint changes settle into the active draft", async () => {
+  const handleRef = { current: null };
+  const view = render(
+    React.createElement(ActionsHarness, {
+      handleRef,
+      state: {
+        ...createState("alpha"),
+        providers: [{ ...createState("alpha").providers[0], DefaultEndpoint: "ChatCompletions" }],
+      },
+    }),
+  );
+
+  await act(async () => {
+    view.rerender(
+      React.createElement(ActionsHarness, {
+        handleRef,
+        state: {
+          ...createState("alpha"),
+          providers: [{ ...createState("alpha").providers[0], DefaultEndpoint: "Responses" }],
+        },
+      }),
+    );
+  });
+
+  expect(handleRef.current.actions.connectionDraft?.DefaultEndpoint).toBe("Responses");
+});
+
 test("provider settings focus the first enabled provider when no selection exists", async () => {
   const handleRef = { current: null };
   const state = createMultiState();
@@ -143,12 +170,16 @@ test("new provider presets remain editable after the identity snapshot arrives",
       Id: "beta",
       Enabled: true,
       Kind: "OpenAICompatible",
+      DefaultEndpoint: "ClaudeMessages",
       BaseUrl: "https://preset.example.test/v1",
       ApiKey: "",
       ApiVersion: "2023-06-01",
       Headers: {},
     });
   });
+  expect(onUpsertProviderEndpoint).toHaveBeenCalledWith(
+    expect.objectContaining({ Id: "beta", DefaultEndpoint: "ClaudeMessages" }),
+  );
 
   await act(async () => {
     view.rerender(
@@ -230,9 +261,11 @@ test("provider connection commits the latest draft and immediate patches", async
     );
   });
   await act(async () => {
-    handleRef.current.actions.confirmDraft({ Enabled: false });
+    handleRef.current.actions.confirmDraft({ Enabled: false, DefaultEndpoint: "Responses" });
   });
-  expect(onUpsertProviderEndpoint).toHaveBeenLastCalledWith(expect.objectContaining({ Id: "alpha", Enabled: false }));
+  expect(onUpsertProviderEndpoint).toHaveBeenLastCalledWith(
+    expect.objectContaining({ Id: "alpha", DefaultEndpoint: "Responses", Enabled: false }),
+  );
 });
 
 test("provider connection sends the newest draft after an in-flight save completes", async () => {
@@ -271,6 +304,53 @@ test("provider connection sends the newest draft after an in-flight save complet
         },
       }),
     );
+  });
+
+  expect(onUpsertProviderEndpoint).toHaveBeenCalledTimes(2);
+  expect(onUpsertProviderEndpoint).toHaveBeenLastCalledWith(expect.objectContaining({ Id: "alpha", ApiKey: "latest" }));
+});
+
+test("provider connection keeps a newer draft when the active save fails", async () => {
+  const handleRef = { current: null };
+  const onUpsertProviderEndpoint = vi.fn().mockReturnValueOnce("first-save").mockReturnValueOnce("retry-save");
+  const view = render(
+    React.createElement(ActionsHarness, {
+      handleRef,
+      onUpsertProviderEndpoint,
+      state: createState("alpha"),
+    }),
+  );
+
+  await act(async () => {
+    handleRef.current.actions.confirmDraft({ ApiKey: "first" });
+    handleRef.current.actions.confirmDraft({ ApiKey: "latest" });
+  });
+
+  await act(async () => {
+    view.rerender(
+      React.createElement(ActionsHarness, {
+        handleRef,
+        onUpsertProviderEndpoint,
+        operations: {
+          alpha: {
+            commandId: "first-save",
+            kind: "provider.endpoint.upsert",
+            status: "error",
+            message: "alpha rejected",
+            updatedAt: "2026-07-12T00:00:00.000Z",
+          },
+        },
+        state: createState("alpha"),
+      }),
+    );
+  });
+
+  expect(handleRef.current.actions.connectionDraft?.ApiKey).toBe("latest");
+  expect(handleRef.current.actions.dirty).toBe(true);
+  expect(handleRef.current.actions.localError).toBe("alpha rejected");
+
+  await act(async () => {
+    handleRef.current.actions.confirmDraft();
   });
 
   expect(onUpsertProviderEndpoint).toHaveBeenCalledTimes(2);

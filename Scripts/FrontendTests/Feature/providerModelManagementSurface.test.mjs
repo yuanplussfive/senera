@@ -211,16 +211,15 @@ test("embedded model search exposes its disclosure state and clears a hidden que
 
   await user.click(openSearch);
 
-  const closeSearch = screen.getByRole("button", { name: frontendMessage("config.model.closeSearch") });
   const searchInput = screen.getByRole("textbox", { name: frontendMessage("config.model.searchPlaceholder") });
-  const disclosureId = closeSearch.getAttribute("aria-controls");
-  expect(closeSearch).toHaveAttribute("aria-expanded", "true");
+  const disclosureId = openSearch.getAttribute("aria-controls");
+  expect(openSearch).toHaveAttribute("aria-expanded", "true");
   expect(disclosureId).not.toBeNull();
   expect(document.getElementById(disclosureId)).toContainElement(searchInput);
 
   await user.type(searchInput, "mini");
   expect(searchInput).toHaveValue("mini");
-  await user.click(closeSearch);
+  await user.click(screen.getByText("没有匹配的模型"));
 
   await waitFor(() =>
     expect(
@@ -229,6 +228,48 @@ test("embedded model search exposes its disclosure state and clears a hidden que
   );
   await user.click(screen.getByRole("button", { name: frontendMessage("config.model.searchPlaceholder") }));
   expect(screen.getByRole("textbox", { name: frontendMessage("config.model.searchPlaceholder") })).toHaveValue("");
+});
+
+test("manual model add uses the compact form without groups and keeps advanced content scrollable", async () => {
+  const user = userEvent.setup();
+  const onUpsertProviderModel = vi.fn(() => "manual-save");
+  const model = {
+    Id: "openai/gpt-4.1",
+    ProviderId: "openai",
+    Model: "gpt-4.1",
+    Endpoint: "chat",
+    Capabilities: { Chat: true },
+  };
+  const props = createProps({ model, onUpsertProviderModel });
+  props.embedded = true;
+
+  renderWithFrontendProviders(React.createElement(ProviderModelManagementSurface, props));
+
+  await user.click(screen.getByRole("button", { name: frontendMessage("config.model.addCustomModel") }));
+  const dialog = screen.getByRole("dialog");
+  expect(within(dialog).queryByText("分组名称")).not.toBeInTheDocument();
+
+  await user.click(within(dialog).getByRole("button", { name: frontendMessage("settings.provider.moreSettings") }));
+  expect(within(dialog).getByText(frontendMessage("config.model.modelType"))).toBeInTheDocument();
+  expect(dialog.querySelector("[data-radix-scroll-area-viewport]")).not.toBeNull();
+
+  await user.type(
+    within(dialog).getByRole("textbox", { name: frontendMessage("settings.modelManagement.modelIdLabel") }),
+    "gpt-5.5",
+  );
+  await user.type(within(dialog).getByRole("textbox", { name: frontendMessage("config.model.modelName") }), "GPT-5.5");
+  await user.click(within(dialog).getByRole("button", { name: "200K" }));
+  await user.click(within(dialog).getByRole("button", { name: frontendMessage("settings.modelManagement.addModel") }));
+
+  expect(onUpsertProviderModel).toHaveBeenCalledWith(
+    expect.objectContaining({
+      model: expect.objectContaining({
+        Id: "openai/gpt-5.5",
+        Model: "GPT-5.5",
+        ContextWindowTokens: 200000,
+      }),
+    }),
+  );
 });
 
 function createProps({ model, onUpsertProviderModel, operations = {} }) {

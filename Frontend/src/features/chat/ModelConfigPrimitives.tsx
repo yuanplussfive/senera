@@ -233,12 +233,14 @@ export function SearchInput({
   disabled,
   placeholder,
   className,
+  autoFocus = false,
   onChange,
 }: {
   value: string;
   disabled: boolean;
   placeholder?: string;
   className?: string;
+  autoFocus?: boolean;
   onChange: (value: string) => void;
 }): JSX.Element {
   const resolvedPlaceholder = placeholder ?? frontendMessage("config.model.searchPlaceholder");
@@ -253,6 +255,7 @@ export function SearchInput({
       <input
         value={value}
         disabled={disabled}
+        autoFocus={autoFocus}
         placeholder={resolvedPlaceholder}
         aria-label={resolvedPlaceholder}
         className="min-w-0 flex-1 bg-transparent text-[12.5px] text-ink-800 outline-none placeholder:text-ink-350 disabled:opacity-55"
@@ -310,16 +313,18 @@ export function ProviderCatalogStatus({
   );
   const text = disabled
     ? frontendMessage("config.model.statusProviderDisabled")
-    : (error?.message ??
-      (catalog
-        ? frontendMessage("config.model.statusSummary", {
-            count: catalog.models.length,
-            source: frontendMessage(
-              catalog.source === "cache" ? "config.model.sourceCache" : "config.model.sourceNetwork",
-            ),
-            time: formatShortTime(catalog.fetchedAt),
-          })
-        : frontendMessage("config.model.statusNotFetched")));
+    : loading
+      ? frontendMessage("config.model.statusLoading")
+      : (error?.message ??
+        (catalog
+          ? frontendMessage("config.model.statusSummary", {
+              count: catalog.models.length,
+              source: frontendMessage(
+                catalog.source === "cache" ? "config.model.sourceCache" : "config.model.sourceNetwork",
+              ),
+              time: formatShortTime(catalog.fetchedAt),
+            })
+          : frontendMessage("config.model.statusNotFetched")));
 
   return (
     <div
@@ -339,11 +344,31 @@ export function ProviderCatalogStatus({
 }
 
 export function ModelsDevMetadataSummary({ metadata }: { metadata?: ModelsDevModelMetadata }): JSX.Element | null {
-  if (!metadata) return null;
-  const keys = readModelsDevCapabilityKeys(metadata);
-  if (keys.length === 0) {
+  if (!metadata || readModelsDevCapabilityKeys(metadata).length === 0) {
     return null;
   }
+  return (
+    <Tooltip
+      content={
+        <div className="max-w-xs space-y-1 text-left text-[11px] leading-4">
+          <ModelsDevMetadataDetails metadata={metadata} />
+        </div>
+      }
+      side="top"
+    >
+      <span className="inline-flex min-w-0 items-center" data-models-dev-metadata>
+        <ModelsDevCapabilityStrip metadata={metadata} />
+      </span>
+    </Tooltip>
+  );
+}
+
+/**
+ * models.dev model facts as tooltip lines. Colors stay inherited so the lines
+ * remain legible on the tooltip surface.
+ */
+export function ModelsDevMetadataDetails({ metadata }: { metadata?: ModelsDevModelMetadata }): JSX.Element | null {
+  if (!metadata) return null;
   const details = [
     metadata.name,
     metadata.description,
@@ -366,30 +391,20 @@ export function ModelsDevMetadataSummary({ metadata }: { metadata?: ModelsDevMod
     metadata.license ? `${frontendMessage("config.model.catalog.license")}: ${metadata.license}` : null,
     metadata.lastUpdated ? `${frontendMessage("config.model.catalog.updated")}: ${metadata.lastUpdated}` : null,
   ].filter((value): value is string => Boolean(value));
-  const content = (
-    <div className="max-w-xs space-y-1 text-[11px] leading-4">
+  if (details.length === 0) {
+    return null;
+  }
+  return (
+    <>
       {details.map((detail, index) => (
         <div
           key={`${detail}-${index}`}
-          className={
-            index === 0
-              ? "font-semibold text-content-strong"
-              : index === 1 && metadata.description
-                ? "text-content-muted"
-                : "text-content"
-          }
+          className={index === 0 ? "font-semibold" : index === 1 && metadata.description ? "opacity-70" : undefined}
         >
           {detail}
         </div>
       ))}
-    </div>
-  );
-  return (
-    <Tooltip content={content} side="top">
-      <span className="inline-flex min-w-0 items-center" data-models-dev-metadata>
-        <ModelsDevCapabilityStrip metadata={metadata} />
-      </span>
-    </Tooltip>
+    </>
   );
 }
 
@@ -409,19 +424,24 @@ export function IconAction({
   danger,
   disabled,
   onClick,
+  className,
 }: {
   children: ReactNode;
   label: string;
   danger?: boolean;
   disabled: boolean;
   onClick: () => void;
+  className?: string;
 }): JSX.Element {
   return (
     <Tooltip content={label} side="top">
       <button
         type="button"
         disabled={disabled}
-        className={cn(iconButtonClassName, danger && "hover:border-brick-200 hover:bg-brick-50 hover:text-brick-600")}
+        className={cn(
+          className ?? iconButtonClassName,
+          danger && "hover:border-brick-200 hover:bg-brick-50 hover:text-brick-600",
+        )}
         aria-label={label}
         onClick={onClick}
       >

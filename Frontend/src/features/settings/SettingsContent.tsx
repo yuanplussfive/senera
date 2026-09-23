@@ -1,11 +1,10 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import { AnimatePresence, motion, type Variants } from "framer-motion";
-import { RotateCcw } from "lucide-react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { JsonConfigSettingsView } from "../../shared/config/JsonConfigForm";
 import { motionTimings, MotionIconSwap, useMotionLevel } from "../../shared/motion";
-import { Button, ResonanceTrace, ScrollArea, StateView, Tooltip } from "../../shared/ui";
+import { AppIcon, Button, ScrollArea, Spinner, StateView, Tooltip } from "../../shared/ui";
 import type { SettingsSystemConfigHandle } from "./SettingsContracts";
 import type { SettingsContentProps } from "./SettingsWorkbenchContracts";
 import { readSettingsDraftInteraction } from "./settingsInteractionModel";
@@ -288,7 +287,7 @@ function DraftBackedSection({
           )}
         >
           <MotionIconSwap stateKey={draftState.saving ? "saving" : "saved"}>
-            <ResonanceTrace size="sm" state={draftState.saving ? "running" : "settled"} />
+            {draftState.saving ? <Spinner size="sm" /> : <AppIcon icon="check" size={14} aria-hidden="true" />}
           </MotionIconSwap>
           <span>{saveStatus}</span>
         </motion.span>
@@ -313,7 +312,7 @@ function DraftBackedSection({
               <Tooltip content={interaction.saveTitle} side="top">
                 <span className="inline-flex">
                   <Button size="sm" disabled={interaction.saveDisabled} onClick={draftState.save}>
-                    <RotateCcw className="h-3.5 w-3.5" />
+                    <AppIcon icon="refresh" size={14} aria-hidden="true" />
                     {frontendMessage("settings.action.retry")}
                   </Button>
                 </span>

@@ -67,9 +67,9 @@ export function terminalStatusLabel(state: ExecutionResourceState): string {
 }
 
 const StatusIndicatorClassNames = {
-  starting: "bg-[#d19a66] animate-pulse",
+  starting: "bg-[#d19a66] senera-loading-pulse",
   running: "bg-[var(--terminal-accent)]",
-  stopping: "bg-[#d7ba7d] animate-pulse",
+  stopping: "bg-[#d7ba7d] senera-loading-pulse",
   completed: "bg-[#89d185]",
   failed: "bg-[#f14c4c]",
   cancelled: "bg-[var(--terminal-subtle)]",

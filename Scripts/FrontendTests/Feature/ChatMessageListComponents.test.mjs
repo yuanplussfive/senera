@@ -9,7 +9,8 @@ vi.mock("../../../Frontend/src/shared/ui/Tooltip.tsx", () => ({
   Tooltip: ({ children }) => React.createElement(React.Fragment, null, children),
 }));
 
-const { MessageList } = await import("../../../Frontend/src/features/chat/MessageList.tsx");
+const { MessageList, scrollConversationAnchorIntoView } =
+  await import("../../../Frontend/src/features/chat/MessageList.tsx");
 const { ChatActivityDock } = await import("../../../Frontend/src/features/chat/ChatActivityDock.tsx");
 const { projectAssistantTurns } = await import("../../../Frontend/src/features/chat/assistantTurnProjection.ts");
 const { projectAssistantTurnStages } =
@@ -25,9 +26,11 @@ const {
 const { frontendMessage } = await import("../../../Frontend/src/i18n/frontendMessageCatalog.ts");
 const { createApproval, createMessage, createMessageListProps, createRun, createUserProfile, stageTool } =
   await import("./chatCoreComponentFixtures.mjs");
+const { resetVirtuosoTestCalls, virtuosoTestCalls } = await import("../mocks/react-virtuoso.mjs");
 
 afterEach(() => {
   cleanup();
+  resetVirtuosoTestCalls();
   vi.clearAllMocks();
   vi.restoreAllMocks();
 });
@@ -263,6 +266,89 @@ test("conversation event rail keeps long conversations in a centered local windo
   expect(projectConversationEventWindow(events, 39, 7).at(-1)).toEqual({ event: "event-39", index: 39 });
 });
 
+test("conversation event rail uses mounted anchors to distinguish events in one row", () => {
+  const scroller = document.createElement("div");
+  const firstAnchor = document.createElement("div");
+  const secondAnchor = document.createElement("div");
+  firstAnchor.id = "scrollspy-anchor-first";
+  secondAnchor.id = "scrollspy-anchor-second";
+  scroller.append(firstAnchor, secondAnchor);
+  document.body.append(scroller);
+  Object.defineProperties(scroller, {
+    clientHeight: { configurable: true, value: 400 },
+    scrollHeight: { configurable: true, value: 1_000 },
+    scrollTop: { configurable: true, writable: true, value: 200 },
+  });
+  vi.spyOn(scroller, "getBoundingClientRect").mockReturnValue({
+    bottom: 500,
+    height: 400,
+    left: 0,
+    right: 800,
+    top: 100,
+    width: 800,
+    x: 0,
+    y: 100,
+    toJSON: () => ({}),
+  });
+  vi.spyOn(firstAnchor, "getBoundingClientRect").mockReturnValue({
+    bottom: 240,
+    height: 60,
+    left: 0,
+    right: 700,
+    top: 180,
+    width: 700,
+    x: 0,
+    y: 180,
+    toJSON: () => ({}),
+  });
+  vi.spyOn(secondAnchor, "getBoundingClientRect").mockReturnValue({
+    bottom: 420,
+    height: 60,
+    left: 0,
+    right: 700,
+    top: 360,
+    width: 700,
+    x: 0,
+    y: 360,
+    toJSON: () => ({}),
+  });
+  const onActiveEventChange = vi.fn();
+  const events = [
+    {
+      id: "event:first",
+      itemIndex: 0,
+      itemProgress: 0.82,
+      anchorId: firstAnchor.id,
+      kind: "assistant_ask",
+      content: "需要确认。",
+    },
+    {
+      id: "event:second",
+      itemIndex: 0,
+      itemProgress: 0.82,
+      anchorId: secondAnchor.id,
+      kind: "assistant_final",
+      content: "已完成。",
+    },
+  ];
+
+  renderWithFrontendProviders(
+    React.createElement(ConversationEventRail, {
+      events,
+      itemKeys: ["assistant-turn"],
+      measuredHeights: new Map([["assistant-turn", 500]]),
+      defaultItemHeight: 132,
+      activeEventIndex: 1,
+      scroller,
+      onActiveEventChange,
+      onNavigate: vi.fn(),
+    }),
+  );
+
+  expect(onActiveEventChange).toHaveBeenCalledWith(0);
+  scroller.remove();
+});
+
 test("conversation event rail previews and navigates to an exact reply event", async () => {
   const user = userEvent.setup();
   const onNavigate = vi.fn();
@@ -291,6 +377,7 @@ test("conversation event rail previews and navigates to an exact reply event", a
     }),
   );
 
+  expect(screen.getByTestId("chat-event-rail")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "跳到第 1 个事件：用户请求" })).toHaveAttribute(
     "data-kind",
     "user_request",
@@ -306,8 +393,179 @@ test("conversation event rail previews and navigates to an exact reply event", a
   expect(screen.getByRole("tooltip")).not.toHaveTextContent("第 3/3 个回复事件");
 
   await user.click(finalReply);
-  expect(onActiveEventChange).toHaveBeenCalledWith(1);
+  expect(onActiveEventChange).not.toHaveBeenCalled();
   expect(onNavigate).toHaveBeenCalledWith(events[1]);
+});
+
+test("conversation event rail keeps an explicit selection when two events fit in the viewport", async () => {
+  const user = userEvent.setup();
+  const onNavigate = vi.fn();
+  const onActiveEventChange = vi.fn();
+  const scroller = document.createElement("div");
+  Object.defineProperties(scroller, {
+    clientHeight: { configurable: true, value: 800 },
+    scrollHeight: { configurable: true, value: 520 },
+    scrollTop: { configurable: true, writable: true, value: 0 },
+  });
+  const events = projectConversationEvents([
+    { key: "user-short", requestId: "request-short", eventKind: "user_request", content: "检查两条消息" },
+    { key: "answer-short", requestId: "request-short", eventKind: "assistant_final", content: "两条消息都在视野内。" },
+  ]);
+
+  renderWithFrontendProviders(
+    React.createElement(ConversationEventRail, {
+      events,
+      itemKeys: ["user-short", "answer-short"],
+      measuredHeights: new Map(),
+      defaultItemHeight: 132,
+      activeEventIndex: 0,
+      scroller,
+      onActiveEventChange,
+      onNavigate,
+    }),
+  );
+
+  expect(onActiveEventChange).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("button", { name: "跳到第 2 个事件：最终回复" }));
+
+  expect(onActiveEventChange).not.toHaveBeenCalled();
+  expect(onNavigate).toHaveBeenCalledWith(events[1]);
+});
+
+test("conversation navigation aligns the reply inside the chat scroller only", () => {
+  const scroller = document.createElement("div");
+  const anchor = document.createElement("div");
+  scroller.append(anchor);
+  Object.defineProperties(scroller, {
+    clientHeight: { configurable: true, value: 400 },
+    scrollHeight: { configurable: true, value: 1_000 },
+    scrollTop: { configurable: true, writable: true, value: 100 },
+  });
+  vi.spyOn(scroller, "getBoundingClientRect").mockReturnValue({
+    bottom: 500,
+    height: 400,
+    left: 0,
+    right: 800,
+    top: 100,
+    width: 800,
+    x: 0,
+    y: 100,
+    toJSON: () => ({}),
+  });
+  vi.spyOn(anchor, "getBoundingClientRect").mockReturnValue({
+    bottom: 490,
+    height: 40,
+    left: 0,
+    right: 700,
+    top: 450,
+    width: 700,
+    x: 0,
+    y: 450,
+    toJSON: () => ({}),
+  });
+  const scrollTo = vi.fn(({ top }) => {
+    scroller.scrollTop = Number(top);
+  });
+  Object.defineProperty(scroller, "scrollTo", { configurable: true, value: scrollTo });
+  const scrollIntoView = vi.fn();
+  Object.defineProperty(anchor, "scrollIntoView", { configurable: true, value: scrollIntoView });
+
+  scrollConversationAnchorIntoView(scroller, anchor);
+
+  expect(scrollTo).toHaveBeenCalledWith({ top: 270, behavior: "auto" });
+  expect(scrollIntoView).not.toHaveBeenCalled();
+});
+
+test("message list advances from the third event to the fourth through Virtuoso", async () => {
+  const user = userEvent.setup();
+  const messages = [
+    createMessage({ id: "nav-user-1", requestId: "nav-request-1", role: "user", content: "第一问" }),
+    createMessage({
+      id: "nav-answer-1",
+      requestId: "nav-request-1",
+      kind: "AssistantFinal",
+      content: "第一答",
+    }),
+    createMessage({ id: "nav-user-2", requestId: "nav-request-2", role: "user", content: "第二问" }),
+    createMessage({
+      id: "nav-answer-2",
+      requestId: "nav-request-2",
+      kind: "AssistantFinal",
+      content: "第二答",
+    }),
+  ];
+
+  renderWithFrontendProviders(React.createElement(MessageList, createMessageListProps({ messages })));
+
+  const thirdEvent = await screen.findByRole("button", { name: "跳到第 3 个事件：用户请求" });
+  const fourthEvent = await screen.findByRole("button", { name: "跳到第 4 个事件：最终回复" });
+  await user.click(thirdEvent);
+  await waitFor(() => expect(thirdEvent).toHaveAttribute("data-active", "true"));
+
+  resetVirtuosoTestCalls();
+  await user.click(screen.getByRole("button", { name: "跳到下一个回复事件" }));
+
+  await waitFor(() => expect(fourthEvent).toHaveAttribute("data-active", "true"));
+  expect(virtuosoTestCalls).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        method: "scrollIntoView",
+        index: 3,
+        align: "center",
+        behavior: "smooth",
+        calculateViewLocation: expect.any(Function),
+      }),
+    ]),
+  );
+});
+
+test("message list keeps the fourth event when adjacent events share one assistant row", async () => {
+  const user = userEvent.setup();
+  const requestId = "nav-grouped-request";
+  const messages = [
+    createMessage({ id: "grouped-user", requestId: "grouped-user-request", role: "user", content: "开始检查" }),
+    createMessage({
+      id: "grouped-ask",
+      requestId,
+      kind: "AssistantAsk",
+      content: "需要确认范围。",
+    }),
+    createMessage({
+      id: "grouped-answer",
+      requestId,
+      kind: "AssistantFinal",
+      content: "检查完成。",
+    }),
+    createMessage({
+      id: "grouped-error",
+      requestId,
+      kind: "Error",
+      content: "发现一个需要留意的错误。",
+    }),
+  ];
+
+  renderWithFrontendProviders(React.createElement(MessageList, createMessageListProps({ messages })));
+
+  const thirdEvent = await screen.findByRole("button", { name: "跳到第 3 个事件：最终回复" });
+  await user.click(thirdEvent);
+  await waitFor(() => expect(thirdEvent).toHaveAttribute("data-active", "true"));
+
+  await user.click(screen.getByRole("button", { name: "跳到下一个回复事件" }));
+
+  const fourthEvent = await screen.findByRole("button", { name: "跳到第 4 个事件：错误回复" });
+  await waitFor(() => expect(fourthEvent).toHaveAttribute("data-active", "true"));
+  expect(thirdEvent).toHaveAttribute("data-active", "false");
+  expect(virtuosoTestCalls).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        method: "scrollIntoView",
+        index: 1,
+        align: "center",
+        behavior: "smooth",
+        calculateViewLocation: expect.any(Function),
+      }),
+    ]),
+  );
 });
 
 test("message list reveals an available final answer while the run is still settling", async () => {

@@ -234,6 +234,7 @@ export function ImageCanvasViewer({
               : undefined
           }
           draggable={false}
+          data-native-context-menu
           onLoad={handleImageLoad}
           onError={onError}
           data-image-canvas-image

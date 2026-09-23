@@ -53,6 +53,21 @@ describe("server authentication gate", () => {
     expect(screen.getByText("Protected workspace")).toBeVisible();
   });
 
+  test("uses the supplied surface fallback while the session is loading", () => {
+    render(
+      React.createElement(ServerAuthenticationBoundary, {
+        state: { status: "loading" },
+        onLogin: vi.fn(),
+        onRetry: vi.fn(),
+        loadingFallback: React.createElement("div", { role: "status" }, "Settings shell"),
+        children: () => React.createElement("div", null, "Protected workspace"),
+      }),
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("Settings shell");
+    expect(screen.queryByText("Protected workspace")).not.toBeInTheDocument();
+  });
+
   test("submits the supplied login name and password", async () => {
     const login = vi.fn().mockResolvedValue(undefined);
     const user = userEvent.setup();
@@ -89,6 +104,7 @@ describe("server authentication gate", () => {
     await user.click(screen.getByRole("button", { name: frontendMessage("auth.signIn") }));
 
     expect(await screen.findByText(frontendMessage("auth.loginFailed"))).toBeVisible();
+    expect(screen.getByRole("alert")).toHaveTextContent(frontendMessage("auth.loginFailed"));
     expect(screen.queryByText("credential detail")).not.toBeInTheDocument();
   });
 
@@ -102,8 +118,7 @@ describe("server authentication gate", () => {
     );
 
     const loadingStatus = screen.getByRole("status");
-    expect(loadingStatus.querySelector(".senera-resonance-trace")).toBeTruthy();
-    expect(loadingStatus.querySelector(".senera-refresh-orbit")).toBeNull();
+    expect(loadingStatus.querySelector(".senera-spinner")).toBeTruthy();
     expect(screen.queryByText("Senera")).not.toBeInTheDocument();
 
     rerender(
@@ -116,8 +131,7 @@ describe("server authentication gate", () => {
 
     expect(screen.getByRole("status")).toHaveTextContent(frontendMessage("auth.reconnecting"));
     expect(screen.getByRole("status")).toHaveTextContent(frontendMessage("auth.reconnectingDescription"));
-    expect(screen.getByRole("status").querySelector(".senera-refresh-orbit")).toBeTruthy();
-    expect(screen.getByRole("status").querySelector(".senera-resonance-trace")).toBeNull();
+    expect(screen.getByRole("status").querySelector(".senera-spinner")).toBeTruthy();
     expect(screen.queryByRole("button", { name: frontendMessage("auth.retry") })).not.toBeInTheDocument();
   });
 

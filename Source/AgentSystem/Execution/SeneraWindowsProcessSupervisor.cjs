@@ -1,12 +1,14 @@
 "use strict";
 
 const fs = require("node:fs");
-const { spawn } = require("node:child_process");
+const { spawn } = require("cross-spawn");
 
 const LaunchControlFd = 3;
 const LaunchStatusFd = 4;
 const MaxLaunchRequestBytes = 1024 * 1024;
 const SupervisorFailureExitCode = 1;
+const WindowsTargetLaunchConfirmationDelayMs = 100;
+const WindowsExecutableRegExp = /\.(?:com|exe)$/i;
 
 const launchControl = fs.createReadStream("", { fd: LaunchControlFd, autoClose: true });
 const launchStatus = fs.createWriteStream("", { fd: LaunchStatusFd, autoClose: true });
@@ -54,11 +56,25 @@ function launchTarget(request) {
     windowsHide: request.windowsHide,
   });
   let started = false;
-  target.once("spawn", () => {
+  let failed = false;
+  let confirmationTimer;
+  const confirmStarted = () => {
+    if (failed || started) return;
     started = true;
     writeStatus({ ok: true, pid: target.pid });
+  };
+  target.once("spawn", () => {
+    // cross-spawn reports missing Windows command shims after the spawn event.
+    // ponytail: fixed confirmation window; cross-spawn exposes no synchronous ENOENT signal.
+    if (WindowsExecutableRegExp.test(request.command) && fs.existsSync(request.command)) {
+      confirmStarted();
+      return;
+    }
+    confirmationTimer = setTimeout(confirmStarted, WindowsTargetLaunchConfirmationDelayMs);
   });
   target.once("error", (error) => {
+    failed = true;
+    if (confirmationTimer !== undefined) clearTimeout(confirmationTimer);
     if (!started) failSupervisor(error);
     else process.stderr.write(`${error.stack || error.message}\n`);
   });

@@ -205,6 +205,21 @@ export function nativeModuleArtifactRelativePaths(
   return NativeModuleArtifactPaths[moduleName](platform, architecture);
 }
 
+export function workspaceHasElectronNativeArtifacts(
+  workspaceRoot: string,
+  platform: NodeJS.Platform = process.platform,
+  architecture: NodeJS.Architecture = process.arch,
+): boolean {
+  return ElectronNativeModuleNames.every((moduleName) =>
+    hasNativeModuleArtifact(
+      path.join(workspaceRoot, "node_modules", ...moduleName.split("/")),
+      moduleName,
+      platform,
+      architecture,
+    ),
+  );
+}
+
 function hasNativeModuleArtifact(
   moduleRoot: string,
   moduleName: (typeof ElectronNativeModuleNames)[number],

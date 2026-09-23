@@ -1,8 +1,12 @@
 import React from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { frontendMessage } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
-import { AddProviderDialog } from "../../../Frontend/src/features/settings/sections/ProviderConnectionDialogs.tsx";
+import {
+  AddProviderDialog,
+  EditProviderDialog,
+} from "../../../Frontend/src/features/settings/sections/ProviderConnectionDialogs.tsx";
 import { DiscardDraftDialog } from "../../../Frontend/src/features/settings/DiscardDraftDialog.tsx";
 
 afterEach(() => {
@@ -24,7 +28,7 @@ test("pending provider additions cannot be dismissed as if the command were canc
 
   const view = render(renderDialog(true));
   const cancel = screen.getByRole("button", { name: frontendMessage("settings.action.cancel") });
-  const providerId = screen.getByPlaceholderText(frontendMessage("settings.provider.namePlaceholder"));
+  const providerId = screen.getByRole("textbox", { name: frontendMessage("settings.provider.nameLabel") });
 
   expect(cancel).toBeDisabled();
   expect(providerId).toBeDisabled();
@@ -37,6 +41,94 @@ test("pending provider additions cannot be dismissed as if the command were canc
   view.rerender(renderDialog(false));
   fireEvent.click(screen.getByRole("button", { name: frontendMessage("settings.action.cancel") }));
   expect(onOpenChange).toHaveBeenCalledWith(false);
+});
+
+test("changing the protocol does not invent a provider name", async () => {
+  const user = userEvent.setup();
+  render(
+    React.createElement(AddProviderDialog, {
+      open: true,
+      providers: [],
+      onAdd: vi.fn(),
+      onOpenChange: vi.fn(),
+    }),
+  );
+
+  const nameInput = screen.getByRole("textbox", { name: frontendMessage("settings.provider.nameLabel") });
+  await user.click(
+    screen.getByRole("button", {
+      name: `${frontendMessage("settings.provider.presetLabel")}: ${frontendMessage("settings.provider.endpointChatCompletions")}`,
+    }),
+  );
+  await user.click(
+    screen.getByRole("menuitemradio", { name: frontendMessage("settings.provider.endpointClaudeMessages") }),
+  );
+
+  expect(nameInput).toHaveValue("");
+});
+
+test("hides the API key reveal button until a key is entered", () => {
+  render(
+    React.createElement(AddProviderDialog, {
+      open: true,
+      providers: [],
+      onAdd: vi.fn(),
+      onOpenChange: vi.fn(),
+    }),
+  );
+
+  expect(screen.queryByRole("button", { name: frontendMessage("config.provider.showApiKey") })).not.toBeInTheDocument();
+
+  fireEvent.change(screen.getByPlaceholderText(frontendMessage("settings.provider.apiKeyPlaceholder")), {
+    target: { value: "sk-test" },
+  });
+
+  expect(screen.getByRole("button", { name: frontendMessage("config.provider.showApiKey") })).toBeInTheDocument();
+});
+
+test("provider editing saves headers and the default endpoint from the shared form", async () => {
+  const user = userEvent.setup();
+  const onSave = vi.fn();
+  render(
+    React.createElement(EditProviderDialog, {
+      open: true,
+      provider: {
+        Id: "proxy-api",
+        Kind: "OpenAICompatible",
+        DefaultEndpoint: "ChatCompletions",
+        BaseUrl: "https://example.com/v1",
+        ApiKey: "sk-original",
+        Headers: {},
+      },
+      onSave,
+      onOpenChange: vi.fn(),
+    }),
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "更多设置" }));
+  fireEvent.click(screen.getByRole("button", { name: frontendMessage("settings.provider.addHeader") }));
+  fireEvent.change(screen.getByPlaceholderText(frontendMessage("settings.provider.headerName")), {
+    target: { value: "X-Trace" },
+  });
+  fireEvent.change(screen.getByPlaceholderText(frontendMessage("settings.provider.headerValue")), {
+    target: { value: "enabled" },
+  });
+  await user.click(
+    screen.getByRole("button", {
+      name: `${frontendMessage("settings.provider.defaultEndpointLabel")}: ${frontendMessage("settings.provider.endpointChatCompletions")}`,
+    }),
+  );
+  await user.click(
+    await screen.findByRole("menuitemradio", { name: frontendMessage("settings.provider.endpointResponses") }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: frontendMessage("settings.action.save") }));
+
+  expect(onSave).toHaveBeenCalledWith({
+    ApiKey: "sk-original",
+    BaseUrl: "https://example.com/v1",
+    DefaultEndpoint: "Responses",
+    Headers: { "X-Trace": "enabled" },
+  });
 });
 
 test("discard confirmation explains the consequence and keeps the safe action first", () => {

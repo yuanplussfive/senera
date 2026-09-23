@@ -31,7 +31,7 @@ export function WorkspaceMarkdownImage({
         <img
           src={source}
           alt={alt ?? ""}
-          className="markdown-renderer__image max-w-full object-contain transition-transform duration-150 group-hover:scale-[1.01]"
+          className="markdown-renderer__image max-w-full object-contain transition-transform duration-150 [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.01]"
           loading="lazy"
           decoding="async"
           fetchPriority="low"

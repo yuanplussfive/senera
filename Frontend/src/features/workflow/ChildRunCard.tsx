@@ -44,7 +44,7 @@ const TodoStatusPresentation = {
   },
   in_progress: {
     icon: CircleDot,
-    iconClass: "animate-pulse text-accent-strong",
+    iconClass: "senera-loading-pulse text-accent-strong",
     textClass: "text-content-primary",
     label: "workflow.childRun.todo.status.inProgress",
   },
@@ -137,7 +137,7 @@ export function ChildRunActivity({ childRun, agentName, childToolSteps }: ChildR
             className={cn(
               "absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-surface-page",
               presentation.dotClass,
-              live && "animate-pulse",
+              live && "senera-loading-pulse",
             )}
             aria-hidden="true"
           />

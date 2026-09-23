@@ -4,6 +4,7 @@ import ArrowLeftIcon from "@heroicons/react/24/outline/ArrowLeftIcon";
 import CubeTransparentIcon from "@heroicons/react/24/outline/CubeTransparentIcon";
 import WrenchScrewdriverIcon from "@heroicons/react/24/outline/WrenchScrewdriverIcon";
 import type { SystemExtensionSettingsItem } from "../../../api/eventTypes";
+import { useRef } from "react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import { resolveFrontendLocalizedText, type FrontendLocale } from "../../../i18n/frontendLocaleModel";
 import { useFrontendLocale } from "../../../i18n/useFrontendLocale";
@@ -11,6 +12,7 @@ import { cn } from "../../../lib/util";
 import { JsonConfigSettingsView } from "../../../shared/config/JsonConfigForm";
 import { isJsonConfigObject } from "../../../shared/config/JsonConfigValue";
 import { AppIcon, IconButton, InlineError, ScrollArea, StateView, Switch } from "../../../shared/ui";
+import { FluidHoverHighlight, useFluidHover, useMotionLevel } from "../../../shared/motion";
 import { AgentToolPresentationAppIcons } from "../../../shared/workspace/agentToolPresentationIcons";
 import { AgentSystemExtensionSettingsSurfaces } from "../../../../../Source/AgentSystem/Types/AgentSystemExtensionSettingsSurface";
 import type { SettingsSystemConfigHandle } from "../SettingsContracts";
@@ -28,10 +30,25 @@ export function SystemToolsSection({
   systemConfig?: SettingsSystemConfigHandle;
 }): JSX.Element {
   const locale = useFrontendLocale();
+  const { disableMotion } = useMotionLevel();
+  const extensionListRef = useRef<HTMLDivElement>(null);
+  const extensionHover = useFluidHover(extensionListRef, {
+    axis: "y",
+    gapClick: false,
+    isItemDisabled: (element) => element.querySelector("button:disabled") !== null,
+  });
   const extensions = (systemConfig?.systemExtensions ?? EmptyExtensions).filter(
     (extension) => extension.settingsSurface === AgentSystemExtensionSettingsSurfaces.SystemTools,
   );
   const domainGroups = projectSystemExtensionDirectoryGroups(extensions);
+  // Fluid hover registers one rect per row; domain headers are not rows, so the
+  // index runs across groups instead of restarting inside each section.
+  const extensionIndices = new Map<string, number>();
+  for (const group of domainGroups) {
+    for (const extension of group.extensions) {
+      extensionIndices.set(extension.id, extensionIndices.size);
+    }
+  }
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = selectedId ? (extensions.find((extension) => extension.id === selectedId) ?? null) : null;
   const selectedDisplayName = selected ? resolveFrontendLocalizedText(selected.displayName, locale) : "";
@@ -114,7 +131,13 @@ export function SystemToolsSection({
           />
         ) : (
           <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full">
-            <div className="mx-auto w-full max-w-[980px] px-6 lg:px-8" data-system-extension-list>
+            <div
+              ref={extensionListRef}
+              className="relative mx-auto w-full max-w-[980px] px-6 lg:px-8"
+              data-system-extension-list
+              {...extensionHover.handlers}
+            >
+              <FluidHoverHighlight hover={extensionHover} hidden={disableMotion} className="rounded-md" />
               {domainGroups.map((group) => (
                 <section
                   key={group.domain.id}
@@ -144,6 +167,8 @@ export function SystemToolsSection({
                     {group.extensions.map((extension) => (
                       <ExtensionRow
                         key={extension.id}
+                        itemRef={extensionHover.getItemRef(extensionIndices.get(extension.id) ?? 0)}
+                        fluidHoverEnabled={!disableMotion}
                         extension={extension}
                         locale={locale}
                         directory
@@ -250,6 +275,8 @@ export function SystemToolsSection({
 }
 
 function ExtensionRow({
+  itemRef,
+  fluidHoverEnabled,
   extension,
   locale,
   directory = false,
@@ -259,6 +286,8 @@ function ExtensionRow({
   onToggle,
   disabled,
 }: {
+  itemRef?: (element: HTMLElement | null) => void;
+  fluidHoverEnabled?: boolean;
   extension: SystemExtensionSettingsItem;
   locale: FrontendLocale;
   directory?: boolean;
@@ -272,13 +301,18 @@ function ExtensionRow({
   const description = resolveFrontendLocalizedText(extension.description, locale);
   return (
     <div
+      ref={itemRef}
       className={cn(
+        "relative z-10",
         directory
           ? "flex min-h-[68px] w-full min-w-0 items-center gap-3 border-b border-line px-1 py-3 text-left transition-colors"
           : "flex min-h-[58px] w-full min-w-0 items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors",
         !directory && selected
           ? "bg-accent-surface text-accent-content"
-          : "text-content-secondary hover:bg-surface-hover hover:text-content-primary",
+          : cn(
+              "text-content-secondary hover:text-content-primary",
+              fluidHoverEnabled ? "hover:bg-transparent" : "hover:bg-surface-hover",
+            ),
         !enabled && "text-ink-450",
       )}
     >

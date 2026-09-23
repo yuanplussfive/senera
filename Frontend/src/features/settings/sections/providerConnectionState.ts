@@ -219,6 +219,7 @@ export function providerEndpointSnapshotMatchesDraft(
     current.Icon !== expected.Icon ||
     current.Enabled !== expected.Enabled ||
     current.Kind !== expected.Kind ||
+    current.DefaultEndpoint !== expected.DefaultEndpoint ||
     current.BaseUrl !== expected.BaseUrl ||
     current.ApiVersion !== expected.ApiVersion ||
     !snapshotSecretMatchesDraft(current.ApiKey, expected.ApiKey) ||
@@ -271,6 +272,7 @@ interface CanonicalProviderEndpoint {
   Icon: string;
   Enabled: boolean;
   Kind: string;
+  DefaultEndpoint: string;
   BaseUrl: string;
   ApiKey: string;
   ApiVersion: string;
@@ -284,6 +286,7 @@ function canonicalProviderEndpoint(provider: ProviderEndpointDraft): CanonicalPr
     Icon: normalized.Icon ?? "",
     Enabled: normalized.Enabled !== false,
     Kind: normalized.Kind ?? "",
+    DefaultEndpoint: normalized.DefaultEndpoint ?? "",
     BaseUrl: normalized.BaseUrl ?? "",
     ApiKey: normalized.ApiKey ?? "",
     ApiVersion: normalized.ApiVersion ?? "",

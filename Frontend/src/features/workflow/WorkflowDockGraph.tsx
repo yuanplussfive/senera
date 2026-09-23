@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import type {
   RunActivityRecord,
@@ -11,6 +11,7 @@ import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
 import { cn, formatDurationMs } from "../../lib/util";
 import { AppIcon, type AppIconName, Spinner } from "../../shared/ui";
+import { FluidHoverHighlight, useFluidHover, useMotionLevel } from "../../shared/motion";
 import { WorkflowStepDetail } from "./NodeDetailDrawer";
 import { runActivityLabel } from "./runActivityPresentation";
 import { readStepStatusLabel } from "./stepPresentation";
@@ -50,6 +51,9 @@ const StepKindIcon: Record<TimelineStepKind, AppIconName> = {
 export function WorkflowDockGraph({ run }: { run: RunRecord }): JSX.Element {
   const entries = useMemo(() => projectDockWorkflow(run), [run]);
   const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(() => new Set());
+  const { disableMotion } = useMotionLevel();
+  const entryListRef = useRef<HTMLDivElement>(null);
+  const entryHover = useFluidHover(entryListRef, { axis: "y", gapClick: false });
 
   if (entries.length === 0) {
     return (
@@ -65,21 +69,40 @@ export function WorkflowDockGraph({ run }: { run: RunRecord }): JSX.Element {
       data-workflow-dock-graph
       aria-label={frontendMessage("workflow.dock.ariaLabel")}
     >
-      <div className="relative min-w-0 w-full" role="list">
+      <div ref={entryListRef} className="relative min-w-0 w-full" role="list" {...entryHover.handlers}>
+        <FluidHoverHighlight hover={entryHover} hidden={disableMotion} className="rounded-md" />
         <span
           className="pointer-events-none absolute bottom-4 left-[9px] top-4 w-px bg-line-subtle"
           aria-hidden="true"
         />
-        {entries.map((entry) => {
+        {entries.map((entry, index) => {
           const expanded = expandedIds.has(entry.id);
           const onToggle = (): void => setExpandedIds((current) => toggleSetEntry(current, entry.id));
           if (entry.kind === "batch") {
-            return <DockBatchNode key={entry.id} entry={entry} expanded={expanded} onToggle={onToggle} />;
+            return (
+              <DockBatchNode
+                key={entry.id}
+                itemRef={entryHover.getItemRef(index)}
+                fluidHoverEnabled={!disableMotion}
+                entry={entry}
+                expanded={expanded}
+                onToggle={onToggle}
+              />
+            );
           }
           if (entry.kind === "activity") {
-            return <DockActivityNode key={entry.id} activity={entry.activity} />;
+            return <DockActivityNode key={entry.id} itemRef={entryHover.getItemRef(index)} activity={entry.activity} />;
           }
-          return <DockStepNode key={entry.id} step={entry.step} expanded={expanded} onToggle={onToggle} />;
+          return (
+            <DockStepNode
+              key={entry.id}
+              itemRef={entryHover.getItemRef(index)}
+              fluidHoverEnabled={!disableMotion}
+              step={entry.step}
+              expanded={expanded}
+              onToggle={onToggle}
+            />
+          );
         })}
       </div>
     </div>
@@ -124,11 +147,15 @@ export function projectDockWorkflow(run: RunRecord): DockWorkflowEntry[] {
 }
 
 function DockStepNode({
+  itemRef,
+  fluidHoverEnabled,
   step,
   expanded,
   onToggle,
   nested = false,
 }: {
+  itemRef?: (element: HTMLElement | null) => void;
+  fluidHoverEnabled?: boolean;
   step: TimelineStep;
   expanded: boolean;
   onToggle: () => void;
@@ -150,6 +177,7 @@ function DockStepNode({
     >
       <button
         type="button"
+        ref={itemRef}
         onClick={onToggle}
         aria-expanded={expanded}
         aria-controls={contentId}
@@ -157,9 +185,10 @@ function DockStepNode({
           title,
         })}
         className={cn(
-          "group flex min-h-11 w-full min-w-0 items-start gap-2.5 rounded-md py-2 text-left transition-colors",
+          "group relative z-10 flex min-h-11 w-full min-w-0 items-start gap-2.5 rounded-md py-2 text-left transition-colors",
           nested ? "px-2" : "pl-0 pr-1.5",
-          "hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
+          fluidHoverEnabled ? "hover:bg-transparent" : "hover:bg-surface-hover",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
           expanded && "text-content-primary",
         )}
       >
@@ -227,10 +256,14 @@ function DockInspectorLoading(): JSX.Element {
 }
 
 function DockBatchNode({
+  itemRef,
+  fluidHoverEnabled,
   entry,
   expanded,
   onToggle,
 }: {
+  itemRef?: (element: HTMLElement | null) => void;
+  fluidHoverEnabled?: boolean;
   entry: Extract<DockWorkflowEntry, { kind: "batch" }>;
   expanded: boolean;
   onToggle: () => void;
@@ -250,6 +283,7 @@ function DockBatchNode({
     >
       <button
         type="button"
+        ref={itemRef}
         onClick={onToggle}
         aria-expanded={expanded}
         aria-controls={contentId}
@@ -257,8 +291,9 @@ function DockBatchNode({
           title,
         })}
         className={cn(
-          "group flex min-h-11 w-full min-w-0 items-start gap-2.5 rounded-md py-2 pl-0 pr-1.5 text-left transition-colors",
-          "hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
+          "group relative z-10 flex min-h-11 w-full min-w-0 items-start gap-2.5 rounded-md py-2 pl-0 pr-1.5 text-left transition-colors",
+          fluidHoverEnabled ? "hover:bg-transparent" : "hover:bg-surface-hover",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
           expanded && "text-content-primary",
         )}
       >
@@ -312,9 +347,16 @@ function DockBatchNode({
   );
 }
 
-function DockActivityNode({ activity }: { activity: RunActivityRecord }): JSX.Element {
+function DockActivityNode({
+  itemRef,
+  activity,
+}: {
+  itemRef?: (element: HTMLElement | null) => void;
+  activity: RunActivityRecord;
+}): JSX.Element {
   return (
     <div
+      ref={itemRef}
       className="relative flex min-h-10 min-w-0 items-start gap-2.5 py-2"
       role="listitem"
       data-workflow-dock-activity
