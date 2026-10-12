@@ -1,7 +1,7 @@
 {
   "name": "DocumentExtract",
   "loading": "Bootstrap",
-  "description": "Probe or extract text, structure, metadata, and warnings from a workspace-local path, canonical Senera resource, or public HTTP(S) document URL.",
+  "description": "Probe or extract text, structure, metadata, and warnings from a workspace-relative or absolute local path, canonical Senera resource, or public HTTP(S) document URL. Prefer an attachment's local_path when present; use its resource_uri as the stable fallback.",
   "presentation": {
     "category": "document-extract",
     "icon": "file-text",
@@ -193,7 +193,7 @@
     "additionalProperties": false
   },
   "permissions": ["resources:read"],
-  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "execution": { "Targets": ["Local"], "Network": "Allow", "Workspace": "ReadOnly" },
   "runtime": {
     "Lifecycle": "Immediate",
     "ProtocolVersion": 2,

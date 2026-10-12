@@ -1,7 +1,7 @@
 {
   "name": "ImageAnalyze",
   "loading": "Bootstrap",
-  "description": "Analyze one or more workspace-local paths, canonical Senera resources, or public HTTP(S) image URLs together for visible evidence, OCR, or a specific question.",
+  "description": "Analyze one or more workspace-relative or absolute local paths, canonical Senera resources, or public HTTP(S) image URLs together for visible evidence, OCR, or a specific question. Prefer an attachment's local_path when present; use its resource_uri as the stable fallback.",
   "presentation": {
     "category": "image-analyze",
     "icon": "image",
