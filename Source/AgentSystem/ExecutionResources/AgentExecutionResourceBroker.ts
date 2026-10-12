@@ -20,6 +20,8 @@ import {
   type AgentExecutionResourceLimits,
   type AgentExecutionResourceOwner,
   type AgentExecutionResourcePresentation,
+  AgentExecutionResourceRetentionPolicies,
+  type AgentExecutionResourceRetentionPolicy,
   type AgentExecutionResourceSignal,
   type AgentExecutionResourceSnapshot,
 } from "./AgentExecutionResourceTypes.js";
@@ -53,11 +55,15 @@ export interface AgentExecutionProcessStartRequest {
   correlation: AgentExecutionResourceCorrelation;
   signal?: AbortSignal;
   maxDurationMs?: number;
+  retention: AgentExecutionResourceRetentionPolicy;
   outputSpool?: SeneraOutputSpool;
   presentation?: AgentExecutionResourcePresentation;
 }
 
-export interface AgentExecutionTerminalStartRequest extends AgentExecutionProcessStartRequest {
+export interface AgentExecutionTerminalStartRequest extends Omit<
+  AgentExecutionProcessStartRequest,
+  "maxDurationMs" | "retention"
+> {
   dimensions?: Partial<SeneraTerminalDimensions>;
   terminalName?: string;
 }
@@ -105,7 +111,7 @@ export class AgentExecutionResourceBroker {
   async startTerminal(request: AgentExecutionTerminalStartRequest): Promise<AgentExecutionResourceSnapshot> {
     const executionEnv = this.requireExecutionEnv(request.executionEnv);
     const dimensions = normalizeSeneraTerminalDimensions(request.dimensions);
-    return this.startResource(request, async () => {
+    return this.startResource({ ...request, retention: AgentExecutionResourceRetentionPolicies.Idle }, async () => {
       const child = await executionEnv.spawnTerminal(request.command, request.args, {
         cwd: request.cwd,
         env: request.env,
@@ -319,6 +325,7 @@ export class AgentExecutionResourceBroker {
         transport,
         command: request.displayCommand ?? [request.command, ...request.args].join(" "),
         presentation: request.presentation,
+        retention: request.retention,
         cwd: request.cwd,
         limits,
         maxDurationMs: request.maxDurationMs,
@@ -378,7 +385,10 @@ export class AgentExecutionResourceBroker {
       const now = this.now();
       const limits = this.limits;
       const expired = [...this.resources.values()].filter((resource) => {
-        const ttl = resource.closed ? limits.terminalTtlMs : limits.idleTtlMs;
+        if (resource.retention === AgentExecutionResourceRetentionPolicies.UntilExit && !resource.terminal) {
+          return false;
+        }
+        const ttl = resource.terminal ? limits.terminalTtlMs : limits.idleTtlMs;
         return now - resource.lastAccessedAt >= ttl;
       });
       await Promise.allSettled(expired.map((resource) => this.cleanupResource(resource, "expired")));

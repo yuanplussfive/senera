@@ -20,6 +20,7 @@ import { ReusableCapabilityMatchPolicy } from "./AgentToolSearchRuntimePolicies.
 import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import { isAgentToolMetaToolName } from "./AgentToolSearchRuntimeTypes.js";
+import { isAgentToolExecutable } from "../ToolRuntime/AgentToolAvailability.js";
 
 export interface AgentToolSearchCapabilityReuseOptions {
   readonly registry: AgentExtensionRegistry;
@@ -68,7 +69,7 @@ export class AgentToolSearchCapabilityReuse {
     interaction?: AgentInteractionContext;
   }): AgentToolCapabilityCacheEntry | undefined {
     const tool = this.resolveAutomaticReuseTool(options.toolName, options.interaction);
-    if (!tool) return undefined;
+    if (!tool || !isAgentToolExecutable(tool)) return undefined;
     return this.options.cache.getReusable({
       sessionId: options.sessionId,
       logicalCacheScope: options.logicalCacheScope,
@@ -85,7 +86,7 @@ export class AgentToolSearchCapabilityReuse {
   }): AgentToolCapabilityCacheEntry | undefined {
     if (!options.sessionId) return undefined;
     const tool = this.options.registry.getTool(options.toolName);
-    if (!tool) return undefined;
+    if (!tool || !isAgentToolExecutable(tool)) return undefined;
     return this.options.cache.getReusable({
       sessionId: options.sessionId,
       logicalCacheScope: options.logicalCacheScope,
@@ -166,7 +167,7 @@ export class AgentToolSearchCapabilityReuse {
       ranks: { memory: 1 },
       matchedTerms: [],
       matchedCapabilities: [],
-      learningSignals: [],
+      scenarioSignals: [],
       sources: resolveAgentToolSearchSources(tool),
       state: {
         exposure: loadedToolNames.includes(tool.name) ? "visible" : "discoverable",
@@ -184,6 +185,7 @@ export class AgentToolSearchCapabilityReuse {
     const tool = this.options.registry.getTool(toolName);
     return tool &&
       isAgentToolDynamicallyDiscoverable(tool) &&
+      isAgentToolExecutable(tool) &&
       isAgentToolAvailableForInteraction(tool, interaction) &&
       resolveAgentToolCapabilityReusePolicy(tool).mode === AgentToolCapabilityReuseModes.Automatic
       ? tool

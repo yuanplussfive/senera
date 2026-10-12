@@ -1,63 +1,113 @@
-# Continuity 模块导览
+# Continuity
 
-Continuity 将完成回合的物理来源建模为可追溯的学习记录、稳定画像、状态和条件规则。它不创建第二条模型对话，不生成 Markdown 记忆文件；事件索引投影宿主生成的短摘要和物理来源句柄，不把原始历史正文直接注入模型。
+MemOS is the semantic memory authority. Physical episodes and the background
+request ledger support recovery and deletion; they are not a second recall
+engine.
 
-## 唯一记忆路径
+## Completed-turn learning
 
-1. Memory 保存 memory_episodes 与 memory_sources，作为用户消息和工具证据的物理来源。
-2. AgentContinuityLearningRuntime 先运行事实阶段；模型调用 `ContinuityCapture({ items, agenda, needsRulePass })`。每个 item 只表达一个浅层的 fact、profile、agent_profile 或 relation，模型不输出 URI、证据、scope、置信度、时间或图身份；宿主补齐来源、版本和生命周期。`agent_profile` 只接受直接证据，写入 Resident 的 world scope，与用户画像严格分栏。
-3. 事实立即写入 `continuity_observations(kind=learning.record)`；画像写入版本化 profile；关系写入 SQLite 属性图。不因后续条件建模失败而回滚；显式 `MemoryWriteTool` 证据中的有效期由宿主解析，不要求模型重复输出。
-4. 仅当 `needsRulePass=true` 时运行建模阶段；`true` 是强契约，结果必须包含一个非空 `items` 列表，每项用 `kind` 表示 state、always、conditional 或 notify。无效响应只记录为当前阶段失败，不切换请求协议；任务策略只允许在同一已选协议上重新尝试。
-5. 建模阶段按方法输出键值对象。模型使用自然语言状态或复用宿主提供的 `senera://continuity-state/...`；同一规则通过 `target` 引用 `ruleCatalog`，明确纠正时再使用 `replace=true`。宿主负责身份、来源、权威、置信度、scope、时间、条件 AST 和合并决策。
-6. 规则采用“不可变证据 + 唯一物化头”：条件先规范化，等价动作只强化同一规则；每个 episode 只计一份独立证据，重复证据不会提高权威等级。纠正会建立新头并把旧头标记为 superseded，历史和物理来源继续保留。
+Only normally completed state-card turns enter learning. The Pi-backed model
+receives the current user text and state card, the assistant preview, explicit
+memory-write intents, the last configured number of completed turns from the
+same session, and similar MemOS knowledge. Future and other-session turns are
+excluded. User text is preserved; assistant previews use the model tokenizer.
+State cards share one validated contract with physical history and tool/skill
+scenario learning. There is no synthetic resident mood, stance transition
+table, persisted emotion state, or emotion injection into model prompts.
 
-## 属性图
+The model returns topic, summary, native MemOS type, and one action choice:
+new, update:<ref>, or supersede:<ref>. The published schema offers only choices
+for the supplied candidates; an empty candidate set offers only new. The same
+schema validates output in both native-tool and text planning modes. Candidates
+are bound to stable node IDs in the durable extraction ledger. Invalid results
+fail and retry within the configured policy; they do not produce substitute
+knowledge.
 
-- `AgentContinuityRelationCatalog` 是唯一关系词表。模型只能复制其中的关系 ID；关系标签和别名只服务于本地检索与展示，不能宽松地写回结构化学习结果。
-- SQLite 是图的唯一权威存储：实体、别名、边、边证据、时间窗口、权威、支持度、成熟度与 supersession 都在同一条持久化路径上维护。前端不保留第二份可写图。
-- `single_subject` 关系按权威、成熟度、最近物理证据、支持度和置信度仲裁；低权威的相反候选会保留可追溯证据，但不能覆盖用户明确事实。
-- `candidate` 关系可在连续性面板中核验，却不会进入主提示词或驱动图扩展；只有 active/established 边能参与一跳关联召回。
-- 侧栏的关系图只是当前快照的有界投影：优先展示本轮已注入关系和直接锚点，随后按成熟度、支持度与时效排序。它使用懒加载的 React Flow/Dagre，不额外请求模型，也不改变 SQLite 图。
+Each turn contributes an immutable fragment. Canonical knowledge is separate:
+new stores a node, update refines the existing node, and supersede preserves
+the old node with native validity and a temporal edge. A derived_from edge
+records the contribution. These edges also prevent partial-write retries from
+reapplying old knowledge after a newer update.
 
-## 召回与注入
+## Time summaries
 
-- AgentContinuityRecordRanker 检索 fact 学习记录和物理 episode/source 事件，融合 BM25、中文 token、文本相似度、模糊匹配、权威、置信度、scope 和时效；默认不调用向量或重排模型。索引和查询缓存按目录 revision、TTL 与 LRU 复用，空查询不会建立索引快照。
-- 本地召回采用有界级联：先执行原始查询，再仅在结果缺失或歧义时尝试会话上下文与一轮伪相关反馈。候选阶段必须保留基线的直接证据、分数和首位，近失配只用于诊断，不能制造“改进”。反馈的词项统计统一覆盖学习事实和物理事件，并按 URI 去重。
-- 关系检索先由本地 MiniSearch/Jieba/模糊匹配生成 query plan，再在已确认实体上执行至多一跳扩展；直接命中的关系 ID 优先于泛化邻边。图扩展只拓宽候选，不会直接断言事实或触发通知。
-- Recall 生命周期采用轻量分层策略：配置中的 TurnValueClassifier 只在本地分类器对回合价值做出高置信度判断后跳过文本事实/事件检索，画像、Goal、信号和规则评估仍然执行；索引由按 scope 的数据库 revision 和 TTL 控制复用。
-- resident profile 只包含稳定画像键值，并投影到可缓存的 stable system tier；画像自身发生变化时才更新该 tier。规则和关联 signal 则作为请求级 live overlay 发送，历史 facts/events/digests/evidence 不会随每轮重复注入。
-- 事实学习动态目录同时提供 `profileCatalog`（用户）和 `agentProfileCatalog`（Resident），模型可复用同一主体的精确键来更新画像，避免自我演化产生重复键或把用户偏好写到 Resident 身上。
-- 会话内对话示例由本地来源索引按相关度选择，不调用模型；示例只作为带边界的引用风格资料，复用事件槽位与字符预算，永不替代事实或规则证据。
-- 完成回合后，AgentMemoryService 通过微任务调用连续性预取，只预热本地确定性索引，不调用模型、不写入 ledger，也不阻塞已完成回合的提交；预取目录与正式请求共享同一 scope 快照。物理 episode 检索直接读取 memory_episodes/memory_sources，学习门控跳过或延迟时仍可按引用召回。
-- 高阈值命中注入摘要；运行时上下文仍保留物理来源 URI 和 watermark，精确证据由 MemoryRecallTool 解引用。
-- 普通学习记录命中仍只注入 senera://memory-source/... 引用；模型需要精确证据时通过 MemoryRecallTool 解引用。
-- 事件命中注入宿主生成的摘要和来源 URI。摘要用于恢复上下文，原文和完整证据仍通过 MemoryRecallTool 按需读取。
-- 物理来源只把已持久化的正文或摘要作为语义证据；工具名、来源类别和 URI 仅是身份/可追溯元数据，不会伪装成可召回内容。没有任何正文的来源不会进入事件召回或时间摘要。
-- 事实重写沿用宿主拥有的稳定 key：本地身份比较允许省略会话主语和真实同义改写，却显式拒绝不同主体、否定、数值/日期冲突和有序参数互换；Jieba 的分词差异会在比较前按 POS 结构恢复，不依赖名字或领域词表。
-- 无关记录在权威、置信度和时效参与排序前被过滤。
-- state 通过当前状态投影；candidate rule 可在连续性面板核验，但只有 active/established rule 在部分满足或触发时进入主提示词。模型不可创建 `namespace.key` 技术标识。
-- 一次性 rule 的条件评估不等于送达；只有包含该 rule 的回合成功持久化后才确认消费，失败或取消的回合会在后续请求重试。
+Fragments are indexed by completion time in Asia/Shanghai. Daily summaries
+read those immutable fragments; monthly summaries read daily summaries. The
+configured model-token budget splits large inputs into bounded parallel
+batches, followed by consolidation when there is more than one batch.
+Unchanged input revisions skip another model call. Empty periods are removed
+after deletion. Period ends are exclusive calendar boundaries.
 
-## 学习阶段
+## Retrieval and delivery
 
-- Facts 当前按完成 episode 独立执行；`facts=[]` 是合法结果，物理 episode 与 source 仍然保留。普通 episode 会先经过 session idle debounce，连续对话时尚未 claim 的 pending facts 会整体顺延；立即证据不顺延。
-- profile 记录按作用域和键版本化；同一键只有一个 active 版本，旧版本保留为 superseded，过期版本不进入新回合。
-- Modeling 按需执行，并接收宿主提供的 stateCatalog 与 ruleCatalog。目录键是稳定 Senera URI，模型只能复制已有 URI；`target` 强化已有规则，`target + replace=true` 表达有来源支撑的纠正，新的自然语言状态和规则身份由宿主分配。
-- 每个阶段只使用所选模型的 `ToolPlanningMode`：`native` 走 Pi 原生工具调用，`baml` 走 BAML 结构化请求。协议失败不会自动切换到另一条链路；两种链路都不发送输出 token 上限。
-- native 与 BAML 共用 `AgentContinuityLearningPromptBundle` 的稳定语义合同。捕获策略、关系注册表和宿主验收样例位于冻结前缀；当前 episode、指代上下文、相关画像与 Agenda 位于动态 user payload，关系表不在每轮重复发送。
-- `AgentContinuityLearningContextSelector` 使用现有本地分词、文本相似度和一个共享字符预算选择动态画像/Agenda 目录；不使用固定条数、短句种子表或额外模型请求。
-- 每个 prompt bundle 在进程内按 stage、合同 revision 和样例预算冻结。只有经过 schema 解析、宿主编译并进入正式写入路径的结果才写入 `continuity_learning_inferences`；代表样例要到新进程的新 bundle 才能进入稳定前缀，不能逐轮改写缓存边界。
-- 可选 `AgentInferenceBudgetPort` 只在学习推理缓存未命中时消耗请求/估算输入 token 额度；拒绝会带精确 `retryAt` 回到持久化重试队列，不删除已记录回合。预算由宿主注入，默认不改变前台回合调用。
-- 完全相同的输入按合同 revision、provider、model 和协议生成精确指纹，重试直接复用已验收结果；不同 episode 仍调用模型，但通过哈希化的稳定 cache scope 和 `cacheRetention=long` 复用 Pi 的供应商提示缓存。`continuity.learning.model_usage` 记录 provider 报告的 cache read/write token。
-- 规则阶段失败只重试规则；事实阶段不会被重复调用或覆盖。
-- 连续性学习配置集中在 ContinuityLearning：LearningGate.DeferredDelaySeconds 控制普通回合的空闲延迟，Recall.TurnValueClassifier 控制基于真实学习结果训练的本地回合价值分类器，Recall.Prefetch 控制索引预取与 TTL；运行时解析模型配置，表单投影不触发供应商解析。
-- 阶段完成与对应记录在同一 SQLite 事务内提交；未 claim 的阶段不能写入结果或失败状态。
-- 进程启动时会把中断的 `running` 阶段恢复为可重试状态，并从 `facts_json` 继续规则阶段。
-- 用户消息保留原话；工具和 assistant 事件优先使用宿主摘要，避免把冗长结果重复送入两个学习阶段。
+Normal live context searches knowledge and daily/monthly summaries separately,
+then shares one token budget across them (`Recall.PromptBudget.MaxTokens`,
+default 16384). The selected standalone memory wire is measured with the
+request's model tokenizer, including references, encoding and preamble. The
+same wire is placed in liveContext. Smaller model input headroom tightens the
+budget; records are included whole, with no entry count or character cap.
+Raw per-turn fragments are not duplicated in normal context.
 
-## 工具边界
+Model-facing entries expose `ref=memos:<node-id>` for exact recall. Content
+versions and ranking/coverage diagnostics remain host-owned. Persistent
+receipts record selected node versions and their current near-duplicate
+coverage. Changing query rankings or creating another equivalent node cannot
+repeat the covered knowledge; updating a covered identity can deliver its
+new version. Only selected coverage is committed after the Pi run and terminal
+event commit succeed. A compaction clears active-context receipts because
+earlier memory input may no longer be present. In-flight selections are
+recomputed when that context epoch changes, and stale commits are rejected.
 
-- MemoryWriteTool 只产生明确记忆意图及其有效期的物理工具证据；完成回合学习器负责持久化，工具不建立第二套写入表。
-- MemoryRecallTool 同时检索 learning.record 和物理 episode/source 事件；命中后仍只通过 senera://memory-source/... 解引用正文，不把整段历史自动塞进提示词。
-- MemoryRecallTool 将调用方取消作为终止信号传入语义检索；语义超时或提供方故障仍可返回词法证据，但会在 `retrieval.semantic` 中给出紧凑状态，避免把降级结果伪装成完整语义召回。
-- 不要重新引入旧版 assertion 候选池、向量记忆、worldbook 或 MEMORY.md 分支。规则 maturity 是规范头的证据状态，不是第二套待晋升记录。
+Native `MemOS.dedupe({dryRun:true})` groups persisted document embeddings in a
+background revision cache. Node/validity/vector changes invalidate it; reads
+reuse a coherent snapshot. It performs no LLM calls and never deletes or
+merges nodes. `MemOS.RecallDedupeThreshold` defaults to 0.92, independently of
+the automatic graph link threshold. Native types and digest calendar periods
+partition coverage; context episodes also retain their Asia/Shanghai date.
+Partial overlap across day/month/knowledge layers is not
+treated as equivalent knowledge. Weak single-linkage cluster means are
+rejected. Vector similarity is approximate, not proof of factual equivalence.
+The SDK 1.6.26 scan has a native 10000-node window, and
+`MemOS.RecallDedupeMaxPairs` bounds its initial candidate comparisons (default 10000);
+unscanned records retain their independent identities.
+
+Explicit MemoryRecall reads native node references directly. Time filtering
+runs before token selection and includes historical validity. Its complete
+JSON result also shares the configured token ceiling and reports matched
+versus returned records. Exact requested IDs remain separately addressable.
+MemoryWrite
+accepts an intent for learning after normal completion; it does not claim the
+knowledge is already persisted.
+Public references are decoded once by the generated tool input contract.
+The internal MemOS runtime receives native node IDs without prefix parsing.
+
+## Embeddings and scenario learning
+
+The public MemOS adapter scopes initialization/backfill and writes as document
+encoding, and searches as query encoding. Async operation scopes survive queued
+jobs and retries. The persisted embedding model identity includes the document
+projection so the SDK rebuilds vectors produced with a different projection.
+Automatic graph linking uses the configured threshold, defaulting to 0.75.
+
+Tool/skill scenarios use separate tags in the same MemOS database. Every source
+turn has its own identity; replay updates that turn rather than duplicating it.
+Request-local retrieval scores weight successful tool calls and matching skill
+revisions, together with outcome quality and configured time decay. There is
+no extra keyword gate or persistent in-process hydration cache.
+
+## Recovery and deletion
+
+The background ledger records extraction, commits, summary input revisions,
+and deletion operations. Failed persistence is surfaced. Restart resumes
+incomplete work. Deletion rebuilds connected retained contributions and their
+period summaries; failed deletion resumes from its durable operation record.
+Shutdown drains semantic work and embeddings before closing the SDK.
+
+Internal period/write tags use one encoder and decoder. Invalid owned records
+fail validation instead of being silently filtered or read as empty objects.
+Recovery retrieves the stored candidate node ID directly, so changing search
+rankings cannot change a previously committed reconciliation decision.
+The Pi continuity ledger keeps compaction and checkpoint references only;
+the unused lexical recall and duplicate search text have been removed.
+Its current contract uses a versioned Pi entry identity. Retired entries are
+not read or converted; current entries are validated strictly.

@@ -42,17 +42,20 @@ describe("Imagen MCP artifact boundary", () => {
         ok: true,
         result: expect.objectContaining({
           text: "Generated image",
-          content: expect.arrayContaining([
-            expect.objectContaining({ type: "text", text: "Generated image" }),
+          content: expect.arrayContaining([expect.objectContaining({ type: "text", text: "Generated image" })]),
+          resources: [
             expect.objectContaining({
-              type: "resource",
-              uri: expect.stringMatching(/^senera:\/\/resource\/upl_[a-f0-9]{32}$/u),
-              mimeType: "image/png",
+              source: {
+                kind: "local_path",
+                path: expect.stringMatching(/^\.senera\/uploads\/upl_[a-f0-9]{32}\/original\.png$/u),
+              },
+              mime: "image/png",
             }),
-          ]),
+          ],
         }),
       }),
     );
+    expect(JSON.stringify(execution.response)).not.toMatch(/senera:\/\/resource\/upl_/u);
     expect(execution.artifactPayload?.assets).toBeUndefined();
     expect(execution.artifactPayload?.evidence).toEqual(
       expect.arrayContaining([
@@ -88,21 +91,25 @@ describe("Imagen MCP artifact boundary", () => {
     expect(result).toEqual(
       expect.objectContaining({
         text: "Generated image",
-        content: expect.arrayContaining([
-          expect.objectContaining({ type: "text", text: "Generated image" }),
+        content: expect.arrayContaining([expect.objectContaining({ type: "text", text: "Generated image" })]),
+        resources: [
           expect.objectContaining({
-            type: "resource",
-            uri: expect.stringMatching(/^senera:\/\/resource\/upl_[a-f0-9]{32}$/u),
-            mimeType: "image/png",
+            source: {
+              kind: "local_path",
+              path: expect.stringMatching(/^\.senera\/uploads\/upl_[a-f0-9]{32}\/original\.png$/u),
+            },
+            mime: "image/png",
           }),
-        ]),
+        ],
       }),
     );
-    expect(JSON.stringify(result)).not.toContain("mcp-content-2");
+    expect(JSON.stringify(result)).not.toMatch(/senera:\/\/resource\/upl_/u);
     expect(execution.artifactPayload?.assets).toBeUndefined();
     expect(JSON.stringify(execution.artifactPayload?.rawResponse)).not.toContain(imageBase64);
 
-    const resourceUri = (result as { content: Array<{ uri?: string }> }).content.find((item) => item.uri)?.uri;
+    const resourceUri = (
+      execution.artifactPayload?.rawResponse as { content: Array<{ resource?: { uri?: string } }> }
+    ).content.find((item) => item.resource?.uri)?.resource?.uri;
     expect(resourceUri).toMatch(/^senera:\/\/resource\/upl_[a-f0-9]{32}$/u);
     if (!resourceUri) throw new Error("MCP resource URI was not projected.");
     const resolved = await uploadStore.resolve(resourceUri);
@@ -121,11 +128,13 @@ describe("Imagen MCP artifact boundary", () => {
       expect.objectContaining({
         ok: true,
         result: {
-          content: [
+          resources: [
             expect.objectContaining({
-              type: "resource",
-              uri: expect.stringMatching(/^senera:\/\/resource\/upl_[a-f0-9]{32}$/u),
-              mimeType: "image/png",
+              source: {
+                kind: "local_path",
+                path: expect.stringMatching(/^\.senera\/uploads\/upl_[a-f0-9]{32}\/original\.png$/u),
+              },
+              mime: "image/png",
             }),
           ],
         },
@@ -147,21 +156,24 @@ describe("Imagen MCP artifact boundary", () => {
       expect.objectContaining({
         ok: true,
         result: {
-          content: expect.arrayContaining(
+          resources: expect.arrayContaining(
             Array.from({ length: 8 }, () =>
               expect.objectContaining({
-                type: "resource",
-                uri: expect.stringMatching(/^senera:\/\/resource\/upl_[a-f0-9]{32}$/u),
-                mimeType: "image/png",
+                source: {
+                  kind: "local_path",
+                  path: expect.stringMatching(/^\.senera\/uploads\/upl_[a-f0-9]{32}\/original\.png$/u),
+                },
+                mime: "image/png",
               }),
             ),
           ),
         },
       }),
     );
-    const content = (execution.response as { result: { content: Array<{ uri?: string }> } }).result.content;
-    const resourceUris = content.flatMap((item) => (item.uri ? [item.uri] : []));
-    expect(new Set(resourceUris).size).toBe(8);
+    const resources = (execution.response as { result: { resources: Array<{ source: { path: string } }> } }).result
+      .resources;
+    const paths = resources.map((resource) => resource.source.path);
+    expect(new Set(paths).size).toBe(8);
   });
 
   test("projects inline media in text content without knowing the producing tool", async () => {
@@ -171,7 +183,8 @@ describe("Imagen MCP artifact boundary", () => {
     });
 
     expect(JSON.stringify(execution.response)).not.toContain(encoded);
-    expect(JSON.stringify(execution.response)).toMatch(/senera:\/\/resource\/upl_[a-f0-9]{32}/u);
+    expect(JSON.stringify(execution.response)).toMatch(/\.senera\/uploads\/upl_[a-f0-9]{32}\/original\.png/u);
+    expect(JSON.stringify(execution.response)).not.toMatch(/senera:\/\/resource\/upl_/u);
   });
 
   test("materializes structured Base64 only when magic bytes identify media", async () => {
@@ -194,8 +207,17 @@ describe("Imagen MCP artifact boundary", () => {
         ok: true,
         result: {
           output: {
-            image: expect.stringMatching(/^senera:\/\/resource\/upl_[a-f0-9]{32}$/u),
+            image: expect.stringMatching(/^\.senera\/uploads\/upl_[a-f0-9]{32}\/original\.png$/u),
           },
+          resources: [
+            expect.objectContaining({
+              source: {
+                kind: "local_path",
+                path: expect.stringMatching(/^\.senera\/uploads\/upl_[a-f0-9]{32}\/original\.png$/u),
+              },
+              mime: "image/png",
+            }),
+          ],
         },
       }),
     );
@@ -231,7 +253,18 @@ describe("Imagen MCP artifact boundary", () => {
     expect(execution.response).toEqual(
       expect.objectContaining({
         ok: true,
-        result: { providerValue: { ok: true } },
+        result: {
+          providerValue: { ok: true },
+          resources: [
+            expect.objectContaining({
+              source: {
+                kind: "local_path",
+                path: expect.stringMatching(/^\.senera\/uploads\/upl_[a-f0-9]{32}\/original\.wav$/u),
+              },
+              mime: "audio/wav",
+            }),
+          ],
+        },
       }),
     );
     expect(execution.artifactPayload?.assets).toBeUndefined();

@@ -5,7 +5,7 @@
     "category": "agent-supervisor-contact",
     "icon": "message-question",
     "activity": {
-      "action": { "zh-CN": "请求协调", "en-US": "Contact supervisor" },
+      "action": { "zh-CN": "协调", "en-US": "Coordinate" },
       "argumentPath": "/message",
       "detailPaths": ["/reason"]
     }
@@ -22,7 +22,6 @@
     "additionalProperties": false
   },
   "outputSchema": { "type": "object", "additionalProperties": true },
-  "observationProjection": "observations/AgentContactSupervisor.projection.json",
   "permissions": [],
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
   "runtime": {

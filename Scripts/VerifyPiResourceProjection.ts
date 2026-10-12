@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { loadSkillsFromDir } from "@earendil-works/pi-coding-agent";
 import { AgentExtensionRegistry } from "../Source/AgentSystem/Extensions/AgentExtensionRegistry.js";
 import { AgentPiPromptTemplateProjector } from "../Source/AgentSystem/Pi/AgentPiPromptTemplateProjector.js";
-import { AgentPiSkillResolver } from "../Source/AgentSystem/Pi/AgentPiSkillResolver.js";
+import { projectAgentPiActivatedSkills } from "../Source/AgentSystem/Pi/AgentPiSkillCatalog.js";
+import { AgentSkillScanner } from "../Source/AgentSystem/Skills/AgentSkillScanner.js";
 import { agentSkillLogicalUri } from "../Source/AgentSystem/Skills/AgentSkillResourceUri.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "senera-pi-resource-"));
@@ -53,6 +53,7 @@ const activeSkills = [
     recommendedTools: [],
     evidenceRequirements: [],
     descriptionFile: path.join(resourceRoot, "skills", "SKILL.md"),
+    content: new AgentSkillScanner().readSkillDirectory(path.join(resourceRoot, "skills")).content,
     matchedTerms: [],
     matchedFields: [],
     score: 1,
@@ -62,8 +63,7 @@ const resources = new AgentPiPromptTemplateProjector(registry).project({
   input: "请修改代码并运行测试验证",
   activeSkills,
 });
-const loadedSkills = loadSkillsFromDir({ dir: path.join(resourceRoot, "skills"), source: "verification" });
-const resolvedSkills = new AgentPiSkillResolver().resolve(activeSkills, loadedSkills);
+const resolvedSkills = projectAgentPiActivatedSkills(activeSkills);
 
 assert.deepEqual(
   resolvedSkills.map((skill) => skill.name),

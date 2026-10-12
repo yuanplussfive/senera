@@ -1,841 +1,166 @@
-import { evaluateAgentContinuityRule } from "./AgentContinuityConditionEvaluator.js";
-import type { AgentContinuityMemoryPromptContext, AgentContinuityRulesSnapshot } from "./AgentContinuityMemoryTypes.js";
-import type { AgentContinuityObservation } from "./AgentContinuityDomain.js";
-import { AgentContinuityRecordRanker, type AgentContinuityRankResult } from "./AgentContinuityRecordRanker.js";
-import type { AgentContinuityConceptRecord } from "./AgentContinuityConceptCatalog.js";
-import type { AgentContinuityGraphSnapshot } from "./AgentContinuityGraphTypes.js";
+import {
+  EmptyAgentContinuityMemoryPromptContext,
+  type AgentContinuityMemoryPromptContext,
+} from "./AgentContinuityMemoryTypes.js";
 import { AgentContinuitySqliteStore } from "./AgentContinuitySqliteStore.js";
-import {
-  agentContinuityScopeKey,
-  listAgentContinuityAutomaticRecallScopes,
-  listAgentContinuityPromptScopes,
-} from "./AgentContinuityScopes.js";
-import type { AgentResidentProfileService } from "../Profile/AgentResidentProfileService.js";
-import type { AgentResidentProfilePromptEntry } from "../Profile/AgentResidentProfileTypes.js";
-import type { AgentMemorySourceRepository } from "../Memory/AgentMemorySourceRepository.js";
 import type { AgentMemoryDeletionImpact } from "../Memory/AgentMemorySourceRepository.js";
-import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
-import { errorMessage } from "../Core/AgentErrors.js";
 import { throwAbortReason } from "../Core/AgentCancellation.js";
-import type { AgentResidentState } from "./AgentResidentState.js";
 import type { AgentContinuityLearningRecallConfig } from "../Types/AgentToolAndMemoryConfigTypes.js";
-import { decideAgentContinuityRecall } from "./AgentContinuityRecallGate.js";
-import { agentContinuityRecallCatalogCacheKey, AgentContinuityRecallCatalog } from "./AgentContinuityRecallCatalog.js";
 import {
-  projectAgentContinuityEvidenceCandidates,
-  projectAgentContinuityEventCandidates,
-  projectAgentContinuityFactCatalog,
-  countAgentContinuityProjectableFacts,
-} from "./AgentContinuityMemoryProjection.js";
+  applyAgentContinuityPromptBudget,
+  type AgentContinuityHistoricalTokenBudget,
+} from "./AgentContinuityPromptBudget.js";
+import type { AgentContinuityMemOSRuntime, AgentContinuityMemOSSearchResult } from "./AgentContinuityMemOSRuntime.js";
 import {
-  AgentContinuityStableSnapshotStore,
-  type AgentContinuityStablePromptSnapshot,
-} from "./AgentContinuityStableSnapshotStore.js";
-import { applyAgentContinuityPromptBudget } from "./AgentContinuityPromptBudget.js";
-import { AgentContinuitySemanticRecall } from "./AgentContinuitySemanticRecall.js";
-import type { AgentContinuitySemanticRecallResult } from "./AgentContinuitySemanticRecall.js";
-import { AgentContinuityTextSimilarity } from "./AgentContinuityTextSimilarity.js";
-import { recallAgentContinuityGraph } from "./AgentContinuityGraphRecall.js";
-import type { AgentTurnValueClassification } from "./AgentTurnValueClassifier.js";
-import { AgentContinuityGraphSearchIndex } from "./AgentContinuityGraphSearchIndex.js";
-import {
-  createAgentContinuityRecallQueryPlan,
-  type AgentContinuityRecallQueryPlan,
-} from "./AgentContinuityRecallQueryPlan.js";
-import type { AgentEventSink } from "../Events/AgentEventTypes.js";
-import { isAgentContinuityEventRecallable } from "./AgentContinuityEventRecallPolicy.js";
-import {
-  combineRejections,
-  DisabledContinuityRecallConfig,
-  projectRuleCatalog,
-  projectSignal,
-  semanticRecallTimeoutResult,
-  stablePromptRevision,
-  uniqueRankedRecords,
-  withTimeout,
-  isAgentContinuitySemanticTimeoutError,
-  AgentContinuitySemanticTimeoutError,
-  type AgentContinuityEvaluatedState,
-  type SemanticRecallTimeoutResult,
-} from "./AgentContinuityMemoryServiceSupport.js";
-import { AgentContinuityStyleExampleIndex } from "./AgentContinuityStyleExamples.js";
-import type { AgentContinuityIdentityContext } from "./AgentContinuityIdentityStore.js";
-import type { AgentTemporalMemorySqliteStore } from "../TemporalMemory/AgentTemporalMemorySqliteStore.js";
-import { projectAgentTemporalMemoryScope } from "../TemporalMemory/AgentTemporalMemoryIdentity.js";
-import { renderAgentTemporalMemoryOverview } from "../TemporalMemory/AgentTemporalMemoryPresentation.js";
-import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
-import {
-  assessAgentContinuityRecallQuality,
-  buildAgentContinuityContextVariant,
-  buildAgentContinuityFeedbackVariant,
-  deriveAgentContinuityRecallCascadeLimits,
-  isAgentContinuityRecallQualityImproved,
-  mergeAgentContinuityRankedRecordsByObservationUri,
-  preservesAgentContinuityRecallBaseline,
-  shouldExpandAgentContinuityRecall,
-  type AgentContinuityRecallCascadeStage,
-} from "./AgentContinuityRecallCascade.js";
-import { emitAgentContinuityRecallEvents } from "./AgentContinuityRecallEvents.js";
-import { selectAgentContinuityLiveStateSignals } from "./AgentContinuityLiveStateProjection.js";
-import { selectAgentContinuityTemporalDigests } from "./AgentContinuityTemporalDigestProjection.js";
+  AgentMemOSTags,
+  agentMemOSRevision,
+  projectAgentMemOSOccurredAt,
+  projectAgentMemOSPeriod,
+  AgentMemOSSummarySchema,
+} from "./AgentMemOSSemanticTypes.js";
+import { agentMemOSReference } from "./AgentMemOSReference.js";
+
+interface RecallInput {
+  readonly userInput: string;
+  readonly sessionId?: string;
+  readonly requestId?: string;
+  readonly signal?: AbortSignal;
+  readonly historicalTokenBudget?: AgentContinuityHistoricalTokenBudget;
+  readonly excludedMemoryKeys?: ReadonlySet<string>;
+  readonly deliveryEpoch?: number;
+}
 
 export interface AgentContinuityMemoryServiceOptions {
-  readonly identity: AgentContinuityIdentityContext;
   readonly store: AgentContinuitySqliteStore;
-  readonly residentProfile?: AgentResidentProfileService;
-  readonly sourceRepository?: AgentMemorySourceRepository;
-  readonly temporalMemoryStore?: AgentTemporalMemorySqliteStore;
-  /** Resolves display names only when a derived temporal summary is presented. */
-  readonly identityDisplayValues?: () => AgentIdentityDisplayValues;
-  readonly stableSnapshotStore?: AgentContinuityStableSnapshotStore;
-  readonly recallConfig?: () => AgentContinuityLearningRecallConfig;
-  /** Optional semantic channel; absent or failing leaves pure lexical ranking. */
-  readonly semanticRecall?: AgentContinuitySemanticRecall;
-  /** Shared local classifier used to gate low-value text recall after training. */
-  readonly turnValueClassification?: (input: string) => AgentTurnValueClassification;
-  readonly eventSink?: AgentEventSink;
-  readonly logger?: AgentLogger;
+  readonly recallConfig: () => AgentContinuityLearningRecallConfig;
+  readonly memos: Pick<AgentContinuityMemOSRuntime, "search" | "searchRecent">;
 }
 
-/** Builds the automatic continuity context: stable profile, ranked records, event summaries, and evaluated state. */
+/** Builds prompt memory from the single MemOS authority. */
 export class AgentContinuityMemoryService {
-  private readonly recallCatalog: AgentContinuityRecallCatalog;
-  private readonly styleExampleIndex: AgentContinuityStyleExampleIndex;
-  private rankerSnapshot: { readonly policyKey: string; readonly ranker: AgentContinuityRecordRanker } | undefined;
-  private graphSearchIndexSnapshot:
-    { readonly policyKey: string; readonly index: AgentContinuityGraphSearchIndex } | undefined;
-  private readonly inMemoryStableSnapshots = new Map<string, AgentContinuityStablePromptSnapshot>();
-  private eventSink: AgentEventSink | undefined;
+  private readonly deliveryEpochs = new Map<string, number>();
+  constructor(private readonly options: AgentContinuityMemoryServiceOptions) {}
 
-  constructor(private readonly options: AgentContinuityMemoryServiceOptions) {
-    this.recallCatalog = new AgentContinuityRecallCatalog(options.store, options.sourceRepository);
-    this.styleExampleIndex = new AgentContinuityStyleExampleIndex(options.sourceRepository);
-    this.eventSink = options.eventSink;
-  }
-
-  setEventSink(sink: AgentEventSink): void {
-    this.eventSink = sink;
-  }
-
-  /** Reads the durable per-session resident state, or undefined before the first turn. */
-  loadResidentState(sessionId: string): AgentResidentState | undefined {
-    return this.options.store.readResidentState({ kind: "session", id: sessionId });
-  }
-
-  /** Persists the durable per-session resident state for the next turn. */
-  saveResidentState(sessionId: string, state: AgentResidentState, observedAt: string): void {
-    this.options.store.writeResidentState({ kind: "session", id: sessionId }, state, observedAt);
-  }
-
-  async promptContext(input: {
-    userInput: string;
-    sessionId?: string;
-    requestId?: string;
-    signal?: AbortSignal;
-  }): Promise<AgentContinuityMemoryPromptContext> {
+  async promptContext(input: RecallInput): Promise<AgentContinuityMemoryPromptContext> {
     throwAbortReason(input.signal);
-    const scopes = listAgentContinuityPromptScopes(this.options.identity, input.sessionId);
-    const automaticRecallScopes = listAgentContinuityAutomaticRecallScopes(this.options.identity, input.sessionId);
-    const now = new Date();
-    const recall = this.options.recallConfig?.() ?? DisabledContinuityRecallConfig;
-    const recallDecision = decideAgentContinuityRecall(
-      { enabled: recall.TurnValueClassifier.Enabled },
-      this.options.turnValueClassification?.(input.userInput),
-    );
-    const concepts = this.options.store.listConcepts(scopes);
-    const recallConcepts = this.options.store.listConcepts(automaticRecallScopes);
-    const graph = this.options.store.graphSnapshot(scopes);
-    const recallGraph = this.options.store.graphSnapshot(automaticRecallScopes);
-    const textSimilarity = new AgentContinuityTextSimilarity(recall.Ranking.Similarity);
-    const cacheTtlMs = recall.Prefetch.Enabled ? recall.Prefetch.CacheTtlSeconds * 1_000 : 0;
-    const catalog = recallDecision.shouldRecallText
-      ? this.recallCatalog.read(automaticRecallScopes, {
-          nowMs: now.getTime(),
-          cacheTtlMs,
-          identity: this.options.identity,
-          sessionId: input.sessionId,
-        })
-      : undefined;
-    const observations = catalog?.observations ?? [];
-    const eventObservations = (catalog?.eventObservations ?? []).filter(isAgentContinuityEventRecallable);
-    const factHeads = this.options.store.listFactHeads(automaticRecallScopes, now);
-    const factValidUntilByObservationUri = new Map(
-      factHeads.map((fact) => [fact.observationUri, fact.validUntil ?? null] as const),
-    );
-    const ranker = this.rankerFor(recall.Ranking);
-    const rankOptions = {
-      sessionId: input.sessionId,
-      now,
-      cacheTtlMs,
-      catalogRevision: catalog?.revision,
-      catalogKey: catalog?.cacheKey,
-    };
-    const rankSession = ranker.openSession({
-      observations,
-      eventObservations,
-      ...rankOptions,
-      factValidUntilByObservationUri,
-    });
-    const queryPlan = recallDecision.shouldRecallText
-      ? this.createQueryPlan({
-          query: input.userInput,
-          concepts: recallConcepts,
-          graph: recallGraph,
-          similarity: textSimilarity,
-          now,
-          cacheTtlMs,
-          ranking: recall.Ranking,
-          maxRelationMatches: recall.PromptBudget.MaxRelationEntries,
-          maxGraphHops: recall.Ranking.Graph.MaxHops,
-        })
-      : undefined;
-    const recallQuery = queryPlan?.expandedQuery ?? input.userInput;
-    const recallStartedAt = Date.now();
-    const adaptiveLimits = deriveAgentContinuityRecallCascadeLimits(recall.Ranking, recall.PromptBudget);
-    const lexicalQueries = [recallQuery];
-    const adaptiveStages: AgentContinuityRecallCascadeStage[] = [];
-    const rankLocal = (queries: readonly string[], semanticScores?: ReadonlyMap<string, number>) => ({
-      learning: rankSession.rank({
-        query: input.userInput,
-        lexicalQuery: recallQuery,
-        lexicalQueries: queries,
-        directQuery: input.userInput,
-        semanticScores,
-      }),
-      events: rankSession.rankEvents({
-        query: input.userInput,
-        lexicalQuery: recallQuery,
-        lexicalQueries: queries,
-        semanticScores,
-      }),
-    });
-
-    let rankingResult: AgentContinuityRankResult | undefined;
-    let eventRankingResult: AgentContinuityRankResult | undefined;
-    let semanticResult: AgentContinuitySemanticRecallResult | SemanticRecallTimeoutResult | undefined;
-    if (recallDecision.shouldRecallText) {
-      ({ learning: rankingResult, events: eventRankingResult } = rankLocal(lexicalQueries));
-      let quality = assessAgentContinuityRecallQuality([rankingResult, eventRankingResult], {
-        minimumTextSimilarityScore: recall.Ranking.MinimumTextSimilarityScore,
-      });
-      adaptiveStages.push({ source: "baseline", triggered: true, addedTerms: 0, quality });
-
-      const hasQuery = input.userInput.trim().length > 0;
-      if (hasQuery && shouldExpandAgentContinuityRecall(quality, recall.Ranking)) {
-        const contextVariant = buildAgentContinuityContextVariant({
-          query: input.userInput,
-          contexts: this.recallContextTexts(
-            input.sessionId,
-            eventObservations,
-            adaptiveLimits.maxSeedRecords,
-            adaptiveLimits.maxCharacters,
-          ),
-          similarity: textSimilarity,
-          vocabulary: rankSession.lexicalVocabulary("combined"),
-          maxTerms: adaptiveLimits.maxTerms,
-          maxCharacters: adaptiveLimits.maxCharacters,
-        });
-        if (contextVariant) {
-          const candidateQueries = [...lexicalQueries, contextVariant.query];
-          const candidate = rankLocal(candidateQueries);
-          const candidateQuality = assessAgentContinuityRecallQuality([candidate.learning, candidate.events], {
-            minimumTextSimilarityScore: recall.Ranking.MinimumTextSimilarityScore,
-          });
-          adaptiveStages.push({
-            source: "context",
-            triggered: true,
-            addedTerms: contextVariant.addedTerms.length,
-            quality: candidateQuality,
-          });
-          if (
-            isAgentContinuityRecallQualityImproved(candidateQuality, quality) &&
-            preservesAgentContinuityRecallBaseline(
-              [rankingResult, eventRankingResult],
-              [candidate.learning, candidate.events],
-              recall.Ranking.MinimumTextSimilarityScore,
-            )
-          ) {
-            lexicalQueries.push(contextVariant.query);
-            ({ learning: rankingResult, events: eventRankingResult } = candidate);
-            quality = candidateQuality;
-          }
-        } else {
-          adaptiveStages.push({ source: "context", triggered: false, addedTerms: 0, quality });
-        }
-      }
-
-      if (
-        adaptiveStages.filter((stage) => stage.triggered && stage.source !== "baseline").length <
-        adaptiveLimits.maxStages
-      ) {
-        if (hasQuery && shouldExpandAgentContinuityRecall(quality, recall.Ranking)) {
-          const feedbackVariant = buildAgentContinuityFeedbackVariant({
-            query: input.userInput,
-            seeds: mergeAgentContinuityRankedRecordsByObservationUri([
-              ...(rankingResult?.records ?? []),
-              ...(eventRankingResult?.records ?? []),
-            ]),
-            corpus: mergeRecallFeedbackCorpus(observations, eventObservations),
-            similarity: textSimilarity,
-            vocabulary: rankSession.lexicalVocabulary("combined"),
-            maxSeedRecords: adaptiveLimits.maxSeedRecords,
-            maxTerms: adaptiveLimits.maxTerms,
-            maxCharacters: adaptiveLimits.maxCharacters,
-            minSeedScore: adaptiveLimits.minSeedScore,
-          });
-          if (feedbackVariant) {
-            const candidateQueries = [...lexicalQueries, feedbackVariant.query];
-            const candidate = rankLocal(candidateQueries);
-            const candidateQuality = assessAgentContinuityRecallQuality([candidate.learning, candidate.events], {
-              minimumTextSimilarityScore: recall.Ranking.MinimumTextSimilarityScore,
-            });
-            adaptiveStages.push({
-              source: "feedback",
-              triggered: true,
-              addedTerms: feedbackVariant.addedTerms.length,
-              quality: candidateQuality,
-            });
-            if (
-              isAgentContinuityRecallQualityImproved(candidateQuality, quality) &&
-              preservesAgentContinuityRecallBaseline(
-                [rankingResult, eventRankingResult],
-                [candidate.learning, candidate.events],
-                recall.Ranking.MinimumTextSimilarityScore,
-              )
-            ) {
-              lexicalQueries.push(feedbackVariant.query);
-              ({ learning: rankingResult, events: eventRankingResult } = candidate);
-              quality = candidateQuality;
-            }
-          } else {
-            adaptiveStages.push({ source: "feedback", triggered: false, addedTerms: 0, quality });
-          }
-        }
-      }
-
-      // Embeddings remain an optional final stage and always receive the raw
-      // request. Local graph/context terms must never alter vector meaning.
-      if (hasQuery && recall.Semantic.Enabled && shouldExpandAgentContinuityRecall(quality, recall.Ranking)) {
-        semanticResult = await this.awaitSemanticScores(
-          recall,
-          input.userInput,
-          observations,
-          eventObservations,
-          input.signal,
-        );
-        const candidate = rankLocal(lexicalQueries, semanticResult?.scores);
-        const candidateQuality = assessAgentContinuityRecallQuality([candidate.learning, candidate.events], {
-          minimumTextSimilarityScore: recall.Ranking.MinimumTextSimilarityScore,
-        });
-        adaptiveStages.push({ source: "semantic", triggered: true, addedTerms: 0, quality: candidateQuality });
-        if (
-          isAgentContinuityRecallQualityImproved(candidateQuality, quality) &&
-          preservesAgentContinuityRecallBaseline(
-            [rankingResult, eventRankingResult],
-            [candidate.learning, candidate.events],
-            recall.Ranking.MinimumTextSimilarityScore,
-          )
-        ) {
-          ({ learning: rankingResult, events: eventRankingResult } = candidate);
-        }
-      } else {
-        adaptiveStages.push({ source: "semantic", triggered: false, addedTerms: 0, quality });
-      }
-      if (recall.Prefetch.Enabled || adaptiveStages.some((stage) => stage.source === "semantic" && stage.triggered)) {
-        this.scheduleSemanticIndex(recall, observations, eventObservations);
-      }
-    }
+    const recall = this.options.recallConfig();
+    const deliveryEpoch = input.deliveryEpoch ?? (input.sessionId ? this.deliveryEpoch(input.sessionId) : undefined);
+    if (!input.historicalTokenBudget || input.historicalTokenBudget.maxTokens <= 0)
+      return {
+        ...EmptyAgentContinuityMemoryPromptContext,
+        enabled: true,
+        ...(input.userInput.trim() ? { query: input.userInput.trim() } : {}),
+        ...(deliveryEpoch === undefined ? {} : { deliveryEpoch }),
+      };
+    const results = input.userInput.trim()
+      ? await this.options.memos.search(input.userInput, { excludedKeys: input.excludedMemoryKeys })
+      : await this.options.memos.searchRecent({ excludedKeys: input.excludedMemoryKeys });
     throwAbortReason(input.signal);
-    const ranked = rankingResult ? uniqueRankedRecords(rankingResult.records) : [];
-    const rankedEvents = eventRankingResult
-      ? mergeAgentContinuityRankedRecordsByObservationUri(eventRankingResult.records)
-      : [];
-    emitAgentContinuityRecallEvents({
-      eventSink: this.eventSink,
-      logger: this.options.logger,
-      sessionId: input.sessionId,
-      requestId: input.requestId,
-      recallStartedAt,
-      rankingResult,
-      eventRankingResult,
-      semanticResult,
-      recall,
-      originalQuery: input.userInput,
-      queryPlan,
-      adaptiveStages,
-    });
-    const state = this.evaluateState(scopes, now, true);
-    const graphRecall = recallDecision.shouldRecallText
-      ? recallAgentContinuityGraph({
-          query: input.userInput,
-          relations: recallGraph.relations,
-          entities: recallGraph.entities,
-          anchorUris: queryPlan?.anchorUris,
-          preferredRelationIds: queryPlan?.relationMatches
-            .filter((match) => match.direct && match.score >= recall.Ranking.DirectTextSimilarityScore)
-            .map((match) => match.relationId),
-          similarity: textSimilarity,
-          now,
-          minimumScore: recall.Ranking.CandidateScore,
-          maxEntries: recall.PromptBudget.MaxRelationEntries,
-          maxHops: recall.Ranking.Graph.MaxHops,
-        })
-      : { relations: [], matchedRelationUris: [] };
-    const residentProfile = this.options.residentProfile?.promptContext(scopes, now) ?? [];
-    const factCatalog = projectAgentContinuityFactCatalog(factHeads, {
-      residentProfile,
-      rankedRecords: ranked,
-    });
-    const stableSnapshot = this.stablePromptSnapshot({
-      sessionId: input.sessionId,
-      residentProfile,
-      revision: stablePromptRevision(residentProfile),
-      createdAt: now.toISOString(),
-    });
-    const evidenceCandidates = projectAgentContinuityEvidenceCandidates(ranked);
-    const eventCandidates = projectAgentContinuityEventCandidates(rankedEvents);
-    const styleExamples = recallDecision.shouldRecallText
-      ? this.styleExampleIndex.select({
-          sessionId: input.sessionId,
-          query: input.userInput,
-          maxEntries: recall.PromptBudget.MaxEventEntries,
-          similarity: recall.Ranking.Similarity,
-          minimumScore: recall.Ranking.MinimumTextSimilarityScore,
-        })
-      : { examples: [], available: 0, matched: 0 };
-    const temporalDigestCandidates = selectAgentContinuityTemporalDigests({
-      temporalMemoryStore: this.options.temporalMemoryStore,
-      identity: this.options.identity,
-      identityDisplayValues: this.options.identityDisplayValues,
-      query: input.userInput,
-      now,
-      maxEntries: recall.PromptBudget.MaxDigestEntries,
-      similarity: textSimilarity,
-      floor: recall.Ranking.MinimumTextSimilarityScore,
-    });
     const budgeted = applyAgentContinuityPromptBudget(
       {
-        profiles: stableSnapshot.residentProfile,
-        digests: temporalDigestCandidates,
-        facts: factCatalog,
-        relations: graphRecall.relations,
-        events: eventCandidates,
-        evidence: evidenceCandidates,
-        styleExamples: styleExamples.examples,
-        availableFactCount: countAgentContinuityProjectableFacts(factHeads, residentProfile),
-        availableRelationCount: recallGraph.relations.length,
-        availableEventCount: eventObservations.length,
+        digests: results.flatMap(projectMemOSPeriodDigest),
+        events: results.flatMap(projectMemOSEvent),
+        historicalTokenBudget: input.historicalTokenBudget,
       },
       recall.PromptBudget,
     );
-    const temporalOverview = this.options.temporalMemoryStore?.overview(
-      projectAgentTemporalMemoryScope(this.options.identity).key,
-    ) ?? {
-      counts: [],
-      segmentDecisions: [],
-      latestSealed: [],
-    };
-    const temporalMemory = this.options.identityDisplayValues
-      ? renderAgentTemporalMemoryOverview(temporalOverview, this.options.identityDisplayValues())
-      : temporalOverview;
     return {
       enabled: true,
-      concepts,
-      graph,
-      graphRelations: budgeted.relations,
-      temporalMemory,
-      residentProfile: budgeted.profiles,
-      temporalDigests: budgeted.digests ?? [],
-      factCatalog: budgeted.facts,
-      selection: budgeted.selection,
-      rejections: combineRejections(rankingResult?.rejections, eventRankingResult?.rejections),
-      nearMisses: (rankingResult?.nearMisses ?? []).map((nearMiss) => ({
-        summary: nearMiss.observation.summary,
-        score: nearMiss.score,
-        textSimilarityScore: nearMiss.textSimilarityScore,
-        lexicalScore: nearMiss.lexicalScore,
-        semanticScore: nearMiss.semanticScore,
-        matchedBy: [...nearMiss.matchedBy],
-      })),
-      pendingRuleDeliveryUris: state.evaluatedRules
-        .filter(
-          ({ rule, evaluation, shouldProject }) =>
-            shouldProject &&
-            evaluation.status === "triggered" &&
-            rule.action.activation === "once" &&
-            !rule.lastTriggeredAt,
-        )
-        .map(({ rule }) => rule.uri),
-      evidenceCandidates: budgeted.evidence,
+      ...(input.userInput.trim() ? { query: input.userInput.trim() } : {}),
+      ...(deliveryEpoch === undefined ? {} : { deliveryEpoch }),
+      periodDigests: budgeted.digests,
       eventCandidates: budgeted.events,
-      styleExamples: budgeted.styleExamples,
-      activeRules: state.evaluatedRules
-        .filter(({ shouldProject }) => shouldProject)
-        .map(({ rule, evaluation }) => ({
-          title: rule.title,
-          action: rule.action.summary,
-          status: evaluation.status === "triggered" ? ("triggered" as const) : ("partial" as const),
-          missingSignals: evaluation.missingSignals,
-        })),
-      ruleCatalog: projectRuleCatalog(state.evaluatedRules),
-      signals: state.signals.map(projectSignal),
-    };
-  }
-
-  /**
-   * Builds the request-local continuity surface for the main Pi loop.
-   *
-   * This deliberately does not rank, hydrate, or semantically retrieve old
-   * observations. The durable transcript already carries recent turns; older
-   * facts, events, digests, and evidence remain available through explicit
-   * memory and artifact retrieval. Keeping that material out of every request
-   * prevents a recall result from becoming duplicated historical context.
-   */
-  async liveContext(input: { sessionId?: string } = {}): Promise<AgentContinuityMemoryPromptContext> {
-    const scopes = listAgentContinuityPromptScopes(this.options.identity, input.sessionId);
-    const now = new Date();
-    const recall = this.options.recallConfig?.() ?? DisabledContinuityRecallConfig;
-    const profile = this.options.residentProfile?.promptContext(scopes, now) ?? [];
-    const budgeted = applyAgentContinuityPromptBudget(
-      {
-        profiles: profile,
-        digests: [],
-        facts: [],
-        relations: [],
-        events: [],
-        evidence: [],
-        styleExamples: [],
-        availableFactCount: 0,
-        availableRelationCount: 0,
-        availableEventCount: 0,
-      },
-      recall.PromptBudget,
-    );
-    const stableSnapshot = this.stablePromptSnapshot({
-      sessionId: input.sessionId,
-      residentProfile: budgeted.profiles,
-      revision: stablePromptRevision(budgeted.profiles),
-      createdAt: now.toISOString(),
-    });
-    const state = this.evaluateState(scopes, now, true);
-    const projectedRules = state.evaluatedRules.filter(({ shouldProject }) => shouldProject);
-    const relevantSignals = selectAgentContinuityLiveStateSignals(projectedRules, state.signals);
-
-    return {
-      enabled: true,
-      concepts: [],
-      graph: { scope: [], entities: [], relations: [] },
-      graphRelations: [],
-      temporalMemory: { counts: [], segmentDecisions: [], latestSealed: [] },
-      residentProfile: stableSnapshot.residentProfile,
-      temporalDigests: [],
-      factCatalog: [],
       selection: budgeted.selection,
-      rejections: { belowSimilarity: 0, belowCandidate: 0, funnelSkipped: 0 },
-      nearMisses: [],
-      pendingRuleDeliveryUris: projectedRules
-        .filter(
-          ({ rule, evaluation }) =>
-            evaluation.status === "triggered" && rule.action.activation === "once" && !rule.lastTriggeredAt,
-        )
-        .map(({ rule }) => rule.uri),
-      evidenceCandidates: [],
-      eventCandidates: [],
-      styleExamples: [],
-      activeRules: projectedRules.map(({ rule, evaluation }) => ({
-        title: rule.title,
-        action: rule.action.summary,
-        status: evaluation.status === "triggered" ? ("triggered" as const) : ("partial" as const),
-        missingSignals: evaluation.missingSignals,
-      })),
-      ruleCatalog: projectRuleCatalog(projectedRules),
-      signals: relevantSignals.map(projectSignal),
     };
   }
-
-  /** Warms deterministic indexes and schedules semantic backfill without delaying the caller. */
-  prefetch(input: { sessionId?: string } = {}): void {
-    const recall = this.options.recallConfig?.() ?? DisabledContinuityRecallConfig;
-    if (!recall.Prefetch.Enabled) return;
-    const scopes = listAgentContinuityAutomaticRecallScopes(this.options.identity, input.sessionId);
-    const now = new Date();
-    const catalog = this.recallCatalog.read(scopes, {
-      nowMs: now.getTime(),
-      cacheTtlMs: recall.Prefetch.CacheTtlSeconds * 1_000,
-      identity: this.options.identity,
-      sessionId: input.sessionId,
-    });
-    this.scheduleSemanticIndex(recall, catalog.observations, catalog.eventObservations);
-    this.rankerFor(recall.Ranking).warm({
-      observations: catalog.observations,
-      eventObservations: catalog.eventObservations.filter(isAgentContinuityEventRecallable),
-      cacheTtlMs: recall.Prefetch.CacheTtlSeconds * 1_000,
-      now,
-      catalogRevision: catalog.revision,
-      catalogKey: catalog.cacheKey,
-    });
-    this.graphSearchIndexFor(recall.Ranking).warm({
-      concepts: this.options.store.listConcepts(scopes),
-      graph: this.options.store.graphSnapshot(scopes),
-      nowMs: now.getTime(),
-      cacheTtlMs: recall.Prefetch.CacheTtlSeconds * 1_000,
-    });
-  }
-
-  rulesSnapshot(input: { sessionId?: string; now?: Date } = {}): AgentContinuityRulesSnapshot {
-    const scopes = listAgentContinuityPromptScopes(this.options.identity, input.sessionId);
-    const state = this.evaluateState(scopes, input.now ?? new Date(), false);
-    return {
-      rules: projectRuleCatalog(state.evaluatedRules),
-      signals: state.signals.map(projectSignal),
-    };
-  }
-
-  acknowledgeRuleDeliveries(ruleUris: readonly string[], deliveredAt: string): number {
-    return this.options.store.acknowledgeRuleDeliveries(ruleUris, deliveredAt);
-  }
-
-  deleteSession(sessionId: string): void {
-    this.clearRecallCaches(sessionId);
-    this.inMemoryStableSnapshots.delete(sessionId);
-    this.options.stableSnapshotStore?.deleteSession(sessionId);
-    this.styleExampleIndex.clear(sessionId);
-    this.recallCatalog.clearPhysical();
-  }
-
-  deleteSources(impact: AgentMemoryDeletionImpact): void {
-    this.clearRecallCaches(impact.sessionId);
-    this.inMemoryStableSnapshots.delete(impact.sessionId);
-    this.options.stableSnapshotStore?.deleteSession(impact.sessionId);
-    this.styleExampleIndex.clear(impact.sessionId);
-    this.recallCatalog.clearPhysical();
-  }
-
-  private clearRecallCaches(sessionId: string): void {
-    const scopeKeys = new Set([
-      agentContinuityScopeKey(listAgentContinuityPromptScopes(this.options.identity, sessionId)),
-      agentContinuityScopeKey(listAgentContinuityAutomaticRecallScopes(this.options.identity, sessionId)),
-    ]);
-    for (const scopeKey of scopeKeys) {
-      this.recallCatalog.clear(scopeKey);
-      this.graphSearchIndexSnapshot?.index.clear(scopeKey);
-    }
-    this.rankerSnapshot?.ranker.clear(
-      agentContinuityRecallCatalogCacheKey(
-        agentContinuityScopeKey(listAgentContinuityAutomaticRecallScopes(this.options.identity, sessionId)),
-        { identity: this.options.identity, sessionId },
-      ),
-    );
-  }
-
-  private stablePromptSnapshot(input: {
-    readonly sessionId?: string;
-    readonly revision: string;
-    readonly residentProfile: readonly AgentResidentProfilePromptEntry[];
-    readonly createdAt: string;
-  }): AgentContinuityStablePromptSnapshot {
-    if (!input.sessionId) {
-      return {
-        sessionId: "",
-        revision: input.revision,
-        residentProfile: input.residentProfile,
-        createdAt: input.createdAt,
-      };
-    }
-    const persisted = this.options.stableSnapshotStore?.read(input.sessionId);
-    if (persisted?.revision === input.revision) return persisted;
-    const existing = this.inMemoryStableSnapshots.get(input.sessionId);
-    if (existing?.revision === input.revision) return existing;
-    const saved = this.options.stableSnapshotStore?.save({
-      sessionId: input.sessionId,
-      revision: input.revision,
-      residentProfile: input.residentProfile,
-      createdAt: input.createdAt,
-    }) ?? {
-      sessionId: input.sessionId,
-      revision: input.revision,
-      residentProfile: input.residentProfile,
-      createdAt: input.createdAt,
-    };
-    this.inMemoryStableSnapshots.set(input.sessionId, saved);
-    return saved;
-  }
-
-  private rankerFor(policy: AgentContinuityLearningRecallConfig["Ranking"]): AgentContinuityRecordRanker {
-    const key = JSON.stringify(policy);
-    if (this.rankerSnapshot?.policyKey === key) return this.rankerSnapshot.ranker;
-    const ranker = new AgentContinuityRecordRanker(policy);
-    this.rankerSnapshot = { policyKey: key, ranker };
-    return ranker;
-  }
-
-  private graphSearchIndexFor(policy: AgentContinuityLearningRecallConfig["Ranking"]): AgentContinuityGraphSearchIndex {
-    const key = JSON.stringify({ Similarity: policy.Similarity, Lexical: policy.Lexical });
-    if (this.graphSearchIndexSnapshot?.policyKey === key) return this.graphSearchIndexSnapshot.index;
-    const index = new AgentContinuityGraphSearchIndex(
-      new AgentContinuityTextSimilarity(policy.Similarity),
-      policy.Lexical,
-    );
-    this.graphSearchIndexSnapshot = { policyKey: key, index };
-    return index;
-  }
-
-  /**
-   * Returns grounded lexical context for the adaptive stage. Only the open
-   * segment focus and prior user turns are used; assistant prose is never
-   * copied into a query expansion surface.
-   */
-  private recallContextTexts(
-    sessionId: string | undefined,
-    eventObservations: readonly AgentContinuityObservation[],
-    maxContexts: number,
-    maxCharacters: number,
-  ): readonly string[] {
-    const contexts: string[] = [];
-    if (sessionId && this.options.temporalMemoryStore) {
-      const scope = projectAgentTemporalMemoryScope(this.options.identity);
-      const focus = this.options.temporalMemoryStore.openSegment(scope.key, sessionId)?.workingFocus.trim();
-      if (focus) contexts.push(focus);
-    }
-    contexts.push(
-      ...eventObservations
-        .filter((observation) => observation.kind === "conversation.user_message")
-        .sort((left, right) => right.createdAtMs - left.createdAtMs)
-        .slice(0, maxContexts)
-        .map((observation) => observation.summary.trim().slice(0, maxCharacters))
-        .filter(Boolean),
-    );
-    return contexts.slice(0, maxContexts + 1);
-  }
-
-  private scheduleSemanticIndex(
-    recall: AgentContinuityLearningRecallConfig,
-    observations: readonly AgentContinuityObservation[],
-    eventObservations: readonly AgentContinuityObservation[],
-  ): void {
-    if (!this.options.semanticRecall || !recall.Semantic.Enabled) return;
-    void this.options.semanticRecall.embedObservations([...observations, ...eventObservations]).catch((error) => {
-      this.options.logger?.warn("continuity.semantic.prefetch_failed", {
-        message: errorMessage(error),
-      });
-    });
-  }
-
-  private createQueryPlan(input: {
-    readonly query: string;
-    readonly concepts: readonly AgentContinuityConceptRecord[];
-    readonly graph: AgentContinuityGraphSnapshot;
-    readonly similarity: AgentContinuityTextSimilarity;
-    readonly now: Date;
-    readonly cacheTtlMs: number;
-    readonly ranking: AgentContinuityLearningRecallConfig["Ranking"];
-    readonly maxRelationMatches: number;
-    readonly maxGraphHops: number;
-  }): AgentContinuityRecallQueryPlan {
-    const candidates = this.graphSearchIndexFor(input.ranking).select({
-      query: input.query,
-      concepts: input.concepts,
-      graph: input.graph,
-      nowMs: input.now.getTime(),
-      cacheTtlMs: input.cacheTtlMs,
-      maxConcepts: input.ranking.Funnel.MaxLexicalCandidates,
-      maxEntities: input.ranking.Funnel.MaxLexicalCandidates,
-    });
-    return createAgentContinuityRecallQueryPlan({
-      query: input.query,
-      concepts: input.concepts,
-      graph: input.graph,
-      similarity: input.similarity,
-      now: input.now,
-      minimumScore: input.ranking.MinimumTextSimilarityScore,
-      directScore: input.ranking.DirectTextSimilarityScore,
-      maxConceptMatches: input.ranking.Funnel.MaxLexicalCandidates,
-      maxEntityMatches: input.ranking.Funnel.MaxLexicalCandidates,
-      maxRelationMatches: input.maxRelationMatches,
-      anchorPolicy: input.ranking.Anchor,
-      candidates,
-    });
-  }
-
-  private async awaitSemanticScores(
-    recall: AgentContinuityLearningRecallConfig,
-    recallQuery: string,
-    observations: readonly AgentContinuityObservation[],
-    eventObservations: readonly AgentContinuityObservation[],
-    signal?: AbortSignal,
-  ): Promise<AgentContinuitySemanticRecallResult | SemanticRecallTimeoutResult | undefined> {
-    const semantic = this.options.semanticRecall;
-    if (!semantic || !recall.Semantic.Enabled) return undefined;
-    throwAbortReason(signal);
-    const timeoutController = new AbortController();
-    const semanticSignal = signal ? AbortSignal.any([signal, timeoutController.signal]) : timeoutController.signal;
-    try {
-      return await withTimeout(
-        semantic.queryScoresDetailed(recallQuery, [...observations, ...eventObservations], {
-          minQueryCharacters: recall.Semantic.MinQueryCharacters,
-          signal: semanticSignal,
-        }),
-        recall.Semantic.TimeoutMs,
-        {
-          signal,
-          onTimeout: () => timeoutController.abort(new AgentContinuitySemanticTimeoutError()),
-        },
+  async liveContext(
+    input: Omit<RecallInput, "userInput"> & { readonly userInput?: string } = {},
+  ): Promise<AgentContinuityMemoryPromptContext> {
+    let memory: AgentContinuityMemoryPromptContext;
+    do {
+      const deliveryEpoch = input.sessionId ? this.deliveryEpoch(input.sessionId) : undefined;
+      const delivered = new Set(
+        input.sessionId ? this.options.store.listMemoryDeliveryKeys(input.sessionId, "active") : [],
       );
-    } catch (error) {
-      throwAbortReason(signal);
-      if (isAgentContinuitySemanticTimeoutError(error)) {
-        return semanticRecallTimeoutResult();
-      }
-      this.options.logger?.warn("continuity.recall.semantic_failed", {
-        message: errorMessage(error),
+      memory = await this.promptContext({
+        ...input,
+        userInput: input.userInput ?? "",
+        excludedMemoryKeys: delivered,
+        deliveryEpoch,
       });
-      return {
-        status: "request_failed" as const,
-        scores: new Map(),
-        indexedCount: 0,
-        compatibleCount: 0,
-      };
-    }
+    } while (input.sessionId && memory.deliveryEpoch !== this.deliveryEpoch(input.sessionId));
+    return memory;
   }
-
-  private evaluateState(
-    scopes: ReturnType<typeof listAgentContinuityPromptScopes>,
-    now: Date,
-    persistEvaluation: boolean,
-  ): AgentContinuityEvaluatedState {
-    const signals = this.options.store.listSignals(scopes, now);
-    const evaluatedRules = this.options.store.listRules(scopes).map((rule) => {
-      const evaluation = evaluateAgentContinuityRule(rule, signals, now);
-      const terminal = rule.status === "cancelled" || rule.status === "resolved";
-      const storedRule =
-        terminal || !persistEvaluation
-          ? rule
-          : this.options.store.updateRuleEvaluation(rule, evaluation.status, now.toISOString());
-      const shouldProject =
-        rule.maturity !== "candidate" &&
-        (evaluation.status === "partial" ||
-          (evaluation.status === "triggered" && (rule.action.activation === "while_true" || !rule.lastTriggeredAt)));
-      return { rule: storedRule, evaluation, shouldProject };
-    });
-    return { signals, evaluatedRules };
+  commitLiveContextDelivery(input: {
+    readonly sessionId?: string;
+    readonly memory: AgentContinuityMemoryPromptContext;
+    readonly deliveredAt?: string;
+  }): number {
+    if (!input.sessionId) return 0;
+    if (input.memory.deliveryEpoch !== undefined && input.memory.deliveryEpoch !== this.deliveryEpoch(input.sessionId))
+      return 0;
+    const entries = [...input.memory.eventCandidates, ...input.memory.periodDigests];
+    const keys = entries.flatMap((entry) => entry.deliveryKeys ?? [entry.uri, entry.uri + "@" + entry.revision]);
+    this.options.store.recordMemoryDelivery(input.sessionId, keys, input.deliveredAt ?? new Date().toISOString());
+    return entries.length;
+  }
+  invalidateSessionContext(sessionId: string): number {
+    this.deliveryEpochs.set(sessionId, this.deliveryEpoch(sessionId) + 1);
+    return this.options.store.clearMemoryDelivery(sessionId);
+  }
+  deleteSession(sessionId: string): void {
+    this.deliveryEpochs.set(sessionId, this.deliveryEpoch(sessionId) + 1);
+  }
+  deleteSources(impact: AgentMemoryDeletionImpact): void {
+    if (impact.sessionId) this.deleteSession(impact.sessionId);
+  }
+  private deliveryEpoch(sessionId: string): number {
+    return this.deliveryEpochs.get(sessionId) ?? 0;
   }
 }
 
-/** Feedback statistics must see the same fact and physical-event surface as ranking. */
-function mergeRecallFeedbackCorpus(
-  learning: readonly AgentContinuityObservation[],
-  events: readonly AgentContinuityObservation[],
-): readonly AgentContinuityObservation[] {
-  const records = new Map<string, AgentContinuityObservation>();
-  for (const observation of [...learning, ...events]) {
-    const current = records.get(observation.uri);
-    if (!current || observationTextLength(observation) > observationTextLength(current)) {
-      records.set(observation.uri, observation);
-    }
-  }
-  return [...records.values()];
+function projectMemOSEvent(
+  result: AgentContinuityMemOSSearchResult,
+): AgentContinuityMemoryPromptContext["eventCandidates"][number][] {
+  const node = result.memory.node;
+  if (!node.tags.includes(AgentMemOSTags.knowledge)) return [];
+  const summary = AgentMemOSSummarySchema.parse(node.summary);
+  return [
+    {
+      id: node.id,
+      uri: agentMemOSReference(node.id),
+      revision: agentMemOSRevision(node),
+      type: node.type,
+      summary,
+      occurredAt: projectAgentMemOSOccurredAt(node),
+      score: result.memory.score,
+      matchedBy: ["memos", ...Object.keys(result.memory.scores ?? {})],
+      ...(result.memory.scores ? { scores: { ...result.memory.scores } } : {}),
+      deliveryKeys: result.deliveryKeys,
+    },
+  ];
 }
 
-function observationTextLength(observation: AgentContinuityObservation): number {
-  return observation.summary.length + (observation.searchText?.length ?? 0);
+function projectMemOSPeriodDigest(
+  result: AgentContinuityMemOSSearchResult,
+): AgentContinuityMemoryPromptContext["periodDigests"][number][] {
+  const node = result.memory.node;
+  const period = projectAgentMemOSPeriod(node.tags);
+  if (!period) return [];
+  const summary = AgentMemOSSummarySchema.parse(node.summary);
+  return [
+    {
+      id: node.id,
+      uri: agentMemOSReference(node.id),
+      revision: agentMemOSRevision(node),
+      granularity: period.granularity,
+      periodStart: period.start,
+      periodEnd: period.end,
+      summary,
+      score: result.memory.score,
+      matchedBy: ["memos", ...Object.keys(result.memory.scores ?? {})],
+      ...(result.memory.scores ? { scores: { ...result.memory.scores } } : {}),
+      deliveryKeys: result.deliveryKeys,
+    },
+  ];
 }

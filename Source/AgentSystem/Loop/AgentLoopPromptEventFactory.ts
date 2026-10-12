@@ -1,7 +1,6 @@
 import { summarizePrompt, type AgentDomainEvent } from "../Events/AgentEvent.js";
 import { projectAgentContinuitySnapshot } from "../Continuity/AgentContinuitySnapshot.js";
 import type { AgentContinuityMemoryPromptContext } from "../Continuity/AgentContinuityMemoryTypes.js";
-import type { AgentRoleplayPresetContext } from "../Presets/AgentPresetTypes.js";
 import { AgentEventKinds } from "../Events/AgentEventCatalog.js";
 import type { AgentPromptHarnessComposition } from "../Prompt/AgentPromptHarness.js";
 import type { AgentModelToolPlanningMode } from "../ModelEndpoints/AgentModelEndpointContract.js";
@@ -12,7 +11,6 @@ export class AgentLoopPromptEventFactory {
     step: number,
     prompt: string,
     tokenCount: number,
-    roleplayPreset: AgentRoleplayPresetContext,
     continuityMemory: AgentContinuityMemoryPromptContext,
   ): AgentDomainEvent[] {
     const summary = summarizePrompt(prompt, tokenCount);
@@ -26,7 +24,7 @@ export class AgentLoopPromptEventFactory {
       {
         kind: AgentEventKinds.ContinuitySnapshot,
         context: { requestId, step },
-        data: projectAgentContinuitySnapshot(roleplayPreset, continuityMemory),
+        data: projectAgentContinuitySnapshot(continuityMemory),
       },
     ];
   }

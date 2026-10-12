@@ -16,6 +16,38 @@ afterEach(() => {
 });
 
 describe("Node process backend behavior", () => {
+  test.runIf(process.platform === "win32")(
+    "captures immediate stdout and stderr while the Windows supervisor handshake is pending",
+    async () => {
+      const result = await new SeneraNodeProcessBackend().executeProcess(
+        createRequest({
+          cwd: process.cwd(),
+          command: "cmd.exe",
+          args: ["/d", "/s", "/c", "echo senera-supervisor-stdout& echo senera-supervisor-stderr 1>&2"],
+        }),
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("senera-supervisor-stdout");
+      expect(result.stderr).toContain("senera-supervisor-stderr");
+
+      const gitWorkspace = createWorkspace();
+      const gitBackend = new SeneraNodeProcessBackend();
+      await gitBackend.executeProcess(createRequest({ cwd: gitWorkspace, command: "git", args: ["init", "--quiet"] }));
+      const gitStatus = await gitBackend.executeProcess(
+        createRequest({
+          cwd: gitWorkspace,
+          command: "git",
+          args: ["status", "--short", "--branch", "--untracked-files=all"],
+          limits: { timeoutMs: 10_000, maxStdoutBytes: 64 * 1_024, maxStderrBytes: 16 * 1_024 },
+        }),
+      );
+
+      expect(gitStatus.exitCode).toBe(0);
+      expect(Buffer.byteLength(gitStatus.stdout)).toBeGreaterThan(0);
+    },
+  );
+
   test("executes a Node child with the requested cwd, environment, stdin, and output streams", async () => {
     const cwd = createWorkspace();
     const backend = new SeneraNodeProcessBackend();

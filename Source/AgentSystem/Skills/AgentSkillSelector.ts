@@ -15,7 +15,7 @@ export interface AgentSkillSelectionMatchedField {
   fields: string[];
 }
 
-export interface AgentSkillSelectionLearningEvidence {
+export interface AgentSkillSelectionScenarioEvidence {
   skillName: string;
   skillRevision: string;
   rankScore: number;
@@ -30,11 +30,11 @@ export class AgentSkillSelector {
   select(options: {
     query: string;
     skills: readonly RegisteredSkill[];
-    learningEvidence?: readonly AgentSkillSelectionLearningEvidence[];
+    scenarioEvidence?: readonly AgentSkillSelectionScenarioEvidence[];
   }): AgentSkillSelectionResult[] {
     const skillsByName = new Map(options.skills.map((skill) => [skill.name, skill]));
     const lexical = this.selectLexical(options.query, options.skills, skillsByName);
-    const ranked = this.mergeLearningEvidence(lexical, skillsByName, options.learningEvidence ?? []).sort(
+    const ranked = this.mergeScenarioEvidence(lexical, skillsByName, options.scenarioEvidence ?? []).sort(
       (left, right) => right.score - left.score || this.compareSkillOrder(left.skill, right.skill),
     );
 
@@ -44,7 +44,7 @@ export class AgentSkillSelector {
   async selectHybrid(options: {
     query: string;
     skills: readonly RegisteredSkill[];
-    learningEvidence?: readonly AgentSkillSelectionLearningEvidence[];
+    scenarioEvidence?: readonly AgentSkillSelectionScenarioEvidence[];
     signal?: AbortSignal;
   }): Promise<AgentSkillSelectionResult[]> {
     if (!this.capabilityIndex || options.skills.length === 0 || options.query.trim().length === 0) {
@@ -75,9 +75,11 @@ export class AgentSkillSelector {
         ]),
       });
     });
-    const learned = this.mergeLearningEvidence([...merged.values()], skillsByName, options.learningEvidence ?? []);
+    const scenarioRanked = this.mergeScenarioEvidence([...merged.values()], skillsByName, options.scenarioEvidence ?? []);
     return this.evidenceFrontier(
-      [...learned].sort((left, right) => right.score - left.score || this.compareSkillOrder(left.skill, right.skill)),
+      [...scenarioRanked].sort(
+        (left, right) => right.score - left.score || this.compareSkillOrder(left.skill, right.skill),
+      ),
     );
   }
 
@@ -109,23 +111,23 @@ export class AgentSkillSelector {
       .filter((result): result is AgentSkillSelectionResult => Boolean(result));
   }
 
-  private mergeLearningEvidence(
+  private mergeScenarioEvidence(
     semantic: readonly AgentSkillSelectionResult[],
     skillsByName: ReadonlyMap<string, RegisteredSkill>,
-    evidence: readonly AgentSkillSelectionLearningEvidence[],
+    evidence: readonly AgentSkillSelectionScenarioEvidence[],
   ): AgentSkillSelectionResult[] {
     const merged = new Map(semantic.map((result) => [result.skill.name, result]));
-    for (const learned of evidence) {
-      const skill = skillsByName.get(learned.skillName);
-      if (!skill || learned.skillRevision !== (skill.revision ?? skill.source.id) || learned.rankScore <= 0) continue;
+    for (const scenario of evidence) {
+      const skill = skillsByName.get(scenario.skillName);
+      if (!skill || scenario.skillRevision !== (skill.revision ?? skill.source.id) || scenario.rankScore <= 0) continue;
       const current = merged.get(skill.name);
       if (!current) continue;
-      const learnedMatches = learned.terms.map((term) => ({ term, fields: ["learnedUsage"] }));
+      const scenarioMatches = scenario.terms.map((term) => ({ term, fields: ["completedScenario"] }));
       merged.set(skill.name, {
         skill,
-        score: current.score + learned.rankScore,
-        matchedTerms: [...new Set([...current.matchedTerms, ...learned.terms])],
-        matchedFields: mergeMatchedFields([...current.matchedFields, ...learnedMatches]),
+        score: current.score + scenario.rankScore,
+        matchedTerms: [...new Set([...current.matchedTerms, ...scenario.terms])],
+        matchedFields: mergeMatchedFields([...current.matchedFields, ...scenarioMatches]),
       });
     }
     return [...merged.values()];

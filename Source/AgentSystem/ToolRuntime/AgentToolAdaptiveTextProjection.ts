@@ -1,9 +1,9 @@
 import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { AgentModelTokenEstimator, shouldProjectBeforeExactTokenization } from "../Text/AgentTextBudget.js";
-import type { AgentToolContentPolicyPreservable } from "../Types/AgentToolContentPolicyTypes.js";
 import {
   createAgentToolTextCacheKey,
   createAgentToolTextSegmentation,
+  createAgentToolTextSegmentsFromUnits,
   extractAgentToolProtectedAtoms,
   hasRepeatedAgentToolTextUnits,
   type AgentToolTextSegment,
@@ -12,15 +12,13 @@ import { AgentToolTextImportanceRanker, type AgentToolTextImportanceWeights } fr
 import { AgentToolTextSemanticEngine } from "./AgentToolTextSemanticEngine.js";
 
 /**
- * The adaptive projector is deliberately extractive. It can remove repeated
- * or low-signal complete units, but it never invents text and never mutates
- * the Artifact payload. The compiler still performs the final JSON budget
- * projection after this stage.
+ * This is the text-selection stage used by the shared observation compressor.
+ * It removes repeated or low-signal complete units without mutating the
+ * persisted Artifact payload; the JSON token projector enforces the final cap.
  */
 export interface AgentToolAdaptiveTextProjectionOptions {
   readonly tokenLimit: number;
   readonly query?: string;
-  readonly preserve?: readonly AgentToolContentPolicyPreservable[];
   readonly signal?: AbortSignal;
 }
 
@@ -109,7 +107,7 @@ export class AgentToolAdaptiveTextProjector {
   project(text: string, options: AgentToolAdaptiveTextProjectionOptions): AgentToolAdaptiveTextProjectionResult {
     throwIfAborted(options.signal);
     const tokenLimit = normalizeTokenLimit(options.tokenLimit);
-    const repeatedUnits = hasRepeatedAgentToolTextUnits(text, options.preserve);
+    const repeatedUnits = hasRepeatedAgentToolTextUnits(text);
     if (!shouldConsiderAdaptiveProjection(text, tokenLimit, this.defaults.minimumCharacters) && !repeatedUnits) {
       return unchangedTextProjection(text, 0, "unchanged");
     }
@@ -121,30 +119,31 @@ export class AgentToolAdaptiveTextProjector {
       return unchangedTextProjection(text, 0, "unchanged");
     }
 
-    const cached = this.readSegments(text, options);
-    const deduplication = this.semanticEngine.deduplicate(cached.segments, options.signal);
-    const query = normalizeQuery(options.query);
-    const queryVector = query ? this.semanticEngine.embedQuery(query, options.signal) : undefined;
-    const scored = this.ranker.rank(deduplication.segments, query, queryVector);
-    const selected = this.ranker.selectWithinBudget(scored, tokenLimit, options.signal);
-    const output = selected.map((entry) => entry.segment).sort((left, right) => left.index - right.index);
-    const projectedText = output.map((entry) => entry.text).join("\n");
-    const changed = projectedText !== text;
-    const omitted = Math.max(cached.omittedUnits, cached.sourceUnits - output.length);
-    const strategy =
-      queryVector || (deduplication.semanticAvailable && deduplication.segments.length !== cached.segments.length)
-        ? "semantic"
-        : "lexical";
-    return {
-      text: projectedText,
-      complete: !changed && omitted === 0,
-      changed,
-      omissionCount: omitted,
-      sourceUnits: cached.sourceUnits,
-      projectedUnits: output.length,
-      protectedAtoms: [...new Set(output.flatMap((segment) => segment.atoms))],
-      strategy,
-    };
+    const cached = this.readSegments(text);
+    return this.projectSegments(text, cached.segments, cached.sourceUnits, cached.omittedUnits, options);
+  }
+
+  /**
+   * Applies the same semantic deduplication and importance ranking to chunks
+   * produced by an external splitter. The splitter never decides which chunks
+   * survive; this method remains the single selection policy.
+   */
+  projectUnits(
+    units: readonly string[],
+    options: AgentToolAdaptiveTextProjectionOptions,
+  ): AgentToolAdaptiveTextProjectionResult {
+    throwIfAborted(options.signal);
+    const normalized = units.map((unit) => unit.trim()).filter(Boolean);
+    const sourceText = normalized.join("\n\n");
+    if (normalized.length === 0) return unchangedTextProjection("", 0, "unchanged");
+    const tokenLimit = normalizeTokenLimit(options.tokenLimit);
+    const repeatedUnits =
+      new Set(normalized.map((unit) => unit.replaceAll(/\s+/gu, " ").toLocaleLowerCase())).size < normalized.length;
+    if (!shouldConsiderAdaptiveProjection(sourceText, tokenLimit, this.defaults.minimumCharacters) && !repeatedUnits) {
+      return unchangedTextProjection(sourceText, normalized.length, "unchanged");
+    }
+    const segments = createAgentToolTextSegmentsFromUnits(normalized, this.estimator);
+    return this.projectSegments(sourceText, segments, normalized.length, 0, options);
   }
 
   projectTargets(
@@ -178,22 +177,50 @@ export class AgentToolAdaptiveTextProjector {
     };
   }
 
-  private readSegments(text: string, options: AgentToolAdaptiveTextProjectionOptions): CachedSegments {
-    const key = createAgentToolTextCacheKey(text, options.preserve, this.defaults.maximumUnits);
+  private readSegments(text: string): CachedSegments {
+    const key = createAgentToolTextCacheKey(text, this.defaults.maximumUnits);
     const cached = segmentCache.get(key);
     if (cached) return cached;
-    const segmentation = createAgentToolTextSegmentation(
-      text,
-      options.preserve,
-      this.estimator,
-      this.defaults.maximumUnits,
-    );
+    const segmentation = createAgentToolTextSegmentation(text, this.estimator, this.defaults.maximumUnits);
     const cachedSegments: CachedSegments = {
       ...segmentation,
       characters: segmentation.segments.reduce((total, segment) => total + segment.text.length, 0),
     };
     rememberSegments(key, cachedSegments, this.defaults.cacheEntries, this.defaults.cacheCharacters);
     return cachedSegments;
+  }
+
+  private projectSegments(
+    sourceText: string,
+    segments: readonly AgentToolTextSegment[],
+    sourceUnits: number,
+    omittedUnits: number,
+    options: AgentToolAdaptiveTextProjectionOptions,
+  ): AgentToolAdaptiveTextProjectionResult {
+    const tokenLimit = normalizeTokenLimit(options.tokenLimit);
+    const deduplication = this.semanticEngine.deduplicate(segments, options.signal);
+    const query = normalizeQuery(options.query);
+    const queryVector = query ? this.semanticEngine.embedQuery(query, options.signal) : undefined;
+    const scored = this.ranker.rank(deduplication.segments, query, queryVector);
+    const selected = this.ranker.selectWithinBudget(scored, tokenLimit, options.signal);
+    const output = selected.map((entry) => entry.segment).sort((left, right) => left.index - right.index);
+    const projectedText = output.map((entry) => entry.text).join("\n\n");
+    const changed = projectedText !== sourceText;
+    const omitted = Math.max(omittedUnits, sourceUnits - output.length);
+    const strategy =
+      queryVector || (deduplication.semanticAvailable && deduplication.segments.length !== segments.length)
+        ? "semantic"
+        : "lexical";
+    return {
+      text: projectedText,
+      complete: !changed && omitted === 0,
+      changed,
+      omissionCount: omitted,
+      sourceUnits,
+      projectedUnits: output.length,
+      protectedAtoms: [...new Set(output.flatMap((segment) => segment.atoms))],
+      strategy,
+    };
   }
 }
 

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { SeneraLocalExecutionEnv } from "../../../Source/AgentSystem/Execution/SeneraLocalExecutionEnv.js";
 import { AgentToolHostCapabilityRegistry } from "../../../Source/AgentSystem/ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import { toolProcessSuccessResult } from "../../../Source/AgentSystem/ToolRuntime/AgentToolProcessEnvelope.js";
@@ -13,6 +13,28 @@ import {
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 
 describe("Tool output contract validation", () => {
+  test("preserves model response coordinates in the host capability context", async () => {
+    const workspaceRoot = createTemporaryDirectory("senera-tool-response-coordinates");
+    const tool = registeredTool(workspaceRoot);
+    const observe = vi.fn(async () => toolProcessSuccessResult({ answer: "done" }));
+    const capabilities = new AgentToolHostCapabilityRegistry().register("test.output", observe);
+    const runner = new AgentToolRunner(
+      {} as AgentSystemConfig,
+      workspaceRoot,
+      capabilities,
+      { getTool: () => tool },
+      new SeneraLocalExecutionEnv({ workspaceRoot }),
+    );
+
+    try {
+      await runner.run(tool, {}, { modelMessageIndex: 2, modelContentIndex: 4 });
+      expect(observe).toHaveBeenCalledWith({}, expect.objectContaining({ modelMessageIndex: 2, modelContentIndex: 4 }));
+    } finally {
+      await runner.close();
+      removeDirectory(workspaceRoot);
+    }
+  });
+
   test("converts an invalid successful result into a structured response-validation failure", async () => {
     const workspaceRoot = createTemporaryDirectory("senera-output-contract");
     const tool = registeredTool(workspaceRoot);

@@ -10,6 +10,11 @@ import {
   type AgentToolAccessGrant,
 } from "../ToolRuntime/AgentToolAccessGrant.js";
 import type { AgentInteractionSurface } from "../Interaction/AgentInteractionContext.js";
+import {
+  agentExplicitActivationDigest,
+  AgentExplicitActivationReferenceSchema,
+  type AgentExplicitActivationReference,
+} from "../Activation/AgentActivationTypes.js";
 
 const ToolAccessGrantSnapshotSchema = z.object({}).passthrough();
 const CapabilityNeedSchema = z
@@ -79,6 +84,8 @@ const ActivatedSkillSnapshotSchema = z
     recommendedTools: z.array(z.string()),
     evidenceRequirements: z.array(EvidenceRequirementSchema),
     descriptionFile: z.string(),
+    content: z.string(),
+    disableModelInvocation: z.boolean().optional(),
     matchedTerms: z.array(z.string()),
     matchedFields: z.array(
       z
@@ -99,9 +106,12 @@ const TurnPreparationSnapshotSchema = z
     interactionSurface: z.enum(["console", "channel"]).optional(),
     piBranchBoundaryId: z.string().optional(),
     loadedToolNames: z.array(z.string()),
+    nativeToolNames: z.array(z.string()),
     toolAccessGrant: ToolAccessGrantSnapshotSchema,
     rootCommand: RootCommandSnapshotSchema,
     activeSkills: z.array(ActivatedSkillSnapshotSchema),
+    explicitActivations: z.array(AgentExplicitActivationReferenceSchema),
+    activationCatalogRevision: z.string().optional(),
   })
   .strict();
 
@@ -112,9 +122,13 @@ export interface AgentTurnPreparationSnapshot {
   interactionSurface?: AgentInteractionSurface;
   piBranchBoundaryId?: string;
   loadedToolNames: string[];
+  /** Explicitly activated Dynamic tools promoted to the native provider table. */
+  nativeToolNames: string[];
   toolAccessGrant: AgentToolAccessGrant;
   rootCommand: AgentRootCommand;
   activeSkills: AgentActivatedSkill[];
+  explicitActivations: AgentExplicitActivationReference[];
+  activationCatalogRevision?: string;
 }
 
 export function createAgentTurnPreparationSnapshot(input: {
@@ -122,9 +136,12 @@ export function createAgentTurnPreparationSnapshot(input: {
   userInput: string;
   allowedToolNames?: readonly string[];
   loadedToolNames: readonly string[];
+  nativeToolNames?: readonly string[];
   toolAccessGrant: AgentToolAccessGrant;
   rootCommand: AgentRootCommand;
   activeSkills: readonly AgentActivatedSkill[];
+  explicitActivations?: readonly AgentExplicitActivationReference[];
+  activationCatalogRevision?: string;
   interactionSurface?: AgentInteractionSurface;
 }): AgentTurnPreparationSnapshot {
   const toolAccessGrant = cloneAgentToolAccessGrant(input.toolAccessGrant);
@@ -138,9 +155,12 @@ export function createAgentTurnPreparationSnapshot(input: {
     toolAuthorizationCeiling,
     ...(input.interactionSurface ? { interactionSurface: input.interactionSurface } : {}),
     loadedToolNames: [...input.loadedToolNames],
+    nativeToolNames: [...(input.nativeToolNames ?? [])],
     toolAccessGrant,
     rootCommand: cloneRootCommand(input.rootCommand, toolAccessGrant),
     activeSkills: input.activeSkills.map((skill) => structuredClone(skill)),
+    explicitActivations: [...(input.explicitActivations ?? [])],
+    ...(input.activationCatalogRevision ? { activationCatalogRevision: input.activationCatalogRevision } : {}),
   };
 }
 
@@ -151,6 +171,8 @@ export function isAgentTurnPreparationReusable(
     userInput: string;
     allowedToolNames?: readonly string[];
     interactionSurface?: AgentInteractionSurface;
+    explicitActivations?: readonly AgentExplicitActivationReference[];
+    activationCatalogRevision?: string;
   },
 ): snapshot is AgentTurnPreparationSnapshot {
   return Boolean(
@@ -159,6 +181,14 @@ export function isAgentTurnPreparationReusable(
     snapshot.runtimeFingerprint === input.runtimeFingerprint &&
     snapshot.inputDigest === sha256Hex(input.userInput) &&
     snapshot.interactionSurface === input.interactionSurface &&
+    agentExplicitActivationDigest({
+      catalogRevision: snapshot.activationCatalogRevision ?? "",
+      explicit: snapshot.explicitActivations,
+    }) ===
+      agentExplicitActivationDigest({
+        catalogRevision: input.activationCatalogRevision ?? "",
+        explicit: input.explicitActivations ?? [],
+      }) &&
     hasSameToolAuthorizationCeiling(
       snapshot.toolAuthorizationCeiling,
       normalizeToolAuthorizationCeiling(input.allowedToolNames),

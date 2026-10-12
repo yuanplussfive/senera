@@ -7,7 +7,12 @@ export interface AgentServerEventLoggerOptions {
   detail?: "compact" | "verbose";
 }
 
-const HiddenCompactEvents = new Set<string>([AgentEventKinds.ModelDelta, AgentEventKinds.ToolCallResultDetail]);
+const HiddenCompactEvents = new Set<string>([
+  AgentEventKinds.ModelDelta,
+  AgentEventKinds.ModelThinkingDelta,
+  AgentEventKinds.ModelThinkingCompleted,
+  AgentEventKinds.ToolCallResultDetail,
+]);
 
 const FullPayloadEvents = new Set<string>([
   AgentEventKinds.RunFailed,
@@ -32,6 +37,7 @@ export class AgentServerEventLogger {
   }
 
   private shouldHide(envelope: AgentEventEnvelope<string, unknown>): boolean {
+    if (envelope.kind === AgentEventKinds.McpServerSnapshot) return true;
     return this.options.detail !== "verbose" && HiddenCompactEvents.has(envelope.kind);
   }
 

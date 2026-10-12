@@ -1,7 +1,7 @@
 /**
  * Perception is a deterministic, first-person, present-tense narration of what
  * a tool result means to the resident persona. It is a projection citizen like
- * `observationProjection`, never a side-channel and never hardcoded per tool:
+ * the shared observation compressor, never a side-channel or tool-name rule:
  *
  * - `perception` (optional declaration on a tool contract) carries only data:
  *   how the result is experienced (`kind`), whether it lies within the

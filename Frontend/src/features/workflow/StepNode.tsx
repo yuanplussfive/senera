@@ -23,7 +23,7 @@ const KindIcon: Record<TimelineStepKind, AppIconName> = {
   answer: "message",
   error: "cancel",
   training: "brain",
-  recall: "search",
+  recall: "book-open",
   harness: "activity",
 };
 

@@ -70,6 +70,7 @@ export class AgentSessionRunDispatcher implements AgentRunDispatchPort {
       thinkingLevel: request.thinkingLevel,
       inheritProjectContext: request.inheritProjectContext,
       sessionOwnership: request.sessionOwnership,
+      metadata: request.metadata,
       onEvent,
     });
     await waitForAbortOrCompletion(submission, request.signal, abort);
@@ -123,8 +124,9 @@ export class AgentSessionRunDispatcher implements AgentRunDispatchPort {
     input: string,
     onEvent?: AgentRunDispatchRequest["onEvent"],
     requestId?: string,
+    metadata?: AgentRunDispatchRequest["metadata"],
   ): Promise<boolean> {
-    return this.sessions.followUpActiveRun({ sessionId, input, onEvent, requestId });
+    return this.sessions.followUpActiveRun({ sessionId, input, onEvent, requestId, metadata });
   }
 
   interrupt(sessionId: string, instruction: string): Promise<boolean> {

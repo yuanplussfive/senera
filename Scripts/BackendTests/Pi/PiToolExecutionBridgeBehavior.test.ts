@@ -4,10 +4,14 @@ import {
   AgentPiToolExecutionBridge as AgentPiToolExecutionBridgeBase,
   type AgentPiToolExecutionBridgeOptions,
 } from "../../../Source/AgentSystem/Pi/AgentPiToolExecutionBridge.js";
+import { AgentToolSourceViewInvariantError } from "../../../Source/AgentSystem/Artifacts/AgentToolSourceView.js";
 import { AgentPiToolResultStatuses } from "../../../Source/AgentSystem/Pi/AgentPiTypes.js";
-import type { ExecutedToolCallResult } from "../../../Source/AgentSystem/Types/ToolRuntimeTypes.js";
+import {
+  AgentWorkspaceChangeSetProtocol,
+  type ExecutedToolCallResult,
+  type ToolWorkspaceCaptureResult,
+} from "../../../Source/AgentSystem/Types/ToolRuntimeTypes.js";
 import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
-import type { AgentToolObservationProjectionManifest } from "../../../Source/AgentSystem/Types/AgentToolObservationProjectionTypes.js";
 import { AgentExecutionErrorCodes } from "../../../Source/AgentSystem/Xml/AgentXmlStatus.js";
 import { AgentTurnTokenBudget } from "../../../Source/AgentSystem/Text/AgentTurnTokenBudget.js";
 import { toolAccessGrant } from "../Support/AgentTestFixtures.js";
@@ -20,12 +24,23 @@ import {
   AgentToolSuccessOutcome,
   createAgentToolFailureOutcome,
 } from "../../../Source/AgentSystem/ToolRuntime/AgentToolResultOutcome.js";
-import { StandardAgentToolObservationProjection } from "../../../Source/AgentSystem/ToolRuntime/AgentToolObservationProjectionPlan.js";
 import { readAgentPiMessageTextContent } from "../../../Source/AgentSystem/Pi/AgentPiToolObservation.js";
+import type { AgentToolResultObservationCompressor } from "../../../Source/AgentSystem/ToolRuntime/AgentToolResultObservationCompressor.js";
+import { createTestToolObservationCompressor } from "../Support/PiToolObservationFixtures.js";
+import type { AgentWorkspaceChangeObserverPort } from "../../../Source/AgentSystem/Artifacts/AgentWorkspaceChangeObserver.js";
 
 class AgentPiToolExecutionBridge extends AgentPiToolExecutionBridgeBase {
-  constructor(options: Omit<AgentPiToolExecutionBridgeOptions, "model">) {
-    super({ ...options, model: "test-model" });
+  constructor(
+    options: Omit<AgentPiToolExecutionBridgeOptions, "model" | "observationTokenBudget" | "observationCompressor"> & {
+      observationCompressor?: AgentToolResultObservationCompressor;
+    },
+  ) {
+    super({
+      ...options,
+      model: "test-model",
+      observationTokenBudget: 2_048,
+      observationCompressor: options.observationCompressor ?? createTestToolObservationCompressor(),
+    });
   }
 }
 
@@ -43,7 +58,7 @@ describe("Pi tool execution bridge behavior", () => {
     });
 
     await bridge.execute({
-      tool: registeredTool("AgentSpawn", StandardAgentToolObservationProjection, "SelfManaged"),
+      tool: registeredTool("AgentSpawn", "SelfManaged"),
       params: {
         task: "Review the change.",
       },
@@ -101,6 +116,87 @@ describe("Pi tool execution bridge behavior", () => {
     expect(run).toHaveBeenCalledOnce();
   });
 
+  test("publishes one observed workspace batch through the normal Artifact recorder", async () => {
+    const executed = toolResult({ callId: "call-observed" });
+    const workspaceCapture: ToolWorkspaceCaptureResult = {
+      type: AgentWorkspaceChangeSetProtocol.type,
+      version: AgentWorkspaceChangeSetProtocol.version,
+      source: "filesystem-observer",
+      coverage: "observed",
+      scope: { kind: "tool_batch", id: "batch-call-observed" },
+      before: {
+        capturedAt: "2026-09-28T00:00:00.000Z",
+        files: [
+          {
+            path: "generated.txt",
+            absolutePath: "/workspace/generated.txt",
+            exists: false,
+            kind: "missing",
+            size: 0,
+            mtimeMs: 0,
+            hash: "missing",
+          },
+        ],
+      },
+      after: {
+        capturedAt: "2026-09-28T00:00:00.000Z",
+        files: [
+          {
+            path: "generated.txt",
+            absolutePath: "/workspace/generated.txt",
+            exists: true,
+            kind: "file",
+            size: 5,
+            mtimeMs: 1,
+            hash: "sha256:generated",
+            content: { state: "omitted", reason: "size_limit", byteLength: 5 },
+          },
+        ],
+      },
+      changes: [
+        {
+          path: "generated.txt",
+          absolutePath: "/workspace/generated.txt",
+          status: "added",
+          beforeKind: "missing",
+          afterKind: "file",
+          beforeHash: "missing",
+          afterHash: "sha256:generated",
+          beforeSize: 0,
+          afterSize: 5,
+        },
+      ],
+    };
+    const workspaceChangeObserver: AgentWorkspaceChangeObserverPort = {
+      beginBatch: vi.fn(async () => undefined),
+      completeCall: vi.fn(async () => workspaceCapture),
+      skipCall: vi.fn(),
+      cancelCall: vi.fn(),
+      cancelPendingBatches: vi.fn(),
+    };
+    const recordToolArtifacts = vi.fn(async ({ results }: { readonly results: readonly ExecutedToolCallResult[] }) => [
+      ...results,
+    ]);
+    const bridge = new AgentPiToolExecutionBridge({
+      executeToolCall: async () => ({ kind: "ToolResults", value: [executed] }),
+      recordToolArtifacts,
+    });
+
+    await bridge.execute({
+      tool: registeredTool("SearchTool"),
+      params: { query: "generate a file" },
+      toolCallId: "call-observed",
+      context: createToolContext("SearchTool", "call-observed", { workspaceChangeObserver }),
+    });
+
+    expect(workspaceChangeObserver.completeCall).toHaveBeenCalledWith("batch-call-observed", "call-observed", []);
+    expect(recordToolArtifacts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        results: [expect.objectContaining({ workspaceCapture })],
+      }),
+    );
+  });
+
   test("terminates the child turn at a persisted supervisor-decision boundary", async () => {
     const recordToolArtifacts = vi.fn(async () => []);
     const bridge = new AgentPiToolExecutionBridge({
@@ -129,6 +225,7 @@ describe("Pi tool execution bridge behavior", () => {
         result: {
           childRunId: "child-1",
           messageId: "message-1",
+          message: "Select the migration path.",
         },
       },
     });
@@ -140,7 +237,7 @@ describe("Pi tool execution bridge behavior", () => {
       result: { answer: "42" },
       artifact: {
         artifactId: "artifact-1",
-        artifactUri: "senera://artifact/1",
+        artifactUri: "senera://artifact/art_0123456789abcdef01234567",
         artifactPath: "/tmp/artifact",
         relativePath: "artifact.json",
         manifestPath: "/tmp/artifact/manifest.json",
@@ -200,7 +297,7 @@ describe("Pi tool execution bridge behavior", () => {
     expect(result.details.senera).toEqual(
       expect.objectContaining({
         toolName: "SearchTool",
-        artifactUri: "senera://artifact/1",
+        artifactUri: "senera://artifact/art_0123456789abcdef01234567",
         callId: "call-1",
         status: AgentPiToolResultStatuses.Success,
       }),
@@ -208,7 +305,7 @@ describe("Pi tool execution bridge behavior", () => {
     expect(JSON.stringify(result)).not.toContain('"executed"');
   });
 
-  test("projects artifact-backed resource output with declarative continuation metadata", async () => {
+  test("keeps structured resource state in the shared observation", async () => {
     const executed = toolResult({
       callId: "call-resource",
       name: "ExecutionResourceInspect",
@@ -226,7 +323,7 @@ describe("Pi tool execution bridge behavior", () => {
     });
 
     const result = await bridge.execute({
-      tool: registeredTool("ExecutionResourceInspect", resourceObservation()),
+      tool: registeredTool("ExecutionResourceInspect"),
       params: { resourceId: "res_0123456789abcdef0123456789abcdef" },
       toolCallId: "call-resource",
       context: createToolContext("ExecutionResourceInspect", "call-resource"),
@@ -237,16 +334,8 @@ describe("Pi tool execution bridge behavior", () => {
         result: {
           updates: [{ text: "unique-resource-output" }],
         },
-        continuation: {
-          kind: "cursor",
-          handle: "res_0123456789abcdef0123456789abcdef",
-          cursor: 7,
-          state: "running",
-          terminal: false,
-        },
       },
     });
-    expect(parseObservation(result)).not.toHaveProperty("projection");
   });
 
   test("stores the complete result outside Pi history and emits an artifact-backed bounded view", async () => {
@@ -280,11 +369,12 @@ describe("Pi tool execution bridge behavior", () => {
 
     const observation = parseObservation(result);
     expect(observation).toMatchObject({
+      artifact_uri: "senera://artifact/art_0123456789abcdef01234567",
       observation_view: {
         complete: false,
-        artifact_uri: "senera://artifact/1",
       },
     });
+    expect((observation.observation_view as Record<string, unknown> | undefined)?.artifact_uri).toBeUndefined();
     expect(JSON.stringify(observation)).not.toContain(hugeText);
     expect(textContent(result.content[0]).length).toBeLessThan(20_000);
     expect(result.details.senera).toEqual({
@@ -295,7 +385,12 @@ describe("Pi tool execution bridge behavior", () => {
       executionStatus: "completed",
       outputAvailability: "complete",
     });
-    expect(context.turnState?.takeExecutedToolResult("call-large")).toBe(executed);
+    expect(context.turnState?.takeExecutedToolResult("call-large")).toMatchObject({
+      result: {
+        type: "senera.artifact_backed_tool_result.v1",
+        artifactUri: "senera://artifact/art_0123456789abcdef01234567",
+      },
+    });
     expect(context.turnState?.takeExecutedToolResult("call-large")).toBeUndefined();
   });
 
@@ -339,12 +434,89 @@ describe("Pi tool execution bridge behavior", () => {
     expect(JSON.stringify(observation)).not.toContain("must-not-reach-model");
   });
 
+  test("keeps a source-view page visible now while retaining only its original coordinates in history", async () => {
+    const sourceUri = "senera://artifact/art_0123456789abcdef01234567";
+    const executed = toolResult({
+      callId: "call-source-view",
+      name: "ArtifactMemoryReadTool",
+      resultStorage: "SourceView",
+      sourceArtifacts: [{ artifactUri: sourceUri, refs: ["raw"] }],
+      result: {
+        artifacts: {
+          item: [
+            {
+              artifactUri: sourceUri,
+              memories: { item: [{ ref: "raw", content: "visible-source-page" }] },
+            },
+          ],
+        },
+      },
+    });
+    const bridge = new AgentPiToolExecutionBridge({
+      executeToolCall: async () => ({ kind: "ToolResults", value: [executed] }),
+      recordToolArtifacts: async () => [executed],
+    });
+    const context = createToolContext("ArtifactMemoryReadTool", "call-source-view");
+
+    const result = await bridge.execute({
+      tool: {
+        ...registeredTool("ArtifactMemoryReadTool"),
+        runtime: { ...registeredTool("ArtifactMemoryReadTool").runtime, ResultStorage: "SourceView" },
+      },
+      params: {},
+      toolCallId: "call-source-view",
+      context,
+    });
+
+    const observation = parseObservation(result);
+    expect(observation).toMatchObject({
+      source_artifacts: [{ artifact_uri: sourceUri, refs: ["raw"] }],
+      detail: {
+        result: { artifacts: { item: [{ memories: { item: [{ content: "visible-source-page" }] } }] } },
+      },
+    });
+    expect(context.turnState?.takeExecutedToolResult("call-source-view")).toMatchObject({
+      result: {
+        type: "senera.source_view_tool_result.v1",
+        sourceArtifacts: [{ artifactUri: sourceUri, refs: ["raw"] }],
+      },
+    });
+  });
+
+  test("surfaces a source-view contract violation as a tool failure instead of an unreadable success", async () => {
+    const bridge = new AgentPiToolExecutionBridge({
+      executeToolCall: async () => ({ kind: "ToolResults", value: [toolResult({ name: "ArtifactMemoryReadTool" })] }),
+      recordToolArtifacts: async () => {
+        throw new AgentToolSourceViewInvariantError(
+          "ArtifactMemoryReadTool",
+          "completed without a canonical source Artifact reference",
+        );
+      },
+    });
+
+    const result = await bridge.execute({
+      tool: {
+        ...registeredTool("ArtifactMemoryReadTool"),
+        runtime: { ...registeredTool("ArtifactMemoryReadTool").runtime, ResultStorage: "SourceView" },
+      },
+      params: {},
+      toolCallId: "call-invalid-source-view",
+      context: createToolContext("ArtifactMemoryReadTool", "call-invalid-source-view"),
+    });
+
+    expect(parseObservation(result)).toMatchObject({
+      status: "failure",
+      error: { message: expect.stringContaining("completed without a canonical source Artifact reference") },
+    });
+  });
+
   test("keeps JSON continuation metadata intact for final batch projection", async () => {
     const page = {
       type: "senera.artifact_json_view.v2",
       source: { ref: "raw", sha256: "a".repeat(64) },
       query: { sourcePath: ["items"], select: ["id", "value"] },
       page: { scanned: 200, returned: 200, complete: false, nextCursor: "cursor-next-page" },
+      marker: "structured-page-emitted-once",
       items: Array.from({ length: 200 }, (_, id) => ({ id, value: `value-${id}-${"x".repeat(100)}` })),
     };
     const executed = toolResult({
@@ -361,7 +533,6 @@ describe("Pi tool execution bridge behavior", () => {
                     ref: "raw",
                     view: { kind: "json_query", complete: false, nextCursor: "cursor-next-page" },
                     structuredContent: page,
-                    content: JSON.stringify(page),
                   },
                 ],
               },
@@ -374,6 +545,9 @@ describe("Pi tool execution bridge behavior", () => {
     const bridge = new AgentPiToolExecutionBridge({
       executeToolCall: async () => ({ kind: "ToolResults", value: [executed] }),
       recordToolArtifacts: async () => [executed],
+      observationCompressor: createTestToolObservationCompressor({
+        summarize: async () => "Continuation cursor cursor-next-page; marker structured-page-emitted-once.",
+      }),
     });
     const tokenBudget = new AgentTurnTokenBudget({
       model: "test-model",
@@ -391,6 +565,8 @@ describe("Pi tool execution bridge behavior", () => {
 
     expect(() => JSON.parse(text)).not.toThrow();
     expect(text).toContain("cursor-next-page");
+    expect(text.match(/structured-page-emitted-once/g)?.length).toBe(1);
+    expect(text).not.toContain('"content":"{\\"type\\"');
   });
 
   test("terminates Pi turn when a tool asks for user input", async () => {
@@ -417,7 +593,6 @@ describe("Pi tool execution bridge behavior", () => {
     expect(parseObservation(result)).toMatchObject({
       status: "waiting",
       detail: {
-        summary: "哪个文件？",
         result: {
           question: "哪个文件？",
           reason_code: "missing_path",
@@ -528,7 +703,7 @@ describe("Pi tool execution bridge behavior", () => {
     });
 
     const result = await bridge.execute({
-      tool: registeredTool("FailureTool", fullObservationProjection()),
+      tool: registeredTool("FailureTool"),
       params: {},
       toolCallId: "call-redacted-failure",
       context: createToolContext("FailureTool", "call-redacted-failure"),
@@ -542,17 +717,6 @@ describe("Pi tool execution bridge behavior", () => {
         message: "[REDACTED]",
       },
       detail: {
-        arguments: { token: "[REDACTED]" },
-        outcome: {
-          assessment: {
-            status: "failure",
-            error: {
-              code: AgentExecutionErrorCodes.ToolExecutionError,
-              message: "[REDACTED]",
-              details: { token: "[REDACTED]" },
-            },
-          },
-        },
         process: {
           exitCode: 1,
           stdout: "public output",
@@ -596,7 +760,7 @@ describe("Pi tool execution bridge behavior", () => {
     });
 
     const result = await bridge.execute({
-      tool: registeredTool("ShellCommandTool", fullObservationProjection()),
+      tool: registeredTool("ShellCommandTool"),
       params: {},
       toolCallId: "call-process-failure",
       context: createToolContext("ShellCommandTool", "call-process-failure"),
@@ -643,11 +807,7 @@ function toolResult(overrides: Partial<ExecutedToolCallResult> = {}): ExecutedTo
   };
 }
 
-function registeredTool(
-  name: string,
-  observationProjection: AgentToolObservationProjectionManifest = StandardAgentToolObservationProjection,
-  scheduling?: "ResourceClaims" | "SelfManaged",
-): RegisteredTool {
+function registeredTool(name: string, scheduling?: "ResourceClaims" | "SelfManaged"): RegisteredTool {
   return {
     owner: {
       kind: "system",
@@ -670,7 +830,6 @@ function registeredTool(
       ...(scheduling ? { Scheduling: scheduling } : {}),
       Capabilities: { Cancellation: true },
     },
-    observationProjection,
     execution: {
       Targets: ["Local"],
       Network: "Deny",
@@ -681,62 +840,10 @@ function registeredTool(
   };
 }
 
-function resourceObservation(): AgentToolObservationProjectionManifest {
-  return {
-    ...StandardAgentToolObservationProjection,
-    continuation: {
-      kind: "cursor",
-      handle: "/resourceId",
-      cursor: "/cursor",
-      state: "/state",
-      terminalStates: ["completed", "failed", "cancelled"],
-    },
-    sources: [
-      projectionSource("continuation", "json", "essential", 192),
-      ...StandardAgentToolObservationProjection.sources,
-    ],
-  };
-}
-
-function fullObservationProjection(): AgentToolObservationProjectionManifest {
-  return {
-    ...StandardAgentToolObservationProjection,
-    maxTokens: 6_000,
-    sources: [
-      projectionSource("error", "json", "essential", 1_024),
-      projectionSource("process", "json", "high", 1_024),
-      projectionSource("arguments", "json", "normal", 1_024),
-      projectionSource("outcome", "json", "normal", 1_024),
-      ...StandardAgentToolObservationProjection.sources,
-    ],
-  };
-}
-
-function projectionSource(
-  source: AgentToolObservationProjectionManifest["sources"][number]["source"],
-  mode: AgentToolObservationProjectionManifest["sources"][number]["mode"],
-  priority: AgentToolObservationProjectionManifest["sources"][number]["priority"],
-  maxTokens: number,
-): AgentToolObservationProjectionManifest["sources"][number] {
-  return {
-    source,
-    mode,
-    priority,
-    requiredForCompletion: true,
-    maxTokens,
-    limits: {
-      maxDepth: 8,
-      maxArrayItems: 32,
-      maxObjectProperties: 48,
-      maxNodes: 384,
-    },
-  };
-}
-
 function artifactFixture(summary: string): NonNullable<ExecutedToolCallResult["artifact"]> {
   return {
     artifactId: "artifact-1",
-    artifactUri: "senera://artifact/1",
+    artifactUri: "senera://artifact/art_0123456789abcdef01234567",
     artifactPath: "/tmp/artifact",
     relativePath: "artifact.json",
     manifestPath: "/tmp/artifact/manifest.json",
@@ -767,6 +874,7 @@ function createToolContext(
     preferred?: boolean;
     tokenBudget?: AgentTurnTokenBudget;
     thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+    workspaceChangeObserver?: AgentWorkspaceChangeObserverPort;
   } = {},
 ) {
   const grant = toolAccessGrant([toolName], options.preferred ? [toolName] : []);
@@ -778,6 +886,8 @@ function createToolContext(
       outputReserveTokens: 8_192,
     });
   const turnState = new AgentPiTurnState({
+    systemPrompt: "Test agent system context.",
+    userMessage: `Test request for ${toolName}.`,
     approvalMode: "agent",
     requestId: options.requestId ?? `request-${callId}`,
     step: options.step ?? 1,
@@ -788,6 +898,7 @@ function createToolContext(
     toolPlan: new AgentPiToolPlanCoordinator(),
     tokenBudget,
     thinkingLevel: options.thinkingLevel,
+    workspaceChangeObserver: options.workspaceChangeObserver,
   });
   turnState.registerToolBatch(`batch-${callId}`, [{ toolCallId: callId, toolName, input: {} }]);
   return {

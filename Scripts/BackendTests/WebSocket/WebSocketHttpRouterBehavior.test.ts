@@ -9,6 +9,7 @@ import type { AgentHealthHttpApi } from "../../../Source/AgentSystem/WebSocket/A
 import type { AgentWorkspaceResourceHttpApi } from "../../../Source/AgentSystem/WorkspaceResources/AgentWorkspaceResourceHttpApi.js";
 import type { AgentProviderCredentialHttpApi } from "../../../Source/AgentSystem/Config/AgentProviderCredentialHttpApi.js";
 import type { AgentSelfHttpApi } from "../../../Source/AgentSystem/SelfService/AgentSelfHttpApi.js";
+import type { AgentArtifactMemoryHttpApi } from "../../../Source/AgentSystem/Memory/AgentArtifactMemoryHttpApi.js";
 
 describe("WebSocket HTTP router", () => {
   test("routes authentication before generic access control", async () => {
@@ -104,6 +105,15 @@ describe("WebSocket HTTP router", () => {
     expect(fixture.providerCredential.handle).toHaveBeenCalledTimes(1);
   });
 
+  test("authorizes Artifact result reads as state-changing HTTP requests", async () => {
+    const fixture = createRouterFixture({ artifactMemory: true });
+
+    await fixture.router.handle(request("POST", "/api/artifacts/read"), fixture.response.value);
+
+    expect(fixture.authorizeHttp).toHaveBeenCalledWith(expect.anything(), { requireCsrf: true });
+    expect(fixture.artifactMemory.handle).toHaveBeenCalledTimes(1);
+  });
+
   test("serves static frontend routes without invoking API authorization", async () => {
     const fixture = createRouterFixture({ staticFrontend: true });
 
@@ -138,6 +148,7 @@ function createRouterFixture(
     workspaceResource?: boolean;
     providerCredential?: boolean;
     self?: boolean;
+    artifactMemory?: boolean;
     accessResult?: unknown;
   } = {},
 ) {
@@ -148,6 +159,7 @@ function createRouterFixture(
   const workspaceResource = createApi(options.workspaceResource ?? false);
   const providerCredential = createApi(options.providerCredential ?? false);
   const self = createApi(options.self ?? false);
+  const artifactMemory = createApi(options.artifactMemory ?? false);
   const authorizeHttp = vi.fn(() => options.accessResult ?? { ok: true });
   const response = createResponse();
   return {
@@ -158,6 +170,7 @@ function createRouterFixture(
     workspaceResource,
     providerCredential,
     self,
+    artifactMemory,
     authorizeHttp,
     response,
     router: new AgentWebSocketHttpRouter({
@@ -168,6 +181,7 @@ function createRouterFixture(
       workspaceResourceApi: workspaceResource as unknown as AgentWorkspaceResourceHttpApi,
       staticFrontendApi: staticFrontend as unknown as AgentStaticFrontendHttpApi,
       selfApi: self as unknown as AgentSelfHttpApi,
+      artifactMemoryApi: artifactMemory as unknown as AgentArtifactMemoryHttpApi,
       accessGuard: { authorizeHttp } as unknown as AgentServerAccessGuard,
     }),
   };

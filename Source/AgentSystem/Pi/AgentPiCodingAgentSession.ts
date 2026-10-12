@@ -1,13 +1,12 @@
 import type { AgentMessage, AgentState } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage, ImageContent, Message } from "@earendil-works/pi-ai";
-import type { AgentSession as CodingAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
+import type { AssistantMessage, ImageContent } from "@earendil-works/pi-ai";
+import { type AgentSession as CodingAgentSession, type SessionManager } from "@earendil-works/pi-coding-agent";
 import { AgentCancellationError } from "../Core/AgentCancellation.js";
 import { toError } from "../Core/AgentErrors.js";
 import { AgentPiSessionCustomEntryTypes } from "./AgentPiSessionEntries.js";
-import { isAgentPiConversationHistoryEmpty } from "./AgentPiSessionHistoryPolicy.js";
 import type { AgentPiSession, AgentPiSessionEventListener } from "./AgentPiRuntimeTypes.js";
 import type { AgentPiMutableSessionFrame } from "./AgentPiCodingAgentSessionFrame.js";
-import { stripAgentPiContextOverlayMessages } from "./AgentPiTurnContextMessage.js";
+import { mergeAgentPiTurnContext, projectAgentPiTurnContext } from "./AgentPiTurnContextMessage.js";
 
 export class AgentPiCodingAgentSession implements AgentPiSession {
   private released = false;
@@ -30,22 +29,23 @@ export class AgentPiCodingAgentSession implements AgentPiSession {
     return this.session.state.model;
   }
 
-  setHistory(messages: readonly AgentMessage[]): void {
-    if (!isAgentPiConversationHistoryEmpty(this.sessionManager)) {
-      throw new Error("Pi Coding Agent history can only be imported into an empty session.");
-    }
-
-    for (const message of messages) appendSessionMessage(this.sessionManager, message);
-    this.session.agent.state.messages = stripAgentPiContextOverlayMessages(messages);
-  }
-
   async prompt(
     text: string,
     options?: { expandPromptTemplates?: boolean; source?: string; images?: readonly ImageContent[] },
   ): Promise<void> {
     let failure: Error | undefined;
     try {
-      await this.session.prompt(text, {
+      // Keep the in-memory Pi transcript aligned with the durable projection
+      // after compaction, rewind, or recovery before appending this prompt.
+      this.session.refreshContext();
+      const frame = this.frame.snapshot();
+      const turnContext = projectAgentPiTurnContext({
+        turnContext: frame.turnContext,
+        skills: this.frame.skillSnapshot(),
+        selectedPromptTemplates: frame.selectedPromptTemplates,
+      });
+      const prompt = mergeAgentPiTurnContext(text, turnContext);
+      await this.session.prompt(prompt, {
         expandPromptTemplates: options?.expandPromptTemplates,
         source: options?.source === "extension" ? "extension" : "interactive",
         ...(options?.images && options.images.length > 0 ? { images: [...options.images] } : {}),
@@ -131,24 +131,6 @@ export class AgentPiCodingAgentSession implements AgentPiSession {
     this.eventDeliveryError = undefined;
     if (error) throw error;
   }
-}
-
-function appendSessionMessage(sessionManager: SessionManager, message: AgentMessage): void {
-  if (message.role === "custom") {
-    sessionManager.appendCustomMessageEntry(message.customType, message.content, message.display, message.details);
-    return;
-  }
-
-  if (isLanguageModelMessage(message)) {
-    sessionManager.appendMessage(message);
-    return;
-  }
-
-  throw new Error(`Unsupported Pi history message role: ${String(message.role)}`);
-}
-
-function isLanguageModelMessage(message: AgentMessage): message is Message {
-  return message.role === "user" || message.role === "assistant" || message.role === "toolResult";
 }
 
 function lastAssistantMessage(messages: readonly AgentMessage[]): AssistantMessage | undefined {

@@ -1,15 +1,13 @@
 import type {
   AgentSystemConfig,
   ResolvedAgentContinuityLearningConfig,
-  ResolvedAgentPresetsConfig,
-  ResolvedAgentToolLearningConfig,
+  ResolvedAgentStateCardConfig,
   ResolvedAgentToolSearchConfig,
 } from "../Types/AgentConfigTypes.js";
 import type { AgentContinuityPromptBudgetConfig } from "../Types/AgentToolAndMemoryConfigTypes.js";
 import { resolveAgentDefaults } from "./AgentDefaultResolver.js";
 import { resolveModelProviderConfig } from "./AgentModelProviderDefaults.js";
-import { mergeActionPlannerClientConfig, resolveActionPlannerClientConfig } from "./AgentPlannerDefaults.js";
-import { mergeAgentContinuityRecallRanking } from "../Continuity/AgentContinuityRecallPolicy.js";
+import { resolveActionPlannerClientConfig } from "./AgentPlannerDefaults.js";
 
 export function resolveToolSearchConfig(config: AgentSystemConfig): ResolvedAgentToolSearchConfig {
   const defaults = resolveAgentDefaults(config);
@@ -53,21 +51,23 @@ export function resolveToolSearchConfig(config: AgentSystemConfig): ResolvedAgen
   };
 }
 
-export function resolveToolLearningConfig(config: AgentSystemConfig): ResolvedAgentToolLearningConfig {
+export function resolveStateCardConfig(config: AgentSystemConfig): ResolvedAgentStateCardConfig {
   const defaults = resolveAgentDefaults(config);
-  const provider = resolveModelProviderConfig(config, defaults.ToolLearning.Client.ModelProviderId);
+  const configuredClient = {
+    ...defaults.StateCard.Client,
+    ...config.StateCard?.Client,
+    MaxTokens: -1,
+  };
+  const provider = resolveModelProviderConfig(config, configuredClient.ModelProviderId);
   return {
-    ...defaults.ToolLearning,
-    ...config.ToolLearning,
-    Patterns: {
-      ...defaults.ToolLearning.Patterns,
-      ...config.ToolLearning?.Patterns,
-    },
+    ...defaults.StateCard,
+    ...config.StateCard,
     Client: resolveActionPlannerClientConfig({
       config,
       baseProvider: provider,
-      configuredClient: mergeActionPlannerClientConfig(defaults.ToolLearning.Client, config.ToolLearning?.Client),
+      configuredClient,
     }),
+    UsesDefaultModel: !configuredClient.ModelProviderId,
   };
 }
 
@@ -83,54 +83,23 @@ export function resolveContinuityLearningConfig(config: AgentSystemConfig): Reso
     ...defaults.ContinuityLearning.Runtime,
     ...config.ContinuityLearning?.Runtime,
   };
-  const learningContext = {
-    ...defaults.ContinuityLearning.LearningContext,
-    ...config.ContinuityLearning?.LearningContext,
-  };
-  const temporalMemory = {
-    ...defaults.ContinuityLearning.TemporalMemory,
-    ...config.ContinuityLearning?.TemporalMemory,
+  const memos = {
+    ...defaults.ContinuityLearning.MemOS,
+    ...config.ContinuityLearning?.MemOS,
   };
   validateContinuityRuntime(runtime);
-  validateContinuityLearningContext(learningContext);
+  validateMemOSConfig(memos);
   const provider = resolveModelProviderConfig(config, configuredClient.ModelProviderId);
   return {
     ...defaults.ContinuityLearning,
     ...config.ContinuityLearning,
-    LearningGate: {
-      ...defaults.ContinuityLearning.LearningGate,
-      ...config.ContinuityLearning?.LearningGate,
-    },
-    LearningContext: learningContext,
-    TemporalMemory: temporalMemory,
+    MemOS: memos,
     Recall: {
       ...defaults.ContinuityLearning.Recall,
       ...configuredRecall,
-      TurnValueClassifier: {
-        ...defaults.ContinuityLearning.Recall.TurnValueClassifier,
-        ...configuredRecall?.TurnValueClassifier,
-        ConfidenceThreshold:
-          configuredRecall?.TurnValueClassifier?.ConfidenceThreshold ??
-          defaults.ContinuityLearning.Recall.TurnValueClassifier.ConfidenceThreshold,
-        MinimumExamplesPerLabel:
-          configuredRecall?.TurnValueClassifier?.MinimumExamplesPerLabel ??
-          defaults.ContinuityLearning.Recall.TurnValueClassifier.MinimumExamplesPerLabel,
-        MaxTrainingEntries:
-          configuredRecall?.TurnValueClassifier?.MaxTrainingEntries ??
-          defaults.ContinuityLearning.Recall.TurnValueClassifier.MaxTrainingEntries,
-      },
-      Prefetch: {
-        ...defaults.ContinuityLearning.Recall.Prefetch,
-        ...configuredRecall?.Prefetch,
-      },
       PromptBudget: resolveContinuityPromptBudget(
         defaults.ContinuityLearning.Recall.PromptBudget,
         configuredRecall?.PromptBudget,
-      ),
-      Ranking: mergeAgentContinuityRecallRanking(defaults.ContinuityLearning.Recall.Ranking, configuredRecall?.Ranking),
-      Semantic: resolveContinuitySemanticRecall(
-        defaults.ContinuityLearning.Recall.Semantic,
-        configuredRecall?.Semantic,
       ),
     },
     Client: resolveActionPlannerClientConfig({
@@ -143,37 +112,25 @@ export function resolveContinuityLearningConfig(config: AgentSystemConfig): Reso
   };
 }
 
-function validateContinuityLearningContext(input: {
-  ReferentBudgetCharacters: number;
-  CatalogBudgetCharacters: number;
-  VerifiedExampleBudgetCharacters: number;
+function validateMemOSConfig(config: {
+  AutoLinkThreshold: number;
+  RecallDedupeThreshold: number;
+  RecallDedupeMaxPairs: number;
+  FragmentHistoryTurns: number;
+  KnowledgeCandidateLimit: number;
+  AssistantPreviewTokens: number;
+  DigestInputTokenBudget: number;
+  DigestSummaryCharacterLimit: number;
 }): void {
-  if (!Number.isSafeInteger(input.ReferentBudgetCharacters) || input.ReferentBudgetCharacters < 1) {
-    throw new Error("Continuity learning ReferentBudgetCharacters must be a positive safe integer.");
+  const { AutoLinkThreshold, RecallDedupeThreshold, ...integerSettings } = config;
+  for (const [name, value] of Object.entries({ AutoLinkThreshold, RecallDedupeThreshold })) {
+    if (!Number.isFinite(value) || value < 0 || value > 1)
+      throw new Error(`Continuity MemOS ${name} must be a number between 0 and 1.`);
   }
-  if (!Number.isSafeInteger(input.VerifiedExampleBudgetCharacters) || input.VerifiedExampleBudgetCharacters < 1) {
-    throw new Error("Continuity learning VerifiedExampleBudgetCharacters must be a positive safe integer.");
+  for (const [name, value] of Object.entries(integerSettings)) {
+    if (!Number.isSafeInteger(value) || value < 1)
+      throw new Error(`Continuity MemOS ${name} must be a positive integer.`);
   }
-  if (!Number.isSafeInteger(input.CatalogBudgetCharacters) || input.CatalogBudgetCharacters < 1) {
-    throw new Error("Continuity learning CatalogBudgetCharacters must be a positive safe integer.");
-  }
-}
-
-function resolveContinuitySemanticRecall(
-  defaults: ResolvedAgentContinuityLearningConfig["Recall"]["Semantic"],
-  configured: Partial<ResolvedAgentContinuityLearningConfig["Recall"]["Semantic"]> | undefined,
-): ResolvedAgentContinuityLearningConfig["Recall"]["Semantic"] {
-  const semantic = { ...defaults, ...(configured ?? {}) };
-  if (semantic.ScoreFloor < 0 || semantic.ScoreFloor > 1) {
-    throw new Error("Continuity semantic recall ScoreFloor must be between 0 and 1.");
-  }
-  if (!Number.isSafeInteger(semantic.TimeoutMs) || semantic.TimeoutMs < 1) {
-    throw new Error("Continuity semantic recall TimeoutMs must be a positive safe integer.");
-  }
-  if (!Number.isSafeInteger(semantic.MinQueryCharacters) || semantic.MinQueryCharacters < 0) {
-    throw new Error("Continuity semantic recall MinQueryCharacters must be a non-negative safe integer.");
-  }
-  return semantic;
 }
 
 function resolveContinuityPromptBudget(
@@ -210,16 +167,4 @@ function validateContinuityRuntime(runtime: {
   if (!Number.isSafeInteger(runtime.MaxJobsPerDrain) || runtime.MaxJobsPerDrain < 1) {
     throw new Error("Continuity learning MaxJobsPerDrain must be a positive safe integer.");
   }
-}
-
-export function resolvePresetsConfig(config: AgentSystemConfig): ResolvedAgentPresetsConfig {
-  const defaults = resolveAgentDefaults(config);
-  return {
-    ...defaults.Presets,
-    ...config.Presets,
-    PromptBudget: {
-      ...defaults.Presets.PromptBudget,
-      ...config.Presets?.PromptBudget,
-    },
-  };
 }

@@ -20,7 +20,11 @@ export {
 
 export interface AgentPiContextPolicyBudget {
   readonly contextWindowTokens: number;
-  readonly outputReserveTokens: number;
+  /** Current dynamic input capacity exposed by the turn budget. */
+  readonly inputCapacityTokens?: number;
+  readonly windowHeadroomTokens?: number;
+  /** Legacy serialized field accepted while old session frames are hydrated. */
+  readonly outputReserveTokens?: number;
 }
 
 export interface AgentPiContextPolicyFrame {
@@ -210,7 +214,13 @@ function availableContextTokens(
   budget: AgentPiContextPolicyBudget,
   tokenOracle: AgentTokenBudgetOracle,
 ): number {
-  const available = Math.max(0, Math.floor(budget.contextWindowTokens) - Math.floor(budget.outputReserveTokens));
+  const contextWindowTokens = Math.max(0, Math.floor(budget.contextWindowTokens));
+  const configuredCapacity = budget.inputCapacityTokens;
+  const headroom = budget.windowHeadroomTokens ?? budget.outputReserveTokens ?? 0;
+  const available =
+    configuredCapacity === undefined
+      ? Math.max(0, contextWindowTokens - Math.max(0, Math.floor(headroom)))
+      : Math.min(contextWindowTokens, Math.max(0, Math.floor(configuredCapacity)));
   let occupied = 0;
   for (const message of messages) {
     const remaining = Math.max(1, available - occupied);

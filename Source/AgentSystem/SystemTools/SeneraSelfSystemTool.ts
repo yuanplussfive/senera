@@ -4,7 +4,6 @@ import {
   systemToolExecutionResult,
   type AgentSystemToolDefinition,
 } from "./AgentSystemToolDefinition.js";
-import { StandardAgentToolObservationProjection } from "../ToolRuntime/AgentToolObservationProjectionPlan.js";
 import {
   AgentHostToolProtocolVersion,
   ToolResultAssessmentPolicies,
@@ -59,7 +58,7 @@ const SelfCommandOutputSchema = z
 
 /**
  * Host-owned `senera` command surface: config inspection and controlled
- * updates, preset management, workspace metadata, and local health checks.
+ * updates, workspace metadata, and local health checks.
  * The tool introduces no shell indirection — every subcommand executes the
  * same implementation the human-facing CLI uses, through the live host
  * services, so config changes are revision-guarded, mirrored, and broadcast.
@@ -116,21 +115,19 @@ export function createSeneraSelfSystemTools(
           "en-US": "Senera Self-Service",
         },
         description: {
-          "zh-CN": "受控的命令面：查看和更新配置、管理预设与 Skill、检查工作区与系统状态。",
+          "zh-CN": "受控的命令面：查看和更新配置、管理 Skill、检查工作区与系统状态。",
           "en-US":
-            "Controlled command surface: inspect and update configuration, manage presets and Skills, and check workspace and system health.",
+            "Controlled command surface: inspect and update configuration, manage Skills, and check workspace and system health.",
         },
         priority: 2,
         skills: ["senera-workbench"],
       },
       metadata: {
-        observation: StandardAgentToolObservationProjection,
         description:
           "Executes the live Senera self-service command surface. The input schema is authoritative for command/action and parameter shapes; call capabilities for the live registry and governance workflow. Config and workspace Skill mutations are revision-guarded, validated, broadcast live where applicable, and adjudicated per the session approval mode. Skill reads are source-bounded; Skill writes can only target the unique workspace Skill source and retain restorable revisions. The human senera CLI and this tool share one executor.",
         permissions: [
           "config:read",
           "config:update",
-          "preset:manage",
           "skills:read",
           "skills:manage",
           "workspace:inspect",
@@ -145,17 +142,17 @@ export function createSeneraSelfSystemTools(
           MaxConcurrency: 8,
         },
         search: {
-          Summary: "受控执行 senera 配置、预设、Skill、工作区与诊断命令。",
-          Tags: ["配置", "预设", "Skill", "工作区", "诊断", "模型", "doctor", "config", "preset", "skills", "pipeline"],
+          Summary: "受控执行 senera 配置、Skill、工作区与诊断命令。",
+          Tags: ["配置", "Skill", "工作区", "诊断", "模型", "doctor", "config", "skills", "pipeline"],
           Capabilities: [
             {
               Id: "senera.self",
               Title: "Senera self-service",
               Description:
-                "Inspect or update the runtime configuration, list/activate presets, and read workspace/health metadata through the host command surface.",
+                "Inspect or update the runtime configuration, manage Skills, and read workspace/health metadata through the host command surface.",
               Facets: {
                 Actions: [...commandActions],
-                Targets: ["configuration", "preset", "skill", "workspace", "runtime", "session", "log"],
+                Targets: ["configuration", "skill", "workspace", "runtime", "session", "log"],
                 Inputs: [
                   "command",
                   "path",
@@ -169,7 +166,6 @@ export function createSeneraSelfSystemTools(
                 ],
                 Outputs: [
                   "config-snapshot",
-                  "preset-summary",
                   "workspace-info",
                   "session-model-preference",
                   "effective-model-receipt",
@@ -179,19 +175,18 @@ export function createSeneraSelfSystemTools(
                   "doctor-report",
                   "capability-report",
                 ],
-                Effects: ["runtime-refresh", "config-change", "preset-change"],
+                Effects: ["runtime-refresh", "config-change"],
               },
-              Aliases: ["查看配置", "切换预设", "换模型", "查看工作区", "诊断", "senera 命令", "改配置"],
+              Aliases: ["查看配置", "换模型", "查看工作区", "诊断", "senera 命令", "改配置"],
               Risk: { SideEffect: "runtime-refresh", Permission: "write" },
             },
           ],
           UseCases: [
-            "用户要求查看或切换当前配置、模型端点、预设，查看、校验或受控维护 Skill，或检查系统与工作区状态。",
+            "用户要求查看或切换当前配置、模型端点，查看、校验或受控维护 Skill，或检查系统与工作区状态。",
             "任务需要了解运行环境（工作区根目录、数据库、沙箱状态）时。",
           ],
           Examples: [
             "看看现在的模型配置",
-            "切换到我昨天创建的前端专家预设",
             "当前配置里默认模型是什么",
             "把当前对话切换到另一个已配置模型",
             "帮我检查一下系统状态",

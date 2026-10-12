@@ -29,7 +29,7 @@ const DefaultPrompts = [
   "运行 npm test",
   "修改 Source/AgentSystem 文件",
 ] as const;
-const MaxReportedLearningSignals = 5;
+const MaxReportedScenarioSignals = 5;
 const LegacyOutputSummaryMaxChars = 1_200;
 const descriptionContracts = new AgentJsonSchemaPromptContractProjector();
 
@@ -141,7 +141,7 @@ async function benchmarkPromptRun(runtime: AgentSystemRuntime, prompt: string, b
       matchedTerms: result.matchedTerms,
       matchedCapabilities: result.matchedCapabilities.map((capability) => capability.id),
       parameterSummary: result.parameterSummary,
-      learningSignals: result.learningSignals.slice(0, MaxReportedLearningSignals).map((signal) => ({
+      scenarioSignals: result.scenarioSignals.slice(0, MaxReportedScenarioSignals).map((signal) => ({
         term: signal.term,
         confidence: signal.confidence,
         support: signal.support,
@@ -207,7 +207,7 @@ function projectExpandedDiscoveryBaseline(discovery: AgentToolSearchDiscovery): 
         matches: {
           terms: result.matchedTerms,
           capabilities: result.matchedCapabilities,
-          learning: result.learningSignals,
+          scenarios: result.scenarioSignals,
         },
         sources: result.sources,
         state: result.state,

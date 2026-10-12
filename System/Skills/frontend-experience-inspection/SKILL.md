@@ -1,5 +1,8 @@
 ---
 name: frontend-experience-inspection
+metadata:
+  senera:
+    icon: eye
 description: Diagnose or improve frontend UI, interaction, layout, responsive behavior, state rendering, animation, upload feedback, overflow, accessibility, or visual polish. Use when the user reports screenshots, layout shifts, incorrect controls, missing progress, poor visual hierarchy, or interaction latency. 适用于检查或优化前端界面、交互、布局、响应式、状态展示、动效、可访问性和视觉细节。
 ---
 

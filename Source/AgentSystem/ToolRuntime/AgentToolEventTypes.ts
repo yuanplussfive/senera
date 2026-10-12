@@ -14,7 +14,16 @@ export type AgentToolDomainEvent =
       data: {
         toolCount: number;
         tools: string[];
-        calls?: Array<{ callId: string; toolName: string; purpose?: string }>;
+        calls?: Array<{
+          callId: string;
+          toolName: string;
+          purpose?: string;
+          /** Registered package provenance used for immediate workflow presentation. */
+          origin?: AgentToolEventOrigin;
+          modelContentIndex?: number;
+        }>;
+        /** Pi model response that requested this batch, when emitted by a Pi provider. */
+        modelMessageIndex?: number;
         status?: "planned" | "discovery_escalated" | "blocked";
         executionMode?: "parallel" | "sequential";
         batchId?: string;
@@ -35,6 +44,8 @@ export type AgentToolDomainEvent =
         arguments?: unknown;
         origin?: AgentToolEventOrigin;
         batchId?: string;
+        modelMessageIndex?: number;
+        modelContentIndex?: number;
         /** Explicit lifecycle start; absent only when the producer never observed a start. */
         startedAt?: string;
       };

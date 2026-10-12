@@ -1,11 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ElementType, type KeyboardEvent } from "react";
-import AdjustmentsHorizontalIcon from "@heroicons/react/24/outline/AdjustmentsHorizontalIcon";
-import ArrowLeftIcon from "@heroicons/react/24/outline/ArrowLeftIcon";
-import ArrowPathIcon from "@heroicons/react/24/outline/ArrowPathIcon";
-import ArrowPathRoundedSquareIcon from "@heroicons/react/24/outline/ArrowPathRoundedSquareIcon";
-import FolderIcon from "@heroicons/react/24/outline/FolderIcon";
-import PauseCircleIcon from "@heroicons/react/24/outline/PauseCircleIcon";
-import ServerStackIcon from "@heroicons/react/24/outline/ServerStackIcon";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { McpInputStatus, McpInputValue, McpServerSettingsItem } from "../../../api/eventTypes";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import { resolveFrontendLocalizedText } from "../../../i18n/frontendLocaleModel";
@@ -14,6 +7,7 @@ import { cn } from "../../../lib/util";
 import { FluidHoverHighlight, useFluidHover, useMotionLevel } from "../../../shared/motion";
 import {
   Button,
+  AppIcon,
   FormField,
   FormHint,
   FormLabel,
@@ -28,6 +22,7 @@ import {
   StateView,
   Switch,
 } from "../../../shared/ui";
+import type { AppIconName } from "../../../shared/ui";
 import type { SettingsSystemConfigHandle } from "../SettingsContracts";
 
 const EmptyMcpServers: readonly McpServerSettingsItem[] = [];
@@ -66,14 +61,24 @@ export function McpServersSection({
   const selectedServer = selectedServerId ? (servers.find((server) => server.id === selectedServerId) ?? null) : null;
   const selectedDisplayName = selectedServer ? resolveFrontendLocalizedText(selectedServer.displayName, locale) : "";
   const selectedDescription = selectedServer ? resolveFrontendLocalizedText(selectedServer.description, locale) : "";
-  const unavailableCapabilityDetails: readonly { id: string; reason?: string }[] = selectedServer
-    ? (selectedServer.unavailableCapabilityDetails ??
-      selectedServer.unavailableCapabilities?.map((id) => ({ id })) ??
-      [])
-    : [];
+  const unavailableCapabilityDetails = selectedServer?.unavailableCapabilityDetails ?? [];
   const pendingChanges = Object.keys(drafts).length > 0;
   const syncing = activeRequests.length > 0;
   const connected = systemConfig?.socketStatus === "open";
+  const connectedRef = useRef(connected);
+  const workspaceId = systemConfig?.workspaceId ?? null;
+  const workspaceIdRef = useRef(workspaceId);
+  const reconnecting = !connected && syncing;
+
+  useEffect(() => {
+    if (workspaceIdRef.current === workspaceId) return;
+    workspaceIdRef.current = workspaceId;
+    setSelectedServerId(null);
+    setDrafts({});
+    setSavedSecrets({});
+    setActiveRequests([]);
+    setOperationError(null);
+  }, [workspaceId]);
 
   useEffect(() => {
     // MCP changes are sent automatically; the settings shell must not open a
@@ -106,7 +111,10 @@ export function McpServersSection({
         setOperationError(frontendMessage("settings.mcp.commandUnavailable"));
         return false;
       }
-      setActiveRequests((current) => [...current, { requestId, serverId, values, deletes }]);
+      setActiveRequests((current) => [
+        ...current,
+        { requestId, serverId, values: { ...values }, deletes: [...deletes] },
+      ]);
       setOperationError(null);
       return true;
     },
@@ -136,7 +144,7 @@ export function McpServersSection({
 
   useEffect(() => {
     const operation = systemConfig?.mcpInputOperation;
-    if (!operation) return;
+    if (!operation || operation.status === "pending") return;
     const request = activeRequests.find((entry) => entry.requestId === operation.requestId);
     if (!request) return;
     const requestServer = servers.find((server) => server.id === request.serverId);
@@ -155,22 +163,24 @@ export function McpServersSection({
   }, [activeRequests, selectedServer?.id, servers, systemConfig?.mcpInputOperation]);
 
   useEffect(() => {
-    if (connected || activeRequests.length === 0) return;
-    const affected = activeRequests.filter((request) => request.serverId === selectedServer?.id);
-    if (affected.length > 0) {
-      setDrafts((current) => {
-        let next = current;
-        for (const request of affected) {
-          const requestServer = servers.find((server) => server.id === request.serverId);
-          next = reconcileMcpDrafts(next, request, requestServer, "error");
-        }
-        return next;
-      });
-      setOperationError(frontendMessage("settings.mcp.saveFailed"));
+    const wasConnected = connectedRef.current;
+    connectedRef.current = connected;
+    if (!connected || wasConnected || activeRequests.length === 0) return;
+
+    // A close only removes the response path; it does not prove that an
+    // idempotent update was rejected. Re-submit the exact mutation after the
+    // new connection opens and wait for its authoritative snapshot.
+    const retried = activeRequests.map((request) => {
+      const requestId = systemConfig?.updateMcpInputs(request.serverId, request.values, [...request.deletes]);
+      return requestId ? { ...request, requestId } : request;
+    });
+    setActiveRequests(retried);
+    if (retried.some((request, index) => request.requestId === activeRequests[index]?.requestId)) {
+      setOperationError(frontendMessage("settings.mcp.commandUnavailable"));
+    } else {
+      setOperationError(null);
     }
-    // The socket dropped; responses for in-flight mutations may never arrive.
-    setActiveRequests([]);
-  }, [activeRequests, connected, selectedServer?.id, servers]);
+  }, [activeRequests, connected, systemConfig]);
 
   useEffect(() => {
     if (!selectedServer || selectedServer.status === "unavailable" || !pendingChanges || syncing || !connected) return;
@@ -240,7 +250,7 @@ export function McpServersSection({
       disabled={!connected || syncing}
       onClick={systemConfig.refreshToolSettings}
     >
-      <ArrowPathIcon className="h-4 w-4" />
+      <AppIcon icon="refresh" size={16} />
     </IconButton>
   );
 
@@ -261,7 +271,7 @@ export function McpServersSection({
         {servers.length === 0 ? (
           <StateView
             status="empty"
-            icon={<ServerStackIcon className="h-4 w-4 text-ink-400" />}
+            icon={<AppIcon icon="server" size={16} className="text-ink-400" />}
             title={frontendMessage("settings.mcp.empty")}
           />
         ) : (
@@ -302,9 +312,9 @@ export function McpServersSection({
             aria-label={frontendMessage("settings.mcp.backToServers")}
             onClick={leaveServerDetail}
           >
-            <ArrowLeftIcon className="h-4 w-4" />
+            <AppIcon icon="arrow-left" size={16} />
           </button>
-          <ServerStackIcon className="mt-1 h-6 w-6 shrink-0 text-accent-content" aria-hidden="true" />
+          <AppIcon icon="server" size={24} className="mt-1 shrink-0 text-accent-content" aria-hidden="true" />
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2.5">
               <h3 className="truncate text-[17px] font-semibold tracking-[-0.01em] text-content-primary">
@@ -323,7 +333,7 @@ export function McpServersSection({
           {syncing ? (
             <span className="inline-flex items-center gap-1.5 text-[11px] text-ink-500" aria-live="polite">
               <Spinner size="xs" className="text-accent-content" />
-              {frontendMessage("settings.mcp.saving")}
+              {frontendMessage(reconnecting ? "settings.mcp.unsaved" : "settings.mcp.saving")}
             </span>
           ) : null}
           <Button
@@ -332,7 +342,7 @@ export function McpServersSection({
             disabled={!connected || syncing || selectedServer.status === "unavailable"}
             onClick={restartServer}
           >
-            <ArrowPathRoundedSquareIcon className="h-3.5 w-3.5" />
+            <AppIcon icon="refresh" size={14} />
             {frontendMessage("settings.mcp.restart")}
           </Button>
         </div>
@@ -494,11 +504,14 @@ function McpInputControl({
       />
     );
   }
-  const Icon: ElementType<{ className?: string }> =
-    input.type === "filepath" || input.type === "directory" ? FolderIcon : AdjustmentsHorizontalIcon;
+  const icon: AppIconName = input.type === "filepath" || input.type === "directory" ? "folder" : "sliders";
   return (
     <div className="relative min-w-0">
-      <Icon className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-350" />
+      <AppIcon
+        icon={icon}
+        size={14}
+        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-350"
+      />
       <Input
         type={input.type === "number" ? "number" : "text"}
         size="sm"
@@ -684,7 +697,7 @@ function McpServerRow({
       aria-pressed={selected}
       onClick={onSelect}
     >
-      <ServerStackIcon className="h-5 w-5 shrink-0 text-content-secondary" aria-hidden="true" />
+      <AppIcon icon="server" size={20} className="shrink-0 text-content-secondary" aria-hidden="true" />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[12.5px] font-semibold">
           {resolveFrontendLocalizedText(server.displayName, locale)}
@@ -711,8 +724,10 @@ function McpServerRow({
         {frontendMessage(`settings.mcp.status.${server.status}`)}
       </span>
       {server.status === "needs_input" && !directory ? (
-        <PauseCircleIcon
-          className="h-4 w-4 shrink-0 text-umber-600"
+        <AppIcon
+          icon="clock"
+          size={16}
+          className="shrink-0 text-umber-600"
           aria-label={frontendMessage(`settings.mcp.status.${server.status}`)}
         />
       ) : null}
@@ -723,7 +738,8 @@ function McpServerRow({
 function shortenMcpDescription(value: string): string {
   const text = value.trim().replace(/[.!?。！？]+$/u, "");
   if (!text) return "";
-  return `${text.length > 88 ? text.slice(0, 88).trimEnd() : text}…`;
+  if (text.length <= 88) return text;
+  return `${text.slice(0, 88).trimEnd()}…`;
 }
 
 function McpStatus({ status }: { status: McpServerSettingsItem["status"] }): JSX.Element {

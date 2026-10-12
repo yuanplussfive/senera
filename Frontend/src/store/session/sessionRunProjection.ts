@@ -13,6 +13,7 @@ export function createRunRecord(input: { requestId: string; startedAt: string; i
     activities: [],
     steps: [],
     streamingRaw: "",
+    thinkingBlocks: [],
     xmlPreview: "",
     visibleText: "",
     displayText: "",
@@ -30,6 +31,10 @@ export function syncRunActiveFlags(run: RunRecord): void {
   if (run.approvals?.some((entry) => entry.status === "pending")) flags.push("waiting_for_approval");
   if (run.interactionInputs?.some((entry) => entry.status !== "resolved")) flags.push("waiting_for_input");
   run.activeFlags = flags.length > 0 ? flags : undefined;
+}
+
+export function isRunTerminal(run: Pick<RunRecord, "status">): boolean {
+  return run.status === "completed" || run.status === "failed" || run.status === "cancelled";
 }
 
 export function touchRun(run: RunRecord): void {

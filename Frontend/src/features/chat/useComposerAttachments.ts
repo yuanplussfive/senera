@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createStore } from "zustand/vanilla";
+import { useStore } from "zustand";
 import type { UploadAttachmentData } from "../../api/eventTypes";
 import { uploadFile, type UploadProgress } from "../../api/uploadClient";
 import { isImageFilePreview } from "../../lib/filePreview";
@@ -20,6 +22,7 @@ export type PendingAttachment = {
 };
 
 export interface ComposerAttachmentsOptions {
+  draftKey?: string;
   uploadUrl: string;
   uploadCsrfToken?: string;
   /** Blocks paste and drag intake while the composer is disabled or a run is active. */
@@ -27,6 +30,7 @@ export interface ComposerAttachmentsOptions {
 }
 
 export interface ComposerAttachments {
+  enqueueFiles: (files: File[]) => void;
   pendingAttachments: PendingAttachment[];
   isDraggingFiles: boolean;
   uploading: boolean;
@@ -43,28 +47,45 @@ export interface ComposerAttachments {
   handleDrop: (event: React.DragEvent<HTMLDivElement>) => void;
 }
 
+// Attachment uploads keep their ownership while the user views another workspace.
+const drafts = new Map<string, ReturnType<typeof createAttachmentDraft>>();
+function createAttachmentDraft() {
+  return createStore<{ pending: PendingAttachment[] }>(() => ({ pending: [] }));
+}
+
 export function useComposerAttachments(options: ComposerAttachmentsOptions): ComposerAttachments {
   const { uploadUrl, uploadCsrfToken, interactionLocked } = options;
-  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+  const attachmentDraft = useMemo(() => {
+    if (!options.draftKey) return createAttachmentDraft();
+    let draft = drafts.get(options.draftKey);
+    if (!draft) {
+      draft = createAttachmentDraft();
+      drafts.set(options.draftKey, draft);
+    }
+    return draft;
+  }, [options.draftKey]);
+  const pendingAttachments = useStore(attachmentDraft, (state) => state.pending);
+  const setPendingAttachments = useCallback(
+    (update: (current: PendingAttachment[]) => PendingAttachment[]): void => {
+      attachmentDraft.setState((state) => ({ pending: update(state.pending) }));
+    },
+    [attachmentDraft],
+  );
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const dragDepthRef = useRef(0);
-  const ownedPreviewUrlsRef = useRef(new Set<string>());
   const uploadPreviewRegistry = useUploadPreviewRegistry();
 
   const revokePreviewUrl = useCallback((previewUrl: string | undefined): void => {
-    if (!previewUrl || !ownedPreviewUrlsRef.current.delete(previewUrl)) return;
+    if (!previewUrl) return;
     URL.revokeObjectURL(previewUrl);
   }, []);
-
-  useEffect(
-    () => () => {
-      for (const previewUrl of ownedPreviewUrlsRef.current) {
-        URL.revokeObjectURL(previewUrl);
-      }
-      ownedPreviewUrlsRef.current.clear();
-    },
-    [],
-  );
+  useEffect(() => {
+    if (options.draftKey) return;
+    return () => {
+      for (const entry of attachmentDraft.getState().pending) revokePreviewUrl(entry.previewUrl);
+      attachmentDraft.setState({ pending: [] });
+    };
+  }, [attachmentDraft, options.draftKey, revokePreviewUrl]);
 
   const startUpload = useCallback(
     (id: string, file: File): void => {
@@ -100,7 +121,7 @@ export function useComposerAttachments(options: ComposerAttachmentsOptions): Com
           );
         });
     },
-    [uploadCsrfToken, uploadUrl],
+    [uploadCsrfToken, uploadUrl, setPendingAttachments],
   );
 
   const enqueueFiles = (files: File[]): void => {
@@ -110,7 +131,6 @@ export function useComposerAttachments(options: ComposerAttachmentsOptions): Com
       const previewUrl = isImageFilePreview({ name: file.name, mime: file.type })
         ? URL.createObjectURL(file)
         : undefined;
-      if (previewUrl) ownedPreviewUrlsRef.current.add(previewUrl);
       setPendingAttachments((current) => [
         ...current,
         {
@@ -168,12 +188,11 @@ export function useComposerAttachments(options: ComposerAttachmentsOptions): Com
     for (const entry of pendingAttachments) {
       if (entry.previewUrl && entry.status === "uploaded" && entry.attachment) {
         uploadPreviewRegistry.register(entry.attachment.resourceUri, entry.previewUrl);
-        ownedPreviewUrlsRef.current.delete(entry.previewUrl);
       } else {
         revokePreviewUrl(entry.previewUrl);
       }
     }
-    setPendingAttachments([]);
+    setPendingAttachments(() => []);
   };
 
   const handleFileSelection = (event: React.ChangeEvent<HTMLInputElement>): void => {
@@ -224,6 +243,7 @@ export function useComposerAttachments(options: ComposerAttachmentsOptions): Com
   };
 
   return {
+    enqueueFiles,
     pendingAttachments,
     isDraggingFiles,
     uploading: pendingAttachments.some((attachment) => attachment.status === "uploading"),

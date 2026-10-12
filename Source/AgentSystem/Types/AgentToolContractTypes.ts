@@ -1,6 +1,5 @@
 import type { ToolArtifactPolicyManifest } from "./AgentArtifactContractTypes.js";
 import type { ToolSearchManifest } from "./AgentToolSearchContractTypes.js";
-import type { AgentToolContentPolicy } from "./AgentToolContentPolicyTypes.js";
 
 export type {
   ToolArtifactConditionManifest,
@@ -19,7 +18,6 @@ export type {
   ToolArtifactRedactionTransformManifest,
   ToolArtifactSummaryManifest,
   ToolArtifactWorkspaceManifest,
-  ToolArtifactWorkspacePathManifest,
 } from "./AgentArtifactContractTypes.js";
 export type {
   RootCommandManifest,
@@ -84,10 +82,23 @@ export const ToolSchedulingModes = {
 
 export type ToolSchedulingMode = (typeof ToolSchedulingModes)[keyof typeof ToolSchedulingModes];
 
+/**
+ * Controls whether a tool result creates a new durable Artifact or is a
+ * bounded view over an Artifact that already exists.
+ */
+export const ToolResultStorageModes = {
+  Artifact: "Artifact",
+  SourceView: "SourceView",
+} as const;
+
+export type ToolResultStorageMode = (typeof ToolResultStorageModes)[keyof typeof ToolResultStorageModes];
+
 export interface ToolRuntimeManifest {
   Lifecycle: "Immediate" | "OneShot" | "Persistent" | "RemoteJob";
   ProtocolVersion?: typeof AgentHostToolProtocolVersion;
   ResultAssessment: ToolResultAssessmentPolicy;
+  /** Omitted means the tool publishes a new durable Artifact. */
+  ResultStorage?: ToolResultStorageMode;
   Scheduling?: ToolSchedulingMode;
   MaxConcurrency?: number;
   Capabilities?: ToolRuntimeCapabilitiesManifest;
@@ -161,5 +172,4 @@ export interface ToolManifest {
   Approval?: ToolApprovalManifest;
   Artifacts?: ToolArtifactPolicyManifest;
   ArtifactPolicyFile?: string;
-  ContentPolicy?: AgentToolContentPolicy;
 }

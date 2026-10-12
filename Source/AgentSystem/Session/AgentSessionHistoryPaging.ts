@@ -14,7 +14,10 @@ export interface AgentSessionHistoryReplayPaging {
 
 export const AgentSessionHistoryReplayPagingDefaults: AgentSessionHistoryReplayPaging = Object.freeze({
   entryPageSize: AgentSessionHistoryEntryReplayChunkSize,
-  stepRunPageSize: 64,
+  // Step traces and run snapshots are projected by request id. Keeping more
+  // request ids in one semantic page avoids a query/event round trip for every
+  // small slice while retaining the repository page ceiling.
+  stepRunPageSize: 256,
   runEventPageSize: AgentRunEventHistoryReplayChunkSize,
 });
 

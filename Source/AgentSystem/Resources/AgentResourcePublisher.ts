@@ -21,6 +21,8 @@ export interface AgentResourcePublishBase64Input {
 
 export interface AgentPublishedResource {
   readonly resourceUri: string;
+  /** Workspace-relative path for direct local tool consumption. */
+  readonly localPath: string;
   readonly name: string;
   readonly mime: string;
   readonly size: number;

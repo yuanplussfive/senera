@@ -23,6 +23,22 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": workspacePath("Frontend", "src"),
+      "@vinyasa/ai-native/agent-timeline": workspacePath(
+        "node_modules",
+        "@vinyasa",
+        "ai-native",
+        "dist",
+        "cjs",
+        "agent-timeline.cjs",
+      ),
+      "@vinyasa/ai-native/tool-call-card": workspacePath(
+        "node_modules",
+        "@vinyasa",
+        "ai-native",
+        "dist",
+        "cjs",
+        "tool-call-card.cjs",
+      ),
       "@xyflow/react": xyflowPackageRoot,
       ...frontendTestDoubles,
     },

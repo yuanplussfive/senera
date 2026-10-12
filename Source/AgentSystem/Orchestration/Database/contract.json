@@ -161,6 +161,14 @@
       "snapshot": "snapshots/0020.schema.sql",
       "migrationSha256": "8fad919b2c110f76a63e1e04d4630f0cca16db1404f06dbc00fb07651eae0280",
       "snapshotSha256": "8f995bc393cd345e4dc439e8f1e2c2d07bad7648f2b9c8261c01a0990122fdc7"
+    },
+    {
+      "version": 21,
+      "name": "parent-result-delivery",
+      "migration": "migrations/0021-parent-result-delivery.sql",
+      "snapshot": "snapshots/0021.schema.sql",
+      "migrationSha256": "6844c49f24c026cc7d25fc08342e587f6fbb33baa327be3a071e82a4e18d7ee7",
+      "snapshotSha256": "5b22ca0ec8b1f02a95d6771428d708f0a8a40265e3f09268845f8def8770ec44"
     }
   ]
 }

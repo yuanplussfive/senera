@@ -3,7 +3,7 @@ import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import { z } from "zod";
 import {
   readAgentPiToolObservation,
-  readAgentPiToolObservationArtifactUri,
+  readAgentPiToolObservationArtifactReferences,
   readAgentPiMessageTextContent,
   isAgentPiToolResultMessage,
 } from "./AgentPiToolObservation.js";
@@ -96,49 +96,27 @@ function projectToolResultArtifactReferences(message: AgentMessage): AgentPiArti
 
   const observation = readAgentPiToolObservation(readAgentPiMessageTextContent(message));
   if (!observation) return [];
-  const artifactUri = readAgentPiToolObservationArtifactUri(observation);
   const workspaceCheckpoint = readWorkspaceCheckpoint(observation.detail.workspace);
-  const references = artifactUri
-    ? [
-        createArtifactReference({
-          artifactUri,
-          toolName: message.toolName,
-          callId: message.toolCallId,
-          ...(workspaceCheckpoint
-            ? { workspaceCheckpointId: workspaceCheckpoint.id, workspaceRevision: workspaceCheckpoint.revision }
-            : {}),
-        }),
-      ]
-    : [];
-
-  return [
-    ...references,
-    ...observation.detail.evidence.flatMap((evidence) => {
-      const evidenceArtifactUri = evidence.artifact_uri ?? artifactUri;
-      return evidenceArtifactUri
-        ? [
-            createArtifactReference({
-              artifactUri: evidenceArtifactUri,
-              toolName: message.toolName,
-              callId: message.toolCallId,
-              evidenceUri: evidence.evidence_uri,
-              refs: uniqueStrings(evidence.artifact_refs ?? []),
-              ...(workspaceCheckpoint
-                ? { workspaceCheckpointId: workspaceCheckpoint.id, workspaceRevision: workspaceCheckpoint.revision }
-                : {}),
-            }),
-          ]
-        : [];
+  return readAgentPiToolObservationArtifactReferences(observation).map((reference) =>
+    createArtifactReference({
+      artifactUri: reference.artifactUri,
+      toolName: message.toolName,
+      callId: message.toolCallId,
+      evidenceUris: reference.evidenceUris,
+      refs: reference.refs,
+      ...(reference.observationArtifact && workspaceCheckpoint
+        ? { workspaceCheckpointId: workspaceCheckpoint.id, workspaceRevision: workspaceCheckpoint.revision }
+        : {}),
     }),
-  ];
+  );
 }
 
 function createArtifactReference(input: {
   artifactUri: string;
   toolName?: string;
   callId?: string;
-  evidenceUri?: string;
-  refs?: string[];
+  evidenceUris?: readonly string[];
+  refs?: readonly string[];
   workspaceCheckpointId?: string;
   workspaceRevision?: string;
 }): AgentPiArtifactReference {
@@ -146,7 +124,7 @@ function createArtifactReference(input: {
     artifactUri: input.artifactUri,
     toolNames: input.toolName ? [input.toolName] : [],
     callIds: input.callId ? [input.callId] : [],
-    evidenceUris: input.evidenceUri ? [input.evidenceUri] : [],
+    evidenceUris: uniqueStrings(input.evidenceUris ?? []),
     refs: uniqueStrings(input.refs ?? []),
     ...(input.workspaceCheckpointId ? { workspaceCheckpointId: input.workspaceCheckpointId } : {}),
     ...(input.workspaceRevision ? { workspaceRevision: input.workspaceRevision } : {}),

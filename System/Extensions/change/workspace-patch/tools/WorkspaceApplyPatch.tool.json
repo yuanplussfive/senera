@@ -5,11 +5,106 @@
     "category": "workspace-patch",
     "icon": "pencil",
     "activity": {
-      "action": { "zh-CN": "应用补丁", "en-US": "Apply patch" },
-      "detailPaths": ["/operations/*/path", "/operations/*/source", "/operations/*/destination"]
+      "action": { "zh-CN": "修改", "en-US": "Edit" },
+      "detailPaths": ["/operations/*/path", "/operations/*/source", "/operations/*/destination"],
+      "v2": {
+        "measures": [
+          {
+            "id": "operationKind",
+            "from": "argument",
+            "pointer": "/operations",
+            "field": "kind",
+            "aggregate": "first",
+            "type": "enum",
+            "labels": {
+              "add": { "zh-CN": "新增", "en-US": "Add" },
+              "update": { "zh-CN": "编辑", "en-US": "Edit" },
+              "write": { "zh-CN": "覆写", "en-US": "Overwrite" },
+              "delete": { "zh-CN": "删除", "en-US": "Delete" },
+              "move": { "zh-CN": "移动", "en-US": "Move" }
+            }
+          },
+          {
+            "id": "operationCount",
+            "from": "argument",
+            "pointer": "/operations",
+            "aggregate": "count",
+            "type": "number"
+          },
+          {
+            "id": "primaryPath",
+            "from": "argument",
+            "pointer": "/operations",
+            "field": "path",
+            "aggregate": "first",
+            "type": "path"
+          },
+          {
+            "id": "moveSource",
+            "from": "argument",
+            "pointer": "/operations",
+            "field": "source",
+            "aggregate": "first",
+            "type": "path"
+          },
+          {
+            "id": "moveDestination",
+            "from": "argument",
+            "pointer": "/operations",
+            "field": "destination",
+            "aggregate": "first",
+            "type": "path"
+          },
+          {
+            "id": "changedFiles",
+            "from": "result",
+            "pointer": "/changes",
+            "field": "key",
+            "where": { "field": "kind", "equals": "workspace" },
+            "aggregate": "count",
+            "type": "number"
+          },
+          {
+            "id": "addedLines",
+            "from": "result",
+            "pointer": "/changes",
+            "field": "addedLines",
+            "where": { "field": "kind", "equals": "workspace" },
+            "aggregate": "sum",
+            "type": "delta",
+            "sign": "always"
+          },
+          {
+            "id": "removedLines",
+            "from": "result",
+            "pointer": "/changes",
+            "field": "removedLines",
+            "where": { "field": "kind", "equals": "workspace" },
+            "aggregate": "sum",
+            "type": "delta",
+            "sign": "negative-only"
+          }
+        ],
+        "variants": [
+          {
+            "id": "singleMove",
+            "when": { "measure": "operationKind", "equals": "move" },
+            "title": "移动 {{moveSource}} → {{moveDestination}}"
+          },
+          {
+            "id": "single",
+            "when": { "measure": "operationCount", "equals": 1 },
+            "title": "{{operationKind}} {{primaryPath}} · {{addedLines}} {{removedLines}}"
+          },
+          {
+            "id": "batch",
+            "title": "修改 · {{operationCount}} 项 · {{changedFiles}} 个文件 · {{addedLines}} {{removedLines}}"
+          }
+        ],
+        "title": "修改 · {{operationCount}} 项操作"
+      }
     }
   },
-  "observationProjection": "observations/default.projection.json",
   "description": "以 add、update、write、delete、move 操作原子修改工作区文件；Skill/MCP 候选通过完整预检后才提交。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -186,16 +281,8 @@
       "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}{% if workspace %}{% for change in workspace.changes %}- {{ change.status }} {{ change.path }}\n{% endfor %}{% endif %}"
     },
     "Workspace": {
-      "Capture": "declared",
-      "Paths": [
-        { "Selector": "$.operations[*].path" },
-        { "Selector": "$.operations[*].source" },
-        { "Selector": "$.operations[*].destination" },
-        { "Selector": "$.changedPaths[*]" }
-      ],
+      "Capture": "mutation-receipt",
       "MaxFileBytes": 262144,
-      "MaxFiles": 64,
-      "MaxDirectoryDepth": 1,
       "CaptureContent": "text",
       "PatchContextLines": 3
     }

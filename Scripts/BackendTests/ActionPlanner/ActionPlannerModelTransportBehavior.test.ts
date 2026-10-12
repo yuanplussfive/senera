@@ -1,5 +1,6 @@
 import {
   createAssistantMessageEventStream,
+  getCurrentSystemPrompt,
   type Api,
   type AssistantMessage,
   type AssistantMessageEventStream,
@@ -62,9 +63,9 @@ describe("Action planner model transport", () => {
         maxRetryDelayMs: 0,
       },
     });
-    expect(requests[0]?.context.systemPrompt).toContain("Return only ControllerDecision.");
-    expect(requests[0]?.context.systemPrompt).toContain("Planner-specific guidance.");
-    expect(requests[0]?.context.messages).toEqual([
+    expect(getCurrentSystemPrompt(requests[0]?.context.messages ?? [])).toContain("Return only ControllerDecision.");
+    expect(getCurrentSystemPrompt(requests[0]?.context.messages ?? [])).toContain("Planner-specific guidance.");
+    expect(requests[0]?.context.messages.filter((message) => message.role !== "system")).toEqual([
       expect.objectContaining({
         role: "user",
         content: [
@@ -85,7 +86,7 @@ describe("Action planner model transport", () => {
       },
       {
         apiStreams: piStreams((model, context, options) => {
-          expect(context.messages).toHaveLength(1);
+          expect(context.messages.filter((message) => message.role !== "system")).toHaveLength(1);
           expect(options).toMatchObject({
             sessionId: expect.any(String),
             cacheRetention: "long",
@@ -136,7 +137,7 @@ describe("Action planner model transport", () => {
     expect(timings).toEqual([
       expect.objectContaining({
         status: "completed",
-        stage: "EvolveTurn",
+        stage: "action-planner:EvolveTurn",
       }),
     ]);
   });
@@ -196,6 +197,38 @@ describe("Action planner model transport", () => {
         ],
       }),
     );
+  });
+
+  test("cancels the empty-response retry wait through the request signal", async () => {
+    const controller = new AbortController();
+    const reason = new Error("cancel waiting");
+    const stream = vi.fn((model: Model<Api>) => completedStream(model, ""));
+    const transport = new AgentActionPlannerModelTransport(
+      modelProvider({ MaxNetworkRetries: 1, RetryBaseDelayMs: 60_000, RetryMaxDelayMs: 60_000 }),
+      undefined,
+      (timing) => {
+        if (timing.status === "completed") controller.abort(reason);
+      },
+      { apiStreams: piStreams(stream) },
+    );
+    await expect(transport.complete({ ...request(), signal: controller.signal })).rejects.toBe(reason);
+    expect(stream).toHaveBeenCalledOnce();
+  });
+
+  test("leaves compaction retry ownership to Pi", async () => {
+    const stream = vi.fn((_model: Model<Api>, _context: Context, _options?: StreamOptions | SimpleStreamOptions) =>
+      completedStream(_model, "Compaction checkpoint."),
+    );
+    const transport = new AgentActionPlannerModelTransport(
+      modelProvider({ MaxNetworkRetries: 4 }),
+      undefined,
+      undefined,
+      { apiStreams: piStreams(stream) },
+    );
+
+    await expect(transport.complete(request({ retryMode: "pi" }))).resolves.toBe("Compaction checkpoint.");
+    expect(stream).toHaveBeenCalledTimes(1);
+    expect(stream.mock.calls[0]?.[2]).toMatchObject({ maxRetries: 0 });
   });
 });
 

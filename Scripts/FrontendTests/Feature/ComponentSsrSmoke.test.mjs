@@ -86,8 +86,9 @@ test("code artifact source SSR smoke covers source and preview metadata", () => 
   expect(artifact.filename).toBe("snippet.html");
   expect(artifact.preview?.id).toBe("html-document");
   expect(artifact.preview.source).toMatch(/<main>/);
-  expect(markup).toMatch(/data-language="html"/);
-  expect(markup).toMatch(/Hello/);
+  expect(markup).toMatch(/<diffs-container[^>]*class="senera-pierre-code"/);
+  expect(markup).not.toMatch(/senera-pierre-code__fallback/);
+  expect(artifact.code).toContain("Hello");
 });
 
 function withUiProviders(element) {

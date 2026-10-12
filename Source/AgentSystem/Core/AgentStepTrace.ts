@@ -1,13 +1,11 @@
-import type { AgentExecutionResult } from "../ToolRuntime/AgentToolCallExecutionTypes.js";
 import type { AgentToolEventOrigin } from "../ToolRuntime/AgentToolEventOrigin.js";
-import type { AgentToolResultPresentation, ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
-import { projectAgentToolResultPresentation } from "../ToolRuntime/AgentToolResultPresentation.js";
-import { projectAgentToolResultEventValue } from "../ToolRuntime/AgentToolResultEventProjection.js";
+import type { AgentToolResultPresentation } from "../Types/ToolRuntimeTypes.js";
+import type { AgentJsonProjectionOmission } from "../Text/AgentBudgetedJsonProjection.js";
 
 /**
  * 精简档执行步骤轨迹：持久化后用于历史回放时重建前端执行图。
  * 只保留重建图所需的结构化字段，不含逐 token model.delta 与 prompt 计时。
- * toolArgs / toolResult / toolPreview 受体积红线约束（见 clampField）。
+ * toolArgs / toolResult / toolPreview 受体积红线约束（见 projectAgentToolArguments）。
  *
  * 注意：状态机是纯转移函数、不产生时间戳，故 startedAt/endedAt 不在累积时填，
  * 由 manager 落盘时统一补 turn 级基准时间（精简档不承诺逐步精确计时）。
@@ -27,6 +25,12 @@ export interface StepTrace {
   endedAt?: string;
   title?: string;
   toolArgs?: unknown;
+  /**
+   * Rows dropped from `toolArgs` to stay within the byte ceiling, addressed by
+   * RFC 6901 pointer. A sibling field rather than a wrapper, so the declared
+   * pointers inside `toolArgs` keep resolving unchanged.
+   */
+  toolArgsOmissions?: readonly AgentJsonProjectionOmission[];
   toolPreview?: string;
   toolPresentation?: AgentToolResultPresentation;
   toolResult?: unknown;
@@ -35,59 +39,12 @@ export interface StepTrace {
   retryCode?: string;
 }
 
-/** 单字段序列化后的字节上限，超出截断并标记。避免大对象 / 文件内容无限落盘。 */
-const MAX_FIELD_BYTES = 4096;
 const MAX_PREVIEW_CHARS = 240;
-
-/** 把任意值约束到体积红线内：截断超大对象，保留可读摘要。 */
-export function clampField(value: unknown): unknown {
-  if (value === null || value === undefined) return undefined;
-  if (typeof value === "string") {
-    return value.length > MAX_FIELD_BYTES ? `${value.slice(0, MAX_FIELD_BYTES)}…[truncated]` : value;
-  }
-  if (typeof value === "number" || typeof value === "boolean") return value;
-  try {
-    const json = JSON.stringify(value);
-    if (json.length > MAX_FIELD_BYTES) {
-      return { __truncated: true, preview: `${json.slice(0, MAX_FIELD_BYTES)}…` };
-    }
-    return value;
-  } catch {
-    return undefined;
-  }
-}
 
 function clampPreview(value: string | undefined): string | undefined {
   if (!value) return undefined;
   const normalized = value.replace(/\s+/g, " ").trim();
   return normalized.length > MAX_PREVIEW_CHARS ? `${normalized.slice(0, MAX_PREVIEW_CHARS)}…` : normalized;
-}
-
-/** 执行结果 → 工具节点（一次工具调用一条）。 */
-export function buildToolTraces(
-  step: number,
-  startSeq: number,
-  execution: Extract<AgentExecutionResult, { kind: "ToolResults" }>,
-): StepTrace[] {
-  const results: ExecutedToolCallResult[] = Array.isArray(execution.value) ? execution.value : [];
-  return results.map((result, index) => {
-    const failed = result.process.exitCode !== null && result.process.exitCode !== 0;
-    const presentation = result.presentation ?? projectAgentToolResultPresentation(result);
-    return {
-      step,
-      seq: startSeq + index,
-      kind: "tool",
-      toolName: result.name,
-      toolOrigin: result.origin,
-      callId: result.callId,
-      status: failed ? "failed" : "done",
-      toolArgs: clampField(result.arguments),
-      toolPreview: clampPreview(presentation.headline),
-      toolPresentation: presentation,
-      toolResult: clampField(projectAgentToolResultEventValue(result)),
-      toolErrorMessage: failed ? clampPreview(result.process.stderr) : undefined,
-    };
-  });
 }
 
 /** 终结节点：生成回复 / 向用户提问。 */

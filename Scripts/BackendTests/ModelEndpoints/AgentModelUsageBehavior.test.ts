@@ -80,4 +80,17 @@ describe("agent model usage", () => {
       calls: [expect.objectContaining({ stage: "prepareTurn" }), expect.objectContaining({ stage: "evolveTurn" })],
     });
   });
+
+  test("forwards nested provider calls to the owning turn once", () => {
+    const turn = new AgentModelUsageLedger();
+    const sidecar = turn.fork();
+    sidecar.record({
+      stage: "resident-speech",
+      usage: { source: "provider_reported", inputTokens: 40, outputTokens: 6, totalTokens: 46 },
+    });
+
+    expect(sidecar.aggregate()).toMatchObject({ inputTokens: 40, outputTokens: 6, totalTokens: 46 });
+    expect(turn.aggregate()).toMatchObject({ inputTokens: 40, outputTokens: 6, totalTokens: 46 });
+    expect(turn.aggregate()?.calls).toHaveLength(1);
+  });
 });

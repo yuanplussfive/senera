@@ -333,6 +333,39 @@
   flex-direction: column;
   background: var(--theme-code-editor-bg);
 }
+
+.senera-pierre-code-frame,
+.senera-pierre-diff-frame {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.senera-pierre-code-frame--bounded,
+.senera-pierre-diff-frame--bounded {
+  max-height: 20rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.senera-pierre-code,
+.senera-pierre-diff {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  --diffs-font-family: var(--theme-ui-font-family);
+  --diffs-header-font-family: var(--theme-ui-font-family);
+  --diffs-font-size: var(--theme-tool-font-size);
+  --diffs-line-height: var(--theme-tool-line-height);
+  --diffs-light-bg: transparent;
+  --diffs-dark-bg: transparent;
+  --diffs-light: var(--content-primary);
+  --diffs-dark: var(--content-primary);
+}
+
 .code-artifact-viewer__toolbar {
   display: flex;
   flex-shrink: 0;

@@ -1,12 +1,12 @@
 {
   "name": "ImageAnalyze",
   "loading": "Bootstrap",
-  "description": "Analyze one or more canonical Senera image resources, screenshots, or unchanged public HTTP(S) image URLs together for visible evidence, OCR, or a specific question. Resolve local Markdown paths to a host-provided Senera resource before calling.",
+  "description": "Analyze one or more workspace-local paths, canonical Senera resources, or public HTTP(S) image URLs together for visible evidence, OCR, or a specific question.",
   "presentation": {
     "category": "image-analyze",
     "icon": "image",
     "activity": {
-      "action": { "zh-CN": "分析图像", "en-US": "Analyze image" },
+      "action": { "zh-CN": "分析", "en-US": "Analyze" },
       "argumentPath": "/task",
       "detailPaths": ["/question"]
     }
@@ -20,29 +20,44 @@
         "maxItems": 32,
         "type": "array",
         "items": {
-          "anyOf": [
+          "oneOf": [
             {
               "type": "object",
               "properties": {
-                "resourceUri": {
+                "kind": { "type": "string", "const": "senera_resource" },
+                "uri": {
                   "type": "string",
                   "pattern": "^senera:\\/\\/resource\\/[A-Za-z0-9][A-Za-z0-9._~-]{0,255}$",
-                  "description": "Canonical Senera resource URI to analyze. When a Markdown image uses a local path, use the host-provided resource mapping and never invent a URI from its filename."
+                  "description": "Canonical Senera resource identity."
                 }
               },
-              "required": ["resourceUri"],
+              "required": ["kind", "uri"],
               "additionalProperties": false
             },
             {
               "type": "object",
               "properties": {
+                "kind": { "type": "string", "const": "local_path" },
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Workspace-relative or absolute local path inside the active workspace."
+                }
+              },
+              "required": ["kind", "path"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "const": "http_url" },
                 "url": {
                   "type": "string",
                   "pattern": "^https?:\\/\\/\\S+$",
-                  "description": "Public HTTP(S) image URL. Preserve the URL exactly; Senera downloads it and sends the image as base64."
+                  "description": "Public HTTP(S) resource URL; private hosts remain subject to runtime policy."
                 }
               },
-              "required": ["url"],
+              "required": ["kind", "url"],
               "additionalProperties": false
             }
           ]
@@ -72,13 +87,47 @@
           "type": "object",
           "properties": {
             "source": {
-              "type": "object",
-              "properties": {
-                "kind": { "type": "string", "enum": ["resource", "url"] },
-                "uri": { "type": "string", "minLength": 1 }
-              },
-              "required": ["kind", "uri"],
-              "additionalProperties": false
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": { "type": "string", "const": "senera_resource" },
+                    "uri": {
+                      "type": "string",
+                      "pattern": "^senera:\\/\\/resource\\/[A-Za-z0-9][A-Za-z0-9._~-]{0,255}$",
+                      "description": "Canonical Senera resource identity."
+                    }
+                  },
+                  "required": ["kind", "uri"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": { "type": "string", "const": "local_path" },
+                    "path": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Workspace-relative or absolute local path inside the active workspace."
+                    }
+                  },
+                  "required": ["kind", "path"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": { "type": "string", "const": "http_url" },
+                    "url": {
+                      "type": "string",
+                      "pattern": "^https?:\\/\\/\\S+$",
+                      "description": "Public HTTP(S) resource URL; private hosts remain subject to runtime policy."
+                    }
+                  },
+                  "required": ["kind", "url"],
+                  "additionalProperties": false
+                }
+              ]
             },
             "name": { "type": "string" },
             "mime": { "type": "string" },
@@ -97,7 +146,6 @@
     "required": ["images", "task", "answer", "model"],
     "additionalProperties": false
   },
-  "observationProjection": "observations/ImageAnalyze.projection.json",
   "permissions": ["resources:read", "model:vision"],
   "execution": { "Targets": ["Local"], "Network": "Allow", "Workspace": "ReadOnly" },
   "runtime": {
@@ -118,7 +166,7 @@
         "Description": "分析图片内容、提取图片文字，或针对图片回答具体问题。",
         "Facets": {
           "Actions": ["describe", "ocr", "answer"],
-          "Targets": ["image-resource", "public-image-url"],
+          "Targets": ["workspace-image-path", "image-resource", "public-image-url"],
           "Inputs": ["images", "task", "question"],
           "Outputs": ["description", "ocr-text", "answer", "image-metadata"],
           "Effects": ["none"]
@@ -127,7 +175,7 @@
         "Risk": { "SideEffect": "read-only", "Permission": "resources-read-vision" }
       }
     ],
-    "UseCases": ["用户提供截图、图片或公开图片链接，并希望了解画面、文字或具体细节。"],
+    "UseCases": ["用户提供工作区图片、Senera 图片资源或公开图片链接，并希望了解画面、文字或具体细节。"],
     "Avoid": ["没有图片证据时不要猜测画面内容；需要修改或生成图片时使用对应的图像工具。"]
   },
   "evidenceCapabilities": []

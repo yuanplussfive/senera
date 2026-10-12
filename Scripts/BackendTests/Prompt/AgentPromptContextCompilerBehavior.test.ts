@@ -2,10 +2,8 @@ import { describe, expect, test } from "vitest";
 import { buildAgentExecutionEnvironmentContext } from "../../../Source/AgentSystem/Prompt/AgentExecutionEnvironmentContext.js";
 import { compileAgentPromptContext } from "../../../Source/AgentSystem/Prompt/AgentPromptContextCompiler.js";
 import { EmptyAgentContinuityMemoryPromptContext } from "../../../Source/AgentSystem/Continuity/AgentContinuityMemoryTypes.js";
-import { EmptyAgentRoleplayPresetContext } from "../../../Source/AgentSystem/Presets/AgentPresetTypes.js";
 import { toolRootCommand } from "../Support/AgentTestFixtures.js";
 import { EmptyAgentWorkflowPromptContext } from "../../../Source/AgentSystem/Prompt/AgentWorkflowPromptContext.js";
-import { EmptyAgentSceneContext } from "../../../Source/AgentSystem/Prompt/AgentSceneContextCompiler.js";
 
 function compile(overrides: Partial<Parameters<typeof compileAgentPromptContext>[0]> = {}) {
   return compileAgentPromptContext({
@@ -13,209 +11,76 @@ function compile(overrides: Partial<Parameters<typeof compileAgentPromptContext>
     toolCards: [],
     toolDiscoveryToolName: null,
     rootCommand: null,
-    roleplayPreset: EmptyAgentRoleplayPresetContext,
     continuityMemory: EmptyAgentContinuityMemoryPromptContext,
     workflow: EmptyAgentWorkflowPromptContext,
-    scene: EmptyAgentSceneContext,
     ...overrides,
   });
 }
-
 describe("agent prompt context compiler", () => {
-  test("keeps empty optional layers out of the manifest", () => {
-    const context = compile();
-
-    expect(context.ContextLayers).toEqual([
+  test("contains only supported layers", () => {
+    expect(compile().ContextLayers).toEqual([
       { name: "kernel", source: "runtime", stability: "stable", included: true },
-      { name: "persona", source: "preset", stability: "stable", included: false },
-      { name: "profile", source: "profile", stability: "stable", included: false },
-      { name: "lore", source: "preset", stability: "turn", included: false },
-      { name: "facts", source: "continuity", stability: "turn", included: false },
-      { name: "graph", source: "continuity", stability: "turn", included: false },
-      { name: "world", source: "runtime", stability: "event", included: false },
-      { name: "scene", source: "runtime", stability: "event", included: false },
+      { name: "persona", source: "runtime", stability: "stable", included: false },
       { name: "memory", source: "continuity", stability: "turn", included: false },
       { name: "workflow", source: "runtime", stability: "turn", included: false },
       { name: "task", source: "request", stability: "turn", included: false },
     ]);
-    expect(context.ContextRevisions.stable).toMatch(/^[a-f0-9]{64}$/);
-    expect(context.ContextRevisions.context).toMatch(/^[a-f0-9]{64}$/);
-    expect(context.ContextRevisions.volatile).toMatch(/^[a-f0-9]{64}$/);
   });
-
-  test("changes only the volatile revision when the request continuity changes", () => {
-    const first = compile({ rootCommand: null });
+  test("request changes invalidate only the volatile revision", () => {
+    const first = compile();
     const second = compile({ rootCommand: toolRootCommand() });
-
     expect(second.ContextRevisions.stable).toBe(first.ContextRevisions.stable);
     expect(second.ContextRevisions.context).toBe(first.ContextRevisions.context);
     expect(second.ContextRevisions.volatile).not.toBe(first.ContextRevisions.volatile);
   });
-
-  test("does not churn the live revision when historical facts remain explicitly recallable", () => {
+  test("native memory is selected for turn context without altering the stable provider prefix", () => {
     const first = compile();
-    const second = compile({
-      continuityMemory: {
-        ...EmptyAgentContinuityMemoryPromptContext,
-        factCatalog: [
-          {
-            factKey: "user.location",
-            claim: "用户住在上海。",
-            sourceRefs: ["senera://memory-source/location"],
-            confidence: 1,
-            authority: "user_explicit",
-            validFrom: "2026-08-01T00:00:00.000Z",
-            supportCount: 1,
-            supportMass: 1,
-            maturity: "active",
-            updatedAt: "2026-08-23T00:00:00.000Z",
-            score: 0.9,
-            matchedBy: ["lexical"],
-          },
-        ],
-      },
-    });
-
-    expect(second.ContextRevisions.stable).toBe(first.ContextRevisions.stable);
-    // Historical facts are no longer copied into the live request overlay.
-    // Their source-backed recall path remains authoritative, so a new catalog
-    // entry must not invalidate an otherwise identical provider prefix.
-    expect(second.ContextRevisions.volatile).toBe(first.ContextRevisions.volatile);
-  });
-
-  test("keeps persona identity stable when only retrieved lore changes", () => {
-    const roleplayPreset = {
+    const memory = {
+      ...EmptyAgentContinuityMemoryPromptContext,
       enabled: true,
-      activePresetName: "resident.json",
-      card: {
-        title: "Senera",
-        corePersona: "可靠的常住代理",
-        languageStyle: "简洁",
-        examples: [{ situation: "问候", reply: "早上好。" }],
-        lore: [{ title: "天气", content: "今天下雨。" }],
-      },
-    };
-    const first = compile({ roleplayPreset });
-    const second = compile({
-      roleplayPreset: {
-        ...roleplayPreset,
-        card: {
-          ...roleplayPreset.card,
-          lore: [{ title: "天气", content: "今天晴朗。" }],
-        },
-      },
-    });
-
-    expect(second.ContextRevisions.stable).toBe(first.ContextRevisions.stable);
-    expect(second.ContextRevisions.volatile).not.toBe(first.ContextRevisions.volatile);
-    expect(second.ContextLayers.find((layer) => layer.name === "lore")).toMatchObject({ included: true });
-  });
-
-  test("marks stable facts and volatile task layers independently", () => {
-    const context = compile({
-      toolCards: [
+      eventCandidates: [
         {
-          name: "ReadFile",
-          description: "读取文件",
-          whenToUse: "需要查看文件时",
-          whenNotToUse: "不需要文件内容时",
-          documentationMarkdown: "",
+          id: "1",
+          uri: "memos:1",
+          revision: "v1",
+          type: "preference" as const,
+          summary: "先给结论",
+          occurredAt: "2026-08-22T08:00:00Z",
+          score: 0.9,
+          matchedBy: ["memos"],
         },
       ],
-      rootCommand: toolRootCommand(),
-      roleplayPreset: {
-        enabled: true,
-        activePresetName: "resident.json",
-        card: {
-          title: "Senera",
-          corePersona: "可靠的常住代理",
-          languageStyle: "简洁",
-          examples: [],
-          lore: [],
+    };
+    const second = compile({ continuityMemory: memory });
+    expect(second.ContextRevisions.stable).toBe(first.ContextRevisions.stable);
+    expect(second.ContextRevisions.context).toBe(first.ContextRevisions.context);
+    expect(second.ContinuityMemory).toBe(memory);
+    expect(second.ContextLayers.find((layer) => layer.name === "memory")?.included).toBe(true);
+  });
+  test("persona and workflow change their own revisions", () => {
+    const first = compile();
+    const persona = compile({ persona: { enabled: true, card: { corePersona: "可靠的助手", languageStyle: "简洁" } } });
+    expect(persona.ContextRevisions.stable).not.toBe(first.ContextRevisions.stable);
+    const workflow = compile({
+      workflow: {
+        ...EmptyAgentWorkflowPromptContext,
+        todos: {
+          items: [
+            {
+              id: "1",
+              content: "检查召回",
+              status: "pending",
+              order: 1,
+              createdAt: "2026-08-22T08:00:00Z",
+              updatedAt: "2026-08-22T08:00:00Z",
+            },
+          ],
+          counts: { total: 1, pending: 1, inProgress: 0, completed: 0, cancelled: 0 },
         },
       },
-      continuityMemory: {
-        ...EmptyAgentContinuityMemoryPromptContext,
-        enabled: true,
-        factCatalog: [
-          {
-            factKey: "user.response_style",
-            claim: "用户偏好简洁回答。",
-            sourceRefs: [],
-            confidence: 1,
-            authority: "user_explicit",
-            validFrom: "2026-08-01T00:00:00.000Z",
-            supportCount: 1,
-            supportMass: 1,
-            maturity: "active",
-            updatedAt: "2026-08-23T00:00:00.000Z",
-            score: 0.9,
-            matchedBy: ["lexical"],
-          },
-        ],
-        signals: [
-          {
-            uri: "senera://continuity-state/state",
-            summary: "用户已完成运动",
-            valueJson: "true",
-            valueType: "boolean",
-            observedAt: "2026-08-23T00:00:00.000Z",
-            expiresAt: "",
-          },
-        ],
-      },
     });
-
-    expect(context.ContextLayers.filter((layer) => layer.included).map((layer) => layer.name)).toEqual([
-      "kernel",
-      "persona",
-      "facts",
-      "task",
-    ]);
-  });
-
-  test("marks the memory layer when only historical event handles are selected", () => {
-    const context = compile({
-      continuityMemory: {
-        ...EmptyAgentContinuityMemoryPromptContext,
-        eventCandidates: [
-          {
-            sourceRefs: ["senera://memory-source/event"],
-            summary: "用户参加了羽毛球活动。",
-            occurredAt: "2026-08-23T00:00:00.000Z",
-            score: 0.6,
-            matchedBy: ["lexical"],
-          },
-        ],
-      },
-    });
-
-    expect(context.ContextLayers.find((layer) => layer.name === "memory")).toMatchObject({ included: true });
-  });
-
-  test("marks the turn facts layer when relevant persistent facts are selected", () => {
-    const context = compile({
-      continuityMemory: {
-        ...EmptyAgentContinuityMemoryPromptContext,
-        factCatalog: [
-          {
-            factKey: "user.location",
-            claim: "用户住在上海。",
-            sourceRefs: [],
-            confidence: 1,
-            authority: "user_explicit",
-            validFrom: "2026-08-01T00:00:00.000Z",
-            supportCount: 1,
-            supportMass: 1,
-            maturity: "active",
-            updatedAt: "2026-08-23T00:00:00.000Z",
-            score: 0.9,
-            matchedBy: ["lexical"],
-          },
-        ],
-      },
-    });
-
-    expect(context.ContextLayers.find((layer) => layer.name === "facts")).toMatchObject({ included: true });
+    expect(workflow.ContextRevisions.stable).toBe(first.ContextRevisions.stable);
+    expect(workflow.ContextRevisions.volatile).not.toBe(first.ContextRevisions.volatile);
+    expect(workflow.ContextLayers.find((layer) => layer.name === "workflow")?.included).toBe(true);
   });
 });

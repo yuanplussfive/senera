@@ -1,5 +1,6 @@
 import type { AgentWebSocketRequestOf } from "./AgentWebSocketProtocol.js";
 import type { AgentWebSocketEventSender, AgentWebSocketRequestContext } from "./AgentWebSocketTypes.js";
+import { projectAgentWebSocketRequestFailure } from "./AgentWebSocketRequestFailures.js";
 
 export class AgentWebSocketSessionRequestHandlers {
   constructor(private readonly context: AgentWebSocketRequestContext) {}
@@ -25,12 +26,33 @@ export class AgentWebSocketSessionRequestHandlers {
       attachments: request.attachments,
       disposition: request.disposition,
       queueMode: request.queueMode,
+      activations: request.activations,
       onEvent: sendEvent,
     });
   }
 
   async close(request: AgentWebSocketRequestOf<"session.close">, sendEvent: AgentWebSocketEventSender): Promise<void> {
     await this.context.sessionManager.closeSession({ sessionId: request.sessionId, onEvent: sendEvent });
+  }
+
+  async closeMany(
+    request: AgentWebSocketRequestOf<"session.close_many">,
+    sendEvent: AgentWebSocketEventSender,
+  ): Promise<void> {
+    const outcomes = await this.context.sessionManager.closeSessions({
+      sessionIds: request.sessionIds,
+      onEvent: sendEvent,
+    });
+    for (const outcome of outcomes) {
+      if (outcome.kind !== "failed") continue;
+      await sendEvent(
+        projectAgentWebSocketRequestFailure(
+          { type: "session.close", sessionId: outcome.sessionId },
+          outcome.error,
+          this.context,
+        ),
+      );
+    }
   }
 
   async cancel(
@@ -68,6 +90,21 @@ export class AgentWebSocketSessionRequestHandlers {
       input: request.input,
       approvalMode: request.approvalMode,
       attachments: request.attachments,
+      activations: request.activations,
+      onEvent: sendEvent,
+    });
+  }
+
+  async retry(request: AgentWebSocketRequestOf<"session.retry">, sendEvent: AgentWebSocketEventSender): Promise<void> {
+    await this.context.sessionManager.retryFailedRun({
+      sessionId: request.sessionId,
+      failedRequestId: request.failedRequestId,
+      requestId: request.requestId,
+      recoveryMode: request.recoveryMode,
+      modelProviderId: request.modelProviderId,
+      thinkingLevel: request.thinkingLevel,
+      approvalMode: request.approvalMode,
+      activations: request.activations,
       onEvent: sendEvent,
     });
   }

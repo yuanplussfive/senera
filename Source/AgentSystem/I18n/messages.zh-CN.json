@@ -232,7 +232,6 @@
   "orchestration.modelNotAllowed": "子代理模型不在已配置的模型池中：{modelProviderId}",
   "orchestration.modelChatCapabilityRequired": "子代理模型必须支持对话能力：{modelProviderId}",
   "orchestration.modelPoolEmpty": "子代理模型池中没有可用模型。",
-  "preset.operationFailed": "预设操作失败。",
   "auth.accountExists": "管理员账户已存在：{path}",
   "auth.accountMissing": "管理员账户尚未初始化。请先执行 access init：{path}",
   "auth.allowedOriginsRequired": "公网访问控制必须配置 Server.AccessControl.AllowedOrigins。",

@@ -1,4 +1,5 @@
 import type { FrontendLocalizedText } from "../i18n/frontendLocaleModel";
+import type { AgentActivationCatalogSnapshot } from "../../../Source/AgentSystem/Activation/AgentActivationTypes";
 
 export type McpInputValue = string | number | boolean | string[] | number[] | boolean[];
 
@@ -32,13 +33,14 @@ export interface McpServerSettingsItem {
   descriptorKind: "mcpb" | "registry" | "legacy" | "connection";
   transport: "stdio" | "http";
   status: "configured" | "needs_input" | "unavailable";
-  unavailableCapabilities?: string[];
   unavailableCapabilityDetails?: { id: string; reason?: string }[];
   inputs: McpInputStatus[];
 }
 
 export interface McpServerSnapshotData {
   servers: McpServerSettingsItem[];
+  /** The live @ catalog after MCP configuration or availability changes. */
+  activation: AgentActivationCatalogSnapshot;
   operation?: { requestId: string; kind: "mcp_input_update" };
 }
 

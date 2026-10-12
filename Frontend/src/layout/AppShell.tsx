@@ -13,7 +13,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { AppIcon, IconButton, Sheet, SheetContent, Tabs, TabsContent, TabsList, TabsTrigger } from "../shared/ui";
+import { AppIcon, IconButton, PillExpandNavbar, Sheet, SheetContent, Tabs, TabsContent } from "../shared/ui";
 import { motionTimings, useMotionLevel } from "../shared/motion";
 import { useStore } from "../store/sessionStore";
 import { WorkspaceContextMenu } from "./WorkspaceContextMenu";
@@ -56,6 +56,7 @@ interface AppShellProps {
   onOpenSessionPanel?: () => void;
   onOpenWorkflowPanel?: () => void;
   onRefreshSession?: () => void;
+  onRefreshInterface?: () => void;
 }
 
 interface ResponsiveDrawerProps {
@@ -173,6 +174,7 @@ export function AppShell({
   onOpenSessionPanel,
   onOpenWorkflowPanel,
   onRefreshSession,
+  onRefreshInterface,
 }: AppShellProps): JSX.Element {
   const locale = useFrontendLocale();
   const sidebarCollapsed = useStore((state) => state.sidebarCollapsed);
@@ -366,31 +368,20 @@ export function AppShell({
           data-window-drag-region
           data-workflow-dock-toolbar
         >
-          <TabsList
-            className="min-w-0 w-full flex-1"
-            aria-label={frontendMessage("workflow.dock.tabs")}
-            data-workflow-dock-tabs
-            data-workflow-dock-tabs-list
-          >
-            {WORKFLOW_DOCK_ITEMS.map(({ id, messageKey }) => (
-              <TabsTrigger
-                key={id}
-                value={id}
-                className="relative isolate overflow-visible data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-                data-workflow-dock-tab={id}
-              >
-                {workflowDockTool === id ? (
-                  <motion.span
-                    layoutId={`workflow-dock-active-tab-${presentation}`}
-                    transition={disableMotion || reduceMotion ? { duration: 0 } : { layout: motionTimings.selection }}
-                    className="pointer-events-none absolute inset-0 z-0 rounded-md bg-surface-raised shadow-sm"
-                    data-workflow-dock-active-indicator={presentation}
-                  />
-                ) : null}
-                <span className="relative z-10 min-w-0 truncate">{frontendMessage(messageKey, {}, locale)}</span>
-              </TabsTrigger>
-            ))}
-          </TabsList>
+          <div className="min-w-0 flex-1">
+            <PillExpandNavbar
+              mode="tabs"
+              value={workflowDockTool}
+              label={frontendMessage("workflow.dock.tabs")}
+              attributes={{ "data-workflow-dock-tabs": "", "data-workflow-dock-tabs-list": "" }}
+              items={WORKFLOW_DOCK_ITEMS.map(({ id, messageKey, icon }) => ({
+                id,
+                label: frontendMessage(messageKey, {}, locale),
+                icon: <AppIcon icon={icon} size={16} />,
+                attributes: { "data-workflow-dock-tab": id },
+              }))}
+            />
+          </div>
           {presentation === "dock" ? (
             <IconButton
               label={frontendMessage("workflow.panel.collapse")}
@@ -427,6 +418,7 @@ export function AppShell({
       onOpenSessionPanel={onOpenSessionPanel}
       onOpenWorkflowPanel={onOpenWorkflowPanel}
       onRefreshSession={onRefreshSession}
+      onRefreshInterface={onRefreshInterface}
     >
       <div
         className="relative flex h-dvh w-screen overflow-hidden bg-surface-canvas text-content-primary [background-image:var(--theme-bg-image)]"

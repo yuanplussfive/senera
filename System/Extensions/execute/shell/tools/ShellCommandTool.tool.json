@@ -4,22 +4,9 @@
   "presentation": {
     "category": "shell-command",
     "icon": "terminal",
-    "activity": {
-      "action": { "zh-CN": "运行命令", "en-US": "Run" },
-      "argumentPath": "/command/script",
-      "detailPaths": ["/cwd"]
-    }
+    "activity": { "action": { "zh-CN": "执行", "en-US": "Run" }, "argumentPath": "/command/script" }
   },
-  "observationProjection": "observations/default.projection.json",
-  "contentPolicy": {
-    "ownership": "tool",
-    "kind": "execution",
-    "representation": "preserve",
-    "compression": "none",
-    "deduplication": "none",
-    "preserve": ["code", "json", "logs", "urls", "identifiers"]
-  },
-  "description": "在策略选择的工作区执行边界内运行显式方言的 shell 命令；短命令直接返回，长命令自动返回可增量读取和控制的执行资源。文件编辑和 Git 操作使用专用工具。",
+  "description": "在工作区执行 Shell 命令并保留可查询输出。服务以前台方式运行；timeoutMs=0 表示持续跟踪进程树，直到退出或显式停止。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
@@ -35,10 +22,19 @@
         "additionalProperties": false
       },
       "cwd": { "type": "string", "minLength": 1 },
-      "timeoutMs": { "type": "integer", "exclusiveMinimum": 0, "maximum": 1800000 },
-      "justification": { "type": "string", "minLength": 1 }
+      "timeoutMs": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991,
+        "description": "0 表示不设运行时限，持续跟踪进程树直到退出或显式停止；正数受系统工具超时配置约束。"
+      },
+      "workspaceEffect": {
+        "type": "string",
+        "enum": ["read", "mutate"],
+        "description": "Whether the command only reads the workspace or may change workspace content."
+      }
     },
-    "required": ["command"],
+    "required": ["command", "workspaceEffect"],
     "additionalProperties": false
   },
   "permissions": ["process:shell", "filesystem:workspace"],
@@ -59,21 +55,21 @@
     }
   ],
   "search": {
-    "Summary": "运行测试、构建、诊断和脚本；短命令直接返回，长命令自动成为可恢复执行资源。",
+    "Summary": "运行命令、测试和构建；服务以前台方式托管，timeoutMs=0 表示不设时限。",
     "Capabilities": [
       {
         "Id": "host.shell-command",
-        "Title": "Policy-routed shell command",
-        "Description": "Run an explicitly typed shell command and automatically promote long-running work to a resumable execution resource.",
+        "Title": "Run shell command",
+        "Description": "Run a shell command and retain its output as a resumable process resource.",
         "Facets": {
           "Actions": ["run", "execute", "test", "build", "check"],
           "Targets": ["shell", "process", "workspace", "test-suite", "build-system"],
-          "Inputs": ["command", "cwd", "timeout"],
+          "Inputs": ["command", "cwd", "timeout", "workspace-effect"],
           "Outputs": ["exit-code", "stdout", "stderr", "shell-execution", "resource-id", "cursor"],
           "Evidence": ["shell-execution"],
           "Effects": ["process", "may-write-workspace", "network-possible"]
         },
-        "Aliases": ["bash", "运行命令", "终端", "run tests", "npm run check", "PowerShell Get-Command"],
+        "Aliases": ["bash", "运行命令", "开发服务器", "后台服务", "run tests", "npm run check"],
         "Risk": {
           "SideEffect": "process",
           "Permission": "shell",
@@ -82,7 +78,8 @@
       }
     ],
     "UseCases": [
-      "需要运行测试、构建、类型检查、脚本、开发服务器或系统命令时使用。",
+      "需要运行命令、测试、构建或开发服务器时使用。",
+      "服务进程以前台方式运行并持续托管时设置 timeoutMs=0。",
       "需要验证刚才的文件修改是否通过时使用。"
     ],
     "Examples": [
@@ -91,6 +88,7 @@
       "Windows PowerShell: Get-Command pm2 -ErrorAction SilentlyContinue"
     ],
     "Avoid": [
+      "需要交互输入或 PTY 时使用 TerminalStartTool；服务请以前台命令运行，并设置 timeoutMs=0。",
       "不要用于直接编辑文件；工作区文件变更优先使用 WorkspaceApplyPatch。",
       "不要用于 Git 操作；仓库检查和本地变更分别使用 GitInspect 与 GitMutate。",
       "普通文件读取、内容搜索、文件查找和目录浏览分别使用 WorkspaceRead、WorkspaceGrep、WorkspaceFind、WorkspaceList。",

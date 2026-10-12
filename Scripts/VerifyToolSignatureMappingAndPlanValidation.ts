@@ -16,7 +16,7 @@ async function main(): Promise<void> {
   const runtime = AgentSystemRuntime.load({
     workspaceRoot,
     configPath: isolatedConfig.configPath,
-    toolSearchMemoryStore: isolatedConfig.createToolSearchMemoryStore(),
+    toolSearchScenarioSource: isolatedConfig.createToolSearchScenarioSource(),
   });
 
   try {
@@ -39,14 +39,14 @@ async function main(): Promise<void> {
       "command",
       "cwd",
       "timeoutMs",
-      "justification",
+      "workspaceEffect",
     ]);
     assert.deepEqual(schemaFieldNames(patch.contract?.arguments?.jsonSchema ?? {}), ["operations"]);
 
     const contract = command.contract?.arguments;
     assert.deepEqual(
       contract?.properties.map((property) => property.name),
-      ["command", "cwd", "timeoutMs", "justification"],
+      ["command", "cwd", "timeoutMs", "workspaceEffect"],
     );
 
     const nativeDefinitions = runtime.services.pi.toolDefinitions({ toolAccessGrant });

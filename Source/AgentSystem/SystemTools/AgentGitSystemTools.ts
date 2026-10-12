@@ -18,7 +18,6 @@ import {
   type ToolSearchManifest,
 } from "../Types/AgentToolContractTypes.js";
 import { AgentExecutionErrorCodes } from "../Xml/AgentXmlStatus.js";
-import { AgentToolSemanticProjectionKinds } from "../ToolRuntime/AgentToolSemanticProjection.js";
 import {
   defineSystemTool,
   systemToolExecutionResult,
@@ -26,7 +25,6 @@ import {
   type AgentSystemToolMetadata,
 } from "./AgentSystemToolDefinition.js";
 import type { AgentToolProcessError } from "../Types/ToolRuntimeTypes.js";
-import type { AgentToolObservationProjectionManifest } from "../Types/AgentToolObservationProjectionTypes.js";
 
 const RepositoryPath = z.string().trim().min(1);
 const GitPath = z.string().trim().min(1);
@@ -121,35 +119,6 @@ const GitCommandOutput = z
   })
   .strict();
 
-const CompactTextLimits = {
-  maxDepth: 1,
-  maxArrayItems: 4,
-  maxObjectProperties: 8,
-  maxNodes: 16,
-} as const;
-
-const CompactStructuredLimits = {
-  maxDepth: 4,
-  maxArrayItems: 16,
-  maxObjectProperties: 16,
-  maxNodes: 96,
-} as const;
-
-const GitObservationProjection = {
-  schemaVersion: 2,
-  maxTokens: 8_192,
-  maxOmissions: 32,
-  artifactFallback: { strategy: "reference", requiredWhenTruncated: true },
-  sources: [
-    gitObservationSource("headline", "text", "essential", true, 128, CompactTextLimits),
-    gitObservationSource("summary", "text", "high", true, 256, CompactTextLimits),
-    gitObservationSource("semanticDigest", "text", "high", false, 2_048, CompactTextLimits),
-    gitObservationSource("retrieval", "json", "high", true, 128, CompactStructuredLimits),
-    gitObservationSource("result", "json", "normal", true, 1_024, CompactStructuredLimits),
-    gitObservationSource("limitations", "orderedArray", "low", false, 128, CompactStructuredLimits),
-  ],
-} as const satisfies AgentToolObservationProjectionManifest;
-
 const GitExtension = {
   name: "git",
   displayName: { "zh-CN": "Git 版本控制", "en-US": "Git Version Control" },
@@ -237,7 +206,6 @@ function gitMetadata(
   search: ToolSearchManifest,
 ): AgentSystemToolMetadata {
   return {
-    observation: GitObservationProjection,
     description,
     permissions:
       intent === "inspect"
@@ -469,11 +437,6 @@ async function executeGit(
     stderr: result.stderr,
     exitCode: result.exitCode,
     signal: result.signal,
-    semanticProjectionRequest: {
-      kind: AgentToolSemanticProjectionKinds.Execution,
-      command: `git ${operation}`,
-      cwd: repository,
-    },
   } satisfies AgentSystemToolExecutionProcess;
   return {
     result: {
@@ -516,17 +479,6 @@ function gitProcessFailure(
       signal: result.signal,
     },
   };
-}
-
-function gitObservationSource(
-  source: AgentToolObservationProjectionManifest["sources"][number]["source"],
-  mode: AgentToolObservationProjectionManifest["sources"][number]["mode"],
-  priority: AgentToolObservationProjectionManifest["sources"][number]["priority"],
-  requiredForCompletion: boolean,
-  maxTokens: number,
-  limits: AgentToolObservationProjectionManifest["sources"][number]["limits"],
-) {
-  return { source, mode, priority, requiredForCompletion, maxTokens, limits };
 }
 
 const GitExecutionProfile: SeneraProcessExecutionProfile = Object.freeze({

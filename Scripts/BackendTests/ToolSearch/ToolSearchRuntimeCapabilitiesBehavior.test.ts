@@ -1,17 +1,12 @@
 import { expect, test } from "vitest";
 import type { AgentExtensionRegistry } from "../../../Source/AgentSystem/Extensions/AgentExtensionRegistry.js";
-import { InMemoryToolSearchMemoryStore } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchMemoryStore.js";
+import { VerificationScenarioSource } from "../../VerificationScenarioSource.js";
 import {
   AgentToolMetaToolNames,
   AgentToolSearchRuntime,
 } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchRuntime.js";
 import { createModelProvider } from "../Support/AgentTestFixtures.js";
-import {
-  createRegistry,
-  createTool,
-  createToolLearningConfig,
-  createToolSearchConfig,
-} from "./ToolSearchTestFixtures.js";
+import { createRegistry, createTool, createToolSearchConfig } from "./ToolSearchTestFixtures.js";
 
 test("ToolSearch rebuilds discovery from the execution targets currently available on the host", async () => {
   let availableExecutionTargets: Array<"Local" | "Sandbox"> = ["Local"];
@@ -41,11 +36,10 @@ test("ToolSearch rebuilds discovery from the execution targets currently availab
       }),
     ]) as unknown as AgentExtensionRegistry,
     createToolSearchConfig(),
-    createToolLearningConfig(),
     "E:/workspace",
     createModelProvider(),
     {
-      memoryStore: new InMemoryToolSearchMemoryStore(),
+      scenarioSource: new VerificationScenarioSource(),
       availableExecutionTargets: () => availableExecutionTargets,
     },
   );

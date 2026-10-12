@@ -273,7 +273,6 @@ function toModelProviderListItem(
     model: provider.Model,
     capabilities: provider.Capabilities,
     declaredCapabilities: provider.DeclaredCapabilities,
-    thinkingLevelMap: provider.ThinkingLevelMap,
     thinkingProfiles: provider.ThinkingProfiles,
     defaultThinkingLevel: provider.DefaultThinkingLevel,
   });

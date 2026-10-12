@@ -84,7 +84,8 @@ export const applyWorkspacePatchHostTool: AgentHostToolHandler = async (args, co
       total: totalStages,
       unit: "stage",
     });
-    await applyWorkspacePatchTransaction(plan, commitEnv);
+    const workspaceMutationReceipt = await applyWorkspacePatchTransaction(plan, commitEnv);
+    const appliedChangedPaths = workspaceMutationReceipt.entries.map((entry) => entry.path);
     reporting.reporter.progress({
       message: "Workspace patch applied.",
       completed: 4,
@@ -92,14 +93,19 @@ export const applyWorkspacePatchHostTool: AgentHostToolHandler = async (args, co
       unit: "stage",
     });
 
-    return toolProcessSuccessResult({
-      text: `Workspace patch applied ${plan.operations.length} operation(s) over ${changedPaths.length} path(s).`,
-      applied: true,
-      operationCount: plan.operations.length,
-      changedPaths,
-      operations: plan.operations,
-      extensions: extensionValidations,
-    });
+    return toolProcessSuccessResult(
+      {
+        text: `Workspace patch applied ${plan.operations.length} operation(s) over ${appliedChangedPaths.length} path(s).`,
+        applied: true,
+        operationCount: plan.operations.length,
+        changedPaths: appliedChangedPaths,
+        operations: plan.operations,
+        extensions: extensionValidations,
+      },
+      {
+        workspaceMutationReceipt,
+      },
+    );
   } catch (error) {
     if (error instanceof AgentExtensionPatchPreflightError) {
       return workspacePatchFailure({

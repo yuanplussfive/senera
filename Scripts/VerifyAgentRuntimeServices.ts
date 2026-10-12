@@ -10,11 +10,7 @@ import {
   renderAgentPromptContextWires,
   type AgentPromptContextWireSet,
 } from "../Source/AgentSystem/Prompt/AgentPromptContextWireRenderer.js";
-import { compileAgentSceneContext } from "../Source/AgentSystem/Prompt/AgentSceneContextCompiler.js";
-import {
-  normalizeAgentContinuityTemplateContext,
-  normalizeAgentWorkflowTemplateContext,
-} from "../Source/AgentSystem/Prompt/AgentPromptTemplateContextNormalizer.js";
+import { normalizeAgentWorkflowTemplateContext } from "../Source/AgentSystem/Prompt/AgentPromptTemplateContextNormalizer.js";
 import { ToolLoadingModes } from "../Source/AgentSystem/Types/AgentToolContractTypes.js";
 
 const workspaceRoot = process.cwd();
@@ -24,7 +20,7 @@ try {
   const runtime = AgentSystemRuntime.load({
     workspaceRoot,
     configPath,
-    toolSearchMemoryStore: isolatedConfig.createToolSearchMemoryStore(),
+    toolSearchScenarioSource: isolatedConfig.createToolSearchScenarioSource(),
   });
 
   assert.ok(runtime.services.retrieval);
@@ -52,6 +48,8 @@ try {
   assert.deepEqual(runtime.services.promptContext.recommendedSkillToolRouting(workflowSkills), {
     directToolNames: ["AgentSpawn", "AgentList", "AgentWait", "AgentInput", "AgentStop", "AgentResume"],
     dynamicToolNames: [],
+    nativeToolNames: [],
+    requiredToolNames: [],
   });
   const investigationSkills = await runtime.services.promptContext.activateSkills({
     input: "现在的 shell 工具怎么实现的，读取 SeneraShellPlatform 的片段并分析",
@@ -90,8 +88,7 @@ try {
   assert.equal(baseContext.ExecutionEnvironment.executionTargets.local.workspaceMount, "host");
   const promptWires = renderAgentPromptContextWires(
     {
-      scene: compileAgentSceneContext({ world: baseContext.Workflow.world }),
-      continuity: normalizeAgentContinuityTemplateContext(baseContext.ContinuityMemory),
+      continuity: baseContext.ContinuityMemory,
       workflow: normalizeAgentWorkflowTemplateContext(baseContext.Workflow),
     },
     { estimateTokens: (text) => text.length },
@@ -103,7 +100,6 @@ try {
     const renderedPrompt = runtime.promptRenderer.renderFileSync(template.path, {
       ...baseContext,
       DelegatedRole: projectAgentDelegatedRolePromptContext(),
-      RoleCheck: runtime.promptConfig.RoleCheck,
       ...templateWireContext,
     });
     assert.ok(renderedPrompt.includes("<execution_environment>"));
@@ -193,7 +189,7 @@ try {
     workspaceRoot,
     configPath,
     runtimeModules: [runtimeModule],
-    toolSearchMemoryStore: isolatedConfig.createToolSearchMemoryStore(),
+    toolSearchScenarioSource: isolatedConfig.createToolSearchScenarioSource(),
   });
   runtimeWithModule.services.retrieval.finishRequest("verify-runtime-module");
   assert.equal(observedFinishedRequest, "verify-runtime-module");
@@ -212,9 +208,6 @@ function readRecord(value: unknown): Record<string, unknown> {
 
 function projectTemplateWireContext(wires: AgentPromptContextWireSet): Record<string, string> {
   return {
-    StableProfileWire: wires.stableProfile.text,
     LiveStateWire: wires.liveState.text,
-    LoreWire: "",
-    ResidentStateWire: "",
   };
 }

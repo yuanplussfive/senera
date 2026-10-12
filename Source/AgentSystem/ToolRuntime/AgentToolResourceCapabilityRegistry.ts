@@ -92,6 +92,17 @@ export class AgentToolResourceCapabilityRegistry implements AgentToolResourceDis
     return this.capabilities.get(capabilityId)?.discovery;
   }
 
+  listCapabilityIds(): readonly string[] {
+    return [...this.capabilities.keys()].sort();
+  }
+
+  listClaimCapabilityIds(): readonly string[] {
+    return [...this.capabilities.values()]
+      .filter((capability) => capability.claim !== undefined)
+      .map((capability) => capability.id)
+      .sort();
+  }
+
   validateManifest(resource: ToolResourceArgumentManifest): void {
     const capability = this.requireCapability(resource.Capability);
     if (!capability.validateManifest) {

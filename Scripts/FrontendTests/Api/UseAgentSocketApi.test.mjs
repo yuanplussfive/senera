@@ -215,9 +215,10 @@ test("agent socket delivers cancellation control events without waiting for the 
   act(() => socket.receive(event(EventKinds.RunCancellationProgress, 1, { stage: "started" })));
 
   expect(onEvents).toHaveBeenCalledTimes(1);
-  expect(onEvents).toHaveBeenCalledWith([
-    expect.objectContaining({ kind: EventKinds.RunCancellationProgress, sequence: 1 }),
-  ]);
+  expect(onEvents).toHaveBeenCalledWith(
+    [expect.objectContaining({ kind: EventKinds.RunCancellationProgress, sequence: 1 })],
+    "ws://agent.test/runtime",
+  );
   act(() => vi.advanceTimersByTime(16));
   expect(onEvents).toHaveBeenCalledTimes(1);
 });
@@ -318,9 +319,74 @@ test("agent socket delegates a failed handshake to the reconnect policy and hono
     await Promise.resolve();
   });
 
-  expect(reconnectPolicy).toHaveBeenCalledWith({ code: 1006, reason: "", wasClean: false, opened: false });
+  expect(reconnectPolicy).toHaveBeenCalledWith({
+    url: "ws://agent.test/runtime",
+    code: 1006,
+    reason: "",
+    wasClean: false,
+    opened: false,
+  });
   act(() => vi.advanceTimersByTime(15_000));
   expect(TestWebSocket.instances).toHaveLength(1);
+});
+
+test("a permanent workspace rejection stays stopped when the network returns and allows explicit recovery", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("WebSocket", TestWebSocket);
+  const reconnectPolicy = vi.fn(async () => "stop");
+  const handleRef = { current: null };
+  const props = { handleRef, onEvent: vi.fn(), reconnectPolicy, url: "ws://agent.test/?workspaceId=missing" };
+  const { rerender } = render(React.createElement(SocketHarness, props));
+  await act(async () => {
+    TestWebSocket.instances[0].open();
+    TestWebSocket.instances[0].disconnect(4404, "workspace_not_found", true);
+    await Promise.resolve();
+  });
+  act(() => {
+    window.dispatchEvent(new Event("online"));
+    vi.advanceTimersByTime(60_000);
+  });
+  expect(TestWebSocket.instances).toHaveLength(1);
+  expect(reconnectPolicy).toHaveBeenCalledWith(expect.objectContaining({ url: props.url, code: 4404 }));
+  act(() => handleRef.current.reconnect());
+  expect(TestWebSocket.instances).toHaveLength(2);
+  await act(async () => {
+    TestWebSocket.instances[1].disconnect(4404, "workspace_not_found", true);
+    await Promise.resolve();
+  });
+  rerender(React.createElement(SocketHarness, { ...props, url: "ws://agent.test/?workspaceId=registered" }));
+  expect(TestWebSocket.instances).toHaveLength(3);
+  expect(TestWebSocket.instances[2].url).toContain("workspaceId=registered");
+});
+
+test("workspace rebinding discards buffered and late frames from the previous connection", () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("WebSocket", TestWebSocket);
+  vi.stubGlobal("requestAnimationFrame", (callback) => window.setTimeout(() => callback(performance.now()), 16));
+  vi.stubGlobal("cancelAnimationFrame", (id) => window.clearTimeout(id));
+  const onEvents = vi.fn();
+  const handleRef = { current: null };
+  const urlA = "ws://agent.test/?workspaceId=a";
+  const urlB = "ws://agent.test/?workspaceId=b";
+  const { rerender } = render(React.createElement(SocketHarness, { handleRef, onEvents, url: urlA }));
+  const old = TestWebSocket.instances[0];
+  act(() => {
+    old.open();
+    old.receive(event(EventKinds.ModelDelta, 1, { text: "old buffered" }));
+  });
+  rerender(React.createElement(SocketHarness, { handleRef, onEvents, url: urlB }));
+  const next = TestWebSocket.instances[1];
+  act(() => {
+    old.receive(event(EventKinds.RunCompleted, 2, {}));
+    next.open();
+    next.receive(event(EventKinds.ModelDelta, 1, { text: "new workspace" }));
+    vi.advanceTimersByTime(16);
+  });
+  expect(onEvents).toHaveBeenCalledTimes(1);
+  expect(onEvents).toHaveBeenCalledWith([expect.objectContaining({ data: { text: "new workspace" } })], urlB);
+  expect(handleRef.current.send({ type: "session.list" })).toBe(true);
+  expect(old.sent).toEqual([]);
+  expect(next.sent).toEqual([JSON.stringify({ type: "session.list" })]);
 });
 
 function SocketHarness({ handleRef, ...options }) {

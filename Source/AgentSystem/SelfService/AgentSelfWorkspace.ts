@@ -6,9 +6,9 @@ const DataDomainNames = [
   "credentials",
   "sessions",
   "memory",
+  "memos",
   "orchestration",
   "channels",
-  "toolSearch",
 ] as const;
 
 export function projectAgentSelfWorkspaceInfo(port: AgentSelfServicePort): AgentSelfWorkspaceInfo {

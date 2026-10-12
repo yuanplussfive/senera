@@ -52,6 +52,8 @@ function createTurnState(): AgentPiTurnState {
     exposedToolNames: ["TestTool"],
   });
   return new AgentPiTurnState({
+    systemPrompt: "Test agent system context.",
+    userMessage: "Test tool preflight request.",
     approvalMode: "agent",
     requestId: "request-preflight",
     step: 1,

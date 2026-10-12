@@ -6,6 +6,7 @@ export interface AgentImageVisionInput {
 }
 
 export interface AgentImageVisionRequest {
+  requestId?: string;
   provider: ResolvedAgentModelProviderConfig;
   systemPrompt: string;
   prompt: string;

@@ -17,6 +17,7 @@ import {
 import { AgentPiActiveSessionRegistry } from "../../../Source/AgentSystem/Pi/AgentPiActiveSessionRegistry.js";
 import type { AgentPiSession } from "../../../Source/AgentSystem/Pi/AgentPiSubstrate.js";
 import { AgentSessionMessageQueueModes } from "../../../Source/AgentSystem/Session/AgentSessionMessageQueueMode.js";
+import type { AgentSessionBackgroundWakePayload } from "../../../Source/AgentSystem/Session/AgentSessionBackgroundWake.js";
 import { AgentSessionQueuedMessageConflictError } from "../../../Source/AgentSystem/Session/AgentSessionActiveRunController.js";
 import { createAgentSessionMessageCommand } from "../../../Source/AgentSystem/Session/AgentSessionCommand.js";
 import { createDeferred, waitForAbort } from "../Support/AsyncTestFixtures.js";
@@ -122,7 +123,7 @@ describe("Session manager behavior", () => {
       sessionId: "resident-owner",
       content: "世界出现了新的变化。",
       createdAt: "2026-08-05T00:03:00.000Z",
-      metadata: { proactive: { sourceId: "world.resident.idle", deliveryId: "resident-idle-work-1" } },
+      metadata: { proactive: { sourceId: "proactive.test", deliveryId: "proactive-test-1" } },
       onEvent: collect(events),
     };
     await expect(fixture.manager.deliverProactiveMessage(request)).resolves.toBe("delivered");
@@ -142,26 +143,32 @@ describe("Session manager behavior", () => {
     const events: AgentDomainEvent[] = [];
     await fixture.manager.createSession({ sessionId: "background-owner" });
 
-    const request = {
-      sessionId: "background-owner",
+    const payload: AgentSessionBackgroundWakePayload = {
       requestId: "background-child-1-rev-1",
       input: JSON.stringify({ taskId: "background-child-1", status: "completed", result: "finished" }),
       approvalMode: "agent" as const,
       modelProviderId: "provider-background",
       metadata: { backgroundTask: { taskId: "background-child-1", runId: "background-child-1" } },
+      childRunIds: ["background-child-1"],
+    };
+    const request = {
+      sessionId: "background-owner",
+      resolve: () => payload,
+      acknowledge: vi.fn(),
       onEvent: collect(events),
     };
 
     await expect(fixture.manager.wakeFromBackgroundTask(request)).resolves.toBe("accepted");
     await expect(fixture.manager.wakeFromBackgroundTask(request)).resolves.toBe("accepted");
+    expect(request.acknowledge).toHaveBeenCalledTimes(2);
 
     const conversation = fixture.store.loadConversation("background-owner");
     expect(conversation.filter((entry) => entry.kind === "user.message")).toHaveLength(1);
     expect(conversation[0]).toEqual(
       expect.objectContaining({
-        requestId: request.requestId,
-        metadata: request.metadata,
-        content: request.input,
+        requestId: payload.requestId,
+        metadata: payload.metadata,
+        content: payload.input,
       }),
     );
     // A replayed request re-emits its durable lifecycle to the caller, but it
@@ -173,60 +180,166 @@ describe("Session manager behavior", () => {
     const repository = new InMemorySessionRepository();
     const seedStore = new AgentSessionStore({ repository });
     const opened = seedStore.open("background-recovery-owner");
-    const request = {
-      sessionId: "background-recovery-owner",
+    const payload: AgentSessionBackgroundWakePayload = {
       requestId: "background-child-recovery-rev-1",
       input: JSON.stringify({ taskId: "background-child-recovery", status: "completed", result: "finished" }),
       approvalMode: "agent" as const,
       modelProviderId: "provider-background",
       metadata: { backgroundTask: { taskId: "background-child-recovery", runId: "background-child-recovery" } },
+      childRunIds: ["background-child-recovery"],
+    };
+    const request = {
+      sessionId: "background-recovery-owner",
+      resolve: () => payload,
+      acknowledge: vi.fn(),
     };
     const startedAt = "2026-08-05T00:04:00.000Z";
-    const entry = userEntry(request.requestId, request.input);
+    const entry = userEntry(payload.requestId, payload.input);
     const runningSession = {
       ...opened.session,
       status: "running" as const,
       updatedAt: startedAt,
-      activeRequest: { requestId: request.requestId, input: request.input, startedAt },
+      activeRequest: { requestId: payload.requestId, input: payload.input, startedAt },
       conversation: [entry],
     };
     const command = createAgentSessionMessageCommand({
-      requestId: request.requestId,
-      modelProviderId: request.modelProviderId,
-      text: request.input,
-      approvalMode: request.approvalMode,
+      requestId: payload.requestId,
+      modelProviderId: payload.modelProviderId,
+      text: payload.input,
+      approvalMode: payload.approvalMode,
       createdAt: startedAt,
     });
     seedStore.persistRunStart(
       runningSession,
-      request.requestId,
+      payload.requestId,
       entry,
       {
         sessionId: request.sessionId,
-        requestId: request.requestId,
-        input: request.input,
+        requestId: payload.requestId,
+        input: payload.input,
         status: "running",
         startedAt,
         updatedAt: startedAt,
       },
-      runEvent(request.sessionId, request.requestId, 1),
+      runEvent(request.sessionId, payload.requestId, 1),
       command,
     );
 
     const fixture = createManagerFixture({
       repository,
-      loopFactory: () => ({ run: async () => completedRun(request.requestId) }),
+      loopFactory: () => ({ run: async () => completedRun(payload.requestId) }),
     });
     await expect(fixture.manager.wakeFromBackgroundTask(request)).resolves.toBe("accepted");
     await vi.waitFor(() => {
       expect(fixture.store.loadConversation(request.sessionId)).toEqual(
-        expect.arrayContaining([expect.objectContaining({ kind: "assistant.decision", requestId: request.requestId })]),
+        expect.arrayContaining([expect.objectContaining({ kind: "assistant.decision", requestId: payload.requestId })]),
       );
     });
 
     const conversation = fixture.store.loadConversation(request.sessionId);
     expect(conversation.filter((item) => item.kind === "user.message")).toHaveLength(1);
     expect(conversation.filter((item) => item.kind === "assistant.decision")).toHaveLength(1);
+  });
+
+  test("resolves a background completion only after the active parent turn settles", async () => {
+    const pendingLoop = createPendingLoop();
+    const fixture = createManagerFixture({ loopFactory: () => pendingLoop.loop });
+    await fixture.manager.createSession({ sessionId: "background-active-owner" });
+    const parentRun = fixture.manager.submitMessage({
+      sessionId: "background-active-owner",
+      requestId: "parent-active-request",
+      input: "Continue the current task",
+      approvalMode: "agent",
+    });
+    await pendingLoop.started;
+
+    let parentAlreadyReceivedResult = false;
+    const payload: AgentSessionBackgroundWakePayload = {
+      requestId: "background-child-active-rev-1",
+      input: "completion that AgentWait already returned",
+      approvalMode: "agent",
+      metadata: { backgroundTask: { taskId: "child-active", runId: "child-active" } },
+      childRunIds: ["child-active"],
+    };
+    const resolve = vi.fn(() => (parentAlreadyReceivedResult ? undefined : payload));
+    const acknowledge = vi.fn();
+    const backgroundWake = fixture.manager.wakeFromBackgroundTask({
+      sessionId: "background-active-owner",
+      resolve,
+      acknowledge,
+    });
+    await Promise.resolve();
+    expect(resolve).not.toHaveBeenCalled();
+
+    parentAlreadyReceivedResult = true;
+    await fixture.manager.requestActiveRunCancellation({ sessionId: "background-active-owner" });
+    await parentRun;
+    await expect(backgroundWake).resolves.toBe("delivered");
+
+    expect(resolve).toHaveBeenCalledOnce();
+    expect(acknowledge).not.toHaveBeenCalled();
+    expect(
+      fixture.store.loadConversation("background-active-owner").filter((entry) => entry.kind === "user.message"),
+    ).toHaveLength(1);
+  });
+
+  test("starts an unconsumed completion as a fresh parent request after the active turn", async () => {
+    const pendingLoop = createPendingLoop();
+    let loopCount = 0;
+    const fixture = createManagerFixture({
+      loopFactory: () =>
+        ++loopCount === 1 ? pendingLoop.loop : { run: async (request) => completedRun(request.requestId) },
+    });
+    const events: AgentDomainEvent[] = [];
+    await fixture.manager.createSession({ sessionId: "background-fresh-owner" });
+    const parentRun = fixture.manager.submitMessage({
+      sessionId: "background-fresh-owner",
+      requestId: "parent-active-request",
+      input: "Continue the current task",
+      approvalMode: "agent",
+    });
+    await pendingLoop.started;
+
+    const payload: AgentSessionBackgroundWakePayload = {
+      requestId: "background-child-fresh-rev-1",
+      input: "latest pending completion",
+      approvalMode: "agent",
+      metadata: { backgroundTask: { taskId: "child-fresh", runId: "child-fresh" } },
+      childRunIds: ["child-fresh"],
+    };
+    const acknowledge = vi.fn();
+    const backgroundWake = fixture.manager.wakeFromBackgroundTask({
+      sessionId: "background-fresh-owner",
+      resolve: () => payload,
+      acknowledge,
+      onEvent: collect(events),
+    });
+
+    await fixture.manager.requestActiveRunCancellation({ sessionId: "background-fresh-owner" });
+    await parentRun;
+    await expect(backgroundWake).resolves.toBe("accepted");
+    await expect
+      .poll(() => fixture.store.loadConversation("background-fresh-owner"))
+      .toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: "user.message",
+            requestId: payload.requestId,
+            metadata: payload.metadata,
+          }),
+          expect.objectContaining({ kind: "assistant.decision", requestId: payload.requestId }),
+        ]),
+      );
+
+    expect(acknowledge).toHaveBeenCalledOnce();
+    expect(
+      fixture.store.loadConversation("background-fresh-owner").filter((entry) => entry.kind === "user.message"),
+    ).toHaveLength(2);
+    expect(events.filter((event) => event.kind === AgentEventKinds.RunStarted)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ context: expect.objectContaining({ requestId: payload.requestId }) }),
+      ]),
+    );
   });
 
   test("resolves the durable fork boundary and only disposes internal scheduled forks", async () => {
@@ -526,7 +639,91 @@ describe("Session manager behavior", () => {
       expect.arrayContaining([
         expect.objectContaining({
           kind: AgentEventKinds.SessionTruncated,
-          data: expect.objectContaining({ removedEntries: 2 }),
+          data: expect.objectContaining({ removedEntries: 2, removedRequestIds: ["request-b"] }),
+        }),
+      ]),
+    );
+  });
+
+  test("retries a failed run before the Pi branch boundary without duplicating the user entry", async () => {
+    const fixture = createManagerFixture({
+      loopFactory: () => ({ run: async (request) => completedRun(request.requestId ?? "retry") }),
+    });
+    const sessionId = "session-retry-before-boundary";
+    const failedRequestId = "request-failed-before-boundary";
+    await fixture.manager.createSession({ sessionId });
+    const originalUserEntry = userEntry(failedRequestId, "Original task");
+    fixture.store.persistEntries(sessionId, [originalUserEntry]);
+    const opened = fixture.store.get(sessionId);
+    if (opened.kind === "found") opened.session.conversation = [originalUserEntry];
+    fixture.store.persistRunSnapshot({
+      sessionId,
+      requestId: failedRequestId,
+      input: "Original task",
+      status: "failed",
+      startedAt: "2026-08-05T00:00:00.000Z",
+      updatedAt: "2026-08-05T00:00:01.000Z",
+      endedAt: "2026-08-05T00:00:01.000Z",
+    });
+    fixture.manager.recordRunEvent(runEvent(sessionId, failedRequestId, 1));
+
+    await fixture.manager.retryFailedRun({
+      sessionId,
+      failedRequestId,
+      requestId: "request-retry-before-boundary",
+      recoveryMode: "retry",
+      approvalMode: "agent",
+    });
+
+    const conversation = fixture.store.loadConversation(sessionId);
+    expect(conversation.filter((entry) => entry.kind === "user.message")).toHaveLength(1);
+    expect(conversation.filter((entry) => entry.kind === "assistant.decision")).toHaveLength(1);
+    expect(conversation.at(-1)).toEqual(expect.objectContaining({ requestId: "request-retry-before-boundary" }));
+  });
+
+  test("continues a progressed failed run as a durable continuation turn", async () => {
+    const fixture = createManagerFixture({
+      loopFactory: () => ({ run: async (request) => completedRun(request.requestId ?? "continue") }),
+    });
+    const sessionId = "session-continue-after-progress";
+    const failedRequestId = "request-failed-after-progress";
+    const continuationRequestId = "request-continue-after-progress";
+    await fixture.manager.createSession({ sessionId });
+    const originalUserEntry = userEntry(failedRequestId, "Original task");
+    fixture.store.persistEntries(sessionId, [originalUserEntry]);
+    const opened = fixture.store.get(sessionId);
+    if (opened.kind === "found") opened.session.conversation = [originalUserEntry];
+    fixture.store.persistRunSnapshot({
+      sessionId,
+      requestId: failedRequestId,
+      input: "Original task",
+      status: "failed",
+      startedAt: "2026-08-05T00:00:00.000Z",
+      updatedAt: "2026-08-05T00:00:01.000Z",
+      endedAt: "2026-08-05T00:00:01.000Z",
+    });
+    fixture.manager.recordRunEvent({
+      ...runEvent(sessionId, failedRequestId, 1),
+      kind: AgentEventKinds.ToolCallsPlanned,
+      data: { batchId: "batch-1", calls: [] },
+    });
+
+    await fixture.manager.retryFailedRun({
+      sessionId,
+      failedRequestId,
+      requestId: continuationRequestId,
+      recoveryMode: "continue",
+      approvalMode: "agent",
+    });
+
+    const conversation = fixture.store.loadConversation(sessionId);
+    expect(conversation.filter((entry) => entry.kind === "user.message")).toHaveLength(2);
+    expect(conversation).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          requestId: continuationRequestId,
+          content: "continue",
+          metadata: { recovery: { mode: "continue", sourceRequestId: failedRequestId } },
         }),
       ]),
     );

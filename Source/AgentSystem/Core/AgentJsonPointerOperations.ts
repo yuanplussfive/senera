@@ -104,11 +104,16 @@ function readPointerMatches(
   return readPointerMatches(value[token], remaining, [...pathTokens, token]);
 }
 
-function formatAgentJsonPointer(tokens: readonly string[]): string {
+/**
+ * Serializes decoded tokens back into an RFC 6901 pointer. Exported so
+ * projection code records omission paths through the same escaping rules the
+ * readers use, instead of hand-rolling `~0`/`~1` replacement.
+ */
+export function formatAgentJsonPointer(tokens: readonly string[]): string {
   return tokens.length === 0 ? "" : `/${tokens.map(encodeJsonPointerToken).join("/")}`;
 }
 
-function encodeJsonPointerToken(token: string): string {
+export function encodeJsonPointerToken(token: string): string {
   return token.replace(/~/gu, "~0").replace(/\//gu, "~1");
 }
 

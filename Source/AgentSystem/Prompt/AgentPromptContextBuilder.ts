@@ -1,7 +1,7 @@
 import { AgentHostCapabilityNames } from "../AgentDefaultHostCapabilities.js";
 import { buildAgentRootCommand } from "../AgentRootCommand.js";
 import type { AgentExtensionRegistry } from "../Extensions/AgentExtensionRegistry.js";
-import { EmptyAgentRoleplayPresetContext } from "../Presets/AgentPresetTypes.js";
+import { EmptyAgentPersonaContext } from "./AgentPersonaContext.js";
 import { EmptyAgentContinuityMemoryPromptContext } from "../Continuity/AgentContinuityMemoryTypes.js";
 import { EmptyAgentWorkflowPromptContext } from "./AgentWorkflowPromptContext.js";
 import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
@@ -25,7 +25,6 @@ import {
   resolveAvailableAgentToolExecutionTargets,
 } from "../ToolRuntime/AgentToolExecutionPlan.js";
 import { compileAgentPromptContext } from "./AgentPromptContextCompiler.js";
-import { EmptyAgentSceneContext } from "./AgentSceneContextCompiler.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 import { isAgentToolScopedToInteractionSurface } from "../ToolRuntime/AgentToolInteractionAvailability.js";
@@ -34,6 +33,7 @@ import {
   isAgentToolSupportedByPlanningMode,
 } from "../ToolRuntime/AgentToolInvocationRouting.js";
 import type { AgentModelToolPlanningMode } from "../ModelEndpoints/AgentModelEndpointContract.js";
+import type { AgentMcpServiceDiscoveryEntry } from "../McpPackages/AgentMcpPackageTypes.js";
 
 export type {
   AgentPromptContext,
@@ -55,6 +55,7 @@ export class AgentPromptContextBuilder {
     private readonly executionCapabilities: () => SeneraExecutionRuntimeCapabilities = () =>
       createSeneraExecutionRuntimeCapabilities(),
     private readonly sandboxGuestWorkspaceRoot?: string,
+    private readonly mcpServices?: () => readonly AgentMcpServiceDiscoveryEntry[],
   ) {
     const documentationReader = new AgentPromptDocumentationReader();
     this.toolContextProjector = new AgentPromptToolContextProjector(documentationReader);
@@ -86,10 +87,9 @@ export class AgentPromptContextBuilder {
       toolCards: staticProjection.toolCards,
       toolDiscoveryToolName: staticProjection.toolDiscoveryToolName,
       rootCommand,
-      roleplayPreset: options.roleplayPreset ?? EmptyAgentRoleplayPresetContext,
+      persona: options.persona ?? EmptyAgentPersonaContext,
       continuityMemory: options.continuityMemory ?? EmptyAgentContinuityMemoryPromptContext,
       workflow: options.workflow ?? EmptyAgentWorkflowPromptContext,
-      scene: options.scene ?? EmptyAgentSceneContext,
     });
   }
 
@@ -107,6 +107,7 @@ export class AgentPromptContextBuilder {
       registeredTools,
       policy,
       allowedToolNames: options.allowedToolNames,
+      registeredMcpServices: this.mcpServices?.().map(({ id, revision }) => ({ id, revision })),
     });
   }
 

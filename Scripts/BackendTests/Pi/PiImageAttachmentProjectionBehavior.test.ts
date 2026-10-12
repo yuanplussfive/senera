@@ -2,8 +2,6 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { AgentConversationProjector } from "../../../Source/AgentSystem/Conversation/AgentConversationProjector.js";
-import { AgentPiConversationProjector } from "../../../Source/AgentSystem/Pi/AgentPiConversationProjector.js";
 import { projectAgentPiImageAttachments } from "../../../Source/AgentSystem/Pi/AgentPiImageAttachmentProjector.js";
 import type { AgentPiModelProjection } from "../../../Source/AgentSystem/Pi/AgentPiTypes.js";
 import type {
@@ -52,43 +50,18 @@ describe("Pi image attachment projection", () => {
     expect(resolve).not.toHaveBeenCalled();
   });
 
-  test("projects current and historical images through the same conversation path", async () => {
+  test("resolves only the current turn image because Pi owns native history", async () => {
     const fixture = await createImageFixture();
-    const conversation = new AgentConversationProjector();
-    const previous = conversation.projectUserInput(
-      "previous-request",
-      "What is in the earlier image?",
-      "2026-01-01T00:00:00.000Z",
-      undefined,
-      [fixture.attachment],
-    );
-    const current = conversation.projectUserInput(
-      "current-request",
-      "Compare this image with the earlier one.",
-      "2026-01-01T00:01:00.000Z",
-      undefined,
-      [fixture.attachment],
-    );
     const resolve = vi.fn(async () => fixture.upload);
 
-    const projection = await new AgentPiConversationProjector().projectWithImages({
-      requestId: current.requestId,
-      userInput: current.content,
-      conversationEntries: [previous, current],
+    const images = await projectAgentPiImageAttachments({
+      attachments: [fixture.attachment],
       model: nativeVisionModel(),
-      currentAttachments: current.attachments,
       uploadStore: { resolve },
     });
 
-    expect(projection.images).toEqual([
-      { type: "image", data: fixture.bytes.toString("base64"), mimeType: "image/png" },
-    ]);
-    expect(projection.history).toHaveLength(1);
-    expect(projection.history[0]).toMatchObject({
-      role: "user",
-      content: [{ type: "text" }, { type: "image", data: fixture.bytes.toString("base64"), mimeType: "image/png" }],
-    });
-    expect(resolve).toHaveBeenCalledTimes(2);
+    expect(images).toEqual([{ type: "image", data: fixture.bytes.toString("base64"), mimeType: "image/png" }]);
+    expect(resolve).toHaveBeenCalledTimes(1);
   });
 });
 

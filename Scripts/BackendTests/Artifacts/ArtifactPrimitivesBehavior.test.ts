@@ -42,6 +42,38 @@ describe("artifact primitive contracts", () => {
     expect(() => ToolArtifactPolicySchema.parse({ Redact: { Keys: ["["] } })).toThrow(/必须是有效的正则表达式/);
   });
 
+  test("accepts only an explicit writer receipt contract for workspace provenance", () => {
+    expect(
+      ToolArtifactPolicySchema.parse({
+        Workspace: {
+          Capture: "mutation-receipt",
+          MaxFileBytes: 1024,
+          CaptureContent: "text",
+          PatchContextLines: 0,
+        },
+      }),
+    ).toMatchObject({ Workspace: { Capture: "mutation-receipt" } });
+
+    expect(() =>
+      ToolArtifactPolicySchema.parse({
+        Workspace: {
+          Capture: "inferred",
+          PatchContextLines: 0,
+        },
+      }),
+    ).toThrow();
+
+    expect(() =>
+      ToolArtifactPolicySchema.parse({
+        Workspace: {
+          Capture: "mutation-receipt",
+          CaptureContent: "text",
+          PatchContextLines: 0,
+        },
+      }),
+    ).toThrow();
+  });
+
   test("produces stable JSON and hashes independent of object key order", () => {
     const left = { nested: { z: 1, a: 2 }, value: true };
     const right = { value: true, nested: { a: 2, z: 1 } };

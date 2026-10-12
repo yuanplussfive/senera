@@ -50,6 +50,14 @@ describe("Memory executed tool sources", () => {
         assistantEntry,
         terminal: { kind: "FinalAnswer", content: "Inspection complete." },
         executedTools: [executedToolResult()],
+        modelProvider: {
+          id: "model-test",
+          providerId: "provider-test",
+          kind: "test",
+          endpoint: "openai-chat",
+          baseUrl: "http://127.0.0.1",
+          model: "test-model",
+        },
       });
 
       expect(recorded.sources).toEqual(

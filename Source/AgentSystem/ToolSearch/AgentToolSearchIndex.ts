@@ -229,6 +229,9 @@ export class AgentToolSearchIndex {
     );
 
     return {
+      ...(this.toolsByName.get(entry.toolName)?.availability
+        ? { availability: this.toolsByName.get(entry.toolName)!.availability }
+        : {}),
       toolName: doc.toolName,
       title: doc.title,
       ownerName: doc.ownerName,
@@ -244,7 +247,7 @@ export class AgentToolSearchIndex {
       ranks,
       matchedTerms,
       matchedCapabilities,
-      learningSignals: (memoryByTool.get(entry.toolName)?.signals ?? []).map((signal) => ({
+      scenarioSignals: (memoryByTool.get(entry.toolName)?.signals ?? []).map((signal) => ({
         term: signal.term,
         source: signal.source,
         support: Number(signal.support.toFixed(6)),

@@ -101,7 +101,16 @@ export function readDisclosureVariants(level: MotionLevel): DisclosureVariants {
 
 export function readDisclosureTransition(level: MotionLevel, state: "show" | "exit" = "show"): Transition {
   if (level === "none") return { duration: 0 };
-  return state === "exit" ? motionTimings.fast : motionTimings.base;
+  if (level === "reduced") return motionTimings.fast;
+  return state === "exit"
+    ? {
+        height: { duration: 0.2, ease: easeInOut },
+        opacity: { duration: 0.13, ease: easeInOut },
+      }
+    : {
+        height: { duration: 0.25, ease: easeOut },
+        opacity: { delay: 0.035, duration: 0.16, ease: easeOut },
+      };
 }
 
 export function readMessageItemVariants(level: MotionLevel): Variants {
@@ -120,8 +129,11 @@ export function readMessageItemVariants(level: MotionLevel): Variants {
     };
   }
   return {
-    hidden: { opacity: 0, y: 8 },
-    show: { opacity: 1, y: 0 },
+    // Chat rows are measured by react-virtuoso. A vertical entrance transform
+    // makes a newly inserted row visually move while the virtualizer is also
+    // correcting its scroll position, which reads as a layout jump.
+    hidden: { opacity: 0 },
+    show: { opacity: 1 },
     exit: { opacity: 0 },
   };
 }
@@ -142,9 +154,12 @@ export function readFeedItemVariants(level: MotionLevel): Variants {
     };
   }
   return {
-    hidden: { opacity: 0, y: 4 },
-    show: { opacity: 1, y: 0 },
-    exit: { opacity: 0, y: -2 },
+    // Feed rows live inside a measured virtualized message. Keep their
+    // entrance passive; the status glyph supplies activity without moving the
+    // tool timeline while its parent is being measured.
+    hidden: { opacity: 0 },
+    show: { opacity: 1 },
+    exit: { opacity: 0 },
   };
 }
 

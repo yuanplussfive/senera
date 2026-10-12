@@ -7,8 +7,8 @@
   "version": "1.0.0",
   "displayName": { "zh-CN": "受控浏览器", "en-US": "Controlled Browser" },
   "description": {
-    "zh-CN": "通过隔离浏览器会话读取和操作公开网页；启动参数、认证状态、用户资料和浏览器内部能力均由 Senera 宿主控制。",
-    "en-US": "Reads and operates public web pages through isolated browser sessions while Senera controls launch options, authentication state, profiles, and browser internals."
+    "zh-CN": "通过隔离浏览器会话读取和操作网页；私有网络和本地文件在完全权限模式下可直接访问，其他模式需要审批。",
+    "en-US": "Reads and operates web pages through isolated browser sessions. Private-network and local-file targets require approval outside Full Access mode."
   },
   "priority": 91,
   "presentation": {

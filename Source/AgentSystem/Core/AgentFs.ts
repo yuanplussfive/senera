@@ -21,8 +21,21 @@ export const AgentPathRemovalDefaults = Object.freeze({
   retryDelayMs: 100,
 });
 
+export const AgentFileAccessRetryDefaults = Object.freeze({
+  maxDurationMs: 500,
+  retryDelayMs: 25,
+});
+
 const RetryablePathRemovalErrorCodes = new Set(["EBUSY", "EACCES", "EMFILE", "ENFILE", "ENOTEMPTY", "EPERM"]);
 const DeferrablePathRemovalErrorCodes = new Set(["EBUSY", "ENOTEMPTY", "EPERM"]);
+const RetryableFileAccessErrorCodes = new Set(["EBUSY", "EACCES", "EMFILE", "ENFILE", "EPERM"]);
+
+export interface AgentFileAccessRetryOptions {
+  /** Maximum time spent waiting for a transient file lock to clear. */
+  maxDurationMs?: number;
+  /** Delay between attempts. */
+  retryDelayMs?: number;
+}
 
 export interface AgentPathRemovalOptions {
   /** Number of remove attempts before the operation is considered blocked. */
@@ -36,6 +49,38 @@ export interface AgentPathRemovalOptions {
 }
 
 export type AgentPathRemovalResult = "removed" | "deferred";
+
+/**
+ * Reads and inspects may race with an editor, browser, or producer replacing a
+ * file. Retry only operating-system lock/resource errors; permanent failures
+ * still surface to the caller with their original error.
+ */
+export async function withAgentFileAccessRetry<T>(
+  operation: () => Promise<T>,
+  options: AgentFileAccessRetryOptions = {},
+): Promise<T> {
+  const maxDurationMs = resolveNonNegativeInteger(
+    options.maxDurationMs ?? AgentFileAccessRetryDefaults.maxDurationMs,
+    "maxDurationMs",
+  );
+  const retryDelayMs = resolveNonNegativeInteger(
+    options.retryDelayMs ?? AgentFileAccessRetryDefaults.retryDelayMs,
+    "retryDelayMs",
+  );
+  const deadline = Date.now() + maxDurationMs;
+
+  while (true) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!RetryableFileAccessErrorCodes.has(nodeErrorCode(error) ?? "") || Date.now() >= deadline) {
+        throw error;
+      }
+      const remaining = deadline - Date.now();
+      await waitForPathRemovalRetry(Math.min(retryDelayMs, Math.max(1, remaining)));
+    }
+  }
+}
 
 /**
  * Removes a managed path without turning transient Windows locks into a

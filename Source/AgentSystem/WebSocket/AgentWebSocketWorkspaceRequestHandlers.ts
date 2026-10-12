@@ -8,8 +8,7 @@ import type { AgentWebSocketEventSender, AgentWebSocketRequestContext } from "./
 
 export class AgentWebSocketWorkspaceRequestHandlers {
   constructor(
-    private readonly context: AgentWebSocketRequestContext,
-    private readonly broadcast: AgentWebSocketEventSender,
+    private readonly context: Pick<AgentWebSocketRequestContext, "workspaceInfo" | "workspaceSwitchRequest">,
   ) {}
 
   async get(_request: AgentWebSocketRequestOf<"workspace.get">, sendEvent: AgentWebSocketEventSender): Promise<void> {
@@ -28,26 +27,24 @@ export class AgentWebSocketWorkspaceRequestHandlers {
     const switcher = this.context.workspaceSwitchRequest;
     if (!switcher) throw new AgentLocalizedError("websocket.workspaceSwitchUnavailable");
     const target = request.workspaceRoot;
-    await this.broadcast({
+    await sendEvent({
       kind: AgentEventKinds.WorkspaceSwitchStarted,
       context: {},
-      data: { workspaceRoot: target },
+      data: { requestId: request.requestId, workspaceRoot: target },
     });
     try {
       const snapshot = await switcher(target);
-      // The old server stack is already torn down by the time the switch
-      // resolves; the client reconnects and pulls the new snapshot via
-      // workspace.get. The reply here is best-effort for sockets still open.
       await sendEvent({
         kind: AgentEventKinds.WorkspaceSwitched,
         context: {},
-        data: snapshot,
+        data: { ...snapshot, requestId: request.requestId },
       });
     } catch (error) {
       await sendEvent({
         kind: AgentEventKinds.WorkspaceSwitchFailed,
         context: {},
         data: {
+          requestId: request.requestId,
           workspaceRoot: target,
           ...projectAgentErrorMessage(error, "websocket.workspaceSwitchFailed", { workspaceRoot: target }),
           details: {

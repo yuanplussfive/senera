@@ -2,7 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { DEFAULT_COMPACTION_SETTINGS, SessionManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { resolveAgentPiCompactionSettings } from "../../../Source/AgentSystem/Pi/AgentPiCompactionSettings.js";
+import {
+  resolveAgentPiCompactionWindow,
+  resolveAgentPiCompactionReserveTokens,
+  resolveAgentPiCompactionSettings,
+  resolveAgentPiTokenBudgetHeadroom,
+} from "../../../Source/AgentSystem/Pi/AgentPiCompactionSettings.js";
 import {
   AgentPiCodingAgentSessionPool,
   type AgentPiCodingAgentLeaseInput,
@@ -24,6 +29,7 @@ import { AgentPiMutableSessionFrame } from "../../../Source/AgentSystem/Pi/Agent
 import { emptyAgentToolAccessGrant } from "../../../Source/AgentSystem/ToolRuntime/AgentToolAccessGrant.js";
 import { AgentToolExposureState } from "../../../Source/AgentSystem/ToolRuntime/AgentToolExposureState.js";
 import { AgentTurnTokenBudget } from "../../../Source/AgentSystem/Text/AgentTurnTokenBudget.js";
+import { createTestToolObservationCompressor } from "../Support/PiToolObservationFixtures.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -113,7 +119,14 @@ describe("Pi session management", () => {
     const sessionId = "deferred-runtime-session";
     const first = await pool.lease({
       sessionId,
-      allTools: { fingerprint: "tools-v1", activeToolNames: [], materialize: () => [] },
+      allTools: {
+        fingerprint: "tools-v1",
+        activeToolNames: [],
+        materialize: () => [],
+        refresh() {
+          return this;
+        },
+      },
       activeToolNames: [],
       frame: createSessionFrame(16_384, 1_024).snapshot(),
       inheritProjectContext: true,
@@ -125,7 +138,14 @@ describe("Pi session management", () => {
     try {
       const second = await pool.lease({
         sessionId,
-        allTools: { fingerprint: "tools-v2", activeToolNames: [], materialize: () => [] },
+        allTools: {
+          fingerprint: "tools-v2",
+          activeToolNames: [],
+          materialize: () => [],
+          refresh() {
+            return this;
+          },
+        },
         activeToolNames: [],
         frame: createSessionFrame(16_384, 1_024).snapshot(),
         inheritProjectContext: true,
@@ -215,10 +235,6 @@ describe("Pi session management", () => {
         getContextUsage: vi.fn(() => ({ tokens: 80, contextWindow: 1_000, percent: 8 })),
         waitForIdle,
       },
-      compactionCandidateStatus: () => ({
-        phase: "ready",
-        updatedAt: "2026-09-19T00:00:00.000Z",
-      }),
     });
 
     try {
@@ -227,10 +243,6 @@ describe("Pi session management", () => {
           sessionId: "active-session",
           cached: true,
           contextUsage: { tokens: 80, contextWindow: 1_000, percent: 8 },
-          compactionCandidate: {
-            phase: "ready",
-            updatedAt: "2026-09-19T00:00:00.000Z",
-          },
         }),
       );
       expect(waitForIdle).not.toHaveBeenCalled();
@@ -279,12 +291,13 @@ describe("Pi session management", () => {
     const pool = new AgentPiCodingAgentSessionPool({
       workspaceRoot,
       sessionsRoot,
-      systemSkillsRoot: path.join(workspaceRoot, "System", "Skills"),
       systemPromptPath: path.resolve("System", "Prompts", "Templates", "PiSessionBaseSystemPrompt.liquid"),
       provider: projectSeneraModelProviderToPi(modelProvider),
       modelProvider,
       planningCompilerFactory: createPiPlanningCompilerFactory(),
       compaction: { Enabled: true },
+      observationCompressor: createTestToolObservationCompressor(),
+      observationTokenBudget: 2_048,
     });
 
     try {
@@ -354,12 +367,13 @@ describe("Pi session management", () => {
     const pool = new AgentPiCodingAgentSessionPool({
       workspaceRoot,
       sessionsRoot,
-      systemSkillsRoot: path.join(workspaceRoot, "System", "Skills"),
       systemPromptPath: path.resolve("System", "Prompts", "Templates", "PiSessionBaseSystemPrompt.liquid"),
       provider,
       modelProvider,
       planningCompilerFactory: createPiPlanningCompilerFactory(),
       compaction: { Enabled: true },
+      observationCompressor: createTestToolObservationCompressor(),
+      observationTokenBudget: 2_048,
     });
     const frame = createSessionFrame(provider.model.contextWindow, provider.model.maxTokens);
     const activeLease = await pool.lease({
@@ -368,6 +382,9 @@ describe("Pi session management", () => {
         fingerprint: "empty-tools",
         activeToolNames: [],
         materialize: () => [],
+        refresh() {
+          return this;
+        },
       },
       activeToolNames: [],
       frame: frame.snapshot(),
@@ -386,18 +403,28 @@ describe("Pi session management", () => {
     }
   });
 
-  test("derives compaction reserves from the active model and Pi defaults", () => {
-    const modelProvider = createModelProvider({
-      ContextWindowTokens: 4_096,
-      MaxModelOutputTokens: 1_024,
-    });
-    const model = projectSeneraModelProviderToPi(modelProvider).model;
-    const inputCapacity = model.contextWindow - model.maxTokens;
-    expect(resolveAgentPiCompactionSettings({ Enabled: true }, model)).toEqual({
-      enabled: true,
-      reserveTokens: model.maxTokens,
-      keepRecentTokens: Math.min(DEFAULT_COMPACTION_SETTINGS.keepRecentTokens, inputCapacity - model.maxTokens),
-    });
+  test("derives a dynamic compaction reserve from the context window", () => {
+    const smallModel = projectSeneraModelProviderToPi(
+      createModelProvider({ ContextWindowTokens: 4_096, MaxModelOutputTokens: 1_024 }),
+    ).model;
+    const largeModel = projectSeneraModelProviderToPi(
+      createModelProvider({ ContextWindowTokens: 300_000, MaxModelOutputTokens: 1_024 }),
+    ).model;
+    const smallReserve = resolveAgentPiCompactionReserveTokens(smallModel.contextWindow);
+    const largeReserve = resolveAgentPiCompactionReserveTokens(largeModel.contextWindow);
+    const largeWindow = resolveAgentPiCompactionWindow(largeModel.contextWindow);
+    const settings = resolveAgentPiCompactionSettings({ Enabled: true }, largeModel);
+
+    expect(smallReserve).toBe(2_048);
+    expect(largeReserve).toBe(DEFAULT_COMPACTION_SETTINGS.keepRecentTokens);
+    expect(largeReserve).not.toBe(DEFAULT_COMPACTION_SETTINGS.reserveTokens);
+    expect(largeWindow.reserveTokens).toBe(largeReserve);
+    expect(largeWindow.inputCapacityTokens).toBe(largeModel.contextWindow - largeReserve);
+    expect(settings.contextWindowTokens).toBe(largeWindow.contextWindowTokens);
+    expect(settings.inputCapacityTokens).toBe(largeWindow.inputCapacityTokens);
+    expect(settings.reserveTokens).toBe(largeReserve);
+    expect(settings.keepRecentTokens).toBe(DEFAULT_COMPACTION_SETTINGS.keepRecentTokens);
+    expect(resolveAgentPiTokenBudgetHeadroom({ Enabled: true }, largeModel)).toBe(settings.reserveTokens);
   });
 
   test("reports persisted session stats and exports both native formats under the workspace export root", async () => {
@@ -436,12 +463,13 @@ describe("Pi session management", () => {
     const pool = new AgentPiCodingAgentSessionPool({
       workspaceRoot,
       sessionsRoot,
-      systemSkillsRoot: path.join(workspaceRoot, "System", "Skills"),
       systemPromptPath: path.resolve("System", "Prompts", "Templates", "PiSessionBaseSystemPrompt.liquid"),
       provider: projectSeneraModelProviderToPi(modelProvider),
       modelProvider,
       planningCompilerFactory: createPiPlanningCompilerFactory(),
       compaction: { Enabled: true },
+      observationCompressor: createTestToolObservationCompressor(),
+      observationTokenBudget: 2_048,
     });
 
     try {
@@ -493,12 +521,13 @@ function createPool(workspaceRoot: string, providerId: string): AgentPiCodingAge
   return new AgentPiCodingAgentSessionPool({
     workspaceRoot,
     sessionsRoot: path.join(workspaceRoot, ".senera", "pi-sessions"),
-    systemSkillsRoot: path.join(workspaceRoot, "System", "Skills"),
     systemPromptPath: path.resolve("System", "Prompts", "Templates", "PiSessionBaseSystemPrompt.liquid"),
     provider: projectSeneraModelProviderToPi(modelProvider),
     modelProvider,
     planningCompilerFactory: createPiPlanningCompilerFactory(),
     compaction: { Enabled: true },
+    observationCompressor: createTestToolObservationCompressor(),
+    observationTokenBudget: 2_048,
   });
 }
 
@@ -506,7 +535,7 @@ function createSessionFrame(contextWindowTokens: number, outputReserveTokens: nu
   const toolAccessGrant = emptyAgentToolAccessGrant();
   return new AgentPiMutableSessionFrame({
     sessionId: "runtime-owner-test",
-    skillCatalogFingerprint: "test",
+    skillCatalog: { skills: [], fingerprint: "test" },
     nativeProviderToolNames: [],
     toolAccessGrant,
     toolExposure: new AgentToolExposureState(toolAccessGrant),

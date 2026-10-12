@@ -37,6 +37,43 @@ describe("Workspace apply patch runtime behavior", () => {
     expect(await fs.readFile(target, "utf8")).toBe("after\n");
   });
 
+  test("returns the net transaction receipt without rereading the workspace", async () => {
+    const workspaceRoot = createWorkspace();
+    await fs.mkdir(path.join(workspaceRoot, "src"), { recursive: true });
+    await fs.mkdir(path.join(workspaceRoot, "docs"), { recursive: true });
+    await fs.writeFile(path.join(workspaceRoot, "src", "move-me.ts"), "alpha\nbeta\n", "utf8");
+    await fs.writeFile(path.join(workspaceRoot, "docs", "obsolete.md"), "obsolete\n", "utf8");
+
+    const result = await applyWorkspacePatchHostTool(
+      {
+        operations: [
+          { kind: "move", source: "src/move-me.ts", destination: "src/moved.ts" },
+          { kind: "update", path: "src/moved.ts", oldStr: "beta", newStr: "gamma" },
+          { kind: "delete", path: "docs/obsolete.md" },
+          { kind: "add", path: "transient.txt", content: "temporary\n" },
+          { kind: "delete", path: "transient.txt" },
+        ],
+      },
+      context(workspaceRoot),
+    );
+
+    expect(result.response.ok).toBe(true);
+    if (!result.response.ok || !result.workspaceMutationReceipt) throw new Error("Expected an exact mutation receipt.");
+    expect(result.response.result).toMatchObject({
+      changedPaths: ["docs/obsolete.md", "src/move-me.ts", "src/moved.ts"],
+    });
+
+    const entries = new Map(result.workspaceMutationReceipt.entries.map((entry) => [entry.path, entry]));
+    expect(entries.get("docs/obsolete.md")).toMatchObject({ before: { kind: "file" }, after: { kind: "missing" } });
+    expect(entries.get("src/move-me.ts")).toMatchObject({ before: { kind: "file" }, after: { kind: "missing" } });
+    const moved = entries.get("src/moved.ts");
+    expect(moved?.before).toMatchObject({ kind: "missing" });
+    expect(moved?.after.kind).toBe("file");
+    if (moved?.after.kind !== "file") throw new Error("Expected moved file bytes in receipt.");
+    expect(Buffer.from(moved.after.bytes).toString("utf8")).toBe("alpha\ngamma\n");
+    expect(entries.has("transient.txt")).toBe(false);
+  });
+
   test("revalidates planned source files immediately before committing", async () => {
     const workspaceRoot = createWorkspace();
     const target = path.join(workspaceRoot, "value.txt");
@@ -447,7 +484,8 @@ describe("Workspace apply patch runtime behavior", () => {
 
     expect(result.response.ok).toBe(true);
     if (!result.response.ok) throw new Error("Expected a successful no-op patch result.");
-    expect(result.response.result).toMatchObject({ operationCount: 2, changedPaths: ["transient.txt"] });
+    expect(result.response.result).toMatchObject({ operationCount: 2, changedPaths: [] });
+    expect(result.workspaceMutationReceipt?.entries).toEqual([]);
     await expect(fs.stat(target)).rejects.toMatchObject({ code: "ENOENT" });
   });
 

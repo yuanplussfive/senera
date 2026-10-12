@@ -97,6 +97,26 @@ test("model tool planning defaults to native and keeps native prerequisites cons
   expect(streaming).toHaveAttribute("aria-checked", "false");
 });
 
+test("reasoning settings live under model capabilities without a mapping table", async () => {
+  const user = userEvent.setup();
+  const model = {
+    Id: "openai/reasoning",
+    ProviderId: "openai",
+    Model: "reasoning-model",
+    Endpoint: "chat",
+    Capabilities: { Chat: true, Reasoning: true },
+    ThinkingProfiles: [{ Id: "deep", Label: "深度", Level: "high" }],
+  };
+  const props = createProps({ model, onUpsertProviderModel: vi.fn() });
+  renderWithFrontendProviders(React.createElement(ProviderModelManagementSurface, props));
+
+  await user.click(screen.getByRole("button", { name: frontendMessage("chat.model.configure") }));
+  const dialog = screen.getByRole("dialog");
+  expect(within(dialog).getByText("推理能力")).toBeInTheDocument();
+  expect(dialog.querySelector("[data-model-thinking-controls]")).toBeInTheDocument();
+  expect(within(dialog).queryByText("原生等级映射")).not.toBeInTheDocument();
+});
+
 test("model discovery supports enabled public endpoints without an API key", async () => {
   const user = userEvent.setup();
   const model = {

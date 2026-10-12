@@ -4,6 +4,11 @@ import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { WorkspaceApplyPatchError } from "./AgentWorkspacePatchError.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { sha256Hex } from "../Core/AgentHash.js";
+import {
+  AgentWorkspaceMutationReceiptProtocol,
+  type AgentWorkspaceMutationReceipt,
+  type AgentWorkspaceMutationReceiptImage,
+} from "../Types/ToolRuntimeTypes.js";
 
 export interface WorkspacePatchTarget {
   input: string;
@@ -26,7 +31,7 @@ type RollbackFile =
 export async function applyWorkspacePatchTransaction(
   plan: WorkspacePatchTransactionPlan,
   files: SeneraExecutionEnv,
-): Promise<void> {
+): Promise<AgentWorkspaceMutationReceipt> {
   const rollback = await captureRollbackSnapshot(plan, files);
   try {
     for (const parent of parentDirectories(plan.writes)) {
@@ -52,6 +57,8 @@ export async function applyWorkspacePatchTransaction(
     }
     throw error;
   }
+
+  return createWorkspaceMutationReceipt(plan, rollback);
 }
 
 export async function validateWorkspacePatchPreconditions(
@@ -152,6 +159,55 @@ async function restoreRollbackSnapshot(snapshot: RollbackFile[], files: SeneraEx
     }
   }
   return errors;
+}
+
+function createWorkspaceMutationReceipt(
+  plan: WorkspacePatchTransactionPlan,
+  rollback: readonly RollbackFile[],
+): AgentWorkspaceMutationReceipt {
+  const entries = rollback
+    .map((entry) => {
+      const before = rollbackImage(entry);
+      const after = committedImage(plan, entry.target.relativePath);
+      return {
+        path: entry.target.relativePath,
+        before,
+        after,
+      };
+    })
+    .filter((entry) => !sameWorkspaceMutationImage(entry.before, entry.after))
+    .sort((left, right) => left.path.localeCompare(right.path));
+
+  return {
+    type: AgentWorkspaceMutationReceiptProtocol.type,
+    version: AgentWorkspaceMutationReceiptProtocol.version,
+    capturedAt: new Date().toISOString(),
+    entries,
+  };
+}
+
+function rollbackImage(entry: RollbackFile): AgentWorkspaceMutationReceiptImage {
+  return entry.state === "missing" ? { kind: "missing" } : { kind: "file", bytes: new Uint8Array(entry.content) };
+}
+
+function committedImage(plan: WorkspacePatchTransactionPlan, relativePath: string): AgentWorkspaceMutationReceiptImage {
+  const write = plan.writes.get(relativePath);
+  if (write) {
+    const bytes = typeof write.content === "string" ? Buffer.from(write.content, "utf8") : write.content;
+    return { kind: "file", bytes: new Uint8Array(bytes) };
+  }
+  if (plan.deletes.has(relativePath)) return { kind: "missing" };
+  throw new Error(`Workspace transaction has no committed image for ${relativePath}.`);
+}
+
+function sameWorkspaceMutationImage(
+  left: AgentWorkspaceMutationReceiptImage,
+  right: AgentWorkspaceMutationReceiptImage,
+): boolean {
+  if (left.kind !== right.kind) return false;
+  if (left.kind !== "file" || right.kind !== "file") return true;
+  if (left.bytes.byteLength !== right.bytes.byteLength) return false;
+  return left.bytes.every((value, index) => value === right.bytes[index]);
 }
 
 function parentDirectories(writes: ReadonlyMap<string, unknown>): string[] {

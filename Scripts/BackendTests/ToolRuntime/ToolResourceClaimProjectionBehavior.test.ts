@@ -2,6 +2,7 @@ import path from "node:path";
 import { describe, expect, test } from "vitest";
 import type { SeneraExecutionEnv } from "../../../Source/AgentSystem/Execution/SeneraExecutionTypes.js";
 import { AgentToolResourceCapabilityRegistry } from "../../../Source/AgentSystem/ToolRuntime/AgentToolResourceCapabilityRegistry.js";
+import { AgentToolUrlResourceCapability } from "../../../Source/AgentSystem/ToolRuntime/AgentToolUrlResourceCapability.js";
 import { AgentToolWorkspacePathResourceCapability } from "../../../Source/AgentSystem/ToolRuntime/AgentToolWorkspacePathResourceCapability.js";
 import { AgentToolWorkspaceRootResourceCapability } from "../../../Source/AgentSystem/ToolRuntime/AgentToolWorkspaceRootResourceCapability.js";
 import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
@@ -10,6 +11,19 @@ import { AgentToolResourceClaimProjector } from "../../../Source/AgentSystem/Too
 import { resourceRequestsConflict } from "../../../Source/AgentSystem/ToolRuntime/AgentToolResourceScheduler.js";
 
 describe("tool resource claim projection", () => {
+  test("advertises only registered capabilities that can produce a scheduling claim", () => {
+    const executionEnv: Pick<SeneraExecutionEnv, "resolveResourcePath"> = {
+      resolveResourcePath: async (value) => ({ ok: true, value: path.resolve("E:/workspace", value) }),
+    };
+    const capabilities = new AgentToolResourceCapabilityRegistry()
+      .register(new AgentToolUrlResourceCapability())
+      .register(new AgentToolWorkspacePathResourceCapability(executionEnv));
+    const projector = new AgentToolResourceClaimProjector(capabilities);
+
+    expect(capabilities.listCapabilityIds()).toEqual(["senera.network.url", "senera.workspace.path"]);
+    expect(projector.listClaimCapabilityIds()).toEqual(["senera.workspace.path"]);
+  });
+
   test("projects dynamic workspace intents into shared and exclusive claims", async () => {
     const projector = workspaceClaimProjector();
     const tool = resourceTool([

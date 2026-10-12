@@ -2,7 +2,6 @@ import { type AgentEventKinds } from "../Events/AgentEventCatalog.js";
 import type { AgentEventContext } from "../Events/AgentEventBase.js";
 import type { AgentModelProviderListItem } from "../Types/AgentConfigTypes.js";
 import type { AgentUserProfile } from "../Session/AgentUserProfile.js";
-import type { AgentPresetOperationResult, AgentPresetSnapshot } from "../Presets/AgentPresetTypes.js";
 import type { AgentConfigDiagnostic, AgentConfigSnapshot, AgentConfigSnapshotSource } from "./AgentConfigService.js";
 import type { AgentProviderModelSnapshot } from "./AgentProviderModelDiscovery.js";
 import type { AgentLocalizedMessage } from "../I18n/AgentMessageCatalog.js";
@@ -24,6 +23,9 @@ export interface AgentSystemConfigOperationResult {
 }
 
 export interface AgentWorkspaceSnapshotData {
+  workspaceId: string;
+  workspaces: readonly import("../WorkspaceResources/AgentWorkspaceCatalog.js").AgentWorkspaceDescriptor[];
+  capabilities: { browseDirectories: boolean };
   workspaceRoot: string;
   configPath: string;
   websocketUrl: string;
@@ -88,21 +90,6 @@ export type AgentConfigDomainEvent =
       };
     }
   | {
-      kind: typeof AgentEventKinds.PresetSnapshot;
-      context: AgentEventContext;
-      data: AgentPresetSnapshot;
-    }
-  | {
-      kind: typeof AgentEventKinds.PresetFailed;
-      context: AgentEventContext;
-      data: {
-        message: string;
-        localizedMessage?: AgentLocalizedMessage;
-        details?: unknown;
-        operation?: AgentPresetOperationResult;
-      };
-    }
-  | {
       kind: typeof AgentEventKinds.WorkspaceSnapshot;
       context: AgentEventContext;
       data: AgentWorkspaceSnapshotData;
@@ -111,18 +98,20 @@ export type AgentConfigDomainEvent =
       kind: typeof AgentEventKinds.WorkspaceSwitchStarted;
       context: AgentEventContext;
       data: {
+        requestId: string;
         workspaceRoot: string;
       };
     }
   | {
       kind: typeof AgentEventKinds.WorkspaceSwitched;
       context: AgentEventContext;
-      data: AgentWorkspaceSnapshotData;
+      data: AgentWorkspaceSnapshotData & { requestId: string };
     }
   | {
       kind: typeof AgentEventKinds.WorkspaceSwitchFailed;
       context: AgentEventContext;
       data: {
+        requestId: string;
         workspaceRoot: string;
         message: string;
         localizedMessage?: AgentLocalizedMessage;

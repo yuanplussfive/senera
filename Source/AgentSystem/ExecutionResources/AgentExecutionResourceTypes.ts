@@ -31,6 +31,14 @@ export type AgentExecutionResourceSignal =
 
 export type AgentExecutionResourceKind = "process" | "terminal";
 
+export const AgentExecutionResourceRetentionPolicies = {
+  Idle: "idle",
+  UntilExit: "until-exit",
+} as const;
+
+export type AgentExecutionResourceRetentionPolicy =
+  (typeof AgentExecutionResourceRetentionPolicies)[keyof typeof AgentExecutionResourceRetentionPolicies];
+
 export const AgentExecutionResourcePurposes = {
   BackgroundProcess: "background-process",
   CommandTask: "command-task",
@@ -130,6 +138,7 @@ export interface AgentExecutionResourceHandle {
   readonly id: string;
   readonly owner: AgentExecutionResourceOwner;
   readonly kind: AgentExecutionResourceKind;
+  readonly retention: AgentExecutionResourceRetentionPolicy;
   readonly state: AgentExecutionResourceState;
   readonly terminal: boolean;
   readonly closed: boolean;

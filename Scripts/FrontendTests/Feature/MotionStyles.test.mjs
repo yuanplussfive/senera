@@ -60,4 +60,18 @@ describe("shared motion styles", () => {
     expect(transitionsCss).toContain("translateY(-6px) scale(0.965)");
     expect(transitionsCss).toContain("translateY(-3px) scale(0.985)");
   });
+
+  test("keeps the text scan readable while a slow brand beam crosses it", () => {
+    const shimmerUtility = indexCss.slice(
+      indexCss.indexOf("@utility animate-text-shimmer"),
+      indexCss.indexOf("@keyframes senera-text-scan"),
+    );
+
+    expect(shimmerUtility).toContain("background-repeat: repeat");
+    expect(shimmerUtility).not.toContain("no-repeat");
+    expect(shimmerUtility).toContain("background-size: 200% 100%");
+    expect(shimmerUtility).toContain("currentColor 0%");
+    expect(shimmerUtility).toContain("senera-text-scan");
+    expect(indexCss).toContain("--senera-text-shimmer-duration: 7.2s");
+  });
 });

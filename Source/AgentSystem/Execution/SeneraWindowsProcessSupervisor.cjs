@@ -2,6 +2,7 @@
 
 const fs = require("node:fs");
 const { spawn } = require("cross-spawn");
+const koffi = require("koffi");
 
 const LaunchControlFd = 3;
 const LaunchStatusFd = 4;
@@ -9,6 +10,29 @@ const MaxLaunchRequestBytes = 1024 * 1024;
 const SupervisorFailureExitCode = 1;
 const WindowsTargetLaunchConfirmationDelayMs = 100;
 const WindowsExecutableRegExp = /\.(?:com|exe)$/i;
+const JobObjectQuery = 0x0004;
+const JobObjectBasicAccountingInformationClass = 1;
+const JobPollIntervalMs = 100;
+const Kernel32 = koffi.load("kernel32.dll");
+koffi.pointer("SENERA_SUPERVISOR_WINDOWS_HANDLE", koffi.opaque());
+const JobObjectBasicAccountingInformation = koffi.struct("SENERA_SUPERVISOR_JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION", {
+  TotalUserTime: "int64_t",
+  TotalKernelTime: "int64_t",
+  ThisPeriodTotalUserTime: "int64_t",
+  ThisPeriodTotalKernelTime: "int64_t",
+  TotalPageFaultCount: "uint32_t",
+  TotalProcesses: "uint32_t",
+  ActiveProcesses: "uint32_t",
+  TotalTerminatedProcesses: "uint32_t",
+});
+const OpenJobObjectW = Kernel32.func(
+  "SENERA_SUPERVISOR_WINDOWS_HANDLE __stdcall OpenJobObjectW(uint32_t desiredAccess, bool inheritHandle, str16 name)",
+);
+const QueryInformationJobObject = Kernel32.func(
+  "bool __stdcall QueryInformationJobObject(SENERA_SUPERVISOR_WINDOWS_HANDLE job, int informationClass, SENERA_SUPERVISOR_JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION *information, uint32_t informationLength, uint32_t *returnLength)",
+);
+const CloseHandle = Kernel32.func("bool __stdcall CloseHandle(SENERA_SUPERVISOR_WINDOWS_HANDLE handle)");
+const GetLastError = Kernel32.func("uint32_t __stdcall GetLastError()");
 
 const launchControl = fs.createReadStream("", { fd: LaunchControlFd, autoClose: true });
 const launchStatus = fs.createWriteStream("", { fd: LaunchStatusFd, autoClose: true });
@@ -48,6 +72,7 @@ launchControl.once("end", () => {
 });
 
 function launchTarget(request) {
+  const job = openJobObject(request.jobObjectName);
   const target = spawn(request.command, request.args, {
     cwd: request.cwd,
     env: request.env,
@@ -57,6 +82,7 @@ function launchTarget(request) {
   });
   let started = false;
   let failed = false;
+  let targetExitCode = SupervisorFailureExitCode;
   let confirmationTimer;
   const confirmStarted = () => {
     if (failed || started) return;
@@ -79,14 +105,86 @@ function launchTarget(request) {
     else process.stderr.write(`${error.stack || error.message}\n`);
   });
   target.once("exit", (exitCode) => {
-    process.exitCode = normalizeExitCode(exitCode);
+    targetExitCode = normalizeExitCode(exitCode);
+    void waitForJobChildren(job).then(
+      () => finishTargetJob(job, targetExitCode),
+      (error) => finishTargetJob(job, targetExitCode, error),
+    );
+  });
+}
+
+function openJobObject(name) {
+  const job = OpenJobObjectW(JobObjectQuery, false, name);
+  if (!job) throw windowsJobError("OpenJobObjectW");
+  return job;
+}
+
+async function waitForJobChildren(job) {
+  // The supervisor is also in the Job; the tree is finished once it is the sole member.
+  while (activeProcessCount(job) > 1) {
+    await new Promise((resolve) => setTimeout(resolve, JobPollIntervalMs));
+  }
+}
+
+function activeProcessCount(job) {
+  const information = {
+    TotalUserTime: 0n,
+    TotalKernelTime: 0n,
+    ThisPeriodTotalUserTime: 0n,
+    ThisPeriodTotalKernelTime: 0n,
+    TotalPageFaultCount: 0,
+    TotalProcesses: 0,
+    ActiveProcesses: 0,
+    TotalTerminatedProcesses: 0,
+  };
+  if (
+    !QueryInformationJobObject(
+      job,
+      JobObjectBasicAccountingInformationClass,
+      information,
+      koffi.sizeof(JobObjectBasicAccountingInformation),
+      null,
+    )
+  ) {
+    throw windowsJobError("QueryInformationJobObject");
+  }
+  return information.ActiveProcesses;
+}
+
+function closeJobObject(job) {
+  if (!CloseHandle(job)) throw windowsJobError("CloseHandle");
+}
+
+function finishTargetJob(job, exitCode, error) {
+  try {
+    closeJobObject(job);
+  } catch (closeError) {
+    failSupervisor(closeError);
+    return;
+  }
+  if (error) {
+    failSupervisor(error);
+    return;
+  }
+  process.exitCode = exitCode;
+}
+
+function windowsJobError(operation) {
+  return Object.assign(new Error(`${operation} failed with Windows error ${GetLastError()}.`), {
+    code: "SENERA_WINDOWS_JOB_QUERY_FAILED",
   });
 }
 
 function parseLaunchRequest(source) {
   const value = JSON.parse(source);
-  if (!isRecord(value) || typeof value.command !== "string" || value.command.length === 0) {
-    throw new TypeError("Launch request must contain a non-empty command.");
+  if (
+    !isRecord(value) ||
+    typeof value.command !== "string" ||
+    value.command.length === 0 ||
+    typeof value.jobObjectName !== "string" ||
+    value.jobObjectName.length === 0
+  ) {
+    throw new TypeError("Launch request must contain a command and its Job Object name.");
   }
   if (!Array.isArray(value.args) || value.args.some((argument) => typeof argument !== "string")) {
     throw new TypeError("Launch request args must be an array of strings.");

@@ -1,14 +1,14 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { motion } from "framer-motion";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { cn } from "../../lib/util";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuLabel,
   ContextMenuTrigger,
+  ActivityStatusIcon,
   AppIcon,
-  Spinner,
   StateView,
 } from "../../shared/ui";
 import { motionTimings, useMotionLevel } from "../../shared/motion";
@@ -23,7 +23,10 @@ interface SessionRowProps {
   sessionId: string;
   title: string;
   accent: "idle" | "running" | "failed";
+  selectionMode?: boolean;
+  selected?: boolean;
   onClick: () => void;
+  onToggleSelected?: () => void;
   onRename: (returnFocus: HTMLElement | null) => void;
   onClose: (returnFocus: HTMLElement | null) => void;
   onFocus?: () => void;
@@ -37,13 +40,16 @@ export function SessionRow({
   sessionId,
   title,
   accent,
+  selectionMode = false,
+  selected = false,
   onClick,
+  onToggleSelected = () => undefined,
   onRename,
   onClose,
   onFocus = () => undefined,
 }: SessionRowProps): JSX.Element {
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
-  const selectionButtonRef = useRef<HTMLButtonElement>(null);
+  const selectionFocusRef = useRef<HTMLElement | null>(null);
   const pendingDialogActionRef = useRef<(() => void) | null>(null);
   const { reduceMotion, disableMotion } = useMotionLevel();
   const animateSelection = !reduceMotion && !disableMotion;
@@ -54,7 +60,7 @@ export function SessionRow({
       label: frontendMessage("session.rename"),
       icon: <AppIcon icon="pencil" className="h-3.5 w-3.5" />,
       onSelect: () => {
-        pendingDialogActionRef.current = () => onRename(selectionButtonRef.current);
+        pendingDialogActionRef.current = () => onRename(selectionFocusRef.current);
       },
     },
     {
@@ -63,7 +69,7 @@ export function SessionRow({
       icon: <AppIcon icon="trash" className="h-3.5 w-3.5" />,
       destructive: true,
       onSelect: () => {
-        pendingDialogActionRef.current = () => onClose(selectionButtonRef.current);
+        pendingDialogActionRef.current = () => onClose(selectionFocusRef.current);
       },
     },
   ];
@@ -75,6 +81,19 @@ export function SessionRow({
     pendingDialogActionRef.current = null;
     pendingAction();
   }, [contextMenuOpen]);
+
+  const handleContextMenuShortcut = (event: KeyboardEvent<HTMLElement>): void => {
+    if (!(event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) return;
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    event.currentTarget.dispatchEvent(
+      new MouseEvent("contextmenu", {
+        bubbles: true,
+        clientX: rect.left + Math.min(rect.width / 2, 120),
+        clientY: rect.top + Math.min(rect.height / 2, 24),
+      }),
+    );
+  };
 
   return (
     <ContextMenu onOpenChange={setContextMenuOpen}>
@@ -101,52 +120,41 @@ export function SessionRow({
               data-active-session-indicator
             />
           ) : null}
-          <button
-            ref={selectionButtonRef}
-            type="button"
-            aria-current={active ? "true" : undefined}
-            aria-label={frontendMessage("session.open", { title })}
-            onClick={onClick}
-            onFocus={onFocus}
-            onKeyDown={(event) => {
-              if (!(event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) return;
-              event.preventDefault();
-              const rect = event.currentTarget.getBoundingClientRect();
-              event.currentTarget.dispatchEvent(
-                new MouseEvent("contextmenu", {
-                  bubbles: true,
-                  clientX: rect.left + Math.min(rect.width / 2, 120),
-                  clientY: rect.top + Math.min(rect.height / 2, 24),
-                }),
-              );
-            }}
-            className="absolute inset-0 z-10 cursor-pointer rounded-[9px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-focus"
-          />
-          <div className="pointer-events-none relative z-20 min-w-0 overflow-hidden pr-1">
-            <div className="flex min-w-0 items-center gap-1.5">
-              {accent === "running" ? (
-                <span role="status" aria-label={frontendMessage("session.statusRunning")} className="shrink-0">
-                  <Spinner size="xs" className="text-umber-600" />
-                </span>
-              ) : accent === "failed" ? (
-                <AppIcon
-                  icon="alert"
-                  className="h-3 w-3 shrink-0 text-brick-600"
-                  role="img"
-                  aria-label={frontendMessage("session.statusFailed")}
-                  aria-hidden={undefined}
-                />
-              ) : null}
-              <span
-                className={cn(
-                  "block min-w-0 max-w-full cursor-[inherit] select-none truncate text-[13px] leading-5 transition-colors duration-150",
-                  "font-normal",
-                )}
-              >
-                {title}
-              </span>
-            </div>
-          </div>
+          {selectionMode ? (
+            <label className="absolute inset-0 z-20 flex min-w-0 cursor-pointer items-center gap-2 overflow-hidden px-2.5">
+              <input
+                type="checkbox"
+                ref={(node) => {
+                  selectionFocusRef.current = node;
+                }}
+                checked={selected}
+                aria-label={frontendMessage("session.selectConversation", { title })}
+                onChange={onToggleSelected}
+                onFocus={onFocus}
+                onKeyDown={handleContextMenuShortcut}
+                className="h-3.5 w-3.5 shrink-0 accent-content-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
+              />
+              <SessionTitleContent accent={accent} title={title} />
+            </label>
+          ) : (
+            <>
+              <button
+                ref={(node) => {
+                  selectionFocusRef.current = node;
+                }}
+                type="button"
+                aria-current={active ? "true" : undefined}
+                aria-label={frontendMessage("session.open", { title })}
+                onClick={onClick}
+                onFocus={onFocus}
+                onKeyDown={handleContextMenuShortcut}
+                className="absolute inset-0 z-10 cursor-pointer rounded-[9px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-focus"
+              />
+              <div className="pointer-events-none relative z-20 min-w-0 overflow-hidden pr-1">
+                <SessionTitleContent accent={accent} title={title} />
+              </div>
+            </>
+          )}
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="min-w-[196px]">
@@ -154,6 +162,29 @@ export function SessionRow({
         <ContextSessionMenuItems actions={actions} separateLast />
       </ContextMenuContent>
     </ContextMenu>
+  );
+}
+
+function SessionTitleContent({ accent, title }: { accent: SessionRowProps["accent"]; title: string }): JSX.Element {
+  return (
+    <div className="flex min-w-0 items-center gap-1.5">
+      {accent === "running" ? (
+        <span role="status" aria-label={frontendMessage("session.statusRunning")} className="shrink-0">
+          <ActivityStatusIcon status="running" size={13} />
+        </span>
+      ) : accent === "failed" ? (
+        <AppIcon
+          icon="alert"
+          className="h-3 w-3 shrink-0 text-brick-600"
+          role="img"
+          aria-label={frontendMessage("session.statusFailed")}
+          aria-hidden={undefined}
+        />
+      ) : null}
+      <span className="block min-w-0 max-w-full select-none truncate text-[13px] font-normal leading-5 transition-colors duration-150">
+        {title}
+      </span>
+    </div>
   );
 }
 

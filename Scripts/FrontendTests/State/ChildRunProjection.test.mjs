@@ -3,6 +3,137 @@ import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
 import { applyEvent } from "../../../Frontend/src/store/session/sessionProjector.ts";
 import { createEvent, createTestState, TestRequestId, TestSessionId } from "./sessionProjectorTestUtils.mjs";
 
+test("scoped model responses retain distinct indexes and completion sequences", () => {
+  const state = createTestState();
+  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "Review the workspace" }));
+  const scope = childScope("child-run-model-responses");
+  const childEvent = (kind, data, sequence) =>
+    createEvent(kind, data, {
+      sessionId: "child-session-model-responses",
+      requestId: "child-request-model-responses",
+      step: 4,
+      sequence,
+      scope,
+    });
+
+  applyEvent(state, childEvent(EventKinds.ModelStarted, { model: "reviewer-model", messageIndex: 0 }, 2));
+  applyEvent(state, childEvent(EventKinds.ModelCompleted, { text: "", messageIndex: 0 }, 3));
+  applyEvent(state, childEvent(EventKinds.ModelStarted, { model: "reviewer-model", messageIndex: 1 }, 4));
+  applyEvent(state, childEvent(EventKinds.ModelCompleted, { text: "", messageIndex: 1 }, 5));
+
+  const modelSteps = state.sessions[TestSessionId].runs[0].steps.filter((step) => step.kind === "model");
+  expect(modelSteps).toHaveLength(2);
+  expect(modelSteps).toMatchObject([
+    { modelMessageIndex: 0, eventSequence: 2, completedSequence: 3, status: "done" },
+    { modelMessageIndex: 1, eventSequence: 4, completedSequence: 5, status: "done" },
+  ]);
+});
+
+test("child-agent thinking stays on its child run instead of the parent conversation", () => {
+  const state = createTestState();
+  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "Review the workspace" }));
+  const childRunId = "child-run-thinking";
+  const scope = childScope(childRunId);
+  const childEvent = (kind, data, sequence) =>
+    createEvent(kind, data, {
+      sessionId: "child-session-thinking",
+      requestId: "child-request-thinking",
+      step: 4,
+      sequence,
+      scope,
+    });
+
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.ChildRunStarted,
+      {
+        childRunId,
+        childSessionId: "child-session-thinking",
+        agentName: "reviewer",
+        status: "running",
+        contextMode: "fresh",
+      },
+      { sequence: 2, scope },
+    ),
+  );
+  applyEvent(state, childEvent(EventKinds.ModelStarted, { model: "reviewer-model", messageIndex: 0 }, 3));
+  applyEvent(
+    state,
+    childEvent(EventKinds.ModelThinkingDelta, { messageIndex: 0, contentIndex: 1, delta: "检查子代理内容" }, 4),
+  );
+  applyEvent(
+    state,
+    childEvent(
+      EventKinds.ModelThinkingCompleted,
+      { messageIndex: 0, contentIndex: 1, content: "检查子代理内容", status: "complete" },
+      5,
+    ),
+  );
+  applyEvent(
+    state,
+    childEvent(
+      EventKinds.AssistantMessageCreated,
+      {
+        messageId: "child-preface",
+        kind: "tool_preface",
+        content: "读取相关文件。",
+        terminal: false,
+        modelMessageIndex: 0,
+        modelContentIndex: 2,
+      },
+      6,
+    ),
+  );
+  applyEvent(
+    state,
+    childEvent(
+      EventKinds.ToolCallsPlanned,
+      {
+        toolCount: 1,
+        tools: ["WorkspaceRead"],
+        modelMessageIndex: 0,
+        calls: [{ callId: "child-read", toolName: "WorkspaceRead", modelContentIndex: 3 }],
+        status: "planned",
+        executionMode: "parallel",
+        batchId: "child-batch",
+      },
+      7,
+    ),
+  );
+  applyEvent(
+    state,
+    childEvent(
+      EventKinds.ToolCallStarted,
+      {
+        index: 0,
+        toolName: "WorkspaceRead",
+        callId: "child-read",
+        modelMessageIndex: 0,
+        modelContentIndex: 3,
+        batchId: "child-batch",
+      },
+      8,
+    ),
+  );
+
+  const parentRun = state.sessions[TestSessionId].runs[0];
+  const child = parentRun.steps.find((step) => step.id === `child-run:${childRunId}`)?.childRun;
+  expect(child?.thinkingBlocks).toMatchObject([
+    { messageIndex: 0, contentIndex: 1, content: "检查子代理内容", status: "complete" },
+  ]);
+  expect(child?.messages).toMatchObject([{ content: "读取相关文件。", kind: "progress" }]);
+  expect(parentRun.steps.find((step) => step.callId === "child-read")).toMatchObject({
+    kind: "tool",
+    agentStep: 4,
+    modelMessageIndex: 0,
+    modelContentIndex: 3,
+    scope: { childRunId, role: "childAgent" },
+  });
+  expect(parentRun.thinkingBlocks).toEqual([]);
+  expect(parentRun.activeModelRequest).toBeUndefined();
+});
+
 test("child-run lifecycle and snapshots project back to the owning parent run", () => {
   const state = createTestState();
   applyEvent(state, createEvent(EventKinds.RunStarted, { input: "Review the workspace" }));
@@ -388,6 +519,7 @@ test("child-run messages remain in the delegation step and deduplicate by messag
       kind: "response",
       content: "完整结果已整理。",
       createdAt: "2026-07-09T00:00:05.000Z",
+      eventSequence: 1,
     },
   ]);
   expect(step?.description).toContain("完整结果已整理。");

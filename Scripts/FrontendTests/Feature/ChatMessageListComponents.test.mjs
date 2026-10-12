@@ -88,6 +88,114 @@ test("assistant turn projection preserves a cancelled execution slice between it
   expect(stages[0].run?.steps.map((step) => step.id)).toEqual(["cancelled-tool", `${requestId}-cancelled`]);
 });
 
+test("a newly active run shows its initial thinking state beside the sent request", async () => {
+  const requestId = "request-initial-thinking";
+  const userMessage = createMessage({
+    id: "initial-thinking-user",
+    requestId,
+    role: "user",
+    content: "检查一下这个项目。",
+  });
+  const run = createRun({ requestId });
+
+  renderWithFrontendProviders(
+    React.createElement(
+      MessageList,
+      createMessageListProps({
+        messages: [userMessage],
+        runs: [run],
+        currentRun: run,
+      }),
+    ),
+  );
+
+  const thinking = await screen.findByText("Thinking");
+  expect(document.querySelectorAll("[data-initial-thinking]")).toHaveLength(1);
+  expect(
+    document.querySelector("[data-initial-thinking] [data-thinking-status-icon] [data-thinking-indicator]"),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText(userMessage.content).compareDocumentPosition(thinking) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).not.toBe(0);
+});
+
+test("completed background preparation telemetry does not hide the initial thinking state", async () => {
+  const requestId = "request-initial-thinking-after-preparation";
+  const userMessage = createMessage({
+    id: "initial-thinking-after-preparation-user",
+    requestId,
+    role: "user",
+    content: "检查一下这个项目。",
+  });
+  const run = createRun({
+    requestId,
+    activities: [
+      {
+        id: "completed-context-preparation",
+        activity: "preparing_context",
+        status: "done",
+        startedAt: "2026-01-01T00:00:00.000Z",
+        endedAt: "2026-01-01T00:00:01.000Z",
+      },
+    ],
+  });
+
+  renderWithFrontendProviders(
+    React.createElement(
+      MessageList,
+      createMessageListProps({
+        messages: [userMessage],
+        runs: [run],
+        currentRun: run,
+      }),
+    ),
+  );
+
+  expect(await screen.findByText("Thinking")).toBeInTheDocument();
+  expect(document.querySelectorAll("[data-initial-thinking]")).toHaveLength(1);
+});
+
+test("streaming model thinking is rendered with the thinking indicator in the conversation list", async () => {
+  const requestId = "request-streaming-thinking-icon";
+  const userMessage = createMessage({
+    id: "streaming-thinking-icon-user",
+    requestId,
+    role: "user",
+    content: "解释一下这个变化。",
+  });
+  const run = createRun({
+    requestId,
+    thinkingBlocks: [
+      {
+        id: "streaming-thinking-icon-block",
+        step: 0,
+        messageIndex: 0,
+        contentIndex: 0,
+        content: "我先核对上下文。",
+        status: "streaming",
+      },
+    ],
+    activeModelRequest: { agentStep: 0, modelMessageIndex: 0, eventSequence: 1 },
+  });
+
+  renderWithFrontendProviders(
+    React.createElement(
+      MessageList,
+      createMessageListProps({
+        messages: [userMessage],
+        runs: [run],
+        currentRun: run,
+      }),
+    ),
+  );
+
+  expect(await screen.findByText("我先核对上下文。")).toBeInTheDocument();
+  expect(
+    document.querySelector("[data-model-thinking-disclosure] [data-thinking-status-icon] [data-thinking-indicator]"),
+  ).toBeInTheDocument();
+  expect(document.querySelector("[data-initial-thinking]")).not.toBeInTheDocument();
+});
+
 test("a live execution stage keeps its decision identity when the preface is persisted", () => {
   const requestId = "request-stable-decision-stage";
   const createdAt = "2026-01-01T00:00:00.000Z";

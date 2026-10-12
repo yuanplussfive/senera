@@ -33,17 +33,17 @@ export default class TypeBuilder {
     
     AskUserDecision: ClassViewer<'AskUserDecision', "kind" | "question">;
     
-    ContinuityAgendaDraft: ClassViewer<'ContinuityAgendaDraft', "kind" | "change" | "actor" | "summary" | "timeText" | "relatesTo">;
+    AuxiliaryImageAnalysis: ClassViewer<'AuxiliaryImageAnalysis', "analysis">;
     
-    ContinuityCapture: ClassViewer<'ContinuityCapture', "items" | "agenda" | "needsRulePass">;
+    AuxiliarySummary: ClassViewer<'AuxiliarySummary', "summary">;
     
-    ContinuityCaptureItem: ClassViewer<'ContinuityCaptureItem', "kind" | "text" | "key" | "value" | "from" | "relation" | "to">;
+    ChannelCodePart: ClassViewer<'ChannelCodePart', "kind" | "language" | "code">;
     
-    ContinuityRuleExtractionResult: ClassViewer<'ContinuityRuleExtractionResult', "items">;
+    ChannelDelivery: ClassViewer<'ChannelDelivery', "parts">;
     
-    ContinuityRuleItem: ClassViewer<'ContinuityRuleItem', "kind" | "title" | "target" | "replace" | "value" | "when" | "at" | "match" | "threshold" | "effect" | "until">;
+    ChannelResourcePart: ClassViewer<'ChannelResourcePart', "kind" | "uri" | "alt" | "mediaKind" | "mime" | "fileName">;
     
-    ConversationBoundary: ClassViewer<'ConversationBoundary', "relation" | "confidence" | "focus">;
+    ChannelTextPart: ClassViewer<'ChannelTextPart', "kind" | "text">;
     
     DirectDecision: ClassViewer<'DirectDecision', "kind" | "response">;
     
@@ -51,11 +51,7 @@ export default class TypeBuilder {
     
     ExecuteDecision: ClassViewer<'ExecuteDecision', "kind" | "fragment">;
     
-    GoalMicroLoopCandidate: ClassViewer<'GoalMicroLoopCandidate', "goalId" | "summary" | "status" | "intentMode" | "priority" | "progress" | "successCriteria" | "trigger" | "triggerKey" | "sourceRefs" | "dueAt" | "nextReviewAt">;
-    
-    GoalMicroLoopDecision: ClassViewer<'GoalMicroLoopDecision', "goalId" | "triggerKey" | "kind" | "reason" | "nextReviewAt" | "progress" | "blockedReason">;
-    
-    PiConversationSummary: ClassViewer<'PiConversationSummary', "summary">;
+    MemOSFragment: ClassBuilder<'MemOSFragment', "topic" | "summary" | "type">;
     
     PiToolArgumentsDraft: ClassViewer<'PiToolArgumentsDraft', "arguments" | "missingInputs" | "assumptions">;
     
@@ -83,15 +79,9 @@ export default class TypeBuilder {
     
     RepeatedCallWarning: ClassViewer<'RepeatedCallWarning', "toolName" | "argsHash" | "count" | "lastStep">;
     
-    ResidentIdleDecision: ClassViewer<'ResidentIdleDecision', "kind" | "reason" | "goal" | "message">;
-    
-    ResidentIdleGoalProposal: ClassViewer<'ResidentIdleGoalProposal', "summary" | "detail" | "priority" | "successCriteria">;
-    
     ResidentSpeechProjection: ClassViewer<'ResidentSpeechProjection', "utterance">;
     
-    TemporalMemoryDigest: ClassViewer<'TemporalMemoryDigest', "summary" | "topics" | "openLoops">;
-    
-    TemporalMemoryTextPart: ClassViewer<'TemporalMemoryTextPart', "kind" | "text" | "role">;
+    StateCardRewrite: ClassViewer<'StateCardRewrite', "topicRelation" | "standaloneRequest">;
     
     ToolCapabilityFacets: ClassViewer<'ToolCapabilityFacets', "Actions" | "Targets" | "Inputs" | "Outputs" | "Evidence" | "Effects">;
     
@@ -105,10 +95,6 @@ export default class TypeBuilder {
     
     ToolEvidenceCapabilityItem: ClassViewer<'ToolEvidenceCapabilityItem', "produces" | "quality" | "satisfies" | "kinds" | "capabilityIds">;
     
-    ToolLearningRecord: ClassViewer<'ToolLearningRecord', "toolName" | "tags" | "sourceTerms" | "triggers" | "reason" | "confidence">;
-    
-    ToolLearningResult: ClassViewer<'ToolLearningResult', "records">;
-    
     ToolRiskAudit: ClassViewer<'ToolRiskAudit', "decision" | "riskLevel" | "confidence" | "tripwire" | "reason" | "matchedConcerns" | "safeAlternative">;
     
     
@@ -120,10 +106,6 @@ export default class TypeBuilder {
     
     ExecutionDeltaOp: EnumViewer<'ExecutionDeltaOp', "AddCall" | "AddEvidence" | "AddWarning">;
     
-    GoalMicroLoopDecisionKind: EnumViewer<'GoalMicroLoopDecisionKind', "Wait" | "Propose" | "AskUser" | "Execute" | "Replan" | "Complete" | "Block">;
-    
-    ResidentIdleDecisionKind: EnumViewer<'ResidentIdleDecisionKind', "Wait" | "Reflect" | "CreateGoal" | "Notify">;
-    
     ToolCallStatus: EnumViewer<'ToolCallStatus', "Success" | "Failure" | "Empty">;
     
     ToolRiskAuditDecision: EnumViewer<'ToolRiskAuditDecision', "Allow" | "Ask" | "Deny">;
@@ -134,10 +116,10 @@ export default class TypeBuilder {
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "ActionPlanInput","ActionRunState","AskUserDecision","ContinuityAgendaDraft","ContinuityCapture","ContinuityCaptureItem","ContinuityRuleExtractionResult","ContinuityRuleItem","ConversationBoundary","DirectDecision","EvidenceSlot","ExecuteDecision","GoalMicroLoopCandidate","GoalMicroLoopDecision","PiConversationSummary","PiToolArgumentsDraft","PlanFragment","PlannedToolCall","PlannerActiveSkill","PlannerCurrentUserTurn","PlannerEvidenceMemoryItem","PlannerEvidenceRequirement","PlannerEvidenceStateItem","PlannerJournalItem","PlannerTimelineTurn","PlannerToolCallStateItem","ProgressSignals","RepeatedCallWarning","ResidentIdleDecision","ResidentIdleGoalProposal","ResidentSpeechProjection","TemporalMemoryDigest","TemporalMemoryTextPart","ToolCapabilityFacets","ToolCapabilityItem","ToolCapabilityRisk","ToolCatalogItem","ToolCatalogSummaryItem","ToolEvidenceCapabilityItem","ToolLearningRecord","ToolLearningResult","ToolRiskAudit",
+            "ActionPlanInput","ActionRunState","AskUserDecision","AuxiliaryImageAnalysis","AuxiliarySummary","ChannelCodePart","ChannelDelivery","ChannelResourcePart","ChannelTextPart","DirectDecision","EvidenceSlot","ExecuteDecision","MemOSFragment","PiToolArgumentsDraft","PlanFragment","PlannedToolCall","PlannerActiveSkill","PlannerCurrentUserTurn","PlannerEvidenceMemoryItem","PlannerEvidenceRequirement","PlannerEvidenceStateItem","PlannerJournalItem","PlannerTimelineTurn","PlannerToolCallStateItem","ProgressSignals","RepeatedCallWarning","ResidentSpeechProjection","StateCardRewrite","ToolCapabilityFacets","ToolCapabilityItem","ToolCapabilityRisk","ToolCatalogItem","ToolCatalogSummaryItem","ToolEvidenceCapabilityItem","ToolRiskAudit",
           ]),
           enums: new Set([
-            "AskUserDecisionKind","DirectDecisionKind","ExecuteDecisionKind","ExecutionDeltaOp","GoalMicroLoopDecisionKind","ResidentIdleDecisionKind","ToolCallStatus","ToolRiskAuditDecision","ToolRiskLevel",
+            "AskUserDecisionKind","DirectDecisionKind","ExecuteDecisionKind","ExecutionDeltaOp","ToolCallStatus","ToolRiskAuditDecision","ToolRiskLevel",
           ]),
           runtime: DO_NOT_USE_DIRECTLY_UNLESS_YOU_KNOW_WHAT_YOURE_DOING_RUNTIME
         });
@@ -154,28 +136,28 @@ export default class TypeBuilder {
           "kind","question",
         ]);
         
-        this.ContinuityAgendaDraft = this.tb.classViewer("ContinuityAgendaDraft", [
-          "kind","change","actor","summary","timeText","relatesTo",
+        this.AuxiliaryImageAnalysis = this.tb.classViewer("AuxiliaryImageAnalysis", [
+          "analysis",
         ]);
         
-        this.ContinuityCapture = this.tb.classViewer("ContinuityCapture", [
-          "items","agenda","needsRulePass",
+        this.AuxiliarySummary = this.tb.classViewer("AuxiliarySummary", [
+          "summary",
         ]);
         
-        this.ContinuityCaptureItem = this.tb.classViewer("ContinuityCaptureItem", [
-          "kind","text","key","value","from","relation","to",
+        this.ChannelCodePart = this.tb.classViewer("ChannelCodePart", [
+          "kind","language","code",
         ]);
         
-        this.ContinuityRuleExtractionResult = this.tb.classViewer("ContinuityRuleExtractionResult", [
-          "items",
+        this.ChannelDelivery = this.tb.classViewer("ChannelDelivery", [
+          "parts",
         ]);
         
-        this.ContinuityRuleItem = this.tb.classViewer("ContinuityRuleItem", [
-          "kind","title","target","replace","value","when","at","match","threshold","effect","until",
+        this.ChannelResourcePart = this.tb.classViewer("ChannelResourcePart", [
+          "kind","uri","alt","mediaKind","mime","fileName",
         ]);
         
-        this.ConversationBoundary = this.tb.classViewer("ConversationBoundary", [
-          "relation","confidence","focus",
+        this.ChannelTextPart = this.tb.classViewer("ChannelTextPart", [
+          "kind","text",
         ]);
         
         this.DirectDecision = this.tb.classViewer("DirectDecision", [
@@ -190,16 +172,8 @@ export default class TypeBuilder {
           "kind","fragment",
         ]);
         
-        this.GoalMicroLoopCandidate = this.tb.classViewer("GoalMicroLoopCandidate", [
-          "goalId","summary","status","intentMode","priority","progress","successCriteria","trigger","triggerKey","sourceRefs","dueAt","nextReviewAt",
-        ]);
-        
-        this.GoalMicroLoopDecision = this.tb.classViewer("GoalMicroLoopDecision", [
-          "goalId","triggerKey","kind","reason","nextReviewAt","progress","blockedReason",
-        ]);
-        
-        this.PiConversationSummary = this.tb.classViewer("PiConversationSummary", [
-          "summary",
+        this.MemOSFragment = this.tb.classBuilder("MemOSFragment", [
+          "topic","summary","type",
         ]);
         
         this.PiToolArgumentsDraft = this.tb.classViewer("PiToolArgumentsDraft", [
@@ -254,24 +228,12 @@ export default class TypeBuilder {
           "toolName","argsHash","count","lastStep",
         ]);
         
-        this.ResidentIdleDecision = this.tb.classViewer("ResidentIdleDecision", [
-          "kind","reason","goal","message",
-        ]);
-        
-        this.ResidentIdleGoalProposal = this.tb.classViewer("ResidentIdleGoalProposal", [
-          "summary","detail","priority","successCriteria",
-        ]);
-        
         this.ResidentSpeechProjection = this.tb.classViewer("ResidentSpeechProjection", [
           "utterance",
         ]);
         
-        this.TemporalMemoryDigest = this.tb.classViewer("TemporalMemoryDigest", [
-          "summary","topics","openLoops",
-        ]);
-        
-        this.TemporalMemoryTextPart = this.tb.classViewer("TemporalMemoryTextPart", [
-          "kind","text","role",
+        this.StateCardRewrite = this.tb.classViewer("StateCardRewrite", [
+          "topicRelation","standaloneRequest",
         ]);
         
         this.ToolCapabilityFacets = this.tb.classViewer("ToolCapabilityFacets", [
@@ -298,14 +260,6 @@ export default class TypeBuilder {
           "produces","quality","satisfies","kinds","capabilityIds",
         ]);
         
-        this.ToolLearningRecord = this.tb.classViewer("ToolLearningRecord", [
-          "toolName","tags","sourceTerms","triggers","reason","confidence",
-        ]);
-        
-        this.ToolLearningResult = this.tb.classViewer("ToolLearningResult", [
-          "records",
-        ]);
-        
         this.ToolRiskAudit = this.tb.classViewer("ToolRiskAudit", [
           "decision","riskLevel","confidence","tripwire","reason","matchedConcerns","safeAlternative",
         ]);
@@ -325,14 +279,6 @@ export default class TypeBuilder {
         
         this.ExecutionDeltaOp = this.tb.enumViewer("ExecutionDeltaOp", [
           "AddCall","AddEvidence","AddWarning",
-        ]);
-        
-        this.GoalMicroLoopDecisionKind = this.tb.enumViewer("GoalMicroLoopDecisionKind", [
-          "Wait","Propose","AskUser","Execute","Replan","Complete","Block",
-        ]);
-        
-        this.ResidentIdleDecisionKind = this.tb.enumViewer("ResidentIdleDecisionKind", [
-          "Wait","Reflect","CreateGoal","Notify",
         ]);
         
         this.ToolCallStatus = this.tb.enumViewer("ToolCallStatus", [
@@ -358,7 +304,7 @@ export default class TypeBuilder {
         // wraps over the Rust type builder, so we only need to call tb.reset().
         // In JS it's not possible unless we refactor the way class builders are
         // accessed.
-        
+         this.MemOSFragment.reset(); 
     }
 
     __tb() {

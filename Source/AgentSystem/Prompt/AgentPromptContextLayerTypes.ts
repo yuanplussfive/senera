@@ -1,16 +1,4 @@
-export const AgentPromptContextLayerNames = [
-  "kernel",
-  "persona",
-  "profile",
-  "lore",
-  "facts",
-  "graph",
-  "world",
-  "scene",
-  "memory",
-  "workflow",
-  "task",
-] as const;
+export const AgentPromptContextLayerNames = ["kernel", "persona", "memory", "workflow", "task"] as const;
 export type AgentPromptContextLayerName = (typeof AgentPromptContextLayerNames)[number];
 
 export const AgentPromptContextTierNames = ["stable", "context", "volatile"] as const;
@@ -18,7 +6,7 @@ export type AgentPromptContextTierName = (typeof AgentPromptContextTierNames)[nu
 
 export interface AgentPromptContextLayerManifestEntry {
   readonly name: AgentPromptContextLayerName;
-  readonly source: "runtime" | "preset" | "profile" | "continuity" | "request";
+  readonly source: "runtime" | "continuity" | "request";
   readonly stability: "stable" | "turn" | "event";
   readonly included: boolean;
 }

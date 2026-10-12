@@ -1,46 +1,43 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronRight, CircleAlert, History, RotateCcw, X } from "lucide-react";
+import {
+  AgentTimeline,
+  type AgentTimelineEvent,
+  type AgentTimelineEventStatus,
+} from "@vinyasa/ai-native/agent-timeline";
+import { ToolCallCard, type ToolCallStatus } from "@vinyasa/ai-native/tool-call-card";
+import { VinyasaProvider } from "@vinyasa/tokens";
 import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
-import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
 import { cn } from "../../lib/util";
-import { activeRunActivityLabel, runActivityLabel } from "../workflow/runActivityPresentation";
-import { projectToolActivity } from "../workflow/toolActivityPresentation";
+import {
+  activeRunActivityLabel,
+  runActivityLabel,
+  runActivityPresentationPriority,
+  RunActivityPresentationPriorities,
+} from "../workflow/runActivityPresentation";
+import { projectToolActivityInspection } from "../workflow/toolActivityPresentation";
 import { useStore } from "../../store/sessionStore";
 import { useEventJournalStore } from "./eventJournalStore";
 import {
   projectRuntimeDiagnostic,
   projectRuntimeDiagnosticFromRun,
+  projectRuntimeConversationSpans,
+  projectRuntimeUsageFromSessionSnapshot,
+  mergeRuntimeUsageSnapshots,
   RuntimeDiagnosticLanes,
-  type RuntimeDiagnosticHealth,
   type RuntimeDiagnosticModel,
   type RuntimeDiagnosticSpan,
 } from "./runtimeDiagnosticProjection";
 import type { RunRecord } from "../../store/sessionStore";
 import { summarizeRun } from "../workflow/runSummary";
 import { FluidHoverHighlight, useFluidHover, useMotionLevel } from "../../shared/motion";
-import { Spinner, Tooltip } from "../../shared/ui";
-
-const StatusMessageKeys = {
-  healthy: "observability.diagnostic.status.healthy",
-  active: "observability.diagnostic.status.active",
-  failed: "observability.diagnostic.status.failed",
-  unknown: "observability.diagnostic.status.unknown",
-  running: "observability.diagnostic.status.running",
-  completed: "observability.diagnostic.status.completed",
-} as const satisfies Record<RuntimeDiagnosticHealth | "running" | "completed", FrontendMessageKey>;
-
-const HealthMessageKeys = {
-  connection: "observability.diagnostic.status.connection",
-  runtime: "observability.diagnostic.status.runtime",
-  model: "observability.diagnostic.status.model",
-  tools: "observability.diagnostic.status.tools",
-  response: "observability.diagnostic.status.response",
-} as const satisfies Record<string, FrontendMessageKey>;
+import { ActivityStatusIcon, AppIcon } from "../../shared/ui";
 
 const SourceMessageKeys = {
   activity: "observability.diagnostic.source.activity",
   tool: "observability.diagnostic.source.tool",
 } as const;
+
+type TimelineSelection = "total" | "run";
 
 export function RuntimeDiagnosticPanel(): JSX.Element {
   const records = useEventJournalStore((state) => state.records);
@@ -50,7 +47,7 @@ export function RuntimeDiagnosticPanel(): JSX.Element {
   const viewedRunId = useStore((state) => (activeSessionId ? state.viewedRunIdBySession[activeSessionId] : undefined));
   const setViewedRun = useStore((state) => state.setViewedRun);
   const [nowEpoch, setNowEpoch] = useState(() => Date.now());
-  const [expandedSpanId, setExpandedSpanId] = useState<string>();
+  const [timelineSelection, setTimelineSelection] = useState<TimelineSelection>("run");
   const runs = session?.runs ?? [];
   const latestRun = runs.at(-1);
   const selectedRun = runs.find((run) => run.requestId === viewedRunId) ?? latestRun;
@@ -65,20 +62,32 @@ export function RuntimeDiagnosticPanel(): JSX.Element {
       }),
     [activeSessionId, nowEpoch, records, selectedRun?.requestId, viewPausedAt],
   );
-  const model = useMemo(
-    () =>
-      selectedRun && !isHistorical && journalModel.spans.length > 0
-        ? journalModel
-        : selectedRun
-          ? projectRuntimeDiagnosticFromRun(selectedRun, {
-              nowEpoch,
-              contextUsage: journalModel.contextUsage,
-              sessionUsage: journalModel.sessionUsage,
-            })
-          : journalModel,
-    [isHistorical, journalModel, nowEpoch, selectedRun],
+  const sessionRuntimeUsage = useMemo(
+    () => projectRuntimeUsageFromSessionSnapshot(session?.runtimeSnapshot),
+    [session?.runtimeSnapshot],
   );
-  const hasRunningSpan = selectedRun?.status === "running" || selectedRun?.status === "cancelling";
+  const model = useMemo(() => {
+    const liveUsage = mergeRuntimeUsageSnapshots(journalModel, sessionRuntimeUsage);
+    const contextUsage = liveUsage.contextUsage;
+    const sessionUsage = liveUsage.sessionUsage;
+    if (!selectedRun) return { ...journalModel, contextUsage, sessionUsage };
+    return projectRuntimeDiagnosticFromRun(selectedRun, {
+      nowEpoch,
+      contextUsage,
+      sessionUsage,
+    });
+  }, [journalModel, nowEpoch, selectedRun, sessionRuntimeUsage]);
+  const hasRunningSpan = model.spans.some((span) => span.status === "running");
+  const conversationSpans = useMemo(
+    () =>
+      projectRuntimeConversationSpans(records, runs, {
+        pausedAt: viewPausedAt,
+        activeSessionId,
+      }),
+    [activeSessionId, records, runs, viewPausedAt],
+  );
+  const showTotalTimeline = conversationSpans.length > 0 && (timelineSelection === "total" || runs.length === 0);
+  const visibleTimelineSpans = showTotalTimeline ? conversationSpans : model.spans;
 
   useEffect(() => {
     if (!hasRunningSpan) return undefined;
@@ -87,15 +96,8 @@ export function RuntimeDiagnosticPanel(): JSX.Element {
   }, [hasRunningSpan]);
 
   useEffect(() => {
-    if (!expandedSpanId || model.spans.some((span) => span.id === expandedSpanId)) return;
-    setExpandedSpanId(undefined);
-  }, [expandedSpanId, model.spans]);
-
-  const overallStatus = readOverallStatus(model);
-  const elapsedMs =
-    model.startedAtEpoch === undefined || model.endAtEpoch === undefined
-      ? undefined
-      : Math.max(0, model.endAtEpoch - model.startedAtEpoch);
+    setTimelineSelection("run");
+  }, [activeSessionId]);
 
   return (
     <section
@@ -104,35 +106,33 @@ export function RuntimeDiagnosticPanel(): JSX.Element {
       data-runtime-diagnostic
     >
       <div
-        className="scrollbar-thin min-h-0 flex-1 overflow-auto [scrollbar-gutter:stable]"
+        className="scrollbar-thin min-h-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]"
         data-runtime-diagnostic-scroll
       >
         <RunHistoryStrip
           runs={runs}
           selectedRun={selectedRun}
+          selection={showTotalTimeline ? "total" : "run"}
+          hasTotalStream={conversationSpans.length > 0}
           historical={isHistorical}
           onSelect={(requestId) => activeSessionId && setViewedRun(activeSessionId, requestId)}
-          onFollowLatest={() => activeSessionId && setViewedRun(activeSessionId, undefined)}
-        />
-        <ConsoleHeader
-          model={model}
-          overallStatus={overallStatus}
-          elapsedMs={elapsedMs}
-          paused={viewPausedAt !== undefined}
+          onSelectTotal={() => {
+            setTimelineSelection("total");
+            if (activeSessionId) setViewedRun(activeSessionId, undefined);
+          }}
+          onFollowLatest={() => {
+            setTimelineSelection("run");
+            if (activeSessionId) setViewedRun(activeSessionId, undefined);
+          }}
+          onSelectRun={() => setTimelineSelection("run")}
         />
         <SessionUsageConsole contextUsage={model.contextUsage} usage={model.sessionUsage} />
-        <HealthConsole model={model} />
-        {model.spans.length === 0 ? (
+        {visibleTimelineSpans.length === 0 ? (
           <EmptyDiagnostic />
+        ) : showTotalTimeline ? (
+          <ConversationEventConsole spans={conversationSpans} />
         ) : (
-          <>
-            <RuntimeTrajectoryOverview model={model} />
-            <RuntimeConsole
-              model={model}
-              expandedSpanId={expandedSpanId}
-              onToggle={(spanId) => setExpandedSpanId((current) => (current === spanId ? undefined : spanId))}
-            />
-          </>
+          <RuntimeConsole model={model} />
         )}
       </div>
     </section>
@@ -142,26 +142,40 @@ export function RuntimeDiagnosticPanel(): JSX.Element {
 function RunHistoryStrip({
   runs,
   selectedRun,
+  selection,
+  hasTotalStream,
   historical,
   onSelect,
+  onSelectTotal,
   onFollowLatest,
+  onSelectRun,
 }: {
   runs: readonly RunRecord[];
   selectedRun?: RunRecord;
+  selection: TimelineSelection;
+  hasTotalStream: boolean;
   historical: boolean;
   onSelect: (requestId: string) => void;
+  onSelectTotal: () => void;
   onFollowLatest: () => void;
+  onSelectRun: () => void;
 }): JSX.Element | null {
   const { disableMotion } = useMotionLevel();
   const historyListRef = useRef<HTMLDivElement>(null);
   const historyHover = useFluidHover(historyListRef, { axis: "y" });
   // The selected run paints its own wash; the hover layer yields on that row.
-  const selectedRunIndex = runs.findIndex((run) => run.requestId === selectedRun?.requestId);
-  if (runs.length === 0) return null;
+  const selectedRunPosition = runs.findIndex((run) => run.requestId === selectedRun?.requestId);
+  const selectedRunIndex =
+    selection === "total"
+      ? 0
+      : selectedRunPosition >= 0
+        ? selectedRunPosition + (hasTotalStream ? 1 : 0)
+        : -1;
+  if (runs.length === 0 && !hasTotalStream) return null;
   return (
     <section className="border-b border-line-subtle px-3 pb-2 pt-2.5 sm:px-4" data-run-history>
       <div className="mb-1 flex items-center gap-2 text-[10px] text-content-muted">
-        <History className="h-3 w-3" aria-hidden="true" />
+        <AppIcon icon="history" size={12} aria-hidden="true" />
         <span>{frontendMessage("observability.diagnostic.runHistory")}</span>
         <span className="ml-auto font-mono tabular-nums text-content-disabled">{runs.length}</span>
       </div>
@@ -176,16 +190,27 @@ function RunHistoryStrip({
           hidden={disableMotion || historyHover.activeIndex === selectedRunIndex}
           className="rounded-md"
         />
+        {hasTotalStream ? (
+          <TimelineHistoryItem
+            itemRef={historyHover.getItemRef(0)}
+            fluidHoverEnabled={!disableMotion}
+            selected={selection === "total"}
+            onSelect={onSelectTotal}
+          />
+        ) : null}
         {runs.map((run, index) => (
           <RunHistoryItem
             key={run.requestId}
-            itemRef={historyHover.getItemRef(index)}
+            itemRef={historyHover.getItemRef(index + (hasTotalStream ? 1 : 0))}
             fluidHoverEnabled={!disableMotion}
             run={run}
             index={index}
             total={runs.length}
-            selected={run.requestId === selectedRun?.requestId}
-            onSelect={() => onSelect(run.requestId)}
+            selected={selection === "run" && run.requestId === selectedRun?.requestId}
+            onSelect={() => {
+              onSelectRun();
+              onSelect(run.requestId);
+            }}
           />
         ))}
       </div>
@@ -195,11 +220,45 @@ function RunHistoryStrip({
           className="mt-1.5 inline-flex items-center gap-1 text-[10px] text-content-secondary hover:text-content-primary"
           onClick={onFollowLatest}
         >
-          <RotateCcw className="h-3 w-3" aria-hidden="true" />
+          <AppIcon icon="refresh" size={12} aria-hidden="true" />
           {frontendMessage("workflow.panel.followLatest")}
         </button>
       ) : null}
     </section>
+  );
+}
+
+function TimelineHistoryItem({
+  itemRef,
+  fluidHoverEnabled,
+  selected,
+  onSelect,
+}: {
+  itemRef: (element: HTMLElement | null) => void;
+  fluidHoverEnabled: boolean;
+  selected: boolean;
+  onSelect: () => void;
+}): JSX.Element {
+  const label = frontendMessage("observability.diagnostic.timeline.total");
+  return (
+    <button
+      type="button"
+      ref={itemRef}
+      aria-pressed={selected}
+      aria-label={label}
+      onClick={onSelect}
+      className={cn(
+        "group relative z-10 grid min-h-[42px] w-full min-w-0 grid-cols-[16px_minmax(0,1fr)] items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
+        selected
+          ? "bg-surface-hover text-content-primary"
+          : cn("text-content-secondary", fluidHoverEnabled ? "hover:bg-transparent" : "hover:bg-surface-hover/70"),
+      )}
+    >
+      <span className="grid h-4 w-4 place-items-center text-accent-content">
+        <AppIcon icon="list" size={14} aria-hidden="true" />
+      </span>
+      <span className="min-w-0 truncate text-[11px] font-medium text-content-primary">{label}</span>
+    </button>
   );
 }
 
@@ -269,48 +328,12 @@ function RunHistoryItem({
 }
 
 function RunHistoryStatus({ status }: { status: RunRecord["status"] }): JSX.Element {
-  if (status === "running" || status === "cancelling") return <Spinner size="xs" className="text-accent-content" />;
-  if (status === "failed") return <CircleAlert className="h-3 w-3 text-brick-600" aria-hidden="true" />;
-  if (status === "cancelled") return <X className="h-3 w-3 text-content-muted" aria-hidden="true" />;
-  return <Check className="h-3 w-3 text-moss-600" aria-hidden="true" />;
-}
-
-function ConsoleHeader({
-  model,
-  overallStatus,
-  elapsedMs,
-  paused,
-}: {
-  model: RuntimeDiagnosticModel;
-  overallStatus: RuntimeDiagnosticHealth;
-  elapsedMs?: number;
-  paused: boolean;
-}): JSX.Element {
-  return (
-    <header className="px-3 pb-2 pt-3 sm:px-4" data-runtime-diagnostic-header>
-      <div className="flex min-w-0 items-center gap-2 text-[11px]">
-        <span className={cn("h-2 w-2 shrink-0 rounded-full", statusDotClass(overallStatus))} aria-hidden="true" />
-        <h2 className="min-w-0 flex-1 truncate font-sans text-[12px] font-semibold text-content-primary">
-          {frontendFeatureMessage("observability.diagnostic.consoleTitle")}
-        </h2>
-        <span className={cn("shrink-0 font-sans text-[10px]", statusTextClass(overallStatus))}>
-          {statusLabel(overallStatus)}
-        </span>
-        {elapsedMs !== undefined ? (
-          <span className="shrink-0 text-[10px] tabular-nums text-content-muted">{formatDuration(elapsedMs)}</span>
-        ) : null}
-      </div>
-      <div className="mt-1 flex min-w-0 items-center gap-2 pl-4 text-[10px] text-content-muted">
-        <span>{frontendMessage(paused ? "observability.diagnostic.paused" : "observability.diagnostic.live")}</span>
-        {model.requestId ? (
-          <>
-            <span className="text-content-disabled">/</span>
-            <span className="min-w-0 truncate">{shortIdentifier(model.requestId)}</span>
-          </>
-        ) : null}
-      </div>
-    </header>
-  );
+  if (status === "running" || status === "cancelling") {
+    return <ActivityStatusIcon status={status} size={13} className="text-accent-content" />;
+  }
+  if (status === "failed") return <AppIcon icon="alert-circle" size={12} className="text-brick-600" aria-hidden="true" />;
+  if (status === "cancelled") return <AppIcon icon="close" size={12} className="text-content-muted" aria-hidden="true" />;
+  return <AppIcon icon="checkmark" size={12} className="text-moss-600" aria-hidden="true" />;
 }
 
 function SessionUsageConsole({
@@ -319,10 +342,9 @@ function SessionUsageConsole({
 }: {
   contextUsage: RuntimeDiagnosticModel["contextUsage"];
   usage: RuntimeDiagnosticModel["sessionUsage"];
-}): JSX.Element {
+}): JSX.Element | null {
   const hasContextTokens = contextUsage?.tokens !== null && contextUsage?.tokens !== undefined;
   const used = hasContextTokens ? Math.max(0, contextUsage.tokens) : 0;
-  const remaining = contextUsage ? Math.max(0, contextUsage.contextWindow - used) : undefined;
   const percent = contextUsage
     ? Math.max(
         0,
@@ -331,8 +353,8 @@ function SessionUsageConsole({
     : 0;
   const contextValue =
     contextUsage && hasContextTokens
-      ? `${formatPercent(percent)}%  ${formatTokenCount(used)} / ${formatTokenCount(contextUsage.contextWindow)}`
-      : frontendMessage("observability.diagnostic.usage.unknown");
+      ? frontendMessage("observability.diagnostic.usage.used", { count: formatTokenCount(used) })
+      : undefined;
   const stats = [
     ["observability.diagnostic.usage.totalTokens", usage ? formatTokenCount(usage.tokens.total) : "--"],
     ["observability.diagnostic.usage.input", usage ? formatTokenCount(usage.tokens.input) : "--"],
@@ -344,40 +366,40 @@ function SessionUsageConsole({
     ["observability.diagnostic.usage.cost", usage ? formatCost(usage.cost) : "--"],
   ] as const satisfies readonly (readonly [FrontendMessageKey, string])[];
 
+  if (!contextValue && !usage) return null;
+
   return (
     <section
       className="px-3 pb-3 pt-1 sm:px-4"
       data-session-usage-board
       aria-label={frontendMessage("observability.diagnostic.usage.title")}
     >
-      <div className="flex min-w-0 items-baseline gap-2 text-[10px]">
-        <span className="shrink-0 text-content-muted">{frontendMessage("observability.diagnostic.usage.context")}</span>
-        <strong className="min-w-0 flex-1 truncate text-[12px] font-semibold tabular-nums text-content-primary">
-          {contextValue}
-        </strong>
-        {remaining !== undefined ? (
-          <span className="shrink-0 tabular-nums text-content-muted">
-            {frontendMessage("observability.diagnostic.context.remaining", { count: formatTokenCount(remaining) })}
-          </span>
-        ) : null}
-      </div>
-      <div
-        className="mt-1.5 h-1 overflow-hidden bg-line-subtle"
-        role="progressbar"
-        aria-label={frontendMessage("observability.diagnostic.usage.context")}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={contextUsage && hasContextTokens ? percent : 0}
-        data-context-usage-meter
-      >
-        <span
-          className={cn(
-            "block h-full w-full origin-left transition-[transform,background-color] duration-300",
-            percent >= 90 ? "bg-brick-500" : percent >= 75 ? "bg-umber-500" : "bg-moss-500",
-          )}
-          style={{ transform: `scaleX(${contextUsage && hasContextTokens ? percent / 100 : 0})` }}
-        />
-      </div>
+      {contextValue ? (
+        <>
+          <div className="flex min-w-0 items-baseline text-[10px]">
+            <strong className="min-w-0 truncate text-[12px] font-semibold tabular-nums text-content-primary">
+              {contextValue}
+            </strong>
+          </div>
+          <div
+            className="mt-1.5 h-1 overflow-hidden bg-line-subtle"
+            role="progressbar"
+            aria-label={frontendMessage("observability.diagnostic.usage.prompt")}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={percent}
+            data-context-usage-meter
+          >
+            <span
+              className={cn(
+                "block h-full w-full origin-left transition-[transform,background-color] duration-300",
+                percent >= 90 ? "bg-brick-500" : percent >= 75 ? "bg-umber-500" : "bg-moss-500",
+              )}
+              style={{ transform: `scaleX(${percent / 100})` }}
+            />
+          </div>
+        </>
+      ) : null}
       {usage ? (
         <div className="mt-2 grid min-w-0 grid-cols-2 gap-x-4 gap-y-1 text-[9.5px] text-content-muted">
           {stats.map(([label, value]) => (
@@ -392,213 +414,173 @@ function SessionUsageConsole({
   );
 }
 
-function HealthConsole({ model }: { model: RuntimeDiagnosticModel }): JSX.Element {
-  const items = [
-    { id: "connection", status: model.connection },
-    { id: "runtime", status: readLaneHealth(model, RuntimeDiagnosticLanes.Runtime) },
-    { id: "model", status: readLaneHealth(model, RuntimeDiagnosticLanes.Model) },
-    { id: "tools", status: readLaneHealth(model, RuntimeDiagnosticLanes.Tools) },
-    { id: "response", status: readLaneHealth(model, RuntimeDiagnosticLanes.Response) },
-  ] as const;
-
-  return (
-    <div className="px-3 pb-3 sm:px-4" data-runtime-health-console>
-      <div className="flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-[10px]">
-        {items.map(({ id, status }) => (
-          <span key={id} className="inline-flex min-w-0 items-center gap-1.5">
-            <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", statusDotClass(status))} aria-hidden="true" />
-            <span className="text-content-muted">{frontendMessage(HealthMessageKeys[id])}</span>
-            <span className={cn("font-medium", statusTextClass(status))}>{healthStatusLabel(id, status)}</span>
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function RuntimeTrajectoryOverview({ model }: { model: RuntimeDiagnosticModel }): JSX.Element {
-  const start = model.startedAtEpoch ?? model.spans[0]?.startedAtEpoch ?? model.nowEpoch;
-  const end = Math.max(start + 1, model.endAtEpoch ?? model.nowEpoch);
-  const duration = end - start;
-  const lanes = model.lanes.filter((lane) => lane.spans.length > 0);
-
-  return (
-    <section
-      className="border-y border-line-subtle bg-surface-subtle/25 px-3 py-2.5 sm:px-4"
-      aria-label={frontendFeatureMessage("observability.diagnostic.trajectoryOverview")}
-      data-runtime-trajectory-overview
-    >
-      <div className="mb-2 flex items-center justify-between text-[9.5px] text-content-muted">
-        <span>{frontendFeatureMessage("observability.diagnostic.trajectoryOverview")}</span>
-        <span className="font-mono tabular-nums text-content-disabled">{formatDuration(duration)}</span>
-      </div>
-      <div className="space-y-1.5">
-        {lanes.map((lane) => (
-          <div key={lane.lane} className="grid grid-cols-[42px_minmax(0,1fr)] items-center gap-2">
-            <span className="truncate text-[9px] text-content-muted">{laneLabel(lane.lane)}</span>
-            <div className="relative h-2 overflow-hidden rounded-[2px] bg-line-subtle/70">
-              {lane.spans.map((span) => {
-                const left = ((span.startedAtEpoch - start) / duration) * 100;
-                const spanDuration =
-                  span.durationMs ??
-                  (span.status === "running" ? Math.max(0, model.nowEpoch - span.startedAtEpoch) : 0);
-                const width = Math.max(0.8, (spanDuration / duration) * 100);
-                return (
-                  <Tooltip
-                    key={span.id}
-                    content={`${spanLabel(span)} · ${formatSpanDuration(span, model.nowEpoch)}`}
-                    side="top"
-                  >
-                    <span
-                      className={cn(
-                        "absolute inset-y-0 rounded-[2px] opacity-85",
-                        trajectorySpanClass(span),
-                        span.status === "running" && "senera-loading-pulse",
-                      )}
-                      style={{ left: `${Math.max(0, Math.min(100, left))}%`, width: `${Math.min(100, width)}%` }}
-                    />
-                  </Tooltip>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function RuntimeConsole({
   model,
-  expandedSpanId,
-  onToggle,
 }: {
   model: RuntimeDiagnosticModel;
-  expandedSpanId?: string;
-  onToggle: (spanId: string) => void;
-}): JSX.Element {
-  const { disableMotion } = useMotionLevel();
-  const consoleListRef = useRef<HTMLDivElement>(null);
-  const consoleHover = useFluidHover(consoleListRef, { axis: "y", gapClick: false });
+}): JSX.Element | null {
+  const spans = readTimelineSpans(model);
+  if (spans.length === 0) return null;
+  const events = spans.map(runtimeTimelineEvent);
   return (
-    <section aria-label={frontendMessage("observability.diagnostic.timeline")} data-runtime-waterfall>
-      <div className="sticky top-0 z-[1] grid h-8 grid-cols-[26px_58px_minmax(0,1fr)_48px_12px] items-center gap-1.5 border-b border-line-subtle bg-surface-panel/95 px-3 text-[9px] text-content-muted backdrop-blur sm:px-4">
-        <span aria-label={frontendFeatureMessage("observability.diagnostic.trajectoryIndex")}>#</span>
-        <span>{frontendFeatureMessage("observability.diagnostic.trajectoryEvent")}</span>
-        <span>{frontendFeatureMessage("observability.diagnostic.trajectoryContent")}</span>
-        <span className="text-right">{frontendFeatureMessage("observability.diagnostic.detail.duration")}</span>
-        <span aria-hidden="true" />
+    <section aria-label={frontendMessage("observability.diagnostic.timeline")} data-runtime-event-stream>
+      <div className="flex h-8 items-center justify-between border-y border-line-subtle bg-surface-panel/95 px-3 text-[9px] text-content-muted backdrop-blur sm:px-4">
+        <span>{frontendMessage("observability.diagnostic.timeline.current")}</span>
       </div>
-      <div ref={consoleListRef} data-runtime-terminal-stream {...consoleHover.handlers}>
-        <FluidHoverHighlight hover={consoleHover} hidden={disableMotion} surfaceClassName="bg-surface-hover/60" />
-        {model.spans.map((span, index) => (
-          <RuntimeConsoleRow
-            key={span.id}
-            itemRef={consoleHover.getItemRef(index)}
-            fluidHoverEnabled={!disableMotion}
-            index={index + 1}
-            span={span}
-            nowEpoch={model.nowEpoch}
-            expanded={span.id === expandedSpanId}
-            onToggle={onToggle}
-          />
-        ))}
+      <div className="relative px-3 pb-3 pt-2 sm:px-4" data-runtime-event-stream-list>
+        <VinyasaProvider brand="dusk" density="compact">
+          <AgentTimeline events={events} />
+        </VinyasaProvider>
       </div>
     </section>
   );
 }
 
-function RuntimeConsoleRow({
-  itemRef,
-  fluidHoverEnabled,
-  index,
-  span,
-  nowEpoch,
-  expanded,
-  onToggle,
-}: {
-  itemRef: (element: HTMLElement | null) => void;
-  fluidHoverEnabled: boolean;
-  index: number;
-  span: RuntimeDiagnosticSpan;
-  nowEpoch: number;
-  expanded: boolean;
-  onToggle: (spanId: string) => void;
-}): JSX.Element {
-  const label = spanLabel(span);
-  const ToggleIcon = expanded ? ChevronDown : ChevronRight;
+function ConversationEventConsole({ spans }: { spans: readonly RuntimeDiagnosticSpan[] }): JSX.Element | null {
+  const events = readTimelineEventSpans(spans, { includeForegroundActivities: true }).map(runtimeTimelineEvent);
+  if (events.length === 0) return null;
   return (
-    <div
-      className={cn("group border-b border-line-subtle/65", expanded && "bg-surface-subtle/45")}
-      data-runtime-span={span.id}
-    >
-      <button
-        type="button"
-        ref={itemRef}
-        aria-expanded={expanded}
-        aria-label={`${label} · ${statusLabel(span.status)} · ${formatSpanDuration(span, nowEpoch)}`}
-        className={cn(
-          "relative z-10 grid min-h-9 w-full min-w-0 grid-cols-[26px_58px_minmax(0,1fr)_48px_12px] items-center gap-1.5 px-3 py-1.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-focus sm:px-4",
-          fluidHoverEnabled ? "hover:bg-transparent" : "hover:bg-surface-hover/60",
-        )}
-        onClick={() => onToggle(span.id)}
-      >
-        <span className="font-mono text-[9px] tabular-nums text-content-disabled">
-          {String(index).padStart(2, "0")}
-        </span>
-        <span
-          className={cn(
-            "inline-flex h-5 min-w-0 items-center gap-1 rounded px-1.5 text-[9px] font-medium",
-            trajectoryTagClass(span),
-          )}
-        >
-          <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", statusDotClass(span.status))} aria-hidden="true" />
-          <span className="truncate">{laneLabel(span.lane)}</span>
-        </span>
-        <span className="min-w-0 truncate text-[10.5px] leading-4 text-content-secondary group-hover:text-content-primary">
-          {label}
-        </span>
-        <span className={cn("text-right font-mono text-[9px] tabular-nums", trajectoryDurationClass(span.status))}>
-          {formatSpanDuration(span, nowEpoch)}
-        </span>
-        <ToggleIcon className="h-3 w-3 text-content-disabled" aria-hidden="true" />
-      </button>
-      {expanded ? <RuntimeConsoleDetail span={span} nowEpoch={nowEpoch} /> : null}
-    </div>
+    <section aria-label={frontendMessage("observability.diagnostic.timeline.total")} data-runtime-total-event-stream>
+      <div className="flex h-8 items-center border-y border-line-subtle bg-surface-panel/95 px-3 text-[9px] text-content-muted backdrop-blur sm:px-4">
+        <span>{frontendMessage("observability.diagnostic.timeline.total")}</span>
+      </div>
+      <div className="relative px-3 pb-3 pt-2 sm:px-4" data-runtime-total-event-stream-list>
+        <VinyasaProvider brand="dusk" density="compact">
+          <AgentTimeline events={events} />
+        </VinyasaProvider>
+      </div>
+    </section>
   );
 }
 
-function RuntimeConsoleDetail({ span, nowEpoch }: { span: RuntimeDiagnosticSpan; nowEpoch: number }): JSX.Element {
-  const values = [
-    [
-      frontendFeatureMessage("observability.diagnostic.detail.type"),
-      span.source === "tool" ? toolOriginLabel(span) : frontendMessage(SourceMessageKeys.activity),
-    ],
-    [frontendFeatureMessage("observability.diagnostic.detail.status"), statusLabel(span.status)],
-    [frontendFeatureMessage("observability.diagnostic.detail.duration"), formatSpanDuration(span, nowEpoch)],
-    [
-      frontendFeatureMessage("observability.diagnostic.detail.step"),
-      span.step === undefined ? undefined : String(span.step),
-    ],
-    [frontendFeatureMessage("observability.diagnostic.detail.callId"), span.callId],
-  ] as const;
+function runtimeTimelineEvent(span: RuntimeDiagnosticSpan): AgentTimelineEvent {
+  return {
+    id: span.id,
+    type: runtimeTimelineType(span),
+    label:
+      span.source === "tool" ? (
+        <RuntimeToolTimelineLabel span={span} />
+      ) : (
+        <RuntimeStepTimelineLabel span={span} />
+      ),
+    timestamp: new Date(span.startedAtEpoch),
+    status: runtimeTimelineStatus([span]),
+  };
+}
+
+function RuntimeStepTimelineLabel({
+  span,
+}: {
+  span: RuntimeDiagnosticSpan;
+}): JSX.Element {
+  const title = spanLabel(span);
+  const preview = span.operation
+    ? runActivityLabel(span.operation)
+    : span.eventKind
+      ? compactEventText(span.description)
+      : undefined;
   return (
-    <div
-      className="grid gap-x-3 gap-y-1 border-t border-line-subtle/60 bg-surface-raised/45 py-2 pl-[98px] pr-5 text-[9.5px] leading-4 text-content-muted"
-      data-runtime-span-detail
-    >
-      {values.flatMap(([label, value]) =>
-        value ? (
-          <div key={label} className="grid min-w-0 grid-cols-[48px_minmax(0,1fr)] gap-2">
-            <span className="text-content-disabled">{label}</span>
-            <span className="min-w-0 break-all text-content-secondary">{value}</span>
-          </div>
-        ) : (
-          []
-        ),
+    <span className="runtime-vinyasa-step-label" data-runtime-event={span.id} data-runtime-span={span.id}>
+      {runtimeStepUsesToolCard(span) ? (
+        <ToolCallCard
+          toolName={runtimeStepCardTitle(span)}
+          status={runtimeToolStatus(span.status)}
+          args={runtimeStepCardArgs(span)}
+          result={runtimeStepCardResult(span)}
+        />
+      ) : (
+        <span className="runtime-vinyasa-step-label__static" aria-label={title}>
+          <span className="min-w-0 truncate">{title}</span>
+          {preview && preview !== title ? <span className="runtime-vinyasa-step-label__preview">{preview}</span> : null}
+        </span>
       )}
-    </div>
+    </span>
   );
+}
+
+function runtimeStepUsesToolCard(span: RuntimeDiagnosticSpan): boolean {
+  return (
+    span.isThinking === true ||
+    span.kind === "understand" ||
+    span.kind === "prompt" ||
+    span.kind === "decision" ||
+    span.kind === "answer"
+  );
+}
+
+function runtimeStepCardTitle(span: RuntimeDiagnosticSpan): string {
+  const detail = compactEventText(span.description);
+  if (span.isThinking) return span.label ?? detail ?? "";
+  if (span.kind === "understand") {
+    return detail
+      ? frontendMessage("observability.diagnostic.timeline.userDetail", { text: detail })
+      : frontendMessage("observability.diagnostic.timeline.userRequest");
+  }
+  if (span.kind === "prompt") {
+    return detail
+      ? frontendMessage("observability.diagnostic.timeline.promptDetail", { text: detail })
+      : frontendMessage("observability.diagnostic.timeline.prompt");
+  }
+  if (span.kind === "decision") return detail ?? frontendMessage("observability.diagnostic.timeline.preResponse");
+  if (span.kind === "answer") return detail ?? frontendMessage("observability.diagnostic.timeline.response");
+  return detail ?? frontendMessage("observability.diagnostic.timeline.runtime");
+}
+
+function runtimeStepCardArgs(span: RuntimeDiagnosticSpan): string | undefined {
+  return span.kind === "understand" || span.kind === "prompt" ? span.description?.trim() : undefined;
+}
+
+function runtimeStepCardResult(span: RuntimeDiagnosticSpan): string | undefined {
+  return span.isThinking || span.kind === "decision" || span.kind === "answer" ? span.description?.trim() : undefined;
+}
+
+function RuntimeToolTimelineLabel({
+  span,
+}: {
+  span: RuntimeDiagnosticSpan;
+}): JSX.Element {
+  return (
+    <span className="runtime-vinyasa-tool-label" data-runtime-vinyasa-tool-event data-runtime-tool-call={span.id}>
+      <ToolCallCard
+        toolName={compactEventText(toolCallTitle(span)) ?? frontendMessage(SourceMessageKeys.tool)}
+        status={runtimeToolStatus(span.status)}
+        args={compactEventText(toolCallPreview(span))}
+        result={compactEventText(toolCallResult(span))}
+      />
+    </span>
+  );
+}
+
+function runtimeTimelineType(span: RuntimeDiagnosticSpan): string {
+  if (span.source === "tool") return frontendMessage(SourceMessageKeys.tool);
+  if (span.isThinking) return span.label ?? "";
+  if (span.kind === "model") {
+    return frontendMessage("observability.diagnostic.timeline.requestModel", {
+      model: compactEventText(span.modelName) ?? "",
+    });
+  }
+  if (span.kind === "understand") return frontendMessage("observability.diagnostic.timeline.userRequest");
+  if (span.kind === "prompt") return frontendMessage("observability.diagnostic.timeline.prompt");
+  if (span.kind === "decision") return frontendMessage("observability.diagnostic.timeline.preResponse");
+  if (span.kind === "answer") return frontendMessage("observability.diagnostic.timeline.response");
+  if (span.lane === RuntimeDiagnosticLanes.Context) return frontendMessage("observability.diagnostic.lane.context");
+  if (span.lane === RuntimeDiagnosticLanes.Model) return frontendMessage("observability.diagnostic.lane.model");
+  if (span.lane === RuntimeDiagnosticLanes.Response) return frontendMessage("observability.diagnostic.lane.response");
+  if (span.lane === RuntimeDiagnosticLanes.Runtime) return frontendMessage("observability.diagnostic.lane.runtime");
+  return frontendMessage(SourceMessageKeys.activity);
+}
+
+function runtimeTimelineStatus(spans: readonly RuntimeDiagnosticSpan[]): AgentTimelineEventStatus {
+  if (spans.some((span) => span.status === "running")) return "running";
+  if (spans.some((span) => span.status === "failed" || span.status === "cancelled")) return "error";
+  return "success";
+}
+
+function runtimeToolStatus(status: RuntimeDiagnosticSpan["status"]): ToolCallStatus {
+  if (status === "running") return "running";
+  if (status === "failed" || status === "cancelled") return "error";
+  if (status === "completed") return "success";
+  return "pending";
 }
 
 function EmptyDiagnostic(): JSX.Element {
@@ -610,72 +592,83 @@ function EmptyDiagnostic(): JSX.Element {
   );
 }
 
-function readOverallStatus(model: RuntimeDiagnosticModel): RuntimeDiagnosticHealth {
-  if (model.spans.some((span) => span.status === "failed")) return "failed";
-  if (model.spans.some((span) => span.status === "running")) return "active";
-  if (model.spans.length > 0) return "healthy";
-  return model.connection;
+function toolCallInspection(span: RuntimeDiagnosticSpan) {
+  return projectToolActivityInspection({
+    toolName: span.toolName ?? toolOriginLabel(span),
+    origin: span.toolOrigin,
+    arguments: span.toolArguments,
+    status: span.status === "running" ? "active" : span.status === "failed" || span.status === "cancelled" ? "failed" : "completed",
+  });
 }
 
-function readLaneHealth(
-  model: RuntimeDiagnosticModel,
-  lane: (typeof RuntimeDiagnosticLanes)[keyof typeof RuntimeDiagnosticLanes],
-): RuntimeDiagnosticHealth {
-  const spans = model.lanes.find((entry) => entry.lane === lane)?.spans ?? [];
-  if (spans.some((span) => span.status === "failed")) return "failed";
-  if (spans.some((span) => span.status === "running")) return "active";
-  return spans.length > 0 ? "healthy" : "unknown";
+function toolCallTitle(span: RuntimeDiagnosticSpan): string {
+  const inspection = toolCallInspection(span);
+  return inspection.identity ?? inspection.label;
 }
 
-function laneLabel(lane: RuntimeDiagnosticSpan["lane"]): string {
-  const keys = {
-    [RuntimeDiagnosticLanes.Context]: "observability.diagnostic.lane.context",
-    [RuntimeDiagnosticLanes.Runtime]: "observability.diagnostic.lane.runtime",
-    [RuntimeDiagnosticLanes.Model]: "observability.diagnostic.lane.model",
-    [RuntimeDiagnosticLanes.Tools]: "observability.diagnostic.lane.tools",
-    [RuntimeDiagnosticLanes.Response]: "observability.diagnostic.lane.response",
-  } as const satisfies Record<RuntimeDiagnosticSpan["lane"], FrontendMessageKey>;
-  return frontendMessage(keys[lane]);
+function toolCallPreview(span: RuntimeDiagnosticSpan): string {
+  const inspection = toolCallInspection(span);
+  return inspection.argumentPreview ?? span.purpose ?? "";
 }
 
-function trajectorySpanClass(span: RuntimeDiagnosticSpan): string {
-  if (span.status === "failed") return "bg-brick-500";
-  const classes = {
-    [RuntimeDiagnosticLanes.Context]: "bg-ink-400",
-    [RuntimeDiagnosticLanes.Runtime]: "bg-ink-500",
-    [RuntimeDiagnosticLanes.Model]: "bg-accent-solid",
-    [RuntimeDiagnosticLanes.Tools]: "bg-umber-500",
-    [RuntimeDiagnosticLanes.Response]: "bg-moss-500",
-  } as const satisfies Record<RuntimeDiagnosticSpan["lane"], string>;
-  return classes[span.lane];
+function toolCallResult(span: RuntimeDiagnosticSpan): string | undefined {
+  if (span.toolErrorMessage?.trim()) return span.toolErrorMessage.trim();
+  if (span.toolResult !== undefined && span.toolResult !== null) {
+    if (typeof span.toolResult === "string") return span.toolResult.trim() || undefined;
+    try {
+      const serialized = JSON.stringify(span.toolResult);
+      if (serialized && serialized !== "{}") return serialized;
+    } catch {
+      // A result that cannot be serialized is still represented by its status.
+    }
+  }
+  return span.toolPreview?.trim() || undefined;
 }
 
-function trajectoryTagClass(span: RuntimeDiagnosticSpan): string {
-  if (span.status === "failed") return "bg-brick-50 text-brick-600";
-  const classes = {
-    [RuntimeDiagnosticLanes.Context]: "bg-ink-900/[0.045] text-content-secondary",
-    [RuntimeDiagnosticLanes.Runtime]: "bg-ink-900/[0.045] text-content-secondary",
-    [RuntimeDiagnosticLanes.Model]: "bg-accent-surface text-accent-content",
-    [RuntimeDiagnosticLanes.Tools]: "bg-umber-50 text-umber-700",
-    [RuntimeDiagnosticLanes.Response]: "bg-moss-50 text-moss-600",
-  } as const satisfies Record<RuntimeDiagnosticSpan["lane"], string>;
-  return classes[span.lane];
+function readTimelineSpans(model: RuntimeDiagnosticModel): readonly RuntimeDiagnosticSpan[] {
+  return readTimelineEventSpans(model.spans);
 }
 
-function trajectoryDurationClass(status: RuntimeDiagnosticSpan["status"]): string {
-  if (status === "failed") return "text-brick-600";
-  if (status === "running") return "text-accent-content";
-  return "text-content-muted";
+function readTimelineEventSpans(
+  spans: readonly RuntimeDiagnosticSpan[],
+  options: { readonly includeForegroundActivities?: boolean } = {},
+): readonly RuntimeDiagnosticSpan[] {
+  return spans.filter((span) => {
+    // Ambient activity labels duplicate concrete steps. Keep only foreground
+    // lifecycle activity in the complete session stream.
+    if (span.source === "activity") {
+      return options.includeForegroundActivities &&
+        span.operation !== undefined &&
+        runActivityPresentationPriority(span.operation) === RunActivityPresentationPriorities.Foreground;
+    }
+    if (span.source === "tool" && isUnidentifiedToolSpan(span)) return false;
+    return true;
+  });
+}
+
+function isUnidentifiedToolSpan(span: RuntimeDiagnosticSpan): boolean {
+  if (!span.callId?.trim()) return true;
+  const toolIdentity = span.toolName?.trim() || span.toolOrigin?.tool?.trim() || span.toolOrigin?.name?.trim();
+  return !toolIdentity;
 }
 
 function spanLabel(span: RuntimeDiagnosticSpan): string {
-  if (span.source === "tool") {
-    return projectToolActivity({
-      toolName: span.toolName ?? "tool",
-      origin: span.toolOrigin,
-      arguments: span.toolArguments,
-      status: span.status === "failed" ? "failed" : span.status === "completed" ? "completed" : "active",
-    });
+  if (span.source === "tool") return toolCallTitle(span);
+  if (span.eventKind && span.label) return span.label;
+  if (span.isThinking) return span.label ?? "";
+  if (span.kind === "model") {
+    const model = compactEventText(span.modelName ?? span.description);
+    return model
+      ? frontendMessage("observability.diagnostic.timeline.requestModel", { model })
+      : compactEventText(span.label) ?? "";
+  }
+  if (span.kind === "answer") {
+    const detail = compactEventText(span.description);
+    return detail ?? frontendMessage("observability.diagnostic.timeline.response");
+  }
+  if (span.kind === "decision") {
+    const detail = compactEventText(span.description);
+    return detail ?? frontendMessage("observability.diagnostic.timeline.preResponse");
   }
   if (span.source === "step" && span.label) return span.label;
   if (!span.operation) return frontendMessage("observability.diagnostic.currentNone");
@@ -689,36 +682,23 @@ function toolOriginLabel(span: RuntimeDiagnosticSpan): string {
   return span.toolOrigin?.name ?? frontendMessage(SourceMessageKeys.tool);
 }
 
-function statusLabel(status: RuntimeDiagnosticHealth | RuntimeDiagnosticSpan["status"]): string {
-  return frontendMessage(StatusMessageKeys[status]);
-}
-
-function healthStatusLabel(id: keyof typeof HealthMessageKeys, status: RuntimeDiagnosticHealth): string {
-  if (status !== "unknown" || id === "connection") return statusLabel(status);
-  return frontendFeatureMessage("observability.diagnostic.status.idle");
-}
-
-function formatSpanDuration(span: RuntimeDiagnosticSpan, nowEpoch: number): string {
-  if (span.durationMs !== undefined) return formatDuration(span.durationMs);
-  if (span.status === "running") return formatDuration(Math.max(0, nowEpoch - span.startedAtEpoch));
-  return frontendMessage("observability.diagnostic.duration.unmeasured");
-}
-
-function formatDuration(milliseconds?: number): string {
-  if (milliseconds === undefined) return "--";
-  if (milliseconds < 1_000) return `${Math.round(milliseconds)}ms`;
-  if (milliseconds < 60_000) return `${(milliseconds / 1_000).toFixed(milliseconds < 10_000 ? 1 : 0)}s`;
-  return `${Math.floor(milliseconds / 60_000)}m ${Math.round((milliseconds % 60_000) / 1_000)}s`;
+function compactEventText(value: string | undefined): string | undefined {
+  const text = value?.replace(/\s+/gu, " ").trim();
+  if (!text) return undefined;
+  return text.length > 96 ? `${text.slice(0, 93).trimEnd()}...` : text;
 }
 
 function formatTokenCount(tokens: number): string {
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(2)}M`;
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(2)}K`;
-  return `${Math.round(tokens)}`;
+  const value = Math.max(0, tokens);
+  if (value >= 100_000_000) return formatCompactUnit(value / 100_000_000, "亿");
+  if (value >= 10_000) return formatCompactUnit(value / 10_000, "w");
+  if (value >= 1_000) return formatCompactUnit(value / 1_000, "k");
+  return `${Math.round(value)}`;
 }
 
-function formatPercent(value: number): string {
-  return value.toFixed(2);
+function formatCompactUnit(value: number, suffix: string): string {
+  const rounded = value.toFixed(2).replace(/\.0+$/u, "").replace(/(\.\d*[1-9])0+$/u, "$1");
+  return `${rounded}${suffix}`;
 }
 
 function formatInteger(value: number): string {
@@ -727,22 +707,4 @@ function formatInteger(value: number): string {
 
 function formatCost(value: number): string {
   return `$${value.toFixed(value < 0.01 ? 4 : 2)}`;
-}
-
-function shortIdentifier(value: string): string {
-  return value.length <= 18 ? value : `${value.slice(0, 8)}...${value.slice(-6)}`;
-}
-
-function statusTextClass(status: RuntimeDiagnosticHealth | RuntimeDiagnosticSpan["status"]): string {
-  if (status === "failed") return "text-brick-600";
-  if (status === "active" || status === "running") return "text-umber-600";
-  if (status === "healthy" || status === "completed") return "text-moss-600";
-  return "text-content-muted";
-}
-
-function statusDotClass(status: RuntimeDiagnosticHealth | RuntimeDiagnosticSpan["status"]): string {
-  if (status === "failed") return "bg-brick-500";
-  if (status === "active" || status === "running") return "bg-umber-500";
-  if (status === "healthy" || status === "completed") return "bg-moss-500";
-  return "bg-ink-300";
 }

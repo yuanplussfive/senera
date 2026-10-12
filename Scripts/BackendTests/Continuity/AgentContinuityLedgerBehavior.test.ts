@@ -4,10 +4,28 @@ import {
   createAgentContinuityLedger,
   createAgentContinuityReference,
   selectAgentContinuityCheckpoint,
+  AgentContinuityLedgerCustomType,
 } from "../../../Source/AgentSystem/Continuity/AgentContinuityLedger.js";
 import { AgentContinuityLayer } from "../../../Source/AgentSystem/Continuity/AgentContinuityLayer.js";
+import { readAgentPiContinuityLedger } from "../../../Source/AgentSystem/Pi/AgentPiContinuityLedger.js";
 
 describe("continuity ledger", () => {
+  test("ignores retired Pi entries and rejects a corrupt current entry instead of restoring an older one", () => {
+    const entry = (customType: string, data: unknown) => ({
+      type: "custom" as const,
+      id: "ledger-entry",
+      parentId: null,
+      timestamp: "2026-10-09T00:00:00Z",
+      customType,
+      data,
+    });
+    const ledger = createAgentContinuityLedger({ scope: "session-1" });
+    expect(readAgentPiContinuityLedger([entry("senera.continuity_ledger", { retired: true })])).toBeUndefined();
+    const current = entry(AgentContinuityLedgerCustomType, ledger);
+    expect(readAgentPiContinuityLedger([current])).toEqual(ledger);
+    expect(() => readAgentPiContinuityLedger([current, entry(AgentContinuityLedgerCustomType, {})])).toThrow();
+  });
+
   test("deduplicates references and produces a stable revision", () => {
     const input = {
       kind: "conversation" as const,

@@ -1,20 +1,36 @@
 import { AgentModelTokenEstimator } from "./AgentTextBudget.js";
 import { estimateAgentModelInputTokens } from "./AgentMultimodalTokenBudget.js";
+import { calculateContextTokens, estimateTokens } from "@earendil-works/pi-agent-core";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 
 export interface AgentTurnTokenBudgetOptions {
   readonly model: string;
   readonly contextWindowTokens: number;
-  readonly outputReserveTokens: number;
+  /** Effective input capacity resolved by the active context policy. */
+  readonly inputCapacityTokens?: number;
+  /** Dynamic context headroom owned by the caller's compaction policy. */
+  readonly windowHeadroomTokens?: number;
+  /**
+   * Kept as a wire-compatibility alias for older callers. New runtime code
+   * must use windowHeadroomTokens; it is never populated from model metadata.
+   */
+  readonly outputReserveTokens?: number;
 }
 
 export interface AgentToolTokenBudget {
   readonly model: string;
+  readonly contextWindowTokens?: number;
+  readonly windowHeadroomTokens?: number;
+  readonly inputCapacityTokens?: number;
   availableTokens(maximumTokens?: number): number;
 }
 
 export interface AgentToolTokenReservation extends AgentToolTokenBudget {
   readonly callId: string;
-  readonly limit: number;
+  /** Per-call share before the configured observation ceiling is applied; diagnostics only. */
+  readonly batchAllocationTokens: number;
+  /** The only token budget that an observation projector may consume. */
+  readonly observationBudgetTokens: number;
   commit(payload: unknown): void;
   release(): void;
 }
@@ -28,6 +44,7 @@ export interface AgentToolBatchReservationInput {
 export interface AgentTurnTokenBudgetSnapshot {
   readonly model: string;
   readonly contextWindowTokens: number;
+  readonly windowHeadroomTokens: number;
   readonly outputReserveTokens: number;
   readonly inputCapacityTokens: number;
   readonly occupiedTokens: number;
@@ -38,17 +55,22 @@ export interface AgentTurnTokenBudgetSnapshot {
 export interface AgentModelInputInspection {
   readonly tokenCount: number;
   readonly capacityTokens: number;
+  readonly excessTokens: number;
   readonly availableTokens: number;
   readonly fits: boolean;
 }
 
-export interface AgentProjectedModelInput extends AgentModelInputInspection {
-  readonly previousTokenCount: number;
-  readonly appendedTokenCount: number;
+export class AgentModelInputBudgetError extends Error {
+  readonly code = "MODEL_INPUT_BUDGET_EXCEEDED";
+
+  constructor(readonly inspection: AgentModelInputInspection) {
+    super(formatInputBudgetError(inspection));
+    this.name = "AgentModelInputBudgetError";
+  }
 }
 
 interface ToolReservationState {
-  readonly allocatedTokens: number;
+  readonly batchAllocationTokens: number;
   claimed: boolean;
   finalized: boolean;
   committedTokens?: number;
@@ -78,33 +100,22 @@ export class AgentTurnTokenBudget implements AgentToolTokenBudget {
     return this.inspectTokenCount(this.estimatePayload(payload));
   }
 
-  /**
-   * Projects the next provider input from the last measured request and only the
-   * messages appended by the completed agent turn.
-   */
-  projectNextProviderInput(appendedPayload: unknown): AgentProjectedModelInput {
-    this.assertReservationsFinalized();
-    const appendedTokenCount = this.estimatePayload(appendedPayload);
-    const tokenCount = this.occupiedTokens + appendedTokenCount;
-    return {
-      ...this.inspectTokenCount(tokenCount),
-      previousTokenCount: this.occupiedTokens,
-      appendedTokenCount,
-    };
+  recordProviderUsage(usage: AssistantMessage["usage"], response: AssistantMessage): void {
+    const measuredContextTokens = calculateContextTokens(usage);
+    if (measuredContextTokens > 0) {
+      this.recordProviderContextTokens(measuredContextTokens);
+      return;
+    }
+    this.recordEstimatedAssistantResponse(response);
   }
 
-  /** Replaces the active input epoch after persisted context compaction. */
-  rebaseModelInput(payload: unknown): AgentModelInputInspection {
-    this.assertReservationsFinalized();
-    this.toolReservations.clear();
-    const inspection = this.inspectModelInput(payload);
-    this.occupiedTokens = inspection.tokenCount;
-    this.assertInputWithinCapacity(inspection);
-    return inspection;
+  recordProviderContextTokens(contextTokens: number): void {
+    const measured = normalizeNonNegativeInteger(contextTokens);
+    if (measured > 0) this.occupiedTokens = measured;
   }
 
-  recordProviderInputTokens(inputTokens: number): void {
-    this.occupiedTokens = Math.max(this.occupiedTokens, normalizeNonNegativeInteger(inputTokens));
+  recordEstimatedAssistantResponse(response: AssistantMessage): void {
+    this.occupiedTokens += estimateTokens(response);
   }
 
   reserveToolBatch(input: AgentToolBatchReservationInput): void {
@@ -123,7 +134,10 @@ export class AgentTurnTokenBudget implements AgentToolTokenBudget {
     const remainder = available % uniqueCallIds.length;
     for (const [index, callId] of uniqueCallIds.entries()) {
       this.toolReservations.set(callId, {
-        allocatedTokens: Math.max(1, base + (index < remainder ? 1 : 0)),
+        // A zero allocation is a pressure signal, not an execution failure.
+        // The observation compressor emits a bounded protocol envelope and
+        // Pi's own post-turn compaction then takes over.
+        batchAllocationTokens: base + (index < remainder ? 1 : 0),
         claimed: false,
         finalized: false,
       });
@@ -134,7 +148,7 @@ export class AgentTurnTokenBudget implements AgentToolTokenBudget {
     const state = this.requireToolReservation(callId);
     if (state.claimed) throw new Error(`Pi tool call ${callId} already claimed its observation budget.`);
     state.claimed = true;
-    const limit = this.toolObservationLimit(callId, maximumTokens);
+    const observationBudgetTokens = this.toolObservationBudgetTokens(callId, maximumTokens);
     let finalized = false;
     const finalize = (payload?: unknown) => {
       if (finalized) throw new Error(`Pi tool call ${callId} observation budget was already finalized.`);
@@ -143,17 +157,26 @@ export class AgentTurnTokenBudget implements AgentToolTokenBudget {
     };
     return {
       callId,
-      limit,
+      batchAllocationTokens: state.batchAllocationTokens,
+      observationBudgetTokens,
       model: this.model,
+      contextWindowTokens: this.contextWindowTokens,
+      windowHeadroomTokens: this.windowHeadroomTokens,
+      inputCapacityTokens: this.inputCapacityTokens,
       availableTokens: (maximum) =>
-        maximum === undefined ? limit : Math.min(limit, normalizePositiveInteger(maximum)),
+        maximum === undefined
+          ? observationBudgetTokens
+          : Math.min(observationBudgetTokens, normalizeNonNegativeInteger(maximum)),
       commit: (payload) => finalize(payload),
       release: () => finalize(),
     };
   }
 
-  toolObservationLimit(callId: string, maximumTokens: number): number {
-    return Math.min(this.requireToolReservation(callId).allocatedTokens, normalizePositiveInteger(maximumTokens));
+  toolObservationBudgetTokens(callId: string, maximumTokens: number): number {
+    return Math.min(
+      this.requireToolReservation(callId).batchAllocationTokens,
+      normalizeNonNegativeInteger(maximumTokens),
+    );
   }
 
   /** Finalizes terminal Pi outcomes that failed before the execution bridge could claim their reservation. */
@@ -167,15 +190,23 @@ export class AgentTurnTokenBudget implements AgentToolTokenBudget {
 
   availableTokens(maximumTokens?: number): number {
     const remaining = this.unreservedTokens();
-    return maximumTokens === undefined ? remaining : Math.min(remaining, normalizePositiveInteger(maximumTokens));
+    return maximumTokens === undefined ? remaining : Math.min(remaining, normalizeNonNegativeInteger(maximumTokens));
   }
 
   get contextWindowTokens(): number {
     return this.options.contextWindowTokens;
   }
 
+  get windowHeadroomTokens(): number {
+    return this.inputTokenHeadroom();
+  }
+
+  get inputCapacityTokens(): number {
+    return this.inputTokenCapacity();
+  }
+
   get outputReserveTokens(): number {
-    return this.options.outputReserveTokens;
+    return this.inputTokenHeadroom();
   }
 
   snapshot(): AgentTurnTokenBudgetSnapshot {
@@ -183,7 +214,8 @@ export class AgentTurnTokenBudget implements AgentToolTokenBudget {
     return {
       model: this.model,
       contextWindowTokens: this.options.contextWindowTokens,
-      outputReserveTokens: this.options.outputReserveTokens,
+      windowHeadroomTokens: this.inputTokenHeadroom(),
+      outputReserveTokens: this.inputTokenHeadroom(),
       inputCapacityTokens,
       occupiedTokens: this.occupiedTokens,
       availableTokens: Math.max(0, inputCapacityTokens - this.occupiedTokens),
@@ -197,7 +229,21 @@ export class AgentTurnTokenBudget implements AgentToolTokenBudget {
   }
 
   private inputTokenCapacity(): number {
-    return Math.max(0, this.options.contextWindowTokens - this.options.outputReserveTokens);
+    if (this.options.inputCapacityTokens !== undefined) {
+      return Math.min(
+        Math.max(0, normalizeNonNegativeInteger(this.options.contextWindowTokens)),
+        normalizeNonNegativeInteger(this.options.inputCapacityTokens),
+      );
+    }
+    return Math.max(0, this.options.contextWindowTokens - this.inputTokenHeadroom());
+  }
+
+  private inputTokenHeadroom(): number {
+    if (this.options.inputCapacityTokens !== undefined) {
+      return Math.max(0, normalizeNonNegativeInteger(this.options.contextWindowTokens) - this.inputTokenCapacity());
+    }
+    const configured = this.options.windowHeadroomTokens ?? this.options.outputReserveTokens ?? 0;
+    return Math.min(this.options.contextWindowTokens, normalizeNonNegativeInteger(configured));
   }
 
   private requireToolReservation(callId: string): ToolReservationState {
@@ -223,6 +269,7 @@ export class AgentTurnTokenBudget implements AgentToolTokenBudget {
     return {
       tokenCount,
       capacityTokens,
+      excessTokens: Math.max(0, tokenCount - capacityTokens),
       availableTokens: Math.max(0, capacityTokens - tokenCount),
       fits: tokenCount <= capacityTokens,
     };
@@ -230,9 +277,7 @@ export class AgentTurnTokenBudget implements AgentToolTokenBudget {
 
   private assertInputWithinCapacity(inspection: AgentModelInputInspection): void {
     if (inspection.fits) return;
-    throw new Error(
-      `Senera planning input uses ${inspection.tokenCount} tokens and exceeds the model's maximum context length of ${inspection.capacityTokens} tokens.`,
-    );
+    throw new AgentModelInputBudgetError(inspection);
   }
 
   private assertReservationsFinalized(): void {
@@ -244,12 +289,11 @@ export class AgentTurnTokenBudget implements AgentToolTokenBudget {
   }
 }
 
-function normalizePositiveInteger(value: number): number {
-  if (!Number.isFinite(value)) return 1;
-  return Math.max(1, Math.floor(value));
-}
-
 function normalizeNonNegativeInteger(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.floor(value));
+}
+
+function formatInputBudgetError(inspection: AgentModelInputInspection): string {
+  return `Model input uses ${inspection.tokenCount} tokens, which is ${inspection.excessTokens} over the available input capacity of ${inspection.capacityTokens} tokens.`;
 }

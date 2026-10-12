@@ -25,6 +25,14 @@ export interface UseFluidHoverOptions {
   axis?: FluidHoverAxis;
   isItemDisabled?: (element: HTMLElement) => boolean;
   gapClick?: boolean | { maxDistance?: number };
+  /**
+   * Only light a row the pointer is actually inside. Lists whose rows are
+   * interleaved with non-row content — a dock's expanded inspector body, a
+   * panel's blank space — must opt in, because the nearest-row fallback lights
+   * a row the pointer is nowhere near and the highlight stops describing what
+   * is being pointed at.
+   */
+  requireContainment?: boolean;
 }
 
 export interface PickNearestInput {
@@ -36,6 +44,7 @@ export interface PickNearestInput {
   scroll: { x: number; y: number };
   border: { x: number; y: number };
   isDisabled?: (index: number) => boolean;
+  requireContainment?: boolean;
 }
 
 export interface UseFluidHoverReturn {
@@ -73,6 +82,7 @@ export function pickNearest({
   scroll,
   border,
   isDisabled,
+  requireContainment = false,
 }: PickNearestInput): number | null {
   const scaleX = layoutSize.width > 0 ? containerRect.width / layoutSize.width : 1;
   const scaleY = layoutSize.height > 0 ? containerRect.height / layoutSize.height : 1;
@@ -114,7 +124,7 @@ export function pickNearest({
     }
   }
 
-  return containingIndex ?? nearestIndex;
+  return containingIndex ?? (requireContainment ? null : nearestIndex);
 }
 
 function requestFrame(callback: () => void): number | null {
@@ -164,7 +174,7 @@ function resolveActivator(element: HTMLElement): HTMLElement {
 
 export function useFluidHover<T extends HTMLElement>(
   containerRef: RefObject<T | null>,
-  { axis = "y", isItemDisabled, gapClick = true }: UseFluidHoverOptions = {},
+  { axis = "y", isItemDisabled, gapClick = true, requireContainment = false }: UseFluidHoverOptions = {},
 ): UseFluidHoverReturn {
   const { disableMotion } = useMotionLevel();
   const itemsRef = useRef(new Map<number, HTMLElement>());
@@ -324,11 +334,12 @@ export function useFluidHover<T extends HTMLElement>(
                 return element ? isItemDisabled(element) : true;
               }
             : undefined,
+          requireContainment,
         });
         setActiveIndex(index);
       });
     },
-    [axis, containerRef, disableMotion, ensureMeasured, isItemDisabled, setActiveIndex],
+    [axis, containerRef, disableMotion, ensureMeasured, isItemDisabled, requireContainment, setActiveIndex],
   );
 
   // Keep pointer-move compatibility for existing consumers/tests; both routes
@@ -387,13 +398,20 @@ export function useFluidHover<T extends HTMLElement>(
     const container = containerRef.current;
     if (!container) return;
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(scheduleMeasurementFromEvent);
+    const mutationObserver =
+      typeof MutationObserver === "undefined" ? null : new MutationObserver(() => scheduleMeasurementFromEvent());
     observer?.observe(container);
+    // Expanded rows insert inspector content without changing the container's
+    // own box size. Track child layout changes so the shared wash never uses
+    // coordinates from before a disclosure opened or a lazy panel resolved.
+    mutationObserver?.observe(container, { childList: true, subtree: true });
     const scrollParent = container.parentElement;
     scrollParent?.addEventListener("scroll", scheduleMeasurementFromEvent, { passive: true });
     window.addEventListener("resize", scheduleMeasurementFromEvent);
     scheduleMeasurement();
     return () => {
       observer?.disconnect();
+      mutationObserver?.disconnect();
       scrollParent?.removeEventListener("scroll", scheduleMeasurementFromEvent);
       window.removeEventListener("resize", scheduleMeasurementFromEvent);
     };
@@ -403,6 +421,15 @@ export function useFluidHover<T extends HTMLElement>(
     return () => {
       cancelFrame(pointerFrameRef.current);
       cancelFrame(measureFrameRef.current);
+      // Release the ids, not just the frames. StrictMode runs this cleanup once
+      // on mount and then mounts again, so a cancelled id left behind makes
+      // `scheduleMeasurement`'s "a frame is already pending" guard latch for the
+      // rest of the session: the list measures once, on the first pointer move,
+      // and then keeps painting the rects from before every later layout shift —
+      // which is exactly what a dock does when a batch expands or a lazy
+      // inspector replaces its placeholder.
+      pointerFrameRef.current = null;
+      measureFrameRef.current = null;
       itemResizeObserverRef.current?.disconnect();
       itemResizeObserverRef.current = null;
     };

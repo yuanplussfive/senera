@@ -3,6 +3,8 @@ import { type AgentEventKinds } from "../Events/AgentEventCatalog.js";
 import type { AgentLocalizedMessage } from "../I18n/AgentMessageCatalog.js";
 import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
+import type { AgentSessionRecoveryMode } from "../Session/AgentSessionRunRecovery.js";
+import type { AgentModelUsage } from "../ModelEndpoints/AgentModelUsage.js";
 
 type AgentRequestContext = Required<Pick<AgentEventContext, "requestId">>;
 type AgentVisibleAssistantContext = AgentRequestContext & Partial<Pick<AgentEventContext, "sessionId" | "step">>;
@@ -12,7 +14,6 @@ export type AgentAssistantMessageKind = "tool_preface" | "final_answer" | "ask_u
 export const AgentRunActivities = {
   PreparingContext: "preparing_context",
   InitializingRuntime: "initializing_runtime",
-  SynchronizingContext: "synchronizing_context",
   EvaluatingContext: "evaluating_context",
   CompactingContext: "compacting_context",
   RunningAgentTurn: "running_agent_turn",
@@ -34,7 +35,6 @@ export type AgentRunActivityCategory = (typeof AgentRunActivityCategories)[keyof
 export const AgentRunActivitySpecTable = {
   [AgentRunActivities.PreparingContext]: { category: AgentRunActivityCategories.Context },
   [AgentRunActivities.InitializingRuntime]: { category: AgentRunActivityCategories.Runtime },
-  [AgentRunActivities.SynchronizingContext]: { category: AgentRunActivityCategories.Context },
   [AgentRunActivities.EvaluatingContext]: { category: AgentRunActivityCategories.Context },
   [AgentRunActivities.CompactingContext]: { category: AgentRunActivityCategories.Context },
   [AgentRunActivities.RunningAgentTurn]: { category: AgentRunActivityCategories.Model },
@@ -62,6 +62,10 @@ export type AgentRunDomainEvent =
         /** Internal host wake-up input should not be rendered as a user request. */
         internal?: boolean;
         displayInput?: string;
+        recovery?: {
+          mode: AgentSessionRecoveryMode;
+          sourceRequestId: string;
+        };
       };
     }
   | {
@@ -98,13 +102,18 @@ export type AgentRunDomainEvent =
         toolCount?: number;
         batchId?: string;
         toolCallIds?: string[];
+        modelMessageIndex?: number;
+        modelContentIndex?: number;
         reasonCode?: string;
       };
     }
   | {
       kind: typeof AgentEventKinds.RunCompleted;
       context: AgentRequestContext;
-      data: Record<string, never>;
+      data: {
+        /** Final aggregate for the whole run; emitted once at the terminal boundary. */
+        usage?: AgentModelUsage;
+      };
     }
   | {
       kind: typeof AgentEventKinds.RunFailed;
@@ -114,6 +123,8 @@ export type AgentRunDomainEvent =
         localizedMessage?: AgentLocalizedMessage;
         code?: string;
         details?: unknown;
+        /** Actions admitted by the session recovery controller for a terminal run. */
+        recoveryModes?: Array<"retry" | "continue">;
       };
     }
   | {

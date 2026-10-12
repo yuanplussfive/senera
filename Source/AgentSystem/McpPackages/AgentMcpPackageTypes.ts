@@ -5,6 +5,7 @@ import { AgentBaseError } from "../Core/AgentBaseError.js";
 import type { AgentExtensionValueExpression } from "../Extensions/AgentExtensionValueExpression.js";
 import type { AgentMcpInputDefinition } from "./AgentMcpInputDefinition.js";
 import type { AgentExtensionLocalizedText } from "../Extensions/AgentExtensionLocalization.js";
+import type { AgentToolAvailability } from "../ToolRuntime/AgentToolAvailability.js";
 
 export const AgentMcpPackageSourceKinds = {
   Bundled: "bundled",
@@ -91,6 +92,38 @@ export interface AgentMcpHttpRuntimeEndpoint extends AgentMcpRuntimeEndpointBase
 }
 
 export type AgentMcpRuntimeEndpoint = AgentMcpStdioRuntimeEndpoint | AgentMcpHttpRuntimeEndpoint;
+
+/** A declared server without a validated execution endpoint; never a synthetic connection. */
+export interface AgentMcpUnresolvedEndpoint extends AgentMcpRuntimeEndpointBase {
+  readonly transport: "unresolved";
+  readonly availability: Exclude<AgentToolAvailability, { readonly status: "ready" }>;
+}
+
+export type AgentMcpDeclaredEndpoint = AgentMcpRuntimeEndpoint | AgentMcpUnresolvedEndpoint;
+
+export interface AgentMcpServiceDiscoveryEntry {
+  readonly id: string;
+  readonly revision: string;
+  readonly title: string;
+  readonly description: string;
+  readonly aliases: readonly string[];
+  readonly availability: AgentToolAvailability;
+  readonly toolNames: readonly string[];
+}
+
+/** Management-owned projection used by the composer activation catalog. */
+export interface AgentMcpActivationCatalogEntry {
+  readonly id: string;
+  readonly revision: string;
+  readonly title: string;
+  readonly description: string;
+  readonly localizedTitle?: AgentExtensionLocalizedText;
+  readonly localizedDescription?: AgentExtensionLocalizedText;
+  readonly icon?: string;
+  readonly enabled: boolean;
+  readonly selectable: boolean;
+  readonly source: string;
+}
 
 export class AgentMcpPackageValidationError extends AgentBaseError {
   constructor(

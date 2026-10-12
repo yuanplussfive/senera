@@ -4,7 +4,19 @@ import { cn } from "../../lib/util";
 import { useMotionLevel } from "./MotionProvider";
 import { readListItemVariants, readListTransition } from "./presets";
 
-export function MotionList({ children, className }: { children: ReactNode; className?: string }): JSX.Element {
+export function MotionList({
+  children,
+  className,
+  presence = "animated",
+}: {
+  children: ReactNode;
+  className?: string;
+  presence?: "animated" | "static";
+}): JSX.Element {
+  if (presence === "static") {
+    return <div className={className}>{children}</div>;
+  }
+
   return (
     <motion.div className={className} initial={false}>
       <AnimatePresence initial={false}>{children}</AnimatePresence>

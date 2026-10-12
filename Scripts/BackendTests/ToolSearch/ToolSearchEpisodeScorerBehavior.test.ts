@@ -38,6 +38,26 @@ describe("tool search episode outcome", () => {
     expect(assessment.finalOutcome.toolExecutionSucceeded).toBe(true);
     expect(assessment.outcome).toBe("success");
   });
+
+  test("records a completed state-card turn without tool calls as a successful scenario", () => {
+    const assessment = assessToolSearchEpisode([]);
+
+    expect(assessment.calls).toEqual([]);
+    expect(assessment.finalOutcome.toolExecutionSucceeded).toBe(true);
+    expect(assessment.outcome).toBe("success");
+    expect(assessment.finalScore).toBe(1);
+  });
+
+  test("keeps a partially successful tool batch out of the failed state", () => {
+    const assessment = assessToolSearchEpisode([
+      toolResult({ exitCode: 0, stderr: "" }),
+      toolResult({ exitCode: 7, stderr: "command failed" }),
+    ]);
+
+    expect(assessment.finalOutcome.toolExecutionSucceeded).toBe(true);
+    expect(assessment.outcome).toBe("success");
+    expect(assessment.finalScore).toBe(1);
+  });
 });
 
 function toolResult(process: { exitCode: number; stderr: string }): ExecutedToolCallResult {

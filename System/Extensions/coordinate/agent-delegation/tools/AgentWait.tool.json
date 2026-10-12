@@ -4,7 +4,7 @@
   "presentation": {
     "category": "agent-wait",
     "icon": "clock",
-    "activity": { "action": { "zh-CN": "等待子代理", "en-US": "Wait for agents" }, "detailPaths": ["/targets/*"] }
+    "activity": { "action": { "zh-CN": "等待", "en-US": "Wait" }, "detailPaths": ["/targets/*"] }
   },
   "description": "观察一个或多个子代理的生命周期；默认等待任一目标结束，使用 mode=all 等待全部目标结束。超时只结束本次等待，子代理继续运行。",
   "inputSchema": {
@@ -47,6 +47,35 @@
               "type": "string"
             },
             "agent": { "type": "string" },
+            "workItemId": { "type": "string" },
+            "taskDigest": { "type": "string" },
+            "resources": {
+              "type": "object",
+              "properties": {
+                "coverage": { "type": "string", "enum": ["declared", "unscoped", "unknown"] },
+                "claims": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "domainId": { "type": "string" },
+                      "identity": { "type": "string" },
+                      "access": { "type": "string", "enum": ["shared", "exclusive"] }
+                    },
+                    "required": ["domainId", "identity", "access"],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": ["coverage", "claims"],
+              "additionalProperties": false
+            },
+            "delivery": {
+              "type": "object",
+              "properties": { "parentResultDelivered": { "type": "boolean" } },
+              "required": ["parentResultDelivered"],
+              "additionalProperties": false
+            },
             "joinGroup": {
               "type": "object",
               "properties": {
@@ -108,7 +137,7 @@
               "additionalProperties": false
             }
           },
-          "required": ["runId", "state"],
+          "required": ["runId", "state", "resources", "delivery"],
           "additionalProperties": false
         }
       },
@@ -117,11 +146,10 @@
     "required": ["runs", "waitTimedOut"],
     "additionalProperties": false
   },
-  "observationProjection": "observations/AgentLifecycle.projection.json",
   "permissions": ["orchestration:inspect"],
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
   "runtime": {
-    "Lifecycle": "Persistent",
+    "Lifecycle": "RemoteJob",
     "ProtocolVersion": 2,
     "ResultAssessment": "Unassessed",
     "Scheduling": "SelfManaged",

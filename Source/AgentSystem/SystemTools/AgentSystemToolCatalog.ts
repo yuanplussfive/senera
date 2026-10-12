@@ -125,9 +125,6 @@ function withSystemToolProcess(
     ...(process?.stderr === undefined ? {} : { stderr: process.stderr }),
     ...(process?.exitCode === undefined ? {} : { exitCode: process.exitCode }),
     ...(process?.signal === undefined ? {} : { signal: process.signal }),
-    ...(process?.semanticProjectionRequest === undefined
-      ? {}
-      : { semanticProjectionRequest: process.semanticProjectionRequest }),
   };
 }
 

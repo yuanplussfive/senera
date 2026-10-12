@@ -36,11 +36,6 @@ function createBoundSelfServicePort(): AgentSelfServicePort {
       history: () => [],
       readRevision: () => ({ status: "unavailable" }) as const,
     },
-    presets: {
-      manager: () => {
-        throw new Error("preset manager is not exercised by this test");
-      },
-    },
     sessions: {
       list: () => [],
       getModelPreference: () => undefined,

@@ -1,7 +1,19 @@
 import fs from "node:fs";
 import path from "node:path";
+import { z } from "zod";
+import { writeFileAtomicSync } from "../../Source/AgentSystem/Core/AgentFs.js";
 
 const DesktopWorkspaceSelectionVersion = 1 as const;
+const DesktopWorkspaceSelectionSchema = z
+  .object({
+    version: z.literal(DesktopWorkspaceSelectionVersion),
+    workspaceRoot: z
+      .string()
+      .trim()
+      .min(1)
+      .refine(path.isAbsolute, "Workspace selection must be an absolute directory path."),
+  })
+  .strict();
 
 export interface DesktopWorkspaceSelection {
   readonly version: typeof DesktopWorkspaceSelectionVersion;
@@ -14,33 +26,12 @@ export function resolveDesktopWorkspaceSelectionPath(userDataRoot: string): stri
 
 export function readDesktopWorkspaceSelection(filePath: string): string | undefined {
   try {
-    const source = JSON.parse(fs.readFileSync(filePath, "utf8")) as Partial<DesktopWorkspaceSelection>;
-    if (source.version !== DesktopWorkspaceSelectionVersion || typeof source.workspaceRoot !== "string")
-      return undefined;
-    const workspaceRoot = source.workspaceRoot.trim();
-    return workspaceRoot ? path.resolve(workspaceRoot) : undefined;
+    const source = DesktopWorkspaceSelectionSchema.parse(JSON.parse(fs.readFileSync(filePath, "utf8")));
+    return path.resolve(source.workspaceRoot);
   } catch (error) {
     if (isMissingPathError(error)) return undefined;
-    return undefined;
+    throw error;
   }
-}
-
-/**
- * Reads the pre-installation-selection workspace marker without accepting the
- * old bug where the Electron userData directory was recorded as the project.
- */
-export function readLegacyDesktopWorkspaceSelection(filePath: string, dataRoot: string): string | undefined {
-  const workspaceRoot = readDesktopWorkspaceSelection(filePath);
-  if (!workspaceRoot) return undefined;
-  const normalizedWorkspaceRoot = path.resolve(workspaceRoot);
-  const normalizedDataRoot = path.resolve(dataRoot);
-  return process.platform === "win32"
-    ? normalizedWorkspaceRoot.toLocaleLowerCase() === normalizedDataRoot.toLocaleLowerCase()
-      ? undefined
-      : normalizedWorkspaceRoot
-    : normalizedWorkspaceRoot === normalizedDataRoot
-      ? undefined
-      : normalizedWorkspaceRoot;
 }
 
 export function writeDesktopWorkspaceSelection(filePath: string, workspaceRoot: string): void {
@@ -48,16 +39,7 @@ export function writeDesktopWorkspaceSelection(filePath: string, workspaceRoot: 
     version: DesktopWorkspaceSelectionVersion,
     workspaceRoot: path.resolve(workspaceRoot),
   };
-  const absolutePath = path.resolve(filePath);
-  const temporaryPath = `${absolutePath}.${process.pid}.tmp`;
-  fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
-  fs.writeFileSync(temporaryPath, `${JSON.stringify(selection, null, 2)}\n`, "utf8");
-  try {
-    fs.renameSync(temporaryPath, absolutePath);
-  } catch (error) {
-    fs.rmSync(temporaryPath, { force: true });
-    throw error;
-  }
+  writeFileAtomicSync(filePath, `${JSON.stringify(selection, null, 2)}\n`, { fsync: true });
 }
 
 export function isDesktopWorkspaceDirectory(value: string): boolean {

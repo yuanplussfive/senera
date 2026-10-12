@@ -59,6 +59,21 @@ test("does not project console or internal run starts as user messages", () => {
   expect(state.sessions[TestSessionId].messages).toEqual([]);
 });
 
+test("keeps the initial user step anchored to the run start sequence", () => {
+  const state = createTestState();
+
+  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "按时间顺序展示" }, { sequence: 7 }));
+
+  expect(state.sessions[TestSessionId].runs[0].steps).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        kind: "understand",
+        eventSequence: 7,
+      }),
+    ]),
+  );
+});
+
 test("orphan run failures stay out of the conversation projection", () => {
   const state = createTestState({
     sessions: {

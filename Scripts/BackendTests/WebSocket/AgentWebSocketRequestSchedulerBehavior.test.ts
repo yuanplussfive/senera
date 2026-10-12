@@ -157,6 +157,38 @@ describe("WebSocket request scheduling", () => {
     expect(sameSessionHasStarted).toBe(true);
   });
 
+  test("closes different sessions concurrently while preserving same-session order", async () => {
+    const scheduler = new AgentWebSocketRequestScheduler();
+    const firstFinished = createDeferred<void>();
+    const otherSessionStarted = createDeferred<void>();
+    let sameSessionHasStarted = false;
+    const first = scheduler.run(request({ type: "session.close", sessionId: "session-1" }), async () => {
+      await firstFinished.promise;
+    });
+    const sameSession = scheduler.run(request({ type: "session.close", sessionId: "session-1" }), async () => {
+      sameSessionHasStarted = true;
+    });
+    const otherSession = scheduler.run(request({ type: "session.close", sessionId: "session-2" }), async () => {
+      otherSessionStarted.resolve();
+    });
+
+    await otherSessionStarted.promise;
+    await Promise.resolve();
+    expect(sameSessionHasStarted).toBe(false);
+    expect(inspectAgentWebSocketRequestScheduling(request({ type: "session.close", sessionId: "session-1" }))).toEqual({
+      lane: AgentWebSocketRequestLanes.Serial,
+      key: "session:session-1",
+    });
+    expect(
+      inspectAgentWebSocketRequestScheduling(
+        request({ type: "session.close_many", sessionIds: ["session-1", "session-2"] }),
+      ),
+    ).toEqual({ lane: AgentWebSocketRequestLanes.Concurrent });
+    firstFinished.resolve();
+    await Promise.all([first, sameSession, otherSession]);
+    expect(sameSessionHasStarted).toBe(true);
+  });
+
   test("exposes an exhaustive lane and key for control-plane diagnostics", () => {
     expect(inspectAgentWebSocketRequestScheduling(request({ type: "approval.resolve", approvalId: "a" }))).toEqual({
       lane: AgentWebSocketRequestLanes.Concurrent,
@@ -210,6 +242,18 @@ describe("WebSocket request scheduling", () => {
         }),
       ),
     ).toEqual({ lane: AgentWebSocketRequestLanes.Concurrent });
+    expect(
+      inspectAgentWebSocketRequestScheduling(
+        request({
+          type: "session.retry",
+          sessionId: "session-1",
+          failedRequestId: "request-1",
+          requestId: "request-2",
+          recoveryMode: "retry",
+          approvalMode: "agent",
+        }),
+      ),
+    ).toEqual({ lane: AgentWebSocketRequestLanes.Serial, key: "session:session-1" });
   });
 });
 

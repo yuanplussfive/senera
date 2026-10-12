@@ -4,6 +4,7 @@ import type { AgentEventSink } from "../Events/AgentEvent.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { AgentToolAccessGrant } from "../ToolRuntime/AgentToolAccessGrant.js";
 import type { AgentToolExposureState } from "../ToolRuntime/AgentToolExposureState.js";
+import type { AgentToolEventOrigin } from "../ToolRuntime/AgentToolEventOrigin.js";
 import type { AgentTurnTokenBudget } from "../Text/AgentTurnTokenBudget.js";
 import type { AgentPiContextPolicyFrame } from "./AgentPiContextPolicy.js";
 import type { AgentPiDiagnosticSink } from "./AgentPiDiagnostics.js";
@@ -12,6 +13,10 @@ import type { AgentSkillLibraryCatalog } from "../Skills/AgentSkillLibraryCatalo
 import type { AgentPiToolProjectionContext } from "./AgentPiTypes.js";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 import type { AgentPiTurnState } from "./AgentPiTurnState.js";
+import type { AgentPiSkillCatalog } from "./AgentPiSkillCatalog.js";
+import type { Context } from "@earendil-works/pi-ai";
+
+export type AgentPiModelInputPreparer = (context: Context) => Promise<Context>;
 
 export interface AgentPiCodingAgentSessionFrame {
   sessionId?: string;
@@ -23,19 +28,23 @@ export interface AgentPiCodingAgentSessionFrame {
   onEvent?: AgentEventSink;
   diagnostics?: AgentPiDiagnosticSink;
   systemPrompt?: string;
-  /** Request-local host state injected only by the Pi context hook. */
-  liveContext?: string;
+  /** Frozen host context persisted with the user message for this turn. */
+  turnContext?: string;
   turnState?: AgentPiTurnState;
   activeSkills?: readonly AgentActivatedSkill[];
-  roleplayPresetActive?: boolean;
-  /** Explicit UI-controlled preface rewrite; independent from roleplay presets. */
+  personaActive?: boolean;
+  /** Explicit UI-controlled preface rewrite; independent from persona text. */
   prefaceRewriteEnabled?: boolean;
-  /** Explicit UI-controlled final-answer rewrite; independent from roleplay presets. */
+  /** Explicit UI-controlled final-answer rewrite; independent from persona text. */
   finalResponseRewriteEnabled?: boolean;
-  skillCatalogFingerprint: string;
+  skillCatalog: AgentPiSkillCatalog;
   /** Stable model-facing Skill directory; package bodies remain on demand. */
   skillLibraryCatalog?: AgentSkillLibraryCatalog;
   nativeProviderToolNames: readonly string[];
+  /** Resolves registered package provenance without frontend name mappings. */
+  toolOriginLookup?: (toolName: string) => AgentToolEventOrigin | undefined;
+  /** Resolves the registered tool's declarative workspace write capability. */
+  toolWorkspaceWritableLookup?: (toolName: string) => boolean;
   rootCommand?: AgentRootCommand;
   toolAccessGrant: AgentToolAccessGrant;
   toolExposure: AgentToolExposureState;
@@ -43,6 +52,11 @@ export interface AgentPiCodingAgentSessionFrame {
   contextPolicy?: AgentPiContextPolicyFrame;
   tokenBudget?: AgentTurnTokenBudget;
   signal?: AbortSignal;
+  /**
+   * Gives the runtime one last chance to apply a ready Pi compaction
+   * projection before a provider request is validated and sent.
+   */
+  prepareModelInput?: AgentPiModelInputPreparer;
   preflight(event: {
     toolCallId: string;
     toolName: string;
@@ -53,20 +67,30 @@ export interface AgentPiCodingAgentSessionFrame {
 export class AgentPiMutableSessionFrame {
   private value: AgentPiCodingAgentSessionFrame;
   private skills: readonly Skill[] = [];
+  private modelInputPreparer: AgentPiModelInputPreparer | undefined;
   private updateRevision = 0;
 
   constructor(value: AgentPiCodingAgentSessionFrame) {
     this.value = { ...value };
+    this.modelInputPreparer = value.prepareModelInput;
   }
 
   update(value: AgentPiCodingAgentSessionFrame, skills: readonly Skill[]): void {
     this.value = { ...value };
+    if (value.prepareModelInput !== undefined) this.modelInputPreparer = value.prepareModelInput;
     this.skills = [...skills];
     this.updateRevision += 1;
   }
 
   snapshot(): AgentPiCodingAgentSessionFrame {
-    return { ...this.value };
+    return {
+      ...this.value,
+      ...(this.modelInputPreparer ? { prepareModelInput: this.modelInputPreparer } : {}),
+    };
+  }
+
+  setModelInputPreparer(preparer: AgentPiModelInputPreparer | undefined): void {
+    this.modelInputPreparer = preparer;
   }
 
   skillSnapshot(): readonly Skill[] {

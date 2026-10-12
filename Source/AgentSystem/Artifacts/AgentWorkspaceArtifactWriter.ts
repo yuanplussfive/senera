@@ -1,7 +1,9 @@
 import path from "node:path";
-import { createTwoFilesPatch } from "diff";
+import { createTwoFilesPatch, FILE_HEADERS_ONLY } from "diff";
+import { createAgentResourceId, createAgentResourceUri } from "../Resources/AgentResourceUri.js";
 import type { ToolArtifactWorkspaceManifest } from "../Types/AgentToolContractTypes.js";
 import type {
+  AgentToolArtifactAssetReference,
   ToolWorkspaceCaptureResult,
   ToolWorkspaceChange,
   ToolWorkspaceFileSnapshot,
@@ -12,15 +14,19 @@ import type { AgentArtifactFileWriter } from "./AgentArtifactFileWriter.js";
 import type { AgentArtifactFileReceipt } from "./AgentArtifactIntegrity.js";
 
 export interface AgentWorkspaceArtifactWriterOptions {
+  artifactId: string;
   workspaceRoot: string;
-  workspacePolicy: ToolArtifactWorkspaceManifest;
+  workspacePolicy: Pick<ToolArtifactWorkspaceManifest, "PatchContextLines">;
   workspaceCapture: ToolWorkspaceCaptureResult;
   artifactDir: string;
   files: Record<string, string>;
   fileWriter: AgentArtifactFileWriter;
 }
 
-export interface WrittenWorkspaceArtifacts {
+export interface WrittenWorkspaceArtifacts extends Pick<
+  ToolWorkspaceCaptureResult,
+  "type" | "version" | "source" | "sources" | "coverage" | "status" | "scope" | "revision"
+> {
   before: ToolWorkspaceSnapshot;
   after: ToolWorkspaceSnapshot;
   changes: ToolWorkspaceChange[];
@@ -32,6 +38,7 @@ export interface WrittenWorkspaceArtifacts {
     changeCount: number;
   };
   patchReceipt: AgentArtifactFileReceipt;
+  patchAsset?: AgentToolArtifactAssetReference;
 }
 
 interface WorkspaceContentWriteResult {
@@ -63,18 +70,31 @@ export class AgentWorkspaceArtifactWriter {
       Number.MAX_SAFE_INTEGER,
     );
 
+    const patch = {
+      path: this.options.files.workspacePatch,
+      relativePath: toArtifactRelativePath(this.options.artifactDir, this.options.files.workspacePatch),
+      generated: patchText.trim().length > 0,
+      changeCount: changes.filter((change) => change.patch?.status === "generated").length,
+    };
+    const patchAsset = patch.generated
+      ? createWorkspacePatchAsset({
+          artifactId: this.options.artifactId,
+          workspaceRoot: this.options.workspaceRoot,
+          artifactDir: this.options.artifactDir,
+          patchPath: this.options.files.workspacePatch,
+          receipt: patchReceipt,
+        })
+      : undefined;
+
     return {
+      ...workspaceCaptureMetadata(this.options.workspaceCapture),
       before: before.snapshot,
       after: after.snapshot,
       changes,
       ...(this.options.workspaceCapture.checkpoint ? { checkpoint: this.options.workspaceCapture.checkpoint } : {}),
-      patch: {
-        path: this.options.files.workspacePatch,
-        relativePath: toArtifactRelativePath(this.options.artifactDir, this.options.files.workspacePatch),
-        generated: patchText.trim().length > 0,
-        changeCount: changes.filter((change) => change.patch?.status === "generated").length,
-      },
+      patch,
       patchReceipt,
+      ...(patchAsset ? { patchAsset } : {}),
     };
   }
 
@@ -190,10 +210,11 @@ export class AgentWorkspaceArtifactWriter {
           newPatchPath(change.path),
           oldText,
           newText,
-          patchHeader(left),
-          patchHeader(right),
+          undefined,
+          undefined,
           {
             context: this.options.workspacePolicy.PatchContextLines,
+            headerOptions: FILE_HEADERS_ONLY,
           },
         ).trimEnd(),
       ];
@@ -214,6 +235,45 @@ export class AgentWorkspaceArtifactWriter {
   }
 }
 
+function workspaceCaptureMetadata(
+  capture: ToolWorkspaceCaptureResult,
+): Pick<
+  ToolWorkspaceCaptureResult,
+  "type" | "version" | "source" | "sources" | "coverage" | "status" | "scope" | "revision"
+> {
+  return {
+    ...(capture.type ? { type: capture.type } : {}),
+    ...(capture.version ? { version: capture.version } : {}),
+    ...(capture.source ? { source: capture.source } : {}),
+    ...(capture.sources ? { sources: capture.sources } : {}),
+    ...(capture.coverage ? { coverage: capture.coverage } : {}),
+    ...(capture.status ? { status: capture.status } : {}),
+    ...(capture.scope ? { scope: capture.scope } : {}),
+    ...(capture.revision === undefined ? {} : { revision: capture.revision }),
+  };
+}
+
+function createWorkspacePatchAsset(input: {
+  artifactId: string;
+  workspaceRoot: string;
+  artifactDir: string;
+  patchPath: string;
+  receipt: AgentArtifactFileReceipt;
+}): AgentToolArtifactAssetReference {
+  const relativePath = toArtifactRelativePath(input.artifactDir, input.patchPath);
+  const workspacePath = toPosixPath(path.relative(input.workspaceRoot, input.patchPath));
+  return {
+    id: "workspace.patch",
+    resourceUri: createAgentResourceUri(createAgentResourceId(`${input.artifactId}\u0000workspace.patch`)),
+    fileName: "workspace.patch",
+    mediaType: "text/x-diff",
+    relativePath,
+    workspacePath: `./${workspacePath}`,
+    byteLength: input.receipt.byteLength,
+    sha256: input.receipt.sha256,
+  };
+}
+
 function readPatchableText(entry: ToolWorkspaceFileSnapshot | undefined): string | undefined {
   return entry?.content?.state === "captured" ? entry.content.text : undefined;
 }
@@ -228,13 +288,6 @@ function withoutInlineText(entry: ToolWorkspaceFileSnapshot): ToolWorkspaceFileS
     ...entry,
     content,
   };
-}
-
-function patchHeader(entry: ToolWorkspaceFileSnapshot | undefined): string {
-  if (!entry?.exists) {
-    return "missing";
-  }
-  return `${entry.hash} ${new Date(entry.mtimeMs).toISOString()}`;
 }
 
 function oldPatchPath(filePath: string): string {

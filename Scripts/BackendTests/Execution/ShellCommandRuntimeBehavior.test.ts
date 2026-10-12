@@ -15,14 +15,35 @@ import type {
   AgentExecutionResourceLimits,
   AgentExecutionResourceOwner,
 } from "../../../Source/AgentSystem/ExecutionResources/AgentExecutionResourceTypes.js";
-import { createShellCommandHostTool } from "../../../Source/AgentSystem/ToolRuntime/AgentShellCommandRuntime.js";
+import {
+  createShellCommandHostTool,
+  ShellCommandArgumentsSchema,
+} from "../../../Source/AgentSystem/ToolRuntime/AgentShellCommandRuntime.js";
 import { createAgentExecutionResourceHostHandlers } from "../../../Source/AgentSystem/ToolRuntime/AgentExecutionResourceRuntime.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
 import { AgentExecutionErrorCodes } from "../../../Source/AgentSystem/Xml/AgentXmlStatus.js";
 import type { SeneraOutputSpool, SeneraOutputStream } from "../../../Source/AgentSystem/Execution/SeneraOutputSpool.js";
+import type { AgentWorkspaceObservationPort } from "../../../Source/AgentSystem/Artifacts/AgentWorkspaceChangeObserver.js";
 
 describe("Shell command runtime", () => {
+  it("accepts zero as a numeric no-time-limit request only", () => {
+    expect(
+      ShellCommandArgumentsSchema.safeParse({
+        command: shellCommand("node server.js"),
+        timeoutMs: 0,
+        workspaceEffect: "read",
+      }).success,
+    ).toBe(true);
+    expect(
+      ShellCommandArgumentsSchema.safeParse({
+        command: shellCommand("node server.js"),
+        timeoutMs: null,
+        workspaceEffect: "read",
+      }).success,
+    ).toBe(false);
+  });
+
   it("runs through the resolved sandbox plan and returns a short command inline", async () => {
     const child = new FakePersistentChild();
     const spawn = vi.fn(async () => {
@@ -51,6 +72,56 @@ describe("Shell command runtime", () => {
           }),
         }),
       );
+    } finally {
+      await fixture.broker.close();
+    }
+  });
+
+  it("does not open workspace observation for an explicitly read-only command", async () => {
+    const child = new FakePersistentChild();
+    const openResourceLease = vi.fn();
+    const fixture = createFixture(
+      async () => {
+        setImmediate(() => child.emitClose(0));
+        return child;
+      },
+      [],
+      0.1,
+      120,
+      { openResourceLease },
+    );
+
+    try {
+      await fixture.run({ command: shellCommand("node --version"), workspaceEffect: "read" });
+      expect(openResourceLease).not.toHaveBeenCalled();
+    } finally {
+      await fixture.broker.close();
+    }
+  });
+
+  it("opens workspace observation only for a mutating command", async () => {
+    const child = new FakePersistentChild();
+    const lease = {
+      bind: vi.fn(),
+      complete: vi.fn(async () => undefined),
+      cancel: vi.fn(),
+    };
+    const openResourceLease = vi.fn(async () => lease);
+    const fixture = createFixture(
+      async () => {
+        setImmediate(() => child.emitClose(0));
+        return child;
+      },
+      [],
+      0.1,
+      120,
+      { openResourceLease },
+    );
+
+    try {
+      await fixture.run({ command: shellCommand("touch output.txt"), workspaceEffect: "mutate" });
+      expect(openResourceLease).toHaveBeenCalledTimes(1);
+      expect(lease.complete).toHaveBeenCalledTimes(1);
     } finally {
       await fixture.broker.close();
     }
@@ -125,6 +196,33 @@ describe("Shell command runtime", () => {
         outputCapture: fixture.outputSpool.descriptor,
       });
       expect(fixture.broker.takeOutputCapture(resumed.resourceId, fixture.owner)).toBeUndefined();
+    } finally {
+      await fixture.broker.close();
+    }
+  });
+
+  it("keeps a zero-timeout command running and returns its initial output", async () => {
+    const child = new FakePersistentChild();
+    const spawn = vi.fn(async () => {
+      setTimeout(() => child.stdout.emit("data", Buffer.from("server ready")), 10);
+      return child;
+    });
+    const fixture = createFixture(spawn, [], 0.1);
+
+    try {
+      const result = await fixture.run({ command: shellCommand("python -m http.server"), timeoutMs: 0 });
+      const projected = successResult(result.response);
+
+      expect(projected).toMatchObject({
+        state: "running",
+        updates: expect.arrayContaining([expect.objectContaining({ kind: "output", text: "server ready" })]),
+      });
+      expect(spawn).toHaveBeenCalledWith(
+        "python -m http.server",
+        [],
+        expect.objectContaining({ maxDurationMs: undefined }),
+      );
+      expect(child.exitCode).toBeNull();
     } finally {
       await fixture.broker.close();
     }
@@ -269,6 +367,7 @@ function createFixture(
   events: AgentDomainEvent[] = [],
   initialYieldSeconds = 0.1,
   timeoutSeconds = 120,
+  workspaceObservation?: AgentWorkspaceObservationPort,
 ) {
   const workspaceRoot = process.cwd();
   const owner: AgentExecutionResourceOwner = {
@@ -305,6 +404,7 @@ function createFixture(
     step: 2,
     toolCallId: "call-shell",
     executionPlan: sandboxPlan(),
+    ...(workspaceObservation ? { workspaceObservation } : {}),
   };
 
   return {
@@ -313,11 +413,11 @@ function createFixture(
     outputSpool,
     context,
     run: (
-      args: { command: ReturnType<typeof shellCommand>; timeoutMs?: number },
+      args: { command: ReturnType<typeof shellCommand>; timeoutMs?: number; workspaceEffect?: "read" | "mutate" },
       onEvent: (event: AgentDomainEvent) => Promise<void> = async (event) => {
         events.push(event);
       },
-    ) => handler(args, { ...context, onEvent }),
+    ) => handler({ workspaceEffect: "read", ...args }, { ...context, onEvent }),
   };
 }
 

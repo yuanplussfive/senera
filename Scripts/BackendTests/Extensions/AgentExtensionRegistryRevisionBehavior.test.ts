@@ -149,6 +149,7 @@ function skill(name: string, kind: "system" | "standalone", id: string): Registe
     name,
     description: `${id} Skill.`,
     descriptionFile: `${id}/${name}/SKILL.md`,
+    content: `# ${name}`,
     recommendedTools: [],
     evidenceRequirements: [],
   };

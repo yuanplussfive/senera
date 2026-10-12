@@ -30,6 +30,45 @@ describe("run event history policy", () => {
     expect(projected).toBeUndefined();
   });
 
+  test("does not persist thinking deltas but preserves each completed reasoning block once", () => {
+    const context = {
+      channel: AgentEventChannels.AgentEvent,
+      layer: AgentEventLayers.Progress,
+      phase: AgentEventPhases.Model,
+      sequence: 2,
+      timestamp: "2026-07-17T00:00:00.000Z",
+      sessionId: "session-1",
+      requestId: "request-1",
+      step: 1,
+    } as const;
+
+    expect(
+      projectAgentRunEventForHistory({
+        ...context,
+        kind: AgentEventKinds.ModelThinkingDelta,
+        data: { messageIndex: 0, contentIndex: 1, delta: "private stream text" },
+      }),
+    ).toBeUndefined();
+
+    const completed = projectAgentRunEventForHistory({
+      ...context,
+      kind: AgentEventKinds.ModelThinkingCompleted,
+      layer: AgentEventLayers.Snapshot,
+      data: {
+        messageIndex: 0,
+        contentIndex: 1,
+        content: "Completed native thinking block.",
+        status: "complete",
+      },
+    });
+    expect(completed?.data).toEqual({
+      messageIndex: 0,
+      contentIndex: 1,
+      content: "Completed native thinking block.",
+      status: "complete",
+    });
+  });
+
   test("persists model completion metadata without duplicating response text", () => {
     const projected = projectAgentRunEventForHistory({
       channel: AgentEventChannels.AgentEvent,
@@ -125,42 +164,27 @@ describe("run event history policy", () => {
     });
   });
 
-  test("persists post-run continuity rule snapshots for refresh recovery", () => {
+  test("persists native MemOS context snapshots for refresh recovery", () => {
     const projected = projectAgentRunEventForHistory({
-      eventId: "event-continuity-rules",
+      eventId: "event-memos",
       channel: AgentEventChannels.AgentEvent,
-      kind: AgentEventKinds.ContinuityRulesSnapshot,
+      kind: AgentEventKinds.ContinuitySnapshot,
       layer: AgentEventLayers.Snapshot,
       phase: AgentEventPhases.Prompt,
       sequence: 4,
-      timestamp: "2026-08-23T01:00:03.000Z",
+      timestamp: "2026-10-08T01:00:03.000Z",
       sessionId: "session-1",
       requestId: "request-1",
       data: {
-        rules: [{ title: "天气提醒", status: "partial" }],
-        signals: [
-          {
-            uri: "senera://continuity-state/state_aaaaaaaaaaaaaaaaaaaaaaaa",
-            summary: "用户已完成运动",
-            valueJson: "false",
-          },
-        ],
+        enabled: true,
+        periodDigests: [],
+        eventCandidates: [{ uri: "memos:one", summary: "用户喜欢牛肉。" }],
+        selection: {},
       },
     });
-
     expect(projected).toMatchObject({
-      kind: AgentEventKinds.ContinuityRulesSnapshot,
-      sessionId: "session-1",
-      requestId: "request-1",
-      data: {
-        rules: [{ title: "天气提醒", status: "partial" }],
-        signals: [
-          {
-            uri: "senera://continuity-state/state_aaaaaaaaaaaaaaaaaaaaaaaa",
-            summary: "用户已完成运动",
-          },
-        ],
-      },
+      kind: AgentEventKinds.ContinuitySnapshot,
+      data: { eventCandidates: [{ uri: "memos:one", summary: "用户喜欢牛肉。" }] },
     });
   });
 });

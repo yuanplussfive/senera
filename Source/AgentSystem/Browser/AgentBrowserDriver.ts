@@ -5,7 +5,11 @@ export type AgentBrowserNetworkRequestKind = "navigation" | "subresource";
 export interface AgentBrowserDriverSessionOptions {
   readonly requestTimeoutMs: number;
   readonly maxDownloadBytes: number;
-  readonly assertRequestPermitted: (url: string, kind: AgentBrowserNetworkRequestKind) => Promise<void>;
+  readonly assertRequestPermitted: (
+    url: string,
+    kind: AgentBrowserNetworkRequestKind,
+    sourceUrl?: string,
+  ) => Promise<void>;
 }
 
 export interface AgentBrowserDriverOperationOptions {

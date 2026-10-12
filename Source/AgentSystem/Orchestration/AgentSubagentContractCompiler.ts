@@ -14,12 +14,13 @@ import type {
 import type { AgentSystemPromptLayer } from "./AgentRunDispatchPort.js";
 import type { AgentSubagentResolvedModelPool } from "./AgentSubagentModelPool.js";
 import type { AgentSubagentRoleDefinition } from "./AgentSubagentRoleCatalog.js";
+import { AgentTodoToolNames } from "../Todos/AgentTodoTypes.js";
 
 const TextCompletionInstruction = [
   "## Delegated execution contract",
-  "Before investigating, browsing, editing, or calling any other Tool, use the Todo system Tool with operation=replace and a concrete plan for this delegated task.",
-  "Use operation=read to inspect the current plan and operation=merge to update stable item ids; never infer the write mode from omitted fields.",
-  "Keep the plan current at milestones, keep at most one item in_progress, and do not claim completion while pending or in_progress work remains.",
+  `Before investigating, browsing, editing, or calling another Tool, use ${AgentTodoToolNames.Read} when the task IDs or current status are unclear. Move the delegated task to in_progress with ${AgentTodoToolNames.Update}; add concrete substeps with ${AgentTodoToolNames.Add} when they help track independently verifiable work.`,
+  `Use ${AgentTodoToolNames.Update} for existing task IDs and ${AgentTodoToolNames.Add} only for new tasks. Keep at most one item in_progress; zero is valid when all work is terminal.`,
+  "Keep the task list current at milestones, mark completed only after verification, and do not claim completion while pending or in_progress work remains.",
   "When several child runs are launched in one batch, wait for all of their run ids with AgentWait mode=all before synthesizing a supervisor response.",
   "Do not use AgentResume for a run that is still active; use AgentWait or AgentList to observe it.",
   "If work cannot be completed, leave unfinished items visible and explain the evidence and blocker in your final response.",

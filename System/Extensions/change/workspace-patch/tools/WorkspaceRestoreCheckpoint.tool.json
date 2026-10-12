@@ -4,12 +4,8 @@
   "presentation": {
     "category": "workspace-restore",
     "icon": "pencil",
-    "activity": {
-      "action": { "zh-CN": "恢复检查点", "en-US": "Restore checkpoint" },
-      "detailPaths": ["/checkpointId", "/artifactUri"]
-    }
+    "activity": { "action": { "zh-CN": "恢复", "en-US": "Restore" }, "detailPaths": ["/checkpointId", "/artifactUri"] }
   },
-  "observationProjection": "observations/default.projection.json",
   "description": "从已发布 Artifact 的 workspace checkpoint 恢复 before 或 after 快照。可提供 artifactUri，或仅提供 checkpointId 让宿主从已发布 Artifact 中自动选择最新匹配项。宿主根据 Artifact 对侧快照推导并实时校验当前 workspace revision；内容完整性校验失败或 workspace 在读取期间变化时拒绝写入。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

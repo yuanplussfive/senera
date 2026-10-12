@@ -37,6 +37,7 @@ export function readStepStatusLabel(status: TimelineStepStatus): string {
         cancelling: "workflow.run.status.cancelling",
         done: "workflow.step.status.done",
         failed: "workflow.step.status.failed",
+        cancelled: "workflow.step.status.cancelled",
       } satisfies Record<TimelineStepStatus, Parameters<typeof frontendMessage>[0]>
     )[status],
   );
@@ -50,6 +51,7 @@ export function readStepStatusTone(status: TimelineStepStatus): StepStatusTone {
       cancelling: "cancelling",
       done: "ok",
       failed: "warn",
+      cancelled: "default",
     } satisfies Record<TimelineStepStatus, StepStatusTone>
   )[status];
 }

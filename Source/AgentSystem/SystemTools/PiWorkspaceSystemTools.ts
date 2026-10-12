@@ -2,7 +2,14 @@ import fs from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { createInterface } from "node:readline";
 import path from "node:path";
-import { createReadTool as createPiReadTool, type ReadToolInput } from "@earendil-works/pi-agent-core";
+import {
+  BACKGROUND_CONTEXT,
+  createReadTool as createPiReadTool,
+  withAbortSignal,
+  type AgentHarnessToolInvocation,
+  type Context,
+  type ReadToolInput,
+} from "@earendil-works/pi-agent-core";
 import {
   createFindTool,
   createFindToolDefinition,
@@ -18,6 +25,8 @@ import {
   type LsToolInput,
 } from "@earendil-works/pi-coding-agent";
 import { rgPath } from "@vscode/ripgrep";
+import { resolveAsarUnpackedExecutablePath } from "../Core/AgentExecutablePath.js";
+export { resolveAsarUnpackedExecutablePath } from "../Core/AgentExecutablePath.js";
 import { minimatch } from "minimatch";
 import { z } from "zod";
 import {
@@ -28,7 +37,6 @@ import {
   type ToolSearchManifest,
 } from "../Types/AgentToolContractTypes.js";
 import type { AgentHostToolContext } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
-import { StandardAgentToolObservationProjection } from "../ToolRuntime/AgentToolObservationProjectionPlan.js";
 import { defineSystemTool, type AgentSystemToolMetadata } from "./AgentSystemToolDefinition.js";
 
 const bundledRipgrepPath = resolveAsarUnpackedExecutablePath(rgPath);
@@ -148,9 +156,14 @@ export const WorkspaceReadSystemTool = defineSystemTool({
   input: WorkspaceReadInput,
   output: PiToolResult,
   execute(input, context) {
-    return PiReadTool.execute(toolCallId(context), input, context.signal, undefined, {
-      env: context.executionEnv,
-    });
+    return PiReadTool.execute(
+      toolCallId(context),
+      input,
+      () => undefined,
+      { env: context.executionEnv },
+      createSystemToolInvocation(context),
+      createSystemToolContext(context),
+    );
   },
 });
 
@@ -210,7 +223,6 @@ export const PiWorkspaceSystemTools = Object.freeze([
 
 function workspaceToolMetadata(description: string, search: ToolSearchManifest): AgentSystemToolMetadata {
   return {
-    observation: StandardAgentToolObservationProjection,
     description,
     permissions: ["filesystem:workspace:read"],
     execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
@@ -446,20 +458,21 @@ function normalizePathEntry(value: string): string {
   return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }
 
-export function resolveAsarUnpackedExecutablePath(
-  candidate: string,
-  fileExists: (file: string) => boolean = fs.existsSync,
-): string {
-  const asarSegment = `${path.sep}app.asar${path.sep}`;
-  const segmentIndex = candidate.indexOf(asarSegment);
-  if (segmentIndex < 0) return candidate;
-
-  const unpackedCandidate = `${candidate.slice(0, segmentIndex)}${path.sep}app.asar.unpacked${path.sep}${candidate.slice(
-    segmentIndex + asarSegment.length,
-  )}`;
-  return fileExists(unpackedCandidate) ? unpackedCandidate : candidate;
-}
-
 function toolCallId(context: AgentHostToolContext): string {
   return context.toolCallId ?? context.tool.name;
+}
+
+function createSystemToolInvocation(context: AgentHostToolContext): AgentHarnessToolInvocation {
+  const invocationId = toolCallId(context);
+  return {
+    invocationId,
+    operationId: context.requestId ?? invocationId,
+    turnId: context.sessionId ?? invocationId,
+    getMemo: async () => undefined,
+    setMemo: async () => undefined,
+  };
+}
+
+function createSystemToolContext(context: AgentHostToolContext): Context {
+  return context.signal ? withAbortSignal(context.signal, BACKGROUND_CONTEXT) : BACKGROUND_CONTEXT;
 }

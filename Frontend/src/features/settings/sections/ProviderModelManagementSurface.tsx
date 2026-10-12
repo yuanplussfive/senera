@@ -3,6 +3,7 @@ import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { ConfigFormFieldData } from "../../../api/eventTypes";
 import type { ProviderModelConfigInput } from "../../../api/providerModelCommandTypes";
 import { cn } from "../../../lib/util";
+import { sameJsonValue } from "../../../shared/config/JsonConfigValue";
 import { StateView } from "../../../shared/ui";
 import {
   createModelDraft,
@@ -409,6 +410,7 @@ export function ProviderModelManagementSurface({
         onChange={(patch) => {
           if (!editingModel) return;
           const nextModel = { ...editingModel, ...patch };
+          if (sameModelDraft(editingModel, nextModel)) return;
           setEditingModel(nextModel);
           if (editingExisting) {
             const immediate =
@@ -475,4 +477,8 @@ export function ProviderModelManagementSurface({
       />
     </div>
   );
+}
+
+function sameModelDraft(left: ModelProviderDraft, right: ModelProviderDraft): boolean {
+  return sameJsonValue(left, right);
 }

@@ -39,7 +39,7 @@ describe("Session projection behavior", () => {
 
     expect(stampSessionStepTraces(traces, "turn-start", "turn-end")).toEqual([
       { step: 1, seq: 1, kind: "tool", status: "done", startedAt: "turn-start", endedAt: "turn-start" },
-      { step: 1, seq: 2, kind: "answer", status: "done", startedAt: "turn-start", endedAt: "turn-end" },
+      { step: 1, seq: 2, kind: "answer", status: "done", startedAt: "turn-end", endedAt: "turn-end" },
       { step: 1, seq: 3, kind: "tool", status: "failed", startedAt: "explicit-start", endedAt: "turn-start" },
     ]);
   });

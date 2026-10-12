@@ -1,14 +1,14 @@
 import { motion } from "framer-motion";
 import { lazy, Suspense, useId, useState } from "react";
-import { ChevronDown } from "lucide-react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
-import { motionTimings, useMotionLevel } from "../../shared/motion";
+import { motionTimings, textShimmerStyle, useMotionLevel } from "../../shared/motion";
+import { AppIcon, ThinkingIndicator } from "../../shared/ui";
 import { Popover, PopoverContent, PopoverTrigger } from "../../shared/ui/Popover";
-import { Spinner } from "../../shared/ui/Spinner";
 import { StateView } from "../../shared/ui/StateView";
 import type { RunRecord } from "../../store/sessionStore";
 import { summarizeRun } from "../workflow/runSummary";
+import { hasVisibleRunFeedback } from "../workflow/runActivityPresentation";
 
 const LazyThinkingToolChain = lazy(() =>
   import("../workflow/AgentExecutionFeed").then((module) => ({ default: module.ThinkingToolChain })),
@@ -27,8 +27,14 @@ export function ThinkingSummaryBar({
   const { disableMotion, reduceMotion } = useMotionLevel();
   const live = run?.status === "running";
   const cancelling = run?.status === "cancelling";
+  const hasFeedback = hasVisibleRunFeedback(run);
 
-  if (!run || (run.status === "running" && presentation !== "live-final-answer") || (!live && run.steps.length === 0)) {
+  if (
+    !run ||
+    ((live || cancelling) && hasFeedback) ||
+    (live && presentation !== "live-final-answer" && !hasFeedback) ||
+    (!live && !cancelling && run.steps.length === 0)
+  ) {
     return null;
   }
 
@@ -48,8 +54,35 @@ export function ThinkingSummaryBar({
             aria-label={label}
             data-run-status={run.status}
           >
-            {live || cancelling ? <Spinner size="xs" className="text-content-secondary" /> : null}
-            <span className={cn("truncate", (live || cancelling) && "thinking-summary-trigger__label--live")}>
+            {live && !hasFeedback ? (
+              <span
+                className="activity-feed-row__icon text-accent-content thinking-status-icon thinking-status-icon--active"
+                aria-hidden="true"
+                data-live-activity-icon
+                data-thinking-status-icon
+                data-thinking-status-active
+              >
+                <ThinkingIndicator
+                  size="compact"
+                  showLabel={false}
+                  className="thinking-indicator--inline"
+                  aria-label={frontendMessage("chat.activity.thinking")}
+                />
+              </span>
+            ) : cancelling ? (
+              <AppIcon
+                icon="cancel"
+                size={14}
+                className="shrink-0 text-content-secondary"
+                data-cancelling-status-icon
+                aria-hidden="true"
+              />
+            ) : null}
+            <span
+              className={cn("truncate", live && !hasFeedback && "motion-safe:animate-text-shimmer")}
+              style={textShimmerStyle(compactLabel)}
+              data-thinking-status-text
+            >
               {compactLabel}
             </span>
             {!live && !cancelling ? (
@@ -58,7 +91,7 @@ export function ThinkingSummaryBar({
                 transition={disableMotion || reduceMotion ? { duration: 0 } : motionTimings.base}
                 className="inline-flex shrink-0"
               >
-                <ChevronDown className="h-3 w-3 text-content-muted" />
+                <AppIcon icon="chevron-down" size={12} className="text-content-muted" />
               </motion.span>
             ) : null}
           </button>
@@ -95,7 +128,7 @@ export function ThinkingSummaryBar({
 function readThinkingLabel(status: NonNullable<RunRecord>["status"], duration: string): string {
   switch (status) {
     case "running":
-      return "Thinking...";
+      return frontendMessage("session.subtitle.thinking");
     case "cancelling":
       return frontendMessage("workflow.run.status.cancelling");
     case "cancelled":
@@ -114,6 +147,6 @@ function readTerminalLabel(status: NonNullable<RunRecord>["status"]): string {
     case "failed":
       return frontendMessage("workflow.run.status.failed");
     default:
-      return "Thinking";
+      return frontendMessage("session.subtitle.thinking");
   }
 }

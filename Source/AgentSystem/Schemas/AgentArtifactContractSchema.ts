@@ -125,21 +125,11 @@ const ToolArtifactSummarySchema = z
   })
   .strict();
 
-const ToolArtifactWorkspacePathSchema = z
-  .object({
-    Selector: z.string().min(1),
-    Base: z.string().min(1).optional(),
-  })
-  .strict();
-
 const ToolArtifactWorkspaceSchema = z
   .object({
-    Capture: z.enum(["none", "declared"]).optional(),
-    Paths: z.array(ToolArtifactWorkspacePathSchema).optional(),
-    MaxFileBytes: z.number().int().min(1).optional(),
-    MaxFiles: z.number().int().min(1).optional(),
-    MaxDirectoryDepth: z.number().int().min(0).optional(),
-    CaptureContent: z.enum(["none", "text"]).optional(),
+    Capture: z.literal("mutation-receipt"),
+    MaxFileBytes: z.number().int().min(1),
+    CaptureContent: z.enum(["none", "text"]),
     PatchContextLines: z.number().int().min(0),
   })
   .strict();

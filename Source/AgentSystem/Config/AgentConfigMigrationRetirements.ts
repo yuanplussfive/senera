@@ -97,9 +97,138 @@ export function migrateAgentConfigRetirementStep(options: AgentConfigRetirementM
       if (isRecord(config.Defaults))
         removeRetiredPluginConfiguration(config.Defaults, "Defaults.", migratedPaths, removedPaths);
       return 28;
+    case 28:
+      removeRetiredWorkspaceObservationConfiguration(config, "", removedPaths);
+      if (isRecord(config.Defaults)) {
+        removeRetiredWorkspaceObservationConfiguration(config.Defaults, "Defaults.", removedPaths);
+      }
+      return 29;
+    case 29:
+      removeRetiredToolObservationBudget(config, "", removedPaths);
+      if (isRecord(config.Defaults)) {
+        removeRetiredToolObservationBudget(config.Defaults, "Defaults.", removedPaths);
+      }
+      return 30;
+    case 30:
+      migrateBrowserNetworkConfiguration(config, "", migratedPaths, removedPaths);
+      if (isRecord(config.Defaults)) {
+        migrateBrowserNetworkConfiguration(config.Defaults, "Defaults.", migratedPaths, removedPaths);
+      }
+      return 31;
+    case 31:
+      removeRetiredToolLearningModelConfiguration(config, "", removedPaths);
+      if (isRecord(config.Defaults)) {
+        removeRetiredToolLearningModelConfiguration(config.Defaults, "Defaults.", removedPaths);
+      }
+      return 32;
+    case 32:
+      removeRetiredModelThinkingLevelMaps(config, "", removedPaths);
+      if (isRecord(config.Defaults)) {
+        removeRetiredModelThinkingLevelMaps(config.Defaults, "Defaults.", removedPaths);
+      }
+      return 33;
+    case 33:
+      removeRetiredTemporalMemoryConfiguration(config, "", removedPaths);
+      if (isRecord(config.Defaults)) {
+        removeRetiredTemporalMemoryConfiguration(config.Defaults, "Defaults.", removedPaths);
+      }
+      return 34;
+    case 34:
+      removeRetiredMemoryCountBudgets(config, "", removedPaths);
+      if (isRecord(config.Defaults)) removeRetiredMemoryCountBudgets(config.Defaults, "Defaults.", removedPaths);
+      return 35;
     default:
       return undefined;
   }
+}
+
+/** Count/character policies have no token equivalent; retire them at the config boundary. */
+function removeRetiredMemoryCountBudgets(
+  config: Record<string, unknown>,
+  prefix: string,
+  removedPaths: string[],
+): void {
+  const learning = config.ContinuityLearning;
+  if (!isRecord(learning) || !isRecord(learning.Recall) || !isRecord(learning.Recall.PromptBudget)) return;
+  const budget = learning.Recall.PromptBudget;
+  for (const key of ["MaxDigestEntries", "MaxEventEntries", "MaxCharacters"]) {
+    if (removeProperty(budget, key)) removedPaths.push(`${prefix}ContinuityLearning.Recall.PromptBudget.${key}`);
+  }
+}
+
+function removeRetiredTemporalMemoryConfiguration(
+  container: Record<string, unknown>,
+  prefix: string,
+  removedPaths: string[],
+): void {
+  const continuity = container.ContinuityLearning;
+  if (isRecord(continuity) && removeProperty(continuity, "TemporalMemory")) {
+    removedPaths.push(`${prefix}ContinuityLearning.TemporalMemory`);
+  }
+}
+
+/** Tool routing is now trained from completed state-card scenarios in MemOS. */
+function removeRetiredToolLearningModelConfiguration(
+  container: Record<string, unknown>,
+  prefix: string,
+  removedPaths: string[],
+): void {
+  if (removeProperty(container, "ToolLearning")) removedPaths.push(`${prefix}ToolLearning`);
+}
+
+function removeRetiredToolObservationBudget(
+  container: Record<string, unknown>,
+  prefix: string,
+  removedPaths: string[],
+): void {
+  const artifacts = container.Artifacts;
+  if (!isRecord(artifacts)) return;
+  if (removeProperty(artifacts, "InlineResultMaxTokens")) {
+    removedPaths.push(`${prefix}Artifacts.InlineResultMaxTokens`);
+  }
+  if (removeProperty(artifacts, "InlineResultMaxBytes")) {
+    removedPaths.push(`${prefix}Artifacts.InlineResultMaxBytes`);
+  }
+}
+
+function migrateBrowserNetworkConfiguration(
+  container: Record<string, unknown>,
+  prefix: string,
+  migratedPaths: string[],
+  removedPaths: string[],
+): void {
+  if (!isRecord(container.Extensions) || !isRecord(container.Extensions["agent-browser"])) return;
+  const browserExtension = container.Extensions["agent-browser"];
+  if (!isRecord(browserExtension.Configuration) || !isRecord(browserExtension.Configuration.network)) return;
+  const network = browserExtension.Configuration.network;
+  const legacyFields = ["accessMode", "allowedDomains", "allowPrivateNetworks", "allowSyntheticProxyAddresses"];
+  const presentLegacyFields = legacyFields.filter((field) => Object.hasOwn(network, field));
+  if (presentLegacyFields.length === 0) return;
+
+  const hadAllowlist =
+    network.accessMode === "allowlist" ||
+    (network.accessMode === undefined && Array.isArray(network.allowedDomains) && network.allowedDomains.length > 0);
+  const blockedDomains = Array.isArray(network.blockedDomains) ? [...network.blockedDomains] : undefined;
+  for (const field of presentLegacyFields) delete network[field];
+
+  if (hadAllowlist) {
+    const tightened = [...new Set([...(blockedDomains ?? []), "*"])];
+    network.blockedDomains = tightened;
+    migratedPaths.push(`${prefix}Extensions.agent-browser.Configuration.network.blockedDomains`);
+  }
+  removedPaths.push(
+    ...presentLegacyFields.map((field) => `${prefix}Extensions.agent-browser.Configuration.network.${field}`),
+  );
+}
+
+function removeRetiredWorkspaceObservationConfiguration(
+  container: Record<string, unknown>,
+  prefix: string,
+  removedPaths: string[],
+): void {
+  const artifacts = container.Artifacts;
+  if (!isRecord(artifacts) || !removeProperty(artifacts, "WorkspaceObserver")) return;
+  removedPaths.push(`${prefix}Artifacts.WorkspaceObserver`);
 }
 
 function removeRetiredArtifactsSummaryMaxChars(
@@ -185,25 +314,17 @@ function removeRetiredTemporalSegmentIdleBoundary(
 function removeRetiredContinuityRecallRewrite(
   container: Record<string, unknown>,
   prefix: string,
-  migratedPaths: string[],
+  _migratedPaths: string[],
   removedPaths: string[],
 ): void {
   const continuity = container.ContinuityLearning;
   if (!isRecord(continuity) || !isRecord(continuity.Recall)) return;
   const recall = continuity.Recall;
-  const auxiliary = recall.Auxiliary;
-  if (!isRecord(auxiliary)) return;
-
-  if (typeof auxiliary.TimeoutMs === "number") {
-    const semantic = isRecord(recall.Semantic) ? recall.Semantic : {};
-    if (semantic.TimeoutMs === undefined) {
-      semantic.TimeoutMs = auxiliary.TimeoutMs;
-      recall.Semantic = semantic;
-      migratedPaths.push(`${prefix}ContinuityLearning.Recall.Semantic.TimeoutMs`);
+  for (const property of ["Auxiliary", "Semantic", "Ranking", "Prefetch", "TurnValueClassifier"] as const) {
+    if (removeProperty(recall, property)) {
+      removedPaths.push(`${prefix}ContinuityLearning.Recall.${property}`);
     }
   }
-  delete recall.Auxiliary;
-  removedPaths.push(`${prefix}ContinuityLearning.Recall.Auxiliary`);
 }
 
 function removeRetiredRuntimeUpdateConfiguration(
@@ -267,9 +388,9 @@ function removeCharacterThresholdLearningGate(
   removedPaths: string[],
 ): void {
   const continuity = container.ContinuityLearning;
-  if (!isRecord(continuity) || !isRecord(continuity.LearningGate)) return;
-  if (removeProperty(continuity.LearningGate, "MinimumUserCharacters")) {
-    removedPaths.push(`${prefix}ContinuityLearning.LearningGate.MinimumUserCharacters`);
+  if (!isRecord(continuity)) return;
+  if (removeProperty(continuity, "LearningGate")) {
+    removedPaths.push(`${prefix}ContinuityLearning.LearningGate`);
   }
 }
 
@@ -291,25 +412,32 @@ function removeRoleRewriteConfiguration(
   }
 }
 
+function removeRetiredModelThinkingLevelMaps(
+  container: Record<string, unknown>,
+  prefix: string,
+  removedPaths: string[],
+): void {
+  if (!Array.isArray(container.ModelProviders)) return;
+  for (const [index, provider] of container.ModelProviders.entries()) {
+    if (!isRecord(provider) || !removeProperty(provider, "ThinkingLevelMap")) continue;
+    removedPaths.push(`${prefix}ModelProviders[${index}].ThinkingLevelMap`);
+  }
+}
+
 function removePhraseBasedTurnValueConfiguration(
   container: Record<string, unknown>,
   prefix: string,
-  migratedPaths: string[],
+  _migratedPaths: string[],
   removedPaths: string[],
 ): void {
   const continuity = container.ContinuityLearning;
   if (!isRecord(continuity)) return;
   const recall = continuity.Recall;
   if (!isRecord(recall)) return;
-  const legacyGate = recall.TrivialPromptGate;
-  if (!isRecord(legacyGate)) return;
-  const currentGate = isRecord(recall.TurnValueClassifier) ? recall.TurnValueClassifier : {};
-  if (typeof legacyGate.Enabled === "boolean" && currentGate.Enabled === undefined) {
-    recall.TurnValueClassifier = { ...currentGate, Enabled: legacyGate.Enabled };
-    migratedPaths.push(`${prefix}ContinuityLearning.Recall.TurnValueClassifier.Enabled`);
-  }
-  if (removeProperty(recall, "TrivialPromptGate")) {
-    removedPaths.push(`${prefix}ContinuityLearning.Recall.TrivialPromptGate`);
+  for (const property of ["TrivialPromptGate", "TurnValueClassifier"] as const) {
+    if (removeProperty(recall, property)) {
+      removedPaths.push(`${prefix}ContinuityLearning.Recall.${property}`);
+    }
   }
 }
 

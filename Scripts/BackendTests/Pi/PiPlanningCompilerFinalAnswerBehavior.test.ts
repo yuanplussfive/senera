@@ -4,6 +4,7 @@ import {
   type AgentPiPlanningModelClient,
 } from "../../../Source/AgentSystem/Pi/AgentPiPlanningCompiler.js";
 import type { AgentLanguageModelInvocationOptions } from "../../../Source/AgentSystem/ModelEndpoints/AgentLanguageModel.js";
+import type { Context } from "@earendil-works/pi-ai";
 import type {
   AgentPiControllerDecisionInput,
   AgentPiToolArgumentsInput,
@@ -16,6 +17,28 @@ import { projectSeneraModelProviderToPi } from "../../../Source/AgentSystem/Pi/A
 import { AgentTurnTokenBudget } from "../../../Source/AgentSystem/Text/AgentTurnTokenBudget.js";
 
 describe("Pi assistant controller compilation", () => {
+  test("sends Pi compaction prompts through the plain-text boundary", async () => {
+    const client = new CompilerClient([]);
+    client.compactResult = "Compaction checkpoint.";
+    const modelProvider = createModelProvider({ ContextWindowTokens: 1_200 });
+    const model = projectSeneraModelProviderToPi(modelProvider).model;
+
+    await expect(
+      createCompiler(client).compact?.({
+        model,
+        context: {
+          systemPrompt: "Summarize the conversation.",
+          messages: [{ role: "user", content: "History to summarize.", timestamp: 1 }],
+        },
+        runtime: { sessionId: "physical-session", logicalCacheScope: "logical-session" },
+      }),
+    ).resolves.toBe("Compaction checkpoint.");
+
+    expect(client.evolveInputs).toHaveLength(0);
+    expect(client.compactInputs).toHaveLength(1);
+    expect(client.compactOptions[0]?.cache).toMatchObject({ retention: "none" });
+  });
+
   test("returns a complete Direct response from one controller model call", async () => {
     const client = new CompilerClient([{ kind: "Direct", response: "Dependency injection supplies dependencies." }]);
 
@@ -318,6 +341,9 @@ class CompilerClient implements AgentPiPlanningModelClient {
     invalidDecision: string;
     issues: string[];
   }> = [];
+  readonly compactInputs: Context[] = [];
+  readonly compactOptions: AgentLanguageModelInvocationOptions[] = [];
+  compactResult?: string;
   readonly argumentResults = new Map<string, unknown>();
 
   constructor(
@@ -334,6 +360,12 @@ class CompilerClient implements AgentPiPlanningModelClient {
     const decision = this.decisions.shift();
     if (decision === undefined) throw new Error("Unexpected turn evolution.");
     return decision;
+  }
+
+  async compactPiContext(context: Context, options?: AgentLanguageModelInvocationOptions): Promise<string> {
+    this.compactInputs.push(context);
+    this.compactOptions.push(options ?? {});
+    return this.compactResult ?? "Compaction checkpoint.";
   }
 
   async repairControllerDecision(request: {
@@ -362,10 +394,6 @@ class CompilerClient implements AgentPiPlanningModelClient {
 
   async repairPiToolArguments(_input: AgentPiToolArgumentsRepairInput): Promise<never> {
     throw new Error("Unexpected argument repair.");
-  }
-
-  async summarizePiConversation(): Promise<never> {
-    throw new Error("Unexpected conversation summary.");
   }
 }
 

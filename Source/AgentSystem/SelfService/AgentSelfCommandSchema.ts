@@ -30,20 +30,6 @@ const ConfigCommandSchema = z.discriminatedUnion("action", [
     .strict(),
 ]);
 
-const PresetCommandSchema = z.discriminatedUnion("action", [
-  z.object({ command: z.literal("preset"), action: z.literal("list") }).strict(),
-  z.object({ command: z.literal("preset"), action: z.literal("show"), name: z.string().min(1).max(128) }).strict(),
-  z.object({ command: z.literal("preset"), action: z.literal("use"), name: z.string().max(128).nullable() }).strict(),
-  z
-    .object({
-      command: z.literal("preset"),
-      action: z.literal("create"),
-      name: z.string().min(1).max(128),
-      content: z.unknown(),
-    })
-    .strict(),
-]);
-
 const LogsCommandSchema = z.discriminatedUnion("action", [
   z.object({ command: z.literal("logs"), action: z.literal("list") }).strict(),
   z
@@ -174,7 +160,6 @@ const SkillsCommandSchema = z.discriminatedUnion("action", [
 
 export const AgentSelfCommandSchema = z.discriminatedUnion("command", [
   ConfigCommandSchema,
-  PresetCommandSchema,
   LogsCommandSchema,
   SessionCommandSchema,
   SkillsCommandSchema,

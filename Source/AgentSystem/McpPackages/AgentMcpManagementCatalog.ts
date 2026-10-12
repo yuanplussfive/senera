@@ -17,8 +17,10 @@ import {
 } from "../SystemTools/AgentSystemToolSource.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { AgentConfigFormOptionCatalogs } from "../Types/ConfigFormTypes.js";
-import { AgentSkillCatalogProjector } from "../Skills/AgentSkillCatalogProjector.js";
+import { AgentSkillCatalogProjector, type AgentSkillCatalogItem } from "../Skills/AgentSkillCatalogProjector.js";
 import { AgentSkillScanner } from "../Skills/AgentSkillScanner.js";
+import { registerAgentSkillCatalog } from "../Skills/AgentSkillCatalogRegistration.js";
+import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import { AgentMcpPackageScanner, assertUniqueAgentMcpServerNames } from "./AgentMcpPackageScanner.js";
 import { AgentMcpPackageSourceKinds, type AgentMcpPackage } from "./AgentMcpPackageTypes.js";
 
@@ -50,12 +52,14 @@ export interface AgentMcpPackageServerLocation {
 export interface AgentMcpManagementCatalogOptions {
   readonly workspaceRoot: string;
   readonly resourcesRoot: string;
+  readonly logger?: AgentLogger;
 }
 
 interface CachedSystemCatalog {
   readonly key: string;
   readonly catalog: AgentSystemExtensionCatalog;
   readonly snapshot: AgentSystemSettingsSnapshot;
+  readonly skills: readonly AgentSkillCatalogItem[];
 }
 
 /**
@@ -73,7 +77,7 @@ export class AgentMcpManagementCatalog {
   private systemCache?: CachedSystemCatalog;
   private packageCache?: AgentMcpPackageSnapshot & { readonly key: string };
 
-  constructor(options: AgentMcpManagementCatalogOptions) {
+  constructor(private readonly options: AgentMcpManagementCatalogOptions) {
     this.systemExtensionsRoot = path.join(options.resourcesRoot, "System", "Extensions");
     this.systemSkillsRoot = path.join(options.resourcesRoot, "System", "Skills");
     this.bundledMcpRoot = path.join(options.resourcesRoot, "McpServers");
@@ -84,6 +88,10 @@ export class AgentMcpManagementCatalog {
 
   systemSnapshot(config: AgentSystemConfig): AgentSystemSettingsSnapshot {
     return this.systemCatalog(config).snapshot;
+  }
+
+  systemSkillCatalog(config: AgentSystemConfig): readonly AgentSkillCatalogItem[] {
+    return this.systemCatalog(config).skills;
   }
 
   validateSystemExtensions(config: AgentSystemConfig): void {
@@ -143,18 +151,14 @@ export class AgentMcpManagementCatalog {
       capabilities: new Set([...listDefaultAgentHostCapabilityNames(), ...definitions.map(systemToolCapability)]),
       configurations: config.Extensions,
     });
-    const skillScanner = new AgentSkillScanner();
-    const systemSkillTools = catalog.skillToolBindings();
-    for (const skill of skillScanner.scanRoot(this.systemSkillsRoot)) {
-      registry.registerSkill({
-        ...skill,
-        source: { kind: "system", id: skill.name, displayName: "Senera", priority: 10 },
-        recommendedTools: [...new Set([...skill.recommendedTools, ...(systemSkillTools.get(skill.name) ?? [])])],
-      });
-    }
-    for (const skill of skillScanner.scanRoot(this.workspaceSkillsRoot)) registry.registerSkill(skill);
-    const skillOptions = new AgentSkillCatalogProjector(registry)
-      .list()
+    const skillDiagnostics = registerAgentSkillCatalog(registry, {
+      systemRoot: this.systemSkillsRoot,
+      workspaceRoot: this.workspaceSkillsRoot,
+      systemToolBindings: catalog.skillToolBindings(),
+    });
+    for (const diagnostic of skillDiagnostics) this.options.logger?.warn("resources.skills.invalid", { diagnostic });
+    const skills = new AgentSkillCatalogProjector(registry).list();
+    const skillOptions = skills
       .map((skill) => ({ value: skill.name, label: createAgentExtensionLocalizedText(skill.title) }))
       .sort(
         (left, right) =>
@@ -188,7 +192,7 @@ export class AgentMcpManagementCatalog {
       )
       .sort((left, right) => left.name.localeCompare(right.name));
     const snapshot = deepFreeze({ revision: key, extensions, tools });
-    this.systemCache = { key, catalog, snapshot };
+    this.systemCache = { key, catalog, snapshot, skills: deepFreeze(skills) };
     return this.systemCache;
   }
 }

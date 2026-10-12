@@ -32,15 +32,12 @@
     "network": {
       "type": "object",
       "properties": {
-        "accessMode": { "default": "public", "type": "string", "enum": ["public", "allowlist"] },
-        "allowedDomains": {
+        "blockedDomains": {
           "default": [],
           "maxItems": 128,
           "type": "array",
           "items": { "type": "string", "minLength": 1, "maxLength": 253 }
-        },
-        "allowPrivateNetworks": { "default": false, "type": "boolean" },
-        "allowSyntheticProxyAddresses": { "default": true, "type": "boolean" }
+        }
       },
       "additionalProperties": false
     },

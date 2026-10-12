@@ -21,7 +21,7 @@
     "en-US": "Resident Speech Projection"
   },
   "description": {
-    "zh-CN": "在角色预设会话中，分别投影行动前发言与工具完成后的最终发言。",
+    "zh-CN": "在启用人设的会话中，分别投影行动前发言与工具完成后的最终发言。",
     "en-US": "Projects action prefaces and post-action final responses through distinct resident speech contracts."
   },
   "contributions": [

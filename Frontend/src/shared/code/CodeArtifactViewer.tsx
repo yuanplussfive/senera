@@ -1,10 +1,9 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { MotionIconSwap } from "../motion";
 import { useEffect, useMemo, useState } from "react";
-import { Check, Copy, Download, Eye, FileCode } from "lucide-react";
 import { cn } from "../../lib/util";
 import { useAppearance } from "../theme/useAppearance";
-import { Dialog, DialogContent, Tooltip, useClipboardCopy } from "../ui";
+import { AppIcon, Dialog, DialogContent, Tooltip, useClipboardCopy } from "../ui";
 import { CodeArtifactSourceView } from "./CodeArtifactSourceView";
 import { type CodeArtifact } from "./CodeArtifactModel";
 import { applyCodePreviewTheme, createCodePreviewThemeVariables, readDownloadMime } from "./CodePreviewRegistry";
@@ -57,10 +56,11 @@ export function CodeArtifactViewer({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog modal={false} open={open} onOpenChange={onOpenChange}>
       <DialogContent
         title={artifact.filename}
         description={`${artifact.language} · ${artifact.lineCount} lines`}
+        contentInitial={false}
         className="flex h-[min(860px,calc(100vh-28px))] w-[min(1180px,calc(100vw-28px))] max-h-[calc(100vh-28px)] flex-col"
         bodyClassName="min-h-0 flex-1"
       >
@@ -72,7 +72,7 @@ export function CodeArtifactViewer({
                 className={cn("code-artifact-viewer__tab", view === "source" && "is-active")}
                 onClick={() => setView("source")}
               >
-                <FileCode className="h-3.5 w-3.5" />
+                <AppIcon icon="file-code" size={14} />
                 {frontendMessage("code.source")}
               </button>
               {artifact.preview ? (
@@ -81,7 +81,7 @@ export function CodeArtifactViewer({
                   className={cn("code-artifact-viewer__tab", view === "preview" && "is-active")}
                   onClick={() => setView("preview")}
                 >
-                  <Eye className="h-3.5 w-3.5" />
+                  <AppIcon icon="eye" size={14} />
                   {artifact.preview.label}
                 </button>
               ) : null}
@@ -106,7 +106,7 @@ export function CodeArtifactViewer({
                   aria-label={frontendMessage("code.copy")}
                 >
                   <MotionIconSwap stateKey={copied ? "copied" : "copy"}>
-                    {copied ? <Check className="h-3.5 w-3.5 text-moss-500" /> : <Copy className="h-3.5 w-3.5" />}
+                    {copied ? <AppIcon icon="checkmark" size={14} className="text-moss-500" /> : <AppIcon icon="copy" size={14} />}
                   </MotionIconSwap>
                 </button>
               </Tooltip>
@@ -117,7 +117,7 @@ export function CodeArtifactViewer({
                   onClick={downloadCode}
                   aria-label={frontendMessage("code.downloadFile")}
                 >
-                  <Download className="h-3.5 w-3.5" />
+                  <AppIcon icon="download" size={14} />
                 </button>
               </Tooltip>
             </div>

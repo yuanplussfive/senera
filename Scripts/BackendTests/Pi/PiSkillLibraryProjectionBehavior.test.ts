@@ -49,6 +49,9 @@ describe("Pi Skill library projection", () => {
     expect(JSON.stringify(catalog)).not.toContain("private");
     expect(prompt).not.toContain("C:\\private");
     expect(prompt).not.toContain("/srv/private");
+    expect(prompt).not.toContain("senera://skills/");
+    expect(prompt).not.toContain("revision-workspace-search");
+    expect(prompt).not.toContain("revision-manual-only");
     expect(prompt).toContain("senera.skill_library=v1");
     expect(prompt).toContain("directory-only");
   });
@@ -98,10 +101,16 @@ describe("Pi Skill library projection", () => {
     expect(wire.blocks).toHaveLength(1);
     expect(wire.blocks[0]?.id).toBe("directory");
     expect(wire.blocks[0]?.value).toEqual({
-      entries: [expect.objectContaining({ name: "document-understanding" })],
+      entries: [
+        expect.objectContaining({
+          name: "document-understanding",
+          state: "available",
+          load: "on-demand",
+        }),
+      ],
       protocol: "senera.skill-library/v1",
-      revision: catalog.revision,
     });
+    expect(JSON.stringify(wire.blocks[0]?.value)).not.toContain("document-revision");
   });
 });
 
@@ -120,6 +129,7 @@ function registeredSkill(
     name: input.name,
     description: input.description,
     descriptionFile: input.descriptionFile,
+    content: `# ${input.name}`,
     revision: input.revision,
     recommendedTools: [],
     evidenceRequirements: [],

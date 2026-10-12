@@ -31,7 +31,6 @@ export interface RestorePublishedArtifactInput {
   readonly resultHash: string;
   readonly payloadHash: string;
   readonly redactionPolicySha256: string;
-  readonly inline: boolean;
 }
 
 export class AgentArtifactPublicationRecovery {
@@ -80,7 +79,6 @@ export class AgentArtifactPublicationRecovery {
         redactedResult: input.redactedRaw,
         policy: input.policy,
         assets: artifactAssets,
-        inline: input.inline,
       }),
     );
     const workspace = input.result.workspaceCapture;

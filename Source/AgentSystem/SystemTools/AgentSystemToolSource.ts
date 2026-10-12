@@ -27,7 +27,6 @@ import {
 } from "./AgentSystemExtensionConfiguration.js";
 import {
   AgentSystemToolContractSchema,
-  AgentToolObservationProjectionSchema,
   type AgentSystemExtensionManifest,
   type AgentSystemHostToolContribution,
   type AgentSystemSidecarToolContribution,
@@ -35,7 +34,6 @@ import {
   type AgentSystemToolContract,
   AgentSystemSidecarToolContractSchema,
 } from "./AgentSystemExtensionManifest.js";
-import type { AgentToolObservationProjectionManifest } from "../Types/AgentToolObservationProjectionTypes.js";
 import {
   resolveSystemExtensionPackageDirectory,
   resolveSystemExtensionPackageFile,
@@ -215,7 +213,7 @@ export class AgentSystemExtensionCatalog {
         );
       }
       const contractPath = resolveSystemExtensionPackageFile(packageRoot, contribution.contract, "host Tool contract");
-      const contract = this.readContract(contractPath, packageRoot);
+      const contract = this.readContract(contractPath);
       const presentation = resolveAgentSystemToolPresentation(extensionPresentation, contract.presentation);
       for (const skill of enabled ? contribution.recommendedForSkills : []) {
         const toolNames = this.bindings.get(skill) ?? new Set<string>();
@@ -315,31 +313,20 @@ export class AgentSystemExtensionCatalog {
     this.dedicatedSettingsSurfaces.set(manifest.settingsSurface, manifest.id);
   }
 
-  private readContract(
-    filePath: string,
-    packageRoot: string,
-  ): AgentSystemToolContract & { observation: AgentToolObservationProjectionManifest } {
+  private readContract(filePath: string): AgentSystemToolContract {
     const loaded = this.json.load(filePath, AgentSystemToolContractSchema) as AgentSystemToolContract;
     validateAgentToolResourceManifests(loaded.resources);
     const source = deepFreeze({
       ...loaded,
       inputSchema: ensureObjectRootJsonSchema(loaded.inputSchema, `System Tool ${loaded.name} input`),
     });
-    const projectionPath = resolveSystemExtensionPackageFile(
-      packageRoot,
-      source.observationProjection,
-      "Tool observation projection",
-    );
-    const observation = deepFreeze(
-      this.json.load(projectionPath, AgentToolObservationProjectionSchema) as AgentToolObservationProjectionManifest,
-    );
     this.ajv.compile(source.inputSchema);
     if (source.outputSchema) this.ajv.compile(source.outputSchema);
     assertArtifactPolicyTemplates(source.artifacts, {
       argumentsSchema: source.inputSchema,
       resultSchema: source.outputSchema,
     });
-    return { ...source, observation };
+    return source;
   }
 
   private readSidecarContract(filePath: string): AgentSystemSidecarToolContract {
@@ -352,7 +339,7 @@ export class AgentSystemExtensionCatalog {
 
   private project(
     owner: RegisteredTool["owner"],
-    source: AgentSystemToolContract & { observation: AgentToolObservationProjectionManifest },
+    source: AgentSystemToolContract,
     capability: string,
     childGrant: RegisteredTool["childGrant"],
     presentation: NonNullable<RegisteredTool["presentation"]>,
@@ -368,8 +355,8 @@ export class AgentSystemExtensionCatalog {
           planningModes: source.planningModes,
           inputSchema: source.inputSchema,
           outputSchema: source.outputSchema,
-          observationProjection: source.observation,
-          contentPolicy: source.contentPolicy,
+          resultStorage: source.runtime.ResultStorage,
+          artifacts: source.artifacts,
           surfaces: source.surfaces,
           resources: source.resources,
         }),
@@ -380,8 +367,6 @@ export class AgentSystemExtensionCatalog {
       handler: { kind: "HostCapability", capability, resources: source.resources },
       execution: source.execution,
       runtime: source.runtime,
-      observationProjection: source.observation,
-      contentPolicy: source.contentPolicy,
       perception: source.perception,
       presentation: deepFreeze(presentation),
       sources: source.sources,

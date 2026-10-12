@@ -3,6 +3,7 @@ import {
   type AssistantMessage,
   type AssistantMessageEventStream,
   type Context,
+  type JsonObject,
 } from "@earendil-works/pi-ai";
 import { describe, expect, test, vi } from "vitest";
 import { AgentExtensionRegistry } from "../../../Source/AgentSystem/Extensions/AgentExtensionRegistry.js";
@@ -22,10 +23,10 @@ type NativeProjectionRequest = Parameters<AgentResidentSpeechNativeClient["proje
 type BamlProjectionRequest = Parameters<AgentResidentSpeechBamlClient["project"]>[0];
 
 describe("resident speech runtime", () => {
-  test("repairs a wrong native bridge selection once with automatic tool choice", async () => {
+  test("repairs a wrong native bridge selection with the configured budget and required choice", async () => {
     const choices: Array<"required" | "auto"> = [];
     const client = new AgentResidentSpeechNativeClient(
-      createModelProvider({ ToolPlanningMode: "native", Capabilities: { ToolCalling: true } }),
+      createModelProvider({ ToolPlanningMode: "native", MaxNetworkRetries: 1, Capabilities: { ToolCalling: true } }),
     );
 
     const result = await client.project({
@@ -49,7 +50,7 @@ describe("resident speech runtime", () => {
       tool: "ResidentActionSpeak",
       arguments: { utterance: "我去看看呀。" },
     });
-    expect(choices).toEqual(["required", "auto"]);
+    expect(choices).toEqual(["required", "required"]);
   });
 
   test("projects one native roleplay tool-preface while preserving the pending tool call", async () => {
@@ -498,7 +499,7 @@ function readText(message: AssistantMessage): string {
   return message.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("");
 }
 
-function completedNativeStream(toolName: string, argumentsValue: Record<string, unknown>): AssistantMessageEventStream {
+function completedNativeStream(toolName: string, argumentsValue: JsonObject): AssistantMessageEventStream {
   const stream = createAssistantMessageEventStream();
   const message = {
     role: "assistant" as const,

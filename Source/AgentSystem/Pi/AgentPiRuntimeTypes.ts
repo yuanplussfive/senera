@@ -1,4 +1,4 @@
-import type { AgentMessage, AgentState } from "@earendil-works/pi-agent-core";
+import type { AgentState } from "@earendil-works/pi-agent-core";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type { AgentPiModelProjection, AgentPiToolDefinition, AgentPiToolProjectionContext } from "./AgentPiTypes.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
@@ -14,6 +14,7 @@ import type {
 } from "./AgentPiSessionManagement.js";
 import type { ImageContent, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
+import type { AgentWorkspaceChangeObserverPort } from "../Artifacts/AgentWorkspaceChangeObserver.js";
 
 export type AgentPiSessionEventListener = (event: AgentSessionEvent) => void | Promise<void>;
 
@@ -22,14 +23,14 @@ export interface AgentPiSessionOptions extends Omit<AgentPiToolProjectionContext
   logicalCacheScope?: string;
   input?: string;
   systemPrompt?: string;
-  /** Host state injected only into the current provider request. */
-  liveContext?: string;
+  /** Frozen host context persisted with the user message for this turn. */
+  turnContext?: string;
   interaction?: AgentInteractionContext;
   turnState?: AgentPiTurnState;
   activeSkills?: readonly AgentActivatedSkill[];
-  roleplayPresetActive?: boolean;
+  personaActive?: boolean;
   prefaceRewriteEnabled?: boolean;
-  /** Explicit UI-controlled final-answer rewrite; independent from roleplay presets. */
+  /** Explicit UI-controlled final-answer rewrite; independent from persona text. */
   finalResponseRewriteEnabled?: boolean;
   rootCommand?: AgentRootCommand;
   diagnostics?: AgentPiDiagnosticSink;
@@ -41,7 +42,6 @@ export interface AgentPiSessionOptions extends Omit<AgentPiToolProjectionContext
 export interface AgentPiSession {
   readonly state: AgentState;
   readonly model: AgentState["model"];
-  setHistory(messages: readonly AgentMessage[]): Promise<void> | void;
   prompt(
     text: string,
     options?: { expandPromptTemplates?: boolean; source?: string; images?: readonly ImageContent[] },
@@ -60,10 +60,12 @@ export interface AgentPiSession {
 export interface AgentPiSessionResult {
   session: AgentPiSession;
   piSessionId?: string;
-  historyMigrationRequired?: boolean;
 }
 
 export interface AgentPiRuntimeService {
+  readonly workspaceChangeObserver?: AgentWorkspaceChangeObserverPort;
+  /** Resolves a registered tool's declarative workspace write capability. */
+  toolWorkspaceWritableLookup?(toolName: string): boolean;
   model(): AgentPiModelProjection;
   toolDefinitions(context?: AgentPiToolProjectionContext): AgentPiToolDefinition[];
   activeToolNames(context?: AgentPiToolProjectionContext): string[];

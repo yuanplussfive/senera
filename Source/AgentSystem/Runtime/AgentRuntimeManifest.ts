@@ -14,6 +14,7 @@ export interface AgentRuntimeManifest {
   readonly port: number;
   readonly token: string;
   readonly protocol: number;
+  readonly workspaceId?: string;
 }
 
 export function resolveAgentRuntimeManifestPath(workspaceRoot: string): string {
@@ -79,7 +80,7 @@ export class AgentRuntimeManifestStore {
     return this.token !== undefined;
   }
 
-  start(input: { host: string; port: number }): { readonly token: string } {
+  start(input: { host: string; port: number; workspaceId?: string }): { readonly token: string } {
     const token = randomBytes(32).toString("base64url");
     const manifest: AgentRuntimeManifest = {
       pid: process.pid,
@@ -88,6 +89,7 @@ export class AgentRuntimeManifestStore {
       port: input.port,
       token,
       protocol: AgentSelfProtocolVersion,
+      ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
     };
     fs.mkdirSync(path.dirname(this.manifestPath), { recursive: true });
     fs.writeFileSync(this.manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, {

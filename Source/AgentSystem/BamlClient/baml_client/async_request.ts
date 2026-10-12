@@ -23,7 +23,7 @@ import type { BamlRuntime, BamlCtxManager, Image, Audio, Pdf, Video, FunctionLog
 import { toBamlError, HTTPRequest, ClientRegistry } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
 import type * as types from "./types.js"
-import type {ActionPlanInput, ActionRunState, AskUserDecision, AskUserDecisionKind, ContinuityAgendaDraft, ContinuityCapture, ContinuityCaptureItem, ContinuityRuleExtractionResult, ContinuityRuleItem, ConversationBoundary, DirectDecision, DirectDecisionKind, EvidenceSlot, ExecuteDecision, ExecuteDecisionKind, ExecutionDeltaOp, GoalMicroLoopCandidate, GoalMicroLoopDecision, GoalMicroLoopDecisionKind, PiConversationSummary, PiToolArgumentsDraft, PlanFragment, PlannedToolCall, PlannerActiveSkill, PlannerCurrentUserTurn, PlannerEvidenceMemoryItem, PlannerEvidenceRequirement, PlannerEvidenceStateItem, PlannerJournalItem, PlannerTimelineTurn, PlannerToolCallStateItem, ProgressSignals, RepeatedCallWarning, ResidentIdleDecision, ResidentIdleDecisionKind, ResidentIdleGoalProposal, ResidentSpeechProjection, TemporalMemoryDigest, TemporalMemoryTextPart, ToolCallArgumentValue, ToolCallStatus, ToolCapabilityFacets, ToolCapabilityItem, ToolCapabilityRisk, ToolCatalogItem, ToolCatalogSummaryItem, ToolEvidenceCapabilityItem, ToolLearningRecord, ToolLearningResult, ToolRiskAudit, ToolRiskAuditDecision, ToolRiskLevel} from "./types.js"
+import type {ActionPlanInput, ActionRunState, AskUserDecision, AskUserDecisionKind, AuxiliaryImageAnalysis, AuxiliarySummary, ChannelCodePart, ChannelDelivery, ChannelResourcePart, ChannelTextPart, DirectDecision, DirectDecisionKind, EvidenceSlot, ExecuteDecision, ExecuteDecisionKind, ExecutionDeltaOp, MemOSFragment, PiToolArgumentsDraft, PlanFragment, PlannedToolCall, PlannerActiveSkill, PlannerCurrentUserTurn, PlannerEvidenceMemoryItem, PlannerEvidenceRequirement, PlannerEvidenceStateItem, PlannerJournalItem, PlannerTimelineTurn, PlannerToolCallStateItem, ProgressSignals, RepeatedCallWarning, ResidentSpeechProjection, StateCardRewrite, ToolCallArgumentValue, ToolCallStatus, ToolCapabilityFacets, ToolCapabilityItem, ToolCapabilityRisk, ToolCatalogItem, ToolCatalogSummaryItem, ToolEvidenceCapabilityItem, ToolRiskAudit, ToolRiskAuditDecision, ToolRiskLevel} from "./types.js"
 import type TypeBuilder from "./type_builder.js"
 import type * as events from "./events.js"
 
@@ -42,6 +42,39 @@ env?: Record<string, string | undefined>
   constructor(private runtime: BamlRuntime, private ctxManager: BamlCtxManager) {}
 
   
+  async AnalyzeImage(
+  promptJson: string,
+  __baml_options__?: BamlCallOptions<never>
+  ): Promise<HTTPRequest> {
+    try {
+    const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+    const __env__: Record<string, string> = Object.fromEntries(
+      Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return await this.runtime.buildRequest(
+      "AnalyzeImage",
+      {
+      "promptJson": promptJson
+      },
+      this.ctxManager.cloneContext(),
+      __baml_options__?.tb?.__tb(),
+      __clientRegistry__,
+      false,
+      __env__
+      )
+      } catch (error) {
+      throw toBamlError(error);
+      }
+      }
+      
   async AuditToolRisk(
   promptJson: string,
   __baml_options__?: BamlCallOptions<never>
@@ -75,7 +108,7 @@ env?: Record<string, string | undefined>
       }
       }
       
-  async ClassifyConversationBoundary(
+  async ChannelFinalDelivery(
   promptJson: string,
   __baml_options__?: BamlCallOptions<never>
   ): Promise<HTTPRequest> {
@@ -93,7 +126,7 @@ env?: Record<string, string | undefined>
       }
 
       return await this.runtime.buildRequest(
-      "ClassifyConversationBoundary",
+      "ChannelFinalDelivery",
       {
       "promptJson": promptJson
       },
@@ -108,7 +141,7 @@ env?: Record<string, string | undefined>
       }
       }
       
-  async DecideGoalMicroLoop(
+  async CompressToolObservation(
   promptJson: string,
   __baml_options__?: BamlCallOptions<never>
   ): Promise<HTTPRequest> {
@@ -126,40 +159,7 @@ env?: Record<string, string | undefined>
       }
 
       return await this.runtime.buildRequest(
-      "DecideGoalMicroLoop",
-      {
-      "promptJson": promptJson
-      },
-      this.ctxManager.cloneContext(),
-      __baml_options__?.tb?.__tb(),
-      __clientRegistry__,
-      false,
-      __env__
-      )
-      } catch (error) {
-      throw toBamlError(error);
-      }
-      }
-      
-  async DecideResidentIdle(
-  promptJson: string,
-  __baml_options__?: BamlCallOptions<never>
-  ): Promise<HTTPRequest> {
-    try {
-    const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-    const __env__: Record<string, string> = Object.fromEntries(
-      Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-
-      // Resolve client option to clientRegistry (client takes precedence)
-      let __clientRegistry__ = __baml_options__?.clientRegistry;
-      if (__baml_options__?.client) {
-        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-        __clientRegistry__.setPrimary(__baml_options__.client);
-      }
-
-      return await this.runtime.buildRequest(
-      "DecideResidentIdle",
+      "CompressToolObservation",
       {
       "promptJson": promptJson
       },
@@ -207,8 +207,8 @@ env?: Record<string, string | undefined>
       }
       }
       
-  async ExtractContinuityFacts(
-  stablePrompt: string,promptJson: string,
+  async ExtractMemOSFragment(
+  promptJson: string,
   __baml_options__?: BamlCallOptions<never>
   ): Promise<HTTPRequest> {
     try {
@@ -225,42 +225,9 @@ env?: Record<string, string | undefined>
       }
 
       return await this.runtime.buildRequest(
-      "ExtractContinuityFacts",
+      "ExtractMemOSFragment",
       {
-      "stablePrompt": stablePrompt,"promptJson": promptJson
-      },
-      this.ctxManager.cloneContext(),
-      __baml_options__?.tb?.__tb(),
-      __clientRegistry__,
-      false,
-      __env__
-      )
-      } catch (error) {
-      throw toBamlError(error);
-      }
-      }
-      
-  async ExtractContinuityRules(
-  stablePrompt: string,promptJson: string,
-  __baml_options__?: BamlCallOptions<never>
-  ): Promise<HTTPRequest> {
-    try {
-    const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-    const __env__: Record<string, string> = Object.fromEntries(
-      Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-
-      // Resolve client option to clientRegistry (client takes precedence)
-      let __clientRegistry__ = __baml_options__?.clientRegistry;
-      if (__baml_options__?.client) {
-        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-        __clientRegistry__.setPrimary(__baml_options__.client);
-      }
-
-      return await this.runtime.buildRequest(
-      "ExtractContinuityRules",
-      {
-      "stablePrompt": stablePrompt,"promptJson": promptJson
+      "promptJson": promptJson
       },
       this.ctxManager.cloneContext(),
       __baml_options__?.tb?.__tb(),
@@ -292,39 +259,6 @@ env?: Record<string, string | undefined>
 
       return await this.runtime.buildRequest(
       "FillPiToolArguments",
-      {
-      "promptJson": promptJson
-      },
-      this.ctxManager.cloneContext(),
-      __baml_options__?.tb?.__tb(),
-      __clientRegistry__,
-      false,
-      __env__
-      )
-      } catch (error) {
-      throw toBamlError(error);
-      }
-      }
-      
-  async LearnToolUse(
-  promptJson: string,
-  __baml_options__?: BamlCallOptions<never>
-  ): Promise<HTTPRequest> {
-    try {
-    const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-    const __env__: Record<string, string> = Object.fromEntries(
-      Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-
-      // Resolve client option to clientRegistry (client takes precedence)
-      let __clientRegistry__ = __baml_options__?.clientRegistry;
-      if (__baml_options__?.client) {
-        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-        __clientRegistry__.setPrimary(__baml_options__.client);
-      }
-
-      return await this.runtime.buildRequest(
-      "LearnToolUse",
       {
       "promptJson": promptJson
       },
@@ -372,72 +306,6 @@ env?: Record<string, string | undefined>
       }
       }
       
-  async RepairContinuityFacts(
-  stablePrompt: string,promptJson: string,
-  __baml_options__?: BamlCallOptions<never>
-  ): Promise<HTTPRequest> {
-    try {
-    const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-    const __env__: Record<string, string> = Object.fromEntries(
-      Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-
-      // Resolve client option to clientRegistry (client takes precedence)
-      let __clientRegistry__ = __baml_options__?.clientRegistry;
-      if (__baml_options__?.client) {
-        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-        __clientRegistry__.setPrimary(__baml_options__.client);
-      }
-
-      return await this.runtime.buildRequest(
-      "RepairContinuityFacts",
-      {
-      "stablePrompt": stablePrompt,"promptJson": promptJson
-      },
-      this.ctxManager.cloneContext(),
-      __baml_options__?.tb?.__tb(),
-      __clientRegistry__,
-      false,
-      __env__
-      )
-      } catch (error) {
-      throw toBamlError(error);
-      }
-      }
-      
-  async RepairContinuityRules(
-  stablePrompt: string,promptJson: string,
-  __baml_options__?: BamlCallOptions<never>
-  ): Promise<HTTPRequest> {
-    try {
-    const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-    const __env__: Record<string, string> = Object.fromEntries(
-      Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-
-      // Resolve client option to clientRegistry (client takes precedence)
-      let __clientRegistry__ = __baml_options__?.clientRegistry;
-      if (__baml_options__?.client) {
-        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-        __clientRegistry__.setPrimary(__baml_options__.client);
-      }
-
-      return await this.runtime.buildRequest(
-      "RepairContinuityRules",
-      {
-      "stablePrompt": stablePrompt,"promptJson": promptJson
-      },
-      this.ctxManager.cloneContext(),
-      __baml_options__?.tb?.__tb(),
-      __clientRegistry__,
-      false,
-      __env__
-      )
-      } catch (error) {
-      throw toBamlError(error);
-      }
-      }
-      
   async RepairControllerDecision(
   promptJson: string,
   __baml_options__?: BamlCallOptions<never>
@@ -457,39 +325,6 @@ env?: Record<string, string | undefined>
 
       return await this.runtime.buildRequest(
       "RepairControllerDecision",
-      {
-      "promptJson": promptJson
-      },
-      this.ctxManager.cloneContext(),
-      __baml_options__?.tb?.__tb(),
-      __clientRegistry__,
-      false,
-      __env__
-      )
-      } catch (error) {
-      throw toBamlError(error);
-      }
-      }
-      
-  async RepairPiConversationSummary(
-  promptJson: string,
-  __baml_options__?: BamlCallOptions<never>
-  ): Promise<HTTPRequest> {
-    try {
-    const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-    const __env__: Record<string, string> = Object.fromEntries(
-      Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-
-      // Resolve client option to clientRegistry (client takes precedence)
-      let __clientRegistry__ = __baml_options__?.clientRegistry;
-      if (__baml_options__?.client) {
-        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-        __clientRegistry__.setPrimary(__baml_options__.client);
-      }
-
-      return await this.runtime.buildRequest(
-      "RepairPiConversationSummary",
       {
       "promptJson": promptJson
       },
@@ -537,39 +372,6 @@ env?: Record<string, string | undefined>
       }
       }
       
-  async RepairToolLearning(
-  promptJson: string,
-  __baml_options__?: BamlCallOptions<never>
-  ): Promise<HTTPRequest> {
-    try {
-    const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-    const __env__: Record<string, string> = Object.fromEntries(
-      Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-
-      // Resolve client option to clientRegistry (client takes precedence)
-      let __clientRegistry__ = __baml_options__?.clientRegistry;
-      if (__baml_options__?.client) {
-        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-        __clientRegistry__.setPrimary(__baml_options__.client);
-      }
-
-      return await this.runtime.buildRequest(
-      "RepairToolLearning",
-      {
-      "promptJson": promptJson
-      },
-      this.ctxManager.cloneContext(),
-      __baml_options__?.tb?.__tb(),
-      __clientRegistry__,
-      false,
-      __env__
-      )
-      } catch (error) {
-      throw toBamlError(error);
-      }
-      }
-      
   async RepairToolRiskAudit(
   promptJson: string,
   __baml_options__?: BamlCallOptions<never>
@@ -603,7 +405,7 @@ env?: Record<string, string | undefined>
       }
       }
       
-  async SummarizePiConversation(
+  async RewriteStateCard(
   promptJson: string,
   __baml_options__?: BamlCallOptions<never>
   ): Promise<HTTPRequest> {
@@ -621,7 +423,7 @@ env?: Record<string, string | undefined>
       }
 
       return await this.runtime.buildRequest(
-      "SummarizePiConversation",
+      "RewriteStateCard",
       {
       "promptJson": promptJson
       },
@@ -636,7 +438,7 @@ env?: Record<string, string | undefined>
       }
       }
       
-  async SummarizeTemporalMemory(
+  async SummarizeMemOSPeriod(
   promptJson: string,
   __baml_options__?: BamlCallOptions<never>
   ): Promise<HTTPRequest> {
@@ -654,7 +456,40 @@ env?: Record<string, string | undefined>
       }
 
       return await this.runtime.buildRequest(
-      "SummarizeTemporalMemory",
+      "SummarizeMemOSPeriod",
+      {
+      "promptJson": promptJson
+      },
+      this.ctxManager.cloneContext(),
+      __baml_options__?.tb?.__tb(),
+      __clientRegistry__,
+      false,
+      __env__
+      )
+      } catch (error) {
+      throw toBamlError(error);
+      }
+      }
+      
+  async SummarizePiContext(
+  promptJson: string,
+  __baml_options__?: BamlCallOptions<never>
+  ): Promise<HTTPRequest> {
+    try {
+    const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+    const __env__: Record<string, string> = Object.fromEntries(
+      Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return await this.runtime.buildRequest(
+      "SummarizePiContext",
       {
       "promptJson": promptJson
       },
@@ -675,6 +510,39 @@ env?: Record<string, string | undefined>
       constructor(private runtime: BamlRuntime, private ctxManager: BamlCtxManager) {}
 
       
+      async AnalyzeImage(
+      promptJson: string,
+      __baml_options__?: BamlCallOptions<never>
+      ): Promise<HTTPRequest> {
+        try {
+        const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+        const __env__: Record<string, string> = Object.fromEntries(
+          Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+          );
+
+          // Resolve client option to clientRegistry (client takes precedence)
+          let __clientRegistry__ = __baml_options__?.clientRegistry;
+          if (__baml_options__?.client) {
+            __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+            __clientRegistry__.setPrimary(__baml_options__.client);
+          }
+
+          return await this.runtime.buildRequest(
+          "AnalyzeImage",
+          {
+          "promptJson": promptJson
+          },
+          this.ctxManager.cloneContext(),
+          __baml_options__?.tb?.__tb(),
+          __clientRegistry__,
+          true,
+          __env__
+          )
+          } catch (error) {
+          throw toBamlError(error);
+          }
+          }
+          
       async AuditToolRisk(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -708,7 +576,7 @@ env?: Record<string, string | undefined>
           }
           }
           
-      async ClassifyConversationBoundary(
+      async ChannelFinalDelivery(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
       ): Promise<HTTPRequest> {
@@ -726,7 +594,7 @@ env?: Record<string, string | undefined>
           }
 
           return await this.runtime.buildRequest(
-          "ClassifyConversationBoundary",
+          "ChannelFinalDelivery",
           {
           "promptJson": promptJson
           },
@@ -741,7 +609,7 @@ env?: Record<string, string | undefined>
           }
           }
           
-      async DecideGoalMicroLoop(
+      async CompressToolObservation(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
       ): Promise<HTTPRequest> {
@@ -759,40 +627,7 @@ env?: Record<string, string | undefined>
           }
 
           return await this.runtime.buildRequest(
-          "DecideGoalMicroLoop",
-          {
-          "promptJson": promptJson
-          },
-          this.ctxManager.cloneContext(),
-          __baml_options__?.tb?.__tb(),
-          __clientRegistry__,
-          true,
-          __env__
-          )
-          } catch (error) {
-          throw toBamlError(error);
-          }
-          }
-          
-      async DecideResidentIdle(
-      promptJson: string,
-      __baml_options__?: BamlCallOptions<never>
-      ): Promise<HTTPRequest> {
-        try {
-        const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-        const __env__: Record<string, string> = Object.fromEntries(
-          Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-          );
-
-          // Resolve client option to clientRegistry (client takes precedence)
-          let __clientRegistry__ = __baml_options__?.clientRegistry;
-          if (__baml_options__?.client) {
-            __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-            __clientRegistry__.setPrimary(__baml_options__.client);
-          }
-
-          return await this.runtime.buildRequest(
-          "DecideResidentIdle",
+          "CompressToolObservation",
           {
           "promptJson": promptJson
           },
@@ -840,8 +675,8 @@ env?: Record<string, string | undefined>
           }
           }
           
-      async ExtractContinuityFacts(
-      stablePrompt: string,promptJson: string,
+      async ExtractMemOSFragment(
+      promptJson: string,
       __baml_options__?: BamlCallOptions<never>
       ): Promise<HTTPRequest> {
         try {
@@ -858,42 +693,9 @@ env?: Record<string, string | undefined>
           }
 
           return await this.runtime.buildRequest(
-          "ExtractContinuityFacts",
+          "ExtractMemOSFragment",
           {
-          "stablePrompt": stablePrompt,"promptJson": promptJson
-          },
-          this.ctxManager.cloneContext(),
-          __baml_options__?.tb?.__tb(),
-          __clientRegistry__,
-          true,
-          __env__
-          )
-          } catch (error) {
-          throw toBamlError(error);
-          }
-          }
-          
-      async ExtractContinuityRules(
-      stablePrompt: string,promptJson: string,
-      __baml_options__?: BamlCallOptions<never>
-      ): Promise<HTTPRequest> {
-        try {
-        const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-        const __env__: Record<string, string> = Object.fromEntries(
-          Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-          );
-
-          // Resolve client option to clientRegistry (client takes precedence)
-          let __clientRegistry__ = __baml_options__?.clientRegistry;
-          if (__baml_options__?.client) {
-            __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-            __clientRegistry__.setPrimary(__baml_options__.client);
-          }
-
-          return await this.runtime.buildRequest(
-          "ExtractContinuityRules",
-          {
-          "stablePrompt": stablePrompt,"promptJson": promptJson
+          "promptJson": promptJson
           },
           this.ctxManager.cloneContext(),
           __baml_options__?.tb?.__tb(),
@@ -925,39 +727,6 @@ env?: Record<string, string | undefined>
 
           return await this.runtime.buildRequest(
           "FillPiToolArguments",
-          {
-          "promptJson": promptJson
-          },
-          this.ctxManager.cloneContext(),
-          __baml_options__?.tb?.__tb(),
-          __clientRegistry__,
-          true,
-          __env__
-          )
-          } catch (error) {
-          throw toBamlError(error);
-          }
-          }
-          
-      async LearnToolUse(
-      promptJson: string,
-      __baml_options__?: BamlCallOptions<never>
-      ): Promise<HTTPRequest> {
-        try {
-        const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-        const __env__: Record<string, string> = Object.fromEntries(
-          Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-          );
-
-          // Resolve client option to clientRegistry (client takes precedence)
-          let __clientRegistry__ = __baml_options__?.clientRegistry;
-          if (__baml_options__?.client) {
-            __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-            __clientRegistry__.setPrimary(__baml_options__.client);
-          }
-
-          return await this.runtime.buildRequest(
-          "LearnToolUse",
           {
           "promptJson": promptJson
           },
@@ -1005,72 +774,6 @@ env?: Record<string, string | undefined>
           }
           }
           
-      async RepairContinuityFacts(
-      stablePrompt: string,promptJson: string,
-      __baml_options__?: BamlCallOptions<never>
-      ): Promise<HTTPRequest> {
-        try {
-        const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-        const __env__: Record<string, string> = Object.fromEntries(
-          Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-          );
-
-          // Resolve client option to clientRegistry (client takes precedence)
-          let __clientRegistry__ = __baml_options__?.clientRegistry;
-          if (__baml_options__?.client) {
-            __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-            __clientRegistry__.setPrimary(__baml_options__.client);
-          }
-
-          return await this.runtime.buildRequest(
-          "RepairContinuityFacts",
-          {
-          "stablePrompt": stablePrompt,"promptJson": promptJson
-          },
-          this.ctxManager.cloneContext(),
-          __baml_options__?.tb?.__tb(),
-          __clientRegistry__,
-          true,
-          __env__
-          )
-          } catch (error) {
-          throw toBamlError(error);
-          }
-          }
-          
-      async RepairContinuityRules(
-      stablePrompt: string,promptJson: string,
-      __baml_options__?: BamlCallOptions<never>
-      ): Promise<HTTPRequest> {
-        try {
-        const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-        const __env__: Record<string, string> = Object.fromEntries(
-          Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-          );
-
-          // Resolve client option to clientRegistry (client takes precedence)
-          let __clientRegistry__ = __baml_options__?.clientRegistry;
-          if (__baml_options__?.client) {
-            __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-            __clientRegistry__.setPrimary(__baml_options__.client);
-          }
-
-          return await this.runtime.buildRequest(
-          "RepairContinuityRules",
-          {
-          "stablePrompt": stablePrompt,"promptJson": promptJson
-          },
-          this.ctxManager.cloneContext(),
-          __baml_options__?.tb?.__tb(),
-          __clientRegistry__,
-          true,
-          __env__
-          )
-          } catch (error) {
-          throw toBamlError(error);
-          }
-          }
-          
       async RepairControllerDecision(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -1090,39 +793,6 @@ env?: Record<string, string | undefined>
 
           return await this.runtime.buildRequest(
           "RepairControllerDecision",
-          {
-          "promptJson": promptJson
-          },
-          this.ctxManager.cloneContext(),
-          __baml_options__?.tb?.__tb(),
-          __clientRegistry__,
-          true,
-          __env__
-          )
-          } catch (error) {
-          throw toBamlError(error);
-          }
-          }
-          
-      async RepairPiConversationSummary(
-      promptJson: string,
-      __baml_options__?: BamlCallOptions<never>
-      ): Promise<HTTPRequest> {
-        try {
-        const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-        const __env__: Record<string, string> = Object.fromEntries(
-          Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-          );
-
-          // Resolve client option to clientRegistry (client takes precedence)
-          let __clientRegistry__ = __baml_options__?.clientRegistry;
-          if (__baml_options__?.client) {
-            __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-            __clientRegistry__.setPrimary(__baml_options__.client);
-          }
-
-          return await this.runtime.buildRequest(
-          "RepairPiConversationSummary",
           {
           "promptJson": promptJson
           },
@@ -1170,39 +840,6 @@ env?: Record<string, string | undefined>
           }
           }
           
-      async RepairToolLearning(
-      promptJson: string,
-      __baml_options__?: BamlCallOptions<never>
-      ): Promise<HTTPRequest> {
-        try {
-        const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-        const __env__: Record<string, string> = Object.fromEntries(
-          Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-          );
-
-          // Resolve client option to clientRegistry (client takes precedence)
-          let __clientRegistry__ = __baml_options__?.clientRegistry;
-          if (__baml_options__?.client) {
-            __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-            __clientRegistry__.setPrimary(__baml_options__.client);
-          }
-
-          return await this.runtime.buildRequest(
-          "RepairToolLearning",
-          {
-          "promptJson": promptJson
-          },
-          this.ctxManager.cloneContext(),
-          __baml_options__?.tb?.__tb(),
-          __clientRegistry__,
-          true,
-          __env__
-          )
-          } catch (error) {
-          throw toBamlError(error);
-          }
-          }
-          
       async RepairToolRiskAudit(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -1236,7 +873,7 @@ env?: Record<string, string | undefined>
           }
           }
           
-      async SummarizePiConversation(
+      async RewriteStateCard(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
       ): Promise<HTTPRequest> {
@@ -1254,7 +891,7 @@ env?: Record<string, string | undefined>
           }
 
           return await this.runtime.buildRequest(
-          "SummarizePiConversation",
+          "RewriteStateCard",
           {
           "promptJson": promptJson
           },
@@ -1269,7 +906,7 @@ env?: Record<string, string | undefined>
           }
           }
           
-      async SummarizeTemporalMemory(
+      async SummarizeMemOSPeriod(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
       ): Promise<HTTPRequest> {
@@ -1287,7 +924,40 @@ env?: Record<string, string | undefined>
           }
 
           return await this.runtime.buildRequest(
-          "SummarizeTemporalMemory",
+          "SummarizeMemOSPeriod",
+          {
+          "promptJson": promptJson
+          },
+          this.ctxManager.cloneContext(),
+          __baml_options__?.tb?.__tb(),
+          __clientRegistry__,
+          true,
+          __env__
+          )
+          } catch (error) {
+          throw toBamlError(error);
+          }
+          }
+          
+      async SummarizePiContext(
+      promptJson: string,
+      __baml_options__?: BamlCallOptions<never>
+      ): Promise<HTTPRequest> {
+        try {
+        const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+        const __env__: Record<string, string> = Object.fromEntries(
+          Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+          );
+
+          // Resolve client option to clientRegistry (client takes precedence)
+          let __clientRegistry__ = __baml_options__?.clientRegistry;
+          if (__baml_options__?.client) {
+            __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+            __clientRegistry__.setPrimary(__baml_options__.client);
+          }
+
+          return await this.runtime.buildRequest(
+          "SummarizePiContext",
           {
           "promptJson": promptJson
           },

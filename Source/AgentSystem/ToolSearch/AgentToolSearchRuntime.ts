@@ -1,14 +1,10 @@
 import type { AgentActionCapabilityNeed } from "../ActionPlanner/AgentActionPlannerTypes.js";
 import type { AgentExtensionRegistry } from "../Extensions/AgentExtensionRegistry.js";
-import type {
-  ResolvedAgentToolLearningConfig,
-  ResolvedAgentToolSearchConfig,
-  ResolvedAgentModelProviderConfig,
-} from "../Types/AgentConfigTypes.js";
+import type { ResolvedAgentToolSearchConfig, ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import type { AgentToolProcessRunResult } from "../ToolRuntime/AgentToolProcessTypes.js";
 import type { AgentHostToolContext, AgentHostToolHandler } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
-import { AgentToolSearchMemory, type AgentToolUsePattern } from "./AgentToolSearchMemory.js";
+import { AgentToolSearchMemory } from "./AgentToolSearchMemory.js";
 import {
   AgentToolSearchCurrentSetPolicies,
   AgentToolMetaToolNames,
@@ -29,15 +25,16 @@ import {
   type ResolvedToolSearchArguments,
 } from "./AgentToolMetaToolProtocol.js";
 import { buildToolSearchResultProjection, readToolNamesFromSearchResult } from "./AgentToolSearchResultProjector.js";
-import { AgentToolSearchUsageMemory } from "./AgentToolSearchUsageMemory.js";
+import { AgentToolSearchUsageMemory, type AgentToolSearchObservation } from "./AgentToolSearchUsageMemory.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
-import { AgentToolLearningRuntime } from "./AgentToolLearningRuntime.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
-import type { AgentToolSearchMemoryStore } from "./AgentToolSearchMemoryTypes.js";
+import {
+  AgentToolSearchMemOSScenarioSource,
+  type AgentToolSearchScenarioSource,
+} from "./AgentToolSearchScenarioSource.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { RegisteredSkill } from "../Skills/AgentSkillTypes.js";
-import type { AgentSkillSelectionLearningEvidence } from "../Skills/AgentSkillSelector.js";
-import { AgentSkillLearningRuntime } from "./AgentSkillLearningRuntime.js";
+import type { AgentSkillSelectionScenarioEvidence } from "../Skills/AgentSkillSelector.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { createAgentToolSearchProjectId } from "./AgentToolSearchProject.js";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
@@ -46,6 +43,7 @@ import {
   AgentToolSearchEmptyReasons,
   type AgentToolSearchDiscovery,
   type AgentToolSearchResult,
+  type AgentToolSearchDiagnostic,
 } from "./AgentToolSearchTypes.js";
 import {
   AgentToolCapabilityReuseModes,
@@ -63,27 +61,46 @@ import {
 import { projectCurrentLoadedTools } from "./AgentToolSearchRuntimeCatalog.js";
 import { AgentToolSearchCatalog } from "./AgentToolSearchCatalog.js";
 import { AgentToolSearchCapabilityReuse } from "./AgentToolSearchCapabilityReuse.js";
+import type { AgentStateCardRuntime } from "../StateCard/AgentStateCardRuntime.js";
+import type { AgentStateCard } from "../StateCard/AgentStateCardTypes.js";
+import type { AgentContinuityMemOSRuntime } from "../Continuity/AgentContinuityMemOSRuntime.js";
+import type { AgentMcpServiceDiscoveryEntry } from "../McpPackages/AgentMcpPackageTypes.js";
+import { resolveAgentToolGrantNames, type AgentToolAccessGrant } from "../ToolRuntime/AgentToolAccessGrant.js";
+import { isAgentToolExecutable } from "../ToolRuntime/AgentToolAvailability.js";
+import { AgentToolExposureState } from "../ToolRuntime/AgentToolExposureState.js";
 
 export type { LoadedToolsState } from "./AgentToolSearchRuntimeTypes.js";
 export { AgentToolMetaToolNames } from "./AgentToolSearchRuntimeTypes.js";
 
+interface PreparedMcpDiscovery {
+  readonly ids: readonly string[];
+  readonly diagnostics: readonly AgentToolSearchDiagnostic[];
+}
+
 export interface AgentToolSearchRuntimeOptions {
+  mcpServices?: () => readonly AgentMcpServiceDiscoveryEntry[];
   logger?: AgentLogger;
-  memoryStore?: AgentToolSearchMemoryStore;
+  scenarioSource?: AgentToolSearchScenarioSource;
   embedding?: {
     client: AgentCapabilityEmbeddingClient;
     model: string;
   };
+  /** Releases an embedding client created by this runtime only. Workspace-shared clients omit it. */
+  closeEmbedding?: () => void | Promise<void>;
   embeddingCacheStore?: AgentCapabilityEmbeddingCacheStore;
   resourceDiscovery?: AgentToolResourceDiscoveryReader;
   availableExecutionTargets: () => readonly ToolExecutionTarget[];
+  /** Optional state-card runtime used for synchronous turn preparation. */
+  stateCardRuntime?: AgentStateCardRuntime;
+  /** Shared durable MemOS authority for routing episodes and skill evidence. */
+  memos?: AgentContinuityMemOSRuntime;
+  /** Gives host-owned deferred catalogs a chance to publish matching tools. */
+  beforeSearch?: (query: string, signal?: AbortSignal, serviceIds?: readonly string[]) => void | Promise<void>;
 }
 
 export class AgentToolSearchRuntime {
   private readonly memory: AgentToolSearchMemory;
   private readonly usageMemory: AgentToolSearchUsageMemory;
-  private readonly learningRuntime: AgentToolLearningRuntime;
-  private readonly skillLearningRuntime: AgentSkillLearningRuntime;
   private readonly logger?: AgentLogger;
   private readonly catalog: AgentToolSearchCatalog;
   private readonly projectId: string;
@@ -93,13 +110,18 @@ export class AgentToolSearchRuntime {
   constructor(
     private readonly registry: AgentExtensionRegistry,
     private readonly config: ResolvedAgentToolSearchConfig,
-    private readonly learningConfig: ResolvedAgentToolLearningConfig,
     workspaceRoot: string,
     private readonly model: ResolvedAgentModelProviderConfig,
     private readonly options: AgentToolSearchRuntimeOptions,
   ) {
+    if (!options.memos && !options.scenarioSource) {
+      throw new Error("MemOS runtime is required for durable ToolSearch scenario memory.");
+    }
     this.logger = options.logger;
-    this.memory = new AgentToolSearchMemory(config, workspaceRoot, options.memoryStore);
+    this.memory = new AgentToolSearchMemory(
+      config,
+      options.scenarioSource ?? new AgentToolSearchMemOSScenarioSource(options.memos!),
+    );
     this.catalog = new AgentToolSearchCatalog({
       registry,
       config,
@@ -109,6 +131,7 @@ export class AgentToolSearchRuntime {
       embeddingCacheStore: options.embeddingCacheStore,
       resourceDiscovery: options.resourceDiscovery,
       availableExecutionTargets: options.availableExecutionTargets,
+      mcpServices: options.mcpServices,
     });
     this.capabilityReuse = new AgentToolSearchCapabilityReuse({
       registry,
@@ -116,21 +139,7 @@ export class AgentToolSearchRuntime {
       cache: this.capabilitySessionCache,
     });
     this.projectId = createAgentToolSearchProjectId(workspaceRoot);
-    this.learningRuntime = new AgentToolLearningRuntime(
-      registry,
-      this.model,
-      learningConfig,
-      this.memory,
-      options.logger,
-    );
-    this.skillLearningRuntime = new AgentSkillLearningRuntime(this.memory, options.logger);
-    this.usageMemory = new AgentToolSearchUsageMemory(
-      this.memory,
-      this.projectId,
-      this.learningConfig,
-      this.learningRuntime,
-      this.skillLearningRuntime,
-    );
+    this.usageMemory = new AgentToolSearchUsageMemory(this.memory, this.projectId, options.stateCardRuntime);
   }
 
   createSearchHostHandler(): AgentHostToolHandler {
@@ -142,6 +151,7 @@ export class AgentToolSearchRuntime {
         logicalCacheScope: context.logicalCacheScope,
         visibleToolNames: context.visibleToolNames,
         authorizedToolNames: context.authorizedToolNames,
+        toolAccessGrant: context.toolAccessGrant,
         interaction: context.interaction,
         reusableCapabilities: context.reusableCapabilities,
         signal: context.signal,
@@ -150,19 +160,26 @@ export class AgentToolSearchRuntime {
     };
   }
 
+  createToolExposure(grant: AgentToolAccessGrant): AgentToolExposureState {
+    return AgentToolExposureState.forRegistry(grant, this.registry);
+  }
+
   createDescribeHostHandler(): AgentHostToolHandler {
     return async (args, context) => {
       throwIfAborted(context.signal);
       const parsed = ToolDescribeArgumentsSchema.safeParse(args);
       if (!parsed.success) return invalidToolMetaArgumentsResult(AgentToolMetaToolNames.Describe, parsed.error.issues);
 
+      await this.prepareRequestedTools(parsed.data.tools, context);
+
       const catalogRevision = this.catalog.catalogRevision();
       const requested = this.catalog.resolveAuthorizedDynamicTools(
         parsed.data.tools,
-        context.authorizedToolNames,
+        this.authorizedNames(context.toolAccessGrant, context.authorizedToolNames),
         context.interaction,
       );
       for (const tool of requested.tools) {
+        if (!isAgentToolExecutable(tool)) continue;
         context.toolExposure?.confirmContract(tool.name, tool.contract?.digest);
         this.capabilitySessionCache.rememberContract({
           sessionId: context.sessionId,
@@ -175,6 +192,11 @@ export class AgentToolSearchRuntime {
       return okToolMetaResult(
         createAgentToolDescriptionResult({
           tools: requested.tools.map((tool) => projectToolDescription(tool, this.options.availableExecutionTargets())),
+          availability: Object.fromEntries(
+            requested.tools
+              .filter((tool) => !isAgentToolExecutable(tool))
+              .map((tool) => [tool.name, tool.availability]),
+          ),
           ...(requested.directToolNames.length > 0 ? { direct: requested.directToolNames } : {}),
           ...(requested.rejectedToolNames.length > 0 ? { rejected: requested.rejectedToolNames } : {}),
         }),
@@ -188,9 +210,11 @@ export class AgentToolSearchRuntime {
       const parsed = ToolLoadArgumentsSchema.safeParse(args);
       if (!parsed.success) return invalidToolMetaArgumentsResult(AgentToolMetaToolNames.Load, parsed.error.issues);
 
+      await this.prepareRequestedTools(parsed.data.tools, context);
+
       const requested = this.catalog.resolveAuthorizedDynamicTools(
         parsed.data.tools,
-        context.authorizedToolNames,
+        this.authorizedNames(context.toolAccessGrant, context.authorizedToolNames),
         context.interaction,
       );
       // Resolve and read the revision in one synchronous mutation boundary.
@@ -206,18 +230,24 @@ export class AgentToolSearchRuntime {
         );
       }
       const delta = context.toolExposure
-        ? context.toolExposure.expose(requested.tools.map((tool) => tool.name))
+        ? context.toolExposure.expose(requested.tools.filter(isAgentToolExecutable).map((tool) => tool.name))
         : undefined;
       // BAML receives a loaded tool's full provider schema. Record that same
       // contract evidence so an execution bridge cannot distinguish a loaded
       // schema from a separately described one.
-      for (const tool of requested.tools) context.toolExposure?.confirmContract(tool.name, tool.contract?.digest);
+      for (const tool of requested.tools.filter(isAgentToolExecutable))
+        context.toolExposure?.confirmContract(tool.name, tool.contract?.digest);
       return okToolMetaResult(
         createAgentToolDiscoveryResult({
           catalogStatus: AgentToolCatalogStatuses.Current,
           catalogRevision,
           generation: delta?.snapshot.generation ?? context.toolExposure?.snapshot().generation ?? 0,
           added: { item: delta?.addedToolNames ?? [] },
+          availability: Object.fromEntries(
+            requested.tools
+              .filter((tool) => !isAgentToolExecutable(tool))
+              .map((tool) => [tool.name, tool.availability]),
+          ),
           loaded: { item: delta?.snapshot.exposedToolNames ?? context.visibleToolNames ?? [] },
           rejected: {
             item: uniqueToolNames([
@@ -239,7 +269,7 @@ export class AgentToolSearchRuntime {
 
       const requested = this.catalog.resolveAuthorizedDynamicTools(
         parsed.data.tools,
-        context.authorizedToolNames,
+        this.authorizedNames(context.toolAccessGrant, context.authorizedToolNames),
         context.interaction,
       );
       const catalogRevision = this.catalog.catalogRevision();
@@ -312,6 +342,7 @@ export class AgentToolSearchRuntime {
     currentLoadedTools?: LoadedToolsState;
     currentSetPolicy?: AgentToolSearchCurrentSetPolicy;
     preferredTools?: readonly string[];
+    requiredToolNames?: readonly string[];
     queries?: readonly string[];
     needs?: readonly AgentActionCapabilityNeed[];
     discover?: boolean;
@@ -329,7 +360,8 @@ export class AgentToolSearchRuntime {
     const preferred = options.discover
       ? this.catalog.existingToolNames(options.preferredTools ?? [], options.interaction)
       : [];
-    const planned = [...current, ...preferred];
+    const required = this.catalog.existingToolNames(options.requiredToolNames ?? [], options.interaction);
+    const planned = [...current, ...required, ...preferred];
     if (options.discover) {
       const query = buildPlannedToolSearchQuery(options);
       if (query.length > 0) {
@@ -349,6 +381,34 @@ export class AgentToolSearchRuntime {
     this.usageMemory.finishRequest(requestId);
   }
 
+  /** Resolves the StateCard before prompt rendering so liveContext sees this turn's card. */
+  resolveStateCard(request: {
+    requestId?: string;
+    currentRequest: string;
+    turnIndex?: number;
+    sessionId?: string;
+    logicalCacheScope?: string;
+    activeSkills?: readonly AgentActivatedSkill[];
+    signal?: AbortSignal;
+  }): Promise<AgentStateCard> {
+    if (!this.options.stateCardRuntime) {
+      throw new Error("StateCard runtime is required for turn preparation.");
+    }
+    return this.options.stateCardRuntime.resolve({
+      requestId: request.requestId,
+      currentRequest: request.currentRequest,
+      turnIndex: request.turnIndex,
+      sessionId: request.sessionId,
+      logicalCacheScope: request.logicalCacheScope,
+      ...(request.activeSkills ? { activeSkills: request.activeSkills.map((skill) => skill.name) } : {}),
+      ...(request.signal ? { signal: request.signal } : {}),
+    });
+  }
+
+  recordCompletedTurnScenario(observation: AgentToolSearchObservation): void {
+    this.usageMemory.recordCompletedTurn(observation);
+  }
+
   afterToolResults(options: {
     requestId: string;
     userInput: string;
@@ -358,7 +418,8 @@ export class AgentToolSearchRuntime {
     loadedTools: LoadedToolsState;
     execution: { value: ExecutedToolCallResult[] };
     activeSkills?: readonly AgentActivatedSkill[];
-  }): LoadedToolsState {
+    stateCard?: AgentStateCard;
+  }): { loadedTools: LoadedToolsState; observation: AgentToolSearchObservation } {
     const loadedTools = this.catalog.mergeVisibleTools(options.loadedTools, options.interaction);
     this.capabilityReuse.rememberSuccessfulCapabilities(
       options.sessionId,
@@ -367,22 +428,24 @@ export class AgentToolSearchRuntime {
       options.logicalCacheScope,
     );
     try {
-      this.usageMemory.recordToolUsage({
+      const observation = this.usageMemory.observeToolUsage({
         requestId: options.requestId,
         userInput: options.userInput,
         sessionId: options.sessionId,
         logicalCacheScope: options.logicalCacheScope,
         results: options.execution.value,
         activeSkills: options.activeSkills,
+        stateCard: options.stateCard,
       });
+      return { loadedTools, observation };
     } catch (error) {
       this.usageMemory.finishRequest(options.requestId);
-      this.logger?.warn("routing.learning.observation_failed", {
+      this.logger?.warn("routing.scenario.observation_failed", {
         requestId: options.requestId,
         message: errorMessage(error),
       });
+      throw error;
     }
-    return loadedTools;
   }
 
   async search(options: {
@@ -407,23 +470,51 @@ export class AgentToolSearchRuntime {
     plannerTags?: readonly string[];
     loadedToolNames?: readonly string[];
     authorizedToolNames?: readonly string[];
+    toolAccessGrant?: AgentToolAccessGrant;
     signal?: AbortSignal;
   }): Promise<AgentToolSearchDiscovery> {
-    const { signal, ...searchOptions } = options;
+    return this.discoverInternal(options, true);
+  }
+
+  private async discoverInternal(
+    options: {
+      query: string;
+      interaction?: AgentInteractionContext;
+      plannerTags?: readonly string[];
+      loadedToolNames?: readonly string[];
+      authorizedToolNames?: readonly string[];
+      toolAccessGrant?: AgentToolAccessGrant;
+      signal?: AbortSignal;
+    },
+    prepareDeferredDiscovery: boolean,
+    preparedSelection?: PreparedMcpDiscovery,
+  ): Promise<AgentToolSearchDiscovery> {
+    const { signal, toolAccessGrant, ...searchOptions } = options;
+    const selection = prepareDeferredDiscovery
+      ? await this.prepareCatalog(options.query, toolAccessGrant, signal, options.authorizedToolNames)
+      : preparedSelection;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       throwIfAborted(signal);
       const snapshot = this.catalog.searchSnapshot();
-      const tokens = snapshot.index.tokenize(options.query);
-      const memoryEvidence = this.memory.rank(tokens, this.projectId);
+      const scenarios = await this.memory.prepare(options.query, this.projectId);
+      const memoryEvidence = this.memory.rank(scenarios, this.projectId);
       const discovery = await snapshot.index.discoverHybrid(
         {
           ...searchOptions,
+          authorizedToolNames: this.authorizedNames(toolAccessGrant, options.authorizedToolNames),
           memoryEvidence,
         },
         signal,
       );
       if (this.catalog.isSearchSnapshotCurrent(snapshot)) {
-        return { ...discovery, catalogRevision: snapshot.revision };
+        const services = this.unavailableServices(selection?.ids ?? []);
+        const diagnostics = [...new Set([...(discovery.diagnostics ?? []), ...(selection?.diagnostics ?? [])])];
+        return {
+          ...discovery,
+          catalogRevision: snapshot.revision,
+          ...(services.length > 0 ? { services, status: undefined, reason: undefined } : {}),
+          ...(diagnostics.length > 0 ? { diagnostics } : {}),
+        };
       }
     }
     return {
@@ -488,26 +579,13 @@ export class AgentToolSearchRuntime {
     return this.catalog.searchIndex().tokenize(text);
   }
 
-  toolUsePatterns(options: { input: string; allowedTools: readonly string[] }): AgentToolUsePattern[] {
-    if (!this.learningConfig.Enabled) {
-      return [];
-    }
-
-    return this.memory.patterns({
-      queryTokens: this.catalog.searchIndex().tokenize(options.input),
-      projectId: this.projectId,
-      allowedTools: options.allowedTools,
-      minSupport: this.learningConfig.Patterns.MinSupport,
-      limit: this.learningConfig.Patterns.MaxPromptPatterns,
-    });
-  }
-
-  skillRoutingEvidence(options: {
+  async skillScenarioEvidence(options: {
     query: string;
     skills: readonly RegisteredSkill[];
-  }): AgentSkillSelectionLearningEvidence[] {
-    return this.memory.rankSkills({
-      queryTokens: this.tokenize(options.query),
+  }): Promise<AgentSkillSelectionScenarioEvidence[]> {
+    const matches = await this.memory.prepare(options.query, this.projectId);
+    return this.memory.rankSkillScenarios({
+      matches,
       projectId: this.projectId,
       revisions: new Map(options.skills.map((skill) => [skill.name, skill.revision ?? skill.source.id])),
     });
@@ -520,7 +598,7 @@ export class AgentToolSearchRuntime {
   }): Promise<AgentSkillSelectionResult[]> {
     return new AgentSkillSelector(this.catalog.capabilityIndex()).selectHybrid({
       ...options,
-      learningEvidence: this.skillRoutingEvidence(options),
+      scenarioEvidence: await this.skillScenarioEvidence(options),
     });
   }
 
@@ -531,8 +609,8 @@ export class AgentToolSearchRuntime {
 
   async close(): Promise<void> {
     this.capabilitySessionCache.clear();
-    this.memory.close();
     await this.catalog.close();
+    await this.options.closeEmbedding?.();
   }
 
   refresh(): void {
@@ -551,6 +629,7 @@ export class AgentToolSearchRuntime {
       interaction?: AgentInteractionContext;
       visibleToolNames?: readonly string[];
       authorizedToolNames?: readonly string[];
+      toolAccessGrant?: AgentToolAccessGrant;
       reusableCapabilities?: readonly AgentToolCapabilityCacheEntry[];
       signal?: AbortSignal;
     },
@@ -569,6 +648,7 @@ export class AgentToolSearchRuntime {
       context.interaction,
       context.reusableCapabilities,
       context.signal,
+      context.toolAccessGrant,
     );
     if (!resolved.searchPerformed) {
       this.logger?.info("routing.tool_search.reused", {
@@ -603,19 +683,31 @@ export class AgentToolSearchRuntime {
     interaction?: AgentInteractionContext,
     reusableCapabilities?: readonly AgentToolCapabilityCacheEntry[],
     signal?: AbortSignal,
+    toolAccessGrant?: AgentToolAccessGrant,
   ): Promise<{
     result: unknown;
     searchPerformed: boolean;
     reusedToolNames: readonly string[];
   }> {
-    const reusable = this.capabilityReuse.matchReusableCapabilities({
-      sessionId,
-      logicalCacheScope,
-      query: args.query,
-      authorizedToolNames,
-      interaction,
-      candidates: reusableCapabilities,
-    });
+    const catalogRevisionBeforePreparation = this.catalog.catalogRevision();
+    // Deferred MCP discovery must run before capability reuse. Otherwise a
+    // previous successful tool can short-circuit the query and hide a newly
+    // relevant MCP server whose schema has not been loaded yet.
+    const selection = await this.prepareCatalog(args.query, toolAccessGrant, signal, authorizedToolNames);
+    authorizedToolNames = this.authorizedNames(toolAccessGrant, authorizedToolNames);
+    const catalogChanged = catalogRevisionBeforePreparation !== this.catalog.catalogRevision();
+    const unavailableServices = this.unavailableServices(selection.ids);
+    const reusable =
+      catalogChanged || unavailableServices.length > 0
+        ? []
+        : this.capabilityReuse.matchReusableCapabilities({
+            sessionId,
+            logicalCacheScope,
+            query: args.query,
+            authorizedToolNames,
+            interaction,
+            candidates: reusableCapabilities,
+          });
     let discovery =
       reusable.length > 0
         ? {
@@ -624,13 +716,18 @@ export class AgentToolSearchRuntime {
             omitted: [],
             catalogRevision: this.catalog.catalogRevision(),
           }
-        : await this.discover({
-            query: args.query,
-            loadedToolNames,
-            authorizedToolNames,
-            interaction,
-            signal,
-          });
+        : await this.discoverInternal(
+            {
+              query: args.query,
+              loadedToolNames,
+              authorizedToolNames,
+              toolAccessGrant,
+              interaction,
+              signal,
+            },
+            false,
+            selection,
+          );
 
     let searchPerformed = reusable.length === 0;
     let reusedToolNames: readonly string[] = reusable.map((entry) => entry.toolName);
@@ -642,6 +739,7 @@ export class AgentToolSearchRuntime {
         query: args.query,
         loadedToolNames,
         authorizedToolNames,
+        toolAccessGrant,
         interaction,
         signal,
       });
@@ -675,6 +773,7 @@ export class AgentToolSearchRuntime {
       });
 
     const withStateDiscovery = {
+      ...(discovery.services ? { services: discovery.services } : {}),
       match: withState(discovery.match),
       maybe: withState(discovery.maybe),
       omitted: withState(discovery.omitted),
@@ -694,6 +793,44 @@ export class AgentToolSearchRuntime {
       searchPerformed,
       reusedToolNames,
     };
+  }
+
+  private authorizedNames(grant?: AgentToolAccessGrant, names?: readonly string[]): readonly string[] | undefined {
+    return grant ? resolveAgentToolGrantNames(grant, this.registry.listTools()) : names;
+  }
+
+  private unavailableServices(ids: readonly string[]): readonly AgentMcpServiceDiscoveryEntry[] {
+    return (this.options.mcpServices?.() ?? []).filter(
+      (service) => ids.includes(service.id) && service.availability.status !== "ready",
+    );
+  }
+
+  private async prepareRequestedTools(names: readonly string[], context: AgentHostToolContext): Promise<void> {
+    const authorized = this.authorizedNames(context.toolAccessGrant, context.authorizedToolNames);
+    const ids = [
+      ...new Set(
+        names.flatMap((name) => {
+          const tool = this.registry.getTool(name);
+          return tool?.handler.kind === "McpTool" && (!authorized || authorized.includes(name))
+            ? [tool.handler.server.id]
+            : [];
+        }),
+      ),
+    ];
+    if (ids.length > 0) await this.options.beforeSearch?.("", context.signal, ids);
+    throwIfAborted(context.signal);
+  }
+
+  private async prepareCatalog(
+    query: string,
+    grant?: AgentToolAccessGrant,
+    signal?: AbortSignal,
+    authorizedToolNames?: readonly string[],
+  ): Promise<PreparedMcpDiscovery> {
+    const selection = await this.catalog.discoverServices(query, grant, signal, authorizedToolNames);
+    const ids = selection.services.map((service) => service.id);
+    await this.options.beforeSearch?.(query, signal, this.options.mcpServices ? ids : undefined);
+    return { ids, diagnostics: selection.diagnostics };
   }
 }
 

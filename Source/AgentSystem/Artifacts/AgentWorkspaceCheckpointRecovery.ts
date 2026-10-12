@@ -53,7 +53,16 @@ const WorkspaceFileContentSchema = z.discriminatedUnion("state", [
   z
     .object({
       state: z.literal("omitted"),
-      reason: z.enum(["missing", "directory", "size_limit", "binary", "not_requested", "unsupported"]),
+      reason: z.enum([
+        "missing",
+        "directory",
+        "size_limit",
+        "cache_limit",
+        "binary",
+        "not_requested",
+        "unsupported",
+        "unreadable",
+      ]),
       byteLength: z.number().int().nonnegative().optional(),
     })
     .strict(),
@@ -77,6 +86,8 @@ export const AgentWorkspaceSnapshotSchema = z
   .object({
     files: z.array(AgentWorkspaceFileSnapshotSchema),
     capturedAt: z.string().min(1),
+    status: z.enum(["complete", "bounded", "degraded"]).optional(),
+    revision: z.number().int().nonnegative().optional(),
     warnings: z.array(z.string()).optional(),
   })
   .strict()

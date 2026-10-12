@@ -1,4 +1,5 @@
 import koffi from "koffi";
+import { randomUUID } from "node:crypto";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
 
 const JobObjectExtendedLimitInformationClass = 9;
@@ -44,7 +45,7 @@ type WindowsHandleValue = bigint;
 
 const CreateJobObjectW = Kernel32.func(
   "SENERA_WINDOWS_HANDLE __stdcall CreateJobObjectW(void *attributes, str16 name)",
-) as unknown as (attributes: null, name: null) => WindowsHandleValue;
+) as unknown as (attributes: null, name: string) => WindowsHandleValue;
 const SetInformationJobObject = Kernel32.func(
   "bool __stdcall SetInformationJobObject(SENERA_WINDOWS_HANDLE job, int informationClass, SENERA_JOB_OBJECT_EXTENDED_LIMIT_INFORMATION *information, uint32_t informationLength)",
 ) as unknown as (
@@ -77,10 +78,12 @@ export class AgentWindowsJobObjectError extends AgentBaseError {
 }
 
 export class AgentWindowsJobObject {
+  readonly name: string;
   private handle: WindowsHandleValue | undefined;
 
   constructor() {
-    const handle = CreateJobObjectW(null, null);
+    this.name = `Senera-${randomUUID()}`;
+    const handle = CreateJobObjectW(null, this.name);
     if (!handle) throw windowsJobError("CreateJobObjectW");
     this.handle = handle;
 

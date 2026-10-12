@@ -144,7 +144,6 @@ class QueueAwareFakeLoop {
           content: "已整理。",
         },
         decisionXml: "已整理。",
-        conversationEntries: [],
         executedTools: [],
         stepTraces: [],
       };
@@ -167,8 +166,6 @@ class QueueAwareFakePiSession implements AgentPiSession {
   readonly model = VerificationPiModel;
   readonly steers: string[] = [];
   readonly followUps: string[] = [];
-
-  setHistory(): void {}
 
   async prompt(): Promise<void> {}
 

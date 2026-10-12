@@ -78,7 +78,13 @@ describe("tool execution scheduler", () => {
     );
     const scheduler = new AgentToolExecutionScheduler({
       maxConcurrentCallsPerRun: 10,
-      resourceClaims: { project },
+      resourceClaims: {
+        project,
+        listClaimCapabilityIds: () => [],
+        projectDeclarations: async () => {
+          throw new Error("This scheduler test does not project delegated resource declarations.");
+        },
+      },
     });
     const lease = resourceLease("workspace/a.ts");
 
@@ -94,6 +100,10 @@ function createScheduler(maxConcurrentCallsPerRun: number): AgentToolExecutionSc
   const resourceClaims: AgentToolResourceClaimProjectorPort = {
     project: async () => {
       throw new Error("Parallel tools must not project resource claims.");
+    },
+    listClaimCapabilityIds: () => [],
+    projectDeclarations: async () => {
+      throw new Error("Parallel tools must not project delegated resource declarations.");
     },
   };
   return new AgentToolExecutionScheduler({ maxConcurrentCallsPerRun, resourceClaims });

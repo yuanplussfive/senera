@@ -40,10 +40,6 @@ class VerificationClient implements AgentPiPlanningModelClient {
   async repairPiToolArguments(_input: AgentPiToolArgumentsRepairInput): Promise<never> {
     throw new Error("Verification arguments must be valid.");
   }
-
-  async summarizePiConversation(): Promise<never> {
-    throw new Error("Conversation summary is outside this verification.");
-  }
 }
 
 async function main(): Promise<void> {

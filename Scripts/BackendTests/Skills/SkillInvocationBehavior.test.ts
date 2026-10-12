@@ -39,6 +39,7 @@ function registeredSkill(name: string): RegisteredSkill {
     name,
     description: `Use ${name}.`,
     descriptionFile: `System/Skills/${name}/SKILL.md`,
+    content: `# ${name}`,
     recommendedTools: [],
     evidenceRequirements: [],
   };

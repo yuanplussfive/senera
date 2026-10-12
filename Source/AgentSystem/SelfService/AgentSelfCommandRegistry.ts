@@ -33,7 +33,7 @@ export interface AgentSelfCommandSpec {
   readonly args: readonly AgentSelfCommandArgSpec[];
   /** Commands that can open an approval flow (config and Skill mutations). */
   readonly sensitive?: boolean;
-  /** Human-facing aliases for the CLI action, e.g. `preset reset`. */
+  /** Human-facing aliases for the CLI action, e.g. `config rollback`. */
   readonly actionAliases?: readonly string[];
 }
 
@@ -138,44 +138,6 @@ export const AgentSelfCommandRegistry: readonly AgentSelfCommandSpec[] = [
       },
     ],
     sensitive: true,
-  },
-  {
-    command: "preset",
-    action: "list",
-    usage: "senera preset list",
-    description: "列出预设。",
-    args: [],
-  },
-  {
-    command: "preset",
-    action: "show",
-    usage: "senera preset show NAME",
-    description: "显示预设内容。",
-    args: [{ key: "name", name: "NAME", kind: "string", description: "预设名" }],
-  },
-  {
-    command: "preset",
-    action: "use",
-    usage: "senera preset use [NAME]",
-    description: "激活预设；无 NAME 时重置为无预设。",
-    args: [{ key: "name", name: "NAME", kind: "nullable-string", description: "预设名或省略以重置" }],
-    actionAliases: ["reset"],
-  },
-  {
-    command: "preset",
-    action: "create",
-    usage: "senera preset create NAME CONTENT_JSON",
-    description: "创建或更新预设。",
-    args: [
-      { key: "name", name: "NAME", kind: "string", description: "预设名" },
-      {
-        key: "content",
-        name: "CONTENT_JSON",
-        kind: "json",
-        description: "预设内容",
-        missingMessage: "senera preset create requires a name and JSON content.",
-      },
-    ],
   },
   {
     command: "workspace",

@@ -209,11 +209,6 @@ function createStubSelfServicePort(workspaceRoot: string): {
       history: () => [],
       readRevision: () => ({ status: "unavailable" }),
     },
-    presets: {
-      manager: () => {
-        throw new Error("preset manager is not exercised by this test");
-      },
-    },
   };
   return { port, calls };
 }

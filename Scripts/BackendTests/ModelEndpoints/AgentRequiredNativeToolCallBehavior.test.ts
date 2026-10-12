@@ -1,21 +1,21 @@
-import { Type, type AssistantMessage, type Tool } from "@earendil-works/pi-ai";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { Type, createAssistantMessageEventStream, type Context, type Tool } from "@earendil-works/pi-ai";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createModelProvider } from "../Support/AgentTestFixtures.js";
-import { ModelProviderHttpError } from "../../../Source/AgentSystem/ModelEndpoints/ModelHttpErrors.js";
-import { AgentRequiredModelToolCallError } from "../../../Source/AgentSystem/ModelEndpoints/AgentModelFailureMapper.js";
+import { completedTestPiStream, testPiAssistantMessage } from "../Support/AgentPiModelTestStream.js";
 import {
-  AgentNativeToolCallRecoveryPolicy,
-  buildAgentNativeToolRepairPrompt,
-  extractAgentNativeToolArguments,
-  isAgentNativeToolContractFailure,
-} from "../../../Source/AgentSystem/ModelEndpoints/AgentNativeToolCallRecovery.js";
+  ModelProviderHttpError,
+  ModelRequestTimeoutError,
+} from "../../../Source/AgentSystem/ModelEndpoints/ModelHttpErrors.js";
+import { AgentRequiredModelToolCallError } from "../../../Source/AgentSystem/ModelEndpoints/AgentModelFailureMapper.js";
+import { isAgentNativeToolContractFailure } from "../../../Source/AgentSystem/ModelEndpoints/AgentNativeToolCallRecovery.js";
+import { projectAgentNativeToolModel } from "../../../Source/AgentSystem/ModelEndpoints/AgentNativeToolModelProjector.js";
+import type { AgentModelUsageSink } from "../../../Source/AgentSystem/ModelEndpoints/AgentModelUsage.js";
+import { AgentModelResponseBudgetError } from "../../../Source/AgentSystem/ModelEndpoints/ModelResponseBudget.js";
 
 const createConfiguredProvider = vi.hoisted(() => vi.fn());
-
 vi.mock("../../../Source/AgentSystem/ModelEndpoints/AgentPiConfiguredProvider.js", () => ({
   createAgentPiConfiguredProvider: createConfiguredProvider,
 }));
-
 import { AgentRequiredNativeToolCall } from "../../../Source/AgentSystem/ModelEndpoints/AgentRequiredNativeToolCall.js";
 
 const ContractTool = {
@@ -23,196 +23,116 @@ const ContractTool = {
   description: "Commit one structured result.",
   parameters: Type.Object({ value: Type.String() }, { additionalProperties: false }),
 } satisfies Tool;
+const input = {
+  tool: ContractTool,
+  systemPrompt: "stable contract",
+  userPrompt: "extract it",
+  cache: { scope: "same-cache", retention: "long" as const },
+};
+const success = () =>
+  testPiAssistantMessage([{ type: "toolCall", id: "call-1", name: ContractTool.name, arguments: { value: "ok" } }]);
 
-describe("required native tool call recovery", () => {
-  beforeEach(() => {
-    createConfiguredProvider.mockReset();
-  });
-
-  test("repairs a missing tool call once and keeps the cache scope stable", async () => {
-    const requests: Array<{ context: Record<string, unknown>; options: Record<string, unknown> }> = [];
-    const stream = vi.fn((_model: unknown, context: Record<string, unknown>, options: Record<string, unknown>) => {
-      requests.push({ context, options });
-      const message = requests.length === 1 ? assistantMessage([{ type: "text", text: "not a call" }]) : toolMessage();
-      return { result: async () => message };
-    });
-    createConfiguredProvider.mockReturnValue({ model: nativeModel(), provider: { stream } });
-
-    const result = await new AgentRequiredNativeToolCall(
-      createModelProvider({ Endpoint: "ChatCompletions" }),
-      "Test",
-    ).execute({
-      tool: ContractTool,
-      systemPrompt: "stable contract",
-      userPrompt: "extract it",
-      cache: { scope: "same-cache-scope", retention: "long" },
-    });
-
-    expect(result).toEqual({ value: "ok" });
-    expect(stream).toHaveBeenCalledTimes(2);
-    expect(requests[0]?.options.toolChoice).toEqual({ type: "function", function: { name: ContractTool.name } });
-    expect(requests[1]?.options.toolChoice).toBe("auto");
-    expect(requests[0]?.options.sessionId).toMatch(/^[a-f0-9]{64}$/u);
-    expect(requests[1]?.options.sessionId).toMatch(/^[a-f0-9]{64}$/u);
-    expect(requests[1]?.options.sessionId).toBe(requests[0]?.options.sessionId);
-    expect((requests[1]?.context.messages as Array<{ content: string }>)[0]?.content).toContain(
-      "Structured tool repair",
-    );
-  });
-
-  test("captures the provider payload and reports cache state through timing", async () => {
-    const snapshots: Array<Record<string, unknown>> = [];
-    const timings: Array<Record<string, unknown>> = [];
-    const stream = vi.fn((_model: unknown, _context: Record<string, unknown>, options: Record<string, unknown>) => {
-      const onPayload = options.onPayload as ((payload: unknown, model: unknown) => unknown) | undefined;
-      return {
-        result: async () => {
-          await onPayload?.({ messages: [{ role: "system", content: "stable" }] }, _model);
-          return toolMessage({ cacheRead: 32 });
-        },
-      };
-    });
-    createConfiguredProvider.mockReturnValue({ model: nativeModel(), provider: { stream } });
-
-    await new AgentRequiredNativeToolCall(createModelProvider(), "Test").execute({
-      tool: ContractTool,
-      systemPrompt: "stable contract",
-      userPrompt: "extract",
-      cache: {
-        scope: "provider-scope",
-        sessionId: "session-a",
-        logicalCacheScope: "logical-scope",
-        retention: "long",
-      },
-      wireSnapshotSink: (snapshot) => {
-        snapshots.push(snapshot as unknown as Record<string, unknown>);
-      },
-      timingSink: (timing) => {
-        timings.push(timing as unknown as Record<string, unknown>);
-      },
-    });
-
-    expect(optionsOf(stream).onPayload).toBeTypeOf("function");
-    expect(snapshots[0]).toMatchObject({
-      logicalCacheScope: "logical-scope",
-      providerCacheScope: expect.stringMatching(/^[a-f0-9]{64}$/u),
-      sessionId: "session-a",
-      observation: "hit",
-      cacheReadTokens: 32,
-    });
-    expect(timings[0]?.promptCache).toMatchObject({ observation: "hit" });
-  });
-
-  test("repairs an upstream required-choice rejection, but does not retry payload failures", async () => {
+beforeEach(() => createConfiguredProvider.mockReset());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
+function fixture(
+  stream: ReturnType<typeof vi.fn>,
+  overrides: Parameters<typeof createModelProvider>[0] = {},
+  usageSink?: AgentModelUsageSink,
+) {
+  const config = createModelProvider({ MaxNetworkRetries: 1, ...overrides });
+  createConfiguredProvider.mockReturnValue({ model: projectAgentNativeToolModel(config), provider: { stream } });
+  return new AgentRequiredNativeToolCall(config, "Test", usageSink);
+}
+describe("required native structured execution", () => {
+  test("repairs only typed contract failures and keeps required tool selection and cache", async () => {
+    const usage = vi.fn();
     const stream = vi
       .fn()
-      .mockImplementationOnce(() => ({
-        result: async () => {
-          throw new ModelProviderHttpError(400, "Bad Request", "tool_choice is not supported by this gateway");
-        },
-      }))
-      .mockImplementationOnce(() => ({ result: async () => toolMessage() }));
-    createConfiguredProvider.mockReturnValue({ model: nativeModel(), provider: { stream } });
-
-    await expect(
-      new AgentRequiredNativeToolCall(createModelProvider(), "Test").execute({
-        tool: ContractTool,
-        systemPrompt: "stable",
-        userPrompt: "extract",
-      }),
-    ).resolves.toEqual({ value: "ok" });
+      .mockImplementationOnce(() =>
+        completedTestPiStream(testPiAssistantMessage([{ type: "text", text: "not a call" }])),
+      )
+      .mockImplementationOnce(() => completedTestPiStream(success()));
+    expect(await fixture(stream, {}, usage).execute(input)).toEqual({ value: "ok" });
     expect(stream).toHaveBeenCalledTimes(2);
-
-    createConfiguredProvider.mockReset();
-    const payloadFailure = vi.fn(() => ({
-      result: async () => {
-        throw new ModelProviderHttpError(413, "Payload Too Large", "request body is too large");
-      },
-    }));
-    createConfiguredProvider.mockReturnValue({ model: nativeModel(), provider: { stream: payloadFailure } });
-    await expect(
-      new AgentRequiredNativeToolCall(createModelProvider(), "Test").execute({
-        tool: ContractTool,
-        systemPrompt: "stable",
-        userPrompt: "extract",
-      }),
-    ).rejects.toBeInstanceOf(ModelProviderHttpError);
-    expect(payloadFailure).toHaveBeenCalledTimes(1);
+    expect(usage).toHaveBeenCalledTimes(2);
+    const options = stream.mock.calls.map((call) => call[2]);
+    expect(options[0].toolChoice).toEqual(options[1].toolChoice);
+    expect(options[0].toolChoice).not.toBe("auto");
+    expect(options[0].sessionId).toBe(options[1].sessionId);
+    expect(JSON.stringify(stream.mock.calls[1][1])).toContain("Structured tool repair");
   });
-
-  test("does not loop after the bounded repair attempt", async () => {
-    const stream = vi.fn(() => ({ result: async () => assistantMessage([{ type: "text", text: "still prose" }]) }));
-    createConfiguredProvider.mockReturnValue({ model: nativeModel(), provider: { stream } });
-
-    await expect(
-      new AgentRequiredNativeToolCall(createModelProvider(), "Test").execute({
-        tool: ContractTool,
-        systemPrompt: "stable",
-        userPrompt: "extract",
-      }),
-    ).rejects.toThrow("did not return required tool");
-    expect(stream).toHaveBeenCalledTimes(AgentNativeToolCallRecoveryPolicy.maxRepairAttempts + 1);
+  test("does not retry a rejected tool_choice or another HTTP client error", async () => {
+    const stream = vi.fn(() => {
+      throw new ModelProviderHttpError(400, "Bad Request", "tool_choice unsupported");
+    });
+    await expect(fixture(stream).execute(input)).rejects.toThrow();
+    expect(stream).toHaveBeenCalledOnce();
+    expect(isAgentNativeToolContractFailure(new Error("tool_choice unsupported"))).toBe(false);
+    expect(isAgentNativeToolContractFailure(new AgentRequiredModelToolCallError(ContractTool.name, []))).toBe(true);
   });
-
-  test("keeps recovery classification and extraction deterministic", () => {
-    const missing = new Error("Model response did not return required tool CommitResult: none.");
-    expect(isAgentNativeToolContractFailure(missing)).toBe(false);
-    const structured = assistantMessage([{ type: "text", text: "no" }]);
-    expect(() => extractAgentNativeToolArguments(structured, ContractTool.name)).toThrow(
-      "did not return required tool",
+  test("bounds repairs by the configured budget", async () => {
+    const stream = vi.fn(() => completedTestPiStream(testPiAssistantMessage([{ type: "text", text: "still prose" }])));
+    await expect(fixture(stream, { MaxNetworkRetries: 2 }).execute(input)).rejects.toBeInstanceOf(
+      AgentRequiredModelToolCallError,
     );
-    const contractFailure = new AgentRequiredModelToolCallError(ContractTool.name, []);
-    expect(buildAgentNativeToolRepairPrompt(ContractTool.name, contractFailure)).toContain("CommitResult");
-    expect(isAgentNativeToolContractFailure(contractFailure)).toBe(true);
-    expect(isAgentNativeToolContractFailure(new Error("tool_choice unsupported"))).toBe(true);
+    expect(stream).toHaveBeenCalledTimes(3);
   });
-});
-
-function nativeModel(): Record<string, unknown> {
-  return {
-    api: "openai-completions",
-    provider: "test-provider",
-    id: "test-model",
-    baseUrl: "https://model.example/v1",
-    headers: {},
-  };
-}
-
-function toolMessage(usageOverrides: Partial<AssistantMessage["usage"]> = {}): AssistantMessage {
-  return assistantMessage(
-    [{ type: "toolCall", id: "call-1", name: ContractTool.name, arguments: { value: "ok" } }],
-    usageOverrides,
+  test.each(["first_token", "max_request"] as const)(
+    "reports %s deadline even when a provider ignores the abort signal",
+    async (kind) => {
+      vi.useFakeTimers();
+      const stream = vi.fn(() => createAssistantMessageEventStream());
+      const call = fixture(stream, {
+        FirstTokenTimeoutMs: kind === "first_token" ? 50 : -1,
+        MaxRequestMs: kind === "max_request" ? 50 : -1,
+      });
+      const pending = expect(call.execute(input)).rejects.toBeInstanceOf(ModelRequestTimeoutError);
+      await vi.advanceTimersByTimeAsync(51);
+      await pending;
+      expect(stream).toHaveBeenCalledOnce();
+    },
   );
-}
-
-function assistantMessage(
-  content: AssistantMessage["content"],
-  usageOverrides: Partial<AssistantMessage["usage"]> = {},
-): AssistantMessage {
-  return {
-    role: "assistant",
-    api: "openai-completions",
-    provider: "test-provider",
-    model: "test-model",
-    content,
-    usage: usage(usageOverrides),
-    stopReason: "stop",
-    timestamp: Date.now(),
-  } as AssistantMessage;
-}
-
-function usage(overrides: Partial<AssistantMessage["usage"]> = {}): AssistantMessage["usage"] {
-  return {
-    input: 2,
-    output: 1,
-    cacheRead: 0,
-    cacheWrite: 0,
-    totalTokens: 3,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-    ...overrides,
-  };
-}
-
-function optionsOf(stream: ReturnType<typeof vi.fn>): Record<string, unknown> {
-  return (stream.mock.calls[0]?.[2] ?? {}) as Record<string, unknown>;
-}
+  test("retains caller cancellation without treating it as a provider timeout", async () => {
+    const controller = new AbortController();
+    const reason = new Error("caller stopped");
+    const stream = vi.fn(() => createAssistantMessageEventStream());
+    const pending = expect(fixture(stream).execute({ ...input, signal: controller.signal })).rejects.toBe(reason);
+    controller.abort(reason);
+    await pending;
+    expect(stream).toHaveBeenCalledOnce();
+  });
+  test("reports captured cache timing after actual provider usage", async () => {
+    const timingSink = vi.fn();
+    const wireSnapshotSink = vi.fn();
+    const stream = vi.fn((_model, _context: Context, options) => {
+      options.onPayload?.({ messages: [{ role: "system", content: "stable" }] }, _model);
+      return completedTestPiStream(success());
+    });
+    await fixture(stream).execute({ ...input, timingSink, wireSnapshotSink });
+    expect(timingSink).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "completed", firstTokenMs: expect.any(Number), cacheReadTokens: 0 }),
+    );
+    expect(wireSnapshotSink).toHaveBeenCalledOnce();
+  });
+  test.each([{ MaxResponseBytes: 16 }, { MaxSseEventBytes: 16 }, { MaxSseEvents: 1 }])(
+    "aborts a response budget failure without repair: %j",
+    async (limits) => {
+      const usage = vi.fn();
+      const stream = vi.fn((_model: unknown, _context: Context, _options: { signal: AbortSignal }) => {
+        const result = createAssistantMessageEventStream();
+        const message = success();
+        result.push({ type: "start", partial: message });
+        result.push({ type: "done", reason: "toolUse", message });
+        return result;
+      });
+      await expect(fixture(stream, { ...limits, MaxNetworkRetries: 3 }, usage).execute(input)).rejects.toBeInstanceOf(
+        AgentModelResponseBudgetError,
+      );
+      expect(stream).toHaveBeenCalledOnce();
+      expect(stream.mock.calls[0]![2].signal.aborted).toBe(true);
+    },
+  );
+});

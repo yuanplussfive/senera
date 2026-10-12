@@ -6,6 +6,19 @@ import {
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 describe("AgentSystemRuntimeCache", () => {
+  test("a hidden workspace releases idle instances while preserving active task leases", () => {
+    const fixture = createCache();
+    const active = fixture.cache.acquire("active-model");
+    fixture.cache.setObserved(false);
+    expect(active.runtime.closeCount).toBe(0);
+    active.release();
+    expect(active.runtime.closeCount).toBe(1);
+    fixture.cache.setObserved(true);
+    const reopened = fixture.cache.acquire("active-model");
+    expect(reopened.runtime).not.toBe(active.runtime);
+    reopened.release();
+    expect(reopened.runtime.closeCount).toBe(0);
+  });
   test("reuses a matching provider and closes an idle runtime after constructing its replacement", () => {
     const fixture = createCache();
 

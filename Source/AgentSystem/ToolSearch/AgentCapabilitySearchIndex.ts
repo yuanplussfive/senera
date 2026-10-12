@@ -4,9 +4,9 @@ import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { cosineSimilarity } from "../Vector/AgentVectorSimilarity.js";
 import {
   AgentEmbeddingPriorities,
+  type AgentEmbeddingClient,
   type AgentEmbeddingPriority,
-  type AgentEmbeddingRequest,
-  type AgentEmbeddingResult,
+  resolveAgentEmbeddingBatchSize,
 } from "../Vector/AgentEmbeddingContract.js";
 import type { AgentToolSearchTokenizer } from "./AgentToolSearchTokenizer.js";
 import { sha256Hex, sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
@@ -16,6 +16,7 @@ import { partitionAgentToolSearchScoreCurve } from "./AgentToolSearchConfidence.
 export const AgentCapabilityKinds = {
   Tool: "tool",
   Skill: "skill",
+  Service: "service",
 } as const;
 
 export type AgentCapabilityKind = (typeof AgentCapabilityKinds)[keyof typeof AgentCapabilityKinds];
@@ -67,18 +68,7 @@ export interface AgentCapabilitySemanticMatch {
 
 export type AgentCapabilityFuzzyMatch = AgentCapabilitySemanticMatch;
 
-export interface AgentCapabilityEmbeddingClient {
-  embed(request: AgentEmbeddingRequest): Promise<AgentEmbeddingResult>;
-  /**
-   * Largest cohesive document work unit this client can process without
-   * delaying a higher-priority request. The index yields between units.
-   */
-  readonly maxBatchSize?: number;
-  /** Optional local-engine preparation that does not produce retrieval evidence. */
-  prewarm?(signal?: AbortSignal, priority?: AgentEmbeddingPriority): Promise<void>;
-  /** Releases an owned local execution resource when the runtime closes. */
-  close?(): void | Promise<void>;
-}
+export type AgentCapabilityEmbeddingClient = AgentEmbeddingClient;
 
 export interface AgentCapabilitySearchIndexOptions {
   readonly tokenizer: AgentToolSearchTokenizer;
@@ -555,21 +545,15 @@ export class AgentCapabilitySearchIndex {
   }
 
   async close(): Promise<void> {
-    await this.options.embedding?.client.close?.();
+    const preparation = this.embeddingPreparation;
+    if (!preparation) return;
+    preparation.controller.abort("Capability search index is closing.");
+    await preparation.promise.catch(() => undefined);
   }
 }
 
 function bestFuzzyScore(query: string, targets: readonly FuzzyPrepared[]): number {
   return targets.reduce((best, target) => Math.max(best, fuzzysort.single(query, target)?.score ?? 0), 0);
-}
-
-function resolveAgentEmbeddingBatchSize(maxBatchSize: number | undefined, inputCount: number): number {
-  if (inputCount < 1) return 1;
-  if (maxBatchSize === undefined) return inputCount;
-  if (!Number.isSafeInteger(maxBatchSize) || maxBatchSize < 1) {
-    throw new Error("Capability embedding client maxBatchSize must be a positive safe integer.");
-  }
-  return Math.min(maxBatchSize, inputCount);
 }
 
 function throwIfAgentEmbeddingPreparationAborted(signal?: AbortSignal): void {

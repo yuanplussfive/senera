@@ -9,8 +9,8 @@ import type { ToolWorkspaceChange, ToolWorkspaceSnapshot } from "../Types/ToolRu
  * intentionally small: the durable payload remains in its owning store and
  * can be dereferenced by URI when needed.
  */
-export const AgentContinuityLedgerProtocol = defineSeneraProtocol("continuity_ledger", 1);
-export const AgentContinuityLedgerCustomType = "senera.continuity_ledger";
+export const AgentContinuityLedgerProtocol = defineSeneraProtocol("continuity_ledger", 2);
+export const AgentContinuityLedgerCustomType = AgentContinuityLedgerProtocol.type;
 
 export const AgentContinuityReferenceKinds = [
   "conversation",
@@ -29,7 +29,6 @@ export interface AgentContinuityReference {
   readonly digest: string;
   readonly revision: string;
   readonly summary: string;
-  readonly searchText?: string;
   readonly parentIds: readonly string[];
   readonly createdAt: string;
   readonly metadata?: Readonly<Record<string, unknown>>;
@@ -86,7 +85,6 @@ export interface CreateAgentContinuityReferenceInput {
   readonly uri: string;
   readonly revision?: string;
   readonly summary: string;
-  readonly searchText?: string;
   readonly parentIds?: readonly string[];
   readonly createdAt?: string;
   readonly metadata?: Readonly<Record<string, unknown>>;
@@ -111,7 +109,6 @@ const ReferenceSchema = z
     digest: NonBlankStringSchema,
     revision: NonBlankStringSchema,
     summary: NonBlankStringSchema,
-    searchText: z.string().optional(),
     parentIds: z.array(NonBlankStringSchema),
     createdAt: NonBlankStringSchema,
     metadata: z.record(z.string(), z.unknown()).optional(),
@@ -165,7 +162,6 @@ export const AgentContinuityLedgerSchema = z
 export function createAgentContinuityReference(input: CreateAgentContinuityReferenceInput): AgentContinuityReference {
   const uri = requireText(input.uri, "Continuity reference URI");
   const summary = requireText(input.summary, "Continuity reference summary");
-  const searchText = input.searchText?.trim();
   const parentIds = uniqueStrings(input.parentIds ?? []);
   const revision = requireText(input.revision ?? "1", "Continuity reference revision");
   const digest = sha256HexOfCanonicalJson({
@@ -173,7 +169,6 @@ export function createAgentContinuityReference(input: CreateAgentContinuityRefer
     uri,
     revision,
     summary,
-    ...(searchText ? { searchText } : {}),
     parentIds,
     ...(input.metadata ? { metadata: input.metadata } : {}),
   });
@@ -184,7 +179,6 @@ export function createAgentContinuityReference(input: CreateAgentContinuityRefer
     digest,
     revision,
     summary,
-    ...(searchText ? { searchText } : {}),
     parentIds,
     createdAt: input.createdAt ?? new Date().toISOString(),
     ...(input.metadata ? { metadata: input.metadata } : {}),
@@ -308,11 +302,6 @@ export function mergeAgentContinuityLedger(
   };
 }
 
-export function readAgentContinuityLedger(value: unknown): AgentContinuityLedger | undefined {
-  const parsed = AgentContinuityLedgerSchema.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
-}
-
 /**
  * Selects the newest compatible checkpoint deterministically. Checkpoint
  * identity is still available for explicit recovery, but callers that only
@@ -332,33 +321,6 @@ export function selectAgentContinuityCheckpoint(
     .filter((checkpoint) => !parentCheckpointId || checkpoint.parentCheckpointId === parentCheckpointId)
     .filter((checkpoint) => !resumeStatus || checkpoint.resume.status === resumeStatus)
     .sort(compareCheckpointsNewestFirst)[0];
-}
-
-export interface AgentContinuityLedgerSearchResult {
-  readonly reference: AgentContinuityReference;
-  readonly score: number;
-}
-
-/** Deterministic lexical recall over all continuity sources. */
-export function searchAgentContinuityLedger(
-  ledger: AgentContinuityLedger,
-  query: string,
-  limit = ledger.references.length,
-): readonly AgentContinuityLedgerSearchResult[] {
-  const terms = tokenize(query);
-  if (terms.length === 0) return [];
-  return ledger.references
-    .map((reference) => {
-      const haystack = tokenize(
-        [reference.uri, reference.summary, reference.searchText ?? "", ...reference.parentIds].join(" "),
-      );
-      const matched = terms.filter((term) => haystack.includes(term)).length;
-      const score = matched / terms.length;
-      return { reference, score } satisfies AgentContinuityLedgerSearchResult;
-    })
-    .filter((result) => result.score > 0)
-    .sort((left, right) => right.score - left.score || compareReferences(left.reference, right.reference))
-    .slice(0, Math.max(0, Math.floor(limit)));
 }
 
 function compareReferences(left: AgentContinuityReference, right: AgentContinuityReference): number {
@@ -383,18 +345,6 @@ function compareTimestamp(left: string, right: string): number {
   const rightMs = Date.parse(right);
   if (Number.isFinite(leftMs) && Number.isFinite(rightMs) && leftMs !== rightMs) return leftMs - rightMs;
   return left.localeCompare(right);
-}
-
-function tokenize(value: string): readonly string[] {
-  // Ledger recall participates in cache keys and cross-process recovery; use
-  // locale-independent case folding so the same ledger behaves identically on
-  // hosts with different system locales.
-  const normalized = value.trim().normalize("NFKC").toLowerCase();
-  if (!normalized) return [];
-  const words = normalized.match(/[\p{L}\p{N}_-]+/gu) ?? [];
-  const compact = normalized.replace(/\s+/gu, "");
-  const cjk = [...compact].filter((char) => /[\u3400-\u9fff]/u.test(char));
-  return uniqueStrings([...words, ...cjk]);
 }
 
 function uniqueStrings(values: readonly string[]): string[] {

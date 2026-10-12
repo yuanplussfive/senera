@@ -15,6 +15,7 @@ import type {
 import type { AgentHistoryStepRun } from "./AgentSessionEventTypes.js";
 import { type AgentSessionEventFactory } from "./AgentSessionEventFactory.js";
 import { AgentSessionHistoryWaitRecovery } from "./AgentSessionHistoryWaitRecovery.js";
+import { readAgentSessionRecoveryModes } from "./AgentSessionRunRecovery.js";
 import { AgentXmlParser } from "../Xml/AgentXmlParser.js";
 import {
   resolveAgentSessionHistoryReplayPaging,
@@ -383,6 +384,7 @@ export class AgentSessionHistoryReplay {
       existing.modelProvider ??= snapshot.modelProvider;
 
       existing.status = projectSnapshotStatus(snapshot, existing.traces.length > 0);
+      existing.recoveryModes = readAgentSessionRecoveryModes(snapshot.status);
       existing.endedAt = snapshot.endedAt ?? existing.endedAt;
       if (existing.status === "completed" && existing.traces.length === 0) {
         existing.endedAt = snapshot.endedAt ?? snapshot.updatedAt;
@@ -398,6 +400,7 @@ export class AgentSessionHistoryReplay {
       startedAt: snapshot.startedAt,
       endedAt: snapshot.endedAt ?? (status === "failed" ? snapshot.updatedAt : undefined),
       status,
+      recoveryModes: readAgentSessionRecoveryModes(snapshot.status),
       modelProvider: snapshot.modelProvider,
       traces: status === "running" ? [] : [createMissingRunDataTrace(snapshot)],
     });

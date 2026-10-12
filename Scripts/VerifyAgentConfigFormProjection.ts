@@ -77,12 +77,12 @@ assert.equal(
   "在复杂任务中先生成结构化行动计划，并根据执行证据修正后续步骤。",
 );
 assert.equal(
-  findField(form, ["ToolLearning", "Enabled"]).description,
-  "从成功的工具调用中归纳可复用模式，改进后续工具选择与参数。",
+  findField(form, ["StateCard", "Enabled"]).description,
+  "从会话历史投影结构化状态卡，并解析追问的独立请求。",
 );
 assert.equal(
   findField(form, ["ContinuityLearning", "Enabled"]).description,
-  "从对话中提取带来源、时间和条件的连续性事实、信号与提醒规则。",
+  "为每个成功回合生成 MemOS 语义片段，并按上海时区归并日/月摘要。",
 );
 
 const plannerModel = findField(form, ["ActionPlanner", "Client", "ModelProviderId"]);
@@ -101,9 +101,17 @@ const modelSelections = form.sections.flatMap((section) =>
 );
 assert.deepEqual(
   modelSelections.map((selection) => selection.id),
-  ["assistant", "planner-base", "action-planner", "final-answer", "tool-learning", "continuity-learning"],
+  ["assistant", "planner-base", "action-planner", "final-answer", "state-card", "continuity-learning"],
 );
-assert.equal(findField(form, ["ToolLearning", "Client", "MaxTokens"]).effectiveValue, -1);
+assert.equal(findField(form, ["StateCard", "HistoryBudgetCharacters"]).effectiveValue, 4_000);
+assert.deepEqual(findField(form, ["StateCard", "Client", "ModelProviderId"]).modelSelection, {
+  id: "state-card",
+  capability: "Chat",
+  valueKind: "model-id",
+  mutation: "config",
+  inheritance: { source: "default-model" },
+  required: false,
+});
 assert.deepEqual(findField(form, ["ContinuityLearning", "Client", "ModelProviderId"]).modelSelection, {
   id: "continuity-learning",
   capability: "Chat",
@@ -112,6 +120,7 @@ assert.deepEqual(findField(form, ["ContinuityLearning", "Client", "ModelProvider
   inheritance: { source: "default-model" },
   required: false,
 });
+assert.equal(findField(form, ["ContinuityLearning", "MemOS", "AutoLinkThreshold"]).effectiveValue, 0.75);
 assert.equal(findOptionalField(form, ["VectorModels", "Embedding", "Model"]), undefined);
 assert.equal(findOptionalField(form, ["ActionPlanner", "Client", "Provider"]), undefined);
 assert.equal(findOptionalField(form, ["ActionPlanner", "FinalAnswerClient", "Provider"]), undefined);

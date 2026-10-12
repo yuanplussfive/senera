@@ -94,7 +94,7 @@ export type ManualModelAddOptions = {
   maxOutputTokens?: number;
 };
 
-const manualModelTypeKeys = ["Chat", "Vision", "Embedding", "Rerank"] as const;
+const manualModelTypeKeys = ["Chat", "Vision"] as const;
 const manualCapabilityKeys = ["Reasoning", "ToolCalling"] as const;
 const contextWindowPresets = [
   { label: "128K", value: "128000" },

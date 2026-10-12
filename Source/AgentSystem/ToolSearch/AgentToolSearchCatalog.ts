@@ -18,7 +18,16 @@ import { isAgentSkillModelInvocable } from "../Skills/AgentSkillInvocation.js";
 import type { AgentToolResourceDiscoveryReader } from "../ToolRuntime/AgentToolResourceDiscovery.js";
 import { AgentCapabilitySearchIndex, type AgentCapabilityEmbeddingClient } from "./AgentCapabilitySearchIndex.js";
 import type { AgentCapabilityEmbeddingCacheStore } from "./AgentCapabilityEmbeddingCache.js";
-import { buildSkillCapabilityDocument, buildToolCapabilityDocument } from "./AgentCapabilityDocumentBuilder.js";
+import {
+  buildSkillCapabilityDocument,
+  buildToolCapabilityDocument,
+  buildMcpServiceCapabilityDocument,
+} from "./AgentCapabilityDocumentBuilder.js";
+import { AgentCapabilityKinds } from "./AgentCapabilitySearchIndex.js";
+import { partitionAgentToolSearchScoreCurve } from "./AgentToolSearchConfidence.js";
+import { isAgentMcpServiceAuthorized, type AgentToolAccessGrant } from "../ToolRuntime/AgentToolAccessGrant.js";
+import type { AgentMcpServiceDiscoveryEntry } from "../McpPackages/AgentMcpPackageTypes.js";
+import { agentMcpPackageToolName } from "../McpPackages/AgentMcpPackageIdentity.js";
 import { AgentToolSearchDocumentBuilder } from "./AgentToolSearchDocumentBuilder.js";
 import { AgentToolSearchIndex } from "./AgentToolSearchIndex.js";
 import { AgentToolSearchTokenizer } from "./AgentToolSearchTokenizer.js";
@@ -30,8 +39,12 @@ import {
 } from "./AgentToolSearchRuntimeCatalog.js";
 import { AgentCapabilityEmbeddingCachePolicy } from "./AgentToolSearchRuntimePolicies.js";
 import { isAgentToolMetaToolName } from "./AgentToolSearchRuntimeTypes.js";
+import { isAgentToolExecutable } from "../ToolRuntime/AgentToolAvailability.js";
+import { throwIfAborted } from "../Core/AgentCancellation.js";
+import { AgentToolSearchDiagnostics, type AgentToolSearchDiagnostic } from "./AgentToolSearchTypes.js";
 
 export interface AgentToolSearchCatalogOptions {
+  readonly mcpServices?: () => readonly AgentMcpServiceDiscoveryEntry[];
   readonly registry: AgentExtensionRegistry;
   readonly config: ResolvedAgentToolSearchConfig;
   readonly model: ResolvedAgentModelProviderConfig;
@@ -69,6 +82,7 @@ export class AgentToolSearchCatalog {
   private capabilityCatalogIdentity?: string;
   private capabilityRegistryRevision?: number;
   private capabilityToolCatalogIdentity?: string;
+  private capabilityServiceCatalogIdentity?: string;
   private capabilityCatalogGeneration = 0;
   private readonly capabilityEmbeddingCache = new AgentLruCache<string, readonly number[]>(
     AgentCapabilityEmbeddingCachePolicy.MinimumEntries,
@@ -95,7 +109,12 @@ export class AgentToolSearchCatalog {
 
   directToolNames(interaction?: AgentInteractionContext): string[] {
     return this.availableTools()
-      .filter((tool) => isAgentToolDirectlyInvocable(tool) && isAgentToolAvailableForInteraction(tool, interaction))
+      .filter(
+        (tool) =>
+          isAgentToolExecutable(tool) &&
+          isAgentToolDirectlyInvocable(tool) &&
+          isAgentToolAvailableForInteraction(tool, interaction),
+      )
       .map((tool) => tool.name);
   }
 
@@ -126,6 +145,51 @@ export class AgentToolSearchCatalog {
 
   capabilityIndex(): AgentCapabilitySearchIndex {
     return this.capabilitySearchIndex();
+  }
+
+  async discoverServices(
+    query: string,
+    grant?: AgentToolAccessGrant,
+    signal?: AbortSignal,
+    authorizedToolNames?: readonly string[],
+  ): Promise<{
+    services: readonly AgentMcpServiceDiscoveryEntry[];
+    diagnostics: readonly AgentToolSearchDiagnostic[];
+  }> {
+    throwIfAborted(signal);
+    const namesCeiling = grant?.authorizedToolNames ?? authorizedToolNames;
+    const services = (this.options.mcpServices?.() ?? []).filter(
+      (service) =>
+        (grant && isAgentMcpServiceAuthorized(grant, service)) ||
+        (!grant && !namesCeiling) ||
+        service.toolNames.some((name) => namesCeiling?.includes(agentMcpPackageToolName(service.id, name))),
+    );
+    if (services.length === 0) return { services: [], diagnostics: [] };
+    const allowed = new Set(services.map((service) => service.id));
+    const index = this.capabilityIndex();
+    const tokenizer = new AgentToolSearchTokenizer();
+    const lexicalQuery = tokenizer
+      .tokenizeContent(query)
+      .filter(
+        (token) =>
+          tokenizer.isIndependentContentToken(token) && !this.options.config.Tokenize.Stopwords.includes(token),
+      )
+      .join(" ");
+    const names = new Set(
+      index.lexical(lexicalQuery, AgentCapabilityKinds.Service, allowed).map((match) => match.name),
+    );
+    const diagnostics: AgentToolSearchDiagnostic[] = [];
+    if (this.options.config.Embedding.Enabled && this.options.embedding) {
+      try {
+        const matches = await index.semantic(query, AgentCapabilityKinds.Service, allowed, signal);
+        const curve = partitionAgentToolSearchScoreCurve(matches);
+        if (curve.bands.length > 1 && curve.bands[0]?.length === 1) names.add(curve.bands[0][0]!.name);
+      } catch {
+        throwIfAborted(signal);
+        diagnostics.push(AgentToolSearchDiagnostics.SemanticUnavailable);
+      }
+    }
+    return { services: services.filter((service) => names.has(service.id)), diagnostics };
   }
 
   resolveAuthorizedDynamicTools(
@@ -176,6 +240,7 @@ export class AgentToolSearchCatalog {
   }
 
   refresh(): void {
+    const previousCapabilities = this.capabilities;
     this.toolCatalog = undefined;
     this.index = undefined;
     this.searchIndexIdentity = undefined;
@@ -183,7 +248,9 @@ export class AgentToolSearchCatalog {
     this.capabilityCatalogIdentity = undefined;
     this.capabilityRegistryRevision = undefined;
     this.capabilityToolCatalogIdentity = undefined;
+    this.capabilityServiceCatalogIdentity = undefined;
     this.capabilityCatalogGeneration += 1;
+    if (previousCapabilities) void previousCapabilities.close();
   }
 
   private availableTools(): readonly RegisteredTool[] {
@@ -193,17 +260,21 @@ export class AgentToolSearchCatalog {
   private availableToolNames(interaction?: AgentInteractionContext): Set<string> {
     return new Set(
       this.availableTools()
+        .filter(isAgentToolExecutable)
         .filter((tool) => isAgentToolAvailableForInteraction(tool, interaction))
         .map((tool) => tool.name),
     );
   }
 
   private capabilitySearchIndex(catalog = this.toolCatalogSnapshot()): AgentCapabilitySearchIndex {
+    const serviceDocuments = (this.options.mcpServices?.() ?? []).map(buildMcpServiceCapabilityDocument);
+    const serviceIdentity = createAgentCapabilityCatalogRevision(serviceDocuments);
     if (
       this.capabilities &&
       catalog.registryRevision !== undefined &&
       this.capabilityRegistryRevision === catalog.registryRevision &&
-      this.capabilityToolCatalogIdentity === catalog.identity
+      this.capabilityToolCatalogIdentity === catalog.identity &&
+      this.capabilityServiceCatalogIdentity === serviceIdentity
     ) {
       return this.capabilities;
     }
@@ -215,7 +286,7 @@ export class AgentToolSearchCatalog {
       .listSkills()
       .filter(isAgentSkillModelInvocable)
       .map(buildSkillCapabilityDocument);
-    const capabilityDocuments = [...toolDocuments, ...skillDocuments];
+    const capabilityDocuments = [...toolDocuments, ...skillDocuments, ...serviceDocuments];
     const identity = createAgentCapabilityCatalogRevision(capabilityDocuments);
     if (this.capabilities && this.capabilityCatalogIdentity === identity) return this.capabilities;
     const embedding =
@@ -245,6 +316,7 @@ export class AgentToolSearchCatalog {
     this.capabilityCatalogIdentity = identity;
     this.capabilityRegistryRevision = catalog.registryRevision;
     this.capabilityToolCatalogIdentity = catalog.identity;
+    this.capabilityServiceCatalogIdentity = serviceIdentity;
     this.index = undefined;
     return this.capabilities;
   }

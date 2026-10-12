@@ -150,6 +150,30 @@ describe("agent delegation completion delivery", () => {
     expect(AgentDelegationCompletionDeliveryDefaults.maxAttempts).toBeGreaterThan(0);
     expect(AgentDelegationCompletionDeliveryDefaults.retryDelaysMs.length).toBeGreaterThan(0);
   });
+
+  test("does not enqueue cancellation as a background completion", async () => {
+    const database = openDelegationTestDatabase();
+    const repository = new AgentSqliteChildRunRepository(database);
+    const completed = vi.fn(async () => undefined);
+    const delivery = new AgentDelegationCompletionDelivery({
+      database,
+      repository,
+      retryDelaysMs: [0],
+    });
+    delivery.bind({ id: "test.cancelled", completed });
+
+    const terminal = createTerminalChild(repository, "child-cancelled");
+    await delivery.completed({ ...terminal, status: AgentChildRunStatuses.Cancelled });
+
+    expect(completed).not.toHaveBeenCalled();
+    expect(
+      database.connection
+        .prepare("SELECT 1 AS present FROM child_run_completion_deliveries WHERE child_run_id = ?")
+        .get(terminal.id),
+    ).toBeUndefined();
+    await delivery.stop();
+    database.close();
+  });
 });
 
 function createTerminalChild(repository: AgentSqliteChildRunRepository, id: string): AgentChildRunRecord {

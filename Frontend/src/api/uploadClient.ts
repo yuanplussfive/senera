@@ -3,6 +3,7 @@ import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import { resolveBackendMessage, type BackendMessageData } from "../i18n/backendMessage";
 import { SeneraResourceHttpRoutes } from "./resourceContract";
 import { parseResourceId } from "./resourceUri";
+import { buildHttpApiUrl } from "./httpApiUrl";
 
 export interface UploadResponse {
   ok: true;
@@ -30,9 +31,8 @@ export interface UploadFileOptions {
 export const DEFAULT_UPLOAD_TIMEOUT_MS = 30_000;
 
 export function buildResourceUploadUrl(httpBaseUrl: string): string {
-  const url = new URL(SeneraResourceHttpRoutes.Collection, `${httpBaseUrl.replace(/\/+$/u, "")}/`);
+  const url = new URL(buildHttpApiUrl(httpBaseUrl, SeneraResourceHttpRoutes.Collection));
   url.pathname = SeneraResourceHttpRoutes.Collection;
-  url.search = "";
   url.hash = "";
   return url.toString();
 }
@@ -50,12 +50,7 @@ export function buildResourceContentUrl(resourceBaseUrl: string, resourceUri: st
   if (url.protocol === "ws:" || url.protocol === "wss:") {
     url.protocol = url.protocol === "wss:" ? "https:" : "http:";
   }
-  url.pathname = `${SeneraResourceHttpRoutes.Collection}/${encodeURIComponent(resourceId)}`;
-  url.search = "";
-  url.hash = "";
-  url.username = "";
-  url.password = "";
-  return url.toString();
+  return buildHttpApiUrl(url.toString(), `${SeneraResourceHttpRoutes.Collection}/${encodeURIComponent(resourceId)}`);
 }
 
 export function uploadFile(

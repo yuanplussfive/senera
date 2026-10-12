@@ -62,12 +62,46 @@ export { Tabs, TabsContent, TabsList, TabsTrigger } from "./Tabs";
 export { ScrollArea, ScrollBar } from "./ScrollArea";
 export { SegmentedControl } from "./SegmentedControl";
 export type { SegmentedControlOption, SegmentedControlProps } from "./SegmentedControl";
+export { PillExpandNavbar } from "./PillExpandNavbar";
+export type { PillExpandNavbarItem, PillExpandNavbarProps } from "./PillExpandNavbar";
 export { SettingsControlRow, settingsSelectClassName } from "./SettingsControlRow";
 export { Skeleton } from "./Skeleton";
 export { AppIcon } from "./AppIcon";
+export { isAppIconName } from "./AppIcon";
 export type { AppIconName } from "./AppIcon";
+export { ActivityLoader } from "./ActivityLoader";
+export type { ActivityLoaderProps } from "./ActivityLoader";
+export { ActivityStatusIcon } from "./ActivityStatusIcon";
+export type { ActivityStatus, ActivityStatusMotion } from "./ActivityStatusIcon";
+export { StatusGlyph } from "./StatusGlyph";
+export type { StatusGlyphLiveMotion } from "./StatusGlyph";
+export { SeneraActivityMark } from "./SeneraActivityMark";
+export type { SeneraActivityMarkProps } from "./SeneraActivityMark";
+export { ExecutionStatusTones, executionStatusTone, isLiveActivityStatus } from "./executionStatusTone";
+export type { ExecutionStatusTone } from "./executionStatusTone";
 export { Spinner } from "./Spinner";
 export type { SpinnerSize } from "./Spinner";
+export { ThinkingIndicator } from "./ThinkingIndicator";
+export type { ThinkingIndicatorProps, ThinkingIndicatorSize } from "./ThinkingIndicator";
+export {
+  ThinkingSteps,
+  ThinkingStepsContent,
+  ThinkingStepsHeader,
+  ThinkingStep,
+  ThinkingStepDetails,
+  ThinkingStepSource,
+  ThinkingStepSources,
+} from "./ThinkingSteps";
+export type {
+  ThinkingStepDetailsProps,
+  ThinkingStepProps,
+  ThinkingStepsContentProps,
+  ThinkingStepsHeaderProps,
+  ThinkingStepsProps,
+  ThinkingStepSourceProps,
+  ThinkingStepSourcesProps,
+  ThinkingStepStatus,
+} from "./ThinkingSteps";
 export { SeneraToaster } from "./SeneraToaster";
 export { ErrorBanner, InlineError, RetryButton, StateView } from "./StateView";
 export type { StateViewStatus } from "./StateView";

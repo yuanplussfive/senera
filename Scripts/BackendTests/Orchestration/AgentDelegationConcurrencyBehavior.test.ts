@@ -524,6 +524,7 @@ describe("agent delegation concurrency and nesting", () => {
     });
     service.bindResourceClaims({
       project: async () => ({ mode: "claims", claims: [] }),
+      listClaimCapabilityIds: () => ["test.workspace"],
       projectDeclarations: async (declarations) => ({
         mode: "claims",
         claims: [

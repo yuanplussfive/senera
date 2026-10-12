@@ -27,7 +27,14 @@ export type ToolResultPresentationChange = AgentToolResultPresentationChange;
 export interface ToolCallsPlannedData {
   toolCount: number;
   tools: string[];
-  calls?: Array<{ callId: string; toolName: string; purpose?: string }>;
+  calls?: Array<{
+    callId: string;
+    toolName: string;
+    purpose?: string;
+    origin?: ToolEventOrigin;
+    modelContentIndex?: number;
+  }>;
+  modelMessageIndex?: number;
   status?: "planned" | "discovery_escalated" | "blocked";
   executionMode?: "parallel" | "sequential";
   batchId?: string;
@@ -53,6 +60,8 @@ export interface ToolCallStartedData {
   arguments?: unknown;
   origin?: ToolEventOrigin;
   batchId?: string;
+  modelMessageIndex?: number;
+  modelContentIndex?: number;
   /** Explicit backend lifecycle start; diagnostic views reject spans without it. */
   startedAt?: string;
 }
@@ -135,5 +144,7 @@ export interface AssistantMessageCreatedData {
   toolCount?: number;
   batchId?: string;
   toolCallIds?: string[];
+  modelMessageIndex?: number;
+  modelContentIndex?: number;
   reasonCode?: string;
 }

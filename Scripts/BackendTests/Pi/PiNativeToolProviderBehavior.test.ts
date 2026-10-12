@@ -1,5 +1,7 @@
 import {
   createAssistantMessageEventStream,
+  getCurrentSystemPrompt,
+  getCurrentTools,
   type Api,
   type AssistantMessage,
   type AssistantMessageEventStream,
@@ -28,6 +30,86 @@ import { AgentToolExposureState } from "../../../Source/AgentSystem/ToolRuntime/
 import { createModelProvider } from "../Support/AgentTestFixtures.js";
 
 describe("Pi native tool provider", () => {
+  test("forwards Pi's normalized transcript without flattening system sections", async () => {
+    const modelProvider = createModelProvider({
+      ToolPlanningMode: "native",
+      Capabilities: { ToolCalling: true },
+      Endpoint: "Responses",
+      MaxModelOutputTokens: 1_024,
+    });
+    const projection = projectSeneraModelProviderToPi(modelProvider);
+    const turnState = createTurnState(modelProvider.Model);
+    const frame = createFrame(turnState, "native-transcript-session", "native-transcript-request");
+    let forwardedContext: Context | undefined;
+    const provider = new AgentPiNativeToolProvider({
+      projection,
+      modelProvider,
+      frame,
+      apiStreams: nativeApiStreams((model, context) => {
+        forwardedContext = context;
+        return completedStream(model, [{ type: "text", text: "ready" }]);
+      }),
+    }).create();
+    const model = provider.getModels()[0];
+    if (!model) throw new Error("Expected the native Pi model.");
+    const systemMessage = {
+      role: "system" as const,
+      content: "Stable Pi prompt",
+      sections: { runtime: "Volatile runtime section" },
+      toolsAdded: [tool("ToolSearch")],
+      timestamp: 0,
+    };
+
+    await provider
+      .streamSimple(model, {
+        messages: [systemMessage, { role: "user", content: "Continue", timestamp: 1 }],
+      })
+      .result();
+
+    expect(forwardedContext?.messages[0]).toEqual(systemMessage);
+    expect(getCurrentSystemPrompt(forwardedContext?.messages ?? [])).toContain("Volatile runtime section");
+  });
+
+  test("prepares an over-capacity context before validating and sending it", async () => {
+    const modelProvider = createModelProvider({
+      ToolPlanningMode: "native",
+      Capabilities: { ToolCalling: true },
+      Endpoint: "ChatCompletions",
+    });
+    const projection = projectSeneraModelProviderToPi(modelProvider);
+    const turnState = createTurnState(modelProvider.Model, 2_000, 0);
+    const frame = createFrame(turnState, "prepared-context-session", "prepared-context-request");
+    let prepared = 0;
+    frame.setModelInputPreparer(async (context) => {
+      prepared += 1;
+      return {
+        ...context,
+        messages: [{ role: "user", content: "prepared request", timestamp: 2 }],
+      };
+    });
+    const requests: Context[] = [];
+    const streams = nativeApiStreams((_model, context) => {
+      requests.push(context);
+      return completedStream(_model, [{ type: "text", text: "ready" }]);
+    });
+    const provider = new AgentPiNativeToolProvider({ projection, modelProvider, frame, apiStreams: streams }).create();
+    const model = provider.getModels()[0];
+    if (!model) throw new Error("Expected the native Pi model.");
+
+    await provider
+      .streamSimple(model, {
+        systemPrompt: "system",
+        messages: [{ role: "user", content: "x".repeat(10_000), timestamp: 1 }],
+        tools: [tool("ToolSearch")],
+      })
+      .result();
+
+    expect(prepared).toBe(1);
+    expect(requests[0]?.messages.filter((message) => message.role !== "system")).toEqual([
+      { role: "user", content: "prepared request", timestamp: 2 },
+    ]);
+  });
+
   test("uses the declared API while projecting the current tool exposure and shared batch events", async () => {
     const modelProvider = createModelProvider({
       ToolPlanningMode: "native",
@@ -46,7 +128,7 @@ describe("Pi native tool provider", () => {
       onEvent: (event) => {
         events.push(event);
       },
-      skillCatalogFingerprint: "test",
+      skillCatalog: { skills: [], fingerprint: "test" },
       nativeProviderToolNames: ["ToolSearch", AgentPiNativeToolBridgeName],
       toolAccessGrant: turnState.context.toolAccessGrant,
       toolExposure: turnState.context.toolExposure,
@@ -67,6 +149,7 @@ describe("Pi native tool provider", () => {
           ? [
               { type: "text", text: "Finding the artifact." },
               { type: "toolCall", id: "call-search", name: "ToolSearch", arguments: { query: "artifact" } },
+              { type: "text", text: "I will inspect the returned result next." },
             ]
           : [{ type: "text", text: "Artifact reader is now available." }],
       );
@@ -86,12 +169,14 @@ describe("Pi native tool provider", () => {
     await provider.streamSimple(model, context).result();
 
     expect(model.api).toBe("openai-completions");
-    expect(requests.map((request) => request.tools?.map((entry) => entry.name))).toEqual([
+    expect(requests.map((request) => getCurrentTools(request.messages).map((entry) => entry.name))).toEqual([
       ["ToolSearch", AgentPiNativeToolBridgeName],
       ["ToolSearch", AgentPiNativeToolBridgeName],
     ]);
-    expect(requests[0]?.systemPrompt).toBe("<agent_system><native_tool_calling /></agent_system>");
-    expect(requests[0]?.messages).toEqual(context.messages);
+    expect(getCurrentSystemPrompt(requests[0]?.messages ?? [])).toBe(
+      "<agent_system><native_tool_calling /></agent_system>",
+    );
+    expect(requests[0]?.messages.filter((message) => message.role !== "system")).toEqual(context.messages);
     expect(requestOptions.map((options) => options?.cacheRetention)).toEqual(["long", "long"]);
     expect(requestOptions.map((options) => options?.sessionId)).toEqual([
       expect.stringMatching(/^[a-f0-9]{64}$/u),
@@ -101,15 +186,205 @@ describe("Pi native tool provider", () => {
     expect(turnState.toolBatchId("call-search")).toEqual(expect.stringMatching(/^toolbatch_/u));
     expect(events.map((event) => event.kind)).toEqual([
       AgentEventKinds.AssistantMessageCreated,
+      AgentEventKinds.AssistantMessageCreated,
       AgentEventKinds.ToolCallsPlanned,
     ]);
-    expect(events[1]?.data).toMatchObject({
+    expect(events.slice(0, 2).map((event) => event.data)).toMatchObject([
+      { kind: "tool_preface", content: "Finding the artifact.", modelMessageIndex: 0, modelContentIndex: 0 },
+      {
+        kind: "tool_preface",
+        content: "I will inspect the returned result next.",
+        modelMessageIndex: 0,
+        modelContentIndex: 2,
+      },
+    ]);
+    expect(events[2]?.data).toMatchObject({
       calls: [{ callId: "call-search", toolName: "ToolSearch" }],
     });
     expect(turnState.context.usageLedger.snapshot()).toEqual([
       expect.objectContaining({ stage: "pi.native.tool_calling" }),
       expect.objectContaining({ stage: "pi.native.tool_calling" }),
     ]);
+  });
+
+  test("does not reject a Pi request because of opaque thinking signatures and forwards them unchanged", async () => {
+    const modelProvider = createModelProvider({
+      ToolPlanningMode: "native",
+      Capabilities: { ToolCalling: true },
+      Endpoint: "ChatCompletions",
+    });
+    const projection = projectSeneraModelProviderToPi(modelProvider);
+    const turnState = createTurnState(modelProvider.Model, 4_000, 3_000);
+    const frame = createFrame(turnState, "signature-budget-session", "signature-budget-request");
+    const signature = "encrypted-reasoning-payload".repeat(8_000);
+    let forwardedContext: Context | undefined;
+    const provider = new AgentPiNativeToolProvider({
+      projection,
+      modelProvider,
+      frame,
+      apiStreams: nativeApiStreams((model, context) => {
+        forwardedContext = context;
+        return completedStream(model, [{ type: "text", text: "The request reached the provider." }]);
+      }),
+    }).create();
+    const model = provider.getModels()[0];
+    if (!model) throw new Error("Expected the native Pi model.");
+
+    const result = await provider
+      .streamSimple(model, {
+        messages: [
+          {
+            role: "assistant",
+            api: "openai-completions",
+            provider: "test-endpoint",
+            model: modelProvider.Model,
+            content: [{ type: "thinking", thinking: "", thinkingSignature: signature }],
+            usage: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 0,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+            },
+            stopReason: "stop",
+            timestamp: 1,
+          },
+          { role: "user", content: "continue", timestamp: 2 },
+        ],
+        systemPrompt: "system",
+        tools: [tool("ToolSearch")],
+      })
+      .result();
+
+    expect(result.stopReason).toBe("stop");
+    expect(forwardedContext?.messages.find((message) => message.role === "assistant")).toMatchObject({
+      role: "assistant",
+      content: [{ type: "thinking", thinkingSignature: signature }],
+    });
+  });
+
+  test("forwards live native deltas with an active persona when rewrite switches are off", async () => {
+    const modelProvider = createModelProvider({
+      ToolPlanningMode: "native",
+      Capabilities: { ToolCalling: true },
+      Endpoint: "Responses",
+    });
+    const projection = projectSeneraModelProviderToPi(modelProvider);
+    const turnState = createTurnState(modelProvider.Model);
+    const source = createAssistantMessageEventStream();
+    const frame = new AgentPiMutableSessionFrame({
+      sessionId: "native-roleplay-stream-session",
+      requestId: "native-roleplay-stream-request",
+      step: 1,
+      turnState,
+      personaActive: true,
+      prefaceRewriteEnabled: false,
+      finalResponseRewriteEnabled: false,
+      skillCatalog: { skills: [], fingerprint: "test" },
+      nativeProviderToolNames: ["ToolSearch"],
+      toolAccessGrant: turnState.context.toolAccessGrant,
+      toolExposure: turnState.context.toolExposure,
+      selectedPromptTemplates: [],
+      tokenBudget: turnState.context.tokenBudget,
+      preflight: async () => undefined,
+    });
+    const provider = new AgentPiNativeToolProvider({
+      projection,
+      modelProvider,
+      frame,
+      apiStreams: nativeApiStreams(() => source),
+    }).create();
+    const model = provider.getModels()[0];
+    if (!model) throw new Error("Expected the native Pi model.");
+
+    const output = provider.streamSimple(model, {
+      messages: [{ role: "user", content: "Answer directly.", timestamp: 1 }],
+      tools: [tool("ToolSearch")],
+    });
+    const iterator = output[Symbol.asyncIterator]();
+    const message: AssistantMessage = {
+      role: "assistant",
+      api: model.api,
+      provider: model.provider,
+      model: model.id,
+      content: [
+        { type: "thinking", thinking: "Checking the request." },
+        { type: "text", text: "Live answer." },
+      ],
+      usage: {
+        input: 2,
+        output: 2,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 4,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp: 2,
+    };
+    const partial = (content: AssistantMessage["content"]): AssistantMessage => ({
+      ...message,
+      content,
+      stopReason: "pending",
+    });
+    source.push({ type: "start", partial: partial([]) });
+    source.push({
+      type: "thinking_start",
+      contentIndex: 0,
+      partial: partial([{ type: "thinking", thinking: "" }]),
+    });
+    source.push({
+      type: "thinking_delta",
+      contentIndex: 0,
+      delta: "Checking",
+      partial: partial([{ type: "thinking", thinking: "Checking" }]),
+    });
+
+    expect((await iterator.next()).value?.type).toBe("start");
+    expect((await iterator.next()).value?.type).toBe("thinking_start");
+    expect((await iterator.next()).value).toMatchObject({ type: "thinking_delta", delta: "Checking" });
+
+    source.push({
+      type: "thinking_delta",
+      contentIndex: 0,
+      delta: " the request.",
+      partial: partial([{ type: "thinking", thinking: "Checking the request." }]),
+    });
+    expect((await iterator.next()).value).toMatchObject({ type: "thinking_delta", delta: " the request." });
+    source.push({
+      type: "thinking_end",
+      contentIndex: 0,
+      content: "Checking the request.",
+      partial: partial([{ type: "thinking", thinking: "Checking the request." }]),
+    });
+    expect((await iterator.next()).value?.type).toBe("thinking_end");
+
+    source.push({
+      type: "text_start",
+      contentIndex: 1,
+      partial: partial([
+        { type: "thinking", thinking: "Checking the request." },
+        { type: "text", text: "" },
+      ]),
+    });
+    source.push({
+      type: "text_delta",
+      contentIndex: 1,
+      delta: "Live",
+      partial: partial([
+        { type: "thinking", thinking: "Checking the request." },
+        { type: "text", text: "Live" },
+      ]),
+    });
+
+    expect((await iterator.next()).value?.type).toBe("text_start");
+    expect((await iterator.next()).value).toMatchObject({ type: "text_delta", delta: "Live" });
+
+    source.push({ type: "text_end", contentIndex: 1, content: "Live answer.", partial: message });
+    source.push({ type: "done", reason: "stop", message });
+    source.end(message);
+    await expect(output.result()).resolves.toMatchObject({ content: message.content });
   });
 
   test("replaces an active roleplay tool-preface before registering the native tool batch", async () => {
@@ -129,12 +404,12 @@ describe("Pi native tool provider", () => {
       requestId: "native-roleplay-request",
       step: 1,
       turnState,
-      roleplayPresetActive: true,
+      personaActive: true,
       prefaceRewriteEnabled: true,
       onEvent: (event) => {
         events.push(event);
       },
-      skillCatalogFingerprint: "test",
+      skillCatalog: { skills: [], fingerprint: "test" },
       nativeProviderToolNames: ["ToolSearch", AgentPiNativeToolBridgeName],
       toolAccessGrant: turnState.context.toolAccessGrant,
       toolExposure: turnState.context.toolExposure,
@@ -243,7 +518,7 @@ describe("Pi native tool provider", () => {
     });
   });
 
-  test("projects a roleplay final response only after this turn has registered tool work", async () => {
+  test("projects an opted-in final response only after this turn has registered tool work", async () => {
     const modelProvider = createModelProvider({
       ToolPlanningMode: "native",
       Capabilities: { ToolCalling: true },
@@ -259,8 +534,9 @@ describe("Pi native tool provider", () => {
       requestId: "native-roleplay-final-request",
       step: 1,
       turnState,
-      roleplayPresetActive: true,
-      skillCatalogFingerprint: "test",
+      personaActive: true,
+      finalResponseRewriteEnabled: true,
+      skillCatalog: { skills: [], fingerprint: "test" },
       nativeProviderToolNames: ["ToolSearch", AgentPiNativeToolBridgeName],
       toolAccessGrant: turnState.context.toolAccessGrant,
       toolExposure: turnState.context.toolExposure,
@@ -336,7 +612,7 @@ describe("Pi native tool provider", () => {
       requestId: "over-capacity-request",
       step: 1,
       turnState,
-      skillCatalogFingerprint: "test",
+      skillCatalog: { skills: [], fingerprint: "test" },
       nativeProviderToolNames: ["ToolSearch"],
       toolAccessGrant: turnState.context.toolAccessGrant,
       toolExposure: turnState.context.toolExposure,
@@ -364,7 +640,7 @@ describe("Pi native tool provider", () => {
     expect(turnState.context.tokenBudget.availableTokens()).toBe(0);
   });
 
-  test("rejects an oversized final request before invoking the vendor stream", async () => {
+  test("forwards an oversized request without a Senera preflight rejection", async () => {
     const modelProvider = createModelProvider({
       ToolPlanningMode: "native",
       Capabilities: { ToolCalling: true },
@@ -379,7 +655,7 @@ describe("Pi native tool provider", () => {
       requestId: "oversized-native-request",
       step: 1,
       turnState,
-      skillCatalogFingerprint: "test",
+      skillCatalog: { skills: [], fingerprint: "test" },
       nativeProviderToolNames: ["ToolSearch"],
       toolAccessGrant: turnState.context.toolAccessGrant,
       toolExposure: turnState.context.toolExposure,
@@ -407,9 +683,165 @@ describe("Pi native tool provider", () => {
       })
       .result();
 
-    expect(result.stopReason).toBe("error");
-    expect(result.errorMessage).toContain("planning input uses");
-    expect(upstreamCalls).toBe(0);
+    expect(result.stopReason).toBe("stop");
+    expect(upstreamCalls).toBe(1);
+  });
+
+  test("forwards completed historical tool results without a second projection", async () => {
+    const modelProvider = createModelProvider({
+      ToolPlanningMode: "native",
+      Capabilities: { ToolCalling: true },
+      Endpoint: "Responses",
+      ContextWindowTokens: 1_200,
+      MaxModelOutputTokens: 64,
+    });
+    const projection = projectSeneraModelProviderToPi(modelProvider);
+    const turnState = createTurnState(modelProvider.Model, 1_200, 0);
+    const frame = createFrame(turnState, "turn-projection-session", "turn-projection-request");
+    let upstreamCalls = 0;
+    let forwardedContext: Context | undefined;
+    const provider = new AgentPiNativeToolProvider({
+      projection,
+      modelProvider,
+      frame,
+      apiStreams: nativeApiStreams((model, context) => {
+        upstreamCalls += 1;
+        forwardedContext = context;
+        return completedStream(model, [{ type: "text", text: "Turn completed." }]);
+      }),
+    }).create();
+    const model = provider.getModels()[0];
+    if (!model) throw new Error("Expected the native Pi model.");
+    const observation = JSON.stringify({
+      type: "senera.tool_observation.v5",
+      status: "success",
+      execution_status: "completed",
+      output_availability: "complete",
+      detail: {
+        summary: "Historical evidence.",
+        result: "large historical result ".repeat(1_500),
+        evidence: [{ evidence_uri: "senera://evidence/turn", label: "history" }],
+      },
+    });
+
+    const result = await provider
+      .streamSimple(model, {
+        messages: [
+          { role: "user", content: "Earlier request", timestamp: 1 },
+          {
+            role: "toolResult",
+            toolCallId: "call-1",
+            toolName: "WorkspaceRead",
+            content: [{ type: "text", text: observation }],
+            isError: false,
+            timestamp: 2,
+          },
+          { role: "user", content: "Current request", timestamp: 3 },
+        ],
+        tools: [tool("ToolSearch")],
+      })
+      .result();
+
+    expect(result.stopReason).toBe("stop");
+    expect(upstreamCalls).toBe(1);
+    const forwardedText = JSON.stringify(forwardedContext);
+    expect(forwardedText).toContain("senera://evidence/turn");
+    expect(forwardedText).toContain("Historical evidence.");
+    expect(forwardedText).toContain("large historical result ".repeat(100));
+  });
+
+  test("passes the native compaction context through unchanged", async () => {
+    const modelProvider = createModelProvider({
+      ToolPlanningMode: "native",
+      Capabilities: { ToolCalling: true },
+      Endpoint: "Responses",
+      ContextWindowTokens: 1_200,
+      MaxModelOutputTokens: 64,
+    });
+    const projection = projectSeneraModelProviderToPi(modelProvider);
+    const turnState = createTurnState(modelProvider.Model, 1_200, 0);
+    const frame = createFrame(turnState, "compaction-projection-session", "compaction-projection-request");
+    let upstreamCalls = 0;
+    let forwardedContext: Context | undefined;
+    let forwardedOptions: StreamOptions | SimpleStreamOptions | undefined;
+    const provider = new AgentPiNativeToolProvider({
+      projection,
+      modelProvider,
+      frame,
+      apiStreams: nativeApiStreams((model, context, options) => {
+        upstreamCalls += 1;
+        forwardedContext = context;
+        forwardedOptions = options;
+        return completedStream(model, [{ type: "text", text: "Summary created." }]);
+      }),
+    }).create();
+    const model = provider.getModels()[0];
+    if (!model) throw new Error("Expected the native Pi model.");
+    const source = "large historical tool result ".repeat(1_500);
+
+    const result = await provider
+      .streamSimple(
+        model,
+        {
+          systemPrompt: "You are a context summarization assistant.",
+          messages: [
+            {
+              role: "user",
+              content: `<conversation>\n[User]: inspect the project\n\n[Tool result]: ${source}\n</conversation>\n\nSummarize the history.`,
+              timestamp: 1,
+            },
+          ],
+        },
+        { cacheRetention: "none" },
+      )
+      .result();
+
+    expect(result.stopReason).toBe("stop");
+    expect(upstreamCalls).toBe(1);
+    expect(forwardedOptions?.cacheRetention).toBe("none");
+    const forwardedText = JSON.stringify(forwardedContext);
+    expect(forwardedText).toContain(source.slice(0, 100));
+    expect(forwardedText).not.toContain('\\"status\\":\\"unknown\\"');
+    expect(turnState.context.tokenBudget.snapshot().availableTokens).toBeGreaterThanOrEqual(0);
+  });
+
+  test("removes active tool declarations from native compaction requests", async () => {
+    const modelProvider = createModelProvider({
+      ToolPlanningMode: "native",
+      Capabilities: { ToolCalling: true },
+      Endpoint: "Responses",
+      ContextWindowTokens: 1_200,
+      MaxModelOutputTokens: 64,
+    });
+    const projection = projectSeneraModelProviderToPi(modelProvider);
+    const turnState = createTurnState(modelProvider.Model, 1_200, 0);
+    const frame = createFrame(turnState, "compaction-tools-session", "compaction-tools-request");
+    let forwardedContext: Context | undefined;
+    const provider = new AgentPiNativeToolProvider({
+      projection,
+      modelProvider,
+      frame,
+      apiStreams: nativeApiStreams((model, context) => {
+        forwardedContext = context;
+        return completedStream(model, [{ type: "text", text: "Summary created." }]);
+      }),
+    }).create();
+    const model = provider.getModels()[0];
+    if (!model) throw new Error("Expected the native Pi model.");
+
+    await provider
+      .streamSimple(
+        model,
+        {
+          systemPrompt: "You are a context summarization assistant.",
+          messages: [{ role: "user", content: "Summarize this history.", timestamp: 1 }],
+          tools: [tool("ToolSearch")],
+        },
+        { cacheRetention: "none" },
+      )
+      .result();
+
+    expect(getCurrentTools(forwardedContext?.messages ?? [])).toEqual([]);
   });
 
   test("keeps inline image bytes out of text token budgeting while forwarding the image", async () => {
@@ -496,6 +928,49 @@ describe("Pi native tool provider", () => {
     expect(result.errorMessage).toContain("stream_read_error");
   });
 
+  test("reports the provider request deadline as an error instead of caller cancellation", async () => {
+    const modelProvider = createModelProvider({
+      ToolPlanningMode: "native",
+      Capabilities: { ToolCalling: true },
+      Endpoint: "Responses",
+      FirstTokenTimeoutMs: -1,
+      MaxRequestMs: 10,
+    });
+    const projection = projectSeneraModelProviderToPi(modelProvider);
+    const turnState = createTurnState(modelProvider.Model);
+    const frame = createFrame(turnState, "provider-timeout-session", "provider-timeout-request");
+    const provider = new AgentPiNativeToolProvider({
+      projection,
+      modelProvider,
+      frame,
+      apiStreams: nativeApiStreams((model, _context, options) => {
+        const stream = createAssistantMessageEventStream();
+        options?.signal?.addEventListener(
+          "abort",
+          () => {
+            const failure = failureMessage(model, "upstream aborted after the provider deadline");
+            stream.push({ type: "error", reason: "aborted", error: failure });
+            stream.end(failure);
+          },
+          { once: true },
+        );
+        return stream;
+      }),
+    }).create();
+    const model = provider.getModels()[0];
+    if (!model) throw new Error("Expected the native Pi model.");
+
+    const result = await provider
+      .streamSimple(model, {
+        messages: [{ role: "user", content: "Wait for the deadline.", timestamp: 1 }],
+        tools: [tool("ToolSearch")],
+      })
+      .result();
+
+    expect(result.stopReason).toBe("error");
+    expect(result.errorMessage).not.toContain("upstream aborted after the provider deadline");
+  });
+
   test("preserves caller cancellation when the upstream reports an error after abort", async () => {
     const modelProvider = createModelProvider({
       ToolPlanningMode: "native",
@@ -544,6 +1019,8 @@ function createTurnState(model: string, contextWindowTokens = 16_384, outputRese
     exposedToolNames: ["ToolSearch"],
   });
   return new AgentPiTurnState({
+    systemPrompt: "Test agent system context.",
+    userMessage: "Test native-provider request.",
     approvalMode: "agent",
     sessionId: "native-tools-session",
     requestId: "native-tools-request",
@@ -567,7 +1044,7 @@ function createFrame(turnState: AgentPiTurnState, sessionId: string, requestId: 
     requestId,
     step: 1,
     turnState,
-    skillCatalogFingerprint: "test",
+    skillCatalog: { skills: [], fingerprint: "test" },
     nativeProviderToolNames: ["ToolSearch"],
     toolAccessGrant: turnState.context.toolAccessGrant,
     toolExposure: turnState.context.toolExposure,

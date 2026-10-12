@@ -1,5 +1,3 @@
-import type { AgentPiCompactionCandidateRuntimeStatus } from "./AgentPiCompactionCandidateLifecycle.js";
-
 export const AgentPiSessionExportFormats = {
   Jsonl: "jsonl",
   Html: "html",
@@ -18,8 +16,6 @@ export interface AgentPiSessionRuntimeStatus {
   readonly cached: boolean;
   readonly stats: AgentPiSessionStats;
   readonly contextUsage?: AgentPiSessionContextUsage;
-  /** Safe status only; never includes a candidate ID, summary, or transcript boundary. */
-  readonly compactionCandidate?: AgentPiCompactionCandidateRuntimeStatus;
 }
 
 export interface AgentPiSessionStats {

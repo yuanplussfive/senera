@@ -2,39 +2,35 @@ import { describe, expect, test } from "vitest";
 import { AgentContinuityLifecycleCoordinator } from "../../../Source/AgentSystem/Continuity/AgentContinuityLifecycle.js";
 
 describe("continuity lifecycle", () => {
-  test("flushes learning before warming the active session at compaction", async () => {
+  test("flushes semantic learning before the compaction boundary completes", async () => {
     const calls: string[] = [];
     const lifecycle = new AgentContinuityLifecycleCoordinator({
       memory: {
-        flushContinuityLearning: async () => {
+        flushSemanticLearning: async () => {
           calls.push("flush");
         },
         close: async () => {
           calls.push("close");
         },
       },
-      promptContext: {
-        prefetch: ({ sessionId } = {}) => {
-          calls.push(`prefetch:${sessionId}`);
-        },
-      },
+      promptContext: {},
     });
 
     await lifecycle.beforeCompaction("session-1");
 
-    expect(calls).toEqual(["flush", "prefetch:session-1"]);
+    expect(calls).toEqual(["flush"]);
   });
 
   test("closes once and rejects a later compaction boundary", async () => {
     let closeCount = 0;
     const lifecycle = new AgentContinuityLifecycleCoordinator({
       memory: {
-        flushContinuityLearning: async () => undefined,
+        flushSemanticLearning: async () => undefined,
         close: async () => {
           closeCount += 1;
         },
       },
-      promptContext: { prefetch: () => undefined },
+      promptContext: {},
     });
 
     await Promise.all([lifecycle.close(), lifecycle.close()]);
@@ -55,7 +51,7 @@ describe("continuity lifecycle", () => {
     });
     const lifecycle = new AgentContinuityLifecycleCoordinator({
       memory: {
-        flushContinuityLearning: async () => {
+        flushSemanticLearning: async () => {
           calls.push("flush");
           signalFlushStarted();
           await flushReleased;
@@ -64,11 +60,7 @@ describe("continuity lifecycle", () => {
           calls.push("close");
         },
       },
-      promptContext: {
-        prefetch: () => {
-          calls.push("prefetch");
-        },
-      },
+      promptContext: {},
     });
 
     const compaction = lifecycle.beforeCompaction("session-1");
@@ -79,6 +71,6 @@ describe("continuity lifecycle", () => {
     await expect(compaction).rejects.toThrow("already closed");
     await close;
 
-    expect(calls).toEqual(["flush", "close"]);
+    expect(calls).toEqual(["flush", "flush", "close"]);
   });
 });

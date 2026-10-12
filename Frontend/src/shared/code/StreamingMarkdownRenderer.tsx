@@ -1,24 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "../../lib/util";
-import { LazyMarkdownRenderer } from "./LazyMarkdownRenderer";
-import type { MarkdownRendererProps } from "./MarkdownRenderer";
+import { MarkdownRenderer, type MarkdownRendererProps } from "./MarkdownRenderer";
 
-/**
- * Parsing every token can make a virtualized conversation remeasure constantly.
- * A short independent cadence keeps Markdown live while preserving scroll and
- * input responsiveness during long answers.
- */
+/** Keep parsing on a frame-sized cadence so a fast provider stream cannot
+ * force a full Markdown tree/layout pass for every delta. */
 export const StreamingMarkdownRenderCadenceMs = 64;
 
 export function StreamingMarkdownRenderer({
   children,
   className,
   contentClassName,
+  contentStyle,
   compact,
   externalLinkPresentation,
 }: Omit<MarkdownRendererProps, "lightweightCode">): JSX.Element {
   const renderedContent = useStreamingMarkdownContent(children);
-
   return (
     <div
       className={cn("min-w-0", className)}
@@ -26,15 +22,16 @@ export function StreamingMarkdownRenderer({
       data-streaming-markdown-renderer
       aria-live="polite"
     >
-      <LazyMarkdownRenderer
+      <MarkdownRenderer
         className="min-w-0"
         contentClassName={contentClassName}
+        contentStyle={contentStyle}
         compact={compact}
         lightweightCode
         externalLinkPresentation={externalLinkPresentation}
       >
         {renderedContent}
-      </LazyMarkdownRenderer>
+      </MarkdownRenderer>
       <span className="caret-blink" aria-hidden="true" />
     </div>
   );

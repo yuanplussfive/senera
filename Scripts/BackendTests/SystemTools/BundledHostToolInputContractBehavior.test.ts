@@ -70,13 +70,19 @@ describe("bundled Host Tool input contracts", () => {
     const write = byCapability.get("memory.write")!;
 
     expect(
-      artifact.safeParse({ artifactUris: ["senera://artifact/art_1234567890abcdef12345678"], refs: ["raw"] }).success,
+      artifact.safeParse({ artifactUris: ["senera://artifact/art_1234567890abcdef12345678"], view: "compact" }).success,
+    ).toBe(true);
+    expect(
+      artifact.safeParse({ artifactUris: ["senera://artifact/art_1234567890abcdef12345678"], view: "full" }).success,
     ).toBe(true);
     expect(
       artifact.safeParse({ artifactUris: { item: ["senera://artifact/art_1234567890abcdef12345678"] } }).success,
     ).toBe(false);
-    expect(recall.safeParse({ query: "preference", refs: ["memory://preference/coffee"] }).success).toBe(true);
-    expect(recall.safeParse({ refs: ["memory://preference/coffee"] }).success).toBe(true);
+    expect(
+      artifact.safeParse({ artifactUris: ["senera://artifact/art_1234567890abcdef12345678"], refs: ["raw"] }).success,
+    ).toBe(false);
+    expect(recall.safeParse({ query: "preference", refs: ["memos:coffee"] }).success).toBe(true);
+    expect(recall.safeParse({ refs: ["memos:coffee"] }).success).toBe(true);
     expect(recall.safeParse({}).success).toBe(false);
     expect(recall.safeParse({ query: "preference", refs: { item: ["memory://preference/coffee"] } }).success).toBe(
       false,
@@ -84,9 +90,9 @@ describe("bundled Host Tool input contracts", () => {
     expect(
       write.safeParse({
         summary: "Prefers coffee without sugar.",
-        until: "permanent",
       }).success,
     ).toBe(true);
+    expect(write.safeParse({ summary: "Prefers coffee.", until: "permanent" }).success).toBe(false);
     expect(
       write.safeParse({
         type: "preference",

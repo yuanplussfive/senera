@@ -5,7 +5,7 @@
   "presentation": {
     "category": "workspace-list",
     "icon": "file-text",
-    "activity": { "action": { "zh-CN": "浏览目录", "en-US": "List" }, "argumentPath": "/path" }
+    "activity": { "action": { "zh-CN": "浏览目录", "en-US": "List directory" }, "argumentPath": "/path" }
   },
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -52,7 +52,6 @@
     "required": ["content"],
     "additionalProperties": false
   },
-  "observationProjection": "observations/WorkspaceList.projection.json",
   "permissions": ["filesystem:workspace:read"],
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
   "runtime": {

@@ -11,7 +11,8 @@ import { projectAgentToolInvocationSchema } from "../ToolRuntime/AgentToolExecut
 import { resolveAvailableAgentToolExecutionTargets } from "../ToolRuntime/AgentToolExecutionPlan.js";
 import type { ToolExecutionTarget } from "../Types/AgentToolContractTypes.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
-import { orderToolNamesByPreference } from "../ToolRuntime/AgentToolAccessGrant.js";
+import { orderToolNamesByPreference, resolveAgentToolGrantNames } from "../ToolRuntime/AgentToolAccessGrant.js";
+import { isAgentToolExecutable } from "../ToolRuntime/AgentToolAvailability.js";
 import { ensureObjectRootJsonSchema } from "../ToolContracts/AgentJsonSchemaObjectRoot.js";
 import type { AgentModelToolPlanningMode } from "../ModelEndpoints/AgentModelEndpointContract.js";
 import { AgentPiNativeToolBridge } from "./AgentPiNativeToolBridge.js";
@@ -43,6 +44,7 @@ export interface AgentPiToolSet {
   readonly fingerprint: string;
   readonly activeToolNames: readonly string[];
   materialize(context: () => AgentPiToolProjectionContext): AgentPiToolDefinition[];
+  refresh(): AgentPiToolSet;
 }
 
 export interface AgentPiToolPreflightProjection {
@@ -70,12 +72,15 @@ export class AgentPiToolRegistryProjector {
     const exposure = context.toolExposure?.snapshot();
     const visibleToolNames =
       this.options.toolPlanningMode === "native"
-        ? toolAccessGrant?.authorizedToolNames
+        ? toolAccessGrant
+          ? resolveAgentToolGrantNames(toolAccessGrant, this.options.registry.listTools())
+          : undefined
         : (exposure?.exposedToolNames ?? toolAccessGrant?.exposedToolNames);
     return this.createToolSet(
       visibleToolNames ?? context.visibleToolNames,
       exposure?.preferredToolNames ?? toolAccessGrant?.preferredToolNames,
       context.interaction,
+      context.nativeToolNames,
     ).materialize(() => context);
   }
 
@@ -87,10 +92,15 @@ export class AgentPiToolRegistryProjector {
     visibleToolNames?: AgentPiToolProjectionContext["visibleToolNames"],
     preferredToolNames: readonly string[] = [],
     interaction?: AgentPiToolProjectionContext["interaction"],
+    nativeToolNames: readonly string[] = [],
   ): AgentPiToolSet {
     const runtimeTargets = this.options.availableExecutionTargets?.() ?? ["Sandbox", "Local"];
+    const nativeToolNameSet = new Set(nativeToolNames);
     const tools = this.visibleTools(visibleToolNames, preferredToolNames, runtimeTargets, interaction).filter(
-      (tool) => this.options.toolPlanningMode !== "native" || isAgentToolDirectlyInvocable(tool),
+      (tool) =>
+        this.options.toolPlanningMode !== "native" ||
+        isAgentToolDirectlyInvocable(tool) ||
+        nativeToolNameSet.has(tool.name),
     );
     const projections = tools.map((tool) => ({ tool, descriptor: this.projectDescriptor(tool, runtimeTargets) }));
     const bridgeEnabled = this.options.toolPlanningMode === "native";
@@ -110,6 +120,7 @@ export class AgentPiToolRegistryProjector {
     return {
       fingerprint,
       activeToolNames,
+      refresh: () => this.createToolSet(visibleToolNames, preferredToolNames, interaction, nativeToolNames),
       materialize: (context) => [
         ...projections.map(({ tool, descriptor }) => this.materializeTool(tool, descriptor, context)),
         ...(bridgeEnabled ? [this.nativeBridge.definition(context)] : []),
@@ -154,6 +165,7 @@ export class AgentPiToolRegistryProjector {
     const registered = this.options.registry
       .listTools()
       .filter((tool) => isAgentToolSupportedByPlanningMode(tool, this.options.toolPlanningMode))
+      .filter(isAgentToolExecutable)
       .filter((tool) => isAgentToolAvailableForInteraction(tool, interaction))
       .filter((tool) => resolveAvailableAgentToolExecutionTargets(tool, runtimeTargets).length > 0);
     if (!visibleToolNames) {
@@ -253,7 +265,6 @@ function projectExecutionContractIdentity(tool: RegisteredTool): Record<string, 
     childGrant: tool.childGrant,
     approval: tool.approval,
     artifactPolicy: tool.artifactPolicy,
-    contentPolicy: tool.contentPolicy,
     interactionSurfaces: tool.interactionSurfaces,
   };
 }

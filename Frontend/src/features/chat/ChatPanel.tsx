@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useMemo } from "react";
+import { useComposerDraft } from "./useComposerDraft";
 import { readActiveRun, useStore, DEFAULT_SESSION_TITLE } from "../../store/sessionStore";
 import type { ChatMessage, RunRecord } from "../../store/sessionStore";
 import { useChatState } from "../../store/selectors/chatSelectors";
@@ -15,18 +16,21 @@ import { UploadPreviewProvider } from "./UploadPreviewRegistry";
 import { motionTimings, useMotionLevel, type MotionLevel } from "../../shared/motion";
 import type { ChatPanelProps } from "./ChatPanelContracts";
 import { blocksSessionInput } from "../../store/session/sessionHydration";
+import { projectRuntimeUsageFromSessionSnapshot } from "../observability/runtimeDiagnosticProjection";
 
 export function ChatPanel({
   userProfile,
   modelConfig,
-  presetConfig,
+  personaConfig,
   runtime,
   messageActions,
   navigationActions,
 }: ChatPanelProps): JSX.Element {
-  const [composerValue, setComposerValue] = useState("");
   const activeId = useStore((s) => s.activeSessionId);
+  const draftKey = JSON.stringify([runtime.workspaceId, activeId]);
+  const [composerValue, setComposerValue] = useComposerDraft(draftKey);
   const approvalMode = useStore((s) => s.executionApprovalMode);
+  const activationCatalog = useStore((s) => s.activationCatalog);
   const setApprovalMode = useStore((s) => s.setExecutionApprovalMode);
   const { session, historyFailed, historyHydrating, hydrationState } = useChatState(activeId);
   const { level, reduceMotion, disableMotion } = useMotionLevel();
@@ -35,6 +39,10 @@ export function ChatPanel({
   const runs = session?.runs ?? [];
   const hasConversationContent = hasRenderableConversationContent(messages, runs);
   const currentRun = readActiveRun(session ?? undefined);
+  const runtimeUsage = useMemo(
+    () => projectRuntimeUsageFromSessionSnapshot(session?.runtimeSnapshot),
+    [session?.runtimeSnapshot],
+  );
   const isRunning = currentRun?.status === "running";
   const isSettling = isRunning && (currentRun.outputState === "available" || currentRun.outputState === "committed");
   const isCancelling = currentRun?.status === "cancelling";
@@ -102,6 +110,8 @@ export function ChatPanel({
                   userProfile={userProfile}
                   onForkFromMessage={messageActions.onForkFromMessage}
                   onRegenerate={messageActions.onRegenerate}
+                  onRetryRun={messageActions.onRetryRun}
+                  onContinueRun={messageActions.onContinueRun}
                   onEditUserMessage={messageActions.onEditUserMessage}
                   onDeleteFromMessage={messageActions.onDeleteFromMessage}
                   onViewWorkflow={messageActions.onViewWorkflow}
@@ -126,14 +136,16 @@ export function ChatPanel({
           value={composerValue}
           onValueChange={setComposerValue}
           modelConfig={modelConfig}
-          activeSessionId={activeId}
           approvalConfig={{ mode: approvalMode, onSelectMode: setApprovalMode }}
-          presetConfig={presetConfig}
+          personaConfig={personaConfig}
           runtime={{
+            draftKey,
             socketStatus: runtime.socketStatus,
             uploadUrl: runtime.uploadUrl,
             uploadCsrfToken: runtime.uploadCsrfToken,
           }}
+          runtimeUsage={runtimeUsage}
+          activationCatalog={activationCatalog}
           onSend={messageActions.onSend}
           onCancel={messageActions.onCancel}
           onOpenSettings={navigationActions?.onOpenSettings}

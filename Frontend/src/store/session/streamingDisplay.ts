@@ -19,13 +19,16 @@ export interface StreamingDisplayAdvanceResult extends StreamingDisplayState {
 
 export const StreamingDisplayPolicies = {
   full: {
-    cadenceMs: 18,
+    // Keep streamed text smooth without measuring a virtualized row on every
+    // animation frame. Two graphemes per tick still reads continuously while
+    // leaving the browser a stable layout frame between updates.
+    cadenceMs: 32,
     minGraphemesPerTick: 2,
     backlogGraphemesPerAcceleration: 28,
     maxGraphemesPerTick: 12,
   },
   reduced: {
-    cadenceMs: 12,
+    cadenceMs: 24,
     minGraphemesPerTick: 8,
     backlogGraphemesPerAcceleration: 36,
     maxGraphemesPerTick: 40,

@@ -209,7 +209,10 @@ describe("Local execution environment behavior", () => {
       onStderr: (chunk) => stderr.push(chunk),
     });
 
-    expect(result).toEqual({ ok: true, value: { stdout: "hello", stderr: "warning", exitCode: 0 } });
+    expect(result).toEqual({
+      ok: true,
+      value: expect.objectContaining({ stdout: "hello", stderr: "warning", exitCode: 0 }),
+    });
     expect(stdout).toEqual(["hello"]);
     expect(stderr).toEqual(["warning"]);
     expect(backend.requests).toEqual([

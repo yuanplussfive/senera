@@ -8,15 +8,12 @@ import type {
   AgentModelThinkingProfile,
   AgentModelThinkingProfileConfig,
 } from "../ModelEndpoints/AgentModelThinking.js";
-import type { ThinkingLevelMap } from "@earendil-works/pi-ai";
 
 export interface AgentModelProviderConfig {
   Id: string;
   ProviderId: string;
   Icon?: string;
   Capabilities?: AgentModelCapabilitiesConfig;
-  /** Explicit Pi-level overrides. Missing values come from Pi model metadata. */
-  ThinkingLevelMap?: ThinkingLevelMap;
   ThinkingProfiles?: AgentModelThinkingProfileConfig[];
   DefaultThinkingLevel?: AgentModelThinkingLevel;
   ToolPlanningMode?: AgentModelToolPlanningMode;
@@ -126,7 +123,6 @@ export interface ResolvedAgentModelProviderConfig {
   Capabilities?: AgentModelCapabilitiesConfig;
   /** Preserves whether a capability was explicitly declared or inherited. */
   DeclaredCapabilities?: AgentModelCapabilitiesConfig;
-  ThinkingLevelMap?: ThinkingLevelMap;
   ThinkingProfiles?: AgentModelThinkingProfileConfig[];
   DefaultThinkingLevel?: AgentModelThinkingLevel;
   ToolPlanningMode: AgentModelToolPlanningMode;

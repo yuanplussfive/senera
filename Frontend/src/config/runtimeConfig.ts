@@ -15,11 +15,14 @@ export function readSeneraRuntimeConfig(): SeneraRuntimeConfig {
 
 export function resolveRuntimeWebSocketUrl(buildTimeUrl: string): string {
   const runtime = readSeneraRuntimeConfig();
-  if (Object.hasOwn(runtime, "webSocketUrl")) {
-    return normalizeWebSocketUrl(runtime.webSocketUrl ?? "");
-  }
-
-  return normalizeWebSocketUrl(buildTimeUrl);
+  const endpoint = normalizeWebSocketUrl(
+    Object.hasOwn(runtime, "webSocketUrl") ? (runtime.webSocketUrl ?? "") : buildTimeUrl,
+  );
+  const workspaceId = new URL(window.location.href).searchParams.get("workspaceId");
+  if (!workspaceId) return endpoint;
+  const url = new URL(endpoint, window.location.href);
+  url.searchParams.set("workspaceId", workspaceId);
+  return url.toString();
 }
 
 export function resolveRuntimeHttpBaseUrl(webSocketUrl: string): string {

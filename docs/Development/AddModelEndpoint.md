@@ -1,112 +1,41 @@
 # 新增模型端点开发手册
 
-模型端点负责把供应商 API 适配成 Senera 内部统一的语言模型接口。主循环、规划器、工具执行层不应该知道供应商的请求字段细节。
+模型请求统一交给 Pi；主循环与辅助功能不自行拼供应商 HTTP 请求或解析 SSE。
 
-## 现有端点位置
+## 新增辅助模型功能
 
-模型端点实现位于：
+为功能定义领域提示和严格的 Zod 输出契约，在 `baml_src` 添加对应的 BAML 函数。通过 `AgentStructuredModelClient` 调用即可复用 native／BAML 分流、Pi 请求、结构化修复、配置超时、取消、缓存和统计。不要再增加自己的 JSON 提取器、供应商请求函数或独立重试循环。
 
-```text
-Source/AgentSystem/ModelEndpoints/
-```
+native 使用从契约生成的必选 tool call，BAML 使用正式的请求生成器和解析器；BAML 只在本地渲染契约，网络请求仍由 Pi 执行。参阅 [公共请求架构](../Architecture/AuxiliaryModelRequests.md)。
 
-当前主要协议包括：
+持久学习任务使用后台请求账本的 `runRetried`，由任务管理总尝试预算，并关闭内层请求重试。恢复任务时继续已有次数和重试时间，不能重置为第一次。
 
-- OpenAI Responses
-- OpenAI-compatible Chat Completions
-- Claude Messages
-- Google GenerateContent
+## 新增供应商或协议
 
-通用逻辑放在 `ModelHttpClient`、`ModelPayloadOptions` 或中立的 projection helper。供应商特有请求、响应、流式 chunk 解析留在具体 endpoint 文件里。
+供应商兼容现有协议时，只配置 base URL、鉴权、headers、模型和能力，不增加供应商品牌专用的端点。现有协议是 Responses、Chat Completions、Claude Messages 和 Google GenerateContent。
 
-## 通常需要修改的文件
+只有 wire protocol 实际不同才增加 endpoint kind。优先使用 Pi 已有 adapter，必要扩展集中放入协议契约与 Pi adapter 层。
 
-```text
-Source/AgentSystem/ModelEndpoints/<ProviderEndpoint>.ts
-Source/AgentSystem/ModelEndpoints/ModelEndpointTypes.ts
-Source/AgentSystem/AgentModelEndpointClient.ts
-Source/AgentSystem/Types/AgentConfigTypes.ts
-Source/AgentSystem/Schemas/AgentSystemConfigSchema.ts
-Source/AgentSystem/Defaults/*
-Source/AgentSystem/Config/AgentConfigFormProjector.ts
-Frontend/src/features/settings/SettingsWorkbench.tsx
-Frontend/src/features/settings/sections/ModelServiceSection.tsx
-Frontend/src/features/settings/sections/ProviderModelManagementSurface.tsx
-Frontend/src/app/useConfigMutationController.ts
-Scripts/VerifyModelProviderEndpointConfig.ts
-Scripts/VerifyModelTimeoutConfig.ts
-```
+主要修改位置：
 
-只有用户可见配置形态变化时，才需要改前端供应商/模型配置 UI。
+- `Source/AgentSystem/ModelEndpoints/AgentModelEndpointContract.ts`
+- `Source/AgentSystem/ModelEndpoints/AgentNativeToolApiStreams.ts`
+- `Source/AgentSystem/ModelEndpoints/AgentNativeToolModelProjector.ts`
+- 配置类型、schema、defaults 和 form projection；仅在用户可见配置改变时同步前端。
 
-## 什么时候需要新增 Endpoint Kind
+供应商负责 API 根、鉴权和 headers，模型负责名字、能力和运行参数。图片数据以 Pi 原生图片块发送，不放入提示文本。Embedding 使用本地 query/document 接口，独立于模型生成请求。
 
-只有 wire protocol 真的不同，才新增 endpoint kind。
+## 验证
 
-如果供应商兼容 OpenAI Chat Completions，就使用现有 OpenAI-compatible endpoint，通过 base URL、headers、model、capability tags 配置，不要为了供应商品牌新增一套重复端点。
-
-新增端点契约必须覆盖：
-
-- 非流式 completion。
-- 流式 completion。
-- AbortSignal。
-- headers 和鉴权。
-- 请求超时和首 token 超时。
-- 最大输出 token 策略。
-- 供应商特有 options。
-- 错误归一化。
-
-## 运行时要求
-
-endpoint 必须返回 Senera 内部统一的模型结果形态，不能把供应商 raw chunk 泄漏给 loop 或 planner。
-
-流式 endpoint 必须把供应商增量归一化到现有 model event 链路。
-
-错误要在 endpoint 层归一化，主循环只消费统一错误结构。
-
-## 配置要求
-
-供应商配置和模型配置要分清：
-
-- 供应商保存 base URL、API key、headers、协议类型。
-- 模型保存模型名、能力标签、运行参数。
-- 需要 vision 的功能应该选择带对应能力的模型，而不是重复写 API key。ToolSearch 的语义检索使用内建本地 embedding，不属于模型 endpoint 配置。
-
-改配置时必须同步：
-
-- TypeScript config types。
-- runtime schema。
-- defaults。
-- config form projection。
-- 前端配置控件。
-- 验证脚本和 fixtures。
-
-用户可编辑的时间配置用秒，不要在 UI 里直接暴露毫秒。
-
-## 必须验证
-
-基础验证：
+协议修改应验证实际 Pi adapter 的请求 URL、headers、多模态内容、工具 schema、取消、首输出超时、请求超时、缓存、用量和失败传播。结构化功能须验证 native 和 BAML 两种模式。
 
 ```bash
+npm run quality.baml
+npm run quality.baml.generate
 npm run check.types
-npm run build
-npm run verify.suite -- workspace core
+npm run test.backend
+npm run verify.database-contracts
+npx tsx Scripts/VerifyPiModelRequestProjection.ts
 ```
 
-模型相关重点验证：
-
-```bash
-node Dist/Scripts/VerifyModelProviderEndpointConfig.js
-node Dist/Scripts/VerifyModelTimeoutConfig.js
-```
-
-真实外部 API 探测不要进入普通 CI。它可以读取本地私有配置，但必须保持在显式手动脚本里。
-
-## 上线前检查
-
-- 确实需要新增 endpoint kind，而不是 OpenAI-compatible 配置就能解决。
-- 供应商私有请求和流式解析没有泄漏到主循环。
-- 错误已经归一化。
-- schema、defaults、form projection、前端 UI 保持一致。
-- timeout、retry、max output token 的语义一致。
-- 验证覆盖端点路由、超时、配置投影、前端选择逻辑。
+外部供应商探测保持为显式手动操作，普通 CI 使用 Pi stream 与 adapter 探针，不读取私有配置或发送真实模型请求。

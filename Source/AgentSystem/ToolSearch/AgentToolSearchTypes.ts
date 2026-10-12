@@ -3,6 +3,8 @@ import type { AgentToolSearchMemoryEvidence } from "./AgentToolSearchMemory.js";
 import type { AgentToolSearchRerankDocument } from "./AgentToolSearchReranker.js";
 import type { AgentToolCapabilityCacheState } from "./AgentToolCapabilitySessionCache.js";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
+import type { AgentMcpServiceDiscoveryEntry } from "../McpPackages/AgentMcpPackageTypes.js";
+import type { AgentToolAvailability } from "../ToolRuntime/AgentToolAvailability.js";
 
 export interface AgentToolSearchOptions {
   /** Original user task. Declaration identity and complete examples are
@@ -16,6 +18,7 @@ export interface AgentToolSearchOptions {
 }
 
 export interface AgentToolSearchResult {
+  availability?: AgentToolAvailability;
   toolName: string;
   title: string;
   ownerName: string;
@@ -33,7 +36,7 @@ export interface AgentToolSearchResult {
   ranks: Record<string, number>;
   matchedTerms: string[];
   matchedCapabilities: AgentToolSearchCapabilityMatch[];
-  learningSignals: AgentToolSearchLearningSignal[];
+  scenarioSignals: AgentToolSearchScenarioSignal[];
   /** Runtime state is explicit so a visible tool is never mistaken for an
    * undiscovered tool, and confirmed arguments can be reused without another
    * search. */
@@ -51,6 +54,7 @@ export interface AgentToolSearchResult {
  * disclosure.
  */
 export interface AgentToolSearchDiscovery {
+  readonly services?: readonly AgentMcpServiceDiscoveryEntry[];
   readonly match: readonly AgentToolSearchResult[];
   readonly maybe: readonly AgentToolSearchResult[];
   readonly omitted: readonly AgentToolSearchResult[];
@@ -89,7 +93,7 @@ export interface AgentToolSearchSource {
   description: string;
 }
 
-export interface AgentToolSearchLearningSignal {
+export interface AgentToolSearchScenarioSignal {
   term: string;
   source: string;
   support: number;

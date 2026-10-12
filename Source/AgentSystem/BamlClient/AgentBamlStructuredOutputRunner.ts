@@ -2,7 +2,7 @@ import type {
   AgentLanguageModelCacheOptions,
   AgentLanguageModelMessage,
 } from "../ModelEndpoints/AgentLanguageModel.js";
-import { throwIfAborted } from "../Core/AgentCancellation.js";
+import { throwIfAborted, throwAbortReason } from "../Core/AgentCancellation.js";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
 import type { AgentSourceDiagnostic } from "../Diagnostics/AgentSourceDiagnostic.js";
 import { createAgentStructuredIssue, type AgentStructuredIssue } from "../Diagnostics/AgentStructuredIssue.js";
@@ -15,6 +15,8 @@ export interface AgentBamlModelRequest {
   messages: AgentLanguageModelMessage[];
   signal?: AbortSignal;
   cache?: AgentLanguageModelCacheOptions;
+  /** Pi owns retry scheduling for native compaction summaries. */
+  retryMode?: "provider" | "pi";
 }
 
 export interface AgentBamlStructuredOutputResult<T> {
@@ -138,6 +140,7 @@ export class AgentBamlStructuredOutputRunner {
       try {
         rawOutput = await this.options.complete(request, options.signal);
       } catch (error) {
+        throwAbortReason(options.signal);
         const issues = this.describeIssues(error);
         attempts.push(
           await this.record({

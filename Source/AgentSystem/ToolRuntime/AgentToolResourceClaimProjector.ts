@@ -14,13 +14,18 @@ const McpServerResourceDomain = createExactAgentToolResourceClaimDomain("senera.
 
 export interface AgentToolResourceClaimProjectorPort {
   project(tool: RegisteredTool, args: Readonly<Record<string, unknown>>): Promise<AgentToolResourceLeaseRequest>;
-  projectDeclarations?(
+  listClaimCapabilityIds(): readonly string[];
+  projectDeclarations(
     declarations: readonly AgentToolResourceClaimDeclaration[],
   ): Promise<AgentToolResourceLeaseRequest>;
 }
 
 export class AgentToolResourceClaimProjector implements AgentToolResourceClaimProjectorPort {
   constructor(private readonly capabilities: AgentToolResourceCapabilityRegistry) {}
+
+  listClaimCapabilityIds(): readonly string[] {
+    return this.capabilities.listClaimCapabilityIds();
+  }
 
   async project(tool: RegisteredTool, args: Readonly<Record<string, unknown>>): Promise<AgentToolResourceLeaseRequest> {
     const resources = tool.handler.resources ?? [];

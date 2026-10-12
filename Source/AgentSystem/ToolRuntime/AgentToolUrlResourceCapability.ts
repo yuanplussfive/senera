@@ -20,8 +20,8 @@ export const AgentToolUrlResourceManifestValidator: AgentToolResourceManifestVal
 });
 
 /**
- * Declares a public URL as a first-class tool resource without changing the
- * URL chosen by the caller. The owning browser or web tool remains the
+ * Declares a URL as a first-class tool resource without changing the
+ * address chosen by the caller. The owning browser or web tool remains the
  * authority for scheme, host, and network-policy validation.
  */
 export class AgentToolUrlResourceCapability implements AgentToolResourceCapability {

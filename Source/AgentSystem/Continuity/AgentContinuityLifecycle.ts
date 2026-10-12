@@ -3,6 +3,8 @@ import type { AgentContinuityMemoryService } from "./AgentContinuityMemoryServic
 
 export interface AgentContinuityLifecyclePort {
   beforeCompaction(sessionId: string): Promise<void>;
+  afterCompaction?(sessionId: string): Promise<void> | void;
+  invalidateSessionContext?(sessionId: string): Promise<void> | void;
   close(): Promise<void>;
 }
 
@@ -16,22 +18,35 @@ export class AgentContinuityLifecycleCoordinator implements AgentContinuityLifec
 
   constructor(
     private readonly options: {
-      readonly memory: Pick<AgentMemoryService, "flushContinuityLearning" | "close">;
-      readonly promptContext: Pick<AgentContinuityMemoryService, "prefetch">;
+      readonly memory: {
+        readonly close: AgentMemoryService["close"];
+        readonly flushSemanticLearning?: () => Promise<void>;
+      };
+      readonly promptContext: {
+        readonly invalidateSessionContext?: AgentContinuityMemoryService["invalidateSessionContext"];
+      };
     },
   ) {}
 
   async beforeCompaction(sessionId: string): Promise<void> {
     if (this.closed) throw new Error("Continuity lifecycle is already closed.");
+    void sessionId;
     this.activeCompactionBoundaries += 1;
     try {
-      await this.options.memory.flushContinuityLearning();
+      await this.options.memory.flushSemanticLearning?.();
       if (this.closed) throw new Error("Continuity lifecycle is already closed.");
-      this.options.promptContext.prefetch({ sessionId });
     } finally {
       this.activeCompactionBoundaries -= 1;
       if (this.activeCompactionBoundaries === 0) this.resolveCompactionIdle?.();
     }
+  }
+
+  afterCompaction(sessionId: string): void {
+    this.options.promptContext.invalidateSessionContext?.(sessionId);
+  }
+
+  invalidateSessionContext(sessionId: string): void {
+    this.options.promptContext.invalidateSessionContext?.(sessionId);
   }
 
   close(): Promise<void> {
@@ -41,7 +56,19 @@ export class AgentContinuityLifecycleCoordinator implements AgentContinuityLifec
   private async closeResources(): Promise<void> {
     this.closed = true;
     await this.waitForCompactionBoundaries();
-    await this.options.memory.close();
+    const failures: unknown[] = [];
+    try {
+      await this.options.memory.flushSemanticLearning?.();
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      await this.options.memory.close();
+    } catch (error) {
+      failures.push(error);
+    }
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1) throw new AggregateError(failures, "Continuity lifecycle shutdown failed.");
   }
 
   private waitForCompactionBoundaries(): Promise<void> {

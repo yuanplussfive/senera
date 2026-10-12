@@ -88,14 +88,14 @@ describe("Skill activation", () => {
     ]);
   });
 
-  test("does not activate a Skill from learned evidence without a semantic match", async () => {
+  test("does not activate a Skill from scenario evidence without a semantic match", async () => {
     const registry = new AgentExtensionRegistry();
     registry.registerSkill({
       ...skill("csv-column-selector", "Project selected columns from tabular files."),
       revision: "revision-2",
     });
     const routingEvidence = {
-      skillRoutingEvidence: () => [
+      skillScenarioEvidence: () => [
         {
           skillName: "csv-column-selector",
           skillRevision: "revision-2",
@@ -112,14 +112,14 @@ describe("Skill activation", () => {
     expect(activated).toEqual([]);
   });
 
-  test("uses revision-bound learning evidence to rerank a semantic Skill candidate", async () => {
+  test("uses revision-bound scenario evidence to rerank a semantic Skill candidate", async () => {
     const registry = new AgentExtensionRegistry();
     registry.registerSkill({
       ...skill("csv-column-selector", "Project selected columns from tabular files."),
       revision: "revision-2",
     });
     const activated = await new AgentSkillActivationService(registry, {
-      skillRoutingEvidence: () => [
+      skillScenarioEvidence: () => [
         {
           skillName: "csv-column-selector",
           skillRevision: "revision-2",
@@ -132,12 +132,12 @@ describe("Skill activation", () => {
     expect(activated).toEqual([
       expect.objectContaining({
         name: "csv-column-selector",
-        matchedFields: expect.arrayContaining([{ term: "批量提取", fields: ["learnedUsage"] }]),
+        matchedFields: expect.arrayContaining([{ term: "批量提取", fields: ["completedScenario"] }]),
       }),
     ]);
   });
 
-  test("ignores learned routing evidence from an older Skill revision", async () => {
+  test("ignores scenario evidence from an older Skill revision", async () => {
     const registry = new AgentExtensionRegistry();
     registry.registerSkill({
       ...skill("csv-column-selector", "Project selected columns from tabular files."),
@@ -145,7 +145,7 @@ describe("Skill activation", () => {
     });
 
     const activated = await new AgentSkillActivationService(registry, {
-      skillRoutingEvidence: () => [
+      skillScenarioEvidence: () => [
         {
           skillName: "csv-column-selector",
           skillRevision: "revision-1",
@@ -177,6 +177,27 @@ describe("Skill activation", () => {
         })
       ).map((candidate) => candidate.name),
     ).toContain("database-migration");
+  });
+
+  test("includes already exposed tools as retrieval evidence for mini-cn Skill routing", async () => {
+    const registry = new AgentExtensionRegistry();
+    registry.registerSkill(skill("workspace-inspection", "Inspect workspace files and summarize findings."));
+    let observedQuery = "";
+    const service = new AgentSkillActivationService(registry, {
+      skillScenarioEvidence: () => [],
+      selectSkills: async ({ query }) => {
+        observedQuery = query;
+        return [];
+      },
+    });
+
+    await service.activate({
+      input: "Inspect the current workspace.",
+      availableToolNames: ["WorkspaceRead", "WorkspaceFind"],
+    });
+
+    expect(observedQuery).toContain("Inspect the current workspace.");
+    expect(observedQuery).toContain("available tools: WorkspaceRead, WorkspaceFind");
   });
 
   test("shares vector reranking with Tool retrieval", async () => {
@@ -242,7 +263,68 @@ describe("Skill activation", () => {
     expect(service.recommendedToolRouting(activated)).toEqual({
       directToolNames: [direct.name],
       dynamicToolNames: [dynamic.name],
+      nativeToolNames: [],
+      requiredToolNames: [],
     });
+  });
+
+  test("loads every registered tool owned by an explicitly selected Plugin", async () => {
+    const registry = new AgentExtensionRegistry();
+    const pluginTool = createTool({
+      name: "PluginDynamicTool",
+      title: "Plugin capability",
+      summary: "A capability owned by the selected Plugin.",
+      tags: ["plugin"],
+      actions: ["inspect"],
+      targets: ["workspace"],
+      priority: 1,
+    });
+    const pluginOwner = { ...pluginTool.owner, kind: "plugin" as const, name: "visual-tools" };
+    registry.registerToolExtension(pluginOwner, [{ ...pluginTool, owner: pluginOwner }]);
+    const service = new AgentSkillActivationService(registry);
+
+    expect(service.recommendedToolRouting([], [{ kind: "plugin", id: "visual-tools", revision: "plugin-r1" }])).toEqual(
+      {
+        directToolNames: [],
+        dynamicToolNames: [pluginTool.name],
+        nativeToolNames: [pluginTool.name],
+        requiredToolNames: [pluginTool.name],
+      },
+    );
+  });
+
+  test("loads every registered tool owned by an explicitly selected MCP server", async () => {
+    const registry = new AgentExtensionRegistry();
+    const mcpTool = createTool({
+      name: "mcp__weather__forecast",
+      title: "Weather forecast",
+      summary: "Read the weather forecast.",
+      tags: ["weather"],
+      actions: ["read"],
+      targets: ["weather"],
+      priority: 1,
+    });
+    const mcpOwner = { ...mcpTool.owner, kind: "mcp" as const, name: "weather" };
+    registry.registerToolExtension(mcpOwner, [{ ...mcpTool, owner: mcpOwner }]);
+
+    expect(
+      new AgentSkillActivationService(registry).recommendedToolRouting(
+        [],
+        [{ kind: "mcp", id: "weather", revision: "package-r1" }],
+      ),
+    ).toEqual({
+      directToolNames: [],
+      dynamicToolNames: [mcpTool.name],
+      nativeToolNames: [mcpTool.name],
+      requiredToolNames: [mcpTool.name],
+    });
+
+    await expect(
+      new AgentSkillActivationService(registry).activate({
+        input: "Use the selected MCP server.",
+        explicitActivations: [{ kind: "mcp", id: "weather", revision: "package-r1" }],
+      }),
+    ).resolves.toEqual([]);
   });
 });
 
@@ -252,6 +334,7 @@ function skill(name: string, description: string): RegisteredSkill {
     name,
     description,
     descriptionFile: `System/Skills/${name}/SKILL.md`,
+    content: `# ${name}`,
     recommendedTools: [],
     evidenceRequirements: [],
   };

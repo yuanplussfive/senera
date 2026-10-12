@@ -11,6 +11,8 @@ import { createAgentEvidenceUri } from "./AgentEvidenceUri.js";
 import { renderEvidenceTemplate } from "./AgentArtifactTemplateProjection.js";
 import { previewAgentText } from "../Text/AgentTextProjection.js";
 
+export type ProjectedToolArtifactEvidence = Omit<ToolArtifactEvidenceRecord, "evidenceUri">;
+
 const EvidenceModelTextLimits = {
   slotChars: 2_000,
   identityChars: 4_000,
@@ -24,14 +26,14 @@ export function collectArtifactEvidence(
   candidates: readonly AgentToolEvidenceCandidate[] = [],
 ): ToolArtifactEvidenceRecord[] {
   const evidence = new Map<string, ToolArtifactEvidenceRecord>();
-  for (const rule of policy?.Evidence ?? []) {
-    for (const record of projectEvidenceRule(value, rule)) {
-      record.evidenceUri = createAgentEvidenceUri({
+  for (const record of projectArtifactEvidence(value, policy)) {
+    evidence.set(record.key, {
+      ...record,
+      evidenceUri: createAgentEvidenceUri({
         artifactId,
         evidenceKey: record.key,
-      });
-      evidence.set(record.key, record);
-    }
+      }),
+    });
   }
 
   for (const candidate of candidates) {
@@ -42,6 +44,18 @@ export function collectArtifactEvidence(
   }
 
   return [...evidence.values()];
+}
+
+/**
+ * Projects package-declared evidence without assigning it an Artifact-owned
+ * evidence URI. Source-view tools use this to retain their original source
+ * coordinates without pretending to publish a second Artifact.
+ */
+export function projectArtifactEvidence(
+  value: unknown,
+  policy: ToolArtifactPolicyManifest | undefined,
+): ProjectedToolArtifactEvidence[] {
+  return (policy?.Evidence ?? []).flatMap((rule) => projectEvidenceRule(value, rule));
 }
 
 function projectEvidenceCandidate(
@@ -110,11 +124,11 @@ function projectCandidateMetadata(value: Readonly<Record<string, unknown>>): Rec
   return metadata;
 }
 
-function projectEvidenceRule(root: unknown, rule: ToolArtifactEvidenceManifest): ToolArtifactEvidenceRecord[] {
+function projectEvidenceRule(root: unknown, rule: ToolArtifactEvidenceManifest): ProjectedToolArtifactEvidence[] {
   return conditionMatches(root, rule.When) ? projectScopedEvidenceRule(root, rule) : [];
 }
 
-function projectScopedEvidenceRule(root: unknown, rule: ToolArtifactEvidenceManifest): ToolArtifactEvidenceRecord[] {
+function projectScopedEvidenceRule(root: unknown, rule: ToolArtifactEvidenceManifest): ProjectedToolArtifactEvidence[] {
   return selectJsonValues(root, rule.Records).flatMap((record) => {
     const slots = projectSlots(root, record, rule.Slots);
     const identity = resolveIdentityValues(slots, rule.Identity.Parts);

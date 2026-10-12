@@ -42,7 +42,7 @@ describe("ImageAnalyze system tool", () => {
     );
 
     const output = await tool.execute(
-      { images: [{ resourceUri: upload.manifest.resourceUri }], task: "describe" },
+      { images: [{ kind: "senera_resource", uri: upload.manifest.resourceUri }], task: "describe" },
       hostContext(workspaceRoot, upload),
     );
 
@@ -65,7 +65,7 @@ describe("ImageAnalyze system tool", () => {
 
     await expect(
       tool.execute(
-        { images: [{ resourceUri: upload.manifest.resourceUri }], task: "describe" },
+        { images: [{ kind: "senera_resource", uri: upload.manifest.resourceUri }], task: "describe" },
         hostContext(workspaceRoot, upload),
       ),
     ).rejects.toMatchObject({
@@ -123,7 +123,7 @@ describe("ImageAnalyze system tool", () => {
     });
 
     const output = await createImageAnalyzeSystemTool({ model: { modelProviderId: "vision-model" } }).execute(
-      { images: [{ resourceUri: resourceUri! }], task: "describe" },
+      { images: [{ kind: "senera_resource", uri: resourceUri! }], task: "describe" },
       {
         workspaceRoot,
         config: testConfig(),
@@ -135,7 +135,7 @@ describe("ImageAnalyze system tool", () => {
       expect.objectContaining({ images: [{ base64: screenshotBytes.toString("base64"), mime: "image/png" }] }),
     );
     expect(output).toMatchObject({
-      images: [{ source: { kind: "resource", uri: resourceUri } }],
+      images: [{ source: { kind: "senera_resource", uri: resourceUri } }],
       answer: "browser screenshot evidence",
     });
   });
@@ -146,7 +146,10 @@ describe("ImageAnalyze system tool", () => {
 
     await expect(
       createImageAnalyzeSystemTool().execute(
-        { images: [{ resourceUri: "senera://resource/browser-screenshot-missing" }], task: "describe" },
+        {
+          images: [{ kind: "senera_resource", uri: "senera://resource/browser-screenshot-missing" }],
+          task: "describe",
+        },
         {
           workspaceRoot,
           config: testConfig(),
@@ -178,10 +181,13 @@ describe("ImageAnalyze system tool", () => {
     const output = await createImageAnalyzeSystemTool({
       model: { modelProviderId: "vision-model" },
       remote: { allowPrivateNetworks: true },
-    }).execute({ images: [{ url: "http://127.0.0.1/example.png" }], task: "ocr", timeoutMs: 10_000 }, {
-      workspaceRoot: process.cwd(),
-      config: testConfig(),
-    } as AgentHostToolContext);
+    }).execute(
+      { images: [{ kind: "http_url", url: "http://127.0.0.1/example.png" }], task: "ocr", timeoutMs: 10_000 },
+      {
+        workspaceRoot: process.cwd(),
+        config: testConfig(),
+      } as AgentHostToolContext,
+    );
 
     expect(complete).toHaveBeenCalledWith(
       expect.objectContaining({ images: [{ base64: imageBytes.toString("base64"), mime: "image/png" }] }),
@@ -189,7 +195,7 @@ describe("ImageAnalyze system tool", () => {
     expect(output).toMatchObject({
       images: [
         {
-          source: { kind: "url", uri: "http://127.0.0.1/example.png" },
+          source: { kind: "http_url", url: "http://127.0.0.1/example.png" },
           name: "example.png",
           mime: "image/png",
           size: imageBytes.byteLength,
@@ -200,32 +206,97 @@ describe("ImageAnalyze system tool", () => {
     });
   });
 
+  it("resolves relative and absolute workspace paths without converting them to Senera URIs", async () => {
+    const workspaceRoot = createTemporaryDirectory("senera-image-local-path");
+    temporaryDirectories.push(workspaceRoot);
+    const imagePath = path.join(workspaceRoot, "local-image.png");
+    fs.writeFileSync(imagePath, "local-image-content");
+    const complete = vi.spyOn(AgentImageVisionModelClient.prototype, "complete").mockResolvedValue({
+      text: "local image evidence",
+      provider: { id: "vision-model", endpoint: "ChatCompletions", model: "gpt-vision" },
+    });
+    const tool = createImageAnalyzeSystemTool({ model: { modelProviderId: "vision-model" } });
+    const context = {
+      workspaceRoot,
+      config: testConfig(),
+      uploadStore: { resolve: vi.fn().mockResolvedValue(undefined) },
+    } as unknown as AgentHostToolContext;
+
+    const output = await tool.execute(
+      { images: [{ kind: "local_path", path: "local-image.png" }], task: "describe" },
+      context,
+    );
+    await tool.execute({ images: [{ kind: "local_path", path: imagePath }], task: "describe" }, context);
+
+    expect(complete).toHaveBeenCalledTimes(2);
+    expect(complete).toHaveBeenCalledWith(
+      expect.objectContaining({
+        images: [{ mime: "image/png", base64: Buffer.from("local-image-content").toString("base64") }],
+      }),
+    );
+    expect(output).toMatchObject({
+      images: [{ source: { kind: "local_path", path: "local-image.png" }, mime: "image/png" }],
+    });
+  });
+
+  it("rejects local paths outside the active workspace", async () => {
+    const workspaceRoot = createTemporaryDirectory("senera-image-local-path-boundary");
+    const outsideRoot = createTemporaryDirectory("senera-image-outside-workspace");
+    temporaryDirectories.push(workspaceRoot, outsideRoot);
+    const outsidePath = path.join(outsideRoot, "secret.png");
+    fs.writeFileSync(outsidePath, "not-readable-by-tool");
+    const complete = vi.spyOn(AgentImageVisionModelClient.prototype, "complete");
+
+    await expect(
+      createImageAnalyzeSystemTool().execute(
+        { images: [{ kind: "local_path", path: outsidePath }], task: "describe" },
+        {
+          workspaceRoot,
+          config: testConfig(),
+          uploadStore: { resolve: vi.fn().mockResolvedValue(undefined) },
+        } as unknown as AgentHostToolContext,
+      ),
+    ).rejects.toThrow("Local resource path is missing or outside the workspace.");
+    expect(complete).not.toHaveBeenCalled();
+  });
+
   it("accepts ordered resource and HTTP(S) image inputs", () => {
     const input = createImageAnalyzeSystemTool().input;
 
-    expect(input.parse({ images: [{ resourceUri: "senera://resource/upload-1" }] })).toMatchObject({
+    expect(input.parse({ images: [{ kind: "senera_resource", uri: "senera://resource/upload-1" }] })).toMatchObject({
+      task: "describe",
+    });
+    expect(input.parse({ images: [{ kind: "local_path", path: "images/example.png" }] })).toMatchObject({
       task: "describe",
     });
     expect(
       input.parse({
-        images: [{ url: "https://images.example.test/example.png" }],
+        images: [{ kind: "http_url", url: "https://images.example.test/example.png" }],
         task: "question",
         question: "What is visible?",
       }),
     ).toMatchObject({ task: "question" });
-    expect(() => input.parse({ images: [{ url: "file:///tmp/image.png" }] })).toThrow();
+    expect(() => input.parse({ images: [{ kind: "http_url", url: "file:///tmp/image.png" }] })).toThrow();
     expect(() =>
       input.parse({
-        images: [{ resourceUri: "senera://resource/upload-1", url: "https://images.example.test/example.png" }],
+        images: [
+          {
+            kind: "senera_resource",
+            uri: "senera://resource/upload-1",
+            url: "https://images.example.test/example.png",
+          },
+        ],
       }),
     ).toThrow();
     expect(() =>
-      input.parse({ images: [{ url: "https://images.example.test/example.png" }], task: "question" }),
+      input.parse({ images: [{ kind: "http_url", url: "https://images.example.test/example.png" }], task: "question" }),
     ).toThrow();
 
     const schema = ensureObjectRootJsonSchema(z.toJSONSchema(input, { target: "draft-7", io: "input" }));
     expect(schema).toMatchObject({ type: "object" });
     expect(schema.required).toEqual(expect.arrayContaining(["images"]));
+    const properties = (schema as { properties?: Record<string, unknown> }).properties;
+    expect((properties?.images as { items?: { oneOf?: unknown[] } }).items?.oneOf).toHaveLength(3);
   });
 
   it("submits mixed image sources in one ordered vision request", async () => {
@@ -246,7 +317,10 @@ describe("ImageAnalyze system tool", () => {
 
     const output = await createImageAnalyzeSystemTool({ remote: { allowPrivateNetworks: true } }).execute(
       {
-        images: [{ resourceUri: upload.manifest.resourceUri }, { url: "http://127.0.0.1/remote.jpg" }],
+        images: [
+          { kind: "senera_resource", uri: upload.manifest.resourceUri },
+          { kind: "http_url", url: "http://127.0.0.1/remote.jpg" },
+        ],
         task: "describe",
       },
       hostContext(workspaceRoot, upload),
@@ -261,7 +335,7 @@ describe("ImageAnalyze system tool", () => {
         ],
       }),
     );
-    expect(output.images.map((image) => image.source.kind)).toEqual(["resource", "url"]);
+    expect(output.images.map((image) => image.source.kind)).toEqual(["senera_resource", "http_url"]);
   });
 
   it("enforces image count and aggregate byte limits before calling the vision model", async () => {
@@ -276,7 +350,10 @@ describe("ImageAnalyze system tool", () => {
     await expect(
       tool.execute(
         {
-          images: [{ resourceUri: upload.manifest.resourceUri }, { resourceUri: upload.manifest.resourceUri }],
+          images: [
+            { kind: "senera_resource", uri: upload.manifest.resourceUri },
+            { kind: "senera_resource", uri: upload.manifest.resourceUri },
+          ],
           task: "describe",
         },
         hostContext(workspaceRoot, upload),
@@ -285,7 +362,10 @@ describe("ImageAnalyze system tool", () => {
     await expect(
       createImageAnalyzeSystemTool({ input: { maxTotalImageBytes: 1_024 } }).execute(
         {
-          images: [{ resourceUri: upload.manifest.resourceUri }, { resourceUri: upload.manifest.resourceUri }],
+          images: [
+            { kind: "senera_resource", uri: upload.manifest.resourceUri },
+            { kind: "senera_resource", uri: upload.manifest.resourceUri },
+          ],
           task: "describe",
         },
         hostContext(workspaceRoot, upload),

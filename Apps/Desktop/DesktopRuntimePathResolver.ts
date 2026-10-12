@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { resolveAgentApplicationPaths } from "../../Source/AgentSystem/Core/AgentApplicationPaths.js";
 
 const DesktopProjectLayout = {
   files: ["package.json"],
@@ -49,8 +50,14 @@ export function resolveDesktopApplicationRoot(input: {
   return path.resolve(input.isPackaged ? input.appPath : input.resourceRoot);
 }
 
+/** Desktop and server use the same platform application directory. */
+export function resolveDesktopApplicationDataRoot(): string {
+  return resolveAgentApplicationPaths().root;
+}
+
 export function resolveDesktopWorkspaceRoot(input: {
   resourceRoot: string;
+  isPackaged?: boolean;
   configuredWorkspaceRoot?: string;
   persistedWorkspaceRoot?: string;
 }): string | undefined {
@@ -58,9 +65,7 @@ export function resolveDesktopWorkspaceRoot(input: {
   if (configured) return path.resolve(configured);
   const persisted = input.persistedWorkspaceRoot?.trim();
   if (persisted) return path.resolve(persisted);
-  // Packaged apps default to the project root just like development, so the
-  // desktop and web deployments share one workspace unless the user switches.
-  return path.resolve(input.resourceRoot);
+  return input.isPackaged ? undefined : path.resolve(input.resourceRoot);
 }
 
 export class DesktopRuntimePathResolutionError extends Error {

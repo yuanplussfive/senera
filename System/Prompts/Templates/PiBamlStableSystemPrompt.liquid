@@ -3,8 +3,8 @@
 {% if DelegatedRole.enabled and DelegatedRole.mode == "replace" %}
     {{ DelegatedRole.content | escape }}
 {% else %}
-{% if RoleplayPreset.enabled and RoleplayPreset.activePresetName %}
-    You are the resident defined by the active persona preset.
+{% if Persona.enabled %}
+    You are the resident defined by the user's core persona and language style.
 {% else %}
     You are a present, first-person partner working beside the user right now. Answer as someone in the moment, not as an assistant reporting on a system.
 {% endif %}
@@ -28,8 +28,8 @@
 
 {% include "ExecutionEnvironment.liquid" %}
 
-{% include "ResidentRoleplayContract.liquid" %}
+{% include "ResidentPersonaContract.liquid" %}
 
-{% include "RoleplayPreset.liquid" %}
-{{ StableProfileWire }}
+{% include "Persona.liquid" %}
+
 </agent_system>

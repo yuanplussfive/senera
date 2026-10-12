@@ -61,6 +61,27 @@ test("history projection hides internal background-task wake inputs", () => {
   expect(message).toBeNull();
 });
 
+test("history projection keeps the assistant reply for a background-task wake visible", () => {
+  const message = projectEntryToMessage(
+    {
+      id: "background-child-1:assistant",
+      requestId: "background-child-1-1",
+      timestamp: "2026-08-25T03:00:01.000Z",
+      kind: "assistant.decision",
+      xml: "<response><answer>Child task finished.</answer></response>",
+      metadata: { run: { modelProvider: { id: "model" } } },
+    },
+    { kind: "final_answer", text: "Child task finished." },
+  );
+
+  expect(message).toMatchObject({
+    role: "assistant",
+    kind: "AssistantFinal",
+    requestId: "background-child-1-1",
+    content: "Child task finished.",
+  });
+});
+
 test("history projection preserves a scheduled delivery after refresh", () => {
   const message = projectEntryToMessage(
     {
@@ -251,6 +272,70 @@ test("history replay buffers chunks and materializes messages on completion", ()
   expect(state.historyLoadedIds[TestSessionId]).toBe(true);
   expect(state.historyLoadingIds[TestSessionId]).toBe(false);
   expect(state.historyReplayBuffers[TestSessionId]).toBe(undefined);
+});
+
+test("history replay ignores request ids removed by an authoritative truncation", () => {
+  const state = createTestState();
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionSnapshot,
+      {
+        sessionId: TestSessionId,
+        status: "ready",
+        createdAt: TestTimestamp,
+        updatedAt: TestTimestamp,
+        entryCount: 1,
+        messageCount: 1,
+        turnCount: 1,
+      },
+      { requestId: undefined, phase: "session" },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionHistoryStarted,
+      { sessionId: TestSessionId, totalEntries: 1, messageCount: 1 },
+      { requestId: undefined, sequence: 2, phase: "session" },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionTruncated,
+      {
+        sessionId: TestSessionId,
+        fromRequestId: TestRequestId,
+        removedEntries: 1,
+        removedRequestIds: [TestRequestId],
+      },
+      { requestId: undefined, sequence: 3, phase: "session" },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionHistoryChunk,
+      {
+        sessionId: TestSessionId,
+        entries: [
+          {
+            entry: {
+              id: "stale-user",
+              requestId: TestRequestId,
+              timestamp: TestTimestamp,
+              kind: "user.message",
+              content: "旧分支",
+            },
+          },
+        ],
+      },
+      { requestId: undefined, sequence: 4, phase: "session" },
+    ),
+  );
+
+  expect(state.historyReplayBuffers[TestSessionId]?.flat()).toEqual([]);
 });
 
 test("history replay preserves every tool preface while reconciling the durable final answer", () => {

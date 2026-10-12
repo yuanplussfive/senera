@@ -62,22 +62,20 @@ describe("model configuration helpers", () => {
     });
   });
 
-  it("keeps thinking configuration inside Pi's portable vocabulary", () => {
+  it("keeps reasoning profiles inside Pi's portable vocabulary", () => {
     expect(
       normalizeModelProviderDraft({
         Id: "local/thinking",
         ProviderId: "local",
         Endpoint: "chat",
         Model: "thinking",
-        ThinkingLevelMap: { high: "deep", vendorOnly: "ignored" },
         ThinkingProfiles: [
           { Id: "balanced", Label: "Balanced", Level: "medium" },
           { Id: "invalid", Label: "Invalid", Level: "vendor-only" },
         ],
-        DefaultThinkingLevel: "vendor-only",
+        DefaultThinkingLevel: "medium",
       }),
     ).toMatchObject({
-      ThinkingLevelMap: { high: "deep" },
       ThinkingProfiles: [{ Id: "balanced", Label: "Balanced", Level: "medium" }],
     });
   });

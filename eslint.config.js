@@ -64,6 +64,7 @@ export default tseslint.config(
       "Release/**",
       "Source/AgentSystem/BamlClient/baml_client/**",
       "Plugins/**/Schemas/**/*.js",
+      "senera-assessment/**",
       "senera-evaluation/**",
       "senera-code-review/**",
       "senera-project-analysis/**",

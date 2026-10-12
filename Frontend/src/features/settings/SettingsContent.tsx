@@ -15,6 +15,7 @@ import { AppearanceSettings } from "./sections/AppearanceSettings";
 import type { ConfigSettingsDraftState } from "./sections/configSettingsDraftState";
 import { GeneralSettings } from "./sections/GeneralSettings";
 import { projectSectionConfigFields } from "./sections/runtimeModelAssignments";
+import { StorageSettings } from "./sections/StorageSettings";
 
 const WorkspaceSettings = lazy(() =>
   import("./sections/WorkspaceSettings").then((module) => ({ default: module.WorkspaceSettings })),
@@ -152,13 +153,19 @@ function renderSettingsContent({
     case "runtime":
     case "planning":
     case "retrieval":
-    case "storage":
       return (
         <ConfigFormSectionSettings
           draftState={configDraftState}
           sectionId={activeSection.id}
           systemConfig={systemConfig}
         />
+      );
+    case "storage":
+      return (
+        <>
+          <StorageSettings />
+          <ConfigFormSectionSettings draftState={configDraftState} sectionId="storage" systemConfig={systemConfig} />
+        </>
       );
     case "default-model":
       return (

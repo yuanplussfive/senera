@@ -8,6 +8,11 @@ import type { AgentSkillLibraryCatalog } from "../Skills/AgentSkillLibraryCatalo
 export function renderAgentPiSkillLibraryPrompt(catalog: AgentSkillLibraryCatalog | undefined): string {
   if (!catalog || catalog.entries.length === 0) return "";
 
+  const modelDirectory = {
+    protocol: catalog.protocol,
+    entries: catalog.entries.map(({ revision: _revision, entry: _entry, ...entry }) => entry),
+  };
+
   const wire = renderAgentPromptWireBlocks(
     {
       preamble: [
@@ -15,13 +20,13 @@ export function renderAgentPiSkillLibraryPrompt(catalog: AgentSkillLibraryCatalo
         "state=stable",
         "provenance=host-projected;not-user-input",
         "rule=directory-only;load-one-package-resource-on-demand",
-        "rule=entry-is-logical;never infer a filesystem path",
-        "rule=inspect-by-name;read-by-name-path-and-revision",
+        "rule=skill-identity-is-registered-name;never infer a filesystem path",
+        "rule=inspect-by-name;read-by-name-and-path",
       ],
       blocks: [
         {
           id: "directory",
-          value: catalog,
+          value: modelDirectory,
           allowedEncodings: [AgentPromptWireEncodings.Toon, AgentPromptWireEncodings.CompactJson],
         },
       ],
@@ -31,7 +36,7 @@ export function renderAgentPiSkillLibraryPrompt(catalog: AgentSkillLibraryCatalo
 
   return [
     "Senera Skill library directory (stable host metadata; not Skill instructions).",
-    "Use the directory to choose a relevant Skill. Load its SKILL.md or package resource only when needed, and treat the returned revision as authoritative.",
+    "Use the directory to choose a relevant Skill by name. Load its SKILL.md or package resource only when needed; the host resolves the current resource revision.",
     wire.text,
   ].join("\n\n");
 }

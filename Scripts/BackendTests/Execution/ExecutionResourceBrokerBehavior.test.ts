@@ -7,6 +7,7 @@ import {
 import { AgentExecutionResourceErrorCodes } from "../../../Source/AgentSystem/ExecutionResources/AgentExecutionResourceError.js";
 import { AgentExecutionResourceTransportCloseError } from "../../../Source/AgentSystem/ExecutionResources/AgentExecutionResourceTransport.js";
 import type { AgentExecutionResourceLimits } from "../../../Source/AgentSystem/ExecutionResources/AgentExecutionResourceTypes.js";
+import { AgentExecutionResourceRetentionPolicies } from "../../../Source/AgentSystem/ExecutionResources/AgentExecutionResourceTypes.js";
 import type { SeneraPersistentProcessChild } from "../../../Source/AgentSystem/Execution/SeneraPersistentProcessTypes.js";
 import { SeneraLocalExecutionEnv } from "../../../Source/AgentSystem/Execution/SeneraLocalExecutionEnv.js";
 import { resolveSeneraShellPlatform } from "../../../Source/AgentSystem/Execution/SeneraShellPlatform.js";
@@ -418,6 +419,43 @@ describe("execution resource broker", () => {
     }
   });
 
+  it("retains process-lifetime resources across idle sweeps until explicit release", async () => {
+    vi.useFakeTimers();
+    let now = 0;
+    const child = new FakePersistentChild();
+    const owner = sessionOwner("session-process-lifetime");
+    const broker = new AgentExecutionResourceBroker({
+      workspaceRoot: process.cwd(),
+      executionEnv: { spawnPersistentProcess: async () => child } as never,
+      now: () => now,
+      limits: {
+        ...resourceLimits(),
+        idleTtlMs: 5,
+        terminalTtlMs: 5,
+        sweepIntervalMs: 10,
+        terminationGraceMs: 2,
+      },
+    });
+
+    try {
+      const started = await broker.startProcess({
+        ...startRequest(owner),
+        retention: AgentExecutionResourceRetentionPolicies.UntilExit,
+      });
+      now = 100;
+      await vi.advanceTimersByTimeAsync(10);
+
+      expect(broker.inspect(started.resourceId, owner).state).toBe("running");
+      expect(child.killedSignals).toEqual([]);
+
+      await broker.release(started.resourceId, owner);
+      expect(child.killedSignals).toContain("SIGTERM");
+    } finally {
+      await broker.close();
+      vi.useRealTimers();
+    }
+  });
+
   it("waits for a pending start during broker shutdown", async () => {
     let releaseSpawn!: (child: SeneraPersistentProcessChild) => void;
     const pendingChild = new Promise<SeneraPersistentProcessChild>((resolve) => {
@@ -548,6 +586,7 @@ describe("execution resource broker", () => {
         ],
         cwd: process.cwd(),
         executionEnv,
+        retention: AgentExecutionResourceRetentionPolicies.Idle,
         owner,
         correlation: {
           sessionId: owner.sessionId,
@@ -588,6 +627,7 @@ describe("execution resource broker", () => {
         shellCommand: { mode: "shell", dialect, script },
         cwd: process.cwd(),
         executionEnv,
+        retention: AgentExecutionResourceRetentionPolicies.Idle,
         owner,
         correlation: {
           sessionId: owner.sessionId,
@@ -731,6 +771,7 @@ function startRequest(owner: ReturnType<typeof sessionOwner>) {
     command: "shell",
     args: ["run"],
     cwd: process.cwd(),
+    retention: AgentExecutionResourceRetentionPolicies.Idle,
     owner,
     correlation: {
       sessionId: owner.sessionId,

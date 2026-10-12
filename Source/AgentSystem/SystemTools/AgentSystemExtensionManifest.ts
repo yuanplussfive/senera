@@ -12,7 +12,6 @@ import {
   ToolSearchSchema,
   ToolPlanningModesSchema,
 } from "../Schemas/AgentToolContractSchema.js";
-import { AgentToolObservationProjectionSchema } from "../Schemas/AgentToolObservationProjectionSchema.js";
 import { AgentToolPerceptionKinds, AgentToolPerceptionScopes } from "../Types/AgentToolPerceptionTypes.js";
 import { inspectAgentToolSchedulingContract } from "../Types/AgentToolRuntimeContract.js";
 import { AgentToolChildGrantModes, ToolLoadingModes } from "../Types/AgentToolContractTypes.js";
@@ -22,9 +21,12 @@ import {
   AgentSystemExtensionSettingsSurfaceValues,
   AgentSystemExtensionSettingsSurfaces,
 } from "../Types/AgentSystemExtensionSettingsSurface.js";
-import { AgentSystemToolPresentationOverrideSchema } from "./AgentSystemToolPresentation.js";
+import {
+  AgentSystemToolPresentationOverrideSchema,
+  inspectAgentToolPresentationFactReferences,
+} from "./AgentSystemToolPresentation.js";
 import type { AgentToolPresentationOverride } from "../Types/AgentToolPresentationTypes.js";
-import { AgentToolContentPolicySchema } from "../Schemas/AgentToolContentPolicySchema.js";
+import { inspectAgentToolResultStorageContract } from "../ToolRuntime/AgentToolResultStorageContract.js";
 
 export const AgentSystemExtensionManifestFileName = "extension.json";
 
@@ -48,8 +50,6 @@ export const AgentSystemToolContractSchema = z
     presentation: AgentSystemToolPresentationOverrideSchema.optional(),
     inputSchema: JsonObjectSchema,
     outputSchema: AgentSystemExtensionJsonSchema.optional(),
-    observationProjection: z.string().trim().min(1),
-    contentPolicy: AgentToolContentPolicySchema.optional(),
     perception: z
       .object({
         kind: z.enum(AgentToolPerceptionKinds),
@@ -119,6 +119,33 @@ export const AgentSystemToolContractSchema = z
         code: "custom",
         path: [...issuePaths[issue.field]],
         message: issue.message,
+      });
+    }
+    const resultStorageIssuePaths = {
+      artifacts: ["artifacts", "Evidence"],
+      workspace: ["artifacts", "Workspace"],
+    } as const;
+    for (const issue of inspectAgentToolResultStorageContract({
+      resultStorage: tool.runtime.ResultStorage,
+      artifacts: tool.artifacts,
+    })) {
+      context.addIssue({
+        code: "custom",
+        path: [...resultStorageIssuePaths[issue.field]],
+        message: issue.message,
+      });
+    }
+    // A result-side measure may only read facts this contract declares, so an
+    // undeclared pointer fails here instead of rendering an empty placeholder.
+    const declaredFacts = (tool.artifacts?.Evidence ?? []).flatMap((evidence) => [
+      ...evidence.PlannerMemory.Facts,
+      ...evidence.ModelProjection.Slots,
+    ]);
+    for (const message of inspectAgentToolPresentationFactReferences(tool.presentation?.activity?.v2, declaredFacts)) {
+      context.addIssue({
+        code: "custom",
+        path: ["presentation", "activity", "v2"],
+        message,
       });
     }
   });
@@ -235,4 +262,3 @@ export type { AgentSystemExtensionPlatform } from "./AgentSystemExtensionPlatfor
 export type AgentSystemHostToolContribution = z.infer<typeof HostToolContributionSchema>;
 export type AgentSystemSidecarToolContribution = z.infer<typeof SidecarToolContributionSchema>;
 export type AgentSystemAgentRoleContribution = z.infer<typeof AgentRoleContributionSchema>;
-export { AgentToolObservationProjectionSchema };

@@ -7,9 +7,22 @@
     "activity": {
       "action": { "zh-CN": "查找工具", "en-US": "Search tools" },
       "argumentPath": "/query"
+    },
+    "preview": {
+      "result": {
+        "rows": [
+          { "pointer": "/match/*", "titlePath": "/0", "descriptionPath": "/1" },
+          { "pointer": "/maybe/*", "titlePath": "/0", "descriptionPath": "/1" }
+        ],
+        "maxRows": 4,
+        "more": {
+          "pointer": "/more",
+          "countPath": "/2",
+          "label": { "zh-CN": "另有 {count} 个结果", "en-US": "{count} more results" }
+        }
+      }
     }
   },
-  "observationProjection": "observations/default.projection.json",
   "description": "搜索当前授权范围内可发现的动态工具，不会自动加载或调用。结果中 match 有直接声明证据，maybe 需要先用 ToolDescribe 判断；more 是按实际候选来源折叠的覆盖提示，格式为 [sourceId,sourceName,omittedToolCount]，表示该来源仍有多少个候选未在本次结果展开。more 中的 sourceName 不是可调用工具，需再次搜索获取具体工具名。保持任务的原始表达和专有名词，检索器会根据实际能力元数据自动融合词法、别名和语义证据。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

@@ -1,28 +1,67 @@
 {
   "name": "DocumentExtract",
   "loading": "Bootstrap",
-  "description": "Probe or extract text, structure, metadata, and warnings from a canonical Senera document resource. The host resolves local paths before invocation.",
+  "description": "Probe or extract text, structure, metadata, and warnings from a workspace-local path, canonical Senera resource, or public HTTP(S) document URL.",
   "presentation": {
     "category": "document-extract",
     "icon": "file-text",
     "activity": {
-      "action": { "zh-CN": "读取文档", "en-US": "Read document" },
-      "argumentPath": "/resourceUri",
-      "detailPaths": ["/mode"]
+      "action": { "zh-CN": "提取", "en-US": "Extract" },
+      "argumentPath": "/source/path",
+      "detailPaths": ["/source/uri", "/source/url", "/mode"]
     }
   },
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
     "properties": {
-      "resourceUri": {
-        "type": "string",
-        "pattern": "^senera:\\/\\/resource\\/[A-Za-z0-9][A-Za-z0-9._~-]{0,255}$",
-        "description": "Exact canonical Senera resource URI supplied by the runtime. Local paths must be resolved by the host first; do not derive a URI from a filename."
+      "source": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string", "const": "senera_resource" },
+              "uri": {
+                "type": "string",
+                "pattern": "^senera:\\/\\/resource\\/[A-Za-z0-9][A-Za-z0-9._~-]{0,255}$",
+                "description": "Canonical Senera resource identity."
+              }
+            },
+            "required": ["kind", "uri"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string", "const": "local_path" },
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Workspace-relative or absolute local path inside the active workspace."
+              }
+            },
+            "required": ["kind", "path"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string", "const": "http_url" },
+              "url": {
+                "type": "string",
+                "pattern": "^https?:\\/\\/\\S+$",
+                "description": "Public HTTP(S) resource URL; private hosts remain subject to runtime policy."
+              }
+            },
+            "required": ["kind", "url"],
+            "additionalProperties": false
+          }
+        ],
+        "description": "Document source: workspace-local path, Senera resource, or HTTP(S) URL."
       },
       "mode": { "default": "auto", "type": "string", "enum": ["auto", "probe", "extract"] }
     },
-    "required": ["resourceUri"],
+    "required": ["source"],
     "additionalProperties": false
   },
   "outputSchema": {
@@ -32,7 +71,49 @@
       "document": {
         "type": "object",
         "properties": {
-          "resourceUri": { "type": "string", "pattern": "^senera:\\/\\/resource\\/[A-Za-z0-9][A-Za-z0-9._~-]{0,255}$" },
+          "source": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "const": "senera_resource" },
+                  "uri": {
+                    "type": "string",
+                    "pattern": "^senera:\\/\\/resource\\/[A-Za-z0-9][A-Za-z0-9._~-]{0,255}$",
+                    "description": "Canonical Senera resource identity."
+                  }
+                },
+                "required": ["kind", "uri"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "const": "local_path" },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Workspace-relative or absolute local path inside the active workspace."
+                  }
+                },
+                "required": ["kind", "path"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "const": "http_url" },
+                  "url": {
+                    "type": "string",
+                    "pattern": "^https?:\\/\\/\\S+$",
+                    "description": "Public HTTP(S) resource URL; private hosts remain subject to runtime policy."
+                  }
+                },
+                "required": ["kind", "url"],
+                "additionalProperties": false
+              }
+            ]
+          },
           "name": { "type": "string" },
           "mime": { "type": "string" },
           "size": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
@@ -104,14 +185,13 @@
             "additionalProperties": false
           }
         },
-        "required": ["resourceUri", "name", "mime", "size", "sha256", "status", "probe"],
+        "required": ["source", "name", "mime", "size", "sha256", "status", "probe"],
         "additionalProperties": false
       }
     },
     "required": ["document"],
     "additionalProperties": false
   },
-  "observationProjection": "observations/DocumentExtract.projection.json",
   "permissions": ["resources:read"],
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
   "runtime": {
@@ -132,8 +212,8 @@
         "Description": "检查文档并提取文本、结构、元数据和解析警告。",
         "Facets": {
           "Actions": ["probe", "extract", "inspect"],
-          "Targets": ["document-resource"],
-          "Inputs": ["resource-uri", "mode"],
+          "Targets": ["workspace-document-path", "document-resource", "public-document-url"],
+          "Inputs": ["source", "mode"],
           "Outputs": ["document-metadata", "text", "markdown", "structure", "warnings"],
           "Effects": ["none"]
         },
@@ -142,7 +222,7 @@
       }
     ],
     "UseCases": ["用户提供文档资源，并希望查看内容、结构、元数据或解析警告。"],
-    "Avoid": ["文档未被运行时登记为资源时不要猜测路径；需要修改文档时使用对应的工作区工具。"]
+    "Avoid": ["不要读取工作区以外的本地路径或绕过网络安全策略；需要修改文档时使用对应的工作区工具。"]
   },
   "evidenceCapabilities": []
 }

@@ -15,7 +15,6 @@ export function cloneModelProviderConfig(model: AgentModelProviderConfig): Agent
   return {
     ...model,
     ...(model.Capabilities ? { Capabilities: { ...model.Capabilities } } : {}),
-    ...(model.ThinkingLevelMap ? { ThinkingLevelMap: { ...model.ThinkingLevelMap } } : {}),
     ...(model.ThinkingProfiles ? { ThinkingProfiles: model.ThinkingProfiles.map((profile) => ({ ...profile })) } : {}),
   };
 }
@@ -35,10 +34,10 @@ export function remapModelIdReferences(
   if (config.ActionPlanner) {
     nextConfig.ActionPlanner = remapActionPlannerModelIds(config.ActionPlanner, remap);
   }
-  if (config.ToolLearning) {
-    nextConfig.ToolLearning = {
-      ...config.ToolLearning,
-      Client: remapPlannerClientModelId(config.ToolLearning.Client, remap),
+  if (config.StateCard) {
+    nextConfig.StateCard = {
+      ...config.StateCard,
+      Client: remapPlannerClientModelId(config.StateCard.Client, remap),
     };
   }
   if (config.ContinuityLearning) {
@@ -52,10 +51,10 @@ export function remapModelIdReferences(
     if (config.Defaults.ActionPlanner) {
       nextConfig.Defaults.ActionPlanner = remapActionPlannerModelIds(config.Defaults.ActionPlanner, remap);
     }
-    if (config.Defaults.ToolLearning) {
-      nextConfig.Defaults.ToolLearning = {
-        ...config.Defaults.ToolLearning,
-        Client: remapPlannerClientModelId(config.Defaults.ToolLearning.Client, remap),
+    if (config.Defaults.StateCard) {
+      nextConfig.Defaults.StateCard = {
+        ...config.Defaults.StateCard,
+        Client: remapPlannerClientModelId(config.Defaults.StateCard.Client, remap),
       };
     }
     if (config.Defaults.ContinuityLearning) {

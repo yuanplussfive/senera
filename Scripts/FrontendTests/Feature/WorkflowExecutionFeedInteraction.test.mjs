@@ -135,9 +135,12 @@ test("execution feed keeps action batches summarized until the user expands them
   expect(screen.queryByText("WorkspaceGrep")).not.toBeInTheDocument();
 
   await user.click(group);
-  await waitFor(() => expect(screen.getByText("WorkspaceRead")).toBeVisible());
-  expect(screen.getByText("WorkspaceGrep")).toBeVisible();
-  expect(screen.getByText(`${systemToolAction("WorkspaceRead")} · Source/runtime.ts`)).toBeVisible();
+  await waitFor(() =>
+    expect(document.querySelectorAll('[data-feed-detail-surface] [data-feed-item-kind="tool"]')).toHaveLength(2),
+  );
+  const detailRows = [...document.querySelectorAll('[data-feed-detail-surface] [data-feed-item-kind="tool"]')];
+  expect(detailRows[0]).toHaveTextContent("编辑 runtime.ts +6 −1");
+  expect(detailRows[1]).toHaveTextContent(systemToolAction("WorkspaceGrep"));
   expect(group).toHaveAttribute("aria-expanded", "true");
   expect(document.querySelector("[data-feed-detail-surface]")).toHaveClass("border-l", "border-line-subtle", "pl-3");
   expect(document.querySelector("[data-feed-detail-surface]")).not.toHaveClass("rounded-md", "bg-surface-subtle/70");
@@ -159,6 +162,12 @@ test("execution feed keeps action batches summarized until the user expands them
       ),
     ),
   );
-  expect(screen.getByText("WorkspaceList")).toBeVisible();
+  await waitFor(() =>
+    expect(document.querySelectorAll('[data-feed-detail-surface] [data-feed-item-kind="tool"]')).toHaveLength(3),
+  );
+  const rerenderedRows = [...document.querySelectorAll('[data-feed-detail-surface] [data-feed-item-kind="tool"]')];
+  expect(rerenderedRows[0]).toHaveTextContent(systemToolAction("WorkspaceRead"));
+  expect(rerenderedRows[1]).toHaveTextContent(systemToolAction("WorkspaceGrep"));
+  expect(rerenderedRows[2]).toHaveTextContent(systemToolAction("WorkspaceList"));
   expect(document.querySelector("[data-feed-group='tools:batch-actions']")).toHaveAttribute("aria-expanded", "true");
 });

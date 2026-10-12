@@ -5,11 +5,10 @@
     "category": "execution-resize",
     "icon": "terminal",
     "activity": {
-      "action": { "zh-CN": "调整终端", "en-US": "Resize terminal" },
+      "action": { "zh-CN": "调整", "en-US": "Resize" },
       "argumentPath": "/resourceId"
     }
   },
-  "observationProjection": "observations/resource.projection.json",
   "description": "调整 PTY 后台终端的列数和行数。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

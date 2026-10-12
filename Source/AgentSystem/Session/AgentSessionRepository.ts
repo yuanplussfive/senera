@@ -119,6 +119,7 @@ export interface AgentSessionPagedHistoryReader {
     requestIds: readonly string[],
     throughRevision: number,
   ): StoredRunSnapshot[];
+  loadRunSnapshot(sessionId: string, requestId: string): StoredRunSnapshot | undefined;
   loadRunSnapshotPage(
     sessionId: string,
     request: AgentSessionCursorPageRequest,
@@ -136,6 +137,8 @@ export interface AgentSessionPagedHistoryReader {
     sessionId: string,
     request: AgentSessionCursorPageRequest,
   ): AgentSessionCursorPage<AgentEventEnvelope>;
+  /** Loads one durable event detail without materializing the request history. */
+  loadRunEvent(sessionId: string, requestId: string, kind: string): AgentEventEnvelope | undefined;
 }
 
 export interface AgentSessionFullHistoryReader {

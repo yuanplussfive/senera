@@ -5,8 +5,8 @@ import { AgentLoopRunEventFactory } from "./AgentLoopRunEventFactory.js";
 import { AgentLoopToolEventFactory } from "./AgentLoopToolEventFactory.js";
 import type { AgentToolResultPresentation } from "../Types/ToolRuntimeTypes.js";
 import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
+import type { AgentModelUsage } from "../ModelEndpoints/AgentModelUsage.js";
 import type { AgentToolEventOrigin } from "../ToolRuntime/AgentToolEventOrigin.js";
-import type { AgentRoleplayPresetContext } from "../Presets/AgentPresetTypes.js";
 import type { AgentContinuityMemoryPromptContext } from "../Continuity/AgentContinuityMemoryTypes.js";
 import type { AgentPromptHarnessComposition } from "../Prompt/AgentPromptHarness.js";
 import type { AgentModelToolPlanningMode } from "../ModelEndpoints/AgentModelEndpointContract.js";
@@ -25,8 +25,19 @@ export class AgentLoopEventFactory {
     messageId: string,
     content: string,
     terminal: boolean,
+    step?: number,
+    modelMessageIndex?: number,
+    modelContentIndex?: number,
   ): Extract<AgentDomainEvent, { kind: typeof AgentEventKinds.AssistantMessageCreated }> {
-    return this.runEvents.finalAnswer(requestId, messageId, content, terminal);
+    return this.runEvents.finalAnswer(
+      requestId,
+      messageId,
+      content,
+      terminal,
+      step,
+      modelMessageIndex,
+      modelContentIndex,
+    );
   }
 
   promptRendered(
@@ -34,10 +45,9 @@ export class AgentLoopEventFactory {
     step: number,
     prompt: string,
     tokenCount: number,
-    roleplayPreset: AgentRoleplayPresetContext,
     continuityMemory: AgentContinuityMemoryPromptContext,
   ): AgentDomainEvent[] {
-    return this.promptEvents.promptRendered(requestId, step, prompt, tokenCount, roleplayPreset, continuityMemory);
+    return this.promptEvents.promptRendered(requestId, step, prompt, tokenCount, continuityMemory);
   }
 
   promptHarnessComposed(
@@ -59,6 +69,13 @@ export class AgentLoopEventFactory {
       batchId?: string;
       reason?: string;
       issues?: readonly string[];
+      calls?: readonly {
+        callId: string;
+        toolName: string;
+        purpose?: string;
+        origin?: AgentToolEventOrigin;
+        modelContentIndex?: number;
+      }[];
     } = {},
   ): AgentDomainEvent {
     return this.toolEvents.toolCallsPlanned(requestId, step, toolNames, metadata);
@@ -76,6 +93,8 @@ export class AgentLoopEventFactory {
       origin?: AgentToolEventOrigin;
       batchId?: string;
       startedAt?: string;
+      modelMessageIndex?: number;
+      modelContentIndex?: number;
     } = {},
   ): AgentDomainEvent {
     return this.toolEvents.toolCallStarted(requestId, step, index, toolName, callId, metadata);
@@ -134,7 +153,7 @@ export class AgentLoopEventFactory {
     return this.toolEvents.toolCallResultDetail(requestId, step, index, toolName, callId, value, metadata);
   }
 
-  terminal(projected: AgentProjectedTerminalResult, requestId: string): AgentDomainEvent[] {
-    return this.runEvents.terminal(projected, requestId);
+  terminal(projected: AgentProjectedTerminalResult, requestId: string, usage?: AgentModelUsage): AgentDomainEvent[] {
+    return this.runEvents.terminal(projected, requestId, usage);
   }
 }

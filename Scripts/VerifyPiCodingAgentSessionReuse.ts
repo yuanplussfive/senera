@@ -127,7 +127,6 @@ await substrate.close();
 
 assert.equal(first.piSessionId, sessionId);
 assert.equal(second.piSessionId, sessionId);
-assert.equal(first.historyMigrationRequired, true);
 assert.deepEqual(
   diagnosticDetails(diagnostics, "core.turn.lease.completed").map((details) => details.sessionStorage),
   ["created", "existing"],

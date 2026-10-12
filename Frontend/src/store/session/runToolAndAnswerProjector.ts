@@ -16,7 +16,7 @@ import { resolveBackendMessage } from "../../i18n/backendMessage";
 import { upsertMessageByRequestId } from "./historyRunProjection";
 import { readCurrentRun, type RunEventHandlerMap } from "./runEventProjectionTypes";
 import { bumpSessionMessageCount, currentRun, ensureSession, upsertStep } from "./sessionProjectorCore";
-import { alignRunDisplayTarget, touchRun } from "./sessionRunProjection";
+import { alignRunDisplayTarget, isRunTerminal, touchRun } from "./sessionRunProjection";
 import { summarizeToolPlan, toolPlanTitle, truncate } from "./sessionPresentation";
 import { toolBatchFromEvent } from "./timelineProjection";
 import { mergeToolResultPresentation } from "./toolResultPresentation";
@@ -50,10 +50,14 @@ export const runToolAndAnswerEventHandlers = {
       upsertStep(run, {
         id: `${run.requestId}-assistant-message-${messageId}`,
         kind: policy.stepKind,
+        agentStep: env.step,
+        modelMessageIndex: data.modelMessageIndex,
+        modelContentIndex: data.modelContentIndex,
         title: frontendMessage(policy.stepTitleKey),
         description: truncate(content, policy.descriptionLength),
         status: "done",
         startedAt: env.timestamp,
+        eventSequence: env.sequence,
         endedAt: env.timestamp,
         decisionKind: data.kind,
         toolBatch: data.batchId
@@ -73,11 +77,23 @@ export const runToolAndAnswerEventHandlers = {
   [EventKinds.ToolCallsPlanned]: (state, env) => {
     const run = readCurrentRun(state, env);
     if (!run) return;
+    if (isRunTerminal(run)) return;
     const data = env.data as ToolCallsPlannedData;
+    if (data.modelMessageIndex !== undefined) {
+      run.activeModelRequest = {
+        agentStep: env.step ?? 0,
+        modelMessageIndex: data.modelMessageIndex,
+        eventSequence: env.sequence,
+      };
+    }
     const toolBatch = toolBatchFromEvent(env, undefined, data.toolCount);
     upsertStep(run, {
       id: `${run.requestId}-tool-plan-${toolBatch.id}`,
       kind: "tool",
+      agentStep: env.step,
+      modelMessageIndex: data.modelMessageIndex,
+      modelContentIndex: data.calls?.find((call) => call.modelContentIndex !== undefined)?.modelContentIndex,
+      eventSequence: env.sequence,
       title: toolPlanTitle(data),
       description: summarizeToolPlan(data),
       status: "done",
@@ -89,12 +105,17 @@ export const runToolAndAnswerEventHandlers = {
       upsertStep(run, {
         id: `tool-${call.callId}`,
         kind: "tool",
+        agentStep: env.step,
+        modelMessageIndex: data.modelMessageIndex,
+        modelContentIndex: call.modelContentIndex,
+        eventSequence: env.sequence,
         title: frontendMessage("workflow.projection.toolCall", { toolName: call.toolName }),
         status: "pending",
         startedAt: env.timestamp,
         toolName: call.toolName,
         callId: call.callId,
         purpose: call.purpose,
+        ...(call.origin ? { toolOrigin: call.origin } : {}),
         toolBatch: {
           ...toolBatch,
           index,
@@ -107,11 +128,17 @@ export const runToolAndAnswerEventHandlers = {
   [EventKinds.ToolCallStarted]: (state, env) => {
     const run = readCurrentRun(state, env);
     if (!run) return;
+    if (isRunTerminal(run)) return;
     const data = env.data as ToolCallStartedData;
     resetCompletedAssistantStreamBeforeTool(run);
     upsertStep(run, {
       id: `tool-${data.callId}`,
       kind: "tool",
+      agentStep: env.step,
+      modelMessageIndex: data.modelMessageIndex,
+      modelContentIndex: data.modelContentIndex,
+      eventSequence: env.sequence,
+      startedSequence: env.sequence,
       title: frontendMessage("workflow.projection.toolCall", { toolName: data.toolName }),
       status: "running",
       startedAt: env.timestamp,
@@ -188,6 +215,7 @@ export const runToolAndAnswerEventHandlers = {
     const step = run.steps.find((item) => item.id === `tool-${data.callId}`);
     if (step) {
       step.status = "done";
+      step.completedSequence = env.sequence;
       step.toolOrigin = data.origin ?? step.toolOrigin;
       step.endedAt = env.timestamp;
       if (data.purpose) step.purpose = data.purpose;
@@ -205,6 +233,7 @@ export const runToolAndAnswerEventHandlers = {
     const step = run.steps.find((item) => item.id === `tool-${data.callId}`);
     if (step) {
       step.status = "failed";
+      step.completedSequence = env.sequence;
       step.toolOrigin = data.origin ?? step.toolOrigin;
       step.endedAt = env.timestamp;
       if (data.purpose) step.purpose = data.purpose;
@@ -218,6 +247,10 @@ export const runToolAndAnswerEventHandlers = {
       title: frontendMessage("workflow.projection.toolCallFailed", { toolName: data.toolName }),
       status: "failed",
       startedAt: env.timestamp,
+      agentStep: env.step,
+      eventSequence: env.sequence,
+      startedSequence: env.sequence,
+      completedSequence: env.sequence,
       endedAt: env.timestamp,
       toolName: data.toolName,
       toolOrigin: data.origin,

@@ -1,5 +1,6 @@
 import React from "react";
 import { act, cleanup, screen, waitFor } from "@testing-library/react";
+import { countTokens } from "gpt-tokenizer";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
@@ -16,6 +17,8 @@ const { ScrollToBottomButton } = await import("../../../Frontend/src/features/ch
 const { MessageActions, readMessageActionIntents } =
   await import("../../../Frontend/src/features/chat/MessageActions.tsx");
 const { AssistantTurnRow } = await import("../../../Frontend/src/features/chat/AssistantTurnRow.tsx");
+const { MessageMetrics } = await import("../../../Frontend/src/features/chat/MessageMetrics.tsx");
+const { TooltipProvider } = await import("../../../Frontend/src/shared/ui/Tooltip.tsx");
 const { MessageList, readMessageListItemKey } = await import("../../../Frontend/src/features/chat/MessageList.tsx");
 const { projectAssistantTurns } = await import("../../../Frontend/src/features/chat/assistantTurnProjection.ts");
 const { projectAssistantTurnStages } =
@@ -56,6 +59,140 @@ test("chat composer updates its memoized hint when the frontend locale changes",
   await waitFor(() => expect(screen.getByPlaceholderText("Tell senera what to do")).toBeInTheDocument());
 });
 
+test("message metrics keep total tokens and TPS outside the assistant detail disclosure", () => {
+  const run = createRun({
+    requestId: "metrics-run",
+    status: "completed",
+    steps: [
+      {
+        id: "model-step",
+        kind: "model",
+        title: "Model",
+        status: "done",
+        startedAt: "2026-07-09T00:00:00.000Z",
+        endedAt: "2026-07-09T00:00:02.000Z",
+      },
+    ],
+  });
+  renderWithFrontendProviders(
+    React.createElement(MessageMetrics, {
+      role: "assistant",
+      run,
+      usage: {
+        source: "provider_reported",
+        inputTokens: 120,
+        outputTokens: 36,
+        totalTokens: 156,
+        cacheReadTokens: 80,
+      },
+    }),
+  );
+
+  const metrics = document.querySelector("[data-message-metrics-role='assistant']");
+  expect(metrics).toBeInTheDocument();
+  expect(metrics).toHaveTextContent("156 tokens");
+  expect(metrics).toHaveTextContent("18 tok/s");
+  expect(metrics.querySelector("[data-message-metrics-usage]")).toBeInTheDocument();
+  expect(metrics.querySelector("[data-message-metrics-total]")).toHaveTextContent("156 tokens");
+  expect(metrics.querySelector("[data-message-metrics-throughput]")).toHaveTextContent("18 tok/s");
+  expect(metrics.querySelector("[data-message-metrics-feedback]")).toBeNull();
+  expect(metrics).not.toHaveTextContent("36 tokens");
+  expect(metrics).not.toHaveTextContent("平均");
+  expect(metrics).not.toHaveTextContent("gpt-6-luna");
+});
+
+test("assistant total tokens use compact Chinese units while details keep the full value", () => {
+  renderWithFrontendProviders(
+    React.createElement(MessageMetrics, {
+      role: "assistant",
+      run: createRun({ requestId: "metrics-compact", status: "completed" }),
+      usage: { source: "provider_reported", totalTokens: 125_000 },
+    }),
+  );
+
+  const metrics = document.querySelector("[data-message-metrics-role='assistant']");
+  expect(metrics).toHaveTextContent("12.5w tokens");
+  expect(metrics).not.toHaveTextContent("125,000 tokens");
+});
+
+test("assistant metrics stay hidden until the run is completed", () => {
+  const run = createRun({
+    requestId: "metrics-running",
+    status: "running",
+    modelProvider: {
+      id: "provider-pi",
+      kind: "OpenAICompatible",
+      endpoint: "Responses",
+      baseUrl: "https://example.test/v1",
+      model: "gpt-6-luna",
+    },
+  });
+
+  renderWithFrontendProviders(
+    React.createElement(MessageMetrics, {
+      role: "assistant",
+      run,
+      modelProvider: run.modelProvider,
+      usage: { source: "provider_reported", outputTokens: 24 },
+    }),
+  );
+
+  expect(document.querySelector("[data-message-metrics-role='assistant']")).toBeNull();
+});
+
+test("message metrics do not leak the model name into the compact assistant row", () => {
+  const run = createRun({
+    requestId: "metrics-model-fallback",
+    status: "completed",
+    steps: [
+      {
+        id: "model-step",
+        kind: "model",
+        modelName: "gpt-6-luna",
+        title: "Model",
+        status: "done",
+        startedAt: "2026-07-09T00:00:00.000Z",
+        endedAt: "2026-07-09T00:00:02.000Z",
+      },
+    ],
+  });
+
+  renderWithFrontendProviders(
+    React.createElement(MessageMetrics, {
+      role: "assistant",
+      run,
+      usage: { source: "provider_reported", outputTokens: 12, totalTokens: 12 },
+    }),
+  );
+
+  const metrics = document.querySelector("[data-message-metrics-role='assistant']");
+  expect(metrics).toHaveTextContent("12 tokens");
+  expect(metrics).toHaveTextContent("6 tok/s");
+  expect(metrics).not.toHaveTextContent("gpt-6-luna");
+  expect(metrics?.querySelector("[data-message-metrics-model]")).toBeNull();
+});
+
+test("user message metrics count only the visible message text locally", () => {
+  const text = "你好，读取项目";
+  renderWithFrontendProviders(
+    React.createElement(MessageMetrics, {
+      role: "user",
+      text,
+      usage: {
+        source: "provider_reported",
+        inputTokens: 999_999,
+        outputTokens: 12,
+        totalTokens: 1_000_011,
+      },
+    }),
+  );
+
+  const metrics = document.querySelector("[data-message-metrics-role='user']");
+  expect(metrics).toBeInTheDocument();
+  expect(metrics).toHaveTextContent(`${countTokens(text).toLocaleString("zh-CN")} tokens`);
+  expect(metrics).not.toHaveTextContent("999,999 tokens");
+});
+
 test("chat composer exposes the selected execution approval mode", async () => {
   const user = userEvent.setup();
   const onSelectMode = vi.fn();
@@ -76,9 +213,7 @@ test("chat composer shows the current context usage in the compact progress indi
     withUploadPreviewProvider(React.createElement(ChatComposer, createComposerProps())),
   );
 
-  const indicator = screen.getByRole("progressbar", { name: "上下文窗口" });
-  expect(indicator).not.toHaveTextContent(/--|%/);
-  expect(indicator).toHaveAttribute("aria-valuetext", "等待上下文用量同步");
+  expect(screen.queryByRole("progressbar", { name: "背景信息窗口" })).not.toBeInTheDocument();
 
   rerender(
     withUploadPreviewProvider(
@@ -97,7 +232,7 @@ test("chat composer shows the current context usage in the compact progress indi
     ),
   );
 
-  const populatedIndicator = screen.getByRole("progressbar", { name: "上下文窗口" });
+  const populatedIndicator = screen.getByRole("progressbar", { name: "背景信息窗口" });
   expect(populatedIndicator).not.toHaveTextContent("10.07%");
   expect(populatedIndicator).toHaveAttribute("aria-valuetext", "10%");
   expect(populatedIndicator.parentElement).toContainElement(document.querySelector("[data-composer-model-selector]"));
@@ -204,7 +339,7 @@ test("chat composer preserves a failed draft and leaves Escape to active interac
   expect(onCancel).not.toHaveBeenCalled();
 });
 
-test("chat composer opens the preset dialog only after the tools menu releases interaction ownership", async () => {
+test("chat composer opens the persona dialog only after the tools menu releases interaction ownership", async () => {
   const onOutsideClick = vi.fn();
   const user = userEvent.setup();
   renderWithFrontendProviders(
@@ -217,9 +352,9 @@ test("chat composer opens the preset dialog only after the tools menu releases i
   );
 
   await user.click(screen.getByRole("button", { name: frontendChatMessage("chat.composer.toolkit.tooltip") }));
-  await user.click(screen.getByRole("menuitem", { name: frontendChatMessage("chat.composer.toolkit.preset") }));
+  await user.click(screen.getByRole("menuitem", { name: frontendChatMessage("chat.composer.toolkit.persona") }));
 
-  expect(await screen.findByRole("dialog", { name: frontendMessage("preset.ui.title") })).toBeInTheDocument();
+  expect(await screen.findByRole("dialog", { name: frontendMessage("persona.ui.title") })).toBeInTheDocument();
   expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: frontendMessage("ui.close") }));
 
@@ -296,6 +431,46 @@ test("chat model selector keeps the current conversation choice and exposes the 
   await user.click(screen.getByRole("button", { name: "选择模型" }));
   await user.click(screen.getByRole("menuitem", { name: "添加模型" }));
   expect(onAddModel).toHaveBeenCalledTimes(1);
+});
+
+test("chat model selector keeps reasoning levels in the model menu", async () => {
+  const onSelectThinkingLevel = vi.fn();
+  const user = userEvent.setup();
+  renderWithFrontendProviders(
+    withUploadPreviewProvider(
+      React.createElement(
+        ChatComposer,
+        createComposerProps({
+          modelConfig: {
+            modelProviders: [
+              {
+                id: "openai:reasoning",
+                capabilities: { Chat: true, Reasoning: true },
+                model: "reasoning-model",
+                isDefault: true,
+                thinkingLevels: ["off", "low", "high"],
+                thinkingProfiles: [{ id: "deep", label: "深度", level: "high" }],
+                defaultThinkingLevel: "low",
+              },
+            ],
+            selectedModelProviderId: "openai:reasoning",
+            selectedThinkingLevel: "low",
+            onSelectModelProvider: vi.fn(),
+            onSelectThinkingLevel,
+          },
+        }),
+      ),
+    ),
+  );
+
+  expect(document.querySelector("[data-composer-thinking-selector]")).toBeNull();
+  await user.click(screen.getByRole("button", { name: "选择模型" }));
+  expect(screen.getByText("推理等级")).toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: "low" })).toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: "深度" })).toBeInTheDocument();
+  expect(screen.getByRole("menu")).toHaveClass("grid-cols-[minmax(220px,1fr)_minmax(140px,auto)]");
+  await user.click(screen.getByRole("menuitem", { name: "深度" }));
+  expect(onSelectThinkingLevel).toHaveBeenCalledWith("high");
 });
 
 test("chat model selector stays available for adding the first model", async () => {
@@ -434,7 +609,7 @@ test("chat panel does not own the application catalog loading barrier", () => {
     activeSessionId: null,
     sessionOrder: [],
     sessions: {},
-    catalogSynced: { sessions: false, presets: false },
+    catalogSynced: { sessions: false },
   });
 
   renderWithFrontendProviders(React.createElement(ChatPanel, createChatPanelProps()));
@@ -590,6 +765,285 @@ test("a live assistant turn forks from its request boundary before a final reply
   expect(onForkFromMessage).toHaveBeenCalledWith({ requestId });
 });
 
+test("model thinking stays grouped within each response and keeps response order", async () => {
+  const user = userEvent.setup();
+  const requestId = "request-inline-thinking";
+  const makeTurn = (latestContent, latestStatus = "streaming") => ({
+    __assistantTurn: true,
+    key: `assistant-turn:${requestId}:0`,
+    requestId,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    messages: [],
+    run: createRun({
+      requestId,
+      status: latestStatus === "streaming" ? "running" : "completed",
+      steps: [
+        {
+          id: `${requestId}-model-1`,
+          kind: "model",
+          agentStep: 1,
+          title: "Calling model",
+          status: "running",
+          startedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+      thinkingBlocks: [
+        {
+          id: "thought-latest-first-in-array",
+          step: 2,
+          messageIndex: 0,
+          contentIndex: 1,
+          content: latestContent,
+          status: latestStatus,
+        },
+        {
+          id: "thought-earlier",
+          step: 1,
+          messageIndex: 0,
+          contentIndex: 0,
+          content: "Inspect the available image tools.",
+          status: "complete",
+        },
+        {
+          id: "thought-middle",
+          step: 2,
+          messageIndex: 0,
+          contentIndex: 0,
+          content: "Check `ImageGenerate` capability.",
+          status: "complete",
+        },
+      ],
+    }),
+    streaming: latestStatus === "streaming",
+  });
+  const renderTurn = (turn) =>
+    React.createElement(AssistantTurnRow, {
+      sessionId: "session-inline-thinking",
+      turn,
+      showInlineActions: false,
+      onForkFromMessage: vi.fn(),
+      onRegenerate: vi.fn(),
+      onDeleteFromMessage: vi.fn(),
+      onViewWorkflow: vi.fn(),
+    });
+  const view = renderWithFrontendProviders(renderTurn(makeTurn("**Checking bitmap generation capability**")));
+
+  const readDisclosures = () => [...document.querySelectorAll("[data-model-thinking-disclosure]")];
+  const readDisclosure = () => readDisclosures().at(-1);
+  const disclosures = readDisclosures();
+  expect(disclosures).toHaveLength(2);
+  expect(disclosures[0]?.querySelector("[data-model-thinking-preview]")).toHaveTextContent(
+    "Inspect the available image tools.",
+  );
+  const disclosure = readDisclosure();
+  expect(disclosure.closest("[data-assistant-turn-stage]")).not.toBeNull();
+  expect(disclosure.querySelector("[data-activity-feed-row]")).toHaveClass("activity-feed-row");
+  expect(document.querySelectorAll("[data-model-thinking-block]")).toHaveLength(0);
+  expect(document.querySelectorAll("[data-model-thinking-brain]")).toHaveLength(0);
+  expect(disclosures[0]?.querySelector("[data-model-thinking-preview]")).not.toHaveClass(
+    "motion-safe:animate-text-shimmer",
+  );
+  expect(disclosure.querySelector("[data-model-thinking-preview]")).toHaveClass(
+    "model-thinking-preview--streaming",
+    "motion-safe:animate-text-shimmer",
+  );
+  expect(screen.queryByText("思考过程")).not.toBeInTheDocument();
+  const toggle = disclosure.querySelector("[data-model-thinking-toggle-row]");
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await waitFor(() =>
+    expect(disclosure.querySelector("[data-model-thinking-preview] strong")).toHaveTextContent(
+      "Checking bitmap generation capability",
+    ),
+  );
+  expect(disclosure.querySelector("[data-model-thinking-transcript]")).toBeNull();
+
+  await user.click(disclosure.querySelector("[data-model-thinking-toggle-row]"));
+  expect(toggle).toHaveAttribute("aria-expanded", "true");
+  const transcript = await waitFor(() => {
+    const element = disclosure.querySelector("[data-model-thinking-transcript]");
+    expect(element).not.toBeNull();
+    return element;
+  });
+  expect(transcript.querySelector("code")).toHaveTextContent("ImageGenerate");
+  expect(transcript.querySelector("strong")).toHaveTextContent("Checking bitmap generation capability");
+  expect(transcript.querySelectorAll("[data-thinking-step]")).not.toHaveLength(0);
+  expect(transcript.querySelectorAll("[data-thinking-step-marker] svg")).toHaveLength(0);
+  const transcriptText = transcript.textContent;
+  expect(transcriptText.indexOf("ImageGenerate")).toBeLessThan(
+    transcriptText.indexOf("Checking bitmap generation capability"),
+  );
+
+  view.rerender(
+    React.createElement(TooltipProvider, { delayDuration: 0 }, renderTurn(makeTurn("**Generating the preview now**"))),
+  );
+  await waitFor(() =>
+    expect(readDisclosure().querySelector("[data-model-thinking-preview] strong")).toHaveTextContent(
+      "Generating the preview now",
+    ),
+  );
+  expect(readDisclosure().querySelector("[data-model-thinking-transcript] strong")).toHaveTextContent(
+    "Generating the preview now",
+  );
+  await user.click(screen.getByRole("button", { name: "收起完整记录" }));
+  expect(readDisclosure().querySelector("[data-model-thinking-transcript]")).toBeNull();
+
+  view.rerender(
+    React.createElement(TooltipProvider, { delayDuration: 0 }, renderTurn(makeTurn("Final thought", "complete"))),
+  );
+  await waitFor(() =>
+    expect(readDisclosure().querySelector("[data-model-thinking-preview]")).not.toHaveClass(
+      "model-thinking-preview--streaming",
+    ),
+  );
+  expect(readDisclosure().querySelector("[data-model-thinking-brain]")).toBeNull();
+});
+
+test("the latest feedback and unfinished work in an earlier response animate together", async () => {
+  const requestId = "request-waiting-for-next-response";
+  const turn = {
+    __assistantTurn: true,
+    key: `assistant-turn:${requestId}:0`,
+    requestId,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    messages: [],
+    run: createRun({
+      requestId,
+      status: "running",
+      steps: [
+        {
+          id: "unfinished-tool-in-prior-response",
+          kind: "tool",
+          title: "Read workspace",
+          status: "running",
+          toolName: "WorkspaceRead",
+          callId: "unfinished-call",
+          agentStep: 1,
+          modelMessageIndex: 0,
+          modelContentIndex: 1,
+          eventSequence: 5,
+          startedSequence: 5,
+        },
+      ],
+      thinkingBlocks: [
+        {
+          id: "thought-previous-response",
+          step: 1,
+          messageIndex: 0,
+          contentIndex: 2,
+          eventSequence: 6,
+          content: "Checking the selected tool result.",
+          status: "complete",
+        },
+      ],
+      activeModelRequest: { agentStep: 1, modelMessageIndex: 1, eventSequence: 9 },
+    }),
+    streaming: true,
+  };
+
+  renderWithFrontendProviders(
+    React.createElement(AssistantTurnRow, {
+      sessionId: "session-waiting-for-next-response",
+      turn,
+      showInlineActions: false,
+      onForkFromMessage: vi.fn(),
+      onRegenerate: vi.fn(),
+      onDeleteFromMessage: vi.fn(),
+      onViewWorkflow: vi.fn(),
+    }),
+  );
+
+  await waitFor(() => expect(document.querySelector("[data-tool-batch-activity-title]")).toBeInTheDocument());
+  const activityTitle = document.querySelector("[data-tool-batch-activity-title]");
+  expect(activityTitle).not.toHaveClass("motion-safe:animate-text-shimmer");
+  expect(document.querySelector("[data-tool-action-live]")).not.toBeInTheDocument();
+  expect(document.querySelector("[data-tool-action-icon]")).not.toHaveClass("senera-live-status-icon");
+  expect(document.querySelector("[data-run-status='running'] [data-thinking-status-text]")).toBeNull();
+});
+
+test("cancelled Pi turns keep each response's thinking blocks in its ordered transcript", async () => {
+  const user = userEvent.setup();
+  const requestId = "request-cancelled-image-generation";
+  renderWithFrontendProviders(
+    React.createElement(AssistantTurnRow, {
+      sessionId: "session-cancelled-image-generation",
+      turn: {
+        __assistantTurn: true,
+        key: `assistant-turn:${requestId}:0`,
+        requestId,
+        createdAt: "2026-09-25T19:00:33.758Z",
+        messages: [],
+        run: createRun({
+          requestId,
+          status: "cancelled",
+          thinkingBlocks: [
+            {
+              id: "step:1:message:0:content:0",
+              step: 1,
+              messageIndex: 0,
+              contentIndex: 0,
+              content: "**我正在查找位图生成选项**\n\n**我正在确认白色机枪动画方案**\n\n**我正在准备纯位图动画**",
+              status: "complete",
+            },
+            {
+              id: "step:1:message:0:content:1",
+              step: 1,
+              messageIndex: 0,
+              contentIndex: 1,
+              content: "**Preparing bitmap animation**\n\n**正在查找位图生成工具**",
+              status: "complete",
+            },
+            {
+              id: "step:1:message:1:content:0",
+              step: 1,
+              messageIndex: 1,
+              contentIndex: 0,
+              content: "**Preparing image asset**",
+              status: "complete",
+            },
+          ],
+        }),
+        streaming: false,
+      },
+      showInlineActions: false,
+      onForkFromMessage: vi.fn(),
+      onRegenerate: vi.fn(),
+      onDeleteFromMessage: vi.fn(),
+      onViewWorkflow: vi.fn(),
+    }),
+  );
+
+  const disclosures = [...document.querySelectorAll("[data-model-thinking-disclosure]")];
+  expect(disclosures).toHaveLength(2);
+  const firstDisclosure = disclosures[0];
+  const lastDisclosure = disclosures[1];
+  expect(firstDisclosure.querySelector("[data-model-thinking-preview]")).toHaveTextContent(
+    "Preparing bitmap animation",
+  );
+  expect(lastDisclosure.querySelector("[data-model-thinking-preview]")).toHaveTextContent("Preparing image asset");
+  await user.click(firstDisclosure.querySelector("[data-model-thinking-toggle-row]"));
+  const firstTranscript = await waitFor(() => {
+    const element = firstDisclosure.querySelector("[data-model-thinking-transcript]");
+    expect(element).not.toBeNull();
+    return element;
+  });
+  expect(firstTranscript).toHaveTextContent("我正在查找位图生成选项");
+  expect(firstTranscript).toHaveTextContent("我正在确认白色机枪动画方案");
+  expect(firstTranscript).toHaveTextContent("Preparing bitmap animation");
+  await user.click(firstDisclosure.querySelector("[data-model-thinking-toggle-row]"));
+  await user.click(lastDisclosure.querySelector("[data-model-thinking-toggle-row]"));
+  await waitFor(() =>
+    expect(lastDisclosure.querySelector("[data-model-thinking-preview]")).toHaveTextContent("Preparing image asset"),
+  );
+
+  const transcript = await waitFor(() => {
+    const element = lastDisclosure.querySelector("[data-model-thinking-transcript]");
+    expect(element).not.toBeNull();
+    return element;
+  });
+  expect(transcript).toHaveTextContent("Preparing image asset");
+  expect(transcript).not.toHaveTextContent("Preparing bitmap animation");
+});
+
 test("message list renders messages and streaming run as stable assistant turns", () => {
   const onViewWorkflow = vi.fn();
   const userMessage = createMessage({
@@ -668,7 +1122,6 @@ test("message list groups tool prefaces and final replies from one request into 
 });
 
 test("assistant turn renders a tool preface before its matching execution activity", async () => {
-  const user = userEvent.setup();
   const requestId = "request-preface-before-tools";
   const preface = createMessage({
     id: "preface-before-tools",
@@ -696,23 +1149,22 @@ test("assistant turn renders a tool preface before its matching execution activi
     React.createElement(MessageList, createMessageListProps({ messages: [preface, answer], runs: [run] })),
   );
 
-  await waitFor(() => expect(document.querySelector("[data-ui-chrome] button[aria-expanded]")).not.toBeNull());
-  const stage = document.querySelector("[data-assistant-turn-stage='execution']");
-  const prefaceSegment = stage?.querySelector("[data-assistant-turn-segment='AssistantToolPreface']");
-
-  expect(prefaceSegment).not.toBeNull();
-  await waitFor(() => expect(stage?.querySelector("[data-execution-stage-fold]")).toBeInTheDocument());
-  const activityFold = stage?.querySelector("[data-execution-stage-fold]");
-  expect(activityFold).toBeInstanceOf(HTMLElement);
-  expect(activityFold?.querySelector("[data-execution-stage-fold-details]")).not.toBeInTheDocument();
-
-  const activityTrigger = await waitFor(() => {
-    const element = activityFold?.querySelector("[data-tool-batch-activity-trigger]");
+  const processToggle = await waitFor(() => {
+    const element = document.querySelector("[data-completed-turn-toggle]");
     expect(element).toBeInstanceOf(HTMLButtonElement);
     return element;
   });
-  await user.click(activityTrigger);
-  await waitFor(() => expect(activityFold?.querySelector("[data-tool-batch-activity-items]")).toBeVisible());
+
+  expect(processToggle).toHaveAttribute("aria-expanded", "false");
+  expect(screen.getByText("页面读取完成。")).toBeInTheDocument();
+  expect(screen.queryByText("我先读取页面。")).not.toBeInTheDocument();
+  expect(document.querySelector("[data-completed-turn-process]")).not.toBeInTheDocument();
+
+  await userEvent.click(processToggle);
+  await waitFor(() => expect(processToggle).toHaveAttribute("aria-expanded", "true"));
+  expect(screen.getByText("我先读取页面。")).toBeInTheDocument();
+  expect(document.querySelector("[data-completed-turn-process]")).toBeInTheDocument();
+  await waitFor(() => expect(document.querySelector("[data-execution-stage-fold]")).toBeInTheDocument());
 });
 
 test("assistant turn stages attach each execution batch to its own preface", () => {

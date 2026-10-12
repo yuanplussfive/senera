@@ -1,8 +1,20 @@
 {
   "chat.composer.toolkit.tooltip": "Tools",
   "chat.composer.toolkit.fileAndImage": "Files & images",
-  "chat.composer.toolkit.preset": "Role presets",
+  "chat.composer.toolkit.persona": "Persona",
   "chat.composer.toolkit.plugins": "Plugins",
   "chat.composer.toolkit.skills": "Skills",
-  "chat.composer.toolkit.webSearch": "Web search"
+  "chat.composer.toolkit.webSearch": "Web search",
+  "chat.composer.activation.ariaLabel": "Capability picker",
+  "chat.composer.activation.skill": "Skill",
+  "chat.composer.activation.plugin": "Plugin",
+  "chat.composer.activation.mcp": "MCP",
+  "chat.composer.activation.system": "System extension",
+  "chat.composer.activation.needsSetup": "Needs setup",
+  "chat.composer.activation.unavailable": "Unavailable",
+  "chat.composer.activation.syncing": "Syncing capability catalog...",
+  "chat.composer.activation.empty": "No Skills, plugins, system extensions, or MCP servers are available",
+  "chat.composer.activation.noMatch": "No matching capability",
+  "chat.composer.activation.selected": "Added",
+  "chat.composer.activation.hint": "↑↓ navigate, Enter add, Esc close"
 }

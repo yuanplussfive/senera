@@ -14,26 +14,25 @@ describe("agent model thinking projection", () => {
     expect(projection.levels).toEqual(["off", "low", "medium", "high", "xhigh", "max"]);
   });
 
-  test("does not treat an empty form map as an explicit reasoning declaration", () => {
+  test("does not treat an explicit reasoning disable as enabled", () => {
     const projection = resolveAgentModelThinking({
       api: "openai-responses",
       model: "a-plain-chat-model",
-      thinkingLevelMap: {},
       capabilities: { Reasoning: false },
     });
 
     expect(projection).toMatchObject({ reasoning: false, levels: ["off"], source: "disabled" });
   });
 
-  test("ignores unknown or blank native map entries instead of enabling reasoning", () => {
+  test("treats a user profile as an explicit reasoning declaration", () => {
     const projection = resolveAgentModelThinking({
       api: "openai-responses",
       model: "a-plain-chat-model",
-      thinkingLevelMap: JSON.parse('{"vendorOnly":"custom","high":"  "}'),
-      capabilities: { Reasoning: false },
+      thinkingProfiles: [{ Id: "deep", Label: "Deep", Level: "high" }],
     });
 
-    expect(projection).toMatchObject({ reasoning: false, levels: ["off"], source: "disabled" });
+    expect(projection).toMatchObject({ reasoning: true, source: "configuration" });
+    expect(projection.profiles).toEqual([{ id: "deep", label: "Deep", level: "high" }]);
   });
 
   test("preserves an explicit disable and merges user mappings without provider branches", () => {
@@ -47,7 +46,6 @@ describe("agent model thinking projection", () => {
     const configured = resolveAgentModelThinking({
       api: "openai-responses",
       model: "gpt-5.6-luna",
-      thinkingLevelMap: { max: "ultra" },
       thinkingProfiles: [
         { Id: "balanced", Label: "Balanced", Level: "medium" },
         { Id: "invalid", Label: "Unsupported", Level: "minimal" },
@@ -58,29 +56,24 @@ describe("agent model thinking projection", () => {
     });
 
     expect(configured.source).toBe("configuration");
-    expect(configured.thinkingLevelMap?.max).toBe("ultra");
     expect(configured.levels).toContain("max");
     expect(configured.defaultLevel).toBe("low");
     expect(configured.profiles).toEqual([{ id: "balanced", label: "Balanced", level: "medium" }]);
   });
 
-  test("keeps the catalog lookup stable while isolating provider-specific overrides", () => {
+  test("keeps the catalog lookup stable across provider projections", () => {
     const first = resolveAgentModelThinking({
       api: "openai-responses",
       provider: "openai",
       model: "gpt-5.6-luna",
-      thinkingLevelMap: { max: "ultra" },
     });
     const second = resolveAgentModelThinking({
       api: "openai-responses",
       provider: "unknown-senera-endpoint",
       model: "gpt-5.6-luna",
-      thinkingLevelMap: { high: null },
     });
 
     expect(first.levels).toContain("max");
-    expect(first.thinkingLevelMap?.max).toBe("ultra");
-    expect(second.levels).not.toContain("high");
-    expect(second.thinkingLevelMap?.high).toBeNull();
+    expect(second.levels).toEqual(first.levels);
   });
 });

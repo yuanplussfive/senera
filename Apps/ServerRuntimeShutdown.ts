@@ -1,7 +1,6 @@
 import { collectRejected, closeRuntimeInfrastructure } from "./ServerRuntimeSupport.js";
 import type { AgentArtifactRetentionService } from "../Source/AgentSystem/Artifacts/AgentArtifactRetentionService.js";
 import type { AgentChannelService } from "../Source/AgentSystem/Channels/AgentChannelService.js";
-import type { AgentConfigService } from "../Source/AgentSystem/Config/AgentConfigService.js";
 import type { AgentContinuityRuntime } from "../Source/AgentSystem/Continuity/AgentContinuityRuntime.js";
 import type { AgentExecutionResourceBroker } from "../Source/AgentSystem/ExecutionResources/AgentExecutionResourceBroker.js";
 import type { AgentInteractionInputRuntime } from "../Source/AgentSystem/Interaction/AgentInteractionInputRuntime.js";
@@ -17,7 +16,7 @@ import type { AgentWorkspaceRuntime } from "../Source/AgentSystem/Runtime/AgentW
 import type { SeneraServerRuntimePlatform } from "./ServerRuntimePlatform.js";
 
 export interface SeneraServerRuntimeShutdownInput {
-  readonly stopConfigWatch: () => void;
+  readonly unsubscribeConfiguration: () => void;
   readonly unsubscribeSandboxStatus: () => void;
   readonly sessionManager: AgentSessionManager;
   readonly schedules: AgentScheduleRuntime;
@@ -28,15 +27,14 @@ export interface SeneraServerRuntimeShutdownInput {
   readonly server: { stop(): Promise<void> };
   readonly platform: SeneraServerRuntimePlatform;
   readonly orchestrationEvents: { setSink(sink: undefined): void };
-  readonly unbindRunDispatch: () => void;
+  readonly unbindRuntimeBindings: () => void;
   readonly runtimeCache: AgentSystemRuntimeCache;
   readonly workspaceRuntime: AgentWorkspaceRuntime;
   readonly executionResources: AgentExecutionResourceBroker;
   readonly interactionInput: AgentInteractionInputRuntime;
+  readonly mcpInputs: AgentMcpInputService;
   readonly artifactRetention: AgentArtifactRetentionService;
   readonly sandboxRuntimeService: AgentSandboxRuntimeService;
-  readonly configService: AgentConfigService;
-  readonly mcpInputs: AgentMcpInputService;
   readonly continuityRuntime: AgentContinuityRuntime;
   readonly repository: AgentSessionRepository;
   readonly orchestrationDatabase: AgentOrchestrationDatabase;
@@ -47,7 +45,7 @@ export function createSeneraServerRuntimeStop(input: SeneraServerRuntimeShutdown
   let stopPromise: Promise<void> | undefined;
   return () =>
     (stopPromise ??= (async () => {
-      input.stopConfigWatch();
+      input.unsubscribeConfiguration();
       input.unsubscribeSandboxStatus();
       input.sessionManager.beginShutdown();
       const failures: unknown[] = [];
@@ -60,13 +58,17 @@ export function createSeneraServerRuntimeStop(input: SeneraServerRuntimeShutdown
       collectRejected(await Promise.allSettled([input.server.stop(), input.sessionManager.shutdown()]), failures);
       collectRejected(await Promise.allSettled([input.platform.stop()]), failures);
       input.orchestrationEvents.setSink(undefined);
-      input.unbindRunDispatch();
+      input.unbindRuntimeBindings();
       try {
+        // Continuity may still have queued document embeddings. Flush it
+        // before the workspace owner tears down the shared embedding worker.
+        collectRejected(await Promise.allSettled([input.continuityRuntime.close()]), failures);
         collectRejected(
           await Promise.allSettled([
             closeRuntimeInfrastructure(input.runtimeCache, input.workspaceRuntime),
             input.executionResources.close(),
             input.interactionInput.close(),
+            input.mcpInputs.close(),
             input.artifactRetention.close(),
             input.sandboxRuntimeService.close(),
           ]),
@@ -74,9 +76,6 @@ export function createSeneraServerRuntimeStop(input: SeneraServerRuntimeShutdown
         );
       } finally {
         for (const close of [
-          () => input.configService.close(),
-          () => input.mcpInputs.close(),
-          () => input.continuityRuntime.close(),
           () => input.repository.close(),
           () => input.orchestrationDatabase.close(),
           () => input.channelsDatabase.close(),

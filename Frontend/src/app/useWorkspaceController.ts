@@ -1,208 +1,155 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, type MutableRefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import {
   EventKinds,
   type EventEnvelope,
   type WorkspaceSnapshotData,
   type WorkspaceSwitchFailedData,
-  type WorkspaceSwitchStartedData,
   type WsRequest,
 } from "../api/eventTypes";
 import type { SocketStatus } from "../api/useAgentSocket";
-import { frontendMessage } from "../i18n/frontendMessageCatalog";
+import { generateId } from "../lib/util";
 import { resolveBackendMessage, type BackendLocalizedMessage } from "../i18n/backendMessage";
+import { frontendMessage } from "../i18n/frontendMessageCatalog";
 
 export type WorkspaceSwitchPhase = "idle" | "switching" | "succeeded" | "failed";
-
 export interface WorkspaceSwitchError {
   message: string;
   localizedMessage?: BackendLocalizedMessage;
 }
-
 export interface WorkspaceControllerHandle {
+  connected: boolean;
   snapshot: WorkspaceSnapshotData | null;
   phase: WorkspaceSwitchPhase;
   target: string | null;
   error: WorkspaceSwitchError | null;
   unavailable: string | null;
   refresh: () => void;
-  switchWorkspace: (workspaceRoot: string) => boolean;
-  ingestWorkspaceEvent: (env: EventEnvelope) => boolean;
+  switchWorkspace: (root: string) => boolean;
+  ingestWorkspaceEvent: (event: EventEnvelope) => boolean;
   resetError: () => void;
 }
 
-interface WorkspaceControllerState {
-  snapshot: WorkspaceSnapshotData | null;
-  phase: WorkspaceSwitchPhase;
-  target: string | null;
-  error: WorkspaceSwitchError | null;
-  unavailable: string | null;
-}
-
-type WorkspaceControllerAction =
-  | { type: "snapshot"; snapshot: WorkspaceSnapshotData }
-  | { type: "started"; target: string }
-  | { type: "failed"; target: string; error: WorkspaceSwitchError }
-  | { type: "unavailable"; message: string }
-  | { type: "resetError" };
-
-const WorkspaceSwitchTimeoutMs = 120_000;
-
-const initialState: WorkspaceControllerState = {
-  snapshot: null,
-  phase: "idle",
-  target: null,
-  error: null,
-  unavailable: null,
-};
-
-/**
- * 工作区快照与热切换协调器。切换期间服务端会整栈重建、WebSocket 断开重连，
- * 因此最终结果主要靠重连后的 workspace.get 快照与目标路径比对来判定：
- * 匹配 = 成功，不匹配（服务端回滚原工作区）= 失败；长时间无快照 = 超时失败。
- */
+/** Completion is correlated to the opening request, never inferred from a directory string or reconnect. */
 export function useWorkspaceController({
   sendRef,
   statusRef,
   status,
+  onWorkspaceReady,
 }: {
   sendRef: MutableRefObject<((request: WsRequest) => boolean) | null>;
   statusRef: MutableRefObject<SocketStatus>;
   status: SocketStatus;
+  onWorkspaceReady?: (snapshot: WorkspaceSnapshotData, switched: boolean) => void;
 }): WorkspaceControllerHandle {
-  const [state, dispatch] = useReducer(workspaceControllerReducer, initialState);
-  const previousStatusRef = useRef(status);
-  const targetRef = useRef<string | null>(null);
-  useEffect(() => {
-    targetRef.current = state.target;
-  }, [state.target]);
+  const [snapshot, setSnapshot] = useState<WorkspaceSnapshotData | null>(null);
+  const [phase, setPhase] = useState<WorkspaceSwitchPhase>("idle");
+  const [target, setTarget] = useState<string | null>(null);
+  const [error, setError] = useState<WorkspaceSwitchError | null>(null);
+  const [unavailable, setUnavailable] = useState<string | null>(null);
+  const pendingRef = useRef<string | null>(null);
+  const pendingRequestRef = useRef<Extract<WsRequest, { type: "workspace.switch" }> | null>(null);
+  const readyRef = useRef(onWorkspaceReady);
+  readyRef.current = onWorkspaceReady;
 
-  const refresh = useCallback((): void => {
+  const refresh = useCallback(() => {
     if (statusRef.current === "open") sendRef.current?.({ type: "workspace.get" });
   }, [sendRef, statusRef]);
-
   useEffect(() => {
-    const previous = previousStatusRef.current;
-    previousStatusRef.current = status;
-    if (previous !== "open" && status === "open") refresh();
-  }, [refresh, status]);
-
-  useEffect(() => {
-    if (state.phase !== "switching") return;
-    const timer = window.setTimeout(() => {
-      dispatch({
-        type: "failed",
-        target: state.target ?? "",
-        error: { message: frontendMessage("settings.workspace.switchTimeout") },
-      });
-    }, WorkspaceSwitchTimeoutMs);
-    return () => window.clearTimeout(timer);
-  }, [state.phase, state.target]);
+    if (status !== "open") return;
+    if (pendingRequestRef.current) sendRef.current?.(pendingRequestRef.current);
+    else refresh();
+  }, [refresh, sendRef, status]);
 
   const switchWorkspace = useCallback(
-    (workspaceRoot: string): boolean => {
-      const send = sendRef.current;
-      if (statusRef.current !== "open" || !send) return false;
-      dispatch({ type: "started", target: workspaceRoot });
-      if (!send({ type: "workspace.switch", workspaceRoot })) {
-        dispatch({
-          type: "failed",
-          target: workspaceRoot,
-          error: { message: frontendMessage("settings.workspace.switchDisconnected") },
-        });
+    (root: string): boolean => {
+      if (pendingRef.current) return false;
+      if (statusRef.current !== "open") {
+        setError({ message: frontendMessage("workspace.requestNotSent") });
+        setPhase("failed");
         return false;
       }
-      return true;
+      const requestId = generateId();
+      pendingRef.current = requestId;
+      pendingRequestRef.current = { type: "workspace.switch", requestId, workspaceRoot: root };
+      setTarget(root);
+      setError(null);
+      setPhase("switching");
+      if (sendRef.current?.(pendingRequestRef.current)) return true;
+      pendingRef.current = null;
+      pendingRequestRef.current = null;
+      setPhase("failed");
+      setTarget(null);
+      setError({ message: frontendMessage("workspace.requestNotSent") });
+      return false;
     },
     [sendRef, statusRef],
   );
 
-  const ingestWorkspaceEvent = useCallback((env: EventEnvelope): boolean => {
-    if (env.kind === EventKinds.WorkspaceSnapshot || env.kind === EventKinds.WorkspaceSwitched) {
-      dispatch({ type: "snapshot", snapshot: env.data as WorkspaceSnapshotData });
+  const ingestWorkspaceEvent = useCallback((event: EventEnvelope): boolean => {
+    if (event.kind === EventKinds.WorkspaceSnapshot) {
+      if (pendingRef.current) return true;
+      const value = event.data as WorkspaceSnapshotData;
+      setSnapshot(value);
+      setUnavailable(null);
+      readyRef.current?.(value, false);
       return true;
     }
-    if (env.kind === EventKinds.WorkspaceSwitchStarted) {
-      dispatch({ type: "started", target: (env.data as WorkspaceSwitchStartedData).workspaceRoot });
+    if (event.kind === EventKinds.WorkspaceSwitched) {
+      const value = event.data as WorkspaceSnapshotData & { requestId: string };
+      if (value.requestId !== pendingRef.current) return true;
+      pendingRef.current = null;
+      pendingRequestRef.current = null;
+      setSnapshot(value);
+      setPhase("succeeded");
+      setTarget(null);
+      readyRef.current?.(value, true);
       return true;
     }
-    if (env.kind === EventKinds.WorkspaceSwitchFailed) {
-      const data = env.data as WorkspaceSwitchFailedData;
-      dispatch({
-        type: "failed",
-        target: data.workspaceRoot,
-        error: {
-          message: resolveBackendMessage(data) ?? data.message ?? frontendMessage("settings.workspace.switchFailed"),
-          localizedMessage: data.localizedMessage,
-        },
-      });
+    if (event.kind === EventKinds.WorkspaceSwitchStarted) return true;
+    if (event.kind === EventKinds.WorkspaceSwitchFailed) {
+      const value = event.data as WorkspaceSwitchFailedData;
+      if (value.requestId !== pendingRef.current) return true;
+      pendingRef.current = null;
+      pendingRequestRef.current = null;
+      setPhase("failed");
+      setTarget(null);
+      setError({ message: resolveBackendMessage(value) ?? value.message, localizedMessage: value.localizedMessage });
       return true;
     }
-    if (env.kind === EventKinds.RequestInvalid) {
-      const data = env.data as {
-        message?: string;
-        localizedMessage?: BackendLocalizedMessage;
-        details?: { requestType?: string };
-      };
-      const requestType = data.details?.requestType;
-      if (requestType === "workspace.get") {
-        dispatch({
-          type: "unavailable",
-          message: resolveBackendMessage(data) ?? data.message ?? frontendMessage("settings.workspace.unavailable"),
-        });
+    if (event.kind === EventKinds.RequestInvalid) {
+      const value = event.data as { message: string; details?: { requestType?: string; requestId?: string } };
+      if (value.details?.requestType === "workspace.get") {
+        setUnavailable(resolveBackendMessage(value) ?? value.message);
         return true;
       }
-      if (requestType === "workspace.switch") {
-        dispatch({
-          type: "failed",
-          target: targetRef.current ?? "",
-          error: {
-            message: resolveBackendMessage(data) ?? data.message ?? frontendMessage("settings.workspace.switchFailed"),
-            localizedMessage: data.localizedMessage,
-          },
-        });
+      if (value.details?.requestType === "workspace.switch" && value.details.requestId === pendingRef.current) {
+        pendingRef.current = null;
+        pendingRequestRef.current = null;
+        setPhase("failed");
+        setTarget(null);
+        setError({ message: resolveBackendMessage(value) ?? value.message });
         return true;
       }
     }
     return false;
   }, []);
-
-  const resetError = useCallback((): void => {
-    dispatch({ type: "resetError" });
+  const resetError = useCallback(() => {
+    setError(null);
+    setPhase("idle");
   }, []);
-
   return useMemo(
-    () => ({ ...state, refresh, switchWorkspace, ingestWorkspaceEvent, resetError }),
-    [ingestWorkspaceEvent, refresh, resetError, state, switchWorkspace],
+    () => ({
+      connected: status === "open",
+      snapshot,
+      phase,
+      target,
+      error,
+      unavailable,
+      refresh,
+      switchWorkspace,
+      ingestWorkspaceEvent,
+      resetError,
+    }),
+    [status, snapshot, phase, target, error, unavailable, refresh, switchWorkspace, ingestWorkspaceEvent, resetError],
   );
-}
-
-function workspaceControllerReducer(
-  state: WorkspaceControllerState,
-  action: WorkspaceControllerAction,
-): WorkspaceControllerState {
-  if (action.type === "snapshot") {
-    if (state.phase === "switching" && state.target) {
-      if (action.snapshot.workspaceRoot === state.target) {
-        return { snapshot: action.snapshot, phase: "succeeded", target: null, error: null, unavailable: null };
-      }
-      return {
-        snapshot: action.snapshot,
-        phase: "failed",
-        target: null,
-        error: { message: frontendMessage("settings.workspace.switchRolledBack") },
-        unavailable: null,
-      };
-    }
-    return { ...state, snapshot: action.snapshot, unavailable: null };
-  }
-  if (action.type === "started") {
-    return { ...state, phase: "switching", target: action.target, error: null, unavailable: null };
-  }
-  if (action.type === "failed") {
-    return { ...state, phase: "failed", target: null, error: action.error };
-  }
-  if (action.type === "unavailable") {
-    return { ...state, unavailable: action.message };
-  }
-  return { ...state, phase: "idle", target: null, error: null };
 }

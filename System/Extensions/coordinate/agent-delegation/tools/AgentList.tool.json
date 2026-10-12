@@ -4,7 +4,7 @@
   "presentation": {
     "category": "agent-list",
     "icon": "users",
-    "activity": { "action": { "zh-CN": "查看子代理", "en-US": "List agents" } }
+    "activity": { "action": { "zh-CN": "查看", "en-US": "List" } }
   },
   "description": "列出当前会话创建的后台子代理任务及其最新状态、进度和结果。可在新的跟进回合中恢复任务上下文。",
   "inputSchema": {
@@ -33,6 +33,35 @@
               "type": "string"
             },
             "agent": { "type": "string" },
+            "workItemId": { "type": "string" },
+            "taskDigest": { "type": "string" },
+            "resources": {
+              "type": "object",
+              "properties": {
+                "coverage": { "type": "string", "enum": ["declared", "unscoped"] },
+                "claims": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "domainId": { "type": "string" },
+                      "identity": { "type": "string" },
+                      "access": { "type": "string", "enum": ["shared", "exclusive"] }
+                    },
+                    "required": ["domainId", "identity", "access"],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": ["coverage", "claims"],
+              "additionalProperties": false
+            },
+            "delivery": {
+              "type": "object",
+              "properties": { "parentResultDelivered": { "type": "boolean" } },
+              "required": ["parentResultDelivered"],
+              "additionalProperties": false
+            },
             "joinGroup": {
               "type": "object",
               "properties": {
@@ -94,7 +123,7 @@
               "additionalProperties": false
             }
           },
-          "required": ["runId", "state"],
+          "required": ["runId", "state", "resources", "delivery"],
           "additionalProperties": false
         }
       }
@@ -102,7 +131,6 @@
     "required": ["runs"],
     "additionalProperties": false
   },
-  "observationProjection": "observations/AgentLifecycle.projection.json",
   "permissions": ["orchestration:inspect"],
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
   "runtime": {

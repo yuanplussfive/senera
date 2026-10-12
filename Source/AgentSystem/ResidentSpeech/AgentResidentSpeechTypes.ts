@@ -2,7 +2,6 @@ import type { AssistantMessage, AssistantMessageEventStream, Context } from "@ea
 import type { AgentModelUsageSink } from "../ModelEndpoints/AgentModelUsage.js";
 import type { AgentModelTimingSink } from "../ModelEndpoints/AgentModelTiming.js";
 import type { AgentModelInputInspection } from "../Text/AgentTurnTokenBudget.js";
-import type { AgentResidentState } from "../Continuity/AgentResidentState.js";
 
 export const AgentResidentActionSpeechCapability = "resident-speech.action";
 export const AgentResidentFinalSpeechCapability = "resident-speech.final";
@@ -40,7 +39,7 @@ export interface AgentResidentSpeechNativeContinuation {
   stream(input: {
     readonly context: Context;
     readonly requiredToolName: string;
-    /** Existing callers default to required; repair callers explicitly opt into Pi's automatic mode. */
+    /** Structured continuations always require the bridge call. */
     readonly toolChoice?: "required" | "auto";
     readonly signal: AbortSignal;
   }): AssistantMessageEventStream;
@@ -51,8 +50,6 @@ export interface AgentResidentSpeechProjectionInput {
   readonly message: AssistantMessage;
   readonly focus: AgentResidentSpeechFocus;
   readonly spokenUtterances: readonly AgentResidentSpeechUtterance[];
-  /** Host-derived live stance (mood/bearing/target) for the speaking moment. */
-  readonly residentStance?: AgentResidentState;
   /** Rewrite shape: reshape (card present) rewrites with persona, polish keeps facts and tones only. */
   readonly projectionTier?: AgentResidentSpeechProjectionTier;
   readonly enabled: boolean;

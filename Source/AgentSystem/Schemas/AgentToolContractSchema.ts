@@ -11,15 +11,15 @@ import {
   ToolExecutionTargets,
   ToolLoadingModes,
   ToolPlanningModes,
+  ToolResultStorageModes,
   ToolResultAssessmentPolicies,
   ToolSchedulingModes,
 } from "../Types/AgentToolContractTypes.js";
 import { isAgentJsonPointer } from "../Core/AgentJsonPointerOperations.js";
-import { AgentToolContentPolicySchema } from "./AgentToolContentPolicySchema.js";
+import { inspectAgentToolResultStorageContract } from "../ToolRuntime/AgentToolResultStorageContract.js";
 
 export { ToolArtifactPolicySchema } from "./AgentArtifactContractSchema.js";
 export { ToolSearchSchema } from "./AgentToolSearchContractSchema.js";
-export { AgentToolContentPolicySchema } from "./AgentToolContentPolicySchema.js";
 
 export const AgentToolDiscoverySourceSchema = z
   .object({
@@ -114,6 +114,7 @@ export const ToolRuntimeSchema = z
     Lifecycle: z.enum(["Immediate", "OneShot", "Persistent", "RemoteJob"]),
     ProtocolVersion: z.literal(AgentHostToolProtocolVersion).optional(),
     ResultAssessment: z.enum(ToolResultAssessmentPolicies),
+    ResultStorage: z.enum([ToolResultStorageModes.Artifact, ToolResultStorageModes.SourceView]).optional(),
     Scheduling: z.enum(ToolSchedulingModes).optional(),
     MaxConcurrency: z.number().int().min(1).max(1_000).optional(),
     Capabilities: ToolRuntimeCapabilitiesSchema.optional(),
@@ -157,7 +158,6 @@ export const ToolSchema = z
     Approval: ToolApprovalSchema.optional(),
     Artifacts: ToolArtifactPolicySchema.optional(),
     ArtifactPolicyFile: z.string().min(1).optional(),
-    ContentPolicy: AgentToolContentPolicySchema.optional(),
   })
   .strict()
   .superRefine((tool, context) => {
@@ -202,6 +202,20 @@ export const ToolSchema = z
       context.addIssue({
         code: "custom",
         path: [...schedulingIssuePaths[issue.field]],
+        message: issue.message,
+      });
+    }
+    const resultStorageIssuePaths = {
+      artifacts: ["Artifacts", "Evidence"],
+      workspace: ["Artifacts", "Workspace"],
+    } as const;
+    for (const issue of inspectAgentToolResultStorageContract({
+      resultStorage: tool.Runtime.ResultStorage,
+      artifacts: tool.Artifacts,
+    })) {
+      context.addIssue({
+        code: "custom",
+        path: [...resultStorageIssuePaths[issue.field]],
         message: issue.message,
       });
     }

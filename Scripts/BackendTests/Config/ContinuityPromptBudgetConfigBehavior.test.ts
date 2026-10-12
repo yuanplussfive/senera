@@ -3,57 +3,71 @@ import { resolveContinuityLearningConfig } from "../../../Source/AgentSystem/Age
 import { projectAgentConfigForm } from "../../../Source/AgentSystem/Config/AgentConfigFormProjector.js";
 import { AgentSystemConfigSchema } from "../../../Source/AgentSystem/Schemas/AgentSystemConfigSchema.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
-import { createModelProvider, createModelProviderEndpoint } from "../Support/AgentTestFixtures.js";
+import { createModelProvider } from "../Support/AgentTestFixtures.js";
+import { migrateAgentConfigPayload } from "../../../Source/AgentSystem/Config/AgentConfigMigration.js";
 
 describe("continuity prompt budget configuration", () => {
   test("uses one configured budget in runtime and form projections", () => {
     const input = config({
-      ContinuityLearning: { Recall: { PromptBudget: { MaxFactEntries: 12, MaxCharacters: 8_000 } } },
+      ContinuityLearning: { Recall: { PromptBudget: { MaxTokens: 8_000 } } },
     });
 
     expect(resolveContinuityLearningConfig(input).Recall.PromptBudget).toMatchObject({
-      MaxProfileEntries: 32,
-      MaxFactEntries: 12,
-      MaxCharacters: 8_000,
+      MaxTokens: 8_000,
     });
     expect(
       projectAgentConfigForm(input)
         .sections.flatMap((section) => section.fields)
-        .find((field) => field.path.join(".") === "ContinuityLearning.Recall.PromptBudget.MaxFactEntries"),
-    ).toMatchObject({ value: 12, effectiveValue: 12, configured: true });
+        .find((field) => field.path.join(".") === "ContinuityLearning.Recall.PromptBudget.MaxTokens"),
+    ).toMatchObject({ value: 8_000, effectiveValue: 8_000, configured: true });
   });
 
   test("rejects a non-positive budget at the schema boundary", () => {
     const parsed = AgentSystemConfigSchema.safeParse(
-      config({ ContinuityLearning: { Recall: { PromptBudget: { MaxCharacters: 0 } } } }),
+      config({ ContinuityLearning: { Recall: { PromptBudget: { MaxTokens: 0 } } } }),
     );
 
     expect(parsed.success).toBe(false);
     if (!parsed.success) {
       expect(parsed.error.issues).toContainEqual(
-        expect.objectContaining({ path: ["ContinuityLearning", "Recall", "PromptBudget", "MaxCharacters"] }),
+        expect.objectContaining({ path: ["ContinuityLearning", "Recall", "PromptBudget", "MaxTokens"] }),
       );
     }
   });
 
-  test("deeply merges a partial default budget without losing sibling limits", () => {
+  test("inherits the token default and permits a workspace override", () => {
+    expect(resolveContinuityLearningConfig(config()).Recall.PromptBudget).toEqual({ MaxTokens: 16_384 });
     const resolved = resolveContinuityLearningConfig(
       config({
         Defaults: {
-          ContinuityLearning: { Recall: { PromptBudget: { MaxFactEntries: 10 } } },
+          ContinuityLearning: { Recall: { PromptBudget: { MaxTokens: 10_000 } } },
         },
       }),
     );
 
     expect(resolved.Recall.PromptBudget).toEqual({
-      MaxProfileEntries: 32,
-      MaxDigestEntries: 3,
-      MaxFactEntries: 10,
-      MaxRelationEntries: 24,
-      MaxEventEntries: 8,
-      MaxEvidenceEntries: 8,
-      MaxCharacters: 24_000,
+      MaxTokens: 10_000,
     });
+  });
+
+  test("retires old count policies before strict JSON and database config validation", () => {
+    const old = { ...config(), ConfigVersion: 34 };
+    const migrated = migrateAgentConfigPayload({
+      ...old,
+      ContinuityLearning: {
+        Recall: { PromptBudget: { MaxDigestEntries: 3, MaxEventEntries: 8, MaxCharacters: 24000 } },
+      },
+      Defaults: { ContinuityLearning: { Recall: { PromptBudget: { MaxEventEntries: 4 } } } },
+    });
+    expect(migrated?.removedPaths).toHaveLength(4);
+    const parsed = AgentSystemConfigSchema.parse(migrated?.config);
+    expect(resolveContinuityLearningConfig(parsed).Recall.PromptBudget).toEqual({ MaxTokens: 16384 });
+    expect(
+      AgentSystemConfigSchema.safeParse({
+        ...parsed,
+        ContinuityLearning: { Recall: { PromptBudget: { MaxEventEntries: 8 } } },
+      }).success,
+    ).toBe(false);
   });
 });
 
@@ -61,8 +75,12 @@ function config(overrides: Partial<AgentSystemConfig> = {}): AgentSystemConfig {
   const provider = createModelProvider();
   return {
     DefaultModelProviderId: provider.Id,
-    ModelProviderEndpoints: [createModelProviderEndpoint()],
-    ModelProviders: [provider],
+    ModelProviderEndpoints: [
+      { Id: provider.ProviderId, Kind: provider.Kind, BaseUrl: provider.BaseUrl, ApiKey: provider.ApiKey },
+    ],
+    ModelProviders: [
+      { Id: provider.Id, ProviderId: provider.ProviderId, Model: provider.Model, Endpoint: provider.Endpoint },
+    ],
     ...overrides,
   };
 }

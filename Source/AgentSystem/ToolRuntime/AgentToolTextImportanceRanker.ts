@@ -44,8 +44,13 @@ export class AgentToolTextImportanceRanker {
     const ordered = [...scored].sort(
       (left, right) => right.score - left.score || left.segment.index - right.segment.index,
     );
-    const atoms = [...new Set(scored.flatMap((entry) => entry.segment.atoms))];
-    for (const atom of atoms) {
+    const atoms = [...new Set(scored.flatMap((entry) => entry.segment.atoms))]
+      .map((atom) => ({
+        atom,
+        score: Math.max(...scored.filter((entry) => entry.segment.atoms.includes(atom)).map((entry) => entry.score)),
+      }))
+      .sort((left, right) => right.score - left.score || left.atom.localeCompare(right.atom));
+    for (const { atom } of atoms) {
       throwIfAborted(signal);
       for (const candidate of ordered.filter((entry) => entry.segment.atoms.includes(atom))) {
         if (this.tryAdd(selected, candidate, tokenLimit)) break;

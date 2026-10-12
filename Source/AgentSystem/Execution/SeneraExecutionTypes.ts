@@ -1,4 +1,14 @@
-import type { ExecutionEnv } from "@earendil-works/pi-agent-core";
+import type {
+  Context,
+  ExecutionEnv,
+  ExecutionError,
+  FileError,
+  FileInfo,
+  Result,
+  ShellExecOptions,
+  ShellExecResult,
+  ShellOutputUpdate,
+} from "@earendil-works/pi-agent-core";
 import type { SeneraProcessExecutionProfile } from "./SeneraExecutionProfile.js";
 import type {
   AgentResourceAccessAuthority,
@@ -6,7 +16,6 @@ import type {
   AgentResourceAccessIntent,
   AgentResourceAccessPlan,
 } from "./SeneraResourceAccess.js";
-import type { FileError, Result } from "@earendil-works/pi-agent-core";
 import type {
   SeneraPersistentProcessChild,
   SeneraPersistentProcessSpawnOptions,
@@ -97,9 +106,105 @@ export interface SeneraShellExecutionResult {
   outputCapture?: SeneraOutputSpoolDescriptor;
 }
 
-export interface SeneraExecutionEnv extends ExecutionEnv {
+export interface SeneraTextLineReader {
+  readLine(context: Context): Promise<Result<{ text: string; terminated: boolean } | undefined, FileError>>;
+  close(context: Context): Promise<void>;
+}
+
+export type SeneraExecutionContext = Context | AbortSignal | undefined;
+
+export interface SeneraShellExecOptions extends Partial<ShellExecOptions> {
+  readonly abortSignal?: AbortSignal;
+  readonly onStdout?: (chunk: string) => void;
+  readonly onStderr?: (chunk: string) => void;
+  readonly onUpdate?: (update: ShellOutputUpdate, context: Context) => void;
+}
+
+export interface SeneraShellExecResult extends ShellExecResult {
+  readonly stdout: string;
+  readonly stderr: string;
+}
+
+/**
+ * Senera's resource-aware environment keeps the Pi 0.87 execution contract
+ * while accepting the pre-0.87 convenience calls used by host-owned tools.
+ * The implementation normalizes both forms at the boundary; there is only
+ * one filesystem and process implementation underneath.
+ */
+export interface SeneraExecutionEnv extends Omit<
+  ExecutionEnv,
+  | "absolutePath"
+  | "joinPath"
+  | "readTextFile"
+  | "openTextLineReader"
+  | "readTextLines"
+  | "readBinaryFile"
+  | "writeFile"
+  | "appendFile"
+  | "renameFile"
+  | "fileInfo"
+  | "listDir"
+  | "canonicalPath"
+  | "exists"
+  | "createDir"
+  | "remove"
+  | "createTempDir"
+  | "createTempFile"
+  | "cleanup"
+  | "exec"
+> {
   readonly workspaceRoot: string;
   readonly capabilities: SeneraExecutionRuntimeCapabilities;
+  absolutePath(value: string, context?: SeneraExecutionContext): Promise<Result<string, FileError>>;
+  joinPath(parts: string[], context?: SeneraExecutionContext): Promise<Result<string, FileError>>;
+  readTextFile(value: string, context?: SeneraExecutionContext): Promise<Result<string, FileError>>;
+  openTextLineReader(value: string, context?: Context): Promise<Result<SeneraTextLineReader, FileError>>;
+  readTextLines(
+    value: string,
+    options?: { maxLines?: number; abortSignal?: AbortSignal },
+    context?: Context,
+  ): Promise<Result<string[], FileError>>;
+  readBinaryFile(value: string, context?: SeneraExecutionContext): Promise<Result<Uint8Array, FileError>>;
+  writeFile(
+    value: string,
+    content: string | Uint8Array,
+    context?: SeneraExecutionContext,
+  ): Promise<Result<void, FileError>>;
+  appendFile(
+    value: string,
+    content: string | Uint8Array,
+    context?: SeneraExecutionContext,
+  ): Promise<Result<void, FileError>>;
+  renameFile(
+    sourcePath: string,
+    destinationPath: string,
+    context?: SeneraExecutionContext,
+  ): Promise<Result<void, FileError>>;
+  fileInfo(value: string, context?: Context): Promise<Result<FileInfo, FileError>>;
+  listDir(value: string, context?: SeneraExecutionContext): Promise<Result<FileInfo[], FileError>>;
+  canonicalPath(value: string, context?: SeneraExecutionContext): Promise<Result<string, FileError>>;
+  exists(value: string, context?: Context): Promise<Result<boolean, FileError>>;
+  createDir(
+    value: string,
+    options?: { recursive?: boolean; abortSignal?: AbortSignal },
+    context?: Context,
+  ): Promise<Result<void, FileError>>;
+  remove(
+    value: string,
+    options?: { recursive?: boolean; force?: boolean; abortSignal?: AbortSignal },
+    context?: Context,
+  ): Promise<Result<void, FileError>>;
+  createTempDir(prefix?: string, context?: SeneraExecutionContext): Promise<Result<string, FileError>>;
+  createTempFile(
+    options?: { prefix?: string; suffix?: string; abortSignal?: AbortSignal },
+    context?: Context,
+  ): Promise<Result<string, FileError>>;
+  cleanup(context?: Context): Promise<void>;
+  exec(
+    command: string,
+    options?: SeneraShellExecOptions,
+    context?: Context,
+  ): Promise<Result<SeneraShellExecResult, ExecutionError>>;
   resolveResourcePath(value: string, intent: AgentResourceAccessIntent): Promise<Result<string, FileError>>;
   inspectResourcePath(
     value: string,

@@ -22,6 +22,9 @@ export default defineConfig(({ command }) => ({
   build: {
     manifest: true,
   },
+  worker: {
+    format: "es",
+  },
   define: {
     // Production deployments discover their endpoint from runtime config or the page origin.
     "process.env.DRAGGABLE_DEBUG": "false",
@@ -42,6 +45,8 @@ export default defineConfig(({ command }) => ({
       "@codemirror/view",
       "@lezer/highlight",
       "@uiw/react-codemirror",
+      "react-json-view-lite",
+      "react-virtuoso",
     ],
   },
   resolve: {

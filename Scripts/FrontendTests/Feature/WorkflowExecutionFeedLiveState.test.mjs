@@ -67,19 +67,22 @@ test("conversation shows a live thinking stage before the first tool decision", 
 
   renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run }));
 
-  expect(screen.getByText("Thinking...")).toBeVisible();
+  expect(screen.getByText(frontendMessage("chat.activity.thinking"))).toBeVisible();
   expect(screen.queryByText("1分钟5秒")).not.toBeInTheDocument();
   expect(document.querySelector("[data-feed-elapsed]")).not.toBeInTheDocument();
   expect(screen.queryByText(frontendMessage("workflow.feed.running"))).not.toBeInTheDocument();
   expect(screen.queryByText(frontendMessage("workflow.feed.stepCount", { count: 0 }))).not.toBeInTheDocument();
-  expect(document.querySelector("[data-feed-marker-status='running'] .senera-spinner")).toBeInTheDocument();
+  expect(document.querySelector("[data-workflow-live-marker]")).toBeInTheDocument();
+  expect(
+    document.querySelector("[data-execution-stage-feed] [data-execution-status-icon='running']"),
+  ).toBeInTheDocument();
   expect(document.querySelector("[data-feed-marker-status='running']")).toHaveClass(
     "bg-accent-surface",
     "text-accent-content",
   );
 });
 
-test("active tool stages keep their action icon and a running child row without per-row elapsed time", () => {
+test("active tool stages keep one semantic icon with quiet motion", () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-07-11T00:01:05.000Z"));
   const run = createToolBatchRun(["WorkspaceGrep"]);
@@ -102,9 +105,61 @@ test("active tool stages keep their action icon and a running child row without 
   expect(
     document.querySelector("[data-tool-action-icon='search'][data-tool-action-status='running']"),
   ).toBeInTheDocument();
-  expect(
-    document.querySelector("[data-tool-batch-activity-item][data-state='loading'] .senera-spinner"),
-  ).toBeInTheDocument();
+  const action = document.querySelector("[data-tool-action-icon='search'][data-tool-action-status='running']");
+  expect(action?.querySelectorAll("svg")).toHaveLength(1);
+  expect(action).toHaveClass("tool-action-icon");
+  expect(action).toHaveAttribute("data-status-glyph-motion", "quiet");
+  expect(action?.querySelector("[data-tool-action-activity='live']")).not.toBeInTheDocument();
+  const activity = document.querySelector("[data-tool-batch-activity]");
+  expect(activity.querySelector("[data-tool-batch-activity-title]")).not.toHaveClass(
+    "motion-safe:animate-text-shimmer",
+  );
+  expect(activity.querySelector("[data-tool-action-live]")).not.toBeInTheDocument();
+  expect(activity.querySelector("[data-tool-action-icon]")).not.toHaveClass("senera-live-status-icon");
+  expect(activity.querySelector(".senera-spinner")).not.toBeInTheDocument();
+  expect(activity.querySelector("[data-tool-batch-activity-items]")).not.toBeInTheDocument();
+});
+
+test("planned tool stages show the semantic icon with quiet motion immediately", () => {
+  const run = createToolBatchRun(["WorkspaceGrep"]);
+  const toolStep = run.steps.find((step) => step.toolName === "WorkspaceGrep");
+  toolStep.status = "pending";
+  toolStep.toolOrigin = createSystemToolOrigin({
+    name: "Workspace tools",
+    category: "workspace-grep",
+    icon: "search",
+    groupId: "workspace",
+    groupTitle: "Explore workspace",
+    action: "Search",
+  });
+
+  renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run }));
+
+  const action = document.querySelector("[data-tool-action-icon='search'][data-tool-action-status='pending']");
+  expect(action).toBeInTheDocument();
+  expect(action.querySelectorAll("svg")).toHaveLength(1);
+  expect(action).toHaveAttribute("data-status-glyph-motion", "quiet");
+  expect(action.querySelector("[data-tool-action-activity='live']")).not.toBeInTheDocument();
+});
+
+test("active tool batches stay folded until expanded, then pulse only unfinished status markers", async () => {
+  const user = userEvent.setup();
+  const run = createToolBatchRun(["WorkspaceRead", "WorkspaceGrep"]);
+  const toolSteps = run.steps.filter((step) => step.kind === "tool");
+  toolSteps[0].status = "done";
+  toolSteps[1].status = "running";
+
+  renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run }));
+
+  const trigger = document.querySelector("[data-tool-batch-activity-trigger]");
+  expect(trigger).toHaveAttribute("aria-expanded", "false");
+  expect(document.querySelector("[data-tool-batch-activity-items]")).not.toBeInTheDocument();
+
+  await user.click(trigger);
+  await waitFor(() => expect(document.querySelector("[data-tool-batch-activity-items]")).toBeVisible());
+  const marker = document.querySelector("[data-workflow-live-marker]");
+  expect(marker).toBeInTheDocument();
+  expect(marker.querySelector("[data-execution-status-icon='running']")).toBeInTheDocument();
 });
 
 test("live tool stage remains visible while the next decision is pending", () => {
@@ -117,8 +172,8 @@ test("live tool stage remains visible while the next decision is pending", () =>
   renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run, keepOpenWhileRunActive: true }));
 
   expect(document.querySelector("[data-tool-batch-activity]")).toHaveAttribute("data-state", "done");
-  expect(document.querySelector("[data-tool-batch-activity-trigger]")).toHaveAttribute("aria-expanded", "true");
-  expect(document.querySelector("[data-tool-batch-activity-items]")).toBeVisible();
+  expect(document.querySelector("[data-tool-batch-activity-trigger]")).not.toHaveAttribute("aria-expanded");
+  expect(document.querySelector("[data-tool-batch-activity-items]")).not.toBeInTheDocument();
   expect(screen.queryByText("Thinking...")).not.toBeInTheDocument();
 });
 
@@ -154,11 +209,13 @@ test("tool chains keep evidence resources out of the activity rows", () => {
 
   renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run, keepOpenWhileRunActive: true }));
 
-  const item = document.querySelector("[data-tool-batch-activity-item]");
-  expect(item).toHaveTextContent("Search · research article");
-  expect(item).not.toHaveTextContent("Research article");
-  expect(item).not.toHaveTextContent("Source");
-  expect(document.querySelectorAll("[data-tool-batch-activity-item]")).toHaveLength(1);
+  const activity = document.querySelector("[data-tool-batch-activity]");
+  const title = activity.querySelector("[data-tool-batch-activity-title]");
+  expect(title).toHaveTextContent("Searchresearch article");
+  expect(title?.querySelector("[data-tool-activity-arrow]")).toBeInTheDocument();
+  expect(activity).not.toHaveTextContent("Research article");
+  expect(activity).not.toHaveTextContent("Source");
+  expect(activity.querySelectorAll("[data-tool-batch-activity-title]")).toHaveLength(1);
 });
 
 test("context compaction keeps the request clock instead of restarting at the activity boundary", () => {
@@ -247,10 +304,10 @@ test("execution feed contains failed events and respects reduced motion", () => 
   );
 
   expect(screen.getByText("Prepare context").parentElement?.parentElement).toHaveClass(
-    "border-l-2",
-    "border-brick-400",
+    "execution-feed-item__body--failed",
   );
   expect(screen.getByText("Prepare context").parentElement?.parentElement).not.toHaveClass("bg-brick-50");
   expect(document.documentElement).toHaveAttribute("data-motion-level", "reduced");
-  expect(document.querySelector("[data-execution-feed] .senera-spinner")).toBeInTheDocument();
+  expect(document.querySelector("[data-execution-feed] [data-execution-status-icon='running']")).toBeInTheDocument();
+  expect(document.querySelector("[data-live-activity-text]")).not.toHaveClass("motion-safe:animate-text-shimmer");
 });

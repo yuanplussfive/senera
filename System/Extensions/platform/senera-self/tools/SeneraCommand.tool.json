@@ -5,7 +5,11 @@
   "presentation": {
     "category": "senera-command",
     "icon": "tools",
-    "activity": { "action": { "zh-CN": "管理 Senera", "en-US": "Manage Senera" } }
+    "activity": {
+      "action": { "zh-CN": "管理", "en-US": "Manage" },
+      "argumentPath": "/command",
+      "detailPaths": ["/action", "/name", "/path", "/query", "/approvalId", "/modelProviderId", "/decision"]
+    }
   },
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -88,50 +92,6 @@
                   "value": {}
                 },
                 "required": ["command", "action", "path", "value"],
-                "additionalProperties": false
-              }
-            ]
-          },
-          {
-            "oneOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "command": { "type": "string", "const": "preset" },
-                  "action": { "type": "string", "const": "list" }
-                },
-                "required": ["command", "action"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "command": { "type": "string", "const": "preset" },
-                  "action": { "type": "string", "const": "show" },
-                  "name": { "type": "string", "minLength": 1, "maxLength": 128 }
-                },
-                "required": ["command", "action", "name"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "command": { "type": "string", "const": "preset" },
-                  "action": { "type": "string", "const": "use" },
-                  "name": { "anyOf": [{ "type": "string", "maxLength": 128 }, { "type": "null" }] }
-                },
-                "required": ["command", "action", "name"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "command": { "type": "string", "const": "preset" },
-                  "action": { "type": "string", "const": "create" },
-                  "name": { "type": "string", "minLength": 1, "maxLength": 128 },
-                  "content": {}
-                },
-                "required": ["command", "action", "name", "content"],
                 "additionalProperties": false
               }
             ]
@@ -424,11 +384,9 @@
     "required": ["ok", "text"],
     "additionalProperties": false
   },
-  "observationProjection": "observations/SeneraCommand.projection.json",
   "permissions": [
     "config:read",
     "config:update",
-    "preset:manage",
     "skills:read",
     "skills:manage",
     "workspace:inspect",
@@ -445,13 +403,13 @@
   "resources": [],
   "sources": [],
   "search": {
-    "Summary": "受控执行 senera 配置、预设、Skill、工作区与诊断命令。",
-    "Tags": ["配置", "预设", "Skill", "工作区", "诊断", "模型", "doctor", "config", "preset", "skills", "pipeline"],
+    "Summary": "受控执行 senera 配置、Skill、工作区与诊断命令。",
+    "Tags": ["配置", "Skill", "工作区", "诊断", "模型", "doctor", "config", "skills", "pipeline"],
     "Capabilities": [
       {
         "Id": "senera.self",
         "Title": "Senera self-service",
-        "Description": "Inspect or update the runtime configuration, list/activate presets, and read workspace/health metadata through the host command surface.",
+        "Description": "Inspect or update the runtime configuration, manage Skills, and read workspace/health metadata through the host command surface.",
         "Facets": {
           "Actions": [
             "config.get",
@@ -462,10 +420,6 @@
             "config.check",
             "config.rollback",
             "config.update",
-            "preset.list",
-            "preset.show",
-            "preset.use",
-            "preset.create",
             "workspace.info",
             "sessions.list",
             "session.model",
@@ -489,7 +443,7 @@
             "skills.restore",
             "capabilities"
           ],
-          "Targets": ["configuration", "preset", "skill", "workspace", "runtime", "session", "log"],
+          "Targets": ["configuration", "skill", "workspace", "runtime", "session", "log"],
           "Inputs": [
             "command",
             "path",
@@ -503,7 +457,6 @@
           ],
           "Outputs": [
             "config-snapshot",
-            "preset-summary",
             "workspace-info",
             "session-model-preference",
             "effective-model-receipt",
@@ -513,19 +466,18 @@
             "doctor-report",
             "capability-report"
           ],
-          "Effects": ["runtime-refresh", "config-change", "preset-change"]
+          "Effects": ["runtime-refresh", "config-change"]
         },
-        "Aliases": ["查看配置", "切换预设", "换模型", "查看工作区", "诊断", "senera 命令", "改配置"],
+        "Aliases": ["查看配置", "换模型", "查看工作区", "诊断", "senera 命令", "改配置"],
         "Risk": { "SideEffect": "runtime-refresh", "Permission": "write" }
       }
     ],
     "UseCases": [
-      "用户要求查看或切换当前配置、模型端点、预设，查看、校验或受控维护 Skill，或检查系统与工作区状态。",
+      "用户要求查看或切换当前配置、模型端点，查看、校验或受控维护 Skill，或检查系统与工作区状态。",
       "任务需要了解运行环境（工作区根目录、数据库、沙箱状态）时。"
     ],
     "Examples": [
       "看看现在的模型配置",
-      "切换到我昨天创建的前端专家预设",
       "当前配置里默认模型是什么",
       "把当前对话切换到另一个已配置模型",
       "帮我检查一下系统状态",

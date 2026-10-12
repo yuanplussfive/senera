@@ -9,7 +9,6 @@ import {
   resolveModelProviderEndpointConfigs,
   resolveModelProviderRuntimeDefaults,
   resolvePersistenceConfig,
-  resolvePresetsConfig,
   resolveSandboxRuntimeConfig,
   resolveServerConfig,
   resolveToolExecutionConfig,
@@ -17,8 +16,8 @@ import {
   resolveToolSearchConfig,
   resolveUploadsConfig,
   resolveAgentPromptConfig,
-  resolveAgentWorldConfig,
   resolveAgentInferenceBudgetConfig,
+  resolveAgentMcpConnectionsConfig,
 } from "../AgentDefaults.js";
 import { mergeActionPlannerClientConfig } from "../Defaults/AgentPlannerDefaults.js";
 
@@ -30,9 +29,8 @@ export function projectEffectiveConfig(config: AgentSystemConfig): AgentSystemCo
     SandboxRuntime: resolveSandboxRuntimeConfig(config),
     ToolExecution: projectResolvedToolExecution(config),
     ToolSearch: resolveToolSearchConfig(config),
-    ToolLearning: projectResolvedToolLearning(config),
+    StateCard: projectResolvedStateCard(config),
     ContinuityLearning: projectResolvedContinuityLearning(config),
-    Presets: resolvePresetsConfig(config),
     Artifacts: resolveArtifactsConfig(config),
     Uploads: resolveUploadsConfig(config),
     ActionPlanner: projectResolvedActionPlanner(config),
@@ -41,8 +39,8 @@ export function projectEffectiveConfig(config: AgentSystemConfig): AgentSystemCo
     Persistence: resolvePersistenceConfig(config),
     ConfigStore: resolveConfigStoreConfig(config),
     Prompt: resolveAgentPromptConfig(config),
-    World: resolveAgentWorldConfig(config),
     InferenceBudget: resolveAgentInferenceBudgetConfig(config),
+    McpConnections: projectResolvedMcpConnections(config),
     Extensions: config.Extensions,
     Defaults: {
       ...config.Defaults,
@@ -51,9 +49,8 @@ export function projectEffectiveConfig(config: AgentSystemConfig): AgentSystemCo
       SandboxRuntime: resolveSandboxRuntimeConfig(config),
       ToolExecution: projectResolvedToolExecution(config),
       ToolSearch: resolveToolSearchConfig(config),
-      ToolLearning: projectResolvedToolLearning(config),
+      StateCard: projectResolvedStateCard(config),
       ContinuityLearning: projectResolvedContinuityLearning(config),
-      Presets: resolvePresetsConfig(config),
       Artifacts: resolveArtifactsConfig(config),
       Uploads: resolveUploadsConfig(config),
       ActionPlanner: projectResolvedActionPlanner(config),
@@ -62,14 +59,22 @@ export function projectEffectiveConfig(config: AgentSystemConfig): AgentSystemCo
       Persistence: resolvePersistenceConfig(config),
       ConfigStore: resolveConfigStoreConfig(config),
       Prompt: resolveAgentPromptConfig(config),
-      World: resolveAgentWorldConfig(config),
       InferenceBudget: resolveAgentDefaults(config).InferenceBudget,
+      McpConnections: projectResolvedMcpConnections(config),
     },
     ModelProviderEndpoints: resolveModelProviderEndpointConfigs(config),
     ModelProviders: config.ModelProviders.map((provider) =>
       resolveModelProviderRuntimeDefaults(resolveAgentDefaults(config).ModelRuntime, provider),
     ),
     ModelGroups: config.ModelGroups,
+  };
+}
+
+function projectResolvedMcpConnections(config: AgentSystemConfig): NonNullable<AgentSystemConfig["McpConnections"]> {
+  const resolved = resolveAgentMcpConnectionsConfig(config);
+  return {
+    IdleTtlSeconds: resolved.IdleTtlMs / 1_000,
+    SweepIntervalSeconds: resolved.SweepIntervalMs / 1_000,
   };
 }
 
@@ -99,14 +104,13 @@ function projectResolvedPlannerClient(client: ReturnType<typeof mergeActionPlann
   };
 }
 
-function projectResolvedToolLearning(config: AgentSystemConfig): NonNullable<AgentSystemConfig["ToolLearning"]> {
-  const defaults = resolveAgentDefaults(config).ToolLearning;
-  const configured = config.ToolLearning;
+function projectResolvedStateCard(config: AgentSystemConfig): NonNullable<AgentSystemConfig["StateCard"]> {
+  const defaults = resolveAgentDefaults(config).StateCard;
+  const configured = config.StateCard;
   return {
     Enabled: configured?.Enabled ?? defaults.Enabled,
-    MaxRepairAttempts: configured?.MaxRepairAttempts ?? defaults.MaxRepairAttempts,
-    Patterns: { ...defaults.Patterns, ...configured?.Patterns },
-    Client: projectResolvedPlannerClient(mergeActionPlannerClientConfig(defaults.Client, configured?.Client)),
+    HistoryBudgetCharacters: configured?.HistoryBudgetCharacters ?? defaults.HistoryBudgetCharacters,
+    Client: projectResolvedContinuityClient({ ...defaults.Client, ...configured?.Client }),
   };
 }
 
@@ -115,60 +119,22 @@ function projectResolvedContinuityLearning(
 ): NonNullable<AgentSystemConfig["ContinuityLearning"]> {
   const defaults = resolveAgentDefaults(config).ContinuityLearning;
   const configured = config.ContinuityLearning;
-  const configuredRecall = configured?.Recall;
   return {
     Enabled: configured?.Enabled ?? defaults.Enabled,
     Runtime: {
       ...defaults.Runtime,
       ...configured?.Runtime,
     },
-    LearningGate: {
-      ...defaults.LearningGate,
-      ...configured?.LearningGate,
-    },
-    LearningContext: {
-      ...defaults.LearningContext,
-      ...configured?.LearningContext,
-    },
     Recall: {
       ...defaults.Recall,
-      ...configuredRecall,
-      TurnValueClassifier: {
-        ...defaults.Recall.TurnValueClassifier,
-        ...configuredRecall?.TurnValueClassifier,
+      PromptBudget: {
+        ...defaults.Recall.PromptBudget,
+        ...configured?.Recall?.PromptBudget,
       },
-      Prefetch: {
-        ...defaults.Recall.Prefetch,
-        ...configuredRecall?.Prefetch,
-      },
-      Semantic: {
-        ...defaults.Recall.Semantic,
-        ...configuredRecall?.Semantic,
-      },
-      Ranking: {
-        ...defaults.Recall.Ranking,
-        ...configuredRecall?.Ranking,
-        Lexical: {
-          ...defaults.Recall.Ranking.Lexical,
-          ...configuredRecall?.Ranking?.Lexical,
-        },
-        Similarity: {
-          ...defaults.Recall.Ranking.Similarity,
-          ...configuredRecall?.Ranking?.Similarity,
-        },
-        Evidence: {
-          ...defaults.Recall.Ranking.Evidence,
-          ...configuredRecall?.Ranking?.Evidence,
-        },
-        Consolidation: {
-          ...defaults.Recall.Ranking.Consolidation,
-          ...configuredRecall?.Ranking?.Consolidation,
-        },
-        Graph: {
-          ...defaults.Recall.Ranking.Graph,
-          ...configuredRecall?.Ranking?.Graph,
-        },
-      },
+    },
+    MemOS: {
+      ...defaults.MemOS,
+      ...configured?.MemOS,
     },
     Client: projectResolvedContinuityClient({ ...defaults.Client, ...configured?.Client }),
   };

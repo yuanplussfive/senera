@@ -14,7 +14,11 @@ export interface UseSessionCommandsOptions {
 }
 
 export interface SessionCommandsHandle {
-  closeSession: (sessionId: string) => void;
+  closeSession: (sessionId: string) => boolean;
+  closeSessions: (sessionIds: readonly string[]) => {
+    readonly acceptedSessionIds: readonly string[];
+    readonly rejectedSessionIds: readonly string[];
+  };
   createSession: () => void;
   renameSession: (sessionId: string, title: string) => boolean;
   updateUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
@@ -49,7 +53,7 @@ export function useSessionCommands({
   defaultModelProviderId,
 }: UseSessionCommandsOptions): SessionCommandsHandle {
   const registerSession = useStore((state) => state.registerCreatingSession);
-  const removeSession = useStore((state) => state.removeSession);
+  const requestSessionDeletions = useStore((state) => state.requestSessionDeletions);
   const renameStoreSession = useStore((state) => state.renameSession);
   const selectSession = useStore((state) => state.selectSession);
   const setUserProfile = useStore((state) => state.setUserProfile);
@@ -80,16 +84,23 @@ export function useSessionCommands({
     serverKnownSessionIdsRef.current.add(sessionId);
   }, [defaultModelProviderId, registerSession, selectSession, send, serverKnownSessionIdsRef, status]);
 
-  const closeSession = useCallback(
-    (sessionId: string): void => {
-      const ok = send({ type: "session.close", sessionId });
-      if (!ok) {
-        toast.error(frontendMessage("session.deleteDisconnected"));
-        return;
+  const closeSessions = useCallback(
+    (sessionIds: readonly string[]) => {
+      const requestedSessionIds = [...new Set(sessionIds.filter(Boolean))];
+      if (requestedSessionIds.length === 0) {
+        return { acceptedSessionIds: [], rejectedSessionIds: [] };
       }
-      removeSession(sessionId);
+      const accepted = send({ type: "session.close_many", sessionIds: requestedSessionIds });
+      const acceptedSessionIds = accepted ? requestedSessionIds : [];
+      const rejectedSessionIds = accepted ? [] : requestedSessionIds;
+      if (acceptedSessionIds.length > 0) requestSessionDeletions(acceptedSessionIds);
+      return { acceptedSessionIds, rejectedSessionIds };
     },
-    [removeSession, send],
+    [requestSessionDeletions, send],
+  );
+  const closeSession = useCallback(
+    (sessionId: string): boolean => closeSessions([sessionId]).acceptedSessionIds.length > 0,
+    [closeSessions],
   );
 
   const renameSession = useCallback(
@@ -119,6 +130,7 @@ export function useSessionCommands({
 
   return {
     closeSession,
+    closeSessions,
     createSession,
     renameSession,
     updateUserProfile,

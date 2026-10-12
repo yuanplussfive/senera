@@ -1,5 +1,8 @@
 ---
 name: skill-creator
+metadata:
+  senera:
+    icon: sparkles
 description: Create, update, validate, or remove a Senera Skill in the workspace .senera/skills directory. Use when the user asks the agent to teach itself a reusable workflow, add specialized instructions, bundle scripts or references, or maintain an existing SKILL.md skill package. 适用于创建、更新、校验或删除技能，学习可复用工作流，以及制作包含脚本或参考资料的 Toolkit Skill。
 ---
 
@@ -31,6 +34,7 @@ Then create the package:
    ```yaml
    metadata:
      senera:
+       icon: sparkles
        recommended-tools:
          - mcp__server__tool
    ```

@@ -4,7 +4,7 @@
   "presentation": {
     "category": "ask-user",
     "icon": "message-question",
-    "activity": { "action": { "zh-CN": "请求确认", "en-US": "Ask" }, "argumentPath": "/question" }
+    "activity": { "action": { "zh-CN": "询问", "en-US": "Ask" }, "argumentPath": "/question" }
   },
   "description": "向用户提出一个简短澄清问题，等待用户补充关键信息。",
   "inputSchema": {
@@ -25,7 +25,6 @@
     "required": ["question"],
     "additionalProperties": false
   },
-  "observationProjection": "observations/default.projection.json",
   "permissions": [],
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
   "runtime": {

@@ -64,15 +64,6 @@
     "required": ["title", "finalUrl", "markdownSummary", "content", "links", "citationId", "transfer"],
     "additionalProperties": false
   },
-  "observationProjection": "observations/WebFetch.projection.json",
-  "contentPolicy": {
-    "ownership": "tool",
-    "kind": "web-readable",
-    "representation": "markdown",
-    "compression": "none",
-    "deduplication": "none",
-    "targets": ["/content", "/markdownSummary"]
-  },
   "perception": { "kind": "retrieved", "scope": "remote" },
   "permissions": ["network:web"],
   "execution": { "Targets": ["Local"], "Network": "Allow", "Workspace": "ReadOnly" },

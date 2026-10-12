@@ -144,6 +144,39 @@ test("tool preface stream ends when the tool starts, so final text cannot inheri
   expect(run.streamingRaw).toBe("工具结果已经足够。");
 });
 
+test("planned tool presentation is available before execution starts", () => {
+  const state = createTestState();
+  const origin = {
+    kind: "system",
+    name: "Workspace",
+    presentation: {
+      category: "workspace",
+      icon: "file-text",
+      group: { id: "workspace", title: "Workspace" },
+      activity: { action: "Read" },
+    },
+  };
+
+  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "读取文件" }));
+  applyEvent(
+    state,
+    createEvent(EventKinds.ToolCallsPlanned, {
+      toolCount: 1,
+      tools: ["WorkspaceRead"],
+      calls: [{ callId: "call_read", toolName: "WorkspaceRead", origin }],
+      status: "planned",
+      executionMode: "parallel",
+      batchId: "batch_read",
+    }),
+  );
+
+  const run = state.sessions[TestSessionId].runs.find((item) => item.requestId === TestRequestId);
+  expect(run.steps.find((step) => step.id === "tool-call_read")).toMatchObject({
+    status: "pending",
+    toolOrigin: origin,
+  });
+});
+
 test("tool.call.result.detail attaches structured result to the matching tool call", () => {
   const state = createTestState();
 

@@ -1,8 +1,20 @@
 {
   "chat.composer.toolkit.tooltip": "工具",
   "chat.composer.toolkit.fileAndImage": "文件和图片",
-  "chat.composer.toolkit.preset": "角色预设",
+  "chat.composer.toolkit.persona": "人设",
   "chat.composer.toolkit.plugins": "插件",
   "chat.composer.toolkit.skills": "技能",
-  "chat.composer.toolkit.webSearch": "联网搜索"
+  "chat.composer.toolkit.webSearch": "联网搜索",
+  "chat.composer.activation.ariaLabel": "能力选择器",
+  "chat.composer.activation.skill": "技能",
+  "chat.composer.activation.plugin": "插件",
+  "chat.composer.activation.mcp": "MCP",
+  "chat.composer.activation.system": "系统扩展",
+  "chat.composer.activation.needsSetup": "待配置",
+  "chat.composer.activation.unavailable": "不可用",
+  "chat.composer.activation.syncing": "正在同步能力目录…",
+  "chat.composer.activation.empty": "当前没有可用的 Skill、插件、系统扩展或 MCP 服务",
+  "chat.composer.activation.noMatch": "没有匹配的能力",
+  "chat.composer.activation.selected": "已添加",
+  "chat.composer.activation.hint": "↑↓ 选择，Enter 添加，Esc 关闭"
 }

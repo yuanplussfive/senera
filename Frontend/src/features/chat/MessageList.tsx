@@ -13,6 +13,7 @@ import type { InteractionInputAction, InteractionInputContent } from "../../api/
 import type { ChatMessage, RunRecord, UserProfile } from "../../store/sessionStore";
 import type { CalculateViewLocation } from "react-virtuoso";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { isSupersededFailure, readSupersededFailureIds } from "../../store/session/runRecoveryProjection";
 import { useResponsiveMode } from "../../shared/responsive";
 import { useMotionLevel } from "../../shared/motion";
 import { PerformanceMonitor } from "../../app/PerformanceMonitor";
@@ -49,6 +50,8 @@ interface MessageListProps {
   userProfile: UserProfile;
   onForkFromMessage: (message: Pick<ChatMessage, "requestId">) => void;
   onRegenerate: (m: ChatMessage) => void;
+  onRetryRun: (m: ChatMessage) => void;
+  onContinueRun: (m: ChatMessage) => void;
   onEditUserMessage: (m: ChatMessage, nextContent: string) => void;
   onDeleteFromMessage: (m: ChatMessage) => void;
   onViewWorkflow: (m: ChatMessage) => void;
@@ -116,6 +119,8 @@ export function MessageList({
   userProfile,
   onForkFromMessage,
   onRegenerate,
+  onRetryRun,
+  onContinueRun,
   onEditUserMessage,
   onDeleteFromMessage,
   onViewWorkflow,
@@ -127,6 +132,11 @@ export function MessageList({
   const [editing, setEditing] = useState<{ id: string; message: ChatMessage } | null>(null);
   const [draft, setDraft] = useState("");
   const [deleting, setDeleting] = useState<ChatMessage | null>(null);
+  const [dismissedFailures, setDismissedFailures] = useState(() => {
+    const superseded = readSupersededFailureIds({ runs });
+    return new Set(messages.filter((message) => isSupersededFailure(message, superseded)).map((message) => message.id));
+  });
+  const supersededFailures = useMemo(() => readSupersededFailureIds({ runs }), [runs]);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const measuredHeightsRef = useRef<Map<string, number>>(new Map());
   const [eventMeasuredHeights, setEventMeasuredHeights] = useState<ReadonlyMap<string, number>>(new Map());
@@ -135,12 +145,9 @@ export function MessageList({
   const eventNavigationLockRef = useRef(false);
   const eventNavigationSettleFrameRef = useRef<number | null>(null);
   const activeEventSessionRef = useRef(sessionId);
-  const previousStreamingRunIdRef = useRef<string | null>(null);
-  const highlightedRunIdsRef = useRef<Set<string>>(new Set());
   const chatScrollerRef = useRef<HTMLElement | null>(null);
   const [chatScroller, setChatScroller] = useState<HTMLElement | null>(null);
   const [activeEventIndex, setActiveEventIndex] = useState(0);
-  const [completedRunIdToHighlight, setCompletedRunIdToHighlight] = useState<string | null>(null);
   const [eventRailReady, setEventRailReady] = useState(!historyHydrating);
   const runsByRequestId = useMemo(() => {
     const map = new Map<string, RunRecord>();
@@ -149,8 +156,15 @@ export function MessageList({
   }, [runs]);
   const streamingRun = currentRun?.status === "running" || currentRun?.status === "cancelling" ? currentRun : undefined;
   const displayedMessages = useMemo(
-    () => (streamingRun ? messages.filter((message) => !shouldDeferTerminalMessage(message, streamingRun)) : messages),
-    [messages, streamingRun],
+    () =>
+      messages.filter(
+        (message) =>
+          !(
+            isSupersededFailure(message, supersededFailures) &&
+            (historyHydrating || dismissedFailures.has(message.id))
+          ) && !(streamingRun && shouldDeferTerminalMessage(message, streamingRun)),
+      ),
+    [messages, streamingRun, supersededFailures, dismissedFailures, historyHydrating],
   );
   const displayedMessageIds = useMemo(
     () => new Set(displayedMessages.map((message) => message.id)),
@@ -159,9 +173,32 @@ export function MessageList({
   const deferredMessages = useDeferredValue(displayedMessages);
   const deferredRuns = useDeferredValue(runs);
   const deferredStreamingRun = useDeferredValue(streamingRun);
+  // The history projection may be deferred, but the active request must never
+  // disappear between its streaming and terminal snapshots. Keep the latest
+  // messages and run for that request in the deferred projection, including
+  // the short hand-off frame after streamingRun becomes undefined.
+  const activeRequestId = streamingRun?.requestId ?? deferredStreamingRun?.requestId;
+  const projectedMessages = useMemo(() => {
+    if (!activeRequestId) return deferredMessages;
+    const knownIds = new Set(deferredMessages.map((message) => message.id));
+    const activeMessages = displayedMessages.filter(
+      (message) => message.requestId === activeRequestId && !knownIds.has(message.id),
+    );
+    return activeMessages.length > 0 ? [...deferredMessages, ...activeMessages] : deferredMessages;
+  }, [activeRequestId, deferredMessages, displayedMessages]);
+  const projectedRuns = useMemo(() => {
+    if (!activeRequestId) return deferredRuns;
+    const latestRun = runs.find((run) => run.requestId === activeRequestId) ?? streamingRun ?? deferredStreamingRun;
+    if (!latestRun) return deferredRuns;
+    const existingIndex = deferredRuns.findIndex((run) => run.requestId === activeRequestId);
+    if (existingIndex < 0) return [...deferredRuns, latestRun];
+    const nextRuns = [...deferredRuns];
+    nextRuns[existingIndex] = latestRun;
+    return nextRuns;
+  }, [activeRequestId, deferredRuns, deferredStreamingRun, runs, streamingRun]);
   const items = useMemo(
-    () => projectAssistantTurns(deferredMessages, deferredRuns, deferredStreamingRun),
-    [deferredMessages, deferredRuns, deferredStreamingRun],
+    () => projectAssistantTurns(projectedMessages, projectedRuns, streamingRun),
+    [projectedMessages, projectedRuns, streamingRun],
   );
   // Keep the socket/store path responsive while a large history projection is
   // being committed. React can paint the previous window first and reconcile
@@ -314,22 +351,6 @@ export function MessageList({
     [setAutoScrollScroller],
   );
 
-  useEffect(() => {
-    const currentStreamingRunId = currentRun?.requestId ?? null;
-    const previousStreamingRunId = previousStreamingRunIdRef.current;
-    previousStreamingRunIdRef.current = currentStreamingRunId;
-    if (!previousStreamingRunId || currentStreamingRunId === previousStreamingRunId) return;
-    if (highlightedRunIdsRef.current.has(previousStreamingRunId)) return;
-    highlightedRunIdsRef.current.add(previousStreamingRunId);
-    setCompletedRunIdToHighlight(previousStreamingRunId);
-  }, [currentRun?.requestId]);
-
-  useEffect(() => {
-    if (!completedRunIdToHighlight) return;
-    const id = window.setTimeout(() => setCompletedRunIdToHighlight(null), 900);
-    return () => window.clearTimeout(id);
-  }, [completedRunIdToHighlight]);
-
   const closeEditor = (): void => {
     setEditing(null);
     setDraft("");
@@ -433,7 +454,6 @@ export function MessageList({
               autoScroll.atBottomStateChange(atBottom);
               setIsAtBottom(atBottom);
             }}
-            totalListHeightChanged={autoScroll.totalListHeightChanged}
             defaultItemHeight={MESSAGE_ITEM_DEFAULT_HEIGHT}
             initialTopMostItemIndex={{ index: Math.max(0, renderedItems.length - 1), align: "end" }}
             atBottomThreshold={MESSAGE_LIST_BOTTOM_THRESHOLD}
@@ -444,9 +464,6 @@ export function MessageList({
               const itemKey = readMessageListItemKey(item, index);
               if (!item) return <div className="h-px" data-message-key={itemKey} />;
               if (isAssistantTurnListItem(item)) {
-                const shouldHighlightCompletedStream = item.requestId === completedRunIdToHighlight;
-                const shouldAnimateMount =
-                  !item.streaming && (shouldHighlightCompletedStream || index >= renderedItems.length - 2);
                 return (
                   <div
                     className="chat-message-item box-border w-full pb-3 pt-1"
@@ -455,8 +472,10 @@ export function MessageList({
                   >
                     <MotionMessageItem
                       motionKey={item.key}
-                      animateOnMount={shouldAnimateMount}
-                      className={shouldHighlightCompletedStream ? "streaming-complete-highlight" : undefined}
+                      // Assistant rows can transition from streaming to final
+                      // in place. A mount transform here would move the whole
+                      // conversation once the final token is committed.
+                      animateOnMount={false}
                     >
                       <AssistantTurnRow
                         sessionId={sessionId}
@@ -475,7 +494,7 @@ export function MessageList({
               const shouldAnimateMount = index >= renderedItems.length - 2;
               return (
                 <div
-                  className="chat-message-item box-border w-full pb-3 pt-1"
+                  className={`chat-message-item box-border w-full ${item.role === "system" ? "" : "pb-3 pt-1"}`}
                   data-message-key={itemKey}
                   ref={heightObserverRef}
                 >
@@ -505,6 +524,10 @@ export function MessageList({
                       showInlineActions={showInlineMessageActions}
                       onFork={() => onForkFromMessage(item)}
                       onRegenerate={() => onRegenerate(item)}
+                      onRetryRun={() => onRetryRun(item)}
+                      onContinueRun={() => onContinueRun(item)}
+                      failureSuperseded={isSupersededFailure(item, supersededFailures)}
+                      onFailureDismissed={() => setDismissedFailures((previous) => new Set(previous).add(item.id))}
                       onDelete={() => setDeleting(item)}
                       onViewWorkflow={() => onViewWorkflow(item)}
                     />

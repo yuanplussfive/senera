@@ -29,7 +29,7 @@ import {
   AgentPiRuntimeExtensionFactory,
   type AgentPiRuntimeExtensionRegistration,
 } from "./AgentPiRuntimeExtensionFactory.js";
-import { AgentPiSkillResolver } from "./AgentPiSkillResolver.js";
+import { projectAgentPiActivatedSkills, projectAgentPiSkillCatalog } from "./AgentPiSkillCatalog.js";
 import { resolveAgentPiCompactionSettings } from "./AgentPiCompactionSettings.js";
 import type { AgentPiToolSet } from "./AgentPiToolRegistryProjector.js";
 
@@ -47,14 +47,13 @@ const SessionDiagnosticEventTypes = new Set([
 /** Materializes and reconfigures Pi Coding Agent sessions for the pool. */
 export class AgentPiCodingAgentSessionFactory {
   private readonly workspaceLayout;
-  private readonly projectContext: AgentPiProjectContext;
   private readonly runtimeExtensions: AgentPiRuntimeExtensionFactory;
-  private readonly skillResolver = new AgentPiSkillResolver();
+  private readonly compactionSettings: ReturnType<typeof resolveAgentPiCompactionSettings>;
 
   constructor(private readonly options: AgentPiCodingAgentSessionPoolOptions) {
-    this.workspaceLayout = resolveAgentWorkspaceLayout(options.workspaceRoot);
-    this.projectContext = new AgentPiProjectContext(this.workspaceLayout.projectContextFile);
+    this.workspaceLayout = options.workspaceLayout ?? resolveAgentWorkspaceLayout(options.workspaceRoot);
     this.runtimeExtensions = new AgentPiRuntimeExtensionFactory(options);
+    this.compactionSettings = resolveAgentPiCompactionSettings(options.compaction, options.provider.model);
   }
 
   async create(
@@ -64,12 +63,18 @@ export class AgentPiCodingAgentSessionFactory {
   ): Promise<AgentPiPooledCodingSession> {
     const frame = new AgentPiMutableSessionFrame(input.frame);
     const settingsManager = this.createSettingsManager();
-    const projectContext = this.projectContext.refresh();
+    const projectContext = this.createProjectContext();
+    const projectSnapshot = projectContext.refresh();
     const runtimeExtension = this.runtimeExtensions.create(frame, sessionManager);
-    const resourceLoader = this.createResourceLoader(settingsManager, input.inheritProjectContext, runtimeExtension);
+    const resourceLoader = this.createResourceLoader(
+      settingsManager,
+      input.inheritProjectContext,
+      runtimeExtension,
+      frame,
+      projectContext,
+    );
     await resourceLoader.reload();
-    await this.emitResourceDiagnostics(frame.snapshot(), resourceLoader);
-    frame.update(input.frame, this.skillResolver.resolve(input.frame.activeSkills, resourceLoader.getSkills()));
+    frame.update(input.frame, projectAgentPiActivatedSkills(input.frame.activeSkills));
     const session = await this.createCodingSession({
       sessionManager,
       settingsManager,
@@ -81,18 +86,19 @@ export class AgentPiCodingAgentSessionFactory {
       runtimeExtension,
     });
     const pooled = this.pooledSession({
+      registerDiscoveredTools: runtimeExtension.registerTools,
       session,
       sessionManager,
       frame,
       resourceLoader,
-      compactionCandidateStatus: runtimeExtension.compactionCandidateStatus,
+      projectContext,
       toolFingerprint: input.allTools.fingerprint,
-      skillCatalogFingerprint: input.frame.skillCatalogFingerprint,
-      projectContextFingerprint: projectContext.fingerprint,
+      skillCatalogFingerprint: input.frame.skillCatalog.fingerprint,
+      projectContextFingerprint: projectSnapshot.fingerprint,
       inheritProjectContext: input.inheritProjectContext,
       lastAccess,
     });
-    this.bindToolExposure(pooled, input.frame.toolExposure, input.activeToolNames);
+    this.bindToolExposure(pooled, input.frame.toolExposure, input.activeToolNames, input.allTools);
     return pooled;
   }
 
@@ -104,26 +110,27 @@ export class AgentPiCodingAgentSessionFactory {
     const toolAccessGrant = emptyAgentToolAccessGrant();
     const frameValue: AgentPiCodingAgentSessionFrame = {
       sessionId,
-      roleplayPresetActive: false,
-      skillCatalogFingerprint: "",
+      personaActive: false,
+      skillCatalog: projectAgentPiSkillCatalog([]),
       nativeProviderToolNames: [],
       toolAccessGrant,
       toolExposure: new AgentToolExposureState(toolAccessGrant),
       selectedPromptTemplates: [],
       tokenBudget: new AgentTurnTokenBudget({
         model: this.options.provider.model.id,
-        contextWindowTokens: this.options.provider.model.contextWindow,
-        outputReserveTokens: this.options.provider.model.maxTokens,
+        contextWindowTokens: this.compactionSettings.contextWindowTokens,
+        inputCapacityTokens: this.compactionSettings.inputCapacityTokens,
+        windowHeadroomTokens: this.compactionSettings.reserveTokens,
       }),
       preflight: () => Promise.resolve(undefined),
     };
     const frame = new AgentPiMutableSessionFrame(frameValue);
     const settingsManager = this.createSettingsManager();
-    const projectContext = this.projectContext.refresh();
+    const projectContext = this.createProjectContext();
+    const projectSnapshot = projectContext.refresh();
     const runtimeExtension = this.runtimeExtensions.create(frame, sessionManager);
-    const resourceLoader = this.createResourceLoader(settingsManager, true, runtimeExtension);
+    const resourceLoader = this.createResourceLoader(settingsManager, true, runtimeExtension, frame, projectContext);
     await resourceLoader.reload();
-    await this.emitResourceDiagnostics(frameValue, resourceLoader);
     frame.update(frameValue, []);
     const session = await this.createCodingSession({
       sessionManager,
@@ -136,14 +143,15 @@ export class AgentPiCodingAgentSessionFactory {
       runtimeExtension,
     });
     const pooled = this.pooledSession({
+      registerDiscoveredTools: runtimeExtension.registerTools,
       session,
       sessionManager,
       frame,
       resourceLoader,
-      compactionCandidateStatus: runtimeExtension.compactionCandidateStatus,
+      projectContext,
       toolFingerprint: "",
-      skillCatalogFingerprint: frameValue.skillCatalogFingerprint,
-      projectContextFingerprint: projectContext.fingerprint,
+      skillCatalogFingerprint: frameValue.skillCatalog.fingerprint,
+      projectContextFingerprint: projectSnapshot.fingerprint,
       inheritProjectContext: true,
       lastAccess,
     });
@@ -160,19 +168,17 @@ export class AgentPiCodingAgentSessionFactory {
     if (pooled.inheritProjectContext !== input.inheritProjectContext) {
       throw new Error("Pi project-context inheritance cannot change inside one persisted session.");
     }
-    const projectContext = this.projectContext.refresh();
+    const projectContext = pooled.projectContext.refresh();
     const resourcesChanged =
-      pooled.skillCatalogFingerprint !== input.frame.skillCatalogFingerprint ||
+      pooled.skillCatalogFingerprint !== input.frame.skillCatalog.fingerprint ||
       pooled.projectContextFingerprint !== projectContext.fingerprint;
+    pooled.frame.update(input.frame, projectAgentPiActivatedSkills(input.frame.activeSkills));
     if (resourcesChanged) {
       await pooled.session.reload();
-      await this.emitResourceDiagnostics(input.frame, pooled.resourceLoader);
-      pooled.skillCatalogFingerprint = input.frame.skillCatalogFingerprint;
+      pooled.skillCatalogFingerprint = input.frame.skillCatalog.fingerprint;
       pooled.projectContextFingerprint = projectContext.fingerprint;
     }
-    const skills = this.skillResolver.resolve(input.frame.activeSkills, pooled.resourceLoader.getSkills());
-    pooled.frame.update(input.frame, skills);
-    this.bindToolExposure(pooled, input.frame.toolExposure, input.activeToolNames);
+    this.bindToolExposure(pooled, input.frame.toolExposure, input.activeToolNames, input.allTools);
     pooled.session.setThinkingLevel(input.thinkingLevel ?? "off");
     throwIfAborted(input.signal);
   }
@@ -194,6 +200,7 @@ export class AgentPiCodingAgentSessionFactory {
     pooled: AgentPiPooledCodingSession,
     exposure: AgentToolExposureState,
     activeToolNames: readonly string[],
+    allTools?: AgentPiToolSet,
   ): void {
     if (this.options.provider.toolPlanningMode === "native") {
       pooled.disposeToolExposure();
@@ -209,6 +216,13 @@ export class AgentPiCodingAgentSessionFactory {
     pooled.disposeToolExposure();
     pooled.toolExposure = exposure;
     pooled.disposeToolExposure = exposure.subscribe((snapshot) => {
+      if (allTools) {
+        const registered = new Set(pooled.session.getAllTools().map((tool) => tool.name));
+        const discovered = this.materializeTools(allTools.refresh(), pooled.frame).filter(
+          (tool) => !registered.has(tool.name) && snapshot.exposedToolNames.includes(tool.name),
+        );
+        pooled.registerDiscoveredTools(discovered);
+      }
       pooled.session.setActiveToolsByName([...snapshot.exposedToolNames]);
     });
     pooled.session.setActiveToolsByName([...exposure.snapshot().exposedToolNames]);
@@ -218,19 +232,29 @@ export class AgentPiCodingAgentSessionFactory {
     settingsManager: SettingsManager,
     inheritProjectContext: boolean,
     runtimeExtension: AgentPiRuntimeExtensionRegistration,
+    frame: AgentPiMutableSessionFrame,
+    projectContext: AgentPiProjectContext,
   ): DefaultResourceLoader {
     return new DefaultResourceLoader({
       cwd: this.options.workspaceRoot,
       agentDir: this.workspaceLayout.stateRoot,
       settingsManager,
       systemPrompt: this.options.systemPromptPath,
-      additionalSkillPaths: [...new Set([this.options.systemSkillsRoot, ...(this.options.additionalSkillPaths ?? [])])],
+      noSkills: true,
+      skillsOverride: () => ({ skills: [...frame.snapshot().skillCatalog.skills], diagnostics: [] }),
       noExtensions: true,
       noPromptTemplates: true,
       noThemes: true,
       noContextFiles: true,
-      agentsFilesOverride: () => (inheritProjectContext ? this.projectContext.agentsFiles() : { agentsFiles: [] }),
+      agentsFilesOverride: () => (inheritProjectContext ? projectContext.agentsFiles() : { agentsFiles: [] }),
       extensionFactories: [runtimeExtension],
+    });
+  }
+
+  private createProjectContext(): AgentPiProjectContext {
+    return new AgentPiProjectContext(this.workspaceLayout.projectContextFile, {
+      cwd: this.options.workspaceRoot,
+      agentDir: this.workspaceLayout.stateRoot,
     });
   }
 
@@ -266,7 +290,6 @@ export class AgentPiCodingAgentSessionFactory {
       sessionManager: input.sessionManager,
     });
     created.session.setActiveToolsByName([...input.activeToolNames]);
-    input.runtimeExtension.install(created.session, input.settingsManager.getCompactionSettings());
     return created.session;
   }
 
@@ -280,11 +303,14 @@ export class AgentPiCodingAgentSessionFactory {
   }
 
   private createSettingsManager(): SettingsManager {
-    const compaction = resolveAgentPiCompactionSettings(this.options.compaction, this.options.provider.model);
     return SettingsManager.inMemory({
       steeringMode: "one-at-a-time",
       followUpMode: "one-at-a-time",
-      compaction: { ...compaction },
+      compaction: {
+        enabled: this.compactionSettings.enabled,
+        reserveTokens: this.compactionSettings.reserveTokens,
+        keepRecentTokens: this.compactionSettings.keepRecentTokens,
+      },
       retry: {
         enabled: this.options.modelProvider.MaxNetworkRetries > 0,
         maxRetries: this.options.modelProvider.MaxNetworkRetries,
@@ -293,20 +319,6 @@ export class AgentPiCodingAgentSessionFactory {
           maxRetries: NativeProviderRetryAttempts,
         },
       },
-    });
-  }
-
-  private async emitResourceDiagnostics(
-    frame: AgentPiCodingAgentSessionFrame,
-    resourceLoader: DefaultResourceLoader,
-  ): Promise<void> {
-    const diagnostics = resourceLoader.getSkills().diagnostics;
-    if (diagnostics.length === 0) return;
-    await emitAgentPiDiagnostic(frame.diagnostics ?? this.options.diagnostics, {
-      context: agentPiDiagnosticContext(frame),
-      source: AgentPiDiagnosticSources.Session,
-      name: "resources.skills.diagnostics",
-      details: diagnostics,
     });
   }
 

@@ -1,10 +1,11 @@
 import { AgentEventKinds, type AgentDomainEvent } from "../Events/AgentEvent.js";
 import { createAssistantMessageId } from "../Core/AgentIds.js";
-import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import type { AgentExecutionResult } from "../ToolRuntime/AgentToolCallExecutionTypes.js";
 import type { AgentModelProviderMetadata, AgentModelUsage } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { StepTrace } from "../Core/AgentStepTrace.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
+import type { AgentToolSearchObservation } from "../ToolSearch/AgentToolSearchUsageMemory.js";
+import type { AgentStateCard } from "../StateCard/AgentStateCardTypes.js";
 
 export type AgentTerminalResult =
   | {
@@ -27,13 +28,14 @@ export interface AgentCompletedRunResult {
   decisionXml: string;
   modelProvider?: AgentModelProviderMetadata;
   usage?: AgentModelUsage;
-  conversationEntries: AgentConversationEntry[];
   executedTools: ExecutedToolCallResult[];
   stepTraces: StepTrace[];
   loadedToolNames?: string[];
   /** One-shot continuity rules projected into this run and awaiting durable-turn acknowledgement. */
   continuityRuleDeliveryUris?: string[];
   physicalPiSessionId?: string;
+  routingObservation?: AgentToolSearchObservation;
+  stateCard?: AgentStateCard;
 }
 
 export class AgentExecutionProjector {

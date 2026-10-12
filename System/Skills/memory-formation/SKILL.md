@@ -1,5 +1,8 @@
 ---
 name: memory-formation
+metadata:
+  senera:
+    icon: stack
 description: Design or evaluate durable memory, user profiles, stable preferences, project knowledge, candidate memories, consolidation, conflicts, relationship graphs, or cross-session recall. Use when information must be filtered, evidenced, persisted, related, and projected back into future context. 适用于设计、诊断或优化长期记忆、用户偏好、项目知识、记忆合并、冲突处理和跨会话召回。
 ---
 

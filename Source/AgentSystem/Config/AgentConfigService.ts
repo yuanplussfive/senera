@@ -152,6 +152,10 @@ export class AgentConfigService {
     return this.snapshotValue;
   }
 
+  sourceOptions(): AgentConfigSourceOptions {
+    return this.options.source;
+  }
+
   subscribe(listener: AgentConfigSnapshotListener): () => void {
     this.snapshotListeners.add(listener);
     return () => this.snapshotListeners.delete(listener);

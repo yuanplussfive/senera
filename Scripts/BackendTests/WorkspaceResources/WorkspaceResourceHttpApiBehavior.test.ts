@@ -91,6 +91,98 @@ describe("workspace resource HTTP API", () => {
     expect(response.headers.get("content-security-policy")).toContain("sandbox");
     expect(Buffer.from(await response.arrayBuffer())).toEqual(png);
   });
+
+  test("downloads workspace files as their original file with the original name and media type", async () => {
+    const harness = await createHarness();
+    const source = "export const answer = 42;\n";
+    await fs.writeFile(path.join(harness.root, "answer.ts"), source, "utf8");
+
+    const response = await fetch(contentUrl(harness.baseUrl, "answer.ts"));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("video/mp2t");
+    expect(response.headers.get("content-disposition")).toContain("filename*=UTF-8''answer.ts");
+    expect(await response.text()).toBe(source);
+  });
+
+  test("lists directories lazily and supports workspace file lifecycle mutations", async () => {
+    const harness = await createHarness();
+    await fs.mkdir(path.join(harness.root, "src"));
+    await fs.writeFile(path.join(harness.root, "src", "index.ts"), "export {}\n");
+
+    const root = await fetch(treeUrl(harness.baseUrl, "."));
+    expect(root.status).toBe(200);
+    expect(await root.json()).toMatchObject({
+      ok: true,
+      path: "",
+      entries: [{ path: "src", name: "src", kind: "directory" }],
+    });
+
+    const directory = await fetch(treeUrl(harness.baseUrl), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ operation: "directory", path: "notes" }),
+    });
+    expect(directory.status).toBe(201);
+    expect(await directory.json()).toMatchObject({
+      ok: true,
+      entry: { path: "notes", name: "notes", kind: "directory" },
+    });
+
+    const created = await fetch(treeUrl(harness.baseUrl), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ operation: "file", path: "notes/todo.md", content: "- test\n" }),
+    });
+    expect(created.status).toBe(201);
+    expect(await created.json()).toMatchObject({
+      ok: true,
+      entry: { path: "notes/todo.md", name: "todo.md", kind: "text", editable: true },
+    });
+
+    const renamed = await fetch(treeUrl(harness.baseUrl), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: "notes/todo.md", destination: "notes/plan.md" }),
+    });
+    expect(renamed.status).toBe(200);
+    expect(await renamed.json()).toMatchObject({ ok: true, entry: { path: "notes/plan.md", name: "plan.md" } });
+    await expect(fs.readFile(path.join(harness.root, "notes", "plan.md"), "utf8")).resolves.toBe("- test\n");
+
+    const removed = await fetch(treeUrl(harness.baseUrl, "notes/plan.md"), { method: "DELETE" });
+    expect(removed.status).toBe(200);
+    await expect(fs.stat(path.join(harness.root, "notes", "plan.md"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  test("protects the workspace root and requires recursive removal for directories", async () => {
+    const harness = await createHarness();
+    await fs.mkdir(path.join(harness.root, "nested"));
+    await fs.writeFile(path.join(harness.root, "nested", "file.txt"), "content\n");
+
+    const rootDelete = await fetch(treeUrl(harness.baseUrl, "."), { method: "DELETE" });
+    expect(rootDelete.status).toBe(400);
+    expect(await rootDelete.json()).toMatchObject({ ok: false, error: { code: "workspace_root_forbidden" } });
+
+    const nonRecursive = await fetch(treeUrl(harness.baseUrl, "nested"), { method: "DELETE" });
+    expect(nonRecursive.status).toBe(409);
+    expect(await nonRecursive.json()).toMatchObject({ ok: false, error: { code: "directory_not_empty" } });
+
+    const recursive = await fetch(`${treeUrl(harness.baseUrl, "nested")}&recursive=true`, { method: "DELETE" });
+    expect(recursive.status).toBe(200);
+    await expect(fs.stat(path.join(harness.root, "nested"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  test("keeps tree mutations relative to the workspace root", async () => {
+    const harness = await createHarness();
+    const response = await fetch(treeUrl(harness.baseUrl), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ operation: "file", path: path.join(harness.root, "outside.txt") }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: "invalid_path" } });
+  });
 });
 
 async function createHarness(): Promise<{ root: string; baseUrl: string }> {
@@ -121,5 +213,11 @@ function resourceUrl(baseUrl: string, resourcePath: string): string {
 function contentUrl(baseUrl: string, resourcePath: string): string {
   const url = new URL("/api/resources/content", baseUrl);
   url.searchParams.set("path", resourcePath);
+  return url.toString();
+}
+
+function treeUrl(baseUrl: string, resourcePath?: string): string {
+  const url = new URL("/api/resources/tree", baseUrl);
+  if (resourcePath !== undefined) url.searchParams.set("path", resourcePath);
   return url.toString();
 }

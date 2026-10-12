@@ -88,7 +88,7 @@ if (!ownsDesktopInstance) {
       );
       const paths = runtimePaths;
       desktopTray = createDesktopTray(paths.windowIconPath, () => {
-        void selectDesktopWorkspaceAndRestart();
+        requestDesktopWorkspaceSelection();
       });
       frontendSource = createDesktopFrontendSource({
         devServerUrl: process.env.SENERA_DESKTOP_FRONTEND_URL,
@@ -105,13 +105,20 @@ if (!ownsDesktopInstance) {
       });
       const configSource = {
         kind: "json" as const,
-        // Relative on purpose: resolveServerConfigSource re-resolves it against
-        // the active workspace root, so a hot workspace switch moves the config
-        // along with the workspace instead of pinning the original one.
-        configPath: "senera.config.json",
+        configPath: paths.configPath,
       };
       serverHandle = await startSeneraServer({
         workspaceRoot: paths.workspaceRoot,
+        applicationStateRoot: paths.dataRoot,
+        onWorkspaceOpened: (root, workspaceId) => {
+          persistDesktopWorkspace(paths, root);
+          if (runtimePaths) runtimePaths = { ...runtimePaths, workspaceRoot: root };
+          if (serverHandle) {
+            const url = new URL(serverHandle.websocketUrl);
+            url.searchParams.set("workspaceId", workspaceId);
+            serverHandle = { ...serverHandle, workspaceRoot: root, websocketUrl: url.toString() };
+          }
+        },
         applicationRoot: paths.appRoot,
         resourcesPath: paths.resourceRoot,
         upgradeStateRoot: paths.upgradeStateRoot,
@@ -275,31 +282,9 @@ function createDesktopTray(iconPath: string, onSelectWorkspace: () => void): Tra
   return tray;
 }
 
-async function selectDesktopWorkspaceAndRestart(): Promise<void> {
-  if (!runtimePaths || !serverHandle) return;
-  try {
-    const selected = await chooseDesktopWorkspace();
-    if (!selected || path.resolve(selected) === path.resolve(runtimePaths.workspaceRoot)) return;
-    const next = await serverHandle.switchWorkspace(selected);
-    serverHandle = next;
-    persistDesktopWorkspace(runtimePaths, selected);
-    runtimePaths = {
-      ...runtimePaths,
-      workspaceRoot: path.resolve(selected),
-      configPath: path.join(path.resolve(selected), "senera.config.json"),
-    };
-    appendDesktopLog(runtimePaths.logPath, `workspace switched to ${runtimePaths.workspaceRoot}`);
-    reloadDesktopFrontend();
-  } catch (error) {
-    const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
-    appendDesktopLog(runtimePaths.logPath, `workspace switch failed\n${message}`);
-    dialog.showErrorBox(desktopMessage("workspace.selectionFailedTitle", {}, app.getLocale()), message);
-  }
-}
-
-function reloadDesktopFrontend(): void {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  startDesktopFrontendLoad(mainWindow);
+function requestDesktopWorkspaceSelection(): void {
+  showAllDesktopWindows();
+  mainWindow?.webContents.send("senera:workspace.request-folder");
 }
 
 function hideAllDesktopWindows(): void {

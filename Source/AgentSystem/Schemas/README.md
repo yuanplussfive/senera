@@ -4,7 +4,6 @@
 
 - `AgentSystemConfigSchema.ts` composes the top-level configuration.
 - `AgentToolContractSchema.ts` validates execution, runtime, search, resource, approval, and artifact policy fields shared by registered Tools.
-- `AgentToolObservationProjectionSchema.ts` validates package-owned System Tool model-view projections.
 - `AgentArtifactContractSchema.ts` validates artifact and evidence declarations.
 - `AgentRootCommandContractSchema.ts` validates root-command policy assets.
 - `AgentToolSearchContractSchema.ts` validates discovery and routing metadata.

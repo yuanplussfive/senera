@@ -31,7 +31,6 @@ System/Extensions/explore/
     config.schema.json
     ui.schema.json
     tools/DocumentExtract.tool.json
-    observations/DocumentExtract.projection.json
 ```
 
 ```json
@@ -67,7 +66,7 @@ System/Extensions/explore/
 
 `domain.json` owns the domain's stable identity, localized presentation default, and directory grouping. Every package directory must match `extension.id`, and `extension.domain` must equal its parent domain ID; nested domains, duplicate domain IDs, duplicate extension IDs, symbolic links and mismatches fail discovery. `settingsSurface` explicitly assigns configuration ownership to `system-tools` or a dedicated surface such as `channels`; a dedicated surface may have only one provider. The merged `domain -> extension -> Tool` presentation is sent with tool lifecycle events, so the frontend never classifies tools by name, prefix, or capability. Manifest owns package metadata and maps contract to a pre-registered capability. Contract does not repeat `extension` or `capability`. All referenced files must be regular files inside the package. Unknown capability、symbolic link and path traversal are rejected. There is no `runtimeModule` or arbitrary TypeScript import, so workspace content cannot inject code into the host process.
 
-每个 host Tool contract 必须通过 `observationProjection` 引用包内声明式投影。投影只允许协议来源、RFC 6901 pointer、模式、优先级以及明确的 token/结构上限；完整结果先写入 artifact，模型上下文只接收有界视图与 artifact URI。投影内容参与 Tool digest 和目录 revision。MCP 与 Skill 不使用该文件：MCP 保持 `tools/list`、`outputSchema`、`content`、`structuredContent` 标准边界，Skill 只提供指导。
+host Tool contract 不声明 `observationProjection` 或 `contentPolicy`。工具结果在宿主 Artifact 边界完整记录，再由 Pi 按当前回合预算统一决定原样传递、机械压缩或通过 Pi 请求链概括；MCP 的 `tools/list`、`content` 与 `structuredContent` 仍按标准边界接入同一策略。压缩算法和预算不属于扩展包合同，详见[工具反馈压缩](../Architecture/ToolObservationCompression.md)。
 
 `displayName` 和 `description` 必须同时声明 `zh-CN` 与 `en-US`。运行时 owner、Skill 来源和自动生成的配置表单以中文为首选；设置工作台按当前界面语言展示，未知语言回退中文。包不能省略描述，也不能把中英文混写在一个字符串中。
 

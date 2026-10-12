@@ -1,6 +1,6 @@
 import { cn } from "../../lib/util";
 import { resolveFilePreview } from "../../lib/filePreview";
-import { Tooltip } from "../../shared/ui";
+import { AppIcon, Tooltip } from "../../shared/ui";
 
 interface FilePreviewIconProps {
   name: string;
@@ -11,8 +11,6 @@ interface FilePreviewIconProps {
 
 export function FilePreviewIcon({ name, mime, className, iconClassName }: FilePreviewIconProps): JSX.Element {
   const preview = resolveFilePreview({ name, mime });
-  const Icon = preview.Icon;
-
   return (
     <Tooltip content={preview.label} side="top">
       <span
@@ -20,7 +18,7 @@ export function FilePreviewIcon({ name, mime, className, iconClassName }: FilePr
         role="img"
         aria-label={preview.label}
       >
-        <Icon className={cn("h-3.5 w-3.5", preview.iconClassName, iconClassName)} />
+        <AppIcon icon={preview.icon} size={14} className={cn(preview.iconClassName, iconClassName)} />
       </span>
     </Tooltip>
   );

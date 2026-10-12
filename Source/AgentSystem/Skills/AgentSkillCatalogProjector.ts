@@ -4,7 +4,14 @@ import type { ToolSearchCapabilityFacetsManifest } from "../Types/AgentToolContr
 
 export interface AgentSkillCatalogItem {
   name: string;
+  revision: string;
+  source: {
+    kind: RegisteredSkill["source"]["kind"];
+    id: string;
+    displayName: string;
+  };
   title: string;
+  icon?: string;
   summary: string;
   capabilities: AgentSkillCatalogCapabilityItem[];
   tags: string[];
@@ -37,7 +44,14 @@ export class AgentSkillCatalogProjector {
     const search = skill.search;
     return {
       name: skill.name,
+      revision: skill.revision ?? skill.source.id,
+      source: {
+        kind: skill.source.kind,
+        id: skill.source.id,
+        displayName: skill.source.displayName,
+      },
       title: skill.title ?? search?.Summary ?? skill.name,
+      ...(skill.icon ? { icon: skill.icon } : {}),
       summary: search?.Summary ?? skill.description,
       capabilities: (search?.Capabilities ?? []).map((capability) => ({
         id: capability.Id,

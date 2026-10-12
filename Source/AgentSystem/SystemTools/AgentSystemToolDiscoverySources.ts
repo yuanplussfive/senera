@@ -9,7 +9,7 @@ export const AgentSystemToolDiscoverySources = {
   Browser: {
     Id: "browser",
     Title: "Browser",
-    Description: "Controlled browser sessions for interactive public web pages.",
+    Description: "Controlled browser sessions for web pages and approved local resources.",
   },
   Desktop: {
     Id: "desktop",

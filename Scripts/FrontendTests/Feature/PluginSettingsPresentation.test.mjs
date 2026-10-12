@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { McpServersSection } from "../../../Frontend/src/features/settings/sections/McpServersSection.tsx";
 import { SystemToolsSection } from "../../../Frontend/src/features/settings/sections/SystemToolsSection.tsx";
+import { TooltipProvider } from "../../../Frontend/src/shared/ui/Tooltip.tsx";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
 
 const ExploreDomain = {
@@ -234,7 +235,6 @@ describe("plugin settings presentation", () => {
               descriptorKind: "mcpb",
               transport: "stdio",
               status: "unavailable",
-              unavailableCapabilities: ["interactive-desktop"],
               unavailableCapabilityDetails: [
                 {
                   id: "interactive-desktop",
@@ -284,6 +284,49 @@ describe("plugin settings presentation", () => {
     // The committed value stays in the field instead of blanking it.
     expect(secretField).toHaveValue("sk-live-key");
     expect(secretField).toHaveAttribute("type", "password");
+  });
+
+  it("keeps an MCP mutation pending until its authoritative snapshot arrives", async () => {
+    const user = userEvent.setup();
+    const updateMcpInputs = vi.fn(() => "request-pending");
+    const view = renderWithFrontendProviders(
+      React.createElement(McpServersSection, {
+        systemConfig: createMcpSectionSystemConfig({ updateMcpInputs }),
+      }),
+    );
+
+    await user.click(screen.getByText("Imagen"));
+    const secretField = screen.getByLabelText("Imagen API Key");
+    await user.type(secretField, "sk-pending-key");
+    await user.tab();
+
+    view.rerender(
+      React.createElement(
+        TooltipProvider,
+        { delayDuration: 0 },
+        React.createElement(McpServersSection, {
+          systemConfig: createMcpSectionSystemConfig({
+            updateMcpInputs,
+            mcpInputOperation: { requestId: "request-pending", status: "pending" },
+          }),
+        }),
+      ),
+    );
+    expect(screen.queryByText("MCP 修改同步失败。")).not.toBeInTheDocument();
+
+    view.rerender(
+      React.createElement(
+        TooltipProvider,
+        { delayDuration: 0 },
+        React.createElement(McpServersSection, {
+          systemConfig: createMcpSectionSystemConfig({
+            updateMcpInputs,
+            mcpInputOperation: { requestId: "request-pending", status: "success" },
+          }),
+        }),
+      ),
+    );
+    expect(screen.queryByText("MCP 修改同步失败。")).not.toBeInTheDocument();
   });
 
   it("reveals the secret through the eye toggle without committing", async () => {

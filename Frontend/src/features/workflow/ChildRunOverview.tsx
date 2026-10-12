@@ -1,49 +1,42 @@
 import type { TimelineChildRunState } from "../../store/sessionStore";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn, formatTime } from "../../lib/util";
+import { ExecutionStatusTones } from "../../shared/ui";
+
+const ActiveChildRunStatuses = new Set<TimelineChildRunState["status"]>([
+  "queued",
+  "running",
+  "wrapping_up",
+  "cancelling",
+  "awaiting_supervisor",
+]);
+
+export function isChildRunActive(status: TimelineChildRunState["status"]): boolean {
+  return ActiveChildRunStatuses.has(status);
+}
 
 interface ChildRunOverviewProps {
   childRun: TimelineChildRunState;
 }
 
 export const ChildRunStatusPresentation = {
-  queued: { label: "workflow.step.status.pending", dotClass: "bg-ink-300", textClass: "text-content-secondary" },
-  running: { label: "workflow.run.status.running", dotClass: "bg-umber-500", textClass: "text-umber-600" },
-  wrapping_up: {
-    label: "workflow.childRun.status.wrappingUp",
-    dotClass: "bg-umber-500",
-    textClass: "text-umber-600",
-  },
-  cancelling: {
-    label: "workflow.run.status.cancelling",
-    dotClass: "bg-accent-content",
-    textClass: "text-accent-content",
-  },
-  awaiting_supervisor: {
-    label: "workflow.childRun.status.awaitingSupervisor",
-    dotClass: "bg-accent-content",
-    textClass: "text-accent-content",
-  },
-  completed: { label: "workflow.run.status.completed", dotClass: "bg-moss-500", textClass: "text-moss-600" },
-  partial_completed: {
-    label: "workflow.childRun.status.partialCompleted",
-    dotClass: "bg-moss-500",
-    textClass: "text-moss-600",
-  },
-  interrupted: {
-    label: "workflow.childRun.status.interrupted",
-    dotClass: "bg-umber-500",
-    textClass: "text-umber-600",
-  },
-  timed_out: { label: "workflow.childRun.status.timedOut", dotClass: "bg-brick-500", textClass: "text-brick-600" },
-  failed: { label: "workflow.run.status.failed", dotClass: "bg-brick-500", textClass: "text-brick-600" },
-  cancelled: { label: "workflow.run.status.cancelled", dotClass: "bg-ink-400", textClass: "text-content-secondary" },
+  queued: { label: "workflow.step.status.pending", ...ExecutionStatusTones.pending },
+  running: { label: "workflow.run.status.running", ...ExecutionStatusTones.running },
+  wrapping_up: { label: "workflow.childRun.status.wrappingUp", ...ExecutionStatusTones.running },
+  cancelling: { label: "workflow.run.status.cancelling", ...ExecutionStatusTones.cancelling },
+  awaiting_supervisor: { label: "workflow.childRun.status.awaitingSupervisor", ...ExecutionStatusTones.cancelling },
+  completed: { label: "workflow.run.status.completed", ...ExecutionStatusTones.completed },
+  partial_completed: { label: "workflow.childRun.status.partialCompleted", ...ExecutionStatusTones.completed },
+  interrupted: { label: "workflow.childRun.status.interrupted", ...ExecutionStatusTones.running },
+  timed_out: { label: "workflow.childRun.status.timedOut", ...ExecutionStatusTones.failed },
+  failed: { label: "workflow.run.status.failed", ...ExecutionStatusTones.failed },
+  cancelled: { label: "workflow.run.status.cancelled", ...ExecutionStatusTones.cancelled },
 } as const satisfies Record<
   TimelineChildRunState["status"],
   {
     label: Parameters<typeof frontendMessage>[0];
-    dotClass: string;
-    textClass: string;
+    text: string;
+    dot: string;
   }
 >;
 
@@ -61,8 +54,8 @@ export function ChildRunOverview({ childRun }: ChildRunOverviewProps): JSX.Eleme
         role="status"
         aria-live="polite"
       >
-        <div className={cn("flex min-w-0 items-center gap-2 text-[12.5px] font-medium", presentation.textClass)}>
-          <span className={cn("h-2 w-2 shrink-0 rounded-full", presentation.dotClass)} aria-hidden="true" />
+        <div className={cn("flex min-w-0 items-center gap-2 text-[12.5px] font-medium", presentation.text)}>
+          <span className={cn("h-2 w-2 shrink-0 rounded-full", presentation.dot)} aria-hidden="true" />
           <span>{frontendMessage(presentation.label)}</span>
         </div>
         {childRun.lastActivityAt ? (
@@ -77,13 +70,13 @@ export function ChildRunOverview({ childRun }: ChildRunOverviewProps): JSX.Eleme
           {frontendMessage("workflow.childRun.currentActivity")}
         </div>
         {activeTools.length > 0 ? (
-          <div className="border-l-2 border-umber-400 pl-3" data-child-run-active-tools>
+          <div className="border-l-2 border-accent-400 pl-3" data-child-run-active-tools>
             <div className="text-[11.5px] text-content-secondary">
               {activeTools.length === 1
                 ? frontendMessage("workflow.childRun.usingTool")
                 : frontendMessage("workflow.childRun.parallelTools", { count: activeTools.length })}
             </div>
-            <div className="mt-1 break-words font-mono text-[12px] text-content-primary">{activeTools.join(" · ")}</div>
+            <div className="mt-1 break-words text-[12px] text-content-primary">{activeTools.join(" · ")}</div>
           </div>
         ) : (
           <div className="text-[11.5px] text-content-secondary">

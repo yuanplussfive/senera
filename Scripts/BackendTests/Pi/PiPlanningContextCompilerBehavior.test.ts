@@ -1,11 +1,15 @@
 import { describe, expect, test } from "vitest";
+import type { JsonObject } from "@earendil-works/pi-ai";
 import { AgentPiPlanningContextCompiler } from "../../../Source/AgentSystem/Pi/AgentPiPlanningContextCompiler.js";
-import { AgentPiToolObservationProtocolError } from "../../../Source/AgentSystem/PiShared/AgentPiToolObservationProtocol.js";
+import {
+  AgentPiToolObservationProtocolError,
+  createAgentPiToolObservation,
+} from "../../../Source/AgentSystem/PiShared/AgentPiToolObservationProtocol.js";
 import type { ResolvedAgentModelProviderConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { compilePiToolObservation } from "../Support/PiToolObservationFixtures.js";
 
 describe("Pi native planning context compilation", () => {
-  test("preserves a bounded v2 observation in both the native transcript and reconciliation index", () => {
+  test("preserves a v5 observation in both the native transcript and reconciliation index", () => {
     const compiler = new AgentPiPlanningContextCompiler({ modelProvider: provider() });
     const observation = compilePiToolObservation({
       toolName: "ShellCommandTool",
@@ -14,8 +18,11 @@ describe("Pi native planning context compilation", () => {
       outputAvailability: "partial",
       summary: "The command failed.",
       result: { diagnostic: "failure detail" },
-      error: {
+      failure: {
         code: "ToolProcessExited",
+        kind: "process_exit",
+        source: "process",
+        retryable: false,
         message: "The command failed with exit code 2.",
       },
     });
@@ -107,6 +114,58 @@ describe("Pi native planning context compilation", () => {
     });
   });
 
+  test("preserves the complete Pi context for a native compaction request", () => {
+    const compiler = new AgentPiPlanningContextCompiler({
+      modelProvider: provider({ ContextWindowTokens: 1_200, MaxOutputTokens: 200 }),
+    });
+    const projected = compiler.compile({
+      model: "test-model",
+      preserveContext: true,
+      context: {
+        messages: [userMessage(`old request ${"x".repeat(20_000)}`), userMessage("recent request")],
+      },
+    });
+
+    expect(projected.planningContext.messages).toHaveLength(2);
+    expect(projected.planningContext.projection).toMatchObject({
+      projectedMessageCount: 2,
+      omittedOlderMessages: 0,
+      omittedOlderToolCalls: 0,
+    });
+  });
+
+  test("projects every canonical source-view artifact into the planning transcript", () => {
+    const compiler = new AgentPiPlanningContextCompiler({ modelProvider: provider() });
+    const sourceA = "senera://artifact/art_000000000000000000000021";
+    const sourceB = "senera://artifact/art_000000000000000000000022";
+    const observation = createAgentPiToolObservation({
+      status: "success",
+      execution_status: "completed",
+      output_availability: "complete",
+      source_artifacts: [
+        { artifact_uri: sourceA, refs: ["raw"] },
+        { artifact_uri: sourceB, refs: ["evidence"] },
+      ],
+      detail: { evidence: [], result: { page: "visible now" } },
+    });
+
+    const projected = compiler.compile({
+      model: "test-model",
+      context: {
+        messages: [
+          userMessage("Read the selected evidence."),
+          assistantToolCall("call-source-view", "ArtifactReadTool", {}),
+          toolResult("call-source-view", "ArtifactReadTool", observation),
+        ],
+      },
+    });
+
+    expect(projected.planningContext.toolTranscript[0]?.observation?.artifacts).toEqual([
+      { artifactUri: sourceA, refs: ["raw"], evidenceUris: [] },
+      { artifactUri: sourceB, refs: ["evidence"], evidenceUris: [] },
+    ]);
+  });
+
   test("fails explicitly instead of structurally truncating an oversized current turn", () => {
     const compiler = new AgentPiPlanningContextCompiler({
       modelProvider: provider({ ContextWindowTokens: 512, MaxOutputTokens: 128 }),
@@ -125,7 +184,7 @@ function userMessage(content: string) {
   return { role: "user" as const, content, timestamp: 1 };
 }
 
-function assistantToolCall(callId: string, name: string, args: Record<string, unknown>) {
+function assistantToolCall(callId: string, name: string, args: JsonObject) {
   return {
     role: "assistant" as const,
     api: "senera-planning" as const,

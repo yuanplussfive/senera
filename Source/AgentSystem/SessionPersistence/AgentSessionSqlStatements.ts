@@ -46,6 +46,7 @@ export interface AgentSessionSqlStatements {
   selectEntryPage: Database.Statement<[string, number, number, number], EntryRow>;
   selectRunEvents: Database.Statement<[string], RunEventRow>;
   selectRunEventsForRequest: Database.Statement<[string, string], RunEventRow>;
+  selectRunEvent: Database.Statement<[string, string, string], RunEventRow>;
   selectRunEventsThroughSequence: Database.Statement<[string, string, number], RunEventRow>;
   selectRunEventPage: Database.Statement<[string, number, number, number], RunEventRow>;
   selectSetting: Database.Statement<[string], AppSettingRow>;
@@ -61,6 +62,7 @@ export interface AgentSessionSqlStatements {
   selectStepTraceRequestIds: Database.Statement<[string, number, string], RequestIdOnlyRow>;
   upsertRunSnapshot: Database.Statement;
   selectRunSnapshots: Database.Statement<[string], RunSnapshotRow>;
+  selectRunSnapshot: Database.Statement<[string, string], RunSnapshotRow>;
   selectRunSnapshotsForRequests: Database.Statement<[string, number, string, number], RunSnapshotRow>;
   selectRunSnapshotPage: Database.Statement<[string, number, number, number, number], RunSnapshotPageRow>;
   selectRunningRunSnapshots: Database.Statement<[], RunSnapshotRow>;
@@ -250,6 +252,13 @@ export function prepareAgentSessionSqlStatements(db: Database.Database): AgentSe
       WHERE session_id = ? AND request_id = ?
       ORDER BY id ASC
     `),
+    selectRunEvent: db.prepare<[string, string, string], RunEventRow>(`
+      SELECT id, session_id, request_id, kind, timestamp, event_sequence, step, detail_id, event_id, event_json
+      FROM run_events
+      WHERE session_id = ? AND request_id = ? AND kind = ?
+      ORDER BY id ASC
+      LIMIT 1
+    `),
     selectRunEventsThroughSequence: db.prepare<[string, string, number], RunEventRow>(`
       SELECT r.id, r.session_id, r.request_id, r.kind, r.timestamp,
              r.event_sequence, r.step, r.detail_id, r.event_id, r.event_json
@@ -351,6 +360,14 @@ export function prepareAgentSessionSqlStatements(db: Database.Database): AgentSe
       FROM run_snapshots
       WHERE session_id = ?
       ORDER BY history_sequence ASC
+    `),
+    selectRunSnapshot: db.prepare<[string, string], RunSnapshotRow>(`
+      SELECT
+        session_id, request_id, input, status, started_at, updated_at,
+        ended_at, error_message, model_provider
+      FROM run_snapshots
+      WHERE session_id = ? AND request_id = ?
+      LIMIT 1
     `),
     selectRunSnapshotsForRequests: db.prepare<[string, number, string, number], RunSnapshotRow>(`
       SELECT

@@ -1,5 +1,5 @@
-import { describe, expect, test } from "vitest";
-import { InMemoryToolSearchMemoryStore } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchMemoryStore.js";
+import { describe, expect, test, vi } from "vitest";
+import { VerificationScenarioSource } from "../../VerificationScenarioSource.js";
 import { SeneraLocalExecutionEnv } from "../../../Source/AgentSystem/Execution/SeneraLocalExecutionEnv.js";
 import {
   AgentToolMetaToolNames,
@@ -21,44 +21,62 @@ import type { ExecutedToolCallResult } from "../../../Source/AgentSystem/Types/T
 import { AgentChannelKinds } from "../../../Source/AgentSystem/Channels/AgentChannelTypes.js";
 import { AgentInteractionSurfaces } from "../../../Source/AgentSystem/Interaction/AgentInteractionContext.js";
 import { createModelProvider, createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
-import {
-  createRegistry,
-  createTool,
-  createToolLearningConfig,
-  createToolSearchConfig,
-} from "./ToolSearchTestFixtures.js";
+import { createRegistry, createTool, createToolSearchConfig } from "./ToolSearchTestFixtures.js";
 
 describe("ToolSearch meta-tool behavior", () => {
   test("validates search arguments and only changes exposure through explicit load and unload", async () => {
+    const registeredTools = [
+      createTool({
+        name: AgentToolMetaToolNames.Search,
+        title: "Tool search",
+        summary: "Find tools",
+        tags: ["search"],
+        actions: ["search"],
+        targets: ["tools"],
+        priority: 100,
+        rootKind: "System",
+        loading: "Bootstrap",
+      }),
+      createTool({
+        name: "WorkspaceReadFile",
+        title: "Read file",
+        summary: "Read workspace files",
+        tags: ["workspace", "read"],
+        actions: ["read"],
+        targets: ["workspace", "file"],
+        priority: 10,
+        rootKind: "User",
+      }),
+    ];
+    const registry = createRegistry(registeredTools);
+    let publishNewTool = false;
+    const beforeSearch = vi.fn();
+    beforeSearch.mockImplementation(() => {
+      if (publishNewTool && !registry.getTool("WorkspaceListFiles")) {
+        registeredTools.push(
+          createTool({
+            name: "WorkspaceListFiles",
+            title: "List files",
+            summary: "Read workspace file metadata",
+            tags: ["workspace", "read", "file"],
+            actions: ["list"],
+            targets: ["workspace"],
+            priority: 9,
+            rootKind: "User",
+          }),
+        );
+      }
+    });
     const runtime = new AgentToolSearchRuntime(
-      createRegistry([
-        createTool({
-          name: AgentToolMetaToolNames.Search,
-          title: "Tool search",
-          summary: "Find tools",
-          tags: ["search"],
-          actions: ["search"],
-          targets: ["tools"],
-          priority: 100,
-          rootKind: "System",
-          loading: "Bootstrap",
-        }),
-        createTool({
-          name: "WorkspaceReadFile",
-          title: "Read file",
-          summary: "Read workspace files",
-          tags: ["workspace", "read"],
-          actions: ["read"],
-          targets: ["workspace", "file"],
-          priority: 10,
-          rootKind: "User",
-        }),
-      ]) as unknown as AgentExtensionRegistry,
+      registry as unknown as AgentExtensionRegistry,
       createToolSearchConfig(),
-      createToolLearningConfig({ Enabled: true }),
       "E:/workspace",
       createModelProvider(),
-      { memoryStore: new InMemoryToolSearchMemoryStore(), availableExecutionTargets: () => ["Local"] },
+      {
+        scenarioSource: new VerificationScenarioSource(),
+        availableExecutionTargets: () => ["Local"],
+        beforeSearch,
+      },
     );
     const handler = runtime.createSearchHostHandler();
     const grant = createAgentToolAccessGrant({
@@ -166,27 +184,26 @@ describe("ToolSearch meta-tool behavior", () => {
     expect(runtime.reusableCapabilities({ sessionId: "session-1", query: "read workspace file" })).toMatchObject([
       expect.objectContaining({ toolName: "WorkspaceReadFile", arguments: { path: "package.json" } }),
     ]);
+    publishNewTool = true;
+    beforeSearch.mockClear();
     const reused = await handler(
       { query: "read workspace file" },
       hostToolContext({
         requestId: "request-2",
         sessionId: "session-1",
         visibleToolNames: toolExposure.snapshot().exposedToolNames,
-        authorizedToolNames: [AgentToolMetaToolNames.Search, "WorkspaceReadFile"],
+        authorizedToolNames: [AgentToolMetaToolNames.Search, "WorkspaceReadFile", "WorkspaceListFiles"],
         toolExposure,
       }),
     );
+    expect(beforeSearch).toHaveBeenCalledTimes(1);
+    expect(beforeSearch.mock.calls[0]?.[0]).toBe("read workspace file");
+    expect(JSON.stringify(reused.response.result)).toContain("WorkspaceListFiles");
     expect(reused.response).toMatchObject({
       ok: true,
       result: {
         type: "senera.tool_discovery.v5",
-        match: [
-          [
-            "WorkspaceReadFile",
-            "Read workspace files",
-            ["visible", "confirmed", "arguments", { path: "package.json" }],
-          ],
-        ],
+        match: [["WorkspaceReadFile", "Read workspace files", ["visible", "unconfirmed", "none"]]],
       },
     });
     const unload = await runtime.createUnloadHostHandler()(
@@ -221,7 +238,7 @@ describe("ToolSearch meta-tool behavior", () => {
           ],
         },
       }),
-    ).toEqual([AgentToolMetaToolNames.Search]);
+    ).toMatchObject({ loadedTools: [AgentToolMetaToolNames.Search] });
 
     await runtime.close();
   });
@@ -269,10 +286,9 @@ describe("ToolSearch meta-tool behavior", () => {
     const runtime = new AgentToolSearchRuntime(
       registry as unknown as AgentExtensionRegistry,
       createToolSearchConfig(),
-      createToolLearningConfig(),
       workspaceRoot,
       createModelProvider(),
-      { memoryStore: new InMemoryToolSearchMemoryStore(), availableExecutionTargets: () => ["Local"] },
+      { scenarioSource: new VerificationScenarioSource(), availableExecutionTargets: () => ["Local"] },
     );
     const capabilities = new AgentToolHostCapabilityRegistry().register(
       "tool.search",
@@ -355,10 +371,9 @@ describe("ToolSearch meta-tool behavior", () => {
     const runtime = new AgentToolSearchRuntime(
       createRegistry([describe, shell, dynamic]) as unknown as AgentExtensionRegistry,
       createToolSearchConfig(),
-      createToolLearningConfig(),
       "E:/workspace",
       createModelProvider({ ToolPlanningMode: "native" }),
-      { memoryStore: new InMemoryToolSearchMemoryStore(), availableExecutionTargets: () => ["Local"] },
+      { scenarioSource: new VerificationScenarioSource(), availableExecutionTargets: () => ["Local"] },
     );
 
     const response = await runtime.createDescribeHostHandler()(
@@ -408,10 +423,9 @@ describe("ToolSearch meta-tool behavior", () => {
         }),
       ]) as unknown as AgentExtensionRegistry,
       createToolSearchConfig(),
-      createToolLearningConfig({ Enabled: true }),
       "E:/workspace",
       createModelProvider(),
-      { memoryStore: new InMemoryToolSearchMemoryStore(), availableExecutionTargets: () => ["Local"] },
+      { scenarioSource: new VerificationScenarioSource(), availableExecutionTargets: () => ["Local"] },
     );
 
     const consoleInteraction = { surface: AgentInteractionSurfaces.Console } as const;
@@ -478,10 +492,9 @@ describe("ToolSearch meta-tool behavior", () => {
     const runtime = new AgentToolSearchRuntime(
       registry,
       createToolSearchConfig(),
-      createToolLearningConfig(),
       "E:/workspace",
       createModelProvider(),
-      { memoryStore: new InMemoryToolSearchMemoryStore(), availableExecutionTargets: () => ["Local"] },
+      { scenarioSource: new VerificationScenarioSource(), availableExecutionTargets: () => ["Local"] },
     );
     const handler = runtime.createSearchHostHandler();
     const staleConversationArguments = await handler(
@@ -550,10 +563,9 @@ describe("ToolSearch meta-tool behavior", () => {
         }),
       ]) as unknown as AgentExtensionRegistry,
       createToolSearchConfig(),
-      createToolLearningConfig(),
       "E:/workspace",
       createModelProvider(),
-      { memoryStore: new InMemoryToolSearchMemoryStore(), availableExecutionTargets: () => ["Local"] },
+      { scenarioSource: new VerificationScenarioSource(), availableExecutionTargets: () => ["Local"] },
     );
 
     const response = await runtime.createSearchHostHandler()(

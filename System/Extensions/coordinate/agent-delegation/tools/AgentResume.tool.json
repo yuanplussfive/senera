@@ -5,7 +5,7 @@
     "category": "agent-resume",
     "icon": "users",
     "activity": {
-      "action": { "zh-CN": "恢复子代理", "en-US": "Resume subagent" },
+      "action": { "zh-CN": "继续", "en-US": "Resume" },
       "argumentPath": "/task",
       "detailPaths": ["/target"]
     }
@@ -31,7 +31,6 @@
     "required": ["accepted", "run"],
     "additionalProperties": false
   },
-  "observationProjection": "observations/AgentLifecycle.projection.json",
   "permissions": ["orchestration:delegate"],
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
   "runtime": {

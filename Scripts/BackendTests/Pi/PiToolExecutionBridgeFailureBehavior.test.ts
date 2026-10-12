@@ -6,7 +6,6 @@ import {
 import { AgentPiToolResultStatuses } from "../../../Source/AgentSystem/Pi/AgentPiTypes.js";
 import type { ExecutedToolCallResult } from "../../../Source/AgentSystem/Types/ToolRuntimeTypes.js";
 import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
-import type { AgentToolObservationProjectionManifest } from "../../../Source/AgentSystem/Types/AgentToolObservationProjectionTypes.js";
 import { AgentExecutionErrorCodes } from "../../../Source/AgentSystem/Xml/AgentXmlStatus.js";
 import { AgentCancellationError } from "../../../Source/AgentSystem/Core/AgentCancellation.js";
 import { AgentTurnTokenBudget } from "../../../Source/AgentSystem/Text/AgentTurnTokenBudget.js";
@@ -16,11 +15,18 @@ import { AgentPiTurnState } from "../../../Source/AgentSystem/Pi/AgentPiTurnStat
 import { AgentModelUsageLedger } from "../../../Source/AgentSystem/ModelEndpoints/AgentModelUsage.js";
 import { AgentPiToolPlanCoordinator } from "../../../Source/AgentSystem/PiShared/AgentPiToolPlanCoordinator.js";
 import { AgentToolSuccessOutcome } from "../../../Source/AgentSystem/ToolRuntime/AgentToolResultOutcome.js";
-import { StandardAgentToolObservationProjection } from "../../../Source/AgentSystem/ToolRuntime/AgentToolObservationProjectionPlan.js";
+import { createTestToolObservationCompressor } from "../Support/PiToolObservationFixtures.js";
 
 class AgentPiToolExecutionBridge extends AgentPiToolExecutionBridgeBase {
-  constructor(options: Omit<AgentPiToolExecutionBridgeOptions, "model">) {
-    super({ ...options, model: "test-model" });
+  constructor(
+    options: Omit<AgentPiToolExecutionBridgeOptions, "model" | "observationTokenBudget" | "observationCompressor">,
+  ) {
+    super({
+      ...options,
+      model: "test-model",
+      observationTokenBudget: 2_048,
+      observationCompressor: createTestToolObservationCompressor(),
+    });
   }
 }
 
@@ -32,7 +38,7 @@ describe("Pi tool execution bridge failures", () => {
     });
 
     const result = await bridge.execute({
-      tool: registeredTool("EmptyTool", fullObservationProjection()),
+      tool: registeredTool("EmptyTool"),
       params: { query: "inspect" },
       toolCallId: "call-empty",
       context: createToolContext("EmptyTool", "call-empty"),
@@ -45,7 +51,14 @@ describe("Pi tool execution bridge failures", () => {
         source: "host",
         message: "Tool execution completed without a result.",
       },
-      detail: { arguments: { query: "inspect" } },
+      detail: {
+        result: {
+          error: {
+            code: AgentExecutionErrorCodes.ToolExecutionError,
+            message: "Tool execution completed without a result.",
+          },
+        },
+      },
     });
     expect(result.details.senera).toMatchObject({
       status: AgentPiToolResultStatuses.Failure,
@@ -59,7 +72,7 @@ describe("Pi tool execution bridge failures", () => {
       name: "ImageTool",
       artifact: {
         artifactId: "artifact-media",
-        artifactUri: "senera://artifact/media",
+        artifactUri: "senera://artifact/art_3123456789abcdef01234567",
         artifactPath: "E:/workspace/.senera/artifacts/media",
         relativePath: "media.json",
         manifestPath: "E:/workspace/.senera/artifacts/media/manifest.json",
@@ -113,7 +126,7 @@ describe("Pi tool execution bridge failures", () => {
       artifactPayload: { rawResponse: { private: "artifact-only" } },
       artifact: {
         artifactId: "artifact-stale",
-        artifactUri: "senera://artifact/stale",
+        artifactUri: "senera://artifact/art_4123456789abcdef01234567",
         artifactPath: "E:/workspace/.senera/artifacts/stale",
         relativePath: ".senera/artifacts/stale",
         manifestPath: "E:/workspace/.senera/artifacts/stale/manifest.json",
@@ -141,6 +154,9 @@ describe("Pi tool execution bridge failures", () => {
     expect(parseObservation(result)).toMatchObject({
       status: "success",
       observation_view: {
+        complete: true,
+        omission_count: 0,
+        omissions: [],
         artifact_availability: {
           status: "unavailable",
           reason: "recording_failed",
@@ -218,10 +234,7 @@ function toolResult(overrides: Partial<ExecutedToolCallResult> = {}): ExecutedTo
   };
 }
 
-function registeredTool(
-  name: string,
-  observationProjection: AgentToolObservationProjectionManifest = StandardAgentToolObservationProjection,
-): RegisteredTool {
+function registeredTool(name: string): RegisteredTool {
   return {
     owner: {
       kind: "system",
@@ -243,40 +256,9 @@ function registeredTool(
       ResultAssessment: "ProcessExit",
       Capabilities: { Cancellation: true },
     },
-    observationProjection,
     execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
     childGrant: "inherit",
     evidenceCapabilities: [],
-  };
-}
-
-function fullObservationProjection(): AgentToolObservationProjectionManifest {
-  return {
-    ...StandardAgentToolObservationProjection,
-    maxTokens: 6_000,
-    sources: [
-      projectionSource("error", "json", "essential", 1_024),
-      projectionSource("process", "json", "high", 1_024),
-      projectionSource("arguments", "json", "normal", 1_024),
-      projectionSource("outcome", "json", "normal", 1_024),
-      ...StandardAgentToolObservationProjection.sources,
-    ],
-  };
-}
-
-function projectionSource(
-  source: AgentToolObservationProjectionManifest["sources"][number]["source"],
-  mode: AgentToolObservationProjectionManifest["sources"][number]["mode"],
-  priority: AgentToolObservationProjectionManifest["sources"][number]["priority"],
-  maxTokens: number,
-): AgentToolObservationProjectionManifest["sources"][number] {
-  return {
-    source,
-    mode,
-    priority,
-    requiredForCompletion: true,
-    maxTokens,
-    limits: { maxDepth: 8, maxArrayItems: 32, maxObjectProperties: 48, maxNodes: 384 },
   };
 }
 
@@ -298,6 +280,8 @@ function createToolContext(toolName: string, callId: string) {
     outputReserveTokens: 8_192,
   });
   const turnState = new AgentPiTurnState({
+    systemPrompt: "Test agent system context.",
+    userMessage: `Test request for ${toolName}.`,
     approvalMode: "agent",
     requestId: `request-${callId}`,
     step: 1,

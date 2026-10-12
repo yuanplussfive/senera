@@ -16,14 +16,9 @@ import type {
   AgentEmbeddingRequest,
   AgentEmbeddingResult,
 } from "../../../Source/AgentSystem/Vector/AgentEmbeddingContract.js";
-import { InMemoryToolSearchMemoryStore } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchInMemoryStore.js";
+import { VerificationScenarioSource } from "../../VerificationScenarioSource.js";
 import { createModelProvider } from "../Support/AgentTestFixtures.js";
-import {
-  createRegistry,
-  createTool,
-  createToolLearningConfig,
-  createToolSearchConfig,
-} from "./ToolSearchTestFixtures.js";
+import { createRegistry, createTool, createToolSearchConfig } from "./ToolSearchTestFixtures.js";
 
 describe("ToolSearch embedding cache behavior", () => {
   test("prepares an embedding client before deriving document vectors", async () => {
@@ -243,11 +238,10 @@ describe("ToolSearch embedding cache behavior", () => {
     const runtime = new AgentToolSearchRuntime(
       createRegistry(tools) as unknown as AgentExtensionRegistry,
       config,
-      createToolLearningConfig(),
       "E:/workspace",
       createModelProvider(),
       {
-        memoryStore: new InMemoryToolSearchMemoryStore(),
+        scenarioSource: new VerificationScenarioSource(),
         embedding: { model: "embedding-test", client: { embed } },
         availableExecutionTargets: () => ["Local"],
       },
@@ -305,11 +299,10 @@ function createRuntime(
   return new AgentToolSearchRuntime(
     createRegistry(tools) as unknown as AgentExtensionRegistry,
     config,
-    createToolLearningConfig(),
     workspaceRoot,
     createModelProvider(),
     {
-      memoryStore: new InMemoryToolSearchMemoryStore(),
+      scenarioSource: new VerificationScenarioSource(),
       embedding: { model: "embedding-test", client: { embed } },
       embeddingCacheStore: cacheStore,
       availableExecutionTargets: () => ["Local"],

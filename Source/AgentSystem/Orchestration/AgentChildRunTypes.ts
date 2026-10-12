@@ -23,6 +23,55 @@ export const AgentChildRunStatuses = {
 
 export type AgentChildRunStatus = (typeof AgentChildRunStatuses)[keyof typeof AgentChildRunStatuses];
 
+type AgentChildRunLifecycleClassification = "active" | "awaiting_supervisor" | "result_terminal";
+
+const AgentChildRunLifecycleClassificationByStatus: Readonly<
+  Record<AgentChildRunStatus, AgentChildRunLifecycleClassification>
+> = Object.freeze({
+  [AgentChildRunStatuses.Queued]: "active",
+  [AgentChildRunStatuses.Running]: "active",
+  [AgentChildRunStatuses.WrappingUp]: "active",
+  [AgentChildRunStatuses.Cancelling]: "active",
+  [AgentChildRunStatuses.AwaitingSupervisor]: "awaiting_supervisor",
+  [AgentChildRunStatuses.Completed]: "result_terminal",
+  [AgentChildRunStatuses.PartialCompleted]: "result_terminal",
+  [AgentChildRunStatuses.Interrupted]: "result_terminal",
+  [AgentChildRunStatuses.TimedOut]: "result_terminal",
+  [AgentChildRunStatuses.Failed]: "result_terminal",
+  [AgentChildRunStatuses.Cancelled]: "result_terminal",
+});
+
+export function isAgentChildRunResultTerminal(status: AgentChildRunStatus): boolean {
+  return AgentChildRunLifecycleClassificationByStatus[status] === "result_terminal";
+}
+
+/**
+ * A cancellation is a lifecycle outcome, but it is not a result to replay as
+ * a detached background task. The parent already owns the cancellation
+ * interaction; waking it again would manufacture a completion turn.
+ */
+const AgentChildRunBackgroundDeliveryByStatus: Readonly<Record<AgentChildRunStatus, boolean>> = Object.freeze({
+  [AgentChildRunStatuses.Queued]: false,
+  [AgentChildRunStatuses.Running]: false,
+  [AgentChildRunStatuses.WrappingUp]: false,
+  [AgentChildRunStatuses.Cancelling]: false,
+  [AgentChildRunStatuses.AwaitingSupervisor]: false,
+  [AgentChildRunStatuses.Completed]: true,
+  [AgentChildRunStatuses.PartialCompleted]: true,
+  [AgentChildRunStatuses.Interrupted]: true,
+  [AgentChildRunStatuses.TimedOut]: true,
+  [AgentChildRunStatuses.Failed]: true,
+  [AgentChildRunStatuses.Cancelled]: false,
+});
+
+export function isAgentChildRunBackgroundDeliverable(status: AgentChildRunStatus): boolean {
+  return AgentChildRunBackgroundDeliveryByStatus[status] === true;
+}
+
+export function isAgentChildRunSettled(status: AgentChildRunStatus): boolean {
+  return AgentChildRunLifecycleClassificationByStatus[status] !== "active";
+}
+
 export const AgentChildRunJoinModes = {
   Any: "any",
   All: "all",
@@ -288,10 +337,8 @@ export interface AgentChildRunRecord {
   readonly completedAt?: string;
   readonly updatedAt: string;
   readonly revision: number;
-  /** Set once the parent has received the terminal result through AgentWait. */
-  readonly resultConsumedAt?: string;
-  /** Durable guard against replaying a detached completion wake after restart. */
-  readonly parentWakeConsumed?: boolean;
+  /** Set once the terminal result has been delivered to the parent through any route. */
+  readonly parentResultDeliveredAt?: string;
 }
 
 export type AgentChildRunCreateInput = Omit<
@@ -312,8 +359,7 @@ export type AgentChildRunCreateInput = Omit<
   | "revision"
   | "workItemId"
   | "taskDigest"
-  | "resultConsumedAt"
-  | "parentWakeConsumed"
+  | "parentResultDeliveredAt"
 > & {
   readonly ownerRunId?: string;
   readonly nodeId?: string;
@@ -335,10 +381,9 @@ export interface AgentChildRunRepository {
   listForJoinGroup(joinGroupId: string): AgentChildRunRecord[];
   getByOwnerNode(ownerRunId: string, nodeId: string): AgentChildRunRecord | undefined;
   getByWorkItem(parentSessionId: string, workItemId: string): AgentChildRunRecord | undefined;
-  markResultConsumed(id: string, consumedAt?: string): AgentChildRunRecord | undefined;
-  markParentWakeConsumed(id: string): AgentChildRunRecord | undefined;
-  /** Marks a detached wake batch in one durable transaction and returns rows changed. */
-  markParentWakeConsumedBatch(ids: readonly string[], consumedAt?: string): number;
+  markParentResultDelivered(id: string, deliveredAt?: string): AgentChildRunRecord | undefined;
+  /** Marks a parent-delivery batch in one durable transaction and returns rows changed. */
+  markParentResultsDeliveredBatch(ids: readonly string[], deliveredAt?: string): number;
   listActive(): AgentChildRunRecord[];
   listAll(): AgentChildRunRecord[];
   markRunning(id: string, startedAt?: string): AgentChildRunRecord | undefined;

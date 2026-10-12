@@ -94,7 +94,7 @@ describe("settings presentation", () => {
       "appearance",
     ]);
     expect(searchSettingsSections(settingsSections, "storage").map((section) => section.id)).toEqual(["storage"]);
-    expect(searchSettingsSectionResults(settingsSections, "上传")[0]).toMatchObject({
+    expect(searchSettingsSectionResults(settingsSections, "占用")[0]).toMatchObject({
       section: { id: "storage" },
       details: [{ label: "说明" }],
     });

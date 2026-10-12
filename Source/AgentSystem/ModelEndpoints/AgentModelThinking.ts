@@ -40,7 +40,6 @@ export interface AgentModelThinkingInput {
   readonly model: string;
   readonly capabilities?: AgentModelCapabilitiesConfig;
   readonly declaredCapabilities?: AgentModelCapabilitiesConfig;
-  readonly thinkingLevelMap?: ThinkingLevelMap;
   readonly thinkingProfiles?: readonly AgentModelThinkingProfileConfig[];
   readonly defaultThinkingLevel?: AgentModelThinkingLevel;
 }
@@ -56,10 +55,8 @@ export function clampAgentModelThinkingLevel(
 export function resolveAgentModelThinking(input: AgentModelThinkingInput): AgentModelThinkingProjection {
   const catalogModel = findPiCatalogModel(input.api, input.model, input.provider);
   const declaredReasoning = input.declaredCapabilities?.Reasoning;
-  const configuredMap = normalizeThinkingLevelMap(input.thinkingLevelMap);
-  const map = mergeThinkingMaps(catalogModel?.thinkingLevelMap, configuredMap);
+  const map = normalizeThinkingLevelMap(catalogModel?.thinkingLevelMap);
   const hasConfiguredThinking =
-    Object.keys(configuredMap ?? {}).length > 0 ||
     (input.thinkingProfiles?.length ?? 0) > 0 ||
     input.defaultThinkingLevel !== undefined;
   const reasoning =
@@ -159,14 +156,6 @@ function thinkingSupportScore(model: Model<AgentNativeToolApi>): number {
   const levels = getSupportedThinkingLevels(model);
   const offSupport = levels.includes("off") ? 1 : 0;
   return levels.length * 10 + offSupport;
-}
-
-function mergeThinkingMaps(
-  catalog: ThinkingLevelMap | undefined,
-  configured: ThinkingLevelMap | undefined,
-): ThinkingLevelMap | undefined {
-  const merged = normalizeThinkingLevelMap({ ...(catalog ?? {}), ...(configured ?? {}) });
-  return Object.keys(merged ?? {}).length > 0 ? merged : undefined;
 }
 
 function normalizeThinkingLevelMap(value: ThinkingLevelMap | undefined): ThinkingLevelMap | undefined {

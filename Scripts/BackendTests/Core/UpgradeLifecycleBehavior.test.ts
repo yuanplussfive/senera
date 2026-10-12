@@ -9,7 +9,6 @@ import { AgentConfigDatabaseContract } from "../../../Source/AgentSystem/Config/
 import { CurrentAgentConfigVersion } from "../../../Source/AgentSystem/Config/AgentConfigVersion.js";
 import { AgentSqliteDatabaseKernel } from "../../../Source/AgentSystem/Database/AgentSqliteDatabaseKernel.js";
 import { AgentUpgradeSession, rollbackAgentUpgrade } from "../../../Source/AgentSystem/Upgrade/AgentUpgradeSession.js";
-import { AgentToolSearchLearningStoreContract } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchMemorySqlSchema.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 
 const temporaryDirectories: string[] = [];
@@ -149,49 +148,6 @@ describe("upgrade lifecycle", () => {
       participants: [{ phase: "restored" }],
     });
     expect(readRetainedFiles(session.journal.operationRoot("failed-upgrade"))).toContain("new-config\n");
-  });
-
-  test("restores a replaced derived database when a later startup phase fails", () => {
-    const workspaceRoot = temporaryWorkspace();
-    const databasePath = path.join(workspaceRoot, "ToolSearch.sqlite");
-    const legacy = new Database(databasePath);
-    legacy.exec(AgentToolSearchLearningStoreContract.legacySnapshots[0]!.snapshot);
-    legacy.exec(`
-      CREATE TABLE schema_migrations (
-        version INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
-        checksum TEXT NOT NULL,
-        applied_at TEXT NOT NULL
-      ) STRICT;
-    `);
-    legacy
-      .prepare(
-        "INSERT INTO tool_search_episodes (query, query_tokens, planner_tags, candidates, chosen_tools, outcome, calls, final_score, final_outcome, project_id, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      )
-      .run("retained query", "[]", "[]", "[]", "[]", "success", "[]", 1, "{}", "project", 1);
-    legacy.close();
-    const session = upgradeSession(workspaceRoot, "derived-upgrade");
-
-    const rebuilt = new AgentSqliteDatabaseKernel({
-      databasePath,
-      contract: AgentToolSearchLearningStoreContract,
-      upgradeSession: session,
-    });
-    expect(rebuilt.connection.prepare("SELECT COUNT(*) AS count FROM tool_search_episodes").get()).toEqual({
-      count: 0,
-    });
-    rebuilt.close();
-    session.failAndRollback(new Error("startup failed after rebuild"));
-
-    const restored = new Database(databasePath, { readonly: true });
-    expect(restored.prepare("SELECT query FROM tool_search_episodes").all()).toEqual([{ query: "retained query" }]);
-    expect(hasTable(restored, "__senera_schema_migrations")).toBe(false);
-    expect(hasTable(restored, "schema_migrations")).toBe(true);
-    restored.close();
-    expect(session.journal.readManifest("derived-upgrade")).toMatchObject({
-      status: "rolled_back",
-      participants: [{ id: AgentToolSearchLearningStoreContract.id, dataClass: "derived", phase: "restored" }],
-    });
   });
 
   test("supports an explicit manual rollback without deleting the replaced data", () => {

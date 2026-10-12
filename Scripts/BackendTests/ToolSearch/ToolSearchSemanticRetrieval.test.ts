@@ -4,20 +4,16 @@ import {
   AgentLocalEmbeddingClient,
   AgentLocalEmbeddingModelName,
 } from "../../../Source/AgentSystem/ToolSearch/AgentLocalEmbeddingClient.js";
-import { InMemoryToolSearchMemoryStore } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchMemoryStore.js";
+import { VerificationScenarioSource } from "../../VerificationScenarioSource.js";
 import type { AgentExtensionRegistry } from "../../../Source/AgentSystem/Extensions/AgentExtensionRegistry.js";
 import { createModelProvider } from "../Support/AgentTestFixtures.js";
-import {
-  createRegistry,
-  createTool,
-  createToolLearningConfig,
-  createToolSearchConfig,
-} from "./ToolSearchTestFixtures.js";
+import { createRegistry, createTool, createToolSearchConfig } from "./ToolSearchTestFixtures.js";
 
 describe("ToolSearch semantic retrieval with the local embedding client", () => {
   test("recalls an English capability that shares no lexical terms with the query", async () => {
     const config = createToolSearchConfig();
     config.Embedding.Enabled = true;
+    const embeddingClient = new AgentLocalEmbeddingClient();
     const runtime = new AgentToolSearchRuntime(
       createRegistry([
         createTool({
@@ -49,12 +45,12 @@ describe("ToolSearch semantic retrieval with the local embedding client", () => 
         }),
       ]) as unknown as AgentExtensionRegistry,
       config,
-      createToolLearningConfig(),
       "E:/workspace",
       createModelProvider(),
       {
-        memoryStore: new InMemoryToolSearchMemoryStore(),
-        embedding: { client: new AgentLocalEmbeddingClient(), model: AgentLocalEmbeddingModelName },
+        scenarioSource: new VerificationScenarioSource(),
+        embedding: { client: embeddingClient, model: AgentLocalEmbeddingModelName },
+        closeEmbedding: () => embeddingClient.close(),
         availableExecutionTargets: () => ["Local"],
       },
     );
@@ -70,6 +66,7 @@ describe("ToolSearch semantic retrieval with the local embedding client", () => 
   test("recalls an English capability from a Chinese query with the builtin multilingual encoder", async () => {
     const config = createToolSearchConfig();
     config.Embedding.Enabled = true;
+    const embeddingClient = new AgentLocalEmbeddingClient();
     const runtime = new AgentToolSearchRuntime(
       createRegistry([
         createTool({
@@ -92,12 +89,12 @@ describe("ToolSearch semantic retrieval with the local embedding client", () => 
         }),
       ]) as unknown as AgentExtensionRegistry,
       config,
-      createToolLearningConfig(),
       "E:/workspace",
       createModelProvider(),
       {
-        memoryStore: new InMemoryToolSearchMemoryStore(),
-        embedding: { client: new AgentLocalEmbeddingClient(), model: AgentLocalEmbeddingModelName },
+        scenarioSource: new VerificationScenarioSource(),
+        embedding: { client: embeddingClient, model: AgentLocalEmbeddingModelName },
+        closeEmbedding: () => embeddingClient.close(),
         availableExecutionTargets: () => ["Local"],
       },
     );

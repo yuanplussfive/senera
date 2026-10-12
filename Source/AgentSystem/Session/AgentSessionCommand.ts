@@ -1,6 +1,7 @@
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
 import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
+import type { AgentExplicitActivationSet } from "../Activation/AgentActivationTypes.js";
 
 export const AgentSessionCommandStates = {
   Running: "running",
@@ -49,6 +50,7 @@ export function createAgentSessionMessageCommand(input: {
   readonly systemPromptLayer?: unknown;
   readonly allowedToolNames?: readonly string[];
   readonly pinnedSkills?: readonly unknown[];
+  readonly activations?: AgentExplicitActivationSet;
   readonly thinkingLevel?: string;
   readonly inheritProjectContext?: boolean;
   readonly createdAt: string;
@@ -60,7 +62,7 @@ export function createAgentSessionMessageCommand(input: {
     requestId: input.requestId,
     createdAt: input.createdAt,
     payloadHash: sha256HexOfCanonicalJson({
-      version: 4,
+      version: 5,
       operationKind,
       approvalMode: input.approvalMode,
       modelProviderId: input.modelProviderId?.trim() || null,
@@ -69,6 +71,7 @@ export function createAgentSessionMessageCommand(input: {
       systemPromptLayer: input.systemPromptLayer ?? null,
       allowedToolNames: input.allowedToolNames ?? null,
       pinnedSkills: input.pinnedSkills ?? null,
+      activations: input.activations ?? null,
       thinkingLevel: input.thinkingLevel ?? null,
       inheritProjectContext: input.inheritProjectContext ?? null,
     }),

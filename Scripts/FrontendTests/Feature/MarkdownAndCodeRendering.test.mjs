@@ -8,11 +8,6 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test } from "vitest";
 import { resolveWorkspaceRoot } from "../../../Scripts/WorkspaceRoot.ts";
 import { CodeArtifactSourceView } from "../../../Frontend/src/shared/code/CodeArtifactSourceView.tsx";
-import {
-  highlightCode,
-  readHighlightedCode,
-  resolveSupportedHighlightLanguage,
-} from "../../../Frontend/src/shared/code/CodeHighlighter.ts";
 import { MarkdownRenderer } from "../../../Frontend/src/shared/code/MarkdownRenderer.tsx";
 import { TooltipProvider } from "../../../Frontend/src/shared/ui/Tooltip.tsx";
 import { WorkspaceMarkdownImage } from "../../../Frontend/src/shared/workspace/WorkspaceMarkdownImage.tsx";
@@ -46,6 +41,20 @@ test("renders GFM table and lightweight code while hardening external links", ()
   expect(screen.getByText("ts")).toBeInTheDocument();
   expect(screen.getByText("1 lines")).toBeInTheDocument();
   expect(screen.getByText("const answer = 42;")).toBeInTheDocument();
+});
+
+test("renders fenced code through Pierre without a second content layer", async () => {
+  const { container } = render(
+    React.createElement(
+      TooltipProvider,
+      { delayDuration: 0 },
+      React.createElement(MarkdownRenderer, null, "```powershell\nWrite-Output ok\n```"),
+    ),
+  );
+
+  await screen.findByRole("button", { name: "复制 powershell 代码" });
+  expect(container.querySelector("diffs-container")).toBeInTheDocument();
+  expect(container.querySelector(".senera-pierre-code__fallback")).toBeNull();
 });
 
 test("renders chat external links as compact citation sources", async () => {
@@ -105,6 +114,12 @@ test("keeps markdown tables content-sized and long links line-breakable", () => 
   );
   expect(css).not.toMatch(/\.markdown-renderer__link\s*{[^}]*display:\s*inline-flex;/s);
   expect(css).toMatch(/\.markdown-renderer__link\s*{[^}]*overflow-wrap:\s*anywhere;/s);
+  expect(appCss).toMatch(
+    /\.live-activity-markdown\.markdown-renderer \.markdown-renderer__citation[\s\S]*background-image:\s*none;[\s\S]*-webkit-text-fill-color:\s*currentColor;/s,
+  );
+  expect(appCss).toMatch(
+    /\.live-activity-markdown\.markdown-renderer :not\(pre\) > code[\s\S]*-webkit-text-fill-color:\s*currentColor;/s,
+  );
   expect(appCss).toMatch(
     /\.assistant-turn-content\s*{[^}]*max-width:\s*min\(var\(--theme-conversation-reading-width,\s*58rem\),\s*100%\);/s,
   );
@@ -171,19 +186,16 @@ test("maps senera resource images through the resource content route and keeps t
   ).toHaveAttribute("src", "http://agent.example.test/api/resources/photo_01");
 });
 
-test("keeps unsupported code visible as escaped plain text instead of failing the renderer", async () => {
+test("routes source code through the shared Pierre renderer", async () => {
   const { container } = render(
     React.createElement(CodeArtifactSourceView, {
-      code: "<script>window.injected = true</script>",
-      language: "unsupported-language",
+      code: "const answer = 42;",
+      language: "typescript",
     }),
   );
 
-  await waitFor(() => {
-    expect(container.querySelector('[data-highlight-status="failed"]')).toBeInTheDocument();
-  });
-  expect(container.querySelector("script")).toBeNull();
-  expect(screen.getByText("<script>window.injected = true</script>")).toBeInTheDocument();
+  expect(container.querySelector("diffs-container")).toBeInTheDocument();
+  expect(container.querySelector(".senera-pierre-code__fallback")).toBeNull();
 });
 
 test("keeps line numbers optional for compact conversation code without changing the full viewer default", async () => {
@@ -203,20 +215,6 @@ test("keeps line numbers optional for compact conversation code without changing
     }),
   );
   expect(container.querySelector(".without-line-numbers")).not.toBeInTheDocument();
-});
-
-test("normalizes language aliases and caches real highlighted output", async () => {
-  expect(resolveSupportedHighlightLanguage("ts")).toBe("typescript");
-  expect(resolveSupportedHighlightLanguage("YML")).toBe("yaml");
-  expect(resolveSupportedHighlightLanguage("not-a-language")).toBeNull();
-
-  const request = { language: "ts", code: "const answer = 42;" };
-  const highlighted = highlightCode(request);
-  await expect(highlighted).resolves.toContain("data-line");
-  expect(readHighlightedCode(request)).toBe(highlighted);
-  await expect(highlightCode({ language: "not-a-language", code: "value" })).rejects.toThrow(
-    "Unsupported code language",
-  );
 });
 
 test("renders workspace images from their content route without retaining a Blob object URL", () => {

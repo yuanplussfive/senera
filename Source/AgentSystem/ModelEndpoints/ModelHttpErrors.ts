@@ -1,4 +1,4 @@
-import type { ModelProviderConfig } from "./ModelEndpointTypes.js";
+import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
 import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 
@@ -18,36 +18,14 @@ export class ModelRequestTimeoutError extends AgentBaseError {
   }
 }
 
-export class ModelResponseLimitError extends AgentBaseError {
-  constructor(
-    readonly kind: "response" | "SSE response" | "SSE event" | "SSE events",
-    readonly limit: number,
-  ) {
-    super(
-      kind === "SSE events"
-        ? `Model SSE stream exceeded the configured ${limit}-event budget.`
-        : `Model ${kind} exceeded the configured ${limit}-byte budget.`,
-    );
-  }
+/** Finds a provider deadline even when an adapter has wrapped the original error. */
+export function findModelRequestTimeoutError(error: unknown): ModelRequestTimeoutError | undefined {
+  return errorChain(error).find(
+    (entry): entry is ModelRequestTimeoutError => entry instanceof ModelRequestTimeoutError,
+  );
 }
 
-export function isModelHttpRetryableStatus(status: number): boolean {
-  return status === 408 || status === 409 || status === 429 || status >= 500;
-}
-
-/** Endpoint pools may only move on an error that another physical endpoint
- * can plausibly fix. Client/request/schema failures must stay on the primary
- * endpoint so credentials and invalid payloads are reported directly. */
-export function isModelEndpointFailoverEligible(error: unknown): boolean {
-  const chain = errorChain(error);
-  if (chain.some((entry) => entry instanceof ModelRequestTimeoutError)) return true;
-  const providerError = chain.find((entry): entry is ModelProviderHttpError => entry instanceof ModelProviderHttpError);
-  if (providerError) return isModelHttpRetryableStatus(providerError.status);
-  const message = chain.map((entry) => entry.message).join(" ");
-  return /(?:fetch failed|network|socket|econn|enotfound|eai_again|etimedout|unreachable|unavailable)/iu.test(message);
-}
-
-export function normalizeModelHttpError(config: ModelProviderConfig, error: unknown): Error {
+export function normalizeModelHttpError(config: ResolvedAgentModelProviderConfig, error: unknown): Error {
   if (error instanceof ModelProviderHttpError) {
     return new AgentLocalizedError(
       "model.requestFailedWithStatus",
@@ -62,16 +40,17 @@ export function normalizeModelHttpError(config: ModelProviderConfig, error: unkn
     );
   }
 
-  if (error instanceof ModelRequestTimeoutError) {
+  const timeoutError = findModelRequestTimeoutError(error);
+  if (timeoutError) {
     return new AgentLocalizedError(
       "model.requestTimeout",
       {
-        kind: error.kind,
+        kind: timeoutError.kind,
         model: config.Model,
         endpoint: config.Endpoint,
         baseUrl: config.BaseUrl,
       },
-      { cause: error },
+      { cause: timeoutError },
     );
   }
 
@@ -98,14 +77,6 @@ export function normalizeModelHttpError(config: ModelProviderConfig, error: unkn
     },
     { cause: error },
   );
-}
-
-export async function safeReadResponseBody(response: Response): Promise<string> {
-  try {
-    return await response.text();
-  } catch {
-    return "";
-  }
 }
 
 function errorChain(error: unknown): Error[] {

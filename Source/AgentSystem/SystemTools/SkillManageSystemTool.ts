@@ -2,7 +2,6 @@ import { z } from "zod";
 import { AgentManagedExtensionService } from "../ManagedExtensions/AgentManagedExtensionService.js";
 import { AgentSkillRecommendedToolsSchema } from "../Skills/AgentSkillToolBinding.js";
 import { defineSystemTool } from "./AgentSystemToolDefinition.js";
-import { StandardAgentToolObservationProjection } from "../ToolRuntime/AgentToolObservationProjectionPlan.js";
 import {
   AgentHostToolProtocolVersion,
   ToolResultAssessmentPolicies,
@@ -73,7 +72,6 @@ export const SkillManageSystemTool = defineSystemTool({
     skills: ["skill-creator"],
   },
   metadata: {
-    observation: StandardAgentToolObservationProjection,
     description:
       "Create, update, validate, or archive a standard Skill package under .senera/skills, including revision guards and optional bindings to registered tools.",
     permissions: ["filesystem:write:.senera/skills"],

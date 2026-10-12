@@ -51,7 +51,7 @@ test("session rows keep the shared row height without inline overflow actions", 
   );
 
   const selection = screen.getByRole("button", { name: "打开会话：Hidden actions" });
-  expect(selection.closest("[data-session-row]")).toHaveClass("h-11");
+  expect(selection.closest("[data-session-row]")).toHaveClass("grid", "items-center", "h-11");
   expect(screen.queryByText("1 message")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "more" })).not.toBeInTheDocument();
 });

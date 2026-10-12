@@ -4,7 +4,7 @@ import { resolveAppSurface, resolveSettingsSection } from "./app/appSurface";
 import { readDesktopBridge } from "./app/desktopBridge";
 import { useServerAuthentication } from "./app/useServerAuthentication";
 import type { AgentSocketReconnectPolicy } from "./api/useAgentSocket";
-import { AuthenticationSessionStates } from "./api/generatedEventCatalog";
+import { AuthenticationSessionStates, WebSocketCloseCodes } from "./api/generatedEventCatalog";
 import { resolveRuntimeHttpBaseUrl, resolveRuntimeWebSocketUrl } from "./config/runtimeConfig";
 import { FrontendI18nProvider, useFrontendLocale } from "./i18n/useFrontendLocale";
 import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
@@ -22,6 +22,11 @@ const LazyDesktopWindowChrome = lazy(() =>
 const LazyServerAuthenticationBoundary = lazy(() =>
   import("./app/ServerAuthenticationGate").then(({ ServerAuthenticationBoundary }) => ({
     default: ServerAuthenticationBoundary,
+  })),
+);
+const LazyWorkspaceConnectionRecovery = lazy(() =>
+  import("./app/WorkspaceConnectionRecovery").then(({ WorkspaceConnectionRecovery }) => ({
+    default: WorkspaceConnectionRecovery,
   })),
 );
 const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
@@ -71,10 +76,18 @@ function ApplicationRoot(): JSX.Element {
     prepareAuthorizedSurface: authenticatedApplicationPreload.prepareAuthorizedSurface,
   });
   const revalidateAuthentication = authentication.revalidate;
-  const socketReconnectPolicy = useCallback<AgentSocketReconnectPolicy>(async () => {
-    const result = await revalidateAuthentication();
-    return result === "anonymous" || result === "rejected" ? "stop" : "retry";
-  }, [revalidateAuthentication]);
+  const [unavailableWorkspaceUrl, setUnavailableWorkspaceUrl] = useState<string>();
+  const socketReconnectPolicy = useCallback<AgentSocketReconnectPolicy>(
+    async (disconnect) => {
+      if (disconnect.code === WebSocketCloseCodes.WorkspaceNotFound) {
+        setUnavailableWorkspaceUrl(disconnect.url);
+        return "stop";
+      }
+      const result = await revalidateAuthentication();
+      return result === "anonymous" || result === "rejected" ? "stop" : "retry";
+    },
+    [revalidateAuthentication],
+  );
   const authenticationLoadingFallback =
     surface === "settings" ? <SettingsSurfaceLoading presentation="desktop" /> : <ApplicationSurfaceLoading />;
 
@@ -86,19 +99,32 @@ function ApplicationRoot(): JSX.Element {
         onRetry={authentication.refresh}
         loadingFallback={authenticationLoadingFallback}
       >
-        {(resolvedAuthentication) => (
-          <AuthenticatedSurface
-            authentication={resolvedAuthentication}
-            surface={surface}
-            settingsSection={settingsSection}
-            socketReconnectPolicy={socketReconnectPolicy}
-            onLogout={
-              resolvedAuthentication.state === AuthenticationSessionStates.Authenticated
-                ? authentication.logout
-                : undefined
-            }
-          />
-        )}
+        {(resolvedAuthentication) =>
+          unavailableWorkspaceUrl ? (
+            <Suspense fallback={authenticationLoadingFallback}>
+              <LazyWorkspaceConnectionRecovery
+                httpBaseUrl={resolveRuntimeHttpBaseUrl(unavailableWorkspaceUrl)}
+                onSelect={(workspaceId) => {
+                  const url = new URL(window.location.href);
+                  url.searchParams.set("workspaceId", workspaceId);
+                  window.location.assign(url.toString());
+                }}
+              />
+            </Suspense>
+          ) : (
+            <AuthenticatedSurface
+              authentication={resolvedAuthentication}
+              surface={surface}
+              settingsSection={settingsSection}
+              socketReconnectPolicy={socketReconnectPolicy}
+              onLogout={
+                resolvedAuthentication.state === AuthenticationSessionStates.Authenticated
+                  ? authentication.logout
+                  : undefined
+              }
+            />
+          )
+        }
       </LazyServerAuthenticationBoundary>
     </Suspense>
   );

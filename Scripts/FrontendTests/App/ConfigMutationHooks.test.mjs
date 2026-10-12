@@ -2,7 +2,6 @@ import React from "react";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
-import { resolvePresetEvent } from "../../../Frontend/src/app/usePresetCommands.ts";
 import { frontendMessage } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
 import { installMemoryLocalStorage, resetFrontendStore } from "../frontendStoreTestHarness.mjs";
 import { clearTestToastCalls, readTestToastCalls } from "../mocks/sonner.mjs";
@@ -42,7 +41,6 @@ test("useConfigMutationController handles offline commands and unmatched events 
         ApiKey: "secret",
       }),
     ).toBeUndefined();
-    expect(handleRef.current.savePreset({ name: "default", card: emptyPresetCard("default") })).toBe(null);
     expect(
       handleRef.current.ingestConfigMutationEvent(
         event(EventKinds.ConfigSnapshot, "config", { operation: { commandId: "unknown", kind: "config_update" } }),
@@ -55,7 +53,6 @@ test("useConfigMutationController handles offline commands and unmatched events 
     expect.arrayContaining([
       expect.objectContaining({ title: frontendMessage("config.mainOffline") }),
       expect.objectContaining({ title: frontendMessage("config.providerModelsOffline") }),
-      expect.objectContaining({ title: frontendMessage("preset.updateOffline") }),
     ]),
   );
 });
@@ -122,59 +119,13 @@ test("useConfigMutationController sends refresh commands and cleans up failed se
 
   await act(async () => {
     handleRef.current.refreshConfig();
-    handleRef.current.refreshPresets();
   });
-  expect(send.mock.calls.map(([request]) => request)).toEqual([{ type: "config.get" }, { type: "preset.list" }]);
+  expect(send.mock.calls.map(([request]) => request)).toEqual([{ type: "config.get" }]);
 
   send.mockImplementation(() => false);
   await act(async () => {
-    expect(handleRef.current.savePreset({ name: "default", card: emptyPresetCard("default") })).toBe(null);
+    handleRef.current.refreshConfig();
   });
-  expect(handleRef.current.presetOperations).toEqual({});
-});
-
-test("useConfigMutationController covers preset mutations and failed catalog sends", async () => {
-  const send = vi.fn(() => true);
-  const handleRef = { current: null };
-  render(React.createElement(ConfigMutationHarness, { send, status: "open", handleRef }));
-
-  let deletePresetRequest;
-  let activePresetRequest;
-  await act(async () => {
-    deletePresetRequest = handleRef.current.deletePreset("old");
-    activePresetRequest = handleRef.current.setActivePreset(null);
-  });
-  expect(deletePresetRequest).toBeTypeOf("string");
-  expect(activePresetRequest).toBeTypeOf("string");
-
-  await act(async () => {
-    expect(
-      handleRef.current.ingestConfigMutationEvent(
-        event(EventKinds.PresetSnapshot, "config", {
-          operation: { requestId: deletePresetRequest, name: "old" },
-        }),
-      ),
-    ).toBe(true);
-    expect(
-      handleRef.current.ingestConfigMutationEvent(
-        event(EventKinds.PresetFailed, "config", {
-          message: "cannot activate",
-          operation: { requestId: activePresetRequest, name: null },
-        }),
-      ),
-    ).toBe(true);
-  });
-  expect(handleRef.current.presetOperations[deletePresetRequest]).toMatchObject({ status: "success", kind: "delete" });
-  expect(handleRef.current.presetOperations[activePresetRequest]).toMatchObject({
-    status: "error",
-    kind: "set_active",
-  });
-
-  send.mockReturnValue(false);
-  await act(async () => {
-    handleRef.current.fetchProviderModels("openai", true, { Id: "openai", ApiKey: "secret" });
-  });
-  expect(handleRef.current.providerModelLoadingIds).toEqual({});
 });
 
 test("useConfigMutationController rejects provider model mutations without config and ignores unmatched model events", async () => {
@@ -260,22 +211,6 @@ test("useConfigMutationController covers provider model commands and acknowledge
   expect(handleRef.current.providerModelOperations.old.status).toBe("error");
 });
 
-test("useConfigMutationController confirms active-preset successes", async () => {
-  const send = vi.fn(() => true);
-  const handleRef = { current: null };
-  render(React.createElement(ConfigMutationHarness, { send, status: "open", handleRef }));
-  let presetId;
-  await act(async () => {
-    presetId = handleRef.current.setActivePreset("default");
-  });
-  await act(async () => {
-    handleRef.current.ingestConfigMutationEvent(
-      event(EventKinds.PresetSnapshot, "config", { operation: { requestId: presetId, name: "default" } }),
-    );
-  });
-  expect(handleRef.current.presetOperations[presetId]).toMatchObject({ status: "success", kind: "set_active" });
-});
-
 test("useConfigMutationController rolls back provider model sends that disconnect", async () => {
   const send = vi.fn(() => false);
   const handleRef = { current: null };
@@ -298,17 +233,7 @@ test("useConfigMutationController rolls back provider model sends that disconnec
   );
 });
 
-test("preset event resolver covers success projections", () => {
-  const pending = new Set(["request-1"]);
-  expect(
-    resolvePresetEvent(
-      event(EventKinds.PresetSnapshot, "config", { operation: { requestId: "request-1", name: "default" } }),
-      pending,
-    ),
-  ).toMatchObject({ kind: "preset_success" });
-});
-
-test("useConfigMutationController routes preset and main config acknowledgements to their owning domains", async () => {
+test("useConfigMutationController settles main config acknowledgements", async () => {
   const send = vi.fn(() => true);
   const handleRef = { current: null };
   render(
@@ -320,31 +245,15 @@ test("useConfigMutationController routes preset and main config acknowledgements
     }),
   );
 
-  let presetRequestId = null;
   let configRequestId = null;
   await act(async () => {
-    presetRequestId = handleRef.current.savePreset({
-      name: "Release notes",
-      card: emptyPresetCard("Release notes"),
-      activate: true,
-    });
     configRequestId = handleRef.current.saveConfig({ AgentLoop: { Mode: "automatic" } });
   });
 
-  expect(presetRequestId).toEqual(expect.any(String));
   expect(configRequestId).toEqual(expect.any(String));
-  expect(handleRef.current.presetOperations[presetRequestId]).toMatchObject({ status: "pending", kind: "save" });
   expect(handleRef.current.configOperation).toMatchObject({ status: "pending", kind: "config_update" });
 
   await act(async () => {
-    expect(
-      handleRef.current.ingestConfigMutationEvent(
-        event(EventKinds.PresetSnapshot, "config", {
-          presets: [],
-          operation: { requestId: presetRequestId, kind: "save", name: "Release notes" },
-        }),
-      ),
-    ).toBe(true);
     expect(
       handleRef.current.ingestConfigMutationEvent(
         event(EventKinds.ConfigSnapshot, "config", {
@@ -355,27 +264,8 @@ test("useConfigMutationController routes preset and main config acknowledgements
     ).toBe(true);
   });
 
-  expect(handleRef.current.presetOperations[presetRequestId]).toMatchObject({ status: "success", kind: "save" });
   expect(handleRef.current.configOperation).toMatchObject({ status: "success", kind: "config_update" });
-  expect(readTestToastCalls()).toEqual(
-    expect.arrayContaining([expect.objectContaining({ variant: "success", title: frontendMessage("preset.saved") })]),
-  );
-  expect(readTestToastCalls()).not.toContainEqual(
-    expect.objectContaining({ variant: "success", title: frontendMessage("config.mainSaved") }),
-  );
 });
-
-function emptyPresetCard(title) {
-  return {
-    schemaVersion: "senera.persona/v2",
-    title,
-    corePersona: "",
-    languageStyle: "",
-    worldPackageIds: [],
-    examples: [],
-    lore: [],
-  };
-}
 
 test("useConfigMutationController rolls back disconnected sends and records provider failures", async () => {
   const send = vi.fn(() => false);

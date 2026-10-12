@@ -5,9 +5,6 @@ export interface AgentMemorySourceSqlStatements {
   deleteSourcesByEpisodeStmt: Database.Statement<[string]>;
   insertSourceStmt: Database.Statement;
   listSourcesStmt: Database.Statement<[string], SourceRow>;
-  selectSourceByUriStmt: Database.Statement<[string], SourceRow>;
-  selectSourcesByEvidenceUriStmt: Database.Statement<[string], SourceRow>;
-  selectSourcesByArtifactUriStmt: Database.Statement<[string], SourceRow>;
 }
 
 export function prepareAgentMemorySourceSqlStatements(db: Database.Database): AgentMemorySourceSqlStatements {
@@ -90,19 +87,6 @@ export function prepareAgentMemorySourceSqlStatements(db: Database.Database): Ag
       SELECT * FROM memory_sources
       WHERE episode_uri = ?
       ORDER BY created_at_ms ASC, source_kind ASC, id ASC
-    `),
-    selectSourceByUriStmt: db.prepare<[string], SourceRow>(`
-      SELECT * FROM memory_sources WHERE uri = ?
-    `),
-    selectSourcesByEvidenceUriStmt: db.prepare<[string], SourceRow>(`
-      SELECT * FROM memory_sources
-      WHERE evidence_uri = ?
-      ORDER BY created_at_ms ASC, id ASC
-    `),
-    selectSourcesByArtifactUriStmt: db.prepare<[string], SourceRow>(`
-      SELECT * FROM memory_sources
-      WHERE artifact_uri = ?
-      ORDER BY created_at_ms ASC, id ASC
     `),
   };
 }

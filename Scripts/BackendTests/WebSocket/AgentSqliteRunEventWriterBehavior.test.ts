@@ -9,15 +9,22 @@ import {
   type AgentEventEnvelope,
 } from "../../../Source/AgentSystem/Events/AgentEvent.js";
 import { SqliteSessionRepository } from "../../../Source/AgentSystem/Session/AgentSqliteSessionRepository.js";
-import { AgentSqliteRunEventWriter } from "../../../Source/AgentSystem/WebSocket/AgentSqliteRunEventWriter.js";
+import {
+  AgentSqliteRunEventWriter,
+  type AgentSqliteRunEventWriterOptions,
+} from "../../../Source/AgentSystem/WebSocket/AgentSqliteRunEventWriter.js";
+import { resolveAgentDefaults } from "../../../Source/AgentSystem/Defaults/AgentDefaultResolver.js";
+import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
+
+const eventWriterDefaults = resolveAgentDefaults({} as AgentSystemConfig).Persistence.EventWriter;
 
 describe("SQLite run event writer behavior", () => {
   test("acknowledges an append only after every outbox batch is committed", async () => {
     const directory = createTemporaryDirectory("senera-run-event-writer");
     const databasePath = path.join(directory, "sessions.db");
     const repository = new SqliteSessionRepository(databasePath);
-    const writer = new AgentSqliteRunEventWriter({ databasePath, drainBatchSize: 4 });
+    const writer = createWriter(databasePath, { drainBatchSize: 4 });
     try {
       repository.upsertSession({
         id: "session-batched-events",
@@ -62,7 +69,7 @@ describe("SQLite run event writer behavior", () => {
     });
     const events = Array.from({ length: 9 }, (_, index) => createEvent(index));
     seedPendingOutbox(databasePath, events);
-    const writer = new AgentSqliteRunEventWriter({ databasePath, drainBatchSize: 4 });
+    const writer = createWriter(databasePath, { drainBatchSize: 4 });
     try {
       await withWriterDeadline(writer.flush(), writer, 2_000);
 
@@ -87,7 +94,7 @@ describe("SQLite run event writer behavior", () => {
       conversation: [],
     });
     seedCommittedOutbox(databasePath, createEvent(0));
-    const writer = new AgentSqliteRunEventWriter({ databasePath, committedRetentionMs: 1 });
+    const writer = createWriter(databasePath, { committedRetentionMs: 1 });
     try {
       await withWriterDeadline(writer.flush(), writer, 2_000);
       expect(readOutboxStateCounts(databasePath)).toEqual([]);
@@ -102,7 +109,7 @@ describe("SQLite run event writer behavior", () => {
     const directory = createTemporaryDirectory("senera-run-event-maintenance-lock");
     const databasePath = path.join(directory, "sessions.db");
     const repository = new SqliteSessionRepository(databasePath);
-    const writer = new AgentSqliteRunEventWriter({ databasePath });
+    const writer = createWriter(databasePath);
     const maintenance = new Database(databasePath);
     try {
       repository.upsertSession({
@@ -139,6 +146,23 @@ describe("SQLite run event writer behavior", () => {
   });
 });
 
+function createWriter(
+  databasePath: string,
+  overrides: Partial<Omit<AgentSqliteRunEventWriterOptions, "databasePath">> = {},
+): AgentSqliteRunEventWriter {
+  return new AgentSqliteRunEventWriter({
+    databasePath,
+    restartDelayMs: eventWriterDefaults.RestartDelayMs,
+    closeTimeoutMs: eventWriterDefaults.CloseTimeoutMs,
+    drainBatchSize: eventWriterDefaults.DrainBatchSize,
+    committedRetentionMs: eventWriterDefaults.CommittedRetentionMs,
+    ...(overrides.restartDelayMs === undefined ? {} : { restartDelayMs: overrides.restartDelayMs }),
+    ...(overrides.closeTimeoutMs === undefined ? {} : { closeTimeoutMs: overrides.closeTimeoutMs }),
+    ...(overrides.drainBatchSize === undefined ? {} : { drainBatchSize: overrides.drainBatchSize }),
+    ...(overrides.committedRetentionMs === undefined ? {} : { committedRetentionMs: overrides.committedRetentionMs }),
+  });
+}
+
 function createEvent(index: number): AgentEventEnvelope {
   return {
     eventId: `event-batch-${index}`,
@@ -174,14 +198,30 @@ function withWriterDeadline<T>(
 function seedPendingOutbox(databasePath: string, events: readonly AgentEventEnvelope[]): void {
   const database = new Database(databasePath);
   try {
+    const insertRunEvent = database.prepare(`
+      INSERT INTO run_events
+        (session_id, request_id, kind, timestamp, event_sequence, step, detail_id, event_id, reliability, event_json)
+      VALUES (@session_id, @request_id, @kind, @timestamp, @event_sequence, @step, @detail_id, @event_id, 'durable', @event_json)
+    `);
     const insert = database.prepare(`
       INSERT INTO event_outbox
-        (event_id, session_id, request_id, kind, timestamp, event_sequence, step, detail_id, event_json, state, created_at)
+        (event_id, session_id, request_id, kind, timestamp, event_sequence, step, detail_id, state, created_at)
       VALUES
-        (@event_id, @session_id, @request_id, @kind, @timestamp, @event_sequence, @step, @detail_id, @event_json, 'pending', @created_at)
+        (@event_id, @session_id, @request_id, @kind, @timestamp, @event_sequence, @step, @detail_id, 'pending', @created_at)
     `);
     database.transaction((batch: readonly AgentEventEnvelope[]) => {
       for (const event of batch) {
+        insertRunEvent.run({
+          session_id: event.sessionId,
+          request_id: event.requestId,
+          kind: event.kind,
+          timestamp: event.timestamp,
+          event_sequence: event.sequence,
+          step: event.step ?? null,
+          detail_id: event.detailId ?? null,
+          event_id: event.eventId,
+          event_json: JSON.stringify(event),
+        });
         insert.run({
           event_id: event.eventId,
           session_id: event.sessionId,
@@ -191,7 +231,6 @@ function seedPendingOutbox(databasePath: string, events: readonly AgentEventEnve
           event_sequence: event.sequence,
           step: event.step ?? null,
           detail_id: event.detailId ?? null,
-          event_json: JSON.stringify(event),
           created_at: event.timestamp,
         });
       }
@@ -206,10 +245,27 @@ function seedCommittedOutbox(databasePath: string, event: AgentEventEnvelope): v
   try {
     database
       .prepare(
+        `INSERT INTO run_events
+          (session_id, request_id, kind, timestamp, event_sequence, step, detail_id, event_id, reliability, event_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'durable', ?)`,
+      )
+      .run(
+        event.sessionId,
+        event.requestId,
+        event.kind,
+        event.timestamp,
+        event.sequence,
+        event.step ?? null,
+        event.detailId ?? null,
+        event.eventId,
+        JSON.stringify(event),
+      );
+    database
+      .prepare(
         `INSERT INTO event_outbox
           (event_id, session_id, request_id, kind, timestamp, event_sequence, step, detail_id,
-           event_json, state, created_at, committed_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'committed', ?, ?)`,
+           state, created_at, committed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'committed', ?, ?)`,
       )
       .run(
         event.eventId,
@@ -220,7 +276,6 @@ function seedCommittedOutbox(databasePath: string, event: AgentEventEnvelope): v
         event.sequence,
         event.step ?? null,
         event.detailId ?? null,
-        JSON.stringify(event),
         "2020-01-01T00:00:00.000Z",
         "2020-01-01T00:00:00.000Z",
       );

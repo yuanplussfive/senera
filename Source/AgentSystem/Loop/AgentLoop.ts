@@ -1,4 +1,3 @@
-import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import type { AgentDomainEvent, AgentEventSink } from "../Events/AgentEvent.js";
 import { emitAgentEvent } from "../Events/AgentEvent.js";
 import type { AgentSystemRuntime } from "../Runtime/AgentSystemRuntime.js";
@@ -17,6 +16,7 @@ import { AgentLoopEventFactory } from "./AgentLoopEventFactory.js";
 import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
 import { resolveAgentModelToolPlanningMode } from "../ModelEndpoints/AgentModelToolPlanning.js";
 import type { AgentPinnedSkillReference } from "../Skills/AgentSkillActivation.js";
+import type { AgentExplicitActivationReference } from "../Activation/AgentActivationTypes.js";
 import type { AgentSystemPromptLayer } from "../Orchestration/AgentRunDispatchPort.js";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
@@ -28,8 +28,6 @@ import {
 import { createAgentPiLogicalCacheScope } from "../Pi/AgentPiPromptCache.js";
 import { createModelProviderMetadata, type AgentEffectiveModelReceipt } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { AgentToolResourceLeaseOwner } from "../ToolRuntime/AgentToolResourceScheduler.js";
-import { aggregateResidentStateSignals } from "../Continuity/AgentResidentSignalAggregator.js";
-import { initialResidentState, nextResidentState } from "../Continuity/AgentResidentState.js";
 
 export interface AgentLoopOptions {
   runtime: AgentSystemRuntime;
@@ -49,11 +47,12 @@ export interface AgentRunRequest {
   attachments?: AgentUploadAttachment[];
   interaction?: AgentInteractionContext;
   approvalMode: AgentExecutionApprovalMode;
-  conversationEntries?: AgentConversationEntry[];
   loadedToolNames?: string[];
   systemPromptLayer?: AgentSystemPromptLayer;
   allowedToolNames?: readonly string[];
   pinnedSkills?: readonly AgentPinnedSkillReference[];
+  explicitActivations?: readonly AgentExplicitActivationReference[];
+  activationCatalogRevision?: string;
   thinkingLevel?: ModelThinkingLevel;
   inheritProjectContext?: boolean;
   /** Assignment owner propagated only for leased child-run sessions. */
@@ -95,12 +94,32 @@ export class AgentLoop {
   }
 
   async run(request: AgentRunRequest): Promise<AgentCompletedRunResult> {
+    let completed: AgentCompletedRunResult | undefined;
     try {
       await this.options.runtime.initialize();
-      return await withAgentModelUsageLedger(new AgentModelUsageLedger(), () => this.runTurn(request));
+      await this.options.runtime.ensureExplicitActivationCapabilities(request.explicitActivations, request.signal);
+      completed = await withAgentModelUsageLedger(new AgentModelUsageLedger(), () => this.runTurn(request));
+      return completed;
     } finally {
-      this.options.runtime.services.retrieval.finishRequest(request.requestId);
+      if (!completed?.routingObservation) {
+        this.options.runtime.services.retrieval.finishRequest(request.requestId);
+      }
     }
+  }
+
+  finalizeCompletedTurn(result: AgentCompletedRunResult): void {
+    const observation = result.routingObservation;
+    if (!observation) return;
+    try {
+      this.options.runtime.services.retrieval.recordCompletedTurnScenario(observation);
+    } finally {
+      this.options.runtime.services.retrieval.finishRequest(observation.requestId);
+    }
+  }
+
+  discardCompletedTurn(result?: AgentCompletedRunResult): void {
+    const requestId = result?.routingObservation?.requestId;
+    if (requestId) this.options.runtime.services.retrieval.finishRequest(requestId);
   }
 
   private async runTurn(request: AgentRunRequest): Promise<AgentCompletedRunResult> {
@@ -115,11 +134,9 @@ export class AgentLoop {
         ? createAgentPiLogicalCacheScope({ sessionId: request.sessionId, family: "conversation" })
         : undefined);
     const prepared = await this.prepareTurn(request, logicalCacheScope);
-    const residentStateService = this.options.runtime.services.promptContext.residentState;
-    const priorResidentState =
-      request.sessionId && residentStateService ? residentStateService.load(request.sessionId) : undefined;
     const prompt = await this.promptRenderer.render({
       userInput: request.input,
+      stateCard: prepared.stateCard,
       sessionId: request.sessionId,
       requestId: request.requestId,
       logicalCacheScope,
@@ -132,17 +149,9 @@ export class AgentLoop {
       rootCommand: prepared.rootCommand,
       toolPlanningMode: resolveAgentModelToolPlanningMode(this.options.runtime.modelProviderConfig),
       systemPromptLayer: request.systemPromptLayer,
-      residentState: priorResidentState,
     });
     await this.emitAll(request.onEvent, [
-      ...this.events.promptRendered(
-        request.requestId,
-        step,
-        prompt.text,
-        prompt.tokenCount,
-        prompt.roleplayPreset,
-        prompt.continuityMemory,
-      ),
+      ...this.events.promptRendered(request.requestId, step, prompt.text, prompt.tokenCount, prompt.continuityMemory),
       this.events.promptHarnessComposed(
         request.requestId,
         step,
@@ -153,6 +162,8 @@ export class AgentLoop {
 
     const assistantMessageId = createAssistantMessageId();
     let finalAnswerPublished = false;
+    let finalAssistantMessageIndex: number | undefined;
+    let finalAssistantContentIndex: number | undefined;
     const result = await this.piTurn.run(
       {
         sessionId: request.sessionId,
@@ -166,13 +177,14 @@ export class AgentLoop {
           request.interaction ?? { surface: AgentInteractionSurfaces.Console },
         ),
         prompt: prompt.systemPrompt,
-        liveContext: prompt.liveContext,
-        conversationEntries: [...(request.conversationEntries ?? [])],
+        turnContext: prompt.turnContext,
         rootCommand: prepared.rootCommand,
         approvalMode: request.approvalMode,
         toolAccessGrant: prepared.toolAccessGrant,
         loadedToolNames: prepared.loadedToolNames,
+        nativeToolNames: prepared.nativeToolNames,
         activeSkills: prepared.activeSkills,
+        stateCard: prepared.stateCard,
         reusableCapabilities: prepared.reusableCapabilities,
         reusableCapabilityLookup: request.sessionId
           ? (toolName) =>
@@ -182,59 +194,63 @@ export class AgentLoop {
                 toolName,
               })
           : undefined,
-        roleplayPresetActive: prompt.roleplayPreset.card !== undefined,
+        personaActive: prompt.persona.enabled,
         prefaceRewriteEnabled: this.options.runtime.promptConfig.PrefaceRewrite === true,
         finalResponseRewriteEnabled: this.options.runtime.promptConfig.FinalResponseRewrite === true,
         onPiBranchBoundary: request.onPiBranchBoundary,
-        onFinalResponseAvailable: async (content) => {
+        onFinalResponseAvailable: async (content, modelMessageIndex, modelContentIndex) => {
           if (finalAnswerPublished) return;
           finalAnswerPublished = true;
+          finalAssistantMessageIndex = modelMessageIndex;
+          finalAssistantContentIndex = modelContentIndex;
           await this.emit(
             request.onEvent,
-            this.events.finalAnswer(request.requestId, assistantMessageId, content, false),
+            this.events.finalAnswer(
+              request.requestId,
+              assistantMessageId,
+              content,
+              false,
+              step,
+              modelMessageIndex,
+              modelContentIndex,
+            ),
           );
         },
         thinkingLevel: request.thinkingLevel,
         inheritProjectContext: request.inheritProjectContext,
         resourceOwner: request.resourceOwner,
-        seedResidentState: priorResidentState,
       },
       request.onEvent,
       request.signal,
     );
-
-    if (request.sessionId && residentStateService) {
-      const prior = priorResidentState ?? initialResidentState();
-      const signals = aggregateResidentStateSignals({
-        bearing: prior.bearing,
-        executedTools: result.executedTools,
-        // A returned Pi result is the host's confirmed terminal outcome for
-        // this turn. Do not infer completion from response wording or tool
-        // counts: both are unreliable, while this boundary is authoritative.
-        taskConcluded: true,
-      });
-      const next = nextResidentState(prior, signals);
-      residentStateService.save(request.sessionId, next, new Date().toISOString());
-    }
 
     const completed: AgentCompletedRunResult = {
       terminal: { kind: "FinalAnswer", content: result.responseText },
       decisionXml: result.responseText,
       modelProvider: result.modelProvider,
       usage: result.usage,
-      conversationEntries: result.conversationEntries,
       executedTools: result.executedTools,
+      ...(result.routingObservation ? { routingObservation: result.routingObservation } : {}),
       loadedToolNames: [...result.loadedToolNames],
       stepTraces: result.stepTraces,
-      continuityRuleDeliveryUris: [...prompt.continuityMemory.pendingRuleDeliveryUris],
       physicalPiSessionId: result.physicalPiSessionId,
+      stateCard: prepared.stateCard,
     };
     const terminalEvents = this.events.terminal(
       {
-        event: this.events.finalAnswer(request.requestId, assistantMessageId, result.responseText, true),
+        event: this.events.finalAnswer(
+          request.requestId,
+          assistantMessageId,
+          result.responseText,
+          true,
+          step,
+          finalAssistantMessageIndex,
+          finalAssistantContentIndex,
+        ),
         result: completed.terminal,
       },
       request.requestId,
+      result.usage,
     );
     this.identifyAll(terminalEvents);
     if (request.commitTerminalEvents) {
@@ -242,15 +258,30 @@ export class AgentLoop {
     } else {
       await this.emitAll(request.onEvent, terminalEvents);
     }
+    this.options.runtime.services.promptContext.commitLiveContextDelivery?.({
+      sessionId: request.sessionId,
+      memory: prompt.continuityMemory,
+    });
     return completed;
   }
 
   private async prepareTurn(request: AgentRunRequest, logicalCacheScope?: string): Promise<AgentPreparedTurn> {
+    if (request.explicitActivations !== undefined || request.activationCatalogRevision !== undefined) {
+      if (!request.activationCatalogRevision) {
+        throw new Error("Explicit activations require a catalog revision.");
+      }
+      this.options.runtime.validateExplicitActivations({
+        catalogRevision: request.activationCatalogRevision,
+        explicit: [...(request.explicitActivations ?? [])],
+      });
+    }
     const cached = isAgentTurnPreparationReusable(request.preparation, {
       runtimeFingerprint: this.options.preparationFingerprint,
       userInput: request.input,
       allowedToolNames: request.allowedToolNames,
       interactionSurface: request.interaction?.surface,
+      explicitActivations: request.explicitActivations,
+      activationCatalogRevision: request.activationCatalogRevision,
     })
       ? request.preparation
       : undefined;
@@ -267,30 +298,18 @@ export class AgentLoop {
             request.loadedToolNames,
           ));
     const prepared: AgentPreparedTurn = cached
-      ? {
-          loadedToolNames: [...cached.loadedToolNames],
-          toolAccessGrant: cached.toolAccessGrant,
-          rootCommand: cached.rootCommand,
-          activeSkills: cached.activeSkills.map((skill) => structuredClone(skill)),
-          reusableCapabilities: request.sessionId
-            ? (this.options.runtime.services.retrieval.reusableCapabilities?.({
-                sessionId: request.sessionId,
-                logicalCacheScope,
-                query: request.input,
-                authorizedToolNames: request.allowedToolNames,
-                ...(request.interaction ? { interaction: request.interaction } : {}),
-              }) ?? [])
-            : [],
-        }
+      ? await this.prepareCachedTurn(request, cached, logicalCacheScope)
       : await this.preparation.prepare({
           requestId: request.requestId,
           userInput: request.input,
           sessionId: request.sessionId,
           logicalCacheScope,
           loadedToolNames: initialLoadedToolNames,
+          turnIndex: request.turnNumber,
           allowedToolNames: request.allowedToolNames,
           interaction: request.interaction,
           pinnedSkills: request.pinnedSkills,
+          explicitActivations: request.explicitActivations,
           signal: request.signal,
         });
 
@@ -302,7 +321,10 @@ export class AgentLoop {
             userInput: request.input,
             allowedToolNames: request.allowedToolNames,
             interactionSurface: request.interaction?.surface,
+            explicitActivations: request.explicitActivations,
+            activationCatalogRevision: request.activationCatalogRevision,
             loadedToolNames: prepared.loadedToolNames,
+            nativeToolNames: prepared.nativeToolNames,
             toolAccessGrant: prepared.toolAccessGrant,
             rootCommand: prepared.rootCommand,
             activeSkills: prepared.activeSkills,
@@ -310,6 +332,42 @@ export class AgentLoop {
       await request.onPreparation(snapshot);
     }
     return prepared;
+  }
+
+  private async prepareCachedTurn(
+    request: AgentRunRequest,
+    cached: AgentTurnPreparationSnapshot,
+    logicalCacheScope?: string,
+  ): Promise<AgentPreparedTurn> {
+    const stateCard = await this.options.runtime.services.retrieval.resolveStateCard({
+      requestId: request.requestId,
+      currentRequest: request.input,
+      turnIndex: request.turnNumber,
+      sessionId: request.sessionId,
+      logicalCacheScope,
+      activeSkills: cached.activeSkills,
+      ...(request.signal ? { signal: request.signal } : {}),
+    });
+    const reusableCapabilities = request.sessionId
+      ? (this.options.runtime.services.retrieval.reusableCapabilities?.({
+          sessionId: request.sessionId,
+          logicalCacheScope,
+          query: stateCard.standaloneRequest,
+          authorizedToolNames: request.allowedToolNames,
+          ...(request.interaction ? { interaction: request.interaction } : {}),
+        }) ?? [])
+      : [];
+    return {
+      loadedToolNames: [...cached.loadedToolNames],
+      nativeToolNames: [...cached.nativeToolNames],
+      toolAccessGrant: cached.toolAccessGrant,
+      rootCommand: cached.rootCommand,
+      activeSkills: cached.activeSkills.map((skill) => structuredClone(skill)),
+      explicitActivations: [...cached.explicitActivations],
+      ...(cached.activationCatalogRevision ? { activationCatalogRevision: cached.activationCatalogRevision } : {}),
+      stateCard,
+      reusableCapabilities,
+    };
   }
 
   private async emit(onEvent: AgentEventSink | undefined, event: AgentDomainEvent): Promise<void> {

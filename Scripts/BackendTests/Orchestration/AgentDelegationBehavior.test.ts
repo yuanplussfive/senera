@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
+import Database from "better-sqlite3";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { AgentDelegationService } from "../../../Source/AgentSystem/Orchestration/AgentDelegationService.js";
 import { AgentOrchestrationEventRelay } from "../../../Source/AgentSystem/Orchestration/AgentOrchestrationEventRelay.js";
 import { AgentSqliteChildRunRepository } from "../../../Source/AgentSystem/Orchestration/AgentSqliteChildRunRepository.js";
@@ -19,8 +22,12 @@ import { AgentSpawnArgumentsSchema } from "../../../Source/AgentSystem/Orchestra
 import { AgentDelegationCompletionGateway } from "../../../Source/AgentSystem/Orchestration/AgentDelegationRuntimeContracts.js";
 import type { AgentChildRunRecord } from "../../../Source/AgentSystem/Orchestration/AgentChildRunTypes.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
-import type { AgentTodoService, AgentTodoWriteInput } from "../../../Source/AgentSystem/Todos/AgentTodoService.js";
-import { AgentTodoStatuses, type AgentTodoSnapshot } from "../../../Source/AgentSystem/Todos/AgentTodoTypes.js";
+import type { AgentTodoAddInput, AgentTodoService } from "../../../Source/AgentSystem/Todos/AgentTodoService.js";
+import {
+  AgentTodoStatuses,
+  type AgentTodoAddResult,
+  type AgentTodoSnapshot,
+} from "../../../Source/AgentSystem/Todos/AgentTodoTypes.js";
 import {
   cleanupDelegationTestRoots,
   Deferred,
@@ -42,16 +49,19 @@ function createTodoDouble(): AgentTodoService {
     counts: { total: 0, pending: 0, inProgress: 0, completed: 0, cancelled: 0 },
   });
   const read = (sessionId: string): AgentTodoSnapshot => states.get(sessionId) ?? empty();
-  const write = (input: AgentTodoWriteInput): AgentTodoSnapshot => {
+  let nextId = 0;
+  const add = (input: AgentTodoAddInput): AgentTodoAddResult => {
     const timestamp = new Date(0).toISOString();
-    const items = input.items.map((item, order) => ({
-      id: item.id,
-      content: item.content ?? item.id,
-      status: item.status ?? AgentTodoStatuses.Pending,
-      order,
+    const current = read(input.sessionId).items;
+    const created = input.tasks.map((task, index) => ({
+      id: `test-todo-${++nextId}`,
+      content: task.content,
+      status: AgentTodoStatuses.Pending,
+      order: current.length + index,
       createdAt: timestamp,
       updatedAt: timestamp,
     }));
+    const items = [...current, ...created];
     const snapshot: AgentTodoSnapshot = {
       items,
       counts: {
@@ -63,11 +73,11 @@ function createTodoDouble(): AgentTodoService {
       },
     };
     states.set(input.sessionId, snapshot);
-    return snapshot;
+    return { created: created.map(({ id, status }) => ({ id, status })), counts: snapshot.counts };
   };
   return {
     read,
-    write,
+    add,
     fingerprint: (sessionId: string) => JSON.stringify(read(sessionId)),
   } as unknown as AgentTodoService;
 }
@@ -354,6 +364,12 @@ describe("agent delegation", () => {
         approvalMode: AgentExecutionApprovalModes.AlwaysAsk,
         authorizedToolNames: ["ShellCommandTool"],
         registry: { getTool: () => undefined },
+        parentInvocation: {
+          agentStep: 3,
+          modelMessageIndex: 2,
+          modelContentIndex: 5,
+          toolCallId: "spawn-call-1",
+        },
         onEvent: (event) => {
           events.push(event);
         },
@@ -376,8 +392,27 @@ describe("agent delegation", () => {
         systemPromptLayer: { mode: "replace", content: "Reviewer role prompt" },
         allowedToolNames: ["ShellCommandTool"],
         parent: { sessionId: "parent-session", requestId: "parent-request" },
-        scope: expect.objectContaining({ childRunId: record.id, agentName: "reviewer", role: "childAgent" }),
+        scope: expect.objectContaining({
+          childRunId: record.id,
+          agentName: "reviewer",
+          role: "childAgent",
+          parentAgentStep: 3,
+          parentModelMessageIndex: 2,
+          parentModelContentIndex: 5,
+          parentToolCallId: "spawn-call-1",
+        }),
       }),
+    );
+    expect(events.map((event) => (event.context as { scope?: Record<string, unknown> }).scope)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          childRunId: record.id,
+          parentAgentStep: 3,
+          parentModelMessageIndex: 2,
+          parentModelContentIndex: 5,
+          parentToolCallId: "spawn-call-1",
+        }),
+      ]),
     );
     expect(events.map((event) => event.kind)).toEqual([
       AgentEventKinds.ChildRunQueued,
@@ -389,7 +424,7 @@ describe("agent delegation", () => {
     database.close();
   });
 
-  test("persists logical work identity and independent consumption markers", async () => {
+  test("persists logical work identity and a single parent-result delivery marker", async () => {
     const database = openDatabase();
     const repository = new AgentSqliteChildRunRepository(database);
     const created = repository.create({
@@ -426,21 +461,62 @@ describe("agent delegation", () => {
       id: created.id,
       workItemId: "work:assignment-1",
       taskDigest: "a".repeat(64),
-      parentWakeConsumed: false,
     });
 
     repository.markRunning(created.id);
     repository.markCompleted(created.id, { finalAnswer: "done" });
-    const consumed = repository.markResultConsumed(created.id, "2026-09-11T00:00:00.000Z");
-    expect(repository.markParentWakeConsumedBatch([created.id, created.id], "2026-09-11T00:00:01.000Z")).toBe(1);
-    const woken = repository.markParentWakeConsumed(created.id, "2026-09-11T00:00:01.000Z");
-    expect(consumed).toMatchObject({ resultConsumedAt: "2026-09-11T00:00:00.000Z", parentWakeConsumed: false });
-    expect(woken).toMatchObject({ resultConsumedAt: "2026-09-11T00:00:00.000Z", parentWakeConsumed: true });
-    expect(repository.markResultConsumed(created.id, "2026-09-11T00:00:02.000Z")?.resultConsumedAt).toBe(
+    const delivered = repository.markParentResultDelivered(created.id, "2026-09-11T00:00:00.000Z");
+    expect(repository.markParentResultsDeliveredBatch([created.id, created.id], "2026-09-11T00:00:01.000Z")).toBe(0);
+    expect(delivered).toMatchObject({ parentResultDeliveredAt: "2026-09-11T00:00:00.000Z" });
+    expect(repository.markParentResultDelivered(created.id, "2026-09-11T00:00:02.000Z")?.parentResultDeliveredAt).toBe(
       "2026-09-11T00:00:00.000Z",
     );
-    expect(repository.markParentWakeConsumedBatch([created.id, created.id, " "])).toBe(0);
+    expect(repository.markParentResultsDeliveredBatch([created.id, created.id, " "])).toBe(0);
     database.close();
+  });
+
+  test("migrates both legacy delivery markers into one durable parent-result marker", () => {
+    const database = new Database(":memory:");
+    try {
+      database.exec(`
+        CREATE TABLE child_runs (
+          id TEXT PRIMARY KEY,
+          result_consumed_at TEXT,
+          parent_wake_consumed INTEGER NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        INSERT INTO child_runs VALUES
+          ('waited', '2026-09-11T00:00:01.000Z', 0, '2026-09-11T00:00:01.000Z'),
+          ('woken', NULL, 1, '2026-09-11T00:00:02.000Z'),
+          ('pending', NULL, 0, '2026-09-11T00:00:03.000Z');
+      `);
+      const migration = readFileSync(
+        path.resolve(
+          "Source",
+          "AgentSystem",
+          "Orchestration",
+          "Database",
+          "migrations",
+          "0021-parent-result-delivery.sql",
+        ),
+        "utf8",
+      );
+      database.exec(migration);
+
+      expect(database.prepare("SELECT id, parent_result_delivered_at FROM child_runs ORDER BY id").all()).toEqual([
+        { id: "pending", parent_result_delivered_at: null },
+        { id: "waited", parent_result_delivered_at: "2026-09-11T00:00:01.000Z" },
+        { id: "woken", parent_result_delivered_at: "2026-09-11T00:00:02.000Z" },
+      ]);
+      expect(database.prepare("PRAGMA table_info(child_runs)").all()).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: "result_consumed_at" }),
+          expect.objectContaining({ name: "parent_wake_consumed" }),
+        ]),
+      );
+    } finally {
+      database.close();
+    }
   });
 
   test("notifies the completion port for a detached child after its terminal record is persisted", async () => {

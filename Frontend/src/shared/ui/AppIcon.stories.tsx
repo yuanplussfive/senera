@@ -9,14 +9,21 @@ const activityIcons: readonly { icon: AppIconName; label: string }[] = [
   { icon: "terminal", label: "命令" },
   { icon: "delegation", label: "委派" },
   { icon: "globe", label: "网页" },
+  { icon: "sparkles", label: "连续性" },
+  { icon: "flag", label: "目标" },
+  { icon: "map-pin", label: "位置" },
+  { icon: "play-circle", label: "执行" },
+  { icon: "sliders", label: "筛选" },
 ];
 
 const controlIcons: readonly { icon: AppIconName; label: string }[] = [
+  { icon: "arrow-left", label: "上级目录" },
   { icon: "menu", label: "菜单" },
   { icon: "panel-left-open", label: "展开面板" },
   { icon: "panel-left-close", label: "收起面板" },
   { icon: "new-session", label: "新建会话" },
   { icon: "account-menu", label: "账户菜单" },
+  { icon: "list-checks", label: "批量选择" },
   { icon: "language", label: "语言" },
   { icon: "grip", label: "拖拽排序" },
   { icon: "file-json", label: "JSON 导出" },

@@ -9,27 +9,16 @@ import { AgentPiSessionCacheDefaults } from "../Pi/AgentPiSessionCachePolicy.js"
 import { AgentModelResponseBudgetDefaults } from "../ModelEndpoints/ModelResponseBudget.js";
 import { SeneraDefaultProcessEnvironmentIncludeOnly } from "../Execution/SeneraProcessEnvironment.js";
 import { AgentToolSemanticAuditModes } from "../Types/AgentRuntimeConfigTypes.js";
-import {
-  AgentContinuityPromptBudgetDefaults,
-  AgentContinuityRecallRankingDefaults,
-  AgentContinuitySemanticRecallDefaults,
-} from "../Continuity/AgentContinuityRecallDefaults.js";
+import { AgentContinuityPromptBudgetDefaults } from "../Continuity/AgentContinuityRecallDefaults.js";
 import {
   readAgentSandboxDistributionContract,
   resolveAgentSandboxDistributionTarget,
 } from "../Sandbox/AgentSandboxDistributionContract.js";
-import { AgentPresetPromptBudgetDefaults } from "../Presets/AgentPresetPromptBudget.js";
 
 const Mebibyte = 1024 * 1024;
 const DefaultLargePayloadBytes = 64 * Mebibyte;
-// A complete tool result can be useful in the active turn, but a few verbose
-// results should never consume the same context budget as the user's task.
-// Larger payloads remain fully recoverable through their Artifact reference.
-const DefaultInlineResultMaxTokens = 2_048;
-// Byte ceiling guards the inline path against high-compression text that a
-// token budget alone would admit (e.g. repetitive tool logs): the model sees
-// the full serialized JSON, so a raw-size bound keeps that wholesale copy sane.
-const DefaultInlineResultMaxBytes = 16 * 1024;
+const DefaultToolObservationMaxTokens = 16_384;
+const DefaultWorkspaceObserverIdleTtlMs = 30_000;
 const DefaultModelProviderEndpoints = parseJsonText(
   fs.readFileSync(path.join(moduleDirPath(import.meta.url), "AgentDefaultModelProviderEndpoints.json"), "utf8"),
   "Default model provider catalog",
@@ -80,9 +69,6 @@ export const AgentDefaults = {
     ForegroundReserveFraction: 0.5,
     LaneWeights: {
       foreground: 100,
-      goal: 4,
-      autonomy: 2,
-      resident: 1,
       continuity: 1,
       compaction: 1,
       embedding: 1,
@@ -246,16 +232,11 @@ export const AgentDefaults = {
       FeatureWeights: {},
     },
   },
-  ToolLearning: {
+  StateCard: {
     Enabled: true,
-    MaxRepairAttempts: 1,
-    Patterns: {
-      MinSupport: 2,
-      MaxPromptPatterns: 2,
-    },
+    HistoryBudgetCharacters: 4_000,
     Client: {
       Temperature: 0.1,
-      MaxTokens: -1,
     },
   },
   Todos: {
@@ -274,39 +255,19 @@ export const AgentDefaults = {
       RetryMaxDelaySeconds: 60,
       MaxJobsPerDrain: 8,
     },
-    LearningGate: {
-      Enabled: true,
-      DeferredDelaySeconds: 30,
-    },
-    LearningContext: {
-      ReferentBudgetCharacters: 12_000,
-      CatalogBudgetCharacters: 12_000,
-      VerifiedExampleBudgetCharacters: 12_000,
-    },
-    TemporalMemory: {
-      Enabled: true,
+    MemOS: {
+      AutoLinkThreshold: 0.75,
+      RecallDedupeThreshold: 0.92,
+      RecallDedupeMaxPairs: 10_000,
+      FragmentHistoryTurns: 6,
+      KnowledgeCandidateLimit: 8,
+      AssistantPreviewTokens: 256,
+      DigestInputTokenBudget: 8_192,
+      DigestSummaryCharacterLimit: 50,
     },
     Recall: {
-      TurnValueClassifier: {
-        Enabled: true,
-        ConfidenceThreshold: 0.82,
-        MinimumExamplesPerLabel: 3,
-        MaxTrainingEntries: 4096,
-      },
-      Prefetch: {
-        Enabled: true,
-        CacheTtlSeconds: 300,
-      },
       PromptBudget: AgentContinuityPromptBudgetDefaults,
-      Ranking: AgentContinuityRecallRankingDefaults,
-      Semantic: AgentContinuitySemanticRecallDefaults,
     },
-  },
-  Presets: {
-    Enabled: true,
-    RootDir: ".senera/presets",
-    StateFile: ".senera/presets-state.json",
-    PromptBudget: AgentPresetPromptBudgetDefaults,
   },
   ActionPlanner: {
     Enabled: true,
@@ -329,18 +290,18 @@ export const AgentDefaults = {
   },
   Artifacts: {
     RootDir: ".senera/artifacts/runs",
-    // Results at or under this token budget are inlined verbatim into the
-    // model context; larger results fall back to summary + evidence-chain.
-    InlineResultMaxTokens: DefaultInlineResultMaxTokens,
-    InlineResultMaxBytes: DefaultInlineResultMaxBytes,
+    // Shared hard ceiling for one model-facing tool observation. Pi's active
+    // turn reservation may impose a smaller limit for the current call.
+    ToolObservationMaxTokens: DefaultToolObservationMaxTokens,
     RawJsonMaxBytes: DefaultLargePayloadBytes,
     TextFileMaxBytes: DefaultLargePayloadBytes,
+    WorkspaceObserverMemoryMaxBytes: 67_108_864,
+    WorkspaceObserverSettleMs: 80,
+    WorkspaceObserverIdleTtlMs: DefaultWorkspaceObserverIdleTtlMs,
+    WorkspaceObserverIgnoredPaths: [".git", ".agents", ".claude", ".codex"],
+    WorkspacePatchContextLines: 3,
     MemoryReadMaxArtifacts: 16,
-    MemoryReadMaxRefs: 8,
     MemoryReadMaxConcurrency: 4,
-    // The active turn budget still caps each read. This ceiling lets artifact
-    // projections use the same 64K-128K feedback range as system extensions.
-    MemoryReadStructuredJsonMaxTokens: 128_000,
     OutputCaptureMaxBytes: DefaultLargePayloadBytes,
     MaxStoredBytes: 10 * 1024 * 1024 * 1024,
     MaxArtifacts: 10_000,
@@ -409,6 +370,12 @@ export const AgentDefaults = {
   },
   Persistence: {
     Kind: "sqlite",
+    EventWriter: {
+      RestartDelayMs: 250,
+      CloseTimeoutMs: 5_000,
+      DrainBatchSize: 256,
+      CommittedRetentionMs: 7 * 24 * 60 * 60 * 1_000,
+    },
   },
   ConfigStore: {
     Enabled: true,
@@ -421,46 +388,11 @@ export const AgentDefaults = {
   Prompt: {
     UserMessageEnvelope: true,
     TimeZone: "Asia/Shanghai",
+    CorePersona: "",
+    LanguageStyle: "",
     PrefaceRewrite: false,
     FinalResponseRewrite: false,
-    RoleCheck: true,
     BamlToolAttribution: true,
-  },
-  World: {
-    Name: "Senera",
-    TimeZone: "Asia/Shanghai",
-    DayPhases: [
-      { Id: "late_night", Label: "深夜", StartsAt: "00:00", EndsAt: "05:00" },
-      { Id: "early_morning", Label: "清晨", StartsAt: "05:00", EndsAt: "08:00" },
-      { Id: "morning", Label: "上午", StartsAt: "08:00", EndsAt: "12:00" },
-      { Id: "afternoon", Label: "下午", StartsAt: "12:00", EndsAt: "18:00" },
-      { Id: "evening", Label: "晚上", StartsAt: "18:00", EndsAt: "00:00" },
-    ],
-    RecordLimit: 128,
-    TimelineLimit: 64,
-    HabitCatchUpLimit: 256,
-    GoalMicroLoop: {
-      Enabled: true,
-      MaxCandidates: 8,
-      ReviewDelaySeconds: 900,
-      AllowedToolNames: [],
-    },
-    ResidentIdle: {
-      Enabled: true,
-      MinIntervalSeconds: 900,
-      MaxIntervalSeconds: 14_400,
-      BackoffMultiplier: 2,
-      MaxPending: 1,
-    },
-    ActionBudget: {
-      MaxActionsPerWake: 8,
-      MaxDecisionCandidatesPerWake: 8,
-      RetryDelaySeconds: 30,
-      LeaseDurationSeconds: 300,
-      FairShare: true,
-      SourceOrder: [],
-      SourceCaps: {},
-    },
   },
 } as const satisfies Omit<ResolvedAgentDefaultsConfig, "ModelRuntime" | "ToolExecution"> & {
   ModelRuntime: AgentModelRuntimeDefaultsConfig;

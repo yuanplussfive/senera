@@ -15,6 +15,7 @@ services:
       SENERA_CONTAINER_RUNTIME_USER: "root"
       # 主进程与沙箱挂载共享同一个可配置的 Linux 工作区命名空间
       SENERA_WORKSPACE_ROOT: "${SENERA_WORKSPACE_ROOT:-/data}"
+      SENERA_DATA_ROOT: "/var/lib/senera"
       # 首次启动必填，之后重启仍以此为准
       SENERA_ADMIN_LOGIN_NAME: "yuan"
       SENERA_ADMIN_DISPLAY_NAME: "Senera Administrator"
@@ -26,9 +27,12 @@ services:
       SENERA_DOCKER_SANDBOX_PULL_POLICY: "${SENERA_DOCKER_SANDBOX_PULL_POLICY:-}"
     volumes:
       - senera-data:${SENERA_WORKSPACE_ROOT:-/data}
+      - senera-host-data:/var/lib/senera
       - /var/run/docker.sock:/var/run/docker.sock
 
 volumes:
+  senera-host-data:
+    name: senera-host-data
   # 显式固定卷名：嵌入的沙箱 Worker 默认挂载同名卷（SENERA_SANDBOX_WORKSPACE_SOURCE）
   senera-data:
     name: senera-data

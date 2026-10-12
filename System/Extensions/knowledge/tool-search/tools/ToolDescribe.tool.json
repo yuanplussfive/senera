@@ -7,9 +7,18 @@
     "activity": {
       "action": { "zh-CN": "查看工具", "en-US": "Inspect tools" },
       "detailPaths": ["/tools/*"]
+    },
+    "preview": {
+      "result": {
+        "rows": [{ "pointer": "/tools/*", "titlePath": "/0", "descriptionPath": "/1" }],
+        "maxRows": 4,
+        "more": {
+          "pointer": "/tools",
+          "label": { "zh-CN": "另有 {count} 个工具", "en-US": "{count} more tools" }
+        }
+      }
     }
   },
-  "observationProjection": "observations/default.projection.json",
   "description": "查看 Dynamic 候选工具的参数、输出、权限和执行边界；常驻 Bootstrap 工具会以 direct 返回，表示应直接调用而不是通过 ToolCall 转发。不会加载或调用工具。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

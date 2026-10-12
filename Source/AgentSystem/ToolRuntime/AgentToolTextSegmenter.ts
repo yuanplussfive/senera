@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import type { AgentModelTokenEstimator } from "../Text/AgentTextBudget.js";
-import type { AgentToolContentPolicyPreservable } from "../Types/AgentToolContentPolicyTypes.js";
 
 export interface AgentToolTextSegment {
   readonly text: string;
@@ -25,17 +24,14 @@ export interface AgentToolTextSegmentation {
 
 const sentenceSegmenter = new Intl.Segmenter("und", { granularity: "sentence" });
 
-export function segmentAgentToolText(
-  value: string,
-  preserve: readonly AgentToolContentPolicyPreservable[] | undefined,
-): readonly string[] {
+export function segmentAgentToolText(value: string): readonly string[] {
   const normalized = value.replaceAll("\r\n", "\n").replaceAll("\r", "\n").trim();
   if (!normalized) return [];
   return normalized.split(/\n{2,}/u).flatMap((block) => {
     const trimmed = block.trim();
     if (!trimmed) return [];
     if (trimmed.includes("```")) return [trimmed];
-    if (preserve?.includes("logs") && trimmed.split("\n").every(isAgentToolLogLine)) {
+    if (trimmed.split("\n").every(isAgentToolLogLine)) {
       return trimmed
         .split("\n")
         .map((line) => line.trim())
@@ -48,28 +44,49 @@ export function segmentAgentToolText(
 
 export function createAgentToolTextSegments(
   value: string,
-  preserve: readonly AgentToolContentPolicyPreservable[] | undefined,
   estimator: AgentModelTokenEstimator,
   maximumUnits: number,
 ): readonly AgentToolTextSegment[] {
-  return createAgentToolTextSegmentation(value, preserve, estimator, maximumUnits).segments;
+  return createAgentToolTextSegmentation(value, estimator, maximumUnits).segments;
+}
+
+/**
+ * Builds the same ranked-text units from an upstream splitter while keeping
+ * the original unit boundaries intact. External splitters are deliberately
+ * treated as a segmentation stage only; importance and budget selection stay
+ * in Senera's shared ranker.
+ */
+export function createAgentToolTextSegmentsFromUnits(
+  units: readonly string[],
+  estimator: AgentModelTokenEstimator,
+): readonly AgentToolTextSegment[] {
+  return units
+    .map((text, index) => ({ text: text.trim(), index }))
+    .filter(({ text }) => text.length > 0)
+    .map(({ text, index }) => ({
+      text,
+      index,
+      tokens: estimator.estimate(text).tokenCount,
+      atoms: extractAgentToolProtectedAtoms(text),
+      terms: extractAgentToolTextTerms(text),
+      isProtected: isAgentToolTextProtected(text),
+    }));
 }
 
 export function createAgentToolTextSegmentation(
   value: string,
-  preserve: readonly AgentToolContentPolicyPreservable[] | undefined,
   estimator: AgentModelTokenEstimator,
   maximumUnits: number,
 ): AgentToolTextSegmentation {
-  const units = segmentAgentToolText(value, preserve);
-  const boundedUnits = selectBoundedTextUnits(units, preserve, maximumUnits);
+  const units = segmentAgentToolText(value);
+  const boundedUnits = selectBoundedTextUnits(units, maximumUnits);
   const segments = boundedUnits.map(({ text, index }) => ({
     text,
     index,
     tokens: estimator.estimate(text).tokenCount,
     atoms: extractAgentToolProtectedAtoms(text),
     terms: extractAgentToolTextTerms(text),
-    isProtected: isAgentToolTextProtected(text, preserve),
+    isProtected: isAgentToolTextProtected(text),
   }));
   return {
     segments,
@@ -78,11 +95,8 @@ export function createAgentToolTextSegmentation(
   };
 }
 
-export function hasRepeatedAgentToolTextUnits(
-  value: string,
-  preserve: readonly AgentToolContentPolicyPreservable[] | undefined,
-): boolean {
-  const units = segmentAgentToolText(value, preserve).map((unit) => normalizeAgentToolTextKey(unit));
+export function hasRepeatedAgentToolTextUnits(value: string): boolean {
+  const units = segmentAgentToolText(value).map((unit) => normalizeAgentToolTextKey(unit));
   return new Set(units).size < units.length;
 }
 
@@ -90,15 +104,9 @@ export function normalizeAgentToolTextKey(value: string): string {
   return value.replaceAll(/\s+/gu, " ").trim().toLocaleLowerCase();
 }
 
-export function createAgentToolTextCacheKey(
-  value: string,
-  preserve: readonly AgentToolContentPolicyPreservable[] | undefined,
-  maximumUnits?: number,
-): string {
+export function createAgentToolTextCacheKey(value: string, maximumUnits?: number): string {
   return createHash("sha256")
     .update(value)
-    .update("\u0000")
-    .update((preserve ?? []).join(","))
     .update("\u0000")
     .update(String(maximumUnits ?? ""))
     .digest("hex");
@@ -106,7 +114,6 @@ export function createAgentToolTextCacheKey(
 
 function selectBoundedTextUnits(
   units: readonly string[],
-  preserve: readonly AgentToolContentPolicyPreservable[] | undefined,
   maximumUnits: number,
 ): readonly { text: string; index: number }[] {
   const limit = Number.isFinite(maximumUnits) ? Math.max(1, Math.floor(maximumUnits)) : 1;
@@ -124,7 +131,7 @@ function selectBoundedTextUnits(
   add(0);
   add(units.length - 1);
   units
-    .map((text, index) => ({ index, signal: protectedUnitSignal(text, preserve) }))
+    .map((text, index) => ({ index, signal: protectedUnitSignal(text) }))
     .filter((entry) => entry.signal > 0)
     .sort((left, right) => right.signal - left.signal || left.index - right.index)
     .forEach((entry) => add(entry.index));
@@ -146,13 +153,9 @@ function selectBoundedTextUnits(
     });
 }
 
-function protectedUnitSignal(
-  value: string,
-  preserve: readonly AgentToolContentPolicyPreservable[] | undefined,
-): number {
+function protectedUnitSignal(value: string): number {
   const atoms = extractAgentToolProtectedAtoms(value).length;
-  const explicit = isAgentToolTextProtected(value, preserve) ? 1 : 0;
-  return atoms + explicit;
+  return atoms + Number(isAgentToolTextProtected(value));
 }
 
 export function extractAgentToolTextTerms(value: string): readonly string[] {
@@ -188,14 +191,8 @@ function normalizeProtectedAtom(value: string): string {
   return value.trim().replace(/[.,;!?]+$/u, "");
 }
 
-export function isAgentToolTextProtected(
-  value: string,
-  preserve: readonly AgentToolContentPolicyPreservable[] | undefined,
-): boolean {
-  if (preserve?.includes("code") && value.includes("```")) return true;
-  if (preserve?.includes("urls") && /https?:\/\//iu.test(value)) return true;
-  if (preserve?.includes("identifiers") && /^[A-Za-z_][A-Za-z0-9_.:/-]*$/u.test(value)) return true;
-  return preserve?.includes("logs") === true && isAgentToolLogLine(value);
+export function isAgentToolTextProtected(value: string): boolean {
+  return value.includes("```") || extractAgentToolProtectedAtoms(value).length > 0 || isAgentToolLogLine(value);
 }
 
 export function isAgentToolLogLine(value: string): boolean {

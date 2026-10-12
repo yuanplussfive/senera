@@ -3,9 +3,11 @@ import type { AgentDomainEvent } from "../../../Source/AgentSystem/Events/AgentE
 import { AgentLocalizedError } from "../../../Source/AgentSystem/I18n/AgentLocalizedError.js";
 import { AgentWebSocketRequestSchema } from "../../../Source/AgentSystem/WebSocket/AgentWebSocketProtocol.js";
 import { AgentWebSocketWorkspaceRequestHandlers } from "../../../Source/AgentSystem/WebSocket/AgentWebSocketWorkspaceRequestHandlers.js";
-import type { AgentWebSocketRequestContext } from "../../../Source/AgentSystem/WebSocket/AgentWebSocketTypes.js";
 
 const workspaceSnapshot = {
+  workspaceId: "d86cbfc3-9535-4c2c-b150-5343c289f285",
+  workspaces: [],
+  capabilities: { browseDirectories: true },
   workspaceRoot: "E:\\senera",
   configPath: "E:\\senera\\senera.config.json",
   websocketUrl: "ws://127.0.0.1:29123/ws",
@@ -14,10 +16,7 @@ const workspaceSnapshot = {
 describe("Workspace WebSocket projection", () => {
   test("returns the current workspace snapshot for workspace.get", async () => {
     const send = vi.fn(async (_event: AgentDomainEvent) => undefined);
-    const handlers = new AgentWebSocketWorkspaceRequestHandlers(
-      { workspaceInfo: () => workspaceSnapshot } as AgentWebSocketRequestContext,
-      send,
-    );
+    const handlers = new AgentWebSocketWorkspaceRequestHandlers({ workspaceInfo: () => workspaceSnapshot });
 
     await handlers.get({ type: "workspace.get" }, send);
 
@@ -32,31 +31,28 @@ describe("Workspace WebSocket projection", () => {
 
   test("rejects workspace.get when the context exposes no workspace info", async () => {
     const send = vi.fn(async (_event: AgentDomainEvent) => undefined);
-    const handlers = new AgentWebSocketWorkspaceRequestHandlers({} as AgentWebSocketRequestContext, send);
+    const handlers = new AgentWebSocketWorkspaceRequestHandlers({});
 
     await expect(handlers.get({ type: "workspace.get" }, send)).rejects.toBeInstanceOf(AgentLocalizedError);
     expect(send).not.toHaveBeenCalled();
   });
 
-  test("broadcasts the switch start and reports the new snapshot on success", async () => {
-    const broadcast = vi.fn(async (_event: AgentDomainEvent) => undefined);
+  test("reports switch progress only to its requesting client", async () => {
     const switchWorkspace = vi.fn(async () => ({
+      ...workspaceSnapshot,
       workspaceRoot: "E:\\other",
       configPath: "E:\\other\\senera.config.json",
       websocketUrl: "ws://127.0.0.1:29123/ws",
     }));
     const send = vi.fn(async (_event: AgentDomainEvent) => undefined);
-    const handlers = new AgentWebSocketWorkspaceRequestHandlers(
-      { workspaceSwitchRequest: switchWorkspace } as unknown as AgentWebSocketRequestContext,
-      broadcast,
-    );
+    const handlers = new AgentWebSocketWorkspaceRequestHandlers({ workspaceSwitchRequest: switchWorkspace });
 
-    await handlers.switch({ type: "workspace.switch", workspaceRoot: "E:\\other" }, send);
+    await handlers.switch({ type: "workspace.switch", requestId: "open-1", workspaceRoot: "E:\\other" }, send);
 
-    expect(broadcast).toHaveBeenCalledWith(
+    expect(send).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: "workspace.switch.started",
-        data: { workspaceRoot: "E:\\other" },
+        data: { requestId: "open-1", workspaceRoot: "E:\\other" },
       }),
     );
     expect(switchWorkspace).toHaveBeenCalledWith("E:\\other");
@@ -64,6 +60,8 @@ describe("Workspace WebSocket projection", () => {
       expect.objectContaining({
         kind: "workspace.switched",
         data: {
+          ...workspaceSnapshot,
+          requestId: "open-1",
           workspaceRoot: "E:\\other",
           configPath: "E:\\other\\senera.config.json",
           websocketUrl: "ws://127.0.0.1:29123/ws",
@@ -73,19 +71,15 @@ describe("Workspace WebSocket projection", () => {
   });
 
   test("reports a localized failure when the workspace switch throws", async () => {
-    const broadcast = vi.fn(async (_event: AgentDomainEvent) => undefined);
     const switchWorkspace = vi.fn(async () => {
       throw new AgentLocalizedError("websocket.workspaceSwitchFailed", { workspaceRoot: "E:\\other" });
     });
     const send = vi.fn(async (_event: AgentDomainEvent) => undefined);
-    const handlers = new AgentWebSocketWorkspaceRequestHandlers(
-      { workspaceSwitchRequest: switchWorkspace } as unknown as AgentWebSocketRequestContext,
-      broadcast,
-    );
+    const handlers = new AgentWebSocketWorkspaceRequestHandlers({ workspaceSwitchRequest: switchWorkspace });
 
-    await handlers.switch({ type: "workspace.switch", workspaceRoot: "E:\\other" }, send);
+    await handlers.switch({ type: "workspace.switch", requestId: "open-2", workspaceRoot: "E:\\other" }, send);
 
-    expect(broadcast).toHaveBeenCalledWith(expect.objectContaining({ kind: "workspace.switch.started" }));
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ kind: "workspace.switch.started" }));
     expect(send).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: "workspace.switch.failed",
@@ -102,20 +96,23 @@ describe("Workspace WebSocket projection", () => {
   });
 
   test("rejects workspace.switch when no switcher is available", async () => {
-    const broadcast = vi.fn(async (_event: AgentDomainEvent) => undefined);
     const send = vi.fn(async (_event: AgentDomainEvent) => undefined);
-    const handlers = new AgentWebSocketWorkspaceRequestHandlers({} as AgentWebSocketRequestContext, broadcast);
+    const handlers = new AgentWebSocketWorkspaceRequestHandlers({});
 
     await expect(
-      handlers.switch({ type: "workspace.switch", workspaceRoot: "E:\\other" }, send),
+      handlers.switch({ type: "workspace.switch", requestId: "open-3", workspaceRoot: "E:\\other" }, send),
     ).rejects.toBeInstanceOf(AgentLocalizedError);
-    expect(broadcast).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
   });
 
   test("registers workspace request shapes in the protocol schema", () => {
     expect(AgentWebSocketRequestSchema.safeParse({ type: "workspace.get" }).success).toBe(true);
     expect(
-      AgentWebSocketRequestSchema.safeParse({ type: "workspace.switch", workspaceRoot: "  E:\\other  " }).success,
+      AgentWebSocketRequestSchema.safeParse({
+        type: "workspace.switch",
+        requestId: "open-4",
+        workspaceRoot: "  E:\\other  ",
+      }).success,
     ).toBe(true);
     expect(AgentWebSocketRequestSchema.safeParse({ type: "workspace.switch" }).success).toBe(false);
     expect(AgentWebSocketRequestSchema.safeParse({ type: "workspace.switch", workspaceRoot: "" }).success).toBe(false);

@@ -6,7 +6,7 @@
     "category": "skill-manage",
     "icon": "blocks",
     "activity": {
-      "action": { "zh-CN": "管理 Skill", "en-US": "Manage Skill" },
+      "action": { "zh-CN": "管理", "en-US": "Manage" },
       "argumentPath": "/action",
       "detailPaths": ["/name"]
     }
@@ -108,7 +108,6 @@
     "required": ["status", "action", "name", "diagnostics", "recommendedTools", "guidance"],
     "additionalProperties": false
   },
-  "observationProjection": "observations/SkillManage.projection.json",
   "permissions": ["filesystem:write:.senera/skills"],
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadWrite" },
   "runtime": {

@@ -181,6 +181,23 @@ export function mergeHistoryRuns(session: SessionRecord, runs: readonly RunRecor
   if (changed) session.runs.sort((a, b) => a.startedAt.localeCompare(b.startedAt));
 }
 
+/**
+ * History transports usage on the durable assistant entry metadata. Reattach
+ * it to the run projection so live and hydrated sessions share one source for
+ * message metrics without adding another history payload or recomputing totals.
+ */
+export function hydrateRunUsageFromMessages(session: SessionRecord): void {
+  const usageByRequestId = new Map(
+    session.messages.flatMap((message) => {
+      const usage = message.metadata?.run?.usage;
+      return message.role === "assistant" && message.requestId && usage ? [[message.requestId, usage] as const] : [];
+    }),
+  );
+  for (const run of session.runs) {
+    if (run.usage === undefined) run.usage = usageByRequestId.get(run.requestId);
+  }
+}
+
 function messageIdentity(message: ChatMessage): string {
   return `${message.requestId}\u0000${message.role}\u0000${message.kind ?? ""}`;
 }
@@ -196,6 +213,7 @@ export function rebuildRunFromHistory(run: SessionHistoryStepsData["runs"][numbe
     input: run.input,
     steps: run.traces.map((trace) => stepTraceToTimelineStep(run.requestId, trace, run.startedAt)),
     streamingRaw: "",
+    thinkingBlocks: [],
     xmlPreview: "",
     visibleText: "",
     displayText: "",
@@ -207,13 +225,18 @@ export function rebuildRunFromHistory(run: SessionHistoryStepsData["runs"][numbe
     interactionInputs: [],
     modelProvider: run.modelProvider,
     recoverySource: run.status === "running" ? "history" : undefined,
+    recoveryModes: run.recoveryModes,
   };
   record.revision = record.steps.length;
   return record;
 }
 
 function stepTraceToTimelineStep(requestId: string, trace: StepTraceDto, fallbackTime: string): TimelineStep {
-  const startedAt = trace.startedAt ?? fallbackTime;
+  // Durable answer traces describe the terminal boundary, not a measurable
+  // generation interval. Older traces used the run start as startedAt, which
+  // made the final response appear at the beginning of the total timeline.
+  const startedAt =
+    trace.kind === "answer" ? (trace.endedAt ?? trace.startedAt ?? fallbackTime) : (trace.startedAt ?? fallbackTime);
   const endedAt = trace.endedAt ?? startedAt;
   return stepTraceProjectors[trace.kind]({ requestId, trace, startedAt, endedAt });
 }

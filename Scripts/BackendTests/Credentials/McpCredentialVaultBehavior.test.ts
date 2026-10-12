@@ -88,6 +88,29 @@ describe("MCP credential vault", () => {
     expect(database.includes(Buffer.from('"cn"', "utf8"))).toBe(true);
   });
 
+  test("keeps identically named MCP inputs isolated per workspace", () => {
+    const firstWorkspace = createTemporaryDirectory("senera-mcp-workspace-a");
+    const secondWorkspace = createTemporaryDirectory("senera-mcp-workspace-b");
+    temporaryDirectories.push(firstWorkspace, secondWorkspace);
+    const first = AgentMcpInputService.open(firstWorkspace, {});
+    const second = AgentMcpInputService.open(secondWorkspace, {});
+    const definition = inputDefinition("TOKEN", true);
+
+    first.set("shared-server", definition, "workspace-a-secret");
+
+    expect(first.resolve("shared-server", definition.binding)).toEqual({
+      value: "workspace-a-secret",
+      source: "vault",
+    });
+    expect(second.resolve("shared-server", definition.binding)).toBeUndefined();
+    expect(resolveAgentWorkspaceLayout(firstWorkspace).databases.credentials).not.toBe(
+      resolveAgentWorkspaceLayout(secondWorkspace).databases.credentials,
+    );
+
+    first.close();
+    second.close();
+  });
+
   test("validates a batch before atomically committing Secret and ordinary inputs", () => {
     const workspaceRoot = createTemporaryDirectory("senera-mcp-input-batch");
     temporaryDirectories.push(workspaceRoot);

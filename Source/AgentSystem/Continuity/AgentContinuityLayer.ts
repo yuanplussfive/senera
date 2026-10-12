@@ -2,17 +2,15 @@ import {
   createAgentContinuityCheckpoint,
   createAgentContinuityLedger,
   mergeAgentContinuityLedger,
-  searchAgentContinuityLedger,
   type AgentContinuityCheckpoint,
   type AgentContinuityCheckpointSelection,
   type AgentContinuityLedger,
-  type AgentContinuityLedgerSearchResult,
   type AgentContinuityReference,
   selectAgentContinuityCheckpoint,
 } from "./AgentContinuityLedger.js";
 
 /**
- * Request-scoped facade shared by recall, compaction and resume callers. It
+ * Request-scoped facade shared by compaction and resume callers. It
  * keeps the durable stores authoritative while making source ingestion and
  * checkpoint selection identical across those callers.
  */
@@ -88,10 +86,6 @@ export class AgentContinuityLayer {
     const checkpoint = createAgentContinuityCheckpoint({ ...input, referenceIds });
     this.ingest({ checkpoints: [checkpoint] });
     return checkpoint;
-  }
-
-  recall(query: string, limit?: number): readonly AgentContinuityLedgerSearchResult[] {
-    return searchAgentContinuityLedger(this.ledger, query, limit);
   }
 
   restore(checkpointIdOrSelection?: string | AgentContinuityCheckpointSelection):

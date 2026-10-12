@@ -4,13 +4,16 @@ import {
   type AgentToolResultPresentationChange,
   type AgentToolResultPresentationEvidence,
   type AgentToolResultPresentationFact,
+  type AgentToolResultPresentationWorkspaceObservation,
   type ExecutedToolCallResult,
+  type ToolWorkspaceFileSnapshot,
 } from "../Types/ToolRuntimeTypes.js";
 import { readAgentUnknownRecord as readRecord } from "../Core/AgentUnknownValue.js";
 import { projectAgentExecutedToolResultStatus, readAgentToolFailure } from "./AgentToolResultOutcome.js";
 import { projectAgentModelText } from "../Text/AgentModelPayloadProjection.js";
 import { normalizeAgentResourceUri } from "../Resources/AgentResourceUri.js";
 import { AgentResourceReferenceOrigins, type AgentResourceReference } from "../Resources/AgentResourceReference.js";
+import { isWorkspaceDirectoryChange, isWorkspaceFileChange } from "../Artifacts/AgentWorkspaceSnapshotDiff.js";
 
 /**
  * Separates the model's complete tool observation from the compact, human
@@ -23,10 +26,11 @@ export function projectAgentToolResultPresentation(result: ExecutedToolCallResul
   const facts = projectFacts(result);
   const rawFailure = readAgentToolFailure(result.outcome);
   const failure = rawFailure ? { ...rawFailure, message: projectPresentationText(rawFailure.message) } : undefined;
-  const fallback = readResultText(result.result);
-  const headline = failure?.message ?? evidence[0]?.display ?? changes[0]?.summary ?? fallback ?? result.name;
-  const summary = buildSummary(evidence, changes, fallback, headline);
+  const semanticText = readResultText(result.result);
+  const headline = failure?.message ?? evidence[0]?.display ?? changes[0]?.summary ?? semanticText ?? "";
+  const summary = buildSummary(evidence, changes, semanticText, headline);
   const workspaceCheckpoint = result.artifact?.workspace?.checkpoint ?? result.workspaceCapture?.checkpoint;
+  const workspaceObservation = projectWorkspaceObservation(result);
   const resources = projectResources(result);
 
   return {
@@ -40,48 +44,192 @@ export function projectAgentToolResultPresentation(result: ExecutedToolCallResul
     changes,
     ...(resources.length > 0 ? { resources } : {}),
     artifactUri: result.artifact?.artifactUri,
+    ...(workspaceObservation ? { workspaceObservation } : {}),
     ...(workspaceCheckpoint ? { workspaceCheckpoint } : {}),
     ...(result.artifactAvailability ? { artifactAvailability: result.artifactAvailability } : {}),
     failure,
   };
 }
 
+function projectWorkspaceObservation(
+  result: ExecutedToolCallResult,
+): AgentToolResultPresentationWorkspaceObservation | undefined {
+  const workspace = result.artifact?.workspace ?? result.workspaceCapture;
+  if (!workspace) return undefined;
+
+  // Older Artifact snapshots can still contain scanner diagnostics. New
+  // receipt-based ChangeSets never produce them, but replay must remain able
+  // to describe the historical observation accurately.
+  const legacyWarnings = uniqueText([...(workspace.before.warnings ?? []), ...(workspace.after.warnings ?? [])]);
+  const changedFileCount = workspace.changes.filter(
+    (change) => change.status !== "unchanged" && isWorkspaceFileChange(change),
+  ).length;
+  const changedDirectoryCount = workspace.changes.filter(
+    (change) => change.status !== "unchanged" && isWorkspaceDirectoryChange(change),
+  ).length;
+  const quality = workspace.status;
+  const hasObservedCoverage = workspace.coverage === "observed";
+  if (
+    changedFileCount === 0 &&
+    changedDirectoryCount === 0 &&
+    legacyWarnings.length === 0 &&
+    quality !== "degraded" &&
+    !hasObservedCoverage
+  ) {
+    return undefined;
+  }
+  return {
+    status: legacyWarnings.length > 0 || quality === "degraded" ? "partial" : "complete",
+    ...(quality ? { quality } : {}),
+    ...(workspace.source ? { source: workspace.source } : {}),
+    ...(workspace.sources ? { sources: workspace.sources } : {}),
+    ...(workspace.coverage ? { coverage: workspace.coverage } : {}),
+    ...(workspace.scope ? { scope: workspace.scope } : {}),
+    beforeEntryCount: workspace.before.files.length,
+    afterEntryCount: workspace.after.files.length,
+    changedFileCount,
+    changedDirectoryCount,
+    warningCount: legacyWarnings.length,
+    ...(legacyWarnings.length > 0 ? { warnings: legacyWarnings.slice(0, 4) } : {}),
+  };
+}
+
 function projectResources(result: ExecutedToolCallResult): AgentResourceReference[] {
   const resources = new Map<string, AgentResourceReference>();
   for (const asset of result.artifact?.assets ?? []) {
-    resources.set(asset.resourceUri, {
-      uri: asset.resourceUri,
-      name: asset.fileName,
-      mime: asset.mediaType,
+    const reference = createResourceReference(
+      asset.resourceUri,
+      asset.fileName,
+      asset.mediaType,
+      AgentResourceReferenceOrigins.Artifact,
+    );
+    if (!reference) continue;
+    addResourceReference(resources, {
+      ...reference,
       size: asset.byteLength,
       sha256: asset.sha256,
-      origin: AgentResourceReferenceOrigins.Artifact,
     });
+  }
+
+  for (const evidence of result.artifact?.evidence ?? []) {
+    const metadata = readRecord(evidence.metadata);
+    if (metadata?.contentType !== "resource") continue;
+    const resourceUri =
+      typeof metadata.resourceUri === "string"
+        ? metadata.resourceUri
+        : typeof evidence.locator === "string"
+          ? evidence.locator
+          : undefined;
+    const reference = createResourceReference(
+      resourceUri,
+      metadata.name ?? evidence.display,
+      metadata.mimeType,
+      AgentResourceReferenceOrigins.Tool,
+    );
+    addResourceReference(resources, withResourceMetadata(reference, metadata.size, metadata.sha256));
   }
 
   const resultRecord = readRecord(result.result);
   const content = resultRecord && Array.isArray(resultRecord.content) ? resultRecord.content : [];
   for (const item of content) {
     const record = readRecord(item);
-    if (record?.type !== "resource") continue;
-    const resource = readRecord(record.resource);
-    const rawUri =
-      typeof record.uri === "string" ? record.uri : typeof resource?.uri === "string" ? resource.uri : undefined;
-    const uri = rawUri ? normalizeAgentResourceUri(rawUri) : undefined;
-    if (!uri || resources.has(uri)) continue;
-    const nameValue = typeof record.name === "string" ? record.name : resource?.name;
-    const mimeValue = typeof record.mimeType === "string" ? record.mimeType : resource?.mimeType;
-    const name = typeof nameValue === "string" && nameValue.trim() ? nameValue.trim() : uri;
-    const mime = typeof mimeValue === "string" && mimeValue.trim() ? mimeValue.trim() : "application/octet-stream";
-    resources.set(uri, {
-      uri,
-      name,
-      mime,
-      origin: AgentResourceReferenceOrigins.Tool,
-    });
+    if (record?.type !== "resource" && record?.type !== "resource_link") continue;
+    addResourceReference(resources, readContentResourceReference(record));
+  }
+
+  const declaredResources = resultRecord && Array.isArray(resultRecord.resources) ? resultRecord.resources : [];
+  for (const value of declaredResources) {
+    addResourceReference(resources, readDeclaredResourceReference(value));
   }
 
   return [...resources.values()];
+}
+
+function addResourceReference(
+  resources: Map<string, AgentResourceReference>,
+  reference: AgentResourceReference | undefined,
+): void {
+  if (!reference) return;
+  const previous = resources.get(reference.uri);
+  if (!previous) {
+    resources.set(reference.uri, reference);
+    return;
+  }
+
+  const preferredOrigin =
+    previous.origin === AgentResourceReferenceOrigins.Artifact ||
+    reference.origin === AgentResourceReferenceOrigins.Artifact
+      ? AgentResourceReferenceOrigins.Artifact
+      : reference.origin;
+  resources.set(reference.uri, {
+    ...previous,
+    ...reference,
+    origin: preferredOrigin,
+    name: preferResourceName(previous, reference),
+    mime: preferResourceMime(previous, reference),
+    ...(reference.size === undefined && previous.size !== undefined ? { size: previous.size } : {}),
+    ...(reference.sha256 === undefined && previous.sha256 !== undefined ? { sha256: previous.sha256 } : {}),
+  });
+}
+
+function preferResourceName(previous: AgentResourceReference, next: AgentResourceReference): string {
+  return previous.name === previous.uri ? next.name : previous.name;
+}
+
+function preferResourceMime(previous: AgentResourceReference, next: AgentResourceReference): string {
+  return previous.mime === "application/octet-stream" ? next.mime : previous.mime;
+}
+
+function readContentResourceReference(value: Record<string, unknown>): AgentResourceReference | undefined {
+  const resource = readRecord(value.resource);
+  const rawUri =
+    typeof value.uri === "string" ? value.uri : typeof resource?.uri === "string" ? resource.uri : undefined;
+  const nameValue = typeof value.name === "string" ? value.name : resource?.name;
+  const mimeValue = typeof value.mimeType === "string" ? value.mimeType : resource?.mimeType;
+  return withResourceMetadata(
+    createResourceReference(rawUri, nameValue, mimeValue),
+    value.size ?? resource?.size,
+    value.sha256 ?? resource?.sha256,
+  );
+}
+
+function readDeclaredResourceReference(value: unknown): AgentResourceReference | undefined {
+  const record = readRecord(value);
+  if (!record) return undefined;
+  const rawUri =
+    typeof record.resourceUri === "string"
+      ? record.resourceUri
+      : typeof record.uri === "string"
+        ? record.uri
+        : undefined;
+  const reference = createResourceReference(rawUri, record.name, record.mime ?? record.mimeType ?? record.mediaType);
+  return withResourceMetadata(reference, record.size, record.sha256);
+}
+
+function withResourceMetadata(
+  reference: AgentResourceReference | undefined,
+  rawSize: unknown,
+  rawSha256: unknown,
+): AgentResourceReference | undefined {
+  if (!reference) return undefined;
+  return {
+    ...reference,
+    ...(typeof rawSize === "number" && Number.isSafeInteger(rawSize) && rawSize >= 0 ? { size: rawSize } : {}),
+    ...(typeof rawSha256 === "string" && rawSha256.trim() ? { sha256: rawSha256.trim() } : {}),
+  };
+}
+
+function createResourceReference(
+  rawUri: unknown,
+  rawName: unknown,
+  rawMime: unknown,
+  origin: AgentResourceReference["origin"] = AgentResourceReferenceOrigins.Tool,
+): AgentResourceReference | undefined {
+  const uri = typeof rawUri === "string" ? normalizeAgentResourceUri(rawUri) : undefined;
+  if (!uri) return undefined;
+  const name = typeof rawName === "string" && rawName.trim() ? rawName.trim() : uri;
+  const mime = typeof rawMime === "string" && rawMime.trim() ? rawMime.trim() : "application/octet-stream";
+  return { uri, name, mime, origin };
 }
 
 function projectEvidence(result: ExecutedToolCallResult): AgentToolResultPresentationEvidence[] {
@@ -142,8 +290,21 @@ function projectFacts(result: ExecutedToolCallResult): AgentToolResultPresentati
 }
 
 function projectChanges(result: ExecutedToolCallResult): AgentToolResultPresentationChange[] {
-  const changes = result.artifact?.delta ?? [];
-  const workspaceChanges = new Map(result.artifact?.workspace?.changes.map((change) => [change.path, change]) ?? []);
+  const workspaceChanges = new Map(
+    (result.artifact?.workspace ?? result.workspaceCapture)?.changes.map((change) => [change.path, change]) ?? [],
+  );
+  // The executor publishes a lifecycle completion before Artifact recording
+  // finishes. Keep that fast event useful by projecting the capture directly;
+  // the later Artifact delta is merged through the same identity below.
+  const workspaceDeltas = [...workspaceChanges.values()]
+    .filter((change) => change.status !== "unchanged")
+    .map((change) => ({
+      kind: "workspace",
+      status: "changed" as const,
+      key: change.path,
+      summary: `${change.status}: ${change.path}`,
+    }));
+  const changes = [...(result.artifact?.delta ?? []), ...workspaceDeltas];
   const seen = new Set<string>();
   return changes.flatMap((change) => {
     const key = `${change.kind}\u0000${change.status}\u0000${change.key}`;
@@ -152,12 +313,18 @@ function projectChanges(result: ExecutedToolCallResult): AgentToolResultPresenta
     }
     seen.add(key);
     const workspaceChange = change.kind === "workspace" ? workspaceChanges.get(change.key) : undefined;
+    const metadata = "metadata" in change ? readRecord(change.metadata) : undefined;
+    const workspaceBeforeKind = readWorkspaceKind(workspaceChange?.beforeKind ?? metadata?.beforeKind);
+    const workspaceAfterKind = readWorkspaceKind(workspaceChange?.afterKind ?? metadata?.afterKind);
     return [
       {
         kind: change.kind,
         status: change.status,
         key: projectPresentationText(change.key),
         summary: projectPresentationText(change.summary),
+        ...(workspaceChange ? { workspaceStatus: workspaceChange.status } : {}),
+        ...(workspaceBeforeKind ? { workspaceBeforeKind } : {}),
+        ...(workspaceAfterKind ? { workspaceAfterKind } : {}),
         addedLines: workspaceChange?.addedLines,
         removedLines: workspaceChange?.removedLines,
       },
@@ -165,16 +332,30 @@ function projectChanges(result: ExecutedToolCallResult): AgentToolResultPresenta
   });
 }
 
+const WorkspaceSnapshotKinds = new Set<ToolWorkspaceFileSnapshot["kind"]>([
+  "file",
+  "directory",
+  "missing",
+  "other",
+  "symlink",
+]);
+
+function readWorkspaceKind(value: unknown): ToolWorkspaceFileSnapshot["kind"] | undefined {
+  return typeof value === "string" && WorkspaceSnapshotKinds.has(value as ToolWorkspaceFileSnapshot["kind"])
+    ? (value as ToolWorkspaceFileSnapshot["kind"])
+    : undefined;
+}
+
 function buildSummary(
   evidence: readonly AgentToolResultPresentationEvidence[],
   changes: readonly AgentToolResultPresentationChange[],
-  fallback: string | undefined,
+  semanticText: string | undefined,
   headline: string,
 ): string | undefined {
   const details = uniqueText([
     ...evidence.map((entry) => entry.display),
     ...changes.map((entry) => entry.summary),
-    fallback,
+    semanticText,
   ]).filter((text) => text !== headline);
   return details.length > 0 ? details.join("\n") : undefined;
 }

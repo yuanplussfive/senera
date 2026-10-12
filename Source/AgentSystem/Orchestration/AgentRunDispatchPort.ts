@@ -2,7 +2,7 @@ import type { AgentEventScope, AgentEventSink } from "../Events/AgentEvent.js";
 import type { AgentModelUsageValue } from "../ModelEndpoints/AgentModelUsage.js";
 import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
 import type { AgentPinnedSkillReference } from "../Skills/AgentSkillActivation.js";
-import type { AgentSessionOwnership } from "../ModelEndpoints/AgentModelMetadata.js";
+import type { AgentConversationEntryMetadata, AgentSessionOwnership } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 
 export interface AgentSystemPromptLayer {
@@ -30,6 +30,7 @@ export interface AgentRunDispatchRequest {
   readonly inheritProjectContext?: boolean;
   /** Ownership written when the dispatcher creates the child session. */
   readonly sessionOwnership?: AgentSessionOwnership;
+  readonly metadata?: AgentConversationEntryMetadata;
   readonly scope?: AgentEventScope;
   readonly parent?: {
     readonly sessionId: string;
@@ -64,7 +65,13 @@ export interface AgentRunDispatchPort {
   /** Queue a supervisor steering message without taking a parent Tool resource lease. */
   steer?(sessionId: string, input: string, onEvent?: AgentEventSink): Promise<boolean>;
   /** Queue a follow-up that runs after the child's current assignment settles. */
-  followUp?(sessionId: string, input: string, onEvent?: AgentEventSink, requestId?: string): Promise<boolean>;
+  followUp?(
+    sessionId: string,
+    input: string,
+    onEvent?: AgentEventSink,
+    requestId?: string,
+    metadata?: AgentConversationEntryMetadata,
+  ): Promise<boolean>;
   /** Ask the active Pi turn to stop investigating and consolidate its current evidence. */
   interrupt?(sessionId: string, instruction: string): Promise<boolean>;
 }
@@ -100,8 +107,14 @@ export class AgentRunDispatchGateway implements AgentRunDispatchPort {
     return this.requireDelegate().steer?.(sessionId, input, onEvent) ?? Promise.resolve(false);
   }
 
-  followUp(sessionId: string, input: string, onEvent?: AgentEventSink, requestId?: string): Promise<boolean> {
-    return this.requireDelegate().followUp?.(sessionId, input, onEvent, requestId) ?? Promise.resolve(false);
+  followUp(
+    sessionId: string,
+    input: string,
+    onEvent?: AgentEventSink,
+    requestId?: string,
+    metadata?: AgentConversationEntryMetadata,
+  ): Promise<boolean> {
+    return this.requireDelegate().followUp?.(sessionId, input, onEvent, requestId, metadata) ?? Promise.resolve(false);
   }
 
   interrupt(sessionId: string, instruction: string): Promise<boolean> {

@@ -18,10 +18,6 @@ export type {
 import { errorMessage } from "../Core/AgentErrors.js";
 import { withDeadline } from "../Core/AgentTiming.js";
 
-const DefaultWriterCloseTimeoutMs = 5_000;
-const DefaultOutboxDrainBatchSize = 256;
-const DefaultCommittedOutboxRetentionMs = 7 * 24 * 60 * 60 * 1_000;
-
 interface AppendMessage {
   readonly type: "append";
   readonly requestId: number;
@@ -73,10 +69,10 @@ interface PendingRequest {
 
 export interface AgentSqliteRunEventWriterOptions {
   readonly databasePath: string;
-  readonly restartDelayMs?: number;
-  readonly closeTimeoutMs?: number;
-  readonly drainBatchSize?: number;
-  readonly committedRetentionMs?: number;
+  readonly restartDelayMs: number;
+  readonly closeTimeoutMs: number;
+  readonly drainBatchSize: number;
+  readonly committedRetentionMs: number;
 }
 
 export class AgentSqliteRunEventWriter implements AgentRunEventWriter {
@@ -101,16 +97,10 @@ export class AgentSqliteRunEventWriter implements AgentRunEventWriter {
 
   constructor(options: AgentSqliteRunEventWriterOptions) {
     this.databasePath = path.resolve(options.databasePath);
-    this.restartDelayMs = normalizeDelay(options.restartDelayMs);
-    this.closeTimeoutMs = normalizeDelay(options.closeTimeoutMs ?? DefaultWriterCloseTimeoutMs);
-    this.drainBatchSize = normalizePositiveInteger(
-      options.drainBatchSize ?? DefaultOutboxDrainBatchSize,
-      "drainBatchSize",
-    );
-    this.committedRetentionMs = normalizePositiveInteger(
-      options.committedRetentionMs ?? DefaultCommittedOutboxRetentionMs,
-      "committedRetentionMs",
-    );
+    this.restartDelayMs = normalizeDelay(options.restartDelayMs, "restartDelayMs");
+    this.closeTimeoutMs = normalizeDelay(options.closeTimeoutMs, "closeTimeoutMs");
+    this.drainBatchSize = normalizePositiveInteger(options.drainBatchSize, "drainBatchSize");
+    this.committedRetentionMs = normalizePositiveInteger(options.committedRetentionMs, "committedRetentionMs");
     this.startWorker();
   }
 
@@ -301,10 +291,10 @@ export class AgentSqliteRunEventWriter implements AgentRunEventWriter {
   }
 }
 
-function normalizeDelay(value: number | undefined): number {
-  if (value === undefined) return 250;
-  if (!Number.isSafeInteger(value) || value < 0)
-    throw new RangeError("restartDelayMs must be a non-negative safe integer.");
+function normalizeDelay(value: number, name: string): number {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new RangeError(`${name} must be a non-negative safe integer.`);
+  }
   return value;
 }
 

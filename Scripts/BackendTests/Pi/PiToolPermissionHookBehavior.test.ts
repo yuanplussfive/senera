@@ -11,12 +11,15 @@ import { AgentModelUsageLedger } from "../../../Source/AgentSystem/ModelEndpoint
 import { AgentPiToolPlanCoordinator } from "../../../Source/AgentSystem/PiShared/AgentPiToolPlanCoordinator.js";
 import { AgentTurnTokenBudget } from "../../../Source/AgentSystem/Text/AgentTurnTokenBudget.js";
 import { createTool } from "../ToolSearch/ToolSearchTestFixtures.js";
+import { AgentBrowserNetworkPermissionId } from "../../../Source/AgentSystem/Browser/AgentBrowserUrlPolicy.js";
 
 describe("Pi tool permission hook behavior", () => {
   test("blocks a registered request that is outside the authoritative access grant", async () => {
     const authorize = vi.fn();
     const hook = new AgentPiToolPermissionHook({
-      registry: { getTool: () => ({ name: "ToolB" }) } as unknown as AgentExtensionRegistry,
+      registry: {
+        getTool: () => ({ name: "ToolB", handler: { kind: "HostCapability", capability: "test.denied" } }),
+      } as unknown as AgentExtensionRegistry,
       toolPlanningMode: "native",
       permissionGate: { authorize } as unknown as AgentToolPermissionGate,
       executionCapabilities: () => createSeneraExecutionRuntimeCapabilities(),
@@ -97,6 +100,8 @@ describe("Pi tool permission hook behavior", () => {
       loading: "Bootstrap",
     });
     const turnState = new AgentPiTurnState({
+      systemPrompt: "Test agent system context.",
+      userMessage: "Test tool permission request.",
       approvalMode: "agent",
       sessionId: "session-turn-mode",
       requestId: "request-turn-mode",
@@ -173,6 +178,88 @@ describe("Pi tool permission hook behavior", () => {
 
     expect(result).toBeUndefined();
     expect(authorize).toHaveBeenCalledOnce();
+  });
+
+  test("requires scoped approval for an explicit browser file target and passes authorization to execution", async () => {
+    const browser = createTool({
+      name: "BrowserOpen",
+      title: "Open browser page",
+      summary: "Open a browser page or local file.",
+      tags: ["browser"],
+      actions: ["open"],
+      targets: ["browser-page"],
+      priority: 1,
+    });
+    browser.search = {
+      ...browser.search,
+      Capabilities: (browser.search?.Capabilities ?? []).map((capability) => ({
+        ...capability,
+        Risk: { SideEffect: "network", Permission: AgentBrowserNetworkPermissionId },
+      })),
+    };
+    const grant = toolAccessGrant([browser.name], [browser.name]);
+    const turnState = new AgentPiTurnState({
+      systemPrompt: "Test agent system context.",
+      userMessage: "Open a local preview.",
+      approvalMode: "agent",
+      sessionId: "session-browser-target",
+      requestId: "request-browser-target",
+      step: 1,
+      toolAccessGrant: grant,
+      toolExposure: new AgentToolExposureState(grant),
+      activeSkills: [],
+      usageLedger: new AgentModelUsageLedger(),
+      toolPlan: new AgentPiToolPlanCoordinator(),
+      tokenBudget: new AgentTurnTokenBudget({
+        model: "test-model",
+        contextWindowTokens: 8_192,
+        outputReserveTokens: 1_024,
+      }),
+    });
+    turnState.registerToolBatch("batch-browser-target", [
+      {
+        toolCallId: "call-browser-target",
+        toolName: browser.name,
+        input: { url: "file:///C:/workspace/preview.html" },
+      },
+    ]);
+    const authorize = vi.fn(async () => ({
+      action: "allow" as const,
+      rule: "approved",
+      reason: "approved",
+      riskSignals: [],
+    }));
+    const hook = new AgentPiToolPermissionHook({
+      registry: {
+        getTool: (name: string) => (name === browser.name ? browser : undefined),
+      } as unknown as AgentExtensionRegistry,
+      toolPlanningMode: "native",
+      permissionGate: { authorize } as unknown as AgentToolPermissionGate,
+      executionCapabilities: () => createSeneraExecutionRuntimeCapabilities(),
+      resourceCapabilities: new AgentToolResourceCapabilityRegistry(),
+    });
+
+    await hook.authorize(
+      {
+        turnState,
+        toolAccessGrant: grant,
+        toolExposure: turnState.context.toolExposure,
+      },
+      {
+        toolCallId: "call-browser-target",
+        toolName: browser.name,
+        input: { url: "file:///C:/workspace/preview.html" },
+      },
+    );
+
+    expect(authorize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mandatoryApproval: expect.objectContaining({ scope: "file:file:///C:/workspace/preview.html" }),
+      }),
+    );
+    expect(turnState.takeBrowserTargetAuthorization("call-browser-target")).toEqual({
+      scope: "file:file:///C:/workspace/preview.html",
+    });
   });
 
   test("blocks a stale authorization entry for a tool no longer in the registry", async () => {

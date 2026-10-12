@@ -6,11 +6,16 @@ import { StreamingMarkdownRenderer } from "../../shared/code/StreamingMarkdownRe
 export interface AssistantMessageBodyProps {
   message: Pick<ChatMessage, "content" | "kind">;
   streaming?: boolean;
+  liveActivity?: boolean;
 }
 
-export function AssistantMessageBody({ message, streaming = false }: AssistantMessageBodyProps): JSX.Element {
+export function AssistantMessageBody({
+  message,
+  streaming = false,
+  liveActivity = false,
+}: AssistantMessageBodyProps): JSX.Element {
   return (
-    <div className="assistant-message-flow mt-1 min-w-0">
+    <div className="assistant-message-flow mt-1 min-w-0" data-live-activity={liveActivity || undefined}>
       {streaming ? (
         <StreamingMarkdownRenderer
           className="mt-1 min-w-0 text-[length:var(--theme-chat-assistant-font-size-scaled)] leading-[var(--theme-chat-assistant-line-height)] text-content-primary"

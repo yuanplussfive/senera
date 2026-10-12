@@ -3,7 +3,6 @@ import type { ApprovalBatchReference, ApprovalDecision } from "../../api/approva
 import type { RunRecord } from "../../store/sessionStore";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { Spinner } from "../../shared/ui";
-import { TodoProgressCard } from "./TodoProgressCard";
 
 const ApprovalRequestStrip = lazy(() => import("./ApprovalRequestStrip"));
 
@@ -25,9 +24,7 @@ export function ChatActivityDock({
   onResolveApprovalBatch?: (batch: ApprovalBatchReference, decision: ApprovalDecision) => void;
 }): JSX.Element | null {
   const pendingRun = useMemo(() => findPendingApprovalRun(runs), [runs]);
-  const activeRun = useMemo(() => findActiveRun(runs), [runs]);
-
-  if (!pendingRun && !activeRun) return null;
+  if (!pendingRun) return null;
 
   return (
     <div className="mx-4 mb-2 shrink-0 space-y-2" data-chat-activity-dock data-testid="chat-activity-dock">
@@ -50,11 +47,6 @@ export function ChatActivityDock({
           />
         </Suspense>
       ) : null}
-      {activeRun ? (
-        <div className="flex min-w-0 justify-start">
-          <TodoProgressCard run={activeRun} />
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -64,14 +56,6 @@ function findPendingApprovalRun(runs: readonly RunRecord[]): RunRecord | undefin
     const run = runs[index];
     const pending = (run.approvals ?? []).some((approval) => approval.status === "pending");
     if (pending) return run;
-  }
-  return undefined;
-}
-
-function findActiveRun(runs: readonly RunRecord[]): RunRecord | undefined {
-  for (let index = runs.length - 1; index >= 0; index -= 1) {
-    const run = runs[index];
-    if (run.status === "running" || run.status === "cancelling") return run;
   }
   return undefined;
 }

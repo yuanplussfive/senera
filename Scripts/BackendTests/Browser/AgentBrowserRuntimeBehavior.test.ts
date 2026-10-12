@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, test } from "vitest";
+import { pathToFileURL } from "node:url";
+import { describe, expect, test, vi } from "vitest";
 import { AgentBrowserConfigurationSchema } from "../../../Source/AgentSystem/Browser/AgentBrowserConfiguration.js";
 import type {
   AgentBrowserDriver,
@@ -16,6 +17,7 @@ import {
   resolveAgentBrowserExecutable,
 } from "../../../Source/AgentSystem/Browser/AgentBrowserExecutableResolver.js";
 import { AgentBrowserRuntime } from "../../../Source/AgentSystem/Browser/AgentBrowserRuntime.js";
+import { browserTargetScope } from "../../../Source/AgentSystem/Browser/AgentBrowserUrlPolicy.js";
 import { createAgentBrowserSystemTools } from "../../../Source/AgentSystem/SystemTools/AgentBrowserSystemTools.js";
 import { AgentExtensionRegistry } from "../../../Source/AgentSystem/Extensions/AgentExtensionRegistry.js";
 import type { SeneraExecutionEnv } from "../../../Source/AgentSystem/Execution/SeneraExecutionTypes.js";
@@ -111,36 +113,62 @@ describe("controlled browser runtime", () => {
     });
   });
 
-  test("uses fixed allowlists only when explicitly selected", async () => {
+  test("blocks only explicitly blacklisted hosts and supports wildcard subdomain entries", async () => {
     await withBrowserRuntime(
       async ({ runtime, driver, root }) => {
         await runtime.execute("open", { url: "https://example.com" }, browserContext(root));
         await expect(
           driver.sessions[0]!.options.assertRequestPermitted("https://other.example/app.js", "subresource"),
-        ).rejects.toThrow(/outside the configured allowed domains/u);
+        ).rejects.toThrow(/blocked by the configured domain blacklist/u);
       },
-      { configuration: { network: { accessMode: "allowlist", allowedDomains: ["example.com"] } } },
+      { configuration: { network: { blockedDomains: ["*.example"] } } },
     );
     expect(
-      AgentBrowserConfigurationSchema.parse({ network: { accessMode: "allowlist" } }).network.allowedDomains,
-    ).toEqual([]);
+      AgentBrowserConfigurationSchema.parse({ network: { blockedDomains: ["*"] } }).network.blockedDomains,
+    ).toEqual(["*"]);
   });
 
-  test("treats an empty allowlist as deny-all while configuration is being completed", async () => {
+  test("applies the domain blacklist before DNS resolution", async () => {
+    const resolveHostAddresses = vi.fn(async () => {
+      throw new Error("DNS lookup should not run for a blacklisted host.");
+    });
     await withBrowserRuntime(
       async ({ runtime, root }) => {
-        await expect(runtime.execute("open", { url: "https://example.com" }, browserContext(root))).rejects.toThrow(
-          /allowlist is empty/u,
+        await expect(runtime.execute("open", { url: "https://blocked.example" }, browserContext(root))).rejects.toThrow(
+          /blocked by the configured domain blacklist/u,
         );
+        expect(resolveHostAddresses).not.toHaveBeenCalled();
       },
-      { configuration: { network: { accessMode: "allowlist" } } },
+      {
+        configuration: { network: { blockedDomains: ["blocked.example"] } },
+        resolveHostAddresses,
+      },
     );
   });
 
-  test("migrates legacy configured domain restrictions to allowlist mode", () => {
+  test("exposes only the denylist as a browser network setting", () => {
+    expect(AgentBrowserConfigurationSchema.parse({}).network).toEqual({ blockedDomains: [] });
+  });
+
+  test("migrates legacy allowlist settings to a safe deny-all network entry", () => {
     expect(
-      AgentBrowserConfigurationSchema.parse({ network: { allowedDomains: ["example.com"] } }).network.accessMode,
-    ).toBe("allowlist");
+      AgentBrowserConfigurationSchema.parse({
+        network: { accessMode: "allowlist", allowedDomains: ["example.com"] },
+      }).network.blockedDomains,
+    ).toEqual(["*"]);
+  });
+
+  test("permits proxy Fake-IP mappings by default while requiring approval for direct reserved addresses", async () => {
+    await withBrowserRuntime(
+      async ({ runtime, driver, root }) => {
+        await runtime.execute("open", { url: "https://proxied.example" }, browserContext(root));
+        expect(driver.calls).toHaveLength(1);
+        await expect(runtime.execute("open", { url: "https://198.18.0.62" }, browserContext(root))).rejects.toThrow(
+          /requires explicit approval/u,
+        );
+      },
+      { resolveHostAddresses: async () => ["198.18.0.62"] },
+    );
   });
 
   test("uses the model-selected timeout within the host-configured bound", async () => {
@@ -184,41 +212,140 @@ describe("controlled browser runtime", () => {
     expect(click?.metadata.description).toMatch(/most recent BrowserSnapshot/u);
   });
 
-  test("rejects a URL resolved to a private network before the browser starts", async () => {
+  test("requires a matching call authorization for private network navigation", async () => {
     await withBrowserRuntime(
       async ({ runtime, driver, root }) => {
         await expect(
           runtime.execute("open", { url: "https://internal.example" }, browserContext(root)),
-        ).rejects.toThrow(/private or reserved network/u);
+        ).rejects.toThrow(/requires explicit approval/u);
         expect(driver.calls).toHaveLength(0);
         expect(driver.sessions).toHaveLength(0);
+
+        await runtime.execute(
+          "open",
+          { url: "https://internal.example" },
+          browserContext(root, {
+            approvalMode: "agent",
+            browserTargetAuthorization: { scope: "https://internal.example" },
+          }),
+        );
+        expect(driver.calls).toHaveLength(1);
       },
       { resolveHostAddresses: async () => ["127.0.0.1"] },
     );
   });
 
-  test("permits a proxy Fake-IP mapping for a hostname without permitting direct reserved addresses", async () => {
+  test("full access opens private HTTP and local file URLs without a separate network toggle", async () => {
     await withBrowserRuntime(
       async ({ runtime, driver, root }) => {
-        await runtime.execute("open", { url: "https://proxied.example" }, browserContext(root));
-        expect(driver.calls).toHaveLength(1);
-        await expect(runtime.execute("open", { url: "https://198.18.0.62" }, browserContext(root))).rejects.toThrow(
-          /private or reserved network/u,
+        await runtime.execute(
+          "open",
+          { url: "http://127.0.0.1:3000" },
+          browserContext(root, { approvalMode: "full_access" }),
         );
+        await runtime.execute(
+          "open",
+          { url: "file:///C:/workspace/preview.html" },
+          browserContext(root, { approvalMode: "full_access" }),
+        );
+        expect(driver.calls).toHaveLength(2);
+        expect(driver.calls[1]?.input.url).toBe("file:///C:/workspace/preview.html");
       },
-      { resolveHostAddresses: async () => ["198.18.0.62"] },
+      { resolveHostAddresses: async () => ["127.0.0.1"] },
     );
+  });
 
+  test("requires a matching approval for file URLs outside Full Access", async () => {
+    await withBrowserRuntime(async ({ runtime, driver, root }) => {
+      const pagePath = path.join(root, "preview.html");
+      await fs.writeFile(pagePath, "<main>preview</main>");
+      const pageUrl = pathToFileURL(pagePath).href;
+      await expect(runtime.execute("open", { url: pageUrl }, browserContext(root))).rejects.toThrow(
+        /requires explicit approval/u,
+      );
+      await runtime.execute(
+        "open",
+        { url: pageUrl },
+        browserContext(root, {
+          approvalMode: "agent",
+          browserTargetAuthorization: { scope: browserTargetScope(pageUrl) },
+        }),
+      );
+      expect(driver.calls).toHaveLength(1);
+    });
+  });
+
+  test("scopes approved local pages to their real directory for subresources, not navigation", async () => {
+    await withBrowserRuntime(async ({ runtime, driver, root }) => {
+      const pageDirectory = path.join(root, "pages");
+      const assetDirectory = path.join(pageDirectory, "assets");
+      await fs.mkdir(assetDirectory, { recursive: true });
+      const pagePath = path.join(pageDirectory, "index.html");
+      const stylePath = path.join(pageDirectory, "style.css");
+      const nestedAssetPath = path.join(assetDirectory, "logo.svg");
+      const embeddedPagePath = path.join(pageDirectory, "embedded.html");
+      const outsidePath = path.join(root, "outside.svg");
+      const siblingPagePath = path.join(pageDirectory, "other.html");
+      await Promise.all(
+        [pagePath, stylePath, nestedAssetPath, embeddedPagePath, outsidePath, siblingPagePath].map((filePath) =>
+          fs.writeFile(filePath, "resource"),
+        ),
+      );
+
+      const pageUrl = pathToFileURL(pagePath).href;
+      const pageScope = browserTargetScope(pageUrl);
+      await runtime.execute(
+        "open",
+        { url: pageUrl },
+        browserContext(root, {
+          approvalMode: "agent",
+          browserTargetAuthorization: { scope: pageScope },
+        }),
+      );
+
+      const requests = driver.sessions[0]!.options.assertRequestPermitted;
+      await expect(requests(pathToFileURL(stylePath).href, "subresource", pageUrl)).resolves.toBeUndefined();
+      await expect(requests(pathToFileURL(nestedAssetPath).href, "subresource", pageUrl)).resolves.toBeUndefined();
+      await expect(requests(pathToFileURL(embeddedPagePath).href, "subresource", pageUrl)).resolves.toBeUndefined();
+      await expect(
+        requests(pathToFileURL(nestedAssetPath).href, "subresource", pathToFileURL(embeddedPagePath).href),
+      ).resolves.toBeUndefined();
+      await expect(requests(pathToFileURL(outsidePath).href, "subresource", pageUrl)).rejects.toThrow(
+        /requires explicit approval/u,
+      );
+      await expect(requests(pathToFileURL(siblingPagePath).href, "navigation", pageUrl)).rejects.toThrow(
+        /requires explicit approval/u,
+      );
+    });
+  });
+
+  test("keeps approved private origins within their source page and blocks private subresource pivots", async () => {
     await withBrowserRuntime(
-      async ({ runtime, root }) => {
-        await expect(runtime.execute("open", { url: "https://proxied.example" }, browserContext(root))).rejects.toThrow(
-          /private or reserved network/u,
+      async ({ runtime, driver, root }) => {
+        await runtime.execute(
+          "open",
+          { url: "http://127.0.0.1:3000" },
+          browserContext(root, {
+            approvalMode: "agent",
+            browserTargetAuthorization: { scope: "http://127.0.0.1:3000" },
+          }),
         );
+        await expect(
+          driver.sessions[0]!.options.assertRequestPermitted(
+            "http://127.0.0.1:3000/assets/app.js",
+            "subresource",
+            "http://127.0.0.1:3000/",
+          ),
+        ).resolves.toBeUndefined();
+        await expect(
+          driver.sessions[0]!.options.assertRequestPermitted(
+            "http://127.0.0.1:3001/admin",
+            "subresource",
+            "https://example.com/",
+          ),
+        ).rejects.toThrow(/requires explicit approval/u);
       },
-      {
-        configuration: { network: { allowSyntheticProxyAddresses: false } },
-        resolveHostAddresses: async () => ["198.18.0.62"],
-      },
+      { resolveHostAddresses: async (hostname) => (hostname === "example.com" ? ["93.184.216.34"] : ["127.0.0.1"]) },
     );
   });
 
@@ -525,7 +652,7 @@ function waitForAbort(signal: AbortSignal | undefined): Promise<void> {
   return new Promise((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }));
 }
 
-function browserContext(workspaceRoot: string): AgentHostToolContext {
+function browserContext(workspaceRoot: string, overrides: Partial<AgentHostToolContext> = {}): AgentHostToolContext {
   return {
     tool: {} as RegisteredTool,
     config: { ModelProviders: [] },
@@ -535,5 +662,6 @@ function browserContext(workspaceRoot: string): AgentHostToolContext {
     sessionId: "senera-session-under-test",
     requestId: "request-under-test",
     toolCallId: "tool-call-under-test",
+    ...overrides,
   };
 }

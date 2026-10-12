@@ -6,12 +6,15 @@ import {
   emitAgentEvent,
   withEventContext,
   type AgentDomainEvent,
+  type AgentEventContext,
+  type AgentEventScope,
   type AgentEventSink,
 } from "../Events/AgentEvent.js";
 import {
   AgentChildRunMessageDirections,
   AgentChildRunMessageKinds,
   AgentChildRunStatuses,
+  isAgentChildRunBackgroundDeliverable,
   AgentChildRunJoinModes,
   AgentChildWorkspaceAccessModes,
   type AgentChildRunRecord,
@@ -78,7 +81,7 @@ import {
 import { AgentChildRunWaitCoordinator } from "./AgentChildRunWaitCoordinator.js";
 import { latestParentMessage, readChildRunId } from "./AgentDelegationEventSupport.js";
 import type { AgentTodoService } from "../Todos/AgentTodoService.js";
-import { AgentTodoStatuses, AgentTodoWriteSources } from "../Todos/AgentTodoTypes.js";
+import { AgentTodoChangeSources, AgentTodoStatuses } from "../Todos/AgentTodoTypes.js";
 import { deriveAgentTaskDigest, isLegacyAgentTaskDigest, resolveAgentWorkItemId } from "./AgentWorkItemIdentity.js";
 import {
   EmptyAgentDelegationPromptContext,
@@ -134,6 +137,7 @@ export class AgentDelegationService {
   private readonly roleCatalog: AgentSubagentRoleCatalogPort;
   private readonly gate: AgentRunConcurrencyGate;
   private readonly active = new Map<string, ActiveChildRun>();
+  private readonly parentInvocations = new Map<string, AgentDelegationContext["parentInvocation"]>();
   private readonly waits: AgentChildRunWaitCoordinator;
   private readonly starting = new Set<Promise<InitializedChildRun>>();
   private todoService?: AgentTodoService;
@@ -177,6 +181,10 @@ export class AgentDelegationService {
       // down. Only the binding that owns the current slot may clear it.
       if (this.resourceClaims === projector) this.resourceClaims = previous;
     };
+  }
+
+  resourceClaimCapabilityIds(): readonly string[] {
+    return this.requireResourceClaims().listClaimCapabilityIds();
   }
 
   async spawn(request: AgentSpawnRequest, context: AgentDelegationContext): Promise<AgentChildRunRecord> {
@@ -481,9 +489,13 @@ export class AgentDelegationService {
     return record?.parentSessionId === parentSessionId ? record : undefined;
   }
 
-  markResultConsumed(id: string, parentSessionId: string, consumedAt?: string): AgentChildRunRecord | undefined {
+  markParentResultDelivered(
+    id: string,
+    parentSessionId: string,
+    deliveredAt?: string,
+  ): AgentChildRunRecord | undefined {
     const record = this.get(id, parentSessionId);
-    return record ? this.options.repository.markResultConsumed(id, consumedAt) : undefined;
+    return record ? this.options.repository.markParentResultDelivered(id, deliveredAt) : undefined;
   }
 
   checkpoint(id: string, parentSessionId: string): AgentChildRunRecord["checkpoint"] | undefined {
@@ -796,6 +808,11 @@ export class AgentDelegationService {
     notifyCompletion = false,
     resourceRequest?: AgentToolResourceLeaseRequest,
   ): Promise<AgentChildRunRecord> {
+    if (context.parentInvocation) {
+      this.parentInvocations.set(record.id, context.parentInvocation);
+    } else {
+      this.parentInvocations.delete(record.id);
+    }
     let permit: AgentRunPermit | undefined;
     let resourceLease: AgentToolResourceLeaseHandle | undefined;
     let deadlineMonitor: Promise<unknown> | undefined;
@@ -841,11 +858,10 @@ export class AgentDelegationService {
       const todoRequired = Boolean(control?.todo.required && this.todoService);
       let todoSeedFingerprint: string | undefined;
       if (lifecycle === "initial" && todoRequired) {
-        this.todoService!.write({
+        this.todoService!.add({
           sessionId: running.childSessionId,
-          items: [{ id: running.id, content: running.task, status: AgentTodoStatuses.Pending }],
-          merge: false,
-          source: AgentTodoWriteSources.Host,
+          tasks: [{ content: running.task }],
+          source: AgentTodoChangeSources.Host,
         });
         todoSeedFingerprint = this.todoService!.fingerprint(running.childSessionId);
       }
@@ -954,7 +970,7 @@ export class AgentDelegationService {
               },
             }
           : {}),
-        scope: createAgentChildRunScope(record),
+        scope: { ...createAgentChildRunScope(record), ...parentInvocationEventScope(context.parentInvocation) },
         onEvent: childEventSink,
         signal: active.controller.signal,
       });
@@ -1046,6 +1062,9 @@ export class AgentDelegationService {
       await deadlineMonitor;
       permit?.release();
       resourceLease?.release();
+      if (this.options.repository.get(record.id)?.status !== AgentChildRunStatuses.AwaitingSupervisor) {
+        this.parentInvocations.delete(record.id);
+      }
     }
   }
 
@@ -1053,11 +1072,13 @@ export class AgentDelegationService {
     declarations: readonly AgentToolResourceClaimDeclaration[] | undefined,
   ): Promise<AgentToolResourceLeaseRequest | undefined> {
     if (!declarations || declarations.length === 0) return undefined;
+    return this.requireResourceClaims().projectDeclarations(declarations);
+  }
+
+  private requireResourceClaims(): AgentToolResourceClaimProjectorPort {
     const projector = this.resourceClaims;
-    if (!projector?.projectDeclarations) {
-      throw new Error("Delegated resource declarations require a registered resource capability projector.");
-    }
-    return projector.projectDeclarations(declarations);
+    if (!projector) throw new Error("Agent delegation requires a bound resource capability projector.");
+    return projector;
   }
 
   private projectResourceClaimSummaries(
@@ -1113,10 +1134,26 @@ export class AgentDelegationService {
 
   private emit(sink: AgentEventSink | undefined, event: AgentDomainEvent): Promise<void> {
     const childRunId = readChildRunId(event);
-    return emitAgentEvent(sink ?? ((candidate) => this.options.events.emit(candidate)), event).finally(() => {
-      if (!childRunId) return;
-      this.waits.notify(childRunId);
-    });
+    const scopedEvent = scopeChildEventToParentInvocation(
+      event,
+      childRunId ? this.parentInvocations.get(childRunId) : undefined,
+    );
+    const durableEvent = scopedEvent.eventId ? scopedEvent : { ...scopedEvent, eventId: createOpaqueId("event") };
+    // Raw child-session deltas already travel through the owning parent
+    // request sink. Only parent-scoped lifecycle events are mirrored to the
+    // global relay, otherwise the same event could race persistence under the
+    // child session and disappear from the parent's history. When the request
+    // sink is gone, the relay remains the recovery path for every event.
+    const deliveries = [
+      sink ? emitAgentEvent(sink, durableEvent) : Promise.resolve(),
+      shouldMirrorToOrchestrationRelay(durableEvent, sink) ? this.options.events.emit(durableEvent) : Promise.resolve(),
+    ];
+    return Promise.allSettled(deliveries)
+      .then(() => undefined)
+      .finally(() => {
+        if (!childRunId) return;
+        this.waits.notify(childRunId);
+      });
   }
 
   /**
@@ -1125,6 +1162,40 @@ export class AgentDelegationService {
    * the persisted child record remains the source of truth for recovery.
    */
   private notifyCompletion(record: AgentChildRunRecord): void {
+    if (!isAgentChildRunBackgroundDeliverable(record.status)) return;
     void this.options.completion?.completed(record).catch(() => undefined);
   }
+}
+
+function shouldMirrorToOrchestrationRelay(event: AgentDomainEvent, sink: AgentEventSink | undefined): boolean {
+  if (!sink) return true;
+  const context = event.context as AgentEventContext;
+  const parentSessionId = context.scope?.parentSessionId;
+  return parentSessionId !== undefined && context.sessionId === parentSessionId;
+}
+
+function scopeChildEventToParentInvocation(
+  event: AgentDomainEvent,
+  invocation: AgentDelegationContext["parentInvocation"],
+): AgentDomainEvent {
+  const scope = parentInvocationEventScope(invocation);
+  return Object.keys(scope).length > 0 ? withEventContext(event, { scope }) : event;
+}
+
+function parentInvocationEventScope(
+  invocation: AgentDelegationContext["parentInvocation"],
+): Pick<
+  AgentEventScope,
+  "parentAgentStep" | "parentModelMessageIndex" | "parentModelContentIndex" | "parentToolCallId"
+> {
+  return invocation
+    ? {
+        parentAgentStep: invocation.agentStep,
+        parentModelMessageIndex: invocation.modelMessageIndex,
+        ...(invocation.modelContentIndex === undefined
+          ? {}
+          : { parentModelContentIndex: invocation.modelContentIndex }),
+        ...(invocation.toolCallId ? { parentToolCallId: invocation.toolCallId } : {}),
+      }
+    : {};
 }

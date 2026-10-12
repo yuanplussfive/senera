@@ -18,6 +18,7 @@ export interface WorkspaceContextMenuProps {
   onOpenSessionPanel?: () => void;
   onOpenWorkflowPanel?: () => void;
   onRefreshSession?: () => void;
+  onRefreshInterface?: () => void;
 }
 
 export function WorkspaceContextMenu({
@@ -26,6 +27,7 @@ export function WorkspaceContextMenu({
   onOpenSessionPanel,
   onOpenWorkflowPanel,
   onRefreshSession,
+  onRefreshInterface,
 }: WorkspaceContextMenuProps): JSX.Element {
   const triggerRef = useRef<HTMLSpanElement>(null);
   const [selectionAvailable, setSelectionAvailable] = useState(false);
@@ -95,6 +97,13 @@ export function WorkspaceContextMenu({
           onSelect={() => onRefreshSession?.()}
         >
           {frontendMessage("workspace.context.refreshSession")}
+        </ContextMenuItem>
+        <ContextMenuItem
+          icon={<AppIcon icon="refresh" className="h-4 w-4" />}
+          disabled={!onRefreshInterface}
+          onSelect={() => onRefreshInterface?.()}
+        >
+          {frontendMessage("workspace.context.refreshInterface")}
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem

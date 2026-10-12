@@ -4,9 +4,8 @@
   "presentation": {
     "category": "execution-list",
     "icon": "activity",
-    "activity": { "action": { "zh-CN": "查看执行资源", "en-US": "List execution" } }
+    "activity": { "action": { "zh-CN": "列出", "en-US": "List" } }
   },
-  "observationProjection": "observations/collection.projection.json",
   "description": "列出当前会话拥有的后台终端和进程资源。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

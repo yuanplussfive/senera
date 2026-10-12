@@ -91,6 +91,7 @@ async function runMcpTool(callTool: (options: AgentMcpToolCallOptions) => Promis
     resourcePublisher: {
       publishBytes: async ({ bytes, name, mime }) => ({
         resourceUri: "senera://resource/upl_test-resource",
+        localPath: ".senera/uploads/upl_test-resource/original.png",
         name,
         mime,
         size: bytes.byteLength,

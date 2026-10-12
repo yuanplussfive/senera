@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   spawnSeneraInheritedProcess,
   spawnSeneraOwnedProcess,
+  type SeneraOwnedProcessExit,
 } from "../../../Source/AgentSystem/Execution/SeneraOwnedProcessSpawner.js";
 
 const ProcessExitTimeoutMs = 3_000;
@@ -45,27 +46,44 @@ describe("owned process spawner behavior", () => {
     await expect(ownedProcess.closed).resolves.toMatchObject({ exitCode: 0, signal: null });
   });
 
-  test.runIf(process.platform === "win32")(
-    "does not retry a target outside the Job Object when target startup fails",
-    async () => {
-      const unavailableCommand = path.join(process.cwd(), `missing-owned-process-${process.pid}.exe`);
-      const warnings: NodeJS.ErrnoException[] = [];
-      const onWarning = (warning: Error): void => {
-        warnings.push(warning);
-      };
-      process.on("warning", onWarning);
+  test.runIf(process.platform === "win32")("keeps the owned Job alive until detached descendants exit", async () => {
+    const childScript = "setTimeout(() => process.exit(0), 750)";
+    const launcherScript = [
+      'const { spawn } = require("node:child_process");',
+      `spawn(process.execPath, ["-e", ${JSON.stringify(childScript)}], { stdio: "ignore", windowsHide: true });`,
+    ].join(" ");
+    const ownedProcess = await spawnSeneraOwnedProcess(process.execPath, ["-e", launcherScript], defaultSpawnOptions());
 
-      try {
-        await expect(spawnSeneraOwnedProcess(unavailableCommand, [], defaultSpawnOptions())).rejects.toMatchObject({
-          code: "ENOENT",
-        });
-        expect(warnings.map((warning) => warning.code)).not.toContain("SENERA_WINDOWS_PROCESS_SUPERVISION_DEGRADED");
-      } finally {
-        process.off("warning", onWarning);
-      }
-    },
-  );
+    try {
+      expect(await waitForOwnedExit(ownedProcess.closed, 500)).toBeUndefined();
+      const result = await waitForOwnedExit(ownedProcess.closed, ProcessExitTimeoutMs);
+      expect(result).toMatchObject({ exitCode: 0, signal: null });
+    } finally {
+      await ownedProcess.terminateTree("SIGKILL").catch(() => undefined);
+    }
+  });
+
+  test.runIf(process.platform === "win32")("fails when a Windows target cannot start", async () => {
+    const unavailableCommand = path.join(process.cwd(), `missing-owned-process-${process.pid}.exe`);
+    await expect(spawnSeneraOwnedProcess(unavailableCommand, [], defaultSpawnOptions())).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
 });
+
+function waitForOwnedExit(
+  closed: Promise<SeneraOwnedProcessExit>,
+  timeoutMs: number,
+): Promise<SeneraOwnedProcessExit | undefined> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(undefined), timeoutMs);
+    timer.unref();
+    void closed.then((result) => {
+      clearTimeout(timer);
+      resolve(result);
+    });
+  });
+}
 
 function defaultSpawnOptions() {
   return {

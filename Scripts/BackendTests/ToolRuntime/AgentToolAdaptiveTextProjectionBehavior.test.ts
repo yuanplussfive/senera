@@ -24,14 +24,12 @@ describe("AgentToolAdaptiveTextProjector", () => {
     };
     const segmentation = createAgentToolTextSegmentation(
       source,
-      ["identifiers", "urls", "logs"],
       new AgentModelTokenEstimator({ model: "gpt-4o" }),
       defaults.maximumUnits,
     );
     const projection = new AgentToolAdaptiveTextProjector("gpt-4o", defaults).project(source, {
       tokenLimit: 500,
       query: "find the artifact URI and source file",
-      preserve: ["identifiers", "urls", "logs"],
     });
 
     expect(segmentation.sourceUnits).toBeGreaterThan(defaults.maximumUnits);

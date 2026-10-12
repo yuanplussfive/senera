@@ -15,9 +15,14 @@ import {
   projectWorkflowActivities,
   projectWorkflowSteps,
 } from "./workflowPresentationProjection";
-import { projectToolActivity, projectToolActivityInspection } from "./toolActivityPresentation";
+import {
+  projectToolActivity,
+  projectToolActivityInspection,
+  type ToolActivityInspection,
+} from "./toolActivityPresentation";
 import { projectToolStagePresentation } from "./toolStagePresentation";
 import type { ToolStageIconName } from "./toolStageIconContract";
+import { ExecutionStatusTones } from "../../shared/ui/executionStatusTone";
 
 export type FeedItemKind = "activity" | "tool" | "trace";
 
@@ -28,6 +33,7 @@ export interface FeedItem {
   title: string;
   subtitle?: string;
   meta?: string;
+  toolActivity?: ToolActivityInspection;
   step?: TimelineStep;
 }
 
@@ -58,33 +64,38 @@ export interface FeedModel {
 const TimelineStatusPresentation = {
   running: {
     labelKey: "workflow.feed.running",
-    dotClass: "bg-accent-solid",
-    textClass: "text-accent-content",
+    dotClass: ExecutionStatusTones.running.dot,
+    textClass: ExecutionStatusTones.running.text,
   },
   cancelling: {
     labelKey: "workflow.run.status.cancelling",
-    dotClass: "bg-accent-content",
-    textClass: "text-accent-content",
+    dotClass: ExecutionStatusTones.cancelling.dot,
+    textClass: ExecutionStatusTones.cancelling.text,
   },
   pending: {
     labelKey: "workflow.feed.pending",
-    dotClass: "bg-ink-300",
-    textClass: "text-ink-400",
+    dotClass: ExecutionStatusTones.pending.dot,
+    textClass: ExecutionStatusTones.pending.text,
   },
   failed: {
     labelKey: "workflow.feed.failed",
-    dotClass: "bg-brick-500",
-    textClass: "text-brick-500",
+    dotClass: ExecutionStatusTones.failed.dot,
+    textClass: ExecutionStatusTones.failed.text,
   },
   done: {
     labelKey: "workflow.feed.done",
-    dotClass: "bg-moss-500",
-    textClass: "text-moss-600",
+    dotClass: ExecutionStatusTones.done.dot,
+    textClass: ExecutionStatusTones.done.text,
+  },
+  cancelled: {
+    labelKey: "workflow.step.status.cancelled",
+    dotClass: ExecutionStatusTones.cancelled.dot,
+    textClass: ExecutionStatusTones.cancelled.text,
   },
   neutral: {
     labelKey: undefined,
-    dotClass: "bg-ink-300",
-    textClass: "text-ink-400",
+    dotClass: ExecutionStatusTones.neutral.dot,
+    textClass: ExecutionStatusTones.neutral.text,
   },
 } as const satisfies Record<
   TimelineStepStatus | "neutral",
@@ -439,18 +450,23 @@ function mapHeadlineItem(
   }
 
   if (activeStep?.kind === "tool" && activeStep.toolName) {
+    const toolActivity = projectToolActivityInspection({
+      toolName: activeStep.toolName,
+      origin: activeStep.toolOrigin,
+      arguments: activeStep.toolArgs,
+      result: activeStep.toolPresentation,
+      durationMs: activeStep.durationMs,
+      status: activeStep.status === "failed" ? "failed" : activeStep.status === "done" ? "completed" : "active",
+    });
     return {
       id: activeStep.id,
       kind: "tool",
       status: activeStep.status,
-      title: projectToolActivity({
-        toolName: activeStep.toolName,
-        origin: activeStep.toolOrigin,
-        arguments: activeStep.toolArgs,
-        status: activeStep.status === "failed" ? "failed" : activeStep.status === "done" ? "completed" : "active",
-      }),
+      title: toolActivity.label,
       subtitle: summarizeToolSubtitle(activeStep),
       meta: activeStep.callId ? `call ${activeStep.callId.slice(0, 12)}` : undefined,
+      toolActivity,
+      step: activeStep,
     };
   }
 
@@ -547,15 +563,24 @@ function mapHeadlineItem(
 }
 
 function mapToolItem(step: TimelineStep): FeedItem {
+  const activity = step.toolName
+    ? projectToolActivityInspection({
+        toolName: step.toolName,
+        origin: step.toolOrigin,
+        arguments: step.toolArgs,
+        result: step.toolPresentation,
+        durationMs: step.durationMs,
+        status: step.status === "failed" ? "failed" : step.status === "done" ? "completed" : "active",
+      })
+    : undefined;
   return {
     id: step.id,
     kind: "tool",
     status: step.status,
-    // The execution console is an inspection surface. Preserve the runtime identity here;
-    // the compact action preview is rendered as the secondary conversation line.
-    title: step.toolName ?? step.title,
-    subtitle: summarizeToolActivityLabel(step),
+    title: activity?.label ?? step.toolName ?? step.title,
+    subtitle: summarizeToolSubtitle(step),
     meta: toolItemMeta(step),
+    ...(activity ? { toolActivity: activity } : {}),
     step,
   };
 }
@@ -686,17 +711,6 @@ function summarizeToolSubtitle(step: TimelineStep): string | undefined {
   return step.description;
 }
 
-function summarizeToolActivityLabel(step: TimelineStep): string | undefined {
-  if (!step.toolName) return undefined;
-  const activity = projectToolActivityInspection({
-    toolName: step.toolName,
-    origin: step.toolOrigin,
-    arguments: step.toolArgs,
-    status: step.status === "failed" ? "failed" : step.status === "done" ? "completed" : "active",
-  });
-  return activity.argumentPreview ? activity.label : undefined;
-}
-
 function summarizeToolResult(value: unknown): string | undefined {
   if (!value || typeof value !== "object") return summarizeUnknown(value);
   const record = value as Record<string, unknown>;
@@ -737,6 +751,8 @@ function derivePendingLabel(run: RunRecord, activeStep?: TimelineStep, latestDec
       toolName: activeStep.toolName,
       origin: activeStep.toolOrigin,
       arguments: activeStep.toolArgs,
+      result: activeStep.toolPresentation,
+      durationMs: activeStep.durationMs,
       status: activeStep.status === "failed" ? "failed" : activeStep.status === "done" ? "completed" : "active",
     });
   }

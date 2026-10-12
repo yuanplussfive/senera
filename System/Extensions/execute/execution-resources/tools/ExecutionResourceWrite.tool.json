@@ -5,12 +5,11 @@
     "category": "execution-write",
     "icon": "terminal",
     "activity": {
-      "action": { "zh-CN": "写入终端", "en-US": "Write terminal" },
+      "action": { "zh-CN": "写入", "en-US": "Write" },
       "argumentPath": "/input",
       "detailPaths": ["/resourceId"]
     }
   },
-  "observationProjection": "observations/resource.projection.json",
   "description": "向后台执行资源 stdin 写入文本并处理流背压。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

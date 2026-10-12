@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
 import { toast } from "sonner";
-import type { ModelThinkingLevel, UploadAttachmentData, WsRequest } from "../api/eventTypes";
+import type { ExplicitActivationSet, ModelThinkingLevel, UploadAttachmentData, WsRequest } from "../api/eventTypes";
 import type { ApprovalBatchReference, ApprovalDecision } from "../api/approvalEventTypes";
 import type { InteractionInputAction, InteractionInputContent } from "../api/eventTypes";
 import type { SocketStatus } from "../api/useAgentSocket";
@@ -17,6 +17,7 @@ export interface RegenerateFromRequest {
   attachments?: UploadAttachmentData[];
   modelProviderId?: string;
   thinkingLevel?: ModelThinkingLevel;
+  activations?: ExplicitActivationSet;
 }
 
 export interface UseChatCommandsOptions {
@@ -26,7 +27,7 @@ export interface UseChatCommandsOptions {
     requestId: string,
     input: string,
     attachments?: UploadAttachmentData[],
-    options?: { createRun?: boolean },
+    options?: { createRun?: boolean; metadata?: import("../api/eventTypes").ConversationEntryMetadata },
   ) => void;
   lastSendRef: MutableRefObject<LastSentMessage | null>;
   registerSession: (sessionId: string, title?: string, modelProviderId?: string | null) => void;
@@ -41,6 +42,8 @@ export interface ChatCommandsHandle {
   editUserMessage: (message: ChatMessage, nextContent: string) => void;
   forkFromMessage: (message: Pick<ChatMessage, "requestId">) => void;
   regenerateMessage: (message: ChatMessage) => void;
+  retryRun: (message: ChatMessage) => void;
+  continueRun: (message: ChatMessage) => void;
   resolveApproval: (approvalId: string, decision: ApprovalDecision) => void;
   resolveApprovalBatch: (batch: ApprovalBatchReference, decision: ApprovalDecision) => void;
   resolveInteractionInput: (
@@ -48,7 +51,12 @@ export interface ChatCommandsHandle {
     action: InteractionInputAction,
     content?: InteractionInputContent,
   ) => void;
-  sendMessage: (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode) => boolean;
+  sendMessage: (
+    input: string,
+    attachments?: UploadAttachmentData[],
+    queueMode?: MessageQueueMode,
+    activations?: ExplicitActivationSet,
+  ) => boolean;
 }
 
 export type MessageQueueMode = Extract<WsRequest, { type: "session.message" }>["queueMode"];
@@ -62,6 +70,7 @@ export interface LastSentMessage {
   thinkingLevel?: ModelThinkingLevel;
   approvalMode: ExecutionApprovalMode;
   queueMode?: MessageQueueMode;
+  activations?: ExplicitActivationSet;
 }
 
 export type SendTargetResolution =
@@ -126,6 +135,7 @@ export function findRegenerateInput({
       kind: "found";
       input: string;
       requestId: string;
+      activations?: ExplicitActivationSet;
     }
   | { kind: "missing_request" }
   | { kind: "not_found" } {
@@ -146,6 +156,7 @@ export function findRegenerateInput({
     input: userMessage.content,
     attachments: userMessage.attachments,
     requestId: message.requestId,
+    activations: userMessage.metadata?.activation,
   };
 }
 
@@ -200,6 +211,7 @@ export function useChatCommands({
         input: request.nextInput,
         approvalMode,
         attachments: request.attachments,
+        activations: request.activations,
       });
       if (!ok) {
         toast.error(frontendMessage("chat.operationDisconnected"));
@@ -215,8 +227,11 @@ export function useChatCommands({
         modelProviderId: request.modelProviderId,
         thinkingLevel: request.thinkingLevel,
         approvalMode,
+        activations: request.activations,
       };
-      appendUserMessage(request.sessionId, requestId, request.nextInput, request.attachments);
+      appendUserMessage(request.sessionId, requestId, request.nextInput, request.attachments, {
+        metadata: request.activations ? { activation: request.activations } : undefined,
+      });
       return true;
     },
     [appendUserMessage, lastSendRef, send],
@@ -259,10 +274,73 @@ export function useChatCommands({
         attachments: result.attachments,
         modelProviderId: useStore.getState().selectedModelProviderId ?? undefined,
         thinkingLevel: useStore.getState().selectedThinkingLevel ?? undefined,
+        activations: result.activations,
       });
     },
     [activeSessionId, regenerateFromRequest, status],
   );
+
+  const recoverRun = useCallback(
+    (message: ChatMessage, recoveryMode: "retry" | "continue"): void => {
+      if (!activeSessionId || status !== "open" || !message.requestId) return;
+      const state = useStore.getState();
+      const failedRun = state.sessions[activeSessionId]?.runs.find((run) => run.requestId === message.requestId);
+      if (!failedRun || (failedRun.status !== "failed" && failedRun.status !== "cancelled")) return;
+      const sourceUserMessage = state.sessions[activeSessionId]?.messages.find(
+        (candidate) => candidate.role === "user" && candidate.requestId === message.requestId,
+      );
+      const activations = sourceUserMessage?.metadata?.activation;
+      const requestId = generateId();
+      const approvalMode = state.executionApprovalMode;
+      if (!failedRun.recoveryModes?.includes(recoveryMode)) return;
+      if (!state.beginRunRecovery(activeSessionId, message.requestId, requestId, recoveryMode)) return;
+      const ok = send({
+        type: "session.retry",
+        sessionId: activeSessionId,
+        failedRequestId: message.requestId,
+        requestId,
+        recoveryMode,
+        modelProviderId: state.selectedModelProviderId ?? undefined,
+        thinkingLevel: state.selectedThinkingLevel ?? undefined,
+        approvalMode,
+        activations,
+      });
+      if (!ok) {
+        state.rejectRunRecovery(activeSessionId, requestId, frontendMessage("chat.operationDisconnected"));
+        toast.error(frontendMessage("chat.operationDisconnected"));
+        return;
+      }
+      lastSendRef.current = {
+        sessionId: activeSessionId,
+        requestId,
+        input: recoveryMode === "continue" ? "continue" : failedRun.input,
+        modelProviderId: state.selectedModelProviderId ?? undefined,
+        thinkingLevel: state.selectedThinkingLevel ?? undefined,
+        approvalMode,
+        activations,
+      };
+    },
+    [activeSessionId, lastSendRef, send, status],
+  );
+
+  const retryRun = useCallback((message: ChatMessage): void => recoverRun(message, "retry"), [recoverRun]);
+  const continueRun = useCallback((message: ChatMessage): void => recoverRun(message, "continue"), [recoverRun]);
+
+  useEffect(() => {
+    if (status === "open") return;
+    const state = useStore.getState();
+    for (const session of Object.values(state.sessions)) {
+      for (const run of session.runs) {
+        if (run.recoveryAttempt?.status === "pending") {
+          state.rejectRunRecovery(
+            session.sessionId,
+            run.recoveryAttempt.requestId,
+            frontendMessage("chat.operationDisconnected"),
+          );
+        }
+      }
+    }
+  }, [status]);
 
   const forkFromMessage = useCallback(
     (message: Pick<ChatMessage, "requestId">): void => {
@@ -305,6 +383,7 @@ export function useChatCommands({
         attachments: message.attachments,
         modelProviderId: useStore.getState().selectedModelProviderId ?? undefined,
         thinkingLevel: useStore.getState().selectedThinkingLevel ?? undefined,
+        activations: message.metadata?.activation,
       });
     },
     [activeSessionId, regenerateFromRequest, status],
@@ -332,7 +411,12 @@ export function useChatCommands({
   );
 
   const sendMessage = useCallback(
-    (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode): boolean => {
+    (
+      input: string,
+      attachments?: UploadAttachmentData[],
+      queueMode?: MessageQueueMode,
+      activations?: ExplicitActivationSet,
+    ): boolean => {
       const state = useStore.getState();
       const modelProviderId = state.selectedModelProviderId ?? undefined;
       const thinkingLevel = state.selectedThinkingLevel ?? undefined;
@@ -374,6 +458,7 @@ export function useChatCommands({
         attachments,
         disposition: createIfMissing ? "create_if_missing" : undefined,
         queueMode,
+        activations,
       });
       if (!ok) {
         toast.error(frontendMessage("chat.sendDisconnected"));
@@ -385,6 +470,7 @@ export function useChatCommands({
       serverKnownSessionIdsRef.current.add(targetSessionId);
       appendUserMessage(targetSessionId, requestId, input, attachments, {
         createRun: queueMode === undefined,
+        metadata: activations ? { activation: activations } : undefined,
       });
       lastSendRef.current = {
         sessionId: targetSessionId,
@@ -395,6 +481,7 @@ export function useChatCommands({
         thinkingLevel,
         approvalMode,
         queueMode,
+        activations,
       };
       return true;
     },
@@ -461,6 +548,8 @@ export function useChatCommands({
     editUserMessage,
     forkFromMessage,
     regenerateMessage,
+    retryRun,
+    continueRun,
     resolveApproval,
     resolveApprovalBatch,
     resolveInteractionInput,

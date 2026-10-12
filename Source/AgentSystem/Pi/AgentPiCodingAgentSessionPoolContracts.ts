@@ -13,16 +13,14 @@ import type { AgentPiPlanningCompilerFactory } from "./AgentPiPlanningCompiler.j
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentToolExposureState } from "../ToolRuntime/AgentToolExposureState.js";
 import type { AgentResidentSpeechProjector } from "../ResidentSpeech/AgentResidentSpeechTypes.js";
-import type { AgentInferenceBudgetPort } from "../ModelEndpoints/AgentInferenceBudget.js";
-import type { AgentPiCompactionCandidateStore } from "./AgentPiCompactionCandidateStore.js";
-import type { AgentPiCompactionCandidateRuntimeStatus } from "./AgentPiCompactionCandidateLifecycle.js";
+import type { AgentToolResultObservationCompressor } from "../ToolRuntime/AgentToolResultObservationCompressor.js";
+import type { AgentPiProjectContext } from "./AgentPiProjectContext.js";
 
 export interface AgentPiCodingAgentSessionPoolOptions {
+  workspaceLayout?: import("../Core/AgentWorkspaceLayout.js").AgentWorkspaceLayout;
   workspaceRoot: string;
   sessionsRoot: string;
-  systemSkillsRoot: string;
   systemPromptPath: string;
-  additionalSkillPaths?: readonly string[];
   provider: AgentPiProviderProjection;
   modelProvider: ResolvedAgentModelProviderConfig;
   planningCompilerFactory: AgentPiPlanningCompilerFactory;
@@ -31,11 +29,9 @@ export interface AgentPiCodingAgentSessionPoolOptions {
   maxIdleSessions?: number;
   diagnostics?: AgentPiDiagnosticSink;
   beforeCompaction?: (sessionId: string) => Promise<void>;
-  /** Derived checkpoint cache; never a source of authoritative session history. */
-  compactionCandidateStore?: AgentPiCompactionCandidateStore;
-  /** Shared admission control for non-foreground compaction preparation. */
-  inferenceBudget?: AgentInferenceBudgetPort;
-  inferenceScope?: () => string | undefined;
+  afterCompaction?: (sessionId: string) => Promise<void> | void;
+  observationCompressor: AgentToolResultObservationCompressor;
+  observationTokenBudget: number;
 }
 
 export interface AgentPiCodingAgentLeaseInput {
@@ -51,18 +47,19 @@ export interface AgentPiCodingAgentLeaseInput {
 export interface AgentPiCodingAgentLeaseResult {
   session: AgentPiSession;
   storage: "created" | "existing";
-  historyMigrationRequired: boolean;
 }
 
 export interface AgentPiPooledCodingSession {
+  readonly registerDiscoveredTools: (
+    tools: readonly import("@earendil-works/pi-coding-agent").ToolDefinition[],
+  ) => void;
   readonly session: CodingAgentSession;
   readonly sessionManager: SessionManager;
   readonly frame: AgentPiMutableSessionFrame;
   readonly resourceLoader: DefaultResourceLoader;
+  readonly projectContext: AgentPiProjectContext;
   readonly disposeDiagnostics: () => void;
   disposeToolExposure: () => void;
-  /** Runtime-only status; candidate contents remain inside the derived cache. */
-  compactionCandidateStatus?: () => AgentPiCompactionCandidateRuntimeStatus;
   toolExposure?: AgentToolExposureState;
   toolFingerprint: string;
   skillCatalogFingerprint: string;

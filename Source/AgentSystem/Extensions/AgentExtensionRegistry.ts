@@ -68,6 +68,14 @@ export class AgentExtensionRegistry {
     return [...(this.toolExtensions.get(toolOwnerIdentity(owner))?.tools ?? [])];
   }
 
+  listToolsForOwnerName(kind: AgentExtensionOwner["kind"], name: string): RegisteredTool[] {
+    return [...(this.toolExtensions.get(`${kind}:${name}`)?.tools ?? [])];
+  }
+
+  hasExtensionOwner(kind: AgentExtensionOwner["kind"], name: string): boolean {
+    return this.toolExtensions.has(`${kind}:${name}`) || this.skillSources.has(`${kind}:${name}`);
+  }
+
   registerSidecarToolExtension(owner: AgentExtensionOwner, tools: readonly RegisteredSidecarTool[]): void {
     assertUniqueBy(tools, (tool) => tool.capability, `sidecar capability in extension ${owner.name}`);
     const capabilities = new Set<string>();

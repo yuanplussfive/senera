@@ -1,3 +1,4 @@
+import net from "node:net";
 import { z } from "zod";
 import type { ConfigFormDocument } from "../Config/AgentConfigFormDocument.js";
 import type { AgentExtensionLocalizedText } from "../Extensions/AgentExtensionLocalization.js";
@@ -7,9 +8,7 @@ export type AgentBrowserScreenshotFormat = (typeof AgentBrowserScreenshotFormatV
 
 export const AgentBrowserLoadStateValues = ["domcontentloaded", "load", "networkidle"] as const;
 export type AgentBrowserLoadState = (typeof AgentBrowserLoadStateValues)[number];
-
-export const AgentBrowserNetworkAccessModeValues = ["public", "allowlist"] as const;
-export type AgentBrowserNetworkAccessMode = (typeof AgentBrowserNetworkAccessModeValues)[number];
+export const AgentBrowserMaximumUrlLength = 65_536;
 
 export const DefaultAgentBrowserConfiguration = {
   runtime: {
@@ -24,10 +23,7 @@ export const DefaultAgentBrowserConfiguration = {
     maxWaitMs: 900_000,
   },
   network: {
-    accessMode: "public" as const,
-    allowedDomains: [] as string[],
-    allowPrivateNetworks: false,
-    allowSyntheticProxyAddresses: true,
+    blockedDomains: [] as string[],
   },
   capture: {
     defaultFormat: "png" as const,
@@ -36,39 +32,21 @@ export const DefaultAgentBrowserConfiguration = {
   },
 } as const;
 
-const AgentBrowserDomainPattern = z
+const AgentBrowserBlockedDomainPattern = z
   .string()
   .trim()
   .min(1)
   .max(253)
-  .refine(isAgentBrowserDomainPattern, "Allowed domains must be a hostname or a *.hostname pattern.");
+  .refine(isAgentBrowserDomainPattern, "Blocked domains must be a hostname, IP address, wildcard hostname, or *.");
 
 const AgentBrowserNetworkConfigurationSchema = z.preprocess(
-  (value) => {
-    if (
-      !isRecord(value) ||
-      "accessMode" in value ||
-      !Array.isArray(value.allowedDomains) ||
-      value.allowedDomains.length === 0
-    ) {
-      return value;
-    }
-    // Preserve restrictions configured before accessMode was introduced.
-    return { ...value, accessMode: "allowlist" };
-  },
+  migrateLegacyBrowserNetworkConfiguration,
   z
     .object({
-      accessMode: z
-        .enum(AgentBrowserNetworkAccessModeValues)
-        .default(DefaultAgentBrowserConfiguration.network.accessMode),
-      allowedDomains: z
-        .array(AgentBrowserDomainPattern)
+      blockedDomains: z
+        .array(AgentBrowserBlockedDomainPattern)
         .max(128)
-        .default(DefaultAgentBrowserConfiguration.network.allowedDomains),
-      allowPrivateNetworks: z.boolean().default(DefaultAgentBrowserConfiguration.network.allowPrivateNetworks),
-      allowSyntheticProxyAddresses: z
-        .boolean()
-        .default(DefaultAgentBrowserConfiguration.network.allowSyntheticProxyAddresses),
+        .default(DefaultAgentBrowserConfiguration.network.blockedDomains),
     })
     .strict(),
 );
@@ -107,7 +85,7 @@ export const AgentBrowserConfigurationSchema = z
           .number()
           .int()
           .min(256)
-          .max(65_536)
+          .max(AgentBrowserMaximumUrlLength)
           .default(DefaultAgentBrowserConfiguration.runtime.maxUrlLength),
         maxSelectorLength: z
           .number()
@@ -250,7 +228,7 @@ export const AgentBrowserConfigurationUi = {
             label: { "zh-CN": "URL 长度上限", "en-US": "URL length limit" },
             type: "number",
             min: 256,
-            max: 65_536,
+            max: AgentBrowserMaximumUrlLength,
             step: 1,
             required: true,
             essential: false,
@@ -291,61 +269,24 @@ export const AgentBrowserConfigurationUi = {
         id: "network",
         label: { "zh-CN": "网络边界", "en-US": "Network boundary" },
         description: {
-          "zh-CN": "默认允许公开互联网访问。固定白名单模式可将浏览器限制在指定域名；私有网络始终需要单独开启。",
+          "zh-CN":
+            "默认可访问网络地址；这里配置的域名始终拒绝访问。本地文件和私有网络地址在完全权限模式下开放，其他模式需要审批。",
           "en-US":
-            "Public internet access is allowed by default. Allowlist mode restricts the browser to configured domains; private networks always require a separate opt-in.",
+            "Network addresses are allowed by default; listed domains are always blocked. Local files and private networks require approval outside Full Access mode.",
         },
         fields: [
           {
-            path: ["network", "accessMode"],
-            label: { "zh-CN": "公开网络访问", "en-US": "Public network access" },
-            type: "string",
-            options: [...AgentBrowserNetworkAccessModeValues],
-            optionLabels: {
-              public: { "zh-CN": "允许所有公开站点", "en-US": "Allow all public sites" },
-              allowlist: { "zh-CN": "仅允许固定白名单", "en-US": "Restrict to allowlist" },
-            },
-            required: true,
-            essential: true,
-          },
-          {
-            path: ["network", "allowedDomains"],
-            label: { "zh-CN": "允许域名", "en-US": "Allowed domains" },
+            path: ["network", "blockedDomains"],
+            label: { "zh-CN": "拒绝访问的域名", "en-US": "Blocked domains" },
             description: {
-              "zh-CN":
-                "仅在“仅允许固定白名单”模式下生效。使用 example.com 或 *.example.com；列表为空时拒绝访问所有网站。",
+              "zh-CN": "使用 example.com 拒绝该域名，使用 *.example.com 拒绝其子域名；* 拒绝所有带主机名的地址。",
               "en-US":
-                "Only applies in allowlist mode. Use example.com or *.example.com; an empty list blocks all websites.",
+                "Use example.com to block one host, *.example.com to block its subdomains, or * to block all hostnames.",
             },
             type: "array",
             itemType: "string",
             required: false,
             essential: true,
-          },
-          {
-            path: ["network", "allowPrivateNetworks"],
-            label: { "zh-CN": "允许私有网络", "en-US": "Allow private networks" },
-            description: {
-              "zh-CN": "仅用于受信任的内网测试环境；默认阻止本机、局域网和保留地址。",
-              "en-US":
-                "Only for trusted internal test environments. Local, private, and reserved addresses are blocked by default.",
-            },
-            type: "boolean",
-            required: true,
-            essential: false,
-          },
-          {
-            path: ["network", "allowSyntheticProxyAddresses"],
-            label: { "zh-CN": "允许代理映射地址", "en-US": "Allow proxy-mapped addresses" },
-            description: {
-              "zh-CN":
-                "允许经本机代理映射到 198.18.0.0/15 的公开域名；不允许直接访问该网段，也不放开本机或局域网地址。",
-              "en-US":
-                "Allows public hostnames mapped to 198.18.0.0/15 by a local proxy. Direct access to that range and local networks remain blocked.",
-            },
-            type: "boolean",
-            required: true,
-            essential: false,
           },
         ],
       },
@@ -393,19 +334,59 @@ export const AgentBrowserConfigurationUi = {
 
 export function isAgentBrowserDomainPattern(value: string): boolean {
   const normalized = value.trim().toLowerCase();
+  if (normalized === "*") return true;
   const hostname = normalized.startsWith("*.") ? normalized.slice(2) : normalized;
   if (!hostname || hostname.includes("*")) return false;
+  if (net.isIP(hostname.replace(/^\[|\]$/gu, ""))) return true;
   return /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/iu.test(hostname);
 }
 
 export function matchesAgentBrowserDomain(hostname: string, pattern: string): boolean {
-  const normalizedHost = hostname.trim().toLowerCase().replace(/\.$/u, "");
+  const normalizedHost = normalizeAgentBrowserHostname(hostname);
   const normalizedPattern = pattern.trim().toLowerCase().replace(/\.$/u, "");
+  if (normalizedPattern === "*") return normalizedHost.length > 0;
   if (normalizedPattern.startsWith("*.")) {
     const suffix = normalizedPattern.slice(2);
     return normalizedHost.endsWith(`.${suffix}`) && normalizedHost !== suffix;
   }
-  return normalizedHost === normalizedPattern;
+  return normalizedHost === normalizeAgentBrowserHostname(normalizedPattern);
+}
+
+function migrateLegacyBrowserNetworkConfiguration(value: unknown): unknown {
+  if (!isRecord(value)) return value;
+  const hasLegacyConfiguration =
+    "accessMode" in value ||
+    "allowedDomains" in value ||
+    "allowPrivateNetworks" in value ||
+    "allowSyntheticProxyAddresses" in value;
+  if (!hasLegacyConfiguration) return value;
+
+  const accessMode = value.accessMode;
+  if (accessMode !== undefined && accessMode !== "public" && accessMode !== "allowlist") return value;
+  if (value.allowedDomains !== undefined && !Array.isArray(value.allowedDomains)) return value;
+
+  const {
+    accessMode: _accessMode,
+    allowedDomains,
+    allowPrivateNetworks: _allowPrivateNetworks,
+    allowSyntheticProxyAddresses: _allowSyntheticProxyAddresses,
+    ...current
+  } = value;
+  const hadAllowlist =
+    accessMode === "allowlist" ||
+    (accessMode === undefined && Array.isArray(allowedDomains) && allowedDomains.length > 0);
+  return {
+    ...current,
+    blockedDomains: current.blockedDomains ?? (hadAllowlist ? ["*"] : []),
+  };
+}
+
+function normalizeAgentBrowserHostname(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/gu, "")
+    .replace(/\.$/u, "");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -232,7 +232,6 @@
   "orchestration.modelNotAllowed": "The child-agent model is outside the configured model pool: {modelProviderId}",
   "orchestration.modelChatCapabilityRequired": "The child-agent model must support chat: {modelProviderId}",
   "orchestration.modelPoolEmpty": "The child-agent model pool has no available model.",
-  "preset.operationFailed": "The preset operation failed.",
   "auth.accountExists": "An administrator account already exists: {path}",
   "auth.accountMissing": "The administrator account has not been initialized. Run access init first: {path}",
   "auth.allowedOriginsRequired": "Public access control requires Server.AccessControl.AllowedOrigins.",

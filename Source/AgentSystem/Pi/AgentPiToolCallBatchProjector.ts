@@ -3,6 +3,7 @@ import { createAssistantMessageId, createToolBatchId } from "../Core/AgentIds.js
 import { AgentEventKinds, emitAgentEvent } from "../Events/AgentEvent.js";
 import type { AgentPiMutableSessionFrame } from "./AgentPiCodingAgentSessionFrame.js";
 import type { AgentPiToolCallPreflightInput } from "./AgentPiToolCallPreflight.js";
+import type { AgentToolEventOrigin } from "../ToolRuntime/AgentToolEventOrigin.js";
 
 export interface AgentPiToolCallProjection extends AgentPiToolCallPreflightInput {
   readonly id: string;
@@ -10,6 +11,7 @@ export interface AgentPiToolCallProjection extends AgentPiToolCallPreflightInput
 
 export interface AgentPiToolCallBatchProjectionOptions {
   readonly purposesByCallId?: ReadonlyMap<string, string>;
+  readonly modelMessageIndex?: number;
   readonly projectDisplayCall?: (input: { readonly toolName: string; readonly arguments: Record<string, unknown> }) => {
     readonly toolName: string;
     readonly arguments: Record<string, unknown>;
@@ -29,6 +31,7 @@ export async function registerAgentPiToolCallBatch(
   const callIds = toolCalls.map((call) => requireToolCallId(call.id));
   const batchId = createToolBatchId();
   snapshot.turnState.registerToolBatch(batchId, toolCalls, projectFixedBatchPayload(message, toolCalls));
+  await snapshot.turnState.beginWorkspaceChangeBatch(batchId, toolCalls);
   const context = {
     sessionId: snapshot.sessionId,
     requestId: snapshot.requestId ?? snapshot.turnState.context.requestId,
@@ -38,18 +41,23 @@ export async function registerAgentPiToolCallBatch(
     .flatMap((entry) => (entry.type === "text" ? [entry.text] : []))
     .join("")
     .trim();
-  if (trimmedContent) {
+  for (const [modelContentIndex, entry] of message.content.entries()) {
+    if (entry.type !== "text") continue;
+    const content = entry.text.trim();
+    if (!content) continue;
     await emitAgentEvent(snapshot.onEvent, {
       kind: AgentEventKinds.AssistantMessageCreated,
       context,
       data: {
         messageId: createAssistantMessageId(),
         kind: "tool_preface",
-        content: trimmedContent,
+        content,
         terminal: false,
         toolCount: toolCalls.length,
         batchId,
         toolCallIds: callIds,
+        ...(options.modelMessageIndex === undefined ? {} : { modelMessageIndex: options.modelMessageIndex }),
+        modelContentIndex,
       },
     });
   }
@@ -59,10 +67,13 @@ export async function registerAgentPiToolCallBatch(
     data: {
       toolCount: toolCalls.length,
       tools: displayCalls.map((call) => call.toolName),
+      ...(options.modelMessageIndex === undefined ? {} : { modelMessageIndex: options.modelMessageIndex }),
       calls: toolCalls.map((call, index) => ({
         callId: call.toolCallId,
         toolName: displayCalls[index]?.toolName ?? call.toolName,
         purpose: call.purpose,
+        ...readPlannedToolOrigin(snapshot, displayCalls[index]?.toolName ?? call.toolName),
+        modelContentIndex: call.modelContentIndex,
       })),
       status: "planned",
       executionMode: "parallel",
@@ -70,6 +81,14 @@ export async function registerAgentPiToolCallBatch(
       reason: trimmedContent || undefined,
     },
   });
+}
+
+function readPlannedToolOrigin(
+  frame: ReturnType<AgentPiMutableSessionFrame["snapshot"]>,
+  toolName: string,
+): { readonly origin?: AgentToolEventOrigin } {
+  const origin = frame.toolOriginLookup?.(toolName);
+  return origin ? { origin } : {};
 }
 
 function displayCall(
@@ -88,7 +107,7 @@ function projectToolCalls(
   message: AssistantMessage,
   options: AgentPiToolCallBatchProjectionOptions,
 ): AgentPiToolCallProjection[] {
-  return message.content.flatMap((entry) =>
+  return message.content.flatMap((entry, modelContentIndex) =>
     entry.type === "toolCall"
       ? [
           {
@@ -97,6 +116,8 @@ function projectToolCalls(
             toolName: entry.name,
             input: entry.arguments,
             purpose: options.purposesByCallId?.get(entry.id),
+            modelMessageIndex: options.modelMessageIndex,
+            modelContentIndex,
           },
         ]
       : [],
@@ -108,7 +129,6 @@ function projectFixedBatchPayload(
   toolCalls: readonly AgentPiToolCallProjection[],
 ): unknown {
   return {
-    assistant,
     toolResults: toolCalls.map(
       (call) =>
         ({

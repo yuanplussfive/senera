@@ -19,6 +19,28 @@ import { AgentSessionStore } from "../../../Source/AgentSystem/Session/AgentSess
 import type { AgentHistoryStepRun } from "../../../Source/AgentSystem/Session/AgentSessionEventTypes.js";
 
 describe("Session history replay behavior", () => {
+  test("projects recovery actions from stored run status for historical failures", async () => {
+    const fixture = createReplayFixture();
+    const sessionId = "historical-recovery";
+    fixture.store.open(sessionId);
+    for (const [index, status] of (["failed", "cancelled", "running", "completed"] as const).entries()) {
+      fixture.store.persistRunSnapshot(snapshot(sessionId, `request-${status}`, status, index));
+    }
+    const events: AgentDomainEvent[] = [];
+    await fixture.replay.replay({
+      sessionId,
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    const runs = events.flatMap((event) => (event.kind === AgentEventKinds.SessionHistorySteps ? event.data.runs : []));
+    expect(runs.find((run) => run.requestId === "request-failed")?.recoveryModes).toEqual(["retry", "continue"]);
+    expect(runs.find((run) => run.requestId === "request-cancelled")?.recoveryModes).toEqual(["retry", "continue"]);
+    expect(runs.find((run) => run.requestId === "request-running")?.recoveryModes).toEqual([]);
+    // A display warning about missing trace data cannot make a successful run recoverable.
+    expect(runs.find((run) => run.requestId === "request-completed")?.recoveryModes).toEqual([]);
+  });
+
   test("emits not-found without starting replay for an unknown session", async () => {
     const fixture = createReplayFixture();
     const events: AgentDomainEvent[] = [];
@@ -574,7 +596,12 @@ function assistantEntry(
   };
 }
 
-function snapshot(sessionId: string, requestId: string, status: "running" | "completed" | "failed", offset: number) {
+function snapshot(
+  sessionId: string,
+  requestId: string,
+  status: "running" | "completed" | "failed" | "cancelled",
+  offset: number,
+) {
   return {
     sessionId,
     requestId,

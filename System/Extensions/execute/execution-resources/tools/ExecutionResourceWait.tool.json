@@ -5,11 +5,10 @@
     "category": "execution-wait",
     "icon": "clock",
     "activity": {
-      "action": { "zh-CN": "等待执行资源", "en-US": "Wait for execution" },
+      "action": { "zh-CN": "等待", "en-US": "Wait" },
       "argumentPath": "/resourceId"
     }
   },
-  "observationProjection": "observations/resource.projection.json",
   "description": "等待后台资源的新输出或终态并返回游标后的增量事件。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

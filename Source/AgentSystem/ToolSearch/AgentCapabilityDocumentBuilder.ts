@@ -1,4 +1,5 @@
 import type { RegisteredSkill } from "../Skills/AgentSkillTypes.js";
+import type { AgentMcpServiceDiscoveryEntry } from "../McpPackages/AgentMcpPackageTypes.js";
 import type { ToolSearchCapabilityManifest } from "../Types/AgentToolContractTypes.js";
 import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
 import { resolveAgentToolOwner } from "../Types/AgentToolOwner.js";
@@ -46,6 +47,34 @@ export function buildToolCapabilityDocument(
     fuzzyText: fuzzyCapabilityText(tool.name, document.title, document.capabilities),
     semanticInputs: semanticCapabilityInputs(semanticFields),
     semanticText: semanticCapabilityText(semanticFields),
+  };
+}
+
+export function buildMcpServiceCapabilityDocument(
+  service: AgentMcpServiceDiscoveryEntry,
+): AgentCapabilitySearchDocument {
+  const identity = [service.id, service.title, ...service.aliases].join("\n");
+  return {
+    id: capabilityDocumentId(AgentCapabilityKinds.Service, service.id, service.id),
+    kind: AgentCapabilityKinds.Service,
+    name: service.id,
+    revision: service.revision,
+    title: service.title,
+    owner: service.id,
+    sourceText: service.description,
+    tags: service.aliases.join(" "),
+    summary: service.description,
+    useCases: "",
+    examples: "",
+    capabilityText: service.description,
+    capabilityFacets: "",
+    parameters: "",
+    fuzzyText: identity,
+    semanticInputs: [
+      { id: "identity", text: [identity, service.description].join("\n") },
+      { id: "intent", text: service.description },
+    ],
+    semanticText: [identity, service.description].join("\n"),
   };
 }
 

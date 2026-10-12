@@ -1,13 +1,7 @@
 import type {
-  ContinuityCapture as BamlContinuityCapture,
-  ContinuityRuleExtractionResult as BamlContinuityRuleExtractionResult,
   ControllerDecision as BamlControllerDecision,
-  GoalMicroLoopDecision as BamlGoalMicroLoopDecision,
-  ResidentIdleDecision as BamlResidentIdleDecision,
   PiToolArgumentsDraft as BamlPiToolArgumentsDraft,
   ToolRiskAudit as BamlToolRiskAudit,
-  ToolLearningResult as BamlToolLearningResult,
-  PiConversationSummary as BamlPiConversationSummary,
 } from "../BamlClient/baml_client/types.js";
 import type {
   ResolvedAgentActionPlannerClientConfig,
@@ -15,36 +9,31 @@ import type {
 } from "../Types/AgentConfigTypes.js";
 import type { AgentBamlStructuredOutputTraceSink } from "../BamlClient/AgentBamlStructuredOutputRunner.js";
 import type {
-  AgentContinuityFactPromptInput,
-  AgentContinuityRulePromptInput,
-  AgentToolLearningPromptInput,
-} from "./AgentLearningPromptJson.js";
-import type {
   AgentPiControllerDecisionInput,
   AgentPiToolArgumentsInput,
   AgentPiToolArgumentsRepairInput,
 } from "../PiShared/AgentPiPlanningTypes.js";
-import type { AgentGoalMicroLoopDecisionInput } from "../Agenda/AgentGoalMicroLoopRuntime.js";
-import type { AgentWorldResidentIdleDecisionInput } from "../World/AgentWorldResidentIdleRuntime.js";
 import type { AgentBamlToolRiskAuditPromptInput } from "../Safety/AgentBamlToolRiskAuditPromptJson.js";
 import { AgentActionPlannerModelTransport } from "./AgentActionPlannerModelTransport.js";
 import { resolvePlannerProvider } from "./AgentActionPlannerProviderResolver.js";
 import { AgentActionPlannerStructuredCaller } from "./AgentActionPlannerStructuredCaller.js";
 import { AgentActionPlannerCoreModelCalls } from "./AgentActionPlannerCoreModelCalls.js";
-import { AgentActionPlannerLearningModelCalls } from "./AgentActionPlannerLearningModelCalls.js";
 import type { AgentModelUsageSink } from "../ModelEndpoints/AgentModelUsage.js";
 import type { AgentModelTimingSink } from "../ModelEndpoints/AgentModelTiming.js";
-import type { AgentPiCompactionPromptInput } from "../PiShared/AgentPiCompactionPrompt.js";
 import type {
+  AgentLanguageModelMessage,
   AgentLanguageModelInvocationOptions,
-  AgentStablePromptInvocationOptions,
 } from "../ModelEndpoints/AgentLanguageModel.js";
+import { contentText, type Context, type Message } from "@earendil-works/pi-ai";
+import { z } from "zod";
+import { AgentStructuredModelClient } from "../ModelEndpoints/AgentStructuredModelClient.js";
 
 export class AgentActionPlannerModelClient {
   readonly providerConfig: ResolvedAgentModelProviderConfig;
   readonly supportsVisualInput: boolean;
   private readonly core: AgentActionPlannerCoreModelCalls;
-  private readonly learning: AgentActionPlannerLearningModelCalls;
+  private readonly transport: AgentActionPlannerModelTransport;
+  private readonly structured: AgentStructuredModelClient;
 
   constructor(
     _model: ResolvedAgentModelProviderConfig,
@@ -59,14 +48,12 @@ export class AgentActionPlannerModelClient {
   ) {
     this.providerConfig = resolvePlannerProvider(overrides);
     this.supportsVisualInput = this.providerConfig.Capabilities?.Vision === true;
-    const caller = new AgentActionPlannerStructuredCaller(
-      new AgentActionPlannerModelTransport(this.providerConfig, options.usageSink, options.timingSink, {
-        omitOutputTokenLimit: options.omitOutputTokenLimit,
-      }),
-      options,
-    );
+    this.transport = new AgentActionPlannerModelTransport(this.providerConfig, options.usageSink, options.timingSink, {
+      omitOutputTokenLimit: options.omitOutputTokenLimit,
+    });
+    this.structured = new AgentStructuredModelClient(this.providerConfig, "PiCompaction", options);
+    const caller = new AgentActionPlannerStructuredCaller(this.transport, options);
     this.core = new AgentActionPlannerCoreModelCalls(caller);
-    this.learning = new AgentActionPlannerLearningModelCalls(caller);
   }
 
   evolveTurn(
@@ -76,18 +63,22 @@ export class AgentActionPlannerModelClient {
     return this.core.evolveTurn(input, options);
   }
 
-  decideGoalMicroLoop(
-    input: AgentGoalMicroLoopDecisionInput,
-    options?: AgentLanguageModelInvocationOptions,
-  ): Promise<BamlGoalMicroLoopDecision[]> {
-    return this.core.decideGoalMicroLoop(input, options);
-  }
-
-  decideResidentIdle(
-    input: AgentWorldResidentIdleDecisionInput,
-    options?: AgentLanguageModelInvocationOptions,
-  ): Promise<BamlResidentIdleDecision> {
-    return this.core.decideResidentIdle(input, options);
+  async compactPiContext(context: Context, options: AgentLanguageModelInvocationOptions = {}): Promise<string> {
+    const result = await this.structured.execute({
+      contract: {
+        name: "SummarizePiContext",
+        description: "Produce the requested context compaction summary.",
+        schema: z.object({ summary: z.string().trim().min(1) }).strict(),
+        bamlFunction: "SummarizePiContext",
+      },
+      systemPrompt: context.systemPrompt ?? "",
+      userPrompt: JSON.stringify(context.messages.map(projectPiCompactionMessage)),
+      requestId: "action-planner:PiCompaction",
+      signal: options.signal,
+      cache: options.cache,
+      managedRetries: true,
+    });
+    return result.summary;
   }
 
   repairControllerDecision(
@@ -132,68 +123,17 @@ export class AgentActionPlannerModelClient {
   ): Promise<BamlToolRiskAudit> {
     return this.core.repairToolRiskAudit(options, requestOptions);
   }
+}
 
-  summarizePiConversation(
-    input: AgentPiCompactionPromptInput,
-    options?: AgentLanguageModelInvocationOptions,
-  ): Promise<BamlPiConversationSummary> {
-    return this.core.summarizePiConversation(input, options);
-  }
-
-  repairPiConversationSummary(
-    options: {
-      input: AgentPiCompactionPromptInput;
-      invalidSummary: string;
-      issues: string[];
-    },
-    requestOptions?: AgentLanguageModelInvocationOptions,
-  ): Promise<BamlPiConversationSummary> {
-    return this.core.repairPiConversationSummary(options, requestOptions);
-  }
-
-  learnToolUse(
-    input: AgentToolLearningPromptInput,
-    options?: AgentLanguageModelInvocationOptions,
-  ): Promise<BamlToolLearningResult> {
-    return this.learning.learnToolUse(input, options);
-  }
-
-  repairToolLearning(
-    options: {
-      input: AgentToolLearningPromptInput;
-      invalidLearning: string;
-      issues: string[];
-    },
-    requestOptions?: AgentLanguageModelInvocationOptions,
-  ): Promise<BamlToolLearningResult> {
-    return this.learning.repairToolLearning(options, requestOptions);
-  }
-
-  extractContinuityFacts(
-    input: AgentContinuityFactPromptInput,
-    options: AgentStablePromptInvocationOptions,
-  ): Promise<BamlContinuityCapture> {
-    return this.learning.extractContinuityFacts(input, options);
-  }
-
-  repairContinuityFacts(
-    options: { input: AgentContinuityFactPromptInput; invalidExtraction: string; issues: string[] },
-    requestOptions: AgentStablePromptInvocationOptions,
-  ): Promise<BamlContinuityCapture> {
-    return this.learning.repairContinuityFacts(options, requestOptions);
-  }
-
-  extractContinuityRules(
-    input: AgentContinuityRulePromptInput,
-    options: AgentStablePromptInvocationOptions,
-  ): Promise<BamlContinuityRuleExtractionResult> {
-    return this.learning.extractContinuityRules(input, options);
-  }
-
-  repairContinuityRules(
-    options: { input: AgentContinuityRulePromptInput; invalidExtraction: string; issues: string[] },
-    requestOptions: AgentStablePromptInvocationOptions,
-  ): Promise<BamlContinuityRuleExtractionResult> {
-    return this.learning.repairContinuityRules(options, requestOptions);
+function projectPiCompactionMessage(message: Message): AgentLanguageModelMessage {
+  switch (message.role) {
+    case "system":
+      return { role: "system", content: contentText(message.content) };
+    case "user":
+      return { role: "user", content: contentText(message.content) };
+    case "assistant":
+      return { role: "assistant", content: contentText(message.content) };
+    case "toolResult":
+      throw new Error("Pi compaction context contains a tool result outside its summary prompt.");
   }
 }

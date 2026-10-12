@@ -19,12 +19,6 @@ type ProviderModelConfigMutationRequest =
 
 type ConfigMutationRequest = FullConfigUpdateRequest | ProviderModelConfigMutationRequest;
 
-type PresetRequest =
-  | AgentWebSocketRequestOf<"preset.list">
-  | AgentWebSocketRequestOf<"preset.save">
-  | AgentWebSocketRequestOf<"preset.delete">
-  | AgentWebSocketRequestOf<"preset.set_active">;
-
 type ToolSettingsRequest =
   | AgentWebSocketRequestOf<"systemTool.list">
   | AgentWebSocketRequestOf<"mcpServer.list">
@@ -35,7 +29,10 @@ type ToolSettingsRequest =
   | AgentWebSocketRequestOf<"mcpCredential.set">
   | AgentWebSocketRequestOf<"mcpCredential.delete">;
 
-type RunRequest = AgentWebSocketRequestOf<"session.message"> | AgentWebSocketRequestOf<"session.regenerate">;
+type RunRequest =
+  | AgentWebSocketRequestOf<"session.message">
+  | AgentWebSocketRequestOf<"session.regenerate">
+  | AgentWebSocketRequestOf<"session.retry">;
 
 const ConfigMutationRequestTypes = {
   "config.update": true,
@@ -47,13 +44,6 @@ const ConfigMutationRequestTypes = {
   "provider.model.bulkImport": true,
   "provider.defaultModel.set": true,
 } as const satisfies Partial<Record<AgentWebSocketRequest["type"], true>>;
-
-const PresetOperationKinds = {
-  "preset.list": "list",
-  "preset.save": "save",
-  "preset.delete": "delete",
-  "preset.set_active": "set_active",
-} as const satisfies Partial<Record<AgentWebSocketRequest["type"], string>>;
 
 const ToolSettingsRequestTypes = {
   "systemTool.list": true,
@@ -69,6 +59,7 @@ const ToolSettingsRequestTypes = {
 const RunRequestTypes = {
   "session.message": true,
   "session.regenerate": true,
+  "session.retry": true,
 } as const satisfies Partial<Record<AgentWebSocketRequest["type"], true>>;
 
 /**
@@ -96,6 +87,18 @@ export function projectAgentWebSocketParseFailure(
   if (typeof rawRequest !== "object" || rawRequest === null || Array.isArray(rawRequest)) return null;
   const record = rawRequest as Record<string, unknown>;
   const type = record.type;
+  if (type === "workspace.switch" && typeof record.requestId === "string") {
+    return {
+      kind: AgentEventKinds.WorkspaceSwitchFailed,
+      context: {},
+      data: {
+        requestId: record.requestId,
+        workspaceRoot: typeof record.workspaceRoot === "string" ? record.workspaceRoot : "",
+        ...projectAgentMessage("websocket.requestInvalid"),
+        details: { issues },
+      },
+    };
+  }
   const commandId = record.commandId;
   if (typeof type !== "string" || typeof commandId !== "string" || !commandId) return null;
   const operationKind = ParseFailureOperationKinds[type];
@@ -122,10 +125,6 @@ export function projectAgentWebSocketRequestFailure(
 ): AgentDomainEvent {
   if (isConfigMutationRequest(request)) {
     return projectConfigFailure(request, error, context);
-  }
-
-  if (isPresetRequest(request)) {
-    return projectPresetFailure(request, error);
   }
 
   if (isToolSettingsRequest(request)) {
@@ -193,15 +192,7 @@ function projectRequestExecutionFailure(request: AgentWebSocketRequest, error: u
 function readRequestFailureIdentity(request: AgentWebSocketRequest): Record<string, string> {
   const identity: Record<string, string> = {};
   const record = request as unknown as Record<string, unknown>;
-  for (const key of [
-    "sessionId",
-    "requestId",
-    "approvalId",
-    "interactionId",
-    "resourceId",
-    "commandId",
-    "goalId",
-  ] as const) {
+  for (const key of ["sessionId", "requestId", "approvalId", "interactionId", "resourceId", "commandId"] as const) {
     const value = record[key];
     if (typeof value === "string" && value) {
       identity[key] = value;
@@ -249,22 +240,6 @@ function projectConfigFailure(
   };
 }
 
-function projectPresetFailure(request: PresetRequest, error: unknown): AgentDomainEvent {
-  return {
-    kind: AgentEventKinds.PresetFailed,
-    context: {},
-    data: {
-      ...projectAgentErrorMessage(error, "preset.operationFailed"),
-      details: serializeError(error),
-      operation: {
-        requestId: "requestId" in request ? request.requestId : undefined,
-        kind: PresetOperationKinds[request.type],
-        name: "name" in request ? (request.name ?? null) : undefined,
-      },
-    },
-  };
-}
-
 function projectRunFailure(request: AgentWebSocketRequest, error: unknown): AgentDomainEvent {
   const requestId = readRequestId(request) ?? createRequestId();
   return {
@@ -287,10 +262,6 @@ function readRequestId(request: AgentWebSocketRequest): string | undefined {
 
 function isConfigMutationRequest(request: AgentWebSocketRequest): request is ConfigMutationRequest {
   return request.type in ConfigMutationRequestTypes;
-}
-
-function isPresetRequest(request: AgentWebSocketRequest): request is PresetRequest {
-  return request.type in PresetOperationKinds;
 }
 
 function isToolSettingsRequest(request: AgentWebSocketRequest): request is ToolSettingsRequest {

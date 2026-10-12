@@ -25,11 +25,9 @@ import {
   type AgentPiDiagnosticSink,
   type AgentPiDiagnosticSource,
 } from "./AgentPiDiagnostics.js";
-import type { AgentPiPlanningCompilerFactory } from "./AgentPiPlanningCompiler.js";
 import { createAgentPiContinuityLedger } from "./AgentPiContinuityLedger.js";
 import { AgentContinuityLedgerCustomType, mergeAgentContinuityLedger } from "../Continuity/AgentContinuityLedger.js";
 import type { AgentContinuityLedger } from "../Continuity/AgentContinuityLedger.js";
-import type { AgentModelUsageSink } from "../ModelEndpoints/AgentModelUsage.js";
 
 export interface AgentPiCompactionIndexes {
   readonly artifactIndex: AgentPiArtifactIndex;
@@ -39,12 +37,11 @@ export interface AgentPiCompactionIndexes {
 }
 
 export interface AgentPiCompactionControllerOptions {
-  readonly planningCompilerFactory: AgentPiPlanningCompilerFactory;
   readonly diagnostics?: AgentPiDiagnosticSink;
   readonly continuityScope?: () => string | undefined;
 }
 
-/** Shared owner for Senera compaction summaries and persisted retrieval indexes. */
+/** Shared owner for Pi compaction side indexes and diagnostics. */
 export class AgentPiCompactionController {
   constructor(private readonly options: AgentPiCompactionControllerOptions) {}
 
@@ -68,75 +65,6 @@ export class AgentPiCompactionController {
         toolCallIndex,
       }),
     };
-  }
-
-  /**
-   * Builds indexes only for a still-visible branch suffix. This avoids
-   * re-importing a candidate's already-indexed prefix when a request-level
-   * candidate projection needs to preserve newly appended tool evidence.
-   */
-  createSuffixIndexes(messages: readonly AgentMessage[]): AgentPiCompactionIndexes {
-    const artifactIndex = createAgentPiArtifactIndex([], messages);
-    const toolCallIndex = createAgentPiCompactionToolCallIndex(messages);
-    return {
-      artifactIndex,
-      toolCallIndex,
-      continuityLedger: createAgentPiContinuityLedger({
-        scope: this.options.continuityScope?.() ?? "pi-session",
-        entries: [],
-        messages,
-        artifactIndex,
-        toolCallIndex,
-      }),
-    };
-  }
-
-  compileSummary(
-    frame: AgentPiMutableSessionFrame,
-    input: Parameters<ReturnType<AgentPiPlanningCompilerFactory["create"]>["summarize"]>[0],
-    signal: AbortSignal,
-  ): Promise<string> {
-    return this.compileSummarySnapshot(frame.snapshot(), input, signal, { diagnosticsFrame: frame });
-  }
-
-  /**
-   * Compiles against an immutable request frame. Background checkpoint work
-   * must never inherit route, cache scope, or usage ownership from a newer
-   * foreground request that happened to lease the same session meanwhile.
-   */
-  compileSummarySnapshot(
-    snapshot: AgentPiCodingAgentSessionFrame,
-    input: Parameters<ReturnType<AgentPiPlanningCompilerFactory["create"]>["summarize"]>[0],
-    signal: AbortSignal,
-    options: {
-      /** Background checkpoint calls must not be charged to a completed foreground turn. */
-      readonly usageSink?: AgentModelUsageSink;
-      readonly diagnosticsFrame?: AgentPiMutableSessionFrame;
-    } = {},
-  ): Promise<string> {
-    return this.options.planningCompilerFactory
-      .create({
-        usageSink: options.usageSink ?? ((call) => snapshot.turnState?.context.usageLedger.record(call)),
-        timingSink: (timing) =>
-          options.diagnosticsFrame
-            ? this.emitDiagnostic(
-                options.diagnosticsFrame,
-                "compaction.model_timing",
-                timing,
-                AgentPiDiagnosticSources.Provider,
-              )
-            : this.emitDiagnosticSnapshot(
-                snapshot,
-                "compaction.model_timing",
-                timing,
-                AgentPiDiagnosticSources.Provider,
-              ),
-      })
-      .summarize(input, {
-        signal,
-        sessionId: snapshot.sessionId,
-        logicalCacheScope: snapshot.logicalCacheScope,
-      });
   }
 
   appendIndexes(sessionManager: SessionManager, indexes: AgentPiCompactionIndexes): void {

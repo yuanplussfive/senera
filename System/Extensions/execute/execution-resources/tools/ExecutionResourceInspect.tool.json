@@ -5,11 +5,10 @@
     "category": "execution-inspect",
     "icon": "activity",
     "activity": {
-      "action": { "zh-CN": "检查执行资源", "en-US": "Inspect execution" },
+      "action": { "zh-CN": "检查", "en-US": "Inspect" },
       "argumentPath": "/resourceId"
     }
   },
-  "observationProjection": "observations/resource.projection.json",
   "description": "立即检查后台执行资源状态并按游标恢复已保留事件。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

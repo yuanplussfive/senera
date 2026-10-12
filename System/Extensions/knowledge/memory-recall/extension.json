@@ -6,7 +6,7 @@
   "settingsSurface": "system-tools",
   "presentation": {
     "category": "memory-recall",
-    "icon": "brain",
+    "icon": "book-open",
     "group": {
       "id": "memory-recall",
       "title": { "zh-CN": "回忆历史", "en-US": "Recall memory" }

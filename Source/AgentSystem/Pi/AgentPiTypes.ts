@@ -35,6 +35,8 @@ export interface AgentPiToolProjectionContext {
   step?: number;
   onEvent?: AgentEventSink;
   visibleToolNames?: readonly string[];
+  /** Dynamic tools explicitly selected for native schema exposure this turn. */
+  nativeToolNames?: readonly string[];
   toolAccessGrant?: AgentToolAccessGrant;
   toolExposure?: AgentToolExposureState;
   turnState?: AgentPiTurnState;

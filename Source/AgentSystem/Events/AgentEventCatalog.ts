@@ -46,11 +46,8 @@ export const AgentEventKinds = {
   PromptSummary: "prompt.summary",
   PromptHarnessComposed: "prompt.harness.composed",
   ContinuitySnapshot: "continuity.snapshot",
-  ContinuityRulesSnapshot: "continuity.rules.snapshot",
   ContinuityRecallSettled: "continuity.recall.settled",
   ContinuityRecallQuery: "continuity.recall.query",
-  AgendaSnapshot: "agenda.snapshot",
-  WorldSnapshot: "world.snapshot",
   TodoListWritten: "todo.list.written",
   ExecutionCreated: "execution.created",
   ExecutionStepStarted: "execution.step.started",
@@ -59,6 +56,8 @@ export const AgentEventKinds = {
   ExecutionCompleted: "execution.completed",
   ModelStarted: "model.started",
   ModelDelta: "model.delta",
+  ModelThinkingDelta: "model.thinking.delta",
+  ModelThinkingCompleted: "model.thinking.completed",
   ModelCompleted: "model.completed",
   ToolCallsPlanned: "tool.calls.planned",
   ToolCallStarted: "tool.call.started",
@@ -118,8 +117,6 @@ export const AgentEventKinds = {
   ProviderModelsSnapshot: "provider.models.snapshot",
   ProviderModelsFailed: "provider.models.failed",
   ProfileSnapshot: "profile.snapshot",
-  PresetSnapshot: "preset.snapshot",
-  PresetFailed: "preset.failed",
   SystemToolSnapshot: "system_tool.snapshot",
   McpServerSnapshot: "mcp_server.snapshot",
   ChannelStatusSnapshot: "channel.status.snapshot",
@@ -231,24 +228,12 @@ export const AgentEventSpecTable: {
     layer: AgentEventLayers.Snapshot,
     phase: AgentEventPhases.Prompt,
   },
-  [AgentEventKinds.ContinuityRulesSnapshot]: {
-    layer: AgentEventLayers.Snapshot,
-    phase: AgentEventPhases.Prompt,
-  },
   [AgentEventKinds.ContinuityRecallSettled]: {
     layer: AgentEventLayers.Progress,
     phase: AgentEventPhases.Prompt,
   },
   [AgentEventKinds.ContinuityRecallQuery]: {
     layer: AgentEventLayers.Progress,
-    phase: AgentEventPhases.Prompt,
-  },
-  [AgentEventKinds.AgendaSnapshot]: {
-    layer: AgentEventLayers.Snapshot,
-    phase: AgentEventPhases.Prompt,
-  },
-  [AgentEventKinds.WorldSnapshot]: {
-    layer: AgentEventLayers.Snapshot,
     phase: AgentEventPhases.Prompt,
   },
   [AgentEventKinds.TodoListWritten]: {
@@ -281,6 +266,14 @@ export const AgentEventSpecTable: {
   },
   [AgentEventKinds.ModelDelta]: {
     layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Model,
+  },
+  [AgentEventKinds.ModelThinkingDelta]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Model,
+  },
+  [AgentEventKinds.ModelThinkingCompleted]: {
+    layer: AgentEventLayers.Snapshot,
     phase: AgentEventPhases.Model,
   },
   [AgentEventKinds.ModelCompleted]: {
@@ -517,14 +510,6 @@ export const AgentEventSpecTable: {
   },
   [AgentEventKinds.ProfileSnapshot]: {
     layer: AgentEventLayers.Snapshot,
-    phase: AgentEventPhases.Config,
-  },
-  [AgentEventKinds.PresetSnapshot]: {
-    layer: AgentEventLayers.Snapshot,
-    phase: AgentEventPhases.Config,
-  },
-  [AgentEventKinds.PresetFailed]: {
-    layer: AgentEventLayers.Error,
     phase: AgentEventPhases.Config,
   },
   [AgentEventKinds.SystemToolSnapshot]: {

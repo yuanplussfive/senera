@@ -5,11 +5,14 @@ installLocalStorage();
 const { clearPersistedStore, DEFAULT_SESSION_TITLE, useStore } =
   await import("../../../Frontend/src/store/sessionStore.ts");
 const { PERSIST_KEY } = await import("../../../Frontend/src/store/session/persistence.ts");
+const { activateWorkspaceSessionProjection } =
+  await import("../../../Frontend/src/store/workspaceSessionProjection.ts");
 
 beforeEach(() => {
   clearPersistedStore();
   useStore.setState({
     sessions: {},
+    runtimeSnapshotsBySession: {},
     sessionOrder: [],
     activeSessionId: null,
     sidebarCollapsed: false,
@@ -53,6 +56,7 @@ test("ingest projects tool settings snapshots without credential values", () => 
     data: {
       extensions: [],
       tools: [{ name: "ShellCommandTool", title: "Shell", description: "", extension: "core", loading: "always" }],
+      activation: { revision: "test-system", entries: [] },
     },
   });
   store.ingest({
@@ -75,11 +79,12 @@ test("ingest projects tool settings snapshots without credential values", () => 
           ],
         },
       ],
+      activation: { revision: "test-mcp", entries: [] },
     },
   });
 
   expect(useStore.getState()).toMatchObject({
-    toolSettingsSynced: { systemTools: true, mcpServers: true },
+    toolSettingsSynced: { systemTools: true, mcpServers: true, activation: true },
     systemTools: [{ name: "ShellCommandTool" }],
     mcpServers: [
       {
@@ -88,6 +93,7 @@ test("ingest projects tool settings snapshots without credential values", () => 
       },
     ],
   });
+  expect(useStore.getState().activationCatalog).toEqual({ revision: "test-mcp", entries: [] });
 });
 
 test("cross-window preference refresh preserves manually toggled panels when their defaults are unchanged", () => {
@@ -168,6 +174,7 @@ test("register and append user message create a local run without persisting bac
 });
 
 test("moves sessions by placement and persists the custom sidebar order", () => {
+  activateWorkspaceSessionProjection("sidebar-order-workspace");
   useStore.setState({
     sessions: {
       first: { sessionId: "first" },
@@ -182,7 +189,12 @@ test("moves sessions by placement and persists the custom sidebar order", () => 
 
   useStore.getState().moveSession("third", "second", "after");
   expect(useStore.getState().sessionOrder).toEqual(["first", "second", "third"]);
-  expect(JSON.parse(localStorage.getItem(PERSIST_KEY)).state.sessionOrder).toEqual(["first", "second", "third"]);
+  expect(JSON.parse(localStorage.getItem("senera-workspace:sidebar-order-workspace")).sessionOrder).toEqual([
+    "first",
+    "second",
+    "third",
+  ]);
+  expect(JSON.parse(localStorage.getItem(PERSIST_KEY)).state).not.toHaveProperty("sessionOrder");
 });
 
 test("history loading gates local message appends and failure state is explicit", () => {

@@ -1,4 +1,3 @@
-import { AlertTriangle, Check, ChevronDown, CircleSlash2, ListTree } from "lucide-react";
 import type { RunRecord } from "../../store/sessionStore";
 import { cn, formatDuration, formatTime } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
@@ -8,9 +7,10 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuTrigger,
-  Spinner,
+  AppIcon,
 } from "../../shared/ui";
 import type { RunSummary } from "./runSummary";
+import { projectWorkflowSteps } from "./workflowPresentationProjection";
 
 export function RunSummaryStrip({ run, summary }: { run: RunRecord; summary: RunSummary }): JSX.Element {
   return (
@@ -24,7 +24,37 @@ export function RunSummaryStrip({ run, summary }: { run: RunRecord; summary: Run
       <span className={cn(summary.failed > 0 && "text-brick-600", run.status === "running" && "text-umber-600")}>
         {summary.duration || frontendMessage("workflow.run.inProgress")}
       </span>
+      <RunExecutionSegments run={run} />
     </div>
+  );
+}
+
+function RunExecutionSegments({ run }: { run: RunRecord }): JSX.Element | null {
+  const steps = projectWorkflowSteps(run);
+  if (steps.length === 0) return null;
+
+  return (
+    <span
+      className="workflow-run-execution-segments"
+      data-workflow-run-execution-segments
+      aria-label={frontendMessage("workflow.summary.nodes", { count: steps.length })}
+    >
+      {steps.map((step) => (
+        <span
+          key={step.id}
+          className={cn(
+            "workflow-run-execution-segment",
+            step.status === "done" && "workflow-run-execution-segment--done",
+            (step.status === "failed" || step.status === "cancelled") && "workflow-run-execution-segment--failed",
+            (step.status === "running" || step.status === "cancelling") && "workflow-run-execution-segment--running",
+            step.status === "pending" && "workflow-run-execution-segment--pending",
+          )}
+          data-workflow-run-execution-segment={step.status}
+          title={step.title}
+          aria-hidden="true"
+        />
+      ))}
+    </span>
   );
 }
 
@@ -66,7 +96,7 @@ export function RunSelector({
               {current.input || frontendMessage("workflow.run.emptyInput")}
             </div>
           </div>
-          <ChevronDown className="mt-1 h-3.5 w-3.5 shrink-0 text-ink-400 transition-transform group-data-[state=open]:rotate-180" />
+          <AppIcon icon="chevron-down" size={14} className="mt-1 shrink-0 text-ink-400 transition-transform group-data-[state=open]:rotate-180" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="scrollbar-thin max-h-[60vh] w-[420px] overflow-y-auto">
@@ -78,7 +108,7 @@ export function RunSelector({
             <DropdownMenuItem
               key={run.requestId}
               onSelect={() => onSelect(run.requestId)}
-              icon={isCurrent ? <Check className="h-3.5 w-3.5 text-ink-800" /> : <span className="block h-3.5 w-3.5" />}
+              icon={isCurrent ? <AppIcon icon="checkmark" size={14} className="text-ink-800" /> : <span className="block h-3.5 w-3.5" />}
             >
               <div className="flex min-w-0 flex-1 items-center gap-2">
                 <span className="shrink-0 text-[10.5px] tabular-nums text-ink-400">
@@ -101,28 +131,48 @@ function RunStatusIcon({ status, className }: { status: RunRecord["status"]; cla
   const baseClassName = "grid h-[18px] w-[18px] shrink-0 place-items-center";
   if (status === "running" || status === "cancelling") {
     return (
-      <span className={cn(baseClassName, "text-umber-600", className)} data-workflow-run-status={status}>
-        <Spinner size="xs" />
+      <span
+        className={cn(baseClassName, "rounded-full bg-accent-surface text-accent-content", className)}
+        data-workflow-run-status={status}
+      >
+        <AppIcon icon="pencil" size={11} strokeWidth={1.9} />
       </span>
     );
   }
   if (status === "failed") {
     return (
-      <span className={cn(baseClassName, "text-brick-600", className)} data-workflow-run-status={status}>
-        <AlertTriangle className="h-3.5 w-3.5" />
+      <span
+        className={cn(
+          baseClassName,
+          "rounded-full bg-brick-100 text-brick-600 dark:bg-brick-900/30 dark:text-brick-300",
+          className,
+        )}
+        data-workflow-run-status={status}
+      >
+        <AppIcon icon="cancel" size={12} />
       </span>
     );
   }
   if (status === "cancelled") {
     return (
-      <span className={cn(baseClassName, "text-content-muted", className)} data-workflow-run-status={status}>
-        <CircleSlash2 className="h-3.5 w-3.5" />
+      <span
+        className={cn(baseClassName, "rounded-full bg-surface-hover text-content-muted", className)}
+        data-workflow-run-status={status}
+      >
+        <AppIcon icon="cancel" size={12} />
       </span>
     );
   }
   return (
-    <span className={cn(baseClassName, "text-content-muted", className)} data-workflow-run-status={status}>
-      <ListTree className="h-3.5 w-3.5" />
+    <span
+      className={cn(
+        baseClassName,
+        "rounded-full bg-moss-100 text-content-muted text-moss-600 dark:bg-moss-900/30 dark:text-moss-300",
+        className,
+      )}
+      data-workflow-run-status={status}
+    >
+      <AppIcon icon="checkmark" size={12} strokeWidth={2} />
     </span>
   );
 }

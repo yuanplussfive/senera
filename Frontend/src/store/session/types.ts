@@ -11,8 +11,6 @@ import type {
   ConversationEntryDto,
   ConversationEntryMetadata,
   EventEnvelope,
-  AgendaSnapshotData,
-  WorldSnapshotData,
   ExecutionSnapshotData,
   InteractionInputAction,
   InteractionInputContent,
@@ -23,15 +21,15 @@ import type {
   ModelProviderListItem,
   ModelThinkingLevel,
   ModelProviderMetadata,
-  PresetItem,
-  PresetWorldPackageDescriptor,
   ProviderModelsFailedData,
   ProviderModelsSnapshotData,
   RunCancellationProgressData,
   SessionHistoryStepsData,
+  SessionRuntimeStatusData,
   SessionSnapshotData,
   SessionChannelMetadata,
   SystemExtensionSettingsItem,
+  AgentActivationCatalogSnapshot,
   SystemToolSettingsItem,
   TodoSnapshotData,
   UploadAttachmentData,
@@ -57,6 +55,7 @@ export interface ChatMessage {
   requestId?: string;
   attachments?: UploadAttachmentData[];
   metadata?: ConversationEntryMetadata;
+  failure?: import("../../api/eventTypes").RunFailedData;
 }
 
 export type TimelineStepKind =
@@ -73,11 +72,15 @@ export type TimelineStepKind =
   | "recall"
   | "harness";
 
-export type TimelineStepStatus = "pending" | "running" | "cancelling" | "done" | "failed";
+export type TimelineStepStatus = "pending" | "running" | "cancelling" | "done" | "failed" | "cancelled";
 
 export interface TimelineStepScope {
   parentSessionId?: string;
   parentRequestId?: string;
+  parentAgentStep?: number;
+  parentModelMessageIndex?: number;
+  parentModelContentIndex?: number;
+  parentToolCallId?: string;
   workflowName?: string;
   jobId?: string;
   childRunId?: string;
@@ -116,6 +119,18 @@ export interface TimelineToolProgress {
 export interface TimelineStep {
   id: string;
   kind: TimelineStepKind;
+  /** Pi turn step that emitted this timeline record. */
+  agentStep?: number;
+  /** Pi assistant message index that emitted this response boundary. */
+  modelMessageIndex?: number;
+  /** Position of the text or tool-call block in that assistant response. */
+  modelContentIndex?: number;
+  /** First event sequence that made this item visible in the run timeline. */
+  eventSequence?: number;
+  /** Event sequence at which the underlying tool execution actually began. */
+  startedSequence?: number;
+  /** Event sequence at which the underlying tool execution settled. */
+  completedSequence?: number;
   title: string;
   description?: string;
   status: TimelineStepStatus;
@@ -154,6 +169,10 @@ export interface TimelineChildRunMessage {
   kind: "decision" | "follow_up" | "progress" | "response" | "steering";
   content: string;
   createdAt: string;
+  agentStep?: number;
+  modelMessageIndex?: number;
+  modelContentIndex?: number;
+  eventSequence?: number;
 }
 
 export type TimelineChildRunTodoStatus = "pending" | "in_progress" | "completed" | "cancelled";
@@ -209,6 +228,7 @@ export interface TimelineChildRunState {
   grantedExtensionMs?: number;
   cancellation?: RunCancellationProgressData & { updatedAt: string };
   messages: TimelineChildRunMessage[];
+  thinkingBlocks?: ModelThinkingBlock[];
   todo?: TimelineChildRunTodo;
 }
 
@@ -218,6 +238,8 @@ export interface RunActivityRecord {
   activity: import("../../api/eventTypes").RunActivity;
   status: TimelineStepStatus;
   step?: number;
+  /** First envelope sequence that introduced this activity into the run trace. */
+  eventSequence?: number;
   startedAt: string;
   endedAt?: string;
   durationMs?: number;
@@ -241,6 +263,14 @@ export interface RunRecord {
   steps: TimelineStep[];
   /** model.delta 累积（原始 token 流，可能含 XML 包装） */
   streamingRaw: string;
+  /** Native Pi reasoning blocks, kept separate from user-visible answer text. */
+  thinkingBlocks?: ModelThinkingBlock[];
+  /** Pi response identity currently producing model or reasoning deltas. */
+  activeModelRequest?: {
+    agentStep: number;
+    modelMessageIndex: number;
+    eventSequence: number;
+  };
   /** 旧版 XML 预览字段；新链路仅用于历史兼容显示 */
   xmlPreview: string;
   /** 后端实时解析出的用户可见文本目标 */
@@ -257,6 +287,8 @@ export interface RunRecord {
   approvals?: ApprovalRunRecord[];
   interactionInputs?: InteractionInputRunRecord[];
   modelProvider?: ModelProviderMetadata;
+  /** Aggregate model usage for this run, projected at the terminal boundary. */
+  usage?: import("../../api/eventTypes").ModelUsageMetadata;
   /** Context that was actually injected before this run started. */
   continuity?: ContinuitySnapshotData;
   /** Three-tier prompt harness composition report for this run. */
@@ -282,6 +314,32 @@ export interface RunRecord {
   execution?: ExecutionSnapshotData;
   todos?: TodoSnapshotData;
   recoverySource?: "history";
+  recoveryModes?: Array<"retry" | "continue">;
+  /** Durable lineage comes from run.started, including history replay. */
+  recovery?: import("../../api/eventTypes").RunStartedData["recovery"];
+  recoveryAttempt?: {
+    requestId: string;
+    mode: "retry" | "continue";
+    status: "pending" | "rejected";
+    message?: string;
+  };
+}
+
+export interface ModelThinkingBlock {
+  id: string;
+  step: number;
+  messageIndex: number;
+  contentIndex: number;
+  /** First streamed event sequence for this reasoning content block. */
+  eventSequence?: number;
+  content: string;
+  status: "streaming" | "complete" | "interrupted";
+}
+
+export interface SessionRuntimeSnapshot {
+  available: boolean;
+  observedAt: string;
+  runtime?: SessionRuntimeStatusData["runtime"];
 }
 
 /**
@@ -300,6 +358,8 @@ export type HistoryActiveStreamSnapshot = Pick<
   | "activities"
   | "activeFlags"
   | "streamingRaw"
+  | "thinkingBlocks"
+  | "activeModelRequest"
   | "xmlPreview"
   | "visibleText"
   | "displayText"
@@ -382,6 +442,8 @@ export interface SessionRecord {
   messageCount: number;
   messages: ChatMessage[];
   runs: RunRecord[];
+  /** Latest runtime status retained outside the bounded diagnostic journal. */
+  runtimeSnapshot?: SessionRuntimeSnapshot;
   activeRequestId?: string;
   channel?: SessionChannelMetadata;
   effectiveModel?: SessionSnapshotData["effectiveModel"];
@@ -401,10 +463,10 @@ export type SessionOrderPlacement = "before" | "after";
 
 export interface StoreState {
   sessions: Record<string, SessionRecord>;
+  /** Latest runtime snapshots retained across frontend restarts. */
+  runtimeSnapshotsBySession: Record<string, SessionRuntimeSnapshot>;
   sessionOrder: string[];
   activeSessionId: string | null;
-  agenda?: AgendaSnapshotData;
-  world?: WorldSnapshotData;
   sidebarCollapsed: boolean;
   rightPanelCollapsed: boolean;
   defaultSidebarCollapsed: boolean;
@@ -422,6 +484,12 @@ export interface StoreState {
   /** 正在回放但尚未 completed 的历史条目；completed 前不污染真实消息列表 */
   /** 回放期间按页暂存 entries，completed 时一次性展平，避免逐页复制长数组。 */
   historyReplayBuffers: Record<string, HistoryReplayEntry[][]>;
+  /**
+   * Request ids removed by a local/session truncation. History replay can
+   * overlap that mutation, so keep the tombstones until the replay finishes
+   * and never resurrect the discarded branch from a stale page.
+   */
+  historySuppressedRequestIds: Record<string, Record<string, boolean>>;
   /** 回放期间按页暂存 step 轨迹 run，completed 时据此重建 session.runs。 */
   historyStepBuffers: Record<string, SessionHistoryStepsData["runs"][]>;
   /** 回放期间已经由 run events 还原过的 requestId，避免再用精简 step traces 覆盖完整图 */
@@ -458,20 +526,16 @@ export interface StoreState {
   selectedThinkingLevel: ModelThinkingLevel | null;
   selectedThinkingLevelsBySession: Record<string, ModelThinkingLevel>;
   executionApprovalMode: ExecutionApprovalMode;
-  presets: PresetItem[];
-  presetWorldPackages: PresetWorldPackageDescriptor[];
-  activePresetName: string | null;
-  presetsEnabled: boolean;
-  presetRootDir: string;
   configSnapshot: ConfigSnapshotData | null;
   systemTools: SystemToolSettingsItem[];
   systemExtensions: SystemExtensionSettingsItem[];
+  activationCatalog: AgentActivationCatalogSnapshot | null;
   mcpServers: McpServerSettingsItem[];
-  toolSettingsSynced: { systemTools: boolean; mcpServers: boolean };
+  toolSettingsSynced: { systemTools: boolean; mcpServers: boolean; activation: boolean };
   channelStatuses: ChannelStatusItem[];
   userProfile: UserProfile;
   /** 各目录快照是否已到达过一次；用于区分"尚未同步"与"确实为空"，避免空态闪现 */
-  catalogSynced: { sessions: boolean; presets: boolean };
+  catalogSynced: { sessions: boolean };
   /** 连接切换时清除目录同步屏障，直到新的权威快照到达。 */
   resetCatalogSyncState: () => void;
   /** 丢弃断线前的历史新鲜度标记，等待重连后的权威回放。 */
@@ -494,18 +558,25 @@ export interface StoreState {
   markApprovalResolutionPending: (approvalId: string, decision?: ApprovalDecision) => void;
   markApprovalBatchResolutionPending: (batch: ApprovalBatchReference, decision?: ApprovalDecision) => void;
   markInteractionInputResolutionPending: (interactionId: string, action?: InteractionInputAction) => void;
+  beginRunRecovery: (
+    sessionId: string,
+    sourceRequestId: string,
+    requestId: string,
+    mode: "retry" | "continue",
+  ) => boolean;
+  rejectRunRecovery: (sessionId: string, requestId: string, message: string) => void;
   appendUserMessage: (
     sessionId: string,
     requestId: string,
     input: string,
     attachments?: UploadAttachmentData[],
-    options?: { createRun?: boolean },
+    options?: { createRun?: boolean; metadata?: ConversationEntryMetadata },
   ) => void;
   truncateFromRequest: (sessionId: string, fromRequestId: string) => void;
   advanceStreamingDisplay: (sessionId: string, requestId: string) => boolean;
   ingest: (env: EventEnvelope) => void;
   ingestMany: (events: readonly EventEnvelope[]) => void;
-  removeSession: (sessionId: string) => void;
+  requestSessionDeletions: (sessionIds: readonly string[]) => void;
   clearAllSessions: (sessionIds?: string[]) => void;
   markHistoryLoading: (sessionId: string) => void;
   markHistoryLoadFailed: (sessionId: string) => void;

@@ -6,7 +6,6 @@ import type { ResolvedAgentArtifactsConfig } from "../Types/AgentConfigTypes.js"
 import type { ExecutedToolCallArtifact, ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import type { AgentArtifactFileWriter } from "./AgentArtifactFileWriter.js";
 import type { AgentArtifactFileReceipt } from "./AgentArtifactIntegrity.js";
-import { artifactJsonStructurePath, createArtifactJsonStructureTransform } from "./AgentArtifactJsonStructure.js";
 import { AgentArtifactManifestWriterSchemaVersion } from "./AgentArtifactManifestContract.js";
 import {
   createArtifactStreamRedactionTransform,
@@ -51,14 +50,11 @@ export async function publishToolArtifactFiles(input: PublishToolArtifactFilesIn
     retainReceipt(receipts, receipt);
   }
   await input.fileWriter.writeJson(input.artifact.files.input, input.redactedInput);
-  retainReceipts(
-    receipts,
-    await writeStructuredArtifactJson(input.fileWriter, input.artifact.files.raw, input.redactedRaw),
-  );
+  retainReceipt(receipts, await writeArtifactJson(input.fileWriter, input.artifact.files.raw, input.redactedRaw));
   if (input.redactedRawResponse !== undefined) {
-    retainReceipts(
+    retainReceipt(
       receipts,
-      await writeStructuredArtifactJson(input.fileWriter, input.artifact.files.rawResponse, input.redactedRawResponse),
+      await writeArtifactJson(input.fileWriter, input.artifact.files.rawResponse, input.redactedRawResponse),
     );
   }
   retainReceipt(
@@ -69,7 +65,6 @@ export async function publishToolArtifactFiles(input: PublishToolArtifactFilesIn
       input.config.RawJsonMaxBytes,
     ),
   );
-  retainReceipt(receipts, await writeArtifactJsonStructure(input.fileWriter, input.artifact.files.rawPreview));
   retainReceipt(
     receipts,
     await input.fileWriter.writeText(
@@ -79,9 +74,9 @@ export async function publishToolArtifactFiles(input: PublishToolArtifactFilesIn
     ),
   );
   await input.fileWriter.writeJson(input.artifact.files.summaryJson, input.artifact.structuredSummary);
-  retainReceipts(
+  retainReceipt(
     receipts,
-    await writeStructuredArtifactJson(input.fileWriter, input.artifact.files.evidence, {
+    await writeArtifactJson(input.fileWriter, input.artifact.files.evidence, {
       artifactId: input.artifact.artifactId,
       artifactUri: input.artifact.artifactUri,
       artifactPath: input.absoluteDir,
@@ -96,9 +91,9 @@ export async function publishToolArtifactFiles(input: PublishToolArtifactFilesIn
       input.config.TextFileMaxBytes,
     ),
   );
-  retainReceipts(
+  retainReceipt(
     receipts,
-    await writeStructuredArtifactJson(input.fileWriter, input.artifact.files.delta, {
+    await writeArtifactJson(input.fileWriter, input.artifact.files.delta, {
       artifactId: input.artifact.artifactId,
       artifactUri: input.artifact.artifactUri,
       artifactPath: input.absoluteDir,
@@ -114,9 +109,9 @@ export async function publishToolArtifactFiles(input: PublishToolArtifactFilesIn
       receipts,
       await input.fileWriter.writeJson(input.artifact.files.workspaceAfter, input.workspaceArtifacts.after),
     );
-    retainReceipts(
+    retainReceipt(
       receipts,
-      await writeStructuredArtifactJson(input.fileWriter, input.artifact.files.workspaceDiff, {
+      await writeArtifactJson(input.fileWriter, input.artifact.files.workspaceDiff, {
         artifactId: input.artifact.artifactId,
         artifactUri: input.artifact.artifactUri,
         artifactPath: input.absoluteDir,
@@ -284,23 +279,12 @@ function collectArtifactContents(
     if (!filePath) return [];
     const receipt = receipts.get(path.resolve(filePath));
     if (!receipt) return [];
-    const structure = receipts.get(path.resolve(artifactJsonStructurePath(filePath)));
     return [
       {
         ref,
         mediaType: definition.mediaType,
         byteLength: receipt.byteLength,
         sha256: receipt.sha256,
-        ...(definition.format === "json" && structure
-          ? {
-              structure: {
-                file: structure.filePath,
-                mediaType: "application/x-ndjson" as const,
-                byteLength: structure.byteLength,
-                sha256: structure.sha256,
-              },
-            }
-          : {}),
       },
     ];
   });
@@ -330,25 +314,12 @@ function collectWorkspaceSnapshotContent(
   };
 }
 
-async function writeStructuredArtifactJson(
+async function writeArtifactJson(
   fileWriter: AgentArtifactFileWriter,
   filePath: string,
   value: unknown,
-): Promise<readonly AgentArtifactFileReceipt[]> {
-  const content = await fileWriter.writeJson(filePath, value);
-  const structure = await writeArtifactJsonStructure(fileWriter, filePath);
-  return [content, structure];
-}
-
-function writeArtifactJsonStructure(
-  fileWriter: AgentArtifactFileWriter,
-  filePath: string,
 ): Promise<AgentArtifactFileReceipt> {
-  return fileWriter.copyFileWithTransform(
-    filePath,
-    artifactJsonStructurePath(filePath),
-    createArtifactJsonStructureTransform(),
-  );
+  return fileWriter.writeJson(filePath, value);
 }
 
 async function copyCapturedOutput(
@@ -396,13 +367,6 @@ async function writeProcessOutput(
 
 function retainReceipt(receipts: Map<string, AgentArtifactFileReceipt>, receipt: AgentArtifactFileReceipt): void {
   receipts.set(path.resolve(receipt.filePath), receipt);
-}
-
-function retainReceipts(
-  receipts: Map<string, AgentArtifactFileReceipt>,
-  entries: readonly AgentArtifactFileReceipt[],
-): void {
-  entries.forEach((entry) => retainReceipt(receipts, entry));
 }
 
 async function cleanupOutputCapture(capture: ExecutedToolCallResult["outputCapture"]): Promise<void> {

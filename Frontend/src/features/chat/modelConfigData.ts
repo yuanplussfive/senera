@@ -90,7 +90,6 @@ export function createModelDraft({
 export function copyModelRuntimeTemplate(template: Record<string, unknown>): Partial<ModelProviderDraft> {
   return {
     ...optionalCapabilities("Capabilities", template.Capabilities),
-    ...optionalThinkingLevelMap(template.ThinkingLevelMap),
     ...optionalThinkingProfiles(template.ThinkingProfiles),
     ...optionalThinkingLevel("DefaultThinkingLevel", template.DefaultThinkingLevel),
     ...optionalToolPlanningMode(template.ToolPlanningMode),
@@ -233,7 +232,6 @@ export function normalizeModelProviderDraft(value: unknown): ModelProviderDraft 
     ProviderId: providerId,
     ...optionalString("Icon", record.Icon),
     ...optionalCapabilities("Capabilities", record.Capabilities),
-    ...optionalThinkingLevelMap(record.ThinkingLevelMap),
     ...optionalThinkingProfiles(record.ThinkingProfiles),
     ...optionalThinkingLevel("DefaultThinkingLevel", record.DefaultThinkingLevel),
     ...optionalToolPlanningMode(record.ToolPlanningMode),
@@ -255,16 +253,6 @@ export function normalizeModelProviderDraft(value: unknown): ModelProviderDraft 
     ...optionalNumber("MaxSseEventBytes", record.MaxSseEventBytes),
     ...optionalNumber("MaxSseEvents", record.MaxSseEvents),
   };
-}
-
-function optionalThinkingLevelMap(value: unknown): Pick<ModelProviderDraft, "ThinkingLevelMap"> {
-  if (!isRecord(value)) return {};
-  const supported = new Set<ModelThinkingLevel>(ModelThinkingLevels);
-  const entries = Object.entries(value).filter(
-    (entry): entry is [ModelThinkingLevel, string | null] =>
-      supported.has(entry[0] as ModelThinkingLevel) && (typeof entry[1] === "string" || entry[1] === null),
-  );
-  return entries.length > 0 ? { ThinkingLevelMap: Object.fromEntries(entries) } : {};
 }
 
 function optionalThinkingProfiles(value: unknown): Pick<ModelProviderDraft, "ThinkingProfiles"> {

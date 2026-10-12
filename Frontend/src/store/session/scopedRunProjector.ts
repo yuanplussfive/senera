@@ -12,6 +12,9 @@ import {
   type ExecutionResourceStateData,
   type AssistantMessageCreatedData,
   type EventEnvelope,
+  type ModelCompletedData,
+  type ModelThinkingCompletedData,
+  type ModelThinkingDeltaData,
   type ModelStartedData,
   type PromptSummaryData,
   type RunFailedData,
@@ -24,7 +27,7 @@ import {
   type ToolCallStartedData,
   type ToolCallsPlannedData,
 } from "../../api/eventTypes";
-import { readTodoSnapshotEventData } from "../../api/goalContinuityEventValidation";
+import { readTodoSnapshotEventData } from "../../api/continuityExecutionEventValidation";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { resolveBackendMessage } from "../../i18n/backendMessage";
 import { summarizeToolPlan, toolPlanTitle, truncate } from "./sessionPresentation";
@@ -194,6 +197,7 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
         status: "done",
         startedAt: env.timestamp,
         endedAt: env.timestamp,
+        eventSequence: env.sequence,
         promptChars: data.chars,
         promptLines: data.lines,
         promptTokenCount: data.tokenCount,
@@ -206,8 +210,11 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
       const data = env.data as ModelStartedData;
       const modelName = data.provider?.model ?? data.model;
       upsertStep(run, {
-        id: scopedStepId(env, "model"),
+        id: scopedStepId(env, "model", data.messageIndex ?? "request"),
         kind: "model",
+        agentStep: env.step,
+        modelMessageIndex: data.messageIndex,
+        eventSequence: env.sequence,
         title: scopedStepTitle(env, frontendMessage("workflow.feed.callingModel")),
         description: scopedStepDescription(env, modelName),
         status: "running",
@@ -219,11 +226,25 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
     }
 
     case EventKinds.ModelCompleted: {
-      const step = run.steps.find((entry) => entry.id === scopedStepId(env, "model"));
+      const data = env.data as ModelCompletedData;
+      const step = run.steps.find((entry) => entry.id === scopedStepId(env, "model", data.messageIndex ?? "request"));
       if (step) {
         step.status = "done";
         step.endedAt = env.timestamp;
+        step.completedSequence = env.sequence;
         touchRun(run);
+      }
+      return true;
+    }
+    case EventKinds.ModelThinkingDelta: {
+      if (env.scope?.role === "childAgent") {
+        projectChildRunThinking(run, env, env.data as ModelThinkingDeltaData);
+      }
+      return true;
+    }
+    case EventKinds.ModelThinkingCompleted: {
+      if (env.scope?.role === "childAgent") {
+        projectChildRunThinking(run, env, env.data as ModelThinkingCompletedData);
       }
       return true;
     }
@@ -233,6 +254,9 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
       upsertStep(run, {
         id: scopedStepId(env, "tool-plan", toolBatch.id),
         kind: "tool",
+        agentStep: env.step,
+        modelMessageIndex: data.modelMessageIndex,
+        eventSequence: env.sequence,
         title: scopedStepTitle(env, toolPlanTitle(data)),
         description: scopedStepDescription(env, summarizeToolPlan(data)),
         status: "done",
@@ -245,12 +269,17 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
         upsertStep(run, {
           id: scopedStepId(env, "tool", call.callId),
           kind: "tool",
+          agentStep: env.step,
+          modelMessageIndex: data.modelMessageIndex,
+          modelContentIndex: call.modelContentIndex,
+          eventSequence: env.sequence,
           title: scopedStepTitle(env, frontendMessage("workflow.projection.toolCall", { toolName: call.toolName })),
           status: "pending",
           startedAt: env.timestamp,
           toolName: call.toolName,
           callId: call.callId,
           purpose: call.purpose,
+          ...(call.origin ? { toolOrigin: call.origin } : {}),
           toolBatch: {
             ...toolBatch,
             index,
@@ -267,6 +296,11 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
       upsertStep(run, {
         id: scopedStepId(env, "tool", data.callId),
         kind: "tool",
+        agentStep: env.step,
+        modelMessageIndex: data.modelMessageIndex,
+        modelContentIndex: data.modelContentIndex,
+        eventSequence: env.sequence,
+        startedSequence: env.sequence,
         title: scopedStepTitle(env, frontendMessage("workflow.projection.toolCall", { toolName: data.toolName })),
         status: "running",
         startedAt: env.timestamp,
@@ -406,6 +440,13 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
         projectChildRunAssistantMessage(run, env, data);
         return true;
       }
+      if (data.modelMessageIndex !== undefined) {
+        run.activeModelRequest = {
+          agentStep: env.step ?? 0,
+          modelMessageIndex: data.modelMessageIndex,
+          eventSequence: env.sequence,
+        };
+      }
       const title =
         data.kind === "ask_user"
           ? frontendMessage("workflow.projection.assistantAskUser")
@@ -415,6 +456,9 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
       upsertStep(run, {
         id: scopedStepId(env, "assistant-message", data.messageId),
         kind: data.kind === "tool_preface" ? "decision" : "answer",
+        agentStep: env.step,
+        modelMessageIndex: data.modelMessageIndex,
+        modelContentIndex: data.modelContentIndex,
         title: scopedStepTitle(env, title),
         description: truncate(data.content, 60),
         status: "done",
@@ -546,17 +590,39 @@ function updateChildRunStep(
     status: data.status,
   };
   const terminal = isTerminalChildRunStatus(data.status);
+  const stepScope = mergeChildRunStepScope(current?.scope, scope);
   upsertStep(run, {
     id,
     kind: "delegation",
+    agentStep: scope?.parentAgentStep,
+    modelMessageIndex: scope?.parentModelMessageIndex,
+    modelContentIndex: scope?.parentModelContentIndex,
     title: childRunStatusTitle(data.status),
     description: childRunActivityDescription(childRun),
     status: childRunTimelineStatus(data.status),
     startedAt: current?.startedAt ?? env.timestamp,
+    eventSequence: env.sequence,
+    startedSequence: current?.startedSequence ?? env.sequence,
     ...(terminal ? { endedAt: env.timestamp } : {}),
-    scope,
+    ...(terminal ? { completedSequence: env.sequence } : {}),
+    scope: stepScope,
     childRun,
   });
+}
+
+function mergeChildRunStepScope(
+  current: TimelineStep["scope"],
+  incoming: TimelineStep["scope"],
+): TimelineStep["scope"] {
+  if (!current && !incoming) return undefined;
+  return {
+    ...current,
+    ...incoming,
+    parentAgentStep: incoming?.parentAgentStep ?? current?.parentAgentStep,
+    parentModelMessageIndex: incoming?.parentModelMessageIndex ?? current?.parentModelMessageIndex,
+    parentModelContentIndex: incoming?.parentModelContentIndex ?? current?.parentModelContentIndex,
+    parentToolCallId: incoming?.parentToolCallId ?? current?.parentToolCallId,
+  };
 }
 
 function upsertChildRunMessage(state: TimelineChildRunState, message: TimelineChildRunMessage): void {
@@ -602,10 +668,68 @@ function projectChildRunAssistantMessage(
     kind,
     content: data.content,
     createdAt: env.timestamp,
+    ...(env.step === undefined ? {} : { agentStep: env.step }),
+    ...(data.modelMessageIndex === undefined ? {} : { modelMessageIndex: data.modelMessageIndex }),
+    ...(data.modelContentIndex === undefined ? {} : { modelContentIndex: data.modelContentIndex }),
+    eventSequence: env.sequence,
   });
   step.description = childRunActivityDescription(step.childRun);
   touchRun(run);
   return true;
+}
+
+function projectChildRunThinking(
+  run: RunRecord,
+  env: EventEnvelope,
+  data: ModelThinkingDeltaData | ModelThinkingCompletedData,
+): void {
+  const childRunId = env.scope?.childRunId;
+  if (!childRunId) return;
+
+  let step = run.steps.find((entry) => entry.id === childRunStepId(childRunId));
+  if (!step?.childRun) {
+    updateChildRunStep(
+      run,
+      env,
+      {
+        childRunId,
+        agentName: env.scope?.agentName ?? "",
+        status: step?.childRun?.status ?? "running",
+      },
+      timelineScopeFromEvent(env),
+    );
+    step = run.steps.find((entry) => entry.id === childRunStepId(childRunId));
+  }
+  if (!step?.childRun) return;
+
+  const childRun = step.childRun;
+  const blocks = (childRun.thinkingBlocks ??= []);
+  const id = `step:${env.step ?? 0}:message:${data.messageIndex}:content:${data.contentIndex}`;
+  let block = blocks.find((entry) => entry.id === id);
+  if (!block) {
+    block = {
+      id,
+      step: env.step ?? 0,
+      messageIndex: data.messageIndex,
+      contentIndex: data.contentIndex,
+      eventSequence: env.sequence,
+      content: "",
+      status: "streaming",
+    };
+    blocks.push(block);
+  }
+
+  if ("delta" in data) {
+    block.content += data.delta;
+    block.status = "streaming";
+  } else {
+    block.content = data.content;
+    block.status = data.status;
+  }
+  childRun.lastActivityAt = env.timestamp;
+  childRun.lastModelOutputAt = env.timestamp;
+  step.description = childRunActivityDescription(childRun);
+  touchRun(run);
 }
 
 function registerChildSessionRelation(state: StoreState, env: EventEnvelope): void {

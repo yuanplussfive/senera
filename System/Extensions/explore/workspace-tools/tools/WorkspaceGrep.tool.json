@@ -5,11 +5,7 @@
   "presentation": {
     "category": "workspace-search",
     "icon": "search",
-    "activity": {
-      "action": { "zh-CN": "搜索内容", "en-US": "Search" },
-      "argumentPath": "/pattern",
-      "detailPaths": ["/path", "/glob"]
-    }
+    "activity": { "action": { "zh-CN": "搜索文件", "en-US": "Search files" }, "argumentPath": "/pattern" }
   },
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -68,7 +64,6 @@
     "required": ["content"],
     "additionalProperties": false
   },
-  "observationProjection": "observations/WorkspaceGrep.projection.json",
   "permissions": ["filesystem:workspace:read"],
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
   "runtime": {

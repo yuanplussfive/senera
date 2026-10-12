@@ -15,15 +15,15 @@ export interface AgentToolSearchEpisodeAssessment {
 
 export function assessToolSearchEpisode(results: readonly ExecutedToolCallResult[]): AgentToolSearchEpisodeAssessment {
   const calls = results.map((result) => assessToolCall(result));
+  const noToolExecution = calls.length === 0;
+  const hasNonFailedCall = calls.some((call) => call.status !== "failure");
   const finalOutcome = {
-    toolExecutionSucceeded: calls.length > 0 && calls.every((call) => call.status === "success"),
+    toolExecutionSucceeded: noToolExecution || hasNonFailedCall,
     producedEvidence: calls.some((call) => call.hasEvidence),
     producedArtifact: calls.some((call) => call.hasArtifact),
     changedWorkspace: calls.some((call) => call.hasWorkspaceChanges),
   };
-  const producedUsefulOutcome =
-    finalOutcome.producedEvidence || finalOutcome.producedArtifact || finalOutcome.changedWorkspace;
-  const succeeded = finalOutcome.toolExecutionSucceeded && producedUsefulOutcome;
+  const succeeded = noToolExecution || hasNonFailedCall;
   return {
     calls,
     outcome: succeeded ? "success" : "failure",

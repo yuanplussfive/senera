@@ -12,11 +12,10 @@ import {
   AgentMcpPackageSourceKinds,
   type AgentMcpPackage,
   type AgentMcpPackageServer,
-  type AgentMcpRuntimeEndpoint,
+  type AgentMcpDeclaredEndpoint,
 } from "./AgentMcpPackageTypes.js";
 import type { AgentMcpPackageExecutionPolicy } from "./AgentMcpPackageExecutionPolicy.js";
 import type { AgentExtensionOwner } from "../Types/AgentExtensionRuntimeTypes.js";
-import { StandardAgentToolObservationProjection } from "../ToolRuntime/AgentToolObservationProjectionPlan.js";
 import type { ToolSearchCapabilityManifest } from "../Types/AgentToolSearchContractTypes.js";
 import { projectAgentMcpToolRuntime } from "../Mcp/AgentMcpToolRuntimeMetadata.js";
 import { resolveMcpToolLocalization, validateMcpToolLocalization } from "./AgentMcpToolLocalization.js";
@@ -28,7 +27,7 @@ export function projectAgentMcpPackageTools(
   server: AgentMcpPackageServer,
   declarations: readonly AgentMcpToolDeclaration[],
   execution: AgentMcpPackageExecutionPolicy,
-  endpoint: AgentMcpRuntimeEndpoint,
+  endpoint: AgentMcpDeclaredEndpoint,
 ): RegisteredTool[] {
   const owner = createAgentMcpPackageOwner(package_, server);
   validateMcpToolLocalization(
@@ -44,7 +43,7 @@ function projectMcpTool(
   server: AgentMcpPackageServer,
   declaration: AgentMcpToolDeclaration,
   execution: AgentMcpPackageExecutionPolicy,
-  endpoint: AgentMcpRuntimeEndpoint,
+  endpoint: AgentMcpDeclaredEndpoint,
 ): RegisteredTool {
   const title = declaration.annotations?.title?.trim() || declaration.name;
   const description = requireMcpToolDescription(server, declaration);
@@ -53,6 +52,7 @@ function projectMcpTool(
   const runtimePolicy = projectAgentMcpToolRuntime(declaration);
 
   return {
+    availability: endpoint.transport === "unresolved" ? endpoint.availability : { status: "ready" },
     owner,
     name: agentMcpPackageToolName(server.name, declaration.name),
     loading: ToolLoadingModes.Dynamic,
@@ -64,7 +64,6 @@ function projectMcpTool(
         tool: declaration.name,
         inputSchema: declaration.inputSchema,
         outputSchema: declaration.outputSchema,
-        contentPolicy: runtimePolicy.contentPolicy,
       }),
       arguments: contractProjector.project(declaration.inputSchema),
       outputSchema: declaration.outputSchema,
@@ -88,8 +87,6 @@ function projectMcpTool(
       ...(runtimePolicy.maxConcurrency === undefined ? {} : { MaxConcurrency: runtimePolicy.maxConcurrency }),
       Capabilities: { Cancellation: true },
     },
-    ...(runtimePolicy.contentPolicy === undefined ? {} : { contentPolicy: runtimePolicy.contentPolicy }),
-    observationProjection: StandardAgentToolObservationProjection,
     sources: [
       {
         Id: `mcp:${server.name}`,

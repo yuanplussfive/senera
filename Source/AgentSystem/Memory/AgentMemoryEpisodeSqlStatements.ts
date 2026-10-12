@@ -10,7 +10,6 @@ export interface AgentMemoryEpisodeSqlStatements {
   deleteExactEpisodeStmt: Database.Statement<[string, string]>;
   listEpisodesStmt: Database.Statement<[string], EpisodeRow>;
   listCompletedEpisodesStmt: Database.Statement<[], EpisodeRow>;
-  listCompletedEpisodesInRangeStmt: Database.Statement<[number, number], EpisodeRow>;
 }
 
 export function prepareAgentMemoryEpisodeSqlStatements(db: Database.Database): AgentMemoryEpisodeSqlStatements {
@@ -24,10 +23,9 @@ export function prepareAgentMemoryEpisodeSqlStatements(db: Database.Database): A
         status,
         raw_user_text,
         standalone_request,
-        context_mode,
         context_basis,
         topic,
-        summary,
+        assistant_text,
         started_at,
         completed_at,
         updated_at,
@@ -47,10 +45,9 @@ export function prepareAgentMemoryEpisodeSqlStatements(db: Database.Database): A
         @status,
         @raw_user_text,
         @standalone_request,
-        @context_mode,
         @context_basis,
         @topic,
-        @summary,
+        @assistant_text,
         @started_at,
         @completed_at,
         @updated_at,
@@ -66,10 +63,9 @@ export function prepareAgentMemoryEpisodeSqlStatements(db: Database.Database): A
         status = excluded.status,
         raw_user_text = excluded.raw_user_text,
         standalone_request = excluded.standalone_request,
-        context_mode = excluded.context_mode,
         context_basis = excluded.context_basis,
         topic = excluded.topic,
-        summary = excluded.summary,
+        assistant_text = excluded.assistant_text,
         started_at = excluded.started_at,
         completed_at = excluded.completed_at,
         updated_at = excluded.updated_at,
@@ -106,11 +102,6 @@ export function prepareAgentMemoryEpisodeSqlStatements(db: Database.Database): A
       SELECT * FROM memory_episodes
       WHERE status = 'completed'
       ORDER BY completed_at_ms DESC, id ASC
-    `),
-    listCompletedEpisodesInRangeStmt: db.prepare<[number, number], EpisodeRow>(`
-      SELECT * FROM memory_episodes
-      WHERE status = 'completed' AND completed_at_ms >= ? AND completed_at_ms < ?
-      ORDER BY completed_at_ms ASC, id ASC
     `),
   };
 }

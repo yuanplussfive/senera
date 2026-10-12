@@ -3,6 +3,7 @@ name: weather-forecast
 description: Query current weather and forecasts for a city, region, address, postal code, or coordinates. Use for temperature, rain, humidity, wind, sunrise, sunset, and future weather questions that require current provider data. 适用于查询城市、地区、地址或坐标的实时天气、天气预报、温度、降雨、湿度、风力和日出日落。
 metadata:
   senera:
+    icon: globe
     recommended-tools:
       - mcp__weather__forecast
 ---

@@ -1,6 +1,6 @@
-import { DEFAULT_COMPACTION_SETTINGS } from "@earendil-works/pi-coding-agent";
 import type { Model } from "@earendil-works/pi-ai";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
+import { resolveAgentPiCompactionReserveTokens } from "../Pi/AgentPiCompactionSettings.js";
 import { resolveAgentNativeToolRoute, type AgentNativeToolApi } from "./AgentModelEndpointContract.js";
 import { resolveAgentModelThinking } from "./AgentModelThinking.js";
 
@@ -22,7 +22,6 @@ export function projectAgentNativeToolModel(provider: ResolvedAgentModelProvider
     model: provider.Model,
     capabilities,
     declaredCapabilities: provider.DeclaredCapabilities,
-    thinkingLevelMap: provider.ThinkingLevelMap,
     thinkingProfiles: provider.ThinkingProfiles,
     defaultThinkingLevel: provider.DefaultThinkingLevel,
   });
@@ -44,11 +43,11 @@ export function projectAgentNativeToolModel(provider: ResolvedAgentModelProvider
 }
 
 export function resolveAgentModelMaxTokens(
-  provider: Pick<ResolvedAgentModelProviderConfig, "MaxModelOutputTokens" | "MaxOutputTokens">,
+  provider: Pick<ResolvedAgentModelProviderConfig, "MaxModelOutputTokens" | "MaxOutputTokens" | "ContextWindowTokens">,
 ): number {
   return (
     [provider.MaxModelOutputTokens, provider.MaxOutputTokens].find(isPositiveTokenCount) ??
-    DEFAULT_COMPACTION_SETTINGS.reserveTokens
+    resolveAgentPiCompactionReserveTokens(provider.ContextWindowTokens)
   );
 }
 

@@ -1,26 +1,24 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import {
-  AlertCircle,
-  ArrowUp,
-  BookUser,
-  Globe,
-  Paperclip,
-  Plus,
-  Puzzle,
-  RotateCcw,
-  Square,
-  Wand2,
-  X,
-} from "lucide-react";
+import { forwardRef, lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { buildStyles, CircularProgressbar } from "react-circular-progressbar";
 import type { UploadAttachmentData } from "../../api/eventTypes";
+import type {
+  AgentActivationCatalogEntry,
+  AgentActivationKind,
+  AgentActivationCatalogSnapshot,
+  ExplicitActivationReference,
+  ExplicitActivationSet,
+} from "../../api/eventTypes";
+import { WorkspaceMenu } from "../../shared/workspace/WorkspaceMenu";
+import { useWorkspaceResourceController } from "../../shared/workspace/WorkspaceResourceProvider";
 import type { UploadProgress } from "../../api/uploadClient";
 import { cn, formatFileSize } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { frontendChatMessage } from "../../i18n/frontendChatMessageCatalog";
 import { useFrontendLocale } from "../../i18n/useFrontendLocale";
+import { resolveFrontendLocalizedText, type FrontendLocale } from "../../i18n/frontendLocaleModel";
 import { useResponsiveMode } from "../../shared/responsive";
 import { MotionButton, MotionList, MotionListItem } from "../../shared/motion";
+import { resolveAgentToolPresentationAppIcon } from "../../shared/workspace/agentToolPresentationIcons";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,21 +27,20 @@ import {
   DropdownMenuTrigger,
   ConversationFrame,
   IconButton,
+  isAppIconName,
   Spinner,
   Tooltip,
+  AppIcon,
 } from "../../shared/ui";
+import type { AppIconName } from "../../shared/ui";
 import { FilePreviewIcon } from "./FilePreviewIcon";
-import { PresetControl } from "./PresetPanel";
-import { readSelectedModelProvider } from "./modelProvider";
+import { PersonaControl } from "./PersonaControl";
 import { ChatModelSelector } from "./ChatModelSelector";
-import { ThinkingSelector } from "./ThinkingSelector";
 import type { MessageQueueMode } from "../../app/useChatCommands";
-import type { ChatApprovalConfig, ChatModelConfig, ChatPresetConfig } from "./ChatPanelContracts";
+import type { ChatApprovalConfig, ChatModelConfig, ChatPersonaConfig } from "./ChatPanelContracts";
 import type { SettingsSectionId } from "../settings/settingsSectionContract";
 import { useComposerAttachments, type PendingAttachment } from "./useComposerAttachments";
 import type { RuntimeContextUsage, RuntimeUsageSnapshot } from "../observability/runtimeDiagnosticProjection";
-import { useEventJournalStore } from "../observability/eventJournalStore";
-import { projectRuntimeUsage, readLatestRuntimeStatusRecord } from "../observability/runtimeDiagnosticProjection";
 
 const ApprovalModeControl = lazy(() => import("./ApprovalModeControl"));
 
@@ -78,18 +75,24 @@ export interface ChatComposerProps {
   value?: string;
   onValueChange?: (value: string) => void;
   modelConfig: ChatModelConfig;
-  activeSessionId?: string | null;
   approvalConfig: ChatApprovalConfig;
-  presetConfig: ChatPresetConfig;
+  personaConfig: ChatPersonaConfig;
   runtime: {
+    draftKey?: string;
     socketStatus: string;
     uploadUrl: string;
     uploadCsrfToken?: string;
   };
   runtimeUsage?: RuntimeUsageSnapshot;
-  onSend: (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode) => boolean;
+  onSend: (
+    input: string,
+    attachments?: UploadAttachmentData[],
+    queueMode?: MessageQueueMode,
+    activations?: ExplicitActivationSet,
+  ) => boolean;
   onCancel: () => void;
   onOpenSettings?: (section: SettingsSectionId, returnFocus?: HTMLElement | null) => void;
+  activationCatalog?: AgentActivationCatalogSnapshot | null;
 }
 
 export function ChatComposer({
@@ -100,30 +103,43 @@ export function ChatComposer({
   value: controlledValue,
   onValueChange,
   modelConfig,
-  activeSessionId,
   runtimeUsage,
   approvalConfig,
-  presetConfig,
+  personaConfig,
   runtime,
   onSend,
   onCancel,
   onOpenSettings,
+  activationCatalog,
 }: ChatComposerProps): JSX.Element {
   const locale = useFrontendLocale();
   const [internalValue, setInternalValue] = useState("");
   const value = controlledValue ?? internalValue;
   const setValue = onValueChange ?? setInternalValue;
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const textOverlayRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const openPresetAfterToolkitCloseRef = useRef(false);
+  const openPersonaAfterToolkitCloseRef = useRef(false);
   const pendingSettingsSectionRef = useRef<SettingsSectionId | null>(null);
   const [toolkitOpen, setToolkitOpen] = useState(false);
-  const [presetOpen, setPresetOpen] = useState(false);
+  const [personaOpen, setPersonaOpen] = useState(false);
+  const [activationSelection, setActivationSelection] = useState<ExplicitActivationReference[]>([]);
+  const [activationQuery, setActivationQuery] = useState<string | null>(null);
+  const [activationIndex, setActivationIndex] = useState(0);
+  const workspaceResources = useWorkspaceResourceController();
   const attachments = useComposerAttachments({
+    draftKey: runtime.draftKey,
     uploadUrl: runtime.uploadUrl,
     uploadCsrfToken: runtime.uploadCsrfToken,
     interactionLocked: disabled || running || cancelling,
   });
+  const attachmentHandler = useRef(attachments.enqueueFiles);
+  attachmentHandler.current = attachments.enqueueFiles;
+  const registerReferenceHandler = workspaceResources?.registerReferenceHandler;
+  useEffect(() => {
+    if (disabled || cancelling) return;
+    return registerReferenceHandler?.((file) => attachmentHandler.current([file]));
+  }, [disabled, cancelling, registerReferenceHandler]);
   const { prefersCompactControls } = useResponsiveMode();
   const textareaMaxHeight = prefersCompactControls ? TOUCH_TEXTAREA_MAX_HEIGHT : DESKTOP_TEXTAREA_MAX_HEIGHT;
 
@@ -179,9 +195,9 @@ export function ChatComposer({
 
   useEffect(() => {
     if (toolkitOpen) return;
-    if (openPresetAfterToolkitCloseRef.current) {
-      openPresetAfterToolkitCloseRef.current = false;
-      setPresetOpen(true);
+    if (openPersonaAfterToolkitCloseRef.current) {
+      openPersonaAfterToolkitCloseRef.current = false;
+      setPersonaOpen(true);
       return;
     }
     const pendingSection = pendingSettingsSectionRef.current;
@@ -190,18 +206,111 @@ export function ChatComposer({
     onOpenSettings(pendingSection);
   }, [onOpenSettings, toolkitOpen]);
 
+  useEffect(() => {
+    setActivationSelection((current) => {
+      const next = current.filter((selection) =>
+        activationCatalog?.entries.some(
+          (entry) =>
+            entry.kind === selection.kind && entry.id === selection.id && entry.revision === selection.revision,
+        ),
+      );
+      return next.length === current.length ? current : next;
+    });
+    if (!activationCatalog) setActivationQuery(null);
+  }, [activationCatalog]);
+
+  const activationCanSelect = !disabled && !running && !settling && !cancelling;
+  const activationCandidates = useMemo(() => {
+    if (activationQuery === null || !activationCatalog || !activationCanSelect) return [];
+    return rankActivationCandidates(activationCatalog.entries, activationQuery, locale);
+  }, [activationCanSelect, activationCatalog, activationQuery, locale]);
+
+  useEffect(() => {
+    if (activationCanSelect) return;
+    setActivationQuery(null);
+    setActivationIndex(0);
+  }, [activationCanSelect]);
+
+  useEffect(() => {
+    setActivationIndex((current) => {
+      if (activationCandidates.length === 0) return 0;
+      if (activationCandidates[current]?.selectable) return current;
+      const firstSelectable = activationCandidates.findIndex((entry) => entry.selectable);
+      return firstSelectable >= 0 ? firstSelectable : 0;
+    });
+  }, [activationCandidates]);
+
+  const readActivationQuery = (nextValue: string, caret: number): string | null => {
+    const beforeCaret = nextValue.slice(0, caret);
+    const match = beforeCaret.match(/(?:^|\s)@([^\s@]*)$/u);
+    return match ? match[1] : null;
+  };
+
+  const selectActivation = (index: number): void => {
+    const candidate = activationCandidates[index];
+    if (!candidate?.selectable || activationQuery === null) return;
+    const caret = taRef.current?.selectionStart ?? value.length;
+    const before = value.slice(0, caret);
+    const match = before.match(/(?:^|\s)@([^\s@]*)$/u);
+    if (!match) return;
+    const tokenStart = caret - match[1].length - 1;
+    const nextValue = `${value.slice(0, tokenStart)}@${candidate.id} ${value.slice(caret)}`;
+    setValue(nextValue);
+    setActivationSelection((current) =>
+      current.some((entry) => entry.kind === candidate.kind && entry.id === candidate.id)
+        ? current
+        : [...current, { kind: candidate.kind, id: candidate.id, revision: candidate.revision }],
+    );
+    setActivationQuery(null);
+    setActivationIndex(0);
+    requestAnimationFrame(() => {
+      const nextCaret = tokenStart + candidate.id.length + 2;
+      taRef.current?.focus();
+      taRef.current?.setSelectionRange(nextCaret, nextCaret);
+    });
+  };
+
   const submit = (queueMode?: MessageQueueMode): void => {
     const text = value.trim();
     if (!text || disabled || attachments.uploading) return;
     const uploaded = attachments.collectUploadedAttachments();
-    const sent = onSend(text, uploaded.length > 0 ? uploaded : undefined, queueMode);
+    const activations: ExplicitActivationSet | undefined =
+      activationSelection.length > 0 && activationCatalog
+        ? { catalogRevision: activationCatalog.revision, explicit: activationSelection }
+        : undefined;
+    const sent = activations
+      ? onSend(text, uploaded.length > 0 ? uploaded : undefined, queueMode, activations)
+      : onSend(text, uploaded.length > 0 ? uploaded : undefined, queueMode);
     if (sent === false) return;
     attachments.commitSentAttachments();
     setValue("");
+    setActivationSelection([]);
+    setActivationQuery(null);
     if (taRef.current) taRef.current.style.height = "auto";
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
+    if (activationQuery !== null && activationCandidates.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setActivationIndex((current) => stepActivationIndex(activationCandidates, current, 1));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setActivationIndex((current) => stepActivationIndex(activationCandidates, current, -1));
+        return;
+      }
+      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+        e.preventDefault();
+        selectActivation(activationIndex);
+        return;
+      }
+      if (e.key === "Escape") {
+        setActivationQuery(null);
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       if (composerAction === "cancel" || composerAction === "cancelling") return;
@@ -216,7 +325,12 @@ export function ChatComposer({
   };
 
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>): void => {
-    setValue(e.target.value);
+    const nextValue = e.target.value;
+    setValue(nextValue);
+    const referencedIds = new Set(readActivationTokens(nextValue));
+    setActivationSelection((current) => current.filter((entry) => referencedIds.has(entry.id)));
+    setActivationQuery(activationCanSelect ? readActivationQuery(nextValue, e.target.selectionStart) : null);
+    setActivationIndex(0);
     const el = e.target;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, textareaMaxHeight)}px`;
@@ -274,56 +388,77 @@ export function ChatComposer({
             onPreviewUnavailable={attachments.markPreviewUnavailable}
           />
 
-          <textarea
-            ref={taRef}
-            aria-label={frontendMessage("chat.composer.inputMessage")}
-            value={value}
-            rows={1}
-            onChange={handleInput}
-            onKeyDown={handleKeyDown}
-            onPaste={attachments.handlePaste}
-            placeholder={hint}
-            disabled={disabled}
-            style={{ maxHeight: textareaMaxHeight }}
-            className="scrollbar-thin min-h-9 w-full resize-none bg-transparent px-1 py-1.5 text-[14px] leading-5 text-content-primary placeholder:text-content-disabled focus:outline-none disabled:opacity-60 sm:min-h-9"
-          />
+          <div className="relative min-h-9">
+            <ActivationTextOverlay ref={textOverlayRef} value={value} />
+            <textarea
+              ref={taRef}
+              aria-label={frontendMessage("chat.composer.inputMessage")}
+              value={value}
+              rows={1}
+              onChange={handleInput}
+              onKeyDown={handleKeyDown}
+              onPaste={attachments.handlePaste}
+              onScroll={() => {
+                if (!taRef.current || !textOverlayRef.current) return;
+                textOverlayRef.current.scrollTop = taRef.current.scrollTop;
+                textOverlayRef.current.scrollLeft = taRef.current.scrollLeft;
+              }}
+              placeholder={hint}
+              disabled={disabled}
+              style={{ maxHeight: textareaMaxHeight }}
+              className="scrollbar-thin relative z-[1] min-h-9 w-full resize-none bg-transparent px-1 py-1.5 text-[14px] leading-5 text-transparent caret-content-primary selection:bg-accent-surface selection:text-content-primary placeholder:text-content-disabled focus:outline-none disabled:opacity-60 sm:min-h-9"
+            />
+          </div>
+          {activationQuery !== null && activationCanSelect ? (
+            <ActivationPalette
+              catalog={activationCatalog}
+              query={activationQuery}
+              candidates={activationCandidates}
+              activeIndex={activationIndex}
+              selected={activationSelection}
+              locale={locale}
+              onSelect={selectActivation}
+            />
+          ) : null}
 
           <div className="flex min-w-0 items-center gap-1.5">
             <div className="flex min-w-0 flex-1 items-center gap-1">
-              <DropdownMenu open={toolkitOpen} onOpenChange={setToolkitOpen}>
-                <DropdownMenuTrigger asChild disabled={disabled || running || cancelling}>
+              <DropdownMenu modal={false} open={toolkitOpen} onOpenChange={setToolkitOpen}>
+                <DropdownMenuTrigger asChild>
                   <IconButton
                     label={frontendChatMessage("chat.composer.toolkit.tooltip")}
                     tooltip={frontendChatMessage("chat.composer.toolkit.tooltip")}
                     tooltipSide="top"
                     tone="muted"
-                    disabled={disabled || running || cancelling}
                     touchSafe
                     className="[&[data-state=open]>svg]:rotate-45"
                   >
-                    <Plus className="h-4 w-4 transition-transform duration-[var(--icon-rotate-dur)] ease-[var(--icon-rotate-ease)]" />
+                    <AppIcon icon="plus" size={16} className="transition-transform duration-[var(--icon-rotate-dur)] ease-[var(--icon-rotate-ease)]" />
                   </IconButton>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" side="top" sideOffset={6} alignOffset={6}>
+                  <WorkspaceMenu onClose={() => setToolkitOpen(false)} />
                   <DropdownMenuItem
-                    icon={<Paperclip className="h-4 w-4" />}
+                    icon={<AppIcon icon="paperclip" size={16} />}
+                    disabled={disabled || running || cancelling}
                     onSelect={() => fileInputRef.current?.click()}
                   >
                     {frontendChatMessage("chat.composer.toolkit.fileAndImage")}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
-                    icon={<BookUser className="h-4 w-4" />}
+                    icon={<AppIcon icon="book-user" size={16} />}
+                    disabled={disabled || running || cancelling}
                     onSelect={() => {
-                      openPresetAfterToolkitCloseRef.current = true;
+                      openPersonaAfterToolkitCloseRef.current = true;
                     }}
                   >
-                    {frontendChatMessage("chat.composer.toolkit.preset")}
+                    {frontendChatMessage("chat.composer.toolkit.persona")}
                   </DropdownMenuItem>
                   {onOpenSettings ? (
                     <>
                       <DropdownMenuItem
-                        icon={<Puzzle className="h-4 w-4" />}
+                        icon={<AppIcon icon="puzzle" size={16} />}
                         onSelect={() => {
                           pendingSettingsSectionRef.current = "mcp-servers";
                         }}
@@ -331,7 +466,7 @@ export function ChatComposer({
                         {frontendChatMessage("chat.composer.toolkit.plugins")}
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        icon={<Wand2 className="h-4 w-4" />}
+                        icon={<AppIcon icon="wand" size={16} />}
                         onSelect={() => {
                           pendingSettingsSectionRef.current = "system-tools";
                         }}
@@ -339,7 +474,7 @@ export function ChatComposer({
                         {frontendChatMessage("chat.composer.toolkit.skills")}
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        icon={<Globe className="h-4 w-4" />}
+                        icon={<AppIcon icon="globe" size={16} />}
                         onSelect={() => {
                           pendingSettingsSectionRef.current = "system-tools";
                         }}
@@ -350,20 +485,15 @@ export function ChatComposer({
                   ) : null}
                 </DropdownMenuContent>
               </DropdownMenu>
-              <PresetControl
-                open={presetOpen}
-                onOpenChange={setPresetOpen}
+              <PersonaControl
+                open={personaOpen}
+                onOpenChange={setPersonaOpen}
+                showTrigger={false}
                 disabled={disabled || running || cancelling}
-                enabled={presetConfig.presetsEnabled}
-                rootDir={presetConfig.presetRootDir}
-                presets={presetConfig.presets}
-                worldPackages={presetConfig.worldPackages}
-                activePresetName={presetConfig.activePresetName}
-                operations={presetConfig.presetOperations}
-                onRefresh={presetConfig.onRefreshPresets}
-                onSave={presetConfig.onSavePreset}
-                onDelete={presetConfig.onDeletePreset}
-                onSetActive={presetConfig.onSetActivePreset}
+                corePersona={personaConfig.corePersona}
+                languageStyle={personaConfig.languageStyle}
+                operation={personaConfig.operation}
+                onSave={personaConfig.onSave}
               />
               <Suspense
                 fallback={
@@ -390,22 +520,17 @@ export function ChatComposer({
             </div>
 
             <div className="flex min-w-0 shrink-0 items-center gap-1" data-composer-trailing-controls>
-              <RuntimeUsageIndicator activeSessionId={activeSessionId} runtimeUsage={runtimeUsage} />
+              <RuntimeUsageIndicator runtimeUsage={runtimeUsage} />
               <ChatModelSelector
                 disabled={disabled || running}
                 models={modelConfig.modelProviders}
                 selectedId={modelConfig.selectedModelProviderId}
                 defaultModelId={modelConfig.defaultModelProviderId}
+                selectedThinkingLevel={modelConfig.selectedThinkingLevel}
                 onSelect={modelConfig.onSelectModelProvider}
+                onSelectThinkingLevel={modelConfig.onSelectThinkingLevel}
                 onUseDefault={modelConfig.onApplyDefaultModel}
                 onAddModel={modelConfig.onAddModel}
-                prefersCompactControls={prefersCompactControls}
-              />
-              <ThinkingSelector
-                disabled={disabled || running}
-                model={readSelectedModelProvider(modelConfig.modelProviders, modelConfig.selectedModelProviderId)}
-                selectedLevel={modelConfig.selectedThinkingLevel}
-                onSelect={modelConfig.onSelectThinkingLevel}
                 prefersCompactControls={prefersCompactControls}
               />
               {composerAction === "cancelling" ? (
@@ -438,7 +563,7 @@ export function ChatComposer({
                     aria-label={frontendMessage("chat.composer.cancelRunning")}
                     data-composer-action="cancel"
                   >
-                    <Square className="h-3.5 w-3.5 fill-current" />
+                    <AppIcon icon="square" size={14} className="fill-current" />
                   </MotionButton>
                 </Tooltip>
               ) : (
@@ -472,7 +597,7 @@ export function ChatComposer({
                     }
                     data-composer-action={composerAction}
                   >
-                    <ArrowUp className="h-4 w-4" />
+                    <AppIcon icon="arrow-up" size={16} />
                   </MotionButton>
                 </Tooltip>
               )}
@@ -484,13 +609,324 @@ export function ChatComposer({
   );
 }
 
-function ContextUsageIndicator({ usage }: { usage?: RuntimeContextUsage }): JSX.Element {
-  const hasTokens = usage?.tokens !== null && usage?.tokens !== undefined;
-  const used = hasTokens ? Math.max(0, usage.tokens) : 0;
-  const percent = usage
-    ? Math.max(0, Math.min(100, usage.percent ?? (hasTokens ? (used / usage.contextWindow) * 100 : 0)))
-    : 0;
-  const value = usage && hasTokens ? percent : 0;
+const activationKindPresentation: Record<
+  AgentActivationKind,
+  {
+    readonly icon: AppIconName;
+    readonly label:
+      | "chat.composer.activation.skill"
+      | "chat.composer.activation.plugin"
+      | "chat.composer.activation.mcp"
+      | "chat.composer.activation.system";
+  }
+> = {
+  skill: { icon: "book-open", label: "chat.composer.activation.skill" },
+  system: { icon: "tools", label: "chat.composer.activation.system" },
+  plugin: { icon: "package", label: "chat.composer.activation.plugin" },
+  mcp: { icon: "server", label: "chat.composer.activation.mcp" },
+};
+
+const activationKindOrder: readonly AgentActivationKind[] = ["skill", "system", "plugin", "mcp"];
+
+function rankActivationCandidates(
+  entries: readonly AgentActivationCatalogEntry[],
+  query: string,
+  locale: FrontendLocale,
+): AgentActivationCatalogEntry[] {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  return entries
+    .filter((entry) => {
+      if (!normalizedQuery) return true;
+      return [
+        entry.id,
+        entry.title,
+        entry.description,
+        entry.localizedTitle?.["zh-CN"],
+        entry.localizedTitle?.["en-US"],
+        entry.localizedDescription?.["zh-CN"],
+        entry.localizedDescription?.["en-US"],
+        entry.source,
+      ]
+        .filter((value): value is string => Boolean(value))
+        .some((value) => value.toLocaleLowerCase().includes(normalizedQuery));
+    })
+    .sort((left, right) => compareActivationCandidates(left, right, normalizedQuery, locale));
+}
+
+function compareActivationCandidates(
+  left: AgentActivationCatalogEntry,
+  right: AgentActivationCatalogEntry,
+  query: string,
+  locale: FrontendLocale,
+): number {
+  const kindOrder = activationKindOrder.indexOf(left.kind) - activationKindOrder.indexOf(right.kind);
+  if (kindOrder !== 0) return kindOrder;
+  if (left.selectable !== right.selectable) return left.selectable ? -1 : 1;
+  if (left.enabled !== right.enabled) return left.enabled ? -1 : 1;
+  const leftScore = activationMatchScore(left, query);
+  const rightScore = activationMatchScore(right, query);
+  if (leftScore !== rightScore) return rightScore - leftScore;
+  const leftTitle = resolveActivationText(left, locale).title;
+  const rightTitle = resolveActivationText(right, locale).title;
+  return leftTitle.localeCompare(rightTitle) || left.id.localeCompare(right.id) || left.kind.localeCompare(right.kind);
+}
+
+function stepActivationIndex(
+  candidates: readonly AgentActivationCatalogEntry[],
+  current: number,
+  direction: 1 | -1,
+): number {
+  if (candidates.length === 0) return current;
+  for (let offset = 1; offset <= candidates.length; offset += 1) {
+    const index = (current + direction * offset + candidates.length * 2) % candidates.length;
+    if (candidates[index]?.selectable) return index;
+  }
+  return current;
+}
+
+function activationMatchScore(entry: AgentActivationCatalogEntry, query: string): number {
+  if (!query) return 0;
+  const values = [
+    entry.id,
+    entry.title,
+    entry.localizedTitle?.["zh-CN"],
+    entry.localizedTitle?.["en-US"],
+  ]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => value.toLocaleLowerCase());
+  if (values.some((value) => value === query)) return 3;
+  if (values.some((value) => value.startsWith(query))) return 2;
+  return 1;
+}
+
+function readActivationTokens(value: string): string[] {
+  return [...value.matchAll(/(?:^|\s)@([^\s@]+)/gu)].map((match) => match[1]);
+}
+
+const ActivationTextOverlay = forwardRef<HTMLDivElement, { value: string }>(function ActivationTextOverlay(
+  { value },
+  ref,
+) {
+  return (
+    <div
+      ref={ref}
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-1 py-1.5 text-[14px] leading-5 text-content-primary"
+    >
+      {value.split(/(@[^\s@]+)/gu).map((part, index) =>
+        part.startsWith("@") ? (
+          <span key={`${part}-${index}`} className="font-medium text-accent-content">
+            {part}
+          </span>
+        ) : (
+          <span key={`${part}-${index}`}>{part}</span>
+        ),
+      )}
+    </div>
+  );
+});
+
+function compactActivationText(value: string, locale?: string): string {
+  const normalized = value.replace(/\s+/gu, " ").trim();
+  if (!normalized || !locale) return normalized;
+  const segments = normalized.split(/(?<=[.!?。！？])\s*/u).filter(Boolean);
+  if (segments.length < 2) return normalized;
+  const hasCjk = /[\u3400-\u9fff]/u.test(normalized);
+  const hasLatin = /[A-Za-z]/u.test(normalized);
+  if (!hasCjk || !hasLatin) return normalized;
+  const preferCjk = locale.toLocaleLowerCase().startsWith("zh");
+  const preferred = segments.filter((segment) =>
+    preferCjk ? /[\u3400-\u9fff]/u.test(segment) : /[A-Za-z]/u.test(segment) && !/[\u3400-\u9fff]/u.test(segment),
+  );
+  return preferred.length > 0 ? preferred.join(" ") : normalized;
+}
+
+function ActivationPalette({
+  catalog,
+  query,
+  candidates,
+  activeIndex,
+  selected,
+  locale,
+  onSelect,
+}: {
+  catalog: AgentActivationCatalogSnapshot | null | undefined;
+  query: string;
+  candidates: readonly AgentActivationCatalogEntry[];
+  activeIndex: number;
+  selected: readonly ExplicitActivationReference[];
+  locale: FrontendLocale;
+  onSelect: (index: number) => void;
+}): JSX.Element {
+  const selectableCount = catalog?.entries.filter((entry) => entry.selectable).length ?? 0;
+  const statusMessage = !catalog
+    ? frontendChatMessage("chat.composer.activation.syncing", {}, locale)
+    : candidates.length === 0
+      ? selectableCount === 0
+        ? frontendChatMessage("chat.composer.activation.empty", {}, locale)
+        : frontendChatMessage("chat.composer.activation.noMatch", {}, locale)
+      : undefined;
+
+  return (
+    <div
+      className="absolute bottom-full left-3 z-20 mb-2 flex w-80 max-w-[90vw] flex-col overflow-hidden rounded-[13px] border border-line-subtle bg-surface-panel/95 shadow-[0_18px_42px_-24px_rgb(43_40_32_/_0.42)] backdrop-blur-md"
+      role="listbox"
+      aria-label={frontendChatMessage("chat.composer.activation.ariaLabel", {}, locale)}
+      aria-activedescendant={candidates[activeIndex] ? activationOptionId(candidates[activeIndex]) : undefined}
+    >
+      <div className="flex items-center justify-between gap-3 border-b border-line-subtle px-3.5 py-2.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-[8px] bg-accent-surface font-mono text-[13px] text-accent-content">
+            @
+          </span>
+          <span className="min-w-0 truncate text-[12px] font-medium text-accent-content">@{query}</span>
+        </div>
+        {catalog ? (
+          <span className="shrink-0 text-[10px] tabular-nums text-content-muted">{selectableCount}</span>
+        ) : null}
+      </div>
+
+      {statusMessage ? (
+        <div className="px-3.5 py-5 text-center text-[12px] text-content-muted" role="status" aria-live="polite">
+          {statusMessage}
+        </div>
+      ) : (
+        <MotionList className="scrollbar-thin max-h-72 overflow-y-auto p-1.5" presence="animated">
+          {groupActivationCandidates(candidates).map((group, groupIndex) => {
+            const presentation = activationKindPresentation[group.kind];
+            return (
+              <div key={group.kind} role="group" aria-label={frontendChatMessage(presentation.label, {}, locale)}>
+                <div
+                  className={cn(
+                    "flex items-center gap-2 px-2.5 pb-1 text-[10px] font-medium text-content-muted",
+                    groupIndex === 0 ? "pt-1" : "border-t border-line-subtle pt-2.5",
+                  )}
+                >
+                  <AppIcon icon={presentation.icon} size={12} aria-hidden="true" />
+                  <span>{frontendChatMessage(presentation.label, {}, locale)}</span>
+                  <span className="h-px min-w-3 flex-1 bg-line-subtle" aria-hidden="true" />
+                  <span className="tabular-nums text-content-disabled">{group.entries.length}</span>
+                </div>
+                {group.entries.map(({ entry, index }) => {
+                  const text = resolveActivationText(entry, locale);
+                  const icon = resolveActivationIcon(entry.icon, presentation.icon);
+                  const isSelected = selected.some(
+                    (selection) =>
+                      selection.kind === entry.kind &&
+                      selection.id === entry.id &&
+                      selection.revision === entry.revision,
+                  );
+                  return (
+                    <MotionListItem key={`${entry.kind}:${entry.id}`} layout="position" initial={false}>
+                      <button
+                        id={activationOptionId(entry)}
+                        type="button"
+                        role="option"
+                        disabled={!entry.selectable}
+                        aria-selected={index === activeIndex}
+                        aria-disabled={!entry.selectable}
+                        aria-label={`${text.title} @${entry.id}`}
+                        className={cn(
+                          "group flex w-full items-start gap-2.5 rounded-[11px] px-2.5 py-2 text-left outline-none transition-[background-color,color] duration-150",
+                          !entry.selectable
+                            ? "cursor-not-allowed opacity-55"
+                            : index === activeIndex
+                              ? "bg-surface-hover/70"
+                              : "hover:bg-surface-hover/45",
+                        )}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => onSelect(index)}
+                      >
+                        <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-[7px] bg-surface-muted text-content-secondary transition-colors group-hover:text-content-primary">
+                          <AppIcon icon={icon} size={14} aria-hidden="true" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span className="min-w-0 truncate text-[12.5px] font-medium text-content-primary">
+                              {text.title}
+                            </span>
+                            <span className="shrink-0 text-[10px] text-content-muted">
+                              {entry.selectable
+                                ? frontendChatMessage(presentation.label, {}, locale)
+                                : entry.enabled
+                                  ? frontendChatMessage("chat.composer.activation.needsSetup", {}, locale)
+                                  : frontendChatMessage("chat.composer.activation.unavailable", {}, locale)}
+                            </span>
+                          </span>
+                          <span className="mt-0.5 block truncate text-[11px] font-medium text-accent-content">
+                            @{entry.id}
+                          </span>
+                          {text.description ? (
+                            <span className="mt-0.5 block truncate text-[10.5px] leading-4 text-content-secondary">
+                              {compactActivationText(text.description, locale)}
+                            </span>
+                          ) : null}
+                        </span>
+                        {isSelected ? <AppIcon icon="checkmark" size={14} className="mt-1 text-accent-content" /> : null}
+                      </button>
+                    </MotionListItem>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </MotionList>
+      )}
+      <div className="border-t border-line-subtle px-3.5 py-2 text-[10px] text-content-muted">
+        {frontendChatMessage("chat.composer.activation.hint", {}, locale)}
+      </div>
+    </div>
+  );
+}
+
+function resolveActivationText(
+  entry: AgentActivationCatalogEntry,
+  locale: FrontendLocale,
+): { readonly title: string; readonly description: string } {
+  return {
+    title: entry.localizedTitle ? resolveFrontendLocalizedText(entry.localizedTitle, locale) : entry.title,
+    description: entry.localizedDescription
+      ? resolveFrontendLocalizedText(entry.localizedDescription, locale)
+      : entry.description,
+  };
+}
+
+interface ActivationCandidateGroup {
+  readonly kind: AgentActivationKind;
+  readonly entries: readonly { readonly entry: AgentActivationCatalogEntry; readonly index: number }[];
+}
+
+function groupActivationCandidates(candidates: readonly AgentActivationCatalogEntry[]): ActivationCandidateGroup[] {
+  const entriesByKind = new Map<AgentActivationKind, { entry: AgentActivationCatalogEntry; index: number }[]>();
+  candidates.forEach((entry, index) => {
+    const entries = entriesByKind.get(entry.kind) ?? [];
+    entries.push({ entry, index });
+    entriesByKind.set(entry.kind, entries);
+  });
+  return activationKindOrder.flatMap((kind) => {
+    const entries = entriesByKind.get(kind);
+    return entries?.length ? [{ kind, entries }] : [];
+  });
+}
+
+function activationOptionId(entry: AgentActivationCatalogEntry): string {
+  return `activation-option-${entry.kind}-${entry.id}`;
+}
+
+function resolveActivationIcon(value: string | undefined, kindIcon: AppIconName): AppIconName {
+  if (isAppIconName(value)) return value;
+  // Metadata is optional; the category icon is the declared presentation default,
+  // never an ID- or capability-specific guess.
+  return resolveAgentToolPresentationAppIcon(value) ?? kindIcon;
+}
+
+function ContextUsageIndicator({ usage }: { usage?: RuntimeContextUsage }): JSX.Element | null {
+  const hasTokens = typeof usage?.tokens === "number" && Number.isFinite(usage.tokens);
+  const hasContextWindow = typeof usage?.contextWindow === "number" && Number.isFinite(usage.contextWindow);
+  if (!usage || !hasTokens || !hasContextWindow || usage.contextWindow <= 0) return null;
+
+  const used = Math.max(0, usage.tokens);
+  const percent = Math.max(0, Math.min(100, usage.percent ?? (used / usage.contextWindow) * 100));
   const roundedPercent = Math.round(percent);
   const remainingPercent = Math.max(0, 100 - roundedPercent);
 
@@ -499,21 +935,17 @@ function ContextUsageIndicator({ usage }: { usage?: RuntimeContextUsage }): JSX.
       content={
         <span className="flex items-center gap-1 whitespace-nowrap text-left leading-4 tabular-nums">
           <span className="font-medium">
-            {usage && hasTokens
-              ? frontendMessage("chat.composer.contextUsageSummary", {
-                  used: roundedPercent,
-                  remaining: remainingPercent,
-                })
-              : frontendMessage("chat.composer.contextUsage")}
+            {frontendMessage("chat.composer.contextUsageSummary", {
+              used: roundedPercent,
+              remaining: remainingPercent,
+            })}
           </span>
           <span className="text-ink-300">·</span>
           <span className="text-ink-300">
-            {usage && hasTokens
-              ? frontendMessage("chat.composer.contextUsageTokens", {
-                  used: formatComposerTokenCount(used),
-                  total: formatComposerTokenCount(usage.contextWindow),
-                })
-              : frontendMessage("chat.composer.contextUsagePending")}
+            {frontendMessage("chat.composer.contextUsageTokens", {
+              used: formatComposerTokenCount(used),
+              total: formatComposerTokenCount(usage.contextWindow),
+            })}
           </span>
         </span>
       }
@@ -526,15 +958,13 @@ function ContextUsageIndicator({ usage }: { usage?: RuntimeContextUsage }): JSX.
         aria-label={frontendMessage("chat.composer.contextUsage")}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-valuenow={value}
-        aria-valuetext={
-          usage && hasTokens ? `${roundedPercent}%` : frontendMessage("chat.composer.contextUsagePending")
-        }
+        aria-valuenow={percent}
+        aria-valuetext={`${roundedPercent}%`}
         data-context-usage-indicator
         className="inline-block h-[13px] w-[13px] shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
       >
         <CircularProgressbar
-          value={value}
+          value={percent}
           strokeWidth={11}
           className="h-full w-full align-middle"
           aria-hidden="true"
@@ -550,21 +980,8 @@ function ContextUsageIndicator({ usage }: { usage?: RuntimeContextUsage }): JSX.
   );
 }
 
-function RuntimeUsageIndicator({
-  activeSessionId,
-  runtimeUsage,
-}: {
-  activeSessionId?: string | null;
-  runtimeUsage?: RuntimeUsageSnapshot;
-}): JSX.Element {
-  const latestRuntimeStatus = useEventJournalStore((state) =>
-    readLatestRuntimeStatusRecord(state.records, activeSessionId),
-  );
-  const projectedUsage = useMemo(
-    () => runtimeUsage ?? projectRuntimeUsage(latestRuntimeStatus ? [latestRuntimeStatus] : [], { activeSessionId }),
-    [activeSessionId, latestRuntimeStatus, runtimeUsage],
-  );
-  return <ContextUsageIndicator usage={projectedUsage.contextUsage} />;
+function RuntimeUsageIndicator({ runtimeUsage }: { runtimeUsage?: RuntimeUsageSnapshot }): JSX.Element | null {
+  return <ContextUsageIndicator usage={runtimeUsage?.contextUsage} />;
 }
 
 function formatComposerTokenCount(tokens: number): string {
@@ -626,7 +1043,7 @@ function AttachmentTray({
                     aria-label={frontendMessage("ui.retry")}
                     className="absolute bottom-1 left-1 grid h-5 w-5 place-items-center rounded-full bg-brick-50 text-brick-600 transition hover:bg-brick-100"
                   >
-                    <RotateCcw className="h-3 w-3" />
+                    <AppIcon icon="refresh" size={12} />
                   </button>
                 </Tooltip>
               ) : null}
@@ -638,7 +1055,7 @@ function AttachmentTray({
                 className="absolute right-0.5 top-0.5 bg-ink-950/70 text-paper-50 hover:bg-ink-900"
                 onClick={() => onRemove(entry.id)}
               >
-                <X className="h-3 w-3" />
+                    <AppIcon icon="close" size={12} />
               </IconButton>
             </div>
           ) : (
@@ -660,7 +1077,7 @@ function AttachmentTray({
                 ) : null}
                 {entry.status === "error" ? (
                   <span className="absolute -bottom-0.5 -right-0.5 grid h-3.5 w-3.5 place-items-center rounded-full border border-paper-50 bg-brick-50">
-                    <AlertCircle className="h-2.5 w-2.5 text-brick-500" />
+                    <AppIcon icon="alert-circle" size={10} className="text-brick-500" />
                   </span>
                 ) : null}
               </span>
@@ -704,7 +1121,7 @@ function AttachmentTray({
                 size="sm"
                 onClick={() => onRemove(entry.id)}
               >
-                <X className="h-3 w-3" />
+                <AppIcon icon="close" size={12} />
               </IconButton>
             </div>
           )}

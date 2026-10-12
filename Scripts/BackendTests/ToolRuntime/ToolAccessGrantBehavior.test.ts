@@ -141,7 +141,10 @@ describe("authoritative tool access grant behavior", () => {
 
   test("executor rejects a registered tool outside the authoritative grant before dispatch", async () => {
     const run = vi.fn();
-    const registeredTool = { name: "ToolB" } as RegisteredTool;
+    const registeredTool = {
+      name: "ToolB",
+      handler: { kind: "HostCapability", capability: "test.denied" },
+    } as RegisteredTool;
     const registry = {
       getTool: (name: string) => (name === registeredTool.name ? registeredTool : undefined),
     } as unknown as AgentExtensionRegistry;

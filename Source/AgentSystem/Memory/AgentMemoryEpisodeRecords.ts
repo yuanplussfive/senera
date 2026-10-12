@@ -2,13 +2,19 @@ import type { AgentMemoryCompletedTurnInput, AgentMemoryEpisodeRecord } from "./
 import { memoryEpisodeUri, stableMemoryId } from "./AgentMemoryIdentity.js";
 import { projectMemoryTime } from "./AgentMemoryTime.js";
 import { terminalText } from "./AgentMemoryTerminalText.js";
+import { AgentStateCardSchema } from "../StateCard/AgentStateCardTypes.js";
+import { assessToolSearchEpisode } from "../ToolSearch/AgentToolSearchEpisodeScorer.js";
 
 export function buildEpisode(input: AgentMemoryCompletedTurnInput): AgentMemoryEpisodeRecord {
   const episodeId = stableMemoryId("ep", [input.sessionId, input.requestId]);
-  const standaloneRequest = input.userEntry.content;
+  const stateCard = AgentStateCardSchema.optional().parse(input.stateCard);
+  const standaloneRequest = stateCard?.standaloneRequest.trim() || input.userEntry.content;
+  const model = input.modelProvider?.model;
+  if (!model?.trim()) throw new Error("Completed turn memory requires the resolved model identity.");
   const assistantText = terminalText(input.terminal);
   const startedTime = projectMemoryTime(input.startedAt);
   const completedTime = projectMemoryTime(input.completedAt);
+  const { calls } = assessToolSearchEpisode(input.executedTools);
   return {
     id: episodeId,
     uri: memoryEpisodeUri(episodeId),
@@ -17,10 +23,9 @@ export function buildEpisode(input: AgentMemoryCompletedTurnInput): AgentMemoryE
     status: "completed",
     rawUserText: input.userEntry.content,
     standaloneRequest,
-    contextMode: "",
-    contextBasis: "",
+    contextBasis: stateCard?.topicRelation ?? "",
     topic: standaloneRequest,
-    assistantPreview: assistantText,
+    assistantText,
     startedAt: input.startedAt,
     completedAt: input.completedAt,
     updatedAt: input.completedAt,
@@ -33,6 +38,11 @@ export function buildEpisode(input: AgentMemoryCompletedTurnInput): AgentMemoryE
     metadata: {
       terminalKind: input.terminal.kind,
       modelProvider: input.modelProvider,
+      toolHistory: {
+        tools: calls.map((call) => ({ name: call.toolName, status: call.status })),
+        artifacts: [...new Set(calls.flatMap((call) => [...call.artifactUris, ...call.evidenceUris]))],
+      },
+      ...(stateCard ? { stateCard } : {}),
     },
   };
 }

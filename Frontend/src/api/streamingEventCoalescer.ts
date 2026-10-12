@@ -1,4 +1,9 @@
-import { EventKinds, type EventEnvelope, type ExecutionResourceOutputData } from "./eventTypes";
+import {
+  EventKinds,
+  type EventEnvelope,
+  type ExecutionResourceOutputData,
+  type ModelThinkingDeltaData,
+} from "./eventTypes";
 import { recordCoalescedEventSources } from "./eventDeliveryIdentity";
 
 export const StreamingEventFlushPolicy = {
@@ -10,7 +15,11 @@ export const StreamingEventMaxLatencyMs = Math.ceil(
   (1000 / StreamingEventFlushPolicy.targetFrameRateHz) * StreamingEventFlushPolicy.maxPendingFrames,
 );
 
-const StreamingEventKinds: ReadonlySet<string> = new Set([EventKinds.ModelDelta, EventKinds.ExecutionResourceOutput]);
+const StreamingEventKinds: ReadonlySet<string> = new Set([
+  EventKinds.ModelDelta,
+  EventKinds.ModelThinkingDelta,
+  EventKinds.ExecutionResourceOutput,
+]);
 
 export function isBufferedStreamingEvent(kind: string): boolean {
   return StreamingEventKinds.has(kind);
@@ -39,6 +48,12 @@ function mergeAdjacentStreamingEvents(previous: EventEnvelope, current: EventEnv
     return mergeModelDelta(previous, current);
   }
   if (
+    current.kind === EventKinds.ModelThinkingDelta &&
+    modelThinkingDeltaKey(previous) === modelThinkingDeltaKey(current)
+  ) {
+    return mergeModelThinkingDelta(previous, current);
+  }
+  if (
     current.kind === EventKinds.ExecutionResourceOutput &&
     resourceOutputKey(previous) === resourceOutputKey(current)
   ) {
@@ -55,6 +70,13 @@ function resourceOutputKey(env: EventEnvelope): string {
   return [env.sessionId ?? "", readResourceOutput(env).resourceId].join("\u0000");
 }
 
+function modelThinkingDeltaKey(env: EventEnvelope): string {
+  const data = env.data as ModelThinkingDeltaData;
+  return [env.sessionId ?? "", env.requestId ?? "", env.step ?? "", data.messageIndex, data.contentIndex].join(
+    "\u0000",
+  );
+}
+
 function mergeModelDelta(previous: EventEnvelope, current: EventEnvelope): EventEnvelope {
   return recordCoalescedEventSources(
     {
@@ -64,6 +86,22 @@ function mergeModelDelta(previous: EventEnvelope, current: EventEnvelope): Event
       data: {
         text: readDeltaText(previous) + readDeltaText(current),
       },
+    },
+    previous,
+    current,
+  );
+}
+
+function mergeModelThinkingDelta(previous: EventEnvelope, current: EventEnvelope): EventEnvelope {
+  return recordCoalescedEventSources(
+    {
+      ...current,
+      sequence: previous.sequence,
+      timestamp: previous.timestamp,
+      data: {
+        ...(current.data as ModelThinkingDeltaData),
+        delta: readThinkingDelta(previous).delta + readThinkingDelta(current).delta,
+      } satisfies ModelThinkingDeltaData,
     },
     previous,
     current,
@@ -94,6 +132,10 @@ function mergeResourceOutput(previous: EventEnvelope, current: EventEnvelope): E
 
 function readDeltaText(env: EventEnvelope): string {
   return typeof (env.data as { text?: unknown }).text === "string" ? (env.data as { text: string }).text : "";
+}
+
+function readThinkingDelta(env: EventEnvelope): ModelThinkingDeltaData {
+  return env.data as ModelThinkingDeltaData;
 }
 
 function readResourceOutput(env: EventEnvelope): ExecutionResourceOutputData {

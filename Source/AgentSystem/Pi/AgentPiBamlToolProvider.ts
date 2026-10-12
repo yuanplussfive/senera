@@ -6,14 +6,15 @@ import {
   type AssistantMessage,
   type AssistantMessageEventStream,
   type Context,
+  type JsonObject,
+  type JsonValue,
   type Model,
-  type Provider,
   type ProviderStreams,
   type SimpleStreamOptions,
   type Usage,
 } from "@earendil-works/pi-ai";
 import { errorMessage } from "../Core/AgentErrors.js";
-import { AgentModelUsageLedger, type AgentModelUsageValue } from "../ModelEndpoints/AgentModelUsage.js";
+import type { AgentModelUsageValue } from "../ModelEndpoints/AgentModelUsage.js";
 import { AgentModelTokenEstimator } from "../Text/AgentTextBudget.js";
 import type { AgentPiMutableSessionFrame } from "./AgentPiCodingAgentSessionFrame.js";
 import { AgentPiDiagnosticSources, emitAgentPiDiagnostic } from "./AgentPiDiagnostics.js";
@@ -23,9 +24,12 @@ import type { AgentPiModelApi, AgentPiProviderProjection } from "./AgentPiTypes.
 import type { AgentResidentSpeechProjector } from "../ResidentSpeech/AgentResidentSpeechTypes.js";
 import { inspectAgentResidentSpeechFocus } from "../ResidentSpeech/AgentResidentSpeechPromptProjector.js";
 import { createAgentResidentSpeechUsageSink } from "../ResidentSpeech/AgentResidentSpeechUsage.js";
-import { shouldProjectResidentSpeech } from "../PiShared/AgentPiResidentSpeechProjection.js";
+import { resolveAgentResidentSpeechProjection } from "../PiShared/AgentPiResidentSpeechProjection.js";
 import { emitAgentPiAssistantMessage } from "./AgentPiAssistantMessageStream.js";
 import { requireAgentPiPromptCacheSessionId } from "./AgentPiPromptCache.js";
+import { exposeAgentPiContextProvider, type AgentPiContextProvider } from "./AgentPiProviderCompatibility.js";
+import { projectAgentPiBamlContext } from "./AgentPiBamlContextAdapter.js";
+import { AgentModelInputBudgetError } from "../Text/AgentTurnTokenBudget.js";
 
 export interface AgentPiBamlToolProviderOptions {
   readonly projection: AgentPiProviderProjection;
@@ -42,23 +46,25 @@ export class AgentPiBamlToolProvider {
     this.outputEstimator = new AgentModelTokenEstimator({ model: options.projection.model.id });
   }
 
-  create(): Provider<AgentPiModelApi> {
+  create(): AgentPiContextProvider<AgentPiModelApi> {
     const model = this.options.projection.model satisfies Model<AgentPiModelApi>;
-    return createProvider<AgentPiModelApi>({
-      id: this.options.projection.providerId,
-      name: "Senera BAML Tool Planning",
-      auth: {
-        apiKey: {
-          name: "Senera runtime",
-          resolve: () => Promise.resolve({ auth: {} }),
+    return exposeAgentPiContextProvider(
+      createProvider<AgentPiModelApi>({
+        id: this.options.projection.providerId,
+        name: "Senera BAML Tool Planning",
+        auth: {
+          apiKey: {
+            name: "Senera runtime",
+            resolve: () => Promise.resolve({ auth: {} }),
+          },
         },
-      },
-      models: [model],
-      api: {
-        stream: (requestModel, context, streamOptions) => this.stream(requestModel, context, streamOptions),
-        streamSimple: (requestModel, context, streamOptions) => this.stream(requestModel, context, streamOptions),
-      } satisfies ProviderStreams,
-    });
+        models: [model],
+        api: {
+          stream: (requestModel, context, streamOptions) => this.stream(requestModel, context, streamOptions),
+          streamSimple: (requestModel, context, streamOptions) => this.stream(requestModel, context, streamOptions),
+        } satisfies ProviderStreams,
+      }),
+    );
   }
 
   private stream(model: Model<Api>, context: Context, options?: SimpleStreamOptions): AssistantMessageEventStream {
@@ -85,18 +91,28 @@ export class AgentPiBamlToolProvider {
   ): Promise<void> {
     const frame = this.options.frame.snapshot();
     const turnState = frame.turnState;
-    const localUsage = new AgentModelUsageLedger();
     const initial = createAssistantMessage(model, emptyPiUsage(), "pending");
     stream.push({ type: "start", partial: initial });
+    const compactionRequest = options?.cacheRetention === "none";
     try {
-      if (!turnState) throw new Error("Senera BAML tool provider requires an active turn state.");
+      if (!turnState) {
+        throw new Error("Senera BAML tool provider requires an active model request.");
+      }
+      const preparedContext = frame.prepareModelInput ? await frame.prepareModelInput(context) : context;
+      // Pi consumes compaction summaries directly; they never enter the
+      // Senera run collector, so they must not reserve a model-message index.
+      const modelMessageIndex = compactionRequest ? undefined : turnState.beginModelRequest();
+      const localUsage = turnState.context.usageLedger.fork();
       throwIfProviderAborted(options?.signal);
       const compiler = this.options.compilerFactory.create({
         usageSink: (call) => {
           localUsage.record(call);
-          turnState.context.usageLedger.record(call);
-          turnState.context.tokenBudget.recordProviderInputTokens(
-            (call.usage.inputTokens ?? 0) + (call.usage.cacheReadTokens ?? 0) + (call.usage.cacheWriteTokens ?? 0),
+          turnState.context.tokenBudget.recordProviderContextTokens(
+            call.usage.totalTokens ||
+              (call.usage.inputTokens ?? 0) +
+                (call.usage.outputTokens ?? 0) +
+                (call.usage.cacheReadTokens ?? 0) +
+                (call.usage.cacheWriteTokens ?? 0),
           );
         },
         timingSink: (timing) =>
@@ -111,9 +127,37 @@ export class AgentPiBamlToolProvider {
             details: timing,
           }),
       });
+
+      if (compactionRequest) {
+        if (!compiler.compact) {
+          throw new Error("Senera BAML compaction transport is not configured.");
+        }
+        const outputText = await compiler.compact({
+          model,
+          context: preparedContext,
+          signal: options?.signal,
+          runtime: {
+            sessionId: frame.sessionId,
+            logicalCacheScope: turnState.context.logicalCacheScope,
+          },
+        });
+        throwIfProviderAborted(options?.signal);
+        const outputTextJson = JSON.stringify({ content: outputText, toolCalls: [] });
+        const usage = projectPiUsage(
+          localUsage.contextUsage(),
+          this.outputEstimator.estimate(outputTextJson).tokenCount,
+        );
+        const message = createAssistantMessage(model, usage, "stop", { content: outputText, toolCalls: [] });
+        if (localUsage.contextUsage()) turnState.context.tokenBudget.recordProviderUsage(usage, message);
+        else turnState.context.tokenBudget.recordEstimatedAssistantResponse(message);
+        emitAgentPiAssistantMessage(stream, message, { started: true });
+        return;
+      }
+
+      const planningRequest = projectAgentPiBamlContext(preparedContext);
       const compilation = await compiler.compile({
         model,
-        context,
+        context: planningRequest,
         options,
         toolAccessGrant: turnState.context.toolAccessGrant,
         signal: options?.signal,
@@ -128,22 +172,38 @@ export class AgentPiBamlToolProvider {
         compilation.toolCalls.length > 0 ? "toolUse" : "stop",
         compilation,
       );
+      if (localUsage.contextUsage()) turnState.context.tokenBudget.recordProviderUsage(usage, message);
+      else turnState.context.tokenBudget.recordEstimatedAssistantResponse(message);
       const purposesByCallId = new Map(
         compilation.toolCalls.flatMap((call) =>
           call.id && call.purpose?.trim() ? [[call.id, call.purpose.trim()] as const] : [],
         ),
       );
       const projectedMessage = await this.projectResidentSpeech(
-        context,
+        planningRequest,
         message,
         options?.signal,
         frame,
         turnState,
         purposesByCallId,
       );
-      await registerAgentPiToolCallBatch(this.options.frame, projectedMessage, { purposesByCallId });
+      await registerAgentPiToolCallBatch(this.options.frame, projectedMessage, {
+        purposesByCallId,
+        modelMessageIndex,
+      });
       emitAgentPiAssistantMessage(stream, projectedMessage, { started: true });
     } catch (error) {
+      if (!compactionRequest && error instanceof AgentModelInputBudgetError) {
+        await emitAgentPiDiagnostic(frame.diagnostics, {
+          context: { sessionId: frame.sessionId, requestId: frame.requestId, step: frame.step },
+          source: AgentPiDiagnosticSources.Provider,
+          name: "context_budget.rejected",
+          details: {
+            phase: compactionRequest ? "pi.compaction" : "pi.turn",
+            ...error.inspection,
+          },
+        });
+      }
       const reason = options?.signal?.aborted ? "aborted" : "error";
       const failed = {
         ...initial,
@@ -165,27 +225,23 @@ export class AgentPiBamlToolProvider {
   ): Promise<AssistantMessage> {
     const focus = inspectAgentResidentSpeechFocus(message, purposesByCallId);
     if (!focus) return message;
-    if (
-      !shouldProjectResidentSpeech({
-        focus,
-        prefaceRewriteEnabled: frame.prefaceRewriteEnabled,
-        roleplayPresetActive: frame.roleplayPresetActive,
-        finalResponseRewriteEnabled: frame.finalResponseRewriteEnabled,
-        hasRegisteredToolCalls: turnState.hasRegisteredToolCalls(),
-      })
-    ) {
-      return message;
-    }
+    const projection = resolveAgentResidentSpeechProjection({
+      focus,
+      prefaceRewriteEnabled: frame.prefaceRewriteEnabled,
+      personaActive: frame.personaActive,
+      finalResponseRewriteEnabled: frame.finalResponseRewriteEnabled,
+      hasRegisteredToolCalls: turnState.hasRegisteredToolCalls(),
+    });
+    if (!projection) return message;
     if (!this.options.residentSpeech) {
-      throw new Error("Active roleplay speech projection requires the resident-speech sidecar.");
+      throw new Error("Active persona speech projection requires the resident-speech sidecar.");
     }
     const projected = await this.options.residentSpeech.project({
       context,
       message,
       focus,
       spokenUtterances: turnState.residentSpeechHistory(),
-      residentStance: turnState.currentResidentStance(),
-      projectionTier: frame.roleplayPresetActive === true ? "reshape" : "polish",
+      projectionTier: projection.tier,
       enabled: true,
       signal,
       sessionId: requireAgentPiPromptCacheSessionId(frame.sessionId),
@@ -227,13 +283,36 @@ function createAssistantMessage<TApi extends Api>(
         type: "toolCall" as const,
         id: requireToolCallId(call.id),
         name: call.name,
-        arguments: call.arguments,
+        arguments: toPiJsonObject(call.arguments),
       })) ?? []),
     ],
     usage,
     stopReason,
     timestamp: Date.now(),
   };
+}
+
+function toPiJsonObject(value: Record<string, unknown>): JsonObject {
+  const projected = toPiJsonValue(value);
+  if (!isPiJsonObject(projected)) {
+    throw new Error("Senera planning compiler returned non-object tool arguments.");
+  }
+  return projected;
+}
+
+function isPiJsonObject(value: JsonValue): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function toPiJsonValue(value: unknown): JsonValue {
+  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+  if (Array.isArray(value)) return value.map(toPiJsonValue);
+  if (typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, toPiJsonValue(entry)]));
+  }
+  throw new Error("Senera planning compiler returned a non-JSON tool argument.");
 }
 
 function projectPiUsage(contextUsage: AgentModelUsageValue | undefined, outputTokens: number): Usage {

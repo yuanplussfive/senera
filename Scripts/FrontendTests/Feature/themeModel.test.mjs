@@ -65,6 +65,7 @@ describe("themeModel", () => {
 
   it("keeps three interface font presets with platform emoji fallbacks", () => {
     expect(appearanceFontFamilies).toEqual(["brand", "fresh", "system"]);
+    expect(appearanceFontFamilyStacks.brand).toContain("HarmonyOS Sans SC");
     for (const fontFamily of appearanceFontFamilies) {
       expect(appearanceFontFamilyStacks[fontFamily]).toContain("Segoe UI Emoji");
       expect(appearanceFontFamilyStacks[fontFamily]).toContain("Noto Color Emoji");

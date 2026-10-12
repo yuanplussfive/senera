@@ -1,5 +1,5 @@
 import { AgentXmlCodec } from "./AgentXmlCodec.js";
-import { isAgentToolResultInline, type ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
+import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import { createXmlProtocolSpec, type AgentXmlProtocolSpec } from "./AgentXmlPolicy.js";
 
 /**
@@ -36,19 +36,6 @@ export class AgentToolResultXmlRenderer {
   }
 
   private projectResponse(entry: ExecutedToolCallResult): Record<string, unknown> {
-    // Inline path: the verbatim result is already in context, so the artifact
-    // is reduced to an addressing reference.
-    if (isAgentToolResultInline(entry)) {
-      return {
-        [this.protocol.toolResult.result]: entry.inlinePayload,
-        artifact: entry.artifact
-          ? {
-              artifactId: entry.artifact.artifactId,
-              artifactUri: entry.artifact.artifactUri,
-            }
-          : undefined,
-      };
-    }
     return {
       [this.protocol.toolResult.result]: entry.artifact ? undefined : entry.result,
       artifact: entry.artifact

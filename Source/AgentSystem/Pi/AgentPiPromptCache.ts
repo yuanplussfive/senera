@@ -9,12 +9,14 @@ export const AgentPiInteractiveCacheRetention = AgentLongLivedCacheRetention;
 
 export type AgentPiPromptCachePhase =
   | "native-conversation"
+  | "native-compaction"
   | "native-channel-rewrite"
   | "baml-channel-rewrite"
+  | "channel-rewrite"
   | "baml-planning"
   | "baml-compaction"
-  | "tool-learning"
-  | "goal-decision"
+  | "tool-scenario"
+  | "state-card"
   | "resident-speech-action-preface"
   | "resident-speech-final-response";
 
@@ -63,7 +65,7 @@ export function createAgentPiLogicalCacheScope(input: {
  * Pi providers already compare the actual serialized prompt and tool schemas
  * when deciding how much of the prefix can be reused. Including volatile
  * system/context text or the active tool set here would rotate the
- * provider session on every world update or ToolSearch result. Static prompt
+ * provider session on every runtime update or ToolSearch result. Static prompt
  * and tool schema content is fingerprinted separately, so a genuine protocol
  * change gets a new cache bucket without making ordinary turn state part of it.
  */

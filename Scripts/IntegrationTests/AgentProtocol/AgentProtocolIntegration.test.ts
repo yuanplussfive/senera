@@ -52,7 +52,6 @@ describe("agent protocol integration", () => {
         return {
           terminal: { kind: "FinalAnswer", content: "approved" },
           decisionXml: "<FinalAnswer><answer>approved</answer></FinalAnswer>",
-          conversationEntries: [],
           executedTools: [],
           stepTraces: [],
         };
@@ -425,7 +424,6 @@ async function createApprovalGatedHarness(
       return {
         terminal: { kind: "FinalAnswer", content: "approved" },
         decisionXml: "<FinalAnswer><answer>approved</answer></FinalAnswer>",
-        conversationEntries: [],
         executedTools: [],
         stepTraces: [],
       };

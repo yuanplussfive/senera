@@ -8,9 +8,17 @@
     "activity": {
       "action": { "zh-CN": "加载工具", "en-US": "Load tools" },
       "detailPaths": ["/tools/*"]
+    },
+    "preview": {
+      "result": {
+        "rows": [
+          { "pointer": "/added/item/*", "titlePath": "" },
+          { "pointer": "/rejected/item/*", "titlePath": "" }
+        ],
+        "maxRows": 6
+      }
     }
   },
-  "observationProjection": "observations/default.projection.json",
   "description": "在 BAML 工具规划模式中将已注册工具加载到当前会话，供后续规划直接调用。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

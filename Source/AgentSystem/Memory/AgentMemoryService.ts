@@ -5,21 +5,8 @@ import {
   type AgentMemoryRecordedTurn,
   type AgentMemorySourceRepository,
 } from "./AgentMemorySourceRepository.js";
-import type { AgentContinuityLearningDecision } from "../Continuity/AgentContinuityLearningGate.js";
 
 export type { AgentMemoryCompletedTurnInput } from "./AgentMemorySourceRepository.js";
-
-export interface AgentContinuityLearningEnqueueOptions {
-  readonly nextAttemptAtMs?: number;
-}
-
-export interface AgentContinuityLearningSink {
-  enqueue(recordedTurn: AgentMemoryRecordedTurn, options?: AgentContinuityLearningEnqueueOptions): void;
-  /** Indexes physical sources independently from the extraction gate. */
-  indexPhysicalTurn?(recordedTurn: AgentMemoryRecordedTurn): void;
-  flush?(): Promise<void>;
-  stop?(): void | Promise<void>;
-}
 
 export interface AgentMemoryDeletionSink {
   deleteSession?(sessionId: string): void;
@@ -31,52 +18,24 @@ export interface AgentMemoryCompletedTurnSink {
   recordCompletedTurn(recordedTurn: AgentMemoryRecordedTurn): void;
 }
 
-export interface AgentTemporalMemorySink extends AgentMemoryDeletionSink {
-  recordTurn(recordedTurn: AgentMemoryRecordedTurn): void;
-  flush(): Promise<void>;
-  stop(): void | Promise<void>;
-}
-
-export interface AgentContinuityDeliverySink {
-  acknowledgeRuleDeliveries(ruleUris: readonly string[], deliveredAt: string): number;
-}
-
 export interface AgentMemoryServiceOptions {
-  continuityLearning?: AgentContinuityLearningSink;
-  temporalMemory?: AgentTemporalMemorySink;
   completedTurnSinks?: readonly AgentMemoryCompletedTurnSink[];
   completedTurnSinkFailure?: (input: { readonly sink: AgentMemoryCompletedTurnSink; readonly error: unknown }) => void;
-  continuityLearningGate?: (turn: AgentMemoryRecordedTurn) => AgentContinuityLearningDecision;
-  continuityDelivery?: AgentContinuityDeliverySink;
-  continuityPrefetch?: (sessionId: string) => void;
-  continuityPrefetchFailure?: (input: { readonly sessionId: string; readonly error: unknown }) => void;
   sourceRepository?: AgentMemorySourceRepository;
   deletionSinks?: readonly AgentMemoryDeletionSink[];
 }
 
 export class AgentMemoryService {
-  private readonly learning?: AgentContinuityLearningSink;
-  private readonly temporalMemory?: AgentTemporalMemorySink;
   private readonly completedTurnSinks: AgentMemoryCompletedTurnSink[];
   private readonly completedTurnSinkFailure?: AgentMemoryServiceOptions["completedTurnSinkFailure"];
-  private readonly learningGate?: (turn: AgentMemoryRecordedTurn) => AgentContinuityLearningDecision;
-  private readonly delivery?: AgentContinuityDeliverySink;
-  private readonly prefetch?: (sessionId: string) => void;
-  private readonly prefetchFailure?: AgentMemoryServiceOptions["continuityPrefetchFailure"];
   private readonly sourceRepository: AgentMemorySourceRepository;
   private readonly deletionSinks: AgentMemoryDeletionSink[];
   private lifecycleState: AgentMemoryLifecycleState = "open";
   private closePromise: Promise<void> | undefined;
 
   constructor(options: AgentMemoryServiceOptions = {}) {
-    this.learning = options.continuityLearning;
-    this.temporalMemory = options.temporalMemory;
     this.completedTurnSinks = [...(options.completedTurnSinks ?? [])];
     this.completedTurnSinkFailure = options.completedTurnSinkFailure;
-    this.learningGate = options.continuityLearningGate;
-    this.delivery = options.continuityDelivery;
-    this.prefetch = options.continuityPrefetch;
-    this.prefetchFailure = options.continuityPrefetchFailure;
     this.sourceRepository = options.sourceRepository ?? new InMemoryAgentMemorySourceRepository();
     this.deletionSinks = [...(options.deletionSinks ?? [])];
   }
@@ -105,40 +64,7 @@ export class AgentMemoryService {
     this.assertOpen();
     const recordedTurn = this.sourceRepository.recordCompletedTurn(input);
     this.notifyCompletedTurnSinks(recordedTurn);
-    this.temporalMemory?.recordTurn(recordedTurn);
-    this.learning?.indexPhysicalTurn?.(recordedTurn);
-    if (this.learning) {
-      const decision = this.learningGate?.(recordedTurn) ?? { mode: "immediate", reason: "disabled" as const };
-      if (decision.mode !== "skip") {
-        this.learning.enqueue(recordedTurn, {
-          nextAttemptAtMs: decision.deferredUntilMs,
-        });
-      }
-    }
-    if (this.prefetch) {
-      queueMicrotask(() => {
-        if (this.lifecycleState !== "open") return;
-        try {
-          this.prefetch?.(recordedTurn.episode.sessionId);
-        } catch (error) {
-          try {
-            this.prefetchFailure?.({ sessionId: recordedTurn.episode.sessionId, error });
-          } catch {
-            // Error observers must not turn background prefetch into a process failure.
-          }
-        }
-      });
-    }
     return recordedTurn;
-  }
-
-  acknowledgeRuleDeliveries(ruleUris: readonly string[], deliveredAt: string): number {
-    return this.delivery?.acknowledgeRuleDeliveries(ruleUris, deliveredAt) ?? 0;
-  }
-
-  flushContinuityLearning(): Promise<void> {
-    if (this.lifecycleState === "closed") return Promise.resolve();
-    return Promise.all([this.learning?.flush?.(), this.temporalMemory?.flush()]).then(() => undefined);
   }
 
   close(): Promise<void> {
@@ -149,13 +75,7 @@ export class AgentMemoryService {
     this.lifecycleState = "closing";
     const failures: unknown[] = [];
     try {
-      for (const operation of [
-        () => this.learning?.flush?.(),
-        () => this.temporalMemory?.flush(),
-        () => this.learning?.stop?.(),
-        () => this.temporalMemory?.stop(),
-        () => this.sourceRepository.close(),
-      ]) {
+      for (const operation of [() => this.sourceRepository.close()]) {
         try {
           await operation();
         } catch (error) {

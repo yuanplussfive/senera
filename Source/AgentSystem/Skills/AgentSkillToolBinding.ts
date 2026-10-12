@@ -34,6 +34,7 @@ export const AgentSkillMetadataSchema = z
     senera: z
       .object({
         "recommended-tools": AgentSkillRecommendedToolsSchema.optional(),
+        icon: z.string().trim().min(1).max(64).optional(),
       })
       .strict()
       .optional(),
@@ -44,6 +45,10 @@ export function agentSkillRecommendedTools(metadata: z.output<typeof AgentSkillM
   return [...(metadata?.senera?.["recommended-tools"] ?? [])];
 }
 
+export function agentSkillIcon(metadata: z.output<typeof AgentSkillMetadataSchema> | undefined): string | undefined {
+  return metadata?.senera?.icon;
+}
+
 export function withAgentSkillRecommendedTools(
   frontmatter: Readonly<Record<string, unknown>>,
   toolNames: readonly string[],
@@ -51,11 +56,14 @@ export function withAgentSkillRecommendedTools(
   const recommendedTools = AgentSkillRecommendedToolsSchema.parse(toolNames);
   const parsed = z.object({ metadata: AgentSkillMetadataSchema.optional() }).passthrough().parse(frontmatter);
   const metadata = { ...(parsed.metadata ?? {}) };
+  const senera = { ...(metadata.senera ?? {}) };
   if (recommendedTools.length > 0) {
-    metadata.senera = { "recommended-tools": recommendedTools };
+    senera["recommended-tools"] = recommendedTools;
   } else {
-    delete metadata.senera;
+    delete senera["recommended-tools"];
   }
+  if (Object.keys(senera).length > 0) metadata.senera = senera;
+  else delete metadata.senera;
   if (Object.keys(metadata).length > 0) return { ...parsed, metadata };
   const { metadata: _metadata, ...withoutMetadata } = parsed;
   return withoutMetadata;

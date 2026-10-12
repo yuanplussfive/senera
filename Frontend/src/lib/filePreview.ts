@@ -1,18 +1,5 @@
-import {
-  File,
-  FileArchive,
-  FileAudio,
-  FileChartColumn,
-  FileCode2,
-  FileImage,
-  FileJson2,
-  FileSpreadsheet,
-  FileText,
-  FileType2,
-  FileVideo,
-  type LucideIcon,
-} from "lucide-react";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
+import type { AppIconName } from "../shared/ui";
 
 export interface FilePreviewInput {
   name: string;
@@ -22,7 +9,8 @@ export interface FilePreviewInput {
 export interface FilePreviewDescriptor {
   id: string;
   label: string;
-  Icon: LucideIcon;
+  contentKind: "text" | "media" | "binary";
+  icon: AppIconName;
   iconClassName: string;
   badgeClassName: string;
 }
@@ -37,7 +25,8 @@ interface FilePreviewProfile extends FilePreviewDescriptor {
 const DefaultFilePreview: FilePreviewDescriptor = {
   id: "file",
   label: frontendMessage("file.type.file"),
-  Icon: File,
+  contentKind: "binary",
+  icon: "file-text",
   iconClassName: "text-ink-500",
   badgeClassName: "border-ink-200 bg-paper-100 text-ink-500",
 };
@@ -46,7 +35,8 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
   {
     id: "pdf",
     label: "PDF",
-    Icon: FileText,
+    contentKind: "binary",
+    icon: "file-text",
     iconClassName: "text-ink-600",
     badgeClassName: "border-ink-200 bg-paper-100 text-ink-650",
     extensions: [".pdf"],
@@ -55,7 +45,8 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
   {
     id: "word",
     label: frontendMessage("file.type.document"),
-    Icon: FileType2,
+    contentKind: "binary",
+    icon: "file-text",
     iconClassName: "text-ink-600",
     badgeClassName: "border-ink-200 bg-paper-100 text-ink-650",
     extensions: [".doc", ".docx", ".docm", ".dot", ".dotx", ".odt", ".rtf"],
@@ -71,7 +62,8 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
   {
     id: "spreadsheet",
     label: frontendMessage("file.type.spreadsheet"),
-    Icon: FileSpreadsheet,
+    contentKind: "binary",
+    icon: "file-text",
     iconClassName: "text-ink-600",
     badgeClassName: "border-ink-200 bg-paper-100 text-ink-650",
     extensions: [".csv", ".ods", ".xls", ".xlsx", ".xlsm"],
@@ -86,7 +78,8 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
   {
     id: "presentation",
     label: frontendMessage("file.type.presentation"),
-    Icon: FileChartColumn,
+    contentKind: "binary",
+    icon: "file-text",
     iconClassName: "text-ink-600",
     badgeClassName: "border-ink-200 bg-paper-100 text-ink-650",
     extensions: [".odp", ".ppt", ".pptx", ".pptm"],
@@ -100,7 +93,8 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
   {
     id: "json",
     label: "JSON",
-    Icon: FileJson2,
+    contentKind: "text",
+    icon: "file-json",
     iconClassName: "text-ink-600",
     badgeClassName: "border-ink-200 bg-paper-100 text-ink-650",
     extensions: [".json", ".jsonl", ".ipynb"],
@@ -109,7 +103,8 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
   {
     id: "code",
     label: frontendMessage("file.type.code"),
-    Icon: FileCode2,
+    contentKind: "text",
+    icon: "file-code",
     iconClassName: "text-ink-600",
     badgeClassName: "border-ink-200 bg-paper-100 text-ink-650",
     names: ["dockerfile", "makefile", "go.mod", "go.sum", "package-lock.json", "pnpm-lock.yaml", "yarn.lock"],
@@ -167,7 +162,8 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
   {
     id: "text",
     label: frontendMessage("file.type.text"),
-    Icon: FileText,
+    contentKind: "text",
+    icon: "file-text",
     iconClassName: "text-ink-600",
     badgeClassName: "border-ink-200 bg-paper-50 text-ink-650",
     extensions: [".log", ".md", ".markdown", ".txt"],
@@ -176,7 +172,8 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
   {
     id: "image",
     label: frontendMessage("file.type.image"),
-    Icon: FileImage,
+    contentKind: "media",
+    icon: "image",
     iconClassName: "text-ink-600",
     badgeClassName: "border-ink-200 bg-paper-100 text-ink-650",
     extensions: [".avif", ".gif", ".heic", ".jpeg", ".jpg", ".png", ".svg", ".webp"],
@@ -185,7 +182,8 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
   {
     id: "audio",
     label: frontendMessage("file.type.audio"),
-    Icon: FileAudio,
+    contentKind: "media",
+    icon: "file-audio",
     iconClassName: "text-ink-600",
     badgeClassName: "border-ink-200 bg-paper-100 text-ink-650",
     extensions: [".aac", ".flac", ".m4a", ".mp3", ".ogg", ".wav"],
@@ -194,7 +192,8 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
   {
     id: "video",
     label: frontendMessage("file.type.video"),
-    Icon: FileVideo,
+    contentKind: "media",
+    icon: "file-video",
     iconClassName: "text-ink-600",
     badgeClassName: "border-ink-200 bg-paper-100 text-ink-650",
     extensions: [".avi", ".m4v", ".mkv", ".mov", ".mp4", ".webm"],
@@ -203,7 +202,8 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
   {
     id: "archive",
     label: frontendMessage("file.type.archive"),
-    Icon: FileArchive,
+    contentKind: "binary",
+    icon: "archive",
     iconClassName: "text-ink-600",
     badgeClassName: "border-ink-200 bg-paper-100 text-ink-650",
     extensions: [".7z", ".br", ".bz2", ".gz", ".rar", ".tar", ".tgz", ".xz", ".zip"],
@@ -240,6 +240,15 @@ export function resolveFilePreview(input: FilePreviewInput): FilePreviewDescript
 
 export function isImageFilePreview(input: FilePreviewInput): boolean {
   return resolveFilePreview(input).id === "image";
+}
+
+/**
+ * A workspace change can only open a line-oriented preview when its existing
+ * file profile identifies it as text. Unknown and binary profiles stay as
+ * ordinary resource rows instead of showing an empty preview surface.
+ */
+export function isTextFilePreview(input: FilePreviewInput): boolean {
+  return resolveFilePreview(input).contentKind === "text";
 }
 
 function indexProfiles(

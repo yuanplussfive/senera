@@ -1,14 +1,14 @@
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type { AgentSystemToolDefinition } from "./AgentSystemToolDefinition.js";
 import { SkillManageSystemTool } from "./SkillManageSystemTool.js";
-import { LearningManageSystemTool } from "./LearningManageSystemTool.js";
 import { createDocumentExtractSystemTool } from "./DocumentExtractSystemTool.js";
 import { createImageAnalyzeSystemTool } from "./ImageAnalyzeSystemTool.js";
+import { ResourcePathSystemTool } from "./ResourcePathSystemTool.js";
 import { PiWorkspaceSystemTools } from "./PiWorkspaceSystemTools.js";
 import { AgentGitSystemTools } from "./AgentGitSystemTools.js";
 import { createWebSystemTools } from "./WebSystemTools.js";
 import { createAgentBrowserSystemTools } from "./AgentBrowserSystemTools.js";
-import { AgentTodoSystemTool } from "./AgentTodoSystemTool.js";
+import { AgentTodoSystemTools } from "./AgentTodoSystemTool.js";
 import { createSeneraSelfSystemTools } from "./SeneraSelfSystemTool.js";
 import type { AgentBrowserRuntime } from "../Browser/AgentBrowserRuntime.js";
 import { isAgentSystemExtensionApplicable, type AgentSystemExtensionPlatform } from "./AgentSystemExtensionPlatform.js";
@@ -29,10 +29,10 @@ export function createAgentSystemTools(
 ): readonly AgentSystemToolDefinition[] {
   const definitions = [
     SkillManageSystemTool,
-    LearningManageSystemTool,
-    AgentTodoSystemTool,
+    ...AgentTodoSystemTools,
     createDocumentExtractSystemTool(config.Extensions?.["agent-document-tools"]?.Configuration),
     createImageAnalyzeSystemTool(config.Extensions?.["agent-image-tools"]?.Configuration, modelProviderId),
+    ResourcePathSystemTool,
     ...PiWorkspaceSystemTools,
     ...AgentGitSystemTools,
     ...createWebSystemTools(config.Extensions?.["web-tools"]?.Configuration),

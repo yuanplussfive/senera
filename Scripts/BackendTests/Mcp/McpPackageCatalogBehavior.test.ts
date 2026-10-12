@@ -10,6 +10,77 @@ import {
 import type { AgentMcpToolDeclaration } from "../../../Source/AgentSystem/Mcp/AgentMcpToolCatalogChange.js";
 
 describe("MCP package catalog", () => {
+  test("preserves real declarations with an unavailable state when revalidation fails", async () => {
+    const registry = new AgentExtensionRegistry();
+    const catalog = new AgentMcpPackageCatalog(registry, { refresh: vi.fn() });
+    const discovered = serverFixture([toolDeclaration("stable")]);
+    const cached: AgentDiscoveredMcpServer = {
+      ...discovered,
+      endpoint: {
+        id: discovered.server.name,
+        revision: discovered.package_.revision,
+        transport: "unresolved",
+        availability: { status: "unverified" },
+      },
+    };
+    catalog.registerPackages([cached.package_]);
+    await catalog.install([cached]);
+    catalog.registerDeferred([cached], {
+      discover: async () => ({
+        servers: [],
+        deferredServers: [],
+        unavailableServers: [],
+        failures: [
+          { packageName: cached.package_.name, serverName: cached.server.name, error: new Error("Connection refused") },
+        ],
+      }),
+    });
+    await catalog.discoverServices([cached.server.name]);
+    expect(registry.getTool("mcp__catalog_fixture__stable")?.availability).toEqual({
+      status: "unavailable",
+      reason: "discovery_failed",
+      message: "Connection refused",
+    });
+    expect(registry.getTool("mcp__catalog_fixture__stable")?.contract?.arguments?.jsonSchema).toMatchObject({
+      type: "object",
+    });
+    expect(catalog.services()[0]?.availability.status).toBe("unavailable");
+  });
+
+  test("does not turn cancellation into service failure or cancel the next discovery", async () => {
+    const registry = new AgentExtensionRegistry();
+    const catalog = new AgentMcpPackageCatalog(registry, { refresh: vi.fn() });
+    const discovered = serverFixture([toolDeclaration("ready")]);
+    catalog.registerPackages([discovered.package_]);
+    const first = new AbortController();
+    let started!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let attempts = 0;
+    catalog.registerDeferred([discovered], {
+      discover: async (_server, signal) => {
+        attempts += 1;
+        if (attempts === 1) {
+          started();
+          await new Promise<void>((_resolve, reject) =>
+            signal!.addEventListener("abort", () => reject(signal!.reason), { once: true }),
+          );
+        }
+        return { servers: [discovered], deferredServers: [], unavailableServers: [], failures: [] };
+      },
+    });
+    const cancelled = catalog.discoverServices([discovered.server.name], first.signal);
+    const cancellation = expect(cancelled).rejects.toThrow("Cancelled discovery");
+    await ready;
+    const next = catalog.discoverServices([discovered.server.name]);
+    first.abort(new Error("Cancelled discovery"));
+    await cancellation;
+    await next;
+    expect(attempts).toBe(2);
+    expect(catalog.services()[0]?.availability.status).toBe("ready");
+  });
+
   test("replaces a changed server catalog and invalidates ToolSearch", async () => {
     const registry = new AgentExtensionRegistry();
     const refresh = vi.fn();
@@ -24,6 +95,49 @@ describe("MCP package catalog", () => {
 
     expect(registry.listTools().map((tool) => tool.name)).toEqual(["mcp__catalog_fixture__beta"]);
     expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  test("persists list-change declarations and preserves the installed catalog when saving fails", async () => {
+    const registry = new AgentExtensionRegistry();
+    const refresh = vi.fn();
+    const save = vi.fn(async () => undefined);
+    const catalog = new AgentMcpPackageCatalog(registry, { refresh }, undefined, { save });
+    const discovered = serverFixture([toolDeclaration("initial")]);
+    await catalog.install([discovered]);
+    await catalog.update({
+      server: discovered.endpoint as Parameters<AgentMcpPackageCatalog["update"]>[0]["server"],
+      declarations: [toolDeclaration("latest")],
+    });
+    expect(save).toHaveBeenCalledWith(discovered.package_, discovered.server, discovered.endpoint, [
+      toolDeclaration("latest"),
+    ]);
+    save.mockRejectedValueOnce(new Error("Cache write failed"));
+    await expect(
+      catalog.update({
+        server: discovered.endpoint as Parameters<AgentMcpPackageCatalog["update"]>[0]["server"],
+        declarations: [toolDeclaration("unsaved")],
+      }),
+    ).rejects.toThrow("Cache write failed");
+    expect(registry.listTools().map((tool) => tool.name)).toEqual(["mcp__catalog_fixture__latest"]);
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  test("replays list changes that race cached-service revalidation", async () => {
+    const registry = new AgentExtensionRegistry();
+    const catalog = new AgentMcpPackageCatalog(registry, { refresh: vi.fn() });
+    const discovered = serverFixture([toolDeclaration("cached")]);
+    await catalog.install([discovered]);
+    catalog.registerDeferred([discovered], {
+      discover: async () => {
+        await catalog.update({
+          server: createAgentMcpPackageEndpoint(discovered.package_, discovered.server),
+          declarations: [toolDeclaration("latest")],
+        });
+        return { servers: [discovered], deferredServers: [], unavailableServers: [], failures: [] };
+      },
+    });
+    await catalog.discoverServices([discovered.server.name]);
+    expect(registry.listTools().map((tool) => tool.name)).toEqual(["mcp__catalog_fixture__latest"]);
   });
 
   test("rejects an invalid changed declaration without mutating the installed catalog", async () => {

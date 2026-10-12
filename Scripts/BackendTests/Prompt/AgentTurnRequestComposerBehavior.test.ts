@@ -3,6 +3,7 @@ import {
   composeAgentTurnRequest,
   escapeXml,
   formatZoneTime,
+  resolveAgentTurnAttachmentReferences,
   resolveZoneOffset,
 } from "../../../Source/AgentSystem/Prompt/AgentTurnRequestComposer.js";
 import type { AgentInteractionContext } from "../../../Source/AgentSystem/Interaction/AgentInteractionContext.js";
@@ -52,6 +53,87 @@ describe("agent turn request composer", () => {
     });
     expect(wire).toContain('<attachment kind="image"');
     expect(wire).toContain('<attachment kind="text"');
+    expect(wire).toContain("<resource_uri>resource://upload/1</resource_uri>");
+    expect(wire).toContain('size="1024"');
+  });
+
+  test("prefers an ephemeral absolute path while retaining the resource URI fallback", () => {
+    const wire = composeAgentTurnRequest({
+      userInput: "读取附件",
+      options: { ...options, enabled: false },
+      attachments: [
+        {
+          resourceUri: "senera://resource/upload-1",
+          name: "weather.json",
+          mime: "application/json",
+          size: 4114,
+          status: "uploaded" as const,
+        },
+      ],
+      attachmentReferences: [
+        {
+          resourceUri: "senera://resource/upload-1",
+          filePath: "E:\\senera\\.senera\\uploads\\upload-1\\original.json",
+        },
+      ],
+    });
+    expect(wire).toContain("<local_path>E:\\senera\\.senera\\uploads\\upload-1\\original.json</local_path>");
+    expect(wire).toContain("<resource_uri>senera://resource/upload-1</resource_uri>");
+    expect(wire.indexOf("<local_path>")).toBeLessThan(wire.indexOf("<resource_uri>"));
+  });
+
+  test("keeps attachments when the envelope is disabled", () => {
+    const wire = composeAgentTurnRequest({
+      userInput: "读取附件",
+      options: { ...options, enabled: false },
+      attachments: [
+        {
+          resourceUri: "senera://resource/upload-2",
+          name: "notes.md",
+          mime: "text/markdown",
+          size: 12,
+          status: "uploaded" as const,
+        },
+      ],
+    });
+    expect(wire).not.toBe("读取附件");
+    expect(wire).toContain("<attachments>");
+  });
+
+  test("isolates stale uploads while resolving available local paths", async () => {
+    const references = await resolveAgentTurnAttachmentReferences(
+      [
+        {
+          resourceUri: "senera://resource/ok",
+          name: "ok.txt",
+          mime: "text/plain",
+          size: 2,
+          status: "uploaded" as const,
+        },
+        {
+          resourceUri: "senera://resource/missing",
+          name: "missing.txt",
+          mime: "text/plain",
+          size: 0,
+          status: "uploaded" as const,
+        },
+      ],
+      {
+        resolve: async (resourceUri) => {
+          if (resourceUri.endsWith("/missing")) throw new Error("missing");
+          return {
+            filePath: "E:\\senera\\.senera\\uploads\\ok\\original.txt",
+          } as never;
+        },
+      },
+    );
+    expect(references).toEqual([
+      {
+        resourceUri: "senera://resource/ok",
+        filePath: "E:\\senera\\.senera\\uploads\\ok\\original.txt",
+      },
+      { resourceUri: "senera://resource/missing" },
+    ]);
   });
 
   test("declares the authoritative channel context even without the time envelope", () => {

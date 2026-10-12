@@ -1,5 +1,6 @@
 import { isAgentRuntimeAlive, readAgentRuntimeManifest } from "../Source/AgentSystem/Runtime/AgentRuntimeManifest.js";
 import { isIP } from "node:net";
+import { scopeAgentWorkspaceUrl } from "../Source/AgentSystem/WorkspaceResources/AgentWorkspaceTransportScope.js";
 import type {
   AgentSelfCommand,
   AgentSelfCommandOutput,
@@ -59,16 +60,19 @@ export async function executeSeneraSelfCommandViaHttp(
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? AgentSelfHttpDefaultTimeoutMs);
   try {
     // codeql[js/file-access-to-http]
-    const response = await (options.fetch ?? fetch)(target.url, {
-      method: "POST",
-      // codeql[js/file-access-to-http]
-      headers: {
-        "content-type": "application/json",
-        authorization: target.authorization,
+    const response = await (options.fetch ?? fetch)(
+      manifest.workspaceId ? scopeAgentWorkspaceUrl(target.url, manifest.workspaceId) : target.url,
+      {
+        method: "POST",
+        // codeql[js/file-access-to-http]
+        headers: {
+          "content-type": "application/json",
+          authorization: target.authorization,
+        },
+        body: JSON.stringify(command),
+        signal: controller.signal,
       },
-      body: JSON.stringify(command),
-      signal: controller.signal,
-    });
+    );
     const payload = (await response.json().catch(() => undefined)) as Partial<AgentSelfCommandOutput> | undefined;
     if (!response.ok || !payload || typeof payload.ok !== "boolean" || typeof payload.text !== "string") {
       throw new Error(

@@ -17,6 +17,8 @@ import {
 
 /** Stable model identifier shared by the capability embedding cache. */
 export const AgentLocalEmbeddingModelName = "ternlight-mini-cn";
+export const AgentLocalEmbeddingDimensions = 384;
+export const AgentLocalEmbeddingProviderId = "senera-local-embedding";
 
 /**
  * A worker request is intentionally bounded so cancellation and foreground
@@ -36,6 +38,8 @@ interface PendingEmbeddingOperation {
  * role markers to improve retrieval alignment.
  */
 export class AgentLocalEmbeddingClient implements AgentCapabilityEmbeddingClient {
+  readonly providerId = AgentLocalEmbeddingProviderId;
+  readonly dimensions = AgentLocalEmbeddingDimensions;
   readonly maxBatchSize = AgentLocalEmbeddingMaxBatchSize;
   private worker: Worker | undefined;
   private warmupPromise: Promise<void> | undefined;

@@ -1,11 +1,36 @@
 import type { EventEnvelope, StepTraceDto } from "../../api/eventTypes";
 import type { TimelineStep } from "./types";
 
+/**
+ * Terminal assistant messages can arrive both as a live event step and as a
+ * durable answer trace. The two records have different storage ids, so the
+ * semantic key is used when reconciling those projections.
+ */
+export function assistantTerminalStepKey(
+  step: Pick<TimelineStep, "kind" | "decisionKind">,
+): string | undefined {
+  if (step.kind !== "answer") return undefined;
+  return `answer:${step.decisionKind?.trim() || "final_answer"}`;
+}
+
+export function isAssistantMessageStep(step: Pick<TimelineStep, "detailJson">): boolean {
+  if (!isRecord(step.detailJson)) return false;
+  return typeof step.detailJson.messageId === "string" && typeof step.detailJson.kind === "string";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export function timelineScopeFromEvent(env: EventEnvelope): TimelineStep["scope"] | undefined {
   if (!env.scope) return undefined;
   return {
     parentSessionId: env.scope.parentSessionId,
     parentRequestId: env.scope.parentRequestId,
+    parentAgentStep: env.scope.parentAgentStep,
+    parentModelMessageIndex: env.scope.parentModelMessageIndex,
+    parentModelContentIndex: env.scope.parentModelContentIndex,
+    parentToolCallId: env.scope.parentToolCallId,
     workflowName: env.scope.workflowName,
     jobId: env.scope.jobId,
     childRunId: env.scope.childRunId,

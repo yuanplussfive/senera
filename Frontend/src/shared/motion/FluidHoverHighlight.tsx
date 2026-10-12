@@ -16,8 +16,8 @@ export interface FluidHoverHighlightProps extends Omit<HTMLMotionProps<"div">, "
   transition?: Transition | false;
 }
 
-function target(rect: FluidHoverItemRect): { x: number; y: number } {
-  return { x: rect.left, y: rect.top };
+function target(rect: FluidHoverItemRect): { x: number; y: number; width: number; height: number } {
+  return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
 }
 
 function resolveTransition(
@@ -61,7 +61,11 @@ export function FluidHoverHighlight({
       aria-hidden="true"
       className={`pointer-events-none absolute left-0 top-0 z-0 ${surfaceClassName}${className ? ` ${className}` : ""}`}
       data-fluid-hover-highlight
-      style={{ ...style, width: rect.width, height: rect.height }}
+      // Size rides the same channel as position. Pinning width/height through
+      // `style` made the layer resize on the render that produced the new rect
+      // while x/y were still springing toward it, so the wash was already the
+      // next row's size at the previous row's position for the whole transition.
+      style={style}
       initial={{ opacity: 0, ...target(rect) }}
       animate={{ opacity: 1, ...target(rect) }}
       transition={resolveTransition(transition, reduceMotion, disableMotion)}

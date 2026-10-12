@@ -19,7 +19,6 @@ import { resolveAgentPiSessionCacheCapacity } from "./AgentPiSessionCachePolicy.
 import { AgentPiSessionCustomEntryTypes } from "./AgentPiSessionEntries.js";
 import {
   hasIncompatibleAgentPiToolObservationHistory,
-  isAgentPiConversationHistoryEmpty,
   isAgentPiSessionRuntimeContractCurrent,
   stampAgentPiSessionRuntimeContract,
 } from "./AgentPiSessionHistoryPolicy.js";
@@ -31,7 +30,6 @@ import {
   type AgentPiSessionRuntimeStatus,
 } from "./AgentPiSessionManagement.js";
 import { AgentPiDiagnosticSources, emitAgentPiDiagnostic } from "./AgentPiDiagnostics.js";
-import { stripAgentPiContextOverlayMessages } from "./AgentPiTurnContextMessage.js";
 
 export type { AgentPiCodingAgentSessionFrame } from "./AgentPiCodingAgentSessionFrame.js";
 export type {
@@ -53,7 +51,7 @@ export class AgentPiCodingAgentSessionPool {
   private readonly lifecycle: AgentPiCodingAgentSessionLifecycle;
 
   constructor(private readonly options: AgentPiCodingAgentSessionPoolOptions) {
-    this.workspaceLayout = resolveAgentWorkspaceLayout(options.workspaceRoot);
+    this.workspaceLayout = options.workspaceLayout ?? resolveAgentWorkspaceLayout(options.workspaceRoot);
     this.factory = new AgentPiCodingAgentSessionFactory(options);
     this.lifecycle = new AgentPiCodingAgentSessionLifecycle(
       this.sessions,
@@ -82,9 +80,13 @@ export class AgentPiCodingAgentSessionPool {
       pooled.activeLeases += 1;
       pooled.lastAccess = this.lifecycle.nextAccessSequence();
       await this.factory.configure(pooled, input);
+      // SessionManager is the durable source of truth for compaction, rewind,
+      // and branch mutations. Refresh the SDK's public transcript before a
+      // lease exposes it to the next Pi turn; otherwise a pooled AgentSession
+      // can retain the pre-compaction message snapshot indefinitely.
+      pooled.session.refreshContext();
       return {
         storage: opened.storage,
-        historyMigrationRequired: opened.historyMigrationRequired,
         session: new AgentPiCodingAgentSession(pooled.session, pooled.sessionManager, pooled.frame, () =>
           this.lifecycle.release(leasedSession, leasedRelease, finishOperation),
         ),
@@ -110,12 +112,9 @@ export class AgentPiCodingAgentSessionPool {
         this.sessions.get(sessionId)?.sessionManager ?? (await this.openExistingSession(sessionId));
       if (!sessionManager?.getEntry(entryId)) return false;
       sessionManager.branch(entryId);
-      this.options.compactionCandidateStore?.removeSession(sessionId);
       const pooled = this.sessions.get(sessionId);
       if (pooled) {
-        pooled.session.agent.state.messages = stripAgentPiContextOverlayMessages(
-          sessionManager.buildSessionContext().messages,
-        );
+        pooled.session.agent.state.messages = sessionManager.buildSessionContext().messages;
       }
       return true;
     } finally {
@@ -159,7 +158,6 @@ export class AgentPiCodingAgentSessionPool {
         return false;
       }
       targetManager.branch(entryId);
-      this.options.compactionCandidateStore?.removeSession(targetSessionId);
       targetManager.appendCustomEntry(AgentPiSessionCustomEntryTypes.ForkBoundary, {
         sourceSessionId,
         entryId,
@@ -180,7 +178,6 @@ export class AgentPiCodingAgentSessionPool {
     try {
       release = await this.leases.acquire(sessionId);
       this.lifecycle.assertOpen();
-      this.options.compactionCandidateStore?.removeSession(sessionId);
       const pooled = this.sessions.get(sessionId);
       if (pooled) {
         this.sessions.delete(sessionId);
@@ -257,7 +254,6 @@ export class AgentPiCodingAgentSessionPool {
       cached: this.sessions.get(sessionId) === pooled,
       stats,
       contextUsage: pooled.session.getContextUsage(),
-      ...(pooled.compactionCandidateStatus ? { compactionCandidate: pooled.compactionCandidateStatus() } : {}),
     };
   }
 
@@ -338,14 +334,12 @@ export class AgentPiCodingAgentSessionPool {
   private async openOrCreate(input: AgentPiCodingAgentLeaseInput): Promise<{
     value: AgentPiPooledCodingSession;
     storage: "created" | "existing";
-    historyMigrationRequired: boolean;
   }> {
     const current = this.sessions.get(input.sessionId);
     if (current) {
       return {
         value: current,
         storage: "existing",
-        historyMigrationRequired: isAgentPiConversationHistoryEmpty(current.sessionManager),
       };
     }
     let existing = await this.openExistingSession(input.sessionId);
@@ -370,7 +364,6 @@ export class AgentPiCodingAgentSessionPool {
     return {
       value: pooled,
       storage: existing ? "existing" : "created",
-      historyMigrationRequired: isAgentPiConversationHistoryEmpty(sessionManager),
     };
   }
 

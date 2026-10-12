@@ -1,10 +1,9 @@
-import type { ChildProcess, ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn as spawnNodeProcess, type ChildProcess, type ChildProcessWithoutNullStreams } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { execa } from "execa";
 import { isAgentUnknownRecord as isRecord } from "../Core/AgentUnknownValue.js";
 import { toError } from "../Core/AgentErrors.js";
-import { AgentBaseError } from "../Core/AgentBaseError.js";
 import { withDeadline } from "../Core/AgentTiming.js";
 import {
   terminateSeneraProcessTree,
@@ -30,7 +29,7 @@ export interface SeneraOwnedProcessHandle<TChild extends ChildProcess = ChildPro
   readonly child: TChild;
   readonly pid: number | undefined;
   readonly closed: Promise<SeneraOwnedProcessExit>;
-  readonly terminationBackend: "posix-process-group" | "windows-job" | "windows-taskkill-fallback" | "custom";
+  readonly terminationBackend: "posix-process-group" | "windows-job" | "custom";
   terminateTree(signal: NodeJS.Signals): Promise<void>;
 }
 
@@ -60,12 +59,6 @@ interface WindowsSupervisorChild extends ChildProcess {
   readonly stdio: [Writable | null, Readable | null, Readable | null, Writable, Readable];
 }
 
-class SeneraWindowsSupervisorUnavailableError extends AgentBaseError {
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, options);
-  }
-}
-
 export async function spawnSeneraOwnedProcess(
   command: string,
   args: readonly string[],
@@ -93,24 +86,7 @@ async function spawnSeneraProcess(
   options: SeneraOwnedProcessSpawnerOptions,
 ): Promise<SeneraInheritedOwnedProcess> {
   if (process.platform === "win32" && options.terminateProcessTree === undefined) {
-    try {
-      return await spawnWindowsJobProcess(command, args, spawnOptions, stdio);
-    } catch (error) {
-      if (!(error instanceof SeneraWindowsSupervisorUnavailableError)) throw error;
-      emitOwnedProcessWarning(
-        "SENERA_WINDOWS_PROCESS_SUPERVISION_DEGRADED",
-        "Windows Job Object supervision is unavailable; process cleanup is degraded to taskkill.",
-        error,
-      );
-      return spawnDirectProcess(
-        command,
-        args,
-        spawnOptions,
-        stdio,
-        terminateSeneraProcessTree,
-        "windows-taskkill-fallback",
-      );
-    }
+    return spawnWindowsJobProcess(command, args, spawnOptions, stdio);
   }
 
   return spawnDirectProcess(
@@ -129,32 +105,24 @@ async function spawnWindowsJobProcess(
   options: SeneraOwnedProcessSpawnOptions,
   stdio: "inherit" | "pipe",
 ): Promise<SeneraInheritedOwnedProcess> {
-  let job: import("./AgentWindowsJobObject.js").AgentWindowsJobObject;
-  try {
-    const { AgentWindowsJobObject } = await import("./AgentWindowsJobObject.js");
-    job = new AgentWindowsJobObject();
-  } catch (error) {
-    throw new SeneraWindowsSupervisorUnavailableError("Unable to create the Windows Job Object.", {
-      cause: error,
-    });
-  }
+  const { AgentWindowsJobObject } = await import("./AgentWindowsJobObject.js");
+  const job = new AgentWindowsJobObject();
 
   let child: WindowsSupervisorChild;
   try {
     child = requireWindowsSupervisorChild(
-      spawnWithExeca(process.execPath, [WindowsSupervisorModulePath], {
+      spawnNodeProcess(process.execPath, [WindowsSupervisorModulePath], {
         cwd: options.cwd,
         env: supervisorEnvironment(),
         stdio: [stdio, stdio, stdio, "pipe", "pipe"],
+        shell: false,
         windowsHide: true,
         detached: false,
       }),
     );
   } catch (error) {
     closeWindowsJob(job);
-    throw new SeneraWindowsSupervisorUnavailableError("Unable to start the Windows process supervisor.", {
-      cause: error,
-    });
+    throw error;
   }
   const supervisorClosed = observeChildClose(child);
 
@@ -164,9 +132,7 @@ async function spawnWindowsJobProcess(
     job.assign(child.pid);
   } catch (error) {
     await disposeWindowsJob(job, child, supervisorClosed);
-    throw new SeneraWindowsSupervisorUnavailableError("Unable to assign the process supervisor to a Windows Job.", {
-      cause: error,
-    });
+    throw new Error("Unable to assign the process supervisor to a Windows Job.", { cause: error });
   }
 
   void supervisorClosed.then(() => closeWindowsJob(job));
@@ -182,6 +148,7 @@ async function spawnWindowsJobProcess(
       cwd: options.cwd,
       env: stringEnvironment(options.env),
       windowsHide: options.windowsHide,
+      jobObjectName: job.name,
     })}\n`,
   );
 

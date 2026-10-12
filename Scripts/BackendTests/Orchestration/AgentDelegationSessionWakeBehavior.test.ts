@@ -6,87 +6,185 @@ import {
 import {
   AgentChildRunJoinModes,
   AgentChildRunStatuses,
+  isAgentChildRunBackgroundDeliverable,
+  isAgentChildRunResultTerminal,
+  isAgentChildRunSettled,
   type AgentChildRunRecord,
 } from "../../../Source/AgentSystem/Orchestration/AgentChildRunTypes.js";
+import type { AgentSessionBackgroundWakeRequest } from "../../../Source/AgentSystem/Session/AgentSessionBackgroundWake.js";
 
 describe("delegated session wake", () => {
-  test("waits for every member of a parallel spawn group and emits one parent wake", async () => {
+  test("classifies paused runs as settled without treating them as deliverable results", () => {
+    expect(isAgentChildRunSettled(AgentChildRunStatuses.AwaitingSupervisor)).toBe(true);
+    expect(isAgentChildRunResultTerminal(AgentChildRunStatuses.AwaitingSupervisor)).toBe(false);
+    expect(isAgentChildRunSettled(AgentChildRunStatuses.Running)).toBe(false);
+    expect(isAgentChildRunResultTerminal(AgentChildRunStatuses.Completed)).toBe(true);
+    expect(isAgentChildRunResultTerminal(AgentChildRunStatuses.Cancelled)).toBe(true);
+    expect(isAgentChildRunBackgroundDeliverable(AgentChildRunStatuses.Cancelled)).toBe(false);
+    expect(isAgentChildRunBackgroundDeliverable(AgentChildRunStatuses.Failed)).toBe(true);
+  });
+
+  test("waits for every member of a parallel spawn group and delivers the batch once", async () => {
     const group = { id: "join:test", mode: AgentChildRunJoinModes.All, expectedCount: 2 } as const;
-    const first = createRecord("first", AgentChildRunStatuses.Completed, group);
-    const second = createRecord("second", AgentChildRunStatuses.Running, group);
-    const records = [first, second];
-    const wake = vi.fn(async (..._args: unknown[]) => "accepted" as const);
+    let records = [
+      createRecord("first", AgentChildRunStatuses.Completed, group),
+      createRecord("second", AgentChildRunStatuses.Running, group),
+    ];
+    const accepted: Array<{ input: string; requestId: string }> = [];
+    const wake = vi.fn(async (request: AgentSessionBackgroundWakeRequest) => {
+      const payload = request.resolve();
+      if (!payload) return "delivered" as const;
+      accepted.push(payload);
+      request.acknowledge(payload);
+      return "accepted" as const;
+    });
     const handler = createAgentDelegationSessionWakeHandler({
       childRuns: {
         get: (id) => records.find((record) => record.id === id),
         listForJoinGroup: () => records,
-        markParentWakeConsumedBatch: vi.fn(),
+        markParentResultsDeliveredBatch: (ids) => {
+          records = records.map((record) =>
+            ids.includes(record.id) ? { ...record, parentResultDeliveredAt: "2026-09-11T00:00:01.000Z" } : record,
+          );
+          return ids.length;
+        },
       },
       sessionManager: { wakeFromBackgroundTask: wake },
     });
 
-    await handler(first);
+    await handler(records[0]!);
     expect(wake).not.toHaveBeenCalled();
 
     records[1] = createRecord("second", AgentChildRunStatuses.Completed, group);
-    await handler(records[1]);
-    await handler(first);
+    await handler(records[1]!);
+    await handler(records[0]!);
 
     expect(wake).toHaveBeenCalledOnce();
-    const request = wake.mock.calls[0]?.[0] as { input: string; requestId: string } | undefined;
-    expect(request).toMatchObject({
-      sessionId: "parent-session",
-      metadata: { backgroundTask: { taskId: "join:test", runId: "join:test" } },
+    expect(accepted[0]).toMatchObject({
+      requestId: expect.stringMatching(/^background_join_join%3Atest_first%3A1%3Acompleted%7Csecond%3A1%3Acompleted$/),
     });
-    expect(request?.requestId).toMatch(/^background_join_join%3Atest_first%3A1%3Acompleted%7Csecond%3A1%3Acompleted$/);
-    expect(request?.input).toContain('"tasks"');
-
-    records[1] = { ...records[1]!, revision: 2 };
-    await handler(records[1]);
-    expect(wake).toHaveBeenCalledTimes(2);
+    expect(accepted[0]?.input).toContain('"tasks"');
+    expect(records.every((record) => record.parentResultDeliveredAt !== undefined)).toBe(true);
+    await handler(records[1]!);
+    expect(wake).toHaveBeenCalledOnce();
   });
 
   test("keeps a single detached run on the per-run completion path", async () => {
-    const record = createRecord("single", AgentChildRunStatuses.Completed);
-    const wake = vi.fn(async (..._args: unknown[]) => "accepted" as const);
+    let record = createRecord("single", AgentChildRunStatuses.Completed);
+    const wake = vi.fn(async (request: AgentSessionBackgroundWakeRequest) => {
+      const payload = request.resolve();
+      if (!payload) return "delivered" as const;
+      request.acknowledge(payload);
+      return "accepted" as const;
+    });
     const handler = createAgentDelegationSessionWakeHandler({
-      childRuns: { get: () => record, listForJoinGroup: () => [], markParentWakeConsumedBatch: vi.fn() },
+      childRuns: {
+        get: () => record,
+        listForJoinGroup: () => [],
+        markParentResultsDeliveredBatch: (ids) => {
+          if (ids.includes(record.id)) record = { ...record, parentResultDeliveredAt: "2026-09-11T00:00:01.000Z" };
+          return ids.length;
+        },
+      },
       sessionManager: { wakeFromBackgroundTask: wake },
     });
 
     await handler(record);
 
     expect(wake).toHaveBeenCalledOnce();
-    const request = wake.mock.calls[0]?.[0] as { requestId: string } | undefined;
-    expect(request?.requestId).toBe("background_single_1");
+    expect(record.parentResultDeliveredAt).toBeDefined();
   });
 
-  test("persists wake consumption and ignores replayed completion events", async () => {
+  test("delivers only the remaining result from an any-mode join group", async () => {
+    const group = { id: "join:any", mode: AgentChildRunJoinModes.Any, expectedCount: 2 } as const;
+    let records = [
+      {
+        ...createRecord("already-received", AgentChildRunStatuses.Completed, group),
+        finalAnswer: "already returned by AgentWait",
+        parentResultDeliveredAt: "2026-09-11T00:00:01.000Z",
+      },
+      {
+        ...createRecord("still-pending", AgentChildRunStatuses.Completed, group),
+        finalAnswer: "deliver this result",
+      },
+    ];
+    let deliveredIds: readonly string[] = [];
+    const wake = vi.fn(async (request: AgentSessionBackgroundWakeRequest) => {
+      const payload = request.resolve();
+      if (!payload) return "delivered" as const;
+      deliveredIds = payload.childRunIds;
+      request.acknowledge(payload);
+      return "accepted" as const;
+    });
+    const handler = createAgentDelegationSessionWakeHandler({
+      childRuns: {
+        get: (id) => records.find((record) => record.id === id),
+        listForJoinGroup: () => records,
+        markParentResultsDeliveredBatch: (ids) => {
+          records = records.map((record) =>
+            ids.includes(record.id) ? { ...record, parentResultDeliveredAt: "2026-09-11T00:00:02.000Z" } : record,
+          );
+          return ids.length;
+        },
+      },
+      sessionManager: { wakeFromBackgroundTask: wake },
+    });
+
+    await handler(records[1]!);
+
+    expect(wake).toHaveBeenCalledOnce();
+    expect(deliveredIds).toEqual(["still-pending"]);
+    expect(records.every((record) => record.parentResultDeliveredAt !== undefined)).toBe(true);
+  });
+
+  test("persists parent delivery and ignores replayed completion events", async () => {
     let current = createRecord("durable", AgentChildRunStatuses.Completed);
-    const wake = vi.fn(async (..._args: unknown[]) => "accepted" as const);
-    const markParentWakeConsumedBatch = vi.fn((ids: readonly string[]) => {
-      if (ids.includes(current.id)) current = { ...current, parentWakeConsumed: true };
+    const wake = vi.fn(async (request: AgentSessionBackgroundWakeRequest) => {
+      const payload = request.resolve();
+      if (!payload) return "delivered" as const;
+      request.acknowledge(payload);
+      return "accepted" as const;
+    });
+    const markParentResultsDeliveredBatch = vi.fn((ids: readonly string[]) => {
+      if (ids.includes(current.id)) current = { ...current, parentResultDeliveredAt: "2026-09-11T00:00:01.000Z" };
       return ids.length;
     });
     const handler = createAgentDelegationSessionWakeHandler({
       childRuns: {
         get: (id) => (id === current.id ? current : undefined),
         listForJoinGroup: () => [],
-        markParentWakeConsumedBatch,
+        markParentResultsDeliveredBatch,
       },
       sessionManager: { wakeFromBackgroundTask: wake },
     });
 
-    await Promise.all([handler(current), handler({ ...current, parentWakeConsumed: false })]);
-    await handler({ ...current, parentWakeConsumed: false });
+    await Promise.all([handler(current), handler({ ...current, parentResultDeliveredAt: undefined })]);
+    await handler({ ...current, parentResultDeliveredAt: undefined });
 
     expect(wake).toHaveBeenCalledOnce();
-    expect(markParentWakeConsumedBatch).toHaveBeenCalledOnce();
+    expect(markParentResultsDeliveredBatch).toHaveBeenCalledOnce();
   });
 
   test("does not treat synchronous child executions as detached completions", () => {
     const record = createRecord("wait", AgentChildRunStatuses.Completed, undefined, "wait");
     expect(isTerminalDetachedChildRun(record.status, record)).toBe(false);
+  });
+
+  test("does not wake a parent for a cancelled detached run", async () => {
+    const record = createRecord("cancelled", AgentChildRunStatuses.Cancelled);
+    const wake = vi.fn(async () => "accepted" as const);
+    const handler = createAgentDelegationSessionWakeHandler({
+      childRuns: {
+        get: () => record,
+        listForJoinGroup: () => [],
+        markParentResultsDeliveredBatch: vi.fn(),
+      },
+      sessionManager: { wakeFromBackgroundTask: wake },
+    });
+
+    await handler(record);
+
+    expect(wake).not.toHaveBeenCalled();
   });
 });
 

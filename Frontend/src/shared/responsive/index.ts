@@ -5,7 +5,7 @@ export {
   responsiveMediaQueries,
 } from "./responsiveMode";
 export type { ResponsiveMode, ResponsiveQueryMatches, ResponsiveViewport } from "./responsiveMode";
-export { createResponsiveModeStore } from "./responsiveStore";
+export { createResponsiveModeStore, hasResponsiveMediaSupport } from "./responsiveStore";
 export type { MatchMediaReader, ResponsiveModeStore } from "./responsiveStore";
 export { useResponsiveMode } from "./useResponsiveMode";
 export { readViewportSize, useViewportSize } from "./useViewportSize";

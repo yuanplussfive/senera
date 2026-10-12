@@ -4,6 +4,20 @@ export interface AgentLoopConfig {
   PiSessions?: AgentPiSessionsConfig;
 }
 
+export interface AgentEventWriterConfig {
+  RestartDelayMs?: number;
+  CloseTimeoutMs?: number;
+  DrainBatchSize?: number;
+  CommittedRetentionMs?: number;
+}
+
+export interface ResolvedAgentEventWriterConfig {
+  RestartDelayMs: number;
+  CloseTimeoutMs: number;
+  DrainBatchSize: number;
+  CommittedRetentionMs: number;
+}
+
 export interface AgentPiSessionsConfig {
   RootDir?: string;
   MaxCachedSessions?: number;
@@ -48,6 +62,22 @@ export interface AgentToolExecutionConfig {
   SemanticAudit?: AgentToolSemanticAuditConfig;
   Environment?: AgentProcessEnvironmentConfig;
   Resources?: AgentExecutionResourcesConfig;
+}
+
+/**
+ * Lifecycle policy for MCP client connections. Tool execution resources and
+ * MCP connections have different ownership, so the connection pool gets its
+ * own configuration surface while sharing the execution resource defaults.
+ */
+export interface AgentMcpConnectionsConfig {
+  /** Set to 0 to disable idle eviction and keep pooled connections resident. */
+  IdleTtlSeconds?: number;
+  SweepIntervalSeconds?: number;
+}
+
+export interface ResolvedAgentMcpConnectionsConfig {
+  IdleTtlMs: number;
+  SweepIntervalMs: number;
 }
 
 export const AgentToolSemanticAuditModes = {
@@ -137,42 +167,18 @@ export interface ResolvedAgentDockerRuntimeConfig {
   PullPolicy: AgentDockerImagePullPolicy;
 }
 
-export interface AgentPresetsConfig {
-  Enabled?: boolean;
-  RootDir?: string;
-  StateFile?: string;
-  PromptBudget?: AgentPresetPromptBudgetConfig;
-}
-
-export interface AgentPresetPromptBudgetConfig {
-  MaxExamples?: number;
-  MaxLoreEntries?: number;
-  MaxSupplementalCharacters?: number;
-}
-
-export interface ResolvedAgentPresetPromptBudgetConfig {
-  MaxExamples: number;
-  MaxLoreEntries: number;
-  MaxSupplementalCharacters: number;
-}
-
-export interface ResolvedAgentPresetsConfig extends Required<Omit<AgentPresetsConfig, "PromptBudget">> {
-  Enabled: boolean;
-  RootDir: string;
-  StateFile: string;
-  PromptBudget: ResolvedAgentPresetPromptBudgetConfig;
-}
-
 export interface AgentArtifactsConfig {
   RootDir?: string;
-  InlineResultMaxTokens?: number;
-  InlineResultMaxBytes?: number;
+  ToolObservationMaxTokens?: number;
   RawJsonMaxBytes?: number;
   TextFileMaxBytes?: number;
+  WorkspaceObserverMemoryMaxBytes?: number;
+  WorkspaceObserverSettleMs?: number;
+  WorkspaceObserverIdleTtlMs?: number;
+  WorkspaceObserverIgnoredPaths?: string[];
+  WorkspacePatchContextLines?: number;
   MemoryReadMaxArtifacts?: number;
-  MemoryReadMaxRefs?: number;
   MemoryReadMaxConcurrency?: number;
-  MemoryReadStructuredJsonMaxTokens?: number;
   OutputCaptureMaxBytes?: number;
   MaxStoredBytes?: number;
   MaxArtifacts?: number;
@@ -184,14 +190,16 @@ export interface AgentArtifactsConfig {
 
 export interface ResolvedAgentArtifactsConfig {
   RootDir: string;
-  InlineResultMaxTokens: number;
-  InlineResultMaxBytes: number;
+  ToolObservationMaxTokens: number;
   RawJsonMaxBytes: number;
   TextFileMaxBytes: number;
+  WorkspaceObserverMemoryMaxBytes: number;
+  WorkspaceObserverSettleMs: number;
+  WorkspaceObserverIdleTtlMs: number;
+  WorkspaceObserverIgnoredPaths: string[];
+  WorkspacePatchContextLines: number;
   MemoryReadMaxArtifacts: number;
-  MemoryReadMaxRefs: number;
   MemoryReadMaxConcurrency: number;
-  MemoryReadStructuredJsonMaxTokens: number;
   OutputCaptureMaxBytes: number;
   MaxStoredBytes: number;
   MaxArtifacts: number;
@@ -237,12 +245,14 @@ export interface AgentPromptConfig {
   UserMessageEnvelope?: boolean;
   /** Request-local timezone rendered inside the envelope. */
   TimeZone?: string;
-  /** Rewrite the short preface shown before tool execution; independent of presets. */
+  /** The only user-authored persona content included in the model prompt. */
+  CorePersona?: string;
+  /** The only user-authored voice/style guidance included in the model prompt. */
+  LanguageStyle?: string;
+  /** Rewrite the short preface shown before tool execution; independent of persona text. */
   PrefaceRewrite?: boolean;
-  /** Rewrite the settled final answer independently of presets (polish tier when no card). */
+  /** Rewrite the settled final answer independently of persona text (polish tier when no card). */
   FinalResponseRewrite?: boolean;
-  /** Re-anchor persona before the reference stage when a preset is active. */
-  RoleCheck?: boolean;
   /** Wrap BAML tool observations with attribution="tool" at the projection exit. */
   BamlToolAttribution?: boolean;
 }
@@ -250,75 +260,13 @@ export interface AgentPromptConfig {
 export interface ResolvedAgentPromptConfig {
   UserMessageEnvelope: boolean;
   TimeZone: string;
+  CorePersona?: string;
+  LanguageStyle?: string;
   /** Optional for backwards-compatible embedders; resolver always supplies false/true. */
   PrefaceRewrite?: boolean;
   /** Optional for backwards-compatible embedders; resolver always supplies false/true. */
   FinalResponseRewrite?: boolean;
-  RoleCheck: boolean;
   BamlToolAttribution: boolean;
-}
-
-export interface AgentWorldDayPhaseConfig {
-  Id: string;
-  Label: string;
-  StartsAt: string;
-  EndsAt: string;
-}
-
-export interface AgentWorldGoalMicroLoopConfig {
-  /** Enables the bounded Goal perceive -> decide -> act cycle. */
-  Enabled?: boolean;
-  /** Maximum Goals considered in one wake; prevents an unbounded model turn. */
-  MaxCandidates?: number;
-  /** Minimum delay before an autonomous Goal is reviewed again. */
-  ReviewDelaySeconds?: number;
-  /** Host allowlist for tools an autonomous Goal run may use. */
-  AllowedToolNames?: string[];
-}
-
-export interface ResolvedAgentWorldGoalMicroLoopConfig {
-  Enabled: boolean;
-  MaxCandidates: number;
-  ReviewDelaySeconds: number;
-  AllowedToolNames: string[];
-}
-
-export interface AgentWorldResidentIdleConfig {
-  /** Enables sparse, model-backed idle cognition for the active Resident. */
-  Enabled?: boolean;
-  /** Initial delay between idle ticks. */
-  MinIntervalSeconds?: number;
-  /** Upper bound for exponential backoff between unchanged ticks. */
-  MaxIntervalSeconds?: number;
-  /** Multiplier applied after a wait/unchanged decision. */
-  BackoffMultiplier?: number;
-  /** Maximum idle ticks inspected in one wake. */
-  MaxPending?: number;
-}
-
-export interface ResolvedAgentWorldResidentIdleConfig {
-  Enabled: boolean;
-  MinIntervalSeconds: number;
-  MaxIntervalSeconds: number;
-  BackoffMultiplier: number;
-  MaxPending: number;
-}
-
-export interface AgentWorldActionBudgetConfig {
-  /** Maximum admitted action or decision units in one World wake. */
-  MaxActionsPerWake?: number;
-  /** Maximum model-backed decision candidates admitted in one World wake. */
-  MaxDecisionCandidatesPerWake?: number;
-  /** Delay before retrying candidates deferred by budget contention. */
-  RetryDelaySeconds?: number;
-  /** Lease duration for durable world work items once execution starts. */
-  LeaseDurationSeconds?: number;
-  /** Shares the global action budget across active wake sources. */
-  FairShare?: boolean;
-  /** Optional deterministic source precedence; omitted sources sort by source id. */
-  SourceOrder?: string[];
-  /** Optional per-source caps keyed by a stable wake source id. */
-  SourceCaps?: Record<string, number>;
 }
 
 /** Shared model-inference admission policy for foreground and background work. */
@@ -346,42 +294,9 @@ export interface ResolvedAgentInferenceBudgetConfig {
   LaneWeights: Record<string, number>;
 }
 
-export interface ResolvedAgentWorldActionBudgetConfig {
-  MaxActionsPerWake: number;
-  MaxDecisionCandidatesPerWake: number;
-  RetryDelaySeconds: number;
-  LeaseDurationSeconds: number;
-  FairShare: boolean;
-  SourceOrder: string[];
-  SourceCaps: Record<string, number>;
-}
-
-export interface AgentWorldConfig {
-  Name?: string;
-  TimeZone?: string;
-  DayPhases?: AgentWorldDayPhaseConfig[];
-  RecordLimit?: number;
-  TimelineLimit?: number;
-  HabitCatchUpLimit?: number;
-  GoalMicroLoop?: AgentWorldGoalMicroLoopConfig;
-  ResidentIdle?: AgentWorldResidentIdleConfig;
-  ActionBudget?: AgentWorldActionBudgetConfig;
-}
-
-export interface ResolvedAgentWorldConfig {
-  Name: string;
-  TimeZone: string;
-  DayPhases: AgentWorldDayPhaseConfig[];
-  RecordLimit: number;
-  TimelineLimit: number;
-  HabitCatchUpLimit: number;
-  GoalMicroLoop?: ResolvedAgentWorldGoalMicroLoopConfig;
-  ResidentIdle?: ResolvedAgentWorldResidentIdleConfig;
-  ActionBudget?: ResolvedAgentWorldActionBudgetConfig;
-}
-
 export interface ResolvedAgentPersistenceConfig {
   Kind: "sqlite" | "memory";
+  EventWriter: ResolvedAgentEventWriterConfig;
 }
 
 export interface ResolvedAgentConfigStoreConfig {

@@ -1,4 +1,5 @@
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
+import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
 import {
   normalizeAgentInteractionContext,
   type AgentInteractionContext,
@@ -9,10 +10,24 @@ export interface AgentTurnRequestEnvelopeOptions {
   readonly timeZone: string;
 }
 
+/**
+ * A request-local attachment reference. The canonical URI is always retained
+ * as the durable fallback; a resolved local path is an ephemeral convenience
+ * for the model and must never be persisted in conversation history.
+ */
+export interface AgentTurnAttachmentReference {
+  readonly resourceUri: string;
+  readonly filePath?: string;
+}
+
+export type AgentTurnAttachmentUploadStore = Pick<AgentUploadStore, "resolve"> &
+  Partial<Pick<AgentUploadStore, "resolvePath">>;
+
 export interface AgentTurnRequestComposeInput {
   readonly userInput: string;
   readonly options: AgentTurnRequestEnvelopeOptions;
   readonly attachments?: readonly AgentUploadAttachment[];
+  readonly attachmentReferences?: readonly AgentTurnAttachmentReference[];
   /** Runtime-owned surface/platform context. Never derive this from user text. */
   readonly interaction?: AgentInteractionContext;
   readonly now?: Date;
@@ -24,7 +39,9 @@ export interface AgentTurnRequestComposeInput {
  * XML. Any failure degrades to the original input so the turn is never lost.
  */
 export function composeAgentTurnRequest(input: AgentTurnRequestComposeInput): string {
-  if (!input.options.enabled && !input.interaction) return input.userInput;
+  if (!input.options.enabled && !input.interaction && (input.attachments?.length ?? 0) === 0) {
+    return input.userInput;
+  }
   try {
     return composeEnvelope(input);
   } catch {
@@ -47,7 +64,9 @@ function composeEnvelope(input: AgentTurnRequestComposeInput): string {
   }
   if (!input.options.enabled) {
     parts.push(`<content>${escapeXml(input.userInput)}</content>`);
-    if (input.attachments && input.attachments.length > 0) appendAttachments(parts, input.attachments);
+    if (input.attachments && input.attachments.length > 0) {
+      appendAttachments(parts, input.attachments, input.attachmentReferences);
+    }
     parts.push("</user_message>");
     return parts.join("\n");
   }
@@ -56,19 +75,63 @@ function composeEnvelope(input: AgentTurnRequestComposeInput): string {
     `<time zone="${escapeXml(input.options.timeZone)}"${offset ? ` offset="${escapeXml(offset)}"` : ""}>${formatZoneTime(input.now ?? new Date(), input.options.timeZone)}</time>`,
   );
   parts.push(`<content>${escapeXml(input.userInput)}</content>`);
-  if (input.attachments && input.attachments.length > 0) appendAttachments(parts, input.attachments);
+  if (input.attachments && input.attachments.length > 0) {
+    appendAttachments(parts, input.attachments, input.attachmentReferences);
+  }
   parts.push("</user_message>");
   return parts.join("\n");
 }
 
-function appendAttachments(parts: string[], attachments: readonly AgentUploadAttachment[]): void {
+function appendAttachments(
+  parts: string[],
+  attachments: readonly AgentUploadAttachment[],
+  references?: readonly AgentTurnAttachmentReference[],
+): void {
   parts.push("<attachments>");
   for (const attachment of attachments) {
-    parts.push(
-      `<attachment kind="${escapeXml(attachmentKind(attachment.mime))}" name="${escapeXml(attachment.name)}" mime="${escapeXml(attachment.mime)}" />`,
-    );
+    const reference = references?.find((candidate) => candidate.resourceUri === attachment.resourceUri);
+    const attributes = [
+      `kind="${escapeXml(attachmentKind(attachment.mime))}"`,
+      `name="${escapeXml(attachment.name)}"`,
+      `mime="${escapeXml(attachment.mime)}"`,
+      `size="${attachment.size}"`,
+    ].join(" ");
+    const children = [
+      reference?.filePath ? `<local_path>${escapeXml(reference.filePath)}</local_path>` : "",
+      `<resource_uri>${escapeXml(attachment.resourceUri)}</resource_uri>`,
+    ].filter(Boolean);
+    parts.push(`<attachment ${attributes}>`, ...children, "</attachment>");
   }
   parts.push("</attachments>");
+}
+
+/**
+ * Resolves upload-backed attachments just before a Pi turn is sent. Failure
+ * of one stale upload is deliberately isolated: the canonical URI remains in
+ * the prompt so resource-aware tools can still report a useful error.
+ */
+export async function resolveAgentTurnAttachmentReferences(
+  attachments: readonly AgentUploadAttachment[] | undefined,
+  uploadStore: AgentTurnAttachmentUploadStore | undefined,
+): Promise<readonly AgentTurnAttachmentReference[]> {
+  if (!attachments || attachments.length === 0) return [];
+
+  return Promise.all(
+    attachments.map(async (attachment) => {
+      if (!uploadStore) return { resourceUri: attachment.resourceUri };
+      try {
+        const localPath = uploadStore.resolvePath
+          ? await uploadStore.resolvePath(attachment.resourceUri)
+          : (await uploadStore.resolve(attachment.resourceUri))?.filePath;
+        return {
+          resourceUri: attachment.resourceUri,
+          ...(localPath ? { filePath: localPath } : {}),
+        };
+      } catch {
+        return { resourceUri: attachment.resourceUri };
+      }
+    }),
+  );
 }
 
 function attachmentKind(mime: string): string {

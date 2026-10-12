@@ -1,4 +1,10 @@
+import { randomUUID } from "node:crypto";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { z } from "zod";
+import { extension as mimeExtension, lookup as lookupMime } from "mime-types";
+import { fileTypeFromBuffer } from "file-type";
 import type { ConfigFormDocument } from "../Config/AgentConfigFormDocument.js";
 import type { AgentExtensionLocalizedText } from "../Extensions/AgentExtensionLocalization.js";
 import { extractAgentDocument } from "../Documents/AgentDocumentExtract.js";
@@ -8,14 +14,17 @@ import {
   DefaultAgentDocumentToolConfiguration,
 } from "../Documents/AgentDocumentToolConfiguration.js";
 import { defineSystemTool } from "./AgentSystemToolDefinition.js";
-import { StandardAgentToolObservationProjection } from "../ToolRuntime/AgentToolObservationProjectionPlan.js";
-import { resolveAgentSystemResource } from "./AgentSystemResource.js";
-import { AgentResourceUriSchema } from "../Resources/AgentResourceSchema.js";
+import { resolveAgentSystemLocalResource } from "./AgentSystemResource.js";
+import { AgentResourceSourceSchema, type AgentResourceSource } from "../Resources/AgentResourceSource.js";
+import { AgentWebToolsConfigurationSchema } from "../Web/AgentWebConfiguration.js";
+import { fetchWebResource } from "../Web/AgentWebHttpClient.js";
+import { sha256Hex } from "../Core/AgentHash.js";
+import type { AgentHostToolContext } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
 
 const DocumentExtractInput = z
   .object({
-    resourceUri: AgentResourceUriSchema.describe(
-      "Exact canonical Senera resource URI supplied by the runtime. Local paths must be resolved by the host first; do not derive a URI from a filename.",
+    source: AgentResourceSourceSchema.describe(
+      "Document source: workspace-local path, Senera resource, or HTTP(S) URL.",
     ),
     mode: z.enum(["auto", "probe", "extract"]).default("auto"),
   })
@@ -59,7 +68,7 @@ const DocumentExtractOutput = z
   .object({
     document: z
       .object({
-        resourceUri: AgentResourceUriSchema,
+        source: AgentResourceSourceSchema,
         name: z.string(),
         mime: z.string(),
         size: z.number().int().nonnegative(),
@@ -252,11 +261,10 @@ export function createDocumentExtractSystemTool(extensionConfiguration?: Record<
       },
     },
     metadata: {
-      observation: StandardAgentToolObservationProjection,
       description:
-        "Probe or extract text, structure, metadata, and warnings from a canonical Senera document resource. The host resolves local paths before invocation.",
+        "Probe or extract text, structure, metadata, and warnings from a workspace-relative or absolute local path, canonical Senera resource, or public HTTP(S) document URL. Prefer an attachment's local_path when present; use its resource_uri as the stable fallback.",
       permissions: ["resources:read"],
-      execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
+      execution: { Targets: ["Local"], Network: "Allow", Workspace: "ReadOnly" },
       search: {
         Summary: "读取文档的类型、结构、元数据和文本内容，必要时提取可检索的 Markdown。",
         Tags: ["document", "extract", "text", "metadata"],
@@ -267,8 +275,8 @@ export function createDocumentExtractSystemTool(extensionConfiguration?: Record<
             Description: "检查文档并提取文本、结构、元数据和解析警告。",
             Facets: {
               Actions: ["probe", "extract", "inspect"],
-              Targets: ["document-resource"],
-              Inputs: ["resource-uri", "mode"],
+              Targets: ["workspace-document-path", "document-resource", "public-document-url"],
+              Inputs: ["source", "mode"],
               Outputs: ["document-metadata", "text", "markdown", "structure", "warnings"],
               Effects: ["none"],
             },
@@ -277,72 +285,143 @@ export function createDocumentExtractSystemTool(extensionConfiguration?: Record<
           },
         ],
         UseCases: ["用户提供文档资源，并希望查看内容、结构、元数据或解析警告。"],
-        Avoid: ["文档未被运行时登记为资源时不要猜测路径；需要修改文档时使用对应的工作区工具。"],
+        Avoid: ["不要读取工作区以外的本地路径或绕过网络安全策略；需要修改文档时使用对应的工作区工具。"],
       },
     },
     name: "DocumentExtract",
     input: DocumentExtractInput,
     output: DocumentExtractOutput,
     async execute(input, context) {
-      const resource = await resolveAgentSystemResource(context, input.resourceUri);
-      const document = {
-        filePath: resource.filePath,
-        name: resource.name,
-        declaredMime: resource.declaredMime,
-        size: resource.size,
-        sha256: resource.sha256,
-        resourceUri: resource.resourceUri,
-      };
-      const probe = await probeAgentDocument(document, {
-        sampleBytes: configuration.probe.sampleBytes,
-        container: {
-          maxEntries: configuration.probe.containerMaxEntries,
-          maxEntryBytes: configuration.probe.containerMaxEntryBytes,
-          contentTypesEntryName: configuration.probe.contentTypesEntryName,
-        },
-      });
-      if (input.mode === "probe") {
+      const resource = await resolveDocumentSource(input.source, context, configuration.output.maxFileBytes);
+      try {
+        const document = {
+          filePath: resource.filePath,
+          name: resource.name,
+          declaredMime: resource.declaredMime,
+          size: resource.size,
+          sha256: resource.sha256,
+          ...(resource.resourceUri ? { resourceUri: resource.resourceUri } : {}),
+        };
+        const probe = await probeAgentDocument(document, {
+          sampleBytes: configuration.probe.sampleBytes,
+          container: {
+            maxEntries: configuration.probe.containerMaxEntries,
+            maxEntryBytes: configuration.probe.containerMaxEntryBytes,
+            contentTypesEntryName: configuration.probe.contentTypesEntryName,
+          },
+        });
+        if (input.mode === "probe") {
+          return DocumentExtractOutput.parse({
+            document: {
+              ...publicDocument(resource),
+              status: "probed" as const,
+              probe,
+            },
+          });
+        }
+        const extraction = await extractAgentDocument(
+          {
+            ...document,
+            extractors: configuration.extractors,
+            probe: {
+              sampleBytes: configuration.probe.sampleBytes,
+              container: {
+                maxEntries: configuration.probe.containerMaxEntries,
+                maxEntryBytes: configuration.probe.containerMaxEntryBytes,
+                contentTypesEntryName: configuration.probe.contentTypesEntryName,
+              },
+            },
+            signal: context.signal,
+          },
+          { parse: configuration.parse, output: configuration.output },
+        );
         return DocumentExtractOutput.parse({
           document: {
             ...publicDocument(resource),
-            status: "probed" as const,
+            status: "extracted" as const,
             probe,
+            extraction,
           },
         });
+      } finally {
+        await resource.cleanup?.();
       }
-      const extraction = await extractAgentDocument(
-        {
-          ...document,
-          extractors: configuration.extractors,
-          probe: {
-            sampleBytes: configuration.probe.sampleBytes,
-            container: {
-              maxEntries: configuration.probe.containerMaxEntries,
-              maxEntryBytes: configuration.probe.containerMaxEntryBytes,
-              contentTypesEntryName: configuration.probe.contentTypesEntryName,
-            },
-          },
-          signal: context.signal,
-        },
-        { parse: configuration.parse, output: configuration.output },
-      );
-      return DocumentExtractOutput.parse({
-        document: {
-          ...publicDocument(resource),
-          status: "extracted" as const,
-          probe,
-          extraction,
-        },
-      });
     },
   });
 }
 
 export const DocumentExtractSystemTool = createDocumentExtractSystemTool();
 
-function publicDocument(resource: Awaited<ReturnType<typeof resolveAgentSystemResource>>) {
+interface ResolvedDocumentSource {
+  readonly source: AgentResourceSource;
+  readonly resourceUri?: string;
+  readonly filePath: string;
+  readonly name: string;
+  readonly mime: string;
+  readonly declaredMime?: string;
+  readonly size: number;
+  readonly sha256: string;
+  readonly cleanup?: () => Promise<void>;
+}
+
+async function resolveDocumentSource(
+  source: AgentResourceSource,
+  context: AgentHostToolContext,
+  maxFileBytes: number,
+): Promise<ResolvedDocumentSource> {
+  if (source.kind !== "http_url") return resolveAgentSystemLocalResource(context, source);
+
+  const web = AgentWebToolsConfigurationSchema.parse(context.config.Extensions?.["web-tools"]?.Configuration ?? {});
+  const response = await fetchWebResource(
+    source.url,
+    {
+      maxRedirects: web.fetch.maxRedirects,
+      responseMaxBytes: Math.min(maxFileBytes, web.fetch.responseMaxBytes),
+      timeoutMs: web.fetch.requestTimeoutMs,
+      userAgent: web.fetch.userAgent,
+      maxUrlLength: web.fetch.maxUrlLength,
+      allowPrivateNetworks: web.fetch.allowPrivateNetworks,
+      allowSyntheticProxyAddresses: web.fetch.allowSyntheticProxyAddresses,
+    },
+    context.signal,
+  );
+  if (response.transfer.truncated) {
+    throw new Error(
+      `Document download exceeds its byte limit of ${Math.min(maxFileBytes, web.fetch.responseMaxBytes)}.`,
+    );
+  }
+
+  const detectedMime = (await fileTypeFromBuffer(response.body))?.mime;
+  const declaredMime = response.contentType.split(";", 1)[0]?.trim().toLowerCase() || undefined;
+  const mime =
+    detectedMime ?? declaredMime ?? (lookupMime(new URL(response.url).pathname) || "application/octet-stream");
+  const extension = mimeExtension(mime);
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "senera-document-"));
+  const name = path.basename(new URL(response.url).pathname) || "document";
+  const fileName = `${randomUUID()}${extension ? `.${extension}` : ""}`;
+  const filePath = path.join(directory, fileName);
+  try {
+    await fs.writeFile(filePath, response.body, { flag: "wx" });
+  } catch (error) {
+    await fs.rm(directory, { recursive: true, force: true });
+    throw error;
+  }
+  const bytes = Buffer.from(response.body);
   return {
-    resourceUri: resource.resourceUri,
+    source: { kind: "http_url", url: response.url },
+    filePath,
+    name,
+    mime,
+    ...(declaredMime ? { declaredMime } : {}),
+    size: bytes.byteLength,
+    sha256: sha256Hex(bytes),
+    cleanup: () => fs.rm(directory, { recursive: true, force: true }),
+  };
+}
+
+function publicDocument(resource: ResolvedDocumentSource) {
+  return {
+    source: resource.source,
     name: resource.name,
     mime: resource.mime,
     size: resource.size,

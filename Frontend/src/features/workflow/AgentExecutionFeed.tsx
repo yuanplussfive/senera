@@ -1,6 +1,5 @@
 import { useEffect, useId, useMemo, useState, type AriaRole, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
@@ -16,19 +15,22 @@ import {
 import { FeedGroupIconCatalog, FeedItemIconCatalog } from "./feedPresentation";
 import {
   MotionDisclosure,
+  StableActivitySlot,
+  TextShimmer,
   motionTimings,
   readFeedItemVariants,
   useMotionLevel,
   type MotionLevel,
 } from "../../shared/motion";
-import { Spinner } from "../../shared/ui/Spinner";
-import { AppIcon } from "../../shared/ui/AppIcon";
+import { AppIcon, ActivityLoader, ExecutionStatusTones, StatusGlyph, type AppIconName } from "../../shared/ui";
 import { projectToolStagePresentation } from "./toolStagePresentation";
-import { runActivityPresentationPriority } from "./runActivityPresentation";
+import { hasVisibleRunFeedback, runActivityPresentationPriority } from "./runActivityPresentation";
 import { ToolActionIcon } from "./ToolActionIcon";
 import { ToolActivityGroup } from "./ToolActivityGroup";
+import { ToolActivityLabel } from "./ToolActivityLabel";
 import { projectToolBatchActivity, ToolBatchActivity } from "./ToolBatchActivity";
 import { ChildRunActivity } from "./ChildRunCard";
+import { LiveActivityStatus } from "./LiveActivityStatus";
 
 type FeedStatus = FeedItem["status"];
 
@@ -43,6 +45,9 @@ export function AgentExecutionFeed({ run, showBody = true }: { run: RunRecord; s
   // parent timeline. Their child-run projection is still a visible timeline
   // item, even though `items` is empty.
   const hasTimeline = model.groups.some((group) => group.items.length > 0 || Boolean(group.childRun));
+  const live = run.status === "running" || run.status === "cancelling";
+  const showInitialWait = live && !hasVisibleRunFeedback(run, { includeWorkflowTrace: true });
+  const animateBody = live && Boolean(model.bodyText);
 
   return (
     <div className="flex min-w-0 flex-col gap-3" data-execution-feed>
@@ -54,9 +59,18 @@ export function AgentExecutionFeed({ run, showBody = true }: { run: RunRecord; s
             data-execution-rail
           />
         ) : null}
-        <FeedHeadline item={model.headline} elapsedMs={elapsedMs} />
+        {showInitialWait ? (
+          <PendingLine label={model.placeholder} />
+        ) : (
+          <FeedHeadline item={model.headline} elapsedMs={elapsedMs} liveActivity={live && !animateBody} />
+        )}
         {hasTimeline ? (
-          <div className="mt-3 flex min-w-0 flex-col gap-2" role="list" aria-label={model.headline.title}>
+          <div
+            className="mt-3 flex min-w-0 flex-col gap-2"
+            role="list"
+            aria-label={model.headline.title}
+            data-execution-timeline-list
+          >
             {model.groups.map((group) => (
               <FeedTimelineGroup
                 key={group.id}
@@ -70,27 +84,21 @@ export function AgentExecutionFeed({ run, showBody = true }: { run: RunRecord; s
           </div>
         ) : null}
       </div>
-      {showBody ? (
-        <div className="ml-6">
-          <AnimatePresence mode="wait" initial={false}>
-            {model.bodyText ? (
-              <FeedMotionBlock
-                key="body"
-                motionLevel={effectiveLevel}
-                className="pt-2 text-[length:var(--theme-chat-assistant-font-size-scaled)] leading-[var(--theme-chat-assistant-line-height)] text-content-primary"
-              >
-                <span className="whitespace-pre-wrap break-words">{model.bodyText}</span>
-                <span className="caret-blink" />
-              </FeedMotionBlock>
-            ) : (
-              <PendingLine key="pending" label={model.placeholder} motionLevel={effectiveLevel} />
-            )}
-          </AnimatePresence>
+      {showBody && model.bodyText ? (
+        <div className="ml-6" data-execution-feed-body>
+          <FeedMotionBlock
+            key="body"
+            motionLevel={effectiveLevel}
+            className="pt-2 text-[length:var(--theme-chat-assistant-font-size-scaled)] leading-[var(--theme-chat-assistant-line-height)] text-content-primary"
+          >
+            <TextShimmer text={model.bodyText} active={animateBody} />
+            <span className="caret-blink" />
+          </FeedMotionBlock>
         </div>
       ) : null}
       {model.footer ? (
-        <div className="ml-6">
-          <FeedMotionBlock motionLevel={effectiveLevel} className="pt-1.5 font-mono text-[10.5px] text-content-muted">
+        <div className="ml-6" data-execution-feed-footer>
+          <FeedMotionBlock motionLevel={effectiveLevel} className="pt-1.5 text-[10.5px] text-content-muted">
             {model.footer}
           </FeedMotionBlock>
         </div>
@@ -103,9 +111,13 @@ export function AgentExecutionFeed({ run, showBody = true }: { run: RunRecord; s
 export function AgentExecutionStageFeed({
   run,
   keepOpenWhileRunActive = false,
+  liveActivity,
+  showWaitingActivity = true,
 }: {
   run: RunRecord;
   keepOpenWhileRunActive?: boolean;
+  liveActivity?: boolean;
+  showWaitingActivity?: boolean;
 }): JSX.Element | null {
   const model = useMemo(() => deriveFeedModel(run), [run]);
   const split = useMemo(() => splitStageChildRuns(run.steps), [run.steps]);
@@ -114,20 +126,28 @@ export function AgentExecutionStageFeed({
     () => (split.rootToolSteps.length > 0 ? projectToolBatchActivity({ steps: split.rootToolSteps }) : undefined),
     [split],
   );
+  const activityOwner = liveActivity ?? (run.status === "running" || run.status === "cancelling");
+  const liveRun = isLiveRun(run);
   const hasChildRuns = split.childRuns.length > 0;
   if (!presentation && !hasChildRuns) {
     const headline = projectWaitingHeadline(run, model.headline);
-    return run.status === "running" || run.status === "cancelling" || model.headline.kind === "activity" ? (
+    if (!showWaitingActivity && isGenericWaitingHeadline(headline)) {
+      return liveRun ? <LiveActivityStatus dataFallback /> : null;
+    }
+    return liveRun || model.headline.kind === "activity" ? (
       <div className="relative min-w-0" data-execution-stage-feed>
-        <FeedHeadline item={headline} />
+        <FeedHeadline item={headline} liveActivity={activityOwner} />
       </div>
     ) : null;
   }
   if (presentation && shouldShowWaitingHeadline(run, presentation.status, Boolean(toolBatchActivity) || hasChildRuns)) {
     const headline = projectWaitingHeadline(run, model.headline);
-    return run.status === "running" || run.status === "cancelling" || model.headline.kind === "activity" ? (
+    if (!showWaitingActivity && isGenericWaitingHeadline(headline)) {
+      return liveRun ? <LiveActivityStatus dataFallback /> : null;
+    }
+    return liveRun || model.headline.kind === "activity" ? (
       <div className="relative min-w-0" data-execution-stage-feed>
-        <FeedHeadline item={headline} />
+        <FeedHeadline item={headline} liveActivity={activityOwner} />
       </div>
     ) : null;
   }
@@ -149,8 +169,9 @@ export function AgentExecutionStageFeed({
         >
           <ToolBatchActivity
             activity={toolBatchActivity}
-            defaultOpen={toolBatchActivity.live}
+            defaultOpen={false}
             keepOpenWhileRunActive={keepOpenWhileRunActive}
+            animateActivity={activityOwner}
           />
         </div>
       </>
@@ -194,7 +215,13 @@ export function AgentExecutionStageFeed({
 }
 
 /** A completed preface-to-response interval. Its complete tool sequence is opt-in, not chat-height by default. */
-export function AgentExecutionStageFold({ run }: { run: RunRecord }): JSX.Element | null {
+export function AgentExecutionStageFold({
+  run,
+  showWaitingActivity = true,
+}: {
+  run: RunRecord;
+  showWaitingActivity?: boolean;
+}): JSX.Element | null {
   const contentId = useId();
   const [open, setOpen] = useState(false);
   const split = useMemo(() => splitStageChildRuns(run.steps), [run.steps]);
@@ -205,7 +232,9 @@ export function AgentExecutionStageFold({ run }: { run: RunRecord }): JSX.Elemen
   );
   const hasExecutionContent = split.rootToolSteps.length > 0 || split.childRuns.length > 0;
 
-  if (!presentation || !hasExecutionContent) return <AgentExecutionStageFeed run={run} />;
+  if (!presentation || !hasExecutionContent) {
+    return <AgentExecutionStageFeed run={run} showWaitingActivity={showWaitingActivity} />;
+  }
 
   const childRunActivities = <ChildRunActivityList entries={split.childRuns} />;
 
@@ -239,11 +268,13 @@ export function AgentExecutionStageFold({ run }: { run: RunRecord }): JSX.Elemen
         onClick={() => setOpen((value) => !value)}
         data-execution-stage-fold-trigger
       >
-        <ToolActionIcon icon={presentation.icon} status={presentation.status} size="xs" showLiveIndicator={false} />
+        <ToolActionIcon icon={presentation.icon} status={presentation.status} size="sm" />
         <span className="min-w-0 truncate text-[length:var(--theme-chat-assistant-font-size-scaled)] leading-[var(--theme-chat-assistant-line-height)]">
           {presentation.title}
         </span>
-        <ChevronRight
+        <AppIcon
+          icon="chevron-right"
+          size={14}
           className={cn(
             "h-3.5 w-3.5 shrink-0 text-content-muted transition-transform duration-200",
             open && "rotate-90",
@@ -320,11 +351,15 @@ function FeedTimelineGroup({
 }): JSX.Element {
   if (group.variant === "delegation" && group.childRun) {
     return (
-      <div className="relative flex min-w-0 items-start gap-2.5" role="listitem" data-feed-group-variant="delegation">
+      <div
+        className="execution-feed-item execution-feed-item--delegation relative min-w-0"
+        role="listitem"
+        data-feed-group-variant="delegation"
+      >
         <TimelineMarker status={summarizeChildRunStatus(group.childRun)}>
           <AppIcon icon="delegation" size={14} aria-hidden="true" />
         </TimelineMarker>
-        <div className="min-w-0 flex-1 pb-1">
+        <div className="execution-feed-item__body min-w-0">
           <ChildRunActivity
             childRun={group.childRun}
             agentName={group.agentName}
@@ -366,27 +401,28 @@ function FeedGroupRows({ group, nowEpoch }: { group: FeedGroup; nowEpoch: number
   const status = summarizeGroupStatus(group);
 
   return (
-    <div className="relative flex min-w-0 items-start gap-2.5" role="listitem" data-feed-group-variant={variant}>
+    <div
+      className="execution-feed-item execution-feed-group relative min-w-0"
+      role="listitem"
+      data-feed-group-variant={variant}
+    >
       <TimelineMarker status={status}>
-        {group.toolIcons?.length ? (
-          <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
+        {group.toolIcons?.[0] ? (
+          <ToolActionIcon icon={group.toolIcons[0]} status={status} size="sm" />
         ) : (
           <AppIcon icon={icon} size={14} aria-hidden="true" />
         )}
       </TimelineMarker>
-      <div className="min-w-0 flex-1 pb-1">
-        <div className="flex min-h-5 min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          {group.toolIcons?.[0] ? (
-            <ToolActionIcon icon={group.toolIcons[0]} status={status} className="self-center" />
-          ) : null}
+      <div className="execution-feed-group__body min-w-0">
+        <div className="execution-feed-group__meta flex min-w-0 flex-wrap items-baseline">
           <span className="min-w-0 flex-1 basis-48 break-words text-[12.75px] font-medium text-content-primary">
             {group.label}
           </span>
           {group.meta ? (
-            <span className="shrink-0 font-mono text-[10.5px] tabular-nums text-content-muted">{group.meta}</span>
+            <span className="shrink-0 text-[10.5px] tabular-nums text-content-muted">{group.meta}</span>
           ) : null}
         </div>
-        <div className="mt-1 flex min-w-0 flex-col gap-0.5" role="list">
+        <div className="execution-feed-group__items flex min-w-0 flex-col" role="list">
           {group.items.map((item) => (
             <FeedRow key={item.id} item={item} compact nowEpoch={nowEpoch} />
           ))}
@@ -396,27 +432,44 @@ function FeedGroupRows({ group, nowEpoch }: { group: FeedGroup; nowEpoch: number
   );
 }
 
-function FeedHeadline({ item, elapsedMs }: { item: FeedItem; elapsedMs?: number }): JSX.Element {
+function FeedHeadline({
+  item,
+  elapsedMs,
+  liveActivity = false,
+}: {
+  item: FeedItem;
+  elapsedMs?: number;
+  liveActivity?: boolean;
+}): JSX.Element {
   return (
-    <div className="flex min-w-0 items-start gap-2.5">
-      <TimelineMarker status={item.status} emphasis filled>
-        <FeedStatusIcon status={item.status} />
-      </TimelineMarker>
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="text-[13px] font-medium leading-5 text-content-primary">{item.title}</span>
-          {isLiveFeedStatus(item.status) && elapsedMs !== undefined ? (
-            <span className="font-mono text-[10.5px] tabular-nums text-content-muted" data-feed-elapsed>
-              {formatFeedElapsed(elapsedMs)}
+    <StableActivitySlot stateKey={`${item.id}:${item.status}`} geometry="content">
+      <div className="execution-feed-headline min-w-0">
+        <TimelineMarker status={item.status} emphasis filled liveActivity={liveActivity && !item.step}>
+          <FeedStatusIcon item={item} />
+        </TimelineMarker>
+        <div className="execution-feed-headline__body min-w-0">
+          <div className="execution-feed-headline__meta flex min-w-0 flex-wrap items-center">
+            <span
+              className="execution-feed-headline__title text-[13px] font-medium text-content-primary"
+              data-live-activity-text={liveActivity || undefined}
+            >
+              <ToolActivityLabel inspection={item.toolActivity} fallback={item.title} />
             </span>
+            {isLiveFeedStatus(item.status) && elapsedMs !== undefined ? (
+              <span className="text-[10.5px] tabular-nums text-content-muted" data-feed-elapsed>
+                {formatFeedElapsed(elapsedMs)}
+              </span>
+            ) : null}
+            {item.meta ? <span className="text-[10.5px] tabular-nums text-content-muted">{item.meta}</span> : null}
+          </div>
+          {item.subtitle ? (
+            <div className="execution-feed-headline__subtitle break-words text-[12px] text-content-secondary">
+              {item.subtitle}
+            </div>
           ) : null}
-          {item.meta ? <span className="text-[10.5px] tabular-nums text-content-muted">{item.meta}</span> : null}
         </div>
-        {item.subtitle ? (
-          <div className="mt-1 break-words text-[12px] leading-relaxed text-content-secondary">{item.subtitle}</div>
-        ) : null}
       </div>
-    </div>
+    </StableActivitySlot>
   );
 }
 
@@ -439,15 +492,19 @@ function FeedGroupBlock({
   const status = summarizeGroupStatus(group);
 
   return (
-    <div className="relative flex min-w-0 items-start gap-2.5" role="listitem" data-feed-group-variant={variant}>
+    <div
+      className="execution-feed-item execution-feed-group relative min-w-0"
+      role="listitem"
+      data-feed-group-variant={variant}
+    >
       <TimelineMarker status={status}>
-        {group.toolIcons?.length ? (
-          <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
+        {group.toolIcons?.[0] ? (
+          <ToolActionIcon icon={group.toolIcons[0]} status={status} size="sm" />
         ) : (
           <AppIcon icon={icon} size={14} aria-hidden="true" />
         )}
       </TimelineMarker>
-      <div className="min-w-0 flex-1">
+      <div className="execution-feed-group__body min-w-0">
         <button
           type="button"
           onClick={onToggle}
@@ -462,23 +519,22 @@ function FeedGroupBlock({
           }
           data-feed-group={group.id}
           className={cn(
-            "group -mx-1 flex min-h-8 w-[calc(100%+0.5rem)] min-w-0 items-start gap-2 rounded px-1 py-1.5 text-left transition-colors",
+            "execution-feed-group__trigger group -mx-1 flex min-w-0 items-center rounded px-1 text-left transition-colors",
             status === "failed" ? "hover:bg-brick-50" : "hover:bg-surface-hover",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
           )}
         >
-          {group.toolIcons?.[0] ? (
-            <ToolActionIcon icon={group.toolIcons[0]} status={status} className="mt-0.5" />
-          ) : null}
           <span className="min-w-0 flex-1 break-words text-[12.75px] font-medium leading-5 text-content-primary">
             {group.label}
           </span>
           {group.meta ? (
-            <span className="shrink-0 font-mono text-[10px] tabular-nums text-content-muted">{group.meta}</span>
+            <span className="shrink-0 text-[10px] tabular-nums text-content-muted">{group.meta}</span>
           ) : null}
-          <ChevronDown
+          <AppIcon
+            icon="chevron-down"
+            size={14}
             className={cn(
-              "h-3.5 w-3.5 shrink-0 text-content-muted transition-transform duration-200",
+              "shrink-0 text-content-muted transition-transform duration-200",
               expanded && "rotate-180",
             )}
             aria-hidden="true"
@@ -489,7 +545,7 @@ function FeedGroupBlock({
             <FeedMotionBlock key="details" motionLevel={motionLevel}>
               <div
                 id={contentId}
-                className="mt-1 flex min-w-0 flex-col border-l border-line-subtle pl-3"
+                className="execution-feed-group__details flex min-w-0 flex-col border-l border-line-subtle pl-3"
                 role="list"
                 data-feed-detail-surface
               >
@@ -507,13 +563,13 @@ function FeedGroupBlock({
 
 function TimelineFeedItem({ item, nowEpoch }: { item: FeedItem; nowEpoch: number }): JSX.Element {
   const toolPresentation = item.step ? projectToolStagePresentation({ steps: [item.step] }) : undefined;
-  const icon = FeedItemIconCatalog[item.kind];
+  const icon = item.step?.kind === "recall" ? "book-open" : FeedItemIconCatalog[item.kind];
 
   return (
-    <div className="relative flex min-w-0 items-start gap-2.5" role="listitem" data-feed-item-kind={item.kind}>
+    <div className="execution-feed-item relative min-w-0" role="listitem" data-feed-item-kind={item.kind}>
       <TimelineMarker status={item.status}>
         {toolPresentation ? (
-          <ToolActionIcon icon={toolPresentation.icon} status={item.status} size="xs" />
+          <ToolActionIcon icon={toolPresentation.icon} status={item.status} size="sm" />
         ) : (
           <AppIcon icon={icon} size={14} aria-hidden="true" />
         )}
@@ -521,7 +577,7 @@ function TimelineFeedItem({ item, nowEpoch }: { item: FeedItem; nowEpoch: number
       <FeedItemContent
         item={item}
         nowEpoch={nowEpoch}
-        className={cn("min-h-5 pb-1", item.status === "failed" && "-mt-1 border-l-2 border-brick-400 py-1 pl-2")}
+        className={cn("execution-feed-item__body", item.status === "failed" && "execution-feed-item__body--failed")}
       />
     </div>
   );
@@ -537,8 +593,12 @@ function FeedRow({
   nowEpoch: number;
 }): JSX.Element {
   return (
-    <div className={cn("min-w-0 py-1.5", compact && "py-1")} role="listitem" data-feed-item-kind={item.kind}>
-      <div className="flex min-w-0 items-start gap-2">
+    <div
+      className={cn("execution-feed-row min-w-0", compact && "execution-feed-row--compact")}
+      role="listitem"
+      data-feed-item-kind={item.kind}
+    >
+      <div className="execution-feed-row__layout min-w-0">
         <FeedRowStatus item={item} />
         <FeedItemContent item={item} nowEpoch={nowEpoch} />
       </div>
@@ -557,15 +617,19 @@ function FeedItemContent({
 }): JSX.Element {
   const elapsedMs = readStepElapsedMs(item.step, nowEpoch);
   return (
-    <div className={cn("flex min-w-0 flex-1 flex-wrap items-start gap-x-2 gap-y-0.5", className)}>
+    <div className={cn("execution-feed-item-content min-w-0", className)}>
       <div className="min-w-0 flex-1 basis-48">
-        <div className="break-words text-[12.75px] leading-5 text-content-primary">{item.title}</div>
+        <div className="execution-feed-item-content__title break-words text-[12.75px] text-content-primary">
+          <ToolActivityLabel inspection={item.toolActivity} fallback={item.title} />
+        </div>
         {item.subtitle ? (
-          <div className="mt-0.5 break-words text-[11.5px] leading-[1.45] text-content-secondary">{item.subtitle}</div>
+          <div className="execution-feed-item-content__subtitle break-words text-[11.5px] text-content-secondary">
+            {item.subtitle}
+          </div>
         ) : null}
       </div>
       {item.meta || elapsedMs !== undefined ? (
-        <span className={cn("shrink-0 pt-px text-[11px] leading-5", statusTextClass(item.status))}>
+        <span className={cn("execution-feed-item-content__meta shrink-0 text-[11px]", statusTextClass(item.status))}>
           {[item.meta, elapsedMs === undefined ? undefined : formatFeedElapsed(elapsedMs)].filter(Boolean).join(" · ")}
         </span>
       ) : null}
@@ -577,11 +641,13 @@ function TimelineMarker({
   status,
   emphasis = false,
   filled = false,
+  liveActivity = false,
   children,
 }: {
   status: FeedStatus;
   emphasis?: boolean;
   filled?: boolean;
+  liveActivity?: boolean;
   children: ReactNode;
 }): JSX.Element {
   return (
@@ -593,6 +659,7 @@ function TimelineMarker({
         emphasis && "mt-0.5",
       )}
       data-feed-marker-status={status}
+      data-workflow-live-marker={liveActivity || undefined}
     >
       {children}
     </span>
@@ -600,24 +667,11 @@ function TimelineMarker({
 }
 
 function markerTone(status: FeedStatus): string {
-  if (status === "failed") return "text-brick-500";
-  if (status === "running" || status === "cancelling") return "text-accent-content";
-  return "text-content-muted";
+  return ExecutionStatusTones[status].text;
 }
 
 function markerFilledTone(status: FeedStatus): string {
-  switch (status) {
-    case "running":
-      return "bg-accent-surface text-accent-content";
-    case "cancelling":
-      return "bg-accent-surface text-accent-content";
-    case "done":
-      return "bg-moss-100 text-moss-600";
-    case "failed":
-      return "bg-brick-100 text-brick-600";
-    default:
-      return "bg-ink-100 text-ink-500";
-  }
+  return ExecutionStatusTones[status].wash;
 }
 
 function FeedRowStatus({ item }: { item: FeedItem }): JSX.Element {
@@ -625,22 +679,26 @@ function FeedRowStatus({ item }: { item: FeedItem }): JSX.Element {
   if (item.step) {
     const presentation = projectToolStagePresentation({ steps: [item.step] });
     if (presentation) {
-      return <ToolActionIcon icon={presentation.icon} status={status} size="xs" className="mt-1" />;
+      return <ToolActionIcon icon={presentation.icon} status={status} size="sm" className="mt-1" />;
     }
   }
-  const iconClassName = cn("mt-1 h-3 w-3 shrink-0", statusTextClass(status));
+  const glyphClassName = "mt-1 h-3 w-3 shrink-0";
   if (status === "running") {
-    return <Spinner size="xs" className={iconClassName} />;
+    return <ActivityLoader size={12} className={glyphClassName} active data-execution-status-icon={status} />;
   }
-  if (status === "cancelling") return <Spinner size="xs" className={iconClassName} />;
-  if (status === "failed") return <AppIcon icon="cancel" size={12} className={iconClassName} aria-hidden="true" />;
-  if (status === "done") return <AppIcon icon="check" size={12} className={iconClassName} aria-hidden="true" />;
   return (
-    <span
-      className={cn("mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-current", statusTextClass(status))}
-      aria-hidden="true"
-    />
+    <StatusGlyph status={status} className={glyphClassName}>
+      <AppIcon icon={readStaticFeedGlyph(status)} size={12} />
+    </StatusGlyph>
   );
+}
+
+/** Cancelling keeps the "stop" glyph rather than a spinner: the run is winding
+    down, not doing new work. */
+function readStaticFeedGlyph(status: FeedStatus): AppIconName {
+  if (status === "done") return "check";
+  if (status === "failed" || status === "cancelling") return "cancel";
+  return "circle";
 }
 
 function summarizeChildRunStatus(childRun: TimelineChildRunState): FeedStatus {
@@ -681,27 +739,42 @@ function toggleSetEntry(values: ReadonlySet<string>, value: string): ReadonlySet
   return next;
 }
 
-function FeedStatusIcon({ status, className }: { status: FeedStatus; className?: string }): JSX.Element {
-  if (status === "running") return <Spinner size="md" className={cn(statusTextClass(status), className)} />;
-  if (status === "cancelling") {
-    return <Spinner size="md" className={cn(statusTextClass(status), className)} />;
+function FeedStatusIcon({ item }: { item: FeedItem }): JSX.Element {
+  const { status } = item;
+  const toolPresentation = item.step ? projectToolStagePresentation({ steps: [item.step] }) : undefined;
+  if (toolPresentation) {
+    return <ToolActionIcon icon={toolPresentation.icon} status={status} size="sm" />;
   }
-  if (status === "failed") {
-    return <AppIcon icon="cancel" size={16} className={cn(statusTextClass(status), className)} aria-hidden="true" />;
+  if (item.id === "live" || item.id === "live-waiting" || status === "running") {
+    return <ActivityLoader size={16} active data-execution-status-icon="running" />;
   }
-  if (status === "pending" || status === "neutral") {
+  if (status === "done") {
     return (
-      <span
-        className={cn("h-2 w-2 shrink-0 rounded-full bg-current", statusTextClass(status), className)}
-        aria-hidden="true"
-      />
+      <StatusGlyph status={status}>
+        <AppIcon icon="check" size={16} />
+      </StatusGlyph>
     );
   }
-  return <AppIcon icon="check" size={16} className={cn(statusTextClass(status), className)} aria-hidden="true" />;
+  if (status === "failed" || status === "cancelling") {
+    return (
+      <StatusGlyph status={status}>
+        <AppIcon icon="cancel" size={16} />
+      </StatusGlyph>
+    );
+  }
+  return (
+    <StatusGlyph status={status}>
+      <AppIcon icon="circle" size={14} />
+    </StatusGlyph>
+  );
 }
 
 function isLiveFeedStatus(status: FeedStatus): boolean {
   return status === "running" || status === "cancelling";
+}
+
+function isLiveRun(run: Pick<RunRecord, "status">): boolean {
+  return run.status === "running" || run.status === "cancelling";
 }
 
 function formatFeedElapsed(milliseconds: number): string {
@@ -745,12 +818,17 @@ function readRunElapsedMs(run: RunRecord, nowEpoch: number): number | undefined 
 function projectWaitingHeadline(run: RunRecord, headline: FeedItem): FeedItem {
   if (run.liveActivity && runActivityPresentationPriority(run.liveActivity) === "foreground") return headline;
   if (headline.status === "cancelling") return headline;
+  if (hasVisibleRunFeedback(run, { includeWorkflowTrace: true })) return headline;
   return {
     id: "live-waiting",
     kind: "trace",
     status: "running",
-    title: "Thinking...",
+    title: frontendMessage("chat.activity.thinking"),
   };
+}
+
+function isGenericWaitingHeadline(headline: FeedItem): boolean {
+  return headline.id === "live" || headline.id === "live-waiting";
 }
 
 function shouldShowWaitingHeadline(run: RunRecord, status: FeedStatus, hasToolPresentation: boolean): boolean {
@@ -797,16 +875,20 @@ function FeedMotionBlock({
   );
 }
 
-function PendingLine({ label, motionLevel }: { label: string; motionLevel: MotionLevel }): JSX.Element {
+function PendingLine({ label }: { label: string }): JSX.Element {
   return (
-    <FeedMotionBlock
-      motionLevel={motionLevel}
-      className="my-1.5 inline-flex max-w-full items-center gap-2 py-1 text-[12.75px] leading-relaxed text-content-secondary"
-      role="status"
-      ariaLive="polite"
-    >
-      <Spinner size="sm" className="text-content-secondary" />
-      <span className="min-w-0 truncate">{label}</span>
-    </FeedMotionBlock>
+    <StableActivitySlot stateKey="execution-pending">
+      <div
+        className="execution-feed-headline execution-feed-headline--pending max-w-full text-content-secondary"
+        role="status"
+        aria-live="polite"
+        data-activity-feed-row
+      >
+        <span className="execution-feed-headline__icon text-content-muted" aria-hidden="true">
+          <ActivityLoader size={16} active data-execution-status-icon="running" />
+        </span>
+        <span className="execution-feed-headline__title truncate">{label}</span>
+      </div>
+    </StableActivitySlot>
   );
 }

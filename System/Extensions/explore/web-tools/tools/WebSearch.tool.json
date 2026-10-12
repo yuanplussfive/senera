@@ -9,6 +9,13 @@
       "action": { "zh-CN": "搜索网页", "en-US": "Search" },
       "argumentPath": "/query",
       "detailPaths": ["/allowedDomains/*"]
+    },
+    "preview": {
+      "result": {
+        "rows": [{ "pointer": "/results/*", "titlePath": "/title", "descriptionPath": "/summary", "metaPath": "/url" }],
+        "maxRows": 4,
+        "more": { "pointer": "/results", "label": { "zh-CN": "另有 {count} 条结果", "en-US": "{count} more results" } }
+      }
     }
   },
   "inputSchema": {
@@ -63,14 +70,6 @@
     },
     "required": ["query", "results"],
     "additionalProperties": false
-  },
-  "observationProjection": "observations/WebSearch.projection.json",
-  "contentPolicy": {
-    "ownership": "tool",
-    "kind": "structured",
-    "representation": "json",
-    "compression": "none",
-    "deduplication": "none"
   },
   "perception": { "kind": "retrieved", "scope": "remote" },
   "permissions": ["network:web"],

@@ -116,7 +116,7 @@ export type ModelProviderIconName = string;
 interface ModelProviderIconProps {
   icon?: string;
   className?: string;
-  size?: number;
+  size?: number | string;
 }
 
 export function ModelProviderIcon({ icon, className, size = 16 }: ModelProviderIconProps): JSX.Element | null {

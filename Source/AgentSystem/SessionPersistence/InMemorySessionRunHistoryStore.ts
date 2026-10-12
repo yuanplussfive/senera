@@ -97,6 +97,11 @@ export class InMemorySessionRunHistoryStore {
     return snapshots ? Array.from(snapshots.values(), (snapshot) => ({ ...snapshot })) : [];
   }
 
+  loadSnapshot(sessionId: string, requestId: string): StoredRunSnapshot | undefined {
+    const snapshot = this.snapshots.get(sessionId)?.get(requestId);
+    return snapshot ? { ...snapshot } : undefined;
+  }
+
   loadSnapshotsForRequests(
     sessionId: string,
     requestIds: readonly string[],
@@ -217,6 +222,13 @@ export class InMemorySessionRunHistoryStore {
 
   loadEventsForRequest(sessionId: string, requestId: string): AgentEventEnvelope[] {
     return [...(this.eventsByRequest.get(sessionId)?.get(requestId) ?? [])];
+  }
+
+  loadEvent(sessionId: string, requestId: string, kind: string): AgentEventEnvelope | undefined {
+    return this.eventsByRequest
+      .get(sessionId)
+      ?.get(requestId)
+      ?.find((event) => event.kind === kind);
   }
 
   loadEventPage(sessionId: string, request: AgentSessionCursorPageRequest): AgentSessionCursorPage<AgentEventEnvelope> {

@@ -17,6 +17,7 @@ import { systemToolCapability } from "../../../Source/AgentSystem/SystemTools/Ag
 import { AgentSystemExtensionCatalog } from "../../../Source/AgentSystem/SystemTools/AgentSystemToolSource.js";
 import { createAgentSystemTools } from "../../../Source/AgentSystem/SystemTools/AgentSystemTools.js";
 import { AgentSkillScanner } from "../../../Source/AgentSystem/Skills/AgentSkillScanner.js";
+import { AgentTodoToolNames } from "../../../Source/AgentSystem/Todos/AgentTodoTypes.js";
 import { modelConfig, registeredTool } from "./AgentDelegationTestSupport.js";
 
 describe("agent delegation capability resolution", () => {
@@ -219,7 +220,12 @@ describe("agent delegation capability resolution", () => {
       childGrant: "delegation",
     });
     expect(registry.getTool("AgentContactSupervisor")).toMatchObject({ childGrant: "internal" });
-    expect(registry.getTool("Todo")).toMatchObject({ childGrant: "internal", execution: { Workspace: "ReadOnly" } });
+    for (const name of Object.values(AgentTodoToolNames)) {
+      expect(registry.getTool(name), name).toMatchObject({
+        childGrant: "internal",
+        execution: { Workspace: "ReadOnly" },
+      });
+    }
 
     for (const role of roleCatalog.snapshot(process.cwd()).roles) {
       const plan = await preflight.resolve({
@@ -237,7 +243,7 @@ describe("agent delegation capability resolution", () => {
       expect(plan.launchContract.role).toMatchObject({ id: role.id, canDelegate: role.canDelegate });
       expect(plan.pinnedSkills.map((skill) => skill.name)).toEqual([...definition.skills]);
       expect(plan.allowedToolNames).toContain("AgentContactSupervisor");
-      expect(plan.allowedToolNames).toContain("Todo");
+      expect(plan.allowedToolNames).toEqual(expect.arrayContaining(Object.values(AgentTodoToolNames)));
       expect(plan.allowedToolNames).toContain("GitInspect");
       expect(plan.allowedToolNames).not.toEqual(expect.arrayContaining(["read", "grep", "git", "bash"]));
       if (role.workspaceAccess === AgentChildWorkspaceAccessModes.ReadOnly) {

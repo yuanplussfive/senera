@@ -5,13 +5,12 @@
     "category": "terminal-start",
     "icon": "terminal",
     "activity": {
-      "action": { "zh-CN": "启动终端", "en-US": "Start terminal" },
+      "action": { "zh-CN": "启动", "en-US": "Start" },
       "argumentPath": "/command/script",
       "detailPaths": ["/cwd", "/title"]
     }
   },
-  "observationProjection": "observations/resource.projection.json",
-  "description": "启动需要交互输入、终端尺寸和 PTY 语义的持久终端。",
+  "description": "启动可交互的 PTY 终端，适用于需要键盘输入、TTY 或终端尺寸的 CLI。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
@@ -27,7 +26,11 @@
         "additionalProperties": false
       },
       "cwd": { "type": "string" },
-      "justification": { "type": "string" },
+      "workspaceEffect": {
+        "type": "string",
+        "enum": ["read", "mutate"],
+        "description": "声明终端命令只读工作区，还是可能修改工作区内容。"
+      },
       "title": {
         "type": "string",
         "minLength": 1,
@@ -37,7 +40,7 @@
       "columns": { "type": "number" },
       "rows": { "type": "number" }
     },
-    "required": ["command"],
+    "required": ["command", "workspaceEffect"],
     "additionalProperties": false,
     "definitions": {}
   },
@@ -68,24 +71,24 @@
     }
   ],
   "search": {
-    "Summary": "启动需要 PTY 交互的持久终端。",
+    "Summary": "启动需要键盘输入、TTY 或终端尺寸的交互式 CLI。",
     "Capabilities": [
       {
         "Id": "execution.terminal-start",
         "Title": "Start interactive terminal",
-        "Description": "Start an interactive PTY-backed terminal.",
+        "Description": "Start an interactive PTY session for commands that require a TTY or input.",
         "Facets": {
           "Actions": ["start", "interact", "monitor"],
           "Targets": ["terminal", "pty", "interactive-process"],
-          "Inputs": ["command", "cwd", "columns", "rows"],
+          "Inputs": ["command", "cwd", "workspace-effect", "columns", "rows"],
           "Outputs": ["resource-id", "process-state", "cursor"],
           "Effects": ["process", "may-write-workspace", "network-possible"]
         },
         "Aliases": ["启动交互终端", "启动 PTY 终端", "打开交互式终端"]
       }
     ],
-    "UseCases": ["需要交互式 CLI、终端输入或实时 PTY 输出时使用。"],
-    "Avoid": ["普通后台服务、构建和测试优先使用会自动转为可恢复资源的 ShellCommandTool。"],
+    "UseCases": ["需要键盘输入、TTY 语义、终端尺寸或实时 PTY 输出时使用。"],
+    "Avoid": ["非交互命令、服务、构建和测试使用 ShellCommandTool。"],
     "Tags": ["PTY", "终端", "交互进程"]
   },
   "evidenceCapabilities": [],

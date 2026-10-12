@@ -7,41 +7,37 @@ import { resolveArtifactsConfig } from "../../../Source/AgentSystem/Defaults/Age
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 const temporaryRoots: string[] = [];
+const caches = new Set<AgentArtifactManifestIndexCache>();
 
 afterEach(async () => {
+  for (const cache of caches) cache.clear();
+  caches.clear();
   await Promise.all(temporaryRoots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
 describe("Artifact manifest index cache", () => {
-  test("requires a positive bounded root capacity", () => {
-    expect(() => new AgentArtifactManifestIndexCache(0)).toThrow("maxRoots must be a positive safe integer");
-    expect(() => new AgentArtifactManifestIndexCache(Number.POSITIVE_INFINITY)).toThrow(
-      "maxRoots must be a positive safe integer",
-    );
-  });
-
-  test("reuses a complete index and refreshes when a requested artifact is missing", async () => {
+  test("uses the persistent index and refreshes when a requested artifact is missing", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "senera-artifact-index-"));
     temporaryRoots.push(root);
-    const cache = new AgentArtifactManifestIndexCache();
+    const cache = createCache();
     const firstId = "art_0123456789abcdef01234567";
     const secondId = "art_89abcdef0123456701234567";
     await writeManifest(root, "first", firstId);
 
     const first = await cache.load({ artifactRoot: root, workspaceRoot: root, requiredArtifactIds: [firstId] });
     const reused = await cache.load({ artifactRoot: root, workspaceRoot: root, requiredArtifactIds: [firstId] });
-    expect(reused).toBe(first);
+    expect(reused).toEqual(first);
 
     await writeManifest(root, "second", secondId);
     const refreshed = await cache.load({ artifactRoot: root, workspaceRoot: root, requiredArtifactIds: [secondId] });
     expect(refreshed).not.toBe(first);
-    expect([...refreshed.keys()]).toEqual(expect.arrayContaining([firstId, secondId]));
+    expect([...refreshed.keys()]).toEqual([secondId]);
   });
 
-  test("invalidates a complete index when a cached manifest is edited or removed", async () => {
+  test("invalidates a persistent index when a manifest is edited or removed", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "senera-artifact-index-invalidation-"));
     temporaryRoots.push(root);
-    const cache = new AgentArtifactManifestIndexCache();
+    const cache = createCache();
     const artifactId = "art_0123456789abcdef01234567";
     const manifestPath = path.join(root, "artifact", "manifest.json");
     await writeManifest(root, "artifact", artifactId, { schemaVersion: 3, marker: "before" });
@@ -71,7 +67,7 @@ describe("Artifact manifest index cache", () => {
   test("does not share an index across different workspace boundaries", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "senera-artifact-index-boundary-"));
     temporaryRoots.push(root);
-    const cache = new AgentArtifactManifestIndexCache();
+    const cache = createCache();
     const artifactRoot = path.join(root, "workspace", "artifacts");
     const workspaceRoot = path.join(root, "workspace");
     const artifactId = "art_0123456789abcdef01234567";
@@ -87,39 +83,38 @@ describe("Artifact manifest index cache", () => {
   test("skips malformed manifests and discovers them after repair", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "senera-artifact-index-malformed-"));
     temporaryRoots.push(root);
-    const cache = new AgentArtifactManifestIndexCache();
+    const cache = createCache();
     const artifactId = "art_0123456789abcdef01234567";
     const directory = path.join(root, "artifact");
     const manifestPath = path.join(directory, "manifest.json");
     await fs.mkdir(directory, { recursive: true });
     await fs.writeFile(manifestPath, "{ malformed", "utf8");
 
-    const skipped = await cache.load({ artifactRoot: root, workspaceRoot: root, requiredArtifactIds: [] });
+    const skipped = await cache.load({ artifactRoot: root, workspaceRoot: root, requiredArtifactIds: [artifactId] });
     expect(skipped.has(artifactId)).toBe(false);
 
     await writeManifest(root, "artifact", artifactId);
-    const repaired = await cache.load({ artifactRoot: root, workspaceRoot: root, requiredArtifactIds: [] });
+    const repaired = await cache.load({ artifactRoot: root, workspaceRoot: root, requiredArtifactIds: [artifactId] });
     expect(repaired.get(artifactId)?.artifactId).toBe(artifactId);
   });
 
   test("rejects duplicate Artifact IDs instead of selecting by directory order", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "senera-artifact-index-duplicate-"));
     temporaryRoots.push(root);
-    const cache = new AgentArtifactManifestIndexCache();
+    const cache = createCache();
     const artifactId = "art_0123456789abcdef01234567";
     await writeManifest(root, "first", artifactId);
     await writeManifest(root, "second", artifactId);
 
-    await expect(cache.load({ artifactRoot: root, workspaceRoot: root, requiredArtifactIds: [] })).rejects.toThrow(
-      `Duplicate Artifact manifest for ${artifactId}`,
-    );
+    await expect(
+      cache.load({ artifactRoot: root, workspaceRoot: root, requiredArtifactIds: [artifactId] }),
+    ).rejects.toThrow(`Duplicate Artifact manifest for ${artifactId}`);
   });
 
   test("resolves artifact read request and concurrency limits through the shared defaults catalog", () => {
     const defaults = resolveArtifactsConfig({} as AgentSystemConfig);
     expect(defaults).toMatchObject({
       MemoryReadMaxArtifacts: 16,
-      MemoryReadMaxRefs: 8,
       MemoryReadMaxConcurrency: 4,
     });
   });
@@ -154,7 +149,7 @@ describe("Artifact manifest index cache", () => {
     const artifactId = "art_0123456789abcdef01234567";
     await writeManifest(root, "compatible", artifactId, metadata);
 
-    const index = await new AgentArtifactManifestIndexCache().load({
+    const index = await createCache().load({
       artifactRoot: root,
       workspaceRoot: root,
       requiredArtifactIds: [artifactId],
@@ -171,6 +166,12 @@ describe("Artifact manifest index cache", () => {
     }
   });
 });
+
+function createCache(): AgentArtifactManifestIndexCache {
+  const cache = new AgentArtifactManifestIndexCache();
+  caches.add(cache);
+  return cache;
+}
 
 async function writeManifest(
   root: string,

@@ -2,6 +2,7 @@ import { type AgentConversationEntry } from "../Conversation/AgentConversation.j
 import type { AgentTerminalResult } from "../Runtime/AgentExecutionProjector.js";
 import type { AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
+import type { AgentStateCard } from "../StateCard/AgentStateCardTypes.js";
 
 export { DefaultAgentMemoryTimeZone } from "./AgentMemoryTime.js";
 export { InMemoryAgentMemorySourceRepository } from "./AgentMemoryInMemorySourceRepository.js";
@@ -18,11 +19,10 @@ export interface AgentMemoryEpisodeRecord {
   status: AgentMemoryEpisodeStatus;
   rawUserText: string;
   standaloneRequest: string;
-  contextMode: string;
   contextBasis: string;
   topic: string;
-  /** Final assistant text retained as a physical preview; temporal digests own actual summaries. */
-  assistantPreview: string;
+  /** Physical final text; learning previews are bounded by the configured model tokenizer. */
+  assistantText: string;
   startedAt: string;
   completedAt: string;
   updatedAt: string;
@@ -85,6 +85,8 @@ export interface AgentMemoryCompletedTurnInput {
   terminal: AgentTerminalResult;
   executedTools: readonly ExecutedToolCallResult[];
   modelProvider?: AgentModelProviderMetadata;
+  /** The resolved scenario card used to prepare the completed turn. */
+  stateCard?: AgentStateCard;
 }
 
 export interface AgentMemorySourceRepository {
@@ -95,10 +97,7 @@ export interface AgentMemorySourceRepository {
   deleteFromSessionRequest(sessionId: string, requestId: string): AgentMemoryDeletionImpact;
   listEpisodes(sessionId: string): AgentMemoryEpisodeRecord[];
   listCompletedEpisodes(): AgentMemoryEpisodeRecord[];
-  listCompletedEpisodesInRange(startMs: number, endMs: number): AgentMemoryEpisodeRecord[];
   findEpisodesByUris(uris: readonly string[]): AgentMemoryEpisodeRecord[];
   listSources(episodeUri: string): AgentMemorySourceRecord[];
-  listSourcesForEpisodes(episodeUris: readonly string[]): AgentMemorySourceRecord[];
-  findMemorySourcesByRefs(refs: readonly string[]): AgentMemorySourceRecord[];
   close(): void;
 }

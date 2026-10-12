@@ -5,12 +5,11 @@
     "category": "execution-signal",
     "icon": "activity",
     "activity": {
-      "action": { "zh-CN": "控制进程", "en-US": "Control process" },
+      "action": { "zh-CN": "控制", "en-US": "Control" },
       "argumentPath": "/signal",
       "detailPaths": ["/resourceId"]
     }
   },
-  "observationProjection": "observations/resource.projection.json",
   "description": "向后台进程树发送 interrupt、terminate 或 kill 信号。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

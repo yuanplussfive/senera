@@ -4,16 +4,10 @@ import type {
   ResolvedAgentSandboxRuntimeConfig,
   ResolvedAgentTodosConfig,
   ResolvedAgentToolExecutionConfig,
+  ResolvedAgentMcpConnectionsConfig,
 } from "../Types/AgentConfigTypes.js";
 import { resolveAgentDefaults } from "./AgentDefaultResolver.js";
 import { optionalSecondsToMilliseconds } from "./AgentTimeDefaults.js";
-import { validateAgentWorldDayPhases } from "../World/AgentWorldTime.js";
-import type {
-  ResolvedAgentWorldActionBudgetConfig,
-  ResolvedAgentWorldConfig,
-  ResolvedAgentWorldGoalMicroLoopConfig,
-  ResolvedAgentWorldResidentIdleConfig,
-} from "../Types/AgentRuntimeConfigTypes.js";
 
 export function resolveAgentLoopConfig(config: AgentSystemConfig) {
   const defaults = resolveAgentDefaults(config);
@@ -55,74 +49,11 @@ export function resolveAgentPromptConfig(config: AgentSystemConfig): ResolvedAge
   return {
     UserMessageEnvelope: configured?.UserMessageEnvelope ?? defaults.Prompt.UserMessageEnvelope,
     TimeZone: timeZone || "Asia/Shanghai",
+    CorePersona: configured?.CorePersona?.trim() ?? defaults.Prompt.CorePersona,
+    LanguageStyle: configured?.LanguageStyle?.trim() ?? defaults.Prompt.LanguageStyle,
     PrefaceRewrite: configured?.PrefaceRewrite ?? defaults.Prompt.PrefaceRewrite,
     FinalResponseRewrite: configured?.FinalResponseRewrite ?? defaults.Prompt.FinalResponseRewrite,
-    RoleCheck: configured?.RoleCheck ?? defaults.Prompt.RoleCheck,
     BamlToolAttribution: configured?.BamlToolAttribution ?? defaults.Prompt.BamlToolAttribution,
-  };
-}
-
-export function resolveAgentWorldConfig(config: AgentSystemConfig): ResolvedAgentWorldConfig & {
-  readonly GoalMicroLoop: ResolvedAgentWorldGoalMicroLoopConfig;
-  readonly ResidentIdle: ResolvedAgentWorldResidentIdleConfig;
-  readonly ActionBudget: ResolvedAgentWorldActionBudgetConfig;
-} {
-  const defaults = resolveAgentDefaults(config);
-  const goalMicroLoopDefaults = defaults.World.GoalMicroLoop!;
-  const residentIdleDefaults = defaults.World.ResidentIdle!;
-  const actionBudgetDefaults = defaults.World.ActionBudget!;
-  const configured = config.World;
-  const dayPhases = (configured?.DayPhases ?? defaults.World.DayPhases).map((phase) => ({ ...phase }));
-  validateAgentWorldDayPhases(
-    dayPhases.map((phase) => ({
-      id: phase.Id,
-      label: phase.Label,
-      startsAt: phase.StartsAt,
-      endsAt: phase.EndsAt,
-    })),
-  );
-  const name = configured?.Name?.trim() ?? defaults.World.Name;
-  if (!name) throw new Error("World name must not be empty.");
-  const timeZone = configured?.TimeZone?.trim() ?? defaults.World.TimeZone;
-  if (!timeZone) throw new Error("World time zone must not be empty.");
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone }).format();
-  } catch (error) {
-    throw new Error(`Unsupported world time zone: ${timeZone}`, { cause: error });
-  }
-  return {
-    Name: name,
-    TimeZone: timeZone,
-    DayPhases: dayPhases,
-    RecordLimit: configured?.RecordLimit ?? defaults.World.RecordLimit,
-    TimelineLimit: configured?.TimelineLimit ?? defaults.World.TimelineLimit,
-    HabitCatchUpLimit: configured?.HabitCatchUpLimit ?? defaults.World.HabitCatchUpLimit,
-    GoalMicroLoop: {
-      Enabled: configured?.GoalMicroLoop?.Enabled ?? goalMicroLoopDefaults.Enabled,
-      MaxCandidates: configured?.GoalMicroLoop?.MaxCandidates ?? goalMicroLoopDefaults.MaxCandidates,
-      ReviewDelaySeconds: configured?.GoalMicroLoop?.ReviewDelaySeconds ?? goalMicroLoopDefaults.ReviewDelaySeconds,
-      AllowedToolNames: [...(configured?.GoalMicroLoop?.AllowedToolNames ?? goalMicroLoopDefaults.AllowedToolNames)],
-    },
-    ResidentIdle: {
-      Enabled: configured?.ResidentIdle?.Enabled ?? residentIdleDefaults.Enabled,
-      MinIntervalSeconds: configured?.ResidentIdle?.MinIntervalSeconds ?? residentIdleDefaults.MinIntervalSeconds,
-      MaxIntervalSeconds: configured?.ResidentIdle?.MaxIntervalSeconds ?? residentIdleDefaults.MaxIntervalSeconds,
-      BackoffMultiplier: configured?.ResidentIdle?.BackoffMultiplier ?? residentIdleDefaults.BackoffMultiplier,
-      MaxPending: configured?.ResidentIdle?.MaxPending ?? residentIdleDefaults.MaxPending,
-    },
-    ActionBudget: {
-      MaxActionsPerWake: configured?.ActionBudget?.MaxActionsPerWake ?? actionBudgetDefaults.MaxActionsPerWake,
-      MaxDecisionCandidatesPerWake:
-        configured?.ActionBudget?.MaxDecisionCandidatesPerWake ?? actionBudgetDefaults.MaxDecisionCandidatesPerWake,
-      RetryDelaySeconds: configured?.ActionBudget?.RetryDelaySeconds ?? actionBudgetDefaults.RetryDelaySeconds,
-      LeaseDurationSeconds: configured?.ActionBudget?.LeaseDurationSeconds ?? actionBudgetDefaults.LeaseDurationSeconds,
-      FairShare: configured?.ActionBudget?.FairShare ?? actionBudgetDefaults.FairShare,
-      SourceOrder: [...(configured?.ActionBudget?.SourceOrder ?? actionBudgetDefaults.SourceOrder)],
-      SourceCaps: {
-        ...actionBudgetDefaults.SourceCaps,
-        ...(configured?.ActionBudget?.SourceCaps ?? {}),
-      },
-    },
   };
 }
 
@@ -164,6 +95,27 @@ export function resolveToolExecutionConfig(config: AgentSystemConfig): ResolvedA
         optionalSecondsToMilliseconds(Resources?.TerminationGraceSeconds) ?? resolvedResources.TerminationGraceMs,
     },
   };
+}
+
+export function resolveAgentMcpConnectionsConfig(config: AgentSystemConfig): ResolvedAgentMcpConnectionsConfig {
+  const executionResources = resolveToolExecutionConfig(config).Resources;
+  const configuredDefaults = config.Defaults?.McpConnections;
+  const configured = config.McpConnections;
+  const idleTtlMs =
+    optionalNonNegativeSecondsToMilliseconds(configured?.IdleTtlSeconds) ??
+    optionalNonNegativeSecondsToMilliseconds(configuredDefaults?.IdleTtlSeconds) ??
+    executionResources.IdleTtlMs;
+  const sweepIntervalMs =
+    optionalSecondsToMilliseconds(configured?.SweepIntervalSeconds) ??
+    optionalSecondsToMilliseconds(configuredDefaults?.SweepIntervalSeconds) ??
+    executionResources.SweepIntervalMs;
+  return { IdleTtlMs: idleTtlMs, SweepIntervalMs: sweepIntervalMs };
+}
+
+function optionalNonNegativeSecondsToMilliseconds(value: number | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isFinite(value) || value < 0) throw new RangeError("MCP connection idle TTL must be non-negative.");
+  return Math.round(value * 1_000);
 }
 
 export function resolveSandboxRuntimeConfig(config: AgentSystemConfig): ResolvedAgentSandboxRuntimeConfig {

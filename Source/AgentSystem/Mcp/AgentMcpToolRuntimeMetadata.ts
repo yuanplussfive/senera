@@ -1,12 +1,8 @@
 import { ToolSchedulingModes, type ToolSchedulingMode } from "../Types/AgentToolContractTypes.js";
 import type { AgentMcpToolDeclaration } from "./AgentMcpToolCatalogChange.js";
-import { AgentToolContentPolicySchema } from "../Schemas/AgentToolContentPolicySchema.js";
-import type { AgentToolContentPolicy } from "../Types/AgentToolContentPolicyTypes.js";
 
 /** Namespaced MCP metadata understood by Senera's generic tool runtime. */
 export const AgentMcpToolRuntimeMetadataKey = "ai.senera/runtime";
-/** Optional package-owned result representation and host projection contract. */
-export const AgentMcpToolContentPolicyMetadataKey = "ai.senera/content-policy";
 
 const SchedulingByWireValue = {
   parallel: ToolSchedulingModes.Parallel,
@@ -18,7 +14,6 @@ const DefaultScheduling = ToolSchedulingModes.Parallel;
 export interface AgentMcpToolRuntimeProjection {
   readonly scheduling: ToolSchedulingMode;
   readonly maxConcurrency?: number;
-  readonly contentPolicy?: AgentToolContentPolicy;
 }
 
 /**
@@ -30,15 +25,8 @@ export interface AgentMcpToolRuntimeProjection {
  */
 export function projectAgentMcpToolRuntime(declaration: AgentMcpToolDeclaration): AgentMcpToolRuntimeProjection {
   const raw = declaration._meta?.[AgentMcpToolRuntimeMetadataKey];
-  const contentPolicy = projectContentPolicy(
-    declaration.name,
-    declaration._meta?.[AgentMcpToolContentPolicyMetadataKey],
-  );
   if (raw === undefined) {
-    return {
-      scheduling: DefaultScheduling,
-      ...(contentPolicy === undefined ? {} : { contentPolicy }),
-    };
+    return { scheduling: DefaultScheduling };
   }
   if (!isRecord(raw)) {
     throw new TypeError(`MCP tool ${declaration.name} metadata ${AgentMcpToolRuntimeMetadataKey} must be an object.`);
@@ -49,7 +37,6 @@ export function projectAgentMcpToolRuntime(declaration: AgentMcpToolDeclaration)
   return {
     scheduling,
     ...(maxConcurrency === undefined ? {} : { maxConcurrency }),
-    ...(contentPolicy === undefined ? {} : { contentPolicy }),
   };
 }
 
@@ -71,15 +58,6 @@ function projectMaxConcurrency(toolName: string, value: unknown): number | undef
     );
   }
   return value as number;
-}
-
-function projectContentPolicy(toolName: string, value: unknown): AgentToolContentPolicy | undefined {
-  if (value === undefined) return undefined;
-  const parsed = AgentToolContentPolicySchema.safeParse(value);
-  if (parsed.success) return parsed.data;
-  throw new TypeError(
-    `MCP tool ${toolName} metadata ${AgentMcpToolContentPolicyMetadataKey} is invalid: ${parsed.error.message}`,
-  );
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {

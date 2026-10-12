@@ -232,11 +232,7 @@ describe("MCP package execution policy", () => {
       createAgentMcpPackageEndpoint(package_, stdioServer),
     ).at(0);
 
-    expect(tool?.contentPolicy).toMatchObject({
-      ownership: "host",
-      compression: "bounded",
-      targets: ["/content"],
-    });
+    expect(tool).not.toHaveProperty("contentPolicy");
   });
 
   test("rejects an MCP tool without a producer-declared discovery description", () => {

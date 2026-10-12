@@ -5,7 +5,7 @@
     "category": "schedule-manage",
     "icon": "calendar-clock",
     "activity": {
-      "action": { "zh-CN": "管理定时任务", "en-US": "Manage schedule" },
+      "action": { "zh-CN": "管理", "en-US": "Manage" },
       "argumentPath": "/action",
       "detailPaths": ["/name", "/taskId"]
     }
@@ -81,7 +81,6 @@
     "type": "object"
   },
   "outputSchema": { "type": "object", "additionalProperties": true },
-  "observationProjection": "observations/AgentScheduleManage.projection.json",
   "permissions": ["orchestration:schedule"],
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
   "runtime": {

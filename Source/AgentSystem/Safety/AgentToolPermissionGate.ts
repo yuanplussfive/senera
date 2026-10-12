@@ -49,6 +49,10 @@ export interface AgentToolPermissionGateOptions {
 
 export interface AgentToolPermissionGateRequest extends AgentToolApprovalPolicyInput {
   approvalMode: AgentExecutionApprovalMode;
+  mandatoryApproval?: {
+    readonly reason: string;
+    readonly scope: string;
+  };
   onEvent?: AgentEventSink;
   signal?: AbortSignal;
 }
@@ -66,7 +70,7 @@ export class AgentToolPermissionGate {
       ),
     });
     const projectedDecision = projectAgentExecutionApprovalDecision(policyDecision, request.approvalMode);
-    const decision = this.requireExternalApproval(request, projectedDecision);
+    const decision = this.requireMandatoryApproval(request, this.requireExternalApproval(request, projectedDecision));
     if (decision.action === AgentPermissionActions.Ask && this.hasSessionApprovalLease(request, decision)) {
       return {
         ...decision,
@@ -191,6 +195,25 @@ export class AgentToolPermissionGate {
     return decision;
   }
 
+  private requireMandatoryApproval(
+    request: AgentToolPermissionGateRequest,
+    decision: AgentPermissionDecision,
+  ): AgentPermissionDecision {
+    if (
+      !request.mandatoryApproval ||
+      request.approvalMode === AgentExecutionApprovalModes.FullAccess ||
+      decision.action === AgentPermissionActions.Deny
+    ) {
+      return decision;
+    }
+    return {
+      ...decision,
+      action: AgentPermissionActions.Ask,
+      rule: "tool.target.requires_user_approval",
+      reason: request.mandatoryApproval.reason,
+    };
+  }
+
   private assertGrantableExternalResources(request: AgentToolPermissionGateRequest): void {
     const invalid = request.resourceAccess?.external.filter(
       (resource) =>
@@ -254,6 +277,7 @@ function sessionApprovalLeaseKey(request: AgentToolPermissionGateRequest, decisi
     permissions: [...(request.tool?.permissions ?? [])].sort(),
     effects: [...(request.tool?.capabilityEffects ?? [])].sort(),
     resourceAccess: request.resourceAccess,
+    mandatoryApprovalScope: request.mandatoryApproval?.scope,
   });
 }
 

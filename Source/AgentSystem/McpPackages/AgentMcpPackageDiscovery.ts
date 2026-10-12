@@ -4,11 +4,17 @@ import { resolveToolExecutionConfig } from "../Defaults/AgentRuntimeDefaults.js"
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
 import { withAgentMcpToolClient, type AgentMcpToolClient } from "../Mcp/AgentMcpToolClient.js";
 import type { AgentMcpToolDeclaration, AgentMcpToolsChangedHandler } from "../Mcp/AgentMcpToolCatalogChange.js";
+import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import type { AgentMcpSamplingHandler } from "../Mcp/AgentMcpSamplingRuntime.js";
 import type { AgentMcpToolClientPool } from "../Mcp/AgentMcpToolClientPool.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { createAgentMcpPackageEndpoint } from "./AgentMcpPackageRuntime.js";
-import type { AgentMcpPackage, AgentMcpPackageServer, AgentMcpRuntimeEndpoint } from "./AgentMcpPackageTypes.js";
+import type {
+  AgentMcpPackage,
+  AgentMcpPackageServer,
+  AgentMcpRuntimeEndpoint,
+  AgentMcpDeclaredEndpoint,
+} from "./AgentMcpPackageTypes.js";
 import {
   resolveAgentMcpPackageExecutionPolicy,
   type AgentMcpPackageExecutionPolicy,
@@ -22,13 +28,20 @@ import {
   missingAgentMcpHostCapabilities,
   type AgentMcpHostCapabilitySnapshot,
 } from "./AgentMcpHostRequirements.js";
+import { AgentMcpPackageSchemaCache, agentMcpConnectionDigest } from "./AgentMcpPackageSchemaCache.js";
+import { throwIfAborted } from "../Core/AgentCancellation.js";
 
 export interface AgentDiscoveredMcpServer {
   readonly package_: AgentMcpPackage;
   readonly server: AgentMcpPackageServer;
   readonly declarations: readonly AgentMcpToolDeclaration[];
   readonly execution: AgentMcpPackageExecutionPolicy;
-  readonly endpoint: AgentMcpRuntimeEndpoint;
+  readonly endpoint: AgentMcpDeclaredEndpoint;
+}
+
+export interface AgentDeferredMcpServer {
+  readonly package_: AgentMcpPackage;
+  readonly server: AgentMcpPackageServer;
 }
 
 export interface AgentMcpPackageDiscoveryFailure {
@@ -53,6 +66,8 @@ export type AgentUnavailableMcpServer =
 
 export interface AgentMcpPackageDiscoveryResult {
   readonly servers: readonly AgentDiscoveredMcpServer[];
+  /** Servers whose declarations are not cached yet and must be discovered on demand. */
+  readonly deferredServers: readonly AgentDeferredMcpServer[];
   readonly unavailableServers: readonly AgentUnavailableMcpServer[];
   readonly failures: readonly AgentMcpPackageDiscoveryFailure[];
 }
@@ -62,12 +77,20 @@ type AgentMcpPackageDiscoveryOutcome =
   | { readonly status: "unavailable"; readonly server: AgentUnavailableMcpServer }
   | { readonly status: "rejected"; readonly failure: AgentMcpPackageDiscoveryFailure };
 
+type AgentMcpCachedDiscoveryOutcome =
+  | { readonly status: "fulfilled"; readonly server: AgentDiscoveredMcpServer }
+  | { readonly status: "deferred"; readonly server: AgentDeferredMcpServer }
+  | { readonly status: "unavailable"; readonly server: AgentUnavailableMcpServer }
+  | { readonly status: "rejected"; readonly failure: AgentMcpPackageDiscoveryFailure };
+
 export interface AgentMcpPackageDiscoveryOptions {
   readonly clientPool?: AgentMcpToolClientPool;
   readonly sampling?: AgentMcpSamplingHandler;
   readonly onToolsChanged?: AgentMcpToolsChangedHandler;
   readonly inputs?: AgentExtensionValueResolver;
   readonly hostCapabilities?: AgentMcpHostCapabilitySnapshot;
+  readonly schemaCache?: AgentMcpPackageSchemaCache;
+  readonly logger?: AgentLogger;
 }
 
 export class AgentMcpPackageDiscoveryError extends AgentBaseError {
@@ -92,9 +115,12 @@ export class AgentMcpPackageDiscovery {
     this.hostCapabilities = options.hostCapabilities ?? detectAgentMcpHostCapabilities();
   }
 
-  async discover(packages: readonly AgentMcpPackage[]): Promise<AgentMcpPackageDiscoveryResult> {
+  async discover(packages: readonly AgentMcpPackage[], signal?: AbortSignal): Promise<AgentMcpPackageDiscoveryResult> {
+    throwIfAborted(signal);
     const outcomes = await Promise.all(
-      packages.flatMap((package_) => package_.servers.map((server) => this.discoverServerOutcome(package_, server))),
+      packages.flatMap((package_) =>
+        package_.servers.map((server) => this.discoverServerOutcome(package_, server, signal)),
+      ),
     );
     const failures = outcomes.flatMap((outcome) =>
       outcome.status === "rejected" && !(outcome.failure.error instanceof AgentMcpInputsRequiredError)
@@ -103,6 +129,7 @@ export class AgentMcpPackageDiscovery {
     );
     return {
       servers: outcomes.flatMap((outcome) => (outcome.status === "fulfilled" ? [outcome.server] : [])),
+      deferredServers: [],
       unavailableServers: outcomes.flatMap((outcome) => {
         if (outcome.status === "unavailable") return [outcome.server];
         if (outcome.status !== "rejected" || !(outcome.failure.error instanceof AgentMcpInputsRequiredError)) return [];
@@ -119,9 +146,29 @@ export class AgentMcpPackageDiscovery {
     };
   }
 
+  /**
+   * Loads only declarations already discovered in a previous run. A cache miss
+   * is an explicit deferred state, not a reason to start the server during
+   * runtime initialization.
+   */
+  async discoverCached(packages: readonly AgentMcpPackage[]): Promise<AgentMcpPackageDiscoveryResult> {
+    const outcomes = await Promise.all(
+      packages.flatMap((package_) =>
+        package_.servers.map((server) => this.discoverCachedServerOutcome(package_, server)),
+      ),
+    );
+    return {
+      servers: outcomes.flatMap((outcome) => (outcome.status === "fulfilled" ? [outcome.server] : [])),
+      deferredServers: outcomes.flatMap((outcome) => (outcome.status === "deferred" ? [outcome.server] : [])),
+      unavailableServers: outcomes.flatMap((outcome) => (outcome.status === "unavailable" ? [outcome.server] : [])),
+      failures: outcomes.flatMap((outcome) => (outcome.status === "rejected" ? [outcome.failure] : [])),
+    };
+  }
+
   private async discoverServerOutcome(
     package_: AgentMcpPackage,
     server: AgentMcpPackageServer,
+    signal?: AbortSignal,
   ): Promise<AgentMcpPackageDiscoveryOutcome> {
     const missingCapabilities = missingAgentMcpHostCapabilities(package_.requirements, this.hostCapabilities);
     if (missingCapabilities.length > 0) {
@@ -136,8 +183,9 @@ export class AgentMcpPackageDiscovery {
       };
     }
     try {
-      return { status: "fulfilled", server: await this.discoverServer(package_, server) };
+      return { status: "fulfilled", server: await this.discoverServer(package_, server, signal) };
     } catch (error) {
+      throwIfAborted(signal);
       return {
         status: "rejected",
         failure: { packageName: package_.name, serverName: server.name, error },
@@ -145,11 +193,83 @@ export class AgentMcpPackageDiscovery {
     }
   }
 
+  private async discoverCachedServerOutcome(
+    package_: AgentMcpPackage,
+    server: AgentMcpPackageServer,
+  ): Promise<AgentMcpCachedDiscoveryOutcome> {
+    try {
+      const cached = await this.options.schemaCache?.load(package_, server);
+      if (!cached) return { status: "deferred", server: { package_, server } };
+      validateAgentMcpToolDeclarations(cached.declarations, package_, server);
+      let endpoint: AgentMcpDeclaredEndpoint;
+      const missingCapabilities = missingAgentMcpHostCapabilities(package_.requirements, this.hostCapabilities);
+      const unresolved = (
+        availability: Extract<AgentMcpDeclaredEndpoint, { transport: "unresolved" }>["availability"],
+      ): AgentMcpDeclaredEndpoint => ({
+        id: server.name,
+        revision: package_.revision,
+        packageName: package_.name,
+        packageRoot: package_.rootPath,
+        transport: "unresolved",
+        availability,
+      });
+      if (missingCapabilities.length > 0) {
+        endpoint = unresolved({
+          status: "unavailable",
+          reason: "missing_host_capability",
+          message: missingCapabilities.join(", "),
+        });
+      } else {
+        try {
+          const resolved = this.createServerContext(package_, server).endpoint;
+          endpoint =
+            cached.connectionDigest === agentMcpConnectionDigest(resolved)
+              ? resolved
+              : unresolved({ status: "unverified" });
+        } catch (error) {
+          if (!(error instanceof AgentMcpInputsRequiredError)) throw error;
+          endpoint = unresolved({ status: "needs_input", inputIds: error.inputIds });
+        }
+      }
+      return {
+        status: "fulfilled",
+        server: {
+          package_,
+          server,
+          declarations: cached.declarations,
+          execution: resolveAgentMcpPackageExecutionPolicy(package_, server, this.executionEnv),
+          endpoint,
+        },
+      };
+    } catch (error) {
+      return { status: "rejected", failure: { packageName: package_.name, serverName: server.name, error } };
+    }
+  }
+
   private async discoverServer(
     package_: AgentMcpPackage,
     server: AgentMcpPackageServer,
+    signal?: AbortSignal,
   ): Promise<AgentDiscoveredMcpServer> {
-    const execution = resolveToolExecutionConfig(this.config);
+    const context = this.createServerContext(package_, server);
+    const { execution, endpoint } = context;
+    const connection = { ...this.createConnection(package_, server, context), signal };
+    const listTools = (client: AgentMcpToolClient) => client.listTools(signal);
+    const declarations = this.options.clientPool
+      ? await this.options.clientPool.withClient(connection, listTools)
+      : await withAgentMcpToolClient(connection, listTools);
+    validateAgentMcpToolDeclarations(declarations, package_, server);
+    await this.options.schemaCache?.save(package_, server, endpoint, declarations);
+    return { package_, server, declarations, execution, endpoint };
+  }
+
+  private createServerContext(
+    package_: AgentMcpPackage,
+    server: AgentMcpPackageServer,
+  ): {
+    readonly execution: AgentMcpPackageExecutionPolicy;
+    readonly endpoint: AgentMcpRuntimeEndpoint;
+  } {
     const policy = resolveAgentMcpPackageExecutionPolicy(package_, server, this.executionEnv);
     const endpoint = createAgentMcpPackageEndpoint(
       package_,
@@ -157,28 +277,52 @@ export class AgentMcpPackageDiscovery {
       this.options.inputs,
       this.executionEnv.workspaceRoot,
     );
-    const connection = {
-      server: endpoint,
+    return { execution: policy, endpoint };
+  }
+
+  private createConnection(
+    package_: AgentMcpPackage,
+    server: AgentMcpPackageServer,
+    context: {
+      readonly execution: AgentMcpPackageExecutionPolicy;
+      readonly endpoint: AgentMcpRuntimeEndpoint;
+    },
+  ) {
+    const execution = resolveToolExecutionConfig(this.config);
+    const onToolsChanged = this.options.onToolsChanged;
+    return {
+      server: context.endpoint,
       requestTimeoutMs: execution.TimeoutMs,
       spawnPersistentProcess: this.executionEnv.spawnPersistentProcess,
       executionProfile: createAgentMcpExecutionProfile({
-        backend: policy.preferredBackend,
+        backend: context.execution.preferredBackend,
         network: "default",
         workspaceMount: "readonly",
-        packageRoot: package_.rootPath,
+        packageRoot: context.endpoint.packageRoot,
       }),
       terminationGraceMs: execution.Resources.TerminationGraceMs,
       maxFrameBytes: Math.max(execution.MaxStdoutBytes, execution.MaxStderrBytes),
       maxStderrBytes: execution.MaxStderrBytes,
       sampling: this.options.sampling,
-      onToolsChanged: this.options.onToolsChanged,
+      onToolsChanged:
+        this.options.schemaCache || onToolsChanged
+          ? async (change: Parameters<NonNullable<AgentMcpToolsChangedHandler>>[0]) => {
+              validateAgentMcpToolDeclarations(change.declarations, package_, server);
+              if (this.options.schemaCache) {
+                try {
+                  await this.options.schemaCache.save(package_, server, context.endpoint, change.declarations);
+                } catch (error) {
+                  this.options.logger?.warn("mcp.schema_cache.write_failed", {
+                    packageName: package_.name,
+                    serverName: server.name,
+                    message: error instanceof Error ? error.message : String(error),
+                  });
+                }
+              }
+              await onToolsChanged?.(change);
+            }
+          : undefined,
     };
-    const listTools = (client: AgentMcpToolClient) => client.listTools();
-    const declarations = this.options.clientPool
-      ? await this.options.clientPool.withClient(connection, listTools)
-      : await withAgentMcpToolClient(connection, listTools);
-    validateAgentMcpToolDeclarations(declarations, package_, server);
-    return { package_, server, declarations, execution: policy, endpoint };
   }
 }
 

@@ -23,16 +23,17 @@ export function ToolActionIcon({
   return (
     <span
       className={cn(
-        "relative inline-flex shrink-0 items-center justify-center",
+        "tool-action-icon relative inline-flex shrink-0 items-center justify-center align-middle leading-none",
         size === "xs" ? "h-3.5 w-3.5" : "h-4 w-4",
         readActionIconTone(status),
         className,
       )}
       data-tool-action-icon={icon}
       data-tool-action-status={status}
+      data-status-glyph-motion="quiet"
       aria-hidden="true"
     >
-      <MotionIconSwap stateKey={`${visual}:${status}`} className={size === "xs" ? "h-3 w-3" : "h-3.5 w-3.5"}>
+      <MotionIconSwap stateKey={`${visual}:${status}`} className={size === "xs" ? "h-3 w-3" : "h-4 w-4"}>
         <AppIcon icon={visual} size="100%" strokeWidth={1.8} />
       </MotionIconSwap>
       {live && showLiveIndicator ? (

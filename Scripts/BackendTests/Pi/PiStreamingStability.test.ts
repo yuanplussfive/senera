@@ -32,41 +32,86 @@ import { AgentTurnTokenBudget } from "../../../Source/AgentSystem/Text/AgentTurn
 describe("Pi streaming stability", () => {
   test("projects ordered model deltas without emitting internal diagnostics as domain events", async () => {
     const emitted: Array<{ kind: string; data: unknown }> = [];
+    const turnState = createTurnState("streaming-request", 1);
     const collector = new AgentPiRunCollector({
       requestId: "streaming-request",
       step: 1,
       onEvent: async (event) => {
         emitted.push(event);
       },
-      turnState: createTurnState("streaming-request", 1),
+      turnState,
     });
 
+    turnState.beginModelRequest();
+    await collector.collect(assistantMessageEvent("message_start", ""));
     await collector.collect(messageUpdate("first"));
     await collector.collect(messageUpdate("first second"));
+    await collector.collect(assistantMessageEvent("message_end", "first second"));
     await collector.drain();
 
     expect(emitted.filter((event) => event.kind === AgentEventKinds.ModelDelta)).toEqual([
-      expect.objectContaining({ data: { text: "first" } }),
-      expect.objectContaining({ data: { text: " second" } }),
+      expect.objectContaining({ data: { text: "first", messageIndex: 0 } }),
+      expect.objectContaining({ data: { text: " second", messageIndex: 0 } }),
     ]);
-    expect(emitted.every((event) => event.kind === AgentEventKinds.ModelDelta)).toBe(true);
+    expect(emitted.map((event) => event.kind).filter((kind) => kind !== AgentEventKinds.RunActivityChanged)).toEqual([
+      AgentEventKinds.ModelStarted,
+      AgentEventKinds.ModelDelta,
+      AgentEventKinds.ModelDelta,
+      AgentEventKinds.ModelCompleted,
+    ]);
     expect(collector.snapshot()).not.toHaveProperty("events");
+  });
+
+  test("includes provider identity on Pi model lifecycle events", async () => {
+    const emitted: Array<{ kind: string; data: Record<string, unknown> }> = [];
+    const turnState = createTurnState("provider-metadata-request", 1);
+    const collector = new AgentPiRunCollector({
+      requestId: "provider-metadata-request",
+      step: 1,
+      turnState,
+      modelProvider: {
+        id: "provider_pi",
+        kind: "OpenAICompatible",
+        endpoint: "Responses",
+        baseUrl: "https://example.test/v1",
+        model: "gpt-6-luna",
+      },
+      onEvent: async (event) => {
+        emitted.push(event as { kind: string; data: Record<string, unknown> });
+      },
+    });
+
+    turnState.beginModelRequest();
+    await collector.collect(assistantMessageEvent("message_start", ""));
+    await collector.collect(assistantMessageEvent("message_end", "完成"));
+
+    expect(emitted.filter((event) => event.kind === AgentEventKinds.ModelStarted)[0]?.data.provider).toMatchObject({
+      id: "provider_pi",
+      model: "gpt-6-luna",
+    });
+    expect(emitted.filter((event) => event.kind === AgentEventKinds.ModelCompleted)[0]?.data.provider).toMatchObject({
+      id: "provider_pi",
+      model: "gpt-6-luna",
+    });
   });
 
   test("projects assistant message lifecycles and resets cumulative text between Pi turns", async () => {
     const emitted: Array<{ kind: string; data: Record<string, unknown> }> = [];
+    const turnState = createTurnState("lifecycle-request", 2);
     const collector = new AgentPiRunCollector({
       requestId: "lifecycle-request",
       step: 2,
       onEvent: async (event) => {
         emitted.push(event as { kind: string; data: Record<string, unknown> });
       },
-      turnState: createTurnState("lifecycle-request", 2),
+      turnState,
     });
 
+    turnState.beginModelRequest();
     await collector.collect(assistantMessageEvent("message_start", ""));
     await collector.collect(messageUpdate("first response"));
     await collector.collect(assistantMessageEvent("message_end", "first response"));
+    turnState.beginModelRequest();
     await collector.collect(assistantMessageEvent("message_start", ""));
     await collector.collect(messageUpdate("second response"));
     await collector.collect(assistantMessageEvent("message_end", "second response"));
@@ -103,6 +148,113 @@ describe("Pi streaming stability", () => {
     ).toEqual(["first response", "second response"]);
   });
 
+  test("streams Pi thinking blocks separately and persists only the completed block", async () => {
+    const emitted: Array<{ kind: string; data: Record<string, unknown> }> = [];
+    const turnState = createTurnState("thinking-request", 3);
+    const collector = new AgentPiRunCollector({
+      requestId: "thinking-request",
+      step: 3,
+      onEvent: async (event) => {
+        emitted.push(event as { kind: string; data: Record<string, unknown> });
+      },
+      turnState,
+    });
+
+    turnState.beginModelRequest();
+    await collector.collect(assistantMessageEvent("message_start", ""));
+    await collector.collect(thinkingUpdate("thinking_start", 2));
+    await collector.collect(thinkingUpdate("thinking_delta", 2, "先检查"));
+    await collector.collect(thinkingUpdate("thinking_delta", 2, "输入和约束。"));
+    await collector.collect(thinkingUpdate("thinking_end", 2, undefined, "先检查输入和约束。"));
+    await collector.collect(messageUpdate("最终答复"));
+    await collector.collect(assistantMessageEvent("message_end", "最终答复"));
+    await collector.drain();
+
+    expect(
+      emitted.filter((event) => event.kind === AgentEventKinds.ModelThinkingDelta).map((event) => event.data.delta),
+    ).toEqual(["先检查", "输入和约束。"]);
+    expect(emitted.filter((event) => event.kind === AgentEventKinds.ModelThinkingCompleted)).toEqual([
+      expect.objectContaining({
+        data: {
+          messageIndex: 0,
+          contentIndex: 2,
+          content: "先检查输入和约束。",
+          status: "complete",
+        },
+      }),
+    ]);
+    expect(emitted.filter((event) => event.kind === AgentEventKinds.ModelDelta)).toEqual([
+      expect.objectContaining({ data: { text: "最终答复", messageIndex: 0 } }),
+    ]);
+  });
+
+  test("assigns thinking blocks distinct indexes for assistant messages in one Pi step", async () => {
+    const emitted: Array<{ kind: string; data: Record<string, unknown> }> = [];
+    const finalMessageIndexes: number[] = [];
+    const turnState = createTurnState("thinking-message-index-request", 3);
+    const collector = new AgentPiRunCollector({
+      requestId: "thinking-message-index-request",
+      step: 3,
+      onEvent: async (event) => {
+        emitted.push(event as { kind: string; data: Record<string, unknown> });
+      },
+      onFinalResponseAvailable: (_content, messageIndex) => {
+        finalMessageIndexes.push(messageIndex);
+      },
+      turnState,
+    });
+
+    turnState.beginModelRequest();
+    await collector.collect(assistantMessageEvent("message_start", ""));
+    await collector.collect(thinkingUpdate("thinking_start", 0));
+    await collector.collect(thinkingUpdate("thinking_delta", 0, "first response reasoning"));
+    await collector.collect(thinkingUpdate("thinking_end", 0, undefined, "first response reasoning"));
+    await collector.collect(assistantMessageEvent("message_end", "tool preface", "toolUse"));
+    turnState.beginModelRequest();
+    await collector.collect(assistantMessageEvent("message_start", ""));
+    await collector.collect(thinkingUpdate("thinking_start", 0));
+    await collector.collect(thinkingUpdate("thinking_delta", 0, "final response reasoning"));
+    await collector.collect(thinkingUpdate("thinking_end", 0, undefined, "final response reasoning"));
+    await collector.collect(assistantMessageEvent("message_end", "final response"));
+
+    expect(
+      emitted
+        .filter((event) => event.kind === AgentEventKinds.ModelThinkingCompleted)
+        .map((event) => event.data.messageIndex),
+    ).toEqual([0, 1]);
+    expect(finalMessageIndexes).toEqual([1]);
+  });
+
+  test("persists a partial thinking block as interrupted when Pi ends the agent stream", async () => {
+    const emitted: Array<{ kind: string; data: Record<string, unknown> }> = [];
+    const turnState = createTurnState("interrupted-thinking-request", 1);
+    const collector = new AgentPiRunCollector({
+      requestId: "interrupted-thinking-request",
+      step: 1,
+      onEvent: async (event) => {
+        emitted.push(event as { kind: string; data: Record<string, unknown> });
+      },
+      turnState,
+    });
+
+    turnState.beginModelRequest();
+    await collector.collect(assistantMessageEvent("message_start", ""));
+    await collector.collect(thinkingUpdate("thinking_start", 0));
+    await collector.collect(thinkingUpdate("thinking_delta", 0, "partial reasoning"));
+    await collector.collect({ type: "agent_end", messages: [], willRetry: false });
+
+    expect(emitted.filter((event) => event.kind === AgentEventKinds.ModelThinkingCompleted)).toEqual([
+      expect.objectContaining({
+        data: {
+          messageIndex: 0,
+          contentIndex: 0,
+          content: "partial reasoning",
+          status: "interrupted",
+        },
+      }),
+    ]);
+  });
+
   test("applies model-delta backpressure through the Pi turn executor", async () => {
     const session = new BackpressurePiSession();
     const executor = new AgentPiTurnExecutor({
@@ -130,6 +282,44 @@ describe("Pi streaming stability", () => {
 
     expect(deltaDeliveryStarted).toBe(true);
     expect(promptWasBlocked).toBe(true);
+  });
+
+  test("forwards native Pi thinking events through the turn executor", async () => {
+    const session = new BackpressurePiSession(true);
+    const executor = new AgentPiTurnExecutor({ runtime: createTurnRuntime(session) });
+    const emitted: Array<{ kind: string; data: unknown }> = [];
+
+    await executor.run(createRunPiTurnCommand(), async (event) => {
+      emitted.push(event);
+    });
+
+    expect(emitted).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: AgentEventKinds.ModelStarted,
+          data: expect.objectContaining({
+            provider: expect.objectContaining({ id: "backpressure-model" }),
+          }),
+        }),
+      ]),
+    );
+    expect(emitted).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: AgentEventKinds.ModelThinkingDelta,
+          data: { messageIndex: 0, contentIndex: 1, delta: "checking live wiring" },
+        }),
+        expect.objectContaining({
+          kind: AgentEventKinds.ModelThinkingCompleted,
+          data: {
+            messageIndex: 0,
+            contentIndex: 1,
+            content: "checking live wiring",
+            status: "complete",
+          },
+        }),
+      ]),
+    );
   });
 
   test("reports Pi session mutations through diagnostics and releases their runtime lease", async () => {
@@ -267,6 +457,25 @@ function messageUpdate(text: string): AgentPiRunEvent {
   } as unknown as AgentPiRunEvent;
 }
 
+function thinkingUpdate(
+  type: "thinking_start" | "thinking_delta" | "thinking_end",
+  contentIndex: number,
+  delta?: string,
+  content?: string,
+): AgentPiRunEvent {
+  return {
+    type: "message_update",
+    message: { role: "assistant", content: [] },
+    assistantMessageEvent: {
+      type,
+      contentIndex,
+      ...(delta === undefined ? {} : { delta }),
+      ...(content === undefined ? {} : { content }),
+      partial: { role: "assistant", content: [] },
+    },
+  } as unknown as AgentPiRunEvent;
+}
+
 function assistantMessageEvent(
   type: "message_start" | "message_end",
   text: string,
@@ -304,6 +513,7 @@ function createModel(): AgentPiModelProjection {
 
 class BackpressurePiSession {
   private listener: ((event: AgentSessionEvent) => void | Promise<void>) | undefined;
+  constructor(private readonly streamThinking = false) {}
   private resolvePromptStarted!: () => void;
   readonly promptStarted = new Promise<void>((resolve) => {
     this.resolvePromptStarted = resolve;
@@ -317,15 +527,24 @@ class BackpressurePiSession {
     };
   }
 
-  async setHistory(): Promise<void> {}
-
   async markTurnBoundary(): Promise<string> {
     return "backpressure-boundary";
   }
 
   async prompt(): Promise<void> {
     this.resolvePromptStarted();
-    await this.listener?.(messageUpdate("partial"));
+    if (this.streamThinking) {
+      await this.listener?.(assistantMessageEvent("message_start", "") as unknown as AgentSessionEvent);
+      await this.listener?.(thinkingUpdate("thinking_start", 1) as unknown as AgentSessionEvent);
+      await this.listener?.(
+        thinkingUpdate("thinking_delta", 1, "checking live wiring") as unknown as AgentSessionEvent,
+      );
+      await this.listener?.(
+        thinkingUpdate("thinking_end", 1, undefined, "checking live wiring") as unknown as AgentSessionEvent,
+      );
+      await this.listener?.(assistantMessageEvent("message_end", "") as unknown as AgentSessionEvent);
+    }
+    if (!this.streamThinking) await this.listener?.(messageUpdate("partial"));
     this.promptCompleted = true;
   }
 
@@ -355,14 +574,19 @@ function createTurnRuntime(session: BackpressurePiSession): AgentPiTurnRuntimePo
     services: {
       pi: {
         model: () => createModel(),
-        leaseTurn: async () => ({
-          session: session as unknown as AgentPiSession,
-          piSessionId: "backpressure-session",
-          historyMigrationRequired: false,
-        }),
+        leaseTurn: async (options) => {
+          options.turnState?.beginModelRequest();
+          return {
+            session: session as unknown as AgentPiSession,
+            piSessionId: "backpressure-session",
+          };
+        },
       },
       piSessions: new AgentPiActiveSessionRegistry(),
-      retrieval: { afterToolResults: () => [] },
+      retrieval: {
+        afterToolResults: () => ({ loadedTools: [], observation: undefined }) as never,
+        createToolExposure: (grant) => new AgentToolExposureState(grant),
+      },
     },
     modelProviderConfig: {
       Id: "backpressure-model",
@@ -370,6 +594,7 @@ function createTurnRuntime(session: BackpressurePiSession): AgentPiTurnRuntimePo
     } as AgentPiTurnRuntimePort["modelProviderConfig"],
     agentLoopConfig: {
       PiTurnLeaseTimeoutMs: 1_000,
+      PiSessions: { Compaction: { Enabled: true } },
     },
     tokenEstimator: {
       estimate: (text: string) => ({ tokenCount: text.length }),
@@ -377,7 +602,6 @@ function createTurnRuntime(session: BackpressurePiSession): AgentPiTurnRuntimePo
     promptConfig: () => ({
       UserMessageEnvelope: true,
       TimeZone: "Asia/Shanghai",
-      RoleCheck: true,
       BamlToolAttribution: true,
     }),
   };
@@ -386,6 +610,8 @@ function createTurnRuntime(session: BackpressurePiSession): AgentPiTurnRuntimePo
 function createTurnState(requestId: string, step: number): AgentPiTurnState {
   const toolAccessGrant = emptyAgentToolAccessGrant();
   return new AgentPiTurnState({
+    systemPrompt: "Test agent system context.",
+    userMessage: "Test streaming request.",
     approvalMode: "agent",
     requestId,
     step,
@@ -410,9 +636,9 @@ function createRunPiTurnCommand(): AgentPiTurnRequest {
     step: 1,
     input: "stream this response",
     prompt: "stream this response",
-    conversationEntries: [],
     rootCommand: toolRootCommand(),
     loadedToolNames: [],
+    nativeToolNames: [],
     toolAccessGrant: emptyAgentToolAccessGrant(),
     activeSkills: [],
   };

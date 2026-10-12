@@ -24,9 +24,11 @@ import {
 } from "../Source/AgentSystem/Diagnostics/AgentProcessGuard.js";
 import { errorMessage } from "../Source/AgentSystem/Core/AgentErrors.js";
 import { DefaultAgentTimeZone } from "../Source/AgentSystem/Time/AgentTime.js";
+import { resolveAgentApplicationPaths } from "../Source/AgentSystem/Core/AgentApplicationPaths.js";
 
 const AppRoot = resolveAppRoot();
 const WorkspaceRoot = path.resolve(process.env.SENERA_WORKSPACE_ROOT?.trim() || "/data");
+const ApplicationRoot = resolveAgentApplicationPaths().root;
 const ConfigPath = resolveWorkspacePath(process.env.AGENT_CONFIG_PATH?.trim() || "senera.config.json");
 const FrontendRoot = path.join(AppRoot, "Frontend", "dist");
 const ExampleConfigPath = path.join(AppRoot, "senera.config.example.json");
@@ -60,7 +62,7 @@ async function main(): Promise<void> {
   const projectedConfig = runtimeProjection(config);
   await synchronizeDockerAdminAccount({
     accountFile: resolveAgentLocalAdminAccountPath(
-      WorkspaceRoot,
+      ApplicationRoot,
       resolveServerConfig(projectedConfig).AccessControl.AccountFile,
     ),
     log: (message) => writeJsonLine({ kind: "senera.docker.admin.synchronized", message }),
@@ -70,6 +72,7 @@ async function main(): Promise<void> {
 
   const server = await startSeneraServer({
     workspaceRoot: WorkspaceRoot,
+    applicationStateRoot: ApplicationRoot,
     configPath: ConfigPath,
     staticFrontendRoot: FrontendRoot,
     deployment: SeneraServerDeployments.Container,

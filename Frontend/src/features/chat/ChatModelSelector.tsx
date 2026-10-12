@@ -1,6 +1,5 @@
 import { useMemo } from "react";
-import { Check, ChevronDown, RotateCcw, Settings2 } from "lucide-react";
-import type { ModelProviderListItem } from "../../api/eventTypes";
+import type { ModelProviderListItem, ModelThinkingLevel } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import {
@@ -11,6 +10,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  AppIcon,
 } from "../../shared/ui";
 import { MotionButton } from "../../shared/motion";
 import { ModelProviderIcon } from "./ModelProviderIcon";
@@ -21,7 +21,9 @@ export function ChatModelSelector({
   models,
   selectedId,
   defaultModelId,
+  selectedThinkingLevel,
   onSelect,
+  onSelectThinkingLevel,
   onUseDefault,
   onAddModel,
   prefersCompactControls,
@@ -30,7 +32,9 @@ export function ChatModelSelector({
   models: ModelProviderListItem[];
   selectedId: string | null;
   defaultModelId?: string | null;
+  selectedThinkingLevel: ModelThinkingLevel | null;
   onSelect: (id: string) => void;
+  onSelectThinkingLevel: (level: ModelThinkingLevel) => void;
   onUseDefault?: () => void;
   onAddModel?: () => void;
   prefersCompactControls: boolean;
@@ -43,6 +47,12 @@ export function ChatModelSelector({
     [chatModels, defaultModelId],
   );
   const usesDefault = Boolean(defaultModel && defaultModel.id === selected?.id);
+  const thinkingLevels = selected?.capabilities.Reasoning ? (selected.thinkingLevels ?? []) : [];
+  const hasThinkingLevels = thinkingLevels.length > 1;
+  const selectedLevel =
+    selectedThinkingLevel && thinkingLevels.includes(selectedThinkingLevel)
+      ? selectedThinkingLevel
+      : (selected?.defaultThinkingLevel ?? thinkingLevels[0]);
   const selectorDisabled = disabled || (chatModels.length === 0 && !onAddModel);
 
   return (
@@ -60,69 +70,114 @@ export function ChatModelSelector({
           data-composer-model-selector
         >
           <span className="truncate">{label}</span>
-          <ChevronDown className="h-3 w-3 shrink-0 text-content-muted opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100" />
+          <AppIcon
+            icon="chevron-down"
+            size={12}
+            className="shrink-0 text-content-muted opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100"
+          />
         </MotionButton>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" side="top" className="w-[min(280px,calc(100vw-24px))]">
-        <DropdownMenuLabel>{frontendMessage("chat.model.currentConversation")}</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {chatModels.length > 0 ? (
-          <DropdownMenuGroup className="max-h-[min(360px,calc(100dvh-200px))] overflow-y-auto pr-1 scrollbar-thin">
-            {chatModels.map((model) => {
-              const active = model.id === selected?.id;
-              return (
-                <DropdownMenuItem
-                  key={model.id}
-                  onSelect={() => onSelect(model.id)}
-                  className="h-10 py-2"
-                  icon={
-                    active ? (
-                      <Check className="h-3.5 w-3.5 text-accent-content" />
-                    ) : (
-                      <ModelProviderIcon icon={model.icon} size={14} />
-                    )
-                  }
-                >
-                  <span className="min-w-0 truncate text-[13px] text-content-primary">
-                    {readModelSelectorLabel(model)}
-                  </span>
-                </DropdownMenuItem>
-              );
-            })}
-          </DropdownMenuGroup>
-        ) : (
-          <div className="px-2 py-3 text-[12px] text-content-muted">{frontendMessage("config.model.noConfigured")}</div>
+      <DropdownMenuContent
+        align="end"
+        side="top"
+        className={cn(
+          "p-1",
+          hasThinkingLevels
+            ? "grid w-[min(560px,calc(100vw-24px))] grid-cols-[minmax(220px,1fr)_minmax(140px,auto)] gap-1 max-sm:grid-cols-1"
+            : "w-[min(280px,calc(100vw-24px))]",
         )}
-        {!usesDefault && defaultModel && onUseDefault ? (
-          <>
-            <DropdownMenuSeparator />
-            <div className="px-2 py-1.5 text-[11px] text-content-muted">
-              {frontendMessage("chat.model.defaultHint", { model: readModelSelectorLabel(defaultModel) })}
+      >
+        <div className="min-w-0">
+          <DropdownMenuLabel>{frontendMessage("chat.model.currentConversation")}</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {chatModels.length > 0 ? (
+            <DropdownMenuGroup className="max-h-[min(360px,calc(100dvh-200px))] overflow-y-auto pr-1 scrollbar-thin">
+              {chatModels.map((model) => {
+                const active = model.id === selected?.id;
+                return (
+                  <DropdownMenuItem
+                    key={model.id}
+                    onSelect={() => onSelect(model.id)}
+                    className="h-10 py-2"
+                    icon={
+                      active ? (
+                        <AppIcon icon="checkmark" size={14} className="text-accent-content" />
+                      ) : (
+                        <ModelProviderIcon icon={model.icon} size={14} />
+                      )
+                    }
+                  >
+                    <span className="min-w-0 truncate text-[13px] text-content-primary">
+                      {readModelSelectorLabel(model)}
+                    </span>
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuGroup>
+          ) : (
+            <div className="px-2 py-3 text-[12px] text-content-muted">
+              {frontendMessage("config.model.noConfigured")}
             </div>
-            <DropdownMenuItem
-              onSelect={onUseDefault}
-              className="h-10 py-2"
-              icon={<RotateCcw className="h-3.5 w-3.5 text-accent-content" />}
-            >
-              <span className="min-w-0 truncate text-[13px] text-content-primary">
-                {frontendMessage("chat.model.useDefault")}
-              </span>
-            </DropdownMenuItem>
-          </>
-        ) : null}
-        {onAddModel ? (
-          <>
+          )}
+          {!usesDefault && defaultModel && onUseDefault ? (
+            <>
+              <DropdownMenuSeparator />
+              <div className="px-2 py-1.5 text-[11px] text-content-muted">
+                {frontendMessage("chat.model.defaultHint", { model: readModelSelectorLabel(defaultModel) })}
+              </div>
+              <DropdownMenuItem
+                onSelect={onUseDefault}
+                className="h-10 py-2"
+                icon={<AppIcon icon="refresh" size={14} className="text-accent-content" />}
+              >
+                <span className="min-w-0 truncate text-[13px] text-content-primary">
+                  {frontendMessage("chat.model.useDefault")}
+                </span>
+              </DropdownMenuItem>
+            </>
+          ) : null}
+          {onAddModel ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={onAddModel}
+                className="h-10 bg-surface-muted py-2"
+                icon={<AppIcon icon="settings" size={14} className="text-content-secondary" />}
+              >
+                <span className="min-w-0 truncate text-[13px] text-content-primary">
+                  {frontendMessage("config.model.addModel")}
+                </span>
+              </DropdownMenuItem>
+            </>
+          ) : null}
+        </div>
+        {hasThinkingLevels ? (
+          <div className="min-w-0 border-l border-line pl-1 max-sm:border-l-0 max-sm:border-t max-sm:pt-1">
+            <DropdownMenuLabel>{frontendMessage("chat.thinking.label")}</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onSelect={onAddModel}
-              className="h-10 bg-surface-muted py-2"
-              icon={<Settings2 className="h-3.5 w-3.5 text-content-secondary" />}
-            >
-              <span className="min-w-0 truncate text-[13px] text-content-primary">
-                {frontendMessage("config.model.addModel")}
-              </span>
-            </DropdownMenuItem>
-          </>
+            <DropdownMenuGroup className="max-h-[min(360px,calc(100dvh-200px))] overflow-y-auto pr-1 scrollbar-thin">
+              {thinkingLevels.map((level) => {
+                const profile = selected?.thinkingProfiles?.find((item) => item.level === level);
+                const label = profile?.label || level;
+                return (
+                  <DropdownMenuItem
+                    key={level}
+                    onSelect={() => onSelectThinkingLevel(level)}
+                    className="h-9 py-1.5"
+                    icon={
+                      level === selectedLevel ? (
+                        <AppIcon icon="checkmark" size={14} className="text-accent-content" />
+                      ) : (
+                        <span className="h-3.5 w-3.5" />
+                      )
+                    }
+                  >
+                    <span className="min-w-0 truncate text-[13px] text-content-primary">{label}</span>
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuGroup>
+          </div>
         ) : null}
       </DropdownMenuContent>
     </DropdownMenu>

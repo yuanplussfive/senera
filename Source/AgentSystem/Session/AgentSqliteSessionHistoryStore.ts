@@ -76,36 +76,44 @@ export class AgentSqliteSessionHistoryStore {
       const boundary = this.stmts.selectRequestSequenceRange.get(sessionId, requestId)?.last_sequence;
       if (boundary === undefined || boundary === null) return undefined;
 
-      const entries = this.stmts.selectEntriesThroughSequence.all(sessionId, boundary).flatMap((row) => {
+      const entries: Array<{ entry: AgentConversationEntry; sequence: number }> = [];
+      for (const row of this.stmts.selectEntriesThroughSequence.iterate(sessionId, boundary)) {
         const entry = rowToEntry(row, (issue) => this.onDecodeIssue?.(sessionId, issue));
-        return entry ? [{ entry, sequence: row.sequence }] : [];
-      });
-      const traces = this.stmts.selectStepTracesThroughSequence.all(sessionId, sessionId, boundary).map((row) => ({
-        requestId: row.request_id,
-        turnSequence: row.turn_sequence,
-        trace: parseJsonText(row.data, "Step trace") as StepTrace,
-      }));
-      const runSnapshots = this.stmts.selectRunSnapshotsThroughSequence
-        .all(sessionId, sessionId, boundary)
-        .map(rowToRunSnapshot);
-      const turnPreparations = this.stmts.selectTurnPreparationsThroughSequence
-        .all(sessionId, sessionId, boundary)
-        .flatMap((row) => {
-          const snapshot = parseTurnPreparation(row.snapshot_json);
-          return snapshot ? [{ requestId: row.request_id, snapshot }] : [];
+        if (entry) entries.push({ entry, sequence: row.sequence });
+      }
+      const traces: Array<{ requestId: string; turnSequence: number; trace: StepTrace }> = [];
+      for (const row of this.stmts.selectStepTracesThroughSequence.iterate(sessionId, sessionId, boundary)) {
+        traces.push({
+          requestId: row.request_id,
+          turnSequence: row.turn_sequence,
+          trace: parseJsonText(row.data, "Step trace") as StepTrace,
         });
-      const runEvents = this.stmts.selectRunEventsThroughSequence
-        .all(sessionId, sessionId, boundary)
-        .flatMap(rowToStoredRunEvent);
+      }
+      const runSnapshots: StoredRunSnapshot[] = [];
+      for (const row of this.stmts.selectRunSnapshotsThroughSequence.iterate(sessionId, sessionId, boundary)) {
+        runSnapshots.push(rowToRunSnapshot(row));
+      }
+      const turnPreparations: Array<{ requestId: string; snapshot: AgentTurnPreparationSnapshot }> = [];
+      for (const row of this.stmts.selectTurnPreparationsThroughSequence.iterate(sessionId, sessionId, boundary)) {
+        const snapshot = parseTurnPreparation(row.snapshot_json);
+        if (snapshot) turnPreparations.push({ requestId: row.request_id, snapshot });
+      }
+      const runEvents: AgentEventEnvelope[] = [];
+      for (const row of this.stmts.selectRunEventsThroughSequence.iterate(sessionId, sessionId, boundary)) {
+        const event = rowToStoredRunEvent(row)[0];
+        if (event) runEvents.push(event);
+      }
       return { entries, traces, runSnapshots, turnPreparations, runEvents };
     })();
   }
 
   loadEntries(sessionId: string): AgentConversationEntry[] {
-    return this.stmts.selectEntries.all(sessionId).flatMap((row) => {
+    const entries: AgentConversationEntry[] = [];
+    for (const row of this.stmts.selectEntries.iterate(sessionId)) {
       const entry = rowToEntry(row, (issue) => this.onDecodeIssue?.(sessionId, issue));
-      return entry ? [entry] : [];
-    });
+      if (entry) entries.push(entry);
+    }
+    return entries;
   }
 
   loadFirstUserMessage(sessionId: string): AgentConversationEntry | undefined {
@@ -137,10 +145,12 @@ export class AgentSqliteSessionHistoryStore {
   ): AgentConversationEntry[] {
     const encodedRequestIds = encodeRequestIdLookup(requestIds);
     if (!encodedRequestIds) return [];
-    return this.stmts.selectEntriesForRequests.all(sessionId, throughSequence, encodedRequestIds).flatMap((row) => {
+    const entries: AgentConversationEntry[] = [];
+    for (const row of this.stmts.selectEntriesForRequests.iterate(sessionId, throughSequence, encodedRequestIds)) {
       const entry = rowToEntry(row, (issue) => this.onDecodeIssue?.(sessionId, issue));
-      return entry ? [entry] : [];
-    });
+      if (entry) entries.push(entry);
+    }
+    return entries;
   }
 
   appendEntry(sessionId: string, entry: AgentConversationEntry, sequence: number): void {
@@ -220,7 +230,16 @@ export class AgentSqliteSessionHistoryStore {
   }
 
   loadRunSnapshots(sessionId: string): StoredRunSnapshot[] {
-    return this.stmts.selectRunSnapshots.all(sessionId).map(rowToRunSnapshot);
+    const snapshots: StoredRunSnapshot[] = [];
+    for (const row of this.stmts.selectRunSnapshots.iterate(sessionId)) {
+      snapshots.push(rowToRunSnapshot(row));
+    }
+    return snapshots;
+  }
+
+  loadRunSnapshot(sessionId: string, requestId: string): StoredRunSnapshot | undefined {
+    const row = this.stmts.selectRunSnapshot.get(sessionId, requestId);
+    return row ? rowToRunSnapshot(row) : undefined;
   }
 
   loadRunSnapshotsForRequests(
@@ -255,7 +274,11 @@ export class AgentSqliteSessionHistoryStore {
   }
 
   loadRunningRunSnapshots(): StoredRunSnapshot[] {
-    return this.stmts.selectRunningRunSnapshots.all().map(rowToRunSnapshot);
+    const snapshots: StoredRunSnapshot[] = [];
+    for (const row of this.stmts.selectRunningRunSnapshots.iterate()) {
+      snapshots.push(rowToRunSnapshot(row));
+    }
+    return snapshots;
   }
 
   deleteRunSnapshotsFrom(sessionId: string, requestId: string): number {
@@ -288,11 +311,21 @@ export class AgentSqliteSessionHistoryStore {
   }
 
   loadRunEvents(sessionId: string): AgentEventEnvelope[] {
-    return this.stmts.selectRunEvents.all(sessionId).flatMap(rowToStoredRunEvent);
+    const events: AgentEventEnvelope[] = [];
+    for (const row of this.stmts.selectRunEvents.iterate(sessionId)) {
+      const event = rowToStoredRunEvent(row)[0];
+      if (event) events.push(event);
+    }
+    return events;
   }
 
   loadRunEventsForRequest(sessionId: string, requestId: string): AgentEventEnvelope[] {
-    return this.stmts.selectRunEventsForRequest.all(sessionId, requestId).flatMap(rowToStoredRunEvent);
+    const events: AgentEventEnvelope[] = [];
+    for (const row of this.stmts.selectRunEventsForRequest.iterate(sessionId, requestId)) {
+      const event = rowToStoredRunEvent(row)[0];
+      if (event) events.push(event);
+    }
+    return events;
   }
 
   loadRunEventPage(
@@ -300,12 +333,34 @@ export class AgentSqliteSessionHistoryStore {
     request: AgentSessionCursorPageRequest,
   ): AgentSessionCursorPage<AgentEventEnvelope> {
     const pageSize = assertAgentSessionRepositoryPageSize(request.pageSize);
-    const rows = this.stmts.selectRunEventPage.all(sessionId, request.after ?? 0, request.through, pageSize + 1);
-    const pageRows = rows.slice(0, pageSize);
+    const items: AgentEventEnvelope[] = [];
+    let consumedRows = 0;
+    let lastConsumedId: number | undefined;
+    let nextCursor: number | undefined;
+    for (const row of this.stmts.selectRunEventPage.iterate(
+      sessionId,
+      request.after ?? 0,
+      request.through,
+      pageSize + 1,
+    )) {
+      if (consumedRows >= pageSize) {
+        nextCursor = lastConsumedId;
+        break;
+      }
+      consumedRows += 1;
+      lastConsumedId = row.id;
+      const event = rowToStoredRunEvent(row)[0];
+      if (event) items.push(event);
+    }
     return {
-      items: pageRows.flatMap(rowToStoredRunEvent),
-      nextCursor: rows.length > pageSize ? pageRows.at(-1)?.id : undefined,
+      items,
+      nextCursor,
     };
+  }
+
+  loadRunEvent(sessionId: string, requestId: string, kind: string): AgentEventEnvelope | undefined {
+    const row = this.stmts.selectRunEvent.get(sessionId, requestId, kind);
+    return row ? rowToStoredRunEvent(row)[0] : undefined;
   }
 
   deleteRunEventsFrom(sessionId: string, requestId: string): number {

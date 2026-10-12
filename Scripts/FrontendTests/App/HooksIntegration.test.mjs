@@ -96,7 +96,6 @@ test("useSessionCatalogSync sends open-connection and manual refresh requests", 
     "config.get",
     "workspace.get",
     "model.list",
-    "preset.list",
     "sandbox.status",
     "systemTool.list",
     "mcpServer.list",
@@ -112,7 +111,6 @@ test("useSessionCatalogSync sends open-connection and manual refresh requests", 
     "config.get",
     "workspace.get",
     "model.list",
-    "preset.list",
     "profile.get",
     "sandbox.status",
     "systemTool.list",
@@ -184,6 +182,7 @@ test("useSettingsRuntime settles MCP mutations from the dedicated settings event
       handleRef.current.ingestSettingsEvent(
         event(EventKinds.McpServerSnapshot, "config", {
           servers: [],
+          activation: { revision: "test-mcp", entries: [] },
           operation: { requestId, kind: "mcp_input_update" },
         }),
       ),
@@ -213,7 +212,6 @@ test("useSocketPostIngestEffects runs config reload requests and profile sync", 
     "config.get",
     "workspace.get",
     "model.list",
-    "preset.list",
     "sandbox.status",
     "systemTool.list",
   ]);
@@ -260,7 +258,7 @@ test("refreshes runtime usage as a run becomes observable and after it settles",
       ),
     ).toBe(true);
   });
-  expect(send).toHaveBeenCalledWith({ type: "session.runtime_status", sessionId: "session-1" });
+  expect(send).not.toHaveBeenCalled();
 
   send.mockClear();
   act(() => {
@@ -275,11 +273,26 @@ test("refreshes runtime usage as a run becomes observable and after it settles",
     ).toBe(true);
   });
   expect(readTestToastCalls()).toEqual([]);
+  expect(send).toHaveBeenCalledWith({ type: "session.runtime_status", sessionId: "session-1" });
 
+  send.mockClear();
   act(() => {
     expect(
       handleRef.current.runSocketPostIngestEffects(
         event(EventKinds.RunCompleted, "run", {}, { sessionId: "session-1" }),
+      ),
+    ).toBe(true);
+  });
+  expect(send).not.toHaveBeenCalled();
+
+  act(() => {
+    expect(
+      handleRef.current.runSocketPostIngestEffects(
+        event(EventKinds.SessionRuntimeStatus, "session", {
+          sessionId: "session-1",
+          available: true,
+          runtime: { stats: { totalMessages: 3, toolCalls: 1, tokens: { total: 120 } } },
+        }),
       ),
     ).toBe(true);
   });
@@ -332,63 +345,6 @@ test("useSocketErrorToasts keeps contextual tool failures out of global notifica
   });
 
   expect(readTestToastCalls()).toEqual([]);
-});
-
-test("useConfigMutationController routes preset and main config acknowledgements to their owning domains", async () => {
-  const send = vi.fn(() => true);
-  const handleRef = { current: null };
-  render(
-    React.createElement(ConfigMutationHarness, {
-      configSnapshot: createConfigSnapshot(),
-      send,
-      status: "open",
-      handleRef,
-    }),
-  );
-
-  let presetRequestId = null;
-  let configRequestId = null;
-  await act(async () => {
-    presetRequestId = handleRef.current.savePreset({
-      name: "Release notes",
-      card: emptyPresetCard("Release notes"),
-      activate: true,
-    });
-    configRequestId = handleRef.current.saveConfig({ AgentLoop: { Mode: "automatic" } });
-  });
-
-  expect(presetRequestId).toEqual(expect.any(String));
-  expect(configRequestId).toEqual(expect.any(String));
-  expect(handleRef.current.presetOperations[presetRequestId]).toMatchObject({ status: "pending", kind: "save" });
-  expect(handleRef.current.configOperation).toMatchObject({ status: "pending", kind: "config_update" });
-
-  await act(async () => {
-    expect(
-      handleRef.current.ingestConfigMutationEvent(
-        event(EventKinds.PresetSnapshot, "config", {
-          presets: [],
-          operation: { requestId: presetRequestId, kind: "save", name: "Release notes" },
-        }),
-      ),
-    ).toBe(true);
-    expect(
-      handleRef.current.ingestConfigMutationEvent(
-        event(EventKinds.ConfigSnapshot, "config", {
-          config: {},
-          operation: { commandId: configRequestId, kind: "config_update" },
-        }),
-      ),
-    ).toBe(true);
-  });
-
-  expect(handleRef.current.presetOperations[presetRequestId]).toMatchObject({ status: "success", kind: "save" });
-  expect(handleRef.current.configOperation).toMatchObject({ status: "success", kind: "config_update" });
-  expect(readTestToastCalls()).toEqual(
-    expect.arrayContaining([expect.objectContaining({ variant: "success", title: frontendMessage("preset.saved") })]),
-  );
-  expect(readTestToastCalls()).not.toContainEqual(
-    expect.objectContaining({ variant: "success", title: frontendMessage("config.mainSaved") }),
-  );
 });
 
 test("useConfigMutationController rolls back disconnected sends and records provider failures", async () => {
@@ -650,22 +606,11 @@ function event(kind, phase, data, overrides = {}) {
   };
 }
 
-function emptyPresetCard(title) {
-  return {
-    schemaVersion: "senera.persona/v2",
-    title,
-    corePersona: "",
-    languageStyle: "",
-    worldPackageIds: [],
-    examples: [],
-    lore: [],
-  };
-}
-
 function resetStore() {
   clearPersistedStore();
   useStore.setState({
     sessions: {},
+    runtimeSnapshotsBySession: {},
     sessionOrder: [],
     activeSessionId: null,
     sidebarCollapsed: false,
@@ -688,10 +633,6 @@ function resetStore() {
     providerModelCatalogs: {},
     providerModelErrors: {},
     selectedModelProviderId: null,
-    presets: [],
-    activePresetName: null,
-    presetsEnabled: true,
-    presetRootDir: "",
     configSnapshot: null,
     systemTools: [],
     systemExtensions: [],

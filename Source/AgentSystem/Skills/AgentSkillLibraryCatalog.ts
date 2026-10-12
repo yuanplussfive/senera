@@ -58,8 +58,8 @@ function projectEntry(
 ): AgentSkillLibraryEntry {
   return {
     name: skill.name,
-    title: compactText(catalog.title, skill.name),
-    summary: compactText(catalog.summary, skill.description),
+    title: compactText(catalog.title),
+    summary: compactText(catalog.summary),
     scope: skill.source.kind,
     state: skill.disableModelInvocation === true ? "explicit-only" : "available",
     revision: skill.revision ?? skill.source.id,
@@ -81,8 +81,8 @@ function boundedStrings(values: readonly string[]): string[] {
     .slice(0, MaxDirectoryValues);
 }
 
-function compactText(value: string | undefined, fallback = ""): string {
-  const normalized = (value ?? fallback).replace(/\s+/gu, " ").trim();
+function compactText(value: string): string {
+  const normalized = value.replace(/\s+/gu, " ").trim();
   return normalized.length > MaxDirectoryTextCharacters
     ? `${normalized.slice(0, MaxDirectoryTextCharacters - 3).trimEnd()}...`
     : normalized;

@@ -9,8 +9,6 @@ import {
   updateAgentSelfConfigPath,
 } from "../../../Source/AgentSystem/SelfService/AgentSelfConfig.js";
 import type { AgentSelfServicePort } from "../../../Source/AgentSystem/SelfService/AgentSelfServiceTypes.js";
-import { AgentPresetManager } from "../../../Source/AgentSystem/Presets/AgentPresetManager.js";
-import { resolvePresetsConfig } from "../../../Source/AgentSystem/Defaults/AgentToolDefaults.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { createAgentSelfTestConfigPort, createAgentTestSnapshot } from "./AgentSelfTestHarness.js";
 import { AgentSessionStore } from "../../../Source/AgentSystem/Session/AgentSessionStore.js";
@@ -64,17 +62,6 @@ function createConfigPort(initial: AgentSystemConfig): ReturnType<typeof createA
 
 function workspacePort(workspaceRoot: string): AgentSelfServicePort {
   const config = baseConfig();
-  const presetPort = {
-    manager: () =>
-      new AgentPresetManager({
-        workspaceRoot,
-        config: resolvePresetsConfig(config),
-        activation: {
-          catalog: async () => [],
-          synchronize: async () => undefined,
-        } as never,
-      }),
-  };
   return {
     workspaceRoot,
     config: {
@@ -86,7 +73,6 @@ function workspacePort(workspaceRoot: string): AgentSelfServicePort {
       history: () => [],
       readRevision: () => ({ status: "unavailable" }),
     },
-    presets: presetPort,
   };
 }
 
@@ -155,50 +141,6 @@ describe("senera self-service config", () => {
     } as AgentSelfServicePort);
     expect(endpoints.ok).toBe(true);
     expect(JSON.stringify(endpoints.data)).not.toContain("ApiKey");
-  });
-});
-
-describe("senera self-service presets", () => {
-  const card = {
-    schemaVersion: "senera.persona/v1",
-    title: "测试人格",
-    corePersona: "你是一个测试助手。",
-    languageStyle: "简洁",
-    examples: [{ id: "e1", situation: "你好", reply: "你好！" }],
-    lore: [],
-  };
-
-  test("create, list, activate, show round-trip", async () => {
-    const root = temporaryWorkspace();
-    const port = workspacePort(root);
-
-    const created = await executeAgentSelfCommand(
-      { command: "preset", action: "create", name: "tester", content: card },
-      port,
-    );
-    expect(created.ok).toBe(true);
-
-    const listed = await executeAgentSelfCommand({ command: "preset", action: "list" }, port);
-    expect(listed.ok).toBe(true);
-    expect((listed.data as { presets: unknown[] }).presets).toHaveLength(1);
-
-    const used = await executeAgentSelfCommand({ command: "preset", action: "use", name: "tester" }, port);
-    expect(used.ok).toBe(true);
-    expect((used.data as { active: string }).active).toBe("tester.json");
-
-    const shown = await executeAgentSelfCommand({ command: "preset", action: "show", name: "tester" }, port);
-    expect(shown.ok).toBe(true);
-    expect(JSON.stringify(shown.data)).toContain("tester");
-
-    const reset = await executeAgentSelfCommand({ command: "preset", action: "use", name: null }, port);
-    expect(reset.ok).toBe(true);
-    expect((reset.data as { active: string | null }).active).toBeNull();
-  });
-
-  test("shows missing presets as errors", async () => {
-    const port = workspacePort(temporaryWorkspace());
-    const shown = await executeAgentSelfCommand({ command: "preset", action: "show", name: "ghost" }, port);
-    expect(shown.ok).toBe(false);
   });
 });
 

@@ -47,11 +47,8 @@ export const EventKinds = {
   PromptSummary: "prompt.summary",
   PromptHarnessComposed: "prompt.harness.composed",
   ContinuitySnapshot: "continuity.snapshot",
-  ContinuityRulesSnapshot: "continuity.rules.snapshot",
   ContinuityRecallSettled: "continuity.recall.settled",
   ContinuityRecallQuery: "continuity.recall.query",
-  AgendaSnapshot: "agenda.snapshot",
-  WorldSnapshot: "world.snapshot",
   TodoListWritten: "todo.list.written",
   ExecutionCreated: "execution.created",
   ExecutionStepStarted: "execution.step.started",
@@ -60,6 +57,8 @@ export const EventKinds = {
   ExecutionCompleted: "execution.completed",
   ModelStarted: "model.started",
   ModelDelta: "model.delta",
+  ModelThinkingDelta: "model.thinking.delta",
+  ModelThinkingCompleted: "model.thinking.completed",
   ModelCompleted: "model.completed",
   ToolCallsPlanned: "tool.calls.planned",
   ToolCallStarted: "tool.call.started",
@@ -119,8 +118,6 @@ export const EventKinds = {
   ProviderModelsSnapshot: "provider.models.snapshot",
   ProviderModelsFailed: "provider.models.failed",
   ProfileSnapshot: "profile.snapshot",
-  PresetSnapshot: "preset.snapshot",
-  PresetFailed: "preset.failed",
   SystemToolSnapshot: "system_tool.snapshot",
   McpServerSnapshot: "mcp_server.snapshot",
   ChannelStatusSnapshot: "channel.status.snapshot",
@@ -159,11 +156,8 @@ export const EventTransportSpecs = {
   "prompt.summary": { layer: "progress", phase: "prompt" },
   "prompt.harness.composed": { layer: "progress", phase: "prompt" },
   "continuity.snapshot": { layer: "snapshot", phase: "prompt" },
-  "continuity.rules.snapshot": { layer: "snapshot", phase: "prompt" },
   "continuity.recall.settled": { layer: "progress", phase: "prompt" },
   "continuity.recall.query": { layer: "progress", phase: "prompt" },
-  "agenda.snapshot": { layer: "snapshot", phase: "prompt" },
-  "world.snapshot": { layer: "snapshot", phase: "prompt" },
   "todo.list.written": { layer: "snapshot", phase: "tool" },
   "execution.created": { layer: "snapshot", phase: "run" },
   "execution.step.started": { layer: "progress", phase: "run" },
@@ -172,6 +166,8 @@ export const EventTransportSpecs = {
   "execution.completed": { layer: "terminal", phase: "run" },
   "model.started": { layer: "progress", phase: "model" },
   "model.delta": { layer: "progress", phase: "model" },
+  "model.thinking.delta": { layer: "progress", phase: "model" },
+  "model.thinking.completed": { layer: "snapshot", phase: "model" },
   "model.completed": { layer: "snapshot", phase: "model" },
   "tool.calls.planned": { layer: "progress", phase: "tool" },
   "tool.call.started": { layer: "progress", phase: "tool" },
@@ -231,8 +227,6 @@ export const EventTransportSpecs = {
   "provider.models.snapshot": { layer: "snapshot", phase: "config" },
   "provider.models.failed": { layer: "error", phase: "config" },
   "profile.snapshot": { layer: "snapshot", phase: "config" },
-  "preset.snapshot": { layer: "snapshot", phase: "config" },
-  "preset.failed": { layer: "error", phase: "config" },
   "system_tool.snapshot": { layer: "snapshot", phase: "config" },
   "mcp_server.snapshot": { layer: "snapshot", phase: "config" },
   "channel.status.snapshot": { layer: "snapshot", phase: "config" },
@@ -247,7 +241,6 @@ export { EventSpecs } from "./generatedEventSpecs";
 export const RunActivities = {
   PreparingContext: "preparing_context",
   InitializingRuntime: "initializing_runtime",
-  SynchronizingContext: "synchronizing_context",
   EvaluatingContext: "evaluating_context",
   CompactingContext: "compacting_context",
   RunningAgentTurn: "running_agent_turn",
@@ -277,9 +270,6 @@ export const RunActivitySpecs = {
   },
   initializing_runtime: {
     category: "runtime",
-  },
-  synchronizing_context: {
-    category: "context",
   },
   evaluating_context: {
     category: "context",
@@ -312,10 +302,12 @@ export const ConfigSecretContract = {
 export const WebSocketCloseCodes = {
   AuthenticationRequired: 4401,
   AccessForbidden: 4403,
+  WorkspaceNotFound: 4404,
 } as const;
 export type WebSocketCloseCode = (typeof WebSocketCloseCodes)[keyof typeof WebSocketCloseCodes];
 
 export const WebSocketCloseReasons = {
   AuthenticationRequired: "authentication_required",
   AccessForbidden: "access_forbidden",
+  WorkspaceNotFound: "workspace_not_found",
 } as const;

@@ -1,18 +1,16 @@
 import type {
   AgentActionPlannerConfig,
   AgentContinuityLearningConfig,
-  AgentContinuityLearningContextConfig,
-  AgentContinuityLearningGateConfig,
   AgentContinuityLearningRuntimeConfig,
   AgentContinuityLearningRecallConfig,
-  AgentToolLearningConfig,
+  AgentContinuityMemOSConfig,
+  AgentStateCardConfig,
   ResolvedAgentArtifactsConfig,
   ResolvedAgentConfigStoreConfig,
   ResolvedAgentFrontendConfig,
   ResolvedAgentLoopConfig,
   ResolvedAgentModelProviderEndpointConfig,
   ResolvedAgentPersistenceConfig,
-  ResolvedAgentPresetsConfig,
   ResolvedAgentPromptConfig,
   ResolvedAgentSandboxRuntimeConfig,
   ResolvedAgentServerConfig,
@@ -20,7 +18,6 @@ import type {
   ResolvedAgentToolSearchConfig,
   ResolvedAgentTodosConfig,
   ResolvedAgentUploadsConfig,
-  ResolvedAgentWorldConfig,
   ResolvedAgentInferenceBudgetConfig,
 } from "../Types/AgentConfigTypes.js";
 import type { AgentModelRuntimeDefaultsConfig } from "../Types/AgentModelConfigTypes.js";
@@ -41,9 +38,13 @@ export type AgentActionPlannerClientDefaultsConfig = Required<
 > &
   Pick<NonNullable<AgentActionPlannerConfig["Client"]>, "ModelProviderId">;
 
-export type AgentToolLearningDefaultsConfig = Required<Omit<AgentToolLearningConfig, "Client" | "Patterns">> & {
-  Client: AgentActionPlannerClientDefaultsConfig;
-  Patterns: Required<NonNullable<AgentToolLearningConfig["Patterns"]>>;
+export type AgentStateCardClientDefaultsConfig = Required<
+  Omit<NonNullable<AgentStateCardConfig["Client"]>, "ModelProviderId">
+> &
+  Pick<NonNullable<AgentStateCardConfig["Client"]>, "ModelProviderId">;
+
+export type AgentStateCardDefaultsConfig = Required<Omit<AgentStateCardConfig, "Client">> & {
+  Client: AgentStateCardClientDefaultsConfig;
 };
 
 export type AgentContinuityLearningClientDefaultsConfig = Required<
@@ -52,13 +53,11 @@ export type AgentContinuityLearningClientDefaultsConfig = Required<
   Pick<NonNullable<AgentContinuityLearningConfig["Client"]>, "ModelProviderId">;
 
 export type AgentContinuityLearningDefaultsConfig = Required<
-  Omit<AgentContinuityLearningConfig, "Client" | "Runtime" | "LearningGate" | "LearningContext" | "TemporalMemory">
+  Omit<AgentContinuityLearningConfig, "Client" | "Runtime" | "MemOS">
 > & {
   Client: AgentContinuityLearningClientDefaultsConfig;
   Runtime: AgentContinuityLearningRuntimeConfig;
-  LearningGate: AgentContinuityLearningGateConfig;
-  LearningContext: AgentContinuityLearningContextConfig;
-  TemporalMemory: Required<NonNullable<AgentContinuityLearningConfig["TemporalMemory"]>>;
+  MemOS: AgentContinuityMemOSConfig;
   Recall: AgentContinuityLearningRecallConfig;
 };
 
@@ -79,17 +78,15 @@ export interface ResolvedAgentDefaultsConfig {
   SandboxRuntime: ResolvedAgentSandboxRuntimeConfig;
   AgentLoop: ResolvedAgentLoopConfig;
   ToolSearch: ResolvedAgentToolSearchConfig;
-  ToolLearning: AgentToolLearningDefaultsConfig;
+  StateCard: AgentStateCardDefaultsConfig;
   Todos: ResolvedAgentTodosConfig;
   ContinuityLearning: AgentContinuityLearningDefaultsConfig;
-  Presets: ResolvedAgentPresetsConfig;
   ActionPlanner: AgentActionPlannerDefaultsConfig;
   Artifacts: ResolvedAgentArtifactsConfig;
   Uploads: ResolvedAgentUploadsConfig;
   Frontend: ResolvedAgentFrontendConfig;
   Server: ResolvedAgentServerConfig;
   Prompt: ResolvedAgentPromptConfig;
-  World: ResolvedAgentWorldConfig;
   Persistence: ResolvedAgentPersistenceConfig;
   ConfigStore: ResolvedAgentConfigStoreConfig;
 }

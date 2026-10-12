@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import { AgentEventKinds, type AgentDomainEvent } from "../../../Source/AgentSystem/Events/AgentEvent.js";
 import { AgentModelUsageLedger } from "../../../Source/AgentSystem/ModelEndpoints/AgentModelUsage.js";
 import { AgentPiRunCollector } from "../../../Source/AgentSystem/Pi/AgentPiRunCollector.js";
+import { AgentPiToolObservationProtocol } from "../../../Source/AgentSystem/Pi/AgentPiToolObservation.js";
 import { AgentPiTurnState } from "../../../Source/AgentSystem/Pi/AgentPiTurnState.js";
 import { AgentPiToolPlanCoordinator } from "../../../Source/AgentSystem/PiShared/AgentPiToolPlanCoordinator.js";
 import { AgentTurnTokenBudget } from "../../../Source/AgentSystem/Text/AgentTurnTokenBudget.js";
@@ -77,6 +78,38 @@ describe("Pi run collector tool lifecycle", () => {
       AgentEventKinds.ToolCallResultDetail,
     ]);
   });
+
+  test("projects the bounded Pi observation detail into the visible result event and trace", async () => {
+    const events: AgentDomainEvent[] = [];
+    const turnState = createTurnState();
+    const collector = createCollector(turnState, events);
+    const result = {
+      type: AgentPiToolObservationProtocol.type,
+      status: "success",
+      execution_status: "completed",
+      output_availability: "complete",
+      compression_method: "verbatim",
+      detail: {
+        result: { path: "README.md", content: "Senera project documentation" },
+        evidence: [],
+      },
+    };
+
+    await collector.collect(toolStarted());
+    await collector.collect(toolEnded(false, JSON.stringify(result)));
+
+    const detail = events.find((event) => event.kind === AgentEventKinds.ToolCallResultDetail);
+    expect(detail?.data).toMatchObject({
+      value: {
+        result: { path: "README.md", content: "Senera project documentation" },
+        evidence: [],
+      },
+    });
+    expect(JSON.stringify(detail?.data)).not.toContain(AgentPiToolObservationProtocol.type);
+    expect(collector.snapshot().traces[0]?.toolResult).toMatchObject({
+      result: { path: "README.md", content: "Senera project documentation" },
+    });
+  });
 });
 
 function createCollector(turnState: AgentPiTurnState, events: AgentDomainEvent[]): AgentPiRunCollector {
@@ -96,6 +129,8 @@ function createTurnState(): AgentPiTurnState {
     exposedToolNames: ["TestTool"],
   });
   const turnState = new AgentPiTurnState({
+    systemPrompt: "Test agent system context.",
+    userMessage: "Test lifecycle request.",
     approvalMode: "agent",
     requestId: "request-lifecycle",
     step: 1,
@@ -123,13 +158,13 @@ function toolStarted(): AgentSessionEvent {
   } as AgentSessionEvent;
 }
 
-function toolEnded(isError: boolean): AgentSessionEvent {
+function toolEnded(isError: boolean, text?: string): AgentSessionEvent {
   return {
     type: "tool_execution_end",
     toolCallId: "call-a",
     toolName: "TestTool",
     result: {
-      content: [{ type: "text", text: isError ? "Artifact finalization failed." : "ok" }],
+      content: [{ type: "text", text: text ?? (isError ? "Artifact finalization failed." : "ok") }],
     },
     isError,
   } as AgentSessionEvent;

@@ -1,12 +1,8 @@
 import type { AgentToolSearchRegistryReader } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchIndex.js";
-import type {
-  ResolvedAgentToolLearningConfig,
-  ResolvedAgentToolSearchConfig,
-} from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
+import type { ResolvedAgentToolSearchConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
 import type { ToolExecutionTarget, ToolLoadingMode } from "../../../Source/AgentSystem/Types/AgentToolContractTypes.js";
 import type { AgentInteractionSurface } from "../../../Source/AgentSystem/Interaction/AgentInteractionContext.js";
-import { createModelProvider } from "../Support/AgentTestFixtures.js";
 
 export function createRegistry(tools: RegisteredTool[]): AgentToolSearchRegistryReader & {
   getTool(name: string): RegisteredTool | undefined;
@@ -158,29 +154,5 @@ export function createToolSearchConfig(): ResolvedAgentToolSearchConfig {
       ScoreScale: 0.018,
       FeatureWeights: {},
     },
-  };
-}
-
-export function createToolLearningConfig(
-  overrides: Partial<ResolvedAgentToolLearningConfig> = {},
-): ResolvedAgentToolLearningConfig {
-  const client = {
-    ModelProviderId: undefined,
-    ModelProvider: createModelProvider(),
-    BaseUrl: "https://model.example/v1",
-    ApiKey: "test-key",
-    Model: "test-model",
-    Temperature: 0,
-    MaxTokens: -1,
-  };
-  return {
-    Enabled: false,
-    MaxRepairAttempts: 1,
-    Client: client,
-    Patterns: {
-      MinSupport: 1,
-      MaxPromptPatterns: 3,
-    },
-    ...overrides,
   };
 }

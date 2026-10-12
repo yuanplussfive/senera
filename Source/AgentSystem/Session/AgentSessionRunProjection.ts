@@ -5,6 +5,7 @@ import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
 import type { AgentSession } from "./AgentSession.js";
 import type { AgentSessionMessageQueueMode } from "./AgentSessionMessageQueueMode.js";
 import type { AgentConversationEntryMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
+import type { AgentExplicitActivationSet } from "../Activation/AgentActivationTypes.js";
 
 export function cloneAgentSessionState(session: AgentSession): AgentSession {
   return structuredClone(session);
@@ -33,6 +34,7 @@ export function projectSessionUserEntry(
       mode: AgentSessionMessageQueueMode;
     };
     metadata?: AgentConversationEntryMetadata;
+    activations?: AgentExplicitActivationSet;
   },
   timestamp: string,
 ): Extract<AgentConversationEntry, { kind: typeof AgentConversationEntryKinds.UserMessage }> {
@@ -40,7 +42,13 @@ export function projectSessionUserEntry(
     requestId,
     request.input,
     timestamp,
-    request.queue ? { ...request.metadata, queue: request.queue } : request.metadata,
+    request.queue || request.activations
+      ? {
+          ...request.metadata,
+          ...(request.queue ? { queue: request.queue } : {}),
+          ...(request.activations ? { activation: structuredClone(request.activations) } : {}),
+        }
+      : request.metadata,
     request.attachments,
   );
 }
@@ -52,7 +60,7 @@ export function stampSessionStepTraces(
 ): StepTrace[] {
   return traces.map((trace) => ({
     ...trace,
-    startedAt: trace.startedAt ?? startedAt,
+    startedAt: trace.startedAt ?? (trace.kind === "answer" ? endedAt : startedAt),
     endedAt: trace.endedAt ?? (trace.kind === "answer" ? endedAt : startedAt),
   }));
 }

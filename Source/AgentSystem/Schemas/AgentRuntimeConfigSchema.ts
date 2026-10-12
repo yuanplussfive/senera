@@ -6,7 +6,6 @@ const AgentPiCompactionSchema = z
     Enabled: z.boolean().optional(),
   })
   .strict();
-
 export const AgentLoopSchema = z
   .object({
     PiTurnLeaseTimeoutSeconds: z.number().positive().optional(),
@@ -83,6 +82,13 @@ export const ToolExecutionSchema = z
   })
   .strict();
 
+export const McpConnectionsSchema = z
+  .object({
+    IdleTtlSeconds: z.number().nonnegative().optional(),
+    SweepIntervalSeconds: z.number().positive().optional(),
+  })
+  .strict();
+
 export const SandboxRuntimeSchema = z
   .object({
     Enabled: z.boolean().optional(),
@@ -102,39 +108,19 @@ export const SandboxRuntimeSchema = z
   })
   .strict();
 
-export const PresetsSchema = z
-  .object({
-    Enabled: z.boolean().optional(),
-    RootDir: z.string().min(1).optional(),
-    StateFile: z.string().min(1).optional(),
-    PromptBudget: z
-      .object({
-        MaxExamples: z.number().int().positive().optional(),
-        MaxLoreEntries: z.number().int().positive().optional(),
-        MaxSupplementalCharacters: z.number().int().positive().optional(),
-      })
-      .strict()
-      .optional(),
-  })
-  .strict();
-
 export const ArtifactsSchema = z
   .object({
     RootDir: z.string().min(1).optional(),
-    InlineResultMaxTokens: z.number().int().positive().max(32_768).optional(),
-    InlineResultMaxBytes: z
-      .number()
-      .int()
-      .positive()
-      .min(1024)
-      .max(16 * 1024 * 1024)
-      .optional(),
+    ToolObservationMaxTokens: z.number().int().positive().max(32_768).optional(),
     RawJsonMaxBytes: z.number().int().min(1024).optional(),
     TextFileMaxBytes: z.number().int().min(1024).optional(),
+    WorkspaceObserverMemoryMaxBytes: z.number().int().min(1024).optional(),
+    WorkspaceObserverSettleMs: z.number().int().min(0).optional(),
+    WorkspaceObserverIdleTtlMs: z.number().int().min(0).optional(),
+    WorkspaceObserverIgnoredPaths: z.array(z.string().min(1)).optional(),
+    WorkspacePatchContextLines: z.number().int().min(0).optional(),
     MemoryReadMaxArtifacts: z.number().int().positive().optional(),
-    MemoryReadMaxRefs: z.number().int().positive().optional(),
     MemoryReadMaxConcurrency: z.number().int().positive().optional(),
-    MemoryReadStructuredJsonMaxTokens: z.number().int().positive().optional(),
     OutputCaptureMaxBytes: z.number().int().min(1024).optional(),
     MaxStoredBytes: z.number().int().positive().optional(),
     MaxArtifacts: z.number().int().positive().optional(),
@@ -214,6 +200,15 @@ export const ServerSchema = z
 export const PersistenceSchema = z
   .object({
     Kind: z.union([z.literal("sqlite"), z.literal("memory")]).optional(),
+    EventWriter: z
+      .object({
+        RestartDelayMs: z.number().int().min(0).optional(),
+        CloseTimeoutMs: z.number().int().positive().optional(),
+        DrainBatchSize: z.number().int().positive().optional(),
+        CommittedRetentionMs: z.number().int().positive().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -223,69 +218,15 @@ export const PromptSchema = z
     UserMessageEnvelope: z.boolean().optional(),
     /** Default request-local timezone; renders as <time> inside the envelope. */
     TimeZone: z.string().min(1).optional(),
-    /** Rewrite the model-authored preface independently from roleplay presets. */
+    /** The only user-authored persona content included in the model prompt. */
+    CorePersona: z.string().optional(),
+    /** The only user-authored voice/style guidance included in the model prompt. */
+    LanguageStyle: z.string().optional(),
+    /** Rewrite the model-authored preface independently from persona text. */
     PrefaceRewrite: z.boolean().optional(),
-    /** Rewrite the settled final answer independently from roleplay presets (polish tier when no card). */
+    /** Rewrite the settled final answer independently from persona text (polish tier when no card). */
     FinalResponseRewrite: z.boolean().optional(),
-    /** Re-anchor the persona before the reference stage when a preset is active. */
-    RoleCheck: z.boolean().optional(),
     /** Wrap BAML tool observations with attribution="tool" at the projection exit. */
     BamlToolAttribution: z.boolean().optional(),
-  })
-  .strict();
-
-const AgentWorldLocalTimeSchema = z.string().regex(/^\d{2}:\d{2}$/u, "World phase time must use HH:mm.");
-
-export const WorldSchema = z
-  .object({
-    Name: z.string().trim().min(1).optional(),
-    TimeZone: z.string().trim().min(1).optional(),
-    DayPhases: z
-      .array(
-        z
-          .object({
-            Id: z.string().trim().min(1),
-            Label: z.string().trim().min(1),
-            StartsAt: AgentWorldLocalTimeSchema,
-            EndsAt: AgentWorldLocalTimeSchema,
-          })
-          .strict(),
-      )
-      .min(1)
-      .optional(),
-    RecordLimit: z.number().int().positive().optional(),
-    TimelineLimit: z.number().int().positive().optional(),
-    HabitCatchUpLimit: z.number().int().positive().optional(),
-    GoalMicroLoop: z
-      .object({
-        Enabled: z.boolean().optional(),
-        MaxCandidates: z.number().int().positive().optional(),
-        ReviewDelaySeconds: z.number().finite().min(1).optional(),
-        AllowedToolNames: z.array(z.string().trim().min(1)).optional(),
-      })
-      .strict()
-      .optional(),
-    ResidentIdle: z
-      .object({
-        Enabled: z.boolean().optional(),
-        MinIntervalSeconds: z.number().finite().min(1).optional(),
-        MaxIntervalSeconds: z.number().finite().min(1).optional(),
-        BackoffMultiplier: z.number().finite().min(1).optional(),
-        MaxPending: z.number().int().positive().optional(),
-      })
-      .strict()
-      .optional(),
-    ActionBudget: z
-      .object({
-        MaxActionsPerWake: z.number().int().positive().optional(),
-        MaxDecisionCandidatesPerWake: z.number().int().positive().optional(),
-        RetryDelaySeconds: z.number().finite().min(1).optional(),
-        LeaseDurationSeconds: z.number().finite().min(1).optional(),
-        FairShare: z.boolean().optional(),
-        SourceOrder: z.array(z.string().trim().min(1)).optional(),
-        SourceCaps: z.record(z.string().trim().min(1), z.number().int().positive()).optional(),
-      })
-      .strict()
-      .optional(),
   })
   .strict();

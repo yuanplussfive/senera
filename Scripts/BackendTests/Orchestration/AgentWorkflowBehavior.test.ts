@@ -263,9 +263,9 @@ class ControlledDelegation implements AgentWorkflowDelegationPort {
     return this.repository.listForOwner(ownerRunId);
   }
 
-  markResultConsumed(id: string, parentSessionId: string): AgentChildRunRecord | undefined {
+  markParentResultDelivered(id: string, parentSessionId: string): AgentChildRunRecord | undefined {
     const child = this.get(id, parentSessionId);
-    return child ? this.repository.markResultConsumed(id) : undefined;
+    return child ? this.repository.markParentResultDelivered(id) : undefined;
   }
 
   wait(id: string, parentSessionId: string): Promise<AgentChildRunRecord | undefined> {

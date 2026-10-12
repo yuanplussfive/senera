@@ -1,16 +1,8 @@
-import { useMemo, useState, type ElementType } from "react";
-import ArrowsRightLeftIcon from "@heroicons/react/24/outline/ArrowsRightLeftIcon";
-import ChatBubbleBottomCenterTextIcon from "@heroicons/react/24/outline/ChatBubbleBottomCenterTextIcon";
-import CircleStackIcon from "@heroicons/react/24/outline/CircleStackIcon";
-import CpuChipIcon from "@heroicons/react/24/outline/CpuChipIcon";
-import EyeIcon from "@heroicons/react/24/outline/EyeIcon";
-import QueueListIcon from "@heroicons/react/24/outline/QueueListIcon";
-import WrenchScrewdriverIcon from "@heroicons/react/24/outline/WrenchScrewdriverIcon";
-import { ArrowDown, ArrowUp, Check, Plus, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { ConfigFormFieldData } from "../../../api/eventTypes";
 import { MotionListItem } from "../../../shared/motion";
-import { IconButton, MenuSelect, Spinner, StateView, Switch } from "../../../shared/ui";
+import { AppIcon, type AppIconName, IconButton, MenuSelect, Spinner, StateView, Switch } from "../../../shared/ui";
 import { findTopField } from "../../chat/modelConfigData";
 import {
   inferModelProviderEndpointIcon,
@@ -255,7 +247,7 @@ function ModelAssignmentRow({
             operation?.status === "pending" ? (
               <Spinner size="sm" className="text-ink-400" />
             ) : operation?.status === "success" ? (
-              <Check className="h-3.5 w-3.5 text-moss-600" />
+              <AppIcon icon="checkmark" size={14} className="text-moss-600" />
             ) : undefined
           }
           renderValue={(value, option) => (
@@ -371,7 +363,7 @@ function ModelPoolAssignmentRow({
                   disabled={index === 0}
                   onClick={() => moveModel(index, -1)}
                 >
-                  <ArrowUp className="h-3.5 w-3.5" />
+                  <AppIcon icon="arrow-up" size={14} />
                 </IconButton>
                 <IconButton
                   label={frontendMessage("settings.model.poolMoveDown", { model: modelId })}
@@ -381,7 +373,7 @@ function ModelPoolAssignmentRow({
                   disabled={index === selection.modelIds.length - 1}
                   onClick={() => moveModel(index, 1)}
                 >
-                  <ArrowDown className="h-3.5 w-3.5" />
+                  <AppIcon icon="arrow-down" size={14} />
                 </IconButton>
                 <IconButton
                   label={frontendMessage("settings.model.poolRemove", { model: modelId })}
@@ -391,7 +383,7 @@ function ModelPoolAssignmentRow({
                   disabled={cannotRemove}
                   onClick={() => removeModel(index)}
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
+                  <AppIcon icon="trash" size={14} />
                 </IconButton>
               </div>
             </div>
@@ -410,7 +402,7 @@ function ModelPoolAssignmentRow({
             }))}
             disabled={availableCandidates.length === 0}
             emptyState={frontendMessage("settings.model.poolNoAdditionalCandidates")}
-            leading={<Plus className="h-3.5 w-3.5" />}
+            leading={<AppIcon icon="plus" size={14} />}
             triggerClassName="border-0 bg-transparent px-0 hover:border-transparent focus-visible:border-transparent focus-visible:ring-0"
             renderOption={(option) => (
               <AssignmentOption
@@ -511,20 +503,20 @@ function readCandidateIcon(candidate?: RuntimeModelAssignmentCandidate): string 
   );
 }
 
-const assignmentRoleIcons: Readonly<Record<string, ElementType<{ className?: string }>>> = {
-  assistant: CpuChipIcon,
-  planner: QueueListIcon,
-  "planner-base": QueueListIcon,
-  "action-planner": ArrowsRightLeftIcon,
-  "final-answer": ChatBubbleBottomCenterTextIcon,
-  "tool-learning": WrenchScrewdriverIcon,
-  "continuity-learning": CircleStackIcon,
+const assignmentRoleIcons: Readonly<Record<string, AppIconName>> = {
+  assistant: "cpu-chip",
+  planner: "list-tree",
+  "planner-base": "list-tree",
+  "action-planner": "delegation",
+  "final-answer": "answer",
+  "state-card": "state-card",
+  "continuity-learning": "stack",
 };
 
 function AssignmentRoleIcon({ field }: { field: RuntimeModelAssignmentField }): JSX.Element {
   const selection = field.modelSelection;
-  const Icon =
+  const icon =
     assignmentRoleIcons[selection.id] ??
-    (isRuntimeModelPoolAssignment(field) ? QueueListIcon : selection.capability === "Vision" ? EyeIcon : CpuChipIcon);
-  return <Icon className="h-3.5 w-3.5" data-model-assignment-icon={selection.id} />;
+    (isRuntimeModelPoolAssignment(field) ? "list-tree" : selection.capability === "Vision" ? "eye" : "cpu-chip");
+  return <AppIcon icon={icon} className="h-3.5 w-3.5" data-model-assignment-icon={selection.id} />;
 }

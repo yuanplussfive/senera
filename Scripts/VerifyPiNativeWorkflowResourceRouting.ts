@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import type { AgentRootCommand } from "../Source/AgentSystem/AgentRootCommand.js";
 import { AgentTurnPreparationService } from "../Source/AgentSystem/Loop/AgentTurnPreparationService.js";
 import type { AgentActivatedSkill } from "../Source/AgentSystem/Skills/AgentSkillActivation.js";
+import { buildAgentStateCard } from "../Source/AgentSystem/StateCard/AgentStateCardBuilder.js";
 import { createAgentToolAccessGrant } from "../Source/AgentSystem/ToolRuntime/AgentToolAccessGrant.js";
 
 const WorkspaceReadToolName = "WorkspaceRead";
@@ -15,6 +16,8 @@ const preparation = new AgentTurnPreparationService({
       recommendedSkillToolRouting: (skills) => ({
         directToolNames: skills.flatMap((skill) => skill.recommendedTools),
         dynamicToolNames: [],
+        nativeToolNames: [],
+        requiredToolNames: [],
       }),
       buildRootCommand: ({ decision, loadedToolNames }) =>
         rootCommandFixture(loadedToolNames, decision.action === "use_tools" ? decision.useTools.preferredTools : []),
@@ -29,6 +32,7 @@ const preparation = new AgentTurnPreparationService({
           ]),
         ];
       },
+      resolveStateCard: async ({ currentRequest }) => buildAgentStateCard({ currentRequest, history: [] }),
     },
   },
 });
@@ -63,6 +67,7 @@ function workflowSkillFixture(): AgentActivatedSkill {
     recommendedTools: [WorkspaceReadToolName],
     evidenceRequirements: [],
     descriptionFile: "System/Skills/execution-workflow/SKILL.md",
+    content: "# Workflow Skill",
     matchedTerms: ["workflow"],
     matchedFields: [{ term: "workflow", fields: ["summary"] }],
     score: 1,

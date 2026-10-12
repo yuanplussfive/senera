@@ -105,6 +105,23 @@ describe("budgeted JSON projection", () => {
 });
 
 describe("turn token budget", () => {
+  test("uses the shared effective input capacity when one is supplied", () => {
+    const budget = new AgentTurnTokenBudget({
+      model: "gpt-4o",
+      contextWindowTokens: 10_000,
+      inputCapacityTokens: 7_600,
+      windowHeadroomTokens: 2_400,
+    });
+
+    expect(budget.snapshot()).toMatchObject({
+      contextWindowTokens: 10_000,
+      inputCapacityTokens: 7_600,
+      windowHeadroomTokens: 2_400,
+      outputReserveTokens: 2_400,
+    });
+    expect(budget.availableTokens()).toBe(7_600);
+  });
+
   test("derives a stable staging budget from the latest provider payload", () => {
     const budget = new AgentTurnTokenBudget({
       model: "gpt-4o",
@@ -137,11 +154,27 @@ describe("turn token budget", () => {
       budget.claimToolObservation("call-c", 10_000),
     ];
 
-    expect(reservations.reduce((total, reservation) => total + reservation.limit, 0)).toBe(available);
-    expect(Math.max(...reservations.map((reservation) => reservation.limit))).toBeLessThanOrEqual(
-      Math.min(...reservations.map((reservation) => reservation.limit)) + 1,
+    expect(reservations.reduce((total, reservation) => total + reservation.observationBudgetTokens, 0)).toBe(available);
+    expect(Math.max(...reservations.map((reservation) => reservation.observationBudgetTokens))).toBeLessThanOrEqual(
+      Math.min(...reservations.map((reservation) => reservation.observationBudgetTokens)) + 1,
     );
     reservations.forEach((reservation) => reservation.release());
+  });
+
+  test("retains the per-call allocation separately from its configured observation limit", () => {
+    const budget = new AgentTurnTokenBudget({
+      model: "gpt-4o",
+      contextWindowTokens: 4_000,
+      outputReserveTokens: 1_000,
+    });
+    budget.validateModelInput({ messages: [] });
+    budget.reserveToolBatch({ callIds: ["call-a"] });
+
+    const reservation = budget.claimToolObservation("call-a", 100);
+
+    expect(reservation.batchAllocationTokens).toBeGreaterThan(reservation.observationBudgetTokens);
+    expect(reservation.observationBudgetTokens).toBe(100);
+    reservation.release();
   });
 
   test("deducts the assistant turn and Tool-result envelopes before allocating observation content", () => {
@@ -167,7 +200,9 @@ describe("turn token budget", () => {
     });
 
     const reservations = [budget.claimToolObservation("call-a", 10_000), budget.claimToolObservation("call-b", 10_000)];
-    expect(reservations.reduce((total, reservation) => total + reservation.limit, 0)).toBeLessThan(available);
+    expect(reservations.reduce((total, reservation) => total + reservation.observationBudgetTokens, 0)).toBeLessThan(
+      available,
+    );
     reservations.forEach((reservation) => reservation.release());
   });
 
@@ -210,7 +245,7 @@ describe("turn token budget", () => {
     });
 
     expect(() => budget.validateModelInput({ content: "large ".repeat(1_000) })).toThrow(
-      "exceeds the model's maximum context length",
+      "over the available input capacity",
     );
   });
 
@@ -234,53 +269,75 @@ describe("turn token budget", () => {
     expect(budget.snapshot().occupiedTokens).toBeLessThan(2_000);
   });
 
-  test("records over-capacity provider usage without invalidating a completed response", () => {
+  test("records Pi context usage including generated output without invalidating a completed response", () => {
     const budget = new AgentTurnTokenBudget({
       model: "gpt-4o",
       contextWindowTokens: 128,
       outputReserveTokens: 64,
     });
 
-    expect(() => budget.recordProviderInputTokens(96)).not.toThrow();
+    expect(() =>
+      budget.recordProviderUsage(
+        {
+          input: 96,
+          output: 24,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 120,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        {
+          role: "assistant",
+          api: "openai-responses",
+          provider: "test-provider",
+          model: "test-model",
+          content: [{ type: "text", text: "tool call" }],
+          usage: {
+            input: 96,
+            output: 24,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 120,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+          },
+          stopReason: "toolUse",
+          timestamp: 1,
+        },
+      ),
+    ).not.toThrow();
+    expect(budget.snapshot().occupiedTokens).toBe(120);
     expect(budget.availableTokens()).toBe(0);
   });
 
-  test("projects only the completed turn and rebases after compaction", () => {
+  test("partitions a large-context batch from Pi usage while preserving Pi headroom", () => {
     const budget = new AgentTurnTokenBudget({
-      model: "gpt-4o",
-      contextWindowTokens: 4_000,
-      outputReserveTokens: 1_000,
+      model: "gpt-5.6-luna",
+      contextWindowTokens: 300_000,
+      windowHeadroomTokens: 16_384,
     });
-    budget.recordProviderInputTokens(2_400);
-    const before = budget.snapshot();
-    const projected = budget.projectNextProviderInput({
-      assistant: { role: "assistant", content: "working" },
-      toolResults: [{ role: "toolResult", content: "evidence ".repeat(100) }],
+    budget.recordProviderContextTokens(170_000);
+    budget.reserveToolBatch({
+      callIds: ["call-a", "call-b", "call-c"],
+      fixedPayload: {
+        toolResults: [
+          { role: "toolResult", toolCallId: "call-a", toolName: "ReadA", content: "" },
+          { role: "toolResult", toolCallId: "call-b", toolName: "ReadB", content: "" },
+          { role: "toolResult", toolCallId: "call-c", toolName: "ReadC", content: "" },
+        ],
+      },
     });
 
-    expect(projected.previousTokenCount).toBe(2_400);
-    expect(projected.appendedTokenCount).toBeGreaterThan(0);
-    expect(projected.tokenCount).toBe(2_400 + projected.appendedTokenCount);
-    expect(budget.snapshot()).toEqual(before);
+    const reservations = [
+      budget.claimToolObservation("call-a", 16_384),
+      budget.claimToolObservation("call-b", 16_384),
+      budget.claimToolObservation("call-c", 16_384),
+    ];
 
-    const rebased = budget.rebaseModelInput({ messages: [{ role: "user", content: "compacted" }] });
-    expect(rebased.tokenCount).toBeLessThan(projected.tokenCount);
-    expect(budget.snapshot().occupiedTokens).toBe(rebased.tokenCount);
-    expect(budget.availableTokens()).toBeGreaterThan(before.availableTokens);
-  });
-
-  test("requires completed observation reservations before an incremental projection", () => {
-    const budget = new AgentTurnTokenBudget({
-      model: "gpt-4o",
-      contextWindowTokens: 2_000,
-      outputReserveTokens: 200,
-    });
-    budget.validateModelInput({ messages: [] });
-    budget.reserveToolBatch({ callIds: ["call-pending"] });
-    const reservation = budget.claimToolObservation("call-pending", 100);
-
-    expect(() => budget.projectNextProviderInput({ messages: [] })).toThrow("call-pending");
-    reservation.commit({ ok: true });
-    expect(() => budget.projectNextProviderInput({ messages: [] })).not.toThrow();
+    expect(budget.snapshot().inputCapacityTokens).toBe(300_000 - 16_384);
+    expect(reservations.every((reservation) => reservation.observationBudgetTokens > 0)).toBe(true);
+    expect(reservations.reduce((sum, reservation) => sum + reservation.observationBudgetTokens, 0)).toBeLessThanOrEqual(
+      130_000,
+    );
+    reservations.forEach((reservation) => reservation.release());
   });
 });

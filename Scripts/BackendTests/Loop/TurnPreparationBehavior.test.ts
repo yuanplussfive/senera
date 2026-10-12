@@ -7,6 +7,7 @@ import {
   withAgentTurnPreparationBoundary,
 } from "../../../Source/AgentSystem/Loop/AgentTurnPreparationSnapshot.js";
 import { AgentTurnPreparationService } from "../../../Source/AgentSystem/Loop/AgentTurnPreparationService.js";
+import { buildAgentStateCard } from "../../../Source/AgentSystem/StateCard/AgentStateCardBuilder.js";
 import { toolAccessGrant } from "../Support/AgentTestFixtures.js";
 
 describe("Turn preparation behavior", () => {
@@ -40,12 +41,14 @@ describe("Turn preparation behavior", () => {
     const buildRootCommand = vi.fn(({ loadedToolNames }) => rootCommand(loadedToolNames));
     const service = new AgentTurnPreparationService({
       services: {
-        retrieval: { resolvePlannedLoadedTools },
+        retrieval: { resolvePlannedLoadedTools, resolveStateCard },
         promptContext: {
           activateSkills: async () => [],
           recommendedSkillToolRouting: () => ({
             directToolNames: ["WorkspaceInspect"],
             dynamicToolNames: ["WorkspaceListFiles"],
+            nativeToolNames: [],
+            requiredToolNames: [],
           }),
           buildRootCommand,
         },
@@ -63,6 +66,7 @@ describe("Turn preparation behavior", () => {
       currentLoadedTools: ["ToolSearch", "WorkspaceInspect"],
       currentSetPolicy: "retain",
       preferredTools: ["WorkspaceListFiles"],
+      requiredToolNames: [],
       discover: false,
       queries: [],
       needs: [],
@@ -80,6 +84,84 @@ describe("Turn preparation behavior", () => {
       allowedToolNames: undefined,
     });
     expect(prepared.toolAccessGrant.exposedToolNames).toEqual(prepared.loadedToolNames);
+  });
+
+  test("loads exact tools from an explicit activation without semantic discovery", async () => {
+    const resolvePlannedLoadedTools = vi.fn(
+      async (options: { currentLoadedTools?: readonly string[]; requiredToolNames?: readonly string[] }) => [
+        ...(options.currentLoadedTools ?? []),
+        ...(options.requiredToolNames ?? []),
+      ],
+    );
+    const buildRootCommand = vi.fn(({ loadedToolNames }) => rootCommand(loadedToolNames));
+    const service = new AgentTurnPreparationService({
+      services: {
+        retrieval: { resolvePlannedLoadedTools, resolveStateCard },
+        promptContext: {
+          activateSkills: async () => [],
+          recommendedSkillToolRouting: () => ({
+            directToolNames: [],
+            dynamicToolNames: ["PluginDynamicTool"],
+            nativeToolNames: ["PluginDynamicTool"],
+            requiredToolNames: ["PluginDynamicTool"],
+          }),
+          buildRootCommand,
+        },
+      },
+    });
+
+    const prepared = await service.prepare({
+      requestId: "request-explicit-plugin",
+      userInput: "Use the selected plugin",
+      loadedToolNames: ["ToolSearch"],
+      explicitActivations: [{ kind: "plugin", id: "visual-tools", revision: "plugin-r1" }],
+    });
+
+    expect(resolvePlannedLoadedTools).toHaveBeenCalledWith({
+      input: "Use the selected plugin",
+      currentLoadedTools: ["ToolSearch"],
+      currentSetPolicy: "retain",
+      preferredTools: ["PluginDynamicTool"],
+      requiredToolNames: ["PluginDynamicTool"],
+      discover: false,
+      queries: [],
+      needs: [],
+    });
+    expect(prepared.loadedToolNames).toEqual(["ToolSearch", "PluginDynamicTool"]);
+    expect(prepared.nativeToolNames).toEqual(["PluginDynamicTool"]);
+    expect(buildRootCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ loadedToolNames: ["ToolSearch", "PluginDynamicTool"] }),
+    );
+  });
+
+  test("fails explicitly when an activated tool cannot be loaded", async () => {
+    const resolvePlannedLoadedTools = vi.fn(async (options: { currentLoadedTools?: readonly string[] }) => [
+      ...(options.currentLoadedTools ?? []),
+    ]);
+    const service = new AgentTurnPreparationService({
+      services: {
+        retrieval: { resolvePlannedLoadedTools, resolveStateCard },
+        promptContext: {
+          activateSkills: async () => [],
+          recommendedSkillToolRouting: () => ({
+            directToolNames: [],
+            dynamicToolNames: [],
+            nativeToolNames: [],
+            requiredToolNames: ["PluginDynamicTool"],
+          }),
+          buildRootCommand: vi.fn(({ loadedToolNames }) => rootCommand(loadedToolNames)),
+        },
+      },
+    });
+
+    await expect(
+      service.prepare({
+        requestId: "request-missing-explicit-plugin",
+        userInput: "Use the selected plugin",
+        loadedToolNames: ["ToolSearch"],
+        explicitActivations: [{ kind: "plugin", id: "visual-tools", revision: "plugin-r1" }],
+      }),
+    ).rejects.toThrow("Explicit activation requires unavailable tool: PluginDynamicTool.");
   });
 
   test("promotes a matching confirmed capability and skips duplicate discovery", async () => {
@@ -100,10 +182,15 @@ describe("Turn preparation behavior", () => {
     const buildRootCommand = vi.fn(({ loadedToolNames }) => rootCommand(loadedToolNames));
     const service = new AgentTurnPreparationService({
       services: {
-        retrieval: { resolvePlannedLoadedTools, reusableCapabilities },
+        retrieval: { resolvePlannedLoadedTools, resolveStateCard, reusableCapabilities },
         promptContext: {
           activateSkills: async () => [],
-          recommendedSkillToolRouting: () => ({ directToolNames: [], dynamicToolNames: [] }),
+          recommendedSkillToolRouting: () => ({
+            directToolNames: [],
+            dynamicToolNames: [],
+            nativeToolNames: [],
+            requiredToolNames: [],
+          }),
           buildRootCommand,
         },
       },
@@ -127,6 +214,7 @@ describe("Turn preparation behavior", () => {
       currentLoadedTools: ["ToolSearch", "WorkspaceListFiles"],
       currentSetPolicy: "retain",
       preferredTools: [],
+      requiredToolNames: [],
       discover: false,
       queries: [],
       needs: [],
@@ -139,12 +227,14 @@ describe("Turn preparation behavior", () => {
     const buildRootCommand = vi.fn(({ loadedToolNames }) => rootCommand(loadedToolNames));
     const service = new AgentTurnPreparationService({
       services: {
-        retrieval: { resolvePlannedLoadedTools },
+        retrieval: { resolvePlannedLoadedTools, resolveStateCard },
         promptContext: {
           activateSkills: async () => [],
           recommendedSkillToolRouting: () => ({
             directToolNames: ["WorkspaceRead", "SkillManage"],
             dynamicToolNames: ["DocumentExtract"],
+            nativeToolNames: [],
+            requiredToolNames: [],
           }),
           buildRootCommand,
         },
@@ -213,6 +303,10 @@ describe("Turn preparation behavior", () => {
     expect(Object.isFrozen(bounded.toolAccessGrant.exposedToolNames)).toBe(true);
   });
 });
+
+async function resolveStateCard({ currentRequest }: { currentRequest: string }) {
+  return buildAgentStateCard({ currentRequest, history: [] });
+}
 
 function preparation(allowedToolNames?: readonly string[]) {
   const command = rootCommand(["WorkspaceListFiles"]);

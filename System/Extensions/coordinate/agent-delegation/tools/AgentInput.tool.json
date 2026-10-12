@@ -5,7 +5,7 @@
     "category": "agent-input",
     "icon": "users",
     "activity": {
-      "action": { "zh-CN": "发送给子代理", "en-US": "Message subagent" },
+      "action": { "zh-CN": "发送", "en-US": "Message" },
       "argumentPath": "/message",
       "detailPaths": ["/target"]
     }
@@ -32,7 +32,6 @@
     "required": ["accepted", "run"],
     "additionalProperties": false
   },
-  "observationProjection": "observations/AgentLifecycle.projection.json",
   "permissions": ["orchestration:manage"],
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
   "runtime": {

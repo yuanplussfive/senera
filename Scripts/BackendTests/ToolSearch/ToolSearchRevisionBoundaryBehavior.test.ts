@@ -1,14 +1,9 @@
 import { describe, expect, test, vi } from "vitest";
 import { AgentToolSearchRuntime } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchRuntime.js";
-import { InMemoryToolSearchMemoryStore } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchMemoryStore.js";
+import { VerificationScenarioSource } from "../../VerificationScenarioSource.js";
 import type { AgentExtensionRegistry } from "../../../Source/AgentSystem/Extensions/AgentExtensionRegistry.js";
 import { createModelProvider } from "../Support/AgentTestFixtures.js";
-import {
-  createRegistry,
-  createTool,
-  createToolLearningConfig,
-  createToolSearchConfig,
-} from "./ToolSearchTestFixtures.js";
+import { createRegistry, createTool, createToolSearchConfig } from "./ToolSearchTestFixtures.js";
 
 describe("ToolSearch revision boundaries", () => {
   test("keeps lexical discovery usable and reports an enabled semantic engine failure", async () => {
@@ -28,11 +23,10 @@ describe("ToolSearch revision boundaries", () => {
         }),
       ]) as unknown as AgentExtensionRegistry,
       config,
-      createToolLearningConfig(),
       "E:/workspace",
       createModelProvider(),
       {
-        memoryStore: new InMemoryToolSearchMemoryStore(),
+        scenarioSource: new VerificationScenarioSource(),
         embedding: { model: "embedding-test", client: { embed } },
         availableExecutionTargets: () => ["Local"],
       },
@@ -69,11 +63,10 @@ describe("ToolSearch revision boundaries", () => {
         }),
       ]) as unknown as AgentExtensionRegistry,
       config,
-      createToolLearningConfig(),
       "E:/workspace",
       createModelProvider(),
       {
-        memoryStore: new InMemoryToolSearchMemoryStore(),
+        scenarioSource: new VerificationScenarioSource(),
         embedding: { model: "embedding-test", client: { embed } },
         availableExecutionTargets: () => ["Local"],
       },
@@ -129,11 +122,10 @@ describe("ToolSearch revision boundaries", () => {
     const runtime = new AgentToolSearchRuntime(
       createRegistry(tools) as unknown as AgentExtensionRegistry,
       createToolSearchConfig(),
-      createToolLearningConfig(),
       "E:/workspace",
       createModelProvider(),
       {
-        memoryStore: new InMemoryToolSearchMemoryStore(),
+        scenarioSource: new VerificationScenarioSource(),
         embedding: { model: "embedding-test", client: { embed } },
         availableExecutionTargets: () => ["Local"],
       },

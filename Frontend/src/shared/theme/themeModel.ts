@@ -80,14 +80,18 @@ export const appearanceFontFamilies = ["brand", "fresh", "system"] as const sati
 export const fontScales = ["compact", "standard", "comfortable", "large"] as const satisfies readonly FontScale[];
 
 const emojiFontFamilyStack = '"Segoe UI Emoji", "Noto Color Emoji", emoji';
+const cjkFontFamilyStack = '"HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC"';
+const harmonySansFontFamilyStack = `${cjkFontFamilyStack}, "Segoe UI Variable", "Segoe UI", ${emojiFontFamilyStack}, ui-sans-serif, system-ui, sans-serif`;
 
 export const appearanceFontFamilyStacks: Record<AppearanceFontFamily, string> = {
-  brand: `"Geist", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", "Segoe UI Variable", "Segoe UI", ${emojiFontFamilyStack}, ui-sans-serif, system-ui, sans-serif`,
-  fresh: `"Nunito Sans Variable", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", "Segoe UI Variable", "Segoe UI", ${emojiFontFamilyStack}, ui-sans-serif, system-ui, sans-serif`,
+  brand: harmonySansFontFamilyStack,
+  fresh: `"Nunito Sans Variable", ${harmonySansFontFamilyStack}`,
   system: `-apple-system, "Segoe UI Variable", "Segoe UI", ${emojiFontFamilyStack}, "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", ui-sans-serif, system-ui, sans-serif`,
 };
 
-const themeMonoFontFamily = `"JetBrains Mono", "Cascadia Mono", ${emojiFontFamilyStack}, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+// Latin runs stay monospaced; CJK has no monospace face, so it falls through to
+// the same HarmonyOS stack the UI text uses instead of the browser default.
+const themeMonoFontFamily = `"JetBrains Mono", "Cascadia Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, ${emojiFontFamilyStack}, ${cjkFontFamilyStack}, monospace`;
 
 export const fontScaleValues: Record<FontScale, number> = {
   compact: 0.96,
@@ -144,7 +148,6 @@ const semanticColorRoleTokens: Record<ResolvedTheme, Record<string, string>> = {
     "--theme-hover-wash": "var(--surface-hover)",
     "--theme-selection-bg": "rgb(var(--color-accent-500) / 0.18)",
     "--theme-selection-fg": "var(--content-primary)",
-    "--theme-complete-highlight": "rgb(var(--color-accent-500) / 0.08)",
   },
   dark: {
     ...semanticColorAliases,
@@ -159,7 +162,6 @@ const semanticColorRoleTokens: Record<ResolvedTheme, Record<string, string>> = {
     "--theme-hover-wash": "var(--surface-hover)",
     "--theme-selection-bg": "rgb(var(--color-accent-500) / 0.26)",
     "--theme-selection-fg": "var(--content-strong)",
-    "--theme-complete-highlight": "rgb(var(--color-accent-500) / 0.13)",
   },
 };
 

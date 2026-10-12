@@ -1,14 +1,20 @@
-import { AgentWorkspaceChangeCapture } from "../Artifacts/AgentWorkspaceChangeCapture.js";
+import { AgentWorkspaceChangeCapture, mergeAgentWorkspaceCaptures } from "../Artifacts/AgentWorkspaceChangeCapture.js";
 import { redactArtifactSecrets } from "../Artifacts/AgentArtifactRedaction.js";
+import {
+  assertAgentToolSourceViewReferences,
+  projectAgentToolSourceArtifacts,
+} from "../Artifacts/AgentToolSourceView.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { createToolCallId } from "../Core/AgentIds.js";
-import { clampField } from "../Core/AgentStepTrace.js";
+import { DefaultAgentToolArgumentProjection, projectAgentToolArguments } from "../Core/AgentToolArgumentProjection.js";
+import { collectAgentToolPresentationArgumentPointers } from "../SystemTools/AgentSystemToolPresentation.js";
 import { readAgentUnknownRecord as readRecord } from "../Core/AgentUnknownValue.js";
 import { emitAgentEvent } from "../Events/AgentEvent.js";
 import { SystemAgentLifecycleClock, type AgentLifecycleClock } from "../Events/AgentLifecycleClock.js";
 import { AgentLoopEventFactory } from "../Loop/AgentLoopEventFactory.js";
 import type { AgentExtensionRegistry } from "../Extensions/AgentExtensionRegistry.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
+import { ToolResultStorageModes } from "../Types/AgentToolContractTypes.js";
 import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import { createDefaultHostCapabilityRegistry } from "../AgentDefaultHostCapabilities.js";
@@ -22,9 +28,9 @@ import { SeneraLocalExecutionEnv } from "../Execution/SeneraLocalExecutionEnv.js
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import { projectAgentToolResultPresentation } from "./AgentToolResultPresentation.js";
-import { projectAgentToolResultEventValue } from "./AgentToolResultEventProjection.js";
 import { projectAgentToolInteraction } from "./AgentToolInteractionProjector.js";
 import {
+  AgentToolAssessmentStatuses,
   AgentToolFailureSources,
   createAgentToolExecutionOutcome,
   normalizeAgentToolProcessResult,
@@ -189,7 +195,7 @@ export class AgentToolCallExecutor {
     interaction?: AgentToolCallExecutionContext["interaction"],
   ): RegisteredTool {
     const tool = this.options.registry.getTool(request.name);
-    if (!tool || !isAgentToolAuthorized(toolAccessGrant, request.name)) {
+    if (!tool || !isAgentToolAuthorized(toolAccessGrant, tool)) {
       throw new AgentLocalizedError("tool.notRegisteredOrAllowed", { toolName: request.name });
     }
     if (!isAgentToolAvailableForInteraction(tool, interaction)) {
@@ -220,6 +226,7 @@ export class AgentToolCallExecutor {
       projectSeneraProcessBackendsToToolTargets(this.executionEnv.capabilities.processBackends),
     );
     const args = invocation.arguments;
+    const artifactPolicy = tool.artifactPolicy;
     const origin = projectAgentToolEventOrigin(tool);
     const purpose = projectAgentToolInteraction(tool).purpose;
     if (
@@ -233,26 +240,36 @@ export class AgentToolCallExecutor {
     ) {
       throw new Error(`Resource access grant does not belong to tool call ${callId}.`);
     }
-    const capture = await this.workspaceCapture.prepare({
-      policy: tool.artifactPolicy,
-      args,
-    });
     const startedAtEpoch = this.clock.now();
     const startedAtMonotonic = this.clock.monotonicNow();
     const startedAt = this.clock.timestamp(startedAtEpoch);
 
     if (!context.batchId) {
       await this.emitLifecycle(context, ({ requestId, step }) =>
-        this.events.toolCallsPlanned(requestId, step, [tool.name]),
+        this.events.toolCallsPlanned(requestId, step, [tool.name], {
+          calls: [
+            {
+              callId,
+              toolName: tool.name,
+              purpose,
+              origin,
+            },
+          ],
+        }),
       );
     }
     await this.emitLifecycle(context, ({ requestId, step }) =>
       this.events.toolCallStarted(requestId, step, index, tool.name, callId, {
-        arguments: clampField(redactArtifactSecrets(args, tool.artifactPolicy)),
+        arguments: projectAgentToolArguments(redactArtifactSecrets(args, tool.artifactPolicy), {
+          keepPointers: collectAgentToolPresentationArgumentPointers(tool.presentation),
+          ...DefaultAgentToolArgumentProjection,
+        }).value,
         purpose,
         origin,
         batchId: context.batchId,
         startedAt,
+        modelMessageIndex: context.modelMessageIndex,
+        modelContentIndex: context.modelContentIndex,
       }),
     );
 
@@ -266,6 +283,8 @@ export class AgentToolCallExecutor {
           logicalCacheScope: context.logicalCacheScope,
           requestId: context.requestId,
           step: context.step,
+          modelMessageIndex: context.modelMessageIndex,
+          modelContentIndex: context.modelContentIndex,
           toolCallId: callId,
           batchId: context.batchId,
           batchToolNames: context.batchToolNames,
@@ -274,6 +293,7 @@ export class AgentToolCallExecutor {
           visibleToolNames:
             context.toolExposure?.snapshot().exposedToolNames ?? context.toolAccessGrant.exposedToolNames,
           authorizedToolNames: context.toolAccessGrant.authorizedToolNames,
+          toolAccessGrant: context.toolAccessGrant,
           toolExposure: context.toolExposure,
           signal: context.signal,
           executionPlan: invocation.executionPlan,
@@ -283,6 +303,8 @@ export class AgentToolCallExecutor {
           reusableCapabilities: context.reusableCapabilities,
           thinkingLevel: context.thinkingLevel,
           resourceAccessGrant: context.resourceAccessGrant,
+          browserTargetAuthorization: context.browserTargetAuthorization,
+          workspaceObservation: context.workspaceObservation,
         }),
         tool.runtime.ResultAssessment,
       );
@@ -295,13 +317,31 @@ export class AgentToolCallExecutor {
         ToolFailureSourceByHandler[tool.handler.kind],
         tool.runtime.ResultAssessment,
       );
+      const sourceArtifacts =
+        execution.response.ok &&
+        outcome.assessment.status !== AgentToolAssessmentStatuses.Failure &&
+        tool.runtime.ResultStorage === ToolResultStorageModes.SourceView
+          ? projectAgentToolSourceArtifacts(redactArtifactSecrets(result, artifactPolicy), artifactPolicy)
+          : undefined;
+      if (sourceArtifacts) assertAgentToolSourceViewReferences(tool.name, sourceArtifacts);
       const process = {
         exitCode: execution.exitCode,
         signal: execution.signal,
         stdout: execution.stdout,
         stderr: execution.stderr,
       };
-      const workspaceCapture = await capture.complete(result);
+      // A failed writer did not commit a transaction, so there is no mutation
+      // proof to materialize. Preserve its declared failure instead of
+      // replacing it with an unrelated missing-receipt error.
+      const workspaceCapture = mergeAgentWorkspaceCaptures(
+        execution.response.ok
+          ? this.workspaceCapture.capture({
+              policy: artifactPolicy,
+              mutationReceipt: execution.workspaceMutationReceipt,
+            })
+          : undefined,
+        execution.workspaceCapture,
+      );
       const executedBase: ExecutedToolCallResult = {
         callId,
         name: tool.name,
@@ -311,12 +351,13 @@ export class AgentToolCallExecutor {
         process,
         artifactPayload: execution.artifactPayload,
         outputCapture: execution.outputCapture,
-        semanticProjectionRequest: execution.semanticProjectionRequest,
-        contentPolicy: tool.contentPolicy,
+        ...(tool.runtime.ResultStorage ? { resultStorage: tool.runtime.ResultStorage } : {}),
+        ...(sourceArtifacts ? { sourceArtifacts } : {}),
         result,
         outcome,
-        artifactPolicy: tool.artifactPolicy,
+        artifactPolicy,
         workspaceCapture,
+        ...(execution.workspaceObservation ? { workspaceObservation: execution.workspaceObservation } : {}),
       };
       const executed: ExecutedToolCallResult = {
         ...executedBase,
@@ -384,19 +425,11 @@ export class AgentToolCallExecutor {
     if (lifecycleEmitted) context.onLifecycleSettled?.(error ? "failed" : "completed");
     if (!context.deferResultDetail) {
       await this.emitLifecycle(context, ({ requestId, step }) =>
-        this.events.toolCallResultDetail(
-          requestId,
-          step,
-          index,
-          result.name,
-          result.callId,
-          projectAgentToolResultEventValue(result),
-          {
-            origin,
-            batchId: context.batchId,
-            presentation,
-          },
-        ),
+        this.events.toolCallResultDetail(requestId, step, index, result.name, result.callId, result.result, {
+          origin,
+          batchId: context.batchId,
+          presentation,
+        }),
       );
     }
   }

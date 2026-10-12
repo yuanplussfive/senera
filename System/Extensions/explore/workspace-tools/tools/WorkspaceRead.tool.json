@@ -54,7 +54,6 @@
     "required": ["content"],
     "additionalProperties": false
   },
-  "observationProjection": "observations/WorkspaceRead.projection.json",
   "permissions": ["filesystem:workspace:read"],
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
   "runtime": {

@@ -1,7 +1,14 @@
 import type { AgentSystemExtensionSettingsSurface } from "../../../Source/AgentSystem/Types/AgentSystemExtensionSettingsSurface";
 import type { AgentToolPresentation } from "../../../Source/AgentSystem/Types/AgentToolPresentationTypes";
+import type { AgentActivationCatalogSnapshot } from "../../../Source/AgentSystem/Activation/AgentActivationTypes";
 import type { FrontendLocalizedText } from "../i18n/frontendLocaleModel";
 import type { ConfigFormSectionData } from "./configFormEventTypes";
+
+export type {
+  AgentActivationCatalogEntry,
+  AgentActivationCatalogSnapshot,
+  AgentActivationKind,
+} from "../../../Source/AgentSystem/Activation/AgentActivationTypes";
 
 export interface SystemToolSettingsItem {
   name: string;
@@ -52,4 +59,5 @@ export interface SystemExtensionSettingsItem {
 export interface SystemToolSnapshotData {
   extensions: SystemExtensionSettingsItem[];
   tools: SystemToolSettingsItem[];
+  activation: AgentActivationCatalogSnapshot;
 }

@@ -29,6 +29,8 @@ export const AgentPluginManifestSchema = z
     version: z.string().trim().min(1).max(64),
     kind: z.enum(AgentPluginKindValues),
     description: z.string().trim().max(512).optional(),
+    /** Optional semantic icon name from the host's shared icon vocabulary. */
+    icon: z.string().trim().min(1).max(64).optional(),
     /** Module path relative to the plugin directory; must export `register`. */
     entry: z.string().trim().min(1).max(512),
     /** Plugin ids this plugin depends on; they must be enabled first. */
@@ -58,8 +60,11 @@ export interface AgentPluginListEntry {
   readonly id: string;
   readonly name: string;
   readonly version: string;
+  /** Revision of the loaded capability contract used by explicit activation. */
+  readonly revision: string;
   readonly kind: AgentPluginKind;
   readonly description?: string;
+  readonly icon?: string;
   readonly source: AgentPluginSourceKind;
   readonly builtin: boolean;
   readonly enabled: boolean;
@@ -67,6 +72,8 @@ export interface AgentPluginListEntry {
   readonly requires: readonly string[];
   /** Whether the plugin loaded successfully; false when skipped or failed. */
   readonly loaded: boolean;
+  /** Number of Skill and Tool capabilities registered by the loaded plugin. */
+  readonly capabilityCount: number;
   /** Load failure message, present only when loading was attempted and failed. */
   readonly error?: string;
 }

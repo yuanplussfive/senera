@@ -1,4 +1,5 @@
 import type { AgentToolProcessRunResult } from "./AgentToolProcessTypes.js";
+import type { AgentToolAccessGrant } from "./AgentToolAccessGrant.js";
 import type { AgentToolHostCapabilityRegistry } from "./AgentToolHostCapabilityRegistry.js";
 import type { AgentEventSink } from "../Events/AgentEvent.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
@@ -55,6 +56,8 @@ import type { AgentContinuityIdentityContext } from "../Continuity/AgentContinui
 import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
 import type { AgentToolCapabilityCacheEntry } from "../ToolSearch/AgentToolCapabilitySessionCache.js";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
+import type { AgentBrowserTargetAuthorization } from "../Browser/AgentBrowserUrlPolicy.js";
+import type { AgentWorkspaceObservationPort } from "../Artifacts/AgentWorkspaceChangeObserver.js";
 
 export interface AgentToolRunnerLike {
   run(
@@ -70,6 +73,8 @@ export interface AgentToolRunnerContext {
   logicalCacheScope?: string;
   requestId?: string;
   step?: number;
+  modelMessageIndex?: number;
+  modelContentIndex?: number;
   toolCallId?: string;
   batchId?: string;
   batchToolNames?: readonly string[];
@@ -77,6 +82,7 @@ export interface AgentToolRunnerContext {
   onEvent?: AgentEventSink;
   visibleToolNames?: readonly string[];
   authorizedToolNames?: readonly string[];
+  toolAccessGrant?: AgentToolAccessGrant;
   toolExposure?: AgentToolExposureState;
   signal?: AbortSignal;
   executionPlan?: AgentToolExecutionPlan;
@@ -86,6 +92,8 @@ export interface AgentToolRunnerContext {
   reusableCapabilities?: readonly AgentToolCapabilityCacheEntry[];
   thinkingLevel?: ModelThinkingLevel;
   resourceAccessGrant?: AgentResourceAccessGrant;
+  browserTargetAuthorization?: AgentBrowserTargetAuthorization;
+  workspaceObservation?: AgentWorkspaceObservationPort;
 }
 
 export class AgentToolRunner implements AgentToolRunnerLike {
@@ -386,23 +394,28 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       logicalCacheScope: context.logicalCacheScope,
       requestId: context.requestId,
       step: context.step,
+      modelMessageIndex: context.modelMessageIndex,
+      modelContentIndex: context.modelContentIndex,
       toolCallId: context.toolCallId,
       batchId: context.batchId,
       batchToolNames: context.batchToolNames,
       onEvent: context.onEvent,
       visibleToolNames: context.visibleToolNames,
       authorizedToolNames: context.authorizedToolNames,
+      toolAccessGrant: context.toolAccessGrant,
       toolExposure: context.toolExposure,
       signal: context.signal,
       executionPlan: context.executionPlan,
       reporter,
       tokenBudget: context.tokenBudget,
       approvalMode: context.approvalMode,
+      browserTargetAuthorization: context.browserTargetAuthorization,
       modelProviderId: this.modelProviderId,
       activeSkills: context.activeSkills,
       reusableCapabilities: context.reusableCapabilities,
       thinkingLevel: context.thinkingLevel,
       todoService: this.todoService,
+      workspaceObservation: context.workspaceObservation,
     });
   }
 

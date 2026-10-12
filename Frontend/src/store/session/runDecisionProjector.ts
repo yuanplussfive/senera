@@ -7,14 +7,11 @@ import {
 import {
   readContinuityRecallQueryData,
   readContinuityRecallSettledData,
-  readContinuityRulesSnapshotData,
   readContinuitySnapshotData,
   readExecutionEventData,
-  readAgendaSnapshotData,
-  readWorldSnapshotData,
   readPromptHarnessComposedData,
   readTodoSnapshotEventData,
-} from "../../api/goalContinuityEventValidation";
+} from "../../api/continuityExecutionEventValidation";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { readCurrentRun, type RunEventHandlerMap } from "./runEventProjectionTypes";
 import { upsertStep } from "./sessionProjectorCore";
@@ -37,27 +34,6 @@ export const runDecisionEventHandlers = {
   [EventKinds.ExecutionBlocked]: projectExecutionEvent,
   [EventKinds.ExecutionCompleted]: projectExecutionEvent,
 
-  [EventKinds.ContinuityRulesSnapshot]: (state, env) => {
-    const run = readCurrentRun(state, env);
-    if (!run?.continuity) return;
-    const data = readContinuityRulesSnapshotData(env.data);
-    if (!data) return;
-    run.continuity = {
-      ...run.continuity,
-      rules: data.rules,
-      signals: data.signals,
-    };
-    run.revision += 1;
-  },
-
-  [EventKinds.AgendaSnapshot]: (state, env) => {
-    const data = readAgendaSnapshotData(env.data);
-    if (data) state.agenda = data.snapshot;
-  },
-  [EventKinds.WorldSnapshot]: (state, env) => {
-    const data = readWorldSnapshotData(env.data);
-    if (data) state.world = data.snapshot;
-  },
   [EventKinds.TodoListWritten]: (state, env) => {
     const data = readTodoSnapshotEventData(env.data);
     if (data) projectTodo(state, data, env);
@@ -108,7 +84,7 @@ export const runDecisionEventHandlers = {
       upsertStep(run, {
         ...existing,
         description: frontendMessage("workflow.projection.promptTierSummary", {
-          tokens: existing.promptTokenCount ?? 0,
+          count: existing.promptTokenCount ?? 0,
           chars: existing.promptChars ?? 0,
           lines: existing.promptLines ?? 0,
           frozen: data.sections.frozen.tokens,
@@ -137,6 +113,7 @@ export const runDecisionEventHandlers = {
       status: "done",
       startedAt: env.timestamp,
       endedAt: env.timestamp,
+      eventSequence: env.sequence,
       promptChars: data.chars,
       promptLines: data.lines,
       promptTokenCount: data.tokenCount,
@@ -146,7 +123,7 @@ export const runDecisionEventHandlers = {
 
 function projectRecallStep(
   run: { readonly requestId: string },
-  env: { timestamp: string; step?: number },
+  env: { timestamp: string; step?: number; sequence?: number },
   data: ContinuityRecallSettledData,
 ): import("./types").TimelineStep {
   return {
@@ -159,6 +136,7 @@ function projectRecallStep(
     status: "done",
     startedAt: env.timestamp,
     endedAt: env.timestamp,
+    eventSequence: env.sequence,
     detailJson: data,
     modelName: undefined,
   };

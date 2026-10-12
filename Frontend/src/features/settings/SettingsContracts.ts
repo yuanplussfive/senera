@@ -44,6 +44,7 @@ export interface SettingsConfigCommands {
  */
 export interface SettingsSystemConfigHandle extends ConfigMutationController {
   configSnapshot: ConfigSnapshotData | null;
+  workspaceId: string | null;
   readProviderApiKey: (providerId: string) => Promise<string>;
   systemTools: readonly SystemToolSettingsItem[];
   systemExtensions: readonly SystemExtensionSettingsItem[];

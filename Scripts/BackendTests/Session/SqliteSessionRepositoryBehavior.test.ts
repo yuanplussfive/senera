@@ -108,12 +108,20 @@ describe("SQLite session repository behavior", () => {
       expect(repository.loadRunEventsForRequest(session.id, "request-b")).toEqual([
         expect.objectContaining({ kind: AgentEventKinds.RunStarted, requestId: "request-b" }),
       ]);
+      expect(repository.loadRunEvent(session.id, "request-b", AgentEventKinds.RunStarted)).toEqual(
+        expect.objectContaining({ kind: AgentEventKinds.RunStarted, requestId: "request-b" }),
+      );
+      expect(repository.loadRunEvent(session.id, "request-b", AgentEventKinds.RunCompleted)).toBeUndefined();
       expect(repository.hasRequest(session.id, "request-a")).toBe(true);
       expect(repository.hasRequest(session.id, "missing-request")).toBe(false);
       expect(repository.loadRequestIdsFrom(session.id, "request-a")).toEqual(["request-a", "request-b"]);
       expect(repository.loadRunSnapshots(session.id)).toEqual([
         expect.objectContaining({ requestId: "request-b", status: "completed" }),
       ]);
+      expect(repository.loadRunSnapshot(session.id, "request-b")).toEqual(
+        expect.objectContaining({ requestId: "request-b", status: "completed" }),
+      );
+      expect(repository.loadRunSnapshot(session.id, "missing-request")).toBeUndefined();
       expect(repository.loadUserProfile()).toEqual(
         expect.objectContaining({
           name: profile.name,

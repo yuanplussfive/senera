@@ -5,6 +5,7 @@ import {
   projectToolActivity,
   projectToolActivityInspection,
   readToolPresentation,
+  type ToolActivityInspection,
   type ToolActivityStatus,
 } from "./toolActivityPresentation";
 import type { ToolStageIconName } from "./toolStageIconContract";
@@ -15,12 +16,14 @@ export interface ToolStageActionPresentation {
   id: string;
   icon: ToolStageIconName;
   label: string;
+  inspection?: ToolActivityInspection;
   count: number;
 }
 
 export interface ToolStageActivityPresentation {
   id: string;
   title: string;
+  inspection?: ToolActivityInspection;
   accessibleTitle: string;
   icons: readonly ToolStageIconName[];
   status: ToolStageStatus;
@@ -92,12 +95,23 @@ export function projectToolStagePresentation(run: {
   const counts = summarizeStageCounts(visibleSteps);
   const groups = uniquePresentationGroups(visibleSteps);
   const stageIcons = uniqueIcons(activities.flatMap((activity) => activity.icons));
-  const title = singleToolStep
+  // A batch that spans several presentation groups has no single group to name, so
+  // it names the first Tool instead of enumerating every call: that enumeration
+  // grew with the batch, and the disclosure below already lists all of them.
+  const headlineStep =
+    activities.length > 1
+      ? visibleSteps.find(
+          (step): step is TimelineStep & { toolName: string } => step.kind === "tool" && Boolean(step.toolName),
+        )
+      : undefined;
+  const title = headlineStep
     ? projectToolActivity({
-        toolName: singleToolStep.toolName!,
-        origin: singleToolStep.toolOrigin,
-        arguments: singleToolStep.toolArgs,
-        status: readToolActivityStatus(singleToolStep.status),
+        toolName: headlineStep.toolName,
+        origin: headlineStep.toolOrigin,
+        arguments: headlineStep.toolArgs,
+        result: headlineStep.toolPresentation,
+        durationMs: headlineStep.durationMs,
+        status: readToolActivityStatus(headlineStep.status),
       })
     : activities.map((activity) => activity.title).join(" · ") || GenericSystemGroup.title;
   const summary = activities.length === 1 ? activities[0]?.summary : undefined;
@@ -149,35 +163,45 @@ function projectStageActivity(group: PresentationGroup, steps: readonly Timeline
       representative: entry?.representative ?? (step as TimelineStep & { toolName: string }),
     });
   }
-  const actions = [...actionGroups.entries()].map(([id, action]) => ({
-    id,
-    icon: resolveStepIcon(action.representative),
-    label: projectToolActivity({
+  const actions = [...actionGroups.entries()].map(([id, action]) => {
+    const inspection = projectToolActivityInspection({
       toolName: action.representative.toolName,
       origin: action.representative.toolOrigin,
       arguments: action.representative.toolArgs,
+      result: action.representative.toolPresentation,
+      durationMs: action.representative.durationMs,
       status: readToolActivityStatus(action.representative.status),
-    }),
-    count: action.count,
-  }));
+    });
+    return {
+      id,
+      icon: resolveStepIcon(action.representative),
+      label: inspection.label,
+      inspection,
+      count: action.count,
+    };
+  });
   const singleToolStep =
     steps.length === 1 && steps[0]?.kind === "tool" && steps[0].toolName
       ? (steps[0] as TimelineStep & { toolName: string })
       : undefined;
-  const title = singleToolStep
-    ? projectToolActivity({
+  const singleToolInspection = singleToolStep
+    ? projectToolActivityInspection({
         toolName: singleToolStep.toolName,
         origin: singleToolStep.toolOrigin,
         arguments: singleToolStep.toolArgs,
+        result: singleToolStep.toolPresentation,
+        durationMs: singleToolStep.durationMs,
         status: readToolActivityStatus(status),
       })
-    : group.title;
+    : undefined;
+  const title = singleToolInspection?.label ?? group.title;
   const summary = actions.length > 0 && !singleToolStep ? actions.map((action) => action.label).join(" · ") : undefined;
   const incomplete = counts.failed > 0 ? `${counts.failed} incomplete` : undefined;
   const bounds = readStageBounds(steps, status);
   return {
     id: group.id,
     title,
+    ...(singleToolInspection ? { inspection: singleToolInspection } : {}),
     accessibleTitle: [title, summary, incomplete].filter(Boolean).join(" · "),
     icons: uniqueIcons(
       actions.map((action) => action.icon),
@@ -224,6 +248,8 @@ function resolveStepCategory(step: TimelineStep): string {
     toolName: step.toolName,
     origin: step.toolOrigin,
     arguments: step.toolArgs,
+    result: step.toolPresentation,
+    durationMs: step.durationMs,
     status: readToolActivityStatus(step.status),
   }).category;
 }
@@ -277,6 +303,7 @@ function isLiveStageStatus(status: ToolStageStatus): boolean {
 function readToolActivityStatus(status: ToolStageStatus): ToolActivityStatus {
   if (status === "done") return "completed";
   if (status === "failed") return "failed";
+  if (status === "cancelled") return "cancelled";
   return "active";
 }
 
@@ -285,6 +312,7 @@ function summarizeStageStatus(steps: readonly TimelineStep[]): ToolStageStatus {
   if (steps.some((step) => step.status === "running")) return "running";
   if (steps.some((step) => step.status === "pending")) return "pending";
   if (steps.length > 0 && steps.every((step) => step.status === "failed")) return "failed";
+  if (steps.length > 0 && steps.every((step) => step.status === "cancelled")) return "cancelled";
   if (steps.some((step) => step.status === "done")) return "done";
   return "neutral";
 }

@@ -6,7 +6,7 @@
     "category": "git-inspect",
     "icon": "git-branch",
     "activity": {
-      "action": { "zh-CN": "检查 Git", "en-US": "Inspect Git" },
+      "action": { "zh-CN": "查看", "en-US": "Inspect" },
       "argumentPath": "/operation",
       "detailPaths": ["/repository", "/paths/*"]
     }
@@ -104,7 +104,6 @@
     "required": ["operation", "repository", "exitCode", "output"],
     "additionalProperties": false
   },
-  "observationProjection": "observations/GitInspect.projection.json",
   "permissions": ["process:git", "filesystem:workspace:read"],
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
   "runtime": {

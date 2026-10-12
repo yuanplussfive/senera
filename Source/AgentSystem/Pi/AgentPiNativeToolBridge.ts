@@ -63,6 +63,7 @@ export class AgentPiNativeToolBridge {
       label: "执行已确认的能力",
       description: [
         "只执行已确认的 Dynamic 能力。先通过 ToolSearch 找到候选，再用 ToolDescribe 确认适用场景、参数和边界。常驻 Bootstrap 工具已有原生 schema，必须直接调用，不能传入这里。",
+        "如果某个 Dynamic 工具已经作为当前回合的原生工具提供，必须直接调用该工具，不要把它包装进这里。",
         "tool 必须填写 ToolDescribe 返回的 Dynamic 工具准确名称，arguments 必须严格符合对应的 TypeScript-like 参数契约。",
         "这是内部执行协议。面向用户时，用自然语言说明正在处理的事情，不要提 ToolSearch、ToolDescribe、ToolCall、工具名或参数。",
         "底层授权、审批、资源边界、生命周期和结果协议保持不变。",
@@ -137,7 +138,7 @@ export class AgentPiNativeToolBridge {
     if (!isAgentToolSupportedByPlanningMode(tool, this.toolPlanningMode)) {
       throw new AgentLocalizedError("tool.planningModeUnavailable", { toolName: tool.name });
     }
-    if (!isAgentToolAuthorized(toolAccessGrant, tool.name)) {
+    if (!isAgentToolAuthorized(toolAccessGrant, tool)) {
       throw new AgentLocalizedError("tool.notRegisteredOrAllowed", { toolName: tool.name });
     }
     if (!hasCurrentContractEvidence(tool, toolExposure, reusableCapabilities, reusableCapabilityLookup)) {

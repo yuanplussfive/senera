@@ -60,7 +60,7 @@ test("automatically loads the active session exactly once after the socket opens
     sessions: { active: session("active", [], { messageCount: 1 }) },
     sessionOrder: ["active"],
     activeSessionId: "active",
-    catalogSynced: { sessions: true, presets: false },
+    catalogSynced: { sessions: true },
   });
 
   render(React.createElement(HistoryRecoveryHarness, { activeSessionId: "active", handleRef, send, status: "open" }));
@@ -129,7 +129,7 @@ test("retries unfinished history runs with increasing bounded polling delays", a
   useStore.setState({
     sessions: { [sessionId]: session(sessionId, [recoveryRun("history-run", 4)]) },
     sessionOrder: [sessionId],
-    catalogSynced: { sessions: true, presets: false },
+    catalogSynced: { sessions: true },
   });
 
   render(

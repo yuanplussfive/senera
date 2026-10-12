@@ -1,175 +1,122 @@
 import { describe, expect, it } from "vitest";
 import {
   readPersistedSessionPreferences,
+  readWorkspacePreferences,
   sessionPersistOptions,
 } from "../../../Frontend/src/store/session/persistence.ts";
 import { DEFAULT_USER_PROFILE } from "../../../Frontend/src/store/session/userProfile.ts";
-describe("session persistence migration", () => {
-  it("migrates both panel defaults and supplies the shared dock width", () => {
-    const migrate = sessionPersistOptions.migrate;
-    expect(migrate).toBeDefined();
-    const migrated = migrate?.(
+
+describe("application and workspace persistence", () => {
+  it("retains application preferences without assigning legacy sessions to any workspace", () => {
+    const migrated = sessionPersistOptions.migrate(
       {
-        sidebarCollapsed: true,
-        rightPanelCollapsed: true,
-        defaultSidebarCollapsed: false,
-        defaultRightPanelCollapsed: true,
-        motionLevel: "none",
-        selectedModelProviderId: "provider-1",
-        selectedModelProviderIdsBySession: { "legacy-active": "provider-1", invalid: 42 },
-        userProfile: {
-          name: "Ada",
-          avatarDataUrl: null,
-          updatedAt: "2026-05-29T08:00:00.000Z",
-        },
-        activeSessionId: "legacy-active",
-        sessions: { "legacy-active": {} },
-        sessionOrder: ["legacy-active"],
-        viewedRunIdBySession: { "legacy-active": "req-1" },
-        modelProviders: [{ id: "provider-1" }],
-        historyLoadingIds: { "legacy-active": true },
+        defaultSidebarCollapsed: true,
+        defaultRightPanelCollapsed: false,
+        motionLevel: "reduced",
+        workflowDockWidth: 555,
+        userProfile: DEFAULT_USER_PROFILE,
+        activeSessionId: "old-session",
+        selectedModelProviderId: "old-model",
+        sessions: { "old-session": {} },
+        sessionOrder: ["old-session"],
+        runtimeSnapshotsBySession: { "old-session": { available: true, observedAt: "2026-10-10" } },
       },
-      1,
+      10,
     );
     expect(migrated).toEqual({
+      defaultSidebarCollapsed: true,
+      defaultRightPanelCollapsed: false,
+      motionLevel: "reduced",
+      workflowDockWidth: 555,
+      userProfile: DEFAULT_USER_PROFILE,
+    });
+  });
+
+  it("applies launch preferences while preserving current workspace data during global rehydration", () => {
+    const current = {
       defaultSidebarCollapsed: false,
       defaultRightPanelCollapsed: true,
-      sessionOrder: ["legacy-active"],
       motionLevel: "full",
-      executionApprovalMode: "agent",
-      selectedModelProviderId: "provider-1",
-      selectedModelProviderIdsBySession: { "legacy-active": "provider-1" },
-      userProfile: {
-        name: "Ada",
-        avatarDataUrl: null,
-        updatedAt: "2026-05-29T08:00:00.000Z",
-      },
+      userProfile: DEFAULT_USER_PROFILE,
       workflowDockWidth: 420,
-    });
-  });
-  it("keeps persisted motion level when migrating current preferences", () => {
-    const migrate = sessionPersistOptions.migrate;
-    expect(migrate).toBeDefined();
-    const migrated = migrate?.(
-      {
-        sidebarCollapsed: false,
-        rightPanelCollapsed: true,
-        defaultSidebarCollapsed: true,
-        workflowDockWidth: 555,
-        motionLevel: "reduced",
-        selectedModelProviderId: null,
-        userProfile: DEFAULT_USER_PROFILE,
-        sessions: { discarded: {} },
-      },
-      4,
-    );
-    expect(migrated).toMatchObject({
-      defaultSidebarCollapsed: true,
-      motionLevel: "reduced",
-      executionApprovalMode: "agent",
-      workflowDockWidth: 555,
-    });
-  });
-  it("falls back to full motion when persisted motion level is invalid", () => {
-    const migrate = sessionPersistOptions.migrate;
-    expect(migrate).toBeDefined();
-    const migrated = migrate?.(
-      {
-        motionLevel: "cinematic",
-      },
-      4,
-    );
-    expect(migrated).toMatchObject({
-      motionLevel: "full",
-      executionApprovalMode: "agent",
-      workflowDockWidth: 420,
-    });
-  });
-  it("rehydrates both panels from their persisted launch preferences", () => {
-    const merge = sessionPersistOptions.merge;
-    expect(merge).toBeDefined();
-    const merged = merge?.(
+      activeSessionId: "workspace-session",
+      sessions: { "workspace-session": {} },
+    };
+    const merged = sessionPersistOptions.merge(
       {
         defaultRightPanelCollapsed: false,
         workflowDockWidth: 520,
+        activeSessionId: "other-workspace",
       },
-      {
-        defaultSidebarCollapsed: false,
-        defaultRightPanelCollapsed: true,
-        motionLevel: "full",
-        rightPanelCollapsed: false,
-        workflowDockWidth: 420,
-      },
+      current,
     );
     expect(merged).toMatchObject({
       rightPanelCollapsed: false,
       defaultRightPanelCollapsed: false,
       workflowDockWidth: 520,
+      activeSessionId: "workspace-session",
+      sessions: current.sessions,
     });
   });
-});
-describe("readPersistedSessionPreferences", () => {
-  it("reads persisted UI preferences from the zustand storage envelope", () => {
+
+  it("cross-window application preferences exclude session order and model selections", () => {
     expect(
       readPersistedSessionPreferences(
         JSON.stringify({
           state: {
             defaultSidebarCollapsed: true,
-            defaultRightPanelCollapsed: false,
             workflowDockWidth: 900,
             motionLevel: "reduced",
             selectedModelProviderId: "main",
-            selectedModelProviderIdsBySession: { topic_a: "main", invalid: 1 },
+            sessionOrder: ["a"],
+            runtimeSnapshotsBySession: {},
           },
         }),
       ),
+    ).toEqual({ defaultSidebarCollapsed: true, workflowDockWidth: 640, motionLevel: "reduced" });
+  });
+
+  it("restores workspace usage and model preferences without storing messages", () => {
+    const snapshot = {
+      available: true,
+      observedAt: "2026-10-10T00:00:00.000Z",
+      runtime: {
+        sessionId: "s",
+        cached: true,
+        contextUsage: { tokens: 12000, contextWindow: 100000, percent: 12 },
+      },
+    };
+    expect(
+      readWorkspacePreferences(
+        JSON.stringify({
+          activeSessionId: "s",
+          sessionOrder: ["s", "s"],
+          selectedModelProviderId: "main",
+          selectedThinkingLevel: "high",
+          runtimeSnapshotsBySession: { s: snapshot },
+          sessions: { s: { messages: ["must not persist"] } },
+        }),
+      ),
     ).toEqual({
-      defaultSidebarCollapsed: true,
-      defaultRightPanelCollapsed: false,
-      motionLevel: "reduced",
-      executionApprovalMode: "agent",
+      activeSessionId: "s",
+      sessionOrder: ["s"],
       selectedModelProviderId: "main",
-      selectedModelProviderIdsBySession: { topic_a: "main" },
-      userProfile: undefined,
-      workflowDockWidth: 640,
+      selectedThinkingLevel: "high",
+      runtimeSnapshotsBySession: { s: snapshot },
     });
   });
-  it("sanitizes a persisted session order without trusting stale or duplicate ids", () => {
-    expect(
-      readPersistedSessionPreferences(
-        JSON.stringify({
-          state: {
-            sessionOrder: ["second", "first", "second", "", 42, " third "],
-          },
-        }),
-      )?.sessionOrder,
-    ).toEqual(["second", "first", " third "]);
-  });
-  it("returns null for invalid persisted preference payloads", () => {
+
+  it("rejects malformed persisted values instead of manufacturing a replacement", () => {
     expect(readPersistedSessionPreferences("{")).toBeNull();
     expect(readPersistedSessionPreferences(JSON.stringify({ state: null }))).toBeNull();
+    expect(readPersistedSessionPreferences(JSON.stringify({ state: { motionLevel: "cinematic" } }))).toBeNull();
+    expect(() => readWorkspacePreferences(JSON.stringify({ sessionOrder: [42] }))).toThrow();
+    expect(() => sessionPersistOptions.migrate({ motionLevel: "cinematic" }, 10)).toThrow();
   });
-  it("falls back to full motion for invalid persisted motion levels", () => {
-    expect(
-      readPersistedSessionPreferences(
-        JSON.stringify({
-          state: {
-            motionLevel: "cinematic",
-          },
-        }),
-      )?.motionLevel,
-    ).toBe("full");
-  });
-  it("does not synthesize a width for storage events from older windows", () => {
-    expect(
-      readPersistedSessionPreferences(
-        JSON.stringify({
-          state: {
-            defaultRightPanelCollapsed: false,
-            motionLevel: "full",
-          },
-        }),
-      )?.workflowDockWidth,
-    ).toBeUndefined();
+
+  it("does not synthesize absent settings for another window", () => {
+    expect(readPersistedSessionPreferences(JSON.stringify({ state: { motionLevel: "full" } }))).toEqual({
+      motionLevel: "full",
+    });
   });
 });

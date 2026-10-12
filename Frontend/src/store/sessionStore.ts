@@ -28,6 +28,7 @@ import {
 import { DEFAULT_USER_PROFILE, normalizeUserProfile } from "./session/userProfile";
 import { ExecutionApprovalModes } from "../api/executionApprovalMode";
 import type { SessionRecord, StoreState } from "./session/types";
+import { rejectRunRecovery } from "./session/runRecoveryProjection";
 
 export { DEFAULT_SESSION_TITLE } from "./session/defaults";
 export { DEFAULT_USER_PROFILE, normalizeUserProfile } from "./session/userProfile";
@@ -39,9 +40,11 @@ export type {
   HistoryReplayEntry,
   InteractionInputRunRecord,
   MessageRole,
+  ModelThinkingBlock,
   RunActivityRecord,
   RunRecord,
   SessionRecord,
+  SessionRuntimeSnapshot,
   StoreState,
   TimelineChildRunMessage,
   TimelineChildRunState,
@@ -73,10 +76,9 @@ export const useStore = create<StoreState>()(
   persist<StoreState, [], [["zustand/immer", never]], PersistedSessionState>(
     immer<StoreState, [["zustand/persist", unknown]]>((set) => ({
       sessions: {},
+      runtimeSnapshotsBySession: {},
       sessionOrder: [],
       activeSessionId: null,
-      agenda: undefined,
-      world: undefined,
       sidebarCollapsed: false,
       rightPanelCollapsed: true,
       defaultSidebarCollapsed: false,
@@ -88,6 +90,7 @@ export const useStore = create<StoreState>()(
       historyLoadingIds: {},
       historyFailedIds: {},
       historyReplayBuffers: {},
+      historySuppressedRequestIds: {},
       historyStepBuffers: {},
       historyEventRunIds: {},
       historyActiveRequestIds: {},
@@ -109,24 +112,21 @@ export const useStore = create<StoreState>()(
       selectedThinkingLevel: null,
       selectedThinkingLevelsBySession: {},
       executionApprovalMode: ExecutionApprovalModes.Agent,
-      presets: [],
-      presetWorldPackages: [],
-      activePresetName: null,
-      presetsEnabled: true,
-      presetRootDir: "",
       configSnapshot: null,
       systemTools: [],
       systemExtensions: [],
+      activationCatalog: null,
       mcpServers: [],
-      toolSettingsSynced: { systemTools: false, mcpServers: false },
+      toolSettingsSynced: { systemTools: false, mcpServers: false, activation: false },
       channelStatuses: [],
       userProfile: DEFAULT_USER_PROFILE,
-      catalogSynced: { sessions: false, presets: false },
+      catalogSynced: { sessions: false },
 
       resetCatalogSyncState: () =>
         set((state) => {
           state.catalogSynced.sessions = false;
-          state.catalogSynced.presets = false;
+          state.activationCatalog = null;
+          state.toolSettingsSynced.activation = false;
         }),
 
       invalidateSessionHistoryCache: () =>
@@ -214,6 +214,31 @@ export const useStore = create<StoreState>()(
           session.updatedAt = nowIso();
         }),
 
+      beginRunRecovery: (sessionId, sourceRequestId, requestId, mode) => {
+        let admitted = false;
+        set((state) => {
+          const session = state.sessions[sessionId];
+          const source = session?.runs.find((run) => run.requestId === sourceRequestId);
+          if (!source || (source.status !== "failed" && source.status !== "cancelled")) return;
+          if (
+            session.runs.some(
+              (run) => run.recoveryAttempt?.status === "pending" || run.recovery?.sourceRequestId === sourceRequestId,
+            )
+          )
+            return;
+          source.recoveryAttempt = { requestId, mode, status: "pending" };
+          source.revision += 1;
+          admitted = true;
+        });
+        return admitted;
+      },
+
+      rejectRunRecovery: (sessionId, requestId, message) =>
+        set((state) => {
+          const session = state.sessions[sessionId];
+          if (session) rejectRunRecovery(session, requestId, message);
+        }),
+
       setViewedRun: (sessionId, requestId) =>
         set((state) => {
           if (requestId) {
@@ -249,6 +274,9 @@ export const useStore = create<StoreState>()(
             messageCount: 0,
             messages: [],
             runs: [],
+            ...(state.runtimeSnapshotsBySession[sessionId]
+              ? { runtimeSnapshot: state.runtimeSnapshotsBySession[sessionId] }
+              : {}),
           };
           state.sessionOrder.unshift(sessionId);
           state.activeSessionId = sessionId;
@@ -304,9 +332,9 @@ export const useStore = create<StoreState>()(
           }
         }),
 
-      removeSession: (sessionId) =>
+      requestSessionDeletions: (sessionIds) =>
         set((state) => {
-          markSessionDeletionRequested(state, [sessionId]);
+          markSessionDeletionRequested(state, sessionIds);
           syncActiveSessionModelSelection(state);
         }),
 
@@ -399,12 +427,14 @@ export const useStore = create<StoreState>()(
         set((state) => {
           if (!import.meta.env.DEV) return;
           state.sessions = {};
+          state.runtimeSnapshotsBySession = {};
           state.sessionOrder = [];
           state.viewedRunIdBySession = {};
           state.historyLoadedIds = {};
           state.historyLoadingIds = {};
           state.historyFailedIds = {};
           state.historyReplayBuffers = {};
+          state.historySuppressedRequestIds = {};
           state.historyStepBuffers = {};
           state.historyEventRunIds = {};
           state.historyActiveRequestIds = {};
@@ -419,6 +449,9 @@ export const useStore = create<StoreState>()(
           state.selectedThinkingLevelsBySession = {};
           for (const session of mockSessions) {
             state.sessions[session.sessionId] = session;
+            if (session.runtimeSnapshot) {
+              state.runtimeSnapshotsBySession[session.sessionId] = session.runtimeSnapshot;
+            }
             state.sessionOrder.push(session.sessionId);
             state.historyLoadedIds[session.sessionId] = true;
           }
@@ -444,6 +477,7 @@ export const useStore = create<StoreState>()(
             attachments,
             createdAt: nowIso(),
             requestId,
+            metadata: options?.metadata,
           });
           bumpSessionMessageCount(session);
           if (options?.createRun !== false) {

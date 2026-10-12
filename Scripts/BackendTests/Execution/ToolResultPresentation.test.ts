@@ -1,8 +1,9 @@
 import { describe, expect, test } from "vitest";
 import { projectAgentToolResultPresentation } from "../../../Source/AgentSystem/ToolRuntime/AgentToolResultPresentation.js";
-import type {
-  AgentToolProcessError,
-  ExecutedToolCallResult,
+import {
+  AgentWorkspaceChangeSetProtocol,
+  type AgentToolProcessError,
+  type ExecutedToolCallResult,
 } from "../../../Source/AgentSystem/Types/ToolRuntimeTypes.js";
 import { AgentExecutionErrorCodes } from "../../../Source/AgentSystem/Xml/AgentXmlStatus.js";
 import { compareWorkspaceSnapshots } from "../../../Source/AgentSystem/Artifacts/AgentWorkspaceSnapshotDiff.js";
@@ -89,11 +90,109 @@ describe("Tool result presentation", () => {
         status: "changed",
         key: "Source/example.ts",
         summary: "modified: Source/example.ts",
+        workspaceStatus: "modified",
+        workspaceBeforeKind: "file",
+        workspaceAfterKind: "file",
         addedLines: 2,
         removedLines: 1,
       },
     ]);
     expect(presentation.headline).not.toContain("opaque");
+  });
+
+  test("projects workspace changes before Artifact recording publishes the delta", () => {
+    const workspaceChanges = compareWorkspaceSnapshots(
+      {
+        capturedAt: "2026-08-13T00:00:00.000Z",
+        files: [],
+      },
+      {
+        capturedAt: "2026-08-13T00:00:01.000Z",
+        files: [workspaceFile("src/created.ts", "export const ready = true;\n")],
+      },
+    );
+    const result = fixture({
+      result: { ok: true },
+      workspaceCapture: {
+        before: { files: [], capturedAt: "2026-08-13T00:00:00.000Z" },
+        after: { files: [], capturedAt: "2026-08-13T00:00:01.000Z" },
+        changes: workspaceChanges,
+      },
+    });
+
+    expect(projectAgentToolResultPresentation(result).changes).toEqual([
+      expect.objectContaining({
+        kind: "workspace",
+        status: "changed",
+        key: "src/created.ts",
+        workspaceStatus: "added",
+        workspaceBeforeKind: "missing",
+        workspaceAfterKind: "file",
+        addedLines: 1,
+        removedLines: 0,
+      }),
+    ]);
+  });
+
+  test("keeps directory changes in provenance without counting them as files", () => {
+    const before = { capturedAt: "2026-08-13T00:00:00.000Z", files: [] };
+    const after = {
+      capturedAt: "2026-08-13T00:00:01.000Z",
+      files: [workspaceDirectory("images"), workspaceFile("pelican-bicycle.svg", "<svg />\n")],
+    };
+    const changes = compareWorkspaceSnapshots(before, after);
+    const presentation = projectAgentToolResultPresentation(
+      fixture({
+        result: { ok: true },
+        workspace: { before, after, changes },
+      }),
+    );
+
+    expect(changes).toHaveLength(2);
+    expect(presentation.workspaceObservation).toMatchObject({ changedFileCount: 1, changedDirectoryCount: 1 });
+    expect(presentation.changes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "pelican-bicycle.svg",
+          workspaceBeforeKind: "missing",
+          workspaceAfterKind: "file",
+        }),
+        expect.objectContaining({
+          key: "images",
+          workspaceBeforeKind: "missing",
+          workspaceAfterKind: "directory",
+        }),
+      ]),
+    );
+  });
+
+  test("preserves observed batch scope without mislabeling it as an incomplete capture", () => {
+    const before = { capturedAt: "2026-09-28T00:00:00.000Z", files: [] };
+    const after = {
+      capturedAt: "2026-09-28T00:00:01.000Z",
+      files: [workspaceFile("generated.txt", "observed output\n")],
+    };
+    const result = fixture({
+      result: { ok: true },
+      workspaceCapture: {
+        type: AgentWorkspaceChangeSetProtocol.type,
+        version: AgentWorkspaceChangeSetProtocol.version,
+        source: "filesystem-observer",
+        coverage: "observed",
+        scope: { kind: "tool_batch", id: "batch-1" },
+        before,
+        after,
+        changes: compareWorkspaceSnapshots(before, after),
+      },
+    });
+
+    expect(projectAgentToolResultPresentation(result).workspaceObservation).toMatchObject({
+      status: "complete",
+      coverage: "observed",
+      source: "filesystem-observer",
+      scope: { kind: "tool_batch", id: "batch-1" },
+      changedFileCount: 1,
+    });
   });
 
   test("marks structured failures without replacing their raw error data", () => {
@@ -125,6 +224,13 @@ describe("Tool result presentation", () => {
 
     expect(presentation.headline).toBe("Created report.md");
     expect(presentation.headline).not.toContain("metadata");
+  });
+
+  test("does not substitute the tool name when a result has no semantic headline", () => {
+    const presentation = projectAgentToolResultPresentation(fixture({ result: { code: 0 } }));
+
+    expect(presentation.headline).toBe("");
+    expect(presentation.summary).toBeUndefined();
   });
 
   test("keeps suspicious inline media out of the model-facing headline", () => {
@@ -164,6 +270,151 @@ describe("Tool result presentation", () => {
       },
     ]);
   });
+
+  test("projects resource links and top-level declared resources through the same canonical contract", () => {
+    const result = fixture({
+      result: {
+        content: [
+          {
+            type: "resource_link",
+            uri: "senera://resource/res_0123456789abcdef0123456789abcdef",
+            name: "linked.png",
+            mimeType: "image/png",
+          },
+          {
+            type: "resource",
+            resource: {
+              uri: "senera://resource/res_0123456789abcdef0123456789abcdef",
+              name: "duplicate.png",
+              mimeType: "image/png",
+            },
+          },
+        ],
+        resources: [
+          {
+            resourceUri: "senera://resource/res_abcdef0123456789abcdef0123456789",
+            name: "report.pdf",
+            mediaType: "application/pdf",
+          },
+          { uri: "https://provider.example/report.pdf", name: "provider.pdf", mimeType: "application/pdf" },
+        ],
+      },
+    });
+
+    expect(projectAgentToolResultPresentation(result).resources).toEqual([
+      {
+        uri: "senera://resource/res_0123456789abcdef0123456789abcdef",
+        name: "linked.png",
+        mime: "image/png",
+        origin: "tool",
+      },
+      {
+        uri: "senera://resource/res_abcdef0123456789abcdef0123456789",
+        name: "report.pdf",
+        mime: "application/pdf",
+        origin: "tool",
+      },
+    ]);
+  });
+
+  test("merges later resource metadata for one canonical URI", () => {
+    const result = fixture({
+      result: {
+        content: [
+          {
+            type: "resource",
+            resource: {
+              uri: "senera://resource/res_0123456789abcdef0123456789abcdef",
+              mimeType: "application/octet-stream",
+            },
+          },
+        ],
+        resources: [
+          {
+            resourceUri: "senera://resource/res_0123456789abcdef0123456789abcdef",
+            name: "report.pdf",
+            mediaType: "application/pdf",
+            size: 42,
+            sha256: "sha256:report",
+          },
+        ],
+      },
+    });
+
+    expect(projectAgentToolResultPresentation(result).resources).toEqual([
+      {
+        uri: "senera://resource/res_0123456789abcdef0123456789abcdef",
+        name: "report.pdf",
+        mime: "application/pdf",
+        size: 42,
+        sha256: "sha256:report",
+        origin: "tool",
+      },
+    ]);
+  });
+
+  test("keeps only canonical artifact assets and preserves their durable metadata", () => {
+    const result = fixture({
+      result: { text: "created" },
+      assets: [
+        asset("senera://resource/res_abcdef0123456789abcdef0123456789", "image.png", "image/png"),
+        asset("https://provider.example/image.png", "provider.png", "image/png"),
+      ],
+    });
+
+    expect(projectAgentToolResultPresentation(result).resources).toEqual([
+      expect.objectContaining({
+        uri: "senera://resource/res_abcdef0123456789abcdef0123456789",
+        name: "image.png",
+        mime: "image/png",
+        size: 3,
+        sha256: "sha256",
+        origin: "artifact",
+      }),
+    ]);
+  });
+
+  test("projects published resources recorded as evidence even when they are nested in structured content", () => {
+    const uri = "senera://resource/upl_0123456789abcdef0123456789abcdef";
+    const presentation = projectAgentToolResultPresentation(
+      fixture({
+        result: { output: { image: uri } },
+        evidence: [
+          {
+            key: `resource:${uri}`,
+            evidenceUri: "senera://evidence/resource",
+            kind: "resource",
+            locator: uri,
+            display: "generated.png",
+            label: "MCP resource",
+            source: "MCP content",
+            confidence: 1,
+            modelSlots: [{ name: "uri", value: uri }],
+            plannerMemory: { facts: [], artifactRefs: [] },
+            metadata: {
+              contentType: "resource",
+              resourceUri: uri,
+              name: "generated.png",
+              mimeType: "image/png",
+              size: 128,
+              sha256: "sha256:generated",
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(presentation.resources).toEqual([
+      {
+        uri,
+        name: "generated.png",
+        mime: "image/png",
+        size: 128,
+        sha256: "sha256:generated",
+        origin: "tool",
+      },
+    ]);
+  });
 });
 
 function fixture(input: {
@@ -173,6 +424,8 @@ function fixture(input: {
   evidence?: NonNullable<ExecutedToolCallResult["artifact"]>["evidence"];
   delta?: NonNullable<ExecutedToolCallResult["artifact"]>["delta"];
   workspace?: NonNullable<ExecutedToolCallResult["artifact"]>["workspace"];
+  workspaceCapture?: NonNullable<ExecutedToolCallResult["workspaceCapture"]>;
+  assets?: NonNullable<ExecutedToolCallResult["artifact"]>["assets"];
 }): ExecutedToolCallResult {
   return {
     callId: "call_test",
@@ -198,8 +451,23 @@ function fixture(input: {
       summary: "",
       evidence: input.evidence ?? [],
       delta: input.delta ?? [],
+      assets: input.assets,
       workspace: input.workspace,
     },
+    ...(input.workspaceCapture ? { workspaceCapture: input.workspaceCapture } : {}),
+  };
+}
+
+function asset(resourceUri: string, fileName: string, mediaType: string) {
+  return {
+    id: "asset_test",
+    resourceUri,
+    fileName,
+    mediaType,
+    relativePath: fileName,
+    workspacePath: `.senera/uploads/${fileName}`,
+    byteLength: 3,
+    sha256: "sha256",
   };
 }
 
@@ -219,5 +487,18 @@ function workspaceFile(path: string, text: string) {
       lineCount: text.split("\n").length,
       text,
     },
+  };
+}
+
+function workspaceDirectory(path: string) {
+  return {
+    path,
+    absolutePath: `C:/workspace/${path}`,
+    exists: true,
+    kind: "directory" as const,
+    size: 0,
+    mtimeMs: 0,
+    hash: "sha256:directory",
+    content: { state: "omitted" as const, reason: "directory" as const, byteLength: 0 },
   };
 }

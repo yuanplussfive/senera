@@ -119,6 +119,41 @@ describe("tool execution manifest schema", () => {
     }
   });
 
+  test("requires source-view tools to declare a recoverable source evidence coordinate", () => {
+    const result = ToolSchema.safeParse({
+      ...tool(["Local"]),
+      Runtime: { ...tool(["Local"]).Runtime, ResultStorage: "SourceView" },
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues).toContainEqual(
+        expect.objectContaining({ path: ["Artifacts", "Evidence"], message: expect.stringContaining("ArtifactUri") }),
+      );
+    }
+  });
+
+  test("rejects a source-view contract that also declares a workspace mutation capture", () => {
+    const result = ToolSchema.safeParse({
+      ...tool(["Local"]),
+      Runtime: { ...tool(["Local"]).Runtime, ResultStorage: "SourceView" },
+      Artifacts: {
+        Evidence: [sourceViewEvidence()],
+        Workspace: { Capture: "mutation-receipt", MaxFileBytes: 1024, CaptureContent: "text", PatchContextLines: 3 },
+      },
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues).toContainEqual(
+        expect.objectContaining({
+          path: ["Artifacts", "Workspace"],
+          message: expect.stringContaining("owns no mutation"),
+        }),
+      );
+    }
+  });
+
   test("accepts capability-declared MCP resource arguments", () => {
     const result = ToolSchema.safeParse({
       ...mcpTool(),
@@ -411,6 +446,25 @@ function mcpTool(protocolVersion?: 2) {
       ...(protocolVersion === undefined ? {} : { ProtocolVersion: protocolVersion }),
     },
     Execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
+  };
+}
+
+function sourceViewEvidence() {
+  return {
+    Kind: "artifact_memory",
+    Records: "$.artifacts.item[*]",
+    Slots: { artifactUri: "$.artifactUri" },
+    Identity: { Parts: ["artifactUri"] },
+    Presentation: {
+      Locator: "{{ artifactUri }}",
+      Display: "{{ artifactUri }}",
+      Label: "{{ artifactUri }}",
+      Source: "artifact",
+    },
+    ModelProjection: { Slots: ["artifactUri"] },
+    PlannerMemory: { Facts: ["artifactUri"], ArtifactUri: "artifactUri" },
+    Projection: { SummaryTemplate: "{{ artifactUri }}", ArtifactTemplate: "{{ artifactUri }}" },
+    Confidence: 1,
   };
 }
 

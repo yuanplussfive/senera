@@ -32,15 +32,29 @@ describe("subagent role catalog", () => {
 
   test("projects the revisioned role catalog into the flat AgentSpawn contract", () => {
     let definitions = [subagentDefinition("reviewer", "Review a change for correctness.", true, "read_only")];
+    let resourceCapabilityIds = ["workspace.path"];
     const workspaceRoot = process.cwd();
     const catalog = new AgentSubagentRoleCatalog({ discover: () => definitions });
-    const projection = new AgentSpawnHostContractProjection(() => catalog.snapshot(workspaceRoot)).createProjection();
+    const projection = new AgentSpawnHostContractProjection(
+      () => catalog.snapshot(workspaceRoot),
+      () => resourceCapabilityIds,
+    ).createProjection();
     const sourceSchema = {
       type: "object",
       properties: {
         task: { type: "string", minLength: 1 },
         agent: { type: "string", minLength: 1 },
         forkContext: { type: "boolean" },
+        resources: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              capability: { type: "string", minLength: 1 },
+              value: {},
+            },
+          },
+        },
       },
       required: ["task"],
       additionalProperties: false,
@@ -50,6 +64,9 @@ describe("subagent role catalog", () => {
     expect(first).toMatchObject({
       properties: {
         agent: { enum: ["reviewer"], default: "reviewer" },
+        resources: {
+          items: { properties: { capability: { enum: ["workspace.path"] } } },
+        },
       },
     });
     expect(JSON.stringify(first)).not.toContain("modelProviderId");
@@ -57,6 +74,15 @@ describe("subagent role catalog", () => {
       "reviewer (default) [read_only]: Review a change for correctness.",
     );
     expect(projection.projectInvocationSchema?.({} as never, sourceSchema)).toBe(first);
+
+    resourceCapabilityIds = ["workspace.path", "artifact.uri"];
+    const third = projection.projectInvocationSchema?.({} as never, sourceSchema);
+    expect(third).not.toBe(first);
+    expect(third).toMatchObject({
+      properties: {
+        resources: { items: { properties: { capability: { enum: ["artifact.uri", "workspace.path"] } } } },
+      },
+    });
 
     definitions = [
       ...definitions,
@@ -67,6 +93,31 @@ describe("subagent role catalog", () => {
       properties: { agent: { enum: ["reviewer", "scout"], default: "reviewer" } },
     });
     expect(second).not.toBe(first);
+  });
+
+  test("omits resource claims when the host has no registered resource capabilities", () => {
+    const catalog = new AgentSubagentRoleCatalog({
+      discover: () => [subagentDefinition("reviewer", "Review a change for correctness.", true, "read_only")],
+    });
+    const projection = new AgentSpawnHostContractProjection(
+      () => catalog.snapshot(process.cwd()),
+      () => [],
+    ).createProjection();
+    const sourceSchema = {
+      type: "object",
+      properties: {
+        task: { type: "string" },
+        agent: { type: "string" },
+        resources: {
+          type: "array",
+          items: { type: "object", properties: { capability: { type: "string" }, value: {} } },
+        },
+      },
+      required: ["task"],
+    };
+
+    const projected = projection.projectInvocationSchema?.({} as never, sourceSchema);
+    expect(projected?.properties).not.toHaveProperty("resources");
   });
 
   test("rejects role catalogs without exactly one declarative default", () => {

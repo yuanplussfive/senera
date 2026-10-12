@@ -1,18 +1,14 @@
-import { AgentSlidingWindowInferenceBudget } from "../Source/AgentSystem/ModelEndpoints/AgentInferenceBudget.js";
+import {
+  AgentSlidingWindowInferenceBudget,
+  type AgentInferenceBudgetPort,
+} from "../Source/AgentSystem/ModelEndpoints/AgentInferenceBudget.js";
+import { createOpaqueId } from "../Source/AgentSystem/Core/AgentIds.js";
 import { resolveAgentInferenceBudgetConfig } from "../Source/AgentSystem/AgentDefaults.js";
 import { secondsToMilliseconds } from "../Source/AgentSystem/Defaults/AgentTimeDefaults.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
-export interface SeneraServerInferenceBudget {
-  readonly budget: AgentSlidingWindowInferenceBudget;
-  readonly scope: () => string;
-  bindScope(scope: () => string): void;
-}
-
-export function createSeneraServerInferenceBudget(
-  configSnapshot: () => AgentSystemConfig,
-): SeneraServerInferenceBudget {
-  let scope: (() => string) | undefined;
+export function createSeneraServerInferenceBudget(configSnapshot: () => AgentSystemConfig): AgentInferenceBudgetPort {
+  const applicationScope = createOpaqueId("application-inference");
   const budget = new AgentSlidingWindowInferenceBudget(() => {
     const policy = resolveAgentInferenceBudgetConfig(configSnapshot());
     return {
@@ -27,13 +23,8 @@ export function createSeneraServerInferenceBudget(
     };
   });
   return {
-    budget,
-    scope: () => {
-      if (!scope) throw new Error("Vector inference budget scope is not initialized.");
-      return scope();
-    },
-    bindScope(nextScope) {
-      scope = nextScope;
-    },
+    reserve: (input) => budget.reserve({ ...input, scope: applicationScope }),
+    settle: (input) => budget.settle(input),
+    acquire: (input) => budget.acquire({ ...input, scope: applicationScope }),
   };
 }

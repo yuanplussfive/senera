@@ -1,6 +1,7 @@
 import { AgentToolDiscoveryProtocol } from "./AgentToolMetaToolProtocol.js";
 import type { AgentToolSearchDiscovery, AgentToolSearchResult, AgentToolSearchSource } from "./AgentToolSearchTypes.js";
 import { AgentModelTokenEstimator } from "../Text/AgentTextBudget.js";
+import type { AgentToolAvailability } from "../ToolRuntime/AgentToolAvailability.js";
 
 /**
  * Tool discovery is intentionally a compact wire contract. Full descriptions,
@@ -12,6 +13,13 @@ import { AgentModelTokenEstimator } from "../Text/AgentTextBudget.js";
  * more:  [sourceId, sourceName, omittedToolCount]
  */
 export interface AgentToolSearchResultProjection {
+  readonly availability?: Readonly<Record<string, AgentToolAvailability>>;
+  readonly services?: readonly {
+    readonly id: string;
+    readonly title: string;
+    readonly description: string;
+    readonly availability: AgentToolAvailability;
+  }[];
   readonly status?: "empty" | "stale";
   readonly reason?: string;
   readonly diagnostics?: readonly string[];
@@ -24,7 +32,7 @@ export interface AgentToolSearchResultProjection {
 export interface AgentToolSearchResultProjectionOptions {
   /** The active chat model selects the same BPE accounting used elsewhere in the runtime. */
   readonly model: string;
-  /** Maximum BPE tokens for uncertain candidates; `match` is always retained. */
+  /** Maximum BPE tokens for uncertain candidates; matches and selected service availability are retained. */
   readonly tokenBudget: number;
 }
 
@@ -68,7 +76,7 @@ export function buildToolSearchResultProjection(
   return projectWire(discovery, match, maybe, more);
 }
 
-/** Only `match` candidates can feed capability reuse and routing learning. */
+/** Only `match` candidates can feed capability reuse and routing scenarios. */
 export function readToolNamesFromSearchResult(result: unknown): string[] {
   if (!isRecord(result) || !Array.isArray(result.match)) return [];
   return result.match.flatMap((entry) => {
@@ -102,7 +110,20 @@ function projectWire(
   maybe: readonly AgentToolSearchNameTuple[],
   more: readonly AgentToolSearchSourceTuple[],
 ): AgentToolSearchResultProjection {
+  const shownNames = new Set([...match, ...maybe].map(([name]) => name));
+  const availability = Object.fromEntries(
+    [...discovery.match, ...discovery.maybe]
+      .filter(
+        (result) => shownNames.has(result.toolName) && result.availability && result.availability.status !== "ready",
+      )
+      .map((result) => [result.toolName, result.availability!]),
+  );
+  const services = discovery.services
+    ?.filter((service) => service.availability.status !== "ready")
+    .map(({ id, title, description, availability: state }) => ({ id, title, description, availability: state }));
   return {
+    ...(Object.keys(availability).length > 0 ? { availability } : {}),
+    ...(services?.length ? { services } : {}),
     ...(discovery.status ? { status: discovery.status } : {}),
     ...(discovery.reason ? { reason: discovery.reason } : {}),
     ...(discovery.diagnostics && discovery.diagnostics.length > 0 ? { diagnostics: discovery.diagnostics } : {}),
@@ -206,10 +227,10 @@ function fitsBudget(
   maybe: readonly AgentToolSearchNameTuple[],
   more: readonly AgentToolSearchSourceTuple[],
 ): boolean {
-  // `match` is an actionable proof tier and is deliberately exempt from the
+  // Matches and selected service availability are evidence tiers exempt from the
   // uncertain disclosure budget. Otherwise one verbose producer summary could
   // suppress every `maybe`/`more` signal and hide the catalog frontier.
-  const wire = projectWire(discovery, [], maybe, more);
+  const wire = projectWire({ ...discovery, services: undefined }, [], maybe, more);
   const payload = { type: AgentToolDiscoveryProtocol.type, ...wire };
   return estimator.inspect(JSON.stringify(payload), tokenBudget).withinLimit;
 }

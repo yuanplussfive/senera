@@ -22,7 +22,7 @@ describe("Senera BAML tool provider", () => {
       requestId: "native-provider-request",
       step: 1,
       turnState,
-      skillCatalogFingerprint: "test",
+      skillCatalog: { skills: [], fingerprint: "test" },
       nativeProviderToolNames: [],
       toolAccessGrant: turnState.context.toolAccessGrant,
       toolExposure: turnState.context.toolExposure,
@@ -90,9 +90,9 @@ describe("Senera BAML tool provider", () => {
       requestId: "baml-roleplay-request",
       step: 1,
       turnState,
-      roleplayPresetActive: true,
+      personaActive: true,
       prefaceRewriteEnabled: true,
-      skillCatalogFingerprint: "test",
+      skillCatalog: { skills: [], fingerprint: "test" },
       nativeProviderToolNames: [],
       toolAccessGrant: turnState.context.toolAccessGrant,
       toolExposure: turnState.context.toolExposure,
@@ -144,7 +144,76 @@ describe("Senera BAML tool provider", () => {
     expect(turnState.toolBatchId("call-roleplay")).toBeUndefined();
   });
 
-  test("projects a BAML final response only after this turn has registered tool work", async () => {
+  test("passes Pi's native compaction context to BAML without Senera projection", async () => {
+    const modelProvider = createModelProvider({
+      MaxModelOutputTokens: 1_024,
+      ContextWindowTokens: 1_200,
+    });
+    const projection = projectSeneraModelProviderToPi(modelProvider);
+    const turnState = createTurnState(modelProvider.Model, 1_200, 0);
+    const frame = new AgentPiMutableSessionFrame({
+      sessionId: "baml-compaction-session",
+      requestId: "baml-compaction-request",
+      step: 1,
+      turnState,
+      skillCatalog: { skills: [], fingerprint: "test" },
+      nativeProviderToolNames: [],
+      toolAccessGrant: turnState.context.toolAccessGrant,
+      toolExposure: turnState.context.toolExposure,
+      selectedPromptTemplates: [],
+      tokenBudget: turnState.context.tokenBudget,
+      preflight: async () => undefined,
+    });
+    let receivedContext: Context | undefined;
+    const compilerFactory: AgentPiPlanningCompilerFactory = {
+      create: () => ({
+        compile: async () => {
+          throw new Error("Pi compaction must not enter the regular BAML planner.");
+        },
+        compact: async (input) => {
+          receivedContext = input.context;
+          return "Summary created.";
+        },
+        summarize: async () => "unused",
+      }),
+    };
+    const provider = new AgentPiBamlToolProvider({ projection, frame, compilerFactory }).create();
+    const model = provider.getModels()[0];
+    if (!model) throw new Error("Expected the Senera BAML model.");
+
+    const result = await provider
+      .streamSimple(
+        model,
+        {
+          systemPrompt: "You are a context summarization assistant.",
+          messages: [
+            {
+              role: "user",
+              content: `<conversation>\n[User]: ${"large historical text ".repeat(1_500)}\n</conversation>\n\nSummarize the history.`,
+              timestamp: 1,
+            },
+          ],
+          tools: [
+            {
+              name: "WorkspaceRead",
+              description: "Read a workspace file.",
+              parameters: { type: "object", properties: {} },
+            } as never,
+          ],
+        },
+        { cacheRetention: "none" },
+      )
+      .result();
+
+    expect(result.stopReason).toBe("stop");
+    expect(receivedContext?.tools).toBeUndefined();
+    expect(receivedContext?.messages[0]?.role).toBe("system");
+    expect(JSON.stringify(receivedContext)).toContain("WorkspaceRead");
+    expect(JSON.stringify(receivedContext)).toContain("large historical text");
+    expect(JSON.stringify(receivedContext).length).toBeGreaterThan(10_000);
+  });
+
+  test("projects an opted-in BAML final response only after this turn has registered tool work", async () => {
     const modelProvider = createModelProvider({ MaxModelOutputTokens: 1_024 });
     const projection = projectSeneraModelProviderToPi(modelProvider);
     const turnState = createTurnState(modelProvider.Model);
@@ -153,8 +222,9 @@ describe("Senera BAML tool provider", () => {
       requestId: "baml-roleplay-final-request",
       step: 1,
       turnState,
-      roleplayPresetActive: true,
-      skillCatalogFingerprint: "test",
+      personaActive: true,
+      finalResponseRewriteEnabled: true,
+      skillCatalog: { skills: [], fingerprint: "test" },
       nativeProviderToolNames: [],
       toolAccessGrant: turnState.context.toolAccessGrant,
       toolExposure: turnState.context.toolExposure,
@@ -224,9 +294,11 @@ describe("Senera BAML tool provider", () => {
   });
 });
 
-function createTurnState(model: string): AgentPiTurnState {
+function createTurnState(model: string, contextWindow = 16_384, outputReserve = 1_024): AgentPiTurnState {
   const toolAccessGrant = emptyAgentToolAccessGrant();
   return new AgentPiTurnState({
+    systemPrompt: "Test agent system context.",
+    userMessage: "Test model-provider request.",
     approvalMode: "agent",
     sessionId: "native-provider-session",
     requestId: "native-provider-request",
@@ -238,8 +310,8 @@ function createTurnState(model: string): AgentPiTurnState {
     toolPlan: new AgentPiToolPlanCoordinator(),
     tokenBudget: new AgentTurnTokenBudget({
       model,
-      contextWindowTokens: 16_384,
-      outputReserveTokens: 1_024,
+      contextWindowTokens: contextWindow,
+      outputReserveTokens: outputReserve,
     }),
   });
 }

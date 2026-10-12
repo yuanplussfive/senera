@@ -4,8 +4,6 @@ import type { AgentServerEventLogger } from "../Diagnostics/AgentServerEventLogg
 import type { AgentUserProfileManager } from "../Session/AgentUserProfile.js";
 import type { AgentConfigService } from "../Config/AgentConfigService.js";
 import type { AgentProviderModelDiscovery } from "../Config/AgentProviderModelDiscovery.js";
-import type { AgentPresetManager } from "../Presets/AgentPresetManager.js";
-import type { AgentPresetSnapshot } from "../Presets/AgentPresetTypes.js";
 import type { AgentSessionManager } from "../Session/AgentSessionManager.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type { AgentApprovalRuntime } from "../Approvals/AgentApprovalRuntime.js";
@@ -20,15 +18,17 @@ import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
 import type { AgentResourceResolverLike } from "../Resources/AgentResourceResolver.js";
 import type { AgentInteractiveTerminalRuntime } from "../ExecutionResources/AgentInteractiveTerminalRuntime.js";
 import type { AgentRuntimeUpdateHttpApiOptions } from "../Runtime/AgentRuntimeUpdateHttpApi.js";
-import type { AgentAgendaService } from "../Agenda/AgentAgendaService.js";
-import type { AgentGoalCommandService } from "../Agenda/AgentGoalCommandService.js";
-import type { AgentWorldSnapshotProvider } from "../World/AgentWorldTypes.js";
-import type { AgentWorldResidentWakeRuntime } from "../World/AgentWorldResidentWakeRuntime.js";
-import type { AgentPresetActivationRuntime } from "../Presets/AgentPresetActivationRuntime.js";
 import type { AgentChannelKind } from "../Channels/AgentChannelTypes.js";
 import type { AgentChannelStatus } from "../Channels/AgentChannelService.js";
 import type { AgentModelsDevCatalog } from "../ModelEndpoints/AgentModelsDevCatalog.js";
 import type { AgentWorkspaceSnapshotData } from "../Config/AgentConfigEventTypes.js";
+import type { AgentServerAccessGuard } from "../Auth/AgentServerAccessGuard.js";
+import type { AgentWebSocketTransport } from "./AgentWebSocketTransport.js";
+import type { AgentWorkspaceCatalog } from "../WorkspaceResources/AgentWorkspaceCatalog.js";
+import type { AgentArtifactManifestIndexCache } from "../Memory/AgentArtifactManifestIndexCache.js";
+import type { AgentPluginHost } from "../Plugins/AgentPluginHost.js";
+
+export type AgentPluginCatalogSource = Pick<AgentPluginHost, "list">;
 
 /** Narrow surface the WebSocket layer needs to drive channel connections. */
 export interface AgentChannelServiceControl {
@@ -42,6 +42,14 @@ export type AgentWorkspaceInfoSnapshot = AgentWorkspaceSnapshotData;
 export type AgentWorkspaceSwitchRequest = (workspaceRoot: string) => Promise<AgentWorkspaceInfoSnapshot>;
 
 export interface AgentWebSocketServerOptions {
+  artifactManifestIndex?: AgentArtifactManifestIndexCache;
+  onClientCountChanged?: (count: number) => void;
+  transport?: AgentWebSocketTransport;
+  workspaceId?: string;
+  workspaceCatalog?: AgentWorkspaceCatalog;
+  openWorkspace?: (id: string) => Promise<void>;
+  accessGuard?: AgentServerAccessGuard;
+  authenticationRoot?: string;
   config: AgentSystemConfig;
   workspaceRoot?: string;
   /** Deployment-provided safe default for loopback HTTP (for example, a local container port). */
@@ -62,19 +70,13 @@ export interface AgentWebSocketServerOptions {
   eventPersistence?: AgentWebSocketEventPersistenceOptions;
   eventWriter: AgentRunEventWriter;
   mcpManagement?: AgentMcpManagementService;
+  pluginHost?: AgentPluginCatalogSource;
   uploadStore?: AgentUploadStore;
   resourceResolver?: AgentResourceResolverLike;
   runtimeUpdate?: AgentRuntimeUpdateHttpApiOptions;
   channelWebhookApi?: import("../Channels/AgentChannelWebhookApi.js").AgentChannelWebhookApi;
   selfApi?: import("../SelfService/AgentSelfHttpApi.js").AgentSelfHttpApi;
   channelControl?: AgentChannelServiceControl;
-  agenda?: AgentAgendaService;
-  goalCommands?: AgentGoalCommandService;
-  worldRuntime?: AgentWorldSnapshotProvider;
-  residentWakeRuntime?: AgentWorldResidentWakeRuntime;
-  onWorldWake?: (reason: string) => void | Promise<void>;
-  presetActivation?: AgentPresetActivationRuntime;
-  onPresetSnapshot?: (snapshot: AgentPresetSnapshot) => void;
   workspaceInfo?: () => AgentWorkspaceInfoSnapshot;
   workspaceSwitchRequest?: AgentWorkspaceSwitchRequest;
 }
@@ -87,8 +89,6 @@ export interface AgentWebSocketRequestContext {
   userProfileManager: AgentUserProfileManager;
   providerModelDiscovery: AgentProviderModelDiscovery;
   modelsDevCatalog: AgentModelsDevCatalog;
-  presetManagerFactory: () => AgentPresetManager;
-  onPresetSnapshot?: (snapshot: AgentPresetSnapshot) => void;
   approvalRuntime?: AgentApprovalRuntime;
   interactionInput?: AgentInteractionInputRuntime;
   sandboxRuntimeService: AgentSandboxRuntimeService;
@@ -96,11 +96,7 @@ export interface AgentWebSocketRequestContext {
   interactiveTerminals?: AgentInteractiveTerminalRuntime;
   workspaceRoot: string;
   mcpManagement?: AgentMcpManagementService;
-  agenda?: AgentAgendaService;
-  goalCommands?: AgentGoalCommandService;
-  worldRuntime?: AgentWorldSnapshotProvider;
-  residentWakeRuntime?: AgentWorldResidentWakeRuntime;
-  onWorldWake?: (reason: string) => void | Promise<void>;
+  pluginHost?: AgentPluginCatalogSource;
   workspaceInfo?: () => AgentWorkspaceInfoSnapshot;
   workspaceSwitchRequest?: AgentWorkspaceSwitchRequest;
 }

@@ -247,6 +247,10 @@ describe("senera plugin host", () => {
     expect(tool?.owner.kind).toBe("plugin");
     expect(tool?.owner.name).toBe("tooler");
     expect(registry.getSkill("weather-skill")?.name).toBe("weather-skill");
+    const plugin = host.list().find((entry) => entry.id === "tooler");
+    expect(plugin?.revision).toMatch(/^[a-f0-9]{64}$/u);
+    expect(plugin?.revision).not.toBe(plugin?.version);
+    expect(plugin?.capabilityCount).toBe(2);
   });
 
   test("registers approval transports through the plugin context", async () => {
@@ -542,11 +546,6 @@ function stubPort(workspaceRoot: string): AgentSelfServicePort {
       history: () => [],
       readRevision: () => ({ status: "unavailable" }),
     },
-    presets: {
-      manager: () => {
-        throw new Error("preset manager is not exercised by this test");
-      },
-    },
   };
 }
 
@@ -577,6 +576,7 @@ function pluginSkillFixture(name: string): RegisteredSkill {
     name,
     description: `test skill ${name}`,
     descriptionFile: `${name}.md`,
+    content: `# ${name}`,
     recommendedTools: [],
     evidenceRequirements: [],
   };

@@ -15,7 +15,7 @@ import type { ArtifactManifestRecord } from "../../../Source/AgentSystem/Memory/
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentSystemConfigTypes.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 import { AgentTokenProjector } from "../../../Source/AgentSystem/Text/AgentTokenProjection.js";
-import { projectAgentToolResultEventValue } from "../../../Source/AgentSystem/ToolRuntime/AgentToolResultEventProjection.js";
+import { projectAgentToolResultForHistory } from "../../../Source/AgentSystem/Types/ToolRuntimeTypes.js";
 import { AgentExecutionErrorCodes } from "../../../Source/AgentSystem/Xml/AgentXmlStatus.js";
 import {
   AgentToolExecutionStatuses,
@@ -151,24 +151,19 @@ describe("artifact output capture", () => {
       ]),
     });
     const recalled = await readArtifactMemories(
-      { artifactUris: [manifest.artifactUri], refs: ["stdout", "stderr"] },
+      { artifactUris: [manifest.artifactUri], view: "full" },
       new Map([[manifest.artifactId, manifest]]),
       {
         workspaceRoot,
         artifactRoot: path.resolve(workspaceRoot, config.RootDir),
-        maxBytes: 1_024,
-        startByte: 0,
         maxArtifacts: 16,
-        maxRefs: 8,
         maxConcurrency: 4,
       },
     );
-    expect(recalled.artifacts.item[0]?.memories.item).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ ref: "stdout", content: "complete stdout\n" }),
-        expect.objectContaining({ ref: "stderr", content: "complete stderr\n" }),
-      ]),
-    );
+    expect(recalled.artifacts.item[0]?.content).toMatchObject({
+      result: { stdout: "preview", stderr: "preview" },
+      process: { stdout: "complete stdout\n", stderr: "complete stderr\n", exitCode: 0, signal: null },
+    });
     await expect(fs.stat(spool.descriptor.directory)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
@@ -217,15 +212,13 @@ describe("artifact output capture", () => {
   test.each([
     { label: "10 KiB streams", bytesPerStream: 10 * 1024 },
     { label: "100 KiB streams", bytesPerStream: 100 * 1024 },
-  ])("projects $label into a compact Artifact-backed event result", async ({ bytesPerStream }) => {
+  ])("projects $label into a compact Artifact-backed history result", async ({ bytesPerStream }) => {
     const workspaceRoot = createTemporaryDirectory("senera-artifact-token-projection");
     temporaryDirectories.push(workspaceRoot);
     const config = resolveArtifactsConfig({
       ModelProviders: [],
       Artifacts: {
         RootDir: ".senera/artifacts",
-        InlineResultMaxTokens: 512,
-        InlineResultMaxBytes: 1024,
       },
     } satisfies AgentSystemConfig);
     const recorder = new AgentToolExecutionArtifactRecorder({ workspaceRoot, config, model: "gpt-4o" });
@@ -275,14 +268,13 @@ describe("artifact output capture", () => {
     });
 
     expect(recorded?.artifact).toBeDefined();
-    expect(recorded?.inlinePayload).toBeUndefined();
     expect(recorded?.process).toEqual({ exitCode: 0, signal: null, stdout: "", stderr: "" });
-    const artifactEventResult = projectAgentToolResultEventValue(recorded!);
-    expect(artifactEventResult).toMatchObject({
+    const historyResult = projectAgentToolResultForHistory(recorded!);
+    expect(historyResult.result).toMatchObject({
       type: "senera.artifact_backed_tool_result.v1",
       artifactUri: recorded!.artifact!.artifactUri,
     });
-    expect(JSON.stringify(artifactEventResult)).not.toContain(stdout);
+    expect(JSON.stringify(historyResult.result)).not.toContain(stdout);
     expect(JSON.parse(await fs.readFile(recorded!.artifact!.files.raw, "utf8"))).toEqual(result);
 
     const projector = new AgentTokenProjector("gpt-4o");
@@ -292,9 +284,9 @@ describe("artifact output capture", () => {
       process: { exitCode: 0, signal: null, stdout, stderr },
     };
     const artifactBackedPayload = {
-      arguments: recorded!.arguments,
-      result: artifactEventResult,
-      process: recorded!.process,
+      arguments: historyResult.arguments,
+      result: historyResult.result,
+      process: historyResult.process,
       artifactUri: recorded!.artifact!.artifactUri,
     };
     const legacyTokens = projector.countJson(legacyPayload);
@@ -592,7 +584,7 @@ describe("artifact output capture", () => {
     expect(await fs.readFile(spool.descriptor.files.stdout, "utf8")).toBe("output that must remain recoverable\n");
   });
 
-  test("marks the Artifact unavailable while preserving the spool after workspace materialization fails", async () => {
+  test("does not materialize an empty workspace capture and commits the tool result", async () => {
     const workspaceRoot = createTemporaryDirectory("senera-artifact-workspace-failure");
     temporaryDirectories.push(workspaceRoot);
     const spool = await createSeneraOutputSpool(path.join(workspaceRoot, "spool"), "call");
@@ -629,25 +621,18 @@ describe("artifact output capture", () => {
     expect(recorded).toMatchObject({
       result: { applied: true },
       outcome: { assessment: { status: "success" } },
-      artifactAvailability: { status: "unavailable", reason: "recording_failed" },
     });
+    expect(recorded?.artifactAvailability).toBeUndefined();
+    expect(recorded?.artifact?.workspace).toBeUndefined();
 
-    expect(await fs.readFile(path.join(spool.descriptor.directory, ".output-spool.json"), "utf8")).toContain(
-      '"state":"failed"',
-    );
-    expect(await fs.readFile(spool.descriptor.files.stdout, "utf8")).toBe("output that must remain recoverable\n");
+    await expect(fs.access(spool.descriptor.directory)).rejects.toMatchObject({ code: "ENOENT" });
     const artifactRoot = path.resolve(workspaceRoot, config.RootDir);
     const entries = await fs.readdir(artifactRoot, { recursive: true });
-    const markerEntry = entries.find((entry) => entry.endsWith(".artifact-writing"));
-    expect(markerEntry).toBeDefined();
-    const markerPath = path.join(artifactRoot, markerEntry!);
-    expect(JSON.parse(await fs.readFile(markerPath, "utf8"))).toMatchObject({ state: "failed" });
-    await expect(fs.access(path.join(path.dirname(markerPath), "manifest.json"))).rejects.toMatchObject({
-      code: "ENOENT",
-    });
+    expect(entries.some((entry) => entry.endsWith(".artifact-writing"))).toBe(false);
+    await expect(fs.access(recorded!.artifact!.files.manifest)).resolves.toBeUndefined();
   });
 
-  test("keeps the complete structured result while writing a bounded preview", async () => {
+  test("keeps the complete result for ArtifactReadTool full view while writing a bounded preview", async () => {
     const workspaceRoot = createTemporaryDirectory("senera-artifact-raw");
     temporaryDirectories.push(workspaceRoot);
     const config = resolveArtifactsConfig({
@@ -684,62 +669,38 @@ describe("artifact output capture", () => {
     const manifest = JSON.parse(await fs.readFile(result!.artifact!.files.manifest, "utf8")) as ArtifactManifestRecord;
     expect(manifest).toMatchObject({
       contents: expect.arrayContaining([
-        expect.objectContaining({
-          ref: "raw",
-          structure: expect.objectContaining({
-            mediaType: "application/x-ndjson",
-            byteLength: expect.any(Number),
-            sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
-          }),
-        }),
+        expect.objectContaining({ ref: "raw", byteLength: expect.any(Number), sha256: expect.any(String) }),
         expect.objectContaining({ ref: "rawBlob" }),
         expect.objectContaining({ ref: "rawPreview" }),
       ]),
     });
-    const indexed = await readArtifactMemories(
-      { artifactUris: [manifest.artifactUri], refs: ["raw"] },
+    const full = await readArtifactMemories(
+      { artifactUris: [manifest.artifactUri], view: "full" },
       new Map([[manifest.artifactId, manifest]]),
       {
         workspaceRoot,
         artifactRoot: path.resolve(workspaceRoot, config.RootDir),
-        maxBytes: 128,
-        startByte: 0,
         maxArtifacts: 16,
-        maxRefs: 8,
         maxConcurrency: 4,
-        jsonTokenProjector: new AgentTokenProjector("gpt-4o"),
-        jsonTokenLimit: 1_000,
       },
     );
-    expect(indexed.artifacts.item[0]?.memories.item[0]).toMatchObject({
-      view: {
-        kind: "json_index",
-        fieldCount: 1,
-        returnedFieldCount: 1,
-        remainingFieldCount: 0,
-        complete: true,
-      },
-      structuredContent: {
-        fields: [{ name: "items", type: "array", itemCount: 200 }],
-      },
-    });
-    const rawBlob = await readArtifactMemories(
-      { artifactUris: [manifest.artifactUri], refs: ["rawBlob"], maxBytesPerRef: 128 },
+    expect(full.artifacts.item[0]).toMatchObject({ status: "found", view: "full", content: { result: raw } });
+
+    const compact = await readArtifactMemories(
+      { artifactUris: [manifest.artifactUri], view: "compact" },
       new Map([[manifest.artifactId, manifest]]),
       {
         workspaceRoot,
         artifactRoot: path.resolve(workspaceRoot, config.RootDir),
-        maxBytes: 128,
-        startByte: 0,
         maxArtifacts: 16,
-        maxRefs: 8,
         maxConcurrency: 4,
       },
     );
-    expect(rawBlob.artifacts.item[0]?.memories.item[0]).toMatchObject({
-      ref: "rawBlob",
-      range: { complete: false, nextStartByte: expect.any(Number) },
-      content: expect.stringContaining("items"),
+    expect(compact.artifacts.item[0]).toMatchObject({
+      status: "found",
+      view: "compact",
+      compressionMethod: "mechanical",
+      content: expect.any(String),
     });
   });
 });

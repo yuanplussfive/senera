@@ -31,3 +31,29 @@ export interface AgentEmbeddingResult {
   model: string;
   vectors: number[][];
 }
+
+/** Shared client surface used by every workspace-owned embedding consumer. */
+export interface AgentEmbeddingClient {
+  embed(request: AgentEmbeddingRequest): Promise<AgentEmbeddingResult>;
+  /** Stable provider identity persisted with vectors by storage-backed consumers. */
+  readonly providerId?: string;
+  /** Output width required by storage-backed vector indexes such as MemOS. */
+  readonly dimensions?: number;
+  readonly maxBatchSize?: number;
+  prewarm?(signal?: AbortSignal, priority?: AgentEmbeddingPriority): Promise<void>;
+  close?(): void | Promise<void>;
+}
+
+/**
+ * Resolves the largest cohesive unit accepted by a shared embedding worker.
+ * Keeping this policy in the transport-neutral contract prevents memory recall
+ * and ToolSearch from maintaining subtly different batching rules.
+ */
+export function resolveAgentEmbeddingBatchSize(maxBatchSize: number | undefined, inputCount: number): number {
+  if (inputCount < 1) return 1;
+  if (maxBatchSize === undefined) return inputCount;
+  if (!Number.isSafeInteger(maxBatchSize) || maxBatchSize < 1) {
+    throw new Error("Embedding client maxBatchSize must be a positive safe integer.");
+  }
+  return Math.min(maxBatchSize, inputCount);
+}

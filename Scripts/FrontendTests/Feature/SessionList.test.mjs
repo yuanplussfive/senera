@@ -1,5 +1,5 @@
 import React from "react";
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
@@ -105,6 +105,103 @@ test("integrated sidebar exposes collapse, new-session, and real session search"
 
   await user.click(screen.getByRole("button", { name: frontendMessage("session.searchClear") }));
   expect(screen.getByRole("searchbox", { name: frontendMessage("session.searchPlaceholder") })).toHaveValue("");
+});
+
+test("selects the visible sessions and confirms bulk deletion", async () => {
+  const onCloseSessions = vi.fn((sessionIds) => {
+    useStore.getState().requestSessionDeletions(sessionIds);
+    return { acceptedSessionIds: sessionIds, rejectedSessionIds: [] };
+  });
+  const user = userEvent.setup();
+  resetSessionStore({
+    sessions: {
+      first: session("first", "Frontend refactor"),
+      second: session("second", "Provider settings"),
+      third: session("third", "Release notes"),
+    },
+    sessionOrder: ["first", "second", "third"],
+    activeSessionId: "first",
+  });
+  renderWithFrontendProviders(React.createElement(SessionList, createProps({ onCloseSessions })));
+
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.startSelection") }));
+  await user.click(
+    screen.getByRole("checkbox", {
+      name: frontendMessage("session.selectConversation", { title: "Frontend refactor" }),
+    }),
+  );
+  await user.type(screen.getByRole("searchbox", { name: frontendMessage("session.searchPlaceholder") }), "provider");
+  await waitFor(() => expect(screen.queryByText("Frontend refactor")).not.toBeInTheDocument());
+  await user.click(screen.getByRole("checkbox", { name: frontendMessage("session.selectVisible") }));
+
+  expect(screen.getByText(frontendMessage("session.selectedCount", { count: 2 }))).toBeVisible();
+  expect(
+    screen.getByRole("checkbox", {
+      name: frontendMessage("session.selectConversation", { title: "Provider settings" }),
+    }),
+  ).toBeChecked();
+  expect(
+    screen.queryByRole("checkbox", {
+      name: frontendMessage("session.selectConversation", { title: "Frontend refactor" }),
+    }),
+  ).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.deleteSelected") }));
+  await waitFor(() => {
+    expect(
+      within(screen.getByRole("dialog", { name: frontendMessage("session.deleteSelectedTitle") })).getByText(
+        frontendMessage("session.deleteSelectedDescription", { count: 2 }),
+      ),
+    ).toBeVisible();
+  });
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.deleteSelectedConfirm") }));
+
+  expect(onCloseSessions).toHaveBeenCalledOnce();
+  expect(onCloseSessions).toHaveBeenCalledWith(["first", "second"]);
+  await waitFor(() => {
+    expect(screen.queryByText("Frontend refactor")).not.toBeInTheDocument();
+    expect(screen.queryByText("Provider settings")).not.toBeInTheDocument();
+  });
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.searchClear") }));
+  await waitFor(() => expect(screen.getByText("Release notes")).toBeVisible());
+  expect(screen.queryByRole("button", { name: frontendMessage("session.cancelSelection") })).not.toBeInTheDocument();
+});
+
+test("keeps failed bulk-delete requests selected for retry", async () => {
+  const onCloseSessions = vi.fn((sessionIds) => {
+    const acceptedSessionIds = sessionIds.filter((sessionId) => sessionId === "first");
+    useStore.getState().requestSessionDeletions(acceptedSessionIds);
+    return {
+      acceptedSessionIds,
+      rejectedSessionIds: sessionIds.filter((sessionId) => !acceptedSessionIds.includes(sessionId)),
+    };
+  });
+  const user = userEvent.setup();
+  resetSessionStore({
+    sessions: {
+      first: session("first", "Queued deletion"),
+      second: session("second", "Unsent deletion"),
+    },
+    sessionOrder: ["first", "second"],
+    activeSessionId: "first",
+  });
+  renderWithFrontendProviders(React.createElement(SessionList, createProps({ onCloseSessions })));
+
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.startSelection") }));
+  await user.click(screen.getByRole("checkbox", { name: frontendMessage("session.selectVisible") }));
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.deleteSelected") }));
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.deleteSelectedConfirm") }));
+
+  expect(onCloseSessions).toHaveBeenCalledOnce();
+  expect(onCloseSessions).toHaveBeenCalledWith(["first", "second"]);
+  expect(useStore.getState().sessionOrder).toEqual(["second"]);
+  expect(
+    screen.getByRole("checkbox", {
+      name: frontendMessage("session.selectConversation", { title: "Unsent deletion" }),
+    }),
+  ).toBeChecked();
+  expect(screen.getByText(frontendMessage("session.selectedCount", { count: 1 }))).toBeVisible();
+  expect(screen.getByRole("button", { name: frontendMessage("session.cancelSelection") })).toBeVisible();
 });
 
 test("moves channel filtering into the Senera menu", async () => {
@@ -241,6 +338,7 @@ function createProps(overrides = {}) {
 function resetSessionStore(overrides = {}) {
   useStore.setState({
     sessions: {},
+    runtimeSnapshotsBySession: {},
     sessionOrder: [],
     activeSessionId: null,
     sidebarCollapsed: false,

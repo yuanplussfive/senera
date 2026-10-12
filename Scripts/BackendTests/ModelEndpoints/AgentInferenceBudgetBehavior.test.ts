@@ -12,12 +12,12 @@ describe("background inference budget", () => {
       () => now,
     );
 
-    expect(budget.acquire({ scope: "world-1", estimatedInputTokens: 50 })).toEqual({ allowed: true });
-    const denied = budget.acquire({ scope: "world-1", estimatedInputTokens: 1 });
+    expect(budget.acquire({ scope: "workspace-1", estimatedInputTokens: 50 })).toEqual({ allowed: true });
+    const denied = budget.acquire({ scope: "workspace-1", estimatedInputTokens: 1 });
     expect(denied).toEqual({ allowed: false, retryAtMs: 2_000, reason: "request_limit" });
 
     now = 2_000;
-    expect(budget.acquire({ scope: "world-1", estimatedInputTokens: 100 })).toEqual({ allowed: true });
+    expect(budget.acquire({ scope: "workspace-1", estimatedInputTokens: 100 })).toEqual({ allowed: true });
   });
 
   test("rejects invalid policy and denial metadata instead of falling back", () => {
@@ -27,7 +27,7 @@ describe("background inference budget", () => {
         maxRequests: 1,
         maxEstimatedInputTokens: 1,
       })).acquire({
-        scope: "world-1",
+        scope: "workspace-1",
         estimatedInputTokens: 1,
       }),
     ).toThrow("windowMs must be a positive safe integer");
@@ -41,17 +41,17 @@ describe("background inference budget", () => {
     );
 
     const reservation = budget.reserve({
-      scope: "world-1",
-      lane: "goal",
-      sourceId: "goal-micro-loop",
+      scope: "workspace-1",
+      lane: "continuity",
+      sourceId: "continuity-learning",
       estimatedInputTokens: 10,
     });
     expect(reservation.allowed).toBe(true);
     expect(
       budget.reserve({
-        scope: "world-1",
-        lane: "resident",
-        sourceId: "resident-idle",
+        scope: "workspace-1",
+        lane: "embedding",
+        sourceId: "memory-embedding",
         estimatedInputTokens: 10,
       }),
     ).toMatchObject({ allowed: false, reason: "concurrency_limit" });
@@ -60,9 +60,9 @@ describe("background inference budget", () => {
     budget.settle({ reservationId: reservation.reservation.id, actualInputTokens: 8 });
     expect(
       budget.reserve({
-        scope: "world-1",
-        lane: "resident",
-        sourceId: "resident-idle",
+        scope: "workspace-1",
+        lane: "embedding",
+        sourceId: "memory-embedding",
         estimatedInputTokens: 10,
       }).allowed,
     ).toBe(true);
@@ -81,7 +81,7 @@ describe("background inference budget", () => {
 
     expect(
       budget.reserve({
-        scope: "world-1",
+        scope: "workspace-1",
         lane: "continuity",
         sourceId: "continuity.learning",
         estimatedInputTokens: 10,
@@ -96,30 +96,30 @@ describe("background inference budget", () => {
         maxRequests: 8,
         maxEstimatedInputTokens: 1_000,
         maxConcurrent: 2,
-        laneWeights: { goal: 4, resident: 1 },
+        laneWeights: { continuity: 4, embedding: 1 },
       }),
       () => 1_000,
     );
     const resident = budget.reserve({
-      scope: "world-1",
-      lane: "resident",
-      sourceId: "resident-idle",
+      scope: "workspace-1",
+      lane: "embedding",
+      sourceId: "memory-embedding",
       estimatedInputTokens: 1,
     });
     expect(resident.allowed).toBe(true);
     expect(
       budget.reserve({
-        scope: "world-1",
-        lane: "resident",
-        sourceId: "resident-idle",
+        scope: "workspace-1",
+        lane: "embedding",
+        sourceId: "memory-embedding",
         estimatedInputTokens: 1,
       }),
     ).toMatchObject({ allowed: false, reason: "concurrency_limit" });
     expect(
       budget.reserve({
-        scope: "world-1",
-        lane: "goal",
-        sourceId: "goal-micro-loop",
+        scope: "workspace-1",
+        lane: "continuity",
+        sourceId: "continuity-learning",
         estimatedInputTokens: 1,
       }).allowed,
     ).toBe(true);

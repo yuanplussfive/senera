@@ -36,7 +36,9 @@ describe("Pi workspace System Tools", () => {
     expect(resolveAsarUnpackedExecutablePath(packagedPath, (candidate) => candidate === unpackedPath)).toBe(
       unpackedPath,
     );
-    expect(resolveAsarUnpackedExecutablePath(packagedPath, () => false)).toBe(packagedPath);
+    expect(() => resolveAsarUnpackedExecutablePath(packagedPath, () => false)).toThrow(
+      "Packaged native executable is missing",
+    );
     expect(resolveAsarUnpackedExecutablePath(path.join("runtime", "node_modules", "rg.exe"))).toBe(
       path.join("runtime", "node_modules", "rg.exe"),
     );
@@ -239,7 +241,6 @@ function registeredTool(definition: AgentSystemToolDefinition, workspaceRoot: st
       ProtocolVersion: 2,
       ResultAssessment: "ProcessExit",
     },
-    observationProjection: definition.metadata.observation,
     sources: definition.metadata.sources ?? [],
     search: definition.metadata.search,
     childGrant: "inherit",

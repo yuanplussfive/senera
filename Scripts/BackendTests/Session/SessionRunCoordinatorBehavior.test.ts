@@ -306,31 +306,6 @@ describe("Session run coordinator behavior", () => {
     expect(fixture.session.status).toBe(AgentSessionStatuses.Idle);
   });
 
-  test("acknowledges exactly the continuity rules projected into a committed turn", async () => {
-    const acknowledgeRuleDeliveries = vi.fn(() => 2);
-    const fixture = createCoordinatorFixture({
-      continuityDelivery: { acknowledgeRuleDeliveries },
-      loop: {
-        run: async (request) => ({
-          ...completedRun(request.requestId),
-          continuityRuleDeliveryUris: ["senera://continuity-rule/first", "senera://continuity-rule/second"],
-        }),
-      },
-    });
-
-    await fixture.coordinator.runTurn(fixture.session, {
-      approvalMode: "agent",
-      requestId: "request-rule-delivery",
-      input: "Continue",
-    });
-
-    expect(acknowledgeRuleDeliveries).toHaveBeenCalledTimes(1);
-    expect(acknowledgeRuleDeliveries).toHaveBeenCalledWith(
-      ["senera://continuity-rule/first", "senera://continuity-rule/second"],
-      expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/u),
-    );
-  });
-
   test("replays a matching durable command without executing the loop twice", async () => {
     const run = vi.fn(async (request: Parameters<AgentLoopRunner["run"]>[0]) => {
       await request.commitTerminalEvents?.([
@@ -393,13 +368,10 @@ describe("Session run coordinator behavior", () => {
   });
 
   test("does not expose uncommitted terminal entries when terminal persistence fails", async () => {
-    const acknowledgeRuleDeliveries = vi.fn(() => 1);
     const fixture = createCoordinatorFixture({
-      continuityDelivery: { acknowledgeRuleDeliveries },
       loop: {
         run: async (request) => ({
           ...completedRun(request.requestId),
-          continuityRuleDeliveryUris: ["senera://continuity-rule/not-committed"],
         }),
       },
     });
@@ -421,7 +393,6 @@ describe("Session run coordinator behavior", () => {
     expect(fixture.store.loadRunSnapshots(fixture.session.id)).toEqual([
       expect.objectContaining({ requestId: "request-terminal-commit-failure", status: "running" }),
     ]);
-    expect(acknowledgeRuleDeliveries).not.toHaveBeenCalled();
   });
 
   test("quiesces active runs before shutdown completes and rejects future runs", async () => {

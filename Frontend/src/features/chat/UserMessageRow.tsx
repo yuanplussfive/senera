@@ -6,6 +6,7 @@ import { MessageActions } from "./MessageActions";
 import { MessageAttachments } from "./MessageAttachments";
 import { MessageAvatar, MessageMeta } from "./MessageChrome";
 import { InlineMessageEditor } from "./InlineMessageEditor";
+import { MessageMetrics } from "./MessageMetrics";
 
 export interface UserMessageRowProps {
   message: ChatMessage;
@@ -43,7 +44,7 @@ export function UserMessageRow({
   onViewWorkflow,
 }: UserMessageRowProps): JSX.Element {
   return (
-    <ConversationFrame mode="user" className="group/msg items-start justify-end gap-2.5">
+    <ConversationFrame mode="user" className="group/msg items-start justify-end gap-2.5" data-message-hover-surface>
       <div className="flex min-w-0 max-w-full flex-col items-end">
         <MessageMeta align="right" timestamp={message.createdAt} />
         {message.attachments && message.attachments.length > 0 ? (
@@ -71,6 +72,7 @@ export function UserMessageRow({
             >
               {message.content}
             </button>
+            <MessageMetrics role="user" text={message.content} />
             <MessageActions
               content={message.content}
               placement="right"

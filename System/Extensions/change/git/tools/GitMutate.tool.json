@@ -6,7 +6,7 @@
     "category": "git-change",
     "icon": "git-branch",
     "activity": {
-      "action": { "zh-CN": "修改 Git", "en-US": "Change Git" },
+      "action": { "zh-CN": "操作", "en-US": "Change" },
       "argumentPath": "/operation",
       "detailPaths": ["/repository", "/paths/*"]
     }
@@ -104,7 +104,6 @@
     "required": ["operation", "repository", "exitCode", "output"],
     "additionalProperties": false
   },
-  "observationProjection": "observations/GitMutate.projection.json",
   "permissions": ["process:git", "filesystem:workspace:write"],
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadWrite" },
   "runtime": {

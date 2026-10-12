@@ -65,23 +65,6 @@ export enum ExecutionDeltaOp {
   AddWarning = "AddWarning",
 }
 
-export enum GoalMicroLoopDecisionKind {
-  Wait = "Wait",
-  Propose = "Propose",
-  AskUser = "AskUser",
-  Execute = "Execute",
-  Replan = "Replan",
-  Complete = "Complete",
-  Block = "Block",
-}
-
-export enum ResidentIdleDecisionKind {
-  Wait = "Wait",
-  Reflect = "Reflect",
-  CreateGoal = "CreateGoal",
-  Notify = "Notify",
-}
-
 export enum ToolCallStatus {
   Success = "Success",
   Failure = "Failure",
@@ -130,58 +113,41 @@ export interface AskUserDecision {
   
 }
 
-export interface ContinuityAgendaDraft {
-  kind: string
-  change: string
-  actor: string
+export interface AuxiliaryImageAnalysis {
+  analysis: string
+  
+}
+
+export interface AuxiliarySummary {
   summary: string
-  timeText?: string | null
-  relatesTo?: string | null
   
 }
 
-export interface ContinuityCapture {
-  items: ContinuityCaptureItem[]
-  agenda: ContinuityAgendaDraft[]
-  needsRulePass: boolean
+export interface ChannelCodePart {
+  kind: "code"
+  language?: string | null
+  code: string
   
 }
 
-export interface ContinuityCaptureItem {
-  kind: string
-  text?: string | null
-  key?: string | null
-  value?: string | number | boolean | null
-  from?: string | null
-  relation?: string | null
-  to?: string | null
+export interface ChannelDelivery {
+  parts: (ChannelTextPart | ChannelResourcePart | ChannelCodePart)[]
   
 }
 
-export interface ContinuityRuleExtractionResult {
-  items: ContinuityRuleItem[]
+export interface ChannelResourcePart {
+  kind: "resource"
+  uri: string
+  alt?: string | null
+  mediaKind?: "image" | "video" | "audio" | "file" | null
+  mime?: string | null
+  fileName?: string | null
   
 }
 
-export interface ContinuityRuleItem {
-  kind: string
-  title: string
-  target?: string | null
-  replace?: boolean | null
-  value?: string | number | boolean | null
-  when?: Record<string, string | number | boolean> | null
-  at?: string | null
-  match?: string | null
-  threshold?: number | null
-  effect?: string | null
-  until: string
-  
-}
-
-export interface ConversationBoundary {
-  relation: string
-  confidence: number
-  focus: string
+export interface ChannelTextPart {
+  kind: "text"
+  text: string
   
 }
 
@@ -203,36 +169,12 @@ export interface ExecuteDecision {
   
 }
 
-export interface GoalMicroLoopCandidate {
-  goalId: string
+export interface MemOSFragment {
+  topic: string
   summary: string
-  status: string
-  intentMode?: string | null
-  priority: number
-  progress: number
-  successCriteria: string[]
-  trigger: string
-  triggerKey: string
-  sourceRefs: string[]
-  dueAt?: string | null
-  nextReviewAt?: string | null
+  type: "fact" | "preference" | "relationship" | "context" | "entity" | "custom"
   
-}
-
-export interface GoalMicroLoopDecision {
-  goalId: string
-  triggerKey: string
-  kind: GoalMicroLoopDecisionKind
-  reason: string
-  nextReviewAt?: string | null
-  progress?: number | null
-  blockedReason?: string | null
-  
-}
-
-export interface PiConversationSummary {
-  summary: string
-  
+  [key: string]: any;
 }
 
 export interface PiToolArgumentsDraft {
@@ -365,38 +307,14 @@ export interface RepeatedCallWarning {
   
 }
 
-export interface ResidentIdleDecision {
-  kind: ResidentIdleDecisionKind
-  reason: string
-  goal?: ResidentIdleGoalProposal | null
-  message?: string | null
-  
-}
-
-export interface ResidentIdleGoalProposal {
-  summary: string
-  detail?: string | null
-  priority?: number | null
-  successCriteria?: string[] | null
-  
-}
-
 export interface ResidentSpeechProjection {
   utterance: string
   
 }
 
-export interface TemporalMemoryDigest {
-  summary: TemporalMemoryTextPart[]
-  topics: TemporalMemoryTextPart[][]
-  openLoops: TemporalMemoryTextPart[][]
-  
-}
-
-export interface TemporalMemoryTextPart {
-  kind: string
-  text?: string | null
-  role?: string | null
+export interface StateCardRewrite {
+  topicRelation: "continue" | "new_topic"
+  standaloneRequest: string
   
 }
 
@@ -463,21 +381,6 @@ export interface ToolEvidenceCapabilityItem {
   
 }
 
-export interface ToolLearningRecord {
-  toolName: string
-  tags: string[]
-  sourceTerms: string[]
-  triggers: string[]
-  reason: string
-  confidence: number
-  
-}
-
-export interface ToolLearningResult {
-  records: ToolLearningRecord[]
-  
-}
-
 export interface ToolRiskAudit {
   decision: ToolRiskAuditDecision
   riskLevel: ToolRiskLevel
@@ -488,8 +391,6 @@ export interface ToolRiskAudit {
   safeAlternative?: string | null
   
 }
-
-export type ContinuityScalar = string | number | boolean
 
 export type ControllerDecision = DirectDecision | AskUserDecision | ExecuteDecision
 

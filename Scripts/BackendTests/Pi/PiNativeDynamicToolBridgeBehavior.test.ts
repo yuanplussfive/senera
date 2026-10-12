@@ -44,6 +44,37 @@ describe("Pi native dynamic tool bridge", () => {
     ]);
   });
 
+  test("exposes only explicitly selected dynamic tools as native schemas", async () => {
+    const registry = toolRegistry();
+    const execute = vi.fn(async () => ({ content: [], details: { senera: { toolName: WeatherToolName } } }));
+    const projector = createProjector(registry, "native", { execute } as unknown as AgentPiToolExecutionBridge);
+    const grant = grantFor(WeatherToolName);
+    const tools = projector
+      .createToolSet(["ToolDescribe", "ToolSearch", WeatherToolName, CalendarToolName], [], undefined, [
+        WeatherToolName,
+      ])
+      .materialize(() => ({ toolAccessGrant: grant }));
+
+    expect(tools.map((tool) => tool.name)).toEqual([
+      "ToolDescribe",
+      "ToolSearch",
+      WeatherToolName,
+      AgentPiNativeToolBridgeName,
+    ]);
+    expect(tools.find((tool) => tool.name === CalendarToolName)).toBeUndefined();
+
+    const weather = tools.find((tool) => tool.name === WeatherToolName);
+    if (!weather) throw new Error("Expected the explicitly selected tool.");
+    await weather.execute("call-weather-direct", { city: "上海" });
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tool: expect.objectContaining({ name: WeatherToolName }),
+        toolCallId: "call-weather-direct",
+        params: { city: "上海" },
+      }),
+    );
+  });
+
   test("uses a package declaration to keep BAML-only management tools out of the native schema", () => {
     const registry = toolRegistry();
     const bamlOnly = registry.getTool("ToolLoad");

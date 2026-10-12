@@ -5,7 +5,9 @@ import type { AgentToolAccessGrant } from "../ToolRuntime/AgentToolAccessGrant.j
 import type { AgentToolExposureState } from "../ToolRuntime/AgentToolExposureState.js";
 import type { AgentTurnTokenBudget } from "../Text/AgentTurnTokenBudget.js";
 import type { AgentToolTokenReservation } from "../Text/AgentTurnTokenBudget.js";
-import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
+import type { ExecutedToolCallResult, ToolWorkspaceCaptureResult } from "../Types/ToolRuntimeTypes.js";
+import type { AgentWorkspaceChangeObserverPort } from "../Artifacts/AgentWorkspaceChangeObserver.js";
+import { requiresWorkspaceObservation } from "../Artifacts/AgentWorkspaceObservationIntent.js";
 import type { AgentPiDiagnosticSink } from "./AgentPiDiagnostics.js";
 import type { AgentPiPlanningSkill } from "../PiShared/AgentPiPlanningTypes.js";
 import type { AgentPiToolPlanCoordinator } from "../PiShared/AgentPiToolPlanCoordinator.js";
@@ -13,16 +15,10 @@ import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprova
 import type { AgentRunActivityReporter } from "../Events/AgentRunActivityReporter.js";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentResourceAccessGrant } from "../Execution/SeneraResourceAccess.js";
+import type { AgentBrowserTargetAuthorization } from "../Browser/AgentBrowserUrlPolicy.js";
 import type { AgentResidentSpeechUtterance } from "../ResidentSpeech/AgentResidentSpeechTypes.js";
 import type { AgentToolResourceLeaseOwner } from "../ToolRuntime/AgentToolResourceScheduler.js";
 import type { AgentToolCapabilityCacheEntry } from "../ToolSearch/AgentToolCapabilitySessionCache.js";
-import {
-  addAgentResidentSignal,
-  composeAgentResidentStanceSignals,
-  EmptyAgentResidentSignalCounts,
-  type AgentResidentSignalCounts,
-} from "../Continuity/AgentResidentSignalAggregator.js";
-import { nextResidentState, type AgentResidentState } from "../Continuity/AgentResidentState.js";
 import {
   AgentPiToolCallPreflightCoordinator,
   type AgentPiToolCallPreflight,
@@ -32,6 +28,8 @@ import {
 
 export interface AgentPiTurnStateOptions {
   readonly sessionId?: string;
+  readonly systemPrompt: string;
+  readonly userMessage: string;
   /** Stable logical cache affinity shared by all model calls in this turn. */
   readonly logicalCacheScope?: string;
   readonly requestId: string;
@@ -53,8 +51,9 @@ export interface AgentPiTurnStateOptions {
   readonly thinkingLevel?: ModelThinkingLevel;
   readonly resourceOwner?: AgentToolResourceLeaseOwner;
   readonly activityReporter?: AgentRunActivityReporter;
-  /** Host-derived resident stance entering this turn; used to derive the live in-turn stance. */
-  readonly seedResidentState?: AgentResidentState;
+  readonly workspaceChangeObserver?: AgentWorkspaceChangeObserverPort;
+  /** Resolves a registered tool's declarative workspace write capability. */
+  readonly toolWorkspaceWritableLookup?: (toolName: string) => boolean;
 }
 
 /** Session-local mutable state shared by one Pi run and its native provider. */
@@ -63,10 +62,12 @@ export class AgentPiTurnState {
   private readonly executedToolResultsByCallId = new Map<string, ExecutedToolCallResult>();
   private readonly executorLifecycleStatusByCallId = new Map<string, "completed" | "failed">();
   private readonly resourceAccessGrantsByCallId = new Map<string, AgentResourceAccessGrant>();
+  private readonly browserTargetAuthorizationsByCallId = new Map<string, AgentBrowserTargetAuthorization>();
   private readonly residentSpeech = new Array<AgentResidentSpeechUtterance>();
-  private residentStanceCounts: AgentResidentSignalCounts = EmptyAgentResidentSignalCounts;
   private registeredToolCalls = false;
   private wrapUpReason?: "child_deadline";
+  private nextModelMessageIndex = 0;
+  private readonly pendingModelMessageIndexes: number[] = [];
 
   constructor(readonly context: AgentPiTurnStateOptions) {}
 
@@ -79,6 +80,20 @@ export class AgentPiTurnState {
       };
     }
     return { block: false };
+  }
+
+  beginModelRequest(): number {
+    const modelMessageIndex = this.nextModelMessageIndex++;
+    this.pendingModelMessageIndexes.push(modelMessageIndex);
+    return modelMessageIndex;
+  }
+
+  claimModelMessageIndex(): number {
+    const modelMessageIndex = this.pendingModelMessageIndexes.shift();
+    if (modelMessageIndex === undefined) {
+      throw new Error("Pi assistant message started without a registered model request.");
+    }
+    return modelMessageIndex;
   }
 
   requestWrapUp(reason: "child_deadline"): boolean {
@@ -97,6 +112,46 @@ export class AgentPiTurnState {
       this.toolPreflights.unregister(batchId);
       throw error;
     }
+  }
+
+  beginWorkspaceChangeBatch(batchId: string, calls: readonly AgentPiToolCallPreflightInput[]): Promise<void> {
+    const observedCallIds = calls
+      .filter((call) =>
+        requiresWorkspaceObservation(call.input, {
+          workspaceWritable: this.context.toolWorkspaceWritableLookup?.(call.toolName),
+        }),
+      )
+      .map((call) => call.toolCallId);
+    return (
+      (observedCallIds.length > 0
+        ? this.context.workspaceChangeObserver?.beginBatch(batchId, observedCallIds)
+        : undefined) ?? Promise.resolve()
+    );
+  }
+
+  completeWorkspaceChangeCall(
+    callId: string,
+    exactPaths?: readonly string[],
+  ): Promise<ToolWorkspaceCaptureResult | undefined> {
+    const batchId = this.toolBatchId(callId);
+    if (!batchId) return Promise.resolve(undefined);
+    return (
+      this.context.workspaceChangeObserver?.completeCall(batchId, callId, exactPaths) ?? Promise.resolve(undefined)
+    );
+  }
+
+  skipWorkspaceChangeCall(callId: string): void {
+    const batchId = this.toolBatchId(callId);
+    if (batchId) this.context.workspaceChangeObserver?.skipCall(batchId, callId);
+  }
+
+  cancelWorkspaceChangeCall(callId: string): void {
+    const batchId = this.toolBatchId(callId);
+    if (batchId) this.context.workspaceChangeObserver?.cancelCall(batchId, callId);
+  }
+
+  cancelPendingWorkspaceChangeBatches(): void {
+    this.context.workspaceChangeObserver?.cancelPendingBatches();
   }
 
   hasRegisteredToolCalls(): boolean {
@@ -125,8 +180,8 @@ export class AgentPiTurnState {
     return this.context.tokenBudget.claimToolObservation(callId, maximumTokens);
   }
 
-  toolObservationBudgetLimit(callId: string, maximumTokens: number): number {
-    return this.context.tokenBudget.toolObservationLimit(callId, maximumTokens);
+  toolObservationBudgetTokens(callId: string, maximumTokens: number): number {
+    return this.context.tokenBudget.toolObservationBudgetTokens(callId, maximumTokens);
   }
 
   settleToolObservationBudget(callId: string, payload?: unknown): boolean {
@@ -149,6 +204,14 @@ export class AgentPiTurnState {
     return this.toolPreflights.purpose(callId);
   }
 
+  toolModelMessageIndex(callId: string): number | undefined {
+    return this.toolPreflights.call(callId)?.modelMessageIndex;
+  }
+
+  toolModelContentIndex(callId: string): number | undefined {
+    return this.toolPreflights.call(callId)?.modelContentIndex;
+  }
+
   registerResourceAccessGrant(callId: string, grant: AgentResourceAccessGrant): void {
     if (!this.toolPreflights.batchId(callId)) {
       throw new Error(`Pi tool call ${callId} is not registered in an active tool batch.`);
@@ -162,6 +225,19 @@ export class AgentPiTurnState {
     return grant;
   }
 
+  registerBrowserTargetAuthorization(callId: string, authorization: AgentBrowserTargetAuthorization): void {
+    if (!this.toolPreflights.batchId(callId)) {
+      throw new Error(`Pi tool call ${callId} is not registered in an active tool batch.`);
+    }
+    this.browserTargetAuthorizationsByCallId.set(callId, authorization);
+  }
+
+  takeBrowserTargetAuthorization(callId: string): AgentBrowserTargetAuthorization | undefined {
+    const authorization = this.browserTargetAuthorizationsByCallId.get(callId);
+    this.browserTargetAuthorizationsByCallId.delete(callId);
+    return authorization;
+  }
+
   recordExecutorLifecycleStatus(callId: string, status: "completed" | "failed"): void {
     this.executorLifecycleStatusByCallId.set(callId, status);
   }
@@ -172,21 +248,6 @@ export class AgentPiTurnState {
 
   registerExecutedToolResult(callId: string, result: ExecutedToolCallResult): void {
     this.executedToolResultsByCallId.set(callId, result);
-    this.residentStanceCounts = addAgentResidentSignal(this.residentStanceCounts, result);
-  }
-
-  /**
-   * The resident's live in-turn stance: the durable seed advanced by the tool
-   * outcomes observed so far, using the same pure transition as end-of-turn
-   * persistence. Undefined when no seed state was provided (continuity off).
-   */
-  currentResidentStance(): AgentResidentState | undefined {
-    const seed = this.context.seedResidentState;
-    if (!seed) return undefined;
-    return nextResidentState(
-      seed,
-      composeAgentResidentStanceSignals({ bearing: seed.bearing, counts: this.residentStanceCounts }),
-    );
   }
 
   takeExecutedToolResult(callId: string): ExecutedToolCallResult | undefined {

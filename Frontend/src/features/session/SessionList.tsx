@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useStore, type SessionRecord, type UserProfile } from "../../store/sessionStore";
 import { cn } from "../../lib/util";
@@ -13,7 +13,11 @@ import type { SettingsSectionId } from "../settings/types";
 
 interface Props {
   onNewSession: () => void;
-  onCloseSession: (id: string) => void;
+  onCloseSession: (id: string) => boolean;
+  onCloseSessions: (ids: readonly string[]) => {
+    readonly acceptedSessionIds: readonly string[];
+    readonly rejectedSessionIds: readonly string[];
+  };
   onRenameSession: (id: string, title: string) => boolean;
   userProfile: UserProfile;
   onUpdateUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
@@ -36,6 +40,7 @@ type SessionChannelFilter = "all" | EventSourceChannel;
 export function SessionList({
   onNewSession,
   onCloseSession,
+  onCloseSessions,
   onRenameSession,
   userProfile,
   onUpdateUserProfile,
@@ -62,6 +67,8 @@ export function SessionList({
   const [renameDraft, setRenameDraft] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [channelFilter, setChannelFilter] = useState<SessionChannelFilter>("all");
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedSessionIds, setSelectedSessionIds] = useState<ReadonlySet<string>>(() => new Set());
 
   const sessionList = useMemo(
     () =>
@@ -82,6 +89,15 @@ export function SessionList({
       }),
     [channelFilter, normalizedSearchQuery, sessionList],
   );
+  const selectedSessionCount = sessionList.filter((session) => selectedSessionIds.has(session.sessionId)).length;
+
+  useEffect(() => {
+    const availableIds = new Set(sessionList.map((session) => session.sessionId));
+    setSelectedSessionIds((current) => {
+      const next = new Set([...current].filter((sessionId) => availableIds.has(sessionId)));
+      return next.size === current.size ? current : next;
+    });
+  }, [sessionList]);
 
   const openRename = (session: SessionRecord, returnFocus: HTMLElement | null = null): void => {
     dialogReturnFocusRef.current = returnFocus?.isConnected ? returnFocus : null;
@@ -113,8 +129,40 @@ export function SessionList({
         frontendMessage("session.deleteCurrentDetailRefresh"),
       ],
       onConfirm: () => {
-        onCloseSession(session.sessionId);
-        toast.success(frontendMessage("session.deleteRequested"));
+        if (onCloseSession(session.sessionId)) {
+          toast.success(frontendMessage("session.deleteRequested"));
+        } else {
+          toast.error(frontendMessage("session.deleteDisconnected"));
+        }
+      },
+    });
+  };
+
+  const confirmDeleteSelected = (): void => {
+    const selected = sessionList.filter((session) => selectedSessionIds.has(session.sessionId));
+    if (selected.length === 0) return;
+
+    const sessionIds = selected.map((session) => session.sessionId);
+    setConfirmation({
+      title: frontendMessage("session.deleteSelectedTitle"),
+      description: frontendMessage("session.deleteSelectedDescription", { count: sessionIds.length }),
+      confirmLabel: frontendMessage("session.deleteSelectedConfirm"),
+      tone: "danger",
+      details: [
+        frontendMessage("session.deleteCurrentDetailRecords"),
+        frontendMessage("session.deleteCurrentDetailRefresh"),
+      ],
+      onConfirm: () => {
+        const { acceptedSessionIds, rejectedSessionIds } = onCloseSessions(sessionIds);
+        setSelectedSessionIds(new Set(rejectedSessionIds));
+        if (acceptedSessionIds.length > 0) {
+          toast.success(frontendMessage("session.bulkDeleteRequested", { count: acceptedSessionIds.length }));
+        }
+        if (rejectedSessionIds.length > 0) {
+          toast.error(frontendMessage("session.bulkDeletePartialFailed", { count: rejectedSessionIds.length }));
+        } else {
+          setSelectionMode(false);
+        }
       },
     });
   };
@@ -165,6 +213,38 @@ export function SessionList({
           }}
           onRenameSession={openRename}
           onDeleteSession={confirmDeleteSession}
+          selectionMode={selectionMode}
+          selectedSessionIds={selectedSessionIds}
+          selectedSessionCount={selectedSessionCount}
+          onToggleSelectionMode={() => {
+            if (selectionMode) {
+              setSelectionMode(false);
+              setSelectedSessionIds(new Set());
+            } else {
+              setSelectionMode(true);
+            }
+          }}
+          onToggleSessionSelection={(sessionId) => {
+            setSelectedSessionIds((current) => {
+              const next = new Set(current);
+              if (next.has(sessionId)) next.delete(sessionId);
+              else next.add(sessionId);
+              return next;
+            });
+          }}
+          onToggleVisibleSelection={() => {
+            setSelectedSessionIds((current) => {
+              const next = new Set(current);
+              const visibleIds = filteredSessions.map((session) => session.sessionId);
+              const allSelected = visibleIds.length > 0 && visibleIds.every((sessionId) => next.has(sessionId));
+              for (const sessionId of visibleIds) {
+                if (allSelected) next.delete(sessionId);
+                else next.add(sessionId);
+              }
+              return next;
+            });
+          }}
+          onDeleteSelected={confirmDeleteSelected}
         />
       )}
 

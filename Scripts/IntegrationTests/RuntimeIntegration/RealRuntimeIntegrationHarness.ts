@@ -340,15 +340,9 @@ function createRuntimeConfig(input: {
       },
       Persistence: { Kind: "memory" },
       AgentLoop: { PiSessions: { RootDir: ".senera/pi-sessions" } },
-      ToolLearning: { Enabled: false },
       SandboxRuntime: {
         Enabled: false,
         BaseDir: ".senera/sandbox-runtime",
-      },
-      Presets: {
-        Enabled: false,
-        RootDir: ".senera/presets",
-        StateFile: ".senera/presets-state.json",
       },
     },
     ConfigStore: { Enabled: false },

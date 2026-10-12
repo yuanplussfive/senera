@@ -1,69 +1,30 @@
-import {
-  type AssistantMessage,
-  type Context,
-  type Message,
-  type Model,
-  type Provider,
-  type SimpleStreamOptions,
-} from "@earendil-works/pi-ai";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
+import { setTimeout as delay } from "node:timers/promises";
 import type { AgentBamlModelRequest } from "../BamlClient/AgentBamlStructuredOutputRunner.js";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
-import { throwIfAborted } from "../Core/AgentCancellation.js";
-import { errorMessage } from "../Core/AgentErrors.js";
-import type {
-  AgentLanguageModelImageAttachment,
-  AgentLanguageModelMessage,
-} from "../ModelEndpoints/AgentLanguageModel.js";
-import { ModelRequestTimeoutError, normalizeModelHttpError } from "../ModelEndpoints/ModelHttpErrors.js";
-import {
-  AgentModelUsageResolver,
-  recordActiveAgentModelUsage,
-  type AgentModelUsageSink,
-  type AgentModelUsageValue,
-} from "../ModelEndpoints/AgentModelUsage.js";
-import type { AgentModelTimingRecord, AgentModelTimingSink } from "../ModelEndpoints/AgentModelTiming.js";
+import { throwAbortReason } from "../Core/AgentCancellation.js";
+import type { AgentModelUsageSink } from "../ModelEndpoints/AgentModelUsage.js";
+import type { AgentModelTimingSink } from "../ModelEndpoints/AgentModelTiming.js";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
-import type { AgentNativeToolApi } from "../ModelEndpoints/AgentModelEndpointContract.js";
 import type { AgentNativeToolApiStreams as AgentNativeToolApiStreamMap } from "../ModelEndpoints/AgentNativeToolApiStreams.js";
-import { createAgentPiConfiguredProvider } from "../ModelEndpoints/AgentPiConfiguredProvider.js";
-import { projectAgentPiAssistantUsage } from "../ModelEndpoints/AgentPiModelUsage.js";
-import {
-  createAgentPromptWireCapture,
-  projectAgentPromptCacheRetention,
-  projectAgentStablePrefixBytes,
-  projectAgentStablePrefixRevision,
-  resolveAgentPromptCacheObservation,
-  resolveAgentPromptCacheStrategy,
-} from "../ModelEndpoints/AgentPromptWireSnapshot.js";
+import { AgentPiModelRequestExecutor } from "../ModelEndpoints/AgentPiModelRequestExecutor.js";
+import { projectAgentPiModelRequestContext } from "../ModelEndpoints/AgentPiModelRequestProjection.js";
 
 export interface AgentActionPlannerModelTransportOptions {
   readonly apiStreams?: AgentNativeToolApiStreamMap;
   readonly omitOutputTokenLimit?: boolean;
 }
 
-/**
- * BAML's structured-output bridge. Pi owns the vendor wire protocol; this
- * class owns only BAML's text boundary, accounting, and request deadlines.
- */
+/** BAML text projection over the shared Pi request executor. */
 export class AgentActionPlannerModelTransport {
-  private readonly model: Model<AgentNativeToolApi>;
-  private readonly provider: Provider<AgentNativeToolApi>;
-  private readonly usageResolver: AgentModelUsageResolver;
-  private readonly omitOutputTokenLimit: boolean;
-
+  private readonly executor: AgentPiModelRequestExecutor;
   constructor(
     private readonly config: ResolvedAgentModelProviderConfig,
-    private readonly usageSink?: AgentModelUsageSink,
-    private readonly timingSink?: AgentModelTimingSink,
-    options: AgentActionPlannerModelTransportOptions = {},
+    usageSink?: AgentModelUsageSink,
+    timingSink?: AgentModelTimingSink,
+    private readonly options: AgentActionPlannerModelTransportOptions = {},
   ) {
-    ({ model: this.model, provider: this.provider } = createAgentPiConfiguredProvider(
-      config,
-      "BAML",
-      options.apiStreams,
-    ));
-    this.usageResolver = new AgentModelUsageResolver(config.Model);
-    this.omitOutputTokenLimit = options.omitOutputTokenLimit === true;
+    this.executor = new AgentPiModelRequestExecutor(config, "BAML", usageSink, timingSink, options.apiStreams);
   }
 
   async complete(
@@ -71,188 +32,37 @@ export class AgentActionPlannerModelTransport {
     signal?: AbortSignal,
     timingSink?: AgentModelTimingSink,
   ): Promise<string> {
-    const attempts = this.config.MaxNetworkRetries + 1;
+    const requestSignal = signal ?? request.signal;
+    const attempts = request.retryMode === "pi" ? 1 : this.config.MaxNetworkRetries + 1;
     const emptyResponses: AgentEmptyModelResponseAttempt[] = [];
     for (let attempt = 0; attempt < attempts; attempt += 1) {
-      const response = await this.collectCompletion(request, signal, timingSink);
-      if (response.text.trim().length > 0) return response.text;
+      const message = await this.executor.execute({
+        requestId: request.requestId,
+        stage: request.requestId,
+        context: projectAgentPiModelRequestContext(request, this.config),
+        signal: requestSignal,
+        cache: request.cache,
+        providerRetries: request.retryMode !== "pi",
+        omitOutputTokenLimit: this.options.omitOutputTokenLimit,
+        timingSink,
+        validate: extractText,
+      });
+      const text = extractText(message);
+      if (text.trim()) return text;
       emptyResponses.push({
         attempt: attempt + 1,
-        finishReason: response.finishReason,
-        status: response.status,
-        outputTokens: response.usage?.outputTokens ?? null,
-        reasoningTokens: response.usage?.reasoningTokens ?? null,
-      });
-      if (attempt + 1 >= attempts) {
-        throw new AgentEmptyModelResponseError(this.config.Id, this.config.Model, emptyResponses);
-      }
-      await waitForEmptyResponseRetry(this.retryDelay(attempt), signal);
-    }
-    throw new AgentEmptyModelResponseError(this.config.Id, this.config.Model, emptyResponses);
-  }
-
-  private async collectCompletion(
-    request: AgentBamlModelRequest,
-    signal?: AbortSignal,
-    timingSink?: AgentModelTimingSink,
-  ): Promise<{
-    text: string;
-    finishReason: string | null;
-    status: string | null;
-    usage?: AgentModelUsageValue;
-  }> {
-    throwIfAborted(signal);
-    const startedAt = performance.now();
-    const requestCharacters = requestCharacterCount(request);
-    const stage = request.requestId.replace(/^action-planner:/, "");
-    const firstTokenController = new AbortController();
-    const maxRequestController = new AbortController();
-    const requestSignal = AbortSignal.any(
-      [signal, firstTokenController.signal, maxRequestController.signal].filter(
-        (candidate): candidate is AbortSignal => candidate !== undefined,
-      ),
-    );
-    const firstTokenTimer = startTimeout(firstTokenController, this.config.FirstTokenTimeoutMs, "first_token");
-    const maxRequestTimer = startTimeout(maxRequestController, this.config.MaxRequestMs, "max_request");
-    let firstTokenMs: number | undefined;
-    let message: AssistantMessage | undefined;
-    const stablePrefix = { systemPrompt: request.systemPrompt, tools: [] as readonly unknown[] };
-    const stablePrefixRevision = request.cache?.stablePrefixRevision ?? projectAgentStablePrefixRevision(stablePrefix);
-    const stablePrefixBytes = request.cache?.stablePrefixBytes ?? projectAgentStablePrefixBytes(stablePrefix);
-    const cacheStrategy = resolveAgentPromptCacheStrategy(this.model.api);
-    const cacheRetention = projectAgentPromptCacheRetention(cacheStrategy, request.cache?.retention ?? "none");
-    const wireCapture = request.cache ? createAgentPromptWireCapture({}) : undefined;
-    try {
-      const context = projectBamlContext(request);
-      const streamOptions = {
-        signal: requestSignal,
-        apiKey: this.config.ApiKey || undefined,
-        temperature: this.config.Temperature,
-        timeoutMs: this.config.TimeoutMs,
-        maxRetries: this.config.MaxNetworkRetries,
-        maxRetryDelayMs: this.config.RetryAfterMaxDelayMs,
-        ...(request.cache ? { sessionId: request.cache.scope, cacheRetention } : {}),
-        ...(wireCapture
-          ? {
-              fetch: wireCapture.fetch,
-              onPayload: wireCapture.onPayload,
-            }
-          : {}),
-        ...(!this.omitOutputTokenLimit && this.config.MaxOutputTokens > 0
-          ? { maxTokens: this.config.MaxOutputTokens }
-          : {}),
-      } satisfies SimpleStreamOptions;
-      const stream = this.omitOutputTokenLimit
-        ? this.provider.stream(this.model, context, streamOptions as never)
-        : this.provider.streamSimple(this.model, context, streamOptions);
-      for await (const event of stream) {
-        if (isFirstOutputEvent(event.type)) {
-          firstTokenMs ??= elapsedMilliseconds(startedAt);
-          firstTokenTimer?.clear();
-        }
-        if (event.type === "done") {
-          message = event.message;
-          break;
-        }
-        if (event.type === "error") {
-          throw new Error(event.error.errorMessage ?? "Pi provider stream failed.");
-        }
-      }
-      if (!message) throw new Error("Pi provider stream ended without a terminal assistant message.");
-      if (message.stopReason === "error" || message.stopReason === "aborted") {
-        throw new Error(message.errorMessage ?? "Pi provider completed without a usable response.");
-      }
-      const text = extractText(message);
-      const usage = this.usageResolver.resolve(request, text, projectAgentPiAssistantUsage(message));
-      (this.usageSink ?? recordActiveAgentModelUsage)({ stage, usage });
-      const promptCache =
-        request.cache && wireCapture
-          ? wireCapture.snapshot({
-              model: this.model,
-              sessionId: request.cache.sessionId,
-              logicalCacheScope: request.cache.logicalCacheScope,
-              providerCacheScope: request.cache.scope,
-              stablePrefixRevision,
-              stablePrefixBytes,
-              retention: cacheRetention,
-              observation: resolveAgentPromptCacheObservation(cacheStrategy, message.usage),
-              usage: message.usage,
-            })
-          : undefined;
-      await this.recordTiming(timingSink, {
-        stage,
-        requestId: request.requestId,
-        status: "completed",
-        firstTokenMs,
-        durationMs: elapsedMilliseconds(startedAt),
-        requestCharacters,
-        responseCharacters: text.length,
-        cacheReadTokens: usage.cacheReadTokens,
-        cacheWriteTokens: usage.cacheWriteTokens,
-        ...(promptCache ? { promptCache } : {}),
-      });
-      return {
-        text,
         finishReason: message.stopReason,
         status: message.rawStopReason ?? null,
-        usage,
-      };
-    } catch (error) {
-      const deadlineFailure = firstTokenController.signal.reason ?? maxRequestController.signal.reason;
-      const aborted = signal?.aborted === true && !deadlineFailure;
-      const failure = aborted ? (signal.reason ?? error) : (deadlineFailure ?? error);
-      await this.recordTiming(timingSink, {
-        stage,
-        requestId: request.requestId,
-        status: "failed",
-        firstTokenMs,
-        durationMs: elapsedMilliseconds(startedAt),
-        requestCharacters,
-        responseCharacters: 0,
-        ...(request.cache && wireCapture
-          ? {
-              promptCache: wireCapture.snapshot({
-                model: this.model,
-                sessionId: request.cache.sessionId,
-                logicalCacheScope: request.cache.logicalCacheScope,
-                providerCacheScope: request.cache.scope,
-                stablePrefixRevision,
-                stablePrefixBytes,
-                retention: cacheRetention,
-                observation: resolveAgentPromptCacheObservation(cacheStrategy, {
-                  cacheRead: 0,
-                  cacheWrite: 0,
-                }),
-                usage: { cacheRead: 0, cacheWrite: 0 },
-              }),
-            }
-          : {}),
-        error: errorMessage(failure),
+        outputTokens: message.usage.output,
+        reasoningTokens: message.usage.reasoning ?? null,
       });
-      throw aborted ? failure : normalizeModelHttpError(this.config, failure);
-    } finally {
-      firstTokenTimer?.clear();
-      maxRequestTimer?.clear();
+      if (attempt + 1 < attempts)
+        await waitForEmptyResponseRetry(
+          Math.min(this.config.RetryMaxDelayMs, this.config.RetryBaseDelayMs * 2 ** attempt),
+          requestSignal,
+        );
     }
-  }
-
-  private retryDelay(attempt: number): number {
-    return Math.min(this.config.RetryMaxDelayMs, this.config.RetryBaseDelayMs * 2 ** attempt);
-  }
-
-  private async recordTiming(
-    timingSink: AgentModelTimingSink | undefined,
-    record: Omit<AgentModelTimingRecord, "providerId" | "model">,
-  ): Promise<void> {
-    try {
-      await (timingSink ?? this.timingSink)?.({
-        ...record,
-        providerId: this.config.Id,
-        model: this.config.Model,
-      });
-    } catch {
-      // Telemetry must never change the planner result.
-    }
+    throw new AgentEmptyModelResponseError(this.config.Id, this.config.Model, emptyResponses);
   }
 }
 
@@ -281,57 +91,6 @@ interface AgentEmptyModelResponseAttempt {
   readonly reasoningTokens: number | null;
 }
 
-function projectBamlContext(request: AgentBamlModelRequest): Context {
-  const systemSections = [
-    request.systemPrompt,
-    ...request.messages.filter(isSystemMessage).map((message) => message.content),
-  ]
-    .map((value) => value.trim())
-    .filter(Boolean);
-  const messages = request.messages.filter((message) => !isSystemMessage(message)).map(projectBamlMessage);
-  if (messages.length === 0) throw new Error("BAML request did not include a model message.");
-  return {
-    ...(systemSections.length > 0 ? { systemPrompt: systemSections.join("\n\n") } : {}),
-    messages,
-  };
-}
-
-function isSystemMessage(message: AgentLanguageModelMessage): boolean {
-  return message.role === "system" || message.role === "developer";
-}
-
-function projectBamlMessage(message: AgentLanguageModelMessage): Message {
-  if (message.role === "user") {
-    return { role: "user", content: projectUserContent(message), timestamp: Date.now() };
-  }
-  if (message.role === "assistant") {
-    return {
-      role: "assistant",
-      api: "pi-messages",
-      provider: "senera",
-      model: "baml-history",
-      content: [{ type: "text", text: message.content }],
-      usage: emptyUsage(),
-      stopReason: "stop",
-      timestamp: Date.now(),
-    };
-  }
-  throw new Error(`Unsupported BAML message role: ${message.role}.`);
-}
-
-function projectUserContent(message: AgentLanguageModelMessage) {
-  if (!message.attachments?.length) return message.content;
-  return [{ type: "text" as const, text: message.content }, ...message.attachments.map(projectImageAttachment)];
-}
-
-function projectImageAttachment(attachment: AgentLanguageModelImageAttachment) {
-  return {
-    type: "image" as const,
-    data: attachment.data,
-    mimeType: attachment.mimeType,
-  };
-}
-
 function extractText(message: AssistantMessage): string {
   const toolCall = message.content.find((block) => block.type === "toolCall");
   if (toolCall) {
@@ -343,54 +102,12 @@ function extractText(message: AssistantMessage): string {
     .join("");
 }
 
-function emptyUsage(): AssistantMessage["usage"] {
-  return {
-    input: 0,
-    output: 0,
-    cacheRead: 0,
-    cacheWrite: 0,
-    totalTokens: 0,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-  };
-}
-
-function isFirstOutputEvent(type: string): boolean {
-  return type === "text_delta" || type === "thinking_delta" || type === "done" || type === "error";
-}
-
-function requestCharacterCount(request: AgentBamlModelRequest): number {
-  return request.systemPrompt.length + request.messages.reduce((total, message) => total + message.content.length, 0);
-}
-
-function elapsedMilliseconds(startedAt: number): number {
-  return Math.max(0, Math.round(performance.now() - startedAt));
-}
-
-function startTimeout(
-  controller: AbortController,
-  timeoutMs: number,
-  kind: "first_token" | "max_request",
-): { clear(): void } | undefined {
-  if (timeoutMs === -1) return undefined;
-  const timer = setTimeout(() => controller.abort(new ModelRequestTimeoutError(kind)), timeoutMs);
-  return { clear: () => clearTimeout(timer) };
-}
-
-function waitForEmptyResponseRetry(delayMs: number, signal?: AbortSignal): Promise<void> {
-  throwIfAborted(signal);
-  return new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      cleanup();
-      resolve();
-    }, delayMs);
-    const onAbort = (): void => {
-      cleanup();
-      reject(signal?.reason ?? new Error("Model request was aborted."));
-    };
-    const cleanup = (): void => {
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", onAbort);
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
+async function waitForEmptyResponseRetry(delayMs: number, signal?: AbortSignal): Promise<void> {
+  throwAbortReason(signal);
+  try {
+    await delay(delayMs, undefined, { signal });
+  } catch (error) {
+    throwAbortReason(signal);
+    throw error;
+  }
 }
