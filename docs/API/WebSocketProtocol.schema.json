@@ -115,6 +115,55 @@
             "steer",
             "follow_up"
           ]
+        },
+        "activations": {
+          "type": "object",
+          "properties": {
+            "catalogRevision": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "explicit": {
+              "maxItems": 32,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "skill",
+                      "plugin",
+                      "mcp",
+                      "system"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "revision": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id",
+                  "revision"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "catalogRevision",
+            "explicit"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
@@ -297,6 +346,55 @@
             ],
             "additionalProperties": false
           }
+        },
+        "activations": {
+          "type": "object",
+          "properties": {
+            "catalogRevision": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "explicit": {
+              "maxItems": 32,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "skill",
+                      "plugin",
+                      "mcp",
+                      "system"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "revision": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id",
+                  "revision"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "catalogRevision",
+            "explicit"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
@@ -358,6 +456,55 @@
             "agent",
             "full_access"
           ]
+        },
+        "activations": {
+          "type": "object",
+          "properties": {
+            "catalogRevision": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "explicit": {
+              "maxItems": 32,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "skill",
+                      "plugin",
+                      "mcp",
+                      "system"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "revision": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id",
+                  "revision"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "catalogRevision",
+            "explicit"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
