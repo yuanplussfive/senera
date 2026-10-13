@@ -9,9 +9,12 @@ import {
   SeneraSelfServiceOfflineError,
 } from "../../../Apps/SeneraCliHttpClient.js";
 import {
+  AgentRuntimeManifestSchema,
   AgentRuntimeManifestStore,
+  readAgentRuntimeManifest,
   resolveAgentRuntimeManifestPath,
 } from "../../../Source/AgentSystem/Runtime/AgentRuntimeManifest.js";
+import { scopeAgentWorkspaceUrl } from "../../../Source/AgentSystem/WorkspaceResources/AgentWorkspaceTransportScope.js";
 import type { AgentConfigSnapshot } from "../../../Source/AgentSystem/Config/AgentConfigService.js";
 import {
   AgentSelfHttpApi,
@@ -102,6 +105,62 @@ describe("senera self-service closed loop over HTTP", () => {
     await expect(
       executeSeneraSelfCommandViaHttp(workspaceRoot, { command: "config", action: "models" }),
     ).rejects.toBeInstanceOf(SeneraSelfServiceOfflineError);
+  });
+
+  test("does not accept an untrusted workspace scope from the runtime manifest", async () => {
+    const workspaceRoot = createTemporaryWorkspace();
+    fs.mkdirSync(path.dirname(resolveAgentRuntimeManifestPath(workspaceRoot)), { recursive: true });
+    fs.writeFileSync(
+      resolveAgentRuntimeManifestPath(workspaceRoot),
+      JSON.stringify({
+        pid: process.pid,
+        startedAt: new Date().toISOString(),
+        host: "127.0.0.1",
+        port: 8787,
+        token: "runtime-token",
+        protocol: 1,
+        workspaceId: "https://attacker.invalid/?next=internal",
+      }),
+      "utf8",
+    );
+
+    await expect(
+      executeSeneraSelfCommandViaHttp(workspaceRoot, { command: "config", action: "models" }),
+    ).rejects.toBeInstanceOf(SeneraSelfServiceOfflineError);
+  });
+
+  test("rejects malformed runtime manifest extensions and scopes UUID workspaces", () => {
+    const workspaceRoot = createTemporaryWorkspace();
+    fs.mkdirSync(path.dirname(resolveAgentRuntimeManifestPath(workspaceRoot)), { recursive: true });
+    fs.writeFileSync(
+      resolveAgentRuntimeManifestPath(workspaceRoot),
+      JSON.stringify({
+        pid: process.pid,
+        startedAt: new Date().toISOString(),
+        host: "127.0.0.1",
+        port: 8787,
+        token: "runtime-token",
+        protocol: 1,
+        unexpected: "ignored input is not acceptable",
+      }),
+      "utf8",
+    );
+
+    expect(readAgentRuntimeManifest(workspaceRoot)).toBeUndefined();
+    expect(
+      AgentRuntimeManifestSchema.safeParse({
+        pid: process.pid,
+        startedAt: new Date().toISOString(),
+        host: "127.0.0.1",
+        port: 8787,
+        token: "runtime-token",
+        protocol: 1,
+        workspaceId: "workspace-a",
+      }).success,
+    ).toBe(false);
+    expect(
+      scopeAgentWorkspaceUrl("http://127.0.0.1:8787/senera/self", "d86cbfc3-9535-4c2c-b150-5343c289f285"),
+    ).toContain("workspaceId=d86cbfc3-9535-4c2c-b150-5343c289f285");
   });
 
   test("rejects commands signed with a stale token", async () => {

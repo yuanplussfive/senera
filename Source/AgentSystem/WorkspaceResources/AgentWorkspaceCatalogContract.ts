@@ -1,9 +1,11 @@
 import { z } from "zod/mini";
 
 export const AgentWorkspaceCatalogRoute = "/api/workspaces";
+export const AgentWorkspaceIdSchema = z.uuid();
+export type AgentWorkspaceId = z.infer<typeof AgentWorkspaceIdSchema>;
 
 export const AgentWorkspaceDescriptorSchema = z.strictObject({
-  id: z.uuid(),
+  id: AgentWorkspaceIdSchema,
   root: z.string().check(z.minLength(1)),
   name: z.string().check(z.minLength(1)),
 });
@@ -14,7 +16,7 @@ export const AgentWorkspaceCatalogSchema = z.strictObject({
 
 export const AgentWorkspaceCatalogSnapshotSchema = z.strictObject({
   workspaces: z.array(AgentWorkspaceDescriptorSchema),
-  defaultWorkspaceId: z.uuid(),
+  defaultWorkspaceId: AgentWorkspaceIdSchema,
 });
 
 export type AgentWorkspaceDescriptor = z.infer<typeof AgentWorkspaceDescriptorSchema>;

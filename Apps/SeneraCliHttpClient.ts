@@ -59,14 +59,14 @@ export async function executeSeneraSelfCommandViaHttp(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? AgentSelfHttpDefaultTimeoutMs);
   try {
-    // codeql[js/file-access-to-http]
     const response = await (options.fetch ?? fetch)(
+      // codeql[js/file-access-to-http]
       manifest.workspaceId ? scopeAgentWorkspaceUrl(target.url, manifest.workspaceId) : target.url,
       {
         method: "POST",
-        // codeql[js/file-access-to-http]
         headers: {
           "content-type": "application/json",
+          // codeql[js/file-access-to-http]
           authorization: target.authorization,
         },
         body: JSON.stringify(command),
