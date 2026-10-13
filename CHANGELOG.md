@@ -2,6 +2,18 @@
 
 这里记录 Senera 每个正式版本中的新增功能、问题修复和兼容性变化。
 
+## [1.16.0](https://github.com/yuanplussfive/senera/compare/v1.15.3...v1.16.0) (2026-10-13)
+
+
+### 新增功能
+
+* stabilize v2 runtime, MCP, desktop, and frontend workflows ([#139](https://github.com/yuanplussfive/senera/issues/139)) ([99834b9](https://github.com/yuanplussfive/senera/commit/99834b90b53b931269458538c18573c4952327ac))
+
+
+### 问题修复
+
+* **test:** stabilize MCP discovery coverage gate ([#141](https://github.com/yuanplussfive/senera/issues/141)) ([aedb9a4](https://github.com/yuanplussfive/senera/commit/aedb9a40353a19a37495a76a846c2f4cecb8fcd7))
+
 ## [1.15.3](https://github.com/yuanplussfive/senera/compare/v1.15.2...v1.15.3) (2026-09-15)
 
 
