@@ -10,19 +10,23 @@ runs:
         set -euo pipefail
         architecture="$(uname -m)"
         release_root="https://storage.googleapis.com/gvisor/releases/release/latest/${architecture}"
+        archive_name="gvisor.tar.zstd"
+        checksum_name="${archive_name}.sha512"
         temporary_root="$(mktemp -d)"
         cleanup() {
           rm -rf "$temporary_root"
         }
         trap cleanup EXIT
 
-        curl --fail --location --retry 3 --retry-all-errors --output "$temporary_root/runsc" "$release_root/runsc"
-        curl --fail --location --retry 3 --retry-all-errors --output "$temporary_root/runsc.sha512" "$release_root/runsc.sha512"
+        curl --fail --location --retry 3 --retry-all-errors --output "$temporary_root/$archive_name" "$release_root/$archive_name"
+        curl --fail --location --retry 3 --retry-all-errors --output "$temporary_root/$checksum_name" "$release_root/$checksum_name"
         (
           cd "$temporary_root"
-          sha512sum --check runsc.sha512
+          sha512sum --check "$checksum_name"
         )
-        sudo install --mode=0755 "$temporary_root/runsc" /usr/local/bin/runsc
+        sudo tar --zstd --extract --file "$temporary_root/$archive_name" --directory /usr/local/bin
+        test -x /usr/local/bin/runsc
+        test -d /usr/local/bin/gvisor-bin
         sudo /usr/local/bin/runsc install
         sudo systemctl restart docker
         docker info --format '{{json .Runtimes}}' | grep --quiet '"runsc"'
