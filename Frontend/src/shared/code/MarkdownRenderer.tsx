@@ -243,7 +243,7 @@ function MarkdownImagePreview({
           <MarkdownImagePlaceholder label={imageState === "error" ? imageLabel : frontendMessage("ui.loading")} />
         ) : null}
       </button>
-      {previewOpen && source ? (
+      {previewOpen ? (
         <ImagePreviewDialog
           alt={imageLabel}
           closeLabel={frontendMessage("ui.close")}
