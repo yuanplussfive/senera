@@ -4,16 +4,12 @@
  * worker owner from inventing a subtly different development bootstrap.
  */
 export function resolveAgentWorkerThreadEntry(workerUrl: URL): URL {
-  if (!workerUrl.pathname.endsWith(".ts")) return workerUrl;
-  const tsxApiUrl = import.meta.resolve("tsx/esm/api");
-  const source = [
-    `import { tsImport } from ${JSON.stringify(tsxApiUrl)};`,
-    // Use the file being loaded as the parent URL. A data: parent makes tsx
-    // attach its namespace query to built-in imports on some Node platforms,
-    // turning e.g. node:fs into a filesystem path.
-    `await tsImport(${JSON.stringify(workerUrl.href)}, ${JSON.stringify(workerUrl.href)});`,
-  ].join("\n");
-  return new URL(`data:text/javascript,${encodeURIComponent(source)}`);
+  if (workerUrl.pathname.endsWith(".ts")) return new URL("./AgentWorkerThreadBootstrap.mts", import.meta.url);
+  return workerUrl;
+}
+
+export function resolveAgentWorkerThreadData(workerUrl: URL): { readonly target: string } | undefined {
+  return workerUrl.pathname.endsWith(".ts") ? { target: workerUrl.href } : undefined;
 }
 
 /** Node rejects --input-type for file-backed workers, while all other parent

@@ -1,6 +1,10 @@
 import { Worker } from "node:worker_threads";
 import { awaitWithAbortSignal, throwAbortReason } from "../Core/AgentCancellation.js";
-import { resolveAgentWorkerThreadEntry, resolveAgentWorkerThreadExecArgv } from "../Core/AgentWorkerThread.js";
+import {
+  resolveAgentWorkerThreadData,
+  resolveAgentWorkerThreadEntry,
+  resolveAgentWorkerThreadExecArgv,
+} from "../Core/AgentWorkerThread.js";
 import {
   AgentEmbeddingPriorities,
   type AgentEmbeddingPriority,
@@ -156,6 +160,7 @@ export class AgentLocalEmbeddingClient implements AgentCapabilityEmbeddingClient
     );
     const worker = new Worker(resolveAgentWorkerThreadEntry(workerUrl), {
       execArgv: resolveAgentWorkerThreadExecArgv(),
+      workerData: resolveAgentWorkerThreadData(workerUrl),
     });
     worker.unref();
     worker.on("message", (message: AgentLocalEmbeddingWorkerResponse) => this.handleWorkerResponse(message));

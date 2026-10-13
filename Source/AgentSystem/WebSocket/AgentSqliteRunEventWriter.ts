@@ -1,6 +1,10 @@
 import path from "node:path";
 import { Worker } from "node:worker_threads";
-import { resolveAgentWorkerThreadEntry, resolveAgentWorkerThreadExecArgv } from "../Core/AgentWorkerThread.js";
+import {
+  resolveAgentWorkerThreadData,
+  resolveAgentWorkerThreadEntry,
+  resolveAgentWorkerThreadExecArgv,
+} from "../Core/AgentWorkerThread.js";
 import type { AgentEventEnvelope } from "../Events/AgentEventBase.js";
 import {
   AgentEventPersistenceStates,
@@ -148,6 +152,7 @@ export class AgentSqliteRunEventWriter implements AgentRunEventWriter {
     );
     const worker = new Worker(resolveAgentWorkerThreadEntry(workerUrl), {
       workerData: {
+        ...resolveAgentWorkerThreadData(workerUrl),
         databasePath: this.databasePath,
         drainBatchSize: this.drainBatchSize,
         committedRetentionMs: this.committedRetentionMs,
