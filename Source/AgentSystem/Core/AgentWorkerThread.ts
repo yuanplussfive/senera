@@ -8,7 +8,10 @@ export function resolveAgentWorkerThreadEntry(workerUrl: URL): URL {
   const tsxApiUrl = import.meta.resolve("tsx/esm/api");
   const source = [
     `import { tsImport } from ${JSON.stringify(tsxApiUrl)};`,
-    `await tsImport(${JSON.stringify(workerUrl.href)}, import.meta.url);`,
+    // Use the file being loaded as the parent URL. A data: parent makes tsx
+    // attach its namespace query to built-in imports on some Node platforms,
+    // turning e.g. node:fs into a filesystem path.
+    `await tsImport(${JSON.stringify(workerUrl.href)}, ${JSON.stringify(workerUrl.href)});`,
   ].join("\n");
   return new URL(`data:text/javascript,${encodeURIComponent(source)}`);
 }

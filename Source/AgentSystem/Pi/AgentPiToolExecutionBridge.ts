@@ -207,7 +207,6 @@ export class AgentPiToolExecutionBridge {
       try {
         if (!workspaceObservationCompleted) {
           workspaceCapture = await turnState.completeWorkspaceChangeCall(input.toolCallId);
-          workspaceObservationCompleted = true;
         }
         return await this.projectFailureResult(input, error, reservation, workspaceCapture);
       } catch {

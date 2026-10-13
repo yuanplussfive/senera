@@ -25,7 +25,7 @@ test("text drafts persist per workspace and session and observe updates from ano
   expect(restored.result.current[0]).toBe("A 的草稿");
   act(() => {
     localStorage.setItem(`senera-composer:${aKey}`, "另一窗口的修改");
-    window.dispatchEvent(new StorageEvent("storage", { key: `senera-composer:${aKey}` }));
+    window.dispatchEvent(new Event("storage"));
   });
   expect(restored.result.current[0]).toBe("另一窗口的修改");
   act(() => restored.result.current[1](""));

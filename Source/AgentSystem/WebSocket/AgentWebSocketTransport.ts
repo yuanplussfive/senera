@@ -129,7 +129,7 @@ export class AgentWebSocketTransport {
           return;
         }
         response.writeHead(500, { "Cache-Control": "no-store", "Content-Type": "application/json" });
-        response.end(JSON.stringify({ ok: false, error: { code: "internal_error", message: errorMessage(error) } }));
+        response.end(JSON.stringify({ ok: false, error: { code: "internal_error", message: "Request failed." } }));
       });
     });
     this.httpServer.headersTimeout = 10_000;
@@ -169,7 +169,7 @@ export class AgentWebSocketTransport {
   stop(): Promise<void> {
     this.accepting = false;
     return (this.stopPromise ??= (async () => {
-      this.modelsDevCatalog.stop();
+      await this.modelsDevCatalog.stop();
       const server = this.httpServer;
       const sockets = this.sockets;
       for (const socket of sockets?.clients ?? []) socket.close(1001, "Application shutting down");
@@ -337,10 +337,10 @@ export class AgentWebSocketTransport {
       const listing = this.options.catalog!.browse(directory);
       response.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
       response.end(JSON.stringify(listing));
-    } catch (error) {
+    } catch {
       response.writeHead(400, { "Content-Type": "application/json", "Cache-Control": "no-store" });
       response.end(
-        JSON.stringify({ ok: false, error: { code: "workspace_directory_invalid", message: errorMessage(error) } }),
+        JSON.stringify({ ok: false, error: { code: "workspace_directory_invalid", message: "Invalid directory." } }),
       );
     }
   }

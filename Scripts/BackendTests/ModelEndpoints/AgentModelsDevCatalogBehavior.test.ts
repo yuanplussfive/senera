@@ -71,7 +71,7 @@ describe("models.dev catalog", () => {
     const firstFetch = vi.fn<typeof fetch>(async () => jsonResponse(catalogPayload(), { etag: "catalog-v1" }));
     const first = new AgentModelsDevCatalog(options(root, { fetchImpl: firstFetch, now: () => clock }));
     await first.refresh(true);
-    first.stop();
+    await first.stop();
 
     clock += 61_000;
     const secondFetch = vi.fn<typeof fetch>(async (_input, init) => {
@@ -101,9 +101,31 @@ describe("models.dev catalog", () => {
 
     catalog.start();
     catalog.start();
-    catalog.stop();
-    catalog.stop();
+    await catalog.stop();
+    await catalog.stop();
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  test("waits for an in-flight refresh before stopping", async () => {
+    const root = await createRoot();
+    let resolveFetch!: (response: Response) => void;
+    const fetchImpl = vi.fn<typeof fetch>(() => new Promise<Response>((resolve) => (resolveFetch = resolve)));
+    const catalog = new AgentModelsDevCatalog(options(root, { fetchImpl }));
+
+    const refresh = catalog.refresh(true);
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledOnce());
+    const stopping = catalog.stop();
+    let stopped = false;
+    void stopping.then(() => {
+      stopped = true;
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(stopped).toBe(false);
+
+    resolveFetch(jsonResponse(catalogPayload()));
+    await refresh;
+    await stopping;
+    await expect(fs.access(path.join(root, "catalog.json"))).resolves.toBeUndefined();
   });
 
   test("reports unavailable and stale states without discarding usable cache data", async () => {
