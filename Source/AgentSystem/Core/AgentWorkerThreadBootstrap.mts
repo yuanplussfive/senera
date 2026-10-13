@@ -1,10 +1,14 @@
 import { workerData } from "node:worker_threads";
-import { tsImport } from "tsx/esm/api";
-
+import { register } from "tsx/esm/api";
 const target = readTarget(workerData);
 if (!target) throw new Error("Agent worker bootstrap requires a target URL.");
 
-await tsImport(target, import.meta.url);
+const unregister = register();
+try {
+  await import(target);
+} finally {
+  await unregister();
+}
 
 function readTarget(value: unknown): string | undefined {
   if (!value || typeof value !== "object" || !("target" in value)) return undefined;
