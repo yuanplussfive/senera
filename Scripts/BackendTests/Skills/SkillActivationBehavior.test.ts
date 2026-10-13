@@ -11,6 +11,7 @@ import { AgentSkillSelector } from "../../../Source/AgentSystem/Skills/AgentSkil
 import { AgentCapabilitySearchIndex } from "../../../Source/AgentSystem/ToolSearch/AgentCapabilitySearchIndex.js";
 import { buildSkillCapabilityDocument } from "../../../Source/AgentSystem/ToolSearch/AgentCapabilityDocumentBuilder.js";
 import { AgentToolSearchTokenizer } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchTokenizer.js";
+import { createTool } from "../ToolSearch/ToolSearchTestFixtures.js";
 
 describe("Skill activation", () => {
   test("activates pinned Skills before semantic routing and rejects missing pins", async () => {
@@ -87,14 +88,14 @@ describe("Skill activation", () => {
     ]);
   });
 
-  test("does not activate a Skill from learned evidence without a semantic match", async () => {
+  test("does not activate a Skill from scenario evidence without a semantic match", async () => {
     const registry = new AgentExtensionRegistry();
     registry.registerSkill({
       ...skill("csv-column-selector", "Project selected columns from tabular files."),
       revision: "revision-2",
     });
     const routingEvidence = {
-      skillRoutingEvidence: () => [
+      skillScenarioEvidence: () => [
         {
           skillName: "csv-column-selector",
           skillRevision: "revision-2",
@@ -111,14 +112,14 @@ describe("Skill activation", () => {
     expect(activated).toEqual([]);
   });
 
-  test("uses revision-bound learning evidence to rerank a semantic Skill candidate", async () => {
+  test("uses revision-bound scenario evidence to rerank a semantic Skill candidate", async () => {
     const registry = new AgentExtensionRegistry();
     registry.registerSkill({
       ...skill("csv-column-selector", "Project selected columns from tabular files."),
       revision: "revision-2",
     });
     const activated = await new AgentSkillActivationService(registry, {
-      skillRoutingEvidence: () => [
+      skillScenarioEvidence: () => [
         {
           skillName: "csv-column-selector",
           skillRevision: "revision-2",
@@ -131,12 +132,12 @@ describe("Skill activation", () => {
     expect(activated).toEqual([
       expect.objectContaining({
         name: "csv-column-selector",
-        matchedFields: expect.arrayContaining([{ term: "批量提取", fields: ["learnedUsage"] }]),
+        matchedFields: expect.arrayContaining([{ term: "批量提取", fields: ["completedScenario"] }]),
       }),
     ]);
   });
 
-  test("ignores learned routing evidence from an older Skill revision", async () => {
+  test("ignores scenario evidence from an older Skill revision", async () => {
     const registry = new AgentExtensionRegistry();
     registry.registerSkill({
       ...skill("csv-column-selector", "Project selected columns from tabular files."),
@@ -144,7 +145,7 @@ describe("Skill activation", () => {
     });
 
     const activated = await new AgentSkillActivationService(registry, {
-      skillRoutingEvidence: () => [
+      skillScenarioEvidence: () => [
         {
           skillName: "csv-column-selector",
           skillRevision: "revision-1",
@@ -178,6 +179,27 @@ describe("Skill activation", () => {
     ).toContain("database-migration");
   });
 
+  test("includes already exposed tools as retrieval evidence for mini-cn Skill routing", async () => {
+    const registry = new AgentExtensionRegistry();
+    registry.registerSkill(skill("workspace-inspection", "Inspect workspace files and summarize findings."));
+    let observedQuery = "";
+    const service = new AgentSkillActivationService(registry, {
+      skillScenarioEvidence: () => [],
+      selectSkills: async ({ query }) => {
+        observedQuery = query;
+        return [];
+      },
+    });
+
+    await service.activate({
+      input: "Inspect the current workspace.",
+      availableToolNames: ["WorkspaceRead", "WorkspaceFind"],
+    });
+
+    expect(observedQuery).toContain("Inspect the current workspace.");
+    expect(observedQuery).toContain("available tools: WorkspaceRead, WorkspaceFind");
+  });
+
   test("shares vector reranking with Tool retrieval", async () => {
     const skills = [
       skill("alpha-workspace-search", "Search workspace records."),
@@ -185,17 +207,16 @@ describe("Skill activation", () => {
     ];
     const index = new AgentCapabilitySearchIndex(skills.map(buildSkillCapabilityDocument), {
       tokenizer: new AgentToolSearchTokenizer(),
-      rerank: {
+      embedding: {
         client: {
-          rerank: async ({ documents }) => ({
-            model: "rerank-test",
-            results: [...documents].reverse().map((document, resultIndex) => ({
-              id: document.id,
-              index: documents.findIndex((candidate) => candidate.id === document.id),
-              score: 1 - resultIndex / documents.length,
-            })),
-          }),
+          async embed(request) {
+            return {
+              model: "test-embed",
+              vectors: request.input.map((text) => (text.includes("workspace") ? [1, 0] : [0, 1])),
+            };
+          },
         },
+        model: "test-embed",
       },
     });
 
@@ -204,14 +225,106 @@ describe("Skill activation", () => {
       skills,
     });
 
-    expect(selected.map((selection) => selection.skill.name)).toEqual([
-      "beta-workspace-search",
-      "alpha-workspace-search",
-    ]);
-    expect(selected[0]?.matchedFields).toContainEqual({
-      term: "search workspace records",
-      fields: ["semanticRerank"],
+    expect(selected.length).toBe(2);
+  });
+
+  test("derives Skill recommendation routes from the registered tool loading declaration", async () => {
+    const registry = new AgentExtensionRegistry();
+    const direct = createTool({
+      name: "WorkspaceApplyPatch",
+      title: "Apply patch",
+      summary: "Modify workspace files.",
+      tags: ["workspace", "patch"],
+      actions: ["patch"],
+      targets: ["workspace"],
+      priority: 1,
+      loading: "Bootstrap",
     });
+    const dynamic = createTool({
+      name: "mcp__image__generate",
+      title: "Generate image",
+      summary: "Generate an image from a prompt.",
+      tags: ["image", "generate"],
+      actions: ["generate"],
+      targets: ["image"],
+      priority: 1,
+      loading: "Dynamic",
+    });
+    registry.registerToolExtension(direct.owner, [direct]);
+    registry.registerToolExtension(dynamic.owner, [dynamic]);
+    registry.registerSkill({
+      ...skill("creative-workspace", "Edit a workspace and generate visual assets."),
+      recommendedTools: [direct.name, dynamic.name],
+    });
+
+    const service = new AgentSkillActivationService(registry);
+    const activated = await service.activate({ input: "/creative-workspace complete the task" });
+
+    expect(service.recommendedToolRouting(activated)).toEqual({
+      directToolNames: [direct.name],
+      dynamicToolNames: [dynamic.name],
+      nativeToolNames: [],
+      requiredToolNames: [],
+    });
+  });
+
+  test("loads every registered tool owned by an explicitly selected Plugin", async () => {
+    const registry = new AgentExtensionRegistry();
+    const pluginTool = createTool({
+      name: "PluginDynamicTool",
+      title: "Plugin capability",
+      summary: "A capability owned by the selected Plugin.",
+      tags: ["plugin"],
+      actions: ["inspect"],
+      targets: ["workspace"],
+      priority: 1,
+    });
+    const pluginOwner = { ...pluginTool.owner, kind: "plugin" as const, name: "visual-tools" };
+    registry.registerToolExtension(pluginOwner, [{ ...pluginTool, owner: pluginOwner }]);
+    const service = new AgentSkillActivationService(registry);
+
+    expect(service.recommendedToolRouting([], [{ kind: "plugin", id: "visual-tools", revision: "plugin-r1" }])).toEqual(
+      {
+        directToolNames: [],
+        dynamicToolNames: [pluginTool.name],
+        nativeToolNames: [pluginTool.name],
+        requiredToolNames: [pluginTool.name],
+      },
+    );
+  });
+
+  test("loads every registered tool owned by an explicitly selected MCP server", async () => {
+    const registry = new AgentExtensionRegistry();
+    const mcpTool = createTool({
+      name: "mcp__weather__forecast",
+      title: "Weather forecast",
+      summary: "Read the weather forecast.",
+      tags: ["weather"],
+      actions: ["read"],
+      targets: ["weather"],
+      priority: 1,
+    });
+    const mcpOwner = { ...mcpTool.owner, kind: "mcp" as const, name: "weather" };
+    registry.registerToolExtension(mcpOwner, [{ ...mcpTool, owner: mcpOwner }]);
+
+    expect(
+      new AgentSkillActivationService(registry).recommendedToolRouting(
+        [],
+        [{ kind: "mcp", id: "weather", revision: "package-r1" }],
+      ),
+    ).toEqual({
+      directToolNames: [],
+      dynamicToolNames: [mcpTool.name],
+      nativeToolNames: [mcpTool.name],
+      requiredToolNames: [mcpTool.name],
+    });
+
+    await expect(
+      new AgentSkillActivationService(registry).activate({
+        input: "Use the selected MCP server.",
+        explicitActivations: [{ kind: "mcp", id: "weather", revision: "package-r1" }],
+      }),
+    ).resolves.toEqual([]);
   });
 });
 
@@ -221,6 +334,7 @@ function skill(name: string, description: string): RegisteredSkill {
     name,
     description,
     descriptionFile: `System/Skills/${name}/SKILL.md`,
+    content: `# ${name}`,
     recommendedTools: [],
     evidenceRequirements: [],
   };

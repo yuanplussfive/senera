@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { resolveArtifactsConfig } from "../../../Source/AgentSystem/AgentDefaults.js";
 import { AgentMcpToolClientPool } from "../../../Source/AgentSystem/Mcp/AgentMcpToolClientPool.js";
 import { AgentSystemRuntimeCache } from "../../../Source/AgentSystem/Runtime/AgentSystemRuntimeCache.js";
 import { AgentWorkspaceRuntime } from "../../../Source/AgentSystem/Runtime/AgentWorkspaceRuntime.js";
@@ -24,6 +25,7 @@ describe("workspace runtime behavior", () => {
     const workspaceRuntime = new AgentWorkspaceRuntime({
       workspaceRoot,
       uploads: uploadConfig(),
+      artifacts: artifactsConfig,
       mcpClientPool: pool,
       uploadStore,
     });
@@ -45,6 +47,8 @@ describe("workspace runtime behavior", () => {
     expect(dependencies).toEqual([workspaceRuntime, workspaceRuntime]);
     expect(workspaceRuntime.mcpClientPool).toBe(pool);
     expect(workspaceRuntime.uploadStore).toBe(uploadStore);
+    expect(workspaceRuntime.workspaceChangeObserver).toBeDefined();
+    expect(workspaceRuntime.embedding).toBeDefined();
     await cache.clear();
     await workspaceRuntime.close();
   });
@@ -57,8 +61,10 @@ describe("workspace runtime behavior", () => {
     const workspaceRuntime = new AgentWorkspaceRuntime({
       workspaceRoot,
       uploads: uploadConfig(),
+      artifacts: artifactsConfig,
       mcpClientPool: pool,
     });
+    const embeddingClose = vi.spyOn(workspaceRuntime.embedding, "close");
 
     const first = workspaceRuntime.close();
     const second = workspaceRuntime.close();
@@ -66,6 +72,27 @@ describe("workspace runtime behavior", () => {
     expect(second).toBe(first);
     await Promise.all([first, second]);
     await workspaceRuntime.close();
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(embeddingClose).toHaveBeenCalledTimes(1);
+  });
+
+  test("closing a workspace does not close the embedding runtime borrowed from its host", async () => {
+    const workspaceRoot = createTemporaryDirectory("senera-workspace-shared-embedding");
+    temporaryDirectories.push(workspaceRoot);
+    const host = new AgentWorkspaceRuntime({ workspaceRoot, uploads: uploadConfig(), artifacts: artifactsConfig });
+    const borrowed = new AgentWorkspaceRuntime({
+      workspaceRoot,
+      uploads: uploadConfig(),
+      artifacts: artifactsConfig,
+      embedding: host.embedding,
+    });
+    const close = vi.spyOn(host.embedding, "close");
+    try {
+      await borrowed.close();
+      expect(close).not.toHaveBeenCalled();
+    } finally {
+      await host.close();
+    }
     expect(close).toHaveBeenCalledTimes(1);
   });
 });
@@ -81,4 +108,8 @@ function uploadConfig(): ResolvedAgentUploadsConfig {
     RetentionHours: 24,
     MaintenanceIntervalMinutes: 15,
   };
+}
+
+function artifactsConfig() {
+  return resolveArtifactsConfig({ ModelProviders: [] });
 }

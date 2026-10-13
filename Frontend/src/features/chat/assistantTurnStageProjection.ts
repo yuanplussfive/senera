@@ -1,4 +1,4 @@
-import type { ChatMessage, RunRecord, TimelineStep } from "../../store/sessionStore";
+import type { ChatMessage, ModelThinkingBlock, RunRecord, TimelineStep } from "../../store/sessionStore";
 import type { AssistantTurnListItem } from "./assistantTurnProjection";
 
 export interface AssistantTurnStage {
@@ -9,7 +9,22 @@ export interface AssistantTurnStage {
   current: boolean;
   transientContent?: string;
   transientKind?: "AssistantToolPreface" | "AssistantFinal" | "AssistantAsk";
+  modelMessageIndex?: number;
+  agentStep?: number;
+  responseItems?: AssistantTurnResponseItem[];
+  liveActivityItemId?: string;
 }
+
+interface AssistantTurnResponseItemOrder {
+  id: string;
+  modelContentIndex: number;
+  eventSequence: number;
+}
+
+export type AssistantTurnResponseItem =
+  | (AssistantTurnResponseItemOrder & { kind: "thinking"; blocks: ModelThinkingBlock[] })
+  | (AssistantTurnResponseItemOrder & { kind: "message"; message: ChatMessage })
+  | (AssistantTurnResponseItemOrder & { kind: "execution"; run: RunRecord });
 
 interface StageBoundary {
   stepStart: number;
@@ -20,6 +35,9 @@ interface StageBoundary {
 }
 
 export function projectAssistantTurnStages(turn: AssistantTurnListItem): AssistantTurnStage[] {
+  const responseStages = projectModelResponseStages(turn);
+  if (responseStages) return responseStages;
+
   const run = turn.run;
   const messages = turn.messages;
   const prefaces = messages.filter((message) => message.kind === "AssistantToolPreface");
@@ -105,6 +123,344 @@ export function projectAssistantTurnStages(turn: AssistantTurnListItem): Assista
   }
 
   return stages;
+}
+
+function projectModelResponseStages(turn: AssistantTurnListItem): AssistantTurnStage[] | undefined {
+  const run = turn.run;
+  if (
+    !run ||
+    (!run.steps.some((step) => step.modelMessageIndex !== undefined) &&
+      !run.thinkingBlocks?.length &&
+      !run.activeModelRequest)
+  ) {
+    return undefined;
+  }
+  if (
+    run.steps.some(
+      (step) =>
+        isRootModelResponseStep(step) &&
+        isStageExecutionStep(step) &&
+        (step.agentStep === undefined || step.modelMessageIndex === undefined),
+    )
+  ) {
+    return undefined;
+  }
+
+  const markerIndexes = readMessageStepIndexes(run, turn.messages);
+  const messagesByResponse = new Map<string, ChatMessage[]>();
+  const identities = new Map<string, ResponseIdentity>();
+  const registerIdentity = (identity: ResponseIdentity): void => {
+    const key = readResponseKey(identity.agentStep, identity.modelMessageIndex);
+    const current = identities.get(key);
+    identities.set(key, {
+      ...identity,
+      firstSequence: Math.min(current?.firstSequence ?? Number.MAX_SAFE_INTEGER, identity.firstSequence),
+    });
+  };
+  for (const message of turn.messages) {
+    const markerIndex = markerIndexes.get(message.id);
+    const marker = markerIndex === undefined ? undefined : run.steps[markerIndex];
+    const modelMessageIndex = marker?.modelMessageIndex;
+    if (modelMessageIndex === undefined) return undefined;
+    const agentStep = marker?.agentStep ?? 0;
+    const key = readResponseKey(agentStep, modelMessageIndex);
+    registerIdentity({ agentStep, modelMessageIndex, firstSequence: marker?.eventSequence ?? Number.MAX_SAFE_INTEGER });
+    const responseMessages = messagesByResponse.get(key) ?? [];
+    responseMessages.push(message);
+    messagesByResponse.set(key, responseMessages);
+  }
+
+  for (const step of run.steps) {
+    if (!isRootModelResponseStep(step) || step.modelMessageIndex === undefined) continue;
+    registerIdentity({
+      agentStep: step.agentStep ?? 0,
+      modelMessageIndex: step.modelMessageIndex,
+      firstSequence: step.startedSequence ?? step.eventSequence ?? Number.MAX_SAFE_INTEGER,
+    });
+  }
+  for (const block of run.thinkingBlocks ?? []) {
+    registerIdentity({
+      agentStep: block.step,
+      modelMessageIndex: block.messageIndex,
+      firstSequence: block.eventSequence ?? Number.MAX_SAFE_INTEGER,
+    });
+  }
+  if (run.activeModelRequest) {
+    registerIdentity({
+      agentStep: run.activeModelRequest.agentStep,
+      modelMessageIndex: run.activeModelRequest.modelMessageIndex,
+      firstSequence: run.activeModelRequest.eventSequence,
+    });
+  }
+
+  const orderedResponses = [...identities.values()].sort(compareResponseIdentities);
+  const activeResponse = run.activeModelRequest
+    ? readResponseKey(run.activeModelRequest.agentStep, run.activeModelRequest.modelMessageIndex)
+    : readResponseKey(orderedResponses.at(-1)?.agentStep ?? 0, orderedResponses.at(-1)?.modelMessageIndex ?? -1);
+
+  const stages: AssistantTurnStage[] = orderedResponses.map(({ agentStep, modelMessageIndex }) => {
+    const responseKey = readResponseKey(agentStep, modelMessageIndex);
+    const responseMessages = messagesByResponse.get(responseKey) ?? [];
+    const childRunIds = new Set(
+      run.steps
+        .filter(
+          (step) =>
+            step.kind === "delegation" &&
+            step.childRun &&
+            step.scope?.parentAgentStep === agentStep &&
+            step.scope.parentModelMessageIndex === modelMessageIndex,
+        )
+        .map((step) => step.childRun!.id),
+    );
+    const responseSteps = run.steps
+      .filter((step) => {
+        const belongsToParentResponse =
+          step.agentStep === agentStep && step.modelMessageIndex === modelMessageIndex && isRootModelResponseStep(step);
+        const belongsToChildRun = step.scope?.childRunId && childRunIds.has(step.scope.childRunId);
+        return isStageExecutionStep(step) && (belongsToParentResponse || belongsToChildRun);
+      })
+      .sort(compareResponseSteps);
+    const blocks = [...(run.thinkingBlocks ?? [])]
+      .filter((block) => block.step === agentStep && block.messageIndex === modelMessageIndex && block.content.trim())
+      .sort((left, right) => left.contentIndex - right.contentIndex || left.id.localeCompare(right.id));
+    const hasVisibleResponseContent = responseMessages.length > 0 || blocks.length > 0;
+    const live = turn.streaming && responseKey === activeResponse;
+    const responseItems = coalesceAdjacentThinkingItems(
+      [
+        ...blocks.map((block) => ({
+          id: `thinking:${block.id}`,
+          kind: "thinking" as const,
+          modelContentIndex: block.contentIndex,
+          eventSequence: block.eventSequence ?? Number.MAX_SAFE_INTEGER,
+          blocks: [block],
+        })),
+        ...responseMessages.map((message) => {
+          const markerIndex = markerIndexes.get(message.id);
+          const marker = markerIndex === undefined ? undefined : run.steps[markerIndex];
+          return {
+            id: `message:${message.id}`,
+            kind: "message" as const,
+            modelContentIndex: marker?.modelContentIndex ?? Number.MAX_SAFE_INTEGER,
+            eventSequence: marker?.eventSequence ?? Number.MAX_SAFE_INTEGER,
+            message,
+          };
+        }),
+        ...projectResponseExecutionItems(
+          run,
+          agentStep,
+          modelMessageIndex,
+          responseSteps,
+          live,
+          hasVisibleResponseContent,
+        ),
+      ].sort(compareResponseItems),
+    );
+    const message = responseMessages.at(-1);
+    const execution = responseSteps.length > 0;
+    const kind = message?.kind === "AssistantToolPreface" || (!message && execution) ? "execution" : "final";
+    const stageRun =
+      responseSteps.length > 0 || live
+        ? projectModelResponseRun(run, agentStep, modelMessageIndex, responseSteps, live)
+        : undefined;
+
+    return {
+      id: `stage:${turn.requestId ?? turn.key}:step:${agentStep}:model:${modelMessageIndex}`,
+      kind,
+      message,
+      run: stageRun,
+      current: live,
+      modelMessageIndex,
+      agentStep,
+      responseItems,
+    };
+  });
+
+  const activeIndex = stages.findIndex((stage) => stage.current);
+  const activeStage = stages[activeIndex];
+  if (activeStage?.responseItems?.length === 0) {
+    const previousStage = [...stages.slice(0, activeIndex)]
+      .reverse()
+      .find((stage) => (stage.responseItems?.length ?? 0) > 0);
+    const previousItem = previousStage?.responseItems?.at(-1);
+    if (previousStage && previousItem) previousStage.liveActivityItemId = previousItem.id;
+  }
+
+  return stages;
+}
+
+interface ResponseIdentity {
+  readonly agentStep: number;
+  readonly modelMessageIndex: number;
+  readonly firstSequence: number;
+}
+
+function readResponseKey(agentStep: number, modelMessageIndex: number): string {
+  return `${agentStep}:${modelMessageIndex}`;
+}
+
+function compareResponseIdentities(left: ResponseIdentity, right: ResponseIdentity): number {
+  return (
+    left.agentStep - right.agentStep ||
+    left.modelMessageIndex - right.modelMessageIndex ||
+    left.firstSequence - right.firstSequence
+  );
+}
+
+function compareResponseItems(left: AssistantTurnResponseItem, right: AssistantTurnResponseItem): number {
+  const leftHasContentIndex = left.modelContentIndex !== Number.MAX_SAFE_INTEGER;
+  const rightHasContentIndex = right.modelContentIndex !== Number.MAX_SAFE_INTEGER;
+  if (leftHasContentIndex && rightHasContentIndex && left.modelContentIndex !== right.modelContentIndex) {
+    return left.modelContentIndex - right.modelContentIndex;
+  }
+  return (
+    left.eventSequence - right.eventSequence ||
+    left.modelContentIndex - right.modelContentIndex ||
+    left.id.localeCompare(right.id)
+  );
+}
+
+function coalesceAdjacentThinkingItems(items: AssistantTurnResponseItem[]): AssistantTurnResponseItem[] {
+  return items.reduce<AssistantTurnResponseItem[]>((ordered, item) => {
+    const previous = ordered.at(-1);
+    if (previous?.kind === "thinking" && item.kind === "thinking") {
+      previous.blocks.push(...item.blocks);
+      return ordered;
+    }
+    ordered.push(item);
+    return ordered;
+  }, []);
+}
+
+function projectResponseExecutionItems(
+  run: RunRecord,
+  agentStep: number,
+  modelMessageIndex: number,
+  steps: readonly TimelineStep[],
+  live: boolean,
+  hasVisibleResponseContent: boolean,
+): AssistantTurnResponseItem[] {
+  const parentSteps = steps.filter((step) => !step.scope?.childRunId || (step.kind === "delegation" && step.childRun));
+  const childSteps = steps.filter((step) => Boolean(step.scope?.childRunId));
+  const projected: AssistantTurnResponseItem[] = [];
+  const consumed = new Set<string>();
+
+  for (const delegation of parentSteps) {
+    if (delegation.kind !== "delegation" || !delegation.childRun) continue;
+    const scopedSteps = childSteps.filter(
+      (step) => step.id !== delegation.id && step.scope?.childRunId === delegation.childRun?.id,
+    );
+    const relatedSteps = [delegation, ...scopedSteps];
+    for (const step of relatedSteps) consumed.add(step.id);
+    projected.push(
+      createExecutionResponseItem(
+        run,
+        agentStep,
+        modelMessageIndex,
+        relatedSteps,
+        live,
+        delegation.modelContentIndex ?? delegation.scope?.parentModelContentIndex,
+      ),
+    );
+  }
+
+  const toolBatches = new Map<string, TimelineStep[]>();
+  for (const step of parentSteps) {
+    if (step.kind !== "tool" || !step.callId || !step.toolName) continue;
+    const identity = step.toolBatch?.id ? `batch:${step.toolBatch.id}` : `call:${step.callId}`;
+    const group = toolBatches.get(identity) ?? [];
+    group.push(step);
+    toolBatches.set(identity, group);
+  }
+  for (const batchSteps of toolBatches.values()) {
+    for (const step of batchSteps) consumed.add(step.id);
+    projected.push(createExecutionResponseItem(run, agentStep, modelMessageIndex, batchSteps, live));
+  }
+
+  for (const step of parentSteps) {
+    if (consumed.has(step.id) || (step.kind === "tool" && !step.toolName)) continue;
+    projected.push(createExecutionResponseItem(run, agentStep, modelMessageIndex, [step], live));
+  }
+
+  if (live && projected.length === 0 && !hasVisibleResponseContent && (run.liveActivity || steps.length > 0)) {
+    projected.push(createExecutionResponseItem(run, agentStep, modelMessageIndex, [], live, Number.MAX_SAFE_INTEGER));
+  }
+  return projected;
+}
+
+function createExecutionResponseItem(
+  run: RunRecord,
+  agentStep: number,
+  modelMessageIndex: number,
+  steps: TimelineStep[],
+  live: boolean,
+  explicitContentIndex?: number,
+): AssistantTurnResponseItem {
+  const orderedSteps = [...steps].sort(compareResponseSteps);
+  const contentIndex =
+    explicitContentIndex ??
+    orderedSteps.find((step) => step.modelContentIndex !== undefined)?.modelContentIndex ??
+    Number.MAX_SAFE_INTEGER;
+  const firstSequence = orderedSteps.reduce(
+    (minimum, step) => Math.min(minimum, step.startedSequence ?? step.eventSequence ?? Number.MAX_SAFE_INTEGER),
+    Number.MAX_SAFE_INTEGER,
+  );
+  const batchId = orderedSteps[0]?.toolBatch?.id;
+  const sharesBatchIdentity = batchId && orderedSteps.every((step) => step.toolBatch?.id === batchId);
+  const identity = sharesBatchIdentity
+    ? `batch:${batchId}`
+    : orderedSteps.map((step) => step.id).join("+") || "live-activity";
+  return {
+    id: `execution:${identity}`,
+    kind: "execution",
+    modelContentIndex: contentIndex,
+    eventSequence: firstSequence,
+    run: projectModelResponseRun(run, agentStep, modelMessageIndex, orderedSteps, live),
+  };
+}
+
+function compareResponseSteps(left: TimelineStep, right: TimelineStep): number {
+  const leftSequence = left.startedSequence ?? left.eventSequence ?? Number.MAX_SAFE_INTEGER;
+  const rightSequence = right.startedSequence ?? right.eventSequence ?? Number.MAX_SAFE_INTEGER;
+  return (
+    leftSequence - rightSequence ||
+    (left.modelContentIndex ?? Number.MAX_SAFE_INTEGER) - (right.modelContentIndex ?? Number.MAX_SAFE_INTEGER) ||
+    left.id.localeCompare(right.id)
+  );
+}
+
+function projectModelResponseRun(
+  run: RunRecord,
+  agentStep: number,
+  modelMessageIndex: number,
+  steps: TimelineStep[],
+  live: boolean,
+): RunRecord {
+  return {
+    ...run,
+    status: live ? run.status : historicalRunStatus(run.status),
+    endedAt: live ? undefined : latestRecordEnd(steps, undefined),
+    steps,
+    activities: live ? run.activities : [],
+    liveActivity: live ? run.liveActivity : undefined,
+    streamingRaw: "",
+    xmlPreview: "",
+    visibleText: "",
+    displayText: "",
+    displayMessageId: undefined,
+    visibleKind: "unknown",
+    outputState: "pending",
+    decisionMode: "none",
+    plannedDecisionMode: undefined,
+    activeModelRequest:
+      live &&
+      run.activeModelRequest?.agentStep === agentStep &&
+      run.activeModelRequest.modelMessageIndex === modelMessageIndex
+        ? run.activeModelRequest
+        : undefined,
+    thinkingBlocks: run.thinkingBlocks?.filter(
+      (block) => block.step === agentStep && block.messageIndex === modelMessageIndex,
+    ),
+  };
 }
 
 function appendExecutionStages(
@@ -343,6 +699,10 @@ function latestRecordEnd(
 
 function isStageExecutionStep(step: TimelineStep): boolean {
   return step.kind === "tool" || step.kind === "delegation" || step.kind === "retry" || step.kind === "error";
+}
+
+function isRootModelResponseStep(step: TimelineStep): boolean {
+  return !step.scope?.parentRequestId && !step.scope?.childRunId;
 }
 
 function isInStageWindow(value: string, startedAt?: string, endedAt?: string): boolean {

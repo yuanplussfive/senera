@@ -27,6 +27,8 @@ function createTurnState(): AgentPiTurnState {
     preferredToolNames: ["ReadTool"],
   });
   return new AgentPiTurnState({
+    systemPrompt: "Test agent system context.",
+    userMessage: "Test child-run wrap-up request.",
     sessionId: "child-session",
     requestId: "child-request",
     step: 1,

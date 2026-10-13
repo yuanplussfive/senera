@@ -1,49 +1,20 @@
 import { z } from "zod";
-import { defineSystemTool } from "./AgentSystemToolDefinition.js";
-import { StandardAgentToolObservationProjection } from "../ToolRuntime/AgentToolObservationProjectionPlan.js";
+import type { AgentHostToolContext } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
+import { AgentTodoChangeSources, AgentTodoStatuses, AgentTodoToolNames } from "../Todos/AgentTodoTypes.js";
+import type { AgentTodoService } from "../Todos/AgentTodoService.js";
 import {
   AgentHostToolProtocolVersion,
   ToolResultAssessmentPolicies,
   ToolSchedulingModes,
 } from "../Types/AgentToolContractTypes.js";
-import { AgentTodoOperations, AgentTodoStatuses } from "../Todos/AgentTodoTypes.js";
+import {
+  defineSystemTool,
+  type AgentSystemToolDefinition,
+  type AgentSystemToolMetadata,
+} from "./AgentSystemToolDefinition.js";
 
 const NonEmptyText = z.string().trim().min(1);
-const TodoItemInput = z
-  .object({
-    id: NonEmptyText.describe("Stable identifier for this task."),
-    content: NonEmptyText.optional().describe("Task description. Required when adding a new item."),
-    status: z.enum(AgentTodoStatuses).optional().describe("Current task status."),
-  })
-  .strict();
-
-const TodoReadInput = z
-  .object({
-    operation: z.literal(AgentTodoOperations.Read).describe("Read the current task list without changing it."),
-  })
-  .strict();
-
-const TodoWriteInput = z
-  .object({
-    operation: z
-      .enum([AgentTodoOperations.Replace, AgentTodoOperations.Merge])
-      .describe("Replace the full list or merge updates by stable item id."),
-    todos: z.array(TodoItemInput).describe("Task items to write. Use stable ids for later updates."),
-  })
-  .strict();
-
-const TodoInput = z.discriminatedUnion("operation", [TodoReadInput, TodoWriteInput]);
-
-const TodoItem = z
-  .object({
-    id: z.string(),
-    content: z.string(),
-    status: z.enum(AgentTodoStatuses),
-    order: z.number().int().nonnegative(),
-    createdAt: z.string(),
-    updatedAt: z.string(),
-  })
-  .strict();
+const TodoStatus = z.enum(AgentTodoStatuses);
 
 const TodoCounts = z
   .object({
@@ -55,31 +26,119 @@ const TodoCounts = z
   })
   .strict();
 
-const TodoOutput = z
+const TodoTaskReference = z
   .object({
-    items: z.array(TodoItem),
+    id: z.string(),
+    status: TodoStatus,
+  })
+  .strict();
+
+const TodoReadOutput = z
+  .object({
+    items: z.array(
+      z
+        .object({
+          id: z.string(),
+          content: z.string(),
+          status: TodoStatus,
+          order: z.number().int().nonnegative(),
+          createdAt: z.string(),
+          updatedAt: z.string(),
+        })
+        .strict(),
+    ),
     counts: TodoCounts,
   })
   .strict();
 
-export const AgentTodoSystemTool = defineSystemTool({
-  extension: {
-    name: "todo",
-    displayName: {
-      "zh-CN": "任务清单",
-      "en-US": "Task List",
-    },
-    description: {
-      "zh-CN": "维护本轮任务清单。",
-      "en-US": "Maintains the task list for this turn.",
-    },
-    priority: 2,
-    childGrant: "internal",
-  },
-  metadata: {
-    observation: StandardAgentToolObservationProjection,
-    description:
-      "Manage the current session task list. Choose operation=read to inspect it, operation=replace to create a plan, or operation=merge to update stable item ids. Keep exactly one item in_progress. Mark completed only after verification; cancel failed work and add a revised item.",
+const TodoAddInput = z
+  .object({
+    tasks: z
+      .array(
+        z
+          .object({
+            content: NonEmptyText.describe("Task description."),
+          })
+          .strict(),
+      )
+      .min(1)
+      .describe("Tasks to add. New tasks start pending; the tool assigns stable IDs and returns them."),
+  })
+  .strict();
+
+const TodoUpdateItem = z.union([
+  z
+    .object({
+      id: NonEmptyText.describe("Stable ID returned by TodoAdd or TodoRead."),
+      status: TodoStatus.describe("Replacement status for this task."),
+    })
+    .strict(),
+  z
+    .object({
+      id: NonEmptyText.describe("Stable ID returned by TodoAdd or TodoRead."),
+      content: NonEmptyText.describe("Replacement task description."),
+    })
+    .strict(),
+  z
+    .object({
+      id: NonEmptyText.describe("Stable ID returned by TodoAdd or TodoRead."),
+      content: NonEmptyText.describe("Replacement task description."),
+      status: TodoStatus.describe("Replacement status for this task."),
+    })
+    .strict(),
+]);
+
+const TodoUpdateInput = z
+  .object({
+    updates: z
+      .array(TodoUpdateItem)
+      .min(1)
+      .describe("Existing task IDs and the fields to change. Omitted fields remain unchanged."),
+  })
+  .strict();
+
+const TodoAddOutput = z
+  .object({
+    created: z.array(TodoTaskReference),
+    counts: TodoCounts,
+  })
+  .strict();
+
+const TodoUpdateOutput = z
+  .object({
+    updated: z.array(TodoTaskReference),
+    counts: TodoCounts,
+  })
+  .strict();
+
+const TodoExtension = {
+  name: "todo",
+  displayName: { "zh-CN": "任务清单", "en-US": "Task List" },
+  description: { "zh-CN": "维护本轮任务清单。", "en-US": "Maintains the task list for this turn." },
+  priority: 2,
+  childGrant: "internal" as const,
+};
+
+interface TodoToolMetadataInput {
+  readonly description: string;
+  readonly summary: string;
+  readonly capabilityId: string;
+  readonly capabilityDescription: string;
+  readonly actions: readonly string[];
+  readonly aliases: readonly string[];
+  readonly inputs: readonly string[];
+  readonly outputs: readonly string[];
+  readonly useCases: readonly string[];
+  readonly examples: readonly string[];
+  readonly avoid: readonly string[];
+  readonly permission: "read" | "write";
+  readonly effect: string;
+  readonly sideEffect: string;
+}
+
+function createTodoToolMetadata(input: TodoToolMetadataInput): AgentSystemToolMetadata {
+  return {
+    description: input.description,
     permissions: ["session:todo"],
     execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
     runtime: {
@@ -90,45 +149,137 @@ export const AgentTodoSystemTool = defineSystemTool({
       Capabilities: { Cancellation: true },
     },
     search: {
-      Summary: "任务清单。",
-      Tags: ["任务清单", "todo", "计划", "复杂任务", "进度"],
+      Summary: input.summary,
+      Tags: ["任务清单", "todo", "计划", "进度"],
       Capabilities: [
         {
-          Id: "todo.manage",
+          Id: input.capabilityId,
           Title: "Task list management",
-          Description: "Read, replace, or merge the current session task list.",
+          Description: input.capabilityDescription,
           Facets: {
-            Actions: ["read", "replace", "merge", "complete", "cancel"],
+            Actions: [...input.actions],
             Targets: ["session-task-list"],
-            Inputs: ["operation", "todos", "id", "content", "status"],
-            Outputs: ["task-list", "task-counts"],
-            Effects: ["session-state"],
+            Inputs: [...input.inputs],
+            Outputs: [...input.outputs],
+            Effects: [input.effect],
           },
-          Aliases: ["列出待办", "创建任务清单", "更新任务进度", "todo"],
-          Risk: { SideEffect: "session-state", Permission: "write" },
+          Aliases: [...input.aliases],
+          Risk: { SideEffect: input.sideEffect, Permission: input.permission },
         },
       ],
-      UseCases: ["复杂任务需要拆分步骤", "用户提出多个需要逐项完成的要求"],
-      Examples: ["列出实现这个功能的步骤", "更新当前任务清单"],
-      Avoid: ["不要把长期用户目标写入 Todo", "简单的一步任务不要创建清单"],
+      UseCases: [...input.useCases],
+      Examples: [...input.examples],
+      Avoid: [...input.avoid],
     },
-  },
-  name: "Todo",
-  input: TodoInput,
-  output: TodoOutput,
+  };
+}
+
+function requireTodoContext(context: AgentHostToolContext): { sessionId: string; todoService: AgentTodoService } {
+  if (!context.sessionId) throw new Error("Todo requires an active session.");
+  if (!context.todoService) throw new Error("Todo service is not connected to the runtime.");
+  return { sessionId: context.sessionId, todoService: context.todoService };
+}
+
+export const AgentTodoAddSystemTool = defineSystemTool({
+  extension: TodoExtension,
+  metadata: createTodoToolMetadata({
+    description:
+      "Add one or more pending tasks to the current session. The tool assigns stable IDs; use TodoUpdate to change their status or description.",
+    summary: "向本轮任务清单新增步骤，并返回稳定任务 ID。",
+    capabilityId: "todo.add",
+    capabilityDescription: "Create tasks and receive their stable IDs.",
+    actions: ["add"],
+    aliases: ["新增任务", "添加待办", "创建任务步骤", "add todo task"],
+    inputs: ["tasks", "content"],
+    outputs: ["created-task-ids", "task-counts"],
+    useCases: ["为多步骤工作创建任务清单", "执行中发现新的独立工作步骤"],
+    examples: ["为这个实现任务建立步骤清单", "新增一个验证步骤"],
+    avoid: ["不要用它修改已有任务状态", "简单的一步请求无需建立清单"],
+    permission: "write",
+    effect: "session-state",
+    sideEffect: "session-state",
+  }),
+  name: AgentTodoToolNames.Add,
+  input: TodoAddInput,
+  output: TodoAddOutput,
   execute(input, context) {
-    if (!context.sessionId) throw new Error("Todo requires an active session.");
-    if (!context.todoService) throw new Error("Todo service is not connected to the runtime.");
-    if (input.operation === AgentTodoOperations.Read) {
-      return TodoOutput.parse(context.todoService.read(context.sessionId));
-    }
-    const snapshot = context.todoService.write({
-      sessionId: context.sessionId,
-      items: input.todos,
-      merge: input.operation === AgentTodoOperations.Merge,
+    const { sessionId, todoService } = requireTodoContext(context);
+    const result = todoService.add({
+      sessionId,
+      tasks: input.tasks,
       onEvent: context.onEvent,
       requestId: context.requestId,
+      source: AgentTodoChangeSources.Model,
     });
-    return TodoOutput.parse(snapshot);
+    return { created: [...result.created], counts: result.counts };
   },
 });
+
+export const AgentTodoUpdateSystemTool = defineSystemTool({
+  extension: TodoExtension,
+  metadata: createTodoToolMetadata({
+    description:
+      "Update existing tasks by stable ID. Send only the fields to change; omitted content or status stays unchanged. Use TodoAdd for new tasks and TodoRead to inspect IDs. Keep at most one task in_progress; zero is valid when all work is terminal. Mark completed only after verification.",
+    summary: "按稳定任务 ID 更新描述或状态，未传字段保持不变。",
+    capabilityId: "todo.update",
+    capabilityDescription: "Patch existing task content or status by stable ID.",
+    actions: ["update", "complete", "cancel"],
+    aliases: ["更新任务状态", "标记任务完成", "取消任务", "update todo status"],
+    inputs: ["updates", "id", "content", "status"],
+    outputs: ["updated-task-ids", "task-counts"],
+    useCases: ["推进已创建任务的状态", "修订现有任务描述", "标记已验证完成或无法继续的任务"],
+    examples: ["把对应任务标记为完成", "将当前任务设为进行中"],
+    avoid: ["不要用它创建新任务", "不要在验证前标记完成"],
+    permission: "write",
+    effect: "session-state",
+    sideEffect: "session-state",
+  }),
+  name: AgentTodoToolNames.Update,
+  input: TodoUpdateInput,
+  output: TodoUpdateOutput,
+  execute(input, context) {
+    const { sessionId, todoService } = requireTodoContext(context);
+    const result = todoService.update({
+      sessionId,
+      updates: input.updates,
+      onEvent: context.onEvent,
+      requestId: context.requestId,
+      source: AgentTodoChangeSources.Model,
+    });
+    return { updated: [...result.updated], counts: result.counts };
+  },
+});
+
+export const AgentTodoReadSystemTool = defineSystemTool({
+  extension: TodoExtension,
+  metadata: createTodoToolMetadata({
+    description: "Read all tasks and their current statuses for the active session.",
+    summary: "读取本轮任务清单、稳定 ID 与当前状态。",
+    capabilityId: "todo.read",
+    capabilityDescription: "Read the current session task list and status counts.",
+    actions: ["read"],
+    aliases: ["查看任务清单", "读取待办状态", "list todo tasks"],
+    inputs: [],
+    outputs: ["task-list", "task-counts"],
+    useCases: ["需要核对任务 ID、描述或状态"],
+    examples: ["查看当前任务进度"],
+    avoid: ["已有清晰任务上下文时不要重复读取"],
+    permission: "read",
+    effect: "session-state-read",
+    sideEffect: "read-only",
+  }),
+  name: AgentTodoToolNames.Read,
+  input: z.object({}).strict(),
+  output: TodoReadOutput,
+  execute(_input, context) {
+    const { sessionId, todoService } = requireTodoContext(context);
+    const snapshot = todoService.read(sessionId);
+    return { items: [...snapshot.items], counts: snapshot.counts };
+  },
+});
+
+export const AgentTodoSystemTools: readonly AgentSystemToolDefinition[] = [
+  AgentTodoAddSystemTool,
+  AgentTodoUpdateSystemTool,
+  AgentTodoReadSystemTool,
+];

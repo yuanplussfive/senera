@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { ModelProviderDraft } from "../../chat/modelConfigTypes";
 import type { SettingsConfigCommands } from "../SettingsContracts";
+import { sameJsonValue } from "../../../shared/config/JsonConfigValue";
 
 interface ModelSaveQueueEntry {
   draft: ModelProviderDraft;
@@ -121,7 +122,9 @@ export function useProviderModelSaveQueue({
 
   const schedule = useCallback(
     (model: ModelProviderDraft, immediate: boolean): void => {
-      const current = entriesRef.current.get(model.Id) ?? createQueueEntry(model);
+      const existing = entriesRef.current.get(model.Id);
+      if (existing && sameModelDraft(existing.draft, model)) return;
+      const current = existing ?? createQueueEntry(model);
       if (current.timer !== null) window.clearTimeout(current.timer);
       const timer = window.setTimeout(
         () => {
@@ -192,5 +195,5 @@ function createQueueEntry(draft: ModelProviderDraft): ModelSaveQueueEntry {
 }
 
 function sameModelDraft(left: ModelProviderDraft, right: ModelProviderDraft): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
+  return sameJsonValue(left, right);
 }

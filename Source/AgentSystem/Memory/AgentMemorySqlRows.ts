@@ -8,10 +8,9 @@ export interface EpisodeRow {
   status: AgentMemoryEpisodeStatus;
   raw_user_text: string;
   standalone_request: string;
-  context_mode: string;
   context_basis: string;
   topic: string;
-  summary: string;
+  assistant_text: string;
   started_at: string;
   completed_at: string;
   updated_at: string;

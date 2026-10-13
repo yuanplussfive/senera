@@ -15,19 +15,13 @@
   "legacyLargeFiles": [
     {
       "path": "Apps/ServerRuntime.ts",
-      "baselineLines": 975,
+      "baselineLines": 1082,
       "owner": "runtime-platform",
-      "splitTarget": "Extract world runtime assembly into a dedicated server world composition module."
-    },
-    {
-      "path": "Frontend/src/api/eventTypes.ts",
-      "baselineLines": 880,
-      "owner": "frontend-platform",
-      "splitTarget": "Split event type declarations by runtime domain while keeping the public event catalog stable."
+      "splitTarget": "Keep ServerRuntime focused on current-turn composition after retiring autonomous world runtime."
     },
     {
       "path": "Frontend/src/features/workflow/AgentExecutionFeed.tsx",
-      "baselineLines": 813,
+      "baselineLines": 892,
       "owner": "frontend-platform",
       "splitTarget": "Extract child-run stage rendering into a focused workflow component."
     },
@@ -39,9 +33,21 @@
     },
     {
       "path": "Scripts/BackendTests/Pi/PiToolExecutionBridgeBehavior.test.ts",
-      "baselineLines": 806,
+      "baselineLines": 914,
       "owner": "pi-runtime",
       "splitTarget": "Split bridge contract and failure scenarios into focused test files."
+    },
+    {
+      "path": "Scripts/BackendTests/SystemTools/AgentSystemToolCatalogBehavior.test.ts",
+      "baselineLines": 955,
+      "owner": "system-extension-contracts",
+      "splitTarget": "Split package registration, manifest validation, and configurable-extension scenarios into focused test files."
+    },
+    {
+      "path": "Scripts/BackendTests/ToolSearch/ToolSearchCore.test.ts",
+      "baselineLines": 1775,
+      "owner": "tool-routing-runtime",
+      "splitTarget": "Split tokenizer and query-shape, confidence-curve, and resource-admission scenarios into focused test files."
     },
     {
       "path": "Scripts/BackendTests/Channels/AgentChannelAdaptersBehavior.test.ts",
@@ -51,37 +57,37 @@
     },
     {
       "path": "Scripts/BackendTests/Channels/AgentChannelCoreBehavior.test.ts",
-      "baselineLines": 1161,
+      "baselineLines": 1159,
       "owner": "channel-runtime",
       "splitTarget": "Split renderer, delivery, and session mapping coverage into focused test files."
     },
     {
       "path": "Scripts/BackendTests/Orchestration/AgentDelegationBehavior.test.ts",
-      "baselineLines": 919,
+      "baselineLines": 1020,
       "owner": "orchestration-runtime",
       "splitTarget": "Split child-run lifecycle and wait scenarios into focused test files."
     },
     {
       "path": "Scripts/FrontendTests/Feature/WorkflowExecutionFeedComponents.test.mjs",
-      "baselineLines": 878,
+      "baselineLines": 1091,
       "owner": "frontend-platform",
       "splitTarget": "Split workflow feed and child-run component scenarios into focused test files."
     },
     {
       "path": "Scripts/FrontendTests/Feature/WorkflowComponents.test.mjs",
-      "baselineLines": 801,
+      "baselineLines": 880,
       "owner": "frontend-platform",
       "splitTarget": "Split workflow activity, child-run, and layout scenarios into focused test files."
     },
     {
       "path": "Scripts/BackendTests/Session/SessionManagerBehavior.test.ts",
-      "baselineLines": 817,
+      "baselineLines": 1014,
       "owner": "session-runtime",
       "splitTarget": "Split session admission, cancellation, and persistence coverage into focused test files."
     },
     {
       "path": "Source/AgentSystem/Browser/AgentPlaywrightBrowserDriver.ts",
-      "baselineLines": 948,
+      "baselineLines": 976,
       "owner": "browser-runtime",
       "splitTarget": "Extract page lifecycle and locator interaction helpers into focused modules."
     },
@@ -98,52 +104,124 @@
       "splitTarget": "Extract command routing, lifecycle synchronization, and delivery orchestration into focused modules."
     },
     {
-      "path": "Source/AgentSystem/Continuity/AgentContinuityMemoryService.ts",
-      "baselineLines": 822,
-      "owner": "continuity-runtime",
-      "splitTarget": "Extract recall orchestration and prompt projection into focused continuity modules."
-    },
-    {
       "path": "Source/AgentSystem/Orchestration/AgentDelegationService.ts",
-      "baselineLines": 1106,
+      "baselineLines": 1202,
       "owner": "orchestration-runtime",
       "splitTarget": "Extract child-run lifecycle and wait coordination into focused orchestration modules."
     },
     {
-      "path": "Source/AgentSystem/TemporalMemory/AgentTemporalMemorySqliteStore.ts",
-      "baselineLines": 901,
-      "owner": "temporal-memory",
-      "splitTarget": "Extract SQL row codecs and query projections into dedicated modules."
+      "path": "Frontend/src/store/session/scopedRunProjector.ts",
+      "baselineLines": 884,
+      "owner": "frontend-platform",
+      "splitTarget": "Split scoped run state projection from child-run and resource reconciliation helpers."
     },
     {
-      "path": "Source/AgentSystem/SelfService/AgentSelfCommand.ts",
-      "baselineLines": 802,
-      "owner": "self-service-runtime",
-      "splitTarget": "Extract preset, skill, and configuration command handlers into focused self-service modules."
+      "path": "Scripts/BackendTests/Execution/ExecutionResourceBrokerBehavior.test.ts",
+      "baselineLines": 804,
+      "owner": "execution-runtime",
+      "splitTarget": "Split lease admission, release, and process-resource scenarios into focused test files."
+    },
+    {
+      "path": "Scripts/BackendTests/Pi/PiNativeToolProviderBehavior.test.ts",
+      "baselineLines": 1144,
+      "owner": "pi-runtime",
+      "splitTarget": "Split native provider request projection, compaction, and stream lifecycle scenarios."
+    },
+    {
+      "path": "Scripts/FrontendTests/Feature/ChatAssistantTurnStages.test.mjs",
+      "baselineLines": 892,
+      "owner": "frontend-platform",
+      "splitTarget": "Split assistant stage projection and streaming transition scenarios into focused test files."
+    },
+    {
+      "path": "Scripts/FrontendTests/Feature/ChatCoreComponents.test.mjs",
+      "baselineLines": 1232,
+      "owner": "frontend-platform",
+      "splitTarget": "Split composer, panel, message list, and interaction ownership scenarios."
+    },
+    {
+      "path": "Scripts/FrontendTests/Feature/ChatMessageListComponents.test.mjs",
+      "baselineLines": 874,
+      "owner": "frontend-platform",
+      "splitTarget": "Split message list rendering and assistant-turn grouping scenarios."
+    },
+    {
+      "path": "Scripts/FrontendTests/Feature/ToolResourcePreview.test.mjs",
+      "baselineLines": 817,
+      "owner": "frontend-platform",
+      "splitTarget": "Split resource preview rendering from download and mutation interactions."
+    },
+    {
+      "path": "Scripts/FrontendTests/State/SessionHistoryProjector.test.mjs",
+      "baselineLines": 876,
+      "owner": "frontend-platform",
+      "splitTarget": "Split history loading, projection, and regeneration scenarios into focused state tests."
+    },
+    {
+      "path": "Source/AgentSystem/Artifacts/AgentWorkspaceChangeObserver.ts",
+      "baselineLines": 1021,
+      "owner": "artifact-runtime",
+      "splitTarget": "Extract mutation receipt reconciliation and workspace observation lifecycle helpers."
+    },
+    {
+      "path": "Source/AgentSystem/Browser/AgentBrowserRuntime.ts",
+      "baselineLines": 806,
+      "owner": "browser-runtime",
+      "splitTarget": "Split browser session lifecycle from navigation and observation orchestration."
+    },
+    {
+      "path": "Source/AgentSystem/Execution/SeneraLocalExecutionEnv.ts",
+      "baselineLines": 884,
+      "owner": "execution-runtime",
+      "splitTarget": "Extract process environment projection and worker lifecycle helpers."
+    },
+    {
+      "path": "Frontend/src/features/chat/ChatComposer.tsx",
+      "baselineLines": 1160,
+      "owner": "frontend-platform",
+      "splitTarget": "Extract command palette, attachment handling, and submission orchestration into focused composer modules."
+    },
+    {
+      "path": "Frontend/src/features/observability/runtimeDiagnosticProjection.ts",
+      "baselineLines": 972,
+      "owner": "frontend-platform",
+      "splitTarget": "Extract diagnostic event normalization and run projection into focused observability modules."
+    },
+    {
+      "path": "Frontend/src/shared/workspace/WorkspaceResourceWorkbench.tsx",
+      "baselineLines": 871,
+      "owner": "frontend-platform",
+      "splitTarget": "Extract resource tree, editor state, and preview projection into focused workspace modules."
+    },
+    {
+      "path": "Scripts/FrontendTests/Feature/WorkflowToolActivityV2.test.mjs",
+      "baselineLines": 831,
+      "owner": "frontend-platform",
+      "splitTarget": "Split tool activity projection, grouping, and interaction scenarios into focused workflow tests."
+    },
+    {
+      "path": "Source/AgentSystem/Continuity/AgentMemOSSemanticLearningRuntime.ts",
+      "baselineLines": 978,
+      "owner": "continuity-runtime",
+      "splitTarget": "Extract semantic learning ingestion, clustering, and projection into focused continuity modules."
+    },
+    {
+      "path": "Source/AgentSystem/Session/AgentSessionActiveRunController.ts",
+      "baselineLines": 804,
+      "owner": "session-runtime",
+      "splitTarget": "Extract active-run admission, cancellation, and completion coordination into focused session modules."
     },
     {
       "path": "Source/AgentSystem/Session/AgentSessionStore.ts",
-      "baselineLines": 801,
+      "baselineLines": 807,
       "owner": "session-runtime",
-      "splitTarget": "Extract model preference admission and snapshot projection from the session store."
+      "splitTarget": "Extract session persistence, history projection, and run indexing into focused session modules."
     },
     {
       "path": "Source/AgentSystem/ToolSearch/AgentToolSearchRuntime.ts",
-      "baselineLines": 916,
+      "baselineLines": 854,
       "owner": "tool-routing-runtime",
-      "splitTarget": "Extract capability reuse, catalog projection, and embedding index lifecycle into focused modules."
-    },
-    {
-      "path": "Source/AgentSystem/World/AgentHabitScheduler.ts",
-      "baselineLines": 994,
-      "owner": "world-runtime",
-      "splitTarget": "Extract habit definition persistence and recurrence calculation helpers."
-    },
-    {
-      "path": "Source/AgentSystem/World/AgentWorldPackageLoader.ts",
-      "baselineLines": 843,
-      "owner": "world-runtime",
-      "splitTarget": "Extract package schema and persistence reconciliation into dedicated modules."
+      "splitTarget": "Extract catalog admission, semantic retrieval, and usage learning into focused tool-routing modules."
     }
   ],
   "directoryBudgets": [

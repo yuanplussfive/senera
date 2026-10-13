@@ -4,6 +4,7 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import { Readable, Transform, type TransformCallback } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { extension as mimeExtension } from "mime-types";
 import type { AgentErrorMessageKey } from "../I18n/AgentMessageCatalog.js";
 import type { ResolvedAgentUploadsConfig } from "../Types/AgentConfigTypes.js";
 import {
@@ -29,7 +30,13 @@ import {
   AgentUploadStatus,
   type AgentResolvedUpload,
 } from "./AgentUploadTypes.js";
-import type { AgentResourcePublishInput, AgentResourcePublisher } from "../Resources/AgentResourcePublisher.js";
+import type {
+  AgentPublishedResource,
+  AgentResourcePublishBase64Input,
+  AgentResourcePublishInput,
+  AgentResourcePublisher,
+} from "../Resources/AgentResourcePublisher.js";
+import { throwIfAborted } from "../Core/AgentCancellation.js";
 
 const MILLISECONDS_PER_HOUR = 60 * 60 * 1_000;
 const MILLISECONDS_PER_MINUTE = 60 * 1_000;
@@ -125,6 +132,7 @@ export interface AgentUploadSaveInput {
   stream: Readable;
   originalName: string;
   declaredMime?: string;
+  signal?: AbortSignal;
 }
 
 export interface AgentUploadMaintenanceResult {
@@ -167,13 +175,20 @@ export class AgentUploadStore implements AgentResourcePublisher {
   }
 
   async save(input: AgentUploadSaveInput): Promise<AgentUploadAttachment> {
+    return (await this.saveLocated(input)).attachment;
+  }
+
+  private async saveLocated(input: AgentUploadSaveInput): Promise<{
+    attachment: AgentUploadAttachment;
+    filePath: string;
+  }> {
     const config = this.config();
     const resourceId = createAgentUploadId();
     const resourceUri = createAgentResourceUri(resourceId);
     const uploadRoot = this.resolveRoot(config);
     const state = this.rootState(uploadRoot);
     const uploadDir = resolveAgentUploadDir(uploadRoot, resourceId);
-    const filePath = resolveAgentUploadFile(uploadRoot, resourceId, AgentUploadFileNames.Original);
+    let filePath = resolveAgentUploadFile(uploadRoot, resourceId, AgentUploadFileNames.Original);
     const meter = new UploadByteMeter(config.MaxFileBytes);
     let capacityReserved = false;
 
@@ -193,12 +208,22 @@ export class AgentUploadStore implements AgentResourcePublisher {
 
       await fsp.mkdir(uploadDir, { recursive: true });
 
-      await pipeline(input.stream, meter, fs.createWriteStream(filePath));
+      throwIfAborted(input.signal);
+      await pipeline(input.stream, meter, fs.createWriteStream(filePath), { signal: input.signal });
       const mime = await detectAgentUploadMime({
         filePath,
         originalName: input.originalName,
         declaredMime: input.declaredMime,
       });
+      const extension = mimeExtension(mime.effective);
+      const storageFileName = extension
+        ? `${AgentUploadFileNames.Original}.${extension}`
+        : AgentUploadFileNames.Original;
+      if (storageFileName !== AgentUploadFileNames.Original) {
+        const typedFilePath = resolveAgentUploadFile(uploadRoot, resourceId, storageFileName);
+        await fsp.rename(filePath, typedFilePath);
+        filePath = typedFilePath;
+      }
       const manifest: AgentUploadManifest = {
         resourceId,
         resourceUri,
@@ -210,7 +235,7 @@ export class AgentUploadStore implements AgentResourcePublisher {
         sha256: meter.sha256(),
         createdAt: this.now().toISOString(),
         storage: {
-          fileName: AgentUploadFileNames.Original,
+          fileName: storageFileName,
         },
       };
       await this.writeManifest(uploadDir, manifest);
@@ -225,7 +250,7 @@ export class AgentUploadStore implements AgentResourcePublisher {
         state.reservedBytes = remainingReservation;
         capacityReserved = false;
       });
-      return manifestToAttachment(manifest);
+      return { attachment: manifestToAttachment(manifest), filePath };
     } catch (error) {
       await fsp.rm(uploadDir, { recursive: true, force: true }).catch(() => undefined);
       if (capacityReserved) {
@@ -244,13 +269,29 @@ export class AgentUploadStore implements AgentResourcePublisher {
    * Publishes host-received bytes through the same quota, MIME detection,
    * manifest, integrity, and retention path as a user upload.
    */
-  async publishBytes(input: AgentResourcePublishInput): Promise<AgentUploadAttachment> {
-    const bytes = Buffer.from(input.bytes);
-    return this.save({
+  async publishBytes(input: AgentResourcePublishInput): Promise<AgentPublishedResource> {
+    const bytes = Buffer.isBuffer(input.bytes) ? input.bytes : Buffer.from(input.bytes);
+    const saved = await this.saveLocated({
       stream: Readable.from([bytes]),
       originalName: input.name,
       declaredMime: input.mime,
+      signal: input.signal,
     });
+    return { ...saved.attachment, localPath: this.localPathFor(saved.filePath) };
+  }
+
+  /**
+   * Decodes provider Base64 incrementally so a large image does not require a
+   * second full in-memory Buffer before it enters the upload pipeline.
+   */
+  async publishBase64(input: AgentResourcePublishBase64Input): Promise<AgentPublishedResource> {
+    const saved = await this.saveLocated({
+      stream: Readable.from(readBase64Chunks(input.base64)).pipe(new Base64DecodeTransform()),
+      originalName: input.name,
+      declaredMime: input.mime,
+      signal: input.signal,
+    });
+    return { ...saved.attachment, localPath: this.localPathFor(saved.filePath) };
   }
 
   async resolve(resourceUri: string): Promise<AgentResolvedUpload | undefined> {
@@ -281,6 +322,30 @@ export class AgentUploadStore implements AgentResourcePublisher {
       uploadDir,
       filePath,
     };
+  }
+
+  /**
+   * Resolves an upload's local path without re-hashing the entire file. This
+   * is intended for request-local prompt references; consumers that read the
+   * bytes should continue using resolve(), which performs integrity checks.
+   */
+  async resolvePath(resourceUri: string): Promise<string | undefined> {
+    const normalizedUri = normalizeAgentResourceUri(resourceUri);
+    if (!normalizedUri) return undefined;
+
+    const resourceId = parseAgentResourceId(normalizedUri);
+    if (!resourceId) return undefined;
+
+    const uploadRoot = this.resolveRoot(this.config());
+    const manifestPath = resolveAgentUploadFile(uploadRoot, resourceId, AgentUploadFileNames.Manifest);
+    const manifest = AgentUploadManifestSchema.parse(
+      parseJsonText(await fsp.readFile(manifestPath, "utf8"), "Upload manifest"),
+    );
+    if (manifest.resourceUri !== normalizedUri || manifest.resourceId !== resourceId) return undefined;
+
+    const filePath = resolveAgentUploadFile(uploadRoot, resourceId, manifest.storage.fileName);
+    const stat = await fsp.stat(filePath);
+    return stat.isFile() && stat.size === manifest.size ? filePath : undefined;
   }
 
   async delete(resourceUri: string): Promise<boolean> {
@@ -321,6 +386,19 @@ export class AgentUploadStore implements AgentResourcePublisher {
 
   private resolveRoot(config: ResolvedAgentUploadsConfig): string {
     return resolveAgentUploadRoot(this.options.workspaceRoot, config.RootDir);
+  }
+
+  private localPathFor(filePath: string): string {
+    const relativePath = path.relative(path.resolve(this.options.workspaceRoot), filePath);
+    if (
+      !relativePath ||
+      relativePath === ".." ||
+      relativePath.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relativePath)
+    ) {
+      throw new TypeError("Published upload path is outside the workspace.");
+    }
+    return relativePath.split(path.sep).join("/");
   }
 
   private rootState(uploadRoot: string): AgentUploadRootState {
@@ -501,5 +579,39 @@ class UploadByteMeter extends Transform {
 
   sha256(): string {
     return this.hash.digest("hex");
+  }
+}
+
+class Base64DecodeTransform extends Transform {
+  private carry = "";
+
+  _transform(chunk: Buffer, _encoding: BufferEncoding, callback: TransformCallback): void {
+    const input = this.carry + stripBase64Whitespace(chunk.toString("ascii"));
+    const completeLength = input.length - (input.length % 4);
+    if (completeLength > 0) this.push(Buffer.from(input.slice(0, completeLength), "base64"));
+    this.carry = input.slice(completeLength);
+    callback();
+  }
+
+  _flush(callback: TransformCallback): void {
+    if (this.carry) this.push(Buffer.from(this.carry, "base64"));
+    callback();
+  }
+}
+
+function stripBase64Whitespace(value: string): string {
+  const projected: string[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code !== 0x09 && code !== 0x0a && code !== 0x0c && code !== 0x0d && code !== 0x20) {
+      projected.push(value[index]!);
+    }
+  }
+  return projected.join("");
+}
+
+function* readBase64Chunks(value: string, chunkSize = 64 * 1024): Generator<string> {
+  for (let offset = 0; offset < value.length; offset += chunkSize) {
+    yield value.slice(offset, offset + chunkSize);
   }
 }

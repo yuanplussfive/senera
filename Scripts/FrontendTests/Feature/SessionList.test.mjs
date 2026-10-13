@@ -1,5 +1,5 @@
 import React from "react";
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
@@ -11,16 +11,20 @@ vi.mock("../../../Frontend/src/shared/ui/Tooltip.tsx", () => ({
 
 const { SessionList } = await import("../../../Frontend/src/features/session/SessionList.tsx");
 const { frontendMessage } = await import("../../../Frontend/src/i18n/frontendMessageCatalog.ts");
+const { FrontendDefaultLocale } = await import("../../../Frontend/src/i18n/frontendLocaleModel.ts");
+const { setFrontendLocale } = await import("../../../Frontend/src/i18n/frontendLocaleStore.ts");
 const { clearPersistedStore, DEFAULT_USER_PROFILE, useStore } =
   await import("../../../Frontend/src/store/sessionStore.ts");
 
 beforeEach(() => {
   clearPersistedStore();
+  setFrontendLocale(FrontendDefaultLocale);
   resetSessionStore();
 });
 
 afterEach(() => {
   cleanup();
+  setFrontendLocale(FrontendDefaultLocale);
   vi.clearAllMocks();
 });
 
@@ -45,29 +49,6 @@ test("session panel renders store sessions and selects a row", async () => {
   const rows = Array.from(document.querySelectorAll("[data-session-row]"));
   expect(rows).toHaveLength(2);
   expect(new Set(rows.map((row) => (row.classList.contains("h-11") ? "h-11" : "h-9"))).size).toBe(1);
-});
-
-test("session panel reorders conversations from the drag handle", () => {
-  resetSessionStore({
-    sessions: {
-      first: session("first", "First session"),
-      second: session("second", "Second session"),
-      third: session("third", "Third session"),
-    },
-    sessionOrder: ["first", "second", "third"],
-    activeSessionId: "first",
-  });
-  renderWithFrontendProviders(React.createElement(SessionList, createProps()));
-
-  const dataTransfer = createDataTransfer();
-  const rows = () => Array.from(document.querySelectorAll("[data-session-row]"));
-  const handles = screen.getAllByRole("button", { name: frontendMessage("session.reorder") });
-  fireEvent.dragStart(handles[0], { dataTransfer });
-  fireEvent.dragOver(rows()[1], { dataTransfer, clientY: 20 });
-  fireEvent.drop(rows()[1], { dataTransfer });
-
-  expect(useStore.getState().sessionOrder).toEqual(["second", "first", "third"]);
-  expect(rows().map((row) => row.getAttribute("data-session-row"))).toEqual(["second", "first", "third"]);
 });
 
 test("hides a session after the backend confirms that its history is missing", () => {
@@ -126,6 +107,161 @@ test("integrated sidebar exposes collapse, new-session, and real session search"
   expect(screen.getByRole("searchbox", { name: frontendMessage("session.searchPlaceholder") })).toHaveValue("");
 });
 
+test("selects the visible sessions and confirms bulk deletion", async () => {
+  const onCloseSessions = vi.fn((sessionIds) => {
+    useStore.getState().requestSessionDeletions(sessionIds);
+    return { acceptedSessionIds: sessionIds, rejectedSessionIds: [] };
+  });
+  const user = userEvent.setup();
+  resetSessionStore({
+    sessions: {
+      first: session("first", "Frontend refactor"),
+      second: session("second", "Provider settings"),
+      third: session("third", "Release notes"),
+    },
+    sessionOrder: ["first", "second", "third"],
+    activeSessionId: "first",
+  });
+  renderWithFrontendProviders(React.createElement(SessionList, createProps({ onCloseSessions })));
+
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.startSelection") }));
+  await user.click(
+    screen.getByRole("checkbox", {
+      name: frontendMessage("session.selectConversation", { title: "Frontend refactor" }),
+    }),
+  );
+  await user.type(screen.getByRole("searchbox", { name: frontendMessage("session.searchPlaceholder") }), "provider");
+  await waitFor(() => expect(screen.queryByText("Frontend refactor")).not.toBeInTheDocument());
+  await user.click(screen.getByRole("checkbox", { name: frontendMessage("session.selectVisible") }));
+
+  expect(screen.getByText(frontendMessage("session.selectedCount", { count: 2 }))).toBeVisible();
+  expect(
+    screen.getByRole("checkbox", {
+      name: frontendMessage("session.selectConversation", { title: "Provider settings" }),
+    }),
+  ).toBeChecked();
+  expect(
+    screen.queryByRole("checkbox", {
+      name: frontendMessage("session.selectConversation", { title: "Frontend refactor" }),
+    }),
+  ).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.deleteSelected") }));
+  await waitFor(() => {
+    expect(
+      within(screen.getByRole("dialog", { name: frontendMessage("session.deleteSelectedTitle") })).getByText(
+        frontendMessage("session.deleteSelectedDescription", { count: 2 }),
+      ),
+    ).toBeVisible();
+  });
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.deleteSelectedConfirm") }));
+
+  expect(onCloseSessions).toHaveBeenCalledOnce();
+  expect(onCloseSessions).toHaveBeenCalledWith(["first", "second"]);
+  await waitFor(() => {
+    expect(screen.queryByText("Frontend refactor")).not.toBeInTheDocument();
+    expect(screen.queryByText("Provider settings")).not.toBeInTheDocument();
+  });
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.searchClear") }));
+  await waitFor(() => expect(screen.getByText("Release notes")).toBeVisible());
+  expect(screen.queryByRole("button", { name: frontendMessage("session.cancelSelection") })).not.toBeInTheDocument();
+});
+
+test("keeps failed bulk-delete requests selected for retry", async () => {
+  const onCloseSessions = vi.fn((sessionIds) => {
+    const acceptedSessionIds = sessionIds.filter((sessionId) => sessionId === "first");
+    useStore.getState().requestSessionDeletions(acceptedSessionIds);
+    return {
+      acceptedSessionIds,
+      rejectedSessionIds: sessionIds.filter((sessionId) => !acceptedSessionIds.includes(sessionId)),
+    };
+  });
+  const user = userEvent.setup();
+  resetSessionStore({
+    sessions: {
+      first: session("first", "Queued deletion"),
+      second: session("second", "Unsent deletion"),
+    },
+    sessionOrder: ["first", "second"],
+    activeSessionId: "first",
+  });
+  renderWithFrontendProviders(React.createElement(SessionList, createProps({ onCloseSessions })));
+
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.startSelection") }));
+  await user.click(screen.getByRole("checkbox", { name: frontendMessage("session.selectVisible") }));
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.deleteSelected") }));
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.deleteSelectedConfirm") }));
+
+  expect(onCloseSessions).toHaveBeenCalledOnce();
+  expect(onCloseSessions).toHaveBeenCalledWith(["first", "second"]);
+  expect(useStore.getState().sessionOrder).toEqual(["second"]);
+  expect(
+    screen.getByRole("checkbox", {
+      name: frontendMessage("session.selectConversation", { title: "Unsent deletion" }),
+    }),
+  ).toBeChecked();
+  expect(screen.getByText(frontendMessage("session.selectedCount", { count: 1 }))).toBeVisible();
+  expect(screen.getByRole("button", { name: frontendMessage("session.cancelSelection") })).toBeVisible();
+});
+
+test("moves channel filtering into the Senera menu", async () => {
+  const user = userEvent.setup();
+  const first = session("first", "Frontend refactor");
+  const second = session("second", "QQ support");
+  second.channel = { platform: "qq" };
+  resetSessionStore({
+    sessions: { first, second },
+    sessionOrder: ["first", "second"],
+    activeSessionId: "first",
+  });
+  renderWithFrontendProviders(React.createElement(SessionList, createProps()));
+
+  await user.click(screen.getByRole("button", { name: "Senera" }));
+
+  expect(screen.getByRole("menuitem", { name: frontendMessage("session.channel.all") })).toBeVisible();
+  expect(screen.getByRole("menuitem", { name: frontendMessage("session.channel.qq") })).toBeVisible();
+  expect(
+    screen.queryByRole("button", {
+      name: `${frontendMessage("session.channel.filter")}: ${frontendMessage("session.channel.all")}`,
+    }),
+  ).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole("menuitem", { name: frontendMessage("session.channel.qq") }));
+  await waitFor(() => {
+    expect(screen.queryByText("Frontend refactor")).not.toBeInTheDocument();
+    expect(screen.getByText("QQ support")).toBeVisible();
+  });
+});
+
+test("switches profile preferences and keeps settings last", async () => {
+  const user = userEvent.setup();
+  renderWithFrontendProviders(React.createElement(SessionList, createProps()));
+
+  await user.click(screen.getByRole("button", { name: new RegExp(DEFAULT_USER_PROFILE.name) }));
+  const menu = screen.getByRole("menu");
+  expect(menu).toBeVisible();
+  expect(screen.getByRole("menuitem", { name: frontendMessage("profile.menu.userSettings") })).toBeVisible();
+  expect(screen.getByRole("menuitem", { name: frontendMessage("profile.menu.settings") })).toBeVisible();
+
+  await user.hover(screen.getByRole("menuitem", { name: frontendMessage("profile.menu.theme") }));
+  await waitFor(() =>
+    expect(screen.getByRole("menuitem", { name: frontendMessage("appearance.themeMode.dark") })).toBeVisible(),
+  );
+
+  await user.hover(screen.getByRole("menuitem", { name: frontendMessage("profile.menu.language") }));
+  await waitFor(() => expect(screen.getByRole("menuitem", { name: "English" })).toBeVisible());
+  fireEvent.click(screen.getByRole("menuitem", { name: "English" }));
+
+  expect(frontendMessage("profile.menu.userSettings")).toBe("User settings");
+  await user.click(screen.getByRole("button", { name: new RegExp(DEFAULT_USER_PROFILE.name) }));
+  expect(screen.getByRole("menuitem", { name: "Settings" })).toBeVisible();
+  expect(
+    screen.getByRole("menuitem", {
+      name: frontendMessage("profile.menu.language"),
+    }),
+  ).toBeVisible();
+});
+
 test("persistent session sidebar collapses into the prototype tool rail", async () => {
   const user = userEvent.setup();
   resetSessionStore({
@@ -149,6 +285,7 @@ test("persistent session sidebar collapses into the prototype tool rail", async 
   const sidebar = document.querySelector("[data-session-sidebar]");
   expect(sidebar).toHaveAttribute("data-collapsed", "true");
   expect(sidebar).toHaveClass("w-[58px]");
+  expect(sidebar).toHaveClass("m-2.5", "h-[calc(100%-1.25rem)]", "rounded-[12px]");
   expect(
     screen.queryByRole("searchbox", { name: frontendMessage("session.searchPlaceholder") }),
   ).not.toBeInTheDocument();
@@ -157,8 +294,29 @@ test("persistent session sidebar collapses into the prototype tool rail", async 
 
   await user.click(screen.getByRole("button", { name: frontendMessage("session.headerExpand") }));
   expect(sidebar).toHaveAttribute("data-collapsed", "false");
-  expect(sidebar).toHaveClass("w-full");
   expect(screen.getByRole("searchbox", { name: frontendMessage("session.searchPlaceholder") })).toBeVisible();
+});
+
+test("persistent session sidebar omits reorder controls on desktop", () => {
+  const restoreMatchMedia = installDesktopMatchMedia();
+  try {
+    resetSessionStore({
+      sessions: {
+        first: session("first", "Frontend refactor"),
+        second: session("second", "Provider settings"),
+      },
+      sessionOrder: ["first", "second"],
+      activeSessionId: "first",
+    });
+    renderWithFrontendProviders(
+      React.createElement(SessionList, createProps({ presentation: "auto", onClosePanel: undefined })),
+    );
+
+    expect(screen.queryByRole("button", { name: frontendMessage("session.reorder") })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "more" })).not.toBeInTheDocument();
+  } finally {
+    restoreMatchMedia();
+  }
 });
 
 function createProps(overrides = {}) {
@@ -180,6 +338,7 @@ function createProps(overrides = {}) {
 function resetSessionStore(overrides = {}) {
   useStore.setState({
     sessions: {},
+    runtimeSnapshotsBySession: {},
     sessionOrder: [],
     activeSessionId: null,
     sidebarCollapsed: false,
@@ -217,16 +376,34 @@ function session(sessionId, title) {
   };
 }
 
-function createDataTransfer() {
-  const values = new Map();
-  return {
-    effectAllowed: "none",
-    dropEffect: "none",
-    setData(type, value) {
-      values.set(type, value);
-    },
-    getData(type) {
-      return values.get(type) ?? "";
-    },
+function installDesktopMatchMedia() {
+  const previous = window.matchMedia;
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: (query) => ({
+      matches: [
+        "(min-width: 768px)",
+        "(min-width: 1024px)",
+        "(min-width: 1280px)",
+        "(min-width: 1536px)",
+        "(hover: hover)",
+      ].includes(query),
+      media: query,
+      onchange: null,
+      addListener() {},
+      removeListener() {},
+      addEventListener() {},
+      removeEventListener() {},
+      dispatchEvent() {
+        return false;
+      },
+    }),
+  });
+  return () => {
+    if (previous) {
+      Object.defineProperty(window, "matchMedia", { configurable: true, value: previous });
+    } else {
+      delete window.matchMedia;
+    }
   };
 }

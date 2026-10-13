@@ -1,4 +1,3 @@
-import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import type {
   AgentEffectiveModelReceipt,
   AgentModelProviderMetadata,
@@ -15,6 +14,8 @@ import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 import type { AgentToolResourceLeaseOwner } from "../ToolRuntime/AgentToolResourceScheduler.js";
 import type { AgentToolCapabilityCacheEntry } from "../ToolSearch/AgentToolCapabilitySessionCache.js";
+import type { AgentStateCard } from "../StateCard/AgentStateCardTypes.js";
+import type { AgentToolSearchObservation } from "../ToolSearch/AgentToolSearchUsageMemory.js";
 
 export interface AgentPiTurnRequest {
   sessionId?: string;
@@ -27,19 +28,26 @@ export interface AgentPiTurnRequest {
   interaction?: AgentInteractionContext;
   prompt: string;
   turnContext?: string;
-  conversationEntries: AgentConversationEntry[];
   rootCommand: AgentRootCommand;
   approvalMode: AgentExecutionApprovalMode;
   toolAccessGrant: AgentToolAccessGrant;
   loadedToolNames: string[];
+  /** Explicitly selected Dynamic tools exposed as provider-native schemas. */
+  nativeToolNames: string[];
   activeSkills: AgentActivatedSkill[];
+  stateCard?: AgentStateCard;
   /** Host-confirmed dynamic capabilities prepared for this turn. */
   reusableCapabilities?: readonly AgentToolCapabilityCacheEntry[];
-  roleplayPresetActive?: boolean;
+  /** Cross-request lookup used by the execution bridge to accept a dynamic
+   * tool whose contract was confirmed earlier in the session. */
+  reusableCapabilityLookup?: (toolName: string) => AgentToolCapabilityCacheEntry | undefined;
+  personaActive?: boolean;
   prefaceRewriteEnabled?: boolean;
+  /** Explicit UI-controlled final-answer rewrite; independent from persona text. */
+  finalResponseRewriteEnabled?: boolean;
   onPiBranchBoundary?: (entryId: string) => void | Promise<void>;
   /** Full text of the final assistant message emitted by the Pi session. */
-  onFinalResponseAvailable?: (content: string) => void | Promise<void>;
+  onFinalResponseAvailable?: (content: string, messageIndex: number, contentIndex?: number) => void | Promise<void>;
   thinkingLevel?: ModelThinkingLevel;
   inheritProjectContext?: boolean;
   /** Assignment owner for child sessions; absent for ordinary conversations. */
@@ -52,9 +60,9 @@ export interface AgentPiTurnResult {
   responseText: string;
   modelProvider: AgentModelProviderMetadata;
   usage: AgentModelUsage;
-  conversationEntries: AgentConversationEntry[];
   stepTraces: StepTrace[];
   executedTools: ExecutedToolCallResult[];
   loadedToolNames: string[];
   physicalPiSessionId?: string;
+  routingObservation?: AgentToolSearchObservation;
 }

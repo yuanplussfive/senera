@@ -1,9 +1,11 @@
-import { AnimatePresence, motion } from "framer-motion";
-import { useState } from "react";
+import { motion } from "framer-motion";
+import { useMemo } from "react";
+import { useComposerDraft } from "./useComposerDraft";
 import { readActiveRun, useStore, DEFAULT_SESSION_TITLE } from "../../store/sessionStore";
 import type { ChatMessage, RunRecord } from "../../store/sessionStore";
 import { useChatState } from "../../store/selectors/chatSelectors";
 import { ErrorBoundary } from "../../shared/ui";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { ChatComposer } from "./ChatComposer";
 import { ChatActivityDock } from "./ChatActivityDock";
 import { ChatHeader } from "./ChatHeader";
@@ -13,51 +15,67 @@ import { MessageList } from "./MessageList";
 import { UploadPreviewProvider } from "./UploadPreviewRegistry";
 import { motionTimings, useMotionLevel, type MotionLevel } from "../../shared/motion";
 import type { ChatPanelProps } from "./ChatPanelContracts";
+import { blocksSessionInput } from "../../store/session/sessionHydration";
+import { projectRuntimeUsageFromSessionSnapshot } from "../observability/runtimeDiagnosticProjection";
 
 export function ChatPanel({
   userProfile,
   modelConfig,
-  presetConfig,
+  personaConfig,
   runtime,
   messageActions,
   navigationActions,
 }: ChatPanelProps): JSX.Element {
-  const [composerValue, setComposerValue] = useState("");
   const activeId = useStore((s) => s.activeSessionId);
+  const draftKey = JSON.stringify([runtime.workspaceId, activeId]);
+  const [composerValue, setComposerValue] = useComposerDraft(draftKey);
   const approvalMode = useStore((s) => s.executionApprovalMode);
+  const activationCatalog = useStore((s) => s.activationCatalog);
   const setApprovalMode = useStore((s) => s.setExecutionApprovalMode);
-  const { session, historyLoaded, historyLoading, historyFailed, historyHydrating } = useChatState(activeId);
+  const { session, historyFailed, historyHydrating, hydrationState } = useChatState(activeId);
   const { level, reduceMotion, disableMotion } = useMotionLevel();
   const effectiveMotionLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
   const messages = session?.messages ?? [];
   const runs = session?.runs ?? [];
   const hasConversationContent = hasRenderableConversationContent(messages, runs);
   const currentRun = readActiveRun(session ?? undefined);
+  const runtimeUsage = useMemo(
+    () => projectRuntimeUsageFromSessionSnapshot(session?.runtimeSnapshot),
+    [session?.runtimeSnapshot],
+  );
   const isRunning = currentRun?.status === "running";
   const isSettling = isRunning && (currentRun.outputState === "available" || currentRun.outputState === "committed");
   const isCancelling = currentRun?.status === "cancelling";
   const isActive = isRunning || isCancelling;
-  const composerDisabled = runtime.socketStatus !== "open" || historyLoading || isCancelling;
+  const composerDisabled = runtime.socketStatus !== "open" || blocksSessionInput(hydrationState) || isCancelling;
+  const shouldShowSessionCatalogLoading = hydrationState === "catalog_loading";
   const shouldShowHistoryRecovery =
     messages.length === 0 &&
     !hasConversationContent &&
     !isActive &&
     !!session &&
     session.messageCount > 0 &&
-    (!historyLoaded || historyLoading || historyFailed);
+    (hydrationState === "history_loading" || hydrationState === "history_failed");
   return (
     <UploadPreviewProvider>
-      <main className="flex h-full min-w-0 flex-1 flex-col bg-transparent" data-agent-workspace>
+      <main className="relative flex h-full min-w-0 flex-1 flex-col bg-transparent" data-agent-workspace>
         <ChatHeader
           title={session?.title ?? DEFAULT_SESSION_TITLE}
           runStatus={currentRun?.status}
           waitingForApproval={currentRun?.activeFlags?.includes("waiting_for_approval") === true}
           waitingForInput={currentRun?.activeFlags?.includes("waiting_for_input") === true}
+          sandboxStatus={runtime.sandboxStatus}
           onOpenSessionPanel={navigationActions?.onOpenSessionPanel}
           onOpenWorkflowPanel={navigationActions?.onOpenWorkflowPanel}
         />
-        <AnimatePresence mode="wait" initial={false}>
-          {shouldShowHistoryRecovery ? (
+        <>
+          {shouldShowSessionCatalogLoading ? (
+            <ChatContentMotion key={`catalog:${activeId ?? "none"}`} motionLevel={effectiveMotionLevel}>
+              <div className="flex min-h-0 flex-1" aria-busy="true" data-session-catalog-loading>
+                <span className="sr-only">{frontendMessage("app.loading")}</span>
+              </div>
+            </ChatContentMotion>
+          ) : shouldShowHistoryRecovery ? (
             <ChatContentMotion
               key={`history:${activeId}:${historyFailed ? "failed" : "loading"}`}
               motionLevel={effectiveMotionLevel}
@@ -92,6 +110,8 @@ export function ChatPanel({
                   userProfile={userProfile}
                   onForkFromMessage={messageActions.onForkFromMessage}
                   onRegenerate={messageActions.onRegenerate}
+                  onRetryRun={messageActions.onRetryRun}
+                  onContinueRun={messageActions.onContinueRun}
                   onEditUserMessage={messageActions.onEditUserMessage}
                   onDeleteFromMessage={messageActions.onDeleteFromMessage}
                   onViewWorkflow={messageActions.onViewWorkflow}
@@ -100,7 +120,7 @@ export function ChatPanel({
               </ErrorBoundary>
             </ChatContentMotion>
           )}
-        </AnimatePresence>
+        </>
         <ChatActivityDock
           sessionId={activeId ?? undefined}
           runs={runs}
@@ -116,16 +136,19 @@ export function ChatPanel({
           value={composerValue}
           onValueChange={setComposerValue}
           modelConfig={modelConfig}
-          activeSessionId={activeId}
           approvalConfig={{ mode: approvalMode, onSelectMode: setApprovalMode }}
-          presetConfig={presetConfig}
+          personaConfig={personaConfig}
           runtime={{
+            draftKey,
             socketStatus: runtime.socketStatus,
             uploadUrl: runtime.uploadUrl,
             uploadCsrfToken: runtime.uploadCsrfToken,
           }}
+          runtimeUsage={runtimeUsage}
+          activationCatalog={activationCatalog}
           onSend={messageActions.onSend}
           onCancel={messageActions.onCancel}
+          onOpenSettings={navigationActions?.onOpenSettings}
         />
       </main>
     </UploadPreviewProvider>
@@ -149,11 +172,10 @@ function ChatContentMotion({
   return (
     <motion.div
       className="flex min-h-0 flex-1 flex-col"
-      initial={motionLevel === "none" ? false : "hidden"}
+      initial={false}
       animate="show"
-      exit="exit"
       variants={readChatContentVariants(motionLevel)}
-      transition={motionLevel === "none" ? { duration: 0 } : motionTimings.base}
+      transition={motionLevel === "none" ? { duration: 0 } : motionTimings.chatSwitch}
     >
       {children}
     </motion.div>
@@ -162,22 +184,10 @@ function ChatContentMotion({
 
 function readChatContentVariants(level: MotionLevel) {
   if (level === "none") {
-    return {
-      hidden: { opacity: 1 },
-      show: { opacity: 1 },
-      exit: { opacity: 1 },
-    };
+    return { show: { opacity: 1 } };
   }
   if (level === "reduced") {
-    return {
-      hidden: { opacity: 0 },
-      show: { opacity: 1 },
-      exit: { opacity: 0 },
-    };
+    return { show: { opacity: 1 } };
   }
-  return {
-    hidden: { opacity: 0, y: 8 },
-    show: { opacity: 1, y: 0 },
-    exit: { opacity: 0, y: -4 },
-  };
+  return { show: { opacity: 1, y: 0 } };
 }

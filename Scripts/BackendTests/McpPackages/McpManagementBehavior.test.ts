@@ -107,6 +107,48 @@ describe("MCP management", () => {
     expect(inputs.resolve("weather", { source: "secret", inputId: "TEST_SECRET" })).toBeUndefined();
   });
 
+  test("publishes MCP servers to the shared activation catalog with configuration state", () => {
+    const { management } = createManagement();
+
+    const entries = management.activationCatalog([]).entries.filter((entry) => entry.kind === "mcp");
+    expect(entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "mcp",
+          id: "credential-test",
+          title: "credential-test",
+          enabled: true,
+          selectable: false,
+        }),
+        expect.objectContaining({
+          kind: "mcp",
+          id: "weather",
+          title: "天气",
+          localizedTitle: { "zh-CN": "天气", "en-US": "Weather" },
+          enabled: true,
+          selectable: false,
+        }),
+      ]),
+    );
+    expect(entries.map((entry) => entry.id)).toContain("imagen");
+
+    management.setInput("credential-test", "TEST_SECRET", "configured-for-activation");
+    expect(
+      management.activationCatalog([]).entries.find((entry) => entry.kind === "mcp" && entry.id === "credential-test"),
+    ).toMatchObject({ enabled: true, selectable: true });
+  });
+
+  test("keeps non-tool settings extensions out of explicit activation", () => {
+    const { management } = createManagement();
+    const entries = management.activationCatalog([]).entries;
+
+    expect(entries.some((entry) => entry.kind === "system" && entry.id === "agent-channels")).toBe(false);
+    expect(entries.some((entry) => entry.kind === "system" && entry.id === "workspace-tools")).toBe(true);
+    expect(entries.find((entry) => entry.kind === "system" && entry.id === "workspace-tools")).toMatchObject({
+      localizedTitle: { "zh-CN": "工作区工具", "en-US": "Workspace Tools" },
+    });
+  });
+
   test("projects missing host capabilities with their diagnostic reason", () => {
     const { management, workspaceRoot } = createManagement(() => ({ ModelProviders: [] }), {
       available: new Set(),
@@ -132,7 +174,6 @@ describe("MCP management", () => {
         expect.objectContaining({
           id: "desktop-test",
           status: "unavailable",
-          unavailableCapabilities: ["interactive-desktop"],
           unavailableCapabilityDetails: [
             { id: "interactive-desktop", reason: "Desktop session is unavailable for this test." },
           ],
@@ -234,7 +275,8 @@ describe("MCP management", () => {
     const events: AgentDomainEvent[] = [];
     const handlers = new AgentWebSocketToolSettingsRequestHandlers({
       mcpManagement: management,
-    } as AgentWebSocketRequestContext);
+      pluginHost: { list: () => [] },
+    } as unknown as AgentWebSocketRequestContext);
     const secret = "batch-secret-that-must-not-enter-events";
 
     await handlers.updateInputs(
@@ -253,10 +295,16 @@ describe("MCP management", () => {
       expect.objectContaining({
         kind: "mcp_server.snapshot",
         data: expect.objectContaining({
+          activation: expect.objectContaining({ entries: expect.any(Array) }),
           operation: { requestId: "mcp-update-success", kind: "mcp_input_update" },
         }),
       }),
     ]);
+    const snapshot = events[0];
+    if (snapshot.kind !== "mcp_server.snapshot") throw new Error("Expected an MCP snapshot event.");
+    expect(snapshot.data.activation.entries).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: "mcp", id: "credential-test", selectable: true })]),
+    );
     expect(JSON.stringify(events)).not.toContain(secret);
   });
 

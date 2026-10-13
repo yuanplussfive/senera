@@ -12,34 +12,38 @@ import {
   ToolSchedulingModes,
 } from "../Source/AgentSystem/Types/AgentToolContractTypes.js";
 import { AgentJsonFileLoader } from "../Source/AgentSystem/Config/AgentJsonFileLoader.js";
-import {
-  AgentSystemExtensionManifestSchema,
-  AgentSystemToolContractSchema,
-  AgentToolObservationProjectionSchema,
-} from "../Source/AgentSystem/SystemTools/AgentSystemExtensionManifest.js";
+import { AgentSystemToolContractSchema } from "../Source/AgentSystem/SystemTools/AgentSystemExtensionManifest.js";
 import { resolveSystemExtensionPackageFile } from "../Source/AgentSystem/SystemTools/AgentSystemExtensionPackagePath.js";
+import { validateAgentToolResourceManifests } from "../Source/AgentSystem/ToolRuntime/AgentToolResourceManifestValidation.js";
 import { AgentBundledHostToolInputContracts } from "../Source/AgentSystem/SystemTools/AgentBundledHostToolInputContracts.js";
 import { AgentOrchestrationConfigurationContracts } from "../Source/AgentSystem/Orchestration/AgentOrchestrationConfig.js";
 import { ensureObjectRootJsonSchema } from "../Source/AgentSystem/ToolContracts/AgentJsonSchemaObjectRoot.js";
 import { assertAgentSelfCommandContract } from "../Source/AgentSystem/SelfService/AgentSelfCommandContract.js";
+import {
+  discoverAgentSystemExtensionPackages,
+  type AgentSystemExtensionPackageSource,
+} from "../Source/AgentSystem/SystemTools/AgentSystemExtensionDiscovery.js";
 
 const check = process.argv.includes("--check");
 const outputRoot = path.join(process.cwd(), "System", "Extensions");
 const definitions = createAgentSystemTools({ ModelProviders: [] });
+const packageSources = discoverAgentSystemExtensionPackages(outputRoot);
+const packageSourcesById = new Map(packageSources.map((source) => [source.manifest.id, source]));
 
 assertAgentSelfCommandContract();
 
 for (const group of groupByExtension(definitions)) await synchronizeExtension(group);
 await synchronizeBundledHostToolInputContracts();
 await synchronizeBundledExtensionConfigurationContracts();
-verifyBundledObservationProjections();
 
 console.log(`Generated System extension contracts ${check ? "verified" : "synchronized"}.`);
 
 async function synchronizeExtension(definitions: readonly AgentSystemToolDefinition[]): Promise<void> {
   const first = definitions[0];
   if (!first) return;
-  const extensionRoot = path.join(outputRoot, first.extension.name);
+  const packageSource = requirePackageSource(first.extension.name);
+  const extensionRoot = packageSource.packageRoot;
+  const existing = packageSource.manifest;
   const configuration = readExtensionConfiguration(definitions);
   const contributions = definitions.map((definition) => ({
     kind: "hostTool",
@@ -52,13 +56,16 @@ async function synchronizeExtension(definitions: readonly AgentSystemToolDefinit
     $schema: "https://schemas.senera.ai/extension/v1.json",
     schemaVersion: 1,
     id: first.extension.name,
-    version: "1.0.0",
+    domain: existing.domain,
+    settingsSurface: existing.settingsSurface,
+    version: existing.version,
     displayName: first.extension.displayName,
     description: first.extension.description,
-    priority: first.extension.priority,
+    priority: first.extension.priority ?? existing.priority,
     ...(first.extension.platforms ? { platforms: [...first.extension.platforms] } : {}),
+    ...(existing.presentation ? { presentation: existing.presentation } : {}),
     ...(configuration ? { configuration: { schema: "config.schema.json", ui: "ui.schema.json" } } : {}),
-    contributions,
+    contributions: [...contributions, ...(existing.contributions ?? []).filter((entry) => entry.kind !== "hostTool")],
   });
   if (configuration) {
     await synchronize(
@@ -69,16 +76,23 @@ async function synchronizeExtension(definitions: readonly AgentSystemToolDefinit
   }
   for (const definition of definitions) {
     const metadata = definition.metadata;
-    const observationPath = `observations/${definition.name}.projection.json`;
-    await synchronize(path.join(extensionRoot, "tools", `${definition.name}.tool.json`), {
+    const contractPath = path.join(extensionRoot, "tools", `${definition.name}.tool.json`);
+    const existingContract = new AgentJsonFileLoader().load(contractPath, AgentSystemToolContractSchema);
+    validateAgentToolResourceManifests(existingContract.resources);
+    const generatedContract = {
       name: definition.name,
+      // The package contract owns provider exposure. The schema requires this
+      // declaration, so generation never needs a hidden loading fallback.
+      loading: existingContract.loading,
+      ...(existingContract.planningModes ? { planningModes: existingContract.planningModes } : {}),
       description: metadata.description,
+      ...(existingContract.presentation ? { presentation: existingContract.presentation } : {}),
       inputSchema: ensureObjectRootJsonSchema(
         z.toJSONSchema(definition.input, { target: "draft-7", io: "input" }),
         `System Tool ${definition.name} input`,
       ),
       outputSchema: z.toJSONSchema(definition.output, { target: "draft-7", io: "output" }),
-      observationProjection: observationPath,
+      ...(metadata.perception ? { perception: metadata.perception } : {}),
       permissions: [...(metadata.permissions ?? [])],
       execution: metadata.execution ?? { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
       runtime: projectRuntime(metadata.runtime),
@@ -88,11 +102,9 @@ async function synchronizeExtension(definitions: readonly AgentSystemToolDefinit
       evidenceCapabilities: [...(metadata.evidenceCapabilities ?? [])],
       approval: metadata.approval,
       artifacts: metadata.artifacts,
-    });
-    await synchronize(path.join(extensionRoot, observationPath), {
-      $schema: "https://schemas.senera.ai/tool-observation-projection/v2.json",
-      ...metadata.observation,
-    });
+    };
+    validateAgentToolResourceManifests(generatedContract.resources);
+    await synchronize(contractPath, generatedContract);
   }
 }
 
@@ -147,52 +159,21 @@ function groupByExtension(definitions: readonly AgentSystemToolDefinition[]): Ag
   return [...groups.values()];
 }
 
-function verifyBundledObservationProjections(): void {
-  const loader = new AgentJsonFileLoader();
-  for (const entry of fs.readdirSync(outputRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory() || entry.isSymbolicLink() || entry.name.startsWith(".")) continue;
-    const packageRoot = path.join(outputRoot, entry.name);
-    const manifest = loader.load(path.join(packageRoot, "extension.json"), AgentSystemExtensionManifestSchema);
-    const referenced = new Set<string>();
-    const contributions = manifest.contributions ?? [];
-    for (const contribution of contributions) {
-      if (contribution.kind !== "hostTool") continue;
-      const contractPath = resolveSystemExtensionPackageFile(packageRoot, contribution.contract, "host Tool contract");
-      const contract = loader.load(contractPath, AgentSystemToolContractSchema);
-      const projectionPath = resolveSystemExtensionPackageFile(
-        packageRoot,
-        contract.observationProjection,
-        "Tool observation projection",
-      );
-      loader.load(projectionPath, AgentToolObservationProjectionSchema);
-      referenced.add(path.normalize(projectionPath));
-    }
-    const observationRoot = path.join(packageRoot, "observations");
-    const packaged = fs.existsSync(observationRoot)
-      ? fs
-          .readdirSync(observationRoot, { withFileTypes: true })
-          .filter((file) => file.isFile() && !file.isSymbolicLink() && file.name.endsWith(".projection.json"))
-          .map((file) => path.normalize(path.join(observationRoot, file.name)))
-      : [];
-    const orphaned = packaged.filter((file) => !referenced.has(file));
-    if (orphaned.length > 0) {
-      throw new Error(
-        `System extension ${manifest.id} contains unreferenced observation projections: ${orphaned
-          .map((file) => path.relative(packageRoot, file))
-          .join(", ")}.`,
-      );
-    }
+function requirePackageSource(extensionId: string): AgentSystemExtensionPackageSource {
+  const source = packageSourcesById.get(extensionId);
+  if (!source) {
+    throw new Error(
+      `System extension '${extensionId}' has runtime definitions but no declared package under System/Extensions/<domain>/.`,
+    );
   }
+  return source;
 }
 
 async function synchronizeBundledHostToolInputContracts(): Promise<void> {
-  const loader = new AgentJsonFileLoader();
   const contributions = new Map<string, { readonly packageRoot: string; readonly contractPath: string }>();
 
-  for (const entry of fs.readdirSync(outputRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory() || entry.isSymbolicLink() || entry.name.startsWith(".")) continue;
-    const packageRoot = path.join(outputRoot, entry.name);
-    const manifest = loader.load(path.join(packageRoot, "extension.json"), AgentSystemExtensionManifestSchema);
+  for (const source of packageSources) {
+    const { packageRoot, manifest } = source;
     for (const contribution of manifest.contributions ?? []) {
       if (contribution.kind !== "hostTool") continue;
       if (contributions.has(contribution.capability)) {
@@ -211,7 +192,8 @@ async function synchronizeBundledHostToolInputContracts(): Promise<void> {
       throw new Error(`Runtime Host Tool capability ${definition.capability} has no bundled extension contribution.`);
     }
     const contractSource = JSON.parse(fs.readFileSync(contribution.contractPath, "utf8")) as unknown;
-    AgentSystemToolContractSchema.parse(contractSource);
+    const contract = AgentSystemToolContractSchema.parse(contractSource);
+    validateAgentToolResourceManifests(contract.resources);
     await synchronize(contribution.contractPath, {
       ...(contractSource as Record<string, unknown>),
       inputSchema: ensureObjectRootJsonSchema(
@@ -223,10 +205,8 @@ async function synchronizeBundledHostToolInputContracts(): Promise<void> {
 }
 
 async function synchronizeBundledExtensionConfigurationContracts(): Promise<void> {
-  const loader = new AgentJsonFileLoader();
   for (const definition of AgentOrchestrationConfigurationContracts) {
-    const packageRoot = path.join(outputRoot, definition.extensionId);
-    const manifest = loader.load(path.join(packageRoot, "extension.json"), AgentSystemExtensionManifestSchema);
+    const { packageRoot, manifest } = requirePackageSource(definition.extensionId);
     if (!manifest.configuration) {
       throw new Error(`Bundled extension ${definition.extensionId} has no configuration declaration.`);
     }

@@ -217,7 +217,7 @@ describe("real runtime integration", () => {
     expect(JSON.stringify(history.data)).toContain('"source":"provider_reported"');
     expect(JSON.stringify(history.data)).toContain('"totalTokens":330');
     expect(JSON.stringify(history.data)).not.toContain('"stage":"AuditToolRisk"');
-    expect(JSON.stringify(history.data)).toContain('"stage":"EvolveTurn"');
+    expect(JSON.stringify(history.data)).toContain('"stage":"action-planner:EvolveTurn"');
   }, 30_000);
   test("cancels a run while the planner is paused mid-stage and accepts follow-up work", async () => {
     const harness = await createRealRuntimeIntegrationHarness();

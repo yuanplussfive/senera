@@ -4,7 +4,6 @@ import { AgentModelEndpointKinds, AgentModelToolPlanningModes } from "../ModelEn
 import { AgentModelThinkingLevels } from "../ModelEndpoints/AgentModelThinking.js";
 
 const ThinkingLevelSchema = z.enum(AgentModelThinkingLevels);
-const ThinkingLevelMapSchema = z.record(z.string().trim().min(1), z.string().trim().min(1).nullable()).optional();
 const ThinkingProfileSchema = z.object({
   Id: z.string().trim().min(1),
   Label: z.string().trim().min(1),
@@ -16,8 +15,6 @@ export const ModelEndpointSchema = z.enum(AgentModelEndpointKinds);
 export const ModelCapabilitiesSchema = z
   .object({
     Chat: z.boolean().optional(),
-    Embedding: z.boolean().optional(),
-    Rerank: z.boolean().optional(),
     Vision: z.boolean().optional(),
     ImageOutput: z.boolean().optional(),
     Reasoning: z.boolean().optional(),
@@ -33,7 +30,6 @@ export const ModelProviderSchema = z
     ProviderId: z.string().min(1),
     Icon: z.string().min(1).optional(),
     Capabilities: ModelCapabilitiesSchema.optional(),
-    ThinkingLevelMap: ThinkingLevelMapSchema,
     ThinkingProfiles: z.array(ThinkingProfileSchema).optional(),
     DefaultThinkingLevel: ThinkingLevelSchema.optional(),
     ToolPlanningMode: z.enum(AgentModelToolPlanningModes).optional(),
@@ -63,6 +59,7 @@ export const ModelProviderEndpointSchema = z
     Icon: z.string().min(1).optional(),
     Enabled: z.boolean().optional(),
     Kind: z.literal("OpenAICompatible").optional(),
+    DefaultEndpoint: ModelEndpointSchema.optional(),
     BaseUrl: z.string().url().optional(),
     ApiKey: z.string().min(1).optional(),
     ApiVersion: z.string().min(1).optional(),

@@ -1,6 +1,8 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import { uniqueStrings } from "../Core/AgentCollections.js";
 import {
   assertAgentPiToolObservationBounded,
+  readAgentPiToolObservation,
   type AgentPiToolObservation,
 } from "../PiShared/AgentPiToolObservationProtocol.js";
 export {
@@ -24,6 +26,18 @@ export function readAgentPiMessageTextContent(message: Extract<AgentMessage, { r
   return unwrapAttributedToolObservation(
     message.content.flatMap((entry) => (entry.type === "text" ? [entry.text] : [])).join(""),
   );
+}
+
+/** Removes the Pi observation envelope from the result shown in the workflow UI. */
+export function projectAgentPiToolResultContentForDisplay(
+  content: Extract<AgentMessage, { role: "toolResult" }>["content"],
+): unknown {
+  const text = unwrapAttributedToolObservation(
+    content.flatMap((entry) => (entry.type === "text" ? [entry.text] : [])).join(""),
+  );
+  const observation = readAgentPiToolObservation(text);
+  if (observation) return projectAgentPiToolObservationDetail(observation);
+  return text || undefined;
 }
 
 /**
@@ -63,8 +77,62 @@ export function isAgentPiToolResultMessage(
   return message.role === "toolResult";
 }
 
-export function readAgentPiToolObservationArtifactUri(observation: AgentPiToolObservation): string | undefined {
-  return observation.observation_view.artifact_uri;
+/** Every canonical Artifact coordinate carried by an observation, merged by URI. */
+export interface AgentPiToolObservationArtifactReference {
+  readonly artifactUri: string;
+  readonly refs: readonly string[];
+  readonly evidenceUris: readonly string[];
+  /** The Artifact that owns this observation's bounded projection, if any. */
+  readonly observationArtifact: boolean;
+}
+
+/**
+ * Artifact coordinates can arrive via the bounded observation, a SourceView,
+ * or declared evidence. Keep that wire knowledge in one place so compaction,
+ * planning, and archival indexes cannot diverge.
+ */
+export function readAgentPiToolObservationArtifactReferences(
+  observation: AgentPiToolObservation,
+): readonly AgentPiToolObservationArtifactReference[] {
+  const references = new Map<string, { refs: string[]; evidenceUris: string[]; observationArtifact: boolean }>();
+  const add = (
+    artifactUri: string | undefined,
+    input: {
+      readonly refs?: readonly string[];
+      readonly evidenceUri?: string;
+      readonly evidenceUris?: readonly string[];
+      readonly observationArtifact?: boolean;
+    },
+  ) => {
+    const normalized = artifactUri?.trim();
+    if (!normalized) return;
+    const existing = references.get(normalized) ?? { refs: [], evidenceUris: [], observationArtifact: false };
+    references.set(normalized, {
+      refs: uniqueStrings([...existing.refs, ...(input.refs ?? [])]),
+      evidenceUris: uniqueStrings([
+        ...existing.evidenceUris,
+        ...(input.evidenceUris ?? []),
+        ...(input.evidenceUri ? [input.evidenceUri] : []),
+      ]),
+      observationArtifact: existing.observationArtifact || input.observationArtifact === true,
+    });
+  };
+
+  const observationArtifactUri = observation.observation_view?.artifact_uri;
+  add(observationArtifactUri, { observationArtifact: true });
+  add(observation.artifact_uri, {
+    refs: observation.artifact_refs,
+    evidenceUris: observation.evidence_uris,
+    observationArtifact: true,
+  });
+  for (const source of observation.source_artifacts ?? []) add(source.artifact_uri, { refs: source.refs });
+  for (const evidence of observation.detail.evidence) {
+    add(evidence.artifact_uri ?? observationArtifactUri, {
+      refs: evidence.artifact_refs,
+      evidenceUri: evidence.evidence_uri,
+    });
+  }
+  return [...references].map(([artifactUri, reference]) => ({ artifactUri, ...reference }));
 }
 
 export function projectAgentPiToolObservationDetail(

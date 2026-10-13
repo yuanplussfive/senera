@@ -1,13 +1,7 @@
 import { expect, test } from "vitest";
 import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
 import { applyEvent } from "../../../Frontend/src/store/session/sessionProjector.ts";
-import {
-  createEvent,
-  createTestState,
-  TestRequestId,
-  TestSessionId,
-  TestTimestamp,
-} from "./sessionProjectorTestUtils.mjs";
+import { createEvent, createTestState, TestRequestId, TestSessionId } from "./sessionProjectorTestUtils.mjs";
 
 test("regeneration truncation acknowledgement preserves the optimistic replacement request", () => {
   const state = createTestState();
@@ -104,7 +98,39 @@ test("user cancellation keeps the current message and completed tool evidence", 
   expect(run.steps).toEqual(
     expect.arrayContaining([
       expect.objectContaining({ id: "tool-call-read", status: "done", toolName: "WorkspaceReadFile" }),
+      expect.objectContaining({ id: `${TestRequestId}-cancelled`, status: "cancelled" }),
     ]),
+  );
+  expect(run.steps.some((step) => step.status === "failed")).toBe(false);
+  expect(run.activities?.every((activity) => activity.status !== "running")).toBe(true);
+});
+
+test("terminal run usage is projected once as the authoritative message metric source", () => {
+  const state = createTestState();
+  const requestId = TestRequestId;
+  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "统计本轮用量" }, { requestId, sequence: 1 }));
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.RunCompleted,
+      {
+        usage: {
+          source: "provider_reported",
+          inputTokens: 120,
+          outputTokens: 36,
+          totalTokens: 156,
+          cacheReadTokens: 80,
+        },
+      },
+      { requestId, sequence: 2 },
+    ),
+  );
+
+  expect(readTestRun(state)).toEqual(
+    expect.objectContaining({
+      status: "completed",
+      usage: expect.objectContaining({ inputTokens: 120, outputTokens: 36, totalTokens: 156 }),
+    }),
   );
 });
 
@@ -137,74 +163,41 @@ test("prompt summary projects deterministic preparation metrics", () => {
   });
 });
 
-test("continuity snapshot stays attached to its run without becoming a workflow step", () => {
+test("native memory snapshots remain attached to their run", () => {
   const state = createTestState();
-
-  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "继续雾港的故事" }, { sequence: 1 }));
-  const initialStepCount = readTestRun(state).steps.length;
+  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "偏好" }, { sequence: 1 }));
+  const count = readTestRun(state).steps.length;
   applyEvent(
     state,
     createEvent(
       EventKinds.ContinuitySnapshot,
       {
         enabled: true,
-        concepts: [],
-        residentProfile: [],
-        preset: {
-          enabled: true,
-          activePresetName: "ciello.json",
-          title: "Ciello",
-          corePersona: "电子插画师",
-          languageStyle: "自然直接",
-        },
-        factCatalog: [
+        periodDigests: [],
+        eventCandidates: [
           {
-            factKey: "user.response_style",
-            claim: "先给结论。",
-            sourceRefs: ["senera://memory-source/preference"],
-            confidence: 0.95,
-            authority: "user_explicit",
-            updatedAt: "2026-08-22T08:00:00.000Z",
+            id: "1",
+            uri: "memos:1",
+            revision: "v1",
+            type: "preference",
+            summary: "先给结论。",
+            occurredAt: "2026-08-22T08:00:00Z",
             score: 0.91,
-            matchedBy: ["exact_phrase"],
+            matchedBy: ["memos"],
           },
         ],
         selection: {
-          profiles: { available: 0, matched: 0, selected: 0 },
-          facts: { available: 1, matched: 1, selected: 1 },
-          events: { available: 0, matched: 0, selected: 0 },
-          evidence: { available: 1, matched: 1, selected: 1 },
-          usedCharacters: 96,
-          maxCharacters: 24_000,
-        },
-        evidenceCandidates: [
-          {
-            sourceRefs: ["senera://memory-source/preference"],
-            score: 0.48,
-            matchedBy: ["lexical"],
-          },
-        ],
-        eventCandidates: [],
-        rules: [],
-        signals: [],
-        goals: { goals: [] },
-        execution: { active: null, executions: [] },
-        todos: {
-          items: [],
-          counts: { total: 0, pending: 0, inProgress: 0, completed: 0, cancelled: 0 },
+          digests: { available: 0, matched: 0, selected: 0 },
+          events: { available: 1, matched: 1, selected: 1 },
+          usedTokens: 24,
+          maxTokens: 2048,
         },
       },
       { step: 1, sequence: 2, phase: "prompt", layer: "snapshot" },
     ),
   );
-
-  const run = readTestRun(state);
-  expect(run.steps).toHaveLength(initialStepCount);
-  expect(run.continuity).toMatchObject({
-    preset: { title: "Ciello" },
-    factCatalog: [{ claim: "先给结论。" }],
-    evidenceCandidates: [{ sourceRefs: ["senera://memory-source/preference"] }],
-  });
+  expect(readTestRun(state).steps).toHaveLength(count);
+  expect(readTestRun(state).continuity).toMatchObject({ eventCandidates: [{ uri: "memos:1", summary: "先给结论。" }] });
 });
 
 test("malformed historical continuity snapshots are rejected at the projection boundary", () => {
@@ -223,10 +216,9 @@ test("malformed historical continuity snapshots are rejected at the projection b
           facts: { available: 0, matched: 0, selected: 0 },
           events: { available: 0, matched: 0, selected: 0 },
           evidence: { available: 0, matched: 0, selected: 0 },
-          usedCharacters: 0,
-          maxCharacters: 24_000,
+          usedTokens: 0,
+          maxTokens: 2048,
         },
-        preset: { enabled: false, activePresetName: null },
         evidenceCandidates: [],
         eventCandidates: [],
         rules: [],
@@ -237,64 +229,6 @@ test("malformed historical continuity snapshots are rejected at the projection b
   );
 
   expect(readTestRun(state).continuity).toBeUndefined();
-});
-
-test("Agenda snapshots stay global and are not derived from execution association", () => {
-  const state = createTestState();
-  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "整理数据并验证结果" }, { sequence: 1 }));
-  applyEvent(
-    state,
-    createEvent(
-      EventKinds.ExecutionCreated,
-      {
-        snapshot: { active: null, executions: [] },
-        execution: {
-          id: "execution-1",
-          uri: "senera://execution/execution-1",
-          sessionId: TestSessionId,
-          requestId: TestRequestId,
-          objective: "整理数据并验证结果",
-          status: "active",
-          steps: [],
-          createdAt: TestTimestamp,
-          updatedAt: TestTimestamp,
-        },
-      },
-      { sequence: 2 },
-    ),
-  );
-  applyEvent(
-    state,
-    createEvent(
-      EventKinds.AgendaSnapshot,
-      {
-        snapshot: {
-          world: {
-            id: "world-1",
-            uri: "senera://world/world-1",
-            timeZone: "Asia/Shanghai",
-            createdAt: TestTimestamp,
-            updatedAt: TestTimestamp,
-          },
-          clock: {
-            instant: TestTimestamp,
-            timeZone: "Asia/Shanghai",
-            localDate: "2026-07-09",
-            localTime: "08:00:00",
-            weekdayLabel: "星期四",
-          },
-          records: [],
-          activeGoals: [],
-          currentActivities: [],
-          timeline: [],
-          upcoming: [],
-        },
-      },
-      { sequence: 3, phase: "prompt", layer: "snapshot" },
-    ),
-  );
-  expect(state.agenda?.activeGoals).toEqual([]);
-  expect(readTestRun(state).execution).toEqual({ active: null, executions: [] });
 });
 
 test("model stream events keep visible answer text while closing the model step", () => {
@@ -361,6 +295,56 @@ test("model stream events keep visible answer text while closing the model step"
   });
 });
 
+test("native thinking events stream independently from answer text and keep a final transcript", () => {
+  const state = createTestState();
+
+  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "解释问题" }, { sequence: 1 }));
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.ModelThinkingDelta,
+      { messageIndex: 0, contentIndex: 1, delta: "先确认" },
+      { step: 2, sequence: 2, phase: "model" },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.ModelThinkingDelta,
+      { messageIndex: 0, contentIndex: 1, delta: "事件来源。" },
+      { step: 2, sequence: 3, phase: "model" },
+    ),
+  );
+
+  let run = readTestRun(state);
+  expect(run.thinkingBlocks).toEqual([
+    {
+      id: "step:2:message:0:content:1",
+      step: 2,
+      messageIndex: 0,
+      contentIndex: 1,
+      eventSequence: 2,
+      content: "先确认事件来源。",
+      status: "streaming",
+    },
+  ]);
+  expect(run.streamingRaw).toBe("");
+
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.ModelThinkingCompleted,
+      { messageIndex: 0, contentIndex: 1, content: "先确认事件来源。", status: "complete" },
+      { step: 2, sequence: 4, phase: "model", layer: "snapshot" },
+    ),
+  );
+  applyEvent(state, createEvent(EventKinds.ModelDelta, { text: "结论。" }, { step: 2, sequence: 5, phase: "model" }));
+
+  run = readTestRun(state);
+  expect(run.thinkingBlocks[0]).toMatchObject({ content: "先确认事件来源。", status: "complete" });
+  expect(run.streamingRaw).toBe("结论。");
+});
+
 test("run activity updates the left-side live status without creating workflow steps", () => {
   const state = createTestState();
 
@@ -388,6 +372,7 @@ test("run activity updates the left-side live status without creating workflow s
       activity: "running_agent_turn",
       status: "running",
       step: 1,
+      eventSequence: 2,
     }),
   ]);
 

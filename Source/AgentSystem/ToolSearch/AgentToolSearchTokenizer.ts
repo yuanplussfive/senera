@@ -8,16 +8,19 @@ const { dict, idf } = nodeRequire("@node-rs/jieba/dict") as {
 };
 
 const SearchCharacterPattern = /[\p{L}\p{N}]/u;
+const SingleHanCharacterPattern = /^\p{Script=Han}$/u;
+const SearchWordSegmenter = new Intl.Segmenter(undefined, { granularity: "word" });
 
 /**
  * Closed POS-class prefixes that carry no retrieval value once segmentation
  * is done. jieba emits ICTCLAS-style tags with subclasses (uj/uz/ug for
- * particles, rz/ry for pronouns), so prefixes cover the whole family.
+ * particles, rz/ry for pronouns, m/q for quantities and classifiers), so
+ * prefixes cover the whole family.
  * "eng" marks English words (all of them, regardless of function) and must
  * stay in; negation (d) and content words stay in too: dropping 不/没 would
  * collapse a fact into its own opposite.
  */
-const StopPartOfSpeechTagPrefixes = ["u", "y", "p", "r", "e", "o"] as const;
+const StopPartOfSpeechTagPrefixes = ["u", "y", "p", "r", "e", "o", "c", "m", "q"] as const;
 const KeepPartOfSpeechTags = new Set(["eng"]);
 const SubjectTagPrefixes = ["n", "r"] as const;
 const PredicateHeadTagPrefixes = ["v", "a"] as const;
@@ -51,6 +54,62 @@ export class AgentToolSearchTokenizer {
   }
 
   /**
+   * Complete examples are producer-declared usage contracts, not aliases.
+   * Compare their normalized phrase form so punctuation and identifier casing
+   * do not make the same command look like a different request.
+   */
+  matchesExactPhrase(left: string, right: string): boolean {
+    const normalizedLeft = this.canonicalPhrase(left);
+    return normalizedLeft.length > 0 && normalizedLeft === this.canonicalPhrase(right);
+  }
+
+  /**
+   * Produces a locale-neutral phrase key for declared identities and examples.
+   * It is intentionally based on Unicode letters and numbers rather than a
+   * language detector, so aliases from every producer share one collision
+   * domain during discovery planning.
+   */
+  canonicalPhrase(text: string): string {
+    return canonicalSearchPhrase(this.normalize(text));
+  }
+
+  /**
+   * Declared tool identities and aliases are names, not bags of terms. Match
+   * them as a normalized contiguous phrase so a tokenizer dropping a Chinese
+   * ordinal or classifier cannot turn part of a longer alias into a false
+   * direct command reference. Padding preserves word boundaries for Latin
+   * identifiers while still allowing a declared CJK phrase inside prose.
+   */
+  containsDeclaredPhrase(phrase: string, text: string): boolean {
+    const phraseWords = wordLikeSegments(this.normalize(phrase));
+    const textWords = wordLikeSegments(this.normalize(text));
+    if (phraseWords.length === 0 || phraseWords.length > textWords.length) return false;
+    return textWords.some((_, start) => phraseWords.every((word, index) => textWords[start + index] === word));
+  }
+
+  /**
+   * Matches a producer-declared multi-term identity through natural request
+   * modifiers. For example, a declared "generate image" identity remains
+   * recognizable in "generate one image". This is a token-order relation,
+   * not a synonym table: every meaningful declared term must occur in order.
+   * A one-term declaration deliberately does not use this relaxed path;
+   * otherwise a suffix from a longer alias would become a false identity.
+   */
+  containsDeclaredIdentitySequence(phrase: string, text: string): boolean {
+    const phraseTokens = this.tokenizeContent(phrase).filter((token) => this.isIndependentContentToken(token));
+    if (phraseTokens.length < 2) return false;
+    const textTokens = this.orderedContentTokens(text)
+      .map((word) => this.normalizeToken(word.word))
+      .filter((token) => this.isIndependentContentToken(token));
+    let cursor = 0;
+    for (const token of textTokens) {
+      if (token === phraseTokens[cursor]) cursor += 1;
+      if (cursor === phraseTokens.length) return true;
+    }
+    return false;
+  }
+
+  /**
    * Tokenizes and drops function words via jieba POS tags instead of a
    * hand-maintained stopword list. English words are tagged as x by jieba and
    * must survive the tag filter on their own merits.
@@ -62,6 +121,17 @@ export class AgentToolSearchTokenizer {
       .map((word) => this.normalizeToken(word.word))
       .filter((token) => SearchCharacterPattern.test(token));
     return [...new Set(tokens)];
+  }
+
+  /**
+   * Search-mode segmentation intentionally emits short Han fragments to widen
+   * recall (for example, a compound noun can expose one of its characters).
+   * A lone fragment is useful for candidate generation, but too ambiguous to
+   * prove that an operation's declared intent was matched. Other one-character
+   * tokens remain valid because identifiers and symbols can be meaningful.
+   */
+  isIndependentContentToken(token: string): boolean {
+    return !SingleHanCharacterPattern.test(token);
   }
 
   /** Exposes POS evidence to higher-level structural matching without sharing the segmenter. */
@@ -163,12 +233,40 @@ export class AgentToolSearchTokenizer {
   }
 
   private normalize(text: string): string {
-    return text.normalize("NFKC").toLocaleLowerCase();
+    return expandIdentifierBoundaries(text.normalize("NFKC")).toLocaleLowerCase();
   }
 
   private normalizeToken(token: string): string {
     return token.trim().toLocaleLowerCase();
   }
+}
+
+function expandIdentifierBoundaries(value: string): string {
+  return value
+    .replaceAll(/([\p{Ll}\p{N}])([\p{Lu}])/gu, "$1 $2")
+    .replaceAll(/([\p{L}])(\p{N})/gu, "$1 $2")
+    .replaceAll(/(\p{N})([\p{L}])/gu, "$1 $2")
+    .replaceAll(/_+/gu, " ");
+}
+
+function canonicalSearchPhrase(value: string): string {
+  return value
+    .replaceAll(/[^\p{L}\p{N}]+/gu, " ")
+    .replaceAll(/\s+/gu, " ")
+    .trim();
+}
+
+/**
+ * Unicode word segmentation gives every script the same boundary model. It
+ * prevents `git` from matching the interior of `digital`, while recognizing
+ * declared CJK phrases embedded in ordinary prose without a script-specific
+ * substring exception.
+ */
+function wordLikeSegments(value: string): string[] {
+  return [...SearchWordSegmenter.segment(value)]
+    .filter((segment) => segment.isWordLike)
+    .map((segment) => canonicalSearchPhrase(segment.segment))
+    .filter(Boolean);
 }
 
 /**

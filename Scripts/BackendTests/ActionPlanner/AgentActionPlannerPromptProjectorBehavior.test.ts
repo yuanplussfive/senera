@@ -1,5 +1,4 @@
 import { describe, expect, test } from "vitest";
-import { AgentActionPlannerBamlPromptFactory } from "../../../Source/AgentSystem/ActionPlanner/AgentActionPlannerBamlPromptFactory.js";
 import { projectActionPlannerBamlRequestBody } from "../../../Source/AgentSystem/ActionPlanner/AgentActionPlannerPromptProjector.js";
 import {
   decodeAgentPromptInputWire,
@@ -79,65 +78,6 @@ describe("AgentActionPlannerPromptProjector", () => {
         requestBody({ context: { routingCards: [{ name: "incomplete" }] }, directive: {} }),
       ),
     ).toThrow(/context field "routingCards"/);
-  });
-
-  test("keeps generated BAML guidance aligned with the shared wire protocol", async () => {
-    const prompt = await new AgentActionPlannerBamlPromptFactory().buildPrompt({
-      functionName: "LearnToolUse",
-      input: {
-        rawUserTurn: "find files",
-        standaloneRequest: "find files",
-        contextMode: "direct",
-        contextBasis: "current_turn",
-        selectedTools: ["Search"],
-        candidateSourceTerms: ["files"],
-        toolTagCatalogByTool: [{ toolName: "Search", tags: ["search"] }],
-        search: { query: "files", plannerTags: ["search"], candidates: ["Search"] },
-        episode: {
-          outcome: "success",
-          producedEvidence: true,
-          producedArtifact: false,
-          changedWorkspace: false,
-        },
-      },
-    });
-
-    expect(prompt.systemPrompt).toContain("senera.planner_input=v1 wire");
-    expect(prompt.systemPrompt).not.toContain("latest user JSON object's plannerInput");
-    expect(prompt.messages.at(-1)?.content).toContain("senera.planner_input=v1");
-    expect(prompt.messages.at(-1)?.content).toContain("[senera.context]");
-  });
-
-  test("attaches native visual inputs to the final structured planner message", async () => {
-    const prompt = await new AgentActionPlannerBamlPromptFactory().buildPrompt(
-      {
-        functionName: "LearnToolUse",
-        input: {
-          rawUserTurn: "review the attached screenshot",
-          standaloneRequest: "review the attached screenshot",
-          contextMode: "direct",
-          contextBasis: "current_turn",
-          selectedTools: [],
-          candidateSourceTerms: [],
-          toolTagCatalogByTool: [],
-          search: { query: "screenshot", plannerTags: [], candidates: [] },
-          episode: {
-            outcome: "success",
-            producedEvidence: false,
-            producedArtifact: false,
-            changedWorkspace: false,
-          },
-        },
-      },
-      {
-        attachments: [{ type: "image", mimeType: "image/png", data: "aW1hZ2U=" }],
-      },
-    );
-
-    expect(prompt.messages.at(-1)).toMatchObject({
-      role: "user",
-      attachments: [{ type: "image", mimeType: "image/png", data: "aW1hZ2U=" }],
-    });
   });
 });
 

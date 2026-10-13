@@ -1,43 +1,23 @@
-# 学习系统边界与诊断
+# 场景记忆链路边界
 
-Senera 不使用一个大模型调用同时生成长期记忆、工具路由和 Skill 文件。三个领域各自拥有证据和生命周期：
+Senera 的语义记忆只有一条路径：完成回合生成状态卡，和本轮请求、最终回复、工具与 Skill 结果一起写入 MemOS。ToolSearch 与 Skill 路由复用同一场景记录；它们不再维护独立的 SQLite 学习库或关键词晋升表。
 
-- 连续性学习从完成的会话 episode 写入不可变 Observation。事实阶段只输出 `facts + needsRulePass` 并立即持久化；按需建模阶段通过 states、always、conditional、notify 键值方法输出语义。已有状态使用 `senera://continuity-state/...` 引用，新状态由宿主分配身份。程序负责来源校验、幂等、作用域、置信度、条件 AST 和确定性求值；没有候选晋升或向量依赖。
-- Tool 路由学习只处理实际 ToolSearch 候选、已选工具和工具结果；模型只能从受限候选词与已声明 tags 中输出结构化路由记录。
-- Skill 路由学习不生成或修改文件，只从可归因的成功执行确定性提取请求关键词，并绑定 accepted Skill revision。
+## 回合生命周期
 
-连续性学习采用“稳定画像 + 可检索事件”分层：resident profile 保存跨会话稳定画像，Continuity ledger 保存事实当前头、事实历史、规则和运行时信号，原始 episode 只作为可追溯来源。模型不负责事实身份、版本或证据编号；这些由宿主根据来源和确定性身份完成。
+1. 主回合先保存物理 episode/source，保证可回放和可删除。
+2. 正常完成后，主生命周期把状态卡交给 MemOS sink。新会话首轮直接按新话题记录，不额外请求模型判断连续性；没有工具或 Skill 的完成回合同样保留为场景上下文。
+3. MemOS 在同一 namespace 内异步生成 embedding；查询使用 query 角色，写入使用 document 角色。
+4. 会话删除、关闭和重启都经过同一个 MemOS runtime。写入重试使用主生命周期的预算，不启动独立的无限学习器。
 
-学习请求同样按稳定/动态边界拆分。稳定 `LearningPromptBundle` 包含版本化语义合同、关系注册表和在宿主侧成功编译的代表样例，并在进程内冻结；动态 payload 只包含当前物理 episode、指代上下文，以及本地相似度在共享字符预算内选出的相关画像和 Agenda。native/BAML 都经 Pi 使用同一哈希化 cache scope；模型原始输出只有通过 schema 和宿主编译后才可进入精确推理缓存或下一进程的示例候选，失败输出不得用于训练前缀。
+## 记录内容
 
-完成回合后先持久化 episode，再执行 `ContinuityLearning.LearningGate`。门控按证据价值分为三种路径：显式记忆和真实工具/产物证据立即学习；普通回合进入 `DeferredDelaySeconds` 指定的空闲窗口，同一 session 的新普通回合会重置尚未开始的 pending facts，只有连续空闲到窗口结束才执行；可配置的确认语句只保留物理 episode，不启动模型提取。会话压缩前会释放所有尚未开始的延迟 job 并刷新学习，确保稳定事实先落账，再交给 Pi 压缩上下文。
+场景记录保留宿主已经拥有的结构化数据：standalone request、topic/context、状态卡的场景与话题关系、前序请求、最近工具、失败工具、产物、active skills、最终回复预览和物理 source URI。UI 展示文字不参与语义文档拼接。
 
-## 可观测状态
+工具路由记录额外保留 query、候选工具、最终选择、调用结果、分数和 Skill 引用，用于下一次按场景检索；它不是新的工具目录，也不会改变 ToolSearch 的运行时合同。
 
-Tool/Skill 路由先写 `learning_episodes` observation，再转为：
+## 诊断原则
 
-- `learned`：经验已进入聚合索引。
-- `skipped`：没有可靠结果、没有匹配搜索候选、无法归因或没有可复用关键词。
-- `failed`：模型、校验、分词或持久化处理失败。
-- `observed`：已入队但异步 Tool 学习尚未完成。
-
-原始任务结果和学习旁路隔离。学习失败记录 `routing.learning.observation_failed`、`tool.learning.failed` 或 `skill.learning.failed`，不能让已完成的 Agent turn 失败。
-
-## Skill 选择算法
-
-静态 `SKILL.md` 描述、use cases、capability facets 和推荐工具先由 MiniSearch 召回。历史成功项按关键词重合、时间半衰期、支持质量和 Bayesian confidence 形成附加 rank score。学习证据可以补召回或提升已有结果，但显式 `$skill-name` 永远优先。
-
-每条 Skill term 包含 `projectId + skillName + skillRevision + term + source`。选择器只读取当前 revision；发布新 snapshot 会自然淘汰旧 revision，不需要清库或写迁移规则。
-
-## 诊断
-
-`LearningManage` 是只读 Bootstrap System Tool：
-
-- `status`：按 domain/state 汇总 episode，并返回 Skill term 数量。
-- `list`：读取指定数量的最近 episode。
-- `inspect`：按 episode id 查看输入上下文、归因主体、结果和错误。
-- `skill_terms`：查看指定数量的 Skill term，可按 skillName 过滤。
-
-连续性学习 job 分别保存 facts/rules 阶段状态、尝试次数和安全错误。规则失败不得回滚或重跑已成功事实；不要把它写入 ToolSearch ledger，也不要让 `ToolLearning.Enabled` 控制 `ContinuityLearning`。
-
-每个阶段必须先原子 claim 才能提交结果或记录失败。服务重启会将中断的 `running` 阶段恢复到 retry 队列；已完成 facts 从 job 的 `facts_json` 恢复，规则阶段不重新请求 facts 模型。
+- MemOS 是语义召回的唯一权威；本地 SQLite 只负责物理来源、delivery receipt、时间摘要和运行时状态。
+- embedding 失败、写入失败或 MemOS 查询失败会作为当前操作的真实错误记录，不切换到旧规则、词法或本地向量路径。
+- 未完成、取消或失败的回合不进入“完成场景”数据。
+- 精确正文通过 source URI 从物理仓库按需读取，不把整段历史自动拼接进提示词。

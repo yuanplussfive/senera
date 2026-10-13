@@ -75,6 +75,7 @@ async function main(): Promise<void> {
       {
         command: { mode: "shell", dialect, script: "echo boundary" },
         cwd: ".",
+        workspaceEffect: "read",
       },
       {
         sessionId: "verification-session",

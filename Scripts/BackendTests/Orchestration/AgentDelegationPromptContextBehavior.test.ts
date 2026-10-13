@@ -6,7 +6,7 @@ import {
 import { projectAgentDelegationPromptContext } from "../../../Source/AgentSystem/Orchestration/AgentDelegationPromptContext.js";
 
 describe("delegation prompt context", () => {
-  test("projects ownership and consumption state without terminal result payloads", () => {
+  test("projects ownership and unified result-delivery state without terminal payloads", () => {
     const active = createRecord("active", AgentChildRunStatuses.Running, {
       task: "A".repeat(4_000),
       snapshot: {
@@ -23,13 +23,11 @@ describe("delegation prompt context", () => {
     });
     const completed = createRecord("completed", AgentChildRunStatuses.Completed, {
       finalAnswer: "A result that belongs in the durable child record, not the supervisor prompt.",
-      resultConsumedAt: undefined,
-      parentWakeConsumed: false,
+      parentResultDeliveredAt: undefined,
     });
     const consumed = createRecord("consumed", AgentChildRunStatuses.Completed, {
       finalAnswer: "already consumed",
-      resultConsumedAt: "2026-09-11T00:00:02.000Z",
-      parentWakeConsumed: true,
+      parentResultDeliveredAt: "2026-09-11T00:00:02.000Z",
     });
 
     const projected = projectAgentDelegationPromptContext([active, completed, consumed]);
@@ -40,23 +38,20 @@ describe("delegation prompt context", () => {
       awaitingSupervisor: 0,
       terminal: 2,
       pendingResults: 1,
-      pendingWakes: 1,
     });
     expect(projected.runs.map((run) => run.runId)).toEqual(["active", "completed"]);
     expect(projected.runs[0]).toMatchObject({
       runId: "active",
       status: AgentChildRunStatuses.Running,
       resultAvailable: false,
-      resultConsumed: false,
-      parentWakePending: false,
+      resultDelivered: false,
       task: expect.stringContaining("[truncated originalChars=4000"),
       progress: expect.objectContaining({ artifactCount: 1, activeTools: ["WorkspaceRead"] }),
     });
     expect(projected.runs[1]).toMatchObject({
       runId: "completed",
       resultAvailable: true,
-      resultConsumed: false,
-      parentWakePending: true,
+      resultDelivered: false,
     });
     expect(JSON.stringify(projected)).not.toContain("A result that belongs");
     expect(JSON.stringify(projected)).not.toContain("already consumed");
@@ -104,7 +99,6 @@ function createRecord(
     createdAt: "2026-09-11T00:00:00.000Z",
     updatedAt: "2026-09-11T00:00:00.000Z",
     revision: 1,
-    parentWakeConsumed: false,
     ...overrides,
   };
 }

@@ -10,4 +10,7 @@ export const SeneraResourceUriContract = {
 export const SeneraResourceHttpRoutes = {
   Collection: "/api/resources",
   WorkspaceContent: "/api/resources/content",
+  WorkspaceTree: "/api/resources/tree",
+  WorkspaceChanges: "/api/resources/changes",
+  ArtifactRead: "/api/artifacts/read",
 } as const;

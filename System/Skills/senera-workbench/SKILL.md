@@ -1,11 +1,14 @@
 ---
 name: senera-workbench
-description: The Senera operational handbook. Use when the user asks to inspect or change the runtime configuration, switch models, manage or view presets, explore workspace metadata, or run system diagnostics. 当用户要求查看或修改配置、切换模型或预设、查看工作区信息、或执行系统诊断时使用。Manage Senera through the dedicated SeneraCommand surface, never by editing runtime files directly.
+metadata:
+  senera:
+    icon: tools
+description: The Senera operational handbook. Use when the user asks to inspect or change the runtime configuration, switch models, explore workspace metadata, or run system diagnostics. 当用户要求查看或修改配置、切换模型、查看工作区信息、或执行系统诊断时使用。Manage Senera through the dedicated SeneraCommand surface, never by editing runtime files directly.
 ---
 
 # Senera Workbench
 
-You are running inside **Senera Agent Workbench**. Senera owns the runtime: configuration, presets, permissions, evidence, and delivery. This handbook explains how to operate the workbench itself through the controlled `SeneraCommand` surface. The command surface is runtime-discoverable: call `senera capabilities` when the installed host may have extensions or when this document and the live tool description disagree.
+You are running inside **Senera Agent Workbench**. Senera owns the runtime: configuration, permissions, evidence, and delivery. This handbook explains how to operate the workbench itself through the controlled `SeneraCommand` surface. The command surface is runtime-discoverable: call `senera capabilities` when the installed host may have extensions or when this document and the live tool description disagree.
 
 ## Philosophy
 
@@ -16,8 +19,8 @@ Its revision and rule index are evidence from the host, not values to guess.
 The core invariants are:
 
 1. **Evidence first** — every observed state comes from the runtime snapshot or a tool result; never assume, and never claim a change succeeded without the command result.
-2. **No silent downgrades** — if a capability, preset, endpoint, or configuration path is unavailable, report it plainly. Never pretend a path or value exists.
-3. **Governed self-modification** — configuration, presets, and host-owned state change only through the command surface. Do not patch files under `.senera/` directly, and do not reach into databases with shell tools.
+2. **No silent downgrades** — if a capability, endpoint, or configuration path is unavailable, report it plainly. Never pretend a path or value exists.
+3. **Governed self-modification** — configuration and host-owned state change only through the command surface. Do not patch files under `.senera/` directly, and do not reach into databases with shell tools.
 4. **Verify every mutation** — use the returned revision and a fresh `config check`, `status`, or snapshot before reporting success; use history/rollback when verification fails.
 5. **Progressive disclosure** — start with the live catalog and compact summaries. Inspect one Skill, command contract, or diagnostic detail only when the current task requires it. Reuse a confirmed revision and arguments across turns; do not trigger another search or repeat a full document merely because the resource is already visible.
 
@@ -74,7 +77,6 @@ verb, and positional values become named fields. For example:
 ```json
 {"command":"config","action":"get","path":"DefaultModelProviderId"}
 {"command":"config","action":"update","path":"Server.AccessControl.Mode","value":"auto"}
-{"command":"preset","action":"use","name":"tester"}
 {"command":"doctor","action":"status"}
 ```
 
@@ -85,11 +87,10 @@ field from this example list.
 
 ## Invariants
 
-- **Never use shell tools to read or write Senera's own configuration, preset files, Skills, or `.senera` data.** Use `SeneraCommand`.
+- **Never use shell tools to read or write Senera's own configuration, Skills, or `.senera` data.** Use `SeneraCommand`.
 - The `senera` CLI is the human-facing twin of `SeneraCommand` with the identical vocabulary; it calls the running service over HTTP and fails loudly when the service is offline. Suggest it when the user wants to run a command themselves.
 - Configuration paths use dot notation (`ModelProviderEndpoints.0.BaseUrl`). Secrets are redacted in every read projection.
-- Preset names resolve with or without the `.json` suffix (`tester` and `tester.json` both match).
-- The command surface is controlled by design: config, preset, and workspace Skill mutations always go through host services (approval, revision guard, schema validation, atomic activation, and verification).
+- The command surface is controlled by design: config and workspace Skill mutations always go through host services (approval, revision guard, schema validation, atomic activation, and verification).
 - `capabilities` is the runtime source of truth for built-in and plugin command definitions; do not invent an unavailable command from memory.
 - Skill names and sources are runtime facts. Use `skills list` or `capabilities` before relying on a remembered Skill; duplicate names are an explicit conflict, not a silent precedence fallback.
 - `skills inspect` is source-bounded and read-only. It cannot be used to read arbitrary files or modify a Skill.
@@ -101,4 +102,4 @@ field from this example list.
 - When the tool is unavailable (host did not bind the service), say the host did not expose it rather than inventing an alternative.
 - To change the current conversation's model, use `session/model` rather than changing the global default. The current turn stays pinned; verify the returned preference and the following session snapshot.
 
-See `references/presets-guide.md` for preset semantics and `references/cli-reference.md` for the full command dictionary.
+See `references/cli-reference.md` for the full command dictionary.

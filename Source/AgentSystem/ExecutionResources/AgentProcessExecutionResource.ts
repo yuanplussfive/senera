@@ -11,6 +11,7 @@ import {
   type AgentExecutionResourceLimits,
   type AgentExecutionResourceOwner,
   type AgentExecutionResourcePresentation,
+  type AgentExecutionResourceRetentionPolicy,
   type AgentExecutionResourceSignal,
   type AgentExecutionResourceSnapshot,
   type AgentExecutionResourceState,
@@ -34,6 +35,7 @@ export interface AgentProcessExecutionResourceOptions {
   transport: AgentExecutionResourceTransport;
   command: string;
   presentation?: AgentExecutionResourcePresentation;
+  retention: AgentExecutionResourceRetentionPolicy;
   cwd: string;
   limits: AgentExecutionResourceLimits;
   maxDurationMs?: number;
@@ -45,6 +47,7 @@ export class AgentProcessExecutionResource implements AgentExecutionResourceHand
   readonly id: string;
   readonly owner: AgentExecutionResourceOwner;
   readonly kind: AgentExecutionResourceKind;
+  readonly retention: AgentExecutionResourceRetentionPolicy;
   private readonly correlation: AgentExecutionResourceCorrelation;
   private readonly command: string;
   private readonly presentation: AgentExecutionResourcePresentation | undefined;
@@ -88,6 +91,7 @@ export class AgentProcessExecutionResource implements AgentExecutionResourceHand
     this.id = options.id;
     this.owner = options.owner;
     this.kind = transport.kind;
+    this.retention = options.retention;
     this.correlation = options.correlation;
     this.command = options.command;
     this.presentation = options.presentation;

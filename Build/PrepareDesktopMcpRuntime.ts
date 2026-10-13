@@ -54,6 +54,7 @@ export async function prepareDesktopMcpRuntime(workspaceRoot: string): Promise<D
   const stageRoot = resolveDesktopMcpRuntimeStageRoot(root);
   const nodeTarget = readNodeBuildTarget(root);
   const packages = discoverMcpPackages(root, sourceRoot);
+  await mkdir(path.dirname(stageRoot), { recursive: true });
   const stagingRoot = await mkdtemp(path.join(path.dirname(stageRoot), ".desktop-mcp-runtime-"));
 
   try {

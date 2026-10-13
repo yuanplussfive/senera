@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { AgentToolExecutionOutcomeSchema } from "../ToolRuntime/AgentToolResultOutcome.js";
-import { type AgentArtifactFileNames } from "../Artifacts/AgentArtifactLocator.js";
+import { type AgentArtifactFileNames, parseAgentArtifactUri } from "../Artifacts/AgentArtifactLocator.js";
 
 export const ReadableArtifactRefs = [
   "summary",
@@ -8,6 +8,7 @@ export const ReadableArtifactRefs = [
   "evidence",
   "delta",
   "raw",
+  "rawResponse",
   "rawBlob",
   "rawPreview",
   "workspaceDiff",
@@ -19,176 +20,42 @@ export const ReadableArtifactRefs = [
 export type ReadableArtifactRef = (typeof ReadableArtifactRefs)[number];
 
 export const ReadableArtifactRefDefinitions = {
-  summary: {
-    file: "summary",
-    format: "text",
-    mediaType: "text/markdown",
-  },
-  projection: {
-    file: "projection",
-    format: "text",
-    mediaType: "text/markdown",
-  },
-  evidence: {
-    file: "evidence",
-    format: "json",
-    mediaType: "application/json",
-  },
-  delta: {
-    file: "delta",
-    format: "json",
-    mediaType: "application/json",
-  },
-  raw: {
-    file: "raw",
-    format: "json",
-    mediaType: "application/json",
-  },
-  rawBlob: {
-    file: "raw",
-    format: "text",
-    mediaType: "application/json",
-  },
-  rawPreview: {
-    file: "rawPreview",
-    format: "json",
-    mediaType: "application/json",
-  },
-  workspaceDiff: {
-    file: "workspaceDiff",
-    format: "json",
-    mediaType: "application/json",
-  },
-  workspacePatch: {
-    file: "workspacePatch",
-    format: "text",
-    mediaType: "text/x-diff",
-  },
-  stdout: {
-    file: "stdout",
-    format: "text",
-    mediaType: "text/plain",
-  },
-  stderr: {
-    file: "stderr",
-    format: "text",
-    mediaType: "text/plain",
-  },
-} as const satisfies Record<
-  ReadableArtifactRef,
-  {
-    file: keyof typeof AgentArtifactFileNames;
-    format: "json" | "text";
-    mediaType: string;
-  }
->;
-
-const ArtifactJsonPredicateSchema = z.discriminatedUnion("operator", [
-  z
-    .object({
-      field: z.string(),
-      operator: z.enum(["eq", "ne", "gt", "gte", "lt", "lte", "contains"]),
-      value: z.unknown(),
-    })
-    .strict(),
-  z
-    .object({
-      field: z.string(),
-      operator: z.enum(["exists", "not_exists"]),
-    })
-    .strict(),
-]);
-
-export const ArtifactJsonViewRequestSchema = z.discriminatedUnion("kind", [
-  z
-    .object({
-      kind: z.literal("index"),
-      sourcePath: z
-        .array(z.string())
-        .describe("Object keys leading to the value to index. Use an empty array for the root value.")
-        .optional(),
-      cursor: z.string().min(1).describe("Opaque index continuation cursor.").optional(),
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("query"),
-      sourcePath: z
-        .array(z.string())
-        .describe("Object keys leading to the array to stream. Use an empty array for a root array.")
-        .optional(),
-      select: z.array(z.string()).min(1).describe("Fields to retain from each matching object.").optional(),
-      where: z
-        .array(ArtifactJsonPredicateSchema)
-        .min(1)
-        .describe("Deterministic predicates applied to streamed array items.")
-        .optional(),
-      cursor: z.string().min(1).describe("Opaque query continuation cursor.").optional(),
-    })
-    .strict(),
-]);
+  summary: { file: "summary", mediaType: "text/markdown" },
+  projection: { file: "projection", mediaType: "text/markdown" },
+  evidence: { file: "evidence", mediaType: "application/json" },
+  delta: { file: "delta", mediaType: "application/json" },
+  raw: { file: "raw", mediaType: "application/json" },
+  rawResponse: { file: "rawResponse", mediaType: "application/json" },
+  rawBlob: { file: "raw", mediaType: "application/json" },
+  rawPreview: { file: "rawPreview", mediaType: "application/json" },
+  workspaceDiff: { file: "workspaceDiff", mediaType: "application/json" },
+  workspacePatch: { file: "workspacePatch", mediaType: "text/x-diff" },
+  stdout: { file: "stdout", mediaType: "text/plain" },
+  stderr: { file: "stderr", mediaType: "text/plain" },
+} as const satisfies Record<ReadableArtifactRef, { file: keyof typeof AgentArtifactFileNames; mediaType: string }>;
 
 export const ArtifactMemoryReadArgumentsSchema = z
   .object({
     artifactUris: z
-      .array(z.string().trim().min(1))
-      .min(1)
-      .describe(
-        "One or more canonical artifact memory URIs, for example senera://artifact/art_1234567890abcdef12345678.",
-      ),
-    refs: z
-      .array(z.enum(ReadableArtifactRefs))
-      .min(1)
-      .describe("Memory refs to load. Omit to read the projection ref only.")
-      .optional(),
-    maxBytesPerRef: z
-      .number()
-      .int()
-      .positive()
-      .describe("Per-ref byte budget, capped by the configured artifact text-file limit.")
-      .optional(),
-    startBytePerRef: z
-      .number()
-      .int()
-      .nonnegative()
-      .describe("UTF-8 byte offset applied to each requested ref.")
-      .optional(),
-    refRanges: z
       .array(
         z
-          .object({
-            ref: z.enum(ReadableArtifactRefs),
-            maxBytes: z.number().int().positive(),
-            startByte: z.number().int().nonnegative().optional(),
-          })
-          .strict(),
+          .string()
+          .trim()
+          .min(1)
+          .refine((uri) => parseAgentArtifactUri(uri) !== undefined, "Expected a valid Senera Artifact URI."),
       )
       .min(1)
-      .superRefine((ranges, ctx) => {
-        const seen = new Set<string>();
-        ranges.forEach((range, index) => {
-          if (seen.has(range.ref)) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              path: [index, "ref"],
-              message: `refRanges 中不能重复指定 ${range.ref}。`,
-            });
-          }
-          seen.add(range.ref);
-        });
-      })
-      .describe("Per-ref byte ranges for independent continuation reads.")
-      .optional(),
-    jsonView: ArtifactJsonViewRequestSchema.describe(
-      "Typed JSON view: index discovers structure; query streams complete array items.",
-    ).optional(),
+      .describe("Canonical artifact URIs, for example senera://artifact/art_1234567890abcdef12345678."),
+    view: z
+      .enum(["compact", "full"])
+      .describe(
+        "compact returns a saved LLM summary when available, otherwise a deterministic summary; full returns the raw result.",
+      ),
   })
   .strict();
 
 export type ArtifactMemoryReadArguments = z.infer<typeof ArtifactMemoryReadArgumentsSchema>;
-export type ArtifactJsonViewRequest = z.infer<typeof ArtifactJsonViewRequestSchema>;
-export type ArtifactJsonIndexViewRequest = Extract<ArtifactJsonViewRequest, { kind: "index" }>;
-export type ArtifactJsonQuery = Extract<ArtifactJsonViewRequest, { kind: "query" }>;
+export type ArtifactMemoryReadView = ArtifactMemoryReadArguments["view"];
 
 const ArtifactSha256Schema = z.string().regex(/^[a-f0-9]{64}$/u);
 
@@ -216,15 +83,6 @@ export const ArtifactManifestContentSchema = z
     mediaType: z.string().min(1),
     byteLength: z.number().int().nonnegative(),
     sha256: ArtifactSha256Schema,
-    structure: z
-      .object({
-        file: z.string().min(1),
-        mediaType: z.literal("application/x-ndjson"),
-        byteLength: z.number().int().nonnegative(),
-        sha256: ArtifactSha256Schema,
-      })
-      .passthrough()
-      .optional(),
   })
   .passthrough();
 
@@ -243,6 +101,25 @@ export const ArtifactManifestRecordSchema = z
     sessionIds: z.array(z.string().min(1)).optional(),
     createdAt: z.string().min(1).optional(),
     redactionPolicySha256: ArtifactSha256Schema.optional(),
+    process: z
+      .object({
+        exitCode: z.number().int().nullable(),
+        signal: z.string().nullable(),
+        streams: z
+          .array(
+            z
+              .object({
+                stream: z.enum(["stdout", "stderr"]),
+                ref: z.enum(["stdout", "stderr"]),
+                byteLength: z.number().int().nonnegative(),
+                sha256: ArtifactSha256Schema,
+              })
+              .strict(),
+          )
+          .optional(),
+      })
+      .passthrough()
+      .optional(),
     outcome: AgentToolExecutionOutcomeSchema.optional(),
     files: z.record(z.string(), z.string().min(1)),
     contents: ArtifactManifestContentsSchema.optional().catch(undefined),
@@ -254,71 +131,11 @@ export type ArtifactManifestRecord = z.infer<typeof ArtifactManifestRecordSchema
 export interface ArtifactMemoryReadResultItem {
   artifactUri: string;
   artifactId: string;
-  status: "found" | "not_found" | "invalid";
+  status: "found" | "not_found" | "invalid" | "failed";
+  view: ArtifactMemoryReadView;
   message: string;
-  availableRefs: {
-    item: Array<{
-      ref: ReadableArtifactRef;
-      byteLength: number;
-      mediaType?: string;
-      sha256?: string;
-    }>;
-  };
-  availableRefCount: number;
-  refResults: {
-    item: ArtifactMemoryRefReadResult[];
-  };
-  unavailableRefCount: number;
-  failedRefCount: number;
-  memories: {
-    item: Array<ArtifactMemoryContentItem>;
-  };
-  memoryCount: number;
-}
-
-export interface ArtifactMemoryRefReadResult {
-  ref: ReadableArtifactRef;
-  status: "loaded" | "unavailable" | "failed";
-  message: string;
-}
-
-export interface ArtifactMemoryContentItem {
-  ref: string;
+  artifactRefs?: string[];
+  compressionMethod?: "mechanical" | "llm";
   sourceSha256?: string;
-  range: {
-    startByte: number;
-    endByte: number;
-    totalBytes: number;
-    returnedBytes: number;
-    complete: boolean;
-    nextStartByte?: number;
-  };
-  structuredContent?: unknown;
-  content: string;
-  view?: ArtifactMemoryJsonView;
+  content?: unknown;
 }
-
-export type ArtifactMemoryJsonView =
-  | {
-      kind: "json_index";
-      sourcePath?: string[];
-      rootType: "array" | "boolean" | "null" | "number" | "object" | "string";
-      rootItemCount?: number;
-      fieldCount: number;
-      startFieldIndex: number;
-      returnedFieldCount: number;
-      remainingFieldCount: number;
-      complete: boolean;
-      nextCursor?: string;
-      blockedAtFieldIndex?: number;
-    }
-  | {
-      kind: "json_query";
-      sourcePath: string[];
-      selectedFields?: string[];
-      scanned: number;
-      returned: number;
-      complete: boolean;
-      nextCursor?: string;
-      blockedAtIndex?: number;
-    };

@@ -15,14 +15,24 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ExecutionError, FileError, type FileInfo } from "@earendil-works/pi-agent-core";
+import {
+  ExecutionError,
+  FileError,
+  type Context,
+  type FileInfo,
+  type ShellOutputMetadata,
+} from "@earendil-works/pi-agent-core";
 import type { Result } from "@earendil-works/pi-agent-core";
 import type {
   SeneraExecutionErrorCode,
   SeneraExecutionEnv,
   SeneraArgvExecutionRequest,
+  SeneraExecutionContext,
+  SeneraShellExecOptions,
+  SeneraShellExecResult,
   SeneraShellExecutionRequest,
   SeneraShellExecutionResult,
+  SeneraTextLineReader,
 } from "./SeneraExecutionTypes.js";
 import { SeneraExecutionError, SeneraExecutionErrorCodes } from "./SeneraExecutionTypes.js";
 import { resolveSeneraShellInvocation, resolveSeneraShellPlatform } from "./SeneraShellPlatform.js";
@@ -239,15 +249,10 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
 
   async exec(
     command: string,
-    options?: {
-      cwd?: string;
-      env?: Record<string, string>;
-      timeout?: number;
-      abortSignal?: AbortSignal;
-      onStdout?: (chunk: string) => void;
-      onStderr?: (chunk: string) => void;
-    },
-  ): Promise<Result<{ stdout: string; stderr: string; exitCode: number }, ExecutionError>> {
+    options?: SeneraShellExecOptions,
+    context?: Context,
+  ): Promise<Result<SeneraShellExecResult, ExecutionError>> {
+    const signal = options?.abortSignal ?? context?.abortSignal;
     try {
       const result = await this.executeShell({
         command,
@@ -257,24 +262,37 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
         timeoutMs: options?.timeout === undefined ? undefined : options.timeout * 1000,
         limits: {
           timeoutMs: options?.timeout === undefined ? 0 : options.timeout * 1000,
-          maxStdoutBytes: ExecOutputLimitBytes,
-          maxStderrBytes: ExecOutputLimitBytes,
+          maxStdoutBytes: options?.capture?.limits.maxBytes ?? ExecOutputLimitBytes,
+          maxStderrBytes: options?.capture?.limits.maxBytes ?? ExecOutputLimitBytes,
         },
-        signal: options?.abortSignal,
+        signal,
       });
       options?.onStdout?.(result.stdout);
       options?.onStderr?.(result.stderr);
+      if (context && options?.onUpdate) {
+        options.onUpdate(
+          {
+            kind: "replace",
+            output: {
+              text: [result.stdout, result.stderr].filter(Boolean).join(""),
+              ...createShellOutputMetadata(result, options),
+            },
+          },
+          context,
+        );
+      }
       return ok({
         stdout: result.stdout,
         stderr: result.stderr,
         exitCode: result.exitCode ?? 0,
+        ...createShellOutputMetadata(result, options),
       });
     } catch (error) {
       return err(toPiExecutionError(error));
     }
   }
 
-  async absolutePath(value: string): Promise<Result<string, FileError>> {
+  async absolutePath(value: string, _context?: SeneraExecutionContext): Promise<Result<string, FileError>> {
     return this.resolveFilePath(value, AgentResourceAccessIntents.Inspect);
   }
 
@@ -299,11 +317,57 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
     };
   }
 
-  async joinPath(parts: string[]): Promise<Result<string, FileError>> {
+  async joinPath(parts: string[], _context?: SeneraExecutionContext): Promise<Result<string, FileError>> {
     return ok(path.join(...parts));
   }
 
-  async readTextFile(value: string, abortSignal?: AbortSignal): Promise<Result<string, FileError>> {
+  async openTextLineReader(value: string, context?: Context): Promise<Result<SeneraTextLineReader, FileError>> {
+    const signal = context?.abortSignal;
+    const opened = await this.openFileTarget(value, AgentResourceAccessIntents.Read);
+    if (!opened.ok) return opened;
+    const resolved = opened.value.path;
+    if (signal?.aborted) {
+      await opened.value.handle.close().catch(() => undefined);
+      return err(new FileError("aborted", "aborted", resolved));
+    }
+
+    let content: string | undefined;
+    let offset = 0;
+    let closed = false;
+    const close = async (): Promise<void> => {
+      if (closed) return;
+      closed = true;
+      await opened.value.handle.close().catch(() => undefined);
+    };
+    return ok({
+      readLine: async (readContext) => {
+        const readSignal = readContext.abortSignal;
+        if (readSignal?.aborted) return err(new FileError("aborted", "aborted", resolved));
+        if (closed) return ok(undefined);
+        try {
+          content ??= await opened.value.handle.readFile({ encoding: "utf8", signal: readSignal });
+          if (offset >= content.length) return ok(undefined);
+          const newline = content.indexOf("\n", offset);
+          if (newline < 0) {
+            const text = content.slice(offset);
+            offset = content.length;
+            return ok({ text: text.endsWith("\r") ? text.slice(0, -1) : text, terminated: false });
+          }
+          const raw = content.slice(offset, newline);
+          offset = newline + 1;
+          return ok({ text: raw.endsWith("\r") ? raw.slice(0, -1) : raw, terminated: true });
+        } catch (error) {
+          return err(toFileError(error, resolved));
+        }
+      },
+      close: async () => {
+        await close();
+      },
+    });
+  }
+
+  async readTextFile(value: string, contextOrSignal?: SeneraExecutionContext): Promise<Result<string, FileError>> {
+    const abortSignal = resolveAbortSignal(contextOrSignal);
     const opened = await this.openFileTarget(value, AgentResourceAccessIntents.Read);
     if (!opened.ok) return opened;
     const resolved = opened.value.path;
@@ -323,11 +387,13 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
   async readTextLines(
     value: string,
     options?: { maxLines?: number; abortSignal?: AbortSignal },
+    context?: Context,
   ): Promise<Result<string[], FileError>> {
+    const abortSignal = options?.abortSignal ?? context?.abortSignal;
     const opened = await this.openFileTarget(value, AgentResourceAccessIntents.Read);
     if (!opened.ok) return opened;
     const resolved = opened.value.path;
-    if (options?.abortSignal?.aborted) {
+    if (abortSignal?.aborted) {
       await opened.value.handle.close().catch(() => undefined);
       return err(new FileError("aborted", "aborted", resolved));
     }
@@ -358,7 +424,11 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
     }
   }
 
-  async readBinaryFile(value: string, abortSignal?: AbortSignal): Promise<Result<Uint8Array, FileError>> {
+  async readBinaryFile(
+    value: string,
+    contextOrSignal?: SeneraExecutionContext,
+  ): Promise<Result<Uint8Array, FileError>> {
+    const abortSignal = resolveAbortSignal(contextOrSignal);
     const opened = await this.openFileTarget(value, AgentResourceAccessIntents.Read);
     if (!opened.ok) return opened;
     const resolved = opened.value.path;
@@ -378,8 +448,9 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
   async writeFile(
     value: string,
     content: string | Uint8Array,
-    abortSignal?: AbortSignal,
+    contextOrSignal?: SeneraExecutionContext,
   ): Promise<Result<void, FileError>> {
+    const abortSignal = resolveAbortSignal(contextOrSignal);
     const pathResult = await this.resolveFilePath(value, AgentResourceAccessIntents.Replace);
     if (!pathResult.ok) return pathResult;
     const resolved = pathResult.value;
@@ -395,8 +466,9 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
   async appendFile(
     value: string,
     content: string | Uint8Array,
-    abortSignal?: AbortSignal,
+    contextOrSignal?: SeneraExecutionContext,
   ): Promise<Result<void, FileError>> {
+    const abortSignal = resolveAbortSignal(contextOrSignal);
     const pathResult = await this.resolveFilePath(value, AgentResourceAccessIntents.Replace);
     if (!pathResult.ok) return pathResult;
     const resolved = pathResult.value;
@@ -415,8 +487,9 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
   async renameFile(
     sourcePath: string,
     destinationPath: string,
-    abortSignal?: AbortSignal,
+    contextOrSignal?: SeneraExecutionContext,
   ): Promise<Result<void, FileError>> {
+    const abortSignal = resolveAbortSignal(contextOrSignal);
     const sourceResult = await this.resolveFilePath(sourcePath, AgentResourceAccessIntents.Remove);
     if (!sourceResult.ok) return sourceResult;
     const destinationResult = await this.resolveFilePath(destinationPath, AgentResourceAccessIntents.Replace);
@@ -438,7 +511,7 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
     }
   }
 
-  async fileInfo(value: string): Promise<Result<FileInfo, FileError>> {
+  async fileInfo(value: string, _context?: Context): Promise<Result<FileInfo, FileError>> {
     const pathResult = await this.resolveFileTarget(value, AgentResourceAccessIntents.Inspect);
     if (!pathResult.ok) return pathResult;
     const resolved = pathResult.value.addressedPath;
@@ -449,7 +522,8 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
     }
   }
 
-  async listDir(value: string, abortSignal?: AbortSignal): Promise<Result<FileInfo[], FileError>> {
+  async listDir(value: string, contextOrSignal?: SeneraExecutionContext): Promise<Result<FileInfo[], FileError>> {
+    const abortSignal = resolveAbortSignal(contextOrSignal);
     const pathResult = await this.resolveFilePath(value, AgentResourceAccessIntents.Read);
     if (!pathResult.ok) return pathResult;
     const resolved = pathResult.value;
@@ -468,11 +542,11 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
     }
   }
 
-  async canonicalPath(value: string): Promise<Result<string, FileError>> {
+  async canonicalPath(value: string, _context?: SeneraExecutionContext): Promise<Result<string, FileError>> {
     return this.resolveFilePath(value, AgentResourceAccessIntents.Read);
   }
 
-  async exists(value: string): Promise<Result<boolean, FileError>> {
+  async exists(value: string, _context?: Context): Promise<Result<boolean, FileError>> {
     const pathResult = await this.resolveFilePath(value, AgentResourceAccessIntents.Inspect);
     if (!pathResult.ok) return pathResult;
     const resolved = pathResult.value;
@@ -488,11 +562,13 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
   async createDir(
     value: string,
     options?: { recursive?: boolean; abortSignal?: AbortSignal },
+    context?: Context,
   ): Promise<Result<void, FileError>> {
+    const abortSignal = options?.abortSignal ?? context?.abortSignal;
     const pathResult = await this.resolveFilePath(value, AgentResourceAccessIntents.Create);
     if (!pathResult.ok) return pathResult;
     const resolved = pathResult.value;
-    if (options?.abortSignal?.aborted) return err(new FileError("aborted", "aborted", resolved));
+    if (abortSignal?.aborted) return err(new FileError("aborted", "aborted", resolved));
     try {
       await mkdir(resolved, { recursive: options?.recursive ?? true });
       await this.assertStableWorkspaceTarget(value, AgentResourceAccessIntents.Create, resolved);
@@ -505,11 +581,13 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
   async remove(
     value: string,
     options?: { recursive?: boolean; force?: boolean; abortSignal?: AbortSignal },
+    context?: Context,
   ): Promise<Result<void, FileError>> {
+    const abortSignal = options?.abortSignal ?? context?.abortSignal;
     const pathResult = await this.resolveFilePath(value, AgentResourceAccessIntents.Remove);
     if (!pathResult.ok) return pathResult;
     const resolved = pathResult.value;
-    if (options?.abortSignal?.aborted) return err(new FileError("aborted", "aborted", resolved));
+    if (abortSignal?.aborted) return err(new FileError("aborted", "aborted", resolved));
     try {
       const recursive = options?.recursive ?? false;
       const stats = await lstat(resolved);
@@ -528,7 +606,8 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
     }
   }
 
-  async createTempDir(prefix = "tmp-", abortSignal?: AbortSignal): Promise<Result<string, FileError>> {
+  async createTempDir(prefix = "tmp-", contextOrSignal?: SeneraExecutionContext): Promise<Result<string, FileError>> {
+    const abortSignal = resolveAbortSignal(contextOrSignal);
     if (abortSignal?.aborted) return err(new FileError("aborted", "aborted"));
     try {
       const directory = await mkdtemp(path.join(tmpdir(), prefix));
@@ -546,12 +625,15 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
     }
   }
 
-  async createTempFile(options?: {
-    prefix?: string;
-    suffix?: string;
-    abortSignal?: AbortSignal;
-  }): Promise<Result<string, FileError>> {
-    const dir = await this.createTempDir("tmp-", options?.abortSignal);
+  async createTempFile(
+    options?: {
+      prefix?: string;
+      suffix?: string;
+      abortSignal?: AbortSignal;
+    },
+    context?: Context,
+  ): Promise<Result<string, FileError>> {
+    const dir = await this.createTempDir("tmp-", options?.abortSignal ?? context?.abortSignal);
     if (!dir.ok) return dir;
     const filePath = path.join(dir.value, `${options?.prefix ?? ""}${randomUUID()}${options?.suffix ?? ""}`);
     try {
@@ -562,7 +644,7 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
     }
   }
 
-  async cleanup(): Promise<void> {
+  async cleanup(_context?: Context): Promise<void> {
     const roots = [...this.ownedTempRoots];
     this.ownedTempRoots.clear();
     await Promise.all(roots.map(([root]) => rm(root, { recursive: true, force: true })));
@@ -690,6 +772,41 @@ function ok<TValue>(value: TValue): Result<TValue, never> {
 
 function err<TError>(error: TError): Result<never, TError> {
   return { ok: false, error };
+}
+
+function resolveAbortSignal(contextOrSignal: SeneraExecutionContext): AbortSignal | undefined {
+  if (!contextOrSignal) return undefined;
+  return "abortSignal" in contextOrSignal ? contextOrSignal.abortSignal : contextOrSignal;
+}
+
+function createShellOutputMetadata(
+  result: Pick<
+    SeneraShellExecutionResult,
+    "stdout" | "stderr" | "stdoutBytes" | "stderrBytes" | "stdoutTruncated" | "stderrTruncated" | "outputCapture"
+  >,
+  options: SeneraShellExecOptions | undefined,
+): ShellOutputMetadata {
+  const text = `${result.stdout}${result.stderr}`;
+  const totalBytes = Buffer.byteLength(text, "utf8");
+  const totalLines = text.length === 0 ? 0 : text.split("\n").length;
+  const truncated = result.stdoutTruncated === true || result.stderrTruncated === true;
+  const maxBytes = options?.capture?.limits.maxBytes ?? ExecOutputLimitBytes;
+  const maxLines = options?.capture?.limits.maxLines ?? Number.MAX_SAFE_INTEGER;
+  return {
+    truncation: {
+      truncated,
+      truncatedBy: truncated ? "bytes" : null,
+      totalLines,
+      totalBytes,
+      outputLines: totalLines,
+      outputBytes: totalBytes,
+      lastLinePartial: false,
+      firstLineExceedsLimit: false,
+      maxLines,
+      maxBytes,
+    },
+    ...(result.outputCapture ? { spillPath: result.outputCapture.directory } : {}),
+  };
 }
 
 function toBoundaryFileError(error: unknown, filePath: string): FileError {

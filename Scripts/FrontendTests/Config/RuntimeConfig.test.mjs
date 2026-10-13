@@ -47,6 +47,14 @@ describe("frontend runtime endpoints", () => {
     expect(resolveRuntimeHttpBaseUrl("wss://agent.example.test/socket")).toBe("https://agent.example.test");
   });
 
+  test("an explicitly selected workspace overrides the obsolete scope in the desktop endpoint", () => {
+    const endpoint = "ws://127.0.0.1:8787/?workspaceId=obsolete";
+    window.history.replaceState({}, "", `/?webSocketUrl=${encodeURIComponent(endpoint)}&workspaceId=selected`);
+    const resolved = new URL(resolveRuntimeWebSocketUrl(""));
+    expect(resolved.searchParams.getAll("workspaceId")).toEqual(["selected"]);
+    expect(resolved.origin).toBe("ws://127.0.0.1:8787");
+  });
+
   test("accepts an explicit HTTP runtime endpoint without retaining credentials or paths", () => {
     window.__SENERA_RUNTIME_CONFIG__ = {
       httpBaseUrl: "https://user:password@agent.example.test/internal?token=secret#fragment",

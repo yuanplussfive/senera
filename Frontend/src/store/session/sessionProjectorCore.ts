@@ -37,6 +37,9 @@ export function ensureSession(state: StoreState, sessionId: string): SessionReco
       messageCount: 0,
       messages: [],
       runs: [],
+      ...(state.runtimeSnapshotsBySession[sessionId]
+        ? { runtimeSnapshot: state.runtimeSnapshotsBySession[sessionId] }
+        : {}),
     };
     if (!state.sessionOrder.includes(sessionId)) {
       state.sessionOrder.unshift(sessionId);

@@ -15,11 +15,6 @@ export type AgentPiSessionContractWriter = Pick<SessionManager, "appendCustomEnt
 
 const RuntimeContractRevisionKey = "toolObservation";
 
-/** Pi initializes new sessions with metadata entries; only context messages make history non-empty. */
-export function isAgentPiConversationHistoryEmpty(sessionManager: AgentPiSessionHistoryReader): boolean {
-  return sessionManager.buildSessionContext().messages.length === 0;
-}
-
 export function isAgentPiSessionRuntimeContractCurrent(sessionManager: AgentPiSessionContractReader): boolean {
   return sessionManager.getBranch().some((entry) => {
     if (!("customType" in entry) || entry.customType !== AgentPiSessionCustomEntryTypes.RuntimeContract) return false;

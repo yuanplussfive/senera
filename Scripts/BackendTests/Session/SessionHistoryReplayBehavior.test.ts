@@ -19,6 +19,28 @@ import { AgentSessionStore } from "../../../Source/AgentSystem/Session/AgentSess
 import type { AgentHistoryStepRun } from "../../../Source/AgentSystem/Session/AgentSessionEventTypes.js";
 
 describe("Session history replay behavior", () => {
+  test("projects recovery actions from stored run status for historical failures", async () => {
+    const fixture = createReplayFixture();
+    const sessionId = "historical-recovery";
+    fixture.store.open(sessionId);
+    for (const [index, status] of (["failed", "cancelled", "running", "completed"] as const).entries()) {
+      fixture.store.persistRunSnapshot(snapshot(sessionId, `request-${status}`, status, index));
+    }
+    const events: AgentDomainEvent[] = [];
+    await fixture.replay.replay({
+      sessionId,
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    const runs = events.flatMap((event) => (event.kind === AgentEventKinds.SessionHistorySteps ? event.data.runs : []));
+    expect(runs.find((run) => run.requestId === "request-failed")?.recoveryModes).toEqual(["retry", "continue"]);
+    expect(runs.find((run) => run.requestId === "request-cancelled")?.recoveryModes).toEqual(["retry", "continue"]);
+    expect(runs.find((run) => run.requestId === "request-running")?.recoveryModes).toEqual([]);
+    // A display warning about missing trace data cannot make a successful run recoverable.
+    expect(runs.find((run) => run.requestId === "request-completed")?.recoveryModes).toEqual([]);
+  });
+
   test("emits not-found without starting replay for an unknown session", async () => {
     const fixture = createReplayFixture();
     const events: AgentDomainEvent[] = [];
@@ -103,6 +125,35 @@ describe("Session history replay behavior", () => {
     expect(chunks.map((event) => readArrayLength(event.data, "entries"))).toEqual([2, 2, 2, 1]);
     expect(readRecord(chunks[0]?.data)?.preview).toBe(true);
     expect(readRecord(chunks[1]?.data)?.preview).toBeUndefined();
+  });
+
+  test("splits oversized run-event pages before sending them", async () => {
+    const fixture = createReplayFixture({ maxRunEventChunkBytes: 1_000 });
+    const sessionId = "byte-bounded-session";
+    fixture.store.open(sessionId);
+    for (let index = 0; index < 3; index += 1) {
+      fixture.store.persistRunEvent(sessionId, {
+        ...runEvent(sessionId, `request-${index}`, index),
+        data: { input: "x".repeat(500) },
+      });
+    }
+    const events: AgentDomainEvent[] = [];
+
+    await fixture.replay.replay({
+      sessionId,
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+
+    const runChunks = events.filter((event) => event.kind === AgentEventKinds.SessionRunHistoryChunk);
+    expect(runChunks).toHaveLength(3);
+    expect(
+      runChunks.every(
+        (event) =>
+          Buffer.byteLength(JSON.stringify({ sessionId, events: readRecord(event.data)?.events ?? [] })) <= 1_000,
+      ),
+    ).toBe(true);
   });
 
   test("uses repository pages without calling the legacy full-history readers", async () => {
@@ -459,6 +510,7 @@ function createReplayFixture(
     entryPageSize?: number;
     stepRunPageSize?: number;
     runEventPageSize?: number;
+    maxRunEventChunkBytes?: number;
   } = {},
 ) {
   const store = new AgentSessionStore({ repository: options.repository ?? new InMemorySessionRepository() });
@@ -470,6 +522,7 @@ function createReplayFixture(
       stepRunPageSize: options.stepRunPageSize,
       runEventPageSize: options.runEventPageSize,
     },
+    maxRunEventChunkBytes: options.maxRunEventChunkBytes,
   });
   return { replay, store };
 }
@@ -543,7 +596,12 @@ function assistantEntry(
   };
 }
 
-function snapshot(sessionId: string, requestId: string, status: "running" | "completed" | "failed", offset: number) {
+function snapshot(
+  sessionId: string,
+  requestId: string,
+  status: "running" | "completed" | "failed" | "cancelled",
+  offset: number,
+) {
   return {
     sessionId,
     requestId,

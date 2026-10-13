@@ -52,7 +52,6 @@ import type {
   AgentSessionModelPreferenceSource,
   AgentSessionOwnership,
 } from "../ModelEndpoints/AgentModelMetadata.js";
-import { AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
 
 export type AgentSessionOpenResult =
   | {
@@ -281,7 +280,7 @@ export class AgentSessionStore {
       return { requestId, snapshot: portablePreparation };
     });
     const runEvents = history.runEvents.map((event) => ({
-      ...structuredClone(event),
+      ...event,
       eventId: createOpaqueId("event"),
       sessionId: session.id,
     }));
@@ -413,7 +412,6 @@ export class AgentSessionStore {
     const lookup = this.get(sessionId);
     if (lookup.kind === "missing") return undefined;
     const session = lookup.session;
-    const conversationPolicy = new AgentConversationPolicy();
     const modelProviderId = resolveAgentSessionModelProviderId(session.metadata);
     const effectiveModel =
       session.metadata?.activeRun?.receipt ??
@@ -425,7 +423,7 @@ export class AgentSessionStore {
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
       entryCount: session.conversation.length,
-      messageCount: conversationPolicy.materialize(session.conversation).length,
+      messageCount: session.conversation.length,
       turnCount: session.conversation.filter((entry) => entry.kind === "user.message").length,
       activeRequestId: session.activeRequest?.requestId,
       ...(session.metadata?.channel ? { channel: session.metadata.channel } : {}),
@@ -516,6 +514,10 @@ export class AgentSessionStore {
     return this.repository.loadRunEventPage(sessionId, request);
   }
 
+  loadRunEvent(sessionId: string, requestId: string, kind: string): AgentEventEnvelope | undefined {
+    return this.repository.loadRunEvent(sessionId, requestId, kind);
+  }
+
   loadRunEventsForRequest(sessionId: string, requestId: string): AgentEventEnvelope[] {
     return this.repository.loadRunEventsForRequest(sessionId, requestId);
   }
@@ -604,7 +606,7 @@ export class AgentSessionStore {
   persistRunStart(
     session: AgentSession,
     requestId: string,
-    userEntry: AgentConversationEntry,
+    userEntry: AgentConversationEntry | undefined,
     snapshot: StoredRunSnapshot,
     event: AgentDomainEvent,
     command: AgentSessionCommandDescriptor,
@@ -614,12 +616,12 @@ export class AgentSessionStore {
       sessionId: session.id,
       requestId,
       session,
-      entries: [{ entry: userEntry, sequence: baseSeq }],
+      entries: userEntry ? [{ entry: userEntry, sequence: baseSeq }] : [],
       traces: [],
       snapshot,
       runEvents: this.projectDurableEvents(session.id, requestId, [event]),
     });
-    if (admission.kind === "accepted") this.rememberNextSequence(session.id, baseSeq + 1);
+    if (admission.kind === "accepted") this.rememberNextSequence(session.id, baseSeq + (userEntry ? 1 : 0));
     return admission;
   }
 
@@ -659,6 +661,10 @@ export class AgentSessionStore {
   /** 读取某会话所有 run snapshots */
   loadRunSnapshots(sessionId: string): StoredRunSnapshot[] {
     return this.repository.loadRunSnapshots(sessionId);
+  }
+
+  loadRunSnapshot(sessionId: string, requestId: string): StoredRunSnapshot | undefined {
+    return this.repository.loadRunSnapshot(sessionId, requestId);
   }
 
   loadRunSnapshotsForRequests(

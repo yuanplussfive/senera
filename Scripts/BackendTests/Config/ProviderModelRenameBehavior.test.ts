@@ -31,9 +31,9 @@ describe("provider model rename behavior", () => {
     expect(renamed.ActionPlanner?.Client?.ModelProviderId).toBe("renamed/chat");
     expect(renamed.ActionPlanner?.PlanningClient?.ModelProviderId).toBe("stable-model-id");
     expect(renamed.ActionPlanner?.FinalAnswerClient?.ModelProviderId).toBe("renamed/chat");
-    expect(renamed.ToolLearning?.Client?.ModelProviderId).toBe("renamed/chat");
+    expect(renamed.StateCard?.Client?.ModelProviderId).toBe("renamed/chat");
     expect(renamed.Defaults?.ActionPlanner?.Client?.ModelProviderId).toBe("renamed/chat");
-    expect(renamed.Defaults?.ToolLearning?.Client?.ModelProviderId).toBe("renamed/chat");
+    expect(renamed.Defaults?.StateCard?.Client?.ModelProviderId).toBe("renamed/chat");
 
     expect(resolveModelProviderConfig(renamed, "custom/chat").Id).toBe("renamed/chat");
     expect(resolveModelProviderConfig(renamed, "historical/chat").Id).toBe("renamed/chat");
@@ -103,10 +103,10 @@ function renameConfig(): AgentSystemConfig {
       PlanningClient: { ModelProviderId: "stable-model-id" },
       FinalAnswerClient: { ModelProviderId: "custom/chat" },
     },
-    ToolLearning: { Client: { ModelProviderId: "custom/chat" } },
+    StateCard: { Client: { ModelProviderId: "custom/chat" } },
     Defaults: {
       ActionPlanner: { Client: { ModelProviderId: "custom/chat" } },
-      ToolLearning: { Client: { ModelProviderId: "custom/chat" } },
+      StateCard: { Client: { ModelProviderId: "custom/chat" } },
     },
   };
 }

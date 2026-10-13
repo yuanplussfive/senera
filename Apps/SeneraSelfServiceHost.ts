@@ -2,9 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { AgentConfigService } from "../Source/AgentSystem/Config/AgentConfigService.js";
-import type { AgentPresetActivationRuntime } from "../Source/AgentSystem/Presets/AgentPresetActivationRuntime.js";
-import { AgentPresetManager } from "../Source/AgentSystem/Presets/AgentPresetManager.js";
-import { resolvePresetsConfig as resolvePresetsConfigValue } from "../Source/AgentSystem/AgentDefaults.js";
 import type { AgentSessionStore } from "../Source/AgentSystem/Session/AgentSessionStore.js";
 import type {
   AgentSelfServicePort,
@@ -20,8 +17,6 @@ export interface SeneraSelfServicePortInput {
   readonly workspaceRoot: string;
   readonly configSnapshot: () => AgentSystemConfig;
   readonly configService: AgentConfigService;
-  readonly presetActivation: AgentPresetActivationRuntime;
-  readonly resolvePresetsConfig: typeof resolvePresetsConfigValue;
   /** Active configuration file path, exposed by `senera config env-path`. */
   readonly configPath?: string;
   /** Session store for `senera sessions list`. */
@@ -34,11 +29,8 @@ export interface SeneraSelfServicePortInput {
   readonly skillSources?: readonly AgentSelfSkillSource[];
 }
 
-/** Builds the self-service port from the live host services. Preset managers
- * are created per invocation so preset reads always observe the latest
- * configuration and repository state. The sessions/status/logs segments are
- * optional: when a host does not bind them, the corresponding commands fail
- * deterministically instead of approximating. */
+/** Builds the self-service port from the live host services. Optional service
+ * segments fail deterministically when a host does not bind them. */
 export function createSeneraSelfServicePort(input: SeneraSelfServicePortInput): AgentSelfServicePort {
   return {
     workspaceRoot: input.workspaceRoot,
@@ -48,14 +40,6 @@ export function createSeneraSelfServicePort(input: SeneraSelfServicePortInput): 
       replace: (replaceInput) => input.configService.replaceConfig(replaceInput),
       history: () => input.configService.history(),
       readRevision: (revision) => input.configService.readRevision(revision),
-    },
-    presets: {
-      manager: () =>
-        new AgentPresetManager({
-          workspaceRoot: input.workspaceRoot,
-          config: input.resolvePresetsConfig(input.configSnapshot()),
-          activation: input.presetActivation,
-        }),
     },
     sessions: input.sessionStore ? createSessionsPort(input.sessionStore) : undefined,
     status: {

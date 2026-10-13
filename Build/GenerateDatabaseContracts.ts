@@ -6,6 +6,7 @@ import { synchronizeGeneratedFile } from "./GeneratedTextFile.js";
 import { errorMessage } from "../Source/AgentSystem/Core/AgentErrors.js";
 import { sha256Hex } from "../Source/AgentSystem/Core/AgentHash.js";
 import { toPosixRelative, walkFiles } from "../Scripts/Support/FileWalk.js";
+import { loadAgentSqliteVec } from "../Source/AgentSystem/Database/AgentSqliteVecExtension.js";
 
 interface ContractManifest {
   id?: unknown;
@@ -62,6 +63,7 @@ function synchronizeContract(manifestPath: string, verifyOnly: boolean): void {
   const legacySnapshots = readLegacySnapshots(manifest, manifestPath);
   const database = new Database(":memory:");
   try {
+    loadAgentSqliteVec(database);
     for (const [index, version] of versions.entries()) {
       const expectedVersion = index + 1;
       if (version.version !== expectedVersion) {
@@ -139,6 +141,7 @@ function synchronizeLegacySnapshot(directory: string, legacy: LegacySnapshot, ve
   const snapshotPath = resolveResource(directory, legacy.snapshot, `legacy snapshot ${id} snapshot`);
   const database = new Database(":memory:");
   try {
+    loadAgentSqliteVec(database);
     const definition = fs.readFileSync(definitionPath, "utf8");
     database.exec(definition);
     const snapshot = snapshotAgentSqliteSchema(database);

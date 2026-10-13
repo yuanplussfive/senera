@@ -82,7 +82,7 @@ test("atomically recreates a missing session while replaying the last message ex
 test("keeps history failure in the projector and refreshes the catalog for a missing close", () => {
   registerTestSession("history");
   useStore.setState({
-    catalogSynced: { sessions: true, presets: false },
+    catalogSynced: { sessions: true },
     pendingCreatedSessionIds: {},
   });
   const send = vi.fn(() => true);

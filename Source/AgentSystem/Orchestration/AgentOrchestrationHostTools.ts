@@ -13,6 +13,7 @@ import {
   AgentChildRunMessageKinds,
   AgentChildRunProgressPhases,
   AgentChildRunStatuses,
+  isAgentChildRunResultTerminal,
   type AgentChildRunRecord,
   type AgentChildRunProgressProjection,
 } from "./AgentChildRunTypes.js";
@@ -23,7 +24,9 @@ const RunIdSchema = NonEmptyString.describe("Child-run ID returned by AgentSpawn
 const ToolNamesSchema = z.array(NonEmptyString).min(1);
 const AgentSpawnResourceSchema = z
   .object({
-    capability: NonEmptyString.describe("Registered resource capability id."),
+    capability: NonEmptyString.describe(
+      "Registered resource capability ID. This is not a tool permission or authorization scope.",
+    ),
     value: z.unknown().describe("Capability-specific resource value, usually a workspace path."),
     intent: NonEmptyString.optional().describe("Capability-defined access intent, such as read or replace."),
     parameters: z.record(z.string(), z.unknown()).optional().describe("Capability-specific parameters."),
@@ -63,7 +66,7 @@ export const AgentSpawnArgumentsSchema = z
       .min(1)
       .optional()
       .describe(
-        "Capability-level resources reserved for this assignment. Declare files or directories when the child may modify them; omit only when the scope is genuinely unknown.",
+        "Capability-level resources reserved for this assignment. Choose capability IDs from the host-provided list; tool permissions are not resource capabilities. Declare files or directories when the child may modify them; omit only when the scope is genuinely unknown.",
       ),
   })
   .strict();
@@ -206,7 +209,7 @@ export function createAgentOrchestrationHostHandlers(runtime: AgentOrchestration
       const parent = requireRunContext(context.sessionId, context.requestId);
       const runs = runtime.delegation
         .list(parent.sessionId)
-        .filter((run) => input.includeCompleted || !isTerminalChildRunStatus(run.status));
+        .filter((run) => input.includeCompleted || !isAgentChildRunResultTerminal(run.status));
       return toolProcessSuccessResult({
         runs: runs.map((run) => projectAgentChildRunView(run, run.id)),
       });
@@ -221,9 +224,9 @@ export function createAgentOrchestrationHostHandlers(runtime: AgentOrchestration
           : await runtime.delegation.waitAny(input.targets, parent.sessionId, input.timeoutMs, context.signal);
       const projectedRuns = input.targets.map((target, index) => {
         const run = result.runs[index];
-        if (!run || !isTerminalChildRunStatus(run.status)) return projectAgentChildRunView(run, target);
-        const consumed = runtime.delegation.markResultConsumed(run.id, parent.sessionId);
-        return projectAgentChildRunView(consumed ?? run, target);
+        if (!run || !isAgentChildRunResultTerminal(run.status)) return projectAgentChildRunView(run, target);
+        const delivered = runtime.delegation.markParentResultDelivered(run.id, parent.sessionId);
+        return projectAgentChildRunView(delivered ?? run, target);
       });
       return toolProcessSuccessResult({
         runs: projectedRuns,
@@ -355,18 +358,25 @@ export interface AgentChildRunPublicView {
   readonly workItemId?: string;
   readonly taskDigest?: string;
   readonly resources?: {
-    readonly coverage: "declared" | "unscoped";
+    readonly coverage: "declared" | "unscoped" | "unknown";
     readonly claims: readonly {
       readonly domainId: string;
       readonly identity: string;
       readonly access: "shared" | "exclusive";
     }[];
   };
-  readonly consumption?: { readonly result: boolean; readonly parentWake: boolean };
+  readonly delivery?: { readonly parentResultDelivered: boolean };
 }
 
 export function projectAgentChildRunView(run: AgentChildRunRecord | undefined, runId: string): AgentChildRunPublicView {
-  if (!run) return { runId, state: "not_found" };
+  if (!run) {
+    return {
+      runId,
+      state: "not_found",
+      resources: { coverage: "unknown", claims: [] },
+      delivery: { parentResultDelivered: false },
+    };
+  }
   const supervisorRequest =
     run.status === AgentChildRunStatuses.AwaitingSupervisor
       ? [...run.messages]
@@ -388,10 +398,7 @@ export function projectAgentChildRunView(run: AgentChildRunRecord | undefined, r
       coverage: run.executionContract.resourceCoverage ?? "unscoped",
       claims: run.executionContract.resourceClaims ?? [],
     },
-    consumption: {
-      result: run.resultConsumedAt !== undefined,
-      parentWake: run.parentWakeConsumed === true,
-    },
+    delivery: { parentResultDelivered: run.parentResultDeliveredAt !== undefined },
     ...(run.joinGroup ? { joinGroup: run.joinGroup } : {}),
     ...(run.finalAnswer !== undefined ? { result: { content: run.finalAnswer } } : {}),
     ...(run.error !== undefined ? { error: run.error } : {}),
@@ -401,7 +408,7 @@ export function projectAgentChildRunView(run: AgentChildRunRecord | undefined, r
 }
 
 function projectAgentChildRunProgress(run: AgentChildRunRecord): AgentChildRunProgressProjection | undefined {
-  if (isTerminalChildRunStatus(run.status)) return undefined;
+  if (isAgentChildRunResultTerminal(run.status)) return undefined;
   if (!run.snapshot && !run.checkpoint) return undefined;
 
   const snapshot = run.snapshot;
@@ -415,24 +422,6 @@ function projectAgentChildRunProgress(run: AgentChildRunRecord): AgentChildRunPr
     checkpointAvailable: run.checkpoint !== undefined,
     artifactCount: snapshot?.artifactUris.length ?? 0,
   };
-}
-
-function isTerminalChildRunStatus(status: AgentChildRunRecord["status"]): boolean {
-  switch (status) {
-    case AgentChildRunStatuses.Completed:
-    case AgentChildRunStatuses.PartialCompleted:
-    case AgentChildRunStatuses.Interrupted:
-    case AgentChildRunStatuses.TimedOut:
-    case AgentChildRunStatuses.Failed:
-    case AgentChildRunStatuses.Cancelled:
-      return true;
-    case AgentChildRunStatuses.Queued:
-    case AgentChildRunStatuses.Running:
-    case AgentChildRunStatuses.WrappingUp:
-    case AgentChildRunStatuses.Cancelling:
-    case AgentChildRunStatuses.AwaitingSupervisor:
-      return false;
-  }
 }
 
 function readAgentChildRunProgressPhase(
@@ -508,6 +497,16 @@ function createDelegationContext(
   return {
     parentSessionId: parent.sessionId,
     parentRequestId: parent.requestId,
+    ...(context.step !== undefined && context.modelMessageIndex !== undefined
+      ? {
+          parentInvocation: {
+            agentStep: context.step,
+            modelMessageIndex: context.modelMessageIndex,
+            ...(context.modelContentIndex === undefined ? {} : { modelContentIndex: context.modelContentIndex }),
+            ...(context.toolCallId ? { toolCallId: context.toolCallId } : {}),
+          },
+        }
+      : {}),
     parentModelProviderId: context.modelProviderId,
     parentThinkingLevel: context.thinkingLevel,
     ...(parentToolBatch ? { parentToolBatch } : {}),

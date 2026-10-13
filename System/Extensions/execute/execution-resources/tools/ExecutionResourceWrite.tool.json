@@ -1,0 +1,77 @@
+{
+  "name": "ExecutionResourceWrite",
+  "loading": "Bootstrap",
+  "presentation": {
+    "category": "execution-write",
+    "icon": "terminal",
+    "activity": {
+      "action": { "zh-CN": "写入", "en-US": "Write" },
+      "argumentPath": "/input",
+      "detailPaths": ["/resourceId"]
+    }
+  },
+  "description": "向后台执行资源 stdin 写入文本并处理流背压。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "resourceId": {
+        "type": "string"
+      },
+      "input": {
+        "type": "string"
+      },
+      "appendNewline": {
+        "type": "boolean"
+      }
+    },
+    "required": ["resourceId", "input"],
+    "additionalProperties": false,
+    "definitions": {}
+  },
+  "permissions": ["process:shell"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "SelfManaged"
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "execution",
+      "Title": "Execution",
+      "Description": "Shell commands, processes, terminals, builds, tests, and other executable workloads."
+    }
+  ],
+  "search": {
+    "Summary": "向后台执行资源 stdin 写入文本并处理流背压。",
+    "Capabilities": [
+      {
+        "Id": "execution.resource-write",
+        "Title": "Write to execution resource",
+        "Description": "向后台交互式进程的标准输入写入文本，并遵守流背压。",
+        "Facets": {
+          "Actions": ["write", "answer", "send-input"],
+          "Targets": ["execution-resource", "stdin"],
+          "Inputs": ["text"]
+        },
+        "Aliases": ["向后台终端输入", "向终端发送输入", "写入后台进程"]
+      }
+    ],
+    "UseCases": ["交互式命令正在等待输入，或需要向后台终端发送下一段文本时。"],
+    "Tags": ["后台进程", "交互输入", "stdin"]
+  },
+  "evidenceCapabilities": [],
+  "artifacts": {
+    "Summary": {
+      "Template": "{{ toolName }} resource {{ result.resourceId }}: {{ result.state }}",
+      "ArtifactTemplate": "- resourceId: {{ result.resourceId }}\n  state: {{ result.state }}\n  cursor: {{ result.cursor }}{% if result.exitCode != blank %}\n  exitCode: {{ result.exitCode }}{% endif %}{% if result.signal %}\n  signal: {{ result.signal }}{% endif %}{% if result.historyTruncated %}\n  outputHistoryTruncated: true{% endif %}{% for update in result.updates %}{% if update.kind == 'output' %}\n\n[{{ update.stream }} cursor={{ update.cursor }}]\n{{ update.text }}{% elsif update.kind == 'state' %}\n\n[state cursor={{ update.cursor }}] {{ update.state }}{% if update.reason %}: {{ update.reason }}{% endif %}{% endif %}{% endfor %}"
+    }
+  }
+}

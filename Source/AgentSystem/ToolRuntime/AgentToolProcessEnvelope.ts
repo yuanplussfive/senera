@@ -3,6 +3,9 @@ import type {
   AgentToolArtifactPayload,
   AgentToolProcessError,
   AgentToolProcessResponse,
+  AgentWorkspaceMutationReceipt,
+  AgentWorkspaceObservationLeaseSignal,
+  ToolWorkspaceCaptureResult,
 } from "../Types/ToolRuntimeTypes.js";
 import type { AgentToolProcessRunResult } from "./AgentToolProcessTypes.js";
 import { agentJsonPathToPointer } from "../Diagnostics/AgentJsonPointer.js";
@@ -86,7 +89,13 @@ export function createToolProcessFailureResponse(error: AgentToolProcessError): 
 
 export function toolProcessSuccessResult(
   result: unknown,
-  options: { readonly artifactPayload?: AgentToolArtifactPayload } = {},
+  options: {
+    readonly artifactPayload?: AgentToolArtifactPayload;
+    readonly validationResult?: unknown;
+    readonly workspaceMutationReceipt?: AgentWorkspaceMutationReceipt;
+    readonly workspaceCapture?: ToolWorkspaceCaptureResult;
+    readonly workspaceObservation?: AgentWorkspaceObservationLeaseSignal;
+  } = {},
 ): AgentToolProcessRunResult {
   return {
     response: createToolProcessSuccessResponse(result),
@@ -95,6 +104,10 @@ export function toolProcessSuccessResult(
     exitCode: null,
     signal: null,
     ...(options.artifactPayload ? { artifactPayload: options.artifactPayload } : {}),
+    ...(options.validationResult === undefined ? {} : { validationResult: options.validationResult }),
+    ...(options.workspaceMutationReceipt ? { workspaceMutationReceipt: options.workspaceMutationReceipt } : {}),
+    ...(options.workspaceCapture ? { workspaceCapture: options.workspaceCapture } : {}),
+    ...(options.workspaceObservation ? { workspaceObservation: options.workspaceObservation } : {}),
   };
 }
 

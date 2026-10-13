@@ -7,6 +7,7 @@ import {
   AgentMcpServerRuntimes,
   type AgentMcpStdioRuntimeEndpoint,
 } from "../../../Source/AgentSystem/McpPackages/AgentMcpPackageTypes.js";
+import { createAgentMcpExecutionProfile } from "../../../Source/AgentSystem/Mcp/AgentMcpExecutionProfile.js";
 
 describe("MCP declared Node runtime", () => {
   test("uses the embedded Electron executable and enables Node mode for local launches", () => {
@@ -40,6 +41,30 @@ describe("MCP declared Node runtime", () => {
       args: ["server.mjs"],
       env: { MCP_SETTING: "value" },
     });
+  });
+
+  test("adds the declared package root to the sandbox without a package-specific route", () => {
+    const profile = createAgentMcpExecutionProfile({
+      backend: "sandbox",
+      network: "default",
+      workspaceMount: "readonly",
+      packageRoot: "C:/senera/McpServers/imagen",
+      packageName: "imagen",
+    });
+
+    expect(profile.sandbox?.rootfsCopies).toHaveLength(1);
+    expect(profile.sandbox?.rootfsCopies?.[0].guestPath).toBe("/opt/senera/mcp-packages/imagen");
+  });
+
+  test("rejects an unidentifiable sandbox package root", () => {
+    expect(() =>
+      createAgentMcpExecutionProfile({
+        backend: "sandbox",
+        network: "default",
+        workspaceMount: "readonly",
+        packageRoot: "C:/senera/McpServers/unknown",
+      }),
+    ).toThrow("requires the package name");
   });
 });
 

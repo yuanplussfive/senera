@@ -4,25 +4,28 @@ import {
   lazy,
   memo,
   Suspense,
+  useEffect,
   useState,
   type AnchorHTMLAttributes,
   type ComponentPropsWithoutRef,
+  type CSSProperties,
   type ImgHTMLAttributes,
   type MouseEvent,
   type ReactElement,
   type ReactNode,
   type TableHTMLAttributes,
 } from "react";
-import { Check, Copy, ExternalLink, Maximize2 } from "lucide-react";
 import Markdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { toast } from "sonner";
 import { cn } from "../../lib/util";
 import { buildResourceContentUrl } from "../../api/uploadClient";
 import { parseResourceId } from "../../api/resourceUri";
+import { downloadUrl } from "../../lib/download";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { MotionIconSwap } from "../motion";
 import { ImagePreviewDialog } from "../media/ImagePreviewDialog";
-import { Spinner, Tooltip, useClipboardCopy } from "../ui";
+import { AppIcon, IconButton, Spinner, Tooltip, useClipboardCopy } from "../ui";
 import { CollapsibleCodeBlock } from "./CollapsibleCodeBlock";
 import { type CodeArtifact, readCodeArtifact } from "./CodeArtifactModel";
 import { MarkdownCitationLink } from "./MarkdownCitationLink";
@@ -42,6 +45,7 @@ export interface MarkdownRendererProps {
   children: string;
   className?: string;
   contentClassName?: string;
+  contentStyle?: CSSProperties;
   compact?: boolean;
   lightweightCode?: boolean;
   externalLinkPresentation?: "text" | "citation";
@@ -57,6 +61,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   children,
   className,
   contentClassName,
+  contentStyle,
   compact = false,
   lightweightCode = false,
   externalLinkPresentation = "text",
@@ -65,19 +70,21 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
 
   return (
     <div className={className}>
-      <Markdown
-        className={rendererClassName}
-        remarkPlugins={[remarkGfm]}
-        urlTransform={transformMarkdownUrl}
-        components={{
-          a: (props) => <MarkdownLink {...props} externalLinkPresentation={externalLinkPresentation} />,
-          img: MarkdownImage,
-          pre: lightweightCode ? LightweightCodeBlock : CodeBlock,
-          table: MarkdownTable,
-        }}
-      >
-        {children}
-      </Markdown>
+      <div style={contentStyle}>
+        <Markdown
+          className={rendererClassName}
+          remarkPlugins={[remarkGfm]}
+          urlTransform={transformMarkdownUrl}
+          components={{
+            a: (props) => <MarkdownLink {...props} externalLinkPresentation={externalLinkPresentation} />,
+            img: MarkdownImage,
+            pre: lightweightCode ? LightweightCodeBlock : CodeBlock,
+            table: MarkdownTable,
+          }}
+        >
+          {children}
+        </Markdown>
+      </div>
     </div>
   );
 });
@@ -151,7 +158,9 @@ function MarkdownLink({
       rel={external ? "noreferrer noopener" : props.rel}
     >
       {children}
-      {external ? <ExternalLink className="markdown-renderer__link-icon" aria-hidden="true" /> : null}
+      {external ? (
+        <AppIcon icon="external-link" size={14} className="markdown-renderer__link-icon" aria-hidden="true" />
+      ) : null}
     </a>
   );
 }
@@ -200,7 +209,16 @@ function MarkdownImagePreview({
   ...props
 }: ImgHTMLAttributes<HTMLImageElement> & { source: string }): JSX.Element {
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [imageState, setImageState] = useState<"loading" | "ready" | "error">(source ? "loading" : "error");
   const imageLabel = alt?.trim() || frontendMessage("markdown.imagePreview");
+
+  useEffect(() => {
+    setImageState(source ? "loading" : "error");
+  }, [source]);
+
+  if (!source) {
+    return <MarkdownImagePlaceholder label={imageLabel} />;
+  }
 
   return (
     <>
@@ -214,13 +232,18 @@ function MarkdownImagePreview({
           {...props}
           src={source}
           alt={alt ?? ""}
-          className={cn("markdown-renderer__image", className)}
+          className={cn("markdown-renderer__image", imageState !== "ready" && "sr-only", className)}
           loading="lazy"
           decoding="async"
           fetchPriority="low"
+          onLoad={() => setImageState("ready")}
+          onError={() => setImageState("error")}
         />
+        {imageState !== "ready" ? (
+          <MarkdownImagePlaceholder label={imageState === "error" ? imageLabel : frontendMessage("ui.loading")} />
+        ) : null}
       </button>
-      {previewOpen && source ? (
+      {previewOpen ? (
         <ImagePreviewDialog
           alt={imageLabel}
           closeLabel={frontendMessage("ui.close")}
@@ -233,11 +256,41 @@ function MarkdownImagePreview({
           open={previewOpen}
           source={source}
           title={frontendMessage("chat.attachment.imagePreview", { name: imageLabel })}
+          headerActions={
+            <IconButton
+              label={frontendMessage("chat.attachment.downloadImage")}
+              tooltip={frontendMessage("chat.attachment.downloadImage")}
+              tooltipSide="bottom"
+              size="md"
+              className="text-content-secondary hover:bg-surface-hover hover:text-content-primary"
+              onClick={() => {
+                void downloadUrl(source, readImageFileName(imageLabel, source)).catch(() => {
+                  toast.error(frontendMessage("chat.attachment.downloadFailed"));
+                });
+              }}
+            >
+              <AppIcon icon="download" size={16} />
+            </IconButton>
+          }
           onOpenChange={setPreviewOpen}
         />
       ) : null}
     </>
   );
+}
+
+function MarkdownImagePlaceholder({ label }: { label: string }): JSX.Element {
+  return (
+    <span className="flex min-h-20 min-w-32 items-center justify-center gap-2 px-4 py-6 text-[12px] text-content-muted">
+      <AppIcon icon="image" size={16} aria-hidden="true" />
+      <span className="max-w-56 truncate">{label}</span>
+    </span>
+  );
+}
+
+function readImageFileName(label: string, source: string): string {
+  const candidate = label.trim() || source.split(/[?#]/u, 1)[0].split(/[\\/]/u).pop() || "image";
+  return /\.[a-z0-9]{2,5}$/iu.test(candidate) ? candidate : `${candidate}.png`;
 }
 
 function transformMarkdownUrl(value: string): string {
@@ -356,7 +409,7 @@ function CodeBlockHeader({
               className="markdown-renderer__code-iconbtn"
               aria-label={frontendMessage("code.openViewer")}
             >
-              <Maximize2 className="h-3.5 w-3.5" />
+              <AppIcon icon="maximize" size={14} />
             </button>
           </Tooltip>
         ) : null}
@@ -372,7 +425,11 @@ function CodeBlockHeader({
             aria-label={frontendMessage("code.copyLanguage", { language })}
           >
             <MotionIconSwap stateKey={copied ? "copied" : "copy"}>
-              {copied ? <Check className="h-3.5 w-3.5 text-moss-500" /> : <Copy className="h-3.5 w-3.5" />}
+              {copied ? (
+                <AppIcon icon="checkmark" size={14} className="text-moss-500" />
+              ) : (
+                <AppIcon icon="copy" size={14} />
+              )}
             </MotionIconSwap>
           </button>
         </Tooltip>

@@ -18,6 +18,7 @@ import {
   createAgentToolAccessGrant,
   normalizeAgentToolNames,
   type AgentToolAccessGrant,
+  type AgentMcpServiceGrant,
 } from "./ToolRuntime/AgentToolAccessGrant.js";
 
 export type AgentRootCommandToolAccess = RootCommandManifest["ToolAccess"];
@@ -64,6 +65,7 @@ export function buildAgentRootCommand(options: {
   registeredTools: readonly Pick<RegisteredTool, "name" | "handler">[];
   policy: RootCommandManifest;
   allowedToolNames?: readonly string[];
+  registeredMcpServices?: readonly AgentMcpServiceGrant[];
 }): AgentRootCommand {
   if (options.policy.Action !== options.decision.action) {
     throw new AgentLocalizedError("rootCommand.policyActionMismatch", {
@@ -96,6 +98,10 @@ export function buildAgentRootCommand(options: {
     authorizedToolNames,
     exposedToolNames,
     preferredToolNames,
+    ...(options.allowedToolNames === undefined &&
+    options.policy.AllowedTools.some((selector) => selector.Source === "Registered")
+      ? { authorizedMcpServices: options.registeredMcpServices }
+      : {}),
   });
 
   return {

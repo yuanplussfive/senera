@@ -15,9 +15,20 @@ import type { SeneraExecutionRuntimeCapabilities } from "../Execution/SeneraExec
 import type { AgentToolResourceCapabilityRegistry } from "../ToolRuntime/AgentToolResourceCapabilityRegistry.js";
 import { inspectAgentToolResourceAccess } from "../ToolRuntime/AgentToolResourceCapabilities.js";
 import { isAgentToolAvailableForInteraction } from "../ToolRuntime/AgentToolInteractionAvailability.js";
+import {
+  isAgentToolDynamicallyDiscoverable,
+  isAgentToolSupportedByPlanningMode,
+} from "../ToolRuntime/AgentToolInvocationRouting.js";
+import type { AgentModelToolPlanningMode } from "../ModelEndpoints/AgentModelEndpointContract.js";
+import { AgentBrowserMaximumUrlLength } from "../Browser/AgentBrowserConfiguration.js";
+import { AgentBrowserNetworkPermissionId, inspectAgentBrowserTarget } from "../Browser/AgentBrowserUrlPolicy.js";
+import { AgentExecutionApprovalModes } from "../Safety/AgentExecutionApprovalMode.js";
+import { AgentWebUrlPolicyError } from "../Web/AgentWebUrlPolicy.js";
+import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
 
 export interface AgentPiToolPermissionHookOptions {
   registry: AgentExtensionRegistry;
+  toolPlanningMode: AgentModelToolPlanningMode;
   permissionGate?: AgentToolPermissionGate;
   executionCapabilities: () => SeneraExecutionRuntimeCapabilities;
   resourceCapabilities: AgentToolResourceCapabilityRegistry;
@@ -35,22 +46,48 @@ export class AgentPiToolPermissionHook {
     event: AgentPiToolCallHookEvent,
     options: { readonly requireExposure?: boolean } = {},
   ): Promise<AgentPiToolCallHookResult | undefined> {
+    try {
+      const result = await this.authorizeCore(context, event, options);
+      if (result?.block) context.turnState?.skipWorkspaceChangeCall(event.toolCallId);
+      return result;
+    } catch (error) {
+      context.turnState?.skipWorkspaceChangeCall(event.toolCallId);
+      throw error;
+    }
+  }
+
+  private async authorizeCore(
+    context: AgentPiToolProjectionContext,
+    event: AgentPiToolCallHookEvent,
+    options: { readonly requireExposure?: boolean },
+  ): Promise<AgentPiToolCallHookResult | undefined> {
     const toolAccessGrant = context.toolAccessGrant;
     if (!toolAccessGrant) return { block: true, reason: agentErrorMessage("toolAccess.missingGrant") };
-    if (!isAgentToolAuthorized(toolAccessGrant, event.toolName)) {
-      return {
-        block: true,
-        reason: agentErrorMessage("tool.notRegisteredOrAllowed", { toolName: event.toolName }),
-      };
-    }
-    if (options.requireExposure !== false && context.toolExposure && !context.toolExposure.exposes(event.toolName)) {
-      return {
-        block: true,
-        reason: agentErrorMessage("tool.notRegisteredOrAllowed", { toolName: event.toolName }),
-      };
-    }
     const tool = this.options.registry.getTool(event.toolName);
-    if (tool && !isAgentToolAvailableForInteraction(tool, context.interaction)) {
+    if (!tool || !isAgentToolAuthorized(toolAccessGrant, tool)) {
+      return {
+        block: true,
+        reason: agentErrorMessage("tool.notRegisteredOrAllowed", { toolName: event.toolName }),
+      };
+    }
+    if (!isAgentToolSupportedByPlanningMode(tool, this.options.toolPlanningMode)) {
+      return {
+        block: true,
+        reason: agentErrorMessage("tool.planningModeUnavailable", { toolName: event.toolName }),
+      };
+    }
+    if (!isAgentToolAvailableForInteraction(tool, context.interaction)) {
+      return {
+        block: true,
+        reason: agentErrorMessage("tool.notRegisteredOrAllowed", { toolName: event.toolName }),
+      };
+    }
+    if (
+      options.requireExposure !== false &&
+      isAgentToolDynamicallyDiscoverable(tool) &&
+      context.toolExposure &&
+      !context.toolExposure.exposes(event.toolName)
+    ) {
       return {
         block: true,
         reason: agentErrorMessage("tool.notRegisteredOrAllowed", { toolName: event.toolName }),
@@ -58,13 +95,11 @@ export class AgentPiToolPermissionHook {
     }
     let invocation;
     try {
-      invocation = tool
-        ? resolveAgentToolInvocation(
-            tool,
-            event.input,
-            projectSeneraProcessBackendsToToolTargets(this.options.executionCapabilities().processBackends),
-          )
-        : undefined;
+      invocation = resolveAgentToolInvocation(
+        tool,
+        event.input,
+        projectSeneraProcessBackendsToToolTargets(this.options.executionCapabilities().processBackends),
+      );
     } catch (error) {
       if (error instanceof AgentToolExecutionTargetError) {
         return { block: true, reason: error.message };
@@ -85,13 +120,12 @@ export class AgentPiToolPermissionHook {
     const requestId = context.requestId ?? context.turnState?.context.requestId ?? event.toolCallId;
     const step = context.step ?? context.turnState?.context.step ?? 1;
     try {
-      const resourceAccess = tool
-        ? await inspectAgentToolResourceAccess(
-            tool,
-            invocation?.arguments ?? event.input,
-            this.options.resourceCapabilities,
-          )
-        : undefined;
+      const browserTarget = await inspectBrowserToolTarget(tool, invocation.arguments, approvalMode);
+      const resourceAccess = await inspectAgentToolResourceAccess(
+        tool,
+        invocation.arguments,
+        this.options.resourceCapabilities,
+      );
       const decision = await this.options.permissionGate.authorize({
         approvalMode,
         sessionId,
@@ -100,11 +134,22 @@ export class AgentPiToolPermissionHook {
         batchId: context.turnState?.toolBatchId(event.toolCallId),
         step,
         toolName: event.toolName,
-        arguments: invocation?.arguments ?? event.input,
-        executionPlan: invocation?.executionPlan,
+        arguments: invocation.arguments,
+        ...(browserTarget?.requiresApproval
+          ? {
+              mandatoryApproval: {
+                scope: browserTarget.scope,
+                reason:
+                  browserTarget.kind === "local-file"
+                    ? "允许受控浏览器打开此本地文件，并加载其所在目录及子目录中的页面资源。"
+                    : `受控浏览器访问私有网络目标 ${browserTarget.url.host} 需要你的批准。`,
+              },
+            }
+          : {}),
+        executionPlan: invocation.executionPlan,
         resourceAccess,
         toolAccessGrant,
-        tool: tool ? projectAgentToolSafetyMetadata(tool) : undefined,
+        tool: projectAgentToolSafetyMetadata(tool),
         runtimeContext: {
           requestId,
           step,
@@ -123,6 +168,14 @@ export class AgentPiToolPermissionHook {
       if (decision?.resourceGrant) {
         context.turnState?.registerResourceAccessGrant(event.toolCallId, decision.resourceGrant);
       }
+      if (
+        browserTarget?.requiresApproval &&
+        approvalMode !== AgentExecutionApprovalModes.FullAccess &&
+        decision?.action === "allow" &&
+        context.turnState?.toolBatchId(event.toolCallId)
+      ) {
+        context.turnState.registerBrowserTargetAuthorization(event.toolCallId, { scope: browserTarget.scope });
+      }
       return undefined;
     } catch (error) {
       if (error instanceof AgentToolPermissionDeniedError) {
@@ -134,4 +187,38 @@ export class AgentPiToolPermissionHook {
       throw error;
     }
   }
+}
+
+async function inspectBrowserToolTarget(
+  tool: RegisteredTool,
+  arguments_: Readonly<Record<string, unknown>>,
+  approvalMode: NonNullable<AgentPiToolProjectionContext["approvalMode"]>,
+) {
+  if (
+    !(tool.search?.Capabilities ?? []).some(
+      (capability) => capability.Risk?.Permission === AgentBrowserNetworkPermissionId,
+    ) ||
+    typeof arguments_.url !== "string"
+  ) {
+    return undefined;
+  }
+
+  try {
+    return await inspectAgentBrowserTarget(arguments_.url, {
+      maxUrlLength: readBrowserUrlLimit(tool) ?? AgentBrowserMaximumUrlLength,
+      fullAccess: approvalMode === AgentExecutionApprovalModes.FullAccess,
+    });
+  } catch (error) {
+    if (error instanceof AgentWebUrlPolicyError) return undefined;
+    throw error;
+  }
+}
+
+function readBrowserUrlLimit(tool: RegisteredTool): number | undefined {
+  const properties = tool.contract?.arguments?.jsonSchema.properties;
+  if (!properties || typeof properties !== "object" || Array.isArray(properties)) return undefined;
+  const url = (properties as Record<string, unknown>).url;
+  if (!url || typeof url !== "object" || Array.isArray(url)) return undefined;
+  const maxLength = (url as Record<string, unknown>).maxLength;
+  return typeof maxLength === "number" && Number.isInteger(maxLength) && maxLength > 0 ? maxLength : undefined;
 }

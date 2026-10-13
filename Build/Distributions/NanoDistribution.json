@@ -65,7 +65,7 @@
     "scripts": ["dev", "dev.server", "dev.server.dry-run", "dev.frontend", "check.types", "check.frontend-types"],
     "dependencies": {
       "mode": "exclude",
-      "names": ["fast-glob"]
+      "names": ["tinyglobby"]
     },
     "devDependencies": {
       "mode": "include",

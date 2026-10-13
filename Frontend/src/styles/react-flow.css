@@ -74,7 +74,6 @@
 
 [data-continuity-graph-node][data-continuity-graph-kind="event"],
 [data-continuity-graph-node][data-continuity-graph-kind="time"],
-[data-continuity-graph-node][data-continuity-graph-kind="goal"],
 [data-continuity-graph-node][data-continuity-graph-kind="task"] {
   --continuity-graph-node-accent: rgb(var(--color-brick-500));
 }

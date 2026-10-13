@@ -161,10 +161,12 @@ export class AgentModelsDevCatalog {
     void this.refresh().catch((error) => this.onError?.(error));
   }
 
-  stop(): void {
-    if (!this.timer) return;
-    clearInterval(this.timer);
-    this.timer = undefined;
+  async stop(): Promise<void> {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = undefined;
+    }
+    await this.refreshOperation;
   }
 
   async snapshot(): Promise<AgentModelsDevCatalogStatus> {

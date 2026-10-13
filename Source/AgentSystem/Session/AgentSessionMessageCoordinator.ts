@@ -24,6 +24,7 @@ import type {
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentSession } from "./AgentSession.js";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
+import type { AgentExplicitActivationSet } from "../Activation/AgentActivationTypes.js";
 
 export interface AgentSessionMessageRequest {
   readonly sessionId: string;
@@ -35,6 +36,7 @@ export interface AgentSessionMessageRequest {
   readonly attachments?: AgentUploadAttachment[];
   readonly disposition?: AgentSessionMessageDisposition;
   readonly queueMode?: AgentSessionMessageQueueMode;
+  readonly activations?: AgentExplicitActivationSet;
   readonly onEvent?: AgentEventSink;
   readonly preparation?: AgentTurnPreparationSnapshot;
   readonly systemPromptLayer?: AgentSystemPromptLayer;
@@ -90,6 +92,9 @@ export class AgentSessionMessageCoordinator {
     let completion: Promise<void> | undefined;
     let kind: AgentSessionMessageAcceptanceKind = "missing";
     await this.options.ready();
+    if (request.queueMode && request.activations?.explicit.length) {
+      throw new Error("Explicit @ activations require a fresh turn and cannot be applied to a queued message.");
+    }
     let lookup = this.options.store.get(request.sessionId);
     let opened: ReturnType<AgentSessionStore["open"]> | undefined;
     if (lookup.kind === "missing" && request.disposition === AgentSessionMessageDispositions.CreateIfMissing) {
@@ -138,6 +143,7 @@ export class AgentSessionMessageCoordinator {
                 attachments: request.attachments,
                 metadata: request.metadata,
                 interaction: request.interaction,
+                activations: request.activations,
                 queueMode: request.queueMode,
                 onEvent: request.onEvent,
               });

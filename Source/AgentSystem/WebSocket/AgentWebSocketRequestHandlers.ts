@@ -2,7 +2,6 @@ export { AgentWebSocketSessionRequestHandlers } from "./AgentWebSocketSessionReq
 export { AgentWebSocketExecutionResourceRequestHandlers } from "./AgentWebSocketExecutionResourceRequestHandlers.js";
 export { AgentWebSocketConfigRequestHandlers } from "./AgentWebSocketConfigRequestHandlers.js";
 export {
-  AgentWebSocketPresetRequestHandlers,
   AgentWebSocketProfileRequestHandlers,
   AgentWebSocketToolSettingsRequestHandlers,
 } from "./AgentWebSocketSettingsRequestHandlers.js";

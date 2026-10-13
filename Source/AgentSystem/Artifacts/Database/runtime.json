@@ -1,0 +1,23 @@
+{
+  "formatVersion": 1,
+  "id": "workspace-observer",
+  "dataClass": "derived",
+  "versions": [
+    {
+      "version": 1,
+      "name": "workspace-observer-baseline",
+      "sql": "CREATE TABLE workspace_observer_files (\n  path_key TEXT PRIMARY KEY,\n  path TEXT NOT NULL,\n  kind TEXT NOT NULL CHECK(kind IN ('file', 'directory')),\n  size INTEGER NOT NULL,\n  mtime_ms REAL NOT NULL,\n  hash TEXT NOT NULL,\n  content_state TEXT NOT NULL CHECK(content_state IN ('captured', 'omitted')),\n  content_reason TEXT,\n  content_ref TEXT,\n  content_byte_length INTEGER,\n  line_count INTEGER,\n  CHECK(\n    (content_state = 'captured' AND content_reason IS NULL AND content_ref IS NOT NULL AND line_count IS NOT NULL)\n    OR\n    (content_state = 'omitted' AND content_ref IS NULL AND line_count IS NULL)\n  )\n) WITHOUT ROWID, STRICT;\n\nCREATE INDEX idx_workspace_observer_files_path\n  ON workspace_observer_files(path);\n",
+      "checksum": "92f671fa4d97a67cd1bf8260a13f032263a51b5eb26650e616ab9a248345f2e3",
+      "snapshot": "-- table: workspace_observer_files\ncreate table workspace_observer_files ( path_key text primary key , path text not null , kind text not null check ( kind in ( 'file' , 'directory' ) ) , size integer not null , mtime_ms real not null , hash text not null , content_state text not null check ( content_state in ( 'captured' , 'omitted' ) ) , content_reason text , content_ref text , content_byte_length integer , line_count integer , check ( ( content_state = 'captured' and content_reason is null and content_ref is not null and line_count is not null ) or ( content_state = 'omitted' and content_ref is null and line_count is null ) ) ) without rowid , strict;\n\n-- index: idx_workspace_observer_files_path\ncreate index idx_workspace_observer_files_path on workspace_observer_files ( path );\n",
+      "snapshotChecksum": "3c222de34b60616de9ffceda9716da8d0fb350daaceb7e72c61a3c6ea7ca331e"
+    },
+    {
+      "version": 2,
+      "name": "workspace-observer-scan-generation",
+      "sql": "ALTER TABLE workspace_observer_files\n  ADD COLUMN scan_generation TEXT NOT NULL DEFAULT '';\n\nCREATE INDEX idx_workspace_observer_files_scan_generation\n  ON workspace_observer_files(scan_generation);\n",
+      "checksum": "5ea73c8092ef232dd3ddbe70f6babda50851a355894cdf2b5edd413c49fe4b70",
+      "snapshot": "-- table: workspace_observer_files\ncreate table workspace_observer_files ( path_key text primary key , path text not null , kind text not null check ( kind in ( 'file' , 'directory' ) ) , size integer not null , mtime_ms real not null , hash text not null , content_state text not null check ( content_state in ( 'captured' , 'omitted' ) ) , content_reason text , content_ref text , content_byte_length integer , line_count integer , scan_generation text not null default '' , check ( ( content_state = 'captured' and content_reason is null and content_ref is not null and line_count is not null ) or ( content_state = 'omitted' and content_ref is null and line_count is null ) ) ) without rowid , strict;\n\n-- index: idx_workspace_observer_files_path\ncreate index idx_workspace_observer_files_path on workspace_observer_files ( path );\n\n-- index: idx_workspace_observer_files_scan_generation\ncreate index idx_workspace_observer_files_scan_generation on workspace_observer_files ( scan_generation );\n",
+      "snapshotChecksum": "9ae717c911b7cbb4a61e6c52792f13de6dca984899b76b27132618a81110a781"
+    }
+  ]
+}

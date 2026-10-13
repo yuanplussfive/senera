@@ -12,6 +12,36 @@ import { AgentMcpTaskDetachedError } from "../../../Source/AgentSystem/Mcp/Agent
 import { AgentInteractionInputRuntime } from "../../../Source/AgentSystem/Interaction/AgentInteractionInputRuntime.js";
 
 describe("MCP tool client pool", () => {
+  test("cancels one opening lease without interrupting another and never opens for an aborted request", async () => {
+    const live = fakeClient(false);
+    let finish!: (client: AgentMcpToolClient) => void;
+    let connectionSignal: AbortSignal | undefined;
+    const open = vi.fn((options: AgentMcpToolClientOptions) => {
+      connectionSignal = options.signal;
+      return new Promise<AgentMcpToolClient>((resolve) => {
+        finish = resolve;
+      });
+    });
+    const pool = new AgentMcpToolClientPool(open);
+    const shared = connection();
+    const controller = new AbortController();
+    const operation = vi.fn(async () => "cancelled");
+    const first = pool.withClient({ ...shared, signal: controller.signal }, operation);
+    const cancellation = expect(first).rejects.toThrow("Cancelled lease");
+    const second = pool.withClient(shared, async () => "active");
+    controller.abort(new Error("Cancelled lease"));
+    await cancellation;
+    expect(connectionSignal?.aborted).toBe(false);
+    finish(live.client);
+    await expect(second).resolves.toBe("active");
+    expect(operation).not.toHaveBeenCalled();
+    await expect(pool.withClient({ ...shared, signal: controller.signal }, operation)).rejects.toThrow(
+      "Cancelled lease",
+    );
+    expect(open).toHaveBeenCalledOnce();
+    await pool.close();
+  });
+
   test("replaces one stale client without recursive acquisition", async () => {
     const stale = fakeClient(true);
     const live = fakeClient(false);
@@ -51,6 +81,61 @@ describe("MCP tool client pool", () => {
     expect(open).toHaveBeenCalledOnce();
     await Promise.all([pool.close(), pool.close()]);
     expect(live.close).toHaveBeenCalledOnce();
+  });
+
+  test("evicts idle clients and opens the same endpoint on the next lease", async () => {
+    vi.useFakeTimers();
+    try {
+      let now = 0;
+      const first = fakeClient(false);
+      const second = fakeClient(false);
+      const open = vi.fn(async () => (open.mock.calls.length === 1 ? first.client : second.client));
+      const pool = new AgentMcpToolClientPool(open, {
+        policy: { idleTtlMs: 100, sweepIntervalMs: 50 },
+        clock: () => now,
+      });
+
+      await pool.withClient(connection(), async () => "first");
+      now = 100;
+      await vi.advanceTimersByTimeAsync(100);
+      expect(first.close).toHaveBeenCalledOnce();
+
+      await expect(pool.withClient(connection(), async () => "second")).resolves.toBe("second");
+      expect(open).toHaveBeenCalledTimes(2);
+      await pool.close();
+      expect(second.close).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("does not evict a client while a lease is active", async () => {
+    vi.useFakeTimers();
+    try {
+      let now = 0;
+      const client = fakeClient(false);
+      const pool = new AgentMcpToolClientPool(
+        vi.fn(async () => client.client),
+        {
+          policy: { idleTtlMs: 100, sweepIntervalMs: 50 },
+          clock: () => now,
+        },
+      );
+      let finish!: () => void;
+      const operation = pool.withClient(connection(), async () => new Promise<void>((resolve) => (finish = resolve)));
+
+      now = 1_000;
+      await vi.advanceTimersByTimeAsync(200);
+      expect(client.close).not.toHaveBeenCalled();
+      finish();
+      await operation;
+      now = 1_200;
+      await vi.advanceTimersByTimeAsync(100);
+      expect(client.close).toHaveBeenCalledOnce();
+      await pool.close();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("keeps a failed close entry for an explicit retry", async () => {

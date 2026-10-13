@@ -1,10 +1,10 @@
 import type { ApprovalDecision } from "./approvalEventTypes";
 import type {
-  PersonaPresetCard,
   ModelThinkingLevel,
   ProviderModelEndpointInput,
   UploadAttachmentData,
   UserProfileData,
+  ExplicitActivationSet,
 } from "./eventTypes";
 import type { ProviderModelConfigRequest } from "./providerModelCommandTypes";
 import type { InteractionInputAction, InteractionInputContent } from "./interactionInputEventTypes";
@@ -23,8 +23,10 @@ export type WsRequest =
       attachments?: UploadAttachmentData[];
       disposition?: "create_if_missing" | "require_existing";
       queueMode?: "steer" | "follow_up";
+      activations?: ExplicitActivationSet;
     }
   | { type: "session.close"; sessionId: string }
+  | { type: "session.close_many"; sessionIds: string[] }
   | { type: "session.cancel"; sessionId: string; requestId?: string }
   | { type: "session.truncate_from"; sessionId: string; requestId: string }
   | {
@@ -37,6 +39,18 @@ export type WsRequest =
       input: string;
       approvalMode: ExecutionApprovalMode;
       attachments?: UploadAttachmentData[];
+      activations?: ExplicitActivationSet;
+    }
+  | {
+      type: "session.retry";
+      sessionId: string;
+      failedRequestId: string;
+      requestId: string;
+      recoveryMode: "retry" | "continue";
+      modelProviderId?: string;
+      thinkingLevel?: ModelThinkingLevel;
+      approvalMode: ExecutionApprovalMode;
+      activations?: ExplicitActivationSet;
     }
   | { type: "session.fork"; sourceSessionId: string; sessionId: string; throughRequestId: string }
   | { type: "session.compact"; sessionId: string; customInstructions?: string }
@@ -45,26 +59,11 @@ export type WsRequest =
   | { type: "session.list" }
   | { type: "session.history"; sessionId: string; refresh?: boolean; initialWindow?: boolean }
   | { type: "session.rename"; sessionId: string; title: string }
-  | { type: "agenda.get" }
-  | {
-      type: "agenda.goal.command";
-      commandId: string;
-      goalId: string;
-      expectedRevision: number;
-      command:
-        | { operation: "commit" }
-        | { operation: "pause"; reason?: string }
-        | { operation: "resume"; nextReviewAt?: string }
-        | { operation: "cancel"; reason?: string }
-        | { operation: "reparent"; parentGoalId: string | null };
-    }
-  | { type: "world.get" }
-  | { type: "world.resident.wake"; requestId: string; reason: string; priority: number; payload?: unknown }
   | { type: "model.list" }
   | { type: "provider.models.fetch"; providerId: string; force?: boolean; endpoint?: ProviderModelEndpointInput }
   | { type: "config.get" }
   | { type: "workspace.get" }
-  | { type: "workspace.switch"; workspaceRoot: string }
+  | { type: "workspace.switch"; requestId: string; workspaceRoot: string }
   | { type: "systemTool.list" }
   | { type: "mcpServer.list" }
   | { type: "mcpServer.restart"; serverId: string }
@@ -93,10 +92,6 @@ export type WsRequest =
       config: Record<string, unknown>;
     }
   | ProviderModelConfigRequest
-  | { type: "preset.list" }
-  | { type: "preset.save"; requestId?: string; name: string; card: PersonaPresetCard; activate?: boolean }
-  | { type: "preset.delete"; requestId?: string; name: string }
-  | { type: "preset.set_active"; requestId?: string; name?: string | null }
   | { type: "profile.get" }
   | { type: "profile.update"; profile: Pick<UserProfileData, "name" | "avatarDataUrl"> }
   | { type: "approval.resolve"; approvalId: string; decision: ApprovalDecision; message?: string }

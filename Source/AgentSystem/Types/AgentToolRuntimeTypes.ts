@@ -1,7 +1,9 @@
-import type { AgentMcpRuntimeEndpoint } from "../McpPackages/AgentMcpPackageTypes.js";
+import type { AgentMcpDeclaredEndpoint } from "../McpPackages/AgentMcpPackageTypes.js";
+import type { AgentToolAvailability } from "../ToolRuntime/AgentToolAvailability.js";
 import type { AgentPromptContractView } from "../Prompt/AgentPromptContractTypes.js";
 import type { AgentExtensionOwner } from "./AgentExtensionRuntimeTypes.js";
-import type { AgentToolObservationProjectionManifest } from "./AgentToolObservationProjectionTypes.js";
+import type { AgentToolPerceptionDeclaration } from "./AgentToolPerceptionTypes.js";
+import type { AgentToolPresentation } from "./AgentToolPresentationTypes.js";
 import type { AgentInteractionSurface } from "../Interaction/AgentInteractionContext.js";
 import type {
   AgentToolDiscoverySource,
@@ -11,6 +13,7 @@ import type {
   ToolEvidenceCapabilityManifest,
   ToolExecutionManifest,
   ToolLoadingMode,
+  ToolPlanningMode,
   ToolResourceArgumentManifest,
   ToolRuntimeManifest,
   ToolSearchManifest,
@@ -24,7 +27,7 @@ export type RegisteredToolHandler =
     }
   | {
       kind: "McpTool";
-      server: AgentMcpRuntimeEndpoint;
+      server: AgentMcpDeclaredEndpoint;
       tool: string;
       readOnly: boolean;
       resources?: readonly ToolResourceArgumentManifest[];
@@ -37,16 +40,21 @@ export interface RegisteredToolContract {
 }
 
 export interface RegisteredTool {
+  availability?: AgentToolAvailability;
   owner: AgentExtensionOwner;
   name: string;
   loading: ToolLoadingMode;
+  /** Omitted means the tool's contract is portable across all planner protocols. */
+  planningModes?: readonly ToolPlanningMode[];
   descriptionFile?: string;
   contract?: RegisteredToolContract;
   permissions: string[];
   handler: RegisteredToolHandler;
   execution: ToolExecutionManifest;
   runtime: ToolRuntimeManifest;
-  observationProjection?: AgentToolObservationProjectionManifest;
+  perception?: AgentToolPerceptionDeclaration;
+  /** Declarative workflow UI metadata inherited from the owning System domain. */
+  presentation?: AgentToolPresentation;
   sources: readonly AgentToolDiscoverySource[];
   search?: ToolSearchManifest;
   childGrant: AgentToolChildGrantMode;

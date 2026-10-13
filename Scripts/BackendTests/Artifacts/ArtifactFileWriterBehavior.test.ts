@@ -43,6 +43,17 @@ describe("artifact file writer", () => {
     expect(JSON.parse(written)).toMatchObject({ truncated: true, originalBytes: expect.any(Number) });
   });
 
+  test("writes multi-megabyte Base64 assets without overflowing validation", async () => {
+    const workspace = createTemporaryDirectory("senera-artifact-base64");
+    const filePath = path.join(workspace, "assets", "image.bin");
+    const writer = new AgentArtifactFileWriter(workspace);
+    const encoded = Buffer.alloc(6 * 1024 * 1024, 0x41).toString("base64");
+
+    await writer.writeBase64(filePath, encoded);
+
+    expect(fs.statSync(filePath).size).toBe(6 * 1024 * 1024);
+  });
+
   test("atomically overwrites files without leaving temporary artifacts", async () => {
     const workspace = createTemporaryDirectory("senera-artifact-overwrite");
     const artifactDir = path.join(workspace, "artifacts");

@@ -11,45 +11,19 @@ import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import { AgentImageVisionModelClient } from "../Vision/AgentImageVisionModelClient.js";
 import { resolveAgentVisionProvider } from "../Vision/AgentVisionProviderResolver.js";
 import { defineSystemTool } from "./AgentSystemToolDefinition.js";
-import { StandardAgentToolObservationProjection } from "../ToolRuntime/AgentToolObservationProjectionPlan.js";
-import { resolveAgentSystemResource } from "./AgentSystemResource.js";
-import { AgentResourceUriSchema } from "../Resources/AgentResourceSchema.js";
+import { resolveAgentSystemLocalResource } from "./AgentSystemResource.js";
+import { AgentResourceSourceSchema, type AgentResourceSource } from "../Resources/AgentResourceSource.js";
 import { fetchWebResource } from "../Web/AgentWebHttpClient.js";
 import type { AgentHostToolContext } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
 
-const AgentImageSourceKinds = ["resource", "url"] as const;
-const AgentImageSourceKind = z.enum(AgentImageSourceKinds);
 const AgentImageAnalyzeTasks = ["describe", "ocr", "question"] as const;
 const AgentImageAnalyzeTask = z.enum(AgentImageAnalyzeTasks);
 const AgentImageAnalyzeMaximumImageCount = 32;
 
-const HttpImageUrlSchema = z
-  .string()
-  .trim()
-  .url()
-  .regex(/^https?:\/\/\S+$/u, "Expected a public HTTP(S) URL.");
-
 const ImageAnalyzeInput = z
   .object({
     images: z
-      .array(
-        z.union([
-          z
-            .object({
-              resourceUri: AgentResourceUriSchema.describe(
-                "Canonical Senera resource URI to analyze. When a Markdown image uses a local path, use the host-provided resource mapping and never invent a URI from its filename.",
-              ),
-            })
-            .strict(),
-          z
-            .object({
-              url: HttpImageUrlSchema.describe(
-                "Public HTTP(S) image URL. Preserve the URL exactly; Senera downloads it and sends the image as base64.",
-              ),
-            })
-            .strict(),
-        ]),
-      )
+      .array(AgentResourceSourceSchema)
       .min(1)
       .max(AgentImageAnalyzeMaximumImageCount)
       .describe("Images to analyze together, in the supplied order."),
@@ -80,12 +54,7 @@ const ImageAnalyzeOutput = z
       .array(
         z
           .object({
-            source: z
-              .object({
-                kind: AgentImageSourceKind,
-                uri: z.string().min(1),
-              })
-              .strict(),
+            source: AgentResourceSourceSchema,
             name: z.string(),
             mime: z.string(),
             size: z.number().int().nonnegative(),
@@ -390,9 +359,8 @@ export function createImageAnalyzeSystemTool(
       },
     },
     metadata: {
-      observation: StandardAgentToolObservationProjection,
       description:
-        "Analyze one or more canonical Senera image resources, screenshots, or unchanged public HTTP(S) image URLs together for visible evidence, OCR, or a specific question. Resolve local Markdown paths to a host-provided Senera resource before calling.",
+        "Analyze one or more workspace-relative or absolute local paths, canonical Senera resources, or public HTTP(S) image URLs together for visible evidence, OCR, or a specific question. Prefer an attachment's local_path when present; use its resource_uri as the stable fallback.",
       permissions: ["resources:read", "model:vision"],
       execution: { Targets: ["Local"], Network: "Allow", Workspace: "ReadOnly" },
       search: {
@@ -405,7 +373,7 @@ export function createImageAnalyzeSystemTool(
             Description: "分析图片内容、提取图片文字，或针对图片回答具体问题。",
             Facets: {
               Actions: ["describe", "ocr", "answer"],
-              Targets: ["image-resource", "public-image-url"],
+              Targets: ["workspace-image-path", "image-resource", "public-image-url"],
               Inputs: ["images", "task", "question"],
               Outputs: ["description", "ocr-text", "answer", "image-metadata"],
               Effects: ["none"],
@@ -414,7 +382,7 @@ export function createImageAnalyzeSystemTool(
             Risk: { SideEffect: "read-only", Permission: "resources-read-vision" },
           },
         ],
-        UseCases: ["用户提供截图、图片或公开图片链接，并希望了解画面、文字或具体细节。"],
+        UseCases: ["用户提供工作区图片、Senera 图片资源或公开图片链接，并希望了解画面、文字或具体细节。"],
         Avoid: ["没有图片证据时不要猜测画面内容；需要修改或生成图片时使用对应的图像工具。"],
       },
     },
@@ -445,7 +413,7 @@ export function createImageAnalyzeSystemTool(
 }
 
 interface ResolvedImageInput {
-  readonly source: { readonly kind: z.output<typeof AgentImageSourceKind>; readonly uri: string };
+  readonly source: AgentResourceSource;
   readonly name: string;
   readonly mime: string;
   readonly size: number;
@@ -482,13 +450,13 @@ async function resolveImageInput(
   context: AgentHostToolContext,
   configuration: z.output<typeof AgentImageAnalyzeExtensionConfigurationSchema>,
 ): Promise<ResolvedImageInput> {
-  if ("resourceUri" in source) {
-    const resource = await resolveAgentSystemResource(context, source.resourceUri);
+  if (source.kind !== "http_url") {
+    const resource = await resolveAgentSystemLocalResource(context, source);
     assertImageMime(resource.mime);
     assertImageSize(resource.size, configuration.input.maxImageBytes);
     const content = await fs.readFile(resource.filePath, { signal: context.signal });
     return {
-      source: { kind: "resource", uri: resource.resourceUri },
+      source: resource.source,
       name: resource.name,
       mime: resource.mime,
       size: resource.size,
@@ -521,7 +489,7 @@ async function resolveImageInput(
   assertImageMime(mime);
   const content = Buffer.from(response.body);
   return {
-    source: { kind: "url", uri: response.url },
+    source: { kind: "http_url", url: response.url },
     name: readImageName(response.url),
     mime,
     size: content.byteLength,

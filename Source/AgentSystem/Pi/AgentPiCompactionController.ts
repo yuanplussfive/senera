@@ -3,10 +3,15 @@ import type { SessionEntry, SessionManager } from "@earendil-works/pi-coding-age
 import {
   AgentPiArtifactIndexCustomType,
   createAgentPiArtifactIndex,
+  mergeAgentPiArtifactReferences,
   readAgentPiArtifactIndex,
   type AgentPiArtifactIndex,
 } from "./AgentPiArtifactIndex.js";
-import { agentPiDiagnosticContext, type AgentPiMutableSessionFrame } from "./AgentPiCodingAgentSessionFrame.js";
+import {
+  agentPiDiagnosticContext,
+  type AgentPiCodingAgentSessionFrame,
+  type AgentPiMutableSessionFrame,
+} from "./AgentPiCodingAgentSessionFrame.js";
 import {
   AgentPiCompactionToolIndexCustomType,
   createAgentPiCompactionToolCallIndex,
@@ -20,9 +25,8 @@ import {
   type AgentPiDiagnosticSink,
   type AgentPiDiagnosticSource,
 } from "./AgentPiDiagnostics.js";
-import type { AgentPiPlanningCompilerFactory } from "./AgentPiPlanningCompiler.js";
 import { createAgentPiContinuityLedger } from "./AgentPiContinuityLedger.js";
-import { AgentContinuityLedgerCustomType } from "../Continuity/AgentContinuityLedger.js";
+import { AgentContinuityLedgerCustomType, mergeAgentContinuityLedger } from "../Continuity/AgentContinuityLedger.js";
 import type { AgentContinuityLedger } from "../Continuity/AgentContinuityLedger.js";
 
 export interface AgentPiCompactionIndexes {
@@ -33,12 +37,11 @@ export interface AgentPiCompactionIndexes {
 }
 
 export interface AgentPiCompactionControllerOptions {
-  readonly planningCompilerFactory: AgentPiPlanningCompilerFactory;
   readonly diagnostics?: AgentPiDiagnosticSink;
   readonly continuityScope?: () => string | undefined;
 }
 
-/** Shared owner for Senera compaction summaries and persisted retrieval indexes. */
+/** Shared owner for Pi compaction side indexes and diagnostics. */
 export class AgentPiCompactionController {
   constructor(private readonly options: AgentPiCompactionControllerOptions) {}
 
@@ -64,25 +67,6 @@ export class AgentPiCompactionController {
     };
   }
 
-  compileSummary(
-    frame: AgentPiMutableSessionFrame,
-    input: Parameters<ReturnType<AgentPiPlanningCompilerFactory["create"]>["summarize"]>[0],
-    signal: AbortSignal,
-  ): Promise<string> {
-    const snapshot = frame.snapshot();
-    return this.options.planningCompilerFactory
-      .create({
-        usageSink: (call) => snapshot.turnState?.context.usageLedger.record(call),
-        timingSink: (timing) =>
-          this.emitDiagnostic(frame, "compaction.model_timing", timing, AgentPiDiagnosticSources.Provider),
-      })
-      .summarize(input, {
-        signal,
-        sessionId: snapshot.sessionId,
-        logicalCacheScope: snapshot.logicalCacheScope,
-      });
-  }
-
   appendIndexes(sessionManager: SessionManager, indexes: AgentPiCompactionIndexes): void {
     if (indexes.artifactIndex.artifacts.length > 0) {
       sessionManager.appendCustomEntry(AgentPiArtifactIndexCustomType, indexes.artifactIndex);
@@ -101,7 +85,15 @@ export class AgentPiCompactionController {
     details?: unknown,
     source: AgentPiDiagnosticSource = AgentPiDiagnosticSources.Session,
   ): Promise<void> {
-    const snapshot = frame.snapshot();
+    return this.emitDiagnosticSnapshot(frame.snapshot(), name, details, source);
+  }
+
+  async emitDiagnosticSnapshot(
+    snapshot: AgentPiCodingAgentSessionFrame,
+    name: string,
+    details?: unknown,
+    source: AgentPiDiagnosticSource = AgentPiDiagnosticSources.Session,
+  ): Promise<void> {
     try {
       await emitAgentPiDiagnostic(snapshot.diagnostics ?? this.options.diagnostics, {
         context: agentPiDiagnosticContext(snapshot),
@@ -113,4 +105,27 @@ export class AgentPiCompactionController {
       // Diagnostics are observational and must not change compaction behavior.
     }
   }
+}
+
+/**
+ * Composes independently-derived, non-overlapping branch ranges. Callers own
+ * the range boundary; this helper only performs typed, duplicate-safe merges.
+ */
+export function mergeAgentPiCompactionIndexes(indexes: readonly AgentPiCompactionIndexes[]): AgentPiCompactionIndexes {
+  const presentLedgers = indexes.flatMap((entry) => (entry.continuityLedger ? [entry.continuityLedger] : []));
+  const scopes = [...new Set(presentLedgers.map((ledger) => ledger.scope))];
+  if (scopes.length > 1) {
+    throw new Error(`Cannot merge Pi compaction indexes from different continuity scopes: ${scopes.join(", ")}.`);
+  }
+  const continuityLedger = presentLedgers.reduce<AgentContinuityLedger | undefined>(
+    (previous, current) => mergeAgentContinuityLedger(previous, current.scope, current.references, current.checkpoints),
+    undefined,
+  );
+  return {
+    artifactIndex: {
+      artifacts: mergeAgentPiArtifactReferences(indexes.flatMap((entry) => entry.artifactIndex.artifacts)),
+    },
+    toolCallIndex: mergeAgentPiCompactionToolCallIndexes(indexes.map((entry) => entry.toolCallIndex)),
+    ...(continuityLedger ? { continuityLedger } : {}),
+  };
 }

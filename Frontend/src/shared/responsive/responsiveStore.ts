@@ -84,6 +84,11 @@ export function createResponsiveModeStore(
   };
 }
 
+/** Whether the host can evaluate responsive media queries for optional DOM integrations. */
+export function hasResponsiveMediaSupport(): boolean {
+  return readBrowserMatchMedia() !== undefined;
+}
+
 function readBrowserMatchMedia(): Pick<Window, "matchMedia">["matchMedia"] | undefined {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
     return undefined;

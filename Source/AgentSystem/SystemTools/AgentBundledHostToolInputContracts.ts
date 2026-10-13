@@ -17,6 +17,7 @@ import {
   AgentScheduleManageArgumentsSchema,
 } from "../Orchestration/AgentOrchestrationHostTools.js";
 import { ShellCommandArgumentsSchema } from "../ToolRuntime/AgentShellCommandRuntime.js";
+import { WorkspaceApplyPatchArgumentsSchema } from "../ToolRuntime/AgentWorkspaceApplyPatchContract.js";
 import { WorkspaceRestoreCheckpointArgumentsSchema } from "../ToolRuntime/AgentWorkspaceCheckpointRuntime.js";
 
 export interface AgentBundledHostToolInputContract {
@@ -45,6 +46,10 @@ export const AgentBundledHostToolInputContracts = Object.freeze([
   {
     capability: AgentHostCapabilityNames.MemoryWrite,
     input: ContinuityWriteArgumentsSchema,
+  },
+  {
+    capability: AgentHostCapabilityNames.WorkspaceApplyPatch,
+    input: WorkspaceApplyPatchArgumentsSchema,
   },
   {
     capability: AgentHostCapabilityNames.WorkspaceRestoreCheckpoint,

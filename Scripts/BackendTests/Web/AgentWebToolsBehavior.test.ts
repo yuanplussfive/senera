@@ -10,7 +10,6 @@ import { DefaultAgentWebRuntime } from "../../../Source/AgentSystem/Web/AgentWeb
 import { parseDuckDuckGoResults } from "../../../Source/AgentSystem/Web/AgentWebSearchProviders.js";
 import { assertSafeWebUrl } from "../../../Source/AgentSystem/Web/AgentWebUrlPolicy.js";
 import { createWebSystemTools } from "../../../Source/AgentSystem/SystemTools/WebSystemTools.js";
-import { AgentToolObservationContextCompiler } from "../../../Source/AgentSystem/ToolRuntime/AgentToolObservationContextCompiler.js";
 
 const publicAddressResolver = async (): Promise<readonly string[]> => ["93.184.216.34"];
 
@@ -564,46 +563,20 @@ describe("web host tools", () => {
     ).toThrow(/Maximum operation timeout/u);
   });
 
-  test("keeps complete fetched content on the Artifact path instead of the normal observation", () => {
+  test("declares fetched page evidence and preserves the complete output schema", () => {
     const fetchTool = createWebSystemTools()[1]!;
-    const artifactUri = "senera://artifact/web-fetch";
     const completeContent = "full page content that belongs in the raw Artifact";
-    const observation = new AgentToolObservationContextCompiler({ model: "test-model" }).compile(
-      {
-        toolName: "WebFetch",
-        callId: "call-fetch",
-        batchId: "batch-fetch",
-        status: "success",
-        executionStatus: "completed",
-        outputAvailability: "complete",
-        outcome: undefined,
-        process: undefined,
-        error: undefined,
-        arguments: { url: "https://docs.example/guide" },
-        result: {
-          title: "Docs",
-          finalUrl: "https://docs.example/guide",
-          markdownSummary: "Relevant token paragraph.",
-          content: completeContent,
-          links: [],
-          citationId: "citation_docs",
-          transfer: { maxBytes: 5_000_000, receivedBytes: 40, truncated: false },
-        },
-        artifact: {
-          artifactUri,
-          summary: "Fetched Docs.",
-          structuredSummary: {
-            headline: "Docs",
-            summary: "Relevant token paragraph.",
-            retrieval: { artifactUri, refs: ["raw"] },
-          },
-          evidence: [],
-        },
-      },
-      fetchTool.metadata.observation,
-    );
+    const output = fetchTool.output.parse({
+      title: "Docs",
+      finalUrl: "https://docs.example/guide",
+      markdownSummary: "Relevant token paragraph.",
+      content: completeContent,
+      links: [],
+      citationId: "citation_docs",
+      transfer: { maxBytes: 5_000_000, receivedBytes: 40, truncated: false },
+    });
 
-    expect(observation.observation_view.artifact_uri).toBe(artifactUri);
-    expect(JSON.stringify(observation)).not.toContain(completeContent);
+    expect(output).toMatchObject({ content: completeContent });
+    expect(fetchTool.metadata.artifacts?.Evidence?.[0]?.PlannerMemory.ArtifactRefs).toContain("raw");
   });
 });

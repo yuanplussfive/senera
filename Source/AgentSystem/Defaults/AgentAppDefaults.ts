@@ -88,6 +88,10 @@ export function resolvePersistenceConfig(config: AgentSystemConfig): ResolvedAge
   return {
     ...defaults.Persistence,
     ...config.Persistence,
+    EventWriter: {
+      ...defaults.Persistence.EventWriter,
+      ...config.Persistence?.EventWriter,
+    },
   };
 }
 

@@ -1,10 +1,11 @@
-import { ChevronRight } from "lucide-react";
 import { useId, useState } from "react";
 import { cn } from "../../lib/util";
 import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
 import { MotionDisclosure } from "../../shared/motion";
+import { AppIcon } from "../../shared/ui";
 import type { ToolStageActivityPresentation } from "./toolStagePresentation";
 import { ToolActionIcon } from "./ToolActionIcon";
+import { ToolActivityLabel } from "./ToolActivityLabel";
 
 export function ToolActivityGroup({
   activity,
@@ -20,24 +21,21 @@ export function ToolActivityGroup({
   const content = (
     <>
       <ToolActivityIconStack activity={activity} />
-      <span
-        className={cn(
-          "tool-activity-group__title min-w-0 flex-1 break-words text-[length:var(--theme-chat-assistant-font-size-scaled)] font-normal leading-[var(--theme-chat-assistant-line-height)] text-content-secondary",
-          live && "tool-activity-group__title--live",
-        )}
-      >
-        {activity.title}
+      <span className="activity-feed-row__content tool-activity-group__title break-words font-normal text-content-secondary">
+        <ToolActivityLabel inspection={activity.inspection} fallback={activity.title} />
       </span>
       {expandable ? (
-        <ChevronRight
+        <AppIcon
+          icon="chevron-right"
+          size={14}
           className={cn(
-            "h-3.5 w-3.5 shrink-0 text-content-muted transition-transform duration-200",
+            "activity-feed-row__trailing text-content-muted transition-transform duration-200",
             open && "rotate-90",
           )}
           aria-hidden="true"
         />
       ) : (
-        <span className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        <span className="activity-feed-row__trailing" aria-hidden="true" />
       )}
     </>
   );
@@ -51,19 +49,21 @@ export function ToolActivityGroup({
       {expandable ? (
         <button
           type="button"
-          className="tool-activity-group__trigger grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_14px] items-center gap-2 rounded-[5px] py-1.5 pl-0 pr-1 text-left transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
+          className="activity-feed-row tool-activity-group__trigger w-full rounded-[5px] pr-1 text-left transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
           aria-expanded={open}
           aria-controls={contentId}
           aria-label={activity.accessibleTitle}
           onClick={() => setOpen((value) => !value)}
           data-tool-activity-trigger
+          data-activity-feed-row
         >
           {content}
         </button>
       ) : (
         <div
-          className="tool-activity-group__trigger grid min-h-8 w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_14px] items-center gap-2 py-1.5 pl-0 pr-1 text-left"
+          className="activity-feed-row tool-activity-group__trigger w-full pr-1 text-left"
           data-tool-activity-trigger
+          data-activity-feed-row
         >
           {content}
         </div>
@@ -79,8 +79,8 @@ export function ToolActivityGroup({
               className="inline-flex min-w-0 items-center gap-1.5"
               data-tool-activity-action={action.id}
             >
-              <ToolActionIcon icon={action.icon} status="neutral" size="xs" showLiveIndicator={false} />
-              <span className="break-words">{action.label}</span>
+              <ToolActionIcon icon={action.icon} status="neutral" size="xs" />
+              <ToolActivityLabel inspection={action.inspection} fallback={action.label} className="whitespace-nowrap" />
             </span>
           ))}
           {activity.counts.failed > 0 ? (
@@ -102,7 +102,7 @@ function ToolActivityIconStack({ activity }: { activity: ToolStageActivityPresen
   const hasMoreIcons = activity.icons.length > visibleIcons.length;
   return (
     <span
-      className="tool-activity-icon-stack inline-flex h-5 shrink-0 items-center gap-1.5"
+      className="activity-feed-row__icon tool-activity-icon-stack inline-flex shrink-0 items-center gap-1"
       aria-hidden="true"
       data-tool-activity-icon-stack
     >
@@ -116,7 +116,6 @@ function ToolActivityIconStack({ activity }: { activity: ToolStageActivityPresen
             icon={icon}
             status={index === 0 && activity.status !== "failed" ? activity.status : "neutral"}
             size="sm"
-            showLiveIndicator={index === 0}
           />
         </span>
       ))}

@@ -28,6 +28,8 @@ export { ErrorBoundary } from "./ErrorBoundary";
 export { FileDropZone } from "./FileDropZone";
 export type { FileDropZoneAccept, FileDropZoneState } from "./FileDropZone";
 export { FormField, FormHint, FormLabel, Input } from "./Form";
+export { SecretInput } from "./SecretInput";
+export type { SecretInputProps } from "./SecretInput";
 export {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -37,7 +39,12 @@ export {
   DropdownMenuLabel,
   DropdownMenuMeta,
   DropdownMenuPortal,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "./DropdownMenu";
 export { IconButton } from "./IconButton";
@@ -55,18 +62,48 @@ export { Tabs, TabsContent, TabsList, TabsTrigger } from "./Tabs";
 export { ScrollArea, ScrollBar } from "./ScrollArea";
 export { SegmentedControl } from "./SegmentedControl";
 export type { SegmentedControlOption, SegmentedControlProps } from "./SegmentedControl";
+export { PillExpandNavbar } from "./PillExpandNavbar";
+export type { PillExpandNavbarItem, PillExpandNavbarProps } from "./PillExpandNavbar";
 export { SettingsControlRow, settingsSelectClassName } from "./SettingsControlRow";
 export { Skeleton } from "./Skeleton";
-export { AppIcon, AppIconCatalog } from "./AppIcon";
+export { AppIcon } from "./AppIcon";
+export { isAppIconName } from "./AppIcon";
 export type { AppIconName } from "./AppIcon";
+export { ActivityLoader } from "./ActivityLoader";
+export type { ActivityLoaderProps } from "./ActivityLoader";
+export { ActivityStatusIcon } from "./ActivityStatusIcon";
+export type { ActivityStatus, ActivityStatusMotion } from "./ActivityStatusIcon";
+export { StatusGlyph } from "./StatusGlyph";
+export type { StatusGlyphLiveMotion } from "./StatusGlyph";
+export { SeneraActivityMark } from "./SeneraActivityMark";
+export type { SeneraActivityMarkProps } from "./SeneraActivityMark";
+export { ExecutionStatusTones, executionStatusTone, isLiveActivityStatus } from "./executionStatusTone";
+export type { ExecutionStatusTone } from "./executionStatusTone";
 export { Spinner } from "./Spinner";
 export type { SpinnerSize } from "./Spinner";
-export { LoadingSignal } from "./LoadingSignal";
-export { ResonanceTrace } from "./LoadingSignal";
-export { RefreshOrbit } from "./LoadingSignal";
-export type { LoadingSignalSize } from "./LoadingSignal";
+export { ThinkingIndicator } from "./ThinkingIndicator";
+export type { ThinkingIndicatorProps, ThinkingIndicatorSize } from "./ThinkingIndicator";
+export {
+  ThinkingSteps,
+  ThinkingStepsContent,
+  ThinkingStepsHeader,
+  ThinkingStep,
+  ThinkingStepDetails,
+  ThinkingStepSource,
+  ThinkingStepSources,
+} from "./ThinkingSteps";
+export type {
+  ThinkingStepDetailsProps,
+  ThinkingStepProps,
+  ThinkingStepsContentProps,
+  ThinkingStepsHeaderProps,
+  ThinkingStepsProps,
+  ThinkingStepSourceProps,
+  ThinkingStepSourcesProps,
+  ThinkingStepStatus,
+} from "./ThinkingSteps";
 export { SeneraToaster } from "./SeneraToaster";
-export { InlineError, RetryButton, StateView } from "./StateView";
+export { ErrorBanner, InlineError, RetryButton, StateView } from "./StateView";
 export type { StateViewStatus } from "./StateView";
 export {
   Sheet,
@@ -79,6 +116,7 @@ export {
   SheetTrigger,
 } from "./Sheet";
 export type { SheetContentProps } from "./Sheet";
+export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "./Popover";
 export { Tooltip, TooltipProvider } from "./Tooltip";
 export { useClipboardCopy, writeClipboardText } from "./useClipboardCopy";
 export type { ClipboardCopyOptions, ClipboardCopyResult, ClipboardWriter } from "./useClipboardCopy";

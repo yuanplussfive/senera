@@ -3,9 +3,17 @@ import { AgentExtensionRegistry } from "../../../Source/AgentSystem/Extensions/A
 import type { AgentLifecycleClock } from "../../../Source/AgentSystem/Events/AgentLifecycleClock.js";
 import { createAgentToolAccessGrant } from "../../../Source/AgentSystem/ToolRuntime/AgentToolAccessGrant.js";
 import { AgentToolCallExecutor } from "../../../Source/AgentSystem/ToolRuntime/AgentToolCallExecutor.js";
-import { toolProcessSuccessResult } from "../../../Source/AgentSystem/ToolRuntime/AgentToolProcessEnvelope.js";
+import {
+  toolProcessFailureResult,
+  toolProcessSuccessResult,
+} from "../../../Source/AgentSystem/ToolRuntime/AgentToolProcessEnvelope.js";
 import type { AgentToolRunnerLike } from "../../../Source/AgentSystem/ToolRuntime/AgentToolRunner.js";
 import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
+import {
+  AgentWorkspaceChangeSetProtocol,
+  AgentWorkspaceMutationReceiptProtocol,
+  type AgentWorkspaceMutationReceipt,
+} from "../../../Source/AgentSystem/Types/ToolRuntimeTypes.js";
 import { AgentExecutionErrorCodes } from "../../../Source/AgentSystem/Xml/AgentXmlStatus.js";
 import { createXmlProtocolSpec } from "../../../Source/AgentSystem/Xml/AgentXmlPolicy.js";
 import {
@@ -31,6 +39,8 @@ describe("tool call executor outcome", () => {
       {
         requestId: "request-thinking",
         step: 1,
+        modelMessageIndex: 2,
+        modelContentIndex: 4,
         thinkingLevel: "high",
         toolAccessGrant: createAgentToolAccessGrant({
           authorizedToolNames: [tool.name, "AuthorizedButNotExposed"],
@@ -44,6 +54,8 @@ describe("tool call executor outcome", () => {
       {},
       expect.objectContaining({
         thinkingLevel: "high",
+        modelMessageIndex: 2,
+        modelContentIndex: 4,
         visibleToolNames: [tool.name],
         authorizedToolNames: [tool.name, "AuthorizedButNotExposed"],
       }),
@@ -191,6 +203,130 @@ describe("tool call executor outcome", () => {
     });
     expect(eventKinds).toContain("tool.call.completed");
     expect(eventKinds).not.toContain("tool.call.failed");
+  });
+
+  test("materializes an exact workspace receipt without exposing its bytes to lifecycle payloads", async () => {
+    const tool = {
+      ...registeredTool(),
+      artifactPolicy: {
+        Workspace: {
+          Capture: "mutation-receipt",
+          MaxFileBytes: 262_144,
+          CaptureContent: "text",
+          PatchContextLines: 3,
+        },
+      },
+    } satisfies RegisteredTool;
+    const receipt: AgentWorkspaceMutationReceipt = {
+      type: AgentWorkspaceMutationReceiptProtocol.type,
+      version: AgentWorkspaceMutationReceiptProtocol.version,
+      capturedAt: "2026-09-25T00:00:00.000Z",
+      entries: [
+        {
+          path: ".github/workflows/release.yml",
+          before: { kind: "missing" },
+          after: { kind: "file", bytes: Buffer.from("name: Release\n", "utf8") },
+        },
+      ],
+    };
+    const registry = new AgentExtensionRegistry();
+    registry.registerToolExtension(tool.owner, [tool]);
+    const events: Array<{ kind: string; data: unknown }> = [];
+    const executor = new AgentToolCallExecutor({
+      registry,
+      config: { ModelProviders: [] },
+      protocol: createXmlProtocolSpec(),
+      toolRunner: {
+        run: async () =>
+          toolProcessSuccessResult({ output: "workspace updated" }, { workspaceMutationReceipt: receipt }),
+      },
+    });
+
+    const execution = await executor.execute(
+      { name: tool.name, callId: "call-workspace-receipt" },
+      {
+        requestId: "request-workspace-receipt",
+        step: 1,
+        toolAccessGrant: createAgentToolAccessGrant({
+          authorizedToolNames: [tool.name],
+          exposedToolNames: [tool.name],
+        }),
+        onEvent: async (event) => {
+          events.push({ kind: event.kind, data: event.data });
+        },
+      },
+    );
+
+    expect(execution.kind).toBe("ToolResults");
+    if (execution.kind !== "ToolResults") throw new Error("Expected a tool result.");
+    expect(execution.value[0]).toMatchObject({
+      workspaceCapture: {
+        type: AgentWorkspaceChangeSetProtocol.type,
+        version: AgentWorkspaceChangeSetProtocol.version,
+        source: "mutation-receipt",
+        coverage: "exact",
+        changes: [
+          {
+            path: ".github/workflows/release.yml",
+            status: "added",
+          },
+        ],
+      },
+    });
+    expect(execution.value[0]).not.toHaveProperty("workspaceMutationReceipt");
+    expect(JSON.stringify(events)).not.toContain("workspace_mutation_receipt");
+    expect(JSON.stringify(events)).not.toContain("[82,101,108,101,97,115,101]");
+  });
+
+  test("preserves a writer failure when no mutation receipt was committed", async () => {
+    const tool = {
+      ...registeredTool(),
+      artifactPolicy: {
+        Workspace: {
+          Capture: "mutation-receipt",
+          MaxFileBytes: 262_144,
+          CaptureContent: "text",
+          PatchContextLines: 3,
+        },
+      },
+    } satisfies RegisteredTool;
+    const registry = new AgentExtensionRegistry();
+    registry.registerToolExtension(tool.owner, [tool]);
+    const executor = new AgentToolCallExecutor({
+      registry,
+      config: { ModelProviders: [] },
+      protocol: createXmlProtocolSpec(),
+      toolRunner: {
+        run: async () =>
+          toolProcessFailureResult({
+            code: AgentExecutionErrorCodes.ToolExecutionError,
+            message: "The workspace precondition no longer holds.",
+          }),
+      },
+    });
+
+    await expect(
+      executor.execute(
+        { name: tool.name, callId: "call-workspace-failure" },
+        {
+          requestId: "request-workspace-failure",
+          step: 1,
+          toolAccessGrant: createAgentToolAccessGrant({
+            authorizedToolNames: [tool.name],
+            exposedToolNames: [tool.name],
+          }),
+        },
+      ),
+    ).resolves.toMatchObject({
+      kind: "ToolResults",
+      value: [
+        {
+          result: { error: { message: "The workspace precondition no longer holds." } },
+          workspaceCapture: undefined,
+          presentation: { status: "failure" },
+        },
+      ],
+    });
   });
 
   test("recognizes the declared child-run suspension control after recording tool lifecycle", async () => {

@@ -300,7 +300,6 @@ async function defaultScriptedLoopHandler(request: AgentRunRequest): Promise<Age
       content: `E2E response: ${request.input}`,
     },
     decisionXml: `<FinalAnswer><answer>E2E response: ${escapeXml(request.input)}</answer></FinalAnswer>`,
-    conversationEntries: [],
     executedTools: [],
     stepTraces: [
       {
@@ -348,11 +347,6 @@ function createIntegrationConfig(
       },
       Persistence: {
         Kind: "memory",
-      },
-      Presets: {
-        Enabled: true,
-        RootDir: ".senera/presets",
-        StateFile: ".senera/presets-state.json",
       },
       SandboxRuntime: {
         BaseDir: ".senera/sandbox-runtime",

@@ -1,0 +1,61 @@
+/* Shared by document surfaces and code components in Shadow DOM. */
+.scrollbar-thin,
+[data-virtuoso-scroller="true"],
+.markdown-renderer__table-wrap,
+.code-artifact-viewer__source,
+[data-code],
+textarea {
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+.scrollbar-thin::-webkit-scrollbar,
+[data-virtuoso-scroller="true"]::-webkit-scrollbar,
+.markdown-renderer__table-wrap::-webkit-scrollbar,
+.code-artifact-viewer__source::-webkit-scrollbar,
+[data-code]::-webkit-scrollbar,
+textarea::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+.scrollbar-thin::-webkit-scrollbar-button,
+[data-virtuoso-scroller="true"]::-webkit-scrollbar-button,
+.markdown-renderer__table-wrap::-webkit-scrollbar-button,
+.code-artifact-viewer__source::-webkit-scrollbar-button,
+[data-code]::-webkit-scrollbar-button,
+textarea::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb,
+[data-virtuoso-scroller="true"]::-webkit-scrollbar-thumb,
+.markdown-renderer__table-wrap::-webkit-scrollbar-thumb,
+.code-artifact-viewer__source::-webkit-scrollbar-thumb,
+[data-code]::-webkit-scrollbar-thumb,
+:host:hover [data-code]::-webkit-scrollbar-thumb,
+textarea::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover,
+[data-virtuoso-scroller="true"]::-webkit-scrollbar-thumb:hover,
+.markdown-renderer__table-wrap::-webkit-scrollbar-thumb:hover,
+.code-artifact-viewer__source::-webkit-scrollbar-thumb:hover,
+[data-code]::-webkit-scrollbar-thumb:hover,
+:host:hover [data-code]::-webkit-scrollbar-thumb:hover,
+textarea::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-track,
+[data-virtuoso-scroller="true"]::-webkit-scrollbar-track,
+.markdown-renderer__table-wrap::-webkit-scrollbar-track,
+.code-artifact-viewer__source::-webkit-scrollbar-track,
+[data-code]::-webkit-scrollbar-track,
+textarea::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}

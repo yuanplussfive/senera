@@ -81,12 +81,11 @@ export function runEvent(sessionId: string, requestId: string, sequence: number)
   } as const;
 }
 
-export function completedRun(requestId: string) {
+export function completedRun(_requestId: string) {
   return {
     terminal: { kind: "FinalAnswer" as const, content: "done" },
     decisionXml: "<agent_result><final_answer>done</final_answer></agent_result>",
     usage: { source: "local_estimate" as const, inputTokens: 1, outputTokens: 1 },
-    conversationEntries: [assistantEntry(requestId, "done")],
     executedTools: [],
     stepTraces: [],
   };

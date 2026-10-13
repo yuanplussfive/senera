@@ -11,6 +11,7 @@ import type { StepTrace } from "../Core/AgentStepTrace.js";
 import type { AgentPiSessionRuntimeStatus } from "../Pi/AgentPiSessionManagement.js";
 import type { AgentSessionOperation } from "./AgentSessionOperation.js";
 import type { AgentLocalizedMessage } from "../I18n/AgentMessageCatalog.js";
+import type { AgentSessionRecoveryMode } from "./AgentSessionRunRecovery.js";
 
 export type AgentSessionDomainEvent =
   | {
@@ -120,6 +121,7 @@ export type AgentSessionDomainEvent =
         sessionId: string;
         fromRequestId: string;
         removedEntries: number;
+        removedRequestIds?: string[];
         replacementRequestId?: string;
       };
     }
@@ -191,6 +193,7 @@ export interface AgentHistoryStepRun {
   startedAt: string;
   endedAt?: string;
   status: "running" | "completed" | "failed" | "cancelled";
+  recoveryModes?: AgentSessionRecoveryMode[];
   modelProvider?: AgentModelProviderMetadata;
   traces: StepTrace[];
 }

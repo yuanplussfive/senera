@@ -47,6 +47,6 @@ export function describeAgentSelfCapabilities(report: AgentSelfCapabilitiesRepor
     `Workbench 合同 ${report.workbenchContract.id}/v${report.workbenchContract.version} · revision ${report.workbenchContract.revision}`,
     `命令合同 v${report.commandContract.version} · revision ${report.commandContract.revision}`,
     "变更流程: 读取事实 → 最小变更 → 验证 revision → 必要时回滚。",
-    "所有宿主配置、预设和状态变更必须通过 SeneraCommand；不可直接写 .senera 或数据库。",
+    "所有宿主配置和状态变更必须通过 SeneraCommand；不可直接写 .senera 或数据库。",
   ].join("\n");
 }

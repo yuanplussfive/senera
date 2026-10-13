@@ -13,6 +13,7 @@ export type AgentModelDomainEvent =
       data: {
         model: string;
         provider?: AgentModelProviderMetadata;
+        messageIndex?: number;
       };
     }
   | {
@@ -20,6 +21,26 @@ export type AgentModelDomainEvent =
       context: AgentStepContext;
       data: {
         text: string;
+        messageIndex?: number;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.ModelThinkingDelta;
+      context: AgentStepContext;
+      data: {
+        messageIndex: number;
+        contentIndex: number;
+        delta: string;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.ModelThinkingCompleted;
+      context: AgentStepContext;
+      data: {
+        messageIndex: number;
+        contentIndex: number;
+        content: string;
+        status: "complete" | "interrupted";
       };
     }
   | {
@@ -29,5 +50,6 @@ export type AgentModelDomainEvent =
         text: string;
         provider?: AgentModelProviderMetadata;
         usage?: AgentModelUsageValue;
+        messageIndex?: number;
       };
     };

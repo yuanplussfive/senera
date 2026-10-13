@@ -35,6 +35,26 @@ describe("tool execution manifest schema", () => {
     }
   });
 
+  test("uses one planner-mode declaration schema across tool contract boundaries", () => {
+    expect(
+      ToolSchema.safeParse({
+        ...tool(["Local"]),
+        PlanningModes: ["native"],
+      }).success,
+    ).toBe(true);
+
+    const duplicate = ToolSchema.safeParse({
+      ...tool(["Local"]),
+      PlanningModes: ["native", "native"],
+    });
+    expect(duplicate.success).toBe(false);
+    if (!duplicate.success) {
+      expect(duplicate.error.issues).toContainEqual(
+        expect.objectContaining({ path: ["PlanningModes", 1], message: expect.stringContaining("once") }),
+      );
+    }
+  });
+
   test("accepts declarative streaming runtime capabilities", () => {
     const result = ToolSchema.safeParse({
       ...tool(["Local"]),
@@ -94,6 +114,41 @@ describe("tool execution manifest schema", () => {
         expect.objectContaining({
           path: ["Runtime", "ProtocolVersion"],
           message: "McpTool uses its native protocol and must not declare a private tool protocol version.",
+        }),
+      );
+    }
+  });
+
+  test("requires source-view tools to declare a recoverable source evidence coordinate", () => {
+    const result = ToolSchema.safeParse({
+      ...tool(["Local"]),
+      Runtime: { ...tool(["Local"]).Runtime, ResultStorage: "SourceView" },
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues).toContainEqual(
+        expect.objectContaining({ path: ["Artifacts", "Evidence"], message: expect.stringContaining("ArtifactUri") }),
+      );
+    }
+  });
+
+  test("rejects a source-view contract that also declares a workspace mutation capture", () => {
+    const result = ToolSchema.safeParse({
+      ...tool(["Local"]),
+      Runtime: { ...tool(["Local"]).Runtime, ResultStorage: "SourceView" },
+      Artifacts: {
+        Evidence: [sourceViewEvidence()],
+        Workspace: { Capture: "mutation-receipt", MaxFileBytes: 1024, CaptureContent: "text", PatchContextLines: 3 },
+      },
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues).toContainEqual(
+        expect.objectContaining({
+          path: ["Artifacts", "Workspace"],
+          message: expect.stringContaining("owns no mutation"),
         }),
       );
     }
@@ -391,6 +446,25 @@ function mcpTool(protocolVersion?: 2) {
       ...(protocolVersion === undefined ? {} : { ProtocolVersion: protocolVersion }),
     },
     Execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
+  };
+}
+
+function sourceViewEvidence() {
+  return {
+    Kind: "artifact_memory",
+    Records: "$.artifacts.item[*]",
+    Slots: { artifactUri: "$.artifactUri" },
+    Identity: { Parts: ["artifactUri"] },
+    Presentation: {
+      Locator: "{{ artifactUri }}",
+      Display: "{{ artifactUri }}",
+      Label: "{{ artifactUri }}",
+      Source: "artifact",
+    },
+    ModelProjection: { Slots: ["artifactUri"] },
+    PlannerMemory: { Facts: ["artifactUri"], ArtifactUri: "artifactUri" },
+    Projection: { SummaryTemplate: "{{ artifactUri }}", ArtifactTemplate: "{{ artifactUri }}" },
+    Confidence: 1,
   };
 }
 

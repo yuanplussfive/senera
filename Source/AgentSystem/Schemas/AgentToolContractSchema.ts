@@ -10,10 +10,13 @@ import {
   AgentHostToolProtocolVersion,
   ToolExecutionTargets,
   ToolLoadingModes,
+  ToolPlanningModes,
+  ToolResultStorageModes,
   ToolResultAssessmentPolicies,
   ToolSchedulingModes,
 } from "../Types/AgentToolContractTypes.js";
 import { isAgentJsonPointer } from "../Core/AgentJsonPointerOperations.js";
+import { inspectAgentToolResultStorageContract } from "../ToolRuntime/AgentToolResultStorageContract.js";
 
 export { ToolArtifactPolicySchema } from "./AgentArtifactContractSchema.js";
 export { ToolSearchSchema } from "./AgentToolSearchContractSchema.js";
@@ -111,16 +114,40 @@ export const ToolRuntimeSchema = z
     Lifecycle: z.enum(["Immediate", "OneShot", "Persistent", "RemoteJob"]),
     ProtocolVersion: z.literal(AgentHostToolProtocolVersion).optional(),
     ResultAssessment: z.enum(ToolResultAssessmentPolicies),
+    ResultStorage: z.enum([ToolResultStorageModes.Artifact, ToolResultStorageModes.SourceView]).optional(),
     Scheduling: z.enum(ToolSchedulingModes).optional(),
     MaxConcurrency: z.number().int().min(1).max(1_000).optional(),
     Capabilities: ToolRuntimeCapabilitiesSchema.optional(),
   })
   .strict();
 
+/**
+ * Planner support belongs to the tool contract rather than a provider, tool
+ * name, or package-specific exception. Reuse this schema at every manifest
+ * boundary so the runtime never receives an ambiguous declaration.
+ */
+export const ToolPlanningModesSchema = z
+  .array(z.enum(ToolPlanningModes))
+  .min(1)
+  .superRefine((modes, context) => {
+    const seen = new Set<string>();
+    modes.forEach((mode, index) => {
+      if (seen.has(mode)) {
+        context.addIssue({
+          code: "custom",
+          path: [index],
+          message: `Planning mode ${mode} may only be declared once.`,
+        });
+      }
+      seen.add(mode);
+    });
+  });
+
 export const ToolSchema = z
   .object({
     Name: z.string().min(1),
     Loading: z.enum([ToolLoadingModes.Bootstrap, ToolLoadingModes.Dynamic]).optional(),
+    PlanningModes: ToolPlanningModesSchema.optional(),
     DescriptionFile: z.string().min(1).optional(),
     Permissions: z.array(z.string()).optional(),
     Handler: ToolHandlerSchema,
@@ -175,6 +202,20 @@ export const ToolSchema = z
       context.addIssue({
         code: "custom",
         path: [...schedulingIssuePaths[issue.field]],
+        message: issue.message,
+      });
+    }
+    const resultStorageIssuePaths = {
+      artifacts: ["Artifacts", "Evidence"],
+      workspace: ["Artifacts", "Workspace"],
+    } as const;
+    for (const issue of inspectAgentToolResultStorageContract({
+      resultStorage: tool.Runtime.ResultStorage,
+      artifacts: tool.Artifacts,
+    })) {
+      context.addIssue({
+        code: "custom",
+        path: [...resultStorageIssuePaths[issue.field]],
         message: issue.message,
       });
     }

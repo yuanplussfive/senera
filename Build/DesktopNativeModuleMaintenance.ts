@@ -4,7 +4,7 @@ import { spawn } from "cross-spawn";
 import { toError } from "../Source/AgentSystem/Core/AgentErrors.js";
 import { nodeErrorCode } from "../Source/AgentSystem/Core/AgentFs.js";
 import { sleep } from "../Source/AgentSystem/Core/AgentTiming.js";
-import { ElectronNativeModuleNames } from "./PrepareElectronNativeModules.js";
+import { discoverElectronNativeModuleInstances } from "./PrepareElectronNativeModules.js";
 
 const NativeMetadataCleanupPolicy = Object.freeze({
   maxAttempts: 5,
@@ -33,10 +33,9 @@ export class DesktopNativeModuleMaintenance {
   ) {}
 
   async clearRebuildMetadata(): Promise<void> {
+    const nativeModules = discoverElectronNativeModuleInstances(this.workspaceRoot);
     const outcomes = await Promise.allSettled(
-      ElectronNativeModuleNames.map((moduleName) =>
-        this.removeMetadataWithRetry(metadataPath(this.workspaceRoot, moduleName)),
-      ),
+      nativeModules.map((nativeModule) => this.removeMetadataWithRetry(metadataPath(nativeModule.sourceRoot))),
     );
     const failures = outcomes.flatMap((outcome) => (outcome.status === "rejected" ? [outcome.reason] : []));
     if (failures.length === 1) throw failures[0];
@@ -44,15 +43,31 @@ export class DesktopNativeModuleMaintenance {
   }
 
   async restoreNodeCompatibility(): Promise<void> {
-    let rebuildFailure: Error | undefined;
-    try {
-      const exitCode = await this.adapter.run("npm", ["rebuild", ...ElectronNativeModuleNames], this.workspaceRoot);
-      if (exitCode !== 0) {
-        throw new Error(`Native dependency rebuild failed with exit code ${exitCode}.`);
+    const nativeModules = discoverElectronNativeModuleInstances(this.workspaceRoot);
+    const rebuildFailures: Error[] = [];
+    for (const nativeModule of nativeModules) {
+      try {
+        const exitCode = await this.adapter.run("npm", ["rebuild"], nativeModule.sourceRoot);
+        if (exitCode !== 0) {
+          throw new Error(
+            `Native dependency rebuild failed for ${nativeModule.relativePath} with exit code ${exitCode}.`,
+          );
+        }
+      } catch (error) {
+        rebuildFailures.push(
+          new Error(`Could not restore Node compatibility for ${nativeModule.relativePath}.`, {
+            cause: toError(error),
+          }),
+        );
       }
-    } catch (error) {
-      rebuildFailure = toError(error);
     }
+
+    const rebuildFailure =
+      rebuildFailures.length === 0
+        ? undefined
+        : rebuildFailures.length === 1
+          ? rebuildFailures[0]
+          : new AggregateError(rebuildFailures, "Native dependency restoration failed for one or more modules.");
 
     let cleanupFailure: Error | undefined;
     try {
@@ -91,8 +106,8 @@ export class DesktopNativeModuleMaintenance {
   }
 }
 
-function metadataPath(workspaceRoot: string, moduleName: string): string {
-  return path.join(workspaceRoot, "node_modules", ...moduleName.split("/"), "build", "Release", ".forge-meta");
+function metadataPath(moduleRoot: string): string {
+  return path.join(moduleRoot, "build", "Release", ".forge-meta");
 }
 
 function runInheritedCommand(command: string, args: readonly string[], cwd: string): Promise<number> {

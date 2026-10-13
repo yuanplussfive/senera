@@ -13,7 +13,6 @@ import {
 import { AgentWebSocketConfigRequestHandlers } from "./AgentWebSocketConfigRequestHandlers.js";
 import { AgentWebSocketExecutionResourceRequestHandlers } from "./AgentWebSocketExecutionResourceRequestHandlers.js";
 import {
-  AgentWebSocketPresetRequestHandlers,
   AgentWebSocketProfileRequestHandlers,
   AgentWebSocketToolSettingsRequestHandlers,
 } from "./AgentWebSocketSettingsRequestHandlers.js";
@@ -24,8 +23,6 @@ import type { AgentLocalizedMessage } from "../I18n/AgentMessageCatalog.js";
 import { projectAgentErrorMessage, projectAgentMessage } from "../I18n/AgentMessageProjection.js";
 import { AgentWebSocketRequestScheduler } from "./AgentWebSocketRequestScheduler.js";
 import { parseJsonText } from "../Core/AgentJsonParsing.js";
-import { AgentWebSocketAgendaRequestHandlers } from "./AgentWebSocketAgendaRequestHandlers.js";
-import { AgentWebSocketWorldRequestHandlers } from "./AgentWebSocketWorldRequestHandlers.js";
 import { AgentWebSocketWorkspaceRequestHandlers } from "./AgentWebSocketWorkspaceRequestHandlers.js";
 import { AgentWebSocketChannelRequestHandlers } from "./AgentWebSocketChannelRequestHandlers.js";
 import type { AgentChannelServiceControl } from "./AgentWebSocketTypes.js";
@@ -33,15 +30,12 @@ import type { AgentChannelServiceControl } from "./AgentWebSocketTypes.js";
 export class AgentWebSocketMessageRouter {
   private readonly session: AgentWebSocketSessionRequestHandlers;
   private readonly config: AgentWebSocketConfigRequestHandlers;
-  private readonly preset: AgentWebSocketPresetRequestHandlers;
   private readonly profile: AgentWebSocketProfileRequestHandlers;
   private readonly approval: AgentWebSocketApprovalRequestHandlers;
   private readonly interactionInput: AgentWebSocketInteractionInputRequestHandlers;
   private readonly sandbox: AgentWebSocketSandboxRequestHandlers;
   private readonly executionResources: AgentWebSocketExecutionResourceRequestHandlers;
   private readonly toolSettings: AgentWebSocketToolSettingsRequestHandlers;
-  private readonly agenda: AgentWebSocketAgendaRequestHandlers;
-  private readonly world: AgentWebSocketWorldRequestHandlers;
   private readonly workspace: AgentWebSocketWorkspaceRequestHandlers;
   private readonly channel: AgentWebSocketChannelRequestHandlers;
   private readonly scheduler = new AgentWebSocketRequestScheduler();
@@ -51,22 +45,23 @@ export class AgentWebSocketMessageRouter {
       context: AgentWebSocketRequestContext;
       sendEnvelope: (socket: WebSocket, event: AgentDomainEvent) => void | Promise<void>;
       broadcast: (event: AgentDomainEvent) => void | Promise<void>;
+      broadcastConfiguration?: (event: AgentDomainEvent) => void | Promise<void>;
       flushPersistence?: () => Promise<void>;
       channelControl?: AgentChannelServiceControl;
     },
   ) {
     this.session = new AgentWebSocketSessionRequestHandlers(options.context);
-    this.config = new AgentWebSocketConfigRequestHandlers(options.context, options.broadcast);
-    this.preset = new AgentWebSocketPresetRequestHandlers(options.context);
+    this.config = new AgentWebSocketConfigRequestHandlers(
+      options.context,
+      options.broadcastConfiguration ?? options.broadcast,
+    );
     this.profile = new AgentWebSocketProfileRequestHandlers(options.context);
     this.approval = new AgentWebSocketApprovalRequestHandlers(options.context);
     this.interactionInput = new AgentWebSocketInteractionInputRequestHandlers(options.context);
     this.sandbox = new AgentWebSocketSandboxRequestHandlers(options.context);
     this.executionResources = new AgentWebSocketExecutionResourceRequestHandlers(options.context);
     this.toolSettings = new AgentWebSocketToolSettingsRequestHandlers(options.context);
-    this.agenda = new AgentWebSocketAgendaRequestHandlers(options.context, options.broadcast);
-    this.world = new AgentWebSocketWorldRequestHandlers(options.context);
-    this.workspace = new AgentWebSocketWorkspaceRequestHandlers(options.context, options.broadcast);
+    this.workspace = new AgentWebSocketWorkspaceRequestHandlers(options.context);
     this.channel = new AgentWebSocketChannelRequestHandlers(options.channelControl ?? unavailableChannelControl());
   }
 
@@ -94,7 +89,7 @@ export class AgentWebSocketMessageRouter {
     request: AgentWebSocketRequest,
     sendEvent: AgentWebSocketEventSender,
   ): Promise<void> {
-    if (request.type !== "session.regenerate") return;
+    if (request.type !== "session.regenerate" && request.type !== "session.retry") return;
     await this.options.context.sessionManager.replayHistory({
       sessionId: request.sessionId,
       refresh: true,
@@ -107,9 +102,11 @@ export class AgentWebSocketMessageRouter {
       "session.create": (entry) => this.session.create(entry, sendEvent),
       "session.message": (entry) => this.session.message(entry, sendEvent),
       "session.close": (entry) => this.session.close(entry, sendEvent),
+      "session.close_many": (entry) => this.session.closeMany(entry, sendEvent),
       "session.cancel": (entry) => this.session.cancel(entry, sendEvent),
       "session.truncate_from": (entry) => this.session.truncateFrom(entry, sendEvent),
       "session.regenerate": (entry) => this.session.regenerate(entry, sendEvent),
+      "session.retry": (entry) => this.session.retry(entry, sendEvent),
       "session.fork": (entry) => this.session.fork(entry, sendEvent),
       "session.compact": (entry) => this.session.compact(entry, sendEvent),
       "session.runtime_status": (entry) => this.session.runtimeStatus(entry, sendEvent),
@@ -117,10 +114,6 @@ export class AgentWebSocketMessageRouter {
       "session.list": () => this.session.list(sendEvent),
       "session.history": (entry) => this.session.history(entry, sendEvent),
       "session.rename": (entry) => this.session.rename(entry, sendEvent),
-      "agenda.get": (entry) => this.agenda.get(entry, sendEvent),
-      "agenda.goal.command": (entry) => this.agenda.command(entry),
-      "world.resident.wake": (entry) => this.world.residentWake(entry, sendEvent),
-      "world.get": (entry) => this.world.get(entry, sendEvent),
       "model.list": () => this.config.listModels(sendEvent),
       "provider.models.fetch": (entry) => this.config.fetchProviderModels(entry, sendEvent),
       "config.get": () => this.config.getConfig(sendEvent),
@@ -143,10 +136,6 @@ export class AgentWebSocketMessageRouter {
       "provider.model.delete": (entry) => this.config.deleteProviderModel(entry, sendEvent),
       "provider.model.bulkImport": (entry) => this.config.bulkImportProviderModels(entry, sendEvent),
       "provider.defaultModel.set": (entry) => this.config.setDefaultProviderModel(entry, sendEvent),
-      "preset.list": () => this.preset.list(sendEvent),
-      "preset.save": (entry) => this.preset.save(entry, sendEvent),
-      "preset.delete": (entry) => this.preset.delete(entry, sendEvent),
-      "preset.set_active": (entry) => this.preset.setActive(entry, sendEvent),
       "profile.get": () => this.profile.get(sendEvent),
       "profile.update": (entry) => this.profile.update(entry, sendEvent),
       "approval.resolve": (entry) => this.approval.resolve(entry, sendEvent),

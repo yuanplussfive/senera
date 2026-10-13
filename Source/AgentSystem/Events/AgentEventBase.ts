@@ -22,6 +22,10 @@ export interface AgentEventScope {
   channel?: "console" | "qq" | "telegram" | "discord";
   parentSessionId?: string;
   parentRequestId?: string;
+  parentAgentStep?: number;
+  parentModelMessageIndex?: number;
+  parentModelContentIndex?: number;
+  parentToolCallId?: string;
   workflowName?: string;
   jobId?: string;
   childRunId?: string;

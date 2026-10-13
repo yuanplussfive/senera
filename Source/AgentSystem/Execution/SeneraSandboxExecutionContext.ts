@@ -4,6 +4,7 @@ import {
   normalizeSeneraExecutionDiagnostic,
 } from "./SeneraExecutionErrorDiagnostics.js";
 import { SeneraExecutionError, SeneraExecutionErrorCodes } from "./SeneraExecutionTypes.js";
+import { projectHostPathThroughMappings, relativePathWithin } from "../Core/AgentPath.js";
 import {
   materializeSeneraSandboxRootfs,
   prepareSeneraSandboxWritableMounts,
@@ -35,8 +36,12 @@ export async function prepareSeneraSandboxExecutionContext(input: {
   const mount = projectSeneraSandboxWorkspaceMount(input);
   const materialized = await materializeSeneraSandboxRootfs(input.profile);
   return {
-    guestCwd: input.guestWorkdir ?? mount.guestCwd,
-    environment: projectSeneraSandboxEnvironment(input.environment, input.profile),
+    guestCwd:
+      input.guestWorkdir ??
+      (relativePathWithin(input.workspaceRoot, input.cwd) !== undefined
+        ? mount.guestCwd
+        : projectHostPathThroughMappings(input.cwd, materialized.rootfsCopies)),
+    environment: projectSeneraSandboxEnvironment(input.environment, input.profile, materialized.rootfsCopies),
     rootfsCopies: materialized.rootfsCopies,
     rootfsCleanup: {
       diagnosticKey: "rootfsCleanup",
@@ -71,10 +76,13 @@ export async function releaseSeneraSandboxResources(
 export function projectSeneraSandboxEnvironment(
   environment: NodeJS.ProcessEnv | undefined,
   profile: SeneraProcessExecutionProfile | undefined,
+  rootfsCopies: readonly SeneraProcessRootfsCopy[] = [],
 ): Record<string, string> {
   return {
     ...Object.fromEntries(
-      Object.entries(environment ?? {}).filter((entry): entry is [string, string] => entry[1] != null),
+      Object.entries(environment ?? {})
+        .filter((entry): entry is [string, string] => entry[1] != null)
+        .map(([name, value]) => [name, projectHostPathThroughMappings(value, rootfsCopies)]),
     ),
     ...(profile?.sandbox?.env ?? {}),
   };

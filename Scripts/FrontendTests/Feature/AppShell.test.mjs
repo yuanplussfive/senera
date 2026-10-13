@@ -100,8 +100,8 @@ test("app shell derives integrated workspace surfaces across responsive modes", 
     workflowPanelLayout: "inline",
     showChatWorkflowPanelAction: false,
   });
-  expect(readWorkflowDockWidthConstraints(1024, 246)).toEqual({ min: 302, max: 418 });
-  expect(readWorkflowDockWidthConstraints(1600, 246)).toEqual({ min: 302, max: 640 });
+  expect(readWorkflowDockWidthConstraints(1024, 266)).toEqual({ min: 302, max: 398 });
+  expect(readWorkflowDockWidthConstraints(1600, 266)).toEqual({ min: 302, max: 640 });
   expect(clampWorkflowDockWidth(900, { min: 302, max: 640 })).toBe(640);
   expect(readAppShellResponsiveEntryPlan(mobile)).toEqual({
     sidebarCollapsed: null,
@@ -122,6 +122,7 @@ test("workspace context menu exposes Senera actions without hijacking form contr
   const onOpenSessionPanel = vi.fn();
   const onOpenWorkflowPanel = vi.fn();
   const onRefreshSession = vi.fn();
+  const onRefreshInterface = vi.fn();
   renderWithFrontendProviders(
     React.createElement(AppShell, {
       sessionPanel: React.createElement("div", null, "Session panel"),
@@ -147,6 +148,7 @@ test("workspace context menu exposes Senera actions without hijacking form contr
       onOpenSessionPanel,
       onOpenWorkflowPanel,
       onRefreshSession,
+      onRefreshInterface,
     }),
   );
 
@@ -160,9 +162,14 @@ test("workspace context menu exposes Senera actions without hijacking form contr
   expect(screen.getByRole("menuitem", { name: "打开会话列表" })).toBeInTheDocument();
   expect(screen.getByRole("menuitem", { name: "打开工作流" })).toBeInTheDocument();
   expect(screen.getByRole("menuitem", { name: "刷新当前会话" })).toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: "刷新界面" })).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("menuitem", { name: "打开工作流" }));
   expect(onOpenWorkflowPanel).toHaveBeenCalledTimes(1);
+
+  await user.pointer({ keys: "[MouseRight]", target: workspace, coords: { x: 160, y: 120 } });
+  await user.click(await screen.findByRole("menuitem", { name: "刷新界面" }));
+  expect(onRefreshInterface).toHaveBeenCalledTimes(1);
 
   await user.pointer({
     keys: "[MouseRight]",
@@ -266,6 +273,7 @@ test("app shell renders persistent wide panels and closes obsolete drawers", asy
   expect(screen.queryByText("Terminal panel")).not.toBeInTheDocument();
   expect(screen.queryByText("Session drawer")).not.toBeInTheDocument();
   expect(screen.queryByText("Workflow drawer")).not.toBeInTheDocument();
+  expect(document.querySelector("[data-workspace-main]")).toHaveAttribute("data-window-controls-scope", "contained");
   await waitFor(() => {
     expect(onSessionDrawerOpenChange).toHaveBeenCalledWith(false);
     expect(onWorkflowDrawerOpenChange).toHaveBeenCalledWith(false);
@@ -295,15 +303,15 @@ test("session sidebar width follows its accessible resize handle", () => {
   const resizeHandle = screen.getByRole("separator", { name: "调整会话栏宽度" });
   expect(resizeHandle).toHaveAttribute("aria-valuemin", "208");
   expect(resizeHandle).toHaveAttribute("aria-valuemax", "360");
-  expect(resizeHandle).toHaveAttribute("aria-valuenow", "246");
+  expect(resizeHandle).toHaveAttribute("aria-valuenow", "266");
 
   fireEvent.keyDown(resizeHandle, { key: "ArrowRight" });
-  expect(resizeHandle).toHaveAttribute("aria-valuenow", "262");
+  expect(resizeHandle).toHaveAttribute("aria-valuenow", "282");
 
   fireEvent.pointerDown(resizeHandle, { pointerId: 3, clientX: 400 });
   fireEvent.pointerMove(resizeHandle, { pointerId: 3, clientX: 350 });
   fireEvent.pointerUp(resizeHandle, { pointerId: 3, clientX: 350 });
-  expect(resizeHandle).toHaveAttribute("aria-valuenow", "212");
+  expect(resizeHandle).toHaveAttribute("aria-valuenow", "232");
 });
 
 test("desktop overlay opens from a floating capsule and switches accessible horizontal tabs", async () => {
@@ -332,10 +340,14 @@ test("desktop overlay opens from a floating capsule and switches accessible hori
   const dock = document.querySelector("[data-workflow-dock]");
   const toggle = document.querySelector("[data-workflow-dock-toggle]");
   expect(dock).toHaveAttribute("data-workflow-dock-layout", "overlay");
+  expect(document.querySelector("[data-workspace-main]")).toHaveAttribute("data-window-controls-scope", "viewport");
   expect(dock).toHaveClass("z-30");
   expect(document.querySelector("[data-workflow-panel-surface]")).not.toBeInTheDocument();
   expect(document.querySelectorAll("[data-workflow-dock-tool]")).toHaveLength(4);
   expect(document.querySelector("[data-workflow-dock-capsule]")).toBeInTheDocument();
+  expect(document.querySelector("[data-workflow-dock-capsule]")).toHaveStyle({
+    top: "calc(var(--senera-top-chrome-height) + var(--senera-top-rail-gap))",
+  });
   expect(dock).toHaveStyle({ right: "12px" });
   expect(document.querySelector("[data-workflow-dock-gutter]")).toBeInTheDocument();
   expect(dock.querySelector("[data-window-drag-region]")).not.toBeInTheDocument();
@@ -350,9 +362,9 @@ test("desktop overlay opens from a floating capsule and switches accessible hori
   expect(surface).toHaveClass("absolute", "inset-y-0", "[box-shadow:var(--theme-overlay-shadow)]");
   expect(surface).toHaveClass("bg-surface-panel");
   const executionTab = screen.getByRole("tab", { name: "执行" });
-  expect(document.querySelector("[data-workflow-dock-tabs]")).toHaveClass("rounded-lg", "bg-surface-subtle");
-  expect(executionTab).toHaveClass("flex-1", "relative", "overflow-visible", "data-[state=active]:bg-transparent");
-  expect(executionTab).toContainElement(document.querySelector("[data-workflow-dock-active-indicator='dock']"));
+  expect(document.querySelector("[data-workflow-dock-tabs]")).toHaveAttribute("data-pill-expand-navbar");
+  expect(executionTab).toHaveAttribute("data-pill-expanded", "true");
+  expect(executionTab).toHaveClass("pill-expand-nav-item--active");
   const collapseButton = screen.getByRole("button", { name: /收起/ });
   const resizeHandle = screen.getByRole("separator", { name: "调整功能坞宽度" });
   const focusButton = screen.getByRole("button", { name: "放大查看" });
@@ -375,7 +387,7 @@ test("desktop overlay opens from a floating capsule and switches accessible hori
   expect(dock).toHaveStyle({ right: "0px" });
   expect(document.querySelector("[data-workflow-dock-capsule]")).not.toBeInTheDocument();
   expect(resizeHandle).toHaveAttribute("aria-valuemin", "302");
-  expect(resizeHandle).toHaveAttribute("aria-valuemax", "418");
+  expect(resizeHandle).toHaveAttribute("aria-valuemax", "398");
   fireEvent.keyDown(resizeHandle, { key: "Home" });
   expect(useStore.getState().workflowDockWidth).toBe(302);
   fireEvent.keyDown(resizeHandle, { key: "ArrowLeft" });
@@ -383,7 +395,7 @@ test("desktop overlay opens from a floating capsule and switches accessible hori
   fireEvent.pointerDown(resizeHandle, { pointerId: 7, clientX: 400 });
   fireEvent.pointerMove(resizeHandle, { pointerId: 7, clientX: 300 });
   fireEvent.pointerUp(resizeHandle, { pointerId: 7, clientX: 300 });
-  expect(useStore.getState().workflowDockWidth).toBe(418);
+  expect(useStore.getState().workflowDockWidth).toBe(398);
 
   act(() => collapseButton.click());
   expect(document.querySelector("[data-workflow-panel-surface]")).not.toBeInTheDocument();
@@ -393,18 +405,18 @@ test("desktop overlay opens from a floating capsule and switches accessible hori
   act(() => executionToggleAfterCollapse.click());
   expect(document.querySelector("[data-workflow-dock-capsule]")).not.toBeInTheDocument();
   expect(screen.getByRole("tab", { name: "执行" })).toHaveAttribute("aria-selected", "true");
-  expect(useStore.getState().workflowDockWidth).toBe(418);
+  expect(useStore.getState().workflowDockWidth).toBe(398);
 
   const terminalTabAfterReopen = screen.getByRole("tab", { name: "终端" });
   const collapseButtonAfterReopen = screen.getByRole("button", { name: /收起/ });
   await user.click(terminalTabAfterReopen);
   const selectedTerminalTab = screen.getByRole("tab", { name: "终端" });
   expect(selectedTerminalTab).toHaveAttribute("aria-selected", "true");
-  expect(selectedTerminalTab).toHaveClass("flex-1", "data-[state=active]:bg-transparent");
-  expect(selectedTerminalTab).toContainElement(document.querySelector("[data-workflow-dock-active-indicator='dock']"));
+  expect(selectedTerminalTab).toHaveAttribute("data-pill-expanded", "true");
+  expect(selectedTerminalTab).toHaveClass("pill-expand-nav-item--active");
   expect(document.querySelector("[data-terminal-dock='dock']")).toBeInTheDocument();
   expect(document.querySelector("[data-terminal-runtime]")).toHaveTextContent("Live terminal");
-  expect(document.querySelector("[data-workflow-dock-tabs-list]")).toHaveClass("rounded-lg", "bg-surface-subtle");
+  expect(document.querySelector("[data-workflow-dock-tabs-list]")).toHaveAttribute("data-pill-expand-navbar");
   expect(screen.queryByRole("button", { name: "放大查看" })).not.toBeInTheDocument();
   expect(document.querySelector("[data-workflow-dock-toolbar]")).toContainElement(collapseButtonAfterReopen);
   expect(document.querySelector("[data-workflow-dock-toolbar]")).not.toHaveAttribute("data-window-controls-inset");
@@ -450,6 +462,8 @@ test("the responsive right drawer switches from execution to the live terminal",
   const user = userEvent.setup();
 
   expect(await screen.findByRole("tab", { name: "执行" })).toHaveAttribute("aria-selected", "true");
+  expect(document.querySelector('[data-workflow-dock][data-workflow-dock-layout="drawer"]')).toBeInTheDocument();
+  expect(document.querySelector("[data-workflow-dock-capsule]")).not.toBeInTheDocument();
   expect(screen.queryByRole("separator", { name: "调整功能坞宽度" })).not.toBeInTheDocument();
   await user.click(screen.getByRole("tab", { name: "终端" }));
   expect(await screen.findByText("Live terminal")).toBeInTheDocument();

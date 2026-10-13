@@ -23,12 +23,6 @@ import {
   updateAgentSelfConfigPath,
 } from "./AgentSelfConfig.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
-import {
-  listAgentSelfPresets,
-  showAgentSelfPreset,
-  activateAgentSelfPreset,
-  saveAgentSelfPreset,
-} from "./AgentSelfPreset.js";
 import { describeAgentSelfWorkspace, projectAgentSelfWorkspaceInfo } from "./AgentSelfWorkspace.js";
 import { describeAgentSelfDoctor, projectAgentSelfDoctorReport } from "./AgentSelfDoctor.js";
 import { executeAgentSelfSessionModel, listAgentSelfSessions } from "./AgentSelfSessions.js";
@@ -57,8 +51,6 @@ export async function executeAgentSelfCommand(
         return await executeConfig(invocation, port, options);
       case "approval":
         return await executeApprovalResolve(invocation, port, options);
-      case "preset":
-        return await executePreset(invocation, port);
       case "workspace":
         return {
           ok: true,
@@ -760,42 +752,4 @@ function describeSkillDiff(entries: readonly { readonly path: string; readonly k
 
 function projectSkillReadError(status: "missing" | "ambiguous" | "invalid"): string {
   return { missing: "skill_not_found", ambiguous: "skill_ambiguous", invalid: "skill_invalid" }[status];
-}
-
-async function executePreset(
-  invocation: Extract<AgentSelfCommand, { command: "preset" }>,
-  port: AgentSelfServicePort,
-): Promise<AgentSelfCommandOutput> {
-  switch (invocation.action) {
-    case "list": {
-      const result = await listAgentSelfPresets(port);
-      return { ok: true, text: result.text, data: { active: result.active, presets: result.presets } };
-    }
-    case "show": {
-      const result = await showAgentSelfPreset(port, invocation.name);
-      return { ok: true, text: result.text, data: { name: result.name, card: result.card } };
-    }
-    case "use": {
-      const result = await activateAgentSelfPreset(port, invocation.name);
-      return {
-        ok: true,
-        text: invocation.name ? `Active preset: ${result.active}` : "Preset reset (no active preset).",
-        data: result,
-      };
-    }
-    case "create": {
-      const content = renderPresetContent(invocation.content);
-      const result = await saveAgentSelfPreset(port, { name: invocation.name, content });
-      return {
-        ok: true,
-        text: `${result.created ? "Created" : "Updated"} preset: ${result.name}`,
-        data: result,
-      };
-    }
-  }
-}
-
-function renderPresetContent(value: unknown): string {
-  if (typeof value === "string") return value;
-  return JSON.stringify(value, null, 2);
 }

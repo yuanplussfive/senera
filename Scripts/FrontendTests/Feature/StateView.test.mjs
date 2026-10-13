@@ -4,6 +4,7 @@ import React from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { Button } from "../../../Frontend/src/shared/ui/Button.tsx";
+import { IconButton } from "../../../Frontend/src/shared/ui/IconButton.tsx";
 import { InlineError, StateView } from "../../../Frontend/src/shared/ui/StateView.tsx";
 
 afterEach(() => {
@@ -40,4 +41,22 @@ test("inline errors are silent by default and opt into live announcements explic
 
   rerender(React.createElement(InlineError, { announce: "assertive" }, "登录失败"));
   expect(screen.getByRole("alert")).toHaveTextContent("登录失败");
+});
+
+test("loading actions keep their accessible name and expose a busy state", () => {
+  render(
+    React.createElement(
+      React.Fragment,
+      null,
+      React.createElement(Button, { loading: true }, "保存"),
+      React.createElement(IconButton, { label: "刷新", loading: true }, "refresh"),
+    ),
+  );
+
+  for (const name of ["保存", "刷新"]) {
+    const button = screen.getByRole("button", { name });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("aria-busy", "true");
+    expect(button.querySelector(".senera-spinner")).toBeInTheDocument();
+  }
 });

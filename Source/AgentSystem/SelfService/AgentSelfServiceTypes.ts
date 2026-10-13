@@ -1,8 +1,6 @@
 import type { AgentConfigReplaceInput, AgentConfigSnapshot } from "../Config/AgentConfigService.js";
 import type { AgentConfigHistoryEntry } from "../Config/AgentConfigService.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
-import type { AgentPresetManager } from "../Presets/AgentPresetManager.js";
-import type { AgentPresetSnapshot } from "../Presets/AgentPresetTypes.js";
 import type { AgentWorkspaceLayout } from "../Core/AgentWorkspaceLayout.js";
 import type { AgentRuntimeManifest } from "../Runtime/AgentRuntimeManifest.js";
 import type { AgentPluginListEntry } from "../Plugins/AgentPluginTypes.js";
@@ -154,9 +152,6 @@ export interface AgentSelfServicePort {
     /** One retained revision for `senera config rollback` adjudication. */
     readRevision(revision: number): AgentSelfConfigRevisionReadResult;
   };
-  readonly presets: {
-    manager(): AgentPresetManager;
-  };
   readonly sessions?: {
     /** Recent session catalog for `senera sessions list`. */
     list(): readonly AgentSelfSessionSummary[];
@@ -244,15 +239,6 @@ export type AgentSelfCommand =
   | { readonly command: "config"; readonly action: "env-path" }
   | { readonly command: "config"; readonly action: "check" }
   | { readonly command: "config"; readonly action: "rollback"; readonly revision: number }
-  | { readonly command: "preset"; readonly action: "list" }
-  | { readonly command: "preset"; readonly action: "show"; readonly name: string }
-  | { readonly command: "preset"; readonly action: "use"; readonly name: string | null }
-  | {
-      readonly command: "preset";
-      readonly action: "create";
-      readonly name: string;
-      readonly content: unknown;
-    }
   | { readonly command: "workspace"; readonly action: "info" }
   | { readonly command: "sessions"; readonly action: "list" }
   | {
@@ -322,14 +308,6 @@ export interface AgentSelfCommandOutput {
   };
 }
 
-export interface AgentSelfPresetSummary {
-  readonly name: string;
-  readonly title: string;
-  readonly active: boolean;
-  readonly sizeBytes: number;
-  readonly updatedAt?: string;
-}
-
 export interface AgentSelfWorkspaceInfo {
   readonly root: string;
   readonly stateRoot: string;
@@ -365,5 +343,3 @@ export type AgentSelfLogReadResult =
   | { readonly status: "found"; readonly content: string }
   | { readonly status: "missing"; readonly error: string }
   | { readonly status: "rejected"; readonly error: string };
-
-export type { AgentPresetSnapshot };

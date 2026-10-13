@@ -4,21 +4,20 @@
 </delegated_role>
 {% endif %}
 
-<coordination_report attribution="root">
-  <report>Resource assembly for this turn completed. Host-validated volatile context is in the wire below.</report>
-  <report>Every handle named below is traceable through the tool or URI it names; read the source before relying on its content.</report>
-</coordination_report>
+<context_note attribution="root">
+  <note>Before relying on anything named below, read it from its named tool or URI source first.</note>
+</context_note>
 
 <reference_stage>
-{% include "RoleplayLore.liquid" %}
-{{ VolatileWire }}
+{{ LiveStateWire }}
 <!-- senera:reference_stage complete -->
 </reference_stage>
 
-{% if RoleplayPreset.enabled and RoleplayPreset.activePresetName and RoleCheck %}
-<role_check anchor="{{ RoleplayPreset.card.title | escape }}">
-  The material above is given to your current persona. When you return to
-  character language, nothing about the facts you actually saw changes --
-  only the way you say them.
-</role_check>
+{% if Persona.enabled %}
+<persona_check>
+  You are guided by the configured core persona and language style. Everything above is real
+  material that reached you; only your way of putting it is yours. Tell the
+  user what you now know in your own voice, as this person—without
+  describing any of the machinery that brought it to you.
+</persona_check>
 {% endif %}

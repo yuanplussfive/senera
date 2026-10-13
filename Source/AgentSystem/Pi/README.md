@@ -4,7 +4,7 @@ Pi 负责会话树、流式文本、工具调用、多步循环、compaction 和
 
 ## 关键签名
 
-- Senera 是 Pi session system prompt 的唯一 owner。`AgentPiCodingAgentSessionFactory` 通过受管的 `PiSessionBaseSystemPrompt.liquid` 创建 `DefaultResourceLoader.systemPrompt`，使 Pi 将它作为 `customPrompt` 使用；Pi 自带的身份、内置工具目录和 Pi 文档导航不会进入模型上下文。Senera turn prompt、活动 Skills、受控项目上下文和选中的 prompt templates 再由 runtime extension 注入，且各自只注入一次。
+- Senera 是 Pi session system prompt 的唯一 owner。`AgentPiCodingAgentSessionFactory` 通过受管的 `PiSessionBaseSystemPrompt.liquid` 创建 `DefaultResourceLoader.systemPrompt`，使 Pi 将它作为 `customPrompt` 使用；Pi 自带的身份、内置工具目录和 Pi 文档导航不会进入模型上下文。稳定 Skill 目录由 runtime extension 注入一次；每轮的活动 Skill 索引、受控项目上下文和选中的 prompt templates 则随 durable `senera.turn-context/v1` 进入当前普通 user message。
 - `AgentSystemRuntimeCache.acquire(modelProviderId?)` 返回 `{ runtime, release() }`，不再暴露无生命周期的 `get()`。
 - `AgentPiSessionMutationServiceOptions.acquireRuntime(modelProviderId?)` 仅为已有 Pi 会话的 rewind、reset、fork、compact、status 与 export 获取运行时租约；创建空会话不会构建 Pi runtime。
 - Pi JSONL 与 Coding Agent session 只在首个实际 turn 的 `leaseTurn()` 中惰性建立，`PiTurnLeaseTimeoutSeconds` 约束该租约阶段，而不是 `session.create`。
@@ -13,7 +13,7 @@ Pi 负责会话树、流式文本、工具调用、多步循环、compaction 和
 - `AgentPiBackgroundShutdownTracker` 跟踪 LRU 淘汰后的异步关闭，立即发出受限诊断，并只保留有界的最近失败；pool `close()` 会 drain 后统一报告。
 - `AgentPiCodingAgentSessionPool` 只编排 lease、rewind、fork、reset 和管理操作；`AgentPiCodingAgentSessionFactory` 独占 resource loader、settings、模型 runtime、工具物化和 session 重配置，`AgentPiCodingAgentSessionLifecycle` 独占 operation drain、LRU 淘汰、后台关闭和幂等 close。公共类型集中在 pool contracts，旧 pool import 路径继续导出它们。
 - Coding Agent 原生 `subscribe` 是同步通知 API，不等待 listener Promise；`AgentPiCodingAgentSession` 必须把完整 `AgentSessionEvent` 放入有序交付队列，并在 `prompt()` 收口前 drain。collector 通过明确 event type guard 选择 message/tool 事件，不把 session lifecycle 强转成 core event。
-- Pi 会在新 JSONL 中先写入 model、thinking 等运行时元数据；历史迁移与 `setHistory()` 的空会话判断必须使用 `buildSessionContext().messages`，不能使用 leaf 是否存在，否则首轮同步会把元数据误判成对话历史。
+- Pi JSONL 是会话上下文的唯一来源。Senera 不会从产品对话、工具事件或缓存重新导入历史；每个新 turn 只由 Pi 追加当前用户消息及其原生执行事件。
 - `AgentPiTurnExecutor` 把 `collector.collect(event)` 作为异步 session listener；不能在调用侧用 `void` 提前丢弃其完成状态。
 - `AgentLoop.PiSessions.MaxCachedSessions` 约束空闲 Coding Agent session；active lease 只能在 release 后参与 LRU 淘汰。默认值由 `AgentDefaultCatalog` 提供。
 
@@ -28,14 +28,14 @@ Pi 负责会话树、流式文本、工具调用、多步循环、compaction 和
 
 两条路径共享规范化会话事实，但使用不同的 prompt/wire projection：
 
-- Native 的 system prompt 只包含稳定行为、预设和执行环境。RootCommand、用户任务副本、文本工具目录、JSON/XML 工具调用说明和输出哨兵都不会进入 prompt；Pi API adapter 把 `Context.tools`、assistant `toolCall` 与 `toolResult` 映射到供应商原生协议。
-- BAML 的 system prompt 只包含语义行为、预设和执行环境。`AgentPiPlanningCompiler` 将 RootCommand 放在 `seneraRuntime.rootCommand`，将历史放在 `planningContext.messages`，将曝光工具放在 `routingCards`；`EvolveTurn` 看不到完整参数 Schema，只有选定工具后的 `FillPiToolArguments` 收到该工具的权威合同。
+- Native 的 system prompt 只包含稳定行为、人设表达和执行环境。RootCommand、用户任务副本、文本工具目录、JSON/XML 工具调用说明和输出哨兵都不会进入 prompt；Pi API adapter 把 `Context.tools`、assistant `toolCall` 与 `toolResult` 映射到供应商原生协议。
+- BAML 的 system prompt 只包含语义行为、人设表达和执行环境。`AgentPiPlanningCompiler` 将 RootCommand 放在 `seneraRuntime.rootCommand`，将历史放在 `planningContext.messages`，将曝光工具放在 `routingCards`；`EvolveTurn` 看不到完整参数 Schema，只有选定工具后的 `FillPiToolArguments` 收到该工具的权威合同。
 
 ## 提示缓存
 
-主请求使用稳定 system prompt 和 append-only 会话历史。画像、世界、召回、工作流、活动 Skill 与模板不改写 system prompt，而是作为隐藏的 `senera.turn_context` 追加到所属用户消息之后；下一轮因此可以复用稳定内核和全部既有历史前缀。缓存路由键按逻辑会话、模型、调用阶段、稳定 system prompt 与工具合同内容寻址，Native、BAML planning、compaction 和 ResidentSpeech 不共用路由桶。
+主请求使用稳定 system prompt 和 append-only 会话历史。当前场景、已触发规则及其关联 signal、进行中的 Workflow、当前会话身份、活动 Skill 与模板组成当前用户消息前置的 `senera.turn-context/v1`：由 Pi 的公开 `session.prompt()` 一次写入普通 user message，和用户请求一起持久化到 Pi JSONL，不再依赖请求结束时清理的 overlay。稳定画像和 Skill 目录属于 system prefix；Skill 正文通过 `SeneraCommand skills read` 按需召回，历史 facts、events、digests、evidence 与风格示例由 Memory/Artifact 工具按需召回。缓存路由键按逻辑会话、模型、调用阶段、稳定 system prompt 与工具合同内容寻址，Native、BAML planning、compaction 和 ResidentSpeech 不共用路由桶。
 
-Continuity 学习、对话片段边界、时间摘要、频道最终改写和 ResidentSpeech 等辅助调用也使用独立的身份域和静态合同 revision。当前 episode、摘要条目和工具结果只进入动态 user payload，不进入缓存身份。首个请求、模型切换、稳定预设或项目上下文变化、工具 Schema 集合变化仍会产生必要的冷写；缓存键不能用来掩盖协议变化。供应商 TTL 通过 Pi 的兼容层发送，不能根据模型名称在业务代码中猜测。所有 Native provider 请求（包括 `AgentRequiredNativeToolCall` 的短链路）同时通过 Pi adapter 的 `onPayload` 和可注入 `fetch` 记录最终 payload 摘要、真实 HTTP body 摘要（不记录密钥或正文）和稳定前缀字节数；`prompt_cache` 诊断只把供应商 usage 中的 `cacheRead`/`cacheWrite` 解释为 `hit`/`miss`，没有 usage 时保持 `requested`，适配器明确不支持时为 `unsupported`。因此同一个 logical cache scope 只代表请求亲和性，物理 `sessionId`、逻辑缓存域和供应商 scope 始终分开，绝不伪造缓存命中，也能验证请求体是否真的保持稳定。
+Continuity 学习、对话片段边界、时间摘要、频道最终改写和 ResidentSpeech 等辅助调用也使用独立的身份域和静态合同 revision。当前 episode、摘要条目和工具结果只进入动态 user payload，不进入缓存身份。首个请求、模型切换、稳定人设或项目上下文变化、工具 Schema 集合变化仍会产生必要的冷写；缓存键不能用来掩盖协议变化。供应商 TTL 通过 Pi 的兼容层发送，不能根据模型名称在业务代码中猜测。所有 Native provider 请求（包括 `AgentRequiredNativeToolCall` 的短链路）同时通过 Pi adapter 的 `onPayload` 和可注入 `fetch` 记录最终 payload 摘要、真实 HTTP body 摘要（不记录密钥或正文）和稳定前缀字节数；`prompt_cache` 诊断只把供应商 usage 中的 `cacheRead`/`cacheWrite` 解释为 `hit`/`miss`，没有 usage 时保持 `requested`，适配器明确不支持时为 `unsupported`。因此同一个 logical cache scope 只代表请求亲和性，物理 `sessionId`、逻辑缓存域和供应商 scope 始终分开，绝不伪造缓存命中，也能验证请求体是否真的保持稳定。
 
 Provider-neutral 的 Native 请求形状如下，具体 HTTP 字段由 Pi 的 OpenAI Responses、Chat Completions、Anthropic 或 Google adapter 负责：
 
@@ -104,27 +104,23 @@ try {
 
 项目上下文属于 runtime-owned host state，普通 workspace 写入工具不能修改；它应由部署、用户或专门的受控管理入口维护。文件不存在表示没有项目级补充指令，不触发兼容回退或目录猜测。
 
-自动压缩完全由 Coding Agent 根据所选 provider 返回的 context usage 与原生 compaction 设置触发。Native 路径记录供应商上报 usage；BAML 路径汇总 planning compiler usage。两者都写入 Senera ledger。Senera 只通过 Pi compaction hook 提供结构化摘要文本和 Artifact 索引，不维护第二套会话压缩状态机。当前 turn collector 在同一有序事件队列中处理真实 `compaction_start` / `compaction_end`，并通过 `AgentPiCompactionActivityObserver` 发出 `compacting_context` 开始与终态事件。
+自动压缩的正式触发、压缩边界、摘要生成和 JSONL 提交都由 Pi `AgentSession` 负责；Senera 不决定正式 compaction，也不在工具循环里生成摘要、追加 compaction entry、在 native/compaction 请求前投影或拒绝输入。BAML 的普通规划只允许对自己的 planner payload 做协议级形状整理，不会改写 Pi JSONL；BAML compaction 请求则原样保留 Pi 提供的上下文。`AgentTurnTokenBudget` 只读取 Pi 已报告的 context usage，并在 usage 尚未覆盖的尾部使用本地估算，用于当前回合的 observation 分配；Pi 自己报告的 context usage 和原生 compaction 设置是正式触发依据。
 
-工具循环中的上下文压力由 `AgentPiMidRunCompactionCoordinator` 在 Pi 的公开 `prepareNextTurnWithContext` 边界检查。它只在完整工具批次结束后，用“上一供应商输入占用 + 本轮 assistant/toolResult 增量”判断压力，不重复 BPE 估算整棵历史；真正请求前 Native 与 BAML 仍分别校验各自最终 provider payload。工具批次建立 reservation 时先扣除完整 assistant 消息和空 tool-result 外壳，剩余容量才分配给 observation，因预算截断的 observation 继续携带 Artifact URI。压缩摘要及其 Artifact/tool-call 检索索引会先作为同一候选快照完成 provider 投影和容量验证，验证通过后才追加到会话，避免预演使用旧索引而低估最终输入。
+`session_before_compact` 只刷新连续性状态并暂存由原生消息计算出的 Artifact/tool/continuity 索引；它返回 `undefined`，因此 Pi 继续执行自己的 summary。只有 `session_compact` 成功后，Senera 才把这些索引作为隐藏 custom entry 追加到同一 Pi 分支；`session_compact_failed` 会丢弃暂存索引。Senera 不维护候选摘要、预热摘要、确定性摘要恢复或第二套压缩阈值。
 
-每次 provider `context` 投影还会复用同一组 compaction 设置检查压力带。只有输入接近 `contextWindow - outputReserve - keepRecentTokens` 且历史中存在不完整的 Artifact-backed tool result 时，才从最早的历史结果开始移除 `result/arguments/process`，保留 summary、error、evidence、continuation 和 Artifact URI；当前 user boundary 之后的消息永远不改。该投影只作用于本次 provider 请求，不改写 Pi JSONL 或 Artifact，因此缓存、回放和 UI 仍能看到完整证据，并通过 `context.pressure_projection` 诊断记录实际回收 token。
-
-触发阈值由模型输入容量、输出保留量和 Pi 的 `keepRecentTokens` 推导，不增加散落的百分比常量。协调器优先使用 Pi 的 turn-safe cut；若最新的已完成 tool result 自身跨过 `keepRecentTokens`，则以明确的 call ID 配对验证完整尾部批次，并把 assistant tool-call 与全部对应结果作为不可拆分后缀保留。摘要写入 append-only SessionManager 之前会先投影并测量候选 provider 输入，只有确认能够容纳才持久化 compaction entry 与 Artifact/Tool-call 索引、重建活动消息并重基 `AgentTurnTokenBudget`。因此单次 `prompt()` 内可以继续执行，同时不会留下一个已写入但仍超容量的压缩状态。
-
-Mid-run 压缩复用 `AgentPiCompactionController` 的摘要和索引逻辑，不另建会话状态机。摘要期间通过嵌套的 `compacting_context` activity 和 `compaction.mid_turn.*` 诊断事件反馈到前端；失败只在当前投影仍可安全发送时继续，否则以明确的上下文容量错误结束，不能靠重复重试掩盖无可压缩历史。
+`AgentTurnTokenBudget` 只维护当前回合的动态输入窗口：优先使用 Pi 已报告的 context usage，未报告的尾部才使用本地估算；模型的 max-output 字段不参与窗口容量。并行 observation 先扣除已经计入 Pi usage 的 assistant 回合和固定 tool-result 外壳，再按实际剩余量分配。预算不足是 context-pressure 状态，压缩器返回带 Artifact/evidence 坐标的最小协议结果，让 Pi 继续完成回合并由原生阈值触发 compaction，不把成功的工具执行改写成预算异常，也不触发第二套历史消息压缩。
 
 最终 assistant `message_end` 与 compaction settlement 是两个明确阶段。collector 在确认 stop reason 不是工具调用、错误或取消后立即发布稳定回答；该消息使用 Loop 预先分配的固定 ID，标记为 `terminal=false`。Pi 完成自动压缩、事件 drain 和 session settlement 后，Session 原子提交同一 ID 的 `terminal=true` 回答与 `RunCompleted`。因此用户可以先阅读答案，同时看到“正在压缩上下文”，下一轮仍必须等待当前 session lease 正式释放。
 
 Pi Session JSONL 是 assistant message、tool call、tool result、分支和 compaction 的权威执行记录。Senera Conversation SQLite 只保存产品层用户消息和最终回答，不再复制 OpenAI transcript 或工具证据。工具结果的模型可见摘要保留在 Pi `toolResult`；完整 raw/projection/evidence/workspace 内容与 SHA-256 receipt 保留在 Artifact 服务。
 
-原生 compaction 移除旧消息前，`session_before_compact` 只从明确的 Pi `toolResult` 和 Observation v3 evidence 提取 Artifact URI、call ID、tool name 和可读 ref。压缩完成后写入分支内的隐藏 `senera.artifact_index` custom entry。该 entry 不进入模型上下文；后续 `context` hook 按模型窗口、输出保留量和当前 Pi 消息占用，从最近的 archived Artifact 开始装入剩余空间。已经在活动 tool result 中可见的 Artifact 不重复投影，装不下的旧引用只计入 `omittedArtifacts`，可通过 Memory 重新定位。索引绝不复制 raw result 或完整 workspace evidence，Schema 无效时发出诊断并拒绝部分数据。
+原生 compaction 移除旧消息前，`session_before_compact` 只从明确的 Pi `toolResult` 和 Observation v3 evidence 提取 Artifact URI、call ID、tool name 和可读 ref。压缩完成后写入分支内的隐藏 `senera.artifact_index` custom entry。该 entry 不进入模型上下文；后续规划上下文只读取 Pi 原生保留消息，Artifact 索引由工具和 Memory 按需读取。索引绝不复制 raw result 或完整 workspace evidence，Schema 无效时发出诊断并拒绝部分数据。
 
 ## 工具并发边界
 
 Pi 工具定义使用 `executionMode: "parallel"`，让同一批次的独立调用进入执行桥。安全串行化不由 Pi 的静态 per-tool 开关承担：Pi Core 只要在一个批次里看到任意 `sequential` 工具，就会把整个批次全部串行，无法表达“同资源冲突、不同资源并发”。
 
-Coding Agent 每回合持有 `toolAccessGrant.authorizedToolNames` 的宿主工具定义。BAML compiler 与 native provider 都只投影 `AgentToolExposureState.exposedToolNames`，并把多个 `preferredToolNames` 稳定排在前面。ToolSearch 可在同一回合追加已授权工具；下一次 provider 调用读取新的 exposure generation，无需重建会话。请求级 `tool_choice` 可以进一步收窄曝光集合，但不能扩大 grant。provider、permission hook、执行桥和最终执行器共享同一授权与曝光状态，任一边界缺失 grant 都会关闭工具执行。
+每回合的不可变 `toolAccessGrant` 包含明确授权的工具名，并可在 Registered 策略下包含 MCP 服务 ID 与包修订。同轮首次发现的真实工具按服务身份检查授权，不依赖发现前的工具名快照；显式名称上限不会扩大为服务授权。Native 保持 Bootstrap 加固定 ToolCall 的稳定 schema，ToolDescribe 确认可用工具契约后通过桥执行。BAML 的 ToolLoad 使用 Pi 公共扩展 API 注册本轮新发现的真实 schema，再更新 `AgentToolExposureState`；下一次规划收到新契约与 exposure generation，无需重建会话。不可用工具不能确认、加载或自动复用。请求级 `tool_choice` 只能收窄曝光集合；provider、permission hook、执行桥和最终执行器共享同一授权边界。
 
 工具定义绑定 contract digest。MCP `tools/list_changed` 更新 registry 后，旧 Pi 回合若尝试调用同名但契约已变化的工具，会在执行器分派前失败；新目录只在后续回合以新的工具指纹和 Schema 进入 Coding Agent。
 
@@ -136,21 +132,20 @@ Native 与 BAML provider 都必须在 assistant 响应完成时登记完整的 c
 
 Pi 会在稳定 system 层收到一个由 `AgentExtensionRegistry` 派生的
 `senera.skill_library` 目录。目录只包含 Skill 名称、短说明、来源范围、
-revision、标签/用例和逻辑资源 URI，不包含宿主绝对路径或正文；它使用现有
+状态、按需加载标记、标签/用例和能力名称，不包含宿主绝对路径、逻辑 URI、revision 或正文；它使用现有
 Prompt Wire 的 TOON/compact JSON 无损选择，因此相同注册表会产生稳定字节。
-模型先用目录选择候选，再通过 `SeneraCommand skills inspect`（名称）和
-`skills read`（名称、包内相对路径、可选 revision）渐进式读取。正文披露、资源引用和 compaction 仍由
-现有 session ledger 管理，目录 revision 变化才触发资源重载和缓存前缀更新。
+模型先用目录按名称选择候选，再通过 `SeneraCommand skills inspect`（名称）和
+`skills read`（名称、包内相对路径）按需读取；目录变化由宿主内部 revision 触发资源重载，不把 revision 写入模型消息。
 
 `DefaultResourceLoader` 是 Pi 会话内 Skill 发现、标准 frontmatter 校验、collision 诊断和资源重载的权威来源，加载 `.senera/skills`、`System/Skills`，以及扩展注册表已经验证的 Skill contribution 精确文件路径。它不会递归扫描任意扩展目录来猜测未声明的 Skill。Senera 不再维护平行的 Pi Skill 文件缓存；模型可见目录只是在现有注册表目录投影上增加稳定的逻辑入口，不是第二套 Skill registry。
 
 活跃身份必须同时匹配 Pi catalog 的 `name` 与规范文件路径。同名 collision、文件缺失或目录指向不一致会给出确定性错误，不能静默改读另一个文件。Skill catalog revision 变化时，持久会话先等待空闲，再重载 ResourceLoader 并重建下一轮系统提示词；不重建对话，也不重复注册 runtime extension hooks。
 
-选择分数、匹配词和匹配字段只用于运行时诊断与学习，不发送给执行模型。经 Pi catalog 确认的文件读取 frontmatter 之后的完整 Markdown 正文，并通过 `pi-agent-core` 的标准 Skill invocation envelope 注入一次；不会再经过 Markdown 到 XML 的节点转换，也不会重复生成 Skill catalog。作者可以在正文末尾写自定义 EOF 注释帮助模型辨认长文档边界，也可以保持纯 Markdown，宿主不解析或自动补写该注释。
+选择分数、匹配词和匹配字段只用于运行时诊断与学习，不发送给执行模型。执行模型只收到 Skill 的注册名称、状态和按需加载标记；逻辑 URI、绝对路径和 revision 都由宿主内部维护。正文不会在每轮 prompt 中复制，也不会被转换成另一种标记语言。需要具体规范时，模型通过 `SeneraCommand skills read` 按名称和包内相对路径读取正文，读取结果由同一工具结果链路进入当前回合并保留原始 Artifact 坐标。
 
-资源披露采用会话级 progressive disclosure ledger：首次看到某个 Skill 或 prompt template revision 时发送正文，后续回合只发送带 revision 的引用。ledger 以 Pi `custom` entry 保存 revision 集合，该 entry 不进入模型上下文，因此池淘汰、服务重启和 fork 后仍能从 active branch 恢复，不会把状态复制进 prompt。原生 compaction、tree navigation、rewind 或 fork boundary 会建立披露失效边界，下一轮重新发送正文；资源内容变化只新增对应 revision，不重复其他资源。`prompt.disclosure` 诊断记录新披露与复用数量，便于验证缓存和上下文节省效果。
+Skill 不再维护独立的正文披露 ledger，也不把“已读正文”写成隐藏 custom entry。Pi JSONL 只记录实际发生的普通 user message、assistant message、tool call、tool result、分支和原生 compaction；资源索引的 revision 负责判断是否需要重新读取，Pi 原生历史负责持久化、重放和压缩。资源变化、注册表 collision、路径缺失或 revision 不一致都会明确报告，不能静默切换到另一个来源。
 
-Skill 的显式入口由实时注册表生成：`/skill-name` 是规范命令，旧的 `$skill-name` 继续兼容；解析器只接受命令边界，不会把 URL 或绝对路径当成 Skill。目录扫描按 source revision 复用已校验的 catalog，文件变化才重新解析 frontmatter。完整正文仍只在 activation lease 首次需要时加载，后续只复用 revision 引用；未注册、同名冲突或 revision 变化都会明确报告，不静默选择另一个来源。
+Skill 的显式入口由实时注册表生成：`/skill-name` 是规范命令，旧的 `$skill-name` 继续兼容；解析器只接受命令边界，不会把 URL 或绝对路径当成 Skill。目录扫描按 source revision 复用已校验的 catalog，文件变化才重新解析 frontmatter。Skill 选择由任务文本、可用工具和现有 hybrid retrieval 证据共同驱动；本地 `ternlight-mini-cn` 只负责语义候选，最终激活仍经过注册表、权限和 revision 校验。
 
 Pi 用户 extension、内置文件工具和 package tool 不启用。只有受信任的 `senera-runtime` extension factory 常驻；System Tool 与 MCP 仍通过 `customTools` 进入 Pi，并继续经过 Senera 的 grant、OPA、sandbox、Artifact 和结果契约边界。
 

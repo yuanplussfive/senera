@@ -1,9 +1,8 @@
-import type { FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
 import type { ModelThinkingLevel } from "../../api/eventTypes";
 
 /**
- * Pi's portable thinking vocabulary. These are protocol values, not provider
- * branches; provider-specific values belong in ThinkingLevelMap.
+ * Pi's portable reasoning vocabulary. These are protocol values shared by the
+ * model catalog and the chat selector; user-facing profiles only rename them.
  */
 export const ModelThinkingLevels = [
   "off",
@@ -14,13 +13,3 @@ export const ModelThinkingLevels = [
   "xhigh",
   "max",
 ] as const satisfies readonly ModelThinkingLevel[];
-
-export const ModelThinkingLevelMessageKeys: Record<ModelThinkingLevel, FrontendMessageKey> = {
-  off: "chat.thinking.off",
-  minimal: "chat.thinking.minimal",
-  low: "chat.thinking.low",
-  medium: "chat.thinking.medium",
-  high: "chat.thinking.high",
-  xhigh: "chat.thinking.xhigh",
-  max: "chat.thinking.max",
-};

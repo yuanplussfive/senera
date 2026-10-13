@@ -33,6 +33,7 @@ describe("Docker sandbox Worker server", () => {
       fixture.runtime.complete({ exitCode: 0, signal: null });
 
       await expect(readEvents(process.events)).resolves.toEqual([{ kind: "exit", code: 0, signal: null }]);
+      await expect(fixture.runtime.cleaned).resolves.toBeUndefined();
     } finally {
       await fixture.close();
     }
@@ -222,10 +223,16 @@ class RecordingRuntime implements AgentDockerRuntime {
   input = "";
   preparations = 0;
   started = 0;
+  cleaned: Promise<void>;
   private completionResolve: ((value: { exitCode: number | null; signal: string | null }) => void) | undefined;
   private inputClosed: Promise<void> | undefined;
+  private cleanupResolve!: () => void;
 
-  constructor(private readonly selectedProvider: "gvisor" | "docker-engine") {}
+  constructor(private readonly selectedProvider: "gvisor" | "docker-engine") {
+    this.cleaned = new Promise<void>((resolve) => {
+      this.cleanupResolve = resolve;
+    });
+  }
 
   provider() {
     return this.selectedProvider;
@@ -269,7 +276,7 @@ class RecordingRuntime implements AgentDockerRuntime {
         this.completionResolve = resolve;
       }),
       terminate: async () => undefined,
-      cleanup: async () => undefined,
+      cleanup: async () => this.cleanupResolve(),
     };
   }
 

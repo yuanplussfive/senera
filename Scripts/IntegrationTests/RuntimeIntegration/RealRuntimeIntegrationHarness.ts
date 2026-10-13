@@ -24,6 +24,7 @@ import { AgentLocalAdminAccountStore } from "../../../Source/AgentSystem/Auth/Ag
 import { readAgentUnknownRecord } from "../../../Source/AgentSystem/Core/AgentUnknownValue.js";
 import { decodeAgentPromptInputWire } from "../../../Source/AgentSystem/Prompt/AgentPromptContextWireRenderer.js";
 import { resolveWorkspaceRoot } from "../../WorkspaceRoot.js";
+import { VerificationScenarioSource } from "../../VerificationScenarioSource.js";
 
 export const RealRuntimeIntegrationValues = {
   DirectFinalAnswer: "真实运行时已直接完成回答。",
@@ -44,6 +45,7 @@ const ModelStages = {
   AuditToolRisk: "auditToolRisk",
   EvolveTurn: "evolveTurn",
   FillPiToolArguments: "fillPiToolArguments",
+  RewriteStateCard: "rewriteStateCard",
 } as const;
 
 const RealRuntimePreparationFingerprint = "real-runtime-e2e-v1";
@@ -110,6 +112,7 @@ export async function createRealRuntimeIntegrationHarness(
       workspaceRoot,
       resourcesPath: IntegrationResourcesRoot,
       config,
+      toolSearchScenarioSource: new VerificationScenarioSource(),
       approvalRuntime,
       logger: new AgentLogger(),
     });
@@ -278,7 +281,7 @@ export class FakeControllerModelServer {
     const outputs: Record<ModelStage, () => unknown> = {
       [ModelStages.EvolveTurn]: () => evolveTurnOutput(readPlannerInput(payload)),
       [ModelStages.FillPiToolArguments]: () => ({
-        arguments: { query: "shell command", includeLoaded: true },
+        arguments: { query: "shell command" },
         missingInputs: [],
         assumptions: [],
       }),
@@ -289,6 +292,10 @@ export class FakeControllerModelServer {
         tripwire: false,
         reason: "Deterministic read-only E2E tool call.",
         matchedConcerns: [],
+      }),
+      [ModelStages.RewriteStateCard]: () => ({
+        topicRelation: "continue",
+        standaloneRequest: RealRuntimeIntegrationValues.DirectRequestInput,
       }),
     };
     return outputs[stage]();
@@ -340,15 +347,9 @@ function createRuntimeConfig(input: {
       },
       Persistence: { Kind: "memory" },
       AgentLoop: { PiSessions: { RootDir: ".senera/pi-sessions" } },
-      ToolLearning: { Enabled: false },
       SandboxRuntime: {
         Enabled: false,
         BaseDir: ".senera/sandbox-runtime",
-      },
-      Presets: {
-        Enabled: false,
-        RootDir: ".senera/presets",
-        StateFile: ".senera/presets-state.json",
       },
     },
     ConfigStore: { Enabled: false },
@@ -376,6 +377,9 @@ function createRuntimeConfig(input: {
 
 function detectModelStage(payload: unknown): ModelStage | undefined {
   const serialized = JSON.stringify(payload);
+  if (serialized.includes("Resolve the current user turn into a standalone request")) {
+    return ModelStages.RewriteStateCard;
+  }
   return Object.values(ModelStages).find((stage) => serialized.includes(stage));
 }
 

@@ -5,11 +5,15 @@ import type { AgentToolAvailabilitySnapshot } from "../ToolRuntime/AgentToolAvai
 import type { AgentSessionLifecycleMetadata } from "../Session/AgentSessionLifecycleMetadata.js";
 import type { AgentSessionMessageQueueMode } from "../Session/AgentSessionMessageQueueMode.js";
 import type { AgentChannelFinalizationMetadata } from "../Channels/AgentChannelFinalizationTypes.js";
+import type { AgentSessionRecoveryMode } from "../Session/AgentSessionRunRecovery.js";
+import type { AgentExplicitActivationSet } from "../Activation/AgentActivationTypes.js";
 
 export type { AgentModelUsage } from "./AgentModelUsage.js";
 
 export interface AgentModelProviderMetadata {
   id: string;
+  /** Stable configured supplier identity, distinct from the model configuration id. */
+  providerId?: string;
   kind: string;
   endpoint: string;
   baseUrl: string;
@@ -74,6 +78,11 @@ export interface AgentConversationEntryMetadata {
     parentRequestId: string;
     mode: AgentSessionMessageQueueMode;
   };
+  recovery?: {
+    mode: AgentSessionRecoveryMode;
+    sourceRequestId: string;
+  };
+  activation?: AgentExplicitActivationSet;
 }
 
 /** Describes which runtime owns a session. This is persisted with the session. */
@@ -150,6 +159,7 @@ type ModelProviderConfig = ReturnType<typeof resolveModelProviderConfig>;
 export function createModelProviderMetadata(config: ModelProviderConfig): AgentModelProviderMetadata {
   return {
     id: config.Id,
+    providerId: config.ProviderId,
     kind: config.Kind,
     endpoint: config.Endpoint,
     baseUrl: config.BaseUrl,

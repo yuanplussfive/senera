@@ -25,7 +25,6 @@ export interface AgentXmlProtocolSpec {
     contextToolResults: string;
     readOnlyEvidence: string;
     currentUserMessage: string;
-    historicalUserTurn: string;
     toolCalls: string;
     toolResults: string;
     agentResult: string;
@@ -85,7 +84,6 @@ export const AgentDefaultXmlProtocolSpec = {
     contextToolResults: "context_tool_results",
     readOnlyEvidence: "read_only_evidence",
     currentUserMessage: "current_user_message",
-    historicalUserTurn: "historical_user_turn",
     toolCalls: "tool_request",
     toolResults: "tool_results",
     agentResult: "agent_result",

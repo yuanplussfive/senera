@@ -1,13 +1,14 @@
 import { AgentEventKinds } from "../Events/AgentEvent.js";
 import type { AgentWebSocketRequestOf } from "./AgentWebSocketProtocol.js";
 import type { AgentWebSocketEventSender, AgentWebSocketRequestContext } from "./AgentWebSocketTypes.js";
-import { createAgentWorldSnapshotEvent } from "../World/AgentWorldEventTypes.js";
 
 export class AgentWebSocketToolSettingsRequestHandlers {
   constructor(private readonly context: AgentWebSocketRequestContext) {}
 
   listSystemTools(sendEvent: AgentWebSocketEventSender): Promise<void> {
-    const snapshot = this.requireManagement().systemSettingsSnapshot();
+    const management = this.requireManagement();
+    const plugins = this.requirePluginHost().list();
+    const snapshot = management.systemSettingsSnapshot();
     return Promise.resolve(
       sendEvent({
         kind: AgentEventKinds.SystemToolSnapshot,
@@ -15,6 +16,7 @@ export class AgentWebSocketToolSettingsRequestHandlers {
         data: {
           extensions: snapshot.extensions,
           tools: snapshot.tools,
+          activation: management.activationCatalog(plugins),
         },
       }),
     );
@@ -67,13 +69,17 @@ export class AgentWebSocketToolSettingsRequestHandlers {
   }
 
   private sendMcpSnapshot(sendEvent: AgentWebSocketEventSender, requestId?: string): Promise<void> {
-    const snapshot = this.requireManagement().mcpSettingsSnapshot();
+    const management = this.requireManagement();
+    const plugins = this.requirePluginHost().list();
+    const snapshot = management.mcpSettingsSnapshot();
+    const activation = management.activationCatalog(plugins);
     return Promise.resolve(
       sendEvent({
         kind: AgentEventKinds.McpServerSnapshot,
         context: {},
         data: {
           servers: snapshot.servers,
+          activation,
           ...(requestId ? { operation: { requestId, kind: "mcp_input_update" as const } } : {}),
         },
       }),
@@ -84,70 +90,10 @@ export class AgentWebSocketToolSettingsRequestHandlers {
     if (!this.context.mcpManagement) throw new Error("MCP management is unavailable in this runtime.");
     return this.context.mcpManagement;
   }
-}
 
-export class AgentWebSocketPresetRequestHandlers {
-  constructor(private readonly context: AgentWebSocketRequestContext) {}
-
-  async list(sendEvent: AgentWebSocketEventSender): Promise<void> {
-    const snapshot = await this.context.presetManagerFactory().snapshot({ kind: "list" });
-    this.context.onPresetSnapshot?.(snapshot);
-    await sendEvent({
-      kind: AgentEventKinds.PresetSnapshot,
-      context: {},
-      data: snapshot,
-    });
-  }
-
-  async save(request: AgentWebSocketRequestOf<"preset.save">, sendEvent: AgentWebSocketEventSender): Promise<void> {
-    const snapshot = await this.context.presetManagerFactory().save({
-      requestId: request.requestId,
-      name: request.name,
-      card: request.card,
-      activate: request.activate,
-    });
-    this.context.onPresetSnapshot?.(snapshot);
-    await sendEvent({
-      kind: AgentEventKinds.PresetSnapshot,
-      context: {},
-      data: snapshot,
-    });
-    await this.sendWorldSnapshot(sendEvent);
-  }
-
-  async delete(request: AgentWebSocketRequestOf<"preset.delete">, sendEvent: AgentWebSocketEventSender): Promise<void> {
-    const snapshot = await this.context.presetManagerFactory().delete({
-      requestId: request.requestId,
-      name: request.name,
-    });
-    this.context.onPresetSnapshot?.(snapshot);
-    await sendEvent({
-      kind: AgentEventKinds.PresetSnapshot,
-      context: {},
-      data: snapshot,
-    });
-    await this.sendWorldSnapshot(sendEvent);
-  }
-
-  async setActive(
-    request: AgentWebSocketRequestOf<"preset.set_active">,
-    sendEvent: AgentWebSocketEventSender,
-  ): Promise<void> {
-    const snapshot = await this.context.presetManagerFactory().setActive({
-      requestId: request.requestId,
-      name: request.name,
-    });
-    this.context.onPresetSnapshot?.(snapshot);
-    await sendEvent({
-      kind: AgentEventKinds.PresetSnapshot,
-      context: {},
-      data: snapshot,
-    });
-    await this.sendWorldSnapshot(sendEvent);
-  }
-
-  private async sendWorldSnapshot(sendEvent: AgentWebSocketEventSender): Promise<void> {
-    if (this.context.worldRuntime) await sendEvent(createAgentWorldSnapshotEvent(this.context.worldRuntime));
+  private requirePluginHost() {
+    if (!this.context.pluginHost) throw new Error("Plugin host is unavailable in this runtime.");
+    return this.context.pluginHost;
   }
 }
 

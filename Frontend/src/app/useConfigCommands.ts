@@ -55,10 +55,6 @@ export function useConfigCommands({ commandQueue, sendRef, statusRef }: ConfigCo
     [],
   );
   const refreshConfig = useCallback(() => sendIfOpen(sendRef, statusRef, { type: "config.get" }), [sendRef, statusRef]);
-  const refreshPresets = useCallback(
-    () => sendIfOpen(sendRef, statusRef, { type: "preset.list" }),
-    [sendRef, statusRef],
-  );
   const saveConfig = useCallback(
     (config: Record<string, unknown>): string | null => {
       let commandId: string | null = null;
@@ -191,10 +187,9 @@ export function useConfigCommands({ commandQueue, sendRef, statusRef }: ConfigCo
       fetchProviderModels,
       ingestConfigCommandEvent,
       refreshConfig,
-      refreshPresets,
       saveConfig,
     }),
-    [fetchProviderModels, ingestConfigCommandEvent, refreshConfig, refreshPresets, saveConfig, state],
+    [fetchProviderModels, ingestConfigCommandEvent, refreshConfig, saveConfig, state],
   );
 }
 

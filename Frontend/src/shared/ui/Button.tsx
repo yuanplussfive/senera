@@ -1,7 +1,7 @@
 import { forwardRef, type ButtonHTMLAttributes } from "react";
-import { Check } from "lucide-react";
 import { cn } from "../../lib/util";
 import { MotionIconSwap } from "../motion";
+import { AppIcon } from "./AppIcon";
 import { Spinner } from "./Spinner";
 
 type ButtonVariant = "default" | "ghost" | "outline" | "destructive";
@@ -19,7 +19,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 const variantClasses: Record<ButtonVariant, string> = {
   default:
     "bg-accent-solid text-accent-on-solid shadow-[0_1px_2px_rgb(var(--color-accent-700)/0.18)] hover:bg-accent-solid-hover hover:shadow-[0_2px_5px_rgb(var(--color-accent-700)/0.22)] active:bg-accent-solid-pressed active:shadow-none",
-  ghost: "text-content-secondary hover:bg-surface-hover hover:text-content-primary",
+  ghost: "text-content-secondary hover:bg-surface-hover hover:text-content-primary hover:shadow-panel",
   outline:
     "border border-line bg-surface-panel/90 text-content-secondary shadow-panel hover:border-line-strong hover:bg-surface-hover hover:text-content-primary",
   destructive:
@@ -50,6 +50,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     <button
       ref={ref}
       type={type}
+      {...props}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       data-senera-button="true"
@@ -65,7 +66,6 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         sizeClasses[size],
         className,
       )}
-      {...props}
     >
       <span className="relative inline-flex min-w-0 items-center justify-center">
         <span className={cn("inline-flex min-w-0 items-center gap-1.5", (loading || success) && "opacity-0")}>
@@ -73,7 +73,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         </span>
         {loading || success ? (
           <MotionIconSwap stateKey={loading ? "loading" : "success"} className="absolute inset-0 m-auto h-3.5 w-3.5">
-            {loading ? <Spinner size="xs" /> : <Check className="h-3.5 w-3.5" aria-hidden="true" />}
+            {loading ? <Spinner size="xs" /> : <AppIcon icon="check" size={14} aria-hidden="true" />}
           </MotionIconSwap>
         ) : null}
       </span>

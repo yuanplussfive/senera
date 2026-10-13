@@ -1,5 +1,4 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { X } from "lucide-react";
 import {
   forwardRef,
   useLayoutEffect,
@@ -12,6 +11,7 @@ import {
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { dialogPresenceExitMs, MotionDialogOverlay, MotionSheetContent, useMotionLevel } from "../motion";
+import { AppIcon } from "./AppIcon";
 
 export const Sheet = DialogPrimitive.Root;
 export const SheetTrigger = DialogPrimitive.Trigger;
@@ -186,13 +186,13 @@ const SheetContentFrame = forwardRef<HTMLDivElement, SheetContentFrameProps>(
                 <button
                   type="button"
                   className={cn(
-                    "grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-md text-ink-500 transition",
-                    "hover:bg-ink-900/[0.05] hover:text-ink-800",
+                    "grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-[var(--overlay-radius)] text-content-muted transition-colors duration-[var(--menu-item-dur)]",
+                    "hover:bg-surface-hover hover:text-content-primary",
                     "focus:outline-none",
                   )}
                   aria-label={frontendMessage("ui.close")}
                 >
-                  <X className="h-4 w-4" />
+                  <AppIcon icon="close" size={16} aria-hidden="true" />
                 </button>
               </DialogPrimitive.Close>
             ) : null}

@@ -35,8 +35,6 @@
 
 | `type` | 用途 |
 | --- | --- |
-| `agenda.get` | 获取当前持久世界的 Agenda 快照，包括时钟、活动、长期目标、当天时间线和未来计划。 |
-| `agenda.goal.command` | 以命令 ID 和预期 revision 提交 Goal 的确认、暂停、恢复、取消或父级调整操作。 |
 | `approval.resolve` | 提交审批决定：单次允许、会话允许、拒绝继续或拒绝并中断。 |
 | `approval.resolve_batch` | 按会话、请求和工具批次原子提交一组审批决定。 |
 | `channel.connect` | 按当前配置重新连接指定渠道（telegram、qq 或 discord），无需重启服务。 |
@@ -59,10 +57,6 @@
 | `mcpServer.list` | 获取 MCP 服务及其脱敏凭证状态。 |
 | `mcpServer.restart` | 使指定 MCP 服务的运行时连接在下一轮重新建立。 |
 | `model.list` | 获取已配置模型提供方及默认模型。 |
-| `preset.delete` | 删除指定预设。 |
-| `preset.list` | 获取角色预设列表与当前激活项。 |
-| `preset.save` | 创建或更新预设，并可在保存后激活。 |
-| `preset.set_active` | 设置当前激活预设，`name: null` 表示取消激活。 |
 | `profile.get` | 获取用户画像。 |
 | `profile.update` | 更新用户名称和头像等画像字段。 |
 | `provider.defaultModel.set` | 设置当前默认模型。 |
@@ -76,6 +70,7 @@
 | `sandbox.status` | 获取当前沙箱运行时状态和降级信息。 |
 | `session.cancel` | 取消会话当前正在执行的请求。 |
 | `session.close` | 关闭并从服务端删除会话。 |
+| `session.close_many` | 批量关闭多个会话；保留逐会话清理和结果事件。 |
 | `session.compact` | 使用 Pi 会话压缩器压缩指定会话的当前上下文分支。 |
 | `session.create` | 创建会话；可选指定会话和模型提供方。 |
 | `session.export` | 将指定 Pi 会话的当前分支导出为 JSONL 或 HTML。 |
@@ -85,13 +80,12 @@
 | `session.message` | 向会话提交用户输入，并声明该运行的执行批准模式；可附带上传附件或队列模式。 |
 | `session.regenerate` | 从指定请求起截断旧分支，并按声明的执行批准模式提交替代输入。 |
 | `session.rename` | 更新会话显示标题。 |
+| `session.retry` | 恢复一个已失败或取消的运行；无有效进展时重试原上下文，有进展时提交关联的继续请求。 |
 | `session.runtime_status` | 获取指定 Pi 会话的上下文占用、消息、工具调用和 token 统计。 |
 | `session.truncate_from` | 从指定请求起截断会话历史。 |
 | `systemTool.list` | 获取常驻系统工具目录。 |
 | `workspace.get` | 获取当前工作区标识，包括工作区根目录、配置路径和 WebSocket 地址。 |
 | `workspace.switch` | 热切换到指定工作区根目录；活动会话和后台任务会被强制取消，客户端需重连后重新获取状态。 |
-| `world.get` | 获取模型当前使用的权威世界投影，包括时间阶段、日历、实体、关系、时间线和未来计划。 |
-| `world.resident.wake` | 向持久化世界队列提交一次显式 Resident 唤醒请求。 |
 
 ### 请求示例
 
@@ -194,11 +188,8 @@
 | `prompt.summary` | `progress` | `prompt` | [提示词事件类型](../../Source/AgentSystem/Events/AgentPromptEventTypes.ts) |
 | `prompt.harness.composed` | `progress` | `prompt` | [提示词事件类型](../../Source/AgentSystem/Events/AgentPromptEventTypes.ts) |
 | `continuity.snapshot` | `snapshot` | `prompt` | [提示词事件类型](../../Source/AgentSystem/Events/AgentPromptEventTypes.ts) |
-| `continuity.rules.snapshot` | `snapshot` | `prompt` | [提示词事件类型](../../Source/AgentSystem/Events/AgentPromptEventTypes.ts) |
 | `continuity.recall.settled` | `progress` | `prompt` | [提示词事件类型](../../Source/AgentSystem/Events/AgentPromptEventTypes.ts) |
 | `continuity.recall.query` | `progress` | `prompt` | [提示词事件类型](../../Source/AgentSystem/Events/AgentPromptEventTypes.ts) |
-| `agenda.snapshot` | `snapshot` | `prompt` | [提示词事件类型](../../Source/AgentSystem/Events/AgentPromptEventTypes.ts) |
-| `world.snapshot` | `snapshot` | `prompt` | [提示词事件类型](../../Source/AgentSystem/Events/AgentPromptEventTypes.ts) |
 | `todo.list.written` | `snapshot` | `tool` | [工具事件类型](../../Source/AgentSystem/ToolRuntime/AgentToolEventTypes.ts) |
 | `execution.created` | `snapshot` | `run` | [运行事件类型](../../Source/AgentSystem/Events/AgentRunEventTypes.ts) |
 | `execution.step.started` | `progress` | `run` | [运行事件类型](../../Source/AgentSystem/Events/AgentRunEventTypes.ts) |
@@ -207,6 +198,8 @@
 | `execution.completed` | `terminal` | `run` | [运行事件类型](../../Source/AgentSystem/Events/AgentRunEventTypes.ts) |
 | `model.started` | `progress` | `model` | [模型事件类型](../../Source/AgentSystem/Events/AgentModelEventTypes.ts) |
 | `model.delta` | `progress` | `model` | [模型事件类型](../../Source/AgentSystem/Events/AgentModelEventTypes.ts) |
+| `model.thinking.delta` | `progress` | `model` | [模型事件类型](../../Source/AgentSystem/Events/AgentModelEventTypes.ts) |
+| `model.thinking.completed` | `snapshot` | `model` | [模型事件类型](../../Source/AgentSystem/Events/AgentModelEventTypes.ts) |
 | `model.completed` | `snapshot` | `model` | [模型事件类型](../../Source/AgentSystem/Events/AgentModelEventTypes.ts) |
 | `tool.calls.planned` | `progress` | `tool` | [工具事件类型](../../Source/AgentSystem/ToolRuntime/AgentToolEventTypes.ts) |
 | `tool.call.started` | `progress` | `tool` | [工具事件类型](../../Source/AgentSystem/ToolRuntime/AgentToolEventTypes.ts) |
@@ -266,8 +259,6 @@
 | `provider.models.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
 | `provider.models.failed` | `error` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
 | `profile.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
-| `preset.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
-| `preset.failed` | `error` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
 | `system_tool.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
 | `mcp_server.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
 | `channel.status.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |

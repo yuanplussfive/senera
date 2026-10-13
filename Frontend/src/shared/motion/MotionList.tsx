@@ -2,9 +2,21 @@ import { AnimatePresence, motion } from "framer-motion";
 import type { ReactNode } from "react";
 import { cn } from "../../lib/util";
 import { useMotionLevel } from "./MotionProvider";
-import { readListItemVariants, readListTransition, readStagger } from "./presets";
+import { readListItemVariants, readListTransition } from "./presets";
 
-export function MotionList({ children, className }: { children: ReactNode; className?: string }): JSX.Element {
+export function MotionList({
+  children,
+  className,
+  presence = "animated",
+}: {
+  children: ReactNode;
+  className?: string;
+  presence?: "animated" | "static";
+}): JSX.Element {
+  if (presence === "static") {
+    return <div className={className}>{children}</div>;
+  }
+
   return (
     <motion.div className={className} initial={false}>
       <AnimatePresence initial={false}>{children}</AnimatePresence>
@@ -15,22 +27,16 @@ export function MotionList({ children, className }: { children: ReactNode; class
 export function MotionListItem({
   children,
   className,
-  index = 0,
-  itemCount = 1,
   layout = false,
   initial = "hidden",
 }: {
   children: ReactNode;
   className?: string;
-  index?: number;
-  itemCount?: number;
   layout?: false | "position";
   initial?: false | "hidden";
 }): JSX.Element {
   const { level, reduceMotion, disableMotion } = useMotionLevel();
   const effectiveLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
-  const stagger = readStagger(itemCount);
-  const delay = disableMotion ? 0 : index * stagger;
 
   return (
     <motion.div
@@ -39,7 +45,7 @@ export function MotionListItem({
       initial={initial}
       animate="show"
       exit="exit"
-      transition={readListTransition(effectiveLevel, delay)}
+      transition={readListTransition(effectiveLevel)}
       className={cn("min-w-0", className)}
     >
       {children}

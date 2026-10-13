@@ -9,6 +9,10 @@ import {
   SeneraExecutionError,
   SeneraExecutionErrorCodes,
 } from "../../../Source/AgentSystem/Execution/SeneraExecutionTypes.js";
+import {
+  createAgentMcpExecutionProfile,
+  AgentMcpSandboxPackageGuestRoot,
+} from "../../../Source/AgentSystem/Mcp/AgentMcpExecutionProfile.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 
 const temporaryDirectories: string[] = [];
@@ -83,6 +87,31 @@ describe("Sandbox execution context behavior", () => {
       },
     });
     expect(releases).toEqual(["session", "rootfs"]);
+  });
+
+  test("projects a packaged MCP root into the sandbox without changing workspace mounts", async () => {
+    const workspaceRoot = temporaryDirectory("sandbox-mcp-context");
+    const packageRoot = path.join(workspaceRoot, "..", "bundled-resources", "imagen");
+    const profile = createAgentMcpExecutionProfile({
+      backend: "sandbox",
+      network: "default",
+      workspaceMount: "readonly",
+      packageRoot,
+      packageName: "imagen",
+    });
+    const context = await prepareSeneraSandboxExecutionContext({
+      workspaceRoot,
+      cwd: packageRoot,
+      guestWorkspaceRoot: "/workspace",
+      environment: { MCP_PACKAGE_ROOT: path.resolve(packageRoot) },
+      profile,
+    });
+
+    const guestPackageRoot = `${AgentMcpSandboxPackageGuestRoot}/imagen`;
+    expect(context.guestCwd).toBe(guestPackageRoot);
+    expect(context.environment).toEqual({ MCP_PACKAGE_ROOT: guestPackageRoot });
+    expect(context.rootfsCopies).toEqual([{ hostPath: path.resolve(packageRoot), guestPath: guestPackageRoot }]);
+    await releaseSeneraSandboxResources([context.rootfsCleanup], { backend: "test-sandbox" });
   });
 
   test("surfaces cleanup failure when the primary operation succeeded", async () => {

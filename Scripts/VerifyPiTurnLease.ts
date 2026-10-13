@@ -95,6 +95,7 @@ const activeSkills = [
     recommendedTools: [],
     evidenceRequirements: [],
     descriptionFile: path.resolve("System/Skills/workspace-investigation/SKILL.md"),
+    content: registeredSkill.content,
     matchedTerms: ["lease"],
     matchedFields: [
       {

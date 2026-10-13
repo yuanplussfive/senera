@@ -27,6 +27,18 @@ const baseProps = {
   onMotionLevelChange: vi.fn(),
 };
 
+const SystemToolsTestDomain = {
+  id: "execute",
+  displayName: { "zh-CN": "执行与交互", "en-US": "Execute and Interact" },
+  description: { "zh-CN": "运行受控命令。", "en-US": "Run governed commands." },
+  presentation: {
+    category: "execute",
+    icon: "terminal",
+    group: { id: "execute", title: { "zh-CN": "执行任务", "en-US": "Run tasks" } },
+    activity: { action: { "zh-CN": "执行", "en-US": "Run" } },
+  },
+};
+
 beforeEach(() => {
   setFrontendLocale(FrontendLocales.ZhCn);
   HTMLElement.prototype.scrollIntoView = vi.fn();
@@ -94,7 +106,7 @@ describe("SettingsWorkbench", () => {
     expect(rail).toHaveAttribute("aria-hidden", "true");
   });
 
-  it("automatically syncs typed MCP inputs without retaining a Secret in the input", async () => {
+  it("commits typed MCP secrets on blur and keeps the value verifiable", async () => {
     const user = userEvent.setup();
     const systemConfig = createSystemConfig({
       mcpServers: [
@@ -134,17 +146,30 @@ describe("SettingsWorkbench", () => {
 
     await user.click(await screen.findByText("网页研究", {}, { timeout: 5_000 }));
     const input = await screen.findByLabelText("Tavily API key", {}, { timeout: 5_000 });
-    fireEvent.change(input, { target: { value: "secret-value" } });
+    expect(input).toHaveAttribute("type", "password");
+    await user.type(input, "secret-value");
 
+    // Keystrokes alone must not sync a partially typed secret.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(systemConfig.updateMcpInputs).not.toHaveBeenCalled();
+
+    // Blur commits the secret exactly once, without a save-all flow.
+    await user.tab();
     await waitFor(() =>
       expect(systemConfig.updateMcpInputs).toHaveBeenCalledWith("web-research", { TAVILY_API_KEY: "secret-value" }, []),
     );
+    expect(systemConfig.updateMcpInputs).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("button", { name: "保存全部更改" })).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Clear the workspace value for Tavily API key" }),
     ).not.toBeInTheDocument();
-    expect(input).toHaveValue("");
-    expect(screen.queryByDisplayValue("secret-value")).not.toBeInTheDocument();
+
+    // The committed secret stays masked in the field and can be revealed.
+    expect(input).toHaveValue("secret-value");
+    expect(input).toHaveAttribute("type", "password");
+    await user.click(screen.getByRole("button", { name: "显示 Secret" }));
+    expect(input).toHaveAttribute("type", "text");
+    expect(input).toHaveValue("secret-value");
   });
 
   it("keeps a newer MCP value while the previous hot update is awaiting its receipt", async () => {
@@ -241,7 +266,7 @@ describe("SettingsWorkbench", () => {
         },
       ],
     });
-    renderWithFrontendProviders(
+    const view = renderWithFrontendProviders(
       React.createElement(SettingsWorkbench, {
         ...baseProps,
         section: "mcp-servers",
@@ -255,6 +280,25 @@ describe("SettingsWorkbench", () => {
     await user.click(screen.getByRole("menuitemcheckbox", { name: "eu" }));
     await user.keyboard("{Escape}");
 
+    await waitFor(() => expect(systemConfig.updateMcpInputs).toHaveBeenCalled());
+    const firstCall = systemConfig.updateMcpInputs.mock.calls[0];
+    if (JSON.stringify(firstCall?.[1]) === JSON.stringify({ regions: ["us"] })) {
+      // A slow test environment can let the first debounce fire between the
+      // two clicks; complete it so the newer draft is flushed by the next effect.
+      systemConfig.mcpInputOperation = { requestId: "mcp-save-1", status: "success" };
+      view.rerender(
+        React.createElement(
+          TooltipProvider,
+          { delayDuration: 0 },
+          React.createElement(SettingsWorkbench, {
+            ...baseProps,
+            section: "mcp-servers",
+            systemConfig,
+          }),
+        ),
+      );
+    }
+
     await waitFor(() =>
       expect(systemConfig.updateMcpInputs).toHaveBeenCalledWith("regional-search", { regions: ["us", "eu"] }, []),
     );
@@ -266,12 +310,15 @@ describe("SettingsWorkbench", () => {
       systemExtensions: [
         {
           id: "execution",
+          settingsSurface: "system-tools",
+          domain: SystemToolsTestDomain,
           version: "1.0.0",
           displayName: { "zh-CN": "命令执行", "en-US": "Shell Commands" },
           description: {
             "zh-CN": "在受控执行环境中运行命令。",
             "en-US": "Runs commands in a controlled execution environment.",
           },
+          presentation: SystemToolsTestDomain.presentation,
           enabled: true,
           configured: false,
           tools: [
@@ -280,6 +327,12 @@ describe("SettingsWorkbench", () => {
               description: "Runs a command.",
               loading: "always",
               capability: "shell.run",
+              presentation: {
+                category: "shell-command",
+                icon: "terminal",
+                group: { id: "shell", title: { "zh-CN": "运行命令", "en-US": "Run commands" } },
+                activity: { action: { "zh-CN": "运行命令", "en-US": "Run" } },
+              },
             },
           ],
           skillCount: 0,
@@ -355,14 +408,194 @@ describe("SettingsWorkbench", () => {
     expect(screen.queryByText(/已启用.*已配置模型/)).not.toBeInTheDocument();
   });
 
+  it("shows the provider's actual default protocol instead of its compatibility kind", () => {
+    const provider = {
+      Id: "anthropic",
+      Kind: "OpenAICompatible",
+      DefaultEndpoint: "ClaudeMessages",
+      Enabled: true,
+      BaseUrl: "https://api.anthropic.com/v1",
+      ApiKey: "sk-ant-test",
+    };
+
+    renderWithFrontendProviders(
+      React.createElement(ProviderConnectionEditor, {
+        acceptedProvider: provider,
+        dirty: false,
+        draftProvider: provider,
+        disabled: false,
+        localError: null,
+        providerIndex: 0,
+        onChange: vi.fn(),
+        onConfirm: vi.fn(),
+      }),
+    );
+
+    expect(screen.getByText("Anthropic Claude Messages")).toBeInTheDocument();
+    expect(screen.queryByText("OpenAI 兼容协议")).not.toBeInTheDocument();
+  });
+
+  it("uses Chat Completions for legacy custom providers without a saved default", () => {
+    const provider = {
+      Id: "custom-proxy",
+      Kind: "OpenAICompatible",
+      Enabled: true,
+      BaseUrl: "https://proxy.example.test/v1",
+      ApiKey: "test-key",
+    };
+
+    renderWithFrontendProviders(
+      React.createElement(ProviderConnectionEditor, {
+        acceptedProvider: provider,
+        dirty: false,
+        draftProvider: provider,
+        disabled: false,
+        localError: null,
+        providerIndex: 0,
+        onChange: vi.fn(),
+        onConfirm: vi.fn(),
+      }),
+    );
+
+    expect(screen.getByText("OpenAI Chat Completions")).toBeInTheDocument();
+    expect(screen.queryByText("未指定协议")).not.toBeInTheDocument();
+  });
+
+  it("keeps provider fields local while typing and commits API URL before API key on blur", () => {
+    const onChange = vi.fn();
+    const onConfirm = vi.fn();
+    const onLocalDraftChange = vi.fn();
+    renderWithFrontendProviders(
+      React.createElement(ProviderConnectionEditor, {
+        acceptedProvider: {
+          Id: "custom-proxy",
+          Enabled: true,
+          BaseUrl: "https://proxy.example.test/v1",
+          ApiKey: "sk-original",
+        },
+        dirty: false,
+        draftProvider: {
+          Id: "custom-proxy",
+          Enabled: true,
+          BaseUrl: "https://proxy.example.test/v1",
+          ApiKey: "sk-original",
+        },
+        disabled: false,
+        localError: null,
+        providerIndex: 0,
+        onChange,
+        onConfirm,
+        onLocalDraftChange,
+      }),
+    );
+
+    const apiUrl = screen.getByPlaceholderText("https://.../v1");
+    const apiKey = screen.getByPlaceholderText("sk-...");
+    expect(apiUrl.compareDocumentPosition(apiKey) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    fireEvent.change(apiUrl, { target: { value: "https://proxy.example.test/v2" } });
+    fireEvent.change(apiKey, { target: { value: "sk-local-draft" } });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(apiUrl).toHaveValue("https://proxy.example.test/v2");
+    expect(apiKey).toHaveValue("sk-local-draft");
+    expect(onLocalDraftChange).toHaveBeenCalledTimes(1);
+    expect(onLocalDraftChange).toHaveBeenCalledWith(true);
+
+    fireEvent.blur(apiUrl);
+    expect(onConfirm).toHaveBeenCalledWith({ BaseUrl: "https://proxy.example.test/v2" });
+    fireEvent.blur(apiKey);
+    expect(onConfirm).toHaveBeenCalledWith({ ApiKey: "sk-local-draft" });
+    expect(onLocalDraftChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("keeps a focused provider field local until an explicit commit", () => {
+    const onConfirm = vi.fn();
+    const props = {
+      acceptedProvider: {
+        Id: "custom-proxy",
+        Enabled: true,
+        BaseUrl: "https://proxy.example.test/v1",
+        ApiKey: "sk-original",
+      },
+      dirty: false,
+      draftProvider: {
+        Id: "custom-proxy",
+        Enabled: true,
+        BaseUrl: "https://proxy.example.test/v1",
+        ApiKey: "sk-original",
+      },
+      disabled: false,
+      localError: null,
+      providerIndex: 0,
+      onChange: vi.fn(),
+      onConfirm,
+    };
+    const view = renderWithFrontendProviders(React.createElement(ProviderConnectionEditor, props));
+    fireEvent.change(screen.getByPlaceholderText("https://.../v1"), {
+      target: { value: "https://proxy.example.test/v2" },
+    });
+
+    view.rerender(
+      React.createElement(
+        TooltipProvider,
+        { delayDuration: 0 },
+        React.createElement(ProviderConnectionEditor, {
+          ...props,
+          acceptedProvider: { ...props.acceptedProvider, Id: "other-provider" },
+          draftProvider: { ...props.draftProvider, Id: "other-provider", BaseUrl: "https://other.example.test/v1" },
+        }),
+      ),
+    );
+
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("keeps custom provider logo input local until blur", () => {
+    const onChange = vi.fn();
+    const onConfirm = vi.fn();
+    renderWithFrontendProviders(
+      React.createElement(ProviderConnectionEditor, {
+        acceptedProvider: {
+          Id: "custom-proxy",
+          Enabled: true,
+          BaseUrl: "https://proxy.example.test/v1",
+        },
+        dirty: false,
+        draftProvider: {
+          Id: "custom-proxy",
+          Enabled: true,
+          BaseUrl: "https://proxy.example.test/v1",
+        },
+        disabled: false,
+        localError: null,
+        providerIndex: 0,
+        onChange,
+        onConfirm,
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "供应商标识" }));
+    const logoInput = screen.getByRole("textbox", { name: "自定义图片" });
+    fireEvent.change(logoInput, { target: { value: "https://assets.example.test/logo.svg" } });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onConfirm).not.toHaveBeenCalled();
+
+    fireEvent.blur(logoInput);
+    expect(onConfirm).toHaveBeenCalledWith({ Icon: "https://assets.example.test/logo.svg" });
+  });
+
   it("debounces System extension configuration through the shared settings draft", async () => {
     const systemConfig = createSystemConfig({
       systemExtensions: [
         {
           id: "execution",
+          settingsSurface: "system-tools",
+          domain: SystemToolsTestDomain,
           version: "1.0.0",
           displayName: { "zh-CN": "命令执行", "en-US": "Shell Commands" },
           description: { "zh-CN": "运行命令。", "en-US": "Runs commands." },
+          presentation: SystemToolsTestDomain.presentation,
           enabled: true,
           configured: false,
           tools: [],
@@ -429,12 +662,15 @@ describe("SettingsWorkbench", () => {
       systemExtensions: [
         {
           id: "execution",
+          settingsSurface: "system-tools",
+          domain: SystemToolsTestDomain,
           version: "1.0.0",
           displayName: { "zh-CN": "命令执行", "en-US": "Shell Commands" },
           description: {
             "zh-CN": "在受控执行环境中运行命令。",
             "en-US": "Runs commands in a controlled execution environment.",
           },
+          presentation: SystemToolsTestDomain.presentation,
           enabled: true,
           configured: false,
           tools: [],

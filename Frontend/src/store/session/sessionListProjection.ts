@@ -132,10 +132,12 @@ export function deleteSessionRuntimeStates(state: StoreState, sessionIds: readon
 
   for (const sessionId of ids) {
     delete state.sessions[sessionId];
+    delete state.runtimeSnapshotsBySession[sessionId];
     delete state.historyLoadedIds[sessionId];
     delete state.historyLoadingIds[sessionId];
     delete state.historyFailedIds[sessionId];
     delete state.historyReplayBuffers[sessionId];
+    if (state.historySuppressedRequestIds) delete state.historySuppressedRequestIds[sessionId];
     delete state.historyStepBuffers[sessionId];
     delete state.historyEventRunIds[sessionId];
     delete state.historyActiveRequestIds[sessionId];
@@ -169,6 +171,10 @@ function projectSessionListItem(state: StoreState, item: SessionListItem): void 
     existing.channel = item.channel;
     if (item.effectiveModel) existing.effectiveModel = item.effectiveModel;
     if (item.modelPreference) existing.modelPreference = item.modelPreference;
+    if (!existing.runtimeSnapshot) {
+      const persistedRuntimeSnapshot = state.runtimeSnapshotsBySession[item.sessionId];
+      if (persistedRuntimeSnapshot) existing.runtimeSnapshot = persistedRuntimeSnapshot;
+    }
     if (item.modelProviderId) {
       state.selectedModelProviderIdsBySession[item.sessionId] = item.modelProviderId;
     }
@@ -189,6 +195,9 @@ function projectSessionListItem(state: StoreState, item: SessionListItem): void 
     messageCount: item.messageCount,
     messages: [],
     runs: [],
+    ...(state.runtimeSnapshotsBySession[item.sessionId]
+      ? { runtimeSnapshot: state.runtimeSnapshotsBySession[item.sessionId] }
+      : {}),
     activeRequestId: item.activeRequestId,
     channel: item.channel,
     ...(item.effectiveModel ? { effectiveModel: item.effectiveModel } : {}),

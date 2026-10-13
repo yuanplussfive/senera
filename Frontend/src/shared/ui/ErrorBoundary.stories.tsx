@@ -53,6 +53,18 @@ export const AppRecovery: Story = () => (
   </main>
 );
 
+export const DynamicImportRecovery: Story = () => (
+  <main className="min-h-[520px] bg-surface-canvas p-6 text-content-primary sm:p-10">
+    <div className="mx-auto max-w-[980px]">
+      <ErrorBoundary presentation="app" fallback={undefined}>
+        {(() => {
+          throw new Error("Failed to fetch dynamically imported module /assets/chunk-core.js");
+        })()}
+      </ErrorBoundary>
+    </div>
+  </main>
+);
+
 export const CustomFallback: Story = () => (
   <main className="min-h-[420px] bg-surface-canvas p-6 text-content-primary sm:p-10">
     <div className="mx-auto max-w-[680px]">

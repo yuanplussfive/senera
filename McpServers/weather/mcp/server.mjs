@@ -51,7 +51,6 @@ server.registerTool(
     inputSchema: {
       location: z.string().trim().min(1).describe("City, region, address, postal code, or coordinates."),
       days: z.number().int().min(1).max(30).optional(),
-      language: z.string().trim().min(1).optional(),
     },
     outputSchema: forecastOutput,
     annotations: { readOnlyHint: true, openWorldHint: true },

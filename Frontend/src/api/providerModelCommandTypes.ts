@@ -10,6 +10,7 @@ export interface ProviderModelEndpointInput {
   Icon?: string;
   Enabled?: boolean;
   Kind?: "OpenAICompatible";
+  DefaultEndpoint?: ProviderModelEndpointKind;
   BaseUrl?: string;
   ApiKey?: string;
   ApiVersion?: string;
@@ -27,7 +28,6 @@ export interface ProviderModelConfigInput {
   ProviderId: string;
   Icon?: string;
   Capabilities?: ModelCapabilitiesData;
-  ThinkingLevelMap?: Partial<Record<ModelThinkingLevel, string | null>>;
   ThinkingProfiles?: ModelThinkingProfileConfig[];
   DefaultThinkingLevel?: ModelThinkingLevel;
   ToolPlanningMode?: ModelToolPlanningMode;

@@ -11,8 +11,22 @@ export function matchToolCapabilities(
   queryTokens: readonly string[],
   tokenizer: AgentToolSearchTokenizer,
 ): AgentToolSearchCapabilityMatch[] {
+  return matchCapabilityManifests(doc.capabilities, queryTokens, tokenizer);
+}
+
+/**
+ * Matches a capability contract independently of its enclosing tool document.
+ * The ranker uses the same declared-facet evidence as the result projector, so
+ * a producer's Actions/Targets declaration has one interpretation throughout
+ * the retrieval pipeline.
+ */
+export function matchCapabilityManifests(
+  capabilities: readonly ToolSearchCapabilityManifest[],
+  queryTokens: readonly string[],
+  tokenizer: AgentToolSearchTokenizer,
+): AgentToolSearchCapabilityMatch[] {
   const querySet = new Set(queryTokens);
-  return doc.capabilities
+  return capabilities
     .map((capability) => matchCapability(capability, querySet, tokenizer))
     .filter((entry): entry is AgentToolSearchCapabilityMatch => Boolean(entry))
     .sort((left, right) => right.score - left.score || left.id.localeCompare(right.id));
@@ -61,7 +75,9 @@ function matchCapability(
   const semanticText = capabilitySearchText(capability, {
     includeRisk: false,
   });
-  const semanticMatches = tokenizer.tokenize(semanticText).filter((token) => queryTokens.has(token)).length;
+  const semanticMatches = tokenizer
+    .tokenizeContent(semanticText)
+    .filter((token) => tokenizer.isIndependentContentToken(token) && queryTokens.has(token)).length;
   const score = matchedFacets.length + semanticMatches * 0.2;
   if (score <= 0) {
     return undefined;
@@ -81,7 +97,11 @@ function facetMatchesQuery(
   queryTokens: Set<string>,
   tokenizer: AgentToolSearchTokenizer,
 ): boolean {
-  return values.some((value) => tokenizer.tokenize(value).some((token) => queryTokens.has(token)));
+  return values.some((value) =>
+    tokenizer
+      .tokenizeContent(value)
+      .some((token) => tokenizer.isIndependentContentToken(token) && queryTokens.has(token)),
+  );
 }
 
 function projectCapabilityRisk(

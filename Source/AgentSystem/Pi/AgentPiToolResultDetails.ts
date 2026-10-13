@@ -28,6 +28,14 @@ const AgentPiToolResultContextSchema = z.object({
   callId: z.string().trim().min(1).optional(),
   executionStatus: z.enum(AgentToolExecutionStatuses),
   outputAvailability: z.enum(AgentToolOutputAvailabilities),
+  mediaProjection: z
+    .object({
+      code: z.literal("media_projection_failed"),
+      message: z.string().trim().min(1),
+      resourceUri: z.string().trim().min(1).optional(),
+    })
+    .strict()
+    .optional(),
 });
 
 const AgentPiSuccessfulToolResultSchema = AgentPiToolResultContextSchema.extend({

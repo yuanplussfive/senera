@@ -3,7 +3,12 @@ import { createOpaqueId } from "../Core/AgentIds.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { agentSql } from "../Database/AgentSql.js";
 import type { AgentOrchestrationDatabase } from "./AgentOrchestrationDatabase.js";
-import { AgentChildRunStatuses, type AgentChildRunRecord, type AgentChildRunRepository } from "./AgentChildRunTypes.js";
+import {
+  AgentChildRunStatuses,
+  isAgentChildRunBackgroundDeliverable,
+  type AgentChildRunRecord,
+  type AgentChildRunRepository,
+} from "./AgentChildRunTypes.js";
 import type { AgentDelegationCompletionPort } from "./AgentDelegationRuntimeContracts.js";
 
 export const AgentDelegationCompletionDeliveryDefaults = Object.freeze({
@@ -148,7 +153,8 @@ export class AgentDelegationCompletionDelivery {
 
   async completed(record: AgentChildRunRecord): Promise<void> {
     this.assertAcceptingWork();
-    if (!TerminalChildRunStatuses.has(record.status)) {
+    if (!isAgentChildRunBackgroundDeliverable(record.status)) {
+      if (record.status === AgentChildRunStatuses.Cancelled) return;
       throw new Error(`Completion delivery requires a terminal child run: ${record.id}/${record.status}`);
     }
     const ports = [...this.ports.values()];
@@ -219,6 +225,15 @@ export class AgentDelegationCompletionDelivery {
             id: claim.id,
             claim_id: claim.claim_id,
             error: "Child run no longer exists.",
+            updated_at: this.isoNow(),
+          });
+          continue;
+        }
+        if (!isAgentChildRunBackgroundDeliverable(record.status)) {
+          this.statements.markDelivered.run({
+            id: claim.id,
+            claim_id: claim.claim_id,
+            delivered_at: this.isoNow(),
             updated_at: this.isoNow(),
           });
           continue;
@@ -322,15 +337,6 @@ export class AgentDelegationCompletionDelivery {
     this.options.onError?.(error, portId);
   }
 }
-
-const TerminalChildRunStatuses = new Set<AgentChildRunRecord["status"]>([
-  AgentChildRunStatuses.Completed,
-  AgentChildRunStatuses.PartialCompleted,
-  AgentChildRunStatuses.Interrupted,
-  AgentChildRunStatuses.TimedOut,
-  AgentChildRunStatuses.Failed,
-  AgentChildRunStatuses.Cancelled,
-]);
 
 function normalizePortId(value: string): string {
   const portId = value.trim();

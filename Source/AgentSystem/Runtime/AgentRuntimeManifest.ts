@@ -2,19 +2,24 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { resolveAgentWorkspaceLayout } from "../Core/AgentWorkspaceLayout.js";
+import { AgentWorkspaceIdSchema, type AgentWorkspaceId } from "../WorkspaceResources/AgentWorkspaceCatalogContract.js";
+import { z } from "zod/mini";
 
 export const AgentSelfProtocolVersion = 1 as const;
 
 const AgentRuntimeManifestFileName = "runtime.json" as const;
 
-export interface AgentRuntimeManifest {
-  readonly pid: number;
-  readonly startedAt: string;
-  readonly host: string;
-  readonly port: number;
-  readonly token: string;
-  readonly protocol: number;
-}
+export const AgentRuntimeManifestSchema = z.strictObject({
+  pid: z.number().check(z.int(), z.positive()),
+  startedAt: z.iso.datetime(),
+  host: z.string().check(z.trim(), z.minLength(1)),
+  port: z.number().check(z.int(), z.minimum(1), z.maximum(65_535)),
+  token: z.string().check(z.minLength(1)),
+  protocol: z.literal(AgentSelfProtocolVersion),
+  workspaceId: z.optional(AgentWorkspaceIdSchema),
+});
+
+export type AgentRuntimeManifest = z.infer<typeof AgentRuntimeManifestSchema>;
 
 export function resolveAgentRuntimeManifestPath(workspaceRoot: string): string {
   return path.join(resolveAgentWorkspaceLayout(workspaceRoot).stateRoot, AgentRuntimeManifestFileName);
@@ -23,16 +28,8 @@ export function resolveAgentRuntimeManifestPath(workspaceRoot: string): string {
 export function readAgentRuntimeManifest(workspaceRoot: string): AgentRuntimeManifest | undefined {
   try {
     const raw = fs.readFileSync(resolveAgentRuntimeManifestPath(workspaceRoot), "utf8");
-    const parsed = JSON.parse(raw) as Partial<AgentRuntimeManifest>;
-    if (
-      typeof parsed.pid !== "number" ||
-      typeof parsed.port !== "number" ||
-      typeof parsed.token !== "string" ||
-      typeof parsed.host !== "string"
-    ) {
-      return undefined;
-    }
-    return parsed as AgentRuntimeManifest;
+    const parsed = AgentRuntimeManifestSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : undefined;
   } catch {
     return undefined;
   }
@@ -79,16 +76,17 @@ export class AgentRuntimeManifestStore {
     return this.token !== undefined;
   }
 
-  start(input: { host: string; port: number }): { readonly token: string } {
+  start(input: { host: string; port: number; workspaceId?: AgentWorkspaceId }): { readonly token: string } {
     const token = randomBytes(32).toString("base64url");
-    const manifest: AgentRuntimeManifest = {
+    const manifest = AgentRuntimeManifestSchema.parse({
       pid: process.pid,
       startedAt: this.now().toISOString(),
       host: input.host,
       port: input.port,
       token,
       protocol: AgentSelfProtocolVersion,
-    };
+      ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+    });
     fs.mkdirSync(path.dirname(this.manifestPath), { recursive: true });
     fs.writeFileSync(this.manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, {
       mode: 0o600,

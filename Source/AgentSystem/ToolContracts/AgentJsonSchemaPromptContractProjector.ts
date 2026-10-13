@@ -38,32 +38,6 @@ export class AgentJsonSchemaPromptContractProjector {
     const comment = typeof schema.description === "string" ? schema.description : "";
     const xmlHint = typeof schema["x-senera-xml-hint"] === "string" ? schema["x-senera-xml-hint"] : "";
 
-    if (isObjectSchema(resolved)) {
-      const childRequired = stringSet(resolved.required);
-      const children = schemaProperties(resolved).map(([childName, childSchema]) =>
-        this.projectProperty(
-          childName,
-          childSchema,
-          childRequired.has(childName),
-          `${propertyPath}.${childName}`,
-          depth + 1,
-          rootSchema,
-        ),
-      );
-      return contractNode({
-        name,
-        displayName: name,
-        path: propertyPath,
-        depth,
-        kind: "object",
-        typeText,
-        required,
-        comment,
-        xmlHint,
-        children,
-      });
-    }
-
     if (isArraySchema(resolved)) {
       const itemSchema = recordValue(resolved.items);
       const element = itemSchema
@@ -88,6 +62,32 @@ export class AgentJsonSchemaPromptContractProjector {
         xmlHint,
         children: [],
         element,
+      });
+    }
+
+    const view = objectView(schema, rootSchema);
+    if (view) {
+      const children = [...view.properties].map(([childName, childSchema]) =>
+        this.projectProperty(
+          childName,
+          childSchema,
+          view.required.has(childName),
+          `${propertyPath}.${childName}`,
+          depth + 1,
+          rootSchema,
+        ),
+      );
+      return contractNode({
+        name,
+        displayName: name,
+        path: propertyPath,
+        depth,
+        kind: "object",
+        typeText,
+        required,
+        comment,
+        xmlHint,
+        children,
       });
     }
 
@@ -118,23 +118,43 @@ interface ObjectSchemaVariant {
 }
 
 function rootProperties(root: JsonSchema, rootSchema: JsonSchema): RootProperty[] {
-  const variants = objectSchemaVariants(root, rootSchema);
+  const view = objectView(root, rootSchema);
+  if (!view) return [];
+  return [...view.properties].map(([name, schema]) => ({
+    name,
+    schema,
+    required: view.required.has(name),
+  }));
+}
+
+function objectView(
+  schema: JsonSchema,
+  rootSchema: JsonSchema,
+): { readonly properties: ReadonlyMap<string, JsonSchema>; readonly required: ReadonlySet<string> } | undefined {
+  const variants = objectSchemaVariants(schema, rootSchema);
+  if (variants.length === 0) return undefined;
   const propertyNames = new Set<string>();
   for (const variant of variants) {
     for (const name of variant.properties.keys()) propertyNames.add(name);
   }
-
-  return [...propertyNames].map((name) => {
+  if (propertyNames.size === 0) {
+    return isObjectSchema(resolveSchema(schema, rootSchema))
+      ? { properties: new Map(), required: new Set() }
+      : undefined;
+  }
+  const properties = new Map<string, JsonSchema>();
+  const required = new Set<string>();
+  for (const name of propertyNames) {
     const candidates = variants.flatMap((variant) => {
-      const schema = variant.properties.get(name);
-      return schema ? [schema] : [];
+      const candidate = variant.properties.get(name);
+      return candidate ? [candidate] : [];
     });
-    return {
-      name,
-      schema: mergePropertySchemas(candidates),
-      required: candidates.length === variants.length && variants.every((variant) => variant.required.has(name)),
-    };
-  });
+    properties.set(name, mergePropertySchemas(candidates));
+    if (candidates.length === variants.length && variants.every((variant) => variant.required.has(name))) {
+      required.add(name);
+    }
+  }
+  return { properties, required };
 }
 
 function objectSchemaVariants(root: JsonSchema, rootSchema: JsonSchema): readonly ObjectSchemaVariant[] {

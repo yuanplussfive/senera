@@ -14,6 +14,7 @@ export interface ProviderEndpointDraft {
   Icon?: string;
   Kind?: string;
   Enabled?: boolean;
+  DefaultEndpoint?: ProviderModelEndpointInput["DefaultEndpoint"];
   BaseUrl?: string;
   ApiKey?: string;
   ApiVersion?: string;
@@ -25,7 +26,6 @@ export interface ModelProviderDraft {
   ProviderId: string;
   Icon?: string;
   Capabilities?: ModelCapabilitiesDraft;
-  ThinkingLevelMap?: Partial<Record<ModelThinkingLevel, string | null>>;
   ThinkingProfiles?: ModelThinkingProfileConfig[];
   DefaultThinkingLevel?: ModelThinkingLevel;
   ToolPlanningMode?: ModelToolPlanningMode;
@@ -50,8 +50,6 @@ export interface ModelProviderDraft {
 
 export interface ModelCapabilitiesDraft {
   Chat?: boolean;
-  Embedding?: boolean;
-  Rerank?: boolean;
   Vision?: boolean;
   ImageOutput?: boolean;
   Reasoning?: boolean;

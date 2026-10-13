@@ -20,9 +20,17 @@ describe("agent workspace layout", () => {
       credentials: path.join(root, ".senera", "data", "credentials", "credentials.sqlite"),
       sessions: path.join(root, ".senera", "data", "sessions", "sessions.sqlite"),
       memory: path.join(root, ".senera", "data", "memory", "memory.sqlite"),
+      memos: path.join(root, ".senera", "data", "memos", "memos.sqlite"),
       orchestration: path.join(root, ".senera", "data", "orchestration", "orchestration.sqlite"),
       channels: path.join(root, ".senera", "data", "channels", "channels.sqlite"),
-      toolSearch: path.join(root, ".senera", "data", "tool-search", "tool-search.sqlite"),
+      artifactManifestIndex: path.join(root, ".senera", "data", "artifacts", "manifest-index.sqlite"),
+      workspaceObserver: path.join(root, ".senera", "data", "workspace-observer", "workspace-observer.sqlite"),
+    });
+    expect(layout.caches).toEqual({
+      toolSearchEmbeddings: path.join(root, ".senera", "data", "tool-search", "embeddings.json"),
+      toolObservationSift: path.join(root, ".senera", "data", "tool-observation", "sift"),
+      mcpSchemas: path.join(root, ".senera", "data", "mcp", "schemas"),
+      workspaceObserverContents: path.join(root, ".senera", "data", "workspace-observer", "contents"),
     });
     expect(layout.configSecretKey).toBe(path.join(root, ".senera", "data", "config", "config-secrets.key"));
     expect(layout.credentialSecretKey).toBe(path.join(root, ".senera", "data", "credentials", "credentials.key"));
@@ -35,15 +43,7 @@ describe("agent workspace layout", () => {
     fs.mkdirSync(path.dirname(legacySkill), { recursive: true });
     fs.mkdirSync(stateRoot, { recursive: true });
     fs.writeFileSync(legacySkill, "skill");
-    for (const name of [
-      "Config.sqlite",
-      "Config.sqlite-wal",
-      "Memory.sqlite",
-      "senera.db",
-      "ToolSearchLearning.sqlite",
-      "ToolSearch.sqlite",
-      "ToolSearch.sqlite-shm",
-    ]) {
+    for (const name of ["Config.sqlite", "Config.sqlite-wal", "Memory.sqlite", "senera.db"]) {
       fs.writeFileSync(path.join(stateRoot, name), name);
     }
     fs.writeFileSync(path.join(stateRoot, "config-secrets.key"), "key");
@@ -56,13 +56,6 @@ describe("agent workspace layout", () => {
     expect(fs.readFileSync(`${layout.databases.config}-wal`, "utf8")).toBe("Config.sqlite-wal");
     expect(fs.readFileSync(layout.databases.sessions, "utf8")).toBe("senera.db");
     expect(fs.readFileSync(layout.databases.memory, "utf8")).toBe("Memory.sqlite");
-    expect(fs.readFileSync(layout.databases.toolSearch, "utf8")).toBe("ToolSearchLearning.sqlite");
-    expect(
-      fs.readFileSync(path.join(path.dirname(layout.databases.toolSearch), "legacy", "ToolSearch.sqlite"), "utf8"),
-    ).toBe("ToolSearch.sqlite");
-    expect(
-      fs.readFileSync(path.join(path.dirname(layout.databases.toolSearch), "legacy", "ToolSearch.sqlite-shm"), "utf8"),
-    ).toBe("ToolSearch.sqlite-shm");
     expect(fs.readFileSync(layout.configSecretKey, "utf8")).toBe("key");
     expect(fs.existsSync(path.join(root, ".skills"))).toBe(false);
   });

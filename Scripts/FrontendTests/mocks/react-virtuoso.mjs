@@ -1,10 +1,27 @@
 import React from "react";
 
+export const virtuosoTestCalls = [];
+
+export function resetVirtuosoTestCalls() {
+  virtuosoTestCalls.length = 0;
+}
+
 export const Virtuoso = React.forwardRef(function TestVirtuoso(props, ref) {
   React.useImperativeHandle(ref, () => ({
-    autoscrollToBottom: () => undefined,
-    scrollTo: () => undefined,
-    scrollToIndex: () => undefined,
+    autoscrollToBottom: () => {
+      virtuosoTestCalls.push({ method: "autoscrollToBottom" });
+    },
+    scrollTo: (options = {}) => {
+      virtuosoTestCalls.push({ method: "scrollTo", ...options });
+    },
+    scrollToIndex: (options = {}) => {
+      virtuosoTestCalls.push({ method: "scrollToIndex", ...options });
+    },
+    scrollIntoView: (options = {}) => {
+      const { done, ...request } = options;
+      virtuosoTestCalls.push({ method: "scrollIntoView", ...request });
+      done?.();
+    },
   }));
 
   const setScrollerRef = React.useCallback(

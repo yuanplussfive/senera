@@ -2,6 +2,7 @@ import {
   EventKinds,
   type EventEnvelope,
   type RunCancellationProgressData,
+  type RunCompletedData,
   type RunFailedData,
   type RunStartedData,
   type SessionBusyData,
@@ -19,6 +20,7 @@ import { createRunRecord, touchRun } from "./sessionRunProjection";
 import { truncate } from "./sessionPresentation";
 import { upsertMessageByRequestId } from "./historyRunProjection";
 import { DEFAULT_SESSION_TITLE } from "./defaults";
+import { rejectRunRecovery } from "./runRecoveryProjection";
 import { readCurrentRun, type RunEventHandlerMap } from "./runEventProjectionTypes";
 import type { RunRecord, SessionRecord, StoreState, TimelineStepStatus } from "./types";
 
@@ -30,6 +32,7 @@ export const runLifecycleEventHandlers = {
     projectSessionChannel(session, env.scope?.channel);
     const data = env.data as RunStartedData;
     projectChannelUserMessage(session, env, data);
+    projectRecoveryUserMessage(session, env, data);
     let run = currentRun(session, env.requestId);
     if (!run) {
       run = createRunRecord({
@@ -46,6 +49,13 @@ export const runLifecycleEventHandlers = {
       run.displayMessageId = undefined;
       run.plannedDecisionMode = undefined;
       run.continuity = undefined;
+      run.thinkingBlocks = [];
+      run.activeModelRequest = undefined;
+    }
+    run.recovery = data.recovery;
+    if (data.recovery) {
+      const source = currentRun(session, data.recovery.sourceRequestId);
+      if (source) source.recoveryAttempt = undefined;
     }
     upsertStep(run, {
       id: `${run.requestId}-understand`,
@@ -55,6 +65,7 @@ export const runLifecycleEventHandlers = {
       status: "done",
       startedAt: env.timestamp,
       endedAt: env.timestamp,
+      eventSequence: env.sequence,
     });
     session.activeRequestId = run.requestId;
     session.updatedAt = env.timestamp;
@@ -93,9 +104,11 @@ export const runLifecycleEventHandlers = {
   [EventKinds.RunCompleted]: (state, env) => {
     const run = readCurrentRun(state, env);
     if (!run) return;
+    const data = env.data as RunCompletedData;
+    if (data.usage !== undefined) run.usage = data.usage;
     run.status = "completed";
     run.outputState = "committed";
-    settleRunActivities(run, "done", env.timestamp);
+    settleRunExecution(run, "done", env.timestamp);
     run.endedAt = env.timestamp;
     touchRun(run);
     const session = state.sessions[env.sessionId ?? ""];
@@ -112,12 +125,17 @@ export const runLifecycleEventHandlers = {
     if (!session) return;
     const data = env.data as RunFailedData;
     const message = resolveBackendMessage(data) ?? data.message;
+    if (rejectRunRecovery(session, env.requestId, message)) return;
     const run = currentRun(session, env.requestId);
     if (!run && state.historyLoadingIds[sessionId]) {
       if (
         (env.requestId && state.historyEventRunIds[sessionId]?.[env.requestId]) ||
-        hasHistoryTraceRun(state, sessionId, env.requestId)
+        hasHistoryTraceRun(state, sessionId, env.requestId) ||
+        isHistoryActiveRequest(state, sessionId, env.requestId)
       ) {
+        // A reconnect can deliver the terminal live event before the history
+        // replay reaches this run's `run.started` event. Keep the replay
+        // alive; its step snapshot will reconstruct the terminal run.
         return;
       }
       session.messages = [];
@@ -135,7 +153,8 @@ export const runLifecycleEventHandlers = {
     }
     if (!run) return;
     run.status = "failed";
-    settleRunActivities(run, "failed", env.timestamp);
+    run.recoveryModes = data.recoveryModes;
+    settleRunExecution(run, "failed", env.timestamp);
     run.endedAt = env.timestamp;
     upsertStep(run, {
       id: `${run.requestId}-error`,
@@ -154,6 +173,7 @@ export const runLifecycleEventHandlers = {
       createdAt: env.timestamp,
       kind: "Error",
       requestId: env.requestId,
+      failure: data,
     });
     bumpSessionMessageCount(session);
     clearActiveRequestIfCurrent(session, run.requestId);
@@ -167,11 +187,12 @@ export const runLifecycleEventHandlers = {
     const data = env.data as SessionBusyData;
     const message = resolveBackendMessage(data) ?? data.message;
     const rejectedRequestId = data.rejectedRequestId || env.requestId;
+    if (rejectRunRecovery(session, rejectedRequestId, message)) return;
     if (!rejectedRequestId || rejectedRequestId === data.activeRequestId) return;
     const run = session.runs.find((item) => item.requestId === rejectedRequestId);
     if (run) {
       run.status = "failed";
-      settleRunActivities(run, "failed", env.timestamp);
+      settleRunExecution(run, "failed", env.timestamp);
       run.endedAt = env.timestamp;
       upsertStep(run, {
         id: `${run.requestId}-busy`,
@@ -196,14 +217,19 @@ export const runLifecycleEventHandlers = {
     const run = currentRun(session, env.requestId);
     if (run) {
       run.status = "cancelled";
-      settleRunActivities(run, "failed", env.timestamp);
+      settleRunExecution(run, "cancelled", env.timestamp);
       run.endedAt = env.timestamp;
+      const cancellationStep = run.steps.find((step) => step.id === `${run.requestId}-cancellation`);
+      if (cancellationStep) {
+        cancellationStep.status = "cancelled";
+        cancellationStep.endedAt = env.timestamp;
+      }
       upsertStep(run, {
         id: `${run.requestId}-cancelled`,
         kind: "error",
         title: frontendMessage("workflow.projection.cancelled"),
         description: frontendMessage("workflow.projection.cancelledDescription"),
-        status: "failed",
+        status: "cancelled",
         startedAt: env.timestamp,
         endedAt: env.timestamp,
       });
@@ -237,16 +263,45 @@ function projectChannelUserMessage(session: SessionRecord, env: EventEnvelope, d
   bumpSessionMessageCount(session);
 }
 
-function settleRunActivities(
+function projectRecoveryUserMessage(session: SessionRecord, env: EventEnvelope, data: RunStartedData): void {
+  if (data.recovery?.mode !== "continue" || !env.requestId) return;
+  const inserted = upsertMessageByRequestId(session, {
+    id: `${env.requestId}-user`,
+    role: "user",
+    content: data.input,
+    createdAt: env.timestamp,
+    requestId: env.requestId,
+    metadata: {
+      recovery: data.recovery,
+    },
+  });
+  if (!inserted) return;
+  session.messages.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  bumpSessionMessageCount(session);
+}
+
+function settleRunExecution(
   run: RunRecord,
-  status: Extract<TimelineStepStatus, "done" | "failed">,
+  status: Extract<TimelineStepStatus, "done" | "failed" | "cancelled">,
   endedAt: string,
 ): void {
   run.liveActivity = undefined;
+  for (const block of run.thinkingBlocks ?? []) {
+    if (block.status === "streaming") block.status = "interrupted";
+  }
   for (const activity of run.activities ?? []) {
-    if (activity.status !== "running") continue;
+    if (activity.status !== "running" && activity.status !== "cancelling" && activity.status !== "pending") continue;
     activity.status = status;
     activity.endedAt = endedAt;
+  }
+  for (const step of run.steps) {
+    const shouldSettle =
+      step.status === "running" ||
+      step.status === "cancelling" ||
+      (status === "cancelled" && step.status === "pending");
+    if (!shouldSettle) continue;
+    step.status = status;
+    step.endedAt = endedAt;
   }
 }
 
@@ -258,6 +313,10 @@ const cancellationComponentMessages = {
 function hasHistoryTraceRun(state: StoreState, sessionId: string, requestId?: string): boolean {
   if (!requestId) return false;
   return (state.historyStepBuffers[sessionId] ?? []).some((page) => page.some((run) => run.requestId === requestId));
+}
+
+function isHistoryActiveRequest(state: StoreState, sessionId: string, requestId?: string): boolean {
+  return Boolean(requestId && state.historyActiveRequestIds[sessionId] === requestId);
 }
 
 function clearActiveRequestIfCurrent(session: { activeRequestId?: string }, requestId: string): void {

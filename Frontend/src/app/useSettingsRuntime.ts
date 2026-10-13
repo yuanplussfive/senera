@@ -28,11 +28,13 @@ export function useSettingsRuntime({
   sendRef,
   statusRef,
   status,
+  onWorkspaceReady,
 }: {
   httpBaseUrl: string;
   sendRef: MutableRefObject<((request: WsRequest) => boolean) | null>;
   statusRef: MutableRefObject<SocketStatus>;
   status: SocketStatus;
+  onWorkspaceReady?: (snapshot: import("../api/workspaceEventTypes").WorkspaceSnapshotData, switched: boolean) => void;
 }): SettingsRuntimeHandle {
   const configSnapshot = useStore((state) => state.configSnapshot);
   const providerModelCatalogs = useStore((state) => state.providerModelCatalogs);
@@ -44,7 +46,8 @@ export function useSettingsRuntime({
   const channelStatuses = useStore((state) => state.channelStatuses);
   const [mcpInputOperation, setMcpInputOperation] = useState<McpInputMutationState | null>(null);
   const controller = useConfigMutationController({ configSnapshot, sendRef, statusRef });
-  const workspace = useWorkspaceController({ sendRef, statusRef, status });
+  const workspace = useWorkspaceController({ sendRef, statusRef, status, onWorkspaceReady });
+  const workspaceId = workspace.snapshot?.workspaceId ?? null;
   const sendWhenConnected = useCallback(
     (request: WsRequest): boolean => statusRef.current === "open" && Boolean(sendRef.current?.(request)),
     [sendRef, statusRef],
@@ -103,6 +106,7 @@ export function useSettingsRuntime({
     () => ({
       ...controller,
       configSnapshot,
+      workspaceId,
       systemTools,
       systemExtensions,
       mcpServers,
@@ -133,6 +137,7 @@ export function useSettingsRuntime({
       systemExtensions,
       systemTools,
       toolSettingsSynced,
+      workspaceId,
     ],
   );
 

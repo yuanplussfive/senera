@@ -71,7 +71,7 @@ senera 不把历史工具原文无限塞回模型。新一轮任务会优先使�
 
 ### 扩展写法
 
-Senera 内部控制面使用 `System/Extensions/<id>/extension.json` 包；独立业务能力保持标准 MCP package。第一方包位于 `McpServers/<package>/`，工作区包位于 `.senera/mcp/<package>/`，可使用 MCPB `manifest.json`、Registry `server.json` 或兼容 `.mcp.json`。MCP Server 通过 `tools/list` 声明工具 schema；Senera 只适配连接、类型化输入、沙箱、热重载和诊断，不要求纯 MCP 包增加私有 manifest。
+Senera 内部控制面使用 `System/Extensions/<domain>/<extension>/extension.json` 包；`domain.json` 是扩展的稳定分类和展示来源，manifest 再声明自己的 `domain` 与 settings surface，三者必须一致。独立业务能力保持标准 MCP package。第一方包位于 `McpServers/<package>/`，工作区包位于 `.senera/mcp/<package>/`，可使用 MCPB `manifest.json`、Registry `server.json` 或兼容 `.mcp.json`。MCP Server 通过 `tools/list` 声明工具 schema；Senera 只适配连接、类型化输入、沙箱、热重载和诊断，不要求纯 MCP 包增加私有 manifest。
 
 Agent 只创建标准 Skill，目录位于 `.senera/skills/<name>/`。Skill 可通过 `metadata.senera.recommended-tools` 绑定已经注册的 System/MCP 工具；绑定只提升动态加载优先级，不授予权限。`SkillManage` 负责创建、更新、校验和移除，并在发布前验证工具引用；复杂 Toolkit Skill 的资源树由一次 `WorkspaceApplyPatch` 原子创建，并在写入前预检完整候选目录。成功修改会在同一会话下一条消息热加载，无需重启或新建对话。
 
@@ -189,7 +189,7 @@ cp senera.config.example.json senera.config.json
 
 运行时能力分为三层：
 
-- System Tool：Senera 常驻的可信宿主控制面，由 `System/Extensions/<id>` 包将工具合同映射到预注册 capability。
+- System Tool：Senera 常驻的可信宿主控制面，由 `System/Extensions/<domain>/<extension>` 包将工具合同映射到预注册 capability。领域、扩展和 Tool 合同共同声明 UI 展示信息，前端不按工具名或 capability 推断语义。
 - Skill：标准 `SKILL.md` 工作流，可自动触发，并可通过 namespaced metadata 推荐已注册工具；工作区 Skill 位于 `.senera/skills/<name>/`，官方 Skill 位于 `System/Skills/<name>/`。
 - MCP package：可移植 MCP Server 包；第一方包位于 `McpServers/<package>/`，工作区包位于 `.senera/mcp/<package>/`，支持 MCPB、Registry 和兼容 `.mcp.json`。
 
@@ -235,7 +235,7 @@ senera/
 ├─ Apps/                    Server 和 Desktop 入口
 ├─ Build/                   构建与沙箱运行时准备
 ├─ Source/AgentSystem/      Agent 运行时核心
-├─ System/Extensions/       常驻 System extension 包与 Tool 合同
+├─ System/Extensions/       按 domain 组织的常驻 System extension 包与 Tool 合同
 ├─ System/Skills/           官方标准 Skills
 ├─ McpServers/              自动发现的 MCP packages
 ├─ .senera/skills/          工作区标准 Skills

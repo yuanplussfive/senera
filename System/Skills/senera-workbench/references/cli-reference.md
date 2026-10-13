@@ -65,21 +65,6 @@ Both `config update` and `config rollback` adjudicate against these rules (rollb
 
 The CLI performs this handshake automatically: when a command defers, it prompts for `[Y/n]` and resolves with the chosen decision. `approval resolve` with an unknown or expired id fails deterministically.
 
-## preset
-
-| Action   | Arguments         | Returns                                                                                     |
-| -------- | ----------------- | ------------------------------------------------------------------------------------------- |
-| `list`   | —                 | Active preset and all presets with titles and active markers.                               |
-| `show`   | `name`            | Selected preset meta: title, core persona summary, language style, example and lore counts. |
-| `use`    | `name             | null`                                                                                       | Activates a preset (or resets to none with `null`). |
-| `create` | `name`, `content` | Creates or updates a persona card (`senera.persona/v1` JSON).                               |
-
-Notes:
-
-- Names resolve with or without the `.json` suffix.
-- Activation state is durable; the active preset is reflected on the next turn's persona context and broadcast to the UI.
-- `content` must be a valid persona card JSON; invalid cards are rejected with diagnostics.
-
 ## workspace
 
 | Action | Arguments | Returns                                                                                          |

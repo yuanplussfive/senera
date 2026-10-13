@@ -290,6 +290,8 @@ function claim(identity: string, access: "shared" | "exclusive"): AgentToolResou
 function createScheduler(coordinator = new AgentToolResourceLeaseCoordinator()): AgentToolResourceScheduler {
   const projector: AgentToolResourceClaimProjectorPort = {
     project: async (_tool, args) => args.lease as AgentToolResourceLeaseRequest,
+    listClaimCapabilityIds: () => [],
+    projectDeclarations: async () => ({ mode: "claims", claims: [] }),
   };
   return new AgentToolResourceScheduler(projector, coordinator);
 }

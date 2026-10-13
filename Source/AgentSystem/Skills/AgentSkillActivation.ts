@@ -15,8 +15,14 @@ import {
   isAgentSkillModelInvocable,
   parseAgentSkillInvocations,
 } from "./AgentSkillInvocation.js";
-import type { AgentSkillSelectionLearningEvidence, AgentSkillSelectionResult } from "./AgentSkillSelector.js";
+import type { AgentSkillSelectionResult, AgentSkillSelectionScenarioEvidence } from "./AgentSkillSelector.js";
 import type { RegisteredSkill } from "./AgentSkillTypes.js";
+import { partitionAgentToolsByInvocationRoute } from "../ToolRuntime/AgentToolInvocationRouting.js";
+import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
+import {
+  normalizeAgentExplicitActivations,
+  type AgentExplicitActivationReference,
+} from "../Activation/AgentActivationTypes.js";
 
 export interface AgentActivatedSkill {
   name: string;
@@ -29,6 +35,8 @@ export interface AgentActivatedSkill {
   disableModelInvocation?: boolean;
   evidenceRequirements: SkillEvidenceRequirementManifest[];
   descriptionFile: string;
+  /** Body from the selected revision, retained for the whole turn. */
+  readonly content: string;
   matchedTerms: string[];
   matchedFields: AgentActivatedSkillMatchedField[];
   score: number;
@@ -44,11 +52,24 @@ export interface AgentActivatedSkillMatchedField {
   fields: string[];
 }
 
+export interface AgentSkillRecommendedToolRouting {
+  readonly directToolNames: readonly string[];
+  readonly dynamicToolNames: readonly string[];
+  /** Dynamic tools selected by an explicit activation for this turn. */
+  readonly nativeToolNames: readonly string[];
+  /**
+   * Tools belonging to an explicitly selected activation. These are loaded
+   * from the live registry for this turn; semantically selected Skills remain
+   * discovery-first and do not populate this set.
+   */
+  readonly requiredToolNames: readonly string[];
+}
+
 export interface AgentSkillRoutingEvidenceProvider {
-  skillRoutingEvidence(options: {
+  skillScenarioEvidence(options: {
     query: string;
     skills: readonly RegisteredSkill[];
-  }): readonly AgentSkillSelectionLearningEvidence[];
+  }): readonly AgentSkillSelectionScenarioEvidence[] | Promise<readonly AgentSkillSelectionScenarioEvidence[]>;
   selectSkills?(options: {
     query: string;
     skills: readonly RegisteredSkill[];
@@ -74,9 +95,12 @@ export class AgentSkillActivationService {
 
   async activate(options: {
     input?: string;
+    /** Tools already exposed for this turn, used as retrieval evidence only. */
+    availableToolNames?: readonly string[];
     decision?: AgentActionDecision;
     rootCommand?: AgentRootCommand | null;
     pinnedSkills?: readonly AgentPinnedSkillReference[];
+    explicitActivations?: readonly AgentExplicitActivationReference[];
     signal?: AbortSignal;
   }): Promise<AgentActivatedSkill[]> {
     const query = this.buildActivationQuery(options);
@@ -129,18 +153,90 @@ export class AgentSkillActivationService {
           matchedFields: [{ term: token, fields: ["explicitInvocation"] }],
         };
       });
+    const structured = normalizeAgentExplicitActivations(
+      options.explicitActivations ? { catalogRevision: "runtime", explicit: options.explicitActivations } : undefined,
+    );
+    const structuredExplicitSkills = new Map<string, AgentExplicitActivationReference>();
+    const structuredPluginIds = new Set<string>();
+    const structuredSystemIds = new Set<string>();
+    for (const activation of structured?.explicit ?? []) {
+      if (activation.kind === "skill") {
+        const skill = skillsByName.get(activation.id);
+        if (!skill) throw new Error(`Explicit Skill is not registered: ${activation.id}.`);
+        const activeRevision = skill.revision ?? skill.source.id;
+        if (activeRevision !== activation.revision) {
+          throw new Error(
+            `Explicit Skill revision changed before activation: ${activation.id} (selected ${activation.revision}, active ${activeRevision}).`,
+          );
+        }
+        structuredExplicitSkills.set(activation.id, activation);
+        continue;
+      }
+      if (activation.kind === "mcp") {
+        const mcpTools = this.registry.listToolsForOwnerName("mcp", activation.id);
+        if (mcpTools.length === 0) {
+          throw new Error(`Explicit MCP is not loaded or has no registered capabilities: ${activation.id}.`);
+        }
+        continue;
+      }
+      if (activation.kind === "system") {
+        const systemSkills = skills.filter(
+          (skill) => skill.source.kind === "system" && skill.source.id === activation.id,
+        );
+        const systemTools = this.registry.listToolsForOwnerName("system", activation.id);
+        if (systemSkills.length === 0 && systemTools.length === 0) {
+          throw new Error(
+            `Explicit System extension is not loaded or has no registered capabilities: ${activation.id}.`,
+          );
+        }
+        structuredSystemIds.add(activation.id);
+        continue;
+      }
+      const pluginSkills = skills.filter(
+        (skill) => skill.source.kind === "standalone" && skill.source.id === `plugin:${activation.id}`,
+      );
+      const pluginTools = this.registry.listToolsForOwnerName("plugin", activation.id);
+      if (pluginSkills.length === 0 && pluginTools.length === 0) {
+        throw new Error(`Explicit Plugin is not loaded or has no registered capabilities: ${activation.id}.`);
+      }
+      structuredPluginIds.add(activation.id);
+    }
+    const structuredExplicit = skills
+      .filter(
+        (skill) =>
+          (structuredExplicitSkills.has(skill.name) ||
+            [...structuredPluginIds].some(
+              (pluginId) => skill.source.kind === "standalone" && skill.source.id === `plugin:${pluginId}`,
+            ) ||
+            [...structuredSystemIds].some(
+              (extensionId) => skill.source.kind === "system" && skill.source.id === extensionId,
+            )) &&
+          !pinnedNameSet.has(skill.name),
+      )
+      .map((skill): AgentSkillSelectionResult => ({
+        skill,
+        score: AgentSkillActivationScores.ExplicitInvocation,
+        matchedTerms: [`@${skill.name}`],
+        matchedFields: [{ term: `@${skill.name}`, fields: ["explicitActivation"] }],
+      }));
     const selected = this.routingEvidence?.selectSkills
       ? await this.routingEvidence.selectSkills({ query, skills: routableSkills, signal: options.signal })
       : this.selector.select({
           query,
           skills: routableSkills,
-          learningEvidence: this.routingEvidence?.skillRoutingEvidence({ query, skills: routableSkills }),
+          scenarioEvidence: await this.routingEvidence?.skillScenarioEvidence({ query, skills: routableSkills }),
         });
 
     return [
       ...pinned,
       ...explicit,
-      ...selected.filter((item) => !pinnedNameSet.has(item.skill.name) && !explicitNames.has(item.skill.name)),
+      ...structuredExplicit.filter((item) => !explicitNames.has(item.skill.name)),
+      ...selected.filter(
+        (item) =>
+          !pinnedNameSet.has(item.skill.name) &&
+          !explicitNames.has(item.skill.name) &&
+          !structuredExplicit.some((explicitItem) => explicitItem.skill.name === item.skill.name),
+      ),
     ].map((item) => {
       const catalog = catalogByName.get(item.skill.name) ?? this.projector.project(item.skill);
       return {
@@ -154,6 +250,7 @@ export class AgentSkillActivationService {
         ...(item.skill.disableModelInvocation === true ? { disableModelInvocation: true } : {}),
         evidenceRequirements: item.skill.evidenceRequirements,
         descriptionFile: item.skill.descriptionFile,
+        content: item.skill.content,
         matchedTerms: item.matchedTerms,
         matchedFields: item.matchedFields,
         score: item.score,
@@ -161,12 +258,54 @@ export class AgentSkillActivationService {
     });
   }
 
-  recommendedToolNames(skills: readonly AgentActivatedSkill[]): string[] {
-    return [...new Set(skills.flatMap((skill) => skill.recommendedTools))];
+  recommendedToolRouting(
+    skills: readonly AgentActivatedSkill[],
+    explicitActivations: readonly AgentExplicitActivationReference[] = [],
+  ): AgentSkillRecommendedToolRouting {
+    const toolsByName = new Map<string, RegisteredTool>();
+    const requiredToolNames = new Set<string>();
+    const registeredSkillsByName = new Map(this.registry.listSkills().map((skill) => [skill.name, skill]));
+    const explicitSkillNames = new Set(
+      explicitActivations.filter((activation) => activation.kind === "skill").map((activation) => activation.id),
+    );
+    for (const toolName of skills.flatMap((skill) => skill.recommendedTools)) {
+      if (toolsByName.has(toolName)) continue;
+      const tool = this.registry.getTool(toolName);
+      if (tool) toolsByName.set(toolName, tool);
+    }
+    for (const skillName of explicitSkillNames) {
+      for (const toolName of registeredSkillsByName.get(skillName)?.recommendedTools ?? []) {
+        requiredToolNames.add(toolName);
+      }
+    }
+    for (const activation of explicitActivations) {
+      if (activation.kind !== "plugin" && activation.kind !== "mcp" && activation.kind !== "system") continue;
+      const tools = this.registry.listToolsForOwnerName(activation.kind, activation.id);
+      if (tools.length === 0) {
+        throw new Error(
+          `Explicit ${activation.kind} is not loaded or has no registered capabilities: ${activation.id}.`,
+        );
+      }
+      for (const tool of tools) {
+        if (!toolsByName.has(tool.name)) toolsByName.set(tool.name, tool);
+        requiredToolNames.add(tool.name);
+      }
+    }
+    const partition = partitionAgentToolsByInvocationRoute([...toolsByName.values()]);
+    const requiredToolNameSet = new Set(requiredToolNames);
+    return {
+      directToolNames: partition.direct.map((tool) => tool.name),
+      dynamicToolNames: partition.discovery.map((tool) => tool.name),
+      nativeToolNames: partition.discovery
+        .filter((tool) => requiredToolNameSet.has(tool.name))
+        .map((tool) => tool.name),
+      requiredToolNames: [...requiredToolNames],
+    };
   }
 
   private buildActivationQuery(options: {
     input?: string;
+    availableToolNames?: readonly string[];
     decision?: AgentActionDecision;
     rootCommand?: AgentRootCommand | null;
   }): string {
@@ -174,11 +313,17 @@ export class AgentSkillActivationService {
       ...new Set(
         [
           options.input,
+          ...this.availableToolQuerySegments(options.availableToolNames),
           ...this.decisionQuerySegments(options.decision),
           ...this.rootCommandQuerySegments(options.rootCommand),
         ].filter((segment): segment is string => Boolean(segment)),
       ),
     ].join("\n");
+  }
+
+  private availableToolQuerySegments(toolNames: readonly string[] | undefined): string[] {
+    const names = [...new Set((toolNames ?? []).map((name) => name.trim()).filter(Boolean))];
+    return names.length > 0 ? [`available tools: ${names.join(", ")}`] : [];
   }
 
   private decisionQuerySegments(decision: AgentActionDecision | undefined): string[] {

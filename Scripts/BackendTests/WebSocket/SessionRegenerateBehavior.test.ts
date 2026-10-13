@@ -73,6 +73,29 @@ describe("Session regeneration WebSocket behavior", () => {
     ).toBe(false);
   });
 
+  test("accepts a retry command without requiring a second user input", () => {
+    expect(
+      AgentWebSocketRequestSchema.safeParse({
+        type: "session.retry",
+        approvalMode: "agent",
+        sessionId: "session-a",
+        failedRequestId: "request-failed",
+        requestId: "request-retry",
+        recoveryMode: "retry",
+      }).success,
+    ).toBe(true);
+
+    expect(
+      AgentWebSocketRequestSchema.safeParse({
+        type: "session.retry",
+        approvalMode: "agent",
+        sessionId: "session-a",
+        failedRequestId: "request-failed",
+        recoveryMode: "retry",
+      }).success,
+    ).toBe(false);
+  });
+
   test("forwards every regeneration field to the session manager", async () => {
     const regenerateFromRequest = vi.fn(async () => {});
     const handler = new AgentWebSocketSessionRequestHandlers({
@@ -115,6 +138,39 @@ describe("Session regeneration WebSocket behavior", () => {
     });
   });
 
+  test("forwards retry lineage and execution preferences to the session manager", async () => {
+    const retryFailedRun = vi.fn(async () => {});
+    const handler = new AgentWebSocketSessionRequestHandlers({
+      sessionManager: { retryFailedRun },
+    } as unknown as AgentWebSocketRequestContext);
+    const sendEvent = vi.fn();
+
+    await handler.retry(
+      {
+        type: "session.retry",
+        approvalMode: "agent",
+        sessionId: "session-a",
+        failedRequestId: "request-failed",
+        requestId: "request-retry",
+        recoveryMode: "retry",
+        modelProviderId: "provider-a",
+        thinkingLevel: "high",
+      },
+      sendEvent,
+    );
+
+    expect(retryFailedRun).toHaveBeenCalledWith({
+      approvalMode: "agent",
+      sessionId: "session-a",
+      failedRequestId: "request-failed",
+      recoveryMode: "retry",
+      requestId: "request-retry",
+      modelProviderId: "provider-a",
+      thinkingLevel: "high",
+      onEvent: sendEvent,
+    });
+  });
+
   test("correlates regeneration failures with the optimistic replacement run", () => {
     const failure = projectAgentWebSocketRequestFailure(
       {
@@ -135,6 +191,31 @@ describe("Session regeneration WebSocket behavior", () => {
         context: expect.objectContaining({
           sessionId: "session-a",
           requestId: "request-new",
+        }),
+      }),
+    );
+  });
+
+  test("correlates retry failures with the replacement run", () => {
+    const failure = projectAgentWebSocketRequestFailure(
+      {
+        type: "session.retry",
+        approvalMode: "agent",
+        sessionId: "session-a",
+        failedRequestId: "request-failed",
+        requestId: "request-retry",
+        recoveryMode: "retry",
+      },
+      new Error("retry failed"),
+      {} as AgentWebSocketRequestContext,
+    );
+
+    expect(failure).toEqual(
+      expect.objectContaining({
+        kind: "run.failed",
+        context: expect.objectContaining({
+          sessionId: "session-a",
+          requestId: "request-retry",
         }),
       }),
     );

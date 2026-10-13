@@ -16,6 +16,7 @@ const EventMessageCatalog: Record<string, string> = {
   "model.started": "模型开始输出",
   "model.delta": "",
   "model.completed": "模型输出完成",
+  "mcp_server.snapshot": "MCP 服务配置已同步",
   "tool.call.result.detail": "工具结果详情已生成",
   "assistant.message.created": "助手消息",
   "interaction.input.requested": "工具等待用户输入",

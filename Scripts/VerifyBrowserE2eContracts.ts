@@ -103,7 +103,7 @@ function mutatesRuntimeConfig(source: string): boolean {
         ts.isIdentifier(node.expression.expression) &&
         node.expression.expression.text === "Object" &&
         node.arguments.some(isRuntimeConfigReference)) ||
-        node.expression.name.text === "addInitScript")
+        (node.expression.name.text === "addInitScript" && node.arguments.some(containsRuntimeConfigReference)))
     ) {
       found = true;
       return;
@@ -125,6 +125,20 @@ function isRuntimeConfigReference(node: ts.Node): boolean {
     );
   }
   return false;
+}
+
+function containsRuntimeConfigReference(node: ts.Node): boolean {
+  let found = false;
+  const visit = (child: ts.Node): void => {
+    if (found) return;
+    if (isRuntimeConfigReference(child)) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(child, visit);
+  };
+  visit(node);
+  return found;
 }
 
 function isBrowserGlobal(node: ts.Expression): boolean {

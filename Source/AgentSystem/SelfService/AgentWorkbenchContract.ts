@@ -36,7 +36,7 @@ const principleDefinitions = [
   {
     id: "mutation.governed",
     key: "governedSelfModification",
-    text: "配置、预设和宿主状态只能通过受控命令面修改，不能直接写原始文件或数据库。",
+    text: "配置和宿主状态只能通过受控命令面修改，不能直接写原始文件或数据库。",
     scope: "self-service",
     authority: "runtime",
     enforcedBy: "SeneraCommand",

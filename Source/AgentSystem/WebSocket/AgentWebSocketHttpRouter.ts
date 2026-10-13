@@ -10,6 +10,7 @@ import type { AgentProviderCredentialHttpApi } from "../Config/AgentProviderCred
 import type { AgentRuntimeUpdateHttpApi } from "../Runtime/AgentRuntimeUpdateHttpApi.js";
 import type { AgentChannelWebhookApi } from "../Channels/AgentChannelWebhookApi.js";
 import type { AgentSelfHttpApi } from "../SelfService/AgentSelfHttpApi.js";
+import type { AgentArtifactMemoryHttpApi } from "../Memory/AgentArtifactMemoryHttpApi.js";
 
 export class AgentWebSocketHttpRouter {
   constructor(
@@ -23,6 +24,7 @@ export class AgentWebSocketHttpRouter {
       runtimeUpdateApi?: AgentRuntimeUpdateHttpApi;
       channelWebhookApi?: AgentChannelWebhookApi;
       selfApi?: AgentSelfHttpApi;
+      artifactMemoryApi?: AgentArtifactMemoryHttpApi;
       accessGuard?: AgentServerAccessGuard;
     },
   ) {}
@@ -73,6 +75,14 @@ export class AgentWebSocketHttpRouter {
         return;
       }
       await this.options.workspaceResourceApi.handle(request, response);
+      return;
+    }
+
+    if (this.options.artifactMemoryApi?.canHandle(request)) {
+      if (request.method !== "OPTIONS" && !this.authorize(request, response)) {
+        return;
+      }
+      await this.options.artifactMemoryApi.handle(request, response);
       return;
     }
 

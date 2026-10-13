@@ -4,11 +4,7 @@ import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { assertInsideRoot, parseAgentArtifactUri } from "../Artifacts/AgentArtifactLocator.js";
 import { AgentArtifactManifestIndexCache } from "../Memory/AgentArtifactManifestIndexCache.js";
-import {
-  WorkspaceSnapshotContentsSchema,
-  type ArtifactManifestRecord,
-  type ArtifactSnapshotContent,
-} from "../Memory/AgentArtifactMemoryTypes.js";
+import { WorkspaceSnapshotContentsSchema, type ArtifactSnapshotContent } from "../Memory/AgentArtifactMemoryTypes.js";
 import { resolveArtifactsConfig } from "../AgentDefaults.js";
 import { SeneraWorkspaceBoundary } from "../Execution/SeneraWorkspaceBoundary.js";
 import { AgentResourceAccessIntents } from "../Safety/AgentResourceAccessPolicy.js";
@@ -115,23 +111,27 @@ export const restoreWorkspaceCheckpointHostTool: AgentHostToolHandler = async (a
     if (parsed.data.artifactUri && !requestedArtifactId) {
       throw new Error("artifactUri is not a valid Senera Artifact URI.");
     }
-    const manifests = await ManifestIndexes.load({
+    const indexedCheckpoint = await ManifestIndexes.findCheckpoint({
       artifactRoot,
       workspaceRoot: context.workspaceRoot,
-      requiredArtifactIds: requestedArtifactId ? [requestedArtifactId] : [],
-    });
-    const selected = selectWorkspaceCheckpointManifest(manifests, {
       artifactId: requestedArtifactId,
       checkpointId: parsed.data.checkpointId,
     });
-    if (!selected) {
+    if (!indexedCheckpoint) {
       throw new Error(
         parsed.data.artifactUri
           ? `Artifact manifest was not found: ${parsed.data.artifactUri}`
           : `No published workspace checkpoint matched: ${parsed.data.checkpointId}`,
       );
     }
-    const { manifest, artifactId } = selected;
+    const manifests = await ManifestIndexes.load({
+      artifactRoot,
+      workspaceRoot: context.workspaceRoot,
+      requiredArtifactIds: [indexedCheckpoint.artifactId],
+    });
+    const manifest = manifests.get(indexedCheckpoint.artifactId);
+    if (!manifest) throw new Error(`Artifact manifest was not found: ${indexedCheckpoint.artifactId}`);
+    const artifactId = indexedCheckpoint.artifactId;
     const workspace = readWorkspaceManifest(manifest.workspace);
     const checkpoint = workspace.checkpoint;
     if (parsed.data.checkpointId && checkpoint.id !== parsed.data.checkpointId) {
@@ -189,39 +189,6 @@ export const restoreWorkspaceCheckpointHostTool: AgentHostToolHandler = async (a
 
 function readWorkspaceManifest(value: unknown): z.infer<typeof WorkspaceArtifactManifestSchema> {
   return WorkspaceArtifactManifestSchema.parse(value);
-}
-
-function selectWorkspaceCheckpointManifest(
-  manifests: ReadonlyMap<string, ArtifactManifestRecord>,
-  input: { readonly artifactId?: string; readonly checkpointId?: string },
-): { readonly artifactId: string; readonly manifest: ArtifactManifestRecord } | undefined {
-  const candidates = [...manifests.entries()].flatMap(([artifactId, manifest]) => {
-    if (input.artifactId && artifactId !== input.artifactId) return [];
-    // Most Artifact manifests are not workspace checkpoints. Only manifests
-    // that declare a workspace payload participate; a declared-but-malformed
-    // payload is corruption and must not silently fall back to an older one.
-    if (!isCheckpointWorkspacePayload(manifest.workspace)) return [];
-    const workspace = readWorkspaceManifest(manifest.workspace);
-    if (input.checkpointId && workspace.checkpoint.id !== input.checkpointId) return [];
-    return [{ artifactId, manifest, capturedAt: workspace.checkpoint.capturedAt }];
-  });
-  candidates.sort(
-    (left, right) =>
-      compareCheckpointTime(right.capturedAt, left.capturedAt) || left.artifactId.localeCompare(right.artifactId),
-  );
-  const selected = candidates[0];
-  return selected ? { artifactId: selected.artifactId, manifest: selected.manifest } : undefined;
-}
-
-function isCheckpointWorkspacePayload(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value) && "checkpoint" in value;
-}
-
-function compareCheckpointTime(left: string, right: string): number {
-  const leftMs = Date.parse(left);
-  const rightMs = Date.parse(right);
-  if (Number.isFinite(leftMs) && Number.isFinite(rightMs) && leftMs !== rightMs) return leftMs - rightMs;
-  return left.localeCompare(right);
 }
 
 async function readSnapshotFile(

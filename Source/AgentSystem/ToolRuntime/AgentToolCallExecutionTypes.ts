@@ -9,6 +9,8 @@ import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentResourceAccessGrant } from "../Execution/SeneraResourceAccess.js";
 import type { AgentToolCapabilityCacheEntry } from "../ToolSearch/AgentToolCapabilitySessionCache.js";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
+import type { AgentBrowserTargetAuthorization } from "../Browser/AgentBrowserUrlPolicy.js";
+import type { AgentWorkspaceObservationPort } from "../Artifacts/AgentWorkspaceChangeObserver.js";
 
 export type AgentToolCallExecutionResult =
   | {
@@ -46,9 +48,12 @@ export interface AgentToolCallExecutionContext {
   onEvent?: AgentEventSink;
   toolAccessGrant: AgentToolAccessGrant;
   resourceAccessGrant?: AgentResourceAccessGrant;
+  browserTargetAuthorization?: AgentBrowserTargetAuthorization;
   toolExposure?: AgentToolExposureState;
   batchId?: string;
   batchToolNames?: readonly string[];
+  modelMessageIndex?: number;
+  modelContentIndex?: number;
   signal?: AbortSignal;
   tokenBudget?: AgentToolTokenBudget;
   approvalMode?: AgentExecutionApprovalMode;
@@ -57,6 +62,7 @@ export interface AgentToolCallExecutionContext {
   thinkingLevel?: ModelThinkingLevel;
   onLifecycleSettled?: (status: "completed" | "failed") => void;
   deferResultDetail?: boolean;
+  workspaceObservation?: AgentWorkspaceObservationPort;
 }
 
 export interface AgentToolCallExecutionRequest {

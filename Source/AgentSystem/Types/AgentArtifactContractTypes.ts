@@ -88,16 +88,11 @@ export interface ToolArtifactSummaryManifest {
 }
 
 export interface ToolArtifactWorkspaceManifest {
-  Capture?: "none" | "declared";
-  Paths?: ToolArtifactWorkspacePathManifest[];
-  MaxFileBytes?: number;
-  MaxFiles?: number;
-  MaxDirectoryDepth?: number;
-  CaptureContent?: "none" | "text";
+  /** The producer supplies exact before/after images from its own transaction. */
+  Capture: "mutation-receipt";
+  /** Explicit, package-owned bound for one captured file image. */
+  MaxFileBytes: number;
+  /** Explicit package policy for model-readable file content. */
+  CaptureContent: "none" | "text";
   PatchContextLines: number;
-}
-
-export interface ToolArtifactWorkspacePathManifest {
-  Selector: string;
-  Base?: string;
 }

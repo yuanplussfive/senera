@@ -1,6 +1,5 @@
 import type { AgentToolCallExecutor } from "../ToolRuntime/AgentToolCallExecutor.js";
 import type { AgentPromptContextBuilder } from "../Prompt/AgentPromptContextBuilder.js";
-import type { AgentPresetManager } from "../Presets/AgentPresetManager.js";
 import type { AgentSkillActivationService } from "../Skills/AgentSkillActivation.js";
 import type { AgentToolExecutionArtifactRecorder } from "../Artifacts/AgentToolExecutionArtifactRecorder.js";
 import type { AgentToolCatalogProjector } from "../ToolRuntime/AgentToolCatalogProjector.js";
@@ -19,51 +18,70 @@ import {
   type AgentWorkflowPromptContext,
 } from "../Prompt/AgentWorkflowPromptContext.js";
 import type { AgentWorkflowPromptProjector } from "../Prompt/AgentWorkflowPromptProjector.js";
+import type { AgentPersonaContext } from "../Prompt/AgentPersonaContext.js";
+import { EmptyAgentPersonaContext } from "../Prompt/AgentPersonaContext.js";
+import type { AgentExplicitActivationReference } from "../Activation/AgentActivationTypes.js";
 
 export interface AgentRetrievalService {
+  createToolExposure: AgentToolSearchRuntime["createToolExposure"];
   resolveInitialLoadedTools(
     ...args: Parameters<AgentToolSearchRuntime["resolveInitialLoadedTools"]>
   ): ReturnType<AgentToolSearchRuntime["resolveInitialLoadedTools"]>;
   resolvePlannedLoadedTools(
     options: Parameters<AgentToolSearchRuntime["resolvePlannedLoadedTools"]>[0],
   ): ReturnType<AgentToolSearchRuntime["resolvePlannedLoadedTools"]>;
-  rememberAutoSearch(
-    ...args: Parameters<AgentToolSearchRuntime["rememberAutoSearch"]>
-  ): ReturnType<AgentToolSearchRuntime["rememberAutoSearch"]>;
   finishRequest(
     ...args: Parameters<AgentToolSearchRuntime["finishRequest"]>
   ): ReturnType<AgentToolSearchRuntime["finishRequest"]>;
   afterToolResults(
     options: Parameters<AgentToolSearchRuntime["afterToolResults"]>[0],
   ): ReturnType<AgentToolSearchRuntime["afterToolResults"]>;
-  toolUsePatterns(
-    options: Parameters<AgentToolSearchRuntime["toolUsePatterns"]>[0],
-  ): ReturnType<AgentToolSearchRuntime["toolUsePatterns"]>;
+  resolveStateCard(
+    options: Parameters<AgentToolSearchRuntime["resolveStateCard"]>[0],
+  ): ReturnType<AgentToolSearchRuntime["resolveStateCard"]>;
+  recordCompletedTurnScenario(
+    observation: Parameters<AgentToolSearchRuntime["recordCompletedTurnScenario"]>[0],
+  ): ReturnType<AgentToolSearchRuntime["recordCompletedTurnScenario"]>;
   reusableCapabilities?(
     options: Parameters<AgentToolSearchRuntime["reusableCapabilities"]>[0],
   ): ReturnType<AgentToolSearchRuntime["reusableCapabilities"]>;
+  getReusableEvidence?(
+    options: Parameters<AgentToolSearchRuntime["getReusableEvidence"]>[0],
+  ): ReturnType<AgentToolSearchRuntime["getReusableEvidence"]>;
 }
 
 export interface AgentPromptContextService {
   activateSkills(
     options: Parameters<AgentSkillActivationService["activate"]>[0],
   ): ReturnType<AgentSkillActivationService["activate"]>;
-  recommendedSkillTools(
-    skills: Parameters<AgentSkillActivationService["recommendedToolNames"]>[0],
-  ): ReturnType<AgentSkillActivationService["recommendedToolNames"]>;
+  recommendedSkillToolRouting(
+    skills: Parameters<AgentSkillActivationService["recommendedToolRouting"]>[0],
+    explicitActivations?: readonly AgentExplicitActivationReference[],
+  ): ReturnType<AgentSkillActivationService["recommendedToolRouting"]>;
   buildBaseContext(
     options?: Parameters<AgentPromptContextBuilder["buildBaseContext"]>[0],
   ): ReturnType<AgentPromptContextBuilder["buildBaseContext"]>;
   buildRootCommand(
     options: Parameters<AgentPromptContextBuilder["buildRootCommand"]>[0],
   ): ReturnType<AgentPromptContextBuilder["buildRootCommand"]>;
-  promptRoleplayPreset(userInput?: string): ReturnType<AgentPresetManager["promptContext"]>;
+  promptPersona(): AgentPersonaContext;
   toolCatalog(): ReturnType<AgentToolCatalogProjector["list"]>;
-  promptContinuityMemory(input: {
-    userInput: string;
+  /** Current state plus the query-relevant memory delta for the active Pi turn. */
+  liveContinuityMemory(input?: {
     sessionId?: string;
+    userInput?: string;
     requestId?: string;
+    signal?: AbortSignal;
+    historicalTokenBudget?: import("../Continuity/AgentContinuityPromptBudget.js").AgentContinuityHistoricalTokenBudget;
   }): Promise<AgentContinuityMemoryPromptContext>;
+  /** Records memory that was actually delivered after a successful Pi turn. */
+  commitLiveContextDelivery?(input: {
+    sessionId?: string;
+    memory: AgentContinuityMemoryPromptContext;
+    deliveredAt?: string;
+  }): number;
+  /** Clears delivery receipts after compaction, rewind, reset, or fork. */
+  invalidateSessionContext?(sessionId: string): number;
   promptWorkflow(sessionId?: string): AgentWorkflowPromptContext;
   interactionToolNames?(
     interaction?: import("../Interaction/AgentInteractionContext.js").AgentInteractionContext,
@@ -90,7 +108,7 @@ export interface AgentRuntimeServiceDependencies {
   artifactRecorder: AgentToolExecutionArtifactRecorder;
   toolCallExecutor: AgentToolCallExecutor;
   piSessionRegistry: AgentPiActiveSessionRegistry;
-  presetManager: AgentPresetManager;
+  persona?: AgentPersonaContext;
   promptContextBuilder: AgentPromptContextBuilder;
   piSubstrate: AgentPiSubstrate;
   skillActivation: AgentSkillActivationService;
@@ -110,25 +128,30 @@ export function createDefaultAgentRuntimeServices(dependencies: AgentRuntimeServ
     pi: dependencies.piSubstrate,
     piSessions: dependencies.piSessionRegistry,
     retrieval: {
+      createToolExposure: (grant) => dependencies.toolSearch.createToolExposure(grant),
       resolveInitialLoadedTools: (...args) => dependencies.toolSearch.resolveInitialLoadedTools(...args),
       resolvePlannedLoadedTools: (options) => dependencies.toolSearch.resolvePlannedLoadedTools(options),
-      rememberAutoSearch: (...args) => dependencies.toolSearch.rememberAutoSearch(...args),
       finishRequest: (...args) => dependencies.toolSearch.finishRequest(...args),
       afterToolResults: (options) => dependencies.toolSearch.afterToolResults(options),
-      toolUsePatterns: (options) => dependencies.toolSearch.toolUsePatterns(options),
+      resolveStateCard: (options) => dependencies.toolSearch.resolveStateCard(options),
+      recordCompletedTurnScenario: (observation) => dependencies.toolSearch.recordCompletedTurnScenario(observation),
       reusableCapabilities: (options) => dependencies.toolSearch.reusableCapabilities(options),
+      getReusableEvidence: (options) => dependencies.toolSearch.getReusableEvidence(options),
     },
     promptContext: {
       activateSkills: (options) => dependencies.skillActivation.activate(options),
-      recommendedSkillTools: (skills) => dependencies.skillActivation.recommendedToolNames(skills),
+      recommendedSkillToolRouting: (skills, explicitActivations) =>
+        dependencies.skillActivation.recommendedToolRouting(skills, explicitActivations),
       buildBaseContext: (options) => dependencies.promptContextBuilder.buildBaseContext(options),
       buildRootCommand: (options) => dependencies.promptContextBuilder.buildRootCommand(options),
-      promptRoleplayPreset: (userInput) => dependencies.presetManager.promptContext(userInput),
+      promptPersona: () => dependencies.persona ?? EmptyAgentPersonaContext,
       toolCatalog: () => dependencies.toolCatalog.list(),
-      promptContinuityMemory: async (input) => {
+      liveContinuityMemory: async (input) => {
         if (!dependencies.continuityMemory) return EmptyAgentContinuityMemoryPromptContext;
-        return await dependencies.continuityMemory.promptContext(input);
+        return await dependencies.continuityMemory.liveContext(input);
       },
+      commitLiveContextDelivery: (input) => dependencies.continuityMemory?.commitLiveContextDelivery(input) ?? 0,
+      invalidateSessionContext: (sessionId) => dependencies.continuityMemory?.invalidateSessionContext(sessionId) ?? 0,
       promptWorkflow: (sessionId) => dependencies.workflow?.promptContext(sessionId) ?? EmptyAgentWorkflowPromptContext,
       interactionToolNames: (interaction) => dependencies.promptContextBuilder.interactionToolNames(interaction),
     },

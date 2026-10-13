@@ -5,6 +5,7 @@ import type {
   AgentToolResultPresentationEvidence,
   AgentToolResultPresentationFact,
 } from "../../../Source/AgentSystem/Types/ToolRuntimeTypes";
+import type { AgentToolPresentation } from "../../../Source/AgentSystem/Types/AgentToolPresentationTypes";
 
 /**
  * Backend protocol DTOs intentionally expose readonly collections. The
@@ -26,7 +27,14 @@ export type ToolResultPresentationChange = AgentToolResultPresentationChange;
 export interface ToolCallsPlannedData {
   toolCount: number;
   tools: string[];
-  calls?: Array<{ callId: string; toolName: string; purpose?: string }>;
+  calls?: Array<{
+    callId: string;
+    toolName: string;
+    purpose?: string;
+    origin?: ToolEventOrigin;
+    modelContentIndex?: number;
+  }>;
+  modelMessageIndex?: number;
   status?: "planned" | "discovery_escalated" | "blocked";
   executionMode?: "parallel" | "sequential";
   batchId?: string;
@@ -38,6 +46,7 @@ export interface ToolEventOrigin {
   kind: "system" | "mcp";
   name: string;
   capability?: string;
+  presentation?: MutableProjection<AgentToolPresentation>;
   server?: string;
   tool?: string;
 }
@@ -51,6 +60,8 @@ export interface ToolCallStartedData {
   arguments?: unknown;
   origin?: ToolEventOrigin;
   batchId?: string;
+  modelMessageIndex?: number;
+  modelContentIndex?: number;
   /** Explicit backend lifecycle start; diagnostic views reject spans without it. */
   startedAt?: string;
 }
@@ -120,7 +131,7 @@ export interface ToolCallResultDetailData {
   callId: string;
   batchId?: string;
   presentation?: ToolResultPresentation;
-  /** Raw tool return value; lifecycle and presentation metadata are separate. */
+  /** Inline tool result, or a durable Artifact reference for a large published result. */
   value: unknown;
   origin?: ToolEventOrigin;
 }
@@ -133,5 +144,7 @@ export interface AssistantMessageCreatedData {
   toolCount?: number;
   batchId?: string;
   toolCallIds?: string[];
+  modelMessageIndex?: number;
+  modelContentIndex?: number;
   reasonCode?: string;
 }

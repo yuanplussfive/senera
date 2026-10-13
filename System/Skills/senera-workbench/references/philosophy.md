@@ -16,12 +16,12 @@ continued or verified.
 
 ## No Silent Downgrades
 
-- If a capability, endpoint, preset, or configuration path is unavailable, the runtime rejects it explicitly and the agent reports the rejection.
+- If a capability, endpoint, or configuration path is unavailable, the runtime rejects it explicitly and the agent reports the rejection.
 - The self-service surface never silently falls back: `config update` either commits through the host services or fails with a reason.
 
 ## Governed Self-Modification
 
-- Configuration, presets, and workspace state are host-owned. They change only through the command surface (`SeneraCommand` / the `senera` CLI).
+- Configuration and workspace state are host-owned. They change only through the command surface (`SeneraCommand` / the `senera` CLI).
 - Never patch `.senera/` files, raw JSON, or databases with shell tools.
 - Mutations are revision-guarded, schema-validated, mirrored, and broadcast so the UI stays consistent.
 - High-sensitivity changes (endpoints, keys, security policy) may require approval; the tool result states when approval is required.

@@ -13,6 +13,9 @@ export const AgentResidentSpeechCapabilities = [
 
 export type AgentResidentSpeechMode = "action_preface" | "final_response";
 
+/** Shape of the rewrite: full persona reshape when a card is present, vocabulary-light polish otherwise. */
+export type AgentResidentSpeechProjectionTier = "reshape" | "polish";
+
 export interface AgentResidentSpeechAction {
   readonly callId: string;
   readonly name: string;
@@ -36,7 +39,7 @@ export interface AgentResidentSpeechNativeContinuation {
   stream(input: {
     readonly context: Context;
     readonly requiredToolName: string;
-    /** Existing callers default to required; repair callers explicitly opt into Pi's automatic mode. */
+    /** Structured continuations always require the bridge call. */
     readonly toolChoice?: "required" | "auto";
     readonly signal: AbortSignal;
   }): AssistantMessageEventStream;
@@ -47,6 +50,8 @@ export interface AgentResidentSpeechProjectionInput {
   readonly message: AssistantMessage;
   readonly focus: AgentResidentSpeechFocus;
   readonly spokenUtterances: readonly AgentResidentSpeechUtterance[];
+  /** Rewrite shape: reshape (card present) rewrites with persona, polish keeps facts and tones only. */
+  readonly projectionTier?: AgentResidentSpeechProjectionTier;
   readonly enabled: boolean;
   readonly signal?: AbortSignal;
   readonly sessionId: string;

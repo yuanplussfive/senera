@@ -7,6 +7,7 @@ export const TestTimestamp = "2026-07-09T00:00:00.000Z";
 export function createTestState(overrides = {}) {
   return {
     sessions: {},
+    runtimeSnapshotsBySession: {},
     sessionOrder: [],
     activeSessionId: null,
     sidebarCollapsed: false,
@@ -35,10 +36,6 @@ export function createTestState(overrides = {}) {
     selectedModelProviderId: null,
     defaultModelProviderId: null,
     selectedModelProviderIdsBySession: {},
-    presets: [],
-    activePresetName: null,
-    presetsEnabled: true,
-    presetRootDir: "",
     configSnapshot: null,
     userProfile: DEFAULT_USER_PROFILE,
     selectSession: () => undefined,
@@ -53,7 +50,7 @@ export function createTestState(overrides = {}) {
     appendUserMessage: () => undefined,
     advanceStreamingDisplay: () => false,
     ingest: () => undefined,
-    removeSession: () => undefined,
+    requestSessionDeletions: () => undefined,
     clearAllSessions: () => undefined,
     markHistoryLoading: () => undefined,
     markHistoryLoadFailed: () => undefined,

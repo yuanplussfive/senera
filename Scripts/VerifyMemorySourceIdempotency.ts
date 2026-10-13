@@ -59,6 +59,14 @@ function completedTurnInput(): AgentMemoryCompletedTurnInput {
     assistantEntry,
     terminal: { kind: "FinalAnswer", content: "Done." },
     executedTools: [toolResult("call-a"), toolResult("call-b")],
+    modelProvider: {
+      id: "verify-model",
+      providerId: "verify-provider",
+      kind: "test",
+      endpoint: "openai-chat",
+      baseUrl: "http://127.0.0.1",
+      model: "verify-model",
+    },
   };
 }
 

@@ -1,32 +1,24 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { AgentDefaultsConfig, ResolvedAgentModelProviderEndpointConfig } from "../Types/AgentConfigTypes.js";
-import type {
-  AgentModelRuntimeDefaultsConfig,
-  AgentVectorModelsDefaultsConfig,
-  ResolvedAgentDefaultsConfig,
-} from "./AgentDefaultValueTypes.js";
+import type { AgentModelRuntimeDefaultsConfig, ResolvedAgentDefaultsConfig } from "./AgentDefaultValueTypes.js";
 import { moduleDirPath } from "../Core/AgentPath.js";
 import { parseJsonText } from "../Core/AgentJsonParsing.js";
 import { SeneraDefaultTerminationGraceMs } from "../Execution/SeneraTerminationPolicy.js";
 import { AgentPiSessionCacheDefaults } from "../Pi/AgentPiSessionCachePolicy.js";
-import { AgentToolSearchMemoryExpansionModes } from "../Types/AgentToolAndMemoryConfigTypes.js";
 import { AgentModelResponseBudgetDefaults } from "../ModelEndpoints/ModelResponseBudget.js";
 import { SeneraDefaultProcessEnvironmentIncludeOnly } from "../Execution/SeneraProcessEnvironment.js";
 import { AgentToolSemanticAuditModes } from "../Types/AgentRuntimeConfigTypes.js";
-import {
-  AgentContinuityPromptBudgetDefaults,
-  AgentContinuityRecallRankingDefaults,
-  AgentContinuitySemanticRecallDefaults,
-} from "../Continuity/AgentContinuityRecallDefaults.js";
+import { AgentContinuityPromptBudgetDefaults } from "../Continuity/AgentContinuityRecallDefaults.js";
 import {
   readAgentSandboxDistributionContract,
   resolveAgentSandboxDistributionTarget,
 } from "../Sandbox/AgentSandboxDistributionContract.js";
-import { AgentPresetPromptBudgetDefaults } from "../Presets/AgentPresetPromptBudget.js";
 
 const Mebibyte = 1024 * 1024;
 const DefaultLargePayloadBytes = 64 * Mebibyte;
+const DefaultToolObservationMaxTokens = 16_384;
+const DefaultWorkspaceObserverIdleTtlMs = 30_000;
 const DefaultModelProviderEndpoints = parseJsonText(
   fs.readFileSync(path.join(moduleDirPath(import.meta.url), "AgentDefaultModelProviderEndpoints.json"), "utf8"),
   "Default model provider catalog",
@@ -43,8 +35,6 @@ export const AgentDefaults = {
     Model: "mistral-large-latest",
     Capabilities: {
       Chat: true,
-      Embedding: false,
-      Rerank: false,
       Vision: false,
       ImageOutput: false,
       Reasoning: false,
@@ -79,10 +69,8 @@ export const AgentDefaults = {
     ForegroundReserveFraction: 0.5,
     LaneWeights: {
       foreground: 100,
-      goal: 4,
-      autonomy: 2,
-      resident: 1,
       continuity: 1,
+      compaction: 1,
       embedding: 1,
     },
   },
@@ -142,68 +130,113 @@ export const AgentDefaults = {
     Fuzzy: {
       Enabled: true,
       MinScore: 0.25,
-      CandidateLimit: 8,
     },
     Embedding: {
-      Enabled: false,
-      ScoreThreshold: 0,
+      Enabled: true,
+    },
+    Tokenize: {
+      Stopwords: [
+        "a",
+        "an",
+        "the",
+        "and",
+        "or",
+        "but",
+        "of",
+        "to",
+        "in",
+        "on",
+        "at",
+        "for",
+        "with",
+        "by",
+        "from",
+        "as",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "it",
+        "its",
+        "this",
+        "that",
+        "these",
+        "those",
+        "do",
+        "does",
+        "did",
+        "have",
+        "has",
+        "had",
+        "will",
+        "would",
+        "can",
+        "could",
+        "should",
+        "may",
+        "might",
+        "must",
+        "not",
+        "so",
+        "if",
+        "then",
+        "than",
+        "too",
+        "very",
+        "just",
+        "also",
+        "about",
+        "into",
+        "over",
+        "under",
+        "again",
+        "more",
+        "most",
+        "other",
+        "some",
+        "such",
+        "only",
+        "own",
+        "same",
+      ],
     },
     Memory: {
       MaxEpisodes: 5000,
       HalfLifeDays: 30,
     },
     Ranking: {
-      RrfK: 60,
-      MmrLambda: 0.72,
-      MmrCandidateScoreRatio: 0.92,
-      MinScore: 0,
-      MaxResults: 6,
-      MemoryExpansion: {
-        Mode: AgentToolSearchMemoryExpansionModes.Fallback,
-        MinConfidence: 0.8,
-        MinEvidence: 3,
-        MaxResults: 2,
+      RrfK: 30,
+      ChannelWeights: {
+        bm25: 1,
+        exact: 0.9,
+        example: 1.1,
+        fuzzy: 0.7,
+        semantic: 0.5,
+        structural: 1,
+        memory: 0.6,
       },
     },
+    Disclosure: {
+      TokenBudget: 640,
+    },
     Rerank: {
-      Enabled: false,
-      CandidateLimit: 24,
+      // Reranking is a deterministic comparison over the fused candidate set.
+      // It does not invoke a model or network service,
+      // and lets declared actions, targets, and resource syntax disambiguate
+      // generic lexical matches before they reach the agent.
+      Enabled: true,
       ScoreScale: 0.018,
       FeatureWeights: {},
     },
   },
-  VectorModels: {
-    Embedding: {
-      Enabled: false,
-      ProviderId: "openai",
-      Model: "qwen3-embedding-0.6b",
-      TimeoutSeconds: 20,
-      MaxNetworkRetries: 1,
-      Dimensions: -1,
-      BatchSize: 64,
-      InputMaxChars: -1,
-    },
-    Rerank: {
-      Enabled: false,
-      ProviderId: "openai",
-      Model: "qwen3-reranker-0.6b",
-      TimeoutSeconds: 20,
-      MaxNetworkRetries: 1,
-      EndpointPath: "/rerank",
-      CandidateLimit: -1,
-      TopK: -1,
-    },
-  },
-  ToolLearning: {
+  StateCard: {
     Enabled: true,
-    MaxRepairAttempts: 1,
-    Patterns: {
-      MinSupport: 2,
-      MaxPromptPatterns: 2,
-    },
+    HistoryBudgetCharacters: 4_000,
     Client: {
       Temperature: 0.1,
-      MaxTokens: -1,
     },
   },
   Todos: {
@@ -222,39 +255,19 @@ export const AgentDefaults = {
       RetryMaxDelaySeconds: 60,
       MaxJobsPerDrain: 8,
     },
-    LearningGate: {
-      Enabled: true,
-      DeferredDelaySeconds: 30,
-    },
-    LearningContext: {
-      ReferentBudgetCharacters: 12_000,
-      CatalogBudgetCharacters: 12_000,
-      VerifiedExampleBudgetCharacters: 12_000,
-    },
-    TemporalMemory: {
-      Enabled: true,
+    MemOS: {
+      AutoLinkThreshold: 0.75,
+      RecallDedupeThreshold: 0.92,
+      RecallDedupeMaxPairs: 10_000,
+      FragmentHistoryTurns: 6,
+      KnowledgeCandidateLimit: 8,
+      AssistantPreviewTokens: 256,
+      DigestInputTokenBudget: 8_192,
+      DigestSummaryCharacterLimit: 50,
     },
     Recall: {
-      TurnValueClassifier: {
-        Enabled: true,
-        ConfidenceThreshold: 0.82,
-        MinimumExamplesPerLabel: 3,
-        MaxTrainingEntries: 4096,
-      },
-      Prefetch: {
-        Enabled: true,
-        CacheTtlSeconds: 300,
-      },
       PromptBudget: AgentContinuityPromptBudgetDefaults,
-      Ranking: AgentContinuityRecallRankingDefaults,
-      Semantic: AgentContinuitySemanticRecallDefaults,
     },
-  },
-  Presets: {
-    Enabled: true,
-    RootDir: ".senera/presets",
-    StateFile: ".senera/presets-state.json",
-    PromptBudget: AgentPresetPromptBudgetDefaults,
   },
   ActionPlanner: {
     Enabled: true,
@@ -277,15 +290,18 @@ export const AgentDefaults = {
   },
   Artifacts: {
     RootDir: ".senera/artifacts/runs",
-    SummaryMaxChars: 2400,
+    // Shared hard ceiling for one model-facing tool observation. Pi's active
+    // turn reservation may impose a smaller limit for the current call.
+    ToolObservationMaxTokens: DefaultToolObservationMaxTokens,
     RawJsonMaxBytes: DefaultLargePayloadBytes,
     TextFileMaxBytes: DefaultLargePayloadBytes,
+    WorkspaceObserverMemoryMaxBytes: 67_108_864,
+    WorkspaceObserverSettleMs: 80,
+    WorkspaceObserverIdleTtlMs: DefaultWorkspaceObserverIdleTtlMs,
+    WorkspaceObserverIgnoredPaths: [".git", ".agents", ".claude", ".codex"],
+    WorkspacePatchContextLines: 3,
     MemoryReadMaxArtifacts: 16,
-    MemoryReadMaxRefs: 8,
     MemoryReadMaxConcurrency: 4,
-    // The active turn budget still caps each read. This ceiling lets artifact
-    // projections use the same 64K-128K feedback range as system extensions.
-    MemoryReadStructuredJsonMaxTokens: 128_000,
     OutputCaptureMaxBytes: DefaultLargePayloadBytes,
     MaxStoredBytes: 10 * 1024 * 1024 * 1024,
     MaxArtifacts: 10_000,
@@ -354,6 +370,12 @@ export const AgentDefaults = {
   },
   Persistence: {
     Kind: "sqlite",
+    EventWriter: {
+      RestartDelayMs: 250,
+      CloseTimeoutMs: 5_000,
+      DrainBatchSize: 256,
+      CommittedRetentionMs: 7 * 24 * 60 * 60 * 1_000,
+    },
   },
   ConfigStore: {
     Enabled: true,
@@ -366,49 +388,14 @@ export const AgentDefaults = {
   Prompt: {
     UserMessageEnvelope: true,
     TimeZone: "Asia/Shanghai",
+    CorePersona: "",
+    LanguageStyle: "",
     PrefaceRewrite: false,
-    RoleCheck: true,
+    FinalResponseRewrite: false,
     BamlToolAttribution: true,
   },
-  World: {
-    Name: "Senera",
-    TimeZone: "Asia/Shanghai",
-    DayPhases: [
-      { Id: "late_night", Label: "深夜", StartsAt: "00:00", EndsAt: "05:00" },
-      { Id: "early_morning", Label: "清晨", StartsAt: "05:00", EndsAt: "08:00" },
-      { Id: "morning", Label: "上午", StartsAt: "08:00", EndsAt: "12:00" },
-      { Id: "afternoon", Label: "下午", StartsAt: "12:00", EndsAt: "18:00" },
-      { Id: "evening", Label: "晚上", StartsAt: "18:00", EndsAt: "00:00" },
-    ],
-    RecordLimit: 128,
-    TimelineLimit: 64,
-    HabitCatchUpLimit: 256,
-    GoalMicroLoop: {
-      Enabled: true,
-      MaxCandidates: 8,
-      ReviewDelaySeconds: 900,
-      AllowedToolNames: [],
-    },
-    ResidentIdle: {
-      Enabled: true,
-      MinIntervalSeconds: 900,
-      MaxIntervalSeconds: 14_400,
-      BackoffMultiplier: 2,
-      MaxPending: 1,
-    },
-    ActionBudget: {
-      MaxActionsPerWake: 8,
-      MaxDecisionCandidatesPerWake: 8,
-      RetryDelaySeconds: 30,
-      LeaseDurationSeconds: 300,
-      FairShare: true,
-      SourceOrder: [],
-      SourceCaps: {},
-    },
-  },
-} as const satisfies Omit<ResolvedAgentDefaultsConfig, "ModelRuntime" | "ToolExecution" | "VectorModels"> & {
+} as const satisfies Omit<ResolvedAgentDefaultsConfig, "ModelRuntime" | "ToolExecution"> & {
   ModelRuntime: AgentModelRuntimeDefaultsConfig;
   ToolExecution: Required<NonNullable<AgentDefaultsConfig["ToolExecution"]>>;
   SandboxRuntime: Required<NonNullable<AgentDefaultsConfig["SandboxRuntime"]>>;
-  VectorModels: AgentVectorModelsDefaultsConfig;
 };

@@ -3,10 +3,7 @@ import { AgentConversationPolicy } from "../../../Source/AgentSystem/Conversatio
 import { AgentConversationProjector } from "../../../Source/AgentSystem/Conversation/AgentConversationProjector.js";
 import { AgentDefaults } from "../../../Source/AgentSystem/AgentDefaults.js";
 import { AgentInteractionInputRuntime } from "../../../Source/AgentSystem/Interaction/AgentInteractionInputRuntime.js";
-import {
-  AgentMemoryService,
-  type AgentContinuityDeliverySink,
-} from "../../../Source/AgentSystem/Memory/AgentMemoryService.js";
+import { AgentMemoryService } from "../../../Source/AgentSystem/Memory/AgentMemoryService.js";
 import { InMemoryAgentMemorySourceRepository } from "../../../Source/AgentSystem/Memory/AgentMemorySourceRepository.js";
 import { AgentPiActiveSessionRegistry } from "../../../Source/AgentSystem/Pi/AgentPiActiveSessionRegistry.js";
 import type { AgentLoopRunner } from "../../../Source/AgentSystem/Loop/AgentLoopRunner.js";
@@ -22,7 +19,6 @@ export function createCoordinatorFixture(options: {
   piSessions?: AgentPiActiveSessionRegistry;
   piSessionMutations?: Pick<AgentPiSessionMutationPort, "reset">;
   interactionInput?: AgentInteractionInputRuntime;
-  continuityDelivery?: AgentContinuityDeliverySink;
   runResources?: ConstructorParameters<typeof AgentSessionRunCoordinator>[0]["runResources"];
 }) {
   const sessionRepository = new InMemorySessionRepository();
@@ -31,7 +27,6 @@ export function createCoordinatorFixture(options: {
   const memoryRepository = new InMemoryAgentMemorySourceRepository();
   const memory = new AgentMemoryService({
     sourceRepository: memoryRepository,
-    continuityDelivery: options.continuityDelivery,
   });
   const coordinator = new AgentSessionRunCoordinator({
     store,
@@ -84,7 +79,6 @@ export function completedRun(_requestId: string): AgentCompletedRunResult {
       model: "test-model",
     },
     usage: { source: "local_estimate", inputTokens: 10, outputTokens: 4 },
-    conversationEntries: [],
     executedTools: [],
     stepTraces: [{ step: 1, seq: 0, kind: "answer", status: "done" }],
   };

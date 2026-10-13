@@ -3,7 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { AgentArtifactFileWriter } from "../../../Source/AgentSystem/Artifacts/AgentArtifactFileWriter.js";
-import { AgentWorkspaceSnapshotBuilder } from "../../../Source/AgentSystem/Artifacts/AgentWorkspaceSnapshotBuilder.js";
+import { materializeAgentWorkspaceMutationReceipt } from "../../../Source/AgentSystem/Artifacts/AgentWorkspaceMutationReceipt.js";
+import { AgentWorkspaceMutationReceiptProtocol } from "../../../Source/AgentSystem/Types/ToolRuntimeTypes.js";
 
 const temporaryRoots: string[] = [];
 
@@ -14,22 +15,27 @@ afterEach(() => {
 });
 
 describe("Artifact workspace boundary", () => {
-  it("does not snapshot content through an escaping directory link", async () => {
-    const { workspaceRoot, outsideRoot } = createFixture();
-    fs.writeFileSync(path.join(outsideRoot, "secret.txt"), "outside", "utf8");
-    createDirectoryLink(outsideRoot, path.join(workspaceRoot, "escape"));
-    const builder = new AgentWorkspaceSnapshotBuilder(workspaceRoot, {
-      maxFileBytes: 1024,
-      maxFiles: 10,
-      maxDirectoryDepth: 2,
-      captureContent: "text",
-    });
+  it("rejects receipt paths that leave the workspace lexical boundary", () => {
+    const { workspaceRoot } = createFixture();
 
-    await builder.capture("escape/secret.txt", 0);
-
-    const snapshot = builder.toSnapshot();
-    expect(snapshot.files).toMatchObject([{ path: "escape/secret.txt", exists: false, kind: "missing" }]);
-    expect(snapshot.warnings).toContain("workspace snapshot rejected unsafe path: escape/secret.txt");
+    expect(() =>
+      materializeAgentWorkspaceMutationReceipt({
+        workspaceRoot,
+        workspacePolicy: workspacePolicy(),
+        receipt: {
+          type: AgentWorkspaceMutationReceiptProtocol.type,
+          version: AgentWorkspaceMutationReceiptProtocol.version,
+          capturedAt: "2026-09-25T00:00:00.000Z",
+          entries: [
+            {
+              path: "../outside/secret.txt",
+              before: { kind: "missing" },
+              after: { kind: "file", bytes: Buffer.from("outside", "utf8") },
+            },
+          ],
+        },
+      }),
+    ).toThrow(/not canonical|escapes workspace/i);
   });
 
   it("does not write artifacts through an escaping directory link", async () => {
@@ -42,7 +48,41 @@ describe("Artifact workspace boundary", () => {
     });
     expect(fs.existsSync(path.join(outsideRoot, "artifact.json"))).toBe(false);
   });
+
+  it("preserves an explicitly addressed nested path without traversing its parent directories", () => {
+    const { workspaceRoot } = createFixture();
+    const capture = materializeAgentWorkspaceMutationReceipt({
+      workspaceRoot,
+      workspacePolicy: workspacePolicy(),
+      receipt: {
+        type: AgentWorkspaceMutationReceiptProtocol.type,
+        version: AgentWorkspaceMutationReceiptProtocol.version,
+        capturedAt: "2026-09-25T00:00:00.000Z",
+        entries: [
+          {
+            path: ".github/workflows/release.yml",
+            before: { kind: "missing" },
+            after: { kind: "file", bytes: Buffer.from("name: Release\n", "utf8") },
+          },
+        ],
+      },
+    });
+
+    expect(capture.after.files).toEqual([
+      expect.objectContaining({ path: ".github/workflows/release.yml", kind: "file" }),
+    ]);
+    expect(capture.after.warnings).toBeUndefined();
+  });
 });
+
+function workspacePolicy() {
+  return {
+    Capture: "mutation-receipt" as const,
+    MaxFileBytes: 1024,
+    CaptureContent: "text" as const,
+    PatchContextLines: 3,
+  };
+}
 
 function createFixture(): { workspaceRoot: string; outsideRoot: string } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "senera-artifact-boundary-"));

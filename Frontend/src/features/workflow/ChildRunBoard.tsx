@@ -1,21 +1,14 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { AlertTriangle, Check, Circle, CirclePause, Flag, GitBranch, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { RunRecord, TimelineChildRunState, TimelineStep } from "../../store/sessionStore";
 import { cn, formatDuration, formatTime } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { Spinner } from "../../shared/ui";
+import { FluidHoverHighlight, useFluidHover, useMotionLevel, type UseFluidHoverReturn } from "../../shared/motion";
 import { summarizeRun } from "./runSummary";
 import { RunSummaryStrip } from "./WorkflowRunControls";
-import { ChildRunStatusPresentation } from "./ChildRunOverview";
+import { ChildRunStatusPresentation, isChildRunActive } from "./ChildRunOverview";
 import { NodeDetailDrawer } from "./NodeDetailDrawer";
-
-const ACTIVE_CHILD_RUN_STATUSES: ReadonlySet<TimelineChildRunState["status"]> = new Set([
-  "queued",
-  "running",
-  "wrapping_up",
-  "cancelling",
-  "awaiting_supervisor",
-]);
+import { textShimmerStyle } from "../../shared/motion";
+import { AppIcon } from "../../shared/ui";
 
 const CHILD_RUN_ACCENTS = [
   { rail: "bg-accent-solid", soft: "bg-accent-surface", text: "text-accent-content", progress: "bg-accent-solid" },
@@ -29,8 +22,13 @@ export function ChildRunBoard({ run }: { run: RunRecord }): JSX.Element {
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const childSteps = useMemo(() => readChildRunSteps(run.steps), [run.steps]);
   const selectedStep = childSteps.find((step) => step.id === selectedStepId) ?? null;
-  const activeSteps = childSteps.filter((step) => ACTIVE_CHILD_RUN_STATUSES.has(step.childRun!.status));
-  const settledSteps = childSteps.filter((step) => !ACTIVE_CHILD_RUN_STATUSES.has(step.childRun!.status));
+  const activeSteps = childSteps.filter((step) => isChildRunActive(step.childRun!.status));
+  const settledSteps = childSteps.filter((step) => !isChildRunActive(step.childRun!.status));
+  const { disableMotion } = useMotionLevel();
+  const activeListRef = useRef<HTMLDivElement>(null);
+  const settledListRef = useRef<HTMLDivElement>(null);
+  const activeHover = useFluidHover(activeListRef, { axis: "y" });
+  const settledHover = useFluidHover(settledListRef, { axis: "y" });
   const summary = summarizeRun(run);
   const runProgress = childSteps.length > 0 ? readRunProgress(childSteps) : undefined;
 
@@ -44,16 +42,15 @@ export function ChildRunBoard({ run }: { run: RunRecord }): JSX.Element {
     <section
       className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-transparent"
       aria-label={frontendMessage("workflow.childRun.board.title")}
-      aria-live="polite"
       data-child-run-board
     >
       <header className="shrink-0 border-b border-line-subtle px-3 pb-3 pt-3">
         <div className="flex min-w-0 items-center gap-2">
-          <GitBranch className="h-4 w-4 shrink-0 text-content-secondary" aria-hidden="true" />
+          <AppIcon icon="git-branch" size={16} className="shrink-0 text-content-secondary" aria-hidden="true" />
           <h2 className="truncate text-[13px] font-semibold text-content-primary">
             {frontendMessage("workflow.childRun.board.title")}
           </h2>
-          <span className="ml-auto shrink-0 text-[10.5px] tabular-nums text-content-muted">
+          <span aria-live="polite" className="ml-auto shrink-0 text-[10.5px] tabular-nums text-content-muted">
             {frontendMessage("workflow.feed.running")} {activeSteps.length}
           </span>
         </div>
@@ -63,14 +60,21 @@ export function ChildRunBoard({ run }: { run: RunRecord }): JSX.Element {
         {runProgress !== undefined ? (
           <div className="mt-2 flex items-center gap-2">
             <RunSummaryStrip run={run} summary={summary} />
-            <div className="ml-auto flex min-w-0 items-center gap-1.5" aria-label={`${runProgress}%`}>
-              <div className="h-1.5 w-16 overflow-hidden rounded-full bg-line-subtle">
+            <div className="ml-auto flex min-w-0 items-center gap-1.5">
+              <div
+                className="h-1.5 w-16 overflow-hidden rounded-full bg-line-subtle"
+                role="progressbar"
+                aria-label={`${frontendMessage("workflow.childRun.message.progress")} ${runProgress}%`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={runProgress}
+              >
                 <span
-                  className="block h-full rounded-full bg-moss-500 transition-[width] duration-300"
-                  style={{ width: `${runProgress}%` }}
+                  className="block h-full w-full origin-left rounded-full bg-moss-500 transition-transform duration-300"
+                  style={{ transform: `scaleX(${runProgress / 100})` }}
                 />
               </div>
-              <span className="shrink-0 font-mono text-[10px] tabular-nums text-content-muted">{runProgress}%</span>
+              <span className="shrink-0 text-[10px] tabular-nums text-content-muted">{runProgress}%</span>
             </div>
           </div>
         ) : (
@@ -82,12 +86,20 @@ export function ChildRunBoard({ run }: { run: RunRecord }): JSX.Element {
 
       <div className="scrollbar-thin min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-3">
         {activeSteps.length > 0 ? (
-          <BoardGroup label={frontendMessage("workflow.childRun.board.active")}>
+          <BoardGroup
+            label={frontendMessage("workflow.childRun.board.active")}
+            listRef={activeListRef}
+            hover={activeHover}
+            disableMotion={disableMotion}
+          >
             {activeSteps.map((step, index) => (
               <ChildRunTimelineItem
                 key={step.id}
+                itemRef={activeHover.getItemRef(index)}
+                fluidHoverEnabled={!disableMotion}
                 step={step}
                 accentIndex={index}
+                animateActivity
                 onSelect={() => setSelectedStepId(step.id)}
               />
             ))}
@@ -95,12 +107,20 @@ export function ChildRunBoard({ run }: { run: RunRecord }): JSX.Element {
         ) : null}
 
         {settledSteps.length > 0 ? (
-          <BoardGroup label={frontendMessage("workflow.childRun.board.settled")}>
+          <BoardGroup
+            label={frontendMessage("workflow.childRun.board.settled")}
+            listRef={settledListRef}
+            hover={settledHover}
+            disableMotion={disableMotion}
+          >
             {settledSteps.map((step, index) => (
               <ChildRunTimelineItem
                 key={step.id}
+                itemRef={settledHover.getItemRef(index)}
+                fluidHoverEnabled={!disableMotion}
                 step={step}
                 accentIndex={activeSteps.length + index}
+                animateActivity={false}
                 onSelect={() => setSelectedStepId(step.id)}
               />
             ))}
@@ -121,14 +141,31 @@ export function ChildRunBoard({ run }: { run: RunRecord }): JSX.Element {
 
 export default ChildRunBoard;
 
-function BoardGroup({ label, children }: { label: string; children: ReactNode }): JSX.Element {
+function BoardGroup({
+  label,
+  children,
+  listRef,
+  hover,
+  disableMotion,
+}: {
+  label: string;
+  children: ReactNode;
+  listRef: RefObject<HTMLDivElement | null>;
+  hover: UseFluidHoverReturn;
+  disableMotion: boolean;
+}): JSX.Element {
   return (
     <section className="space-y-1.5" aria-label={label}>
       <div className="flex items-center gap-2 px-1">
         <h3 className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-content-muted">{label}</h3>
         <span className="h-px flex-1 bg-line-subtle" aria-hidden="true" />
       </div>
-      <div className="relative space-y-1.5 pl-4 before:absolute before:bottom-3 before:left-[5px] before:top-3 before:w-px before:bg-line-subtle">
+      <div
+        ref={listRef}
+        className="relative space-y-1.5 pl-4 before:absolute before:bottom-3 before:left-[5px] before:top-3 before:w-px before:bg-line-subtle"
+        {...hover.handlers}
+      >
+        <FluidHoverHighlight hover={hover} hidden={disableMotion} className="rounded-md" />
         {children}
       </div>
     </section>
@@ -136,12 +173,18 @@ function BoardGroup({ label, children }: { label: string; children: ReactNode })
 }
 
 function ChildRunTimelineItem({
+  itemRef,
+  fluidHoverEnabled,
   step,
   accentIndex,
+  animateActivity,
   onSelect,
 }: {
+  itemRef: (element: HTMLElement | null) => void;
+  fluidHoverEnabled: boolean;
   step: TimelineStep;
   accentIndex: number;
+  animateActivity: boolean;
   onSelect: () => void;
 }): JSX.Element {
   const childRun = step.childRun!;
@@ -156,16 +199,17 @@ function ChildRunTimelineItem({
   return (
     <button
       type="button"
+      ref={itemRef}
       onClick={onSelect}
       className={cn(
-        "group relative w-full border-b border-line-subtle border-l-[3px] bg-transparent px-2.5 py-2 text-left transition-[border-color,background-color,box-shadow] hover:bg-surface-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
+        "group relative z-10 w-full border-b border-line-subtle border-l-[3px] bg-transparent px-2.5 py-2 text-left transition-[border-color,background-color,box-shadow] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
+        fluidHoverEnabled ? "hover:bg-transparent" : "hover:bg-surface-hover",
         accent.rail,
         (childRun.status === "failed" || childRun.status === "timed_out") && "border-brick-300",
       )}
       data-child-run-item
       data-child-run-card
       data-child-run-status={childRun.status}
-      aria-label={`${agentName}: ${frontendMessage(presentation.label)}`}
     >
       <span
         className={cn(
@@ -175,43 +219,49 @@ function ChildRunTimelineItem({
         )}
         aria-hidden="true"
       >
-        <span
-          className={cn(
-            "h-1.5 w-1.5 rounded-full",
-            accent.rail,
-            ACTIVE_CHILD_RUN_STATUSES.has(childRun.status) && "animate-pulse",
-          )}
-        />
+        <span className={cn("h-1.5 w-1.5 rounded-full", accent.rail)} />
       </span>
       <div className="flex min-w-0 items-center gap-2">
-        <ChildRunStatusIcon status={childRun.status} className={presentation.textClass} />
+        <ChildRunStatusIcon status={childRun.status} className={presentation.text} />
         <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-content-primary">{agentName}</span>
-        <span className={cn("shrink-0 text-[10.5px] font-medium", presentation.textClass)}>
+        <span className={cn("shrink-0 text-[10.5px] font-medium", presentation.text)}>
           {frontendMessage(presentation.label)}
         </span>
       </div>
 
-      <div className="mt-1 line-clamp-1 break-words text-[11.5px] leading-5 text-content-secondary">
+      <div
+        className={cn(
+          "mt-1 line-clamp-1 break-words text-[11.5px] leading-5 text-content-secondary",
+          animateActivity && "motion-safe:animate-text-shimmer",
+        )}
+        data-live-activity-text={animateActivity || undefined}
+        style={textShimmerStyle(readChildRunActivity(childRun))}
+      >
         {readChildRunActivity(childRun)}
       </div>
 
-      {totalTools > 0 || !ACTIVE_CHILD_RUN_STATUSES.has(childRun.status) ? (
+      {totalTools > 0 || !isChildRunActive(childRun.status) ? (
         <div className="mt-2 flex items-center gap-2">
-          <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-line-subtle">
+          <div
+            className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-line-subtle"
+            role="progressbar"
+            aria-label={`${frontendMessage("workflow.childRun.message.progress")} ${agentName} ${progress}%`}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progress}
+          >
             <span
               className={cn(
-                "block h-full rounded-full transition-[width] duration-300",
+                "block h-full w-full origin-left rounded-full transition-transform duration-300",
                 accent.progress,
-                totalTools === 0 && ACTIVE_CHILD_RUN_STATUSES.has(childRun.status) && "w-1/2 animate-pulse",
               )}
-              style={
-                totalTools > 0 || !ACTIVE_CHILD_RUN_STATUSES.has(childRun.status)
-                  ? { width: `${progress}%` }
-                  : undefined
-              }
+              style={{
+                transform:
+                  totalTools > 0 || !isChildRunActive(childRun.status) ? `scaleX(${progress / 100})` : "scaleX(0.5)",
+              }}
             />
           </div>
-          <span className="shrink-0 font-mono text-[10px] tabular-nums text-content-muted">
+          <span className="shrink-0 text-[10px] tabular-nums text-content-muted">
             {totalTools > 0
               ? frontendMessage("workflow.childRun.board.toolCompletion", {
                   completed: completedTools + failedTools,
@@ -233,7 +283,7 @@ function ChildRunTimelineItem({
         ) : null}
         {childRun.checkpointAvailable ? (
           <span className="inline-flex items-center gap-1 text-moss-600">
-            <Flag className="h-3 w-3" aria-hidden="true" />
+            <AppIcon icon="flag" size={12} aria-hidden="true" />
             {frontendMessage("workflow.childRun.board.checkpoint")}
           </span>
         ) : null}
@@ -252,15 +302,15 @@ function ChildRunStatusIcon({
   className: string;
 }): JSX.Element {
   if (status === "awaiting_supervisor") {
-    return <CirclePause className={cn("h-3.5 w-3.5", className)} />;
+    return <AppIcon icon="clock" size={14} className={className} />;
   }
-  if (ACTIVE_CHILD_RUN_STATUSES.has(status)) return <Spinner size="xs" className={className} />;
-  if (status === "failed" || status === "timed_out") return <AlertTriangle className={cn("h-3.5 w-3.5", className)} />;
+  if (isChildRunActive(status)) return <AppIcon icon="circle" size={14} className={className} />;
+  if (status === "failed" || status === "timed_out") return <AppIcon icon="warning" size={14} className={className} />;
   if (status === "completed" || status === "partial_completed" || status === "interrupted") {
-    return <Check className={cn("h-3.5 w-3.5", className)} />;
+    return <AppIcon icon="checkmark" size={14} className={className} />;
   }
-  if (status === "cancelled") return <X className={cn("h-3.5 w-3.5", className)} />;
-  return <Circle className={cn("h-3.5 w-3.5", className)} />;
+  if (status === "cancelled") return <AppIcon icon="close" size={14} className={className} />;
+  return <AppIcon icon="circle" size={14} className={className} />;
 }
 
 function readChildRunActivity(childRun: TimelineChildRunState): string {
@@ -302,7 +352,7 @@ function readChildRunProgress(childRun: TimelineChildRunState): number {
     const completed = Math.min(total, (childRun.toolCalls?.completed ?? 0) + (childRun.toolCalls?.failed ?? 0));
     return Math.round((completed / total) * 100);
   }
-  return ACTIVE_CHILD_RUN_STATUSES.has(childRun.status) ? 8 : 100;
+  return isChildRunActive(childRun.status) ? 8 : 100;
 }
 
 function readRunProgress(steps: readonly TimelineStep[]): number {

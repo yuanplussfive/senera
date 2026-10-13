@@ -26,8 +26,12 @@ export interface RegisteredSkill {
   source: AgentSkillSource;
   name: string;
   title?: string;
+  /** Optional semantic icon name from Skill metadata. */
+  icon?: string;
   description: string;
   descriptionFile: string;
+  /** Validated body captured with this registered resource revision. */
+  readonly content: string;
   /** Explicit `/skill` activation remains available, but automatic model
    * routing and capability search must not select this Skill. */
   disableModelInvocation?: boolean;

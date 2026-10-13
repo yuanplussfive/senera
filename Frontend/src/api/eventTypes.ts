@@ -9,11 +9,42 @@ import type {
   RunActivityState,
 } from "./generatedEventCatalog";
 import type { ProviderModelConfigOperationKind } from "./providerModelCommandTypes";
-import type { FrontendLocalizedText } from "../i18n/frontendLocaleModel";
 import type { BackendLocalizedMessage } from "../i18n/backendMessage";
 import type { ModelThinkingLevel, ModelThinkingProfile } from "./modelThinkingTypes";
+import type { ConfigFormSnapshotData } from "./configFormEventTypes";
+import type {
+  AgentExplicitActivationReference,
+  AgentExplicitActivationSet,
+} from "../../../Source/AgentSystem/Activation/AgentActivationTypes";
 
 export type { ModelThinkingLevel, ModelThinkingProfile, ModelThinkingProfileConfig } from "./modelThinkingTypes";
+export type {
+  ConfigFormFieldData,
+  ConfigFormFieldOptionValue,
+  ConfigFormFieldType,
+  ConfigFormModelCapability,
+  ConfigFormModelSelectionData,
+  ConfigFormSectionData,
+  ConfigFormSnapshotData,
+  ConfigFormValueSource,
+} from "./configFormEventTypes";
+export type {
+  AgentActivationCatalogEntry,
+  AgentActivationCatalogSnapshot,
+  AgentActivationKind,
+  SystemExtensionConfigurationSettings,
+  SystemExtensionSettingsItem,
+  SystemExtensionToolSettingsItem,
+  SystemToolSettingsItem,
+  SystemToolSnapshotData,
+} from "./systemExtensionEventTypes";
+
+export type ExplicitActivationReference = AgentExplicitActivationReference;
+/** Mutable at the frontend state boundary so Immer can draft queued metadata. */
+export interface ExplicitActivationSet {
+  catalogRevision: AgentExplicitActivationSet["catalogRevision"];
+  explicit: AgentExplicitActivationReference[];
+}
 export type {
   WorkspaceSnapshotData,
   WorkspaceSwitchFailedData,
@@ -47,7 +78,6 @@ export type {
 export type { RequestInvalidData, RunCancellationProgressData } from "./runControlEventTypes";
 
 export type {
-  ContinuityRulesSnapshotData,
   ContinuitySelectionCountData,
   ContinuitySnapshotData,
   PromptHarnessComposedData,
@@ -56,15 +86,6 @@ export type {
   ContinuityRecallLocalMatchData,
   ContinuityRecallLocalPlanData,
   ContinuityRecallLocalRelationData,
-  AgendaActorData,
-  AgendaClockData,
-  AgendaRecordData,
-  AgendaSnapshotData,
-  AgendaSnapshotEventData,
-  AgendaTimelineEntryData,
-  AgendaWorldData,
-  WorldSnapshotData,
-  WorldSnapshotEventData,
   ExecutionData,
   ExecutionEventData,
   ExecutionSnapshotData,
@@ -72,7 +93,7 @@ export type {
   TodoCountsData,
   TodoData,
   TodoSnapshotData,
-} from "./goalContinuityEventTypes";
+} from "./continuityExecutionEventTypes";
 
 export type {
   AssistantMessageCreatedData,
@@ -146,6 +167,10 @@ export interface EventScope {
   channel?: EventSourceChannel;
   parentSessionId?: string;
   parentRequestId?: string;
+  parentAgentStep?: number;
+  parentModelMessageIndex?: number;
+  parentModelContentIndex?: number;
+  parentToolCallId?: string;
   workflowName?: string;
   jobId?: string;
   childRunId?: string;
@@ -159,48 +184,6 @@ export interface SessionChannelMetadata {
   chatId?: string;
   userId?: string;
   messageId?: string;
-}
-
-export interface SystemToolSettingsItem {
-  name: string;
-  title: string;
-  description: string;
-  extension: string;
-  loading: string;
-}
-
-export interface SystemExtensionToolSettingsItem {
-  name: string;
-  description: FrontendLocalizedText;
-  loading: string;
-  capability: string;
-}
-
-export interface SystemExtensionConfigurationSettings {
-  configured: boolean;
-  value: Record<string, unknown>;
-  effectiveValue: Record<string, unknown>;
-  defaults: Record<string, unknown>;
-  sections: ConfigFormSectionData<FrontendLocalizedText>[];
-}
-
-export interface SystemExtensionSettingsItem {
-  id: string;
-  version: string;
-  displayName: FrontendLocalizedText;
-  description: FrontendLocalizedText;
-  enabled: boolean;
-  configured: boolean;
-  priority?: number;
-  tools: SystemExtensionToolSettingsItem[];
-  skillCount: number;
-  mcpServerCount: number;
-  configuration?: SystemExtensionConfigurationSettings;
-}
-
-export interface SystemToolSnapshotData {
-  extensions: SystemExtensionSettingsItem[];
-  tools: SystemToolSettingsItem[];
 }
 
 export type ChannelStatusItem = {
@@ -397,6 +380,13 @@ export interface SessionHistoryCompletedData {
   refresh?: boolean;
 }
 
+/** One row dropped from a persisted `toolArgs` value, addressed by RFC 6901 pointer. */
+export interface ToolTraceOmission {
+  path: string;
+  reason: "token_limit" | "branch_limit" | "cycle" | "unsupported_value";
+  remaining?: number;
+}
+
 /** 精简档执行步骤轨迹（与后端 StepTrace 对齐）；回放时重建 run.steps */
 export interface StepTraceDto {
   step: number;
@@ -413,6 +403,8 @@ export interface StepTraceDto {
   endedAt?: string;
   title?: string;
   toolArgs?: unknown;
+  /** Rows dropped from `toolArgs` to fit the byte ceiling, addressed by RFC 6901 pointer. */
+  toolArgsOmissions?: readonly ToolTraceOmission[];
   toolPreview?: string;
   toolPresentation?: ToolResultPresentation;
   toolResult?: unknown;
@@ -429,6 +421,7 @@ export interface SessionHistoryStepsData {
     startedAt: string;
     endedAt?: string;
     status: "running" | "completed" | "failed" | "cancelled";
+    recoveryModes?: Array<"retry" | "continue">;
     modelProvider?: ModelProviderMetadata;
     traces: StepTraceDto[];
   }>;
@@ -436,6 +429,8 @@ export interface SessionHistoryStepsData {
 
 export interface ModelProviderMetadata {
   id: string;
+  /** Configured supplier identity; `id` identifies the model configuration. */
+  providerId?: string;
   kind: string;
   endpoint: string;
   baseUrl: string;
@@ -462,8 +457,6 @@ export type ModelToolPlanningMode = "native" | "baml";
 
 export interface ModelCapabilitiesData {
   Chat?: boolean;
-  Embedding?: boolean;
-  Rerank?: boolean;
   Vision?: boolean;
   ImageOutput?: boolean;
   Reasoning?: boolean;
@@ -560,79 +553,6 @@ export type {
   SandboxStatusSnapshotData,
 } from "./sandboxRuntimeEventTypes";
 
-export interface PresetDiagnostic {
-  severity: "error" | "warning";
-  message: string;
-}
-
-export interface PersonaPresetExample {
-  id: string;
-  situation: string;
-  reply: string;
-}
-
-export interface PersonaPresetLoreEntry {
-  id: string;
-  title: string;
-  keywords: string[];
-  content: string;
-  enabled: boolean;
-}
-
-export interface PersonaPresetCard {
-  schemaVersion: "senera.persona/v2";
-  title: string;
-  corePersona: string;
-  languageStyle: string;
-  worldPackageIds: string[];
-  examples: PersonaPresetExample[];
-  lore: PersonaPresetLoreEntry[];
-}
-
-export interface PresetWorldPackageDescriptor {
-  id: string;
-  title: string;
-  entityCount: number;
-  relationCount: number;
-  stateMachineCount: number;
-  habitCount: number;
-  autonomyCount: number;
-}
-
-export interface PresetItem {
-  name: string;
-  title: string;
-  sizeBytes: number;
-  updatedAt: string;
-  active: boolean;
-  card?: PersonaPresetCard;
-  diagnostics: PresetDiagnostic[];
-}
-
-export type PresetOperationKind = "list" | "save" | "delete" | "set_active";
-
-export interface PresetOperationResult {
-  requestId?: string;
-  kind: PresetOperationKind;
-  name?: string | null;
-}
-
-export interface PresetSnapshotData {
-  enabled: boolean;
-  rootDir: string;
-  activePresetName: string | null;
-  presets: PresetItem[];
-  worldPackages: PresetWorldPackageDescriptor[];
-  operation?: PresetOperationResult;
-}
-
-export interface PresetFailedData {
-  message: string;
-  localizedMessage?: BackendLocalizedMessage;
-  details?: unknown;
-  operation?: PresetOperationResult;
-}
-
 export interface ConfigFailedData {
   configPath: string;
   message: string;
@@ -656,89 +576,6 @@ export interface ConfigDiagnosticData {
   details?: unknown;
 }
 
-export type ConfigFormFieldType = "boolean" | "string" | "number" | "array" | "table" | "record";
-
-export type ConfigFormFieldOptionValue = string | number | boolean;
-
-export type ConfigFormValueSource = "explicit" | "inherited" | "default" | "missing";
-
-export type ConfigFormModelCapability =
-  | "Chat"
-  | "Embedding"
-  | "Rerank"
-  | "Vision"
-  | "ImageOutput"
-  | "Reasoning"
-  | "ToolCalling"
-  | "DeveloperRole"
-  | "StreamingUsage";
-
-export interface ConfigFormModelSelectionData {
-  id: string;
-  capability: ConfigFormModelCapability;
-  valueKind: "model-id" | "provider-model";
-  mutation: "config" | "default-model";
-  cardinality?: "one" | "many";
-  providerPath?: string[];
-  inheritance?: {
-    source: "parent-model" | "default-model";
-    path?: string[];
-  };
-  required: boolean;
-}
-
-export interface ConfigFormSnapshotData {
-  version: 1;
-  sections: ConfigFormSectionData[];
-}
-
-export interface ConfigFormSectionData<TText = string> {
-  name: string;
-  label: TText;
-  description?: TText;
-  icon?: string;
-  keyCount: number;
-  fields: ConfigFormFieldData<TText>[];
-}
-
-export interface ConfigFormFieldData<TText = string> {
-  label: TText;
-  section: string;
-  key: string;
-  path: string[];
-  type: ConfigFormFieldType;
-  itemType?: ConfigFormFieldType;
-  value: unknown;
-  effectiveValue: unknown;
-  configured: boolean;
-  missing: boolean;
-  valueSource: ConfigFormValueSource;
-  description?: TText;
-  placeholder?: TText;
-  options?: ConfigFormFieldOptionValue[];
-  optionLabels?: Record<string, TText>;
-  optionSource?: {
-    catalog: "skills";
-  };
-  min?: number;
-  max?: number;
-  minLength?: number;
-  maxLength?: number;
-  step?: number;
-  secret?: boolean;
-  multiline?: boolean;
-  required: boolean;
-  essential: boolean;
-  addLabel?: string;
-  itemLabelPath?: string[];
-  itemFields?: ConfigFormFieldData<TText>[];
-  defaultValue?: unknown;
-  defaultItem?: Record<string, unknown>;
-  keyPlaceholder?: string;
-  valuePlaceholder?: string;
-  modelSelection?: ConfigFormModelSelectionData;
-}
-
 export interface ConfigSnapshotData {
   path: string;
   version: number;
@@ -758,15 +595,6 @@ export interface ConfigMutationState {
   status: MutationStatus;
   message?: string;
   errorCode?: string;
-  updatedAt: string;
-}
-
-export interface PresetMutationState {
-  requestId: string;
-  name?: string | null;
-  kind: PresetOperationKind;
-  status: MutationStatus;
-  message?: string;
   updatedAt: string;
 }
 
@@ -811,6 +639,11 @@ export interface ConversationEntryMetadata {
     parentRequestId: string;
     mode: "steer" | "follow_up";
   };
+  recovery?: {
+    mode: "retry" | "continue";
+    sourceRequestId: string;
+  };
+  activation?: ExplicitActivationSet;
 }
 
 export interface UploadAttachmentData {
@@ -826,6 +659,7 @@ export interface SessionTruncatedData {
   sessionId: string;
   fromRequestId: string;
   removedEntries: number;
+  removedRequestIds?: string[];
   replacementRequestId?: string;
 }
 
@@ -835,6 +669,15 @@ export interface RunStartedData {
   attachments?: UploadAttachmentData[];
   internal?: boolean;
   displayInput?: string;
+  recovery?: {
+    mode: "retry" | "continue";
+    sourceRequestId: string;
+  };
+}
+
+/** Terminal aggregate for one model run. It is emitted once, after all model calls settle. */
+export interface RunCompletedData {
+  usage?: ModelUsageMetadata;
 }
 
 export interface RunActivityChangedData {
@@ -854,17 +697,33 @@ export interface PromptSummaryData {
 
 export interface ModelDeltaData {
   text: string;
+  messageIndex?: number;
+}
+
+export interface ModelThinkingDeltaData {
+  messageIndex: number;
+  contentIndex: number;
+  delta: string;
+}
+
+export interface ModelThinkingCompletedData {
+  messageIndex: number;
+  contentIndex: number;
+  content: string;
+  status: "complete" | "interrupted";
 }
 
 export interface ModelStartedData {
   model: string;
   provider?: ModelProviderMetadata;
+  messageIndex?: number;
 }
 
 export interface ModelCompletedData {
   text: string;
   provider?: ModelProviderMetadata;
   usage?: ModelUsageMetadata;
+  messageIndex?: number;
 }
 
 export type {
@@ -891,6 +750,7 @@ export interface RunFailedData {
   localizedMessage?: BackendLocalizedMessage;
   code?: string;
   details?: unknown;
+  recoveryModes?: Array<"retry" | "continue">;
 }
 
 // --- 客户端 → 服务端 请求 ---

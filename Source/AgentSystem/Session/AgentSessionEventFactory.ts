@@ -1,13 +1,10 @@
 import { AgentEventKinds, type AgentDomainEvent } from "../Events/AgentEvent.js";
-import { AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
 import type { AgentSession, AgentSessionSnapshot } from "./AgentSession.js";
 import { projectAgentMessage } from "../I18n/AgentMessageProjection.js";
 import type { AgentSessionOperation } from "./AgentSessionOperation.js";
 import { resolveAgentSessionModelProviderId } from "../ModelEndpoints/AgentModelMetadata.js";
 
 export class AgentSessionEventFactory {
-  constructor(private readonly conversationPolicy = new AgentConversationPolicy()) {}
-
   created(session: AgentSession): AgentDomainEvent {
     return {
       kind: AgentEventKinds.SessionCreated,
@@ -86,7 +83,7 @@ export class AgentSessionEventFactory {
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
       entryCount: session.conversation.length,
-      messageCount: this.conversationPolicy.materialize(session.conversation).length,
+      messageCount: session.conversation.length,
       turnCount: session.conversation.filter((entry) => entry.kind === "user.message").length,
       activeRequestId: session.activeRequest?.requestId,
       ...(session.metadata?.channel ? { channel: session.metadata.channel } : {}),

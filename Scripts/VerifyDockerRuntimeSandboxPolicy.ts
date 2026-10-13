@@ -13,6 +13,7 @@ const dockerignore = read(".dockerignore");
 const composeSource = read("compose.yaml");
 const dockerEntrypoint = read("Apps/DockerEntrypoint.sh");
 const dockerServer = read("Apps/DockerServer.ts");
+const nativeSqliteVerifier = read("Scripts/VerifyDockerNativeSqlite.ts");
 const sandboxWorker = read("Apps/SandboxWorker.ts");
 const dockerRuntime = read("Source/AgentSystem/Sandbox/DockerEngine/AgentDockerEngineRuntime.ts");
 const workerProtocol = read("Source/AgentSystem/Sandbox/Worker/AgentSandboxWorkerProtocol.ts");
@@ -34,8 +35,10 @@ for (const ignoredPath of [".cache", ".senera", ".uploads", "coverage", "Release
 }
 assert.ok(
   dockerfile.includes("npm rebuild better-sqlite3 --build-from-source") &&
-    dockerfile.includes("node Dist/Scripts/VerifyDockerNativeSqlite.js"),
-  "Application image must rebuild and verify its native SQLite addon.",
+    dockerfile.includes("node Dist/Scripts/VerifyDockerNativeSqlite.js") &&
+    nativeSqliteVerifier.includes("findInstalledPackageRoots") &&
+    nativeSqliteVerifier.includes("All better-sqlite3 installations must share one native version"),
+  "Application image must rebuild and verify every native SQLite addon instance with one resolved version.",
 );
 assert.ok(
   dockerfile.includes("RUN install -d -o node -g node /data") && !dockerfile.includes("chown -R node:node /data"),

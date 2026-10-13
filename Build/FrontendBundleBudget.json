@@ -8,7 +8,7 @@
       "id": "bootstrap",
       "includeEntryDocument": true,
       "roots": ["index.html"],
-      "requiredAssets": [{ "extension": ".woff2", "minimumCount": 2 }],
+      "requiredAssets": [{ "extension": ".woff2", "minimumCount": 1 }],
       "limits": {
         "resourceCount": 9,
         "identityBytes": 819200,

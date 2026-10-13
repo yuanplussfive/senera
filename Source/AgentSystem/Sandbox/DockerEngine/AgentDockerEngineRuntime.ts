@@ -1,6 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { cp, mkdtemp, rm } from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { isAgentUnknownRecord as isRecord } from "../../Core/AgentUnknownValue.js";
 import { PassThrough, type Duplex, type Readable } from "node:stream";
@@ -174,14 +172,19 @@ export class AgentDockerEngineRuntime implements AgentDockerRuntime {
       throw new Error("Docker sandbox runtime must be prepared before starting an execution.");
     }
     this.assertRequestPolicy(request);
-    const container = await this.options.docker.createContainer(this.createContainerOptions(request));
-    let stagingRoot: string | undefined;
+    let rootfs: Awaited<ReturnType<typeof this.stageRootfsCopies>>;
     try {
-      if (request.rootfsCopies.length > 0) {
-        stagingRoot = await this.stageRootfsCopies(request.rootfsCopies);
-        await container.putArchive(tar.pack(stagingRoot), { path: "/" });
-      }
-      const attached = (await container.attach({
+      rootfs = await this.stageRootfsCopies(request.rootfsCopies);
+    } catch (error) {
+      throw dockerOperationError("stage rootfs copies", error);
+    }
+    let container: Docker.Container | undefined;
+    try {
+      const createdContainer = await this.options.docker.createContainer(
+        this.createContainerOptions(request, rootfs.mounts),
+      );
+      container = createdContainer;
+      const attached = (await createdContainer.attach({
         stream: true,
         stdin: true,
         stdout: true,
@@ -191,15 +194,15 @@ export class AgentDockerEngineRuntime implements AgentDockerRuntime {
       const stdout = new PassThrough();
       const stderr = new PassThrough();
       dockerModem(this.options.docker).demuxStream(attached, stdout, stderr);
-      await container.start();
+      await createdContainer.start();
 
       const cleanup = onceAsync(async () => {
         attached.destroy();
-        await container.remove({ force: true }).catch(ignoreMissingDockerResource);
-        if (stagingRoot) await rm(stagingRoot, { recursive: true, force: true });
+        await createdContainer.remove({ force: true }).catch(ignoreMissingDockerResource);
+        await rootfs.cleanup();
       });
       const completion = (async (): Promise<AgentDockerProcessExit> => {
-        const result = (await container.wait({ condition: "not-running" })) as DockerContainerWaitResult;
+        const result = (await createdContainer.wait({ condition: "not-running" })) as DockerContainerWaitResult;
         await finished(attached, { cleanup: true }).catch(() => undefined);
         stdout.end();
         stderr.end();
@@ -211,24 +214,27 @@ export class AgentDockerEngineRuntime implements AgentDockerRuntime {
       })();
 
       return {
-        id: container.id,
+        id: createdContainer.id,
         stdin: attached,
         stdout,
         stderr,
         completion,
         terminate: async (signal) => {
-          await container.kill({ signal: dockerSignal(signal) }).catch(ignoreStoppedDockerContainer);
+          await createdContainer.kill({ signal: dockerSignal(signal) }).catch(ignoreStoppedDockerContainer);
         },
         cleanup,
       };
     } catch (error) {
-      await container.remove({ force: true }).catch(ignoreMissingDockerResource);
-      if (stagingRoot) await rm(stagingRoot, { recursive: true, force: true });
+      if (container) await container.remove({ force: true }).catch(ignoreMissingDockerResource);
+      if (rootfs) await rootfs.cleanup();
       throw dockerOperationError("start", error);
     }
   }
 
-  private createContainerOptions(request: AgentSandboxExecutionRequest): Docker.ContainerCreateOptions {
+  private createContainerOptions(
+    request: AgentSandboxExecutionRequest,
+    rootfsMounts: readonly Docker.MountSettings[] = [],
+  ): Docker.ContainerCreateOptions {
     const contract = this.resolvedContract.contract;
     const guestWorkspaceRoot = normalizeGuestPath(this.workspace.guestRoot);
     const mounts: Docker.MountSettings[] = [
@@ -247,6 +253,7 @@ export class AgentDockerEngineRuntime implements AgentDockerRuntime {
           ReadOnly: false,
         };
       }),
+      ...rootfsMounts,
     ];
     const tmpfs = Object.fromEntries(
       contract.guest.temporaryFilesystems.map((entry) => [entry.path, serializeTmpfsOptions(entry)]),
@@ -462,18 +469,79 @@ export class AgentDockerEngineRuntime implements AgentDockerRuntime {
     }
   }
 
-  private async stageRootfsCopies(copies: AgentSandboxExecutionRequest["rootfsCopies"]): Promise<string> {
-    const stagingRoot = await mkdtemp(path.join(os.tmpdir(), `${this.resolvedContract.contract.id}-`));
+  private async stageRootfsCopies(
+    copies: AgentSandboxExecutionRequest["rootfsCopies"],
+  ): Promise<{ mounts: readonly Docker.MountSettings[]; cleanup(): Promise<void> }> {
+    const volumes: Docker.Volume[] = [];
+    const helpers: Docker.Container[] = [];
     try {
+      const mounts: Docker.MountSettings[] = [];
       for (const copy of copies) {
         this.assertCopySource(copy.sourcePath);
         const guestPath = normalizeGuestPath(copy.guestPath);
-        const destination = path.join(stagingRoot, ...guestPath.slice(1).split("/"));
-        await cp(copy.sourcePath, destination, { recursive: true, force: true });
+        const createdVolume = await this.options.docker.createVolume({
+          Name: `${this.resolvedContract.contract.id}-rootfs-${randomUUID()}`,
+          Labels: {
+            ...this.resolvedContract.contract.container.labels,
+            "ai.senera.rootfs-copy": "true",
+          },
+        });
+        const volumeName = resolveCreatedDockerVolumeName(createdVolume);
+        const volume = this.options.docker.getVolume(volumeName);
+        volumes.push(volume);
+        helpers.push(await this.populateRootfsVolume(volumeName, copy.sourcePath));
+        mounts.push({
+          Type: "volume",
+          Source: volumeName,
+          Target: guestPath,
+          ReadOnly: true,
+        });
       }
-      return stagingRoot;
+      return {
+        mounts,
+        cleanup: async () => {
+          await cleanupRootfsHelpers(helpers);
+          await Promise.all(volumes.map((volume) => volume.remove().catch(ignoreMissingDockerResource)));
+        },
+      };
     } catch (error) {
-      await rm(stagingRoot, { recursive: true, force: true });
+      await cleanupRootfsHelpers(helpers);
+      await Promise.all(volumes.map((volume) => volume.remove().catch(ignoreMissingDockerResource)));
+      throw error;
+    }
+  }
+
+  private async populateRootfsVolume(volumeName: string, sourcePath: string): Promise<Docker.Container> {
+    const contract = this.resolvedContract.contract;
+    const stagingPath = "/senera-rootfs-volume";
+    const helper = await this.options.docker.createContainer({
+      name: `${contract.id}-rootfs-populator-${randomUUID()}`,
+      platform: contract.runtime.platform,
+      Image: this.imageReference,
+      Entrypoint: [contract.guest.shell.command],
+      Cmd: [...contract.guest.shell.arguments, "sleep 3600"],
+      User: contract.guest.bootstrapUser,
+      AttachStdout: false,
+      AttachStderr: false,
+      HostConfig: {
+        ...(this.runtimeName ? { Runtime: this.runtimeName } : {}),
+        NetworkMode: contract.container.networkModes.disabled,
+        ReadonlyRootfs: false,
+        Init: contract.container.init,
+        SecurityOpt: [...contract.container.securityOptions],
+        CapDrop: [...contract.container.dropCapabilities],
+        Tmpfs: Object.fromEntries(
+          contract.guest.temporaryFilesystems.map((entry) => [entry.path, serializeTmpfsOptions(entry)]),
+        ),
+        Mounts: [{ Type: "volume", Source: volumeName, Target: stagingPath, ReadOnly: false }],
+      },
+    });
+    try {
+      await helper.start();
+      await helper.putArchive(tar.pack(sourcePath), { path: stagingPath });
+      return helper;
+    } catch (error) {
+      await helper.remove({ force: true }).catch(ignoreMissingDockerResource);
       throw error;
     }
   }
@@ -584,6 +652,23 @@ function dockerPullProgress(event: unknown): { id: string; current: number; tota
 
 function ignoreMissingDockerResource(error: unknown): void {
   if (dockerStatusCode(error) !== 404) throw error;
+}
+
+async function cleanupRootfsHelpers(helpers: readonly Docker.Container[]): Promise<void> {
+  await Promise.all(
+    helpers.map(async (helper) => {
+      await helper.kill({ signal: "SIGKILL" }).catch(ignoreStoppedDockerContainer);
+      await helper.wait({ condition: "not-running" }).catch(ignoreMissingDockerResource);
+      await helper.remove({ force: true }).catch(ignoreMissingDockerResource);
+    }),
+  );
+}
+
+function resolveCreatedDockerVolumeName(value: unknown): string {
+  if (!isRecord(value)) throw new Error("Docker Engine did not return a volume descriptor.");
+  const name = typeof value.name === "string" ? value.name : typeof value.Name === "string" ? value.Name : undefined;
+  if (!name?.trim()) throw new Error("Docker Engine returned a volume without a name.");
+  return name;
 }
 
 function ignoreStoppedDockerContainer(error: unknown): void {

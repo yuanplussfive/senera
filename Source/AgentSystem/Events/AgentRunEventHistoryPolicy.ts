@@ -25,6 +25,7 @@ const RunEventHistoryPhases = new Set<AgentEventPhase>([
 const RunEventHistoryExcludedKinds = new Set<AgentEventKind>([
   AgentEventKinds.RunActivityChanged,
   AgentEventKinds.ModelDelta,
+  AgentEventKinds.ModelThinkingDelta,
   AgentEventKinds.ToolCallResultDetail,
 ]);
 

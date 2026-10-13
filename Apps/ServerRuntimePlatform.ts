@@ -2,9 +2,8 @@ import path from "node:path";
 import type { AgentConfigService } from "../Source/AgentSystem/Config/AgentConfigService.js";
 import type { AgentLogger } from "../Source/AgentSystem/Diagnostics/AgentLogger.js";
 import type { AgentWorkspaceLayout } from "../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
-import type { AgentPresetActivationRuntime } from "../Source/AgentSystem/Presets/AgentPresetActivationRuntime.js";
+import { resolveAgentWorkspaceLayout } from "../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
-import type { ResolvedAgentPresetsConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { AgentSessionStore } from "../Source/AgentSystem/Session/AgentSessionStore.js";
 import { errorMessage } from "../Source/AgentSystem/Core/AgentErrors.js";
 import { AgentPluginHost } from "../Source/AgentSystem/Plugins/AgentPluginHost.js";
@@ -29,19 +28,18 @@ export interface SeneraServerRuntimePlatform {
   readonly selfHttpApi: AgentSelfHttpApi;
   readonly approvalTransports: AgentApprovalTransportRegistry;
   readonly runtimeManifestStore: AgentRuntimeManifestStore;
-  start(input: { readonly host: string; readonly port: number }): Promise<void>;
+  start(input: { readonly host: string; readonly port: number; readonly workspaceId?: string }): Promise<void>;
   stop(): Promise<void>;
 }
 
 export interface SeneraServerRuntimePlatformInput {
+  readonly applicationStateRoot: string;
   readonly resourceRoot: string;
   readonly workspaceRoot: string;
   readonly workspaceLayout: AgentWorkspaceLayout;
   readonly configPath: string;
   readonly configSnapshot: () => AgentSystemConfig;
   readonly configService: AgentConfigService;
-  readonly presetActivation: AgentPresetActivationRuntime;
-  readonly resolvePresetsConfig: (config: AgentSystemConfig) => ResolvedAgentPresetsConfig;
   readonly sessionStore: AgentSessionStore;
   readonly logger: Pick<AgentLogger, "error" | "warn">;
 }
@@ -72,8 +70,6 @@ export async function createSeneraServerRuntimePlatform(
     configPath: input.configPath,
     configSnapshot: input.configSnapshot,
     configService: input.configService,
-    presetActivation: input.presetActivation,
-    resolvePresetsConfig: input.resolvePresetsConfig,
     sessionStore: input.sessionStore,
     logsRoot: input.workspaceLayout.stateRoot,
     pluginHost,
@@ -104,13 +100,13 @@ export async function createSeneraServerRuntimePlatform(
     selfHttpApi,
     approvalTransports,
     runtimeManifestStore,
-    start: async ({ host, port }) => {
+    start: async ({ host, port, workspaceId }) => {
       try {
         await pluginHost.start();
       } catch (error) {
         input.logger.error("插件启动钩子失败", { error: errorMessage(error) });
       }
-      const { token } = runtimeManifestStore.start({ host, port });
+      const { token } = runtimeManifestStore.start({ host, port, workspaceId });
       selfHttpApi.bindToken(token);
     },
     stop: () =>
@@ -136,11 +132,15 @@ function resolveAgentPluginDiscoverySources(
   input: SeneraServerRuntimePlatformInput,
 ): readonly AgentPluginDiscoverySource[] {
   const directories = (input.configSnapshot().Plugins?.Directories ?? []).map((directory) =>
-    path.isAbsolute(directory) ? path.resolve(directory) : path.resolve(input.workspaceRoot, directory),
+    path.resolve(input.applicationStateRoot, directory),
   );
   return [
     { source: AgentPluginSourceKinds.Bundled, directory: path.join(input.resourceRoot, "System", "Plugins") },
-    { source: AgentPluginSourceKinds.User, directory: path.join(input.workspaceLayout.stateRoot, "plugins") },
+    {
+      source: AgentPluginSourceKinds.User,
+      directory: path.join(resolveAgentWorkspaceLayout(input.applicationStateRoot).stateRoot, "plugins"),
+    },
+    { source: AgentPluginSourceKinds.Project, directory: path.join(input.workspaceRoot, ".senera", "plugins") },
     { source: AgentPluginSourceKinds.Project, directory: path.join(input.workspaceRoot, "plugins") },
     ...directories.map((directory) => ({ source: AgentPluginSourceKinds.Pip, directory })),
   ];

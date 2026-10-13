@@ -1,17 +1,8 @@
-import { useMemo, useState, type ElementType } from "react";
-import ArrowsRightLeftIcon from "@heroicons/react/24/outline/ArrowsRightLeftIcon";
-import BarsArrowUpIcon from "@heroicons/react/24/outline/BarsArrowUpIcon";
-import ChatBubbleBottomCenterTextIcon from "@heroicons/react/24/outline/ChatBubbleBottomCenterTextIcon";
-import CircleStackIcon from "@heroicons/react/24/outline/CircleStackIcon";
-import CpuChipIcon from "@heroicons/react/24/outline/CpuChipIcon";
-import EyeIcon from "@heroicons/react/24/outline/EyeIcon";
-import QueueListIcon from "@heroicons/react/24/outline/QueueListIcon";
-import ViewfinderCircleIcon from "@heroicons/react/24/outline/ViewfinderCircleIcon";
-import WrenchScrewdriverIcon from "@heroicons/react/24/outline/WrenchScrewdriverIcon";
-import { ArrowDown, ArrowUp, Check, Plus, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { ConfigFormFieldData } from "../../../api/eventTypes";
-import { IconButton, MenuSelect, Spinner, StateView, Switch } from "../../../shared/ui";
+import { MotionListItem } from "../../../shared/motion";
+import { AppIcon, type AppIconName, IconButton, MenuSelect, Spinner, StateView, Switch } from "../../../shared/ui";
 import { findTopField } from "../../chat/modelConfigData";
 import {
   inferModelProviderEndpointIcon,
@@ -108,7 +99,7 @@ export function DefaultModelSection({
 
   return (
     <div className="bg-transparent px-0 py-3 sm:py-4">
-      <section className="mx-auto w-full max-w-[1120px]">
+      <section className="mx-auto w-full max-w-[720px]">
         <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-line-subtle pb-4">
           <div className="min-w-0">
             <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-content-strong">
@@ -120,29 +111,34 @@ export function DefaultModelSection({
           </div>
         </header>
 
-        <div className="mt-4 space-y-5">
+        <div className="mt-4 space-y-4">
           {assignmentGroups.map((group) => (
-            <section key={group.id} data-model-assignment-group>
-              <div className="flex items-center border-b border-line-subtle pb-2">
-                <h3 className="text-[12.5px] font-semibold text-content-primary">{group.label}</h3>
-              </div>
-              <div className="divide-y divide-line-subtle">
-                {group.fields.map((field) => (
-                  <ModelAssignmentRow
-                    key={field.modelSelection.id}
-                    allFields={allFields}
-                    defaultModelId={defaultModelId}
-                    draftState={draftState}
-                    field={field}
-                    modelTemplate={modelTemplate}
-                    pendingModelId={pendingModelId}
-                    state={state}
-                    systemConfig={systemConfig}
-                    onDefaultModelPending={setPendingModelId}
-                  />
-                ))}
-              </div>
-            </section>
+            <MotionListItem key={group.id}>
+              <section
+                data-model-assignment-group
+                className="overflow-hidden rounded-xl border border-line-subtle bg-surface-panel shadow-[0_1px_2px_rgba(43,40,32,0.02)]"
+              >
+                <div className="flex items-center border-b border-line-subtle/80 bg-surface-subtle px-4 py-2.5">
+                  <h3 className="text-[12.5px] font-semibold text-content-primary">{group.label}</h3>
+                </div>
+                <div className="divide-y divide-line-subtle/60 px-4">
+                  {group.fields.map((field) => (
+                    <ModelAssignmentRow
+                      key={field.modelSelection.id}
+                      allFields={allFields}
+                      defaultModelId={defaultModelId}
+                      draftState={draftState}
+                      field={field}
+                      modelTemplate={modelTemplate}
+                      pendingModelId={pendingModelId}
+                      state={state}
+                      systemConfig={systemConfig}
+                      onDefaultModelPending={setPendingModelId}
+                    />
+                  ))}
+                </div>
+              </section>
+            </MotionListItem>
           ))}
         </div>
       </section>
@@ -184,7 +180,6 @@ function ModelAssignmentRow({
   }
   const selection = readRuntimeModelAssignmentSelection({
     field,
-    allFields,
     candidates,
     defaultModelId,
     draft: draftState.draft,
@@ -252,7 +247,7 @@ function ModelAssignmentRow({
             operation?.status === "pending" ? (
               <Spinner size="sm" className="text-ink-400" />
             ) : operation?.status === "success" ? (
-              <Check className="h-3.5 w-3.5 text-moss-600" />
+              <AppIcon icon="checkmark" size={14} className="text-moss-600" />
             ) : undefined
           }
           renderValue={(value, option) => (
@@ -368,7 +363,7 @@ function ModelPoolAssignmentRow({
                   disabled={index === 0}
                   onClick={() => moveModel(index, -1)}
                 >
-                  <ArrowUp className="h-3.5 w-3.5" />
+                  <AppIcon icon="arrow-up" size={14} />
                 </IconButton>
                 <IconButton
                   label={frontendMessage("settings.model.poolMoveDown", { model: modelId })}
@@ -378,7 +373,7 @@ function ModelPoolAssignmentRow({
                   disabled={index === selection.modelIds.length - 1}
                   onClick={() => moveModel(index, 1)}
                 >
-                  <ArrowDown className="h-3.5 w-3.5" />
+                  <AppIcon icon="arrow-down" size={14} />
                 </IconButton>
                 <IconButton
                   label={frontendMessage("settings.model.poolRemove", { model: modelId })}
@@ -388,7 +383,7 @@ function ModelPoolAssignmentRow({
                   disabled={cannotRemove}
                   onClick={() => removeModel(index)}
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
+                  <AppIcon icon="trash" size={14} />
                 </IconButton>
               </div>
             </div>
@@ -407,7 +402,7 @@ function ModelPoolAssignmentRow({
             }))}
             disabled={availableCandidates.length === 0}
             emptyState={frontendMessage("settings.model.poolNoAdditionalCandidates")}
-            leading={<Plus className="h-3.5 w-3.5" />}
+            leading={<AppIcon icon="plus" size={14} />}
             triggerClassName="border-0 bg-transparent px-0 hover:border-transparent focus-visible:border-transparent focus-visible:ring-0"
             renderOption={(option) => (
               <AssignmentOption
@@ -452,17 +447,17 @@ function PoolCandidateLabel({
 
 function AssignmentLabel({ field }: { field: RuntimeModelAssignmentField }): JSX.Element {
   return (
-    <div className="min-w-0">
-      <span className="sr-only">
+    <div className="flex min-w-0 items-start gap-2.5">
+      <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-line-subtle bg-surface-subtle text-content-secondary">
         <AssignmentRoleIcon field={field} />
       </span>
-      <div className="min-w-0 pt-0.5">
+      <div className="min-w-0 flex-1 pt-0.5">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
           <span className="text-[13px] font-medium text-content-primary">{field.label}</span>
           <ConfigFieldRequirementLabel required={field.modelSelection.required} />
         </div>
         {field.description ? (
-          <p className="mt-0.5 text-[11.5px] leading-5 text-content-secondary">{field.description}</p>
+          <p className="mt-0.5 text-[11.5px] leading-relaxed text-content-muted">{field.description}</p>
         ) : null}
       </div>
     </div>
@@ -508,30 +503,20 @@ function readCandidateIcon(candidate?: RuntimeModelAssignmentCandidate): string 
   );
 }
 
-const assignmentRoleIcons: Readonly<Record<string, ElementType<{ className?: string }>>> = {
-  assistant: CpuChipIcon,
-  planner: QueueListIcon,
-  "planner-base": QueueListIcon,
-  "action-planner": ArrowsRightLeftIcon,
-  "final-answer": ChatBubbleBottomCenterTextIcon,
-  "tool-learning": WrenchScrewdriverIcon,
-  "continuity-learning": CircleStackIcon,
-  embedding: ViewfinderCircleIcon,
-  rerank: BarsArrowUpIcon,
+const assignmentRoleIcons: Readonly<Record<string, AppIconName>> = {
+  assistant: "cpu-chip",
+  planner: "list-tree",
+  "planner-base": "list-tree",
+  "action-planner": "delegation",
+  "final-answer": "answer",
+  "state-card": "state-card",
+  "continuity-learning": "stack",
 };
 
 function AssignmentRoleIcon({ field }: { field: RuntimeModelAssignmentField }): JSX.Element {
   const selection = field.modelSelection;
-  const Icon =
+  const icon =
     assignmentRoleIcons[selection.id] ??
-    (isRuntimeModelPoolAssignment(field)
-      ? QueueListIcon
-      : selection.capability === "Embedding"
-        ? ViewfinderCircleIcon
-        : selection.capability === "Rerank"
-          ? BarsArrowUpIcon
-          : selection.capability === "Vision"
-            ? EyeIcon
-            : CpuChipIcon);
-  return <Icon className="h-3.5 w-3.5" data-model-assignment-icon={selection.id} />;
+    (isRuntimeModelPoolAssignment(field) ? "list-tree" : selection.capability === "Vision" ? "eye" : "cpu-chip");
+  return <AppIcon icon={icon} className="h-3.5 w-3.5" data-model-assignment-icon={selection.id} />;
 }

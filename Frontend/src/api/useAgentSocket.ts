@@ -20,6 +20,7 @@ import {
 export type SocketStatus = "idle" | "connecting" | "open" | "closed" | "error";
 
 export interface AgentSocketDisconnect {
+  readonly url: string;
   readonly code: number;
   readonly reason: string;
   readonly wasClean: boolean;
@@ -41,7 +42,7 @@ interface UseAgentSocketBaseOptions {
 export type UseAgentSocketOptions = UseAgentSocketBaseOptions &
   (
     | { onEvent: (env: EventEnvelope) => void; onEvents?: never }
-    | { onEvent?: never; onEvents: (events: readonly EventEnvelope[]) => void }
+    | { onEvent?: never; onEvents: (events: readonly EventEnvelope[], sourceUrl: string) => void }
   );
 
 export interface AgentSocketHandle {
@@ -117,12 +118,16 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
   const stableTimerRef = useRef<number | null>(null);
   const reconnectPolicySeqRef = useRef<number | null>(null);
   const closedByUserRef = useRef(false);
+  const reconnectStoppedRef = useRef(false);
   const enabledRef = useRef(enabled);
   const onEventRef = useRef(onEvent);
   const onEventsRef = useRef(onEvents);
   const onMalformedEventRef = useRef(onMalformedEvent);
   const reconnectPolicyRef = useRef(reconnectPolicy);
   const connectionIdRef = useRef(createAgentTransportConnectionId());
+  const urlRef = useRef(url);
+  const connectionUrlRef = useRef(url);
+  urlRef.current = url;
   enabledRef.current = enabled;
   onEventRef.current = onEvent;
   onEventsRef.current = onEvents;
@@ -175,7 +180,7 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
     const batchConsumer = onEventsRef.current;
     if (batchConsumer) {
       try {
-        batchConsumer(events);
+        batchConsumer(events, connectionUrlRef.current);
       } catch (error) {
         reportMalformedEvent(onMalformedEventRef.current, error);
       }
@@ -215,7 +220,7 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
               stage: "projected",
               envelope: env,
             });
-            batchConsumer([env]);
+            batchConsumer([env], connectionUrlRef.current);
           } catch (error) {
             reportMalformedEvent(onMalformedEventRef.current, error);
           }
@@ -268,14 +273,11 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
   const scheduleRetryRef = useRef<() => void>(() => undefined);
   const requestReconnect = useCallback((disconnect: AgentSocketDisconnect, connectSeq: number): void => {
     const applyDecision = (decision: AgentSocketReconnectDecision): void => {
-      if (
-        decision !== "retry" ||
-        !enabledRef.current ||
-        closedByUserRef.current ||
-        connectSeq !== connectSeqRef.current
-      ) {
+      if (!enabledRef.current || closedByUserRef.current || connectSeq !== connectSeqRef.current) {
         return;
       }
+      reconnectStoppedRef.current = decision === "stop";
+      if (reconnectStoppedRef.current) return;
       scheduleRetryRef.current();
     };
 
@@ -299,8 +301,9 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
   }, []);
 
   const connect = useCallback((): void => {
-    if (!enabledRef.current || wsRef.current) return;
+    if (!enabledRef.current || reconnectStoppedRef.current || wsRef.current) return;
     const connectSeq = ++connectSeqRef.current;
+    connectionUrlRef.current = url;
     closedByUserRef.current = false;
     setStatus("connecting");
     publishAgentTransportObservation({
@@ -323,7 +326,7 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
         message: describeTransportError(error),
       });
       requestReconnect(
-        { code: 1006, reason: "connection_constructor_failed", wasClean: false, opened: false },
+        { url, code: 1006, reason: "connection_constructor_failed", wasClean: false, opened: false },
         connectSeq,
       );
       return;
@@ -352,6 +355,7 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
     };
 
     ws.onmessage = (evt) => {
+      if (connectSeq !== connectSeqRef.current || wsRef.current !== ws || urlRef.current !== url) return;
       publishAgentTransportObservation({
         connectionId: connectionIdRef.current,
         observedAt: new Date().toISOString(),
@@ -411,6 +415,7 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
       if (!closedByUserRef.current) {
         requestReconnect(
           {
+            url,
             code: event.code,
             reason: event.reason,
             wasClean: event.wasClean,
@@ -458,6 +463,8 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
       return;
     }
 
+    eventIdsRef.current = new AgentEventIdWindow();
+    reconnectStoppedRef.current = false;
     connect();
     const handleOnline = (): void => {
       if (!wsRef.current && retryTimerRef.current === null && reconnectPolicySeqRef.current === null) connect();
@@ -478,7 +485,7 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
 
   const send = useCallback((req: WsRequest): boolean => {
     const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+    if (!ws || ws.readyState !== WebSocket.OPEN || urlRef.current !== connectionUrlRef.current) return false;
     const serialized = JSON.stringify(req);
     try {
       ws.send(serialized);
@@ -504,6 +511,7 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
     wsRef.current?.close();
     wsRef.current = null;
     retryRef.current = 0;
+    reconnectStoppedRef.current = false;
     connect();
   }, [clearRetrySchedule, connect]);
 
@@ -512,7 +520,10 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
 
 function isImmediateAgentControlEvent(kind: string): boolean {
   return (
-    kind === EventKinds.RunCancellationProgress || kind === EventKinds.RunCancelled || kind === EventKinds.SessionBusy
+    kind === EventKinds.RunCancellationProgress ||
+    kind === EventKinds.RunCancelled ||
+    kind === EventKinds.SessionBusy ||
+    kind === EventKinds.WorkspaceSwitched
   );
 }
 

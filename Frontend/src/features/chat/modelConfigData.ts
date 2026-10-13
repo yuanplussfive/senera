@@ -60,12 +60,14 @@ export function createModelDraft({
   modelInfo,
   modelField,
   endpointOptions,
+  defaultEndpoint,
   modelsDev,
 }: {
   provider: ProviderEndpointDraft;
   modelInfo: ProviderModelInfo;
   modelField: ConfigFormFieldData | undefined;
   endpointOptions: Array<{ value: string; label: string }>;
+  defaultEndpoint?: ModelProviderDraft["Endpoint"];
   modelsDev?: ModelsDevModelMetadata;
 }): ModelProviderDraft {
   const template = cloneRecord(modelField?.defaultItem ?? {});
@@ -79,7 +81,8 @@ export function createModelDraft({
     ...(modelsDev?.outputLimit ? { MaxModelOutputTokens: modelsDev.outputLimit } : {}),
     Id: modelConfigId(provider.Id, modelId),
     ProviderId: provider.Id,
-    Endpoint: readString(template.Endpoint) ?? endpointOptions[0]?.value ?? "",
+    Endpoint:
+      defaultEndpoint ?? provider.DefaultEndpoint ?? readString(template.Endpoint) ?? endpointOptions[0]?.value ?? "",
     Model: modelId,
   });
 }
@@ -87,7 +90,6 @@ export function createModelDraft({
 export function copyModelRuntimeTemplate(template: Record<string, unknown>): Partial<ModelProviderDraft> {
   return {
     ...optionalCapabilities("Capabilities", template.Capabilities),
-    ...optionalThinkingLevelMap(template.ThinkingLevelMap),
     ...optionalThinkingProfiles(template.ThinkingProfiles),
     ...optionalThinkingLevel("DefaultThinkingLevel", template.DefaultThinkingLevel),
     ...optionalToolPlanningMode(template.ToolPlanningMode),
@@ -146,6 +148,7 @@ export function normalizeProviderEndpointDraft(value: unknown): ProviderEndpoint
     ...optionalString("Icon", record.Icon),
     ...(typeof record.Enabled === "boolean" ? { Enabled: record.Enabled } : {}),
     ...optionalString("Kind", record.Kind),
+    ...optionalEndpoint("DefaultEndpoint", record.DefaultEndpoint),
     ...optionalString("BaseUrl", record.BaseUrl),
     ...optionalString("ApiKey", record.ApiKey),
     ...optionalString("ApiVersion", record.ApiVersion),
@@ -179,7 +182,10 @@ export function normalizeModelGroupStrategy(value: unknown): ModelGroupStrategyD
   };
 }
 
-export function toProviderEndpointInput(provider: ProviderEndpointDraft): ProviderModelEndpointInput {
+export function toProviderEndpointInput(
+  provider: ProviderEndpointDraft,
+  includeDefaultEndpoint = true,
+): ProviderModelEndpointInput {
   const headers = provider.Headers
     ? Object.fromEntries(Object.entries(provider.Headers).filter(([key]) => key.trim()))
     : undefined;
@@ -188,6 +194,7 @@ export function toProviderEndpointInput(provider: ProviderEndpointDraft): Provid
     ...optionalString("Icon", provider.Icon),
     ...(typeof provider.Enabled === "boolean" ? { Enabled: provider.Enabled } : {}),
     ...(provider.Kind === "OpenAICompatible" ? { Kind: "OpenAICompatible" as const } : {}),
+    ...(includeDefaultEndpoint ? optionalEndpoint("DefaultEndpoint", provider.DefaultEndpoint) : {}),
     ...optionalString("BaseUrl", provider.BaseUrl),
     ...optionalString("ApiKey", provider.ApiKey),
     ...optionalString("ApiVersion", provider.ApiVersion),
@@ -225,7 +232,6 @@ export function normalizeModelProviderDraft(value: unknown): ModelProviderDraft 
     ProviderId: providerId,
     ...optionalString("Icon", record.Icon),
     ...optionalCapabilities("Capabilities", record.Capabilities),
-    ...optionalThinkingLevelMap(record.ThinkingLevelMap),
     ...optionalThinkingProfiles(record.ThinkingProfiles),
     ...optionalThinkingLevel("DefaultThinkingLevel", record.DefaultThinkingLevel),
     ...optionalToolPlanningMode(record.ToolPlanningMode),
@@ -247,16 +253,6 @@ export function normalizeModelProviderDraft(value: unknown): ModelProviderDraft 
     ...optionalNumber("MaxSseEventBytes", record.MaxSseEventBytes),
     ...optionalNumber("MaxSseEvents", record.MaxSseEvents),
   };
-}
-
-function optionalThinkingLevelMap(value: unknown): Pick<ModelProviderDraft, "ThinkingLevelMap"> {
-  if (!isRecord(value)) return {};
-  const supported = new Set<ModelThinkingLevel>(ModelThinkingLevels);
-  const entries = Object.entries(value).filter(
-    (entry): entry is [ModelThinkingLevel, string | null] =>
-      supported.has(entry[0] as ModelThinkingLevel) && (typeof entry[1] === "string" || entry[1] === null),
-  );
-  return entries.length > 0 ? { ThinkingLevelMap: Object.fromEntries(entries) } : {};
 }
 
 function optionalThinkingProfiles(value: unknown): Pick<ModelProviderDraft, "ThinkingProfiles"> {
@@ -312,8 +308,6 @@ export function defaultModelCapabilities(
     catalog[key] ?? readBoolean(capabilities[key]) ?? inferred[key] ?? fallback;
   return {
     Chat: defaultCapability("Chat", true),
-    Embedding: defaultCapability("Embedding", false),
-    Rerank: defaultCapability("Rerank", false),
     Vision: defaultCapability("Vision", false),
     ImageOutput: defaultCapability("ImageOutput", false),
     Reasoning: defaultCapability("Reasoning", false),
@@ -568,6 +562,21 @@ export function optionalString<TKey extends string>(key: TKey, value: unknown): 
   return text === undefined ? {} : ({ [key]: text } as Partial<Record<TKey, string>>);
 }
 
+function optionalEndpoint<TKey extends string>(
+  key: TKey,
+  value: unknown,
+): Partial<Record<TKey, ProviderModelEndpointInput["DefaultEndpoint"]>> {
+  if (
+    value !== "Responses" &&
+    value !== "ChatCompletions" &&
+    value !== "ClaudeMessages" &&
+    value !== "GoogleGenerateContent"
+  ) {
+    return {};
+  }
+  return { [key]: value } as Partial<Record<TKey, ProviderModelEndpointInput["DefaultEndpoint"]>>;
+}
+
 export function optionalNumber<TKey extends string>(key: TKey, value: unknown): Partial<Record<TKey, number>> {
   const number = readNumber(value);
   return number === undefined ? {} : ({ [key]: number } as Partial<Record<TKey, number>>);
@@ -618,8 +627,6 @@ export function readBoolean(value: unknown): boolean | undefined {
 
 export const ModelCapabilityKeys = [
   "Chat",
-  "Embedding",
-  "Rerank",
   "Vision",
   "ImageOutput",
   "Reasoning",

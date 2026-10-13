@@ -1,6 +1,8 @@
 import { describe, expect, test, vi } from "vitest";
+import type { Context, JsonObject } from "@earendil-works/pi-ai";
 import {
   AgentPiPlanningCompiler,
+  type AgentPiPlanningCompileRequest,
   type AgentPiPlanningModelClient,
 } from "../../../Source/AgentSystem/Pi/AgentPiPlanningCompiler.js";
 import type {
@@ -34,6 +36,7 @@ describe("Pi tool plan coordination", () => {
           status: "waiting",
           outputAvailability: "none",
           summary: "Which value?",
+          artifacts: [],
           evidenceUris: [],
         },
       },
@@ -59,7 +62,7 @@ describe("Pi tool plan coordination", () => {
         callId: "call-unknown",
         toolName: "SearchTool",
         argumentsJson: "{}",
-        observation: { status: "unknown", outputAvailability: "none", evidenceUris: [] },
+        observation: { status: "unknown", outputAvailability: "none", artifacts: [], evidenceUris: [] },
       },
     ]);
 
@@ -87,6 +90,7 @@ describe("Pi tool plan coordination", () => {
           status: "failure",
           outputAvailability: "partial",
           summary: "The process exited after producing diagnostics.",
+          artifacts: [],
           evidenceUris: [],
         },
       },
@@ -126,7 +130,7 @@ describe("Pi tool plan coordination", () => {
         first.toolCalls.map((call) => ({
           id: call.id!,
           name: call.name,
-          arguments: call.arguments,
+          arguments: toJsonObject(call.arguments),
           status: "success",
         })),
       ),
@@ -169,13 +173,13 @@ describe("Pi tool plan coordination", () => {
         {
           id: failed!.id!,
           name: failed!.name,
-          arguments: failed!.arguments,
+          arguments: toJsonObject(failed!.arguments),
           status: "failure",
         },
         {
           id: succeeded!.id!,
           name: succeeded!.name,
-          arguments: succeeded!.arguments,
+          arguments: toJsonObject(succeeded!.arguments),
           status: "success",
         },
       ]),
@@ -223,7 +227,6 @@ describe("Pi tool plan coordination", () => {
       },
       fillPiToolArguments: async () => ({ arguments: {}, missingInputs: ["key"], assumptions: [] }),
       repairPiToolArguments: async () => ({ arguments: {}, missingInputs: ["key"], assumptions: [] }),
-      summarizePiConversation: async () => ({ summary: "unused" }),
     };
     const toolPlan = new AgentPiToolPlanCoordinator();
 
@@ -275,10 +278,6 @@ class PlannedCompilerClient implements AgentPiPlanningModelClient {
   async repairPiToolArguments(_input: AgentPiToolArgumentsRepairInput): Promise<never> {
     throw new Error("All test calls provide valid argument hints.");
   }
-
-  async summarizePiConversation(): Promise<never> {
-    throw new Error("Unexpected conversation summary.");
-  }
 }
 
 function plannedAction(): unknown {
@@ -312,10 +311,10 @@ function requestWithTranscript(
   completed: readonly {
     id: string;
     name: string;
-    arguments: Record<string, unknown>;
+    arguments: JsonObject;
     status: "success" | "failure";
   }[],
-) {
+): Pick<AgentPiPlanningCompileRequest, "model" | "context"> {
   const modelProvider = createModelProvider({
     Model: "test-model",
     MaxModelOutputTokens: 1_024,
@@ -387,17 +386,25 @@ function requestWithTranscript(
   };
 }
 
-function tool(name: string, properties: Record<string, unknown>, required: string[]) {
+function tool(
+  name: string,
+  properties: Record<string, unknown>,
+  required: string[],
+): NonNullable<Context["tools"]>[number] {
   return {
     name,
     description: `${name} description.`,
     parameters: {
-      type: "object",
+      type: "object" as const,
       properties,
       required,
       additionalProperties: false,
-    },
+    } as NonNullable<Context["tools"]>[number]["parameters"],
   };
+}
+
+function toJsonObject(value: Record<string, unknown>): JsonObject {
+  return JSON.parse(JSON.stringify(value)) as JsonObject;
 }
 
 function createCompiler(client: AgentPiPlanningModelClient): AgentPiPlanningCompiler {

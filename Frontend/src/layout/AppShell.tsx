@@ -1,6 +1,5 @@
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import { useFrontendLocale } from "../i18n/useFrontendLocale";
-import { BookOpen, ListTree, PanelRightClose, RadioTower, SquareTerminal } from "lucide-react";
 import { motion, type Transition } from "framer-motion";
 import { cn } from "../lib/util";
 import {
@@ -14,7 +13,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { IconButton, Sheet, SheetContent, Tabs, TabsContent, TabsList, TabsTrigger } from "../shared/ui";
+import { AppIcon, IconButton, PillExpandNavbar, Sheet, SheetContent, Tabs, TabsContent } from "../shared/ui";
 import { motionTimings, useMotionLevel } from "../shared/motion";
 import { useStore } from "../store/sessionStore";
 import { WorkspaceContextMenu } from "./WorkspaceContextMenu";
@@ -25,8 +24,9 @@ import {
   type ResponsiveMode,
 } from "../shared/responsive";
 
-const SESSION_PANEL_WIDTH = 246;
+const SESSION_PANEL_WIDTH = 266;
 const SESSION_PANEL_COLLAPSED_WIDTH = 58;
+const SESSION_PANEL_COLLAPSED_FRAME_WIDTH = SESSION_PANEL_COLLAPSED_WIDTH + 20;
 const SESSION_PANEL_MIN_WIDTH = 208;
 const SESSION_PANEL_MAX_WIDTH = 360;
 const SESSION_PANEL_KEYBOARD_STEP = 16;
@@ -56,6 +56,7 @@ interface AppShellProps {
   onOpenSessionPanel?: () => void;
   onOpenWorkflowPanel?: () => void;
   onRefreshSession?: () => void;
+  onRefreshInterface?: () => void;
 }
 
 interface ResponsiveDrawerProps {
@@ -78,22 +79,22 @@ const WORKFLOW_DOCK_ITEMS = [
   {
     id: "execution",
     messageKey: "workflow.dock.execution",
-    Icon: ListTree,
+    icon: "list-tree",
   },
   {
     id: "terminal",
     messageKey: "workflow.dock.terminal",
-    Icon: SquareTerminal,
+    icon: "terminal",
   },
   {
     id: "events",
     messageKey: "workflow.dock.events",
-    Icon: RadioTower,
+    icon: "activity",
   },
   {
     id: "state",
     messageKey: "workflow.dock.state",
-    Icon: BookOpen,
+    icon: "book-open",
   },
 ] as const;
 
@@ -173,6 +174,7 @@ export function AppShell({
   onOpenSessionPanel,
   onOpenWorkflowPanel,
   onRefreshSession,
+  onRefreshInterface,
 }: AppShellProps): JSX.Element {
   const locale = useFrontendLocale();
   const sidebarCollapsed = useStore((state) => state.sidebarCollapsed);
@@ -188,7 +190,7 @@ export function AppShell({
   const [sessionPanelResizing, setSessionPanelResizing] = useState(false);
   const workflowDockWidthConstraints = readWorkflowDockWidthConstraints(
     viewport.width,
-    sidebarCollapsed ? SESSION_PANEL_COLLAPSED_WIDTH : sessionPanelWidth,
+    sidebarCollapsed ? SESSION_PANEL_COLLAPSED_FRAME_WIDTH : sessionPanelWidth,
   );
   const workflowPanelWidth = clampWorkflowDockWidth(workflowDockWidth, workflowDockWidthConstraints);
   const responsiveLayoutKey = `${renderPlan.showSessionPersistentPanel ? "persistent" : "drawer"}:${renderPlan.workflowPanelLayout}`;
@@ -351,6 +353,9 @@ export function AppShell({
         value={workflowDockTool}
         onValueChange={handleValueChange}
         className="flex h-full min-h-0 min-w-0 w-full flex-col"
+        data-workflow-dock={presentation === "drawer" ? "" : undefined}
+        data-workflow-dock-layout={presentation === "drawer" ? "drawer" : undefined}
+        data-testid={presentation === "drawer" ? "workflow-dock" : undefined}
       >
         {presentation === "dock" ? (
           <div className="hidden shrink-0" data-window-drag-region data-workflow-dock-titlebar-spacer />
@@ -363,31 +368,20 @@ export function AppShell({
           data-window-drag-region
           data-workflow-dock-toolbar
         >
-          <TabsList
-            className="min-w-0 w-full flex-1"
-            aria-label={frontendMessage("workflow.dock.tabs")}
-            data-workflow-dock-tabs
-            data-workflow-dock-tabs-list
-          >
-            {WORKFLOW_DOCK_ITEMS.map(({ id, messageKey }) => (
-              <TabsTrigger
-                key={id}
-                value={id}
-                className="relative isolate overflow-visible data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-                data-workflow-dock-tab={id}
-              >
-                {workflowDockTool === id ? (
-                  <motion.span
-                    layoutId={`workflow-dock-active-tab-${presentation}`}
-                    transition={disableMotion || reduceMotion ? { duration: 0 } : { layout: motionTimings.selection }}
-                    className="pointer-events-none absolute inset-0 z-0 rounded-md bg-surface-raised shadow-sm"
-                    data-workflow-dock-active-indicator={presentation}
-                  />
-                ) : null}
-                <span className="relative z-10 min-w-0 truncate">{frontendMessage(messageKey, {}, locale)}</span>
-              </TabsTrigger>
-            ))}
-          </TabsList>
+          <div className="min-w-0 flex-1">
+            <PillExpandNavbar
+              mode="tabs"
+              value={workflowDockTool}
+              label={frontendMessage("workflow.dock.tabs")}
+              attributes={{ "data-workflow-dock-tabs": "", "data-workflow-dock-tabs-list": "" }}
+              items={WORKFLOW_DOCK_ITEMS.map(({ id, messageKey, icon }) => ({
+                id,
+                label: frontendMessage(messageKey, {}, locale),
+                icon: <AppIcon icon={icon} size={16} />,
+                attributes: { "data-workflow-dock-tab": id },
+              }))}
+            />
+          </div>
           {presentation === "dock" ? (
             <IconButton
               label={frontendMessage("workflow.panel.collapse")}
@@ -398,7 +392,7 @@ export function AppShell({
               className="shrink-0"
               data-workflow-dock-collapse
             >
-              <PanelRightClose className="h-4 w-4" />
+              <AppIcon icon="panel-right-close" className="h-4 w-4" />
             </IconButton>
           ) : null}
         </div>
@@ -424,16 +418,18 @@ export function AppShell({
       onOpenSessionPanel={onOpenSessionPanel}
       onOpenWorkflowPanel={onOpenWorkflowPanel}
       onRefreshSession={onRefreshSession}
+      onRefreshInterface={onRefreshInterface}
     >
       <div
         className="relative flex h-dvh w-screen overflow-hidden bg-surface-canvas text-content-primary [background-image:var(--theme-bg-image)]"
         data-workspace-shell
+        data-testid="workspace-shell"
       >
         {renderPlan.showSessionPersistentPanel ? (
           <motion.div
             initial={false}
             animate={{
-              width: sidebarCollapsed ? SESSION_PANEL_COLLAPSED_WIDTH : sessionPanelWidth,
+              width: sidebarCollapsed ? SESSION_PANEL_COLLAPSED_FRAME_WIDTH : sessionPanelWidth,
             }}
             transition={sessionPanelTransition}
             className="relative z-20 h-full shrink-0 overflow-hidden"
@@ -441,12 +437,7 @@ export function AppShell({
             data-open={!sidebarCollapsed}
             data-collapsed={sidebarCollapsed}
           >
-            <div
-              className="h-full"
-              style={{ width: sidebarCollapsed ? SESSION_PANEL_COLLAPSED_WIDTH : sessionPanelWidth }}
-            >
-              {sessionPanel}
-            </div>
+            <div className="flow-root h-full w-full">{sessionPanel}</div>
             {!sidebarCollapsed ? (
               <div
                 role="separator"
@@ -470,7 +461,11 @@ export function AppShell({
           </motion.div>
         ) : null}
 
-        <div className="workspace-main relative flex min-w-0 flex-1 overflow-hidden" data-workspace-main>
+        <div
+          className="workspace-main relative flex min-w-0 flex-1 overflow-hidden"
+          data-workspace-main
+          data-window-controls-scope={renderPlan.workflowPanelLayout === "inline" ? "contained" : "viewport"}
+        >
           {chatPanel}
         </div>
 
@@ -497,6 +492,7 @@ export function AppShell({
               data-workflow-dock
               data-workflow-dock-layout={renderPlan.workflowPanelLayout}
               data-open={!rightPanelCollapsed}
+              data-testid="workflow-dock"
             >
               {!rightPanelCollapsed ? (
                 <motion.div
@@ -542,16 +538,17 @@ export function AppShell({
                   initial={disableMotion || reduceMotion ? false : { opacity: 0, scale: 0.96 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={workflowPanelTransition}
-                  className="pointer-events-auto absolute right-0 flex flex-col items-center gap-1 rounded-full border border-line-subtle bg-surface-raised p-1 shadow-[var(--theme-overlay-shadow)]"
+                  className="pointer-events-auto absolute right-0 flex flex-col items-center gap-0.5 rounded-full border border-ink-900/[0.08] bg-paper-50/85 p-1 shadow-[0_1px_2px_rgb(var(--color-ink-950)_/_0.05),0_6px_16px_-6px_rgb(var(--color-ink-950)_/_0.12)] backdrop-blur-[10px]"
                   style={{
-                    top: "calc(var(--senera-titlebar-height, 0px) + 12px)",
+                    top: "calc(var(--senera-top-chrome-height) + var(--senera-top-rail-gap))",
                     width: WORKFLOW_DOCK_CAPSULE_WIDTH,
                     willChange: "opacity, transform",
                   }}
                   aria-label={frontendMessage("workflow.dock.label")}
                   data-workflow-dock-capsule
+                  data-testid="workflow-dock-capsule"
                 >
-                  {WORKFLOW_DOCK_ITEMS.map(({ id, messageKey, Icon }) => {
+                  {WORKFLOW_DOCK_ITEMS.map(({ id, messageKey, icon }) => {
                     const label = frontendMessage(messageKey, {}, locale);
                     return (
                       <IconButton
@@ -566,7 +563,7 @@ export function AppShell({
                         data-workflow-dock-toggle={id === "execution" ? "" : undefined}
                         data-workflow-dock-tool={id}
                       >
-                        <Icon className="h-4 w-4" />
+                        <AppIcon icon={icon} className="h-4 w-4" />
                       </IconButton>
                     );
                   })}

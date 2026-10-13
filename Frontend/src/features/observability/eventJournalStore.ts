@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { AgentTransportObservation } from "../../api/agentTransportObserver";
+import { readEventSessionId } from "../../api/eventCorrelation";
 import type { EventSourceChannel } from "../../api/eventTypes";
 import { EventSpecs, type EventKind, type EventLayer, type EventPhase } from "../../api/generatedEventCatalog";
 import { projectEventForJournal, readJsonPointer } from "./eventJournalProjection";
@@ -109,7 +110,7 @@ function createJournalRecord(observation: AgentTransportObservation): EventJourn
       layer: envelope.layer,
       phase: envelope.phase,
       sequence: envelope.sequence,
-      sessionId: envelope.sessionId,
+      sessionId: readEventSessionId(envelope),
       requestId: envelope.requestId,
       step: envelope.step,
       resourceId: readProjectedResourceId(envelope.kind, projection.value),

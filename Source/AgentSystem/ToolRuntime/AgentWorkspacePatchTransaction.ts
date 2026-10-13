@@ -4,6 +4,11 @@ import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { WorkspaceApplyPatchError } from "./AgentWorkspacePatchError.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { sha256Hex } from "../Core/AgentHash.js";
+import {
+  AgentWorkspaceMutationReceiptProtocol,
+  type AgentWorkspaceMutationReceipt,
+  type AgentWorkspaceMutationReceiptImage,
+} from "../Types/ToolRuntimeTypes.js";
 
 export interface WorkspacePatchTarget {
   input: string;
@@ -16,8 +21,6 @@ export type WorkspacePatchPrecondition =
 export interface WorkspacePatchTransactionPlan {
   writes: ReadonlyMap<string, { target: WorkspacePatchTarget; content: string | Uint8Array }>;
   deletes: ReadonlyMap<string, { target: WorkspacePatchTarget }>;
-  createDirectories: ReadonlyMap<string, { target: WorkspacePatchTarget }>;
-  deleteDirectories: ReadonlyMap<string, { target: WorkspacePatchTarget; recursive: boolean }>;
   preconditions: Map<string, WorkspacePatchPrecondition>;
 }
 
@@ -25,31 +28,20 @@ type RollbackFile =
   | { target: WorkspacePatchTarget; state: "missing" }
   | { target: WorkspacePatchTarget; state: "file"; content: Uint8Array };
 
-interface RollbackSnapshot {
-  files: RollbackFile[];
-  createdDirectories: Array<{ target: WorkspacePatchTarget; existed: boolean }>;
-}
-
 export async function applyWorkspacePatchTransaction(
   plan: WorkspacePatchTransactionPlan,
   files: SeneraExecutionEnv,
-): Promise<void> {
+): Promise<AgentWorkspaceMutationReceipt> {
   const rollback = await captureRollbackSnapshot(plan, files);
   try {
-    for (const directory of plan.createDirectories.values()) {
-      await requireFileResult(files.createDir(directory.target.relativePath, { recursive: true }), directory.target);
+    for (const parent of parentDirectories(plan.writes)) {
+      await requireFileResult(files.createDir(parent, { recursive: true }), { input: parent, relativePath: parent });
     }
     for (const write of plan.writes.values()) {
       await requireFileResult(files.writeFile(write.target.relativePath, write.content), write.target);
     }
     for (const deletion of plan.deletes.values()) {
       await requireFileResult(files.remove(deletion.target.relativePath), deletion.target);
-    }
-    for (const deletion of plan.deleteDirectories.values()) {
-      await requireFileResult(
-        files.remove(deletion.target.relativePath, { recursive: deletion.recursive, force: false }),
-        deletion.target,
-      );
     }
   } catch (error) {
     const rollbackErrors = await restoreRollbackSnapshot(rollback, files);
@@ -65,6 +57,8 @@ export async function applyWorkspacePatchTransaction(
     }
     throw error;
   }
+
+  return createWorkspaceMutationReceipt(plan, rollback);
 }
 
 export async function validateWorkspacePatchPreconditions(
@@ -87,12 +81,11 @@ export async function readWorkspaceTextFileWithPrecondition(
   target: WorkspacePatchTarget,
   pointer: string,
   plan: Pick<WorkspacePatchTransactionPlan, "preconditions">,
-  expectedSha256?: string,
 ): Promise<string> {
   const stat = await requiredFileInfo(files, target, pointer);
   if (stat.kind !== "file") throw targetNotFile(target, pointer);
   const content = await requireFileResult(files.readTextFile(target.relativePath), target, pointer);
-  addFilePrecondition(plan, target, sha256Hex(Buffer.from(content, "utf8")), expectedSha256, pointer);
+  addFilePrecondition(plan, target, sha256Hex(Buffer.from(content, "utf8")));
   return content;
 }
 
@@ -101,12 +94,11 @@ export async function captureWorkspaceFilePrecondition(
   target: WorkspacePatchTarget,
   pointer: string,
   plan: Pick<WorkspacePatchTransactionPlan, "preconditions">,
-  expectedSha256?: string,
 ): Promise<void> {
   const stat = await requiredFileInfo(files, target, pointer);
   if (stat.kind !== "file") throw targetNotFile(target, pointer);
   const content = await readBinaryFile(files, target, pointer);
-  addFilePrecondition(plan, target, sha256Hex(content), expectedSha256, pointer);
+  addFilePrecondition(plan, target, sha256Hex(content));
 }
 
 export function addWorkspaceMissingPrecondition(
@@ -127,7 +119,7 @@ export function addWorkspaceMissingPrecondition(
 async function captureRollbackSnapshot(
   plan: WorkspacePatchTransactionPlan,
   files: SeneraExecutionEnv,
-): Promise<RollbackSnapshot> {
+): Promise<RollbackFile[]> {
   const targets = new Map<string, WorkspacePatchTarget>();
   for (const write of plan.writes.values()) targets.set(write.target.relativePath, write.target);
   for (const deletion of plan.deletes.values()) targets.set(deletion.target.relativePath, deletion.target);
@@ -150,19 +142,12 @@ async function captureRollbackSnapshot(
     }
     snapshots.push({ target, state: "file", content });
   }
-  const createdDirectories: RollbackSnapshot["createdDirectories"] = [];
-  for (const directory of plan.createDirectories.values()) {
-    createdDirectories.push({
-      target: directory.target,
-      existed: Boolean(await fileInfoOrUndefined(files, directory.target.relativePath, "/operations")),
-    });
-  }
-  return { files: snapshots, createdDirectories };
+  return snapshots;
 }
 
-async function restoreRollbackSnapshot(snapshot: RollbackSnapshot, files: SeneraExecutionEnv): Promise<string[]> {
+async function restoreRollbackSnapshot(snapshot: RollbackFile[], files: SeneraExecutionEnv): Promise<string[]> {
   const errors: string[] = [];
-  for (const file of [...snapshot.files].reverse()) {
+  for (const file of [...snapshot].reverse()) {
     try {
       if (file.state === "file") {
         await requireFileResult(files.writeFile(file.target.relativePath, file.content), file.target);
@@ -173,40 +158,72 @@ async function restoreRollbackSnapshot(snapshot: RollbackSnapshot, files: Senera
       errors.push(`${file.target.relativePath}: ${errorMessage(error)}`);
     }
   }
-
-  const directories = snapshot.createdDirectories
-    .filter((directory) => !directory.existed)
-    .sort((left, right) => right.target.relativePath.length - left.target.relativePath.length);
-  for (const directory of directories) {
-    try {
-      const current = await fileInfoOrUndefined(files, directory.target.relativePath, "/operations");
-      if (current?.kind === "directory") {
-        await requireFileResult(
-          files.remove(directory.target.relativePath, { recursive: false, force: false }),
-          directory.target,
-        );
-      }
-    } catch (error) {
-      errors.push(`${directory.target.relativePath}: ${errorMessage(error)}`);
-    }
-  }
   return errors;
+}
+
+function createWorkspaceMutationReceipt(
+  plan: WorkspacePatchTransactionPlan,
+  rollback: readonly RollbackFile[],
+): AgentWorkspaceMutationReceipt {
+  const entries = rollback
+    .map((entry) => {
+      const before = rollbackImage(entry);
+      const after = committedImage(plan, entry.target.relativePath);
+      return {
+        path: entry.target.relativePath,
+        before,
+        after,
+      };
+    })
+    .filter((entry) => !sameWorkspaceMutationImage(entry.before, entry.after))
+    .sort((left, right) => left.path.localeCompare(right.path));
+
+  return {
+    type: AgentWorkspaceMutationReceiptProtocol.type,
+    version: AgentWorkspaceMutationReceiptProtocol.version,
+    capturedAt: new Date().toISOString(),
+    entries,
+  };
+}
+
+function rollbackImage(entry: RollbackFile): AgentWorkspaceMutationReceiptImage {
+  return entry.state === "missing" ? { kind: "missing" } : { kind: "file", bytes: new Uint8Array(entry.content) };
+}
+
+function committedImage(plan: WorkspacePatchTransactionPlan, relativePath: string): AgentWorkspaceMutationReceiptImage {
+  const write = plan.writes.get(relativePath);
+  if (write) {
+    const bytes = typeof write.content === "string" ? Buffer.from(write.content, "utf8") : write.content;
+    return { kind: "file", bytes: new Uint8Array(bytes) };
+  }
+  if (plan.deletes.has(relativePath)) return { kind: "missing" };
+  throw new Error(`Workspace transaction has no committed image for ${relativePath}.`);
+}
+
+function sameWorkspaceMutationImage(
+  left: AgentWorkspaceMutationReceiptImage,
+  right: AgentWorkspaceMutationReceiptImage,
+): boolean {
+  if (left.kind !== right.kind) return false;
+  if (left.kind !== "file" || right.kind !== "file") return true;
+  if (left.bytes.byteLength !== right.bytes.byteLength) return false;
+  return left.bytes.every((value, index) => value === right.bytes[index]);
+}
+
+function parentDirectories(writes: ReadonlyMap<string, unknown>): string[] {
+  const parents = new Set<string>();
+  for (const relativePath of writes.keys()) {
+    const index = relativePath.lastIndexOf("/");
+    if (index > 0) parents.add(relativePath.slice(0, index));
+  }
+  return [...parents].sort((left, right) => left.length - right.length);
 }
 
 function addFilePrecondition(
   plan: Pick<WorkspacePatchTransactionPlan, "preconditions">,
   target: WorkspacePatchTarget,
   actualSha256: string,
-  expectedSha256: string | undefined,
-  pointer: string,
 ): void {
-  if (expectedSha256 && expectedSha256 !== actualSha256) {
-    throw new WorkspaceApplyPatchError({
-      message: agentErrorMessage("workspacePatch.expectedHashMismatch", { path: target.relativePath }),
-      pointer,
-      suggestion: agentErrorMessage("workspacePatch.concurrentChangeSuggestion"),
-    });
-  }
   plan.preconditions.set(target.relativePath, { target, state: "file", sha256: actualSha256 });
 }
 

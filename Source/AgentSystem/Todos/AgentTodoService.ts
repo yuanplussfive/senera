@@ -1,19 +1,25 @@
+import { randomUUID } from "node:crypto";
 import type { AgentEventSink } from "../Events/AgentEvent.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import { emitAgentEvent } from "../Events/AgentEvent.js";
 import { AgentEventKinds } from "../Events/AgentEventCatalog.js";
 import { AgentTodoSqliteStore } from "./AgentTodoSqliteStore.js";
 import {
+  AgentTodoChangeSources,
   AgentTodoStatuses,
+  AgentTodoToolNames,
   EmptyAgentTodoPromptContext,
+  type AgentTodoAddResult,
+  type AgentTodoAddTaskInput,
+  type AgentTodoChangeSource,
   type AgentTodoCounts,
   type AgentTodoItem,
-  type AgentTodoItemInput,
   type AgentTodoPolicy,
   type AgentTodoPromptContext,
   type AgentTodoSnapshot,
-  AgentTodoWriteSources,
-  type AgentTodoWriteSource,
+  type AgentTodoTaskReference,
+  type AgentTodoUpdateItemInput,
+  type AgentTodoUpdateResult,
 } from "./AgentTodoTypes.js";
 
 export interface AgentTodoServiceOptions {
@@ -21,13 +27,20 @@ export interface AgentTodoServiceOptions {
   readonly policy: AgentTodoPolicy;
 }
 
-export interface AgentTodoWriteInput {
+interface AgentTodoMutationContext {
   readonly sessionId: string;
-  readonly items: readonly AgentTodoItemInput[];
-  readonly merge: boolean;
   readonly onEvent?: AgentEventSink;
   readonly requestId?: string;
-  readonly source?: AgentTodoWriteSource;
+  readonly source?: AgentTodoChangeSource;
+}
+
+export interface AgentTodoAddInput extends AgentTodoMutationContext {
+  readonly tasks: readonly AgentTodoAddTaskInput[];
+  readonly now?: Date;
+}
+
+export interface AgentTodoUpdateInput extends AgentTodoMutationContext {
+  readonly updates: readonly AgentTodoUpdateItemInput[];
   readonly now?: Date;
 }
 
@@ -43,25 +56,72 @@ export class AgentTodoService {
     return this.snapshot(this.options.store.list(sessionId));
   }
 
-  /** Snapshot fingerprint used by orchestration to detect a model plan write. */
+  /** Snapshot fingerprint used by orchestration to detect a model plan change. */
   fingerprint(sessionId: string): string {
     return sha256HexOfCanonicalJson(this.read(sessionId));
   }
 
-  write(input: AgentTodoWriteInput): AgentTodoSnapshot {
-    const current = input.merge ? this.options.store.list(input.sessionId) : [];
-    const next = input.merge ? mergeItems(current, input.items, input.now) : createItems(input.items, input.now);
-    const normalized = normalizeItems(next);
-    validateItems(normalized, this.policy);
-    this.snapshot(normalized);
-    this.options.store.replace(input.sessionId, normalized);
-    const snapshot = this.snapshot(this.options.store.list(input.sessionId));
-    void emitAgentEvent(input.onEvent, {
-      kind: AgentEventKinds.TodoListWritten,
-      context: { sessionId: input.sessionId, ...(input.requestId ? { requestId: input.requestId } : {}) },
-      data: { snapshot, source: input.source ?? AgentTodoWriteSources.Model },
-    });
-    return snapshot;
+  add(input: AgentTodoAddInput): AgentTodoAddResult {
+    const sessionId = requireText(input.sessionId, "Todo session id");
+    if (input.tasks.length === 0) throw new Error("Add at least one Todo task.");
+
+    const current = this.options.store.list(sessionId);
+    const timestamp = (input.now ?? new Date()).toISOString();
+    const created = input.tasks.map((task, index) => ({
+      id: randomUUID(),
+      content: requireText(task.content, "Todo content"),
+      status: AgentTodoStatuses.Pending,
+      order: current.length + index,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }));
+    const snapshot = this.commit(sessionId, [...current, ...created], input);
+
+    return {
+      created: taskReferences(created),
+      counts: snapshot.counts,
+    };
+  }
+
+  update(input: AgentTodoUpdateInput): AgentTodoUpdateResult {
+    const sessionId = requireText(input.sessionId, "Todo session id");
+    if (input.updates.length === 0) throw new Error("Update at least one Todo task.");
+
+    const current = this.options.store.list(sessionId);
+    const byId = new Map(current.map((item) => [item.id, item]));
+    const seen = new Set<string>();
+    const changedIds: string[] = [];
+    const timestamp = (input.now ?? new Date()).toISOString();
+
+    for (const update of input.updates) {
+      const id = requireText(update.id, "Todo id");
+      if (seen.has(id)) throw new Error(`Todo ${id} is updated more than once in one request.`);
+      seen.add(id);
+
+      const previous = byId.get(id);
+      if (!previous) throw new Error(`Todo ${id} does not exist. Use ${AgentTodoToolNames.Add} to create it.`);
+
+      const content = update.content === undefined ? previous.content : requireText(update.content, "Todo content");
+      const status = update.status ?? previous.status;
+      if (content === previous.content && status === previous.status) continue;
+
+      byId.set(id, { ...previous, content, status, updatedAt: timestamp });
+      changedIds.push(id);
+    }
+
+    if (changedIds.length === 0) {
+      return { updated: [], counts: this.snapshot(current).counts };
+    }
+
+    const snapshot = this.commit(sessionId, [...byId.values()], input);
+    const committedById = new Map(snapshot.items.map((item) => [item.id, item]));
+    return {
+      updated: changedIds.flatMap((id) => {
+        const item = committedById.get(id);
+        return item ? [{ id: item.id, status: item.status }] : [];
+      }),
+      counts: snapshot.counts,
+    };
   }
 
   promptContext(sessionId?: string): AgentTodoPromptContext {
@@ -75,6 +135,23 @@ export class AgentTodoService {
     };
   }
 
+  private commit(
+    sessionId: string,
+    items: readonly AgentTodoItem[],
+    context: Pick<AgentTodoMutationContext, "onEvent" | "requestId" | "source">,
+  ): AgentTodoSnapshot {
+    validateItems(items, this.policy);
+    this.snapshot(items);
+    this.options.store.replace(sessionId, items);
+    const snapshot = this.snapshot(this.options.store.list(sessionId));
+    void emitAgentEvent(context.onEvent, {
+      kind: AgentEventKinds.TodoListWritten,
+      context: { sessionId, ...(context.requestId ? { requestId: context.requestId } : {}) },
+      data: { snapshot, source: context.source ?? AgentTodoChangeSources.Model },
+    });
+    return snapshot;
+  }
+
   private snapshot(items: readonly AgentTodoItem[]): AgentTodoSnapshot {
     const snapshot = { items: [...items], counts: countItems(items) };
     const serialized = JSON.stringify(snapshot);
@@ -85,61 +162,16 @@ export class AgentTodoService {
   }
 }
 
-function createItems(input: readonly AgentTodoItemInput[], now = new Date()): AgentTodoItem[] {
-  const timestamp = now.toISOString();
-  return input.map((item, index) => ({
-    id: requireText(item.id, "Todo id"),
-    content: requireText(item.content, "Todo content"),
-    status: item.status ?? AgentTodoStatuses.Pending,
-    order: index,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  }));
-}
-
-function mergeItems(
-  current: readonly AgentTodoItem[],
-  input: readonly AgentTodoItemInput[],
-  now = new Date(),
-): AgentTodoItem[] {
-  const timestamp = now.toISOString();
-  const byId = new Map(current.map((item) => [item.id, item]));
-  const seen = new Set<string>();
-  for (const entry of input) {
-    const id = requireText(entry.id, "Todo id");
-    if (seen.has(id)) throw new Error(`Todo id is duplicated in one write: ${id}.`);
-    seen.add(id);
-    const previous = byId.get(id);
-    if (!previous && !entry.content) throw new Error(`New Todo ${id} must include content.`);
-    byId.set(id, {
-      id,
-      content: requireText(entry.content ?? previous?.content ?? "", `Todo ${id} content`),
-      status: entry.status ?? previous?.status ?? AgentTodoStatuses.Pending,
-      order: previous?.order ?? current.length + seen.size - 1,
-      createdAt: previous?.createdAt ?? timestamp,
-      updatedAt: timestamp,
-    });
-  }
-  return [...byId.values()].sort((left, right) => left.order - right.order || left.id.localeCompare(right.id));
-}
-
-function normalizeItems(items: readonly AgentTodoItem[]): AgentTodoItem[] {
-  const activeIndex = items.findIndex((item) => item.status === AgentTodoStatuses.InProgress);
-  const activeCount = items.filter((item) => item.status === AgentTodoStatuses.InProgress).length;
-  if (activeCount > 1) throw new Error("Only one Todo may be in_progress.");
-  if (activeIndex < 0) return items.map((item, index) => ({ ...item, order: index }));
-  const pendingIndex = items.findIndex(
-    (item, index) => index < activeIndex && item.status === AgentTodoStatuses.Pending,
-  );
-  if (pendingIndex < 0) return items.map((item, index) => ({ ...item, order: index }));
-  const reordered = [...items];
-  const [active] = reordered.splice(activeIndex, 1);
-  reordered.splice(pendingIndex, 0, active);
-  return reordered.map((item, index) => ({ ...item, order: index }));
+function taskReferences(items: readonly AgentTodoTaskReference[]): AgentTodoTaskReference[] {
+  return items.map(({ id, status }) => ({ id, status }));
 }
 
 function validateItems(items: readonly AgentTodoItem[], policy: AgentTodoPolicy): void {
   if (items.length > policy.maxItems) throw new Error(`Todo list exceeds ${policy.maxItems} items.`);
+  if (items.filter((item) => item.status === AgentTodoStatuses.InProgress).length > 1) {
+    throw new Error("At most one Todo may be in_progress.");
+  }
+
   const ids = new Set<string>();
   for (const item of items) {
     if (ids.has(item.id)) throw new Error(`Todo id is duplicated: ${item.id}.`);

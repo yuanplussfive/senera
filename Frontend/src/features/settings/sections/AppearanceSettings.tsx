@@ -1,20 +1,22 @@
 import { useMemo } from "react";
-import { RotateCcw } from "lucide-react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import {
   AppearancePreferenceControl,
   createAppearanceSummary,
   defaultAppearancePreference,
   isDefaultAppearancePreference,
+  colorSchemeLabels,
   readAccentSwatch,
+  readColorSchemeStory,
   readSchemeSwatch,
+  readSchemeSwatchStrip,
   useAppearance,
   useSetAppearancePreference,
   type AppearancePreference,
   type AppearanceSummaryItem,
   type ResolvedTheme,
 } from "../../../shared/theme";
-import { Button, MetaLabel } from "../../../shared/ui";
+import { AppIcon, Button, MetaLabel } from "../../../shared/ui";
 import { SettingsPanel } from "../SettingsPanel";
 
 export function AppearanceSettings(): JSX.Element {
@@ -37,7 +39,7 @@ export function AppearanceSettings(): JSX.Element {
               disabled={usesDefault}
               onClick={() => setAppearancePreference(defaultAppearancePreference)}
             >
-              <RotateCcw className="h-3.5 w-3.5" />
+              <AppIcon icon="refresh" size={14} aria-hidden="true" />
               {frontendMessage("settings.appearance.reset")}
             </Button>
           </div>
@@ -64,6 +66,37 @@ function AppearancePreview({
 }): JSX.Element {
   return (
     <div className="space-y-4">
+      <div className="border-b border-line-subtle pb-3">
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[15px] font-semibold text-content-primary">
+              {colorSchemeLabels[preference.colorScheme]}
+            </div>
+            <p className="mt-1 text-[11.5px] leading-5 text-content-secondary">
+              {readColorSchemeStory(preference.colorScheme)}
+            </p>
+          </div>
+          <span className="inline-flex shrink-0 items-center gap-1.5 pt-1 text-[11px] text-content-secondary">
+            <span
+              className="h-2.5 w-2.5 rounded-full"
+              style={{
+                background: preference.customAccentColor ?? readAccentSwatch(preference.accentColor),
+              }}
+              aria-hidden="true"
+            />
+            {summary.find((item) => item.id === "accentColor")?.value}
+          </span>
+        </div>
+        <div className="mt-3 flex h-3.5 overflow-hidden rounded-[4px] border border-line-subtle" aria-hidden="true">
+          {readSchemeSwatchStrip(preference.colorScheme).map((color, index) => (
+            <span
+              key={`${preference.colorScheme}-preview-${index}`}
+              className="min-w-0 flex-1"
+              style={{ background: color }}
+            />
+          ))}
+        </div>
+      </div>
       <dl className="space-y-2.5">
         {summary.map((item) => (
           <div key={item.id} className="flex min-w-0 items-baseline justify-between gap-4">

@@ -22,7 +22,7 @@
 : A portable MCP server package using MCPB `manifest.json`, Registry `server.json`, or the legacy `.mcp.json` compatibility format. The server owns its `tools/list` declarations; Senera normalizes only connection and typed input metadata.
 
 `System Extension`
-: A trusted package under `System/Extensions/<id>` whose manifest maps package-contained contracts to pre-registered host capabilities. It cannot load arbitrary workspace modules.
+: A trusted package under `System/Extensions/<domain>/<extension>` whose manifest declares the owning domain and settings surface, and maps package-contained contracts to pre-registered host capabilities. Domain presentation is the default for extension and Tool presentation; it cannot load arbitrary workspace modules.
 
 `Projection`
 : A transformation from internal state into the shape needed by a model, UI, artifact, or transport.

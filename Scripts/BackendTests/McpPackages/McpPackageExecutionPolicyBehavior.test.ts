@@ -54,6 +54,23 @@ describe("MCP package execution policy", () => {
     });
   });
 
+  test("runs a local-preferred network package in a sandbox-only host", () => {
+    const policy = resolveAgentMcpPackageExecutionPolicy(
+      packageWith({
+        targets: [AgentMcpExecutionTargets.Local, AgentMcpExecutionTargets.Sandbox],
+        preferred: AgentMcpExecutionTargets.Local,
+      }),
+      stdioServer,
+      hostWith(["sandbox"]),
+    );
+
+    expect(policy).toEqual({
+      targets: [ToolExecutionTargets.Sandbox],
+      preferred: ToolExecutionTargets.Sandbox,
+      preferredBackend: "sandbox",
+    });
+  });
+
   test("does not grant a local-only package to a sandbox-only host", () => {
     expect(() =>
       resolveAgentMcpPackageExecutionPolicy(
@@ -139,6 +156,7 @@ describe("MCP package execution policy", () => {
       [
         {
           name: "generate",
+          description: "Generate output.",
           inputSchema: { type: "object", properties: {} },
           _meta: { "ai.senera/runtime": { scheduling: "parallel", maxConcurrency: 3 } },
         },
@@ -149,7 +167,7 @@ describe("MCP package execution policy", () => {
     const defaulted = projectAgentMcpPackageTools(
       package_,
       stdioServer,
-      [{ name: "write", inputSchema: { type: "object", properties: {} } }],
+      [{ name: "write", description: "Write output.", inputSchema: { type: "object", properties: {} } }],
       execution,
       createAgentMcpPackageEndpoint(package_, stdioServer),
     ).at(0);
@@ -159,6 +177,7 @@ describe("MCP package execution policy", () => {
       [
         {
           name: "exclusive",
+          description: "Run an exclusive operation.",
           inputSchema: { type: "object", properties: {} },
           _meta: { "ai.senera/runtime": { scheduling: "resource-claims" } },
         },
@@ -187,6 +206,7 @@ describe("MCP package execution policy", () => {
         [
           {
             name: "unsafe",
+            description: "Run an operation with a declared scheduling policy.",
             inputSchema: { type: "object", properties: {} },
             _meta: { "ai.senera/runtime": { scheduling: "self-managed" } },
           },
@@ -195,6 +215,60 @@ describe("MCP package execution policy", () => {
         createAgentMcpPackageEndpoint(package_, stdioServer),
       ),
     ).toThrow("must be parallel or resource-claims");
+  });
+
+  test("projects an explicit MCP content policy without host tool-name rules", () => {
+    const execution = {
+      targets: [ToolExecutionTargets.Local],
+      preferred: ToolExecutionTargets.Local,
+      preferredBackend: "local" as const,
+    };
+    const package_ = packageWith({ targets: ["local"], preferred: "local" });
+    const tool = projectAgentMcpPackageTools(
+      package_,
+      stdioServer,
+      [
+        {
+          name: "reader",
+          description: "Read web content.",
+          inputSchema: { type: "object", properties: {} },
+          _meta: {
+            "ai.senera/content-policy": {
+              ownership: "host",
+              kind: "web-readable",
+              representation: "markdown",
+              compression: "bounded",
+              deduplication: "prose-only",
+              targets: ["/content"],
+              preserve: ["urls", "identifiers"],
+            },
+          },
+        },
+      ],
+      execution,
+      createAgentMcpPackageEndpoint(package_, stdioServer),
+    ).at(0);
+
+    expect(tool).not.toHaveProperty("contentPolicy");
+  });
+
+  test("rejects an MCP tool without a producer-declared discovery description", () => {
+    const execution = {
+      targets: [ToolExecutionTargets.Local],
+      preferred: ToolExecutionTargets.Local,
+      preferredBackend: "local" as const,
+    };
+    const package_ = packageWith({ targets: ["local"], preferred: "local" });
+
+    expect(() =>
+      projectAgentMcpPackageTools(
+        package_,
+        stdioServer,
+        [{ name: "undocumented", inputSchema: { type: "object", properties: {} } }],
+        execution,
+        createAgentMcpPackageEndpoint(package_, stdioServer),
+      ),
+    ).toThrow("MCP tool test-server/undocumented must declare a non-empty description for ToolSearch discovery.");
   });
 });
 

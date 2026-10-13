@@ -1,10 +1,6 @@
 import { z } from "zod";
 import type { AgentLanguageModelMessage } from "../ModelEndpoints/AgentLanguageModel.js";
 import { decodePlannerTimelinePayload } from "./AgentPlannerTimelinePayload.js";
-import {
-  buildCompactionSummarySystemMessages,
-  extractPlannerCompactionSummary,
-} from "./AgentActionPlannerCompactionSummaryInjector.js";
 import { formatTimelineTurnWire, type TimelineTurnInput } from "./AgentPlannerTimelineBlockRegistry.js";
 import { DefaultAgentPlannerContextProjectorRegistry } from "./AgentPlannerContextProjectorRegistry.js";
 import { decodeAgentPromptInputWire, renderAgentPromptInputWire } from "../Prompt/AgentPromptContextWireRenderer.js";
@@ -91,21 +87,18 @@ function projectPlannerConversationMessages(
   const context = envelope[PlannerPromptKeys.Context];
   const timeline = readPlannerTimeline(context[PlannerPromptKeys.Timeline]);
 
-  const { summaryText, sanitizedContext } = extractPlannerCompactionSummary(context);
-  const compactionSummaryMessages = buildCompactionSummarySystemMessages(summaryText);
-
-  const contextWithoutTimeline = omitRecordKeys(sanitizedContext, [PlannerPromptKeys.Timeline]);
+  const contextWithoutTimeline = omitRecordKeys(context, [PlannerPromptKeys.Timeline]);
   const plannerInputMessage = buildPlannerInputMessage(contextWithoutTimeline, envelope[PlannerPromptKeys.Directive]);
 
-  return [...compactionSummaryMessages, ...timeline.map(projectTimelineTurnMessage), plannerInputMessage];
+  return [...timeline.map(projectTimelineTurnMessage), plannerInputMessage];
 }
 
 function readPlannerPromptEnvelope(value: string): z.infer<typeof PlannerPromptEnvelopeSchema> {
   const decoded = decodeAgentPromptInputWire(value, {
-    // Action-planner BAML functions share this adapter, while tool learning
-    // uses its own resource-specific wire kind. Both have the same
-    // lossless directive/context envelope; arbitrary wire kinds are rejected.
-    expectedKind: ["planner_input", "tool_learning"],
+    // Every action-planner BAML function shares this adapter. They all carry
+    // the same lossless directive/context envelope; arbitrary wire kinds are
+    // rejected.
+    expectedKind: ["planner_input"],
     expectedVersion: "1",
   });
   const context = decoded.context;

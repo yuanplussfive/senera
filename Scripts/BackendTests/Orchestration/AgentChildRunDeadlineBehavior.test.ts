@@ -8,6 +8,7 @@ import {
 import { renderAgentChildRunWrapUpInstruction } from "../../../Source/AgentSystem/Orchestration/AgentChildRunWrapUpPrompt.js";
 import type { AgentChildRunDeadlinePolicy } from "../../../Source/AgentSystem/Orchestration/AgentChildRunTypes.js";
 import { AgentToolResultPresentationProtocol } from "../../../Source/AgentSystem/Types/ToolRuntimeTypes.js";
+import { AgentTodoStatuses } from "../../../Source/AgentSystem/Todos/AgentTodoTypes.js";
 
 const StartedAt = Date.parse("2026-08-08T00:00:00.000Z");
 
@@ -138,6 +139,36 @@ describe("child-run activity-aware deadlines", () => {
     });
   });
 
+  test("native thinking counts as live model activity without entering the resumable answer checkpoint", () => {
+    let now = StartedAt;
+    const activity = new AgentChildRunActivityTracker({
+      startedAt: StartedAt,
+      policy: deadlinePolicy(),
+      clock: {
+        now: () => now,
+        timestamp: (value) => new Date(value).toISOString(),
+      },
+    });
+
+    activity.observe({
+      kind: AgentEventKinds.ModelStarted,
+      context: { requestId: "child-request", step: 1 },
+      data: { model: "test-model" },
+    });
+    now += 5;
+    activity.observe({
+      kind: AgentEventKinds.ModelThinkingDelta,
+      context: { requestId: "child-request", step: 1 },
+      data: { messageIndex: 0, contentIndex: 1, delta: "checking constraints" },
+    });
+
+    expect(activity.snapshot()).toMatchObject({
+      lastModelOutputAt: new Date(StartedAt + 5).toISOString(),
+      modelOutputCharacters: 0,
+    });
+    expect(activity.latestCheckpoint()).toBeUndefined();
+  });
+
   test("carries the latest workspace revision into the takeover checkpoint", () => {
     const activity = new AgentChildRunActivityTracker({
       startedAt: StartedAt,
@@ -227,7 +258,16 @@ describe("child-run activity-aware deadlines", () => {
       data: {
         source: "model",
         snapshot: {
-          items: [],
+          items: [
+            {
+              id: "todo-1",
+              content: "Verify the result",
+              status: AgentTodoStatuses.Completed,
+              order: 0,
+              createdAt: new Date(StartedAt).toISOString(),
+              updatedAt: new Date(StartedAt).toISOString(),
+            },
+          ],
           counts: { total: 1, pending: 0, inProgress: 0, completed: 1, cancelled: 0 },
         },
       },
@@ -242,7 +282,10 @@ describe("child-run activity-aware deadlines", () => {
     expect(activity.shouldRequestWrapUp()).toBe(false);
     expect(activity.snapshot()).toMatchObject({
       control: {
-        todo: { planObserved: true },
+        todo: {
+          planObserved: true,
+          items: [{ content: "Verify the result", status: AgentTodoStatuses.Completed }],
+        },
         budget: { modelTurns: 2, noProgressTurns: 0 },
       },
     });

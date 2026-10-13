@@ -161,9 +161,9 @@ class AgentPlaywrightBrowserSession implements AgentBrowserDriverSession {
     const session = new AgentPlaywrightBrowserSession(context, options);
     await context.route("**/*", async (route, request) => {
       const url = request.url();
-      const kind: AgentBrowserNetworkRequestKind = request.isNavigationRequest() ? "navigation" : "subresource";
+      const kind = requestKind(request);
       try {
-        await options.assertRequestPermitted(url, kind);
+        await options.assertRequestPermitted(url, kind, requestSourceUrl(request));
         await route.continue();
       } catch (error) {
         if (kind === "navigation") session.navigationFailure = error;
@@ -733,7 +733,8 @@ class AgentPlaywrightBrowserSession implements AgentBrowserDriverSession {
     const active = this.activePage;
     if (!active || active.isClosed()) {
       const available = this.livePages()[0];
-      if (!available) throw new Error("No active browser tab. Open a public URL or create a browser tab first.");
+      if (!available)
+        throw new Error("No active browser tab. Open an HTTP(S) or file URL, or create a browser tab first.");
       this.activePage = available;
       return available;
     }
@@ -854,6 +855,25 @@ class AgentPlaywrightBrowserSession implements AgentBrowserDriverSession {
     } finally {
       signal?.removeEventListener("abort", onAbort);
     }
+  }
+}
+
+function requestKind(request: import("playwright-core").Request): AgentBrowserNetworkRequestKind {
+  if (!request.isNavigationRequest()) return "subresource";
+  try {
+    return request.frame().parentFrame() ? "subresource" : "navigation";
+  } catch {
+    return "navigation";
+  }
+}
+
+function requestSourceUrl(request: import("playwright-core").Request): string | undefined {
+  try {
+    const frame = request.frame();
+    const parent = request.isNavigationRequest() ? frame.parentFrame() : undefined;
+    return (parent ?? frame).url() || undefined;
+  } catch {
+    return undefined;
   }
 }
 

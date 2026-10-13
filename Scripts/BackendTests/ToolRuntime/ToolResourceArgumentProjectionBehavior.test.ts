@@ -8,6 +8,7 @@ import type { SeneraExecutionEnv } from "../../../Source/AgentSystem/Execution/S
 import { projectAgentToolResourceArguments } from "../../../Source/AgentSystem/ToolRuntime/AgentToolResourceArgumentProjector.js";
 import { AgentToolResourceCapabilityRegistry } from "../../../Source/AgentSystem/ToolRuntime/AgentToolResourceCapabilityRegistry.js";
 import { AgentToolUploadReadResourceCapability } from "../../../Source/AgentSystem/ToolRuntime/AgentToolUploadReadResourceCapability.js";
+import { AgentToolUrlResourceCapability } from "../../../Source/AgentSystem/ToolRuntime/AgentToolUrlResourceCapability.js";
 import { AgentToolWorkspacePathResourceCapability } from "../../../Source/AgentSystem/ToolRuntime/AgentToolWorkspacePathResourceCapability.js";
 import { AgentExtensionRegistry } from "../../../Source/AgentSystem/Extensions/AgentExtensionRegistry.js";
 import { AgentResourceAccessPolicy } from "../../../Source/AgentSystem/Safety/AgentResourceAccessPolicy.js";
@@ -226,6 +227,22 @@ describe("tool resource argument projection", () => {
         },
       },
     });
+  });
+
+  it("keeps a declared URL resource intact for its owning network tool", async () => {
+    const registry = new AgentToolResourceCapabilityRegistry().register(new AgentToolUrlResourceCapability());
+    const args = { url: "https://example.com/docs?q=tool-search" };
+
+    await expect(
+      projectAgentToolResourceArguments(args, [{ Capability: "senera.network.url", Pointer: "/url" }], registry),
+    ).resolves.toEqual(args);
+    await expect(
+      projectAgentToolResourceArguments(
+        { url: " " },
+        [{ Capability: "senera.network.url", Pointer: "/url" }],
+        registry,
+      ),
+    ).rejects.toThrow("URL resource /url must be a non-empty string.");
   });
 });
 

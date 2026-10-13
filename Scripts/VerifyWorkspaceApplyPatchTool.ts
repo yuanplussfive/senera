@@ -21,7 +21,6 @@ async function main(): Promise<void> {
     await fs.mkdir(outsideRoot, { recursive: true });
     await fs.mkdir(path.join(workspaceRoot, "src"), { recursive: true });
     await fs.mkdir(path.join(workspaceRoot, "docs"), { recursive: true });
-    await fs.mkdir(path.join(workspaceRoot, "empty-delete"), { recursive: true });
     await fs.writeFile(
       path.join(workspaceRoot, "src", "value.ts"),
       "export function value() {\n  return 1;\n}\n",
@@ -34,32 +33,14 @@ async function main(): Promise<void> {
     assert.equal(registry.get(AgentHostCapabilityNames.WorkspaceApplyPatch), applyWorkspacePatchHostTool);
 
     const context = createContext(workspaceRoot);
-    const dryRun = await applyWorkspacePatchHostTool(
-      {
-        dryRun: true,
-        operations: [
-          {
-            kind: "update",
-            path: "src/value.ts",
-            patch: ["@@ -1,3 +1,3 @@", " export function value() {", "-  return 1;", "+  return 2;", " }"].join("\n"),
-          },
-        ],
-      },
-      context,
-    );
-    assert.equal(dryRun.response.ok, true);
-    assert.equal(
-      await fs.readFile(path.join(workspaceRoot, "src", "value.ts"), "utf8"),
-      "export function value() {\n  return 1;\n}\n",
-    );
-
     const applied = await applyWorkspacePatchHostTool(
       {
         operations: [
           {
             kind: "update",
             path: "src/value.ts",
-            patch: ["@@ -1,3 +1,3 @@", " export function value() {", "-  return 1;", "+  return 2;", " }"].join("\n"),
+            oldStr: "return 1;",
+            newStr: "return 2;",
           },
           {
             kind: "add",
@@ -70,19 +51,21 @@ async function main(): Promise<void> {
             kind: "move",
             source: "src/move-me.ts",
             destination: "src/moved.ts",
-            patch: ["@@ -1,2 +1,2 @@", " alpha", "-beta", "+gamma"].join("\n"),
+          },
+          {
+            kind: "update",
+            path: "src/moved.ts",
+            oldStr: "beta",
+            newStr: "gamma",
           },
           {
             kind: "delete",
             path: "docs/old.md",
           },
           {
-            kind: "createDirectory",
-            path: "created-dir",
-          },
-          {
-            kind: "deleteDirectory",
-            path: "empty-delete",
+            kind: "add",
+            path: "created-dir/nested/created.ts",
+            content: "export const nested = true;\n",
           },
         ],
       },
@@ -97,9 +80,8 @@ async function main(): Promise<void> {
     assert.equal(result.applied, true);
     assert.equal(result.operationCount, 6);
     assert.deepEqual(result.changedPaths, [
-      "created-dir",
+      "created-dir/nested/created.ts",
       "docs/old.md",
-      "empty-delete",
       "src/move-me.ts",
       "src/moved.ts",
       "src/new.ts",
@@ -116,7 +98,10 @@ async function main(): Promise<void> {
     assert.equal(await fs.readFile(path.join(workspaceRoot, "src", "moved.ts"), "utf8"), "alpha\ngamma\n");
     await assert.rejects(fs.stat(path.join(workspaceRoot, "src", "move-me.ts")));
     await assert.rejects(fs.stat(path.join(workspaceRoot, "docs", "old.md")));
-    assert.equal((await fs.stat(path.join(workspaceRoot, "created-dir"))).isDirectory(), true);
+    assert.equal(
+      await fs.readFile(path.join(workspaceRoot, "created-dir", "nested", "created.ts"), "utf8"),
+      "export const nested = true;\n",
+    );
 
     const invalid = await applyWorkspacePatchHostTool(
       {
@@ -124,7 +109,8 @@ async function main(): Promise<void> {
           {
             kind: "update",
             path: "src/value.ts",
-            patch: "--- a/src/value.ts\n+++ b/src/value.ts\n@@ -1,1 +1,1 @@\n-export\n+export",
+            oldStr: "not in the source",
+            newStr: "replacement",
           },
         ],
       },

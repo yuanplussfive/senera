@@ -7,7 +7,7 @@ import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
 import { MotionIconSwap } from "../../shared/motion";
 import { MarkdownRenderer } from "../../shared/code/MarkdownRenderer";
-import { MetaLabel, Sheet, SheetContent, Skeleton, Tooltip, useClipboardCopy } from "../../shared/ui";
+import { MetaLabel, Sheet, SheetContent, Skeleton, Tooltip, InlineError, useClipboardCopy } from "../../shared/ui";
 import { readStepKindLabel, readStepStatusLabel } from "./stepPresentation";
 import { DataView } from "./DataView";
 import { ChildRunOverview } from "./ChildRunOverview";
@@ -126,16 +126,12 @@ export const WorkflowStepDetail = memo(function WorkflowStepDetail({ step }: { s
 
       {step.toolErrorMessage ? (
         <Section label={frontendMessage("workflow.node.section.error")}>
-          <div className="whitespace-pre-wrap break-words text-[13px] leading-5 text-brick-600">
-            {step.toolErrorMessage}
-          </div>
+          <InlineError className="text-[13px]">{step.toolErrorMessage}</InlineError>
         </Section>
       ) : null}
       {step.errorMessage && step.errorMessage !== step.toolErrorMessage ? (
         <Section label={frontendMessage("workflow.node.section.error")}>
-          <div className="whitespace-pre-wrap break-words text-[13px] leading-5 text-brick-600">
-            {step.errorMessage}
-          </div>
+          <InlineError className="text-[13px]">{step.errorMessage}</InlineError>
         </Section>
       ) : null}
 

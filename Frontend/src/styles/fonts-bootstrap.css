@@ -1,0 +1,7 @@
+@font-face {
+  font-family: "HarmonyOS Sans SC";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("@lobehub/webfont-harmony-sans-sc-mini/fonts/HarmonyOS_Sans_SC_Regular_base.woff2") format("woff2");
+}

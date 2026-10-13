@@ -54,7 +54,7 @@ export class AgentSqliteSessionTraceStore {
 
   loadStepTraces(sessionId: string): StoredStepTraceRun[] {
     const byRequest = new Map<string, StoredStepTraceRun>();
-    for (const row of this.stmts.selectStepTraces.all(sessionId)) {
+    for (const row of this.stmts.selectStepTraces.iterate(sessionId)) {
       const run = byRequest.get(row.request_id) ?? {
         requestId: row.request_id,
         turnSequence: row.turn_sequence,

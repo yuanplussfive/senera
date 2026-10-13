@@ -2,7 +2,14 @@ import fs from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { createInterface } from "node:readline";
 import path from "node:path";
-import { createReadTool as createPiReadTool, type ReadToolInput } from "@earendil-works/pi-agent-core";
+import {
+  BACKGROUND_CONTEXT,
+  createReadTool as createPiReadTool,
+  withAbortSignal,
+  type AgentHarnessToolInvocation,
+  type Context,
+  type ReadToolInput,
+} from "@earendil-works/pi-agent-core";
 import {
   createFindTool,
   createFindToolDefinition,
@@ -18,6 +25,8 @@ import {
   type LsToolInput,
 } from "@earendil-works/pi-coding-agent";
 import { rgPath } from "@vscode/ripgrep";
+import { resolveAsarUnpackedExecutablePath } from "../Core/AgentExecutablePath.js";
+export { resolveAsarUnpackedExecutablePath } from "../Core/AgentExecutablePath.js";
 import { minimatch } from "minimatch";
 import { z } from "zod";
 import {
@@ -28,7 +37,6 @@ import {
   type ToolSearchManifest,
 } from "../Types/AgentToolContractTypes.js";
 import type { AgentHostToolContext } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
-import { StandardAgentToolObservationProjection } from "../ToolRuntime/AgentToolObservationProjectionPlan.js";
 import { defineSystemTool, type AgentSystemToolMetadata } from "./AgentSystemToolDefinition.js";
 
 const bundledRipgrepPath = resolveAsarUnpackedExecutablePath(rgPath);
@@ -88,6 +96,7 @@ const WorkspaceToolsExtension = {
 const WorkspaceReadSearch = workspaceToolSearch({
   commandAlias: "read",
   summary: "读取工作区中的文本文件或受支持图像，并使用 offset/limit 继续读取大文件。",
+  tags: ["工作区", "文件读取", "文本文件", "图像文件"],
   capabilityId: "workspace.file.read",
   title: "Workspace file read",
   description: "Read one workspace file through Senera's authorized execution environment.",
@@ -101,6 +110,7 @@ const WorkspaceReadSearch = workspaceToolSearch({
 const WorkspaceGrepSearch = workspaceToolSearch({
   commandAlias: "grep",
   summary: "使用 Pi 原生 grep 和随包 ripgrep 搜索工作区内容，遵循 .gitignore。",
+  tags: ["工作区", "内容搜索", "代码搜索"],
   capabilityId: "workspace.content.search",
   title: "Workspace content search",
   description: "Search workspace file contents with Pi's grep result and truncation semantics.",
@@ -114,6 +124,7 @@ const WorkspaceGrepSearch = workspaceToolSearch({
 const WorkspaceFindSearch = workspaceToolSearch({
   commandAlias: "find",
   summary: "按 glob 查找工作区文件，包含隐藏文件并遵循嵌套 .gitignore。",
+  tags: ["工作区", "文件查找", "文件索引"],
   capabilityId: "workspace.file.find",
   title: "Workspace file find",
   description: "Find workspace files by glob with Pi's result and truncation semantics.",
@@ -127,6 +138,7 @@ const WorkspaceFindSearch = workspaceToolSearch({
 const WorkspaceListSearch = workspaceToolSearch({
   commandAlias: "ls",
   summary: "按字母顺序列出工作区目录，包含点文件并标识子目录。",
+  tags: ["工作区", "目录浏览", "目录列出"],
   capabilityId: "workspace.directory.list",
   title: "Workspace directory list",
   description: "List one workspace directory with Pi's sorting and truncation semantics.",
@@ -144,9 +156,14 @@ export const WorkspaceReadSystemTool = defineSystemTool({
   input: WorkspaceReadInput,
   output: PiToolResult,
   execute(input, context) {
-    return PiReadTool.execute(toolCallId(context), input, context.signal, undefined, {
-      env: context.executionEnv,
-    });
+    return PiReadTool.execute(
+      toolCallId(context),
+      input,
+      () => undefined,
+      { env: context.executionEnv },
+      createSystemToolInvocation(context),
+      createSystemToolContext(context),
+    );
   },
 });
 
@@ -206,7 +223,6 @@ export const PiWorkspaceSystemTools = Object.freeze([
 
 function workspaceToolMetadata(description: string, search: ToolSearchManifest): AgentSystemToolMetadata {
   return {
-    observation: StandardAgentToolObservationProjection,
     description,
     permissions: ["filesystem:workspace:read"],
     execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
@@ -225,6 +241,7 @@ function workspaceToolMetadata(description: string, search: ToolSearchManifest):
 function workspaceToolSearch(input: {
   commandAlias: string;
   summary: string;
+  tags: string[];
   capabilityId: string;
   title: string;
   description: string;
@@ -236,7 +253,7 @@ function workspaceToolSearch(input: {
 }): ToolSearchManifest {
   return {
     Summary: input.summary,
-    Tags: ["工作区", "文件读取", "代码搜索", input.commandAlias],
+    Tags: [...new Set([...input.tags, input.commandAlias])],
     Capabilities: [
       {
         Id: input.capabilityId,
@@ -441,20 +458,21 @@ function normalizePathEntry(value: string): string {
   return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }
 
-export function resolveAsarUnpackedExecutablePath(
-  candidate: string,
-  fileExists: (file: string) => boolean = fs.existsSync,
-): string {
-  const asarSegment = `${path.sep}app.asar${path.sep}`;
-  const segmentIndex = candidate.indexOf(asarSegment);
-  if (segmentIndex < 0) return candidate;
-
-  const unpackedCandidate = `${candidate.slice(0, segmentIndex)}${path.sep}app.asar.unpacked${path.sep}${candidate.slice(
-    segmentIndex + asarSegment.length,
-  )}`;
-  return fileExists(unpackedCandidate) ? unpackedCandidate : candidate;
-}
-
 function toolCallId(context: AgentHostToolContext): string {
   return context.toolCallId ?? context.tool.name;
+}
+
+function createSystemToolInvocation(context: AgentHostToolContext): AgentHarnessToolInvocation {
+  const invocationId = toolCallId(context);
+  return {
+    invocationId,
+    operationId: context.requestId ?? invocationId,
+    turnId: context.sessionId ?? invocationId,
+    getMemo: async () => undefined,
+    setMemo: async () => undefined,
+  };
+}
+
+function createSystemToolContext(context: AgentHostToolContext): Context {
+  return context.signal ? withAbortSignal(context.signal, BACKGROUND_CONTEXT) : BACKGROUND_CONTEXT;
 }

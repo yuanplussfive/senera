@@ -1,4 +1,3 @@
-import { Copy, ListTree, PanelLeft, RefreshCw, SquarePen } from "lucide-react";
 import { useCallback, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactElement } from "react";
 import { toast } from "sonner";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
@@ -9,6 +8,7 @@ import {
   ContextMenuLabel,
   ContextMenuSeparator,
   ContextMenuTrigger,
+  AppIcon,
   writeClipboardText,
 } from "../shared/ui";
 
@@ -18,6 +18,7 @@ export interface WorkspaceContextMenuProps {
   onOpenSessionPanel?: () => void;
   onOpenWorkflowPanel?: () => void;
   onRefreshSession?: () => void;
+  onRefreshInterface?: () => void;
 }
 
 export function WorkspaceContextMenu({
@@ -26,6 +27,7 @@ export function WorkspaceContextMenu({
   onOpenSessionPanel,
   onOpenWorkflowPanel,
   onRefreshSession,
+  onRefreshInterface,
 }: WorkspaceContextMenuProps): JSX.Element {
   const triggerRef = useRef<HTMLSpanElement>(null);
   const [selectionAvailable, setSelectionAvailable] = useState(false);
@@ -69,36 +71,43 @@ export function WorkspaceContextMenu({
         <ContextMenuLabel>{frontendMessage("workspace.contextMenu")}</ContextMenuLabel>
         <ContextMenuSeparator />
         <ContextMenuItem
-          icon={<SquarePen className="h-4 w-4" />}
+          icon={<AppIcon icon="pencil" className="h-4 w-4" />}
           disabled={!onNewSession}
           onSelect={() => onNewSession?.()}
         >
           {frontendMessage("workspace.context.newSession")}
         </ContextMenuItem>
         <ContextMenuItem
-          icon={<PanelLeft className="h-4 w-4" />}
+          icon={<AppIcon icon="panel-left-open" className="h-4 w-4" />}
           disabled={!onOpenSessionPanel}
           onSelect={() => onOpenSessionPanel?.()}
         >
           {frontendMessage("workspace.context.openSessions")}
         </ContextMenuItem>
         <ContextMenuItem
-          icon={<ListTree className="h-4 w-4" />}
+          icon={<AppIcon icon="list-tree" className="h-4 w-4" />}
           disabled={!onOpenWorkflowPanel}
           onSelect={() => onOpenWorkflowPanel?.()}
         >
           {frontendMessage("workspace.context.openWorkflow")}
         </ContextMenuItem>
         <ContextMenuItem
-          icon={<RefreshCw className="h-4 w-4" />}
+          icon={<AppIcon icon="refresh" className="h-4 w-4" />}
           disabled={!onRefreshSession}
           onSelect={() => onRefreshSession?.()}
         >
           {frontendMessage("workspace.context.refreshSession")}
         </ContextMenuItem>
+        <ContextMenuItem
+          icon={<AppIcon icon="refresh" className="h-4 w-4" />}
+          disabled={!onRefreshInterface}
+          onSelect={() => onRefreshInterface?.()}
+        >
+          {frontendMessage("workspace.context.refreshInterface")}
+        </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem
-          icon={<Copy className="h-4 w-4" />}
+          icon={<AppIcon icon="copy" className="h-4 w-4" />}
           disabled={!selectionAvailable}
           shortcut="Ctrl+C"
           onSelect={handleCopySelection}

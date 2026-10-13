@@ -14,6 +14,13 @@ export class AgentLoopToolEventFactory {
       batchId?: string;
       reason?: string;
       issues?: readonly string[];
+      calls?: readonly {
+        callId: string;
+        toolName: string;
+        purpose?: string;
+        origin?: AgentToolEventOrigin;
+        modelContentIndex?: number;
+      }[];
     } = {},
   ): AgentDomainEvent {
     return {
@@ -27,6 +34,7 @@ export class AgentLoopToolEventFactory {
         batchId: metadata.batchId,
         reason: metadata.reason,
         issues: metadata.issues ? [...metadata.issues] : undefined,
+        calls: metadata.calls ? metadata.calls.map((call) => ({ ...call })) : undefined,
       },
     };
   }
@@ -43,6 +51,8 @@ export class AgentLoopToolEventFactory {
       origin?: AgentToolEventOrigin;
       batchId?: string;
       startedAt?: string;
+      modelMessageIndex?: number;
+      modelContentIndex?: number;
     } = {},
   ): AgentDomainEvent {
     return {
@@ -56,6 +66,8 @@ export class AgentLoopToolEventFactory {
         ...(metadata.arguments === undefined ? {} : { arguments: metadata.arguments }),
         origin: metadata.origin,
         batchId: metadata.batchId,
+        ...(metadata.modelMessageIndex === undefined ? {} : { modelMessageIndex: metadata.modelMessageIndex }),
+        ...(metadata.modelContentIndex === undefined ? {} : { modelContentIndex: metadata.modelContentIndex }),
         ...(metadata.startedAt === undefined ? {} : { startedAt: metadata.startedAt }),
       },
     };

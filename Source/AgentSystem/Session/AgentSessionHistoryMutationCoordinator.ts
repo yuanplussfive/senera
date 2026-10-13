@@ -29,6 +29,7 @@ export interface AgentSessionHistoryMutationResult {
   readonly kind: "committed";
   readonly mutation: AgentSessionHistoryMutation;
   readonly removedEntries: number;
+  readonly removedRequestIds: readonly string[];
 }
 
 export interface AgentSessionHistoryMutationBoundaryMissing {
@@ -58,6 +59,23 @@ export class AgentSessionHistoryMutationCoordinator {
     return this.leases.run(sessionId, async () => {
       const mutation = this.options.store.loadPendingHistoryMutation(sessionId);
       return mutation ? this.recoverMutation(mutation) : undefined;
+    });
+  }
+
+  /** Rewind only the native Pi branch for an in-place retry. Durable Senera
+   * history is intentionally left untouched so the failed attempt remains
+   * auditable and no duplicate user entry is created. */
+  rewindForRetry(request: { session: AgentSession; preparation: AgentTurnPreparationSnapshot }): Promise<boolean> {
+    return this.leases.run(request.session.id, async () => {
+      const entryId = request.preparation.piBranchBoundaryId;
+      const service = this.options.piSessions;
+      if (!entryId || !service) return false;
+      const lifecycle = resolveAgentPiSessionLifecycle(request.session.metadata);
+      return service.rewind({
+        sessionId: request.session.id,
+        entryId,
+        modelProviderId: lifecycle.modelProviderId,
+      });
     });
   }
 
@@ -96,8 +114,9 @@ export class AgentSessionHistoryMutationCoordinator {
     mutation: AgentSessionHistoryMutation,
     session: AgentSession,
   ): Promise<AgentSessionHistoryMutationResult> {
+    const removedRequestIds = this.options.store.requestIdsFrom(mutation.sessionId, mutation.fromRequestId);
     const piState = await this.applyPiMutation(mutation);
-    await this.applyOwnedHistoryCleanup(mutation);
+    await this.applyOwnedHistoryCleanup(mutation, removedRequestIds);
     const committedSession: AgentSession = {
       ...session,
       updatedAt: new Date().toISOString(),
@@ -110,11 +129,14 @@ export class AgentSessionHistoryMutationCoordinator {
       kind: "committed",
       mutation,
       removedEntries: this.options.store.commitHistoryMutation(mutation, committedSession),
+      removedRequestIds,
     };
   }
 
-  private async applyOwnedHistoryCleanup(mutation: AgentSessionHistoryMutation): Promise<void> {
-    const requestIds = this.options.store.requestIdsFrom(mutation.sessionId, mutation.fromRequestId);
+  private async applyOwnedHistoryCleanup(
+    mutation: AgentSessionHistoryMutation,
+    requestIds: readonly string[],
+  ): Promise<void> {
     if (requestIds.length === 0) return;
     await this.options.artifacts?.removeSessionArtifactsFromRequests(mutation.sessionId, requestIds);
     this.options.memory?.deleteFromSessionRequest(mutation.sessionId, mutation.fromRequestId);

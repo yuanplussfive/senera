@@ -2,19 +2,22 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { formatSkillInvocation } from "@earendil-works/pi-agent-core";
-import { loadSkills, loadSkillsFromDir } from "@earendil-works/pi-coding-agent";
 import { describe, expect, test } from "vitest";
 import { AgentExtensionRegistry } from "../../../Source/AgentSystem/Extensions/AgentExtensionRegistry.js";
 import { AgentPiToolRegistryProjector } from "../../../Source/AgentSystem/Pi/AgentPiToolRegistryProjector.js";
 import type { AgentPiToolExecutionBridge } from "../../../Source/AgentSystem/Pi/AgentPiToolExecutionBridge.js";
 import { renderPiSystemPromptFrame } from "../../../Source/AgentSystem/Pi/AgentPiPromptFrameProjector.js";
-import { AgentPiSkillResolver } from "../../../Source/AgentSystem/Pi/AgentPiSkillResolver.js";
+import {
+  projectAgentPiActivatedSkills,
+  projectAgentPiSkillCatalog,
+} from "../../../Source/AgentSystem/Pi/AgentPiSkillCatalog.js";
 import { AgentSkillScanner } from "../../../Source/AgentSystem/Skills/AgentSkillScanner.js";
 import type { AgentActivatedSkill } from "../../../Source/AgentSystem/Skills/AgentSkillActivation.js";
 import { AgentSystemExtensionCatalog } from "../../../Source/AgentSystem/SystemTools/AgentSystemToolSource.js";
 import { createAgentSystemTools } from "../../../Source/AgentSystem/SystemTools/AgentSystemTools.js";
 import { systemToolCapability } from "../../../Source/AgentSystem/SystemTools/AgentSystemToolCatalog.js";
 import { listDefaultAgentHostCapabilityNames } from "../../../Source/AgentSystem/AgentDefaultHostCapabilities.js";
+import { AgentTodoToolNames } from "../../../Source/AgentSystem/Todos/AgentTodoTypes.js";
 
 describe("Pi tool contract cache behavior", () => {
   test("registers immutable contracts and reuses parameter schemas across turn projections", () => {
@@ -49,7 +52,30 @@ describe("Pi tool contract cache behavior", () => {
     }
   }, 15_000);
 
-  test("resolves activated Skills from the Pi resource catalog by stable file identity", () => {
+  test("projects split Todo tools to Pi without widening the update contract", () => {
+    const registry = new AgentExtensionRegistry();
+    const projector = toolProjector(registry);
+    registerSystemTools(registry);
+
+    const tools = projector.project();
+    expect(tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(Object.values(AgentTodoToolNames)));
+
+    const update = tools.find((tool) => tool.name === AgentTodoToolNames.Update);
+    const schema = update?.parameters as {
+      readonly properties?: {
+        readonly updates?: {
+          readonly items?: { readonly anyOf?: readonly { readonly required?: readonly string[] }[] };
+        };
+      };
+    };
+    expect(schema.properties?.updates?.items?.anyOf?.map((branch) => branch.required)).toEqual([
+      ["id", "status"],
+      ["id", "content"],
+      ["id", "content", "status"],
+    ]);
+  });
+
+  test("projects the validated Skill body without discovering or reading it again", () => {
     const skill = new AgentSkillScanner()
       .scanRoot(path.resolve("System/Skills"))
       .find((candidate) => candidate.name === "execution-workflow");
@@ -64,13 +90,13 @@ describe("Pi tool contract cache behavior", () => {
       recommendedTools: [],
       evidenceRequirements: [],
       descriptionFile: skill.descriptionFile,
+      content: skill.content,
       matchedTerms: ["workflow"],
       matchedFields: [{ term: "workflow", fields: ["description"] }],
       score: 1,
     };
 
-    const catalog = loadSkillsFromDir({ dir: path.dirname(skill.descriptionFile), source: "system" });
-    const projectedSkill = new AgentPiSkillResolver().resolve([activeSkill], catalog)[0];
+    const projectedSkill = projectAgentPiActivatedSkills([activeSkill])[0];
     if (!projectedSkill) throw new Error("Missing projected execution-workflow Skill.");
 
     expect(projectedSkill.content).toContain("# Execution Workflow");
@@ -80,27 +106,37 @@ describe("Pi tool contract cache behavior", () => {
     );
   });
 
-  test("rejects colliding or path-mismatched Pi Skill identities", () => {
+  test("uses the registry winner for colliding names and keeps an activated revision across updates", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "senera-pi-skills-"));
     try {
-      const first = writeSkill(root, "first", "shared-skill", "First body.");
-      writeSkill(root, "second", "shared-skill", "Second body.");
-      const catalog = loadSkills({ cwd: root, agentDir: root, skillPaths: [root], includeDefaults: false });
-      const resolver = new AgentPiSkillResolver();
+      const systemFile = writeSkill(root, "system/shared-skill", "shared-skill", "System body.");
+      const projectFile = writeSkill(root, "project/shared-skill", "shared-skill", "Project body.");
+      const scanner = new AgentSkillScanner();
+      const registry = new AgentExtensionRegistry();
+      registry.registerSkill({
+        ...scanner.readSkillDirectory(path.dirname(systemFile)),
+        source: { kind: "system", id: "shared-skill", displayName: "System", priority: 10 },
+      });
+      registry.registerSkill(scanner.readSkillDirectory(path.dirname(projectFile)));
+      const firstCatalog = projectAgentPiSkillCatalog(registry.listSkills());
+      expect(firstCatalog.skills).toHaveLength(1);
+      expect(firstCatalog.skills[0]?.filePath).toBe(systemFile);
 
-      expect(() => resolver.resolve([activatedSkill("shared-skill", first)], catalog)).toThrow(/ambiguous between/u);
-      expect(() =>
-        resolver.resolve(
-          [activatedSkill(catalog.skills[0]?.name ?? "missing", path.join(root, "absent", "SKILL.md"))],
-          { skills: catalog.skills.slice(0, 1), diagnostics: [] },
-        ),
-      ).toThrow(/absent from the Pi ResourceLoader catalog/u);
+      const activated = activatedSkill("shared-skill", systemFile);
+      const turnCatalog = projectAgentPiSkillCatalog(registry.listSkills(), [activated]);
+      fs.rmSync(path.dirname(systemFile), { recursive: true });
+      registry.removeSkills("system:shared-skill");
+      expect(projectAgentPiActivatedSkills([activated])[0]?.content).toBe("System body.");
+      expect(projectAgentPiSkillCatalog(registry.listSkills(), [activated])).toEqual(turnCatalog);
+      const nextCatalog = projectAgentPiSkillCatalog(registry.listSkills());
+      expect(nextCatalog.skills[0]?.filePath).toBe(projectFile);
+      expect(nextCatalog.fingerprint).not.toBe(firstCatalog.fingerprint);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
   });
 
-  test("injects selected Skill bodies once as unmodified Markdown with optional author comments", () => {
+  test("projects selected Skill metadata without injecting bodies into the request", () => {
     const markdownWithEof = [
       "# YAML Skill",
       "",
@@ -130,10 +166,14 @@ describe("Pi tool contract cache behavior", () => {
       selectedPromptTemplates: [],
     });
 
-    expect(prompt.split(markdownWithEof)).toHaveLength(2);
-    expect(prompt.split(plainMarkdown)).toHaveLength(2);
-    expect(prompt).toContain("```yaml\nenabled: true\n```");
-    expect(prompt).toContain("<!-- YAML_SKILL_EOF: Complete skill. -->");
+    expect(prompt).not.toContain(markdownWithEof);
+    expect(prompt).not.toContain(plainMarkdown);
+    expect(prompt).toContain("yaml-skill");
+    expect(prompt).toContain("plain-skill");
+    expect(prompt).not.toContain("/skills/yaml/SKILL.md");
+    expect(prompt).not.toContain("/skills/plain/SKILL.md");
+    expect(prompt).not.toContain("revision:");
+    expect(prompt).toContain("load-complete-bodies-on-demand");
     expect(prompt).not.toContain("<code_block>");
     expect(prompt).not.toContain("<matched_terms>");
     expect(prompt).not.toContain("<available_skills>");
@@ -147,6 +187,28 @@ describe("Pi tool contract cache behavior", () => {
     const first = projector.createToolSet().fingerprint;
     const tool = registry.listTools()[0]!;
     (tool.owner as { title?: string }).title = `${tool.owner.title ?? tool.name} (updated)`;
+
+    expect(projector.createToolSet().fingerprint).not.toBe(first);
+  });
+
+  test("changes the tool fingerprint when an internal resource contract changes", () => {
+    const registry = new AgentExtensionRegistry();
+    const projector = toolProjector(registry);
+    registerSystemTools(registry);
+
+    const first = projector.createToolSet().fingerprint;
+    const tool = registry.listTools().find((candidate) => candidate.name === "WorkspaceApplyPatch");
+    if (!tool) throw new Error("Missing WorkspaceApplyPatch.");
+    const replacement = {
+      ...tool,
+      handler: {
+        ...tool.handler,
+        resources: (tool.handler.resources ?? []).map((resource, index) =>
+          index === 0 ? { ...resource, Parameters: { ...resource.Parameters, Intent: "replace" } } : resource,
+        ),
+      },
+    };
+    registry.replaceToolExtension(tool.owner, [replacement]);
 
     expect(projector.createToolSet().fingerprint).not.toBe(first);
   });
@@ -211,6 +273,7 @@ function activatedSkill(name: string, descriptionFile: string): AgentActivatedSk
     recommendedTools: [],
     evidenceRequirements: [],
     descriptionFile,
+    content: new AgentSkillScanner().readSkillDirectory(path.dirname(descriptionFile), name).content,
     matchedTerms: [],
     matchedFields: [],
     score: 1,

@@ -1,6 +1,8 @@
 {
-  "defaultIcon": "openai",
+  "defaultIcon": "sparkles",
   "icons": [
+    "sparkles",
+    "unknown",
     "ai21",
     "ai302",
     "ai360",
@@ -67,7 +69,6 @@
     "tencentcloud",
     "together",
     "upstage",
-    "unknown",
     "v0",
     "vertexai",
     "vllm",

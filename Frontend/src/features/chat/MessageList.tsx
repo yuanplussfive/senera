@@ -11,10 +11,14 @@ import {
 } from "react";
 import type { InteractionInputAction, InteractionInputContent } from "../../api/eventTypes";
 import type { ChatMessage, RunRecord, UserProfile } from "../../store/sessionStore";
+import type { CalculateViewLocation } from "react-virtuoso";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { isSupersededFailure, readSupersededFailureIds } from "../../store/session/runRecoveryProjection";
 import { useResponsiveMode } from "../../shared/responsive";
 import { useMotionLevel } from "../../shared/motion";
 import { PerformanceMonitor } from "../../app/PerformanceMonitor";
 import { AssistantTurnRow } from "./AssistantTurnRow";
+import { ChatLoadingSurface } from "./ChatLoadingSurface";
 import { DeleteMessageDialog } from "./DeleteMessageDialog";
 import { MessageRow } from "./MessageRow";
 import { MotionMessageItem } from "./MotionMessageItem";
@@ -32,7 +36,6 @@ import { scheduleIdleTask } from "../../shared/scheduling/scheduleIdleTask";
 import {
   ConversationEventRail,
   projectConversationEvents,
-  readConversationEventIndex,
   type ConversationEventKind,
   type ConversationEventSourceItem,
 } from "./ConversationEventRail";
@@ -47,6 +50,8 @@ interface MessageListProps {
   userProfile: UserProfile;
   onForkFromMessage: (message: Pick<ChatMessage, "requestId">) => void;
   onRegenerate: (m: ChatMessage) => void;
+  onRetryRun: (m: ChatMessage) => void;
+  onContinueRun: (m: ChatMessage) => void;
   onEditUserMessage: (m: ChatMessage, nextContent: string) => void;
   onDeleteFromMessage: (m: ChatMessage) => void;
   onViewWorkflow: (m: ChatMessage) => void;
@@ -61,10 +66,14 @@ const MESSAGE_LIST_BOTTOM_THRESHOLD = 80;
 const MESSAGE_ITEM_DEFAULT_HEIGHT = 132;
 const MESSAGE_LIST_FORWARD_OVERSCAN_PX = 160;
 const MESSAGE_LIST_REVERSE_OVERSCAN_PX = 96;
-const EVENT_NAVIGATION_SETTLE_MS = 320;
 // The rail is navigational chrome, so update it after the message layout settles instead
 // of competing with image decoding and inertial scrolling on every ResizeObserver entry.
 const EVENT_RAIL_HEIGHT_SAMPLE_MS = 160;
+
+const forceCenterEventLocation: CalculateViewLocation = ({ locationParams }) => ({
+  ...locationParams,
+  align: "center",
+});
 
 const LazyMessageListVirtualizer = lazy(() =>
   import("./MessageListVirtualizer").then((module) => ({ default: module.MessageListVirtualizer })),
@@ -83,6 +92,23 @@ function readMeasuredMessageKey(element: HTMLElement): string | null {
   );
 }
 
+/** Keep reply navigation inside the chat scroller instead of scrolling every ancestor. */
+export function scrollConversationAnchorIntoView(scroller: HTMLElement, anchor: HTMLElement): void {
+  const scrollerRect = scroller.getBoundingClientRect();
+  const anchorRect = anchor.getBoundingClientRect();
+  const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+  const targetTop = Math.min(
+    maxScrollTop,
+    Math.max(
+      0,
+      scroller.scrollTop + anchorRect.top - scrollerRect.top - (scroller.clientHeight - anchorRect.height) / 2,
+    ),
+  );
+
+  if (Math.abs(targetTop - scroller.scrollTop) < 1) return;
+  scroller.scrollTo({ top: targetTop, behavior: "auto" });
+}
+
 export function MessageList({
   sessionId,
   uploadUrl,
@@ -93,6 +119,8 @@ export function MessageList({
   userProfile,
   onForkFromMessage,
   onRegenerate,
+  onRetryRun,
+  onContinueRun,
   onEditUserMessage,
   onDeleteFromMessage,
   onViewWorkflow,
@@ -104,18 +132,22 @@ export function MessageList({
   const [editing, setEditing] = useState<{ id: string; message: ChatMessage } | null>(null);
   const [draft, setDraft] = useState("");
   const [deleting, setDeleting] = useState<ChatMessage | null>(null);
+  const [dismissedFailures, setDismissedFailures] = useState(() => {
+    const superseded = readSupersededFailureIds({ runs });
+    return new Set(messages.filter((message) => isSupersededFailure(message, superseded)).map((message) => message.id));
+  });
+  const supersededFailures = useMemo(() => readSupersededFailureIds({ runs }), [runs]);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const measuredHeightsRef = useRef<Map<string, number>>(new Map());
   const [eventMeasuredHeights, setEventMeasuredHeights] = useState<ReadonlyMap<string, number>>(new Map());
   const eventHeightSampleTimerRef = useRef<number | null>(null);
-  const eventNavigationTimerRef = useRef<number | null>(null);
+  const eventNavigationTokenRef = useRef(0);
+  const eventNavigationLockRef = useRef(false);
+  const eventNavigationSettleFrameRef = useRef<number | null>(null);
   const activeEventSessionRef = useRef(sessionId);
-  const previousStreamingRunIdRef = useRef<string | null>(null);
-  const highlightedRunIdsRef = useRef<Set<string>>(new Set());
   const chatScrollerRef = useRef<HTMLElement | null>(null);
   const [chatScroller, setChatScroller] = useState<HTMLElement | null>(null);
   const [activeEventIndex, setActiveEventIndex] = useState(0);
-  const [completedRunIdToHighlight, setCompletedRunIdToHighlight] = useState<string | null>(null);
   const [eventRailReady, setEventRailReady] = useState(!historyHydrating);
   const runsByRequestId = useMemo(() => {
     const map = new Map<string, RunRecord>();
@@ -124,8 +156,15 @@ export function MessageList({
   }, [runs]);
   const streamingRun = currentRun?.status === "running" || currentRun?.status === "cancelling" ? currentRun : undefined;
   const displayedMessages = useMemo(
-    () => (streamingRun ? messages.filter((message) => !shouldDeferTerminalMessage(message, streamingRun)) : messages),
-    [messages, streamingRun],
+    () =>
+      messages.filter(
+        (message) =>
+          !(
+            isSupersededFailure(message, supersededFailures) &&
+            (historyHydrating || dismissedFailures.has(message.id))
+          ) && !(streamingRun && shouldDeferTerminalMessage(message, streamingRun)),
+      ),
+    [messages, streamingRun, supersededFailures, dismissedFailures, historyHydrating],
   );
   const displayedMessageIds = useMemo(
     () => new Set(displayedMessages.map((message) => message.id)),
@@ -134,9 +173,32 @@ export function MessageList({
   const deferredMessages = useDeferredValue(displayedMessages);
   const deferredRuns = useDeferredValue(runs);
   const deferredStreamingRun = useDeferredValue(streamingRun);
+  // The history projection may be deferred, but the active request must never
+  // disappear between its streaming and terminal snapshots. Keep the latest
+  // messages and run for that request in the deferred projection, including
+  // the short hand-off frame after streamingRun becomes undefined.
+  const activeRequestId = streamingRun?.requestId ?? deferredStreamingRun?.requestId;
+  const projectedMessages = useMemo(() => {
+    if (!activeRequestId) return deferredMessages;
+    const knownIds = new Set(deferredMessages.map((message) => message.id));
+    const activeMessages = displayedMessages.filter(
+      (message) => message.requestId === activeRequestId && !knownIds.has(message.id),
+    );
+    return activeMessages.length > 0 ? [...deferredMessages, ...activeMessages] : deferredMessages;
+  }, [activeRequestId, deferredMessages, displayedMessages]);
+  const projectedRuns = useMemo(() => {
+    if (!activeRequestId) return deferredRuns;
+    const latestRun = runs.find((run) => run.requestId === activeRequestId) ?? streamingRun ?? deferredStreamingRun;
+    if (!latestRun) return deferredRuns;
+    const existingIndex = deferredRuns.findIndex((run) => run.requestId === activeRequestId);
+    if (existingIndex < 0) return [...deferredRuns, latestRun];
+    const nextRuns = [...deferredRuns];
+    nextRuns[existingIndex] = latestRun;
+    return nextRuns;
+  }, [activeRequestId, deferredRuns, deferredStreamingRun, runs, streamingRun]);
   const items = useMemo(
-    () => projectAssistantTurns(deferredMessages, deferredRuns, deferredStreamingRun),
-    [deferredMessages, deferredRuns, deferredStreamingRun],
+    () => projectAssistantTurns(projectedMessages, projectedRuns, streamingRun),
+    [projectedMessages, projectedRuns, streamingRun],
   );
   // Keep the socket/store path responsive while a large history projection is
   // being committed. React can paint the previous window first and reconcile
@@ -213,6 +275,12 @@ export function MessageList({
   useEffect(() => {
     measuredHeightsRef.current.clear();
     setEventMeasuredHeights(new Map());
+    eventNavigationTokenRef.current += 1;
+    eventNavigationLockRef.current = false;
+    if (eventNavigationSettleFrameRef.current !== null) {
+      window.cancelAnimationFrame(eventNavigationSettleFrameRef.current);
+      eventNavigationSettleFrameRef.current = null;
+    }
   }, [sessionId]);
 
   const scheduleEventHeightSnapshot = useCallback((): void => {
@@ -235,7 +303,12 @@ export function MessageList({
   useEffect(
     () => () => {
       if (eventHeightSampleTimerRef.current !== null) window.clearTimeout(eventHeightSampleTimerRef.current);
-      if (eventNavigationTimerRef.current !== null) window.clearTimeout(eventNavigationTimerRef.current);
+      eventNavigationTokenRef.current += 1;
+      eventNavigationLockRef.current = false;
+      if (eventNavigationSettleFrameRef.current !== null) {
+        window.cancelAnimationFrame(eventNavigationSettleFrameRef.current);
+        eventNavigationSettleFrameRef.current = null;
+      }
     },
     [],
   );
@@ -278,22 +351,6 @@ export function MessageList({
     [setAutoScrollScroller],
   );
 
-  useEffect(() => {
-    const currentStreamingRunId = currentRun?.requestId ?? null;
-    const previousStreamingRunId = previousStreamingRunIdRef.current;
-    previousStreamingRunIdRef.current = currentStreamingRunId;
-    if (!previousStreamingRunId || currentStreamingRunId === previousStreamingRunId) return;
-    if (highlightedRunIdsRef.current.has(previousStreamingRunId)) return;
-    highlightedRunIdsRef.current.add(previousStreamingRunId);
-    setCompletedRunIdToHighlight(previousStreamingRunId);
-  }, [currentRun?.requestId]);
-
-  useEffect(() => {
-    if (!completedRunIdToHighlight) return;
-    const id = window.setTimeout(() => setCompletedRunIdToHighlight(null), 900);
-    return () => window.clearTimeout(id);
-  }, [completedRunIdToHighlight]);
-
   const closeEditor = (): void => {
     setEditing(null);
     setDraft("");
@@ -308,6 +365,7 @@ export function MessageList({
   const showScrollButton = !isAtBottom && renderedItems.length > 0;
 
   useEffect(() => {
+    if (eventNavigationLockRef.current) return;
     const lastEventIndex = Math.max(0, conversationEvents.length - 1);
     const sessionChanged = activeEventSessionRef.current !== sessionId;
     activeEventSessionRef.current = sessionId;
@@ -316,38 +374,77 @@ export function MessageList({
     );
   }, [conversationEvents.length, isAtBottom, sessionId]);
 
+  const updateActiveEventIndex = useCallback((index: number): void => {
+    if (eventNavigationLockRef.current) return;
+    setActiveEventIndex(index);
+  }, []);
+
   const navigateToEvent = useCallback(
     (event: (typeof conversationEvents)[number]): void => {
+      const navigationToken = eventNavigationTokenRef.current + 1;
+      eventNavigationTokenRef.current = navigationToken;
+      eventNavigationLockRef.current = true;
+      if (eventNavigationSettleFrameRef.current !== null) {
+        window.cancelAnimationFrame(eventNavigationSettleFrameRef.current);
+        eventNavigationSettleFrameRef.current = null;
+      }
       beginManualScroll();
-      autoScroll.ref.current?.scrollToIndex({
-        index: event.itemIndex,
-        align: "start",
-        behavior: reduceMotion || disableMotion ? "auto" : "smooth",
-      });
       const nextIndex = conversationEvents.findIndex((candidate) => candidate.id === event.id);
       if (nextIndex >= 0) setActiveEventIndex(nextIndex);
-      if (eventNavigationTimerRef.current !== null) window.clearTimeout(eventNavigationTimerRef.current);
-      eventNavigationTimerRef.current = window.setTimeout(
-        () => {
-          eventNavigationTimerRef.current = null;
+
+      const finishNavigation = (): void => {
+        if (eventNavigationTokenRef.current !== navigationToken) return;
+        let framesRemaining = 1;
+        const settle = (): void => {
+          eventNavigationSettleFrameRef.current = null;
+          if (eventNavigationTokenRef.current !== navigationToken) return;
+          const scroller = chatScrollerRef.current;
           const anchor = event.anchorId ? document.getElementById(event.anchorId) : null;
-          if (anchor && chatScrollerRef.current?.contains(anchor)) {
-            anchor.scrollIntoView({
-              block: "center",
-              behavior: reduceMotion || disableMotion ? "auto" : "smooth",
-            });
+          const anchorReady = !event.anchorId || (scroller !== null && anchor !== null && scroller.contains(anchor));
+          if (!anchorReady && framesRemaining > 0) {
+            framesRemaining -= 1;
+            eventNavigationSettleFrameRef.current = window.requestAnimationFrame(settle);
+            return;
           }
+          if (scroller && anchor && scroller.contains(anchor)) {
+            // Virtuoso owns row discovery; this one direct scroll owns exact reply alignment.
+            scrollConversationAnchorIntoView(scroller, anchor);
+          }
+          if (framesRemaining > 0) {
+            framesRemaining -= 1;
+            eventNavigationSettleFrameRef.current = window.requestAnimationFrame(settle);
+            return;
+          }
+          eventNavigationLockRef.current = false;
           endManualScroll();
-        },
-        reduceMotion || disableMotion ? 0 : EVENT_NAVIGATION_SETTLE_MS,
-      );
+        };
+        eventNavigationSettleFrameRef.current = window.requestAnimationFrame(settle);
+      };
+
+      const behavior = reduceMotion || disableMotion ? "auto" : "smooth";
+      const handle = autoScroll.ref.current;
+      if (!handle) {
+        finishNavigation();
+        return;
+      }
+
+      handle.scrollIntoView({
+        index: event.itemIndex,
+        align: "center",
+        behavior,
+        calculateViewLocation: forceCenterEventLocation,
+        done: finishNavigation,
+      });
     },
     [autoScroll.ref, beginManualScroll, conversationEvents, disableMotion, endManualScroll, reduceMotion],
   );
 
   return (
     <PerformanceMonitor id="MessageList" enabled={import.meta.env.DEV}>
-      <div className="relative flex min-h-0 flex-1 flex-col">
+      <div
+        className="relative flex min-h-0 flex-1 flex-col"
+        data-chat-rail-mode={supportsHover && !prefersCompactControls ? "overlay" : "native"}
+      >
         <Suspense fallback={<MessageListVirtualizerLoadingState />}>
           <LazyMessageListVirtualizer
             ref={autoScroll.ref}
@@ -360,10 +457,6 @@ export function MessageList({
               autoScroll.atBottomStateChange(atBottom);
               setIsAtBottom(atBottom);
             }}
-            rangeChanged={(range) => {
-              setActiveEventIndex(readConversationEventIndex(conversationEvents, range.startIndex));
-            }}
-            totalListHeightChanged={autoScroll.totalListHeightChanged}
             defaultItemHeight={MESSAGE_ITEM_DEFAULT_HEIGHT}
             initialTopMostItemIndex={{ index: Math.max(0, renderedItems.length - 1), align: "end" }}
             atBottomThreshold={MESSAGE_LIST_BOTTOM_THRESHOLD}
@@ -374,9 +467,6 @@ export function MessageList({
               const itemKey = readMessageListItemKey(item, index);
               if (!item) return <div className="h-px" data-message-key={itemKey} />;
               if (isAssistantTurnListItem(item)) {
-                const shouldHighlightCompletedStream = item.requestId === completedRunIdToHighlight;
-                const shouldAnimateMount =
-                  !item.streaming && (shouldHighlightCompletedStream || index >= renderedItems.length - 2);
                 return (
                   <div
                     className="chat-message-item box-border w-full pb-3 pt-1"
@@ -385,8 +475,10 @@ export function MessageList({
                   >
                     <MotionMessageItem
                       motionKey={item.key}
-                      animateOnMount={shouldAnimateMount}
-                      className={shouldHighlightCompletedStream ? "streaming-complete-highlight" : undefined}
+                      // Assistant rows can transition from streaming to final
+                      // in place. A mount transform here would move the whole
+                      // conversation once the final token is committed.
+                      animateOnMount={false}
                     >
                       <AssistantTurnRow
                         sessionId={sessionId}
@@ -405,7 +497,7 @@ export function MessageList({
               const shouldAnimateMount = index >= renderedItems.length - 2;
               return (
                 <div
-                  className="chat-message-item box-border w-full pb-3 pt-1"
+                  className={`chat-message-item box-border w-full ${item.role === "system" ? "" : "pb-3 pt-1"}`}
                   data-message-key={itemKey}
                   ref={heightObserverRef}
                 >
@@ -435,6 +527,10 @@ export function MessageList({
                       showInlineActions={showInlineMessageActions}
                       onFork={() => onForkFromMessage(item)}
                       onRegenerate={() => onRegenerate(item)}
+                      onRetryRun={() => onRetryRun(item)}
+                      onContinueRun={() => onContinueRun(item)}
+                      failureSuperseded={isSupersededFailure(item, supersededFailures)}
+                      onFailureDismissed={() => setDismissedFailures((previous) => new Set(previous).add(item.id))}
                       onDelete={() => setDeleting(item)}
                       onViewWorkflow={() => onViewWorkflow(item)}
                     />
@@ -455,7 +551,7 @@ export function MessageList({
           defaultItemHeight={MESSAGE_ITEM_DEFAULT_HEIGHT}
           activeEventIndex={activeEventIndex}
           scroller={chatScroller}
-          onActiveEventChange={setActiveEventIndex}
+          onActiveEventChange={updateActiveEventIndex}
           onNavigate={navigateToEvent}
         />
         <ScrollToBottomButton visible={showScrollButton} onClick={scrollToBottom} />
@@ -476,7 +572,11 @@ export function MessageList({
 }
 
 function MessageListVirtualizerLoadingState(): JSX.Element {
-  return <div className="min-h-0 flex-1" aria-busy="true" data-message-list-loading />;
+  return (
+    <div className="min-h-0 flex-1" data-message-list-loading>
+      <ChatLoadingSurface label={frontendMessage("ui.loading")} />
+    </div>
+  );
 }
 
 function shouldDeferTerminalMessage(message: ChatMessage, run: RunRecord): boolean {
@@ -524,6 +624,9 @@ function readStreamingConversationEventKind(
 }
 
 function readTurnEventProgress(messageIndex: number, messageCount: number, kind: ChatMessage["kind"]): number {
-  if (kind === "AssistantFinal" || kind === "AssistantAsk" || kind === "Error") return 0.82;
+  if (kind === "AssistantFinal" || kind === "AssistantAsk" || kind === "Error") {
+    // Keep multiple terminal landmarks inside one virtual row strictly ordered.
+    return 0.7 + (0.24 * (messageIndex + 1)) / (messageCount + 1);
+  }
   return (messageIndex + 1) / (messageCount + 1);
 }

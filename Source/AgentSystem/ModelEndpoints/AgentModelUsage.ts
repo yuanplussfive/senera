@@ -1,4 +1,3 @@
-import type { AgentLanguageModelRequest } from "./AgentLanguageModel.js";
 import { AgentModelTokenEstimator } from "../Text/AgentTextBudget.js";
 import { estimateAgentModelInputTokens } from "../Text/AgentMultimodalTokenBudget.js";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -98,7 +97,11 @@ export class AgentModelUsageResolver {
   }
 
   resolve(
-    request: Pick<AgentLanguageModelRequest, "systemPrompt" | "messages">,
+    request: {
+      readonly systemPrompt?: string;
+      readonly messages: readonly unknown[];
+      readonly tools?: readonly unknown[];
+    },
     outputText: string,
     reported?: AgentModelUsageValue,
   ): AgentModelUsageValue {
@@ -106,6 +109,7 @@ export class AgentModelUsageResolver {
       inputTokens: estimateAgentModelInputTokens(this.estimator, {
         systemPrompt: request.systemPrompt,
         messages: request.messages,
+        ...(request.tools ? { tools: request.tools } : {}),
       }),
       outputTokens: this.estimator.estimate(outputText).tokenCount,
     };
@@ -138,11 +142,23 @@ export class AgentModelUsageResolver {
 export class AgentModelUsageLedger {
   private readonly calls: AgentModelUsageCall[] = [];
 
+  constructor(private readonly parent?: AgentModelUsageLedger) {}
+
+  /**
+   * Creates a local view for a nested model call. Records made through the
+   * child stay available for that call's cache/diagnostic projection while
+   * being forwarded to the owning turn exactly once.
+   */
+  fork(): AgentModelUsageLedger {
+    return new AgentModelUsageLedger(this);
+  }
+
   record(call: AgentModelUsageCall): void {
     this.calls.push({
       stage: call.stage,
       usage: cloneUsageValue(call.usage),
     });
+    this.parent?.record(call);
   }
 
   aggregate(): AgentModelUsage | undefined {

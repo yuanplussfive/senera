@@ -291,6 +291,10 @@ export class InMemorySessionRepository implements AgentSessionRepository {
     return this.history.loadRunSnapshots(sessionId);
   }
 
+  loadRunSnapshot(sessionId: string, requestId: string): StoredRunSnapshot | undefined {
+    return this.history.loadRunSnapshot(sessionId, requestId);
+  }
+
   loadRunSnapshotsForRequests(
     sessionId: string,
     requestIds: readonly string[],
@@ -365,6 +369,10 @@ export class InMemorySessionRepository implements AgentSessionRepository {
     request: AgentSessionCursorPageRequest,
   ): AgentSessionCursorPage<AgentEventEnvelope> {
     return this.history.loadRunEventPage(sessionId, request);
+  }
+
+  loadRunEvent(sessionId: string, requestId: string, kind: string): AgentEventEnvelope | undefined {
+    return this.history.loadRunEvent(sessionId, requestId, kind);
   }
 
   deleteRunEventsFrom(sessionId: string, requestId: string): number {

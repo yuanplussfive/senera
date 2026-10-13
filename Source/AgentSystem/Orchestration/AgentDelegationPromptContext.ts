@@ -1,6 +1,7 @@
 import { projectAgentTextPreview } from "../Text/AgentTextProjection.js";
 import {
   AgentChildRunStatuses,
+  isAgentChildRunResultTerminal,
   type AgentChildRunRecord,
   type AgentChildRunSnapshot,
   type AgentChildRunStatus,
@@ -19,8 +20,7 @@ export interface AgentDelegationPromptRun {
   readonly workItemId?: string;
   readonly taskDigest?: string;
   readonly resultAvailable: boolean;
-  readonly resultConsumed: boolean;
-  readonly parentWakePending: boolean;
+  readonly resultDelivered: boolean;
   readonly resources: {
     readonly coverage: "declared" | "unscoped";
     readonly claims: readonly {
@@ -48,7 +48,6 @@ export interface AgentDelegationPromptContext {
     readonly awaitingSupervisor: number;
     readonly terminal: number;
     readonly pendingResults: number;
-    readonly pendingWakes: number;
   };
 }
 
@@ -60,32 +59,21 @@ export const EmptyAgentDelegationPromptContext: AgentDelegationPromptContext = {
     awaitingSupervisor: 0,
     terminal: 0,
     pendingResults: 0,
-    pendingWakes: 0,
   },
 };
 
-const TerminalStatuses = new Set<AgentChildRunStatus>([
-  AgentChildRunStatuses.Completed,
-  AgentChildRunStatuses.PartialCompleted,
-  AgentChildRunStatuses.Interrupted,
-  AgentChildRunStatuses.TimedOut,
-  AgentChildRunStatuses.Failed,
-  AgentChildRunStatuses.Cancelled,
-]);
-
-/** Projects only active or still-unconsumed children into the volatile prompt. */
+/** Projects only active or still-undelivered child results into the volatile prompt. */
 export function projectAgentDelegationPromptContext(
   records: readonly AgentChildRunRecord[],
 ): AgentDelegationPromptContext {
   const counts = records.reduce(
     (summary, record) => {
-      const terminal = TerminalStatuses.has(record.status);
+      const terminal = isAgentChildRunResultTerminal(record.status);
       summary.total += 1;
       if (terminal) summary.terminal += 1;
       else if (record.status === AgentChildRunStatuses.AwaitingSupervisor) summary.awaitingSupervisor += 1;
       else summary.active += 1;
-      if (terminal && record.resultConsumedAt === undefined) summary.pendingResults += 1;
-      if (terminal && record.parentWakeConsumed !== true) summary.pendingWakes += 1;
+      if (terminal && record.parentResultDeliveredAt === undefined) summary.pendingResults += 1;
       return summary;
     },
     {
@@ -94,12 +82,11 @@ export function projectAgentDelegationPromptContext(
       awaitingSupervisor: 0,
       terminal: 0,
       pendingResults: 0,
-      pendingWakes: 0,
     },
   );
 
   const runs = records
-    .filter((record) => !TerminalStatuses.has(record.status) || record.resultConsumedAt === undefined)
+    .filter((record) => !isAgentChildRunResultTerminal(record.status) || record.parentResultDeliveredAt === undefined)
     .map(projectRun);
   return { runs, counts };
 }
@@ -115,8 +102,7 @@ function projectRun(record: AgentChildRunRecord): AgentDelegationPromptRun {
     ...(record.workItemId ? { workItemId: record.workItemId } : {}),
     ...(record.taskDigest ? { taskDigest: record.taskDigest } : {}),
     resultAvailable: record.finalAnswer !== undefined,
-    resultConsumed: record.resultConsumedAt !== undefined,
-    parentWakePending: TerminalStatuses.has(record.status) && record.parentWakeConsumed !== true,
+    resultDelivered: record.parentResultDeliveredAt !== undefined,
     resources: {
       coverage: record.executionContract.resourceCoverage ?? "unscoped",
       claims: record.executionContract.resourceClaims ?? [],

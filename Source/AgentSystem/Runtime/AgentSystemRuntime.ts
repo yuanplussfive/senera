@@ -8,17 +8,21 @@ import type { AgentExecutionResourceBroker } from "../ExecutionResources/AgentEx
 import type { AgentInteractionInputRuntime } from "../Interaction/AgentInteractionInputRuntime.js";
 import type { AgentPiActiveSessionRegistry } from "../Pi/AgentPiActiveSessionRegistry.js";
 import type { AgentPiDiagnosticSink } from "../Pi/AgentPiDiagnostics.js";
-import { AgentSkillScanner } from "../Skills/AgentSkillScanner.js";
 import type { AgentSandboxRuntimeProvider } from "../Sandbox/AgentSandboxRuntimeTypes.js";
 import { resolveAgentPromptConfig } from "../Defaults/AgentRuntimeDefaults.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
-import type { AgentToolSearchMemoryStore } from "../ToolSearch/AgentToolSearchMemoryTypes.js";
+import type { AgentToolSearchScenarioSource } from "../ToolSearch/AgentToolSearchScenarioSource.js";
 import type { AgentRuntimeModule } from "./AgentRuntimeModule.js";
 import { AgentMcpPackageScanner, assertUniqueAgentMcpServerNames } from "../McpPackages/AgentMcpPackageScanner.js";
-import { AgentMcpPackageDiscovery } from "../McpPackages/AgentMcpPackageDiscovery.js";
+import {
+  AgentMcpPackageDiscovery,
+  AgentMcpPackageDiscoveryError,
+  type AgentUnavailableMcpServer,
+} from "../McpPackages/AgentMcpPackageDiscovery.js";
 import { AgentMcpPackageSourceKinds } from "../McpPackages/AgentMcpPackageTypes.js";
 import { isAgentMcpPackageToolNameForServer } from "../McpPackages/AgentMcpPackageIdentity.js";
 import { AgentMcpPackageCatalog } from "../McpPackages/AgentMcpPackageCatalog.js";
+import { AgentMcpPackageSchemaCache } from "../McpPackages/AgentMcpPackageSchemaCache.js";
 import type { AgentMcpToolsChanged } from "../Mcp/AgentMcpToolCatalogChange.js";
 import type { AgentExtensionValueResolver } from "../Extensions/AgentExtensionValueExpression.js";
 import {
@@ -34,14 +38,26 @@ import { AgentPromptTierRenderCache } from "../Prompt/AgentPromptTierRenderCache
 import type { AgentExecutionLedgerService } from "../Goals/AgentExecutionLedgerService.js";
 import type { AgentTodoService } from "../Todos/AgentTodoService.js";
 import type { AgentContinuityLifecyclePort } from "../Continuity/AgentContinuityLifecycle.js";
-import type { AgentWorldSnapshotProvider } from "../World/AgentWorldTypes.js";
-import type { AgentAgendaService } from "../Agenda/AgentAgendaService.js";
+import type { AgentContinuityRecallService } from "../Continuity/AgentContinuityToolRuntime.js";
 import type { AgentContinuityIdentityContext } from "../Continuity/AgentContinuityIdentityStore.js";
 import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
 import type { AgentInferenceBudgetPort } from "../ModelEndpoints/AgentInferenceBudget.js";
 import type { AgentPluginHost } from "../Plugins/AgentPluginHost.js";
+import {
+  assertAgentExplicitActivationsCurrent,
+  createAgentActivationCatalog,
+} from "../Activation/AgentActivationCatalog.js";
+import type {
+  AgentActivationCatalogEntryData,
+  AgentActivationCatalogSnapshot,
+  AgentExplicitActivationReference,
+  AgentExplicitActivationSet,
+} from "../Activation/AgentActivationTypes.js";
+import { AgentSkillCatalogProjector } from "../Skills/AgentSkillCatalogProjector.js";
 import type { AgentToolResourceLeaseCoordinator } from "../ToolRuntime/AgentToolResourceScheduler.js";
 import type { AgentMcpHostCapabilitySnapshot } from "../McpPackages/AgentMcpHostRequirements.js";
+import type { AgentContinuityMemOSRuntime } from "../Continuity/AgentContinuityMemOSRuntime.js";
+import type { AgentMcpActivationCatalogEntry } from "../McpPackages/AgentMcpPackageTypes.js";
 
 export interface AgentSystemRuntimeSharedOptions {
   modelProviderId?: string;
@@ -54,17 +70,17 @@ export interface AgentSystemRuntimeSharedOptions {
   piSessionRegistry?: AgentPiActiveSessionRegistry;
   resourcesPath?: string;
   executionResources?: AgentExecutionResourceBroker;
-  toolSearchMemoryStore?: AgentToolSearchMemoryStore;
+  toolSearchScenarioSource?: AgentToolSearchScenarioSource;
   mcpInputs?: AgentExtensionValueResolver;
   workspaceRuntime?: AgentWorkspaceRuntimeServices;
   orchestration?: AgentOrchestrationHostRuntime;
   continuityMemory?: AgentContinuityMemoryService;
   continuityIdentity?: AgentContinuityIdentityContext;
   continuityLifecycle?: AgentContinuityLifecyclePort;
+  continuityRecall?: AgentContinuityRecallService;
+  continuityMemOS?: AgentContinuityMemOSRuntime;
   executionLedger?: AgentExecutionLedgerService;
   todos?: AgentTodoService;
-  agenda?: AgentAgendaService;
-  worldRuntime?: AgentWorldSnapshotProvider;
   inferenceBudget?: AgentInferenceBudgetPort;
   identityDisplayValues?: () => AgentIdentityDisplayValues;
   /** Host services bound to the `senera` self-service command tool. */
@@ -73,6 +89,9 @@ export interface AgentSystemRuntimeSharedOptions {
   pluginHost?: AgentPluginHost;
   resourceCoordinator?: AgentToolResourceLeaseCoordinator;
   mcpHostCapabilities?: AgentMcpHostCapabilitySnapshot;
+  /** Shared management projection so composer and execution validate one catalog. */
+  mcpActivationEntries?: () => readonly AgentMcpActivationCatalogEntry[];
+  systemActivationEntries?: () => readonly AgentActivationCatalogEntryData[];
 }
 
 export interface AgentSystemRuntimeLoadOptions extends AgentSystemRuntimeSharedOptions {
@@ -102,10 +121,15 @@ export class AgentSystemRuntime {
   readonly resourcesPath: string | undefined;
   private readonly composition: AgentSystemRuntimeComposition;
   private readonly mcpPackageCatalog: AgentMcpPackageCatalog;
+  private readonly mcpSchemaCache: AgentMcpPackageSchemaCache;
   private readonly mcpHostCapabilities: AgentMcpHostCapabilitySnapshot | undefined;
+  private readonly pluginHost: AgentPluginHost | undefined;
+  private readonly mcpActivationEntries: (() => readonly AgentMcpActivationCatalogEntry[]) | undefined;
+  private readonly systemActivationEntries: (() => readonly AgentActivationCatalogEntryData[]) | undefined;
   private readonly promptTierCache = new AgentPromptTierRenderCache();
   private closePromise: Promise<void> | undefined;
   private initialization: Promise<void> | undefined;
+  private toolSearchPrewarm: AgentToolSearchPrewarmTask | undefined;
 
   private constructor(options: AgentSystemRuntimeCompositionOptions) {
     this.workspaceRoot = options.workspaceRoot;
@@ -117,11 +141,25 @@ export class AgentSystemRuntime {
     this.piDiagnostics = options.piDiagnostics;
     this.resourcesPath = options.resourcesPath;
     this.mcpHostCapabilities = options.mcpHostCapabilities;
+    this.pluginHost = options.pluginHost;
+    this.mcpActivationEntries = options.mcpActivationEntries;
+    this.systemActivationEntries = options.systemActivationEntries;
+    this.mcpSchemaCache = new AgentMcpPackageSchemaCache(
+      (options.workspaceRuntime?.layout ?? resolveAgentWorkspaceLayout(this.workspaceRoot)).caches.mcpSchemas,
+      this.logger,
+    );
     this.composition = composeAgentSystemRuntime({
       ...options,
       onMcpToolsChanged: (change) => this.applyMcpToolsChanged(change),
+      beforeToolSearch: (query, signal, services) => this.ensureMcpPackagesForQuery(query, signal, services),
+      mcpServices: () => this.mcpPackageCatalog.services(),
     });
-    this.mcpPackageCatalog = new AgentMcpPackageCatalog(this.registry, this.toolSearch);
+    this.mcpPackageCatalog = new AgentMcpPackageCatalog(
+      this.registry,
+      this.toolSearch,
+      this.logger,
+      this.mcpSchemaCache,
+    );
   }
 
   get registry() {
@@ -192,14 +230,6 @@ export class AgentSystemRuntime {
     return this.composition.infrastructure.toolSearchConfig;
   }
 
-  get toolLearningConfig() {
-    return this.composition.infrastructure.toolLearningConfig;
-  }
-
-  get presetsConfig() {
-    return this.composition.infrastructure.presetsConfig;
-  }
-
   get artifactsConfig() {
     return this.composition.infrastructure.artifactsConfig;
   }
@@ -240,10 +270,6 @@ export class AgentSystemRuntime {
     return this.composition.agents.artifactRecorder;
   }
 
-  get presetManager() {
-    return this.composition.agents.presetManager;
-  }
-
   get toolPermissionGate() {
     return this.composition.agents.toolPermissionGate;
   }
@@ -260,8 +286,52 @@ export class AgentSystemRuntime {
     return this.composition.agents.services;
   }
 
+  /** Current @ activation catalog projected from this runtime's live registry. */
+  activationCatalog(): AgentActivationCatalogSnapshot {
+    if (!this.pluginHost || !this.mcpActivationEntries || !this.systemActivationEntries) {
+      throw new Error("The live activation catalog is unavailable in this runtime.");
+    }
+    return createAgentActivationCatalog(
+      new AgentSkillCatalogProjector(this.registry).list(),
+      this.pluginHost.list(),
+      this.mcpActivationEntries(),
+      this.systemActivationEntries(),
+    );
+  }
+
+  /** Rejects stale composer selections before preparation or cache reuse. */
+  validateExplicitActivations(activations: AgentExplicitActivationSet | undefined): void {
+    if (!activations) return;
+    assertAgentExplicitActivationsCurrent(activations, this.activationCatalog());
+  }
+
   initialize(): Promise<void> {
     return (this.initialization ??= this.initializeMcpPackages());
+  }
+
+  /** Discovers explicitly selected deferred MCP servers before validation. */
+  async ensureExplicitActivationCapabilities(
+    activations: readonly AgentExplicitActivationReference[] | undefined,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const serverIds = (activations ?? [])
+      .filter((activation) => activation.kind === "mcp")
+      .map((activation) => activation.id);
+    if (serverIds.length === 0) return;
+    const requested = [...new Set(serverIds)];
+    const result = await this.mcpPackageCatalog.discoverServices(requested, signal);
+    if (result.failures.length > 0) throw new AgentMcpPackageDiscoveryError(result.failures);
+    if (result.unavailableServers.length > 0) {
+      throw new Error(formatExplicitMcpUnavailable(result.unavailableServers));
+    }
+    if (result.notFound.length > 0) {
+      const declared = new Set(this.mcpPackageCatalog.services().map((service) => service.id));
+      const unknown = result.notFound.filter((serverId) => !declared.has(serverId));
+      if (unknown.length > 0) {
+        throw new Error(`Explicit MCP service is not registered: ${unknown.join(", ")}.`);
+      }
+      throw new Error(`Explicit MCP has no registered capabilities: ${result.notFound.join(", ")}.`);
+    }
   }
 
   close(): Promise<void> {
@@ -287,19 +357,11 @@ export class AgentSystemRuntime {
 
   private static create(options: AgentSystemRuntimeCompositionOptions): AgentSystemRuntime {
     const runtime = new AgentSystemRuntime(options);
-    const resourcesRoot = path.resolve(runtime.resourcesPath ?? runtime.workspaceRoot);
-    const systemSkillTools = runtime.composition.infrastructure.systemSkillToolBindings;
-    const skillScanner = new AgentSkillScanner();
-    for (const skill of skillScanner.scanRoot(path.join(resourcesRoot, "System", "Skills"))) {
-      runtime.registry.registerSkill({
-        ...skill,
-        source: { kind: "system", id: skill.name, displayName: "Senera", priority: 10 },
-        recommendedTools: [...new Set([...skill.recommendedTools, ...(systemSkillTools.get(skill.name) ?? [])])],
-      });
-    }
-    for (const skill of skillScanner.scanRoot(resolveAgentWorkspaceLayout(runtime.workspaceRoot).skillRoot)) {
-      runtime.registry.registerSkill(skill);
-    }
+    // Capability vectors are content-addressed. Start with the static catalog
+    // while MCP discovery is doing I/O; a later catalog revision retains these
+    // vectors and derives only newly discovered capabilities. This overlaps
+    // cold CPU work with startup rather than putting it on the first search.
+    runtime.scheduleToolSearchPrewarm();
     return runtime;
   }
 
@@ -319,13 +381,18 @@ export class AgentSystemRuntime {
       ...scanner.scanRoot(workspaceLayout.mcpRoot, AgentMcpPackageSourceKinds.Workspace),
     ];
     assertUniqueAgentMcpServerNames(packages);
-    const discovery = await new AgentMcpPackageDiscovery(this.config, this.executionEnv, {
+    this.mcpPackageCatalog.registerPackages(packages);
+    const packageDiscovery = new AgentMcpPackageDiscovery(this.config, this.executionEnv, {
       clientPool: this.composition.infrastructure.mcpClientPool,
       sampling: this.composition.infrastructure.mcpSampling,
       onToolsChanged: (change) => this.applyMcpToolsChanged(change),
       inputs: this.composition.infrastructure.mcpInputs,
       hostCapabilities: this.mcpHostCapabilities,
-    }).discover(packages);
+      schemaCache: this.mcpSchemaCache,
+      logger: this.logger,
+    });
+    const discovery = await packageDiscovery.discoverCached(packages);
+    this.mcpPackageCatalog.recordDiscoveryIssues(discovery);
     if (discovery.failures.length > 0) {
       this.logger?.warn("mcp.discovery.failed", {
         failures: discovery.failures.map((failure) => ({
@@ -341,6 +408,7 @@ export class AgentSystemRuntime {
       });
     }
     const deferredMcpServerNames = new Set([
+      ...discovery.deferredServers.map((server) => server.server.name),
       ...discovery.unavailableServers.map((server) => server.serverName),
       ...discovery.failures.map((failure) => failure.serverName),
     ]);
@@ -348,13 +416,77 @@ export class AgentSystemRuntime {
       isDeferredToolReference: (toolName) =>
         [...deferredMcpServerNames].some((serverName) => isAgentMcpPackageToolNameForServer(toolName, serverName)),
     });
+    this.mcpPackageCatalog.registerDeferred(
+      packages.flatMap((package_) => package_.servers.map((server) => ({ package_, server }))),
+      {
+        discover: (server, signal) =>
+          packageDiscovery.discover(
+            [
+              {
+                ...server.package_,
+                servers: [server.server],
+              },
+            ],
+            signal,
+          ),
+      },
+      {
+        isDeferredToolReference: (toolName) =>
+          [...deferredMcpServerNames].some((serverName) => isAgentMcpPackageToolNameForServer(toolName, serverName)),
+      },
+    );
+    this.logger?.info("mcp.discovery.deferred", {
+      servers: discovery.deferredServers.map((server) => server.server.name),
+      cachedServers: discovery.servers.map((server) => server.server.name),
+    });
+    // The active prewarm detects the revised catalog and retains any static
+    // content-addressed vectors it already completed. If it finished during
+    // discovery, this schedules just the missing MCP-derived inputs.
+    this.scheduleToolSearchPrewarm();
   }
 
-  private applyMcpToolsChanged(change: AgentMcpToolsChanged): Promise<void> {
-    return this.mcpPackageCatalog.update(change);
+  private async ensureMcpPackagesForQuery(
+    _query: string,
+    signal?: AbortSignal,
+    serviceIds?: readonly string[],
+  ): Promise<void> {
+    if (!serviceIds) throw new Error("MCP discovery requires a selection from the authorized capability catalog.");
+    await this.mcpPackageCatalog.discoverServices(serviceIds, signal);
+  }
+
+  private async applyMcpToolsChanged(change: AgentMcpToolsChanged): Promise<void> {
+    await this.mcpPackageCatalog.update(change);
+    this.scheduleToolSearchPrewarm();
+  }
+
+  private scheduleToolSearchPrewarm(): void {
+    if (this.closePromise || this.toolSearchPrewarm) return;
+
+    const controller = new AbortController();
+    const task: AgentToolSearchPrewarmTask = {
+      controller,
+      promise: yieldAgentToolSearchPrewarm()
+        .then(() => this.prewarmToolSearch(controller.signal))
+        .finally(() => {
+          if (this.toolSearchPrewarm === task) this.toolSearchPrewarm = undefined;
+        }),
+    };
+    this.toolSearchPrewarm = task;
+  }
+
+  private async prewarmToolSearch(signal: AbortSignal): Promise<void> {
+    try {
+      await this.toolSearch.prewarm(signal);
+    } catch (error) {
+      if (signal.aborted) return;
+      this.logger?.warn("routing.embedding.prewarm_failed", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private async closeResources(): Promise<void> {
+    const prewarm = this.stopToolSearchPrewarm();
     const infrastructure = this.composition.infrastructure;
     const closeOperations: Array<() => void | Promise<void>> = [
       () => this.piSubstrate.close(),
@@ -366,6 +498,11 @@ export class AgentSystemRuntime {
       ...(infrastructure.ownsExecutionResources ? [() => this.executionResources.close()] : []),
     ];
     const failures: unknown[] = [];
+    try {
+      await prewarm;
+    } catch (error) {
+      failures.push(error);
+    }
     for (const close of closeOperations) {
       try {
         await close();
@@ -376,4 +513,30 @@ export class AgentSystemRuntime {
     if (failures.length === 1) throw failures[0];
     if (failures.length > 1) throw new AggregateError(failures, "Agent runtime shutdown failed.");
   }
+
+  private stopToolSearchPrewarm(): Promise<void> {
+    const task = this.toolSearchPrewarm;
+    if (!task) return Promise.resolve();
+    task.controller.abort("Agent runtime is closing.");
+    return task.promise;
+  }
+}
+
+function formatExplicitMcpUnavailable(servers: readonly AgentUnavailableMcpServer[]): string {
+  const details = servers.map((server) => {
+    if (server.reason === "needs_input") {
+      return `${server.serverName} requires configuration inputs: ${server.inputIds.join(", ")}`;
+    }
+    return `${server.serverName} is missing host capabilities: ${server.missingCapabilities.join(", ")}`;
+  });
+  return `Explicit MCP is unavailable. ${details.join("; ")}.`;
+}
+
+interface AgentToolSearchPrewarmTask {
+  readonly controller: AbortController;
+  readonly promise: Promise<void>;
+}
+
+function yieldAgentToolSearchPrewarm(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
 }

@@ -1,5 +1,5 @@
 {
-  "ConfigVersion": 19,
+  "ConfigVersion": 35,
   "Defaults": {
     "AgentLoop": {
       "PiTurnLeaseTimeoutSeconds": 120,
@@ -63,6 +63,10 @@
         "TerminationGraceSeconds": 2
       }
     },
+    "McpConnections": {
+      "IdleTtlSeconds": 1800,
+      "SweepIntervalSeconds": 30
+    },
     "SandboxRuntime": {
       "Enabled": true,
       "BaseDir": ".senera/sandbox-runtime"
@@ -70,62 +74,27 @@
     "ToolSearch": {
       "Fuzzy": {
         "Enabled": true,
-        "MinScore": 0.25,
-        "CandidateLimit": 8
+        "MinScore": 0.25
       },
       "Memory": {
         "MaxEpisodes": 5000,
         "HalfLifeDays": 30
       },
       "Ranking": {
-        "RrfK": 60,
-        "MmrLambda": 0.72,
-        "MmrCandidateScoreRatio": 0.92,
-        "MinScore": 0,
-        "MaxResults": 6,
-        "MemoryExpansion": {
-          "Mode": "fallback",
-          "MinConfidence": 0.8,
-          "MinEvidence": 3,
-          "MaxResults": 2
-        }
+        "RrfK": 30
+      },
+      "Disclosure": {
+        "TokenBudget": 640
       },
       "Rerank": {
-        "Enabled": false,
-        "CandidateLimit": 24,
+        "Enabled": true,
         "ScoreScale": 0.018,
         "FeatureWeights": {}
       }
     },
-    "VectorModels": {
-      "Embedding": {
-        "Enabled": false,
-        "ProviderId": "main",
-        "Model": "qwen3-embedding-0.6b",
-        "TimeoutSeconds": 20,
-        "MaxNetworkRetries": 1,
-        "Dimensions": -1,
-        "BatchSize": 64,
-        "InputMaxChars": -1
-      },
-      "Rerank": {
-        "Enabled": false,
-        "ProviderId": "main",
-        "Model": "qwen3-reranker-0.6b",
-        "TimeoutSeconds": 20,
-        "MaxNetworkRetries": 1,
-        "EndpointPath": "/rerank",
-        "CandidateLimit": -1,
-        "TopK": -1
-      }
-    },
-    "ToolLearning": {
+    "StateCard": {
       "Enabled": true,
-      "MaxRepairAttempts": 1,
-      "Patterns": {
-        "MinSupport": 2,
-        "MaxPromptPatterns": 2
-      }
+      "HistoryBudgetCharacters": 4000
     },
     "ContinuityLearning": {
       "Enabled": true,
@@ -135,64 +104,26 @@
         "RetryMaxDelaySeconds": 60,
         "MaxJobsPerDrain": 8
       },
-      "LearningGate": {
-        "Enabled": true,
-        "DeferredDelaySeconds": 30
+      "MemOS": {
+        "AutoLinkThreshold": 0.75
       },
       "Recall": {
-        "TurnValueClassifier": {
-          "Enabled": true,
-          "ConfidenceThreshold": 0.82,
-          "MinimumExamplesPerLabel": 3,
-          "MaxTrainingEntries": 4096
-        },
-        "Prefetch": {
-          "Enabled": true,
-          "CacheTtlSeconds": 300
-        },
         "PromptBudget": {
-          "MaxProfileEntries": 32,
-          "MaxFactEntries": 24,
-          "MaxRelationEntries": 24,
-          "MaxEventEntries": 8,
-          "MaxEvidenceEntries": 8,
-          "MaxCharacters": 24000
-        },
-        "Ranking": {
-          "MinimumTextSimilarityScore": 0.12,
-          "CandidateScore": 0.24,
-          "DirectScore": 0.74,
-          "DirectTextSimilarityScore": 0.58,
-          "FactIdentityFuzzyScore": 0.9,
-          "RecencyHalfLifeDays": 120,
-          "Consolidation": {
-            "MinimumEquivalentEffectScore": 0.9,
-            "ActiveIndependentEvidence": 2,
-            "EstablishedIndependentEvidence": 3
-          },
-          "Similarity": {
-            "StructuralMismatchWeight": 0.8
-          }
+          "MaxTokens": 16384
         }
-      }
-    },
-    "Presets": {
-      "Enabled": true,
-      "RootDir": ".senera/presets",
-      "StateFile": ".senera/presets-state.json",
-      "PromptBudget": {
-        "MaxExamples": 4,
-        "MaxLoreEntries": 6,
-        "MaxSupplementalCharacters": 12000
       }
     },
     "Artifacts": {
       "RootDir": ".senera/artifacts/runs",
-      "SummaryMaxChars": 2400,
+      "ToolObservationMaxTokens": 16384,
       "RawJsonMaxBytes": 67108864,
       "TextFileMaxBytes": 67108864,
+      "WorkspaceObserverMemoryMaxBytes": 67108864,
+      "WorkspaceObserverSettleMs": 80,
+      "WorkspaceObserverIdleTtlMs": 30000,
+      "WorkspaceObserverIgnoredPaths": [".git", ".agents", ".claude", ".codex"],
+      "WorkspacePatchContextLines": 3,
       "MemoryReadMaxArtifacts": 16,
-      "MemoryReadMaxRefs": 8,
       "MemoryReadMaxConcurrency": 4,
       "MaxStoredBytes": 10737418240,
       "MaxArtifacts": 10000,
@@ -271,7 +202,13 @@
       }
     },
     "Persistence": {
-      "Kind": "sqlite"
+      "Kind": "sqlite",
+      "EventWriter": {
+        "RestartDelayMs": 250,
+        "CloseTimeoutMs": 5000,
+        "DrainBatchSize": 256,
+        "CommittedRetentionMs": 604800000
+      }
     },
     "ConfigStore": {
       "Enabled": true,
@@ -280,32 +217,6 @@
       "RevisionRetentionCount": 256,
       "CommandReceiptRetentionHours": 168,
       "CommandReceiptMaxCount": 4096
-    },
-    "World": {
-      "Name": "Senera",
-      "TimeZone": "Asia/Shanghai",
-      "GoalMicroLoop": {
-        "Enabled": true,
-        "MaxCandidates": 8,
-        "ReviewDelaySeconds": 900,
-        "AllowedToolNames": []
-      },
-      "ResidentIdle": {
-        "Enabled": true,
-        "MinIntervalSeconds": 900,
-        "MaxIntervalSeconds": 14400,
-        "BackoffMultiplier": 2,
-        "MaxPending": 1
-      },
-      "ActionBudget": {
-        "MaxActionsPerWake": 8,
-        "MaxDecisionCandidatesPerWake": 8,
-        "RetryDelaySeconds": 30,
-        "LeaseDurationSeconds": 300,
-        "FairShare": true,
-        "SourceOrder": [],
-        "SourceCaps": {}
-      }
     }
   },
   "DefaultModelProviderId": "main",

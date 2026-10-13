@@ -7,10 +7,16 @@ import {
   type SessionHistoryStepsData,
   type SessionRunHistoryChunkData,
 } from "../../api/eventTypes";
-import { mergeHistoryMessages, projectEntryToMessage, rebuildRunFromHistory } from "./historyRunProjection";
+import {
+  hydrateRunUsageFromMessages,
+  mergeHistoryMessages,
+  projectEntryToMessage,
+  rebuildRunFromHistory,
+} from "./historyRunProjection";
 import { ensureSession, syncSessionCountsFromLoadedMessages, upsertStep } from "./sessionProjectorCore";
 import { syncRunActiveFlags, touchRun } from "./sessionRunProjection";
 import { mergeToolResultPresentation } from "./toolResultPresentation";
+import { assistantTerminalStepKey, isAssistantMessageStep } from "./timelineProjection";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type {
   ChatMessage,
@@ -91,6 +97,7 @@ const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], Session
           .map(({ entry }) => entry.requestId),
       );
       const previewMessages = data.entries
+        .filter(({ entry }) => !isHistoryRequestSuppressed(state, sessionId, entry.requestId))
         .map(({ entry, visible }) => projectEntryToMessage(entry, visible, previewCompletedRequestIds))
         .filter((message): message is ChatMessage => Boolean(message));
       mergeHistoryMessages(state.sessions[sessionId], previewMessages);
@@ -98,7 +105,7 @@ const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], Session
     }
     const pages = state.historyReplayBuffers[sessionId];
     if (!state.historyLoadingIds[sessionId] || !pages || data.entries.length === 0) return;
-    pages.push([...data.entries]);
+    pages.push(data.entries.filter(({ entry }) => !isHistoryRequestSuppressed(state, sessionId, entry.requestId)));
   },
 
   [EventKinds.SessionHistorySteps]: ({ state, env }) => {
@@ -108,7 +115,8 @@ const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], Session
     ensureSession(state, sessionId);
     if (!state.historyLoadingIds[sessionId]) return;
     const pages = state.historyStepBuffers[sessionId] ?? [];
-    if (data.runs.length > 0) pages.push([...data.runs]);
+    const runs = data.runs.filter((run) => !isHistoryRequestSuppressed(state, sessionId, run.requestId));
+    if (runs.length > 0) pages.push(runs);
     state.historyStepBuffers[sessionId] = pages;
   },
 
@@ -126,10 +134,11 @@ const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], Session
     runEventBuffers[sessionId] = eventPages;
     const page: EventEnvelope[] = [];
     for (const event of data.events) {
+      const restoredRequestId = event.scope?.parentRequestId ?? event.requestId;
+      if (restoredRequestId && isHistoryRequestSuppressed(state, sessionId, restoredRequestId)) continue;
       if (event.kind === EventKinds.RunStarted && event.requestId) {
         eventRunIds[event.requestId] = true;
       }
-      const restoredRequestId = event.scope?.parentRequestId ?? event.requestId;
       if (restoredRequestId && !eventRunIds[restoredRequestId]) continue;
       page.push({
         ...event,
@@ -242,6 +251,7 @@ export function advanceSessionHistoryHydration(
       const completedRequestIds = new Set(Object.keys(progress.completedRequestIds));
       const projected = page
         .slice(start, end)
+        .filter(({ entry }) => !isHistoryRequestSuppressed(state, sessionId, entry.requestId))
         .map((item) => projectEntryToMessage(item.entry, item.visible, completedRequestIds))
         .filter((message): message is ChatMessage => Boolean(message));
       mergeHistoryMessages(session, projected, {
@@ -322,6 +332,7 @@ function finalizeHistoryHydration(state: StoreState, sessionId: string, progress
     new Set(Object.keys(progress.recoveredRequestIds)),
     activeRequestId,
   );
+  hydrateRunUsageFromMessages(session);
   clearHistoryLoadingState(state, sessionId);
   state.historyLoadedIds[sessionId] = true;
   syncSessionCountsFromLoadedMessages(session);
@@ -367,7 +378,14 @@ function captureActiveStream(
   if (
     !run ||
     run.status !== "running" ||
-    !(run.streamingRaw || run.visibleText || run.displayText || run.displayMessageId || run.continuity)
+    !(
+      run.streamingRaw ||
+      run.visibleText ||
+      run.displayText ||
+      run.displayMessageId ||
+      run.continuity ||
+      run.thinkingBlocks?.length
+    )
   ) {
     return undefined;
   }
@@ -380,6 +398,8 @@ function captureActiveStream(
     activities: run.activities?.map((activity) => ({ ...activity })),
     activeFlags: run.activeFlags ? [...run.activeFlags] : undefined,
     streamingRaw: run.streamingRaw,
+    thinkingBlocks: run.thinkingBlocks?.map((block) => ({ ...block })),
+    activeModelRequest: run.activeModelRequest ? { ...run.activeModelRequest } : undefined,
     xmlPreview: run.xmlPreview,
     visibleText: run.visibleText,
     displayText: run.displayText,
@@ -421,6 +441,7 @@ function reconcileHistoryStepRuns(
     existing.input ||= recovered.input;
     existing.startedAt ||= recovered.startedAt;
     existing.modelProvider ??= recovered.modelProvider;
+    existing.recoveryModes = recovered.recoveryModes;
     existing.endedAt = recovered.endedAt ?? existing.endedAt;
 
     // The run snapshot is the durable lifecycle authority. A stale running
@@ -434,17 +455,28 @@ function reconcileHistoryStepRuns(
 
     const existingSteps = new Map(existing.steps.map((step) => [step.id, step]));
     for (const recoveredStep of recovered.steps) {
-      const existingStep = existingSteps.get(recoveredStep.id);
+      const existingStep =
+        existingSteps.get(recoveredStep.id) ?? findLiveAssistantTerminalStep(existing.steps, recoveredStep);
       if (!existingStep) {
         existing.steps.push(recoveredStep);
         existingSteps.set(recoveredStep.id, recoveredStep);
         continue;
       }
+      existingSteps.set(recoveredStep.id, existingStep);
       enrichStepFromHistory(existingStep, recoveredStep);
     }
     touchRun(existing);
   }
   if (sort) session.runs.sort((left, right) => left.startedAt.localeCompare(right.startedAt));
+}
+
+function findLiveAssistantTerminalStep(
+  steps: readonly TimelineStep[],
+  recoveredStep: TimelineStep,
+): TimelineStep | undefined {
+  const key = assistantTerminalStepKey(recoveredStep);
+  if (!key) return undefined;
+  return steps.find((step) => assistantTerminalStepKey(step) === key && isAssistantMessageStep(step));
 }
 
 /**
@@ -502,8 +534,13 @@ function clearHistoryLoadingState(state: StoreState, sessionId: string): void {
   if (state.historyRunEventBuffers) delete state.historyRunEventBuffers[sessionId];
   if (state.historyPreviewedIds) delete state.historyPreviewedIds[sessionId];
   if (state.historyHydration) delete state.historyHydration[sessionId];
+  if (state.historySuppressedRequestIds) delete state.historySuppressedRequestIds[sessionId];
   delete state.historyFailedIds[sessionId];
   delete state.missingOnServerIds[sessionId];
+}
+
+export function isHistoryRequestSuppressed(state: StoreState, sessionId: string, requestId: string): boolean {
+  return state.historySuppressedRequestIds?.[sessionId]?.[requestId] === true;
 }
 
 function closeRecoveredRunningRuns(

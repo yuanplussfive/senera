@@ -1,15 +1,7 @@
 import { resolveAgentWorkspaceLayout } from "../Core/AgentWorkspaceLayout.js";
 import type { AgentSelfServicePort, AgentSelfWorkspaceInfo } from "./AgentSelfServiceTypes.js";
 
-const DataDomainNames = [
-  "config",
-  "credentials",
-  "sessions",
-  "memory",
-  "orchestration",
-  "channels",
-  "toolSearch",
-] as const;
+const DataDomainNames = ["config", "credentials", "sessions", "memory", "memos", "orchestration", "channels"] as const;
 
 export function projectAgentSelfWorkspaceInfo(port: AgentSelfServicePort): AgentSelfWorkspaceInfo {
   const layout = resolveAgentWorkspaceLayout(port.workspaceRoot);

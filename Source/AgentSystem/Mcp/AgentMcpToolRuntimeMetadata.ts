@@ -25,7 +25,9 @@ export interface AgentMcpToolRuntimeProjection {
  */
 export function projectAgentMcpToolRuntime(declaration: AgentMcpToolDeclaration): AgentMcpToolRuntimeProjection {
   const raw = declaration._meta?.[AgentMcpToolRuntimeMetadataKey];
-  if (raw === undefined) return { scheduling: DefaultScheduling };
+  if (raw === undefined) {
+    return { scheduling: DefaultScheduling };
+  }
   if (!isRecord(raw)) {
     throw new TypeError(`MCP tool ${declaration.name} metadata ${AgentMcpToolRuntimeMetadataKey} must be an object.`);
   }

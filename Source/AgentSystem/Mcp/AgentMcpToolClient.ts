@@ -135,9 +135,9 @@ export class AgentMcpToolClient {
     return this._closed;
   }
 
-  async listTools(): Promise<readonly AgentMcpToolDeclaration[]> {
+  async listTools(signal?: AbortSignal): Promise<readonly AgentMcpToolDeclaration[]> {
     try {
-      return (await this.client.listTools(undefined, agentMcpRequestOptions(this.options))).tools;
+      return (await this.client.listTools(undefined, agentMcpRequestOptions(this.options, { signal }))).tools;
     } catch (error) {
       throw this.withConnectionFailure(error);
     }

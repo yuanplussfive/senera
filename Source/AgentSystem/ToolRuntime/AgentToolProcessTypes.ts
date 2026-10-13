@@ -1,7 +1,11 @@
-import type { AgentToolProcessResponse } from "../Types/ToolRuntimeTypes.js";
+import type {
+  AgentToolProcessResponse,
+  AgentWorkspaceMutationReceipt,
+  AgentWorkspaceObservationLeaseSignal,
+  ToolWorkspaceCaptureResult,
+} from "../Types/ToolRuntimeTypes.js";
 import type { AgentToolArtifactPayload } from "../Types/ToolRuntimeTypes.js";
 import type { SeneraOutputSpoolDescriptor } from "../Execution/SeneraOutputSpool.js";
-import type { AgentToolSemanticProjectionRequest } from "./AgentToolSemanticProjection.js";
 export interface AgentToolProcessRunResult {
   response: AgentToolProcessResponse;
   stdout: string;
@@ -9,6 +13,13 @@ export interface AgentToolProcessRunResult {
   exitCode: number | null;
   signal: NodeJS.Signals | null;
   artifactPayload?: AgentToolArtifactPayload;
+  /** Internal provider-shape value used for contract validation before projection. */
+  validationResult?: unknown;
   outputCapture?: SeneraOutputSpoolDescriptor;
-  semanticProjectionRequest?: AgentToolSemanticProjectionRequest;
+  /** Host-only mutation proof consumed by workspace ChangeSet capture. */
+  workspaceMutationReceipt?: AgentWorkspaceMutationReceipt;
+  /** Host-only observation result captured for a resource-backed process. */
+  workspaceCapture?: ToolWorkspaceCaptureResult;
+  /** Host-only lifecycle signal for a resource-backed workspace observation. */
+  workspaceObservation?: AgentWorkspaceObservationLeaseSignal;
 }

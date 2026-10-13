@@ -3,6 +3,7 @@ name: browser-automation
 description: Operate a controlled browser to inspect or interact with public web pages that require rendering, dynamic navigation, forms, tabs, screenshots, or accessibility snapshots. Use when WebFetch is insufficient because a page needs a real browser session. 适用于需要真实浏览器渲染、动态导航、表单、标签页、截图或可访问性快照的公开网页任务。
 metadata:
   senera:
+    icon: globe
     recommended-tools:
       - BrowserOpen
       - BrowserSnapshot

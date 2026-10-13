@@ -12,18 +12,28 @@ import {
   registerAgentSystemToolHandlers,
   systemToolCapability,
 } from "../../../Source/AgentSystem/SystemTools/AgentSystemToolCatalog.js";
+import { AgentSystemToolContractSchema } from "../../../Source/AgentSystem/SystemTools/AgentSystemExtensionManifest.js";
 import { AgentSystemExtensionCatalog } from "../../../Source/AgentSystem/SystemTools/AgentSystemToolSource.js";
 import { createAgentSystemTools } from "../../../Source/AgentSystem/SystemTools/AgentSystemTools.js";
-import { LearningManageSystemTool } from "../../../Source/AgentSystem/SystemTools/LearningManageSystemTool.js";
+import { buildToolCapabilityDocument } from "../../../Source/AgentSystem/ToolSearch/AgentCapabilityDocumentBuilder.js";
+import { AgentToolSearchDocumentBuilder } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchDocumentBuilder.js";
+import { AgentToolSearchIndex } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchIndex.js";
+import { isAgentToolMetaToolName } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchRuntimeTypes.js";
+import { resolveToolSearchConfig } from "../../../Source/AgentSystem/AgentDefaults.js";
+import { AgentToolResourceQueryShapes } from "../../../Source/AgentSystem/ToolRuntime/AgentToolResourceDiscovery.js";
+import { AgentToolResourceCapabilityIds } from "../../../Source/AgentSystem/ToolRuntime/AgentToolResourceCapabilityIds.js";
+import {
+  isAgentToolDirectlyInvocable,
+  isAgentToolDynamicallyDiscoverable,
+} from "../../../Source/AgentSystem/ToolRuntime/AgentToolInvocationRouting.js";
 import { AgentToolHostCapabilityRegistry } from "../../../Source/AgentSystem/ToolRuntime/AgentToolHostCapabilityRegistry.js";
-import type { AgentHostToolContext } from "../../../Source/AgentSystem/ToolRuntime/AgentToolHostCapabilityRegistry.js";
+import { projectAgentToolEventOrigin } from "../../../Source/AgentSystem/ToolRuntime/AgentToolEventOrigin.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 import {
   AgentHostCapabilityNames,
   listDefaultAgentHostCapabilityNames,
 } from "../../../Source/AgentSystem/AgentDefaultHostCapabilities.js";
-import { StandardAgentToolObservationProjection } from "../../../Source/AgentSystem/ToolRuntime/AgentToolObservationProjectionPlan.js";
 import {
   AgentResidentActionSpeechCapability,
   AgentResidentFinalSpeechCapability,
@@ -82,6 +92,8 @@ describe("System Tool catalog", () => {
       contract: { outputSchema: undefined },
     });
     expect(registry.getTool("WorkspaceInspectTool")).toBeUndefined();
+    expect(registry.getTool("ShellCommandTool")).not.toHaveProperty("contentPolicy");
+    expect(registry.getTool("WebFetch")).not.toHaveProperty("contentPolicy");
     expect(registry.getTool("ResidentActionSpeak")).toBeUndefined();
     expect(registry.getTool("ResidentFinalSpeak")).toBeUndefined();
     expect(registry.getSidecarTool(AgentResidentActionSpeechCapability)).toMatchObject({
@@ -95,7 +107,8 @@ describe("System Tool catalog", () => {
       owner: { kind: "system", name: "resident-speech" },
     });
     expect(extensions.some((extension) => extension.id === "resident-speech")).toBe(false);
-    expect(registry.listTools().every((tool) => tool.loading === "Bootstrap")).toBe(true);
+    expect(registry.listTools().some((tool) => tool.loading === "Bootstrap")).toBe(true);
+    expect(registry.listTools().some((tool) => tool.loading === "Dynamic")).toBe(true);
     for (const [name, commandAlias, capabilityId] of [
       ["WorkspaceRead", "read", "workspace.file.read"],
       ["WorkspaceGrep", "grep", "workspace.content.search"],
@@ -127,6 +140,10 @@ describe("System Tool catalog", () => {
     expect(registry.getTool("AgentWait")).toMatchObject({
       owner: { kind: "system", name: "agent-delegation" },
       handler: { kind: "HostCapability", capability: AgentHostCapabilityNames.AgentWait },
+      runtime: {
+        Lifecycle: "RemoteJob",
+        Capabilities: { Progress: true, Cancellation: true, ResumableEvents: true },
+      },
     });
     expect(registry.getTool("AgentInput")).toMatchObject({
       owner: { kind: "system", name: "agent-delegation" },
@@ -158,17 +175,8 @@ describe("System Tool catalog", () => {
       ]),
     );
     for (const tool of registry.listTools()) {
-      expect(tool.observationProjection).toMatchObject({
-        schemaVersion: 2,
-        artifactFallback: { strategy: "reference" },
-      });
-      expect(tool.observationProjection?.sources.length).toBeGreaterThan(0);
+      expect(tool).not.toHaveProperty("observationProjection");
     }
-    expect(registry.getTool("ExecutionResourceInspect")?.observationProjection?.continuation).toMatchObject({
-      kind: "cursor",
-      handle: "/resourceId",
-      cursor: "/cursor",
-    });
 
     expect(extensions.map((extension) => extension.id)).toEqual(
       expect.arrayContaining(["agent-delegation", "agent-scheduler"]),
@@ -186,12 +194,194 @@ describe("System Tool catalog", () => {
     }
   });
 
+  test("projects declared System Tool search examples as semantic evidence", () => {
+    const registry = systemToolRegistry();
+    const documentBuilder = new AgentToolSearchDocumentBuilder();
+    const omissions: Array<{ readonly tool: string; readonly example: string }> = [];
+
+    for (const tool of registry.listTools()) {
+      const capability = buildToolCapabilityDocument(tool, documentBuilder.build(tool));
+      const semanticText = capability.semanticInputs.map((input) => input.text).join("\n");
+      for (const example of tool.search?.Examples ?? []) {
+        if (!semanticText.includes(example)) omissions.push({ tool: tool.name, example });
+      }
+    }
+
+    expect(omissions).toEqual([]);
+  });
+
+  test("projects domain presentation into registered tools and their lifecycle origins", () => {
+    const registry = new AgentExtensionRegistry();
+    const definitions = createAgentSystemTools(testConfig());
+    const catalog = new AgentSystemExtensionCatalog();
+    catalog.registerRoot(registry, path.resolve("System", "Extensions"), {
+      capabilities: new Set([...listDefaultAgentHostCapabilityNames(), ...definitions.map(systemToolCapability)]),
+    });
+
+    const extension = catalog.listExtensions().find((candidate) => candidate.id === "workspace-tools");
+    const tool = registry.getTool("WorkspaceRead");
+    expect(extension).toMatchObject({
+      settingsSurface: "system-tools",
+      domain: {
+        id: "explore",
+        presentation: expect.objectContaining({ category: "explore", icon: "search" }),
+      },
+    });
+    expect(tool?.presentation).toMatchObject({
+      category: "workspace-read",
+      icon: "file-text",
+      group: { id: "workspace", title: { "zh-CN": "浏览工作区", "en-US": "Explore workspace" } },
+      activity: { action: { "zh-CN": "读取文件", "en-US": "Read" }, argumentPath: "/path" },
+    });
+    expect(projectAgentToolEventOrigin(tool!)).toMatchObject({
+      kind: "system",
+      name: "工作区工具",
+      presentation: tool?.presentation,
+    });
+  });
+
+  test("merges domain, extension, and Tool presentation without frontend classification rules", () => {
+    const root = createTemporaryDirectory("senera-system-extension-presentation-inheritance");
+    try {
+      const packageRoot = createTestPackage(root, "presentation-inheritance");
+      fs.mkdirSync(path.join(packageRoot, "tools"), { recursive: true });
+      writeJson(path.join(packageRoot, "tools", "PresentationTool.tool.json"), {
+        ...minimalContract("PresentationTool"),
+        presentation: {
+          category: "tool-category",
+          group: { title: localizedTestText("Tool group") },
+          activity: {
+            invocationName: localizedTestText("Tool invocation"),
+            detailPaths: ["/target"],
+          },
+        },
+      });
+      writeJson(path.join(packageRoot, "extension.json"), {
+        ...extensionManifest("presentation-inheritance", "tools/PresentationTool.tool.json", "shell.run"),
+        presentation: {
+          icon: "terminal",
+          group: { id: "extension-group" },
+          activity: {
+            action: localizedTestText("Extension action"),
+            argumentPath: "/command",
+          },
+        },
+      });
+
+      const registry = new AgentExtensionRegistry();
+      const catalog = new AgentSystemExtensionCatalog();
+      catalog.registerRoot(registry, root, { capabilities: new Set(["shell.run"]) });
+
+      expect(catalog.listExtensions()).toEqual([
+        expect.objectContaining({
+          id: "presentation-inheritance",
+          presentation: {
+            category: "test",
+            icon: "terminal",
+            group: { id: "extension-group", title: localizedTestText("Test tools") },
+            activity: {
+              action: localizedTestText("Extension action"),
+              argumentPath: "/command",
+            },
+          },
+        }),
+      ]);
+      expect(registry.getTool("PresentationTool")?.presentation).toEqual({
+        category: "tool-category",
+        icon: "terminal",
+        group: { id: "extension-group", title: localizedTestText("Tool group") },
+        activity: {
+          action: localizedTestText("Extension action"),
+          argumentPath: "/command",
+          invocationName: localizedTestText("Tool invocation"),
+          detailPaths: ["/target"],
+        },
+      });
+    } finally {
+      removeDirectory(root);
+    }
+  });
+
+  test("routes every complete dynamically discoverable System Tool example through declared example evidence", async () => {
+    const registry = systemToolRegistry();
+    const index = new AgentToolSearchIndex(registry, resolveToolSearchConfig(testConfig()));
+    const loadedToolNames = registry.listTools().map((tool) => tool.name);
+    const misses: Array<{ readonly tool: string; readonly example: string; readonly returned: readonly string[] }> = [];
+
+    for (const tool of registry
+      .listTools()
+      .filter((tool) => isAgentToolDynamicallyDiscoverable(tool) && !isAgentToolMetaToolName(tool.name))) {
+      for (const example of tool.search?.Examples ?? []) {
+        const results = (await index.discoverHybrid({ query: example, loadedToolNames })).match;
+        if (!results.some((result) => result.toolName === tool.name && result.ranks.example === 1)) {
+          misses.push({ tool: tool.name, example, returned: results.map((result) => result.toolName) });
+        }
+      }
+    }
+
+    expect(misses).toEqual([]);
+  });
+
+  test("keeps direct workspace reads in the native tool table and out of dynamic discovery", async () => {
+    const registry = systemToolRegistry();
+    const workspaceRead = registry.getTool("WorkspaceRead");
+    if (!workspaceRead) throw new Error("Expected WorkspaceRead.");
+    const index = new AgentToolSearchIndex(registry, resolveToolSearchConfig(testConfig()), undefined, {
+      getDiscovery: (capabilityId) =>
+        capabilityId === AgentToolResourceCapabilityIds.WorkspacePath
+          ? { queryShapes: [AgentToolResourceQueryShapes.Path] }
+          : undefined,
+    });
+    const discovery = await index.discoverHybrid({
+      query: "读取 package.json",
+      loadedToolNames: registry.listTools().map((tool) => tool.name),
+    });
+
+    expect(isAgentToolDirectlyInvocable(workspaceRead)).toBe(true);
+    expect(index.getToolNames()).not.toContain(workspaceRead.name);
+    expect(
+      [...discovery.match, ...discovery.maybe, ...discovery.omitted].map((result) => result.toolName),
+    ).not.toContain(workspaceRead.name);
+  });
+
+  test("routes dynamic operations through search while keeping resident system operations direct", async () => {
+    const registry = systemToolRegistry();
+    const index = new AgentToolSearchIndex(registry, resolveToolSearchConfig(testConfig()));
+    const loadedToolNames = registry.listTools().map((tool) => tool.name);
+    const dynamicCases = [["截取当前网页", "BrowserScreenshot"]] as const;
+
+    for (const [query, toolName] of dynamicCases) {
+      const discovery = await index.discoverHybrid({ query, loadedToolNames });
+      expect(
+        [...discovery.match, ...discovery.maybe].map((result) => result.toolName),
+        query,
+      ).toContain(toolName);
+    }
+
+    const directToolNames = [
+      "GitInspect",
+      "ExecutionResourceList",
+      "ExecutionResourceInspect",
+      "ExecutionResourceResize",
+      "ExecutionResourceSignal",
+      "ExecutionResourceStopAll",
+      "ExecutionResourceWait",
+      "ExecutionResourceWrite",
+      "TerminalStartTool",
+    ];
+    for (const toolName of directToolNames) {
+      const tool = registry.getTool(toolName);
+      expect(tool, toolName).toBeDefined();
+      if (tool) expect(isAgentToolDirectlyInvocable(tool), toolName).toBe(true);
+      expect(index.getToolNames(), toolName).not.toContain(toolName);
+    }
+  });
+
   test("rejects extension packages with incomplete localized metadata", () => {
     const root = createTemporaryDirectory("senera-system-extension-localization");
     try {
-      const packageRoot = path.join(root, "incomplete-localization");
+      const packageRoot = createTestPackage(root, "incomplete-localization");
       fs.mkdirSync(path.join(packageRoot, "tools"), { recursive: true });
-      writeObservationProjection(packageRoot);
       writeJson(path.join(packageRoot, "tools", "Test.tool.json"), minimalContract("TestTool"));
       writeJson(path.join(packageRoot, "extension.json"), {
         ...extensionManifest("incomplete-localization", "tools/Test.tool.json", "shell.run"),
@@ -206,6 +396,23 @@ describe("System Tool catalog", () => {
     } finally {
       removeDirectory(root);
     }
+  });
+
+  test("rejects System Tool capabilities without a declared retrieval alias", () => {
+    const contract = minimalContract("TestTool");
+    contract.search.Capabilities[0]!.Aliases = [];
+
+    const parsed = AgentSystemToolContractSchema.safeParse(contract);
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    expect(parsed.error.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: ["search", "Capabilities", 0, "Aliases"],
+          message: "System Tool capabilities must declare at least one operation alias for ToolSearch.",
+        }),
+      ]),
+    );
   });
 
   test("projects image analysis configuration with localized form metadata", () => {
@@ -286,6 +493,31 @@ describe("System Tool catalog", () => {
         expect.objectContaining({ path: ["output", "maxChunks"], effectiveValue: 7, configured: true }),
       ]),
     );
+  });
+
+  test("rejects multiple extensions that claim one dedicated settings surface", () => {
+    const root = createTemporaryDirectory("senera-system-extension-settings-surface");
+    try {
+      const schema = {
+        type: "object",
+        properties: { enabled: { type: "boolean", default: true } },
+        additionalProperties: false,
+      };
+      const first = writeConfigurableExtension(root, "first-channel-surface", schema);
+      const second = writeConfigurableExtension(root, "second-channel-surface", schema);
+      for (const packageRoot of [first, second]) {
+        const manifestPath = path.join(packageRoot, "extension.json");
+        writeJson(manifestPath, { ...readJson(manifestPath), settingsSurface: "channels" });
+      }
+
+      expect(() =>
+        new AgentSystemExtensionCatalog().registerRoot(new AgentExtensionRegistry(), root, {
+          capabilities: new Set(["shell.run"]),
+        }),
+      ).toThrow(/System settings surface 'channels' is declared by both/u);
+    } finally {
+      removeDirectory(root);
+    }
   });
 
   test("rejects unknown extensions and invalid package configuration values", () => {
@@ -444,29 +676,6 @@ describe("System Tool catalog", () => {
             label: "Model name",
             type: "string",
             modelSelection: {
-              id: "provider-model",
-              capability: "Chat",
-              valueKind: "provider-model",
-              mutation: "config",
-              providerPath: ["providerEnabled"],
-              required: false,
-            },
-          },
-        ]),
-      );
-      expect(register).toThrow(/providerPath must reference a string field: providerEnabled/u);
-
-      writeJson(
-        path.join(packageRoot, "ui.schema.json"),
-        configurationUi([
-          { path: ["inheritParent"], label: "Inherit parent", type: "boolean" },
-          { path: ["modelProviderIds"], label: "Model pool", type: "array", itemType: "string" },
-          { path: ["providerEnabled"], label: "Provider enabled", type: "boolean" },
-          {
-            path: ["modelName"],
-            label: "Model name",
-            type: "string",
-            modelSelection: {
               id: "invalid-pool",
               capability: "Chat",
               valueKind: "model-id",
@@ -564,24 +773,10 @@ describe("System Tool catalog", () => {
     }
   });
 
-  test("reports an empty observable learning ledger from a new workspace", async () => {
-    const workspaceRoot = createTemporaryDirectory("senera-learning-manage");
-    try {
-      const output = await LearningManageSystemTool.execute({ action: "status" }, {
-        workspaceRoot,
-        config: testConfig(),
-      } as AgentHostToolContext);
-
-      expect(output).toMatchObject({ action: "status", episodeCount: 0, episodeGroups: [], skillTermCount: 0 });
-    } finally {
-      removeDirectory(workspaceRoot);
-    }
-  });
-
   test("rejects contract paths that escape a System extension package", () => {
     const root = createTemporaryDirectory("senera-system-extension-path");
     try {
-      const packageRoot = path.join(root, "path-test");
+      const packageRoot = createTestPackage(root, "path-test");
       fs.mkdirSync(packageRoot);
       writeJson(path.join(root, "outside.tool.json"), minimalContract("Outside"));
       writeJson(
@@ -599,63 +794,10 @@ describe("System Tool catalog", () => {
     }
   });
 
-  test("rejects observation projection paths that escape their extension package", () => {
-    const root = createTemporaryDirectory("senera-system-observation-path");
-    try {
-      const packageRoot = path.join(root, "path-test");
-      fs.mkdirSync(path.join(packageRoot, "tools"), { recursive: true });
-      writeJson(path.join(root, "outside.projection.json"), StandardAgentToolObservationProjection);
-      writeJson(path.join(packageRoot, "tools", "Test.tool.json"), {
-        ...minimalContract("TestTool"),
-        observationProjection: "../outside.projection.json",
-      });
-      writeJson(
-        path.join(packageRoot, "extension.json"),
-        extensionManifest("path-test", "tools/Test.tool.json", "shell.run"),
-      );
-
-      expect(() =>
-        new AgentSystemExtensionCatalog().registerRoot(new AgentExtensionRegistry(), root, {
-          capabilities: new Set(["shell.run"]),
-        }),
-      ).toThrow(/must remain inside its extension package/u);
-    } finally {
-      removeDirectory(root);
-    }
-  });
-
-  test("includes the external observation projection in the registered contract digest", () => {
-    const root = createTemporaryDirectory("senera-system-observation-digest");
-    try {
-      const packageRoot = path.join(root, "digest-test");
-      fs.mkdirSync(path.join(packageRoot, "tools"), { recursive: true });
-      writeObservationProjection(packageRoot);
-      writeJson(path.join(packageRoot, "tools", "Test.tool.json"), minimalContract("TestTool"));
-      writeJson(
-        path.join(packageRoot, "extension.json"),
-        extensionManifest("digest-test", "tools/Test.tool.json", "shell.run"),
-      );
-      const firstRegistry = new AgentExtensionRegistry();
-      new AgentSystemExtensionCatalog().registerRoot(firstRegistry, root, { capabilities: new Set(["shell.run"]) });
-      const firstDigest = firstRegistry.getTool("TestTool")?.contract?.digest;
-
-      writeJson(path.join(packageRoot, "observations", "default.projection.json"), {
-        ...StandardAgentToolObservationProjection,
-        maxTokens: StandardAgentToolObservationProjection.maxTokens + 1,
-      });
-      const secondRegistry = new AgentExtensionRegistry();
-      new AgentSystemExtensionCatalog().registerRoot(secondRegistry, root, { capabilities: new Set(["shell.run"]) });
-
-      expect(secondRegistry.getTool("TestTool")?.contract?.digest).not.toBe(firstDigest);
-    } finally {
-      removeDirectory(root);
-    }
-  });
-
   test("rejects host capabilities that are not pre-registered", () => {
     const root = createTemporaryDirectory("senera-system-extension-capability");
     try {
-      const packageRoot = path.join(root, "capability-test");
+      const packageRoot = createTestPackage(root, "capability-test");
       fs.mkdirSync(path.join(packageRoot, "tools"), { recursive: true });
       writeJson(path.join(packageRoot, "tools", "Test.tool.json"), minimalContract("TestTool"));
       writeJson(
@@ -673,6 +815,15 @@ describe("System Tool catalog", () => {
     }
   });
 });
+
+function systemToolRegistry(): AgentExtensionRegistry {
+  const registry = new AgentExtensionRegistry();
+  const definitions = createAgentSystemTools(testConfig());
+  new AgentSystemExtensionCatalog().registerRoot(registry, path.resolve("System", "Extensions"), {
+    capabilities: new Set([...listDefaultAgentHostCapabilityNames(), ...definitions.map(systemToolCapability)]),
+  });
+  return registry;
+}
 
 function testConfig(): AgentSystemConfig {
   return {
@@ -694,6 +845,8 @@ function extensionManifest(id: string, contract: string, capability: string) {
   return {
     schemaVersion: 1,
     id,
+    domain: "test",
+    settingsSurface: "system-tools",
     version: "1.0.0",
     displayName: { "zh-CN": `${id} 中文`, "en-US": `${id} English` },
     description: { "zh-CN": `${id} 中文描述。`, "en-US": `${id} English description.` },
@@ -704,7 +857,7 @@ function extensionManifest(id: string, contract: string, capability: string) {
 function minimalContract(name: string) {
   return {
     name,
-    observationProjection: "observations/default.projection.json",
+    loading: "Dynamic",
     description: `${name} test contract.`,
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     permissions: [],
@@ -719,7 +872,7 @@ function minimalContract(name: string) {
     sources: [],
     search: {
       Summary: `${name} test tool`,
-      Capabilities: [{ Id: `test.${name.toLowerCase()}` }],
+      Capabilities: [{ Id: `test.${name.toLowerCase()}`, Aliases: [`${name} test`] }],
       UseCases: [`Exercise the ${name} test contract.`],
     },
     evidenceCapabilities: [],
@@ -732,9 +885,8 @@ function writeConfigurableExtension(
   schema: Record<string, unknown>,
   ui?: Record<string, unknown>,
 ): string {
-  const packageRoot = path.join(root, id);
+  const packageRoot = createTestPackage(root, id);
   fs.mkdirSync(path.join(packageRoot, "tools"), { recursive: true });
-  writeObservationProjection(packageRoot);
   writeJson(path.join(packageRoot, "tools", "Test.tool.json"), minimalContract("TestTool"));
   writeJson(path.join(packageRoot, "config.schema.json"), schema);
   if (ui) writeJson(path.join(packageRoot, "ui.schema.json"), ui);
@@ -746,6 +898,27 @@ function writeConfigurableExtension(
     },
   });
   return packageRoot;
+}
+
+function createTestPackage(root: string, id: string): string {
+  const domainRoot = path.join(root, "test");
+  fs.mkdirSync(domainRoot, { recursive: true });
+  const domainPath = path.join(domainRoot, "domain.json");
+  if (!fs.existsSync(domainPath)) {
+    writeJson(domainPath, {
+      schemaVersion: 1,
+      id: "test",
+      displayName: localizedTestText("Test domain"),
+      description: localizedTestText("Test System extension domain."),
+      presentation: {
+        category: "test",
+        icon: "tools",
+        group: { id: "test", title: localizedTestText("Test tools") },
+        activity: { action: localizedTestText("Test") },
+      },
+    });
+  }
+  return path.join(domainRoot, id);
 }
 
 function configurationUi(fields: readonly Record<string, unknown>[]): Record<string, unknown> {
@@ -776,8 +949,6 @@ function writeJson(filePath: string, value: unknown): void {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
-function writeObservationProjection(packageRoot: string): void {
-  const directory = path.join(packageRoot, "observations");
-  fs.mkdirSync(directory, { recursive: true });
-  writeJson(path.join(directory, "default.projection.json"), StandardAgentToolObservationProjection);
+function readJson(filePath: string): Record<string, unknown> {
+  return JSON.parse(fs.readFileSync(filePath, "utf8")) as Record<string, unknown>;
 }

@@ -1,3 +1,5 @@
+import { ToolPlanningModes, type ToolPlanningMode } from "../Types/AgentToolContractTypes.js";
+
 export const AgentModelEndpointKinds = [
   "Responses",
   "ChatCompletions",
@@ -7,9 +9,9 @@ export const AgentModelEndpointKinds = [
 
 export type AgentModelEndpointKind = (typeof AgentModelEndpointKinds)[number];
 
-export const AgentModelToolPlanningModes = ["native", "baml"] as const;
+export const AgentModelToolPlanningModes = ToolPlanningModes;
 
-export type AgentModelToolPlanningMode = (typeof AgentModelToolPlanningModes)[number];
+export type AgentModelToolPlanningMode = ToolPlanningMode;
 
 /** Pi API adapters are selected from the declared wire protocol, never from model names. */
 export const AgentNativeToolApiByEndpoint = {

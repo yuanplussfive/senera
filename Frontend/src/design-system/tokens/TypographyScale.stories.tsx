@@ -22,12 +22,12 @@ export const TypeScale: Story = () => (
             <div className="text-ink-500 text-xs mb-2">Senera 字体</div>
             <div
               className="text-ink-900 text-lg font-medium"
-              style={{ fontFamily: '"Geist", "PingFang SC", "Microsoft YaHei UI", sans-serif' }}
+              style={{ fontFamily: '"HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", sans-serif' }}
             >
-              Geist — 清晰的界面文字帮助用户快速理解当前状态
+              HarmonyOS Sans SC — 清晰的界面文字帮助用户快速理解当前状态
             </div>
             <div className="text-ink-600 text-sm mt-2 font-mono">
-              font-family: "Geist", "PingFang SC", "Microsoft YaHei UI", sans-serif
+              font-family: "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", sans-serif
             </div>
           </div>
 

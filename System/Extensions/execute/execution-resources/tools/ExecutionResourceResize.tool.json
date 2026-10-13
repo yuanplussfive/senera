@@ -1,0 +1,76 @@
+{
+  "name": "ExecutionResourceResize",
+  "loading": "Bootstrap",
+  "presentation": {
+    "category": "execution-resize",
+    "icon": "terminal",
+    "activity": {
+      "action": { "zh-CN": "调整", "en-US": "Resize" },
+      "argumentPath": "/resourceId"
+    }
+  },
+  "description": "调整 PTY 后台终端的列数和行数。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "resourceId": {
+        "type": "string"
+      },
+      "columns": {
+        "type": "number"
+      },
+      "rows": {
+        "type": "number"
+      }
+    },
+    "required": ["resourceId", "columns", "rows"],
+    "additionalProperties": false,
+    "definitions": {}
+  },
+  "permissions": ["process:shell"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "SelfManaged"
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "execution",
+      "Title": "Execution",
+      "Description": "Shell commands, processes, terminals, builds, tests, and other executable workloads."
+    }
+  ],
+  "search": {
+    "Summary": "调整 PTY 后台终端的列数和行数。",
+    "Capabilities": [
+      {
+        "Id": "execution.resource-resize",
+        "Title": "Resize execution terminal",
+        "Description": "调整后台 PTY 终端的列数和行数，以适配交互式程序的显示区域。",
+        "Facets": {
+          "Actions": ["resize"],
+          "Targets": ["terminal", "execution-resource"],
+          "Inputs": ["columns", "rows"]
+        },
+        "Aliases": ["调整后台终端大小", "调整终端尺寸", "调整 PTY 大小"]
+      }
+    ],
+    "UseCases": ["交互式终端输出换行异常，或程序需要新的终端尺寸时。"],
+    "Tags": ["PTY", "终端尺寸", "交互终端"]
+  },
+  "evidenceCapabilities": [],
+  "artifacts": {
+    "Summary": {
+      "Template": "{{ toolName }} resource {{ result.resourceId }}: {{ result.state }}",
+      "ArtifactTemplate": "- resourceId: {{ result.resourceId }}\n  state: {{ result.state }}\n  cursor: {{ result.cursor }}{% if result.exitCode != blank %}\n  exitCode: {{ result.exitCode }}{% endif %}{% if result.signal %}\n  signal: {{ result.signal }}{% endif %}{% if result.historyTruncated %}\n  outputHistoryTruncated: true{% endif %}{% for update in result.updates %}{% if update.kind == 'output' %}\n\n[{{ update.stream }} cursor={{ update.cursor }}]\n{{ update.text }}{% elsif update.kind == 'state' %}\n\n[state cursor={{ update.cursor }}] {{ update.state }}{% if update.reason %}: {{ update.reason }}{% endif %}{% endif %}{% endfor %}"
+    }
+  }
+}

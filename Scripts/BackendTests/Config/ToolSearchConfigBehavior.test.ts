@@ -1,156 +1,258 @@
 import { describe, expect, test } from "vitest";
-import { resolveToolSearchConfig, resolveVectorModelsConfig } from "../../../Source/AgentSystem/AgentDefaults.js";
-import {
-  ToolSearchSchema,
-  VectorModelsSchema,
-} from "../../../Source/AgentSystem/Schemas/AgentToolMemoryConfigSchema.js";
+import { resolveToolSearchConfig } from "../../../Source/AgentSystem/AgentDefaults.js";
+import { ToolSearchSchema } from "../../../Source/AgentSystem/Schemas/AgentToolMemoryConfigSchema.js";
 import { migrateAgentConfigPayload } from "../../../Source/AgentSystem/Config/AgentConfigMigration.js";
 import { CurrentAgentConfigVersion } from "../../../Source/AgentSystem/Config/AgentConfigVersion.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 describe("tool search configuration", () => {
-  test("accepts unbounded vector model limits and rejects zero", () => {
-    expect(
-      VectorModelsSchema.safeParse({
-        Embedding: { InputMaxChars: -1 },
-        Rerank: { CandidateLimit: -1, TopK: -1 },
-      }).success,
-    ).toBe(true);
-    expect(VectorModelsSchema.safeParse({ Rerank: { CandidateLimit: 0 } }).success).toBe(false);
-    expect(VectorModelsSchema.safeParse({ Rerank: { TopK: 0 } }).success).toBe(false);
+  test("uses one fused policy with a model-aware disclosure budget", () => {
+    expect(ToolSearchSchema.safeParse({ Disclosure: { TokenBudget: 640 } }).success).toBe(true);
+    expect(ToolSearchSchema.safeParse({ Disclosure: { TokenBudget: 0 } }).success).toBe(false);
+    expect(ToolSearchSchema.safeParse({ Ranking: { MemoryExpansion: { Mode: "fallback" } } }).success).toBe(false);
   });
 
-  test.each(["disabled", "fallback", "augment"] as const)("accepts memory expansion mode %s", (mode) => {
+  test("keeps local semantic retrieval free of encoder-calibrated score floors", () => {
     expect(
       ToolSearchSchema.safeParse({
-        Ranking: {
-          MaxResults: 6,
-          MemoryExpansion: {
-            Mode: mode,
-            MinConfidence: 0.8,
-            MinEvidence: 3,
-            MaxResults: 2,
-          },
-        },
+        Embedding: { Enabled: true },
       }).success,
     ).toBe(true);
-  });
-
-  test("keeps retrieval policy separate from vector model transport settings", () => {
     expect(
       ToolSearchSchema.safeParse({
         Embedding: { Enabled: true, ScoreThreshold: 0.35 },
       }).success,
-    ).toBe(true);
+    ).toBe(false);
     expect(
       ToolSearchSchema.safeParse({
         Embedding: { Model: "duplicate-model-setting" },
       }).success,
     ).toBe(false);
-    expect(resolveToolSearchConfig(config()).Embedding.Enabled).toBe(false);
-    expect(resolveToolSearchConfig(config()).Rerank.Enabled).toBe(false);
+    expect(ToolSearchSchema.safeParse({ Embedding: { Provider: "local" } }).success).toBe(false);
+    expect(ToolSearchSchema.safeParse({ Embedding: { Languages: ["zh", "en"] } }).success).toBe(false);
+    expect(resolveToolSearchConfig(config()).Embedding.Enabled).toBe(true);
+    // The deterministic reranker is part of local retrieval policy, not a
+    // retired remote vector transport. It stays enabled by default while the
+    // schema intentionally rejects transport/model fields here.
+    expect(resolveToolSearchConfig(config()).Rerank.Enabled).toBe(true);
   });
 
-  test("resolves bounded local fuzzy recovery independently from model services", () => {
-    expect(ToolSearchSchema.safeParse({ Fuzzy: { Enabled: true, MinScore: 0.8, CandidateLimit: 4 } }).success).toBe(
-      true,
-    );
+  test("enables the builtin semantic retrieval channel by default", () => {
+    const resolved = resolveToolSearchConfig(config());
+
+    expect(resolved.Embedding).toEqual({ Enabled: true });
+    expect(resolved.Tokenize.Stopwords.length).toBeGreaterThan(0);
+    expect(resolved.Ranking.ChannelWeights).toMatchObject({
+      bm25: 1,
+      exact: 0.9,
+      example: 1.1,
+      fuzzy: 0.7,
+      semantic: 0.5,
+      structural: 1,
+      memory: 0.6,
+    });
+  });
+
+  test("resolves local fuzzy recovery independently from model services", () => {
+    expect(ToolSearchSchema.safeParse({ Fuzzy: { Enabled: true, MinScore: 0.8 } }).success).toBe(true);
     expect(ToolSearchSchema.safeParse({ Fuzzy: { MinScore: 1.1 } }).success).toBe(false);
-    expect(ToolSearchSchema.safeParse({ Fuzzy: { CandidateLimit: 0 } }).success).toBe(false);
+    expect(ToolSearchSchema.safeParse({ Fuzzy: { CandidateLimit: 4 } }).success).toBe(false);
 
     expect(
       resolveToolSearchConfig(
         config({
-          Defaults: { ToolSearch: { Fuzzy: { Enabled: false, CandidateLimit: 3 } } },
+          Defaults: { ToolSearch: { Fuzzy: { Enabled: false } } },
           ToolSearch: { Fuzzy: { MinScore: 0.8 } },
         }),
       ).Fuzzy,
-    ).toEqual({ Enabled: false, MinScore: 0.8, CandidateLimit: 3 });
+    ).toEqual({ Enabled: false, MinScore: 0.8 });
   });
 
-  test("activates vector transports only for an enabled, capability-matching configured model", () => {
-    const vectorSettings = {
-      Embedding: { Enabled: true, ProviderId: "openai", Model: "embedding-model" },
-      Rerank: { Enabled: true, ProviderId: "openai", Model: "rerank-model" },
-    };
-    const endpoint = { Id: "vector-provider", Enabled: true, BaseUrl: "https://vector.example.test/v1" };
-    const enabledVectorSettings = {
-      Embedding: { ...vectorSettings.Embedding, ProviderId: endpoint.Id },
-      Rerank: { ...vectorSettings.Rerank, ProviderId: endpoint.Id },
-    };
-    expect(resolveVectorModelsConfig({ ...config(), VectorModels: vectorSettings })).toMatchObject({
-      Embedding: { Enabled: false },
-      Rerank: { Enabled: false },
+  test("migrates the retired remote VectorModels transport out of runtime and default settings", () => {
+    const migrated = migrateAgentConfigPayload({
+      ConfigVersion: 21,
+      VectorModels: {
+        Embedding: { Enabled: true, ProviderId: "openai", Model: "embedding-model" },
+        Rerank: { Enabled: true, ProviderId: "openai", Model: "rerank-model" },
+      },
+      Defaults: {
+        VectorModels: {
+          Embedding: { Enabled: true, ProviderId: "openai", Model: "embedding-model" },
+        },
+      },
     });
 
-    const resolved = resolveVectorModelsConfig({
-      ...config(),
-      VectorModels: enabledVectorSettings,
-      ModelProviderEndpoints: [endpoint],
+    expect(migrated).toMatchObject({
+      sourceVersion: 21,
+      targetVersion: CurrentAgentConfigVersion,
+      removedPaths: ["VectorModels", "Defaults.VectorModels"],
+      config: {
+        ConfigVersion: CurrentAgentConfigVersion,
+      },
+    });
+    expect(migrated?.config).not.toHaveProperty("VectorModels");
+    expect(migrated?.config).not.toHaveProperty("Defaults.VectorModels");
+    expect(migrated?.removedPaths).toHaveLength(2);
+  });
+
+  test("preserves model and endpoint identities while stripping retired vector capability bits", () => {
+    const migrated = migrateAgentConfigPayload({
+      ConfigVersion: 22,
       ModelProviders: [
         {
-          Id: "embedding",
-          ProviderId: endpoint.Id,
-          Endpoint: "ChatCompletions",
-          Model: "embedding-model",
-          Capabilities: { Embedding: true },
+          Id: "main-assistant",
+          ProviderId: "main",
+          Capabilities: { Chat: true, Embedding: true, Vision: true, Rerank: true },
         },
         {
-          Id: "rerank",
-          ProviderId: endpoint.Id,
+          Id: "emb/qwen3-embedding-0.6b",
+          ProviderId: "emb",
           Endpoint: "ChatCompletions",
-          Model: "rerank-model",
-          Capabilities: { Rerank: true },
+          Model: "qwen3-embedding-0.6b",
         },
+        { Id: "emb/qwen3-reranker-0.6b", ProviderId: "emb", Endpoint: "ChatCompletions", Model: "qwen3-reranker-0.6b" },
+        { Id: "kept", ProviderId: "main" },
+      ],
+      ModelProviderEndpoints: [
+        { Id: "main", Enabled: true },
+        { Id: "emb", Enabled: true, BaseUrl: "http://154.21.196.246:3000/v1" },
+        { Id: "openai", Enabled: true },
       ],
     });
-    expect(resolved).toMatchObject({
-      Embedding: { Enabled: true, Model: "embedding-model" },
-      Rerank: { Enabled: true, Model: "rerank-model" },
+
+    expect(migrated?.targetVersion).toBe(CurrentAgentConfigVersion);
+    expect(migrated?.config).toMatchObject({
+      ConfigVersion: CurrentAgentConfigVersion,
+      ModelProviders: [
+        { Id: "main-assistant", Capabilities: { Chat: true, Vision: true } },
+        { Id: "emb/qwen3-embedding-0.6b", ProviderId: "emb" },
+        { Id: "emb/qwen3-reranker-0.6b", ProviderId: "emb" },
+        { Id: "kept" },
+      ],
+      ModelProviderEndpoints: [{ Id: "main" }, { Id: "emb" }, { Id: "openai" }],
+    });
+    const providerRows = (migrated?.config as { ModelProviders?: unknown[] })?.ModelProviders;
+    const endpointRows = (migrated?.config as { ModelProviderEndpoints?: unknown[] })?.ModelProviderEndpoints;
+    expect(providerRows).toHaveLength(4);
+    expect(endpointRows).toHaveLength(3);
+    expect(endpointRows).toContainEqual(expect.objectContaining({ Id: "emb" }));
+    expect(migrated?.removedPaths).toEqual([
+      "ModelProviders[0].Capabilities.Embedding",
+      "ModelProviders[0].Capabilities.Rerank",
+    ]);
+  });
+
+  test("migrates the retired character-based artifact summary ceiling", () => {
+    const migrated = migrateAgentConfigPayload({
+      ConfigVersion: 23,
+      Artifacts: {
+        RootDir: ".senera/artifacts/runs",
+        SummaryMaxChars: 2400,
+        RawJsonMaxBytes: 67_108_864,
+      },
+      Defaults: {
+        Artifacts: { SummaryMaxChars: 1200 },
+      },
+    });
+
+    expect(migrated).toMatchObject({
+      sourceVersion: 23,
+      targetVersion: CurrentAgentConfigVersion,
+      removedPaths: ["Artifacts.SummaryMaxChars", "Defaults.Artifacts.SummaryMaxChars"],
+      config: {
+        ConfigVersion: CurrentAgentConfigVersion,
+        Artifacts: { RootDir: ".senera/artifacts/runs", RawJsonMaxBytes: 67_108_864 },
+        Defaults: { Artifacts: {} },
+      },
     });
   });
 
   test.each([
     { Memory: { Kind: "memory" } },
-    { Ranking: { MaxResults: 0 } },
-    { Ranking: { MemoryExpansion: { Mode: "unknown" } } },
-    { Ranking: { MemoryExpansion: { MinConfidence: 1.1 } } },
-    { Ranking: { MemoryExpansion: { MinEvidence: -1 } } },
-    { Ranking: { MemoryExpansion: { MaxResults: 0 } } },
+    { Fuzzy: { CandidateLimit: 1 } },
+    { Ranking: { MmrLambda: 0.7 } },
+    { Rerank: { CandidateLimit: 12 } },
     { Ranking: { IntentGate: { Mode: "side_effect_capability" } } },
   ])("rejects invalid bounded retrieval policy %#", (value) => {
     expect(ToolSearchSchema.safeParse(value).success).toBe(false);
   });
 
-  test("deeply merges default and runtime memory expansion policy", () => {
+  test("deeply merges default and runtime disclosure policy", () => {
     const resolved = resolveToolSearchConfig(
       config({
         Defaults: {
           ToolSearch: {
-            Ranking: {
-              MemoryExpansion: {
-                MinEvidence: 5,
-              },
+            Disclosure: {
+              TokenBudget: 512,
             },
           },
         },
         ToolSearch: {
-          Ranking: {
-            MemoryExpansion: {
-              Mode: "augment",
-            },
+          Disclosure: {
+            TokenBudget: 768,
           },
         },
       }),
     );
 
-    expect(resolved.Ranking).toMatchObject({
-      MaxResults: 6,
-      MemoryExpansion: {
-        Mode: "augment",
-        MinConfidence: 0.8,
-        MinEvidence: 5,
-        MaxResults: 2,
+    expect(resolved.Disclosure).toEqual({ TokenBudget: 768 });
+  });
+
+  test("migrates retired fixed discovery limits from runtime and default settings", () => {
+    const migrated = migrateAgentConfigPayload({
+      ConfigVersion: 25,
+      ToolSearch: {
+        Fuzzy: { CandidateLimit: 8 },
+        Ranking: { MmrLambda: 0.72, MmrCandidateScoreRatio: 0.92, MinScore: 0, MemoryExpansion: { Mode: "fallback" } },
+        Rerank: { CandidateLimit: 24 },
+      },
+      Defaults: {
+        ToolSearch: {
+          Fuzzy: { CandidateLimit: 4 },
+          Ranking: { MemoryExpansion: { Mode: "augment" } },
+          Rerank: { CandidateLimit: 12 },
+        },
+      },
+    });
+
+    expect(migrated).toMatchObject({
+      sourceVersion: 25,
+      targetVersion: CurrentAgentConfigVersion,
+      removedPaths: [
+        "ToolSearch.Fuzzy.CandidateLimit",
+        "ToolSearch.Ranking.MmrLambda",
+        "ToolSearch.Ranking.MmrCandidateScoreRatio",
+        "ToolSearch.Ranking.MinScore",
+        "ToolSearch.Ranking.MemoryExpansion",
+        "ToolSearch.Rerank.CandidateLimit",
+        "Defaults.ToolSearch.Fuzzy.CandidateLimit",
+        "Defaults.ToolSearch.Ranking.MemoryExpansion",
+        "Defaults.ToolSearch.Rerank.CandidateLimit",
+      ],
+    });
+  });
+
+  test("removes retired embedding transport metadata before strict validation", () => {
+    const migrated = migrateAgentConfigPayload({
+      ConfigVersion: 26,
+      ToolSearch: { Embedding: { Enabled: true, Provider: "local", Languages: ["zh", "en"] } },
+      Defaults: {
+        ToolSearch: { Embedding: { Provider: "local", Languages: ["en"] } },
+      },
+    });
+
+    expect(migrated).toMatchObject({
+      targetVersion: CurrentAgentConfigVersion,
+      removedPaths: [
+        "ToolSearch.Embedding.Provider",
+        "ToolSearch.Embedding.Languages",
+        "Defaults.ToolSearch.Embedding.Provider",
+        "Defaults.ToolSearch.Embedding.Languages",
+      ],
+      config: {
+        ConfigVersion: CurrentAgentConfigVersion,
+        ToolSearch: { Embedding: { Enabled: true } },
+        Defaults: { ToolSearch: { Embedding: {} } },
       },
     });
   });
@@ -205,6 +307,7 @@ describe("tool search configuration", () => {
           BatchSize: 32,
           InputMaxChars: 12000,
           ScoreThreshold: 0.2,
+          CandidateThreshold: 0.45,
         },
       },
     });
@@ -218,11 +321,55 @@ describe("tool search configuration", () => {
         "ToolSearch.Embedding.Dimensions",
         "ToolSearch.Embedding.BatchSize",
         "ToolSearch.Embedding.InputMaxChars",
+        "ToolSearch.Embedding.ScoreThreshold",
+        "ToolSearch.Embedding.CandidateThreshold",
       ],
       config: {
         ConfigVersion: CurrentAgentConfigVersion,
-        ToolSearch: { Embedding: { Enabled: true, ScoreThreshold: 0.2 } },
+        ToolSearch: { Embedding: { Enabled: true } },
       },
+    });
+  });
+
+  test("preserves user model and endpoint identities while removing retired vector capability flags", () => {
+    const migrated = migrateAgentConfigPayload({
+      ConfigVersion: 22,
+      ModelProviders: [
+        { Id: "emb/legacy", ProviderId: "emb", Model: "legacy-vector" },
+        { Id: "emb/custom-chat", ProviderId: "custom", Model: "custom-chat" },
+        {
+          Id: "main",
+          ProviderId: "main",
+          Model: "main-chat",
+          Capabilities: { Chat: true, Embedding: true, Rerank: true },
+        },
+      ],
+      ModelProviderEndpoints: [{ Id: "emb" }, { Id: "custom" }, { Id: "main" }],
+    });
+
+    expect(migrated).toMatchObject({
+      removedPaths: ["ModelProviders[2].Capabilities.Embedding", "ModelProviders[2].Capabilities.Rerank"],
+      config: {
+        ConfigVersion: CurrentAgentConfigVersion,
+        ModelProviders: [
+          { Id: "emb/legacy", ProviderId: "emb", Model: "legacy-vector" },
+          { Id: "emb/custom-chat", ProviderId: "custom", Model: "custom-chat" },
+          { Id: "main", ProviderId: "main", Model: "main-chat", Capabilities: { Chat: true } },
+        ],
+        ModelProviderEndpoints: [{ Id: "emb" }, { Id: "custom" }, { Id: "main" }],
+      },
+    });
+  });
+
+  test("preserves an unreferenced custom endpoint named emb", () => {
+    const migrated = migrateAgentConfigPayload({
+      ConfigVersion: 22,
+      ModelProviderEndpoints: [{ Id: "emb", BaseUrl: "https://models.example.test/v1" }],
+    });
+
+    expect(migrated?.config).toMatchObject({
+      ConfigVersion: CurrentAgentConfigVersion,
+      ModelProviderEndpoints: [{ Id: "emb", BaseUrl: "https://models.example.test/v1" }],
     });
   });
 });

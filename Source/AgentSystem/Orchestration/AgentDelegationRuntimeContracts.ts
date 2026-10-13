@@ -62,6 +62,12 @@ export interface AgentDelegationContext {
   readonly parentRequestId: string;
   readonly parentModelProviderId?: string;
   readonly parentThinkingLevel?: ModelThinkingLevel;
+  readonly parentInvocation?: {
+    readonly agentStep: number;
+    readonly modelMessageIndex: number;
+    readonly modelContentIndex?: number;
+    readonly toolCallId?: string;
+  };
   /** Host-derived identity of the current Pi tool batch. */
   readonly parentToolBatch?: {
     readonly id: string;

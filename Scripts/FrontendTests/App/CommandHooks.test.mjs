@@ -20,7 +20,10 @@ afterEach(() => {
 });
 
 test("useChatCommands creates a missing session and sends its first message as one transaction", () => {
-  useStore.setState({ selectedModelProviderId: "model-primary" });
+  useStore.setState({
+    selectedModelProviderId: "model-primary",
+    catalogSynced: { sessions: true },
+  });
   const send = vi.fn(() => true);
   const serverKnownSessionIdsRef = { current: new Set() };
   const lastSendRef = { current: null };
@@ -77,6 +80,18 @@ test("useChatCommands blocks sends while history is recovering without mutating 
       title: frontendMessage("chat.historyRecovering"),
     }),
   );
+});
+
+test("useChatCommands blocks sends until the startup session catalog arrives", () => {
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  renderChatCommands({ activeSessionId: null, handleRef, send });
+
+  act(() => handleRef.current.sendMessage("Wait for the catalog"));
+
+  expect(send).not.toHaveBeenCalled();
+  expect(useStore.getState().sessionOrder).toEqual([]);
+  expect(readTestToastCalls()).toEqual([]);
 });
 
 test("useChatCommands preserves local state and retry context when message delivery fails", () => {
@@ -243,6 +258,78 @@ test("useChatCommands regenerates from the matching user message immediately wit
   expect(send.mock.calls.map(([request]) => request.type)).toEqual(["session.regenerate"]);
 });
 
+test("useChatCommands retries a terminal run without duplicating its user message", () => {
+  const sessionId = "session-retry";
+  const failedRequestId = "request-failed";
+  registerTestSession(sessionId);
+  useStore.getState().appendUserMessage(sessionId, failedRequestId, "Original task");
+  useStore.setState((state) => ({
+    sessions: {
+      ...state.sessions,
+      [sessionId]: {
+        ...state.sessions[sessionId],
+        runs: [
+          {
+            requestId: failedRequestId,
+            status: "failed",
+            input: "Original task",
+            recoveryModes: ["retry", "continue"],
+          },
+        ],
+      },
+    },
+  }));
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  renderChatCommands({ activeSessionId: sessionId, handleRef, send });
+
+  act(() =>
+    handleRef.current.retryRun({
+      id: "failed-error",
+      role: "system",
+      content: "Upstream connection interrupted",
+      createdAt: "2026-07-11T00:00:01.000Z",
+      requestId: failedRequestId,
+    }),
+  );
+
+  expect(send).toHaveBeenCalledWith(
+    expect.objectContaining({
+      type: "session.retry",
+      sessionId,
+      failedRequestId,
+      requestId: expect.any(String),
+      recoveryMode: "retry",
+      approvalMode: "agent",
+    }),
+  );
+  expect(useStore.getState().sessions[sessionId].messages).toHaveLength(1);
+
+  // Recovery attempts are admitted one at a time. Reset the fixture to its
+  // terminal source state before exercising the alternate recovery action.
+  useStore.setState((state) => {
+    const run = state.sessions[sessionId]?.runs.find((entry) => entry.requestId === failedRequestId);
+    if (run) delete run.recoveryAttempt;
+  });
+
+  act(() =>
+    handleRef.current.continueRun({
+      id: "failed-error",
+      role: "system",
+      content: "Upstream connection interrupted",
+      createdAt: "2026-07-11T00:00:01.000Z",
+      requestId: failedRequestId,
+    }),
+  );
+  expect(send).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      type: "session.retry",
+      failedRequestId,
+      recoveryMode: "continue",
+    }),
+  );
+});
+
 test("useChatCommands requests a non-destructive fork without creating a local placeholder", () => {
   const sessionId = "session-source";
   registerTestSession(sessionId);
@@ -344,6 +431,36 @@ test("useSessionCommands creates, renames, and synchronizes sessions only after 
   });
 });
 
+test("useSessionCommands dispatches bulk closes together and commits pending state once", () => {
+  registerTestSession("session-delete-a", "A");
+  registerTestSession("session-delete-b", "B");
+  registerTestSession("session-keep", "Keep");
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  renderSessionCommands({ handleRef, send, status: "open" });
+  const changes = [];
+  const unsubscribe = useStore.subscribe((state, previous) => {
+    if (state !== previous) changes.push(state);
+  });
+
+  let result;
+  act(() => {
+    result = handleRef.current.closeSessions(["session-delete-a", "session-delete-b", "session-delete-a"]);
+  });
+  unsubscribe();
+
+  expect(send.mock.calls.map(([request]) => request)).toEqual([
+    { type: "session.close_many", sessionIds: ["session-delete-a", "session-delete-b"] },
+  ]);
+  expect(result).toEqual({
+    acceptedSessionIds: ["session-delete-a", "session-delete-b"],
+    rejectedSessionIds: [],
+  });
+  expect(changes).toHaveLength(1);
+  expect(useStore.getState().sessionOrder).toEqual(["session-keep"]);
+  expect(useStore.getState().pendingDeletedSessionIds).toEqual({ "session-delete-a": true, "session-delete-b": true });
+});
+
 test("useSessionCommands reuses an existing empty new conversation while offline", () => {
   registerTestSession("session-empty", DEFAULT_SESSION_TITLE);
   registerTestSession("session-current", "Current work");
@@ -381,30 +498,6 @@ test.each([
     expect.objectContaining({
       variant: "error",
       title: frontendMessage("session.renameDisconnected"),
-    }),
-  );
-});
-
-test("useSessionCommands keeps failed bulk deletions and reports the partial result", () => {
-  registerTestSession("session-a");
-  registerTestSession("session-b");
-  const serverKnownSessionIdsRef = { current: new Set(["session-a", "session-b"]) };
-  const send = vi.fn((request) => request.sessionId !== "session-b");
-  const handleRef = { current: null };
-  renderSessionCommands({ handleRef, send, serverKnownSessionIdsRef, status: "open" });
-
-  act(() => handleRef.current.closeSessions(["session-a", "session-a", "session-b", ""]));
-
-  expect(send.mock.calls.map(([request]) => request.sessionId)).toEqual(["session-a", "session-b"]);
-  expect(useStore.getState().sessions["session-a"]).toBeDefined();
-  expect(useStore.getState().pendingDeletedSessionIds["session-a"]).toBe(true);
-  expect(useStore.getState().sessionOrder).toEqual(["session-b"]);
-  expect(useStore.getState().sessions["session-b"]).toBeDefined();
-  expect(serverKnownSessionIdsRef.current).toEqual(new Set(["session-a", "session-b"]));
-  expect(readTestToastCalls()).toContainEqual(
-    expect.objectContaining({
-      variant: "error",
-      title: frontendMessage("session.bulkDeletePartialFailed", { count: 1 }),
     }),
   );
 });

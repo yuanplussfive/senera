@@ -5,8 +5,9 @@ import { MessageActions } from "./MessageActions";
 import { readAssistantDisplayContent } from "./messagePresentation";
 import { AssistantMessageBody } from "./AssistantMessageBody";
 import { SystemMessageRow } from "./SystemMessageRow";
-import { ThinkingSummaryBar } from "./ThinkingSummaryBar";
+import { RunThinkingPresentation } from "./ModelThinkingDisclosure";
 import { UserMessageRow } from "./UserMessageRow";
+import { MessageMetrics } from "./MessageMetrics";
 
 interface MessageRowProps {
   message: ChatMessage;
@@ -22,6 +23,10 @@ interface MessageRowProps {
   showInlineActions: boolean;
   onFork: () => void;
   onRegenerate: () => void;
+  onRetryRun?: () => void;
+  onContinueRun?: () => void;
+  failureSuperseded?: boolean;
+  onFailureDismissed?: () => void;
   onDelete: () => void;
   onViewWorkflow: () => void;
 }
@@ -40,6 +45,10 @@ export function MessageRow({
   showInlineActions,
   onFork,
   onRegenerate,
+  onRetryRun,
+  onContinueRun,
+  failureSuperseded,
+  onFailureDismissed,
   onDelete,
   onViewWorkflow,
 }: MessageRowProps): JSX.Element {
@@ -66,9 +75,17 @@ export function MessageRow({
   }
 
   if (message.role === "system") {
+    const canRetry = run?.status === "failed" || run?.status === "cancelled";
     return (
       <ConversationFrame mode="prose">
-        <SystemMessageRow message={message} />
+        <SystemMessageRow
+          message={message}
+          recoveryAttempt={run?.recoveryAttempt}
+          superseded={failureSuperseded}
+          onDismissed={onFailureDismissed}
+          onRetry={canRetry && run.recoveryModes?.includes("retry") ? onRetryRun : undefined}
+          onContinue={canRetry && run.recoveryModes?.includes("continue") ? onContinueRun : undefined}
+        />
       </ConversationFrame>
     );
   }
@@ -78,18 +95,27 @@ export function MessageRow({
     message.kind === "AssistantToolPreface" && run?.status === "running" && run.displayMessageId === message.id;
 
   return (
-    <ConversationFrame mode="wide" className="group/msg">
+    <ConversationFrame mode="wide" className="group/msg" data-message-hover-surface>
       <div className="flex min-w-0 items-start gap-3" data-assistant-message>
         <AssistantMessageAvatar />
         <div className="assistant-turn-content min-w-0 flex-1">
           <MessageMeta title="Senera" timestamp={message.createdAt} />
           {message.kind !== "AssistantToolPreface" ? (
-            <ThinkingSummaryBar
+            <RunThinkingPresentation
               run={run}
               presentation={run?.status === "running" ? "live-final-answer" : "terminal-only"}
+              showSummaryWhenEmpty={
+                (run?.status !== "running" && run?.status !== "cancelling") || !displayContent.trim()
+              }
             />
           ) : null}
           <AssistantMessageBody message={{ ...message, content: displayContent }} streaming={isStreamingPreface} />
+          <MessageMetrics
+            role="assistant"
+            usage={run?.usage ?? message.metadata?.run?.usage}
+            run={run}
+            modelProvider={run?.modelProvider ?? message.metadata?.run?.modelProvider}
+          />
           <MessageActions
             content={displayContent}
             placement="left"

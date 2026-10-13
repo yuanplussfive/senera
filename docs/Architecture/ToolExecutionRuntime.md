@@ -6,7 +6,7 @@ Senera separates model actions from executable capabilities. Native models send 
 
 At runtime startup:
 
-1. `AgentSystemExtensionCatalog` validates `System/Extensions/<id>/extension.json`, package-contained contracts, and pre-registered host capability references.
+1. `AgentSystemExtensionCatalog` recursively discovers `System/Extensions/<domain>/<extension>/extension.json`, validates each `domain.json`, package-contained contracts, and pre-registered host capability references. Domain, extension, and Tool presentation metadata are carried into tool lifecycle events.
 2. `AgentMcpPackageScanner` adapts MCPB `manifest.json`, Registry `server.json`, and legacy `.mcp.json` packages into one internal endpoint/input model. Conflicting descriptors and ambiguous routes fail instead of using first-match selection.
 3. `AgentMcpPackageDiscovery` connects with the official MCP client, calls `tools/list`, validates returned JSON Schemas, and projects the resulting tools into the registry.
 4. `System/Skills` and workspace `.senera/skills` are scanned as standard `SKILL.md` packages.
@@ -48,6 +48,10 @@ Authorization has two explicit stages. Tool declarations, access grants, argumen
 
 Pi's `tool_execution_start` callback begins before its internal preflight. It is not published as `tool.call.started`. Planned calls enter the UI as pending from `tool.calls.planned`; the executor publishes `tool.call.started` only after authorization and scheduler admission. The Pi collector remains responsible for the artifact-enriched result detail and emits a fallback terminal lifecycle only when execution never reached the executor.
 
+## Managed process lifetime
+
+`ShellCommandTool.timeoutMs=0` omits the process maximum duration and retains the active execution resource until its managed process tree exits or the user stops it. Positive values remain bounded by `ToolExecution.TimeoutSeconds`; idle expiry still applies to ordinary bounded resources. On Windows, the supervisor waits for all processes in the owned Job Object before reporting completion, so a shell wrapper exiting does not make its still-running children disappear. Closing the execution broker terminates remaining Job Objects to avoid orphaned processes.
+
 ## MCP lifecycle
 
 Each package owns a standard MCP Server implementation. Persistent clients are pooled by endpoint revision and execution profile. Cancellation, progress, elicitation, task recovery, and connection replacement use MCP protocol behavior rather than a private stdout control protocol.
@@ -56,7 +60,7 @@ Each package owns a standard MCP Server implementation. Persistent clients are p
 
 ## Results and evidence
 
-The immediate model observation and durable artifact are separate outputs. The artifact recorder commits the complete redacted result before `AgentToolObservationContextCompiler` builds a bounded source view. System Tools own package-local declarative projection files; MCP keeps standard `outputSchema` and `structuredContent` and receives the host's generic bounded projection. See [Tool Observation Projection](./ToolObservationProjection.md).
+The immediate model observation and durable Artifact are separate outputs. The recorder commits the complete redacted result first; the Pi bridge then applies the shared [tool observation compression policy](./ToolObservationCompression.md) using the active turn reservation. System Tools and MCP results follow the same verbatim, mechanical, or Pi-backed summary path. No package-local observation projection is involved.
 
 Structural limits run before exact tokenization. Pi then allocates the remaining turn budget across already-bounded observations in one `prepare()` pass. Every partial view records omissions and retains its artifact URI. Incremental stdout/stderr and progress events are an out-of-band UI surface and never replace the terminal observation.
 
@@ -68,7 +72,7 @@ Every executed call carries one authoritative three-axis `outcome`:
 
 `Runtime.ResultAssessment` chooses the assessment policy before dispatch. `ProcessExit` lets the host interpret a nonzero process exit or signal as failure. `Unassessed` preserves exit code, signal, stdout, and stderr without claiming success or failure. Timeout, cancellation, startup failure, invalid protocol responses, MCP `CallToolResult.isError`, and typed HostCapability failures remain authoritative failures under either policy.
 
-Pi observations preserve all three axes. Tool learning accepts only assessed success as a positive example. A plan dependency may consume partial output from a failed call or complete output from an unassessed call; the plan retains the assessment and diagnostic rather than relabeling that call as successful.
+Pi observations preserve all three axes. Completed routing scenarios are written to MemOS only after the turn boundary, carrying the state card and the original assessment. A plan dependency may consume partial output from a failed call or complete output from an unassessed call; the plan retains the assessment and diagnostic rather than relabeling that call as successful.
 
 `retryable` describes whether a failure is transient; it is never permission to replay a call. Retry orchestration must separately prove that the operation is safe to repeat after considering idempotency, possible side effects, and the current authorization boundary.
 

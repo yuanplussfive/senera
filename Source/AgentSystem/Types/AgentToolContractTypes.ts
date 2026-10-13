@@ -18,7 +18,6 @@ export type {
   ToolArtifactRedactionTransformManifest,
   ToolArtifactSummaryManifest,
   ToolArtifactWorkspaceManifest,
-  ToolArtifactWorkspacePathManifest,
 } from "./AgentArtifactContractTypes.js";
 export type {
   RootCommandManifest,
@@ -47,6 +46,16 @@ export const ToolLoadingModes = {
 
 export type ToolLoadingMode = (typeof ToolLoadingModes)[keyof typeof ToolLoadingModes];
 
+/**
+ * A planner protocol controls how a provider receives and executes tool
+ * schemas. This is separate from Loading: Loading selects direct versus
+ * discovery invocation, while PlanningModes declares which protocols can
+ * faithfully represent that contract.
+ */
+export const ToolPlanningModes = ["native", "baml"] as const;
+
+export type ToolPlanningMode = (typeof ToolPlanningModes)[number];
+
 export const AgentToolChildGrantModes = {
   Inherit: "inherit",
   Internal: "internal",
@@ -73,10 +82,23 @@ export const ToolSchedulingModes = {
 
 export type ToolSchedulingMode = (typeof ToolSchedulingModes)[keyof typeof ToolSchedulingModes];
 
+/**
+ * Controls whether a tool result creates a new durable Artifact or is a
+ * bounded view over an Artifact that already exists.
+ */
+export const ToolResultStorageModes = {
+  Artifact: "Artifact",
+  SourceView: "SourceView",
+} as const;
+
+export type ToolResultStorageMode = (typeof ToolResultStorageModes)[keyof typeof ToolResultStorageModes];
+
 export interface ToolRuntimeManifest {
   Lifecycle: "Immediate" | "OneShot" | "Persistent" | "RemoteJob";
   ProtocolVersion?: typeof AgentHostToolProtocolVersion;
   ResultAssessment: ToolResultAssessmentPolicy;
+  /** Omitted means the tool publishes a new durable Artifact. */
+  ResultStorage?: ToolResultStorageMode;
   Scheduling?: ToolSchedulingMode;
   MaxConcurrency?: number;
   Capabilities?: ToolRuntimeCapabilitiesManifest;
@@ -139,6 +161,7 @@ export type ToolHandlerManifest =
 export interface ToolManifest {
   Name: string;
   Loading?: ToolLoadingMode;
+  PlanningModes?: ToolPlanningMode[];
   DescriptionFile?: string;
   Permissions?: string[];
   Handler: ToolHandlerManifest;

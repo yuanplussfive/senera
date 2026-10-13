@@ -1,12 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useAgentSocket, type AgentSocketReconnectPolicy, type SocketStatus } from "../api/useAgentSocket";
 import type { WsRequest } from "../api/eventTypes";
 import { buildSettingsSurfaceSyncRequests } from "./settingsSurfaceSync";
 import { readDesktopBridge } from "./desktopBridge";
 import { useSettingsRuntime } from "./useSettingsRuntime";
-import { SettingsWorkbench } from "../features/settings";
 import { DiscardDraftDialog } from "../features/settings/DiscardDraftDialog";
 import type { SettingsSectionId } from "../features/settings/settingsSectionContract";
+import { SettingsSurfaceLoading } from "./SurfaceLoading";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import { AppMotionProvider } from "../shared/motion/MotionProvider";
 import { AppAppearanceProvider } from "../shared/theme/useAppearance";
@@ -17,6 +17,9 @@ import { useRuntimeUpdate } from "./runtimeUpdate";
 
 const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
 const HTTP_BASE_URL = resolveRuntimeHttpBaseUrl(WS_URL);
+const LazySettingsWorkbench = lazy(() =>
+  import("../features/settings/SettingsWorkbench").then((module) => ({ default: module.SettingsWorkbench })),
+);
 
 export function DesktopSettingsSurface({
   initialSection,
@@ -56,6 +59,7 @@ export function DesktopSettingsSurface({
     currentVersion: __SENERA_APP_VERSION__,
     surface: "desktop",
   });
+  const settingsReady = Boolean(runtime.systemConfig.configSnapshot);
 
   useEffect(() => {
     if (status !== "open") return;
@@ -82,27 +86,33 @@ export function DesktopSettingsSurface({
     <AppMotionProvider level={motionLevel}>
       <AppAppearanceProvider motionLevel={motionLevel}>
         <TooltipProvider delayDuration={300}>
-          <SettingsWorkbench
-            section={section}
-            onSectionChange={changeSection}
-            onPendingChangesChange={setPendingChanges}
-            environment={{
-              appVersion: __SENERA_APP_VERSION__,
-              frontendVersion: __SENERA_FRONTEND_VERSION__,
-              mode: import.meta.env.MODE,
-              surface: "desktop",
-              runtimeUpdate,
-            }}
-            values={{ defaultSidebarCollapsed, defaultRightPanelCollapsed }}
-            motionLevel={motionLevel}
-            onValueChange={(id, value) => {
-              if (id === "defaultSidebarCollapsed") setDefaultSidebarCollapsed(value);
-              if (id === "defaultRightPanelCollapsed") setDefaultRightPanelCollapsed(value);
-            }}
-            onMotionLevelChange={setMotionLevel}
-            systemConfig={runtime.systemConfig}
-            workspace={runtime.workspace}
-          />
+          {settingsReady ? (
+            <Suspense fallback={<SettingsSurfaceLoading presentation="desktop" />}>
+              <LazySettingsWorkbench
+                section={section}
+                onSectionChange={changeSection}
+                onPendingChangesChange={setPendingChanges}
+                environment={{
+                  appVersion: __SENERA_APP_VERSION__,
+                  frontendVersion: __SENERA_FRONTEND_VERSION__,
+                  mode: import.meta.env.MODE,
+                  surface: "desktop",
+                  runtimeUpdate,
+                }}
+                values={{ defaultSidebarCollapsed, defaultRightPanelCollapsed }}
+                motionLevel={motionLevel}
+                onValueChange={(id, value) => {
+                  if (id === "defaultSidebarCollapsed") setDefaultSidebarCollapsed(value);
+                  if (id === "defaultRightPanelCollapsed") setDefaultRightPanelCollapsed(value);
+                }}
+                onMotionLevelChange={setMotionLevel}
+                systemConfig={runtime.systemConfig}
+                workspace={runtime.workspace}
+              />
+            </Suspense>
+          ) : (
+            <SettingsSurfaceLoading presentation="desktop" />
+          )}
           <DiscardDraftDialog
             open={closeConfirmationOpen}
             title={frontendMessage("settings.discard.title")}

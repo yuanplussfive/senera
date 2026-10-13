@@ -36,6 +36,7 @@ import {
   type AgentModelUsageSource,
   type AgentModelUsageValue,
 } from "../ModelEndpoints/AgentModelUsage.js";
+import { AgentTodoStatuses } from "../Todos/AgentTodoTypes.js";
 
 export class AgentSqliteChildRunRepository implements AgentChildRunRepository {
   private readonly database: Database.Database;
@@ -278,27 +279,22 @@ export class AgentSqliteChildRunRepository implements AgentChildRunRepository {
     return this.get(id);
   }
 
-  markResultConsumed(id: string, consumedAt = new Date().toISOString()): AgentChildRunRecord | undefined {
-    this.statements.markResultConsumed.run({ id, consumed_at: consumedAt });
+  markParentResultDelivered(id: string, deliveredAt = new Date().toISOString()): AgentChildRunRecord | undefined {
+    this.statements.markParentResultDelivered.run({ id, delivered_at: deliveredAt });
     return this.get(id);
   }
 
-  markParentWakeConsumed(id: string, consumedAt = new Date().toISOString()): AgentChildRunRecord | undefined {
-    this.statements.markParentWakeConsumed.run({ id, consumed_at: consumedAt });
-    return this.get(id);
-  }
-
-  markParentWakeConsumedBatch(ids: readonly string[], consumedAt = new Date().toISOString()): number {
+  markParentResultsDeliveredBatch(ids: readonly string[], deliveredAt = new Date().toISOString()): number {
     const normalized = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
     if (normalized.length === 0) return 0;
-    const consume = this.database.transaction(
+    const deliver = this.database.transaction(
       (values: readonly string[], timestamp: string) =>
-        this.statements.markParentWakeConsumedBatch.run({
+        this.statements.markParentResultsDeliveredBatch.run({
           ids_json: JSON.stringify(values),
-          consumed_at: timestamp,
+          delivered_at: timestamp,
         }).changes,
     );
-    return consume(normalized, consumedAt);
+    return deliver(normalized, deliveredAt);
   }
 
   recoverInterrupted(error: string, recoveredAt = new Date().toISOString()): number {
@@ -370,8 +366,7 @@ function childRunFromRow(row: AgentChildRunRow, messages: readonly AgentChildRun
     ...(row.completed_at !== null ? { completedAt: row.completed_at } : {}),
     updatedAt: row.updated_at,
     revision: row.revision,
-    ...(row.result_consumed_at !== null ? { resultConsumedAt: row.result_consumed_at } : {}),
-    parentWakeConsumed: row.parent_wake_consumed === 1,
+    ...(row.parent_result_delivered_at !== null ? { parentResultDeliveredAt: row.parent_result_delivered_at } : {}),
   };
 }
 
@@ -506,7 +501,7 @@ const AgentChildRunSnapshotSchema = z
                 z
                   .object({
                     content: z.string().min(1),
-                    status: z.string().min(1),
+                    status: z.enum(AgentTodoStatuses),
                   })
                   .strict(),
               )

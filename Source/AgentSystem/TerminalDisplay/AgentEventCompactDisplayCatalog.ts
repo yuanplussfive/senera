@@ -126,6 +126,16 @@ export const CompactEventCatalog: Partial<Record<string, AgentCompactEventFormat
     message: "模型输出完成",
     tokens: [formatStepToken(event.step)],
   }),
+  "mcp_server.snapshot": (event) => {
+    const data = normalizeRecord(event.data);
+    return {
+      message: "MCP 服务配置已同步",
+      tokens: [
+        formatCountToken(Array.isArray(data.servers) ? data.servers.length : undefined, "个服务"),
+        readStringToken(data.revision),
+      ],
+    };
+  },
   "tool.call.result.detail": (event) => {
     const data = normalizeRecord(event.data);
     return {

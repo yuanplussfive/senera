@@ -1,6 +1,12 @@
+import fs from "node:fs";
+import path from "node:path";
 import { describe, expect, test } from "vitest";
 import { AgentSpawnHostContractProjection } from "../../../Source/AgentSystem/Orchestration/AgentSpawnHostContractProjection.js";
-import { AgentSubagentRoleCatalog } from "../../../Source/AgentSystem/Orchestration/AgentSubagentRoleCatalog.js";
+import {
+  AgentSubagentRoleCatalog,
+  resolveAgentSubagentBuiltinRoleDirectory,
+} from "../../../Source/AgentSystem/Orchestration/AgentSubagentRoleCatalog.js";
+import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 
 describe("subagent role catalog", () => {
   test("loads one package-declared default role with explicit workspace policy", () => {
@@ -26,15 +32,29 @@ describe("subagent role catalog", () => {
 
   test("projects the revisioned role catalog into the flat AgentSpawn contract", () => {
     let definitions = [subagentDefinition("reviewer", "Review a change for correctness.", true, "read_only")];
+    let resourceCapabilityIds = ["workspace.path"];
     const workspaceRoot = process.cwd();
     const catalog = new AgentSubagentRoleCatalog({ discover: () => definitions });
-    const projection = new AgentSpawnHostContractProjection(() => catalog.snapshot(workspaceRoot)).createProjection();
+    const projection = new AgentSpawnHostContractProjection(
+      () => catalog.snapshot(workspaceRoot),
+      () => resourceCapabilityIds,
+    ).createProjection();
     const sourceSchema = {
       type: "object",
       properties: {
         task: { type: "string", minLength: 1 },
         agent: { type: "string", minLength: 1 },
         forkContext: { type: "boolean" },
+        resources: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              capability: { type: "string", minLength: 1 },
+              value: {},
+            },
+          },
+        },
       },
       required: ["task"],
       additionalProperties: false,
@@ -44,6 +64,9 @@ describe("subagent role catalog", () => {
     expect(first).toMatchObject({
       properties: {
         agent: { enum: ["reviewer"], default: "reviewer" },
+        resources: {
+          items: { properties: { capability: { enum: ["workspace.path"] } } },
+        },
       },
     });
     expect(JSON.stringify(first)).not.toContain("modelProviderId");
@@ -51,6 +74,15 @@ describe("subagent role catalog", () => {
       "reviewer (default) [read_only]: Review a change for correctness.",
     );
     expect(projection.projectInvocationSchema?.({} as never, sourceSchema)).toBe(first);
+
+    resourceCapabilityIds = ["workspace.path", "artifact.uri"];
+    const third = projection.projectInvocationSchema?.({} as never, sourceSchema);
+    expect(third).not.toBe(first);
+    expect(third).toMatchObject({
+      properties: {
+        resources: { items: { properties: { capability: { enum: ["artifact.uri", "workspace.path"] } } } },
+      },
+    });
 
     definitions = [
       ...definitions,
@@ -61,6 +93,31 @@ describe("subagent role catalog", () => {
       properties: { agent: { enum: ["reviewer", "scout"], default: "reviewer" } },
     });
     expect(second).not.toBe(first);
+  });
+
+  test("omits resource claims when the host has no registered resource capabilities", () => {
+    const catalog = new AgentSubagentRoleCatalog({
+      discover: () => [subagentDefinition("reviewer", "Review a change for correctness.", true, "read_only")],
+    });
+    const projection = new AgentSpawnHostContractProjection(
+      () => catalog.snapshot(process.cwd()),
+      () => [],
+    ).createProjection();
+    const sourceSchema = {
+      type: "object",
+      properties: {
+        task: { type: "string" },
+        agent: { type: "string" },
+        resources: {
+          type: "array",
+          items: { type: "object", properties: { capability: { type: "string" }, value: {} } },
+        },
+      },
+      required: ["task"],
+    };
+
+    const projected = projection.projectInvocationSchema?.({} as never, sourceSchema);
+    expect(projected?.properties).not.toHaveProperty("resources");
   });
 
   test("rejects role catalogs without exactly one declarative default", () => {
@@ -101,6 +158,21 @@ describe("subagent role catalog", () => {
       expect(role.systemPrompt).not.toMatch(/\b(Claude|Anthropic|Kiro|GPT-\d|training cutoff)\b/i);
     }
   });
+
+  test("resolves the unique role catalog from package metadata instead of a named extension path", () => {
+    const root = createTemporaryDirectory("senera-agent-role-contribution");
+    try {
+      const expected = writeRolePackage(root, "coordinate", "custom-orchestration", "roles");
+      expect(resolveAgentSubagentBuiltinRoleDirectory(root)).toBe(expected);
+
+      writeRolePackage(root, "knowledge", "second-orchestration", "roles");
+      expect(() => resolveAgentSubagentBuiltinRoleDirectory(root)).toThrow(
+        /Expected exactly one System extension agentRoles contribution, found 2/u,
+      );
+    } finally {
+      removeDirectory(root);
+    }
+  });
 });
 
 function subagentDefinition(
@@ -127,4 +199,45 @@ function subagentDefinition(
     fallbackModels: [],
     defaultContext: "fresh" as const,
   };
+}
+
+function writeRolePackage(root: string, domain: string, id: string, rolesPath: string): string {
+  const domainRoot = path.join(root, domain);
+  fs.mkdirSync(domainRoot, { recursive: true });
+  const domainPath = path.join(domainRoot, "domain.json");
+  if (!fs.existsSync(domainPath)) {
+    writeJson(domainPath, {
+      schemaVersion: 1,
+      id: domain,
+      displayName: localized(`${domain} domain`),
+      description: localized(`${domain} extension domain.`),
+      presentation: {
+        category: domain,
+        icon: "tools",
+        group: { id: domain, title: localized(`${domain} tools`) },
+        activity: { action: localized(`Use ${domain}`) },
+      },
+    });
+  }
+  const packageRoot = path.join(domainRoot, id);
+  fs.mkdirSync(path.join(packageRoot, rolesPath), { recursive: true });
+  writeJson(path.join(packageRoot, "extension.json"), {
+    schemaVersion: 1,
+    id,
+    domain,
+    settingsSurface: "system-tools",
+    version: "1.0.0",
+    displayName: localized(`${id} extension`),
+    description: localized(`${id} extension description.`),
+    contributions: [{ kind: "agentRoles", path: rolesPath }],
+  });
+  return path.join(packageRoot, rolesPath);
+}
+
+function localized(value: string) {
+  return { "zh-CN": value, "en-US": value };
+}
+
+function writeJson(filePath: string, value: unknown): void {
+  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }

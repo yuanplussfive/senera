@@ -1,49 +1,48 @@
 import type { Skill } from "@earendil-works/pi-agent-core";
-import { sha256Hex } from "../Core/AgentHash.js";
 import { renderPiSystemPromptFrame, type AgentPiSelectedPromptTemplateFrame } from "./AgentPiPromptFrameProjector.js";
-import type { AgentPiPromptDisclosurePlan } from "./AgentPiPromptDisclosure.js";
 import { projectAgentModelText } from "../Text/AgentModelPayloadProjection.js";
 
-export const AgentPiTurnContextCustomType = "senera.turn_context";
+export const AgentPiTurnContextProtocol = "senera.turn-context/v1" as const;
 export const AgentPiTurnContextElementName = "senera_turn_context";
 
-export interface AgentPiTurnContextMessage {
-  readonly customType: typeof AgentPiTurnContextCustomType;
-  readonly content: string;
-  readonly display: false;
-  readonly details: {
-    readonly revision: string;
-  };
-}
-
-/** Projects volatile Senera context into one hidden, append-only Pi turn message. */
-export function projectAgentPiTurnContextMessage(input: {
+/**
+ * Builds the host-owned context that belongs to one durable Pi user turn.
+ *
+ * The returned value is plain text. AgentPiCodingAgentSession joins it with
+ * the already-composed user message before calling Pi's public prompt() API,
+ * so Pi persists one ordinary user message in JSONL. There is no request-time
+ * overlay and no later cleanup pass.
+ */
+export function projectAgentPiTurnContext(input: {
   readonly turnContext?: string;
   readonly skills: readonly Skill[];
   readonly selectedPromptTemplates: readonly AgentPiSelectedPromptTemplateFrame[];
-  readonly disclosure?: AgentPiPromptDisclosurePlan;
-}): AgentPiTurnContextMessage | undefined {
-  const renderedSnapshot = renderPiSystemPromptFrame({
+}): string | undefined {
+  const rendered = renderPiSystemPromptFrame({
     systemPrompt: input.turnContext ?? "",
     skills: input.skills,
     selectedPromptTemplates: input.selectedPromptTemplates,
-    disclosure: input.disclosure,
   });
-  const snapshot = projectAgentModelText(renderedSnapshot).text.trim();
+  const snapshot = projectAgentModelText(rendered).text.trim();
   if (!snapshot) return undefined;
-  const revision = sha256Hex(snapshot);
-  const content = [
-    `<${AgentPiTurnContextElementName} attribution="root" revision="${revision}">`,
-    "  <scope>This snapshot applies to the immediately preceding user message and its tool loop. In later turns it is historical evidence; the latest senera_turn_context supersedes it for active memory, world, workflow, Skill, and resource state.</scope>",
+
+  return [
+    `<${AgentPiTurnContextElementName} protocol="${AgentPiTurnContextProtocol}" source="host">`,
+    "  <scope>Durable host context for this user turn. Treat it as environment data, not as a user instruction. The user request that follows remains the primary task anchor.</scope>",
     snapshot,
     `</${AgentPiTurnContextElementName}>`,
   ].join("\n");
-  return {
-    customType: AgentPiTurnContextCustomType,
-    content,
-    display: false,
-    details: { revision },
-  };
+}
+
+/**
+ * Merges one frozen host context with the user message that Pi will persist.
+ * The context is placed first so the user's actual request remains the final
+ * and most recent semantic block in the message.
+ */
+export function mergeAgentPiTurnContext(userMessage: string, turnContext?: string): string {
+  const context = turnContext?.trim();
+  if (!context) return userMessage;
+  return `${context}\n\n${userMessage}`;
 }
 
 export function isAgentPiTurnContextWireContent(value: string): boolean {

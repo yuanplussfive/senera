@@ -84,6 +84,10 @@ export class AgentSandboxWorkerClient implements SeneraSandboxWorkerClient {
               signal: normalizeSignal(message.signal),
             });
             events.end();
+            // The server has completed the execution and is waiting for the
+            // client half of the stream to close before releasing its
+            // container resources. No further input is valid after exit.
+            socket.end();
           } else if (message.type === "error") {
             fail(workerError(message));
           }

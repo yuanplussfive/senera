@@ -3,9 +3,19 @@ import type { AgentExtensionInputValue } from "../Extensions/AgentExtensionInput
 import type { AgentMcpInputService, AgentMcpInputStatus } from "../Credentials/AgentMcpInputService.js";
 import { deepFreeze } from "../Core/AgentDeepFreeze.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
-import type { AgentMcpPackage, AgentMcpPackageServer } from "./AgentMcpPackageTypes.js";
-import { createAgentExtensionLocalizedText } from "../Extensions/AgentExtensionLocalization.js";
+import type { AgentMcpActivationCatalogEntry, AgentMcpPackage, AgentMcpPackageServer } from "./AgentMcpPackageTypes.js";
+import {
+  createAgentExtensionLocalizedText,
+  resolveAgentExtensionLocalizedText,
+} from "../Extensions/AgentExtensionLocalization.js";
 import type { AgentSystemExtensionSettingsItem } from "../SystemTools/AgentSystemToolSource.js";
+import { AgentSystemExtensionSettingsSurfaces } from "../Types/AgentSystemExtensionSettingsSurface.js";
+import type {
+  AgentActivationCatalogEntryData,
+  AgentActivationCatalogSnapshot,
+} from "../Activation/AgentActivationTypes.js";
+import { createAgentActivationCatalog } from "../Activation/AgentActivationCatalog.js";
+import type { AgentPluginListEntry } from "../Plugins/AgentPluginTypes.js";
 import {
   AgentMcpManagementCatalog,
   type AgentSystemSettingsSnapshot,
@@ -28,7 +38,6 @@ export interface AgentMcpServerSettingsItem {
   readonly transport: "stdio" | "http";
   readonly descriptorKind: AgentMcpPackage["descriptorKind"];
   readonly status: "configured" | "needs_input" | "unavailable";
-  readonly unavailableCapabilities?: readonly string[];
   readonly unavailableCapabilityDetails?: readonly { readonly id: string; readonly reason?: string }[];
   readonly inputs: readonly AgentMcpInputStatus[];
 }
@@ -96,6 +105,66 @@ export class AgentMcpManagementService {
     return this.mcpSettingsCache;
   }
 
+  /** Projects one live catalog; callers must provide the current plugin snapshot explicitly. */
+  activationCatalog(plugins: readonly AgentPluginListEntry[]): AgentActivationCatalogSnapshot {
+    return createAgentActivationCatalog(
+      this.catalog.systemSkillCatalog(this.options.config()),
+      plugins,
+      this.activationEntries(),
+      this.systemActivationEntries(),
+    );
+  }
+
+  systemActivationEntries(): readonly AgentActivationCatalogEntryData[] {
+    const snapshot = this.systemSettingsSnapshot();
+    return snapshot.extensions
+      .filter(
+        (extension) =>
+          extension.settingsSurface === AgentSystemExtensionSettingsSurfaces.SystemTools &&
+          (extension.tools.length > 0 || extension.skillCount > 0),
+      )
+      .map((extension) => ({
+        id: extension.id,
+        revision: sha256HexOfCanonicalJson({ catalogRevision: snapshot.revision, extensionId: extension.id }),
+        title: resolveAgentExtensionLocalizedText(extension.displayName),
+        description: resolveAgentExtensionLocalizedText(extension.description),
+        localizedTitle: extension.displayName,
+        localizedDescription: extension.description,
+        icon: extension.presentation.icon,
+        enabled: extension.enabled,
+        selectable: extension.enabled && (extension.tools.length > 0 || extension.skillCount > 0),
+        source: extension.domain.id,
+      }));
+  }
+
+  activationEntries(): readonly AgentMcpActivationCatalogEntry[] {
+    const packages = this.catalog.packageSnapshot(this.options.config());
+    const servers = this.mcpSettingsSnapshot().servers;
+    const serversById = new Map(servers.map((server) => [server.id, server]));
+    return packages.packages
+      .flatMap((package_) =>
+        package_.servers.map((server) => {
+          const settings = serversById.get(server.name);
+          if (!settings) throw new Error(`MCP server settings are missing: ${server.name}`);
+          const title = resolveAgentExtensionLocalizedText(settings.displayName);
+          const description = resolveAgentExtensionLocalizedText(settings.description);
+          const enabled = settings.status !== "unavailable";
+          return {
+            id: server.name,
+            revision: package_.revision,
+            title,
+            description,
+            localizedTitle: settings.displayName,
+            localizedDescription: settings.description,
+            enabled,
+            selectable: settings.status === "configured",
+            source: `${package_.source}:${package_.name}`,
+          } satisfies AgentMcpActivationCatalogEntry;
+        }),
+      )
+      .sort((left, right) => left.id.localeCompare(right.id));
+  }
+
   setInput(serverId: string, inputId: string, value: AgentExtensionInputValue): void {
     const definition = this.readInput(serverId, inputId);
     this.options.inputs.set(serverId, definition, value);
@@ -139,8 +208,8 @@ export class AgentMcpManagementService {
 
   private projectServer(package_: AgentMcpPackage, server: AgentMcpPackageServer): AgentMcpServerSettingsItem {
     const inputs = this.options.inputs.statuses(server.name, server.inputs);
-    const unavailableCapabilities = missingAgentMcpHostCapabilities(package_.requirements, this.hostCapabilities);
-    const unavailableCapabilityDetails = unavailableCapabilities.map((id) => {
+    const missingCapabilities = missingAgentMcpHostCapabilities(package_.requirements, this.hostCapabilities);
+    const unavailableCapabilityDetails = missingCapabilities.map((id) => {
       const reason = this.hostCapabilities.diagnostics.get(id);
       return reason ? { id, reason } : { id };
     });
@@ -153,12 +222,11 @@ export class AgentMcpManagementService {
       descriptorKind: package_.descriptorKind,
       transport: server.configuration.type,
       status:
-        unavailableCapabilities.length > 0
+        missingCapabilities.length > 0
           ? "unavailable"
           : inputs.some((input) => input.required && !input.configured)
             ? "needs_input"
             : "configured",
-      ...(unavailableCapabilities.length > 0 ? { unavailableCapabilities } : {}),
       ...(unavailableCapabilityDetails.length > 0 ? { unavailableCapabilityDetails } : {}),
       inputs,
     };

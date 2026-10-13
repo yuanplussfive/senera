@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { DEFAULT_COMPACTION_SETTINGS } from "@earendil-works/pi-coding-agent";
 import { projectSeneraModelProviderToPi } from "../../../Source/AgentSystem/Pi/AgentPiModelProjector.js";
+import { resolveAgentPiCompactionReserveTokens } from "../../../Source/AgentSystem/Pi/AgentPiCompactionSettings.js";
 import {
   AgentPiContextPolicy,
   AgentPiContextPolicyCustomType,
@@ -9,6 +9,7 @@ import {
 import { AgentHostCapabilityNames } from "../../../Source/AgentSystem/AgentDefaultHostCapabilities.js";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { Model, ToolResultMessage } from "@earendil-works/pi-ai";
+import { normalizeContext } from "@earendil-works/pi-ai";
 import { stream as streamAnthropic } from "@earendil-works/pi-ai/api/anthropic-messages";
 import type { ResolvedAgentModelProviderConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
@@ -18,7 +19,7 @@ import {
   resolveAgentNativeToolRoute,
 } from "../../../Source/AgentSystem/ModelEndpoints/AgentModelEndpointContract.js";
 import { AgentTokenProjector } from "../../../Source/AgentSystem/Text/AgentTokenProjection.js";
-import { compilePiToolObservation } from "../Support/PiToolObservationFixtures.js";
+import { compilePiToolObservation, boundPiToolObservationView } from "../Support/PiToolObservationFixtures.js";
 
 describe("Pi projection behavior", () => {
   test.each(AgentModelEndpointKinds)("projects %s providers through the BAML planning provider", (endpoint) => {
@@ -112,7 +113,7 @@ describe("Pi projection behavior", () => {
     };
     const stream = streamAnthropic(
       projected.model as Model<"anthropic-messages">,
-      {
+      normalizeContext({
         messages: [
           {
             role: "user",
@@ -120,13 +121,14 @@ describe("Pi projection behavior", () => {
             timestamp: Date.now(),
           },
         ],
-      },
+      }),
       { apiKey: "test-key", fetch, maxRetries: 0 },
     );
 
     const result = await stream.result();
     expect(result.stopReason).toBe("error");
-    expect(requestedUrl).toBe("https://chat.senerapi.com/v1/messages");
+    expect(new URL(requestedUrl).origin).toBe("https://chat.senerapi.com");
+    expect(new URL(requestedUrl).pathname).toBe("/v1/messages");
   });
 
   test("uses the resolved context window and bounded output metadata when output limits are unknown", () => {
@@ -135,7 +137,7 @@ describe("Pi projection behavior", () => {
     );
 
     expect(projected.model.contextWindow).toBe(64_000);
-    expect(projected.model.maxTokens).toBe(DEFAULT_COMPACTION_SETTINGS.reserveTokens);
+    expect(projected.model.maxTokens).toBe(resolveAgentPiCompactionReserveTokens(64_000));
   });
 
   test("injects archived artifact locators without duplicating active tool evidence", () => {
@@ -158,26 +160,49 @@ describe("Pi projection behavior", () => {
         content: [
           {
             type: "text",
-            text: JSON.stringify(
-              compilePiToolObservation({
+            text: (() => {
+              // This fixture models a compressed observation whose source
+              // Artifact remains visible in the transcript.
+              const observation = compilePiToolObservation({
                 toolName: "WeatherTool",
                 callId: "call-weather",
                 artifact: {
-                  artifactUri: "senera://artifact/weather",
+                  artifactId: "art_weather",
+                  artifactUri: "senera://artifact/art_0123456789abcdef01234567",
+                  artifactPath: "artifacts/art_weather",
+                  relativePath: "artifacts/art_weather",
+                  manifestPath: "artifacts/art_weather/manifest.json",
+                  files: {},
+                  summary: "Beijing forecast.",
                   evidence: [
                     {
+                      key: "weather:beijing",
                       evidenceUri: "senera://evidence/weather-beijing",
                       kind: "weather",
+                      locator: "weather://beijing",
+                      display: "Beijing forecast",
                       label: "Beijing forecast",
-                      artifactUri: "senera://artifact/weather-source",
-                      artifactRefs: ["raw", "evidence"],
-                      facts: [{ name: "city", value: "Beijing" }],
+                      source: "Forecast provider",
+                      confidence: 1,
+                      modelSlots: [{ name: "city", value: "Beijing" }],
+                      plannerMemory: {
+                        facts: [{ name: "city", value: "Beijing" }],
+                        artifactRefs: ["raw", "evidence"],
+                        artifactUri: "senera://artifact/art_1123456789abcdef01234567",
+                      },
                     },
                   ],
                   delta: [],
                 },
-              }),
-            ),
+              });
+              return JSON.stringify({
+                ...observation,
+                observation_view: boundPiToolObservationView(observation, {
+                  complete: false,
+                  artifact_uri: "senera://artifact/art_0123456789abcdef01234567",
+                }),
+              });
+            })(),
           },
         ],
         isError: false,
@@ -192,7 +217,7 @@ describe("Pi projection behavior", () => {
 
     const archivedArtifacts = [
       artifactReference("senera://artifact/archived", "ArchivedTool"),
-      artifactReference("senera://artifact/weather", "WeatherTool"),
+      artifactReference("senera://artifact/art_0123456789abcdef01234567", "WeatherTool"),
     ];
     const budget = { contextWindowTokens: 4_096, outputReserveTokens: 512 };
     const once = policy.apply(messages, frame, archivedArtifacts, budget);
@@ -236,13 +261,18 @@ describe("Pi projection behavior", () => {
       registeredTools: [],
       createdAt: "2026-01-01T00:00:00.000Z",
     });
-    const messages = [toolResultWithArtifact("senera://artifact/visible")];
+    const messages = [toolResultWithArtifact("senera://artifact/art_2123456789abcdef01234567")];
 
     expect(
-      policy.apply(messages, frame, [artifactReference("senera://artifact/visible", "VisibleTool")], {
-        contextWindowTokens: 1_024,
-        outputReserveTokens: 128,
-      }),
+      policy.apply(
+        messages,
+        frame,
+        [artifactReference("senera://artifact/art_2123456789abcdef01234567", "VisibleTool")],
+        {
+          contextWindowTokens: 1_024,
+          outputReserveTokens: 128,
+        },
+      ),
     ).toEqual(messages);
   });
 
@@ -387,8 +417,24 @@ function toolResultWithArtifact(artifactUri: string): AgentMessage {
   const observation = compilePiToolObservation({
     toolName: "VisibleTool",
     callId: "call-visible",
-    artifact: { artifactUri, evidence: [], delta: [] },
+    artifact: {
+      artifactId: "art_visible",
+      artifactUri,
+      artifactPath: "artifacts/art_visible",
+      relativePath: "artifacts/art_visible",
+      manifestPath: "artifacts/art_visible/manifest.json",
+      files: {},
+      summary: "Visible artifact.",
+      evidence: [],
+      delta: [],
+    },
   });
+  // Compressed results carry a source view so downstream context maintenance
+  // can keep their Artifact coordinate available.
+  const boundedObservation = {
+    ...observation,
+    observation_view: boundPiToolObservationView(observation, { complete: false, artifact_uri: artifactUri }),
+  };
   return {
     role: "toolResult",
     toolCallId: "call-visible",
@@ -396,7 +442,7 @@ function toolResultWithArtifact(artifactUri: string): AgentMessage {
     content: [
       {
         type: "text",
-        text: JSON.stringify(observation),
+        text: JSON.stringify(boundedObservation),
       },
     ],
     isError: false,

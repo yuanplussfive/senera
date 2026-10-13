@@ -13,35 +13,41 @@ import {
 import type { SeneraProcessExecutionProfile } from "../Execution/SeneraExecutionProfile.js";
 import type { AgentToolExecutionPlan } from "./AgentToolExecutionPlan.js";
 import { SeneraShellCommandSpecSchema } from "../Execution/SeneraShellCommand.js";
+import { AgentWorkspaceEffectSchema, AgentWorkspaceEffects } from "../Artifacts/AgentWorkspaceObservationIntent.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { resolveAgentToolCallTimeoutMs } from "./AgentToolDeadline.js";
-import { AgentToolSemanticProjectionKinds } from "./AgentToolSemanticProjection.js";
 import type { AgentExecutionResourceBroker } from "../ExecutionResources/AgentExecutionResourceBroker.js";
 import {
+  AgentExecutionResourceRetentionPolicies,
   AgentExecutionResourceStates,
-  type AgentExecutionResourceEvent,
   type AgentExecutionResourceOwner,
+  type AgentExecutionResourceRetentionPolicy,
   type AgentExecutionResourceSnapshot,
 } from "../ExecutionResources/AgentExecutionResourceTypes.js";
 import { resolveAgentExecutionResourceInitialYieldMs } from "../ExecutionResources/AgentExecutionResourceConfig.js";
 import { createAgentToolOutputSpool, type AgentToolOutputSpoolFactory } from "./AgentToolOutputSpool.js";
 import type { SeneraOutputSpool, SeneraOutputSpoolDescriptor } from "../Execution/SeneraOutputSpool.js";
+import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
+import {
+  collectAgentExecutionResourceOutput,
+  projectAgentExecutionResourceResult,
+} from "./AgentExecutionResourceResultProjector.js";
 
 const ShellExecutionProfileName = "host-shell";
 
 const ShellCwdSchema = z.string().trim().min(1);
-const ShellTimeoutSchema = z.coerce
+const ShellTimeoutSchema = z
   .number()
   .int()
-  .positive()
-  .max(30 * 60 * 1000)
+  .nonnegative()
+  .describe("0 表示不设运行时限，持续跟踪进程树直到退出或显式停止；正数受系统工具超时配置约束。")
   .optional();
 export const ShellCommandArgumentsSchema = z
   .object({
     command: SeneraShellCommandSpecSchema,
     cwd: ShellCwdSchema.optional(),
     timeoutMs: ShellTimeoutSchema,
-    justification: z.string().trim().min(1).optional(),
+    workspaceEffect: AgentWorkspaceEffectSchema,
   })
   .strict();
 
@@ -98,9 +104,13 @@ export function createShellCommandHostTool(
       });
     }
 
-    const timeoutMs = resolveAgentToolCallTimeoutMs(context.config, parsed.data.timeoutMs);
+    const executionPolicy = resolveAgentShellCommandExecutionPolicy(context.config, parsed.data.timeoutMs);
     const executionProfile = createAgentShellExecutionProfile(requireExecutionPlan(context));
     const owner = shellResourceOwner(context);
+    const workspaceLease =
+      parsed.data.workspaceEffect === AgentWorkspaceEffects.Mutate
+        ? await context.workspaceObservation?.openResourceLease?.()
+        : undefined;
     let outputSpool: SeneraOutputSpool | undefined;
     let resourceStarted = false;
     try {
@@ -127,19 +137,27 @@ export function createShellCommandHostTool(
           onEvent: context.onEvent,
         },
         signal: context.signal,
-        maxDurationMs: timeoutMs,
+        maxDurationMs: executionPolicy.maxDurationMs,
+        retention: executionPolicy.retention,
         outputSpool,
       });
       resourceStarted = true;
+      workspaceLease?.bind(started.resourceId);
       const result = await waitForInitialShellOutcome(
         broker,
         started,
         owner,
-        Math.min(resolveAgentExecutionResourceInitialYieldMs(context.config), timeoutMs),
+        executionPolicy.initialYieldMs,
         context.signal,
       );
-      const output = collectShellResourceOutput(result);
+      const output = collectAgentExecutionResourceOutput(result);
       const outputCapture = takeTerminalOutputCapture(broker, result, owner);
+      const terminal = isTerminalResourceState(result.state);
+      const workspaceCapture = terminal ? await workspaceLease?.complete() : undefined;
+      const workspaceObservation = {
+        resourceId: started.resourceId,
+        state: terminal ? ("completed" as const) : ("active" as const),
+      };
       if (result.state === AgentExecutionResourceStates.Failed) {
         const failure = shellFailure({
           code: AgentExecutionErrorCodes.ToolExecutionError,
@@ -156,6 +174,8 @@ export function createShellCommandHostTool(
           exitCode: result.exitCode ?? null,
           signal: normalizeResourceSignal(result.signal),
           ...(outputCapture ? { outputCapture } : {}),
+          ...(workspaceCapture ? { workspaceCapture } : {}),
+          workspaceObservation,
         };
       }
       return {
@@ -163,36 +183,54 @@ export function createShellCommandHostTool(
           command: parsed.data.command.script,
           shellDialect: parsed.data.command.dialect,
           cwd: cwdResult.value,
-          resourceId: result.resourceId,
-          state: result.state,
-          cursor: result.cursor,
-          exitCode: result.exitCode ?? null,
-          signal: result.signal ?? null,
-          events: result.events,
-          ...output,
+          ...projectAgentExecutionResourceResult(result, { fromCursor: started.cursor }),
         }),
         stdout: output.stdout,
         stderr: output.stderr,
         exitCode: result.exitCode ?? null,
         signal: normalizeResourceSignal(result.signal),
         ...(outputCapture ? { outputCapture } : {}),
-        semanticProjectionRequest: {
-          kind: AgentToolSemanticProjectionKinds.TerminalExecution,
-          command: parsed.data.command.script,
-          cwd: cwdResult.value,
-        },
+        ...(workspaceCapture ? { workspaceCapture } : {}),
+        workspaceObservation,
       };
     } catch (error) {
       if (outputSpool && !resourceStarted) await outputSpool.cleanup().catch(() => undefined);
+      workspaceLease?.cancel();
       const failure = shellExecutionFailure({
         error,
         command: parsed.data.command.script,
         cwd: cwdResult.value,
-        timeoutMs,
+        timeoutMs: executionPolicy.maxDurationMs,
         signal: context.signal,
       });
       return failure;
     }
+  };
+}
+
+export interface AgentShellCommandExecutionPolicy {
+  readonly maxDurationMs?: number;
+  readonly retention: AgentExecutionResourceRetentionPolicy;
+  readonly initialYieldMs: number;
+}
+
+export function resolveAgentShellCommandExecutionPolicy(
+  config: AgentSystemConfig,
+  requestedTimeoutMs?: number,
+): AgentShellCommandExecutionPolicy {
+  const initialYieldMs = resolveAgentExecutionResourceInitialYieldMs(config);
+  if (requestedTimeoutMs === 0) {
+    return {
+      retention: AgentExecutionResourceRetentionPolicies.UntilExit,
+      initialYieldMs,
+    };
+  }
+
+  const maxDurationMs = resolveAgentToolCallTimeoutMs(config, requestedTimeoutMs);
+  return {
+    maxDurationMs,
+    retention: AgentExecutionResourceRetentionPolicies.Idle,
+    initialYieldMs: Math.min(initialYieldMs, maxDurationMs),
   };
 }
 
@@ -218,37 +256,7 @@ async function waitForInitialShellOutcome(
     if (remainingMs <= 0) break;
     snapshot = await broker.wait(snapshot.resourceId, owner, snapshot.cursor, remainingMs, signal);
   }
-  return broker.inspect(started.resourceId, owner, 0);
-}
-
-function collectShellResourceOutput(snapshot: AgentExecutionResourceSnapshot): {
-  stdout: string;
-  stderr: string;
-  stdoutBytes?: number;
-  stderrBytes?: number;
-  stdoutTruncated?: boolean;
-  stderrTruncated?: boolean;
-} {
-  const output = (stream: "stdout" | "stderr") =>
-    snapshot.events.filter(isOutputEvent).filter((event) => event.stream === stream);
-  const stdout = output("stdout");
-  const stderr = output("stderr");
-  const lastStdout = stdout.at(-1);
-  const lastStderr = stderr.at(-1);
-  return {
-    stdout: stdout.map((event) => event.text).join(""),
-    stderr: stderr.map((event) => event.text).join(""),
-    ...(lastStdout ? { stdoutBytes: lastStdout.totalBytes } : {}),
-    ...(lastStderr ? { stderrBytes: lastStderr.totalBytes } : {}),
-    ...(snapshot.truncated || stdout.some((event) => event.truncated) ? { stdoutTruncated: true } : {}),
-    ...(snapshot.truncated || stderr.some((event) => event.truncated) ? { stderrTruncated: true } : {}),
-  };
-}
-
-function isOutputEvent(
-  event: AgentExecutionResourceEvent,
-): event is Extract<AgentExecutionResourceEvent, { kind: "output" }> {
-  return event.kind === "output";
+  return broker.inspect(started.resourceId, owner, started.cursor);
 }
 
 function isTerminalResourceState(state: AgentExecutionResourceSnapshot["state"]): boolean {
@@ -301,7 +309,7 @@ function shellExecutionFailure(input: {
   error: unknown;
   command: string;
   cwd: string;
-  timeoutMs: number;
+  timeoutMs?: number;
   signal?: AbortSignal;
 }): AgentToolProcessRunResult {
   const message = errorMessage(input.error);
@@ -318,7 +326,7 @@ function shellExecutionFailure(input: {
   return shellFailure({
     code,
     message:
-      code === AgentExecutionErrorCodes.ToolProcessTimeout
+      code === AgentExecutionErrorCodes.ToolProcessTimeout && input.timeoutMs !== undefined
         ? agentErrorMessage("tool.shellCommandTimeout", {
             timeoutMs: input.timeoutMs,
             command: input.command,
@@ -331,7 +339,7 @@ function shellExecutionFailure(input: {
           : AgentToolProcessErrorPhases.RuntimeExecution,
       cwd: input.cwd,
       command: input.command,
-      timeoutMs: input.timeoutMs,
+      ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
       seneraExecutionCode: input.error instanceof SeneraExecutionError ? input.error.code : undefined,
       ...(input.error instanceof SeneraExecutionError && input.error.diagnostic
         ? { seneraExecutionDiagnostic: input.error.diagnostic }

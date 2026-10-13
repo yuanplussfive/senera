@@ -20,6 +20,7 @@ WebSocket 模块负责后端和前端/终端的实时通信入口。它只处理
 - 请求 handler 只能调用明确领域服务，不在 WebSocket 层读取数据库、扫描扩展目录或执行工具。
 - 失败事件必须通过 `AgentWebSocketRequestFailures.ts` 统一投影，避免不同请求返回不一致的错误结构。
 - 设置目录使用 `systemTool.list` 和 `mcpServer.list` 获取脱敏快照。System Extension 配置通过带 revision guard 的主 `config.update` 保存；MCP 输入通过 `mcpInput.update` 按服务原子批量保存，不能在 WebSocket handler 中逐字段写库。
+- `mcp_server.snapshot.data.activation` 与 `system_tool.snapshot.data.activation` 使用同一个实时 `@` 能力目录；MCP 配置状态变化后必须随快照更新，不能要求客户端依赖下一次手动刷新。
 - `mcpInput.update.requestId` 是前端操作关联标识。成功的 `mcp_server.snapshot.data.operation` 和失败的 `request.invalid.data.details.requestId` 必须原样返回；失败投影不得包含 `values`、`deletes` 或 Secret 内容。
 - 新增 HTTP 入口时放入 `AgentWebSocketHttpRouter.ts`，明确其认证和 CSRF 语义，不要写在 server 生命周期类里。
 - durable run event 先进入按 session 隔离的有界队列。`maxPendingEvents` 是包含 active batch 的硬容量；`backpressureAtEvents/resumeAtEvents` 是高低水位。达到高水位后 producer promise 必须等待，达到硬上限必须以 `queue_overflow` 明确失败，禁止继续 push 或静默丢弃。

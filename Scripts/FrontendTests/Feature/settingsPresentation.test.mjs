@@ -56,16 +56,14 @@ describe("settings presentation", () => {
   });
 
   it("keeps search results attached to their groups", () => {
-    const grouped = groupSettingsSectionResults(searchSettingsSectionResults(settingsSections, "模型"));
-    expect(
-      grouped.map(({ group, results }) => ({
+    const groupBy = (query) =>
+      groupSettingsSectionResults(searchSettingsSectionResults(settingsSections, query)).map(({ group, results }) => ({
         label: group.label,
         ids: results.map((result) => result.section.id),
-      })),
-    ).toEqual([
-      { label: "模型", ids: ["model-service", "default-model"] },
-      { label: "能力与运行", ids: ["retrieval"] },
-    ]);
+      }));
+
+    expect(groupBy("模型")).toEqual([{ label: "模型", ids: ["model-service", "default-model"] }]);
+    expect(groupBy("检索")).toEqual([{ label: "能力与运行", ids: ["retrieval"] }]);
   });
 
   it("searches concrete config fields", () => {
@@ -96,7 +94,7 @@ describe("settings presentation", () => {
       "appearance",
     ]);
     expect(searchSettingsSections(settingsSections, "storage").map((section) => section.id)).toEqual(["storage"]);
-    expect(searchSettingsSectionResults(settingsSections, "上传")[0]).toMatchObject({
+    expect(searchSettingsSectionResults(settingsSections, "占用")[0]).toMatchObject({
       section: { id: "storage" },
       details: [{ label: "说明" }],
     });

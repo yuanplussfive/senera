@@ -1,20 +1,16 @@
 import type {
   AgentActionPlannerConfig,
   AgentContinuityLearningConfig,
-  AgentContinuityLearningContextConfig,
-  AgentContinuityLearningGateConfig,
   AgentContinuityLearningRuntimeConfig,
   AgentContinuityLearningRecallConfig,
-  AgentToolLearningConfig,
-  AgentVectorEmbeddingConfig,
-  AgentVectorRerankConfig,
+  AgentContinuityMemOSConfig,
+  AgentStateCardConfig,
   ResolvedAgentArtifactsConfig,
   ResolvedAgentConfigStoreConfig,
   ResolvedAgentFrontendConfig,
   ResolvedAgentLoopConfig,
   ResolvedAgentModelProviderEndpointConfig,
   ResolvedAgentPersistenceConfig,
-  ResolvedAgentPresetsConfig,
   ResolvedAgentPromptConfig,
   ResolvedAgentSandboxRuntimeConfig,
   ResolvedAgentServerConfig,
@@ -22,17 +18,11 @@ import type {
   ResolvedAgentToolSearchConfig,
   ResolvedAgentTodosConfig,
   ResolvedAgentUploadsConfig,
-  ResolvedAgentWorldConfig,
   ResolvedAgentInferenceBudgetConfig,
 } from "../Types/AgentConfigTypes.js";
 import type { AgentModelRuntimeDefaultsConfig } from "../Types/AgentModelConfigTypes.js";
 
 export type { AgentModelRuntimeDefaultsConfig } from "../Types/AgentModelConfigTypes.js";
-
-export interface AgentVectorModelsDefaultsConfig {
-  Embedding: Required<AgentVectorEmbeddingConfig>;
-  Rerank: Required<AgentVectorRerankConfig>;
-}
 
 export type ResolvedAgentModelRuntimeDefaultsConfig = AgentModelRuntimeDefaultsConfig & {
   TimeoutMs: number;
@@ -43,22 +33,18 @@ export type ResolvedAgentModelRuntimeDefaultsConfig = AgentModelRuntimeDefaultsC
   RetryAfterMaxDelayMs: number;
 };
 
-export type ResolvedAgentVectorEmbeddingDefaultsConfig = Required<AgentVectorEmbeddingConfig> & {
-  TimeoutMs: number;
-};
-
-export type ResolvedAgentVectorRerankDefaultsConfig = Required<AgentVectorRerankConfig> & {
-  TimeoutMs: number;
-};
-
 export type AgentActionPlannerClientDefaultsConfig = Required<
   Omit<NonNullable<AgentActionPlannerConfig["Client"]>, "ModelProviderId">
 > &
   Pick<NonNullable<AgentActionPlannerConfig["Client"]>, "ModelProviderId">;
 
-export type AgentToolLearningDefaultsConfig = Required<Omit<AgentToolLearningConfig, "Client" | "Patterns">> & {
-  Client: AgentActionPlannerClientDefaultsConfig;
-  Patterns: Required<NonNullable<AgentToolLearningConfig["Patterns"]>>;
+export type AgentStateCardClientDefaultsConfig = Required<
+  Omit<NonNullable<AgentStateCardConfig["Client"]>, "ModelProviderId">
+> &
+  Pick<NonNullable<AgentStateCardConfig["Client"]>, "ModelProviderId">;
+
+export type AgentStateCardDefaultsConfig = Required<Omit<AgentStateCardConfig, "Client">> & {
+  Client: AgentStateCardClientDefaultsConfig;
 };
 
 export type AgentContinuityLearningClientDefaultsConfig = Required<
@@ -67,13 +53,11 @@ export type AgentContinuityLearningClientDefaultsConfig = Required<
   Pick<NonNullable<AgentContinuityLearningConfig["Client"]>, "ModelProviderId">;
 
 export type AgentContinuityLearningDefaultsConfig = Required<
-  Omit<AgentContinuityLearningConfig, "Client" | "Runtime" | "LearningGate" | "LearningContext" | "TemporalMemory">
+  Omit<AgentContinuityLearningConfig, "Client" | "Runtime" | "MemOS">
 > & {
   Client: AgentContinuityLearningClientDefaultsConfig;
   Runtime: AgentContinuityLearningRuntimeConfig;
-  LearningGate: AgentContinuityLearningGateConfig;
-  LearningContext: AgentContinuityLearningContextConfig;
-  TemporalMemory: Required<NonNullable<AgentContinuityLearningConfig["TemporalMemory"]>>;
+  MemOS: AgentContinuityMemOSConfig;
   Recall: AgentContinuityLearningRecallConfig;
 };
 
@@ -94,21 +78,15 @@ export interface ResolvedAgentDefaultsConfig {
   SandboxRuntime: ResolvedAgentSandboxRuntimeConfig;
   AgentLoop: ResolvedAgentLoopConfig;
   ToolSearch: ResolvedAgentToolSearchConfig;
-  VectorModels: {
-    Embedding: ResolvedAgentVectorEmbeddingDefaultsConfig;
-    Rerank: ResolvedAgentVectorRerankDefaultsConfig;
-  };
-  ToolLearning: AgentToolLearningDefaultsConfig;
+  StateCard: AgentStateCardDefaultsConfig;
   Todos: ResolvedAgentTodosConfig;
   ContinuityLearning: AgentContinuityLearningDefaultsConfig;
-  Presets: ResolvedAgentPresetsConfig;
   ActionPlanner: AgentActionPlannerDefaultsConfig;
   Artifacts: ResolvedAgentArtifactsConfig;
   Uploads: ResolvedAgentUploadsConfig;
   Frontend: ResolvedAgentFrontendConfig;
   Server: ResolvedAgentServerConfig;
   Prompt: ResolvedAgentPromptConfig;
-  World: ResolvedAgentWorldConfig;
   Persistence: ResolvedAgentPersistenceConfig;
   ConfigStore: ResolvedAgentConfigStoreConfig;
 }

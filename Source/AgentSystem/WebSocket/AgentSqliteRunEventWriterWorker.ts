@@ -2,6 +2,7 @@ import { parentPort, workerData } from "node:worker_threads";
 import Database from "better-sqlite3";
 import { AgentSessionDatabaseContract } from "../SessionPersistence/AgentSessionSqlSchema.js";
 import { AgentSqliteDatabaseKernel } from "../Database/AgentSqliteDatabaseKernel.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 import type { AgentEventEnvelope } from "../Events/AgentEventBase.js";
 
 interface AppendMessage {
@@ -31,7 +32,6 @@ interface OutboxRow {
   readonly event_sequence: number;
   readonly step: number | null;
   readonly detail_id: string | null;
-  readonly event_json: string;
 }
 
 const port = parentPort;
@@ -51,16 +51,16 @@ const appendRunEvent = db.prepare(`
 `);
 const appendOutboxEvent = db.prepare(`
   INSERT INTO event_outbox
-    (event_id, session_id, request_id, kind, timestamp, event_sequence, step, detail_id, event_json, state, created_at)
-  VALUES (@event_id, @session_id, @request_id, @kind, @timestamp, @event_sequence, @step, @detail_id, @event_json, 'pending', @created_at)
+    (event_id, session_id, request_id, kind, timestamp, event_sequence, step, detail_id, state, created_at)
+  VALUES (@event_id, @session_id, @request_id, @kind, @timestamp, @event_sequence, @step, @detail_id, 'pending', @created_at)
   ON CONFLICT(event_id) DO NOTHING
 `);
-const selectPendingOutbox = db.prepare<[], OutboxRow>(`
-  SELECT event_id, session_id, request_id, kind, timestamp, event_sequence, step, detail_id, event_json
+const selectNextPendingOutbox = db.prepare<[], OutboxRow>(`
+  SELECT event_id, session_id, request_id, kind, timestamp, event_sequence, step, detail_id
   FROM event_outbox
   WHERE state = 'pending'
   ORDER BY created_at ASC, event_sequence ASC, event_id ASC
-  LIMIT ${options.drainBatchSize}
+  LIMIT 1
 `);
 const markOutboxCommitted = db.prepare(`
   UPDATE event_outbox
@@ -88,6 +88,18 @@ const appendBatch = db.transaction((events: readonly AgentEventEnvelope[]) => {
     if (!event.sessionId || !event.requestId) continue;
     const eventId = resolveEventId(event);
     const eventJson = JSON.stringify({ ...event, eventId });
+    appendRunEvent.run({
+      session_id: event.sessionId,
+      request_id: event.requestId,
+      kind: event.kind,
+      timestamp: event.timestamp,
+      event_sequence: event.sequence,
+      step: event.step ?? null,
+      detail_id: event.detailId ?? null,
+      event_id: eventId,
+      reliability: "durable",
+      event_json: eventJson,
+    });
     appendOutboxEvent.run({
       event_id: eventId,
       session_id: event.sessionId,
@@ -97,32 +109,22 @@ const appendBatch = db.transaction((events: readonly AgentEventEnvelope[]) => {
       event_sequence: event.sequence,
       step: event.step ?? null,
       detail_id: event.detailId ?? null,
-      event_json: eventJson,
       created_at: createdAt,
     });
   }
 });
 const drainOutboxBatch = db.transaction((): { count: number; watermarks: Record<string, number> } => {
-  const rows = selectPendingOutbox.all();
   const committedAt = new Date().toISOString();
   const watermarks: Record<string, number> = {};
-  for (const row of rows) {
-    appendRunEvent.run({
-      session_id: row.session_id,
-      request_id: row.request_id,
-      kind: row.kind,
-      timestamp: row.timestamp,
-      event_sequence: row.event_sequence,
-      step: row.step,
-      detail_id: row.detail_id,
-      event_id: row.event_id,
-      reliability: "durable",
-      event_json: row.event_json,
-    });
+  let count = 0;
+  while (count < options.drainBatchSize) {
+    const row = selectNextPendingOutbox.get();
+    if (!row) break;
     markOutboxCommitted.run({ event_id: row.event_id, committed_at: committedAt });
     watermarks[row.session_id] = Math.max(watermarks[row.session_id] ?? 0, row.event_sequence);
+    count += 1;
   }
-  return { count: rows.length, watermarks };
+  return { count, watermarks };
 });
 
 function drainOutbox(): Record<string, number> {
@@ -173,6 +175,7 @@ port.on("message", (message: WriterMessage) => {
     }
   } catch (error) {
     const retryable = isRetryableSqliteError(error);
+    const stateUpdateErrors: string[] = [];
     if (message.type === "append") {
       const serialized = serializeError(error);
       for (const event of message.events) {
@@ -180,17 +183,21 @@ port.on("message", (message: WriterMessage) => {
         try {
           if (retryable) markOutboxRetry.run({ event_id: eventId, last_error: serialized.message });
           else markOutboxFailed.run({ event_id: eventId, last_error: serialized.message });
-        } catch {
-          // The same database lock may also prevent the diagnostic state update.
-          // The caller keeps the event in its durable retry backlog.
+        } catch (stateError) {
+          stateUpdateErrors.push(`${eventId}: ${errorMessage(stateError)}`);
         }
       }
     }
+    const serialized = serializeError(error);
+    const messageText =
+      stateUpdateErrors.length === 0
+        ? serialized.message
+        : `${serialized.message}; outbox state update failed: ${stateUpdateErrors.join(" | ")}`;
     port.postMessage({
       type: "nack",
       requestId: message.requestId,
       retryable,
-      error: serializeError(error),
+      error: { ...serialized, message: messageText },
     });
   }
 });

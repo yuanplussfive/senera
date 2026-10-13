@@ -1,11 +1,8 @@
 import { b as baml } from "../BamlClient/baml_client/index.js";
 import type {
   ControllerDecision as BamlControllerDecision,
-  GoalMicroLoopDecision as BamlGoalMicroLoopDecision,
-  ResidentIdleDecision as BamlResidentIdleDecision,
   PiToolArgumentsDraft as BamlPiToolArgumentsDraft,
   ToolRiskAudit as BamlToolRiskAudit,
-  PiConversationSummary as BamlPiConversationSummary,
 } from "../BamlClient/baml_client/types.js";
 import type { AgentActionPlannerStructuredCaller } from "./AgentActionPlannerStructuredCaller.js";
 import type {
@@ -13,10 +10,7 @@ import type {
   AgentPiToolArgumentsInput,
   AgentPiToolArgumentsRepairInput,
 } from "../PiShared/AgentPiPlanningTypes.js";
-import type { AgentGoalMicroLoopDecisionInput } from "../Agenda/AgentGoalMicroLoopRuntime.js";
-import type { AgentWorldResidentIdleDecisionInput } from "../World/AgentWorldResidentIdleRuntime.js";
 import type { AgentBamlToolRiskAuditPromptInput } from "../Safety/AgentBamlToolRiskAuditPromptJson.js";
-import type { AgentPiCompactionPromptInput } from "../PiShared/AgentPiCompactionPrompt.js";
 import type { AgentLanguageModelInvocationOptions } from "../ModelEndpoints/AgentLanguageModel.js";
 
 export class AgentActionPlannerCoreModelCalls {
@@ -42,40 +36,6 @@ export class AgentActionPlannerCoreModelCalls {
         invalidDecision: failure.invalidOutput,
         issues: failure.issues,
       }),
-    });
-  }
-
-  async decideGoalMicroLoop(
-    input: AgentGoalMicroLoopDecisionInput,
-    options: AgentLanguageModelInvocationOptions = {},
-  ): Promise<BamlGoalMicroLoopDecision[]> {
-    return this.caller.run({
-      functionName: "DecideGoalMicroLoop",
-      args: {
-        functionName: "DecideGoalMicroLoop",
-        input,
-      },
-      signal: options.signal,
-      attachments: options.attachments,
-      cache: options.cache,
-      parse: (rawOutput) => baml.parse.DecideGoalMicroLoop(rawOutput),
-    });
-  }
-
-  async decideResidentIdle(
-    input: AgentWorldResidentIdleDecisionInput,
-    options: AgentLanguageModelInvocationOptions = {},
-  ): Promise<BamlResidentIdleDecision> {
-    return this.caller.run({
-      functionName: "DecideResidentIdle",
-      args: {
-        functionName: "DecideResidentIdle",
-        input,
-      },
-      signal: options.signal,
-      attachments: options.attachments,
-      cache: options.cache,
-      parse: (rawOutput) => baml.parse.DecideResidentIdle(rawOutput),
     });
   }
 
@@ -183,44 +143,6 @@ export class AgentActionPlannerCoreModelCalls {
       attachments: requestOptions.attachments,
       cache: requestOptions.cache,
       parse: (rawOutput) => baml.parse.RepairToolRiskAudit(rawOutput),
-    });
-  }
-
-  async summarizePiConversation(
-    input: AgentPiCompactionPromptInput,
-    options: AgentLanguageModelInvocationOptions = {},
-  ): Promise<BamlPiConversationSummary> {
-    return this.caller.run({
-      functionName: "SummarizePiConversation",
-      args: { functionName: "SummarizePiConversation", input },
-      signal: options.signal,
-      attachments: options.attachments,
-      cache: options.cache,
-      parse: (rawOutput) => baml.parse.SummarizePiConversation(rawOutput),
-      repair: (failure) => ({
-        functionName: "RepairPiConversationSummary",
-        input,
-        invalidSummary: failure.invalidOutput,
-        issues: failure.issues,
-      }),
-    });
-  }
-
-  async repairPiConversationSummary(
-    options: {
-      input: AgentPiCompactionPromptInput;
-      invalidSummary: string;
-      issues: string[];
-    },
-    requestOptions: AgentLanguageModelInvocationOptions = {},
-  ): Promise<BamlPiConversationSummary> {
-    return this.caller.repair({
-      functionName: "RepairPiConversationSummary",
-      args: { functionName: "RepairPiConversationSummary", ...options },
-      signal: requestOptions.signal,
-      attachments: requestOptions.attachments,
-      cache: requestOptions.cache,
-      parse: (rawOutput) => baml.parse.RepairPiConversationSummary(rawOutput),
     });
   }
 }

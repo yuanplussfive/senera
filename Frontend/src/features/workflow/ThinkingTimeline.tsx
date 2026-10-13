@@ -153,6 +153,7 @@ function TopBar({
               className="flex min-w-0 items-center gap-2"
               aria-label={frontendMessage("workflow.panel.title")}
               data-workspace-tool-dock
+              data-workflow-panel-title
             >
               <ListTree className="h-4 w-4 shrink-0 text-content-secondary" />
               <span className="truncate text-[13px] font-medium text-content-primary">

@@ -41,10 +41,6 @@ export function normalizeWorkspaceRelativePath(value: string): string {
   return toPosixPath(path.normalize(value)).replace(/^\.\//, "");
 }
 
-export function joinWorkspacePath(base: string, name: string): string {
-  return normalizeWorkspaceRelativePath(base ? path.join(base, name) : name);
-}
-
 export function isProbablyBinary(buffer: Buffer): boolean {
   if (buffer.length === 0) {
     return false;

@@ -69,6 +69,41 @@ describe("execution approval modes", () => {
     expect(approvalRuntime.requestApproval).not.toHaveBeenCalled();
   });
 
+  test("preserves mandatory URL approval in Agent mode and bypasses it only in Full Access", async () => {
+    const requestApproval = vi.fn(async () => ({
+      approvalId: "approval-browser-target",
+      decision: "approve_once" as const,
+      status: "approved" as const,
+      disposition: "proceed" as const,
+      scope: "once" as const,
+      resolvedAt: new Date().toISOString(),
+    }));
+    const approvalRuntime = { requestApproval } as unknown as AgentApprovalRuntime;
+    const gate = new AgentToolPermissionGate({
+      policy: policy(decision(AgentPermissionActions.Allow)),
+      sessionApprovals: new AgentSessionApprovalLeaseStore(),
+      approvalRuntime,
+      toolPlanningMode: "native",
+    });
+    const mandatoryApproval = {
+      reason: "Private browser targets require approval.",
+      scope: "http://127.0.0.1:3000",
+    };
+
+    await expect(
+      gate.authorize({ ...request(AgentExecutionApprovalModes.Agent), mandatoryApproval }),
+    ).resolves.toMatchObject({ action: AgentPermissionActions.Allow });
+    expect(requestApproval).toHaveBeenCalledOnce();
+    expect(requestApproval).toHaveBeenCalledWith(
+      expect.objectContaining({
+        approval: expect.objectContaining({ reason: mandatoryApproval.reason }),
+      }),
+    );
+
+    await gate.authorize({ ...request(AgentExecutionApprovalModes.FullAccess), mandatoryApproval });
+    expect(requestApproval).toHaveBeenCalledOnce();
+  });
+
   test("always-ask obtains a call-bound grant before accessing an external host path", async () => {
     const requestApproval = vi.fn(async () => ({
       approvalId: "approval-external",

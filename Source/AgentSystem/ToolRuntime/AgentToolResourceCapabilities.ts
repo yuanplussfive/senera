@@ -4,6 +4,7 @@ import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
 import { AgentToolResourceCapabilityRegistry } from "./AgentToolResourceCapabilityRegistry.js";
 import { AgentToolUploadReadResourceCapability } from "./AgentToolUploadReadResourceCapability.js";
+import { AgentToolUrlResourceCapability } from "./AgentToolUrlResourceCapability.js";
 import { AgentToolWorkspacePathResourceCapability } from "./AgentToolWorkspacePathResourceCapability.js";
 import { AgentToolWorkspaceRootResourceCapability } from "./AgentToolWorkspaceRootResourceCapability.js";
 import type { AgentResourceAccessRequest } from "../Execution/SeneraResourceAccess.js";
@@ -46,6 +47,7 @@ export function createAgentDefaultToolResourceCapabilities(input: {
       config: resolveUploadsConfig(input.config),
     });
   return new AgentToolResourceCapabilityRegistry()
+    .register(new AgentToolUrlResourceCapability())
     .register(new AgentToolWorkspacePathResourceCapability(input.executionEnv))
     .register(new AgentToolWorkspaceRootResourceCapability(input.executionEnv))
     .register(new AgentToolUploadReadResourceCapability(uploads));

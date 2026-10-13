@@ -5,12 +5,12 @@ import {
   type EventEnvelope,
   type ConfigSnapshotData,
   type ModelListSnapshotData,
-  type PresetSnapshotData,
   type ProviderModelsFailedData,
   type ProviderModelsSnapshotData,
   type SessionListSnapshotData,
   type SessionForkedData,
   type SessionNotFoundData,
+  type SessionRuntimeStatusData,
   type SessionSnapshotData,
   type SessionTruncatedData,
   type UserProfileData,
@@ -19,6 +19,7 @@ import {
   type McpServerSnapshotData,
   type ChannelStatusSnapshotData,
 } from "../../api/eventTypes";
+import { readEventSessionId } from "../../api/eventCorrelation";
 import { projectRunEvent } from "./runEventProjector";
 import { applyScopedRunEvent } from "./scopedRunProjector";
 import { advanceSessionHistoryHydration, projectSessionHistoryEvent } from "./sessionHistoryProjector";
@@ -29,10 +30,13 @@ import {
   restorePendingSessionDeletion,
 } from "./sessionListProjection";
 import { nowIso, syncSessionCountsFromLoadedMessages } from "./sessionProjectorCore";
+import { mergeSessionRuntimeSnapshot } from "./sessionRuntimeProjection";
 import { applyModelListSnapshotSelection, syncActiveSessionModelSelection } from "./sessionModelSelection";
 import { syncRunActiveFlags } from "./sessionRunProjection";
-import type { StoreState } from "./types";
+import type { SessionRecord, StoreState } from "./types";
 import { projectAgentEventOnce } from "./eventReceiptLedger";
+import { rejectRunRecovery } from "./runRecoveryProjection";
+import { resolveBackendMessage } from "../../i18n/backendMessage";
 
 export { normalizeUserProfile } from "./userProfile";
 export { friendlyDecisionKind, truncate } from "./sessionPresentation";
@@ -82,6 +86,8 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
   switch (env.kind) {
     case EventKinds.RequestInvalid: {
       const data = env.data as RequestInvalidData;
+      const session = env.sessionId ? state.sessions[env.sessionId] : undefined;
+      if (session && rejectRunRecovery(session, env.requestId, resolveBackendMessage(data) ?? data.message)) return;
       const details = data.details;
       const readDetail = (key: string): unknown =>
         details && typeof details === "object" && key in details
@@ -151,12 +157,17 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
       state.systemTools = snapshot.tools;
       state.systemExtensions = snapshot.extensions;
       state.toolSettingsSynced.systemTools = true;
+      state.activationCatalog = snapshot.activation;
+      state.toolSettingsSynced.activation = true;
       return;
     }
 
     case EventKinds.McpServerSnapshot: {
-      state.mcpServers = (env.data as McpServerSnapshotData).servers;
+      const snapshot = env.data as McpServerSnapshotData;
+      state.mcpServers = snapshot.servers;
       state.toolSettingsSynced.mcpServers = true;
+      state.activationCatalog = snapshot.activation;
+      state.toolSettingsSynced.activation = true;
       return;
     }
 
@@ -168,17 +179,6 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
     case EventKinds.ProfileSnapshot: {
       if (state.userProfile.syncState === "pending") return;
       state.userProfile = normalizeUserProfile(env.data as UserProfileData);
-      return;
-    }
-
-    case EventKinds.PresetSnapshot: {
-      const data = env.data as PresetSnapshotData;
-      state.presets = data.presets;
-      state.presetWorldPackages = data.worldPackages;
-      state.activePresetName = data.activePresetName;
-      state.presetsEnabled = data.enabled;
-      state.presetRootDir = data.rootDir;
-      state.catalogSynced.presets = true;
       return;
     }
 
@@ -201,6 +201,10 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
         existing.entryCount = data.entryCount;
         existing.messageCount = data.messageCount;
         existing.activeRequestId = data.activeRequestId;
+        if (!existing.runtimeSnapshot) {
+          const persistedRuntimeSnapshot = state.runtimeSnapshotsBySession[sessionId];
+          if (persistedRuntimeSnapshot) existing.runtimeSnapshot = persistedRuntimeSnapshot;
+        }
         if (channel) existing.channel = channel;
         if (data.effectiveModel) existing.effectiveModel = data.effectiveModel;
         if (data.modelPreference) existing.modelPreference = data.modelPreference;
@@ -218,6 +222,9 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
           messageCount: data.messageCount,
           messages: [],
           runs: [],
+          ...(state.runtimeSnapshotsBySession[sessionId]
+            ? { runtimeSnapshot: state.runtimeSnapshotsBySession[sessionId] }
+            : {}),
           activeRequestId: data.activeRequestId,
           ...(channel ? { channel } : {}),
           ...(data.effectiveModel ? { effectiveModel: data.effectiveModel } : {}),
@@ -291,9 +298,25 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
     case EventKinds.SessionTruncated: {
       if (!sessionId) return;
       const data = env.data as SessionTruncatedData;
+      rememberSuppressedRequestIds(state, sessionId, data.removedRequestIds, data.replacementRequestId);
       truncateSessionFromRequest(state, sessionId, data.fromRequestId, env.timestamp, {
         retainedRequestId: data.replacementRequestId,
       });
+      return;
+    }
+
+    case EventKinds.SessionRuntimeStatus: {
+      const runtimeSessionId = readEventSessionId(env);
+      if (!runtimeSessionId || state.missingOnServerIds[runtimeSessionId]) return;
+      const session = state.sessions[runtimeSessionId];
+      if (!session) return;
+      const runtimeSnapshot = mergeSessionRuntimeSnapshot(
+        session.runtimeSnapshot,
+        env.data as SessionRuntimeStatusData,
+        env.timestamp,
+      );
+      session.runtimeSnapshot = runtimeSnapshot;
+      state.runtimeSnapshotsBySession[runtimeSessionId] = runtimeSnapshot;
       return;
     }
 
@@ -346,6 +369,7 @@ function clearSessionRecoveryState(state: StoreState, sessionId: string): void {
   if (state.historyRunEventBuffers) delete state.historyRunEventBuffers[sessionId];
   if (state.historyPreviewedIds) delete state.historyPreviewedIds[sessionId];
   if (state.historyHydration) delete state.historyHydration[sessionId];
+  if (state.historySuppressedRequestIds) delete state.historySuppressedRequestIds[sessionId];
   delete state.historyFailedIds[sessionId];
 }
 
@@ -358,6 +382,8 @@ export function truncateSessionFromRequest(
 ): void {
   const session = state.sessions[sessionId];
   if (!session) return;
+  const suppressed = collectTruncatedRequestIds(session, fromRequestId);
+  rememberSuppressedRequestIds(state, sessionId, suppressed, options.retainedRequestId);
   const retainedMessages = options.retainedRequestId
     ? session.messages.filter((message) => message.requestId === options.retainedRequestId)
     : [];
@@ -389,6 +415,36 @@ export function truncateSessionFromRequest(
     delete state.viewedRunIdBySession[sessionId];
   }
   session.updatedAt = timestamp;
+}
+
+function rememberSuppressedRequestIds(
+  state: StoreState,
+  sessionId: string,
+  requestIds: readonly string[] | undefined,
+  retainedRequestId?: string,
+): void {
+  if (!requestIds || requestIds.length === 0) return;
+  const suppressedBySession = (state.historySuppressedRequestIds ??= {});
+  const tombstones = (suppressedBySession[sessionId] ??= {});
+  for (const requestId of requestIds) {
+    if (requestId) tombstones[requestId] = true;
+  }
+  if (retainedRequestId) delete tombstones[retainedRequestId];
+}
+
+function collectTruncatedRequestIds(session: SessionRecord, fromRequestId: string): string[] {
+  const requestIds = new Set<string>();
+  const messageIndex = session.messages.findIndex((message) => message.requestId === fromRequestId);
+  if (messageIndex >= 0) {
+    for (const message of session.messages.slice(messageIndex)) {
+      if (message.requestId) requestIds.add(message.requestId);
+    }
+  }
+  const runIndex = session.runs.findIndex((run) => run.requestId === fromRequestId);
+  if (runIndex >= 0) {
+    for (const run of session.runs.slice(runIndex)) requestIds.add(run.requestId);
+  }
+  return [...requestIds];
 }
 
 function appendMissingByKey<T>(current: T[], retained: readonly T[], selectKey: (item: T) => string): T[] {

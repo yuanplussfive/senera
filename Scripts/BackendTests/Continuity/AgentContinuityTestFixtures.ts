@@ -5,7 +5,6 @@ export function testContinuityIdentity(id: string): AgentContinuityIdentityConte
     workspaceId: id,
     accountId: id,
     userId: id,
-    worldId: id,
     runtimeId: `${id}:runtime`,
   };
 }

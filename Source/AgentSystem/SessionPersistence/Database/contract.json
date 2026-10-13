@@ -97,6 +97,14 @@
       "migrationSha256": "cdd2ad4e28ffcca530ee98d8c368ef8de56391f1cee96c8fadd3bfaca3e73275",
       "snapshot": "snapshots/0012.schema.sql",
       "snapshotSha256": "3d8f13b2c8794532914a052ec33cd803ba9f2166146db811302bfd4ce3585cb1"
+    },
+    {
+      "version": 13,
+      "name": "outbox-metadata-only",
+      "migration": "migrations/0013-outbox-metadata-only.sql",
+      "snapshot": "snapshots/0013.schema.sql",
+      "migrationSha256": "d2d32ac2afab2d2a5a4d51799a20d4bbb723824448985919ac58903287e33af4",
+      "snapshotSha256": "01669ff1699ca395768e52aacaf8c2d06f1a3590e626030857d8e76c933573ed"
     }
   ]
 }

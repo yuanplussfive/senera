@@ -1,5 +1,8 @@
 ---
 name: skill-creator
+metadata:
+  senera:
+    icon: sparkles
 description: Create, update, validate, or remove a Senera Skill in the workspace .senera/skills directory. Use when the user asks the agent to teach itself a reusable workflow, add specialized instructions, bundle scripts or references, or maintain an existing SKILL.md skill package. 适用于创建、更新、校验或删除技能，学习可复用工作流，以及制作包含脚本或参考资料的 Toolkit Skill。
 ---
 
@@ -31,6 +34,7 @@ Then create the package:
    ```yaml
    metadata:
      senera:
+       icon: sparkles
        recommended-tools:
          - mcp__server__tool
    ```
@@ -39,9 +43,8 @@ Then create the package:
 
 4. For a Toolkit Skill, do not create a partial package with `SkillManage` first. Add only the scripts, references, or assets the workflow actually needs, invoke scripts through an existing registered execution tool, and create the complete initial resource tree with one atomic `WorkspaceApplyPatch` call:
    - Include the package directory, `SKILL.md`, and every initial resource in the same call.
-   - Include a `createDirectory` operation before its files when `scripts/`, `references/`, `assets/`, or another required parent directory does not exist.
    - Include every new resource as an `add` operation in that same call.
-   - An `add` operation does not create missing parent directories.
+   - Parent directories for declared files are created atomically by the transaction; do not invent directory-only operations.
    - Do not fan out ad hoc file-write commands to new nested paths; use the one atomic WorkspaceApplyPatch transaction instead.
    - If candidate validation fails, read the returned file, line, pointer, frame, and changed-path diagnostics, then resubmit a corrected atomic patch. The active Skill remains unchanged.
 5. Edit only `.senera/skills/<name>/`. Test every added script with representative input.

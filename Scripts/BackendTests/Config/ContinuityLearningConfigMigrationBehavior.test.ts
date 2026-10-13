@@ -77,7 +77,7 @@ describe("continuity learning configuration migration", () => {
     });
   });
 
-  test("removes the character threshold when upgrading the learning gate", () => {
+  test("removes the retired learning gate", () => {
     expect(
       migrateAgentConfigPayload({
         ConfigVersion: 14,
@@ -89,19 +89,16 @@ describe("continuity learning configuration migration", () => {
         },
       }),
     ).toMatchObject({
-      removedPaths: [
-        "ContinuityLearning.LearningGate.MinimumUserCharacters",
-        "Defaults.ContinuityLearning.LearningGate.MinimumUserCharacters",
-      ],
+      removedPaths: ["ContinuityLearning.LearningGate", "Defaults.ContinuityLearning.LearningGate"],
       config: {
         ConfigVersion: CurrentAgentConfigVersion,
-        ContinuityLearning: { LearningGate: { Enabled: true, DeferredDelaySeconds: 30 } },
-        Defaults: { ContinuityLearning: { LearningGate: {} } },
+        ContinuityLearning: {},
+        Defaults: { ContinuityLearning: {} },
       },
     });
   });
 
-  test("moves the legacy phrase gate enablement and removes its obsolete node", () => {
+  test("removes the legacy phrase gate", () => {
     expect(
       migrateAgentConfigPayload({
         ConfigVersion: 16,
@@ -112,11 +109,11 @@ describe("continuity learning configuration migration", () => {
     ).toMatchObject({
       sourceVersion: 16,
       targetVersion: CurrentAgentConfigVersion,
-      migratedPaths: ["ContinuityLearning.Recall.TurnValueClassifier.Enabled", "ConfigVersion"],
+      migratedPaths: ["ConfigVersion"],
       removedPaths: ["ContinuityLearning.Recall.TrivialPromptGate"],
       config: {
         ConfigVersion: CurrentAgentConfigVersion,
-        ContinuityLearning: { Recall: { TurnValueClassifier: { Enabled: false } } },
+        ContinuityLearning: { Recall: {} },
       },
     });
   });
@@ -145,16 +142,16 @@ describe("continuity learning configuration migration", () => {
     ).toMatchObject({
       sourceVersion: 19,
       targetVersion: CurrentAgentConfigVersion,
-      migratedPaths: [
-        "ContinuityLearning.Recall.Semantic.TimeoutMs",
-        "Defaults.ContinuityLearning.Recall.Semantic.TimeoutMs",
-        "ConfigVersion",
+      migratedPaths: ["ConfigVersion"],
+      removedPaths: [
+        "ContinuityLearning.Recall.Auxiliary",
+        "ContinuityLearning.Recall.Semantic",
+        "Defaults.ContinuityLearning.Recall.Auxiliary",
       ],
-      removedPaths: ["ContinuityLearning.Recall.Auxiliary", "Defaults.ContinuityLearning.Recall.Auxiliary"],
       config: {
         ConfigVersion: CurrentAgentConfigVersion,
-        ContinuityLearning: { Recall: { Semantic: { Enabled: true, TimeoutMs: 12_000 } } },
-        Defaults: { ContinuityLearning: { Recall: { Semantic: { TimeoutMs: 8_000 } } } },
+        ContinuityLearning: { Recall: {} },
+        Defaults: { ContinuityLearning: { Recall: {} } },
       },
     });
   });
@@ -172,11 +169,13 @@ describe("continuity learning configuration migration", () => {
       removedPaths: [
         "ContinuityLearning.TemporalMemory.SegmentIdleSeconds",
         "Defaults.ContinuityLearning.TemporalMemory.SegmentIdleSeconds",
+        "ContinuityLearning.TemporalMemory",
+        "Defaults.ContinuityLearning.TemporalMemory",
       ],
       config: {
         ConfigVersion: CurrentAgentConfigVersion,
-        ContinuityLearning: { TemporalMemory: { Enabled: true } },
-        Defaults: { ContinuityLearning: { TemporalMemory: {} } },
+        ContinuityLearning: {},
+        Defaults: { ContinuityLearning: {} },
       },
     });
   });

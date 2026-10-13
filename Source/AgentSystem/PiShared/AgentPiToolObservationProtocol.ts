@@ -1,43 +1,26 @@
 import { z } from "zod";
+import { normalizeAgentArtifactUri } from "../Artifacts/AgentArtifactLocator.js";
 import { defineSeneraProtocol } from "../Core/AgentProtocolIdentity.js";
 import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import { AgentPiToolObservationStatuses } from "./AgentPiToolObservationStatus.js";
-import { AgentToolExecutionStatuses, AgentToolOutputAvailabilities } from "../ToolRuntime/AgentToolResultOutcome.js";
+import {
+  AgentToolExecutionStatuses,
+  AgentToolFailureSchema,
+  AgentToolOutputAvailabilities,
+} from "../ToolRuntime/AgentToolResultOutcome.js";
 import {
   AgentToolArtifactAvailabilityStatuses,
   AgentToolArtifactUnavailableReasons,
 } from "../Types/ToolRuntimeTypes.js";
 
-export const AgentPiToolObservationProtocol = defineSeneraProtocol("tool_observation", 4);
-export const AgentPiToolObservationSourceViewProtocol = defineSeneraProtocol("tool_observation_source_view", 4);
+export const AgentPiToolObservationProtocol = defineSeneraProtocol("tool_observation", 5);
+export const AgentPiToolObservationSourceViewProtocol = defineSeneraProtocol("tool_observation_source_view", 5);
 export const AgentPiToolObservationContractRevision = [
   AgentPiToolObservationProtocol.type,
   AgentPiToolObservationSourceViewProtocol.type,
+  "source-artifacts-v2",
+  "budgeted-compression-v1",
 ].join("|");
-
-const AgentPiToolObservationErrorSchema = z
-  .object({
-    code: z.string().optional(),
-    kind: z.string().optional(),
-    source: z.string().optional(),
-    retryable: z.boolean().optional(),
-    message: z.string().optional(),
-    diagnostics: z
-      .array(
-        z
-          .object({
-            code: z.string().optional(),
-            path: z.string().optional(),
-            pointer: z.string().optional(),
-            message: z.string().optional(),
-            suggestion: z.string().optional(),
-          })
-          .strict(),
-      )
-      .max(8)
-      .optional(),
-  })
-  .strict();
 
 const AgentPiToolObservationEvidenceSchema = z
   .object({
@@ -72,6 +55,18 @@ const AgentPiToolObservationDetailSchema = z
     limitations: z.unknown().optional(),
     outcome: z.unknown().optional(),
     semantic_digest: z.string().optional(),
+    perception: z.string().optional(),
+    notice: z.string().optional(),
+  })
+  .strict();
+
+const AgentPiRejectedCallFailureSchema = z
+  .object({
+    code: z.literal("pi_tool_call_rejected"),
+    kind: z.literal("invalid_request"),
+    source: z.literal("pi"),
+    retryable: z.boolean(),
+    message: z.string().min(1),
   })
   .strict();
 
@@ -102,14 +97,34 @@ const AgentPiToolObservationSourceViewSchema = z
   })
   .strict();
 
+const CanonicalArtifactUriSchema = z
+  .string()
+  .refine((value) => normalizeAgentArtifactUri(value) === value, "Expected a canonical Senera Artifact URI.");
+
+const AgentPiToolObservationSourceArtifactSchema = z
+  .object({
+    artifact_uri: CanonicalArtifactUriSchema,
+    refs: z.array(z.string()).default([]),
+  })
+  .strict();
+
 const AgentPiToolObservationSchema = z
   .object({
     type: z.literal(AgentPiToolObservationProtocol.type),
     status: z.enum(AgentPiToolObservationStatuses),
     execution_status: z.enum(AgentToolExecutionStatuses),
     output_availability: z.enum(AgentToolOutputAvailabilities),
-    error: AgentPiToolObservationErrorSchema.optional(),
-    observation_view: AgentPiToolObservationSourceViewSchema,
+    compression_method: z.enum(["verbatim", "mechanical", "llm"]).optional(),
+    error: z.union([AgentToolFailureSchema, AgentPiRejectedCallFailureSchema]).optional(),
+    artifact_uri: CanonicalArtifactUriSchema.optional(),
+    artifact_refs: z.array(z.string()).optional(),
+    evidence_uris: z.array(z.string()).optional(),
+    // Completeness declaration. v5 omits it for fully projected observations:
+    // an absent view means the detail is complete and no retrieval coordinate
+    // is needed.
+    observation_view: AgentPiToolObservationSourceViewSchema.optional(),
+    /** Canonical sources read by a SourceView result; never newly published here. */
+    source_artifacts: z.array(AgentPiToolObservationSourceArtifactSchema).min(1).optional(),
     detail: AgentPiToolObservationDetailSchema,
   })
   .strict();
@@ -148,7 +163,12 @@ export function createAgentPiToolObservation(fields: Omit<AgentPiToolObservation
 }
 
 export function isAgentPiObservationSourceBounded(observation: AgentPiToolObservation): boolean {
-  return observation.observation_view.type === AgentPiToolObservationSourceViewProtocol.type;
+  // v5 omits the view for fully projected observations; absence means the
+  // detail is complete, so it is a valid bounded projection.
+  return (
+    observation.observation_view === undefined ||
+    observation.observation_view.type === AgentPiToolObservationSourceViewProtocol.type
+  );
 }
 
 export function assertAgentPiToolObservationBounded(observation: AgentPiToolObservation): void {

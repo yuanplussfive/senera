@@ -6,6 +6,9 @@ import { z } from "zod";
 import { deepFreeze } from "../Core/AgentDeepFreeze.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import { isPathWithin } from "../Core/AgentPath.js";
+import { discoverAgentSystemExtensionPackages } from "../SystemTools/AgentSystemExtensionDiscovery.js";
+import { resolveSystemExtensionPackageDirectory } from "../SystemTools/AgentSystemExtensionPackagePath.js";
+import type { AgentSystemAgentRoleContribution } from "../SystemTools/AgentSystemExtensionManifest.js";
 
 const ThinkingLevelSchema = z.enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 const RoleFrontmatterSchema = z
@@ -142,14 +145,40 @@ export class AgentSubagentRoleCatalog implements AgentSubagentRoleCatalogPort {
 }
 
 function discoverRoleDefinitions(workspaceRoot: string, configuredBuiltinRoot?: string): AgentSubagentRoleDefinition[] {
-  const builtinRoot = path.resolve(
-    configuredBuiltinRoot ?? path.join(workspaceRoot, "System", "Extensions", "agent-delegation", "agents"),
-  );
+  const builtinRoot = configuredBuiltinRoot
+    ? path.resolve(configuredBuiltinRoot)
+    : resolveAgentSubagentBuiltinRoleDirectory(path.join(workspaceRoot, "System", "Extensions"));
   if (!fs.existsSync(builtinRoot)) throw new Error(`Bundled subagent role directory does not exist: ${builtinRoot}`);
   return [
     ...readRoleDirectory(builtinRoot, "builtin"),
     ...readRoleDirectory(path.join(workspaceRoot, ".senera", "agents"), "workspace"),
   ];
+}
+
+/**
+ * Resolves the unique package-declared role catalog. Its location is package
+ * metadata, not a runtime convention, so distribution layouts can evolve
+ * without teaching orchestration about domain or extension directories.
+ */
+export function resolveAgentSubagentBuiltinRoleDirectory(systemExtensionsRoot: string): string {
+  const contributions = discoverAgentSystemExtensionPackages(systemExtensionsRoot).flatMap((source) =>
+    (source.manifest.contributions ?? [])
+      .filter((contribution): contribution is AgentSystemAgentRoleContribution => contribution.kind === "agentRoles")
+      .map((contribution) => ({ source, contribution })),
+  );
+  if (contributions.length !== 1) {
+    throw new Error(
+      `Expected exactly one System extension agentRoles contribution, found ${contributions.length}: ${
+        contributions.map(({ source }) => source.manifest.id).join(", ") || "none"
+      }.`,
+    );
+  }
+  const entry = contributions[0]!;
+  return resolveSystemExtensionPackageDirectory(
+    entry.source.packageRoot,
+    entry.contribution.path,
+    "Agent role contribution",
+  );
 }
 
 function readRoleDirectory(root: string, source: AgentSubagentRoleSource): AgentSubagentRoleDefinition[] {

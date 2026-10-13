@@ -23,6 +23,11 @@ export const Fields: Story = () => (
       </FormField>
 
       <FormField>
+        <FormLabel>紧凑字段</FormLabel>
+        <Input size="sm" placeholder="36px compact variant" />
+      </FormField>
+
+      <FormField>
         <FormLabel>只读字段</FormLabel>
         <Input value="由系统自动生成" disabled readOnly />
         <FormHint>禁用态仍应保持内容可读。</FormHint>

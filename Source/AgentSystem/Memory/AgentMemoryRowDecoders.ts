@@ -1,5 +1,6 @@
 import type { EpisodeRow, SourceRow } from "./AgentMemorySqlRows.js";
 import type { AgentMemoryEpisodeRecord, AgentMemorySourceRecord } from "./AgentMemorySourceRepository.js";
+import { parseMemoryRowJsonObject } from "./AgentMemoryRowJson.js";
 
 export function rowToEpisode(row: EpisodeRow): AgentMemoryEpisodeRecord {
   return {
@@ -10,10 +11,9 @@ export function rowToEpisode(row: EpisodeRow): AgentMemoryEpisodeRecord {
     status: row.status,
     rawUserText: row.raw_user_text,
     standaloneRequest: row.standalone_request,
-    contextMode: row.context_mode,
     contextBasis: row.context_basis,
     topic: row.topic,
-    assistantPreview: row.summary,
+    assistantText: row.assistant_text,
     startedAt: row.started_at,
     completedAt: row.completed_at,
     updatedAt: row.updated_at,
@@ -23,7 +23,7 @@ export function rowToEpisode(row: EpisodeRow): AgentMemoryEpisodeRecord {
     timeZone: row.time_zone,
     localDate: row.local_date,
     localHour: row.local_hour,
-    metadata: parseObject(row.metadata_json),
+    metadata: parseMemoryRowJsonObject(row.metadata_json),
   };
 }
 
@@ -50,11 +50,6 @@ export function rowToSource(row: SourceRow): AgentMemorySourceRecord {
     timeZone: row.time_zone,
     localDate: row.local_date,
     localHour: row.local_hour,
-    metadata: parseObject(row.metadata_json),
+    metadata: parseMemoryRowJsonObject(row.metadata_json),
   };
-}
-
-function parseObject(value: string): Record<string, unknown> {
-  const parsed: unknown = JSON.parse(value);
-  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
 }

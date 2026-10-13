@@ -15,7 +15,7 @@ import { z } from "zod";
 describe("model failure mapper", () => {
   test("classifies wrapped provider failures without relying on rendered messages", () => {
     const wrapped = new AgentBamlModelCallError({
-      functionName: "ExtractContinuityFacts",
+      functionName: "EvolveTurn",
       attempts: [],
       issues: ["request failed"],
       error: new ModelProviderHttpError(400, "Bad Request", "invalid input"),

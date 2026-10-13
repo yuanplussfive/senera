@@ -1,5 +1,5 @@
-import { AlertCircle, TriangleAlert } from "lucide-react";
 import { cn } from "../../lib/util";
+import { AppIcon } from "../../shared/ui";
 
 export interface ConfigDiagnosticItem {
   severity: "error" | "warning";
@@ -30,11 +30,12 @@ export function ConfigDiagnosticsList({
             item.severity === "error" ? "text-brick-600" : "text-umber-600",
           )}
         >
-          {item.severity === "error" ? (
-            <AlertCircle aria-hidden="true" className="mt-[3px] h-3.5 w-3.5 shrink-0" />
-          ) : (
-            <TriangleAlert aria-hidden="true" className="mt-[3px] h-3.5 w-3.5 shrink-0" />
-          )}
+          <AppIcon
+            icon={item.severity === "error" ? "alert" : "warning"}
+            size={14}
+            aria-hidden="true"
+            className="mt-[3px]"
+          />
           <span className="min-w-0 whitespace-pre-wrap break-words">{item.message}</span>
         </li>
       ))}

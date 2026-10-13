@@ -7,7 +7,7 @@ import { DataView } from "../../../Frontend/src/features/workflow/DataView.tsx";
 import { AgentExecutionStageFeed } from "../../../Frontend/src/features/workflow/AgentExecutionFeed.tsx";
 import { deriveFeedModel } from "../../../Frontend/src/features/workflow/feedModel.ts";
 import { TooltipProvider } from "../../../Frontend/src/shared/ui/Tooltip.tsx";
-
+import { createSystemToolOrigin } from "./workflowComponentFixtures.mjs";
 afterEach(cleanup);
 
 test("tool detail uses the runtime name and keeps raw arguments and results separate from presentation metadata", async () => {
@@ -70,8 +70,7 @@ test("long tool values stay compact until the full value is requested", async ()
   expect(screen.getByText(longValue)).toBeVisible();
 });
 
-test("compact tool activity keeps raw results in the workflow inspector", async () => {
-  const user = userEvent.setup();
+test("single-tool activity keeps raw results out of the execution row", () => {
   const step = toolStep();
   render(
     React.createElement(
@@ -99,8 +98,8 @@ test("compact tool activity keeps raw results in the workflow inspector", async 
   );
 
   expect(document.querySelector("[data-tool-result-preview]")).toBeNull();
-  await user.click(screen.getByRole("button", { name: "Run · WeatherTool" }));
-  expect(document.querySelector("[data-tool-batch-activity-items]")).toHaveTextContent("Run · WeatherTool");
+  expect(document.querySelector("[data-tool-batch-activity-title]")).toHaveTextContent("编辑 weather.ts");
+  expect(document.querySelector("[data-tool-batch-activity-items]")).toBeNull();
   expect(document.querySelector("[data-tool-inspector-section='result']")).toBeNull();
 });
 
@@ -108,6 +107,8 @@ test("tool activity does not project presentation metadata as a raw result", asy
   const step = {
     ...toolStep(),
     toolResult: undefined,
+    toolOutput: { stdout: "not a tool result", stderr: "also not a tool result" },
+    toolErrorMessage: "not a tool result either",
     toolPresentation: {
       type: "senera.tool_result_presentation.v1",
       version: 1,
@@ -132,7 +133,7 @@ test("tool activity does not project presentation metadata as a raw result", asy
   expect(document.querySelector("[data-tool-inspector-section='result']")).toBeNull();
 });
 
-test("execution feed uses the runtime tool identity without a presentation-derived subtitle", () => {
+test("execution feed separates the concise activity label from its result summary", () => {
   const feed = deriveFeedModel({
     requestId: "request-weather",
     revision: 1,
@@ -149,8 +150,8 @@ test("execution feed uses the runtime tool identity without a presentation-deriv
     decisionMode: "none",
   });
 
-  expect(feed.groups[0]?.items[0]?.title).toBe("WeatherTool");
-  expect(feed.groups[0]?.items[0]?.subtitle).toBeUndefined();
+  expect(feed.groups[0]?.items[0]?.title).toBe("编辑 weather.ts");
+  expect(feed.groups[0]?.items[0]?.subtitle).toBe("当前天气已更新。");
 });
 
 test("workflow feed does not duplicate tool prefaces or expose their internal decision kind", () => {
@@ -423,6 +424,15 @@ function toolStep() {
     endedAt: "2026-07-10T00:00:01.000Z",
     toolName: "WeatherTool",
     callId: "call_weather",
+    toolOrigin: createSystemToolOrigin({
+      name: "Weather tools",
+      category: "weather",
+      icon: "activity",
+      groupId: "weather",
+      groupTitle: "Weather",
+      action: "Run",
+      invocationName: "WeatherTool",
+    }),
     toolPresentation: {
       type: "senera.tool_result_presentation.v1",
       version: 1,
@@ -458,19 +468,9 @@ function toolStep() {
       artifactUri: "senera://artifact/weather",
     },
     toolResult: {
-      callId: "call_weather",
-      name: "WeatherTool",
-      arguments: {},
-      result: {
-        city: "北京",
-        temperature: 26,
-        condition: "晴",
-      },
-      outcome: { status: "success" },
-      presentation: {
-        summary: "当前天气已更新。",
-        artifactUri: "senera://artifact/weather",
-      },
+      city: "北京",
+      temperature: 26,
+      condition: "晴",
     },
   };
 }

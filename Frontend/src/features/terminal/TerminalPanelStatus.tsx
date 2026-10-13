@@ -1,7 +1,6 @@
-import { AlertTriangle } from "lucide-react";
 import type { ReactNode } from "react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { ErrorBoundary, RetryButton, Spinner } from "../../shared/ui";
+import { AppIcon, ErrorBoundary, RetryButton, Spinner } from "../../shared/ui";
 import { TerminalSurfaceStyle } from "./terminalTheme";
 
 export interface TerminalPanelStatusProps {
@@ -19,7 +18,7 @@ export function TerminalPanelStatus(props: TerminalPanelStatusProps): JSX.Elemen
     >
       <div className="flex max-w-sm flex-col items-center gap-3">
         <div className="grid h-10 w-10 place-items-center rounded-md border border-[var(--terminal-border)] bg-[var(--terminal-elevated)] text-[var(--terminal-accent)]">
-          {failed ? <AlertTriangle className="h-4 w-4" aria-hidden="true" /> : <Spinner size="md" />}
+          {failed ? <AppIcon icon="warning" size={16} aria-hidden="true" /> : <Spinner size="md" />}
         </div>
         <div>
           <h2 className="text-[13px] font-medium text-[var(--terminal-foreground)]">

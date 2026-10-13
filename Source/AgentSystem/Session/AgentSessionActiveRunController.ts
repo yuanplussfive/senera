@@ -1,5 +1,6 @@
 import { AgentCancellationError } from "../Core/AgentCancellation.js";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
+import { readAgentSessionRecoveryModes } from "./AgentSessionRunRecovery.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import { releaseAgentLifecycleResources } from "../Core/AgentLifecycleResource.js";
 import { createOpaqueId, createRequestId } from "../Core/AgentIds.js";
@@ -19,8 +20,11 @@ import {
 import type { AgentPiSession } from "../Pi/AgentPiRuntimeTypes.js";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import { projectAgentPiImageAttachments } from "../Pi/AgentPiImageAttachmentProjector.js";
-import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
+import {
+  resolveAgentTurnAttachmentReferences,
+  type AgentTurnAttachmentUploadStore,
+} from "../Prompt/AgentTurnRequestComposer.js";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 import { AgentSessionStatuses, type AgentSession } from "./AgentSession.js";
 import { clearAgentSessionCancellation, withAgentSessionCancellationPending } from "./AgentSessionLifecycleMetadata.js";
@@ -46,6 +50,7 @@ import {
 import { AgentSessionRunSnapshotWriter } from "./AgentSessionRunSnapshotWriter.js";
 import type { AgentSessionStore } from "./AgentSessionStore.js";
 import type { AgentConversationEntryMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
+import type { AgentExplicitActivationSet } from "../Activation/AgentActivationTypes.js";
 
 export interface AgentSessionActiveRunControllerOptions {
   readonly store: AgentSessionStore;
@@ -56,7 +61,7 @@ export interface AgentSessionActiveRunControllerOptions {
   readonly runResources?: readonly AgentSessionRunResource[];
   readonly piSessions?: AgentPiActiveSessionRegistry;
   readonly piDiagnostics?: AgentPiDiagnosticSink;
-  readonly uploadStore?: Pick<AgentUploadStore, "resolve">;
+  readonly uploadStore?: AgentTurnAttachmentUploadStore;
   readonly logger?: AgentLogger;
 }
 
@@ -199,6 +204,7 @@ export class AgentSessionActiveRunController {
     attachments?: AgentUploadAttachment[];
     metadata?: AgentConversationEntryMetadata;
     interaction?: AgentInteractionContext;
+    activations?: AgentExplicitActivationSet;
     queueMode: AgentSessionMessageQueueMode;
     onEvent?: AgentEventSink;
   }): Promise<boolean> {
@@ -215,6 +221,7 @@ export class AgentSessionActiveRunController {
       attachments: request.attachments ?? [],
       metadata: request.metadata ?? null,
       interaction: request.interaction ?? null,
+      activations: request.activations ?? null,
     });
     const existing = run.queuedMessages.get(requestId);
     if (existing) {
@@ -232,16 +239,24 @@ export class AgentSessionActiveRunController {
         {
           ...request,
           metadata: request.metadata,
+          activations: request.activations,
           queue: { parentRequestId: run.requestId, mode: request.queueMode },
         },
         timestamp,
       );
-      const renderedInput = this.options.conversationPolicy.renderCurrentUserMessage(userEntry, request.interaction);
-      const images = await projectAgentPiImageAttachments({
-        attachments: request.attachments,
-        model: handle.session.model,
-        uploadStore: this.options.uploadStore,
-      });
+      const [attachmentReferences, images] = await Promise.all([
+        resolveAgentTurnAttachmentReferences(request.attachments, this.options.uploadStore),
+        projectAgentPiImageAttachments({
+          attachments: request.attachments,
+          model: handle.session.model,
+          uploadStore: this.options.uploadStore,
+        }),
+      ]);
+      const renderedInput = this.options.conversationPolicy.renderCurrentUserMessage(
+        userEntry,
+        request.interaction,
+        attachmentReferences,
+      );
       await ActiveRunQueueHandlers[request.queueMode](handle.session, renderedInput, images);
 
       this.options.store.persistEntries(request.session.id, [userEntry]);
@@ -295,6 +310,7 @@ export class AgentSessionActiveRunController {
     input: string;
     onEvent?: AgentEventSink;
     requestId?: string;
+    metadata?: AgentConversationEntryMetadata;
     interaction?: AgentInteractionContext;
   }): Promise<boolean> {
     const lookup = this.options.store.get(request.sessionId);
@@ -303,6 +319,7 @@ export class AgentSessionActiveRunController {
       session: lookup.session,
       requestId: request.requestId,
       input: request.input,
+      metadata: request.metadata,
       interaction: request.interaction,
       queueMode: AgentSessionMessageQueueModes.FollowUp,
       onEvent: request.onEvent,
@@ -744,6 +761,7 @@ export function createAgentSessionRunFailedEvent(
     data: {
       ...projectAgentErrorMessage(error, "session.runFailed"),
       details: serializeError(error),
+      recoveryModes: readAgentSessionRecoveryModes("failed"),
     },
   };
 }

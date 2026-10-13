@@ -7,16 +7,17 @@ import { AgentPiTurnState } from "../../../Source/AgentSystem/Pi/AgentPiTurnStat
 import { AgentTurnTokenBudget } from "../../../Source/AgentSystem/Text/AgentTurnTokenBudget.js";
 import { AgentToolExposureState } from "../../../Source/AgentSystem/ToolRuntime/AgentToolExposureState.js";
 import { toolAccessGrant } from "../Support/AgentTestFixtures.js";
+import { createTestToolObservationCompressor } from "../Support/PiToolObservationFixtures.js";
 
 describe("Pi terminal tool observations", () => {
-  test("projects a Pi validation failure and settles its unclaimed reservation", () => {
+  test("projects a Pi validation failure and settles its unclaimed reservation", async () => {
     const turnState = createTurnState();
     turnState.registerToolBatch("batch-validation", [
       { toolCallId: "call-validation", toolName: "ArtifactReadTool", input: {} },
     ]);
-    const projector = new AgentPiTerminalToolObservationProjector("test-model");
+    const projector = new AgentPiTerminalToolObservationProjector(createTestToolObservationCompressor(), 2_048);
 
-    projector.settle(turnState, {
+    await projector.settle(turnState, {
       toolCallId: "call-validation",
       toolName: "ArtifactReadTool",
       result: { content: [{ type: "text", text: "Validation failed: refs must be array" }] },
@@ -54,6 +55,8 @@ function createTurnState(): AgentPiTurnState {
   });
   tokenBudget.validateModelInput({ messages: [] });
   return new AgentPiTurnState({
+    systemPrompt: "Test agent system context.",
+    userMessage: "Validate the Artifact read request.",
     approvalMode: "agent",
     requestId: "request-validation",
     step: 1,

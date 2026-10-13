@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
-  AgentChannelFinalResponseBamlRewriter,
-  parseAgentChannelFinalDelivery,
+  AgentChannelFinalResponseModelRewriter,
   projectAgentChannelFinalParts,
 } from "../../../Source/AgentSystem/Channels/AgentChannelFinalResponse.js";
 import type { AgentBamlModelRequest } from "../../../Source/AgentSystem/BamlClient/AgentBamlStructuredOutputRunner.js";
@@ -33,7 +32,7 @@ describe("channel final response rewriter", () => {
         return JSON.stringify({ parts: [{ kind: "text", text: "已发送" }] });
       });
     const timingSink = vi.fn();
-    const rewriter = new AgentChannelFinalResponseBamlRewriter(
+    const rewriter = new AgentChannelFinalResponseModelRewriter(
       createModelProvider({ ToolPlanningMode: "baml", MaxOutputTokens: 256 }),
     );
 
@@ -109,7 +108,9 @@ describe("channel final response rewriter", () => {
         requests.push(request);
         return requests.length === 1 ? "not-json" : JSON.stringify({ parts: [{ kind: "text", text: "修复后" }] });
       });
-    const rewriter = new AgentChannelFinalResponseBamlRewriter(createModelProvider({ ToolPlanningMode: "baml" }));
+    const rewriter = new AgentChannelFinalResponseModelRewriter(
+      createModelProvider({ ToolPlanningMode: "baml", MaxNetworkRetries: 1 }),
+    );
 
     await expect(
       rewriter.rewrite({
@@ -126,10 +127,9 @@ describe("channel final response rewriter", () => {
     ).resolves.toEqual({ parts: [{ kind: "text", text: "修复后" }] });
 
     expect(complete).toHaveBeenCalledTimes(2);
-    expect(requests[1]?.step).toBe(1);
+    expect(requests[1]?.requestId).toContain(":repair:1");
     expect(requests[1]?.cache).toEqual(requests[0]?.cache);
-    expect(requests[1]?.messages.at(-1)?.content).toContain("<channel_final_delivery_repair>");
-    expect(requests[1]?.messages.at(-1)?.content).toContain("not-json");
+    expect(requests[1]?.messages.at(-1)?.content).toContain("Correct the structured output");
   });
 
   test("projects native tool-call arguments into a structured final delivery", () => {
@@ -148,14 +148,8 @@ describe("channel final response rewriter", () => {
     ]);
   });
 
-  test("parses a fenced JSON BAML response", () => {
-    const parts = parseAgentChannelFinalDelivery(
-      '```json\n{"parts":[{"kind":"text","text":"hi"},{"kind":"code","language":"ts","code":"const x = 1;"}]}\n```',
-    );
-    expect(parts).toEqual([
-      { kind: "text", text: "hi" },
-      { kind: "code", language: "ts", code: "const x = 1;" },
-    ]);
+  test("rejects text passed to the typed delivery boundary", () => {
+    expect(() => projectAgentChannelFinalParts('{"parts":[{"kind":"text","text":"hi"}]}')).toThrow();
   });
 
   test("builds a bounded manifest with canonical, HTTP, and workspace mappings", async () => {

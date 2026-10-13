@@ -22,11 +22,15 @@ import { AgentToolExposureState } from "../Source/AgentSystem/ToolRuntime/AgentT
 import { AgentPiTurnState } from "../Source/AgentSystem/Pi/AgentPiTurnState.js";
 import { AgentModelUsageLedger } from "../Source/AgentSystem/ModelEndpoints/AgentModelUsage.js";
 import { AgentPiToolPlanCoordinator } from "../Source/AgentSystem/PiShared/AgentPiToolPlanCoordinator.js";
-import {
-  AgentPiToolObservationProtocol,
-  AgentPiToolObservationSourceViewProtocol,
-} from "../Source/AgentSystem/PiShared/AgentPiToolObservationProtocol.js";
+import { AgentPiToolObservationProtocol } from "../Source/AgentSystem/PiShared/AgentPiToolObservationProtocol.js";
 import { AgentTurnTokenBudget } from "../Source/AgentSystem/Text/AgentTurnTokenBudget.js";
+import { AgentToolResultObservationCompressor } from "../Source/AgentSystem/ToolRuntime/AgentToolResultObservationCompressor.js";
+
+const observationTokenBudget = 2_048;
+const observationCompressor = new AgentToolResultObservationCompressor({
+  model: "test-model",
+  summarize: async () => "Tool result summary.",
+});
 
 class AgentPiToolExecutionBridge extends AgentPiToolExecutionBridgeBase {
   constructor(options: AgentPiToolExecutionBridgeOptions) {
@@ -60,6 +64,8 @@ async function verifyToolResultProjection(): Promise<void> {
   const calls: Array<{ request: unknown; context: AgentToolCallExecutionContext }> = [];
   const bridge = new AgentPiToolExecutionBridge({
     model: "test-model",
+    observationTokenBudget,
+    observationCompressor,
     executeToolCall: async (request, context) => {
       calls.push({ request, context });
       return {
@@ -100,6 +106,7 @@ async function verifyToolResultProjection(): Promise<void> {
   const text = result.content[0]?.type === "text" ? result.content[0].text : "";
   assert.equal((JSON.parse(text) as { type?: string }).type, AgentPiToolObservationProtocol.type);
   assert.match(text, /evidence_uri/);
+  // Artifact coordinates remain explicit even when the full result fits.
   assert.match(text, /senera:\/\/artifact\/art_0123456789abcdef01234567/);
 }
 
@@ -109,6 +116,8 @@ async function verifyLargeToolResultRemainsCanonical(): Promise<void> {
   const context = createToolContext("call_large", "verify-pi-large-result", 1, 8_192);
   const bridge = new AgentPiToolExecutionBridge({
     model: "test-model",
+    observationTokenBudget,
+    observationCompressor,
     executeToolCall: async () => ({
       kind: "ToolResults",
       value: [
@@ -136,14 +145,19 @@ async function verifyLargeToolResultRemainsCanonical(): Promise<void> {
   const text = result.content[0]?.type === "text" ? result.content[0].text : "";
   const observation = JSON.parse(text) as {
     observation_view?: { complete?: boolean; artifact_uri?: string };
+    artifact_uri?: string;
     detail?: { result?: { text?: string } };
   };
   const captured = context.turnState.takeExecutedToolResult("call_large");
 
-  assert.equal(observation.observation_view?.artifact_uri, artifact.artifactUri);
+  assert.equal(observation.artifact_uri, artifact.artifactUri);
   assert.equal(observation.observation_view?.complete, false);
   assert.notEqual(observation.detail?.result?.text, hugeText);
-  assert.deepEqual(captured?.result, { text: hugeText });
+  assert.deepEqual(captured?.result, {
+    type: "senera.artifact_backed_tool_result.v1",
+    version: 1,
+    artifactUri: artifact.artifactUri,
+  });
   assert.equal(text.includes(hugeText), false);
   assert.equal(JSON.stringify(result.details).includes("workspace-result"), false);
 }
@@ -151,6 +165,8 @@ async function verifyLargeToolResultRemainsCanonical(): Promise<void> {
 async function verifyAskUserProjection(): Promise<void> {
   const bridge = new AgentPiToolExecutionBridge({
     model: "test-model",
+    observationTokenBudget,
+    observationCompressor,
     executeToolCall: async () => ({
       kind: "AskUser",
       value: {
@@ -175,15 +191,17 @@ async function verifyAskUserProjection(): Promise<void> {
     type?: string;
     status?: string;
     observation_view?: { type?: string; complete?: boolean; artifact_uri?: string };
-    detail?: { summary?: string; result?: unknown };
+    detail?: { arguments?: unknown; result?: unknown };
     summary?: unknown;
     control?: unknown;
   };
   assert.equal(observation.type, AgentPiToolObservationProtocol.type);
   assert.equal(observation.status, "waiting");
-  assert.equal(observation.observation_view?.type, AgentPiToolObservationSourceViewProtocol.type);
-  assert.equal(observation.observation_view?.complete, true);
-  assert.equal(observation.detail?.summary, "需要哪个目录？");
+  // A complete control observation has no omission view.
+  assert.equal(observation.observation_view, undefined);
+  // Arguments remain in Pi's assistant tool call; the observation carries
+  // only the tool's waiting result to avoid serializing the same payload twice.
+  assert.equal(observation.detail?.arguments, undefined);
   assert.deepEqual(observation.detail?.result, {
     question: "需要哪个目录？",
     reason_code: "missing_target",
@@ -200,6 +218,8 @@ async function verifyStructuredToolErrorProjection(): Promise<void> {
   };
   const bridge = new AgentPiToolExecutionBridge({
     model: "test-model",
+    observationTokenBudget,
+    observationCompressor,
     executeToolCall: async () => ({
       kind: "ToolResults",
       value: [
@@ -344,6 +364,8 @@ function createToolContext(callId: string, requestId = `request-${callId}`, step
     outputReserveTokens: Math.min(2_048, Math.max(1, Math.floor(contextWindowTokens / 4))),
   });
   const turnState = new AgentPiTurnState({
+    systemPrompt: "Verification system context.",
+    userMessage: "Verify the tool execution bridge.",
     approvalMode: "agent",
     requestId,
     step,

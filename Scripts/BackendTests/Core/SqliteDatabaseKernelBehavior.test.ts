@@ -15,7 +15,6 @@ import type { AgentSqliteStoreContract } from "../../../Source/AgentSystem/Datab
 import { AgentMemoryDatabaseContract } from "../../../Source/AgentSystem/Memory/AgentMemorySqlSchema.js";
 import { AgentSessionDatabaseContract } from "../../../Source/AgentSystem/SessionPersistence/AgentSessionSqlSchema.js";
 import { DefaultAgentTimeZone } from "../../../Source/AgentSystem/Time/AgentTime.js";
-import { AgentToolSearchLearningStoreContract } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchMemorySqlSchema.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -31,6 +30,9 @@ describe("SQLite database kernel", () => {
     const initial = new AgentSqliteDatabaseKernel({ databasePath, contract: AgentConfigDatabaseContract });
 
     expect(initial.timeZone).toBe(DefaultAgentTimeZone);
+    expect(initial.connection.prepare("SELECT vec_version() AS version").get()).toEqual({
+      version: expect.stringMatching(/^v\d+\.\d+\.\d+$/),
+    });
     expect(initial.connection.prepare(`SELECT time_zone FROM ${AgentSqliteTimeMetadataTable}`).all()).toEqual([
       { time_zone: DefaultAgentTimeZone },
     ]);
@@ -132,158 +134,61 @@ describe("SQLite database kernel", () => {
     });
   });
 
-  test("adopts the declared memory baseline and applies subsequent migrations", () => {
+  test("adopts the current memory baseline without obsolete semantic tables", () => {
     const databasePath = temporaryDatabasePath("memory.sqlite");
     const legacy = new Database(databasePath);
     legacy.exec(AgentMemoryDatabaseContract.migrations[0].sql);
     legacy.close();
 
     withDatabaseKernel(databasePath, AgentMemoryDatabaseContract, (kernel) => {
-      expect(userTable(kernel.connection, "continuity_learning_jobs")).toBe(true);
-      expect(userTable(kernel.connection, "continuity_observations")).toBe(true);
+      expect(userTable(kernel.connection, "memory_episodes")).toBe(true);
+      expect(userTable(kernel.connection, "memory_sources")).toBe(true);
+      expect(userTable(kernel.connection, "continuity_learning_jobs")).toBe(false);
+      expect(userTable(kernel.connection, "continuity_observations")).toBe(false);
       expect(userTable(kernel.connection, "continuity_assertions")).toBe(false);
       expect(userTable(kernel.connection, "memory_items")).toBe(false);
-      expect(columnNames(kernel.connection, "continuity_rules")).toContain("source_refs_json");
+      expect(userTable(kernel.connection, "continuity_rules")).toBe(false);
       expect(recordedVersions(kernel.connection)).toEqual(declaredVersions(AgentMemoryDatabaseContract));
     });
   });
 
-  test("retires the execution goal ledger while preserving execution history", () => {
-    const databasePath = temporaryDatabasePath("memory-goal-ledger-retirement.sqlite");
-    const legacyContract: AgentSqliteStoreContract = {
-      ...AgentMemoryDatabaseContract,
-      migrations: AgentMemoryDatabaseContract.migrations.slice(0, 36),
-    };
-    const legacy = new AgentSqliteDatabaseKernel({ databasePath, contract: legacyContract });
-    legacy.connection
-      .prepare(
-        `INSERT INTO agent_goals (
-          id, uri, scope_kind, scope_id, objective, status, reason, created_at, updated_at,
-          completed_at, session_id, request_id, origin
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        "legacy-goal",
-        "senera://goal/legacy-goal",
-        "session",
-        "session-1",
-        "Legacy execution objective",
-        "completed",
-        null,
-        "2026-08-22T00:00:00.000Z",
-        "2026-08-22T00:01:00.000Z",
-        "2026-08-22T00:01:00.000Z",
-        "session-1",
-        "request-1",
-        "automatic",
+  test("initializes only the current physical and execution schema", () => {
+    const databasePath = temporaryDatabasePath("memory-current-baseline.sqlite");
+    withDatabaseKernel(databasePath, AgentMemoryDatabaseContract, (kernel) => {
+      expect(AgentMemoryDatabaseContract.migrations).toHaveLength(2);
+      expect(kernel.connection.prepare("PRAGMA table_info(memory_episodes)").all()).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: "context_mode" })]),
       );
-    legacy.connection
-      .prepare(
-        `INSERT INTO agent_execution_runs (
-          id, uri, session_id, request_id, goal_id, objective, status, reason,
-          created_at, updated_at, completed_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        "execution-1",
-        "senera://execution/execution-1",
-        "session-1",
-        "request-1",
-        "legacy-goal",
-        "Legacy execution objective",
-        "completed",
-        "All planned steps completed.",
-        "2026-08-22T00:00:00.000Z",
-        "2026-08-22T00:01:00.000Z",
-        "2026-08-22T00:01:00.000Z",
-      );
-    legacy.connection
-      .prepare(
-        `INSERT INTO agent_execution_steps (
-          id, execution_id, node_id, plan_id, plan_revision, step_index, title, detail, status,
-          dependency_ids_json, call_id, failure, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        "execution-step-1",
-        "execution-1",
-        "node-1",
-        "plan-1",
-        1,
-        0,
-        "Inspect",
-        "Inspect the workspace",
-        "completed",
-        "[]",
-        "call-1",
-        null,
-        "2026-08-22T00:00:00.000Z",
-        "2026-08-22T00:01:00.000Z",
-      );
-    legacy.connection
-      .prepare(
-        `INSERT INTO agent_execution_events (
-          id, execution_id, event_kind, step_id, session_id, request_id, payload_json, occurred_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        "execution-event-1",
-        "execution-1",
-        "execution.completed",
-        "execution-step-1",
-        "session-1",
-        "request-1",
-        '{"execution":"preserved"}',
-        "2026-08-22T00:01:00.000Z",
-      );
-    legacy.close();
-
-    withDatabaseKernel(databasePath, AgentMemoryDatabaseContract, (current) => {
-      expect(userTable(current.connection, "agent_goals")).toBe(false);
-      expect(userTable(current.connection, "agent_goal_evidence")).toBe(false);
-      expect(columnNames(current.connection, "agent_execution_runs")).not.toContain("goal_id");
-      expect(current.connection.prepare("SELECT id, objective FROM agent_execution_runs").all()).toEqual([
-        { id: "execution-1", objective: "Legacy execution objective" },
+      expect(
+        kernel.connection
+          .prepare<[], { name: string }>(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+          )
+          .all()
+          .map((row) => row.name)
+          .filter((name) => !name.startsWith("__senera_")),
+      ).toEqual([
+        "agent_execution_events",
+        "agent_execution_runs",
+        "agent_execution_steps",
+        "agent_todos",
+        "continuity_memory_delivery",
+        "memory_background_learning_requests",
+        "memory_catalog_state",
+        "memory_episodes",
+        "memory_sources",
+        "pi_compaction_candidates",
       ]);
-      expect(current.connection.prepare("SELECT id, execution_id FROM agent_execution_steps").all()).toEqual([
-        { id: "execution-step-1", execution_id: "execution-1" },
+      expect(kernel.connection.prepare("SELECT catalog, revision FROM memory_catalog_state").all()).toEqual([
+        { catalog: "physical_history", revision: 0 },
       ]);
-      expect(current.connection.prepare("SELECT id, event_kind FROM agent_execution_events").all()).toEqual([
-        { id: "execution-event-1", event_kind: "execution.completed" },
-      ]);
-      expect(current.connection.pragma("foreign_key_check")).toEqual([]);
-      expect(recordedVersions(current.connection)).toEqual(declaredVersions(AgentMemoryDatabaseContract));
-    });
-  });
-
-  test("rebuilds only the declared stale derived schema", () => {
-    const databasePath = temporaryDatabasePath("tool-search.sqlite");
-    const legacy = new Database(databasePath);
-    legacy.exec(AgentToolSearchLearningStoreContract.legacySnapshots[0].snapshot);
-    legacy
-      .prepare(
-        "INSERT INTO tool_search_episodes (query, query_tokens, planner_tags, candidates, chosen_tools, outcome, calls, final_score, final_outcome, project_id, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      )
-      .run("old query", "[]", "[]", "[]", "[]", "success", "[]", 1, "{}", "project", 1);
-    legacy.close();
-
-    withDatabaseKernel(databasePath, AgentToolSearchLearningStoreContract, (kernel) => {
-      expect(columnNames(kernel.connection, "tool_search_episodes")).toEqual(
-        expect.arrayContaining(["learned_keywords"]),
-      );
-      expect(kernel.connection.prepare("SELECT COUNT(*) AS count FROM tool_search_episodes").get()).toEqual({
-        count: 0,
-      });
-      expect(recordedVersions(kernel.connection)).toEqual(declaredVersions(AgentToolSearchLearningStoreContract));
-      const backup = openRecoveryBackup(kernel);
-      expect(columnNames(backup, "tool_search_episodes")).not.toContain("learned_keywords");
-      backup.close();
+      expect(kernel.connection.pragma("foreign_key_check")).toEqual([]);
     });
   });
 
   test.each([
     { contract: AgentConfigDatabaseContract, currentTable: "config_revisions" },
-    { contract: AgentMemoryDatabaseContract, currentTable: "continuity_observations" },
+    { contract: AgentMemoryDatabaseContract, currentTable: "memory_episodes" },
     { contract: AgentSessionDatabaseContract, currentTable: "sessions" },
   ] as const)(
     "backs up and reinitializes an unrecognized $contract.id authoritative database",
@@ -342,67 +247,6 @@ describe("SQLite database kernel", () => {
     recovered.close();
   });
 
-  test("rebuilds an unrecognized derived database during the startup preflight", () => {
-    const databasePath = temporaryDatabasePath("unknown-derived.sqlite");
-    const unknown = new Database(databasePath);
-    unknown.exec("CREATE TABLE unrelated_records (id INTEGER PRIMARY KEY) STRICT;");
-    unknown.close();
-
-    const rebuilt = new AgentSqliteDatabaseKernel({
-      databasePath,
-      contract: AgentToolSearchLearningStoreContract,
-    });
-    expect(userTable(rebuilt.connection, "unrelated_records")).toBe(false);
-    expect(userTable(rebuilt.connection, "tool_search_episodes")).toBe(true);
-    expect(recordedVersions(rebuilt.connection)).toEqual(declaredVersions(AgentToolSearchLearningStoreContract));
-    const backup = openRecoveryBackup(rebuilt);
-    expect(userTable(backup, "unrelated_records")).toBe(true);
-    backup.close();
-    rebuilt.close();
-  });
-
-  test("rebuilds a legacy tool-search database with the old migration ledger", () => {
-    const databasePath = temporaryDatabasePath("legacy-tool-search.sqlite");
-    const legacy = new Database(databasePath);
-    legacy.exec(AgentToolSearchLearningStoreContract.migrations[0]!.sql);
-    legacy.exec(`
-      CREATE TABLE schema_migrations (
-        version INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
-        checksum TEXT NOT NULL,
-        applied_at TEXT NOT NULL
-      ) STRICT;
-      INSERT INTO schema_migrations (version, name, checksum, applied_at)
-      VALUES (1, 'tool_search_memory_schema_baseline', 'legacy-checksum', '2026-07-20T13:55:08.186Z');
-    `);
-    legacy.close();
-
-    const rebuilt = new AgentSqliteDatabaseKernel({
-      databasePath,
-      contract: AgentToolSearchLearningStoreContract,
-    });
-    expect(userTable(rebuilt.connection, "schema_migrations")).toBe(false);
-    expect(recordedVersions(rebuilt.connection)).toEqual(declaredVersions(AgentToolSearchLearningStoreContract));
-    const backup = openRecoveryBackup(rebuilt);
-    expect(userTable(backup, "schema_migrations")).toBe(true);
-    backup.close();
-    rebuilt.close();
-  });
-
-  test("backs up an explicitly identified different store before initializing the requested store", () => {
-    const databasePath = temporaryDatabasePath("other-store.sqlite");
-    const toolStore = new AgentSqliteDatabaseKernel({ databasePath, contract: AgentToolSearchLearningStoreContract });
-    toolStore.close();
-
-    const recovered = new AgentSqliteDatabaseKernel({ databasePath, contract: AgentConfigDatabaseContract });
-    expect(userTable(recovered.connection, "tool_search_episodes")).toBe(false);
-    expect(userTable(recovered.connection, "config_revisions")).toBe(true);
-    const backup = openRecoveryBackup(recovered);
-    expect(userTable(backup, "tool_search_episodes")).toBe(true);
-    backup.close();
-    recovered.close();
-  });
-
   test("backs up a corrupt database file before initializing a healthy authoritative store", () => {
     const databasePath = temporaryDatabasePath("corrupt-config.sqlite");
     const original = Buffer.from("not-a-sqlite-database", "utf8");
@@ -414,21 +258,6 @@ describe("SQLite database kernel", () => {
     if (!recovery) throw new Error("Expected SQLite startup recovery metadata.");
     expect(fs.readFileSync(recovery.backupPath)).toEqual(original);
     recovered.close();
-  });
-
-  test("preserves a current derived database when its immutable contract has not changed", () => {
-    const databasePath = temporaryDatabasePath("current-tool-search.sqlite");
-    const first = new AgentSqliteDatabaseKernel({ databasePath, contract: AgentToolSearchLearningStoreContract });
-    first.connection
-      .prepare(
-        "INSERT INTO tool_search_episodes (query, query_tokens, planner_tags, candidates, chosen_tools, learned_keywords, outcome, calls, final_score, final_outcome, project_id, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      )
-      .run("query", "[]", "[]", "[]", "[]", "[]", "success", "[]", 1, "{}", "project", 1);
-    first.close();
-
-    const reopened = new AgentSqliteDatabaseKernel({ databasePath, contract: AgentToolSearchLearningStoreContract });
-    expect(reopened.connection.prepare("SELECT query FROM tool_search_episodes").all()).toEqual([{ query: "query" }]);
-    reopened.close();
   });
 });
 

@@ -60,7 +60,7 @@ test("automatically loads the active session exactly once after the socket opens
     sessions: { active: session("active", [], { messageCount: 1 }) },
     sessionOrder: ["active"],
     activeSessionId: "active",
-    catalogSynced: { sessions: true, presets: false },
+    catalogSynced: { sessions: true },
   });
 
   render(React.createElement(HistoryRecoveryHarness, { activeSessionId: "active", handleRef, send, status: "open" }));
@@ -102,6 +102,26 @@ test("marks history recovery as failed when the socket cannot accept the request
   expect(readTestToastCalls()).toEqual([]);
 });
 
+test("does not mark completed history as failed when the socket closes", () => {
+  const handleRef = { current: null };
+  useStore.setState({
+    historyLoadedIds: { completed: true },
+    historyLoadingIds: { completed: false, pending: true },
+  });
+
+  render(
+    React.createElement(HistoryRecoveryHarness, {
+      activeSessionId: null,
+      handleRef,
+      send: vi.fn(() => true),
+      status: "closed",
+    }),
+  );
+
+  expect(useStore.getState().historyFailedIds.completed).toBeUndefined();
+  expect(useStore.getState().historyFailedIds.pending).toBe(true);
+});
+
 test("retries unfinished history runs with increasing bounded polling delays", async () => {
   vi.useFakeTimers();
   const send = vi.fn(() => true);
@@ -109,7 +129,7 @@ test("retries unfinished history runs with increasing bounded polling delays", a
   useStore.setState({
     sessions: { [sessionId]: session(sessionId, [recoveryRun("history-run", 4)]) },
     sessionOrder: [sessionId],
-    catalogSynced: { sessions: true, presets: false },
+    catalogSynced: { sessions: true },
   });
 
   render(

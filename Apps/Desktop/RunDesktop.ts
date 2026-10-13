@@ -7,10 +7,11 @@ interface CommandInvocation {
   arguments: string[];
 }
 
+const ElectronNativeDependencyArguments = [`--platform=${process.platform}`, `--arch=${process.arch}`];
 const steps = [
   command("npm", ["run", "build"]),
   command("npm", ["--workspace", "senera-frontend", "run", "build"]),
-  command("electron-builder", ["install-app-deps", "--platform=win32", "--arch=x64"]),
+  command("electron-builder", ["install-app-deps", ...ElectronNativeDependencyArguments]),
   command("electron", ["Dist/Apps/Desktop/Main.js"]),
 ];
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import fg from "fast-glob";
+import { globSync } from "tinyglobby";
 import { IntegrationTestPolicy, ProjectTestCoveragePolicies } from "./TestCoveragePolicy.js";
 import { inspectContainerReleasePipeline } from "./ContainerReleaseWorkflowGovernance.js";
 import { inspectSecurityScanWorkflow } from "./SecurityScanWorkflowGovernance.js";
@@ -200,7 +200,7 @@ function inspectRootScripts(): string[] {
     clean: "rimraf Dist",
     "quality.baml": "baml check --from baml_src",
     "quality.baml.generate": "baml generate --from baml_src",
-    "quality.security": "npm audit --package-lock-only --audit-level=moderate",
+    "quality.security": "npm audit --package-lock-only --omit=dev --audit-level=moderate",
     "quality.lint":
       "eslint . --cache --cache-location .cache/eslint/.eslintcache --cache-strategy content --max-warnings=0",
     "quality.format": "tsx Scripts/VerifyChangedFormatting.ts",
@@ -350,7 +350,7 @@ function inspectRootPackageExports(): string[] {
 
 function inspectWorkspacePatternCoverage(): string[] {
   return workspacePatterns.flatMap((pattern) =>
-    fg.sync(toPackageJsonPattern(pattern), {
+    globSync(toPackageJsonPattern(pattern), {
       cwd: workspaceRoot,
       onlyFiles: true,
       ignore: ["**/node_modules/**"],
@@ -661,15 +661,12 @@ function uniqueString(value: string, index: number, values: readonly string[]): 
 }
 
 function discoverWorkspacePackages(patterns: readonly string[]): WorkspacePackage[] {
-  const packageFiles = fg
-    .sync(patterns.map(toPackageJsonPattern), {
-      cwd: workspaceRoot,
-      absolute: true,
-      onlyFiles: true,
-      unique: true,
-      ignore: ["**/node_modules/**"],
-    })
-    .sort((left, right) => relativePath(left).localeCompare(relativePath(right)));
+  const packageFiles = globSync(patterns.map(toPackageJsonPattern), {
+    cwd: workspaceRoot,
+    absolute: true,
+    onlyFiles: true,
+    ignore: ["**/node_modules/**"],
+  }).sort((left, right) => relativePath(left).localeCompare(relativePath(right)));
 
   assert.ok(packageFiles.length > 0, "Root package.json workspaces did not match any package.json files.");
 

@@ -137,18 +137,18 @@ test.describe("authenticationMode=disabled", () => {
     await trigger.press("Enter");
 
     const menu = page.getByRole("menu");
-    const editProfile = menu.getByRole("menuitem", { name: "编辑资料" });
+    const userSettings = menu.getByRole("menuitem", { name: "用户设置" });
     await expectPortaledOutsideSessionSidebar(menu);
-    await expect(editProfile).toBeFocused();
+    await expect(userSettings).toBeFocused();
 
     await page.keyboard.press("Escape");
     await expect(menu).toBeHidden();
     await expect(trigger).toBeFocused();
 
     await trigger.press("Enter");
-    await editProfile.press("Enter");
+    await userSettings.press("Enter");
 
-    const dialog = page.getByRole("dialog", { name: "编辑资料" });
+    const dialog = page.getByRole("dialog", { name: "用户设置" });
     const displayName = dialog.getByLabel("显示名称");
     await expectPortaledOutsideSessionSidebar(dialog);
     await expect(displayName).toBeFocused();
@@ -158,7 +158,7 @@ test.describe("authenticationMode=disabled", () => {
     await expect(trigger).toBeFocused();
 
     await trigger.press("Enter");
-    await editProfile.press("Enter");
+    await userSettings.press("Enter");
     await expect(displayName).toBeFocused();
 
     const save = dialog.getByRole("button", { name: "保存" });
@@ -395,7 +395,7 @@ test.describe("authenticationMode=required", () => {
     await login(page);
 
     await openProfileMenu(page);
-    await page.getByRole("menuitem", { name: "编辑资料" }).click();
+    await page.getByRole("menuitem", { name: "用户设置" }).click();
     await page.getByRole("button", { name: "退出登录" }).click();
 
     await expect(page.getByRole("heading", { name: "管理员登录" })).toBeVisible();
@@ -414,6 +414,12 @@ test.describe("authenticationMode=required", () => {
     await expect(readAssistantMessage(page, RealRuntimeIntegrationValues.DirectFinalAnswer)).toBeVisible({
       timeout: 30_000,
     });
+    const geometry = await readWorkspaceRailGeometry(page);
+    expect(geometry.chatHeaderBottom).not.toBeNull();
+    expect(geometry.workflowCapsuleTop).not.toBeNull();
+    expect(geometry.workflowCapsuleTop).toBeGreaterThanOrEqual(geometry.chatHeaderBottom);
+    expect(geometry.eventRailRight).not.toBeNull();
+    expect(geometry.eventRailRight).toBeLessThanOrEqual(geometry.workflowCapsuleLeft ?? Number.POSITIVE_INFINITY);
 
     await page.reload();
     await expect(workspaceComposer(page)).toBeVisible();
@@ -434,8 +440,10 @@ async function openProfileMenu(page) {
 }
 
 async function openWorkflowDock(page) {
-  await page.locator('[data-workflow-dock-tool="execution"]').click();
-  const dock = page.locator('[data-workflow-dock][data-open="true"]');
+  const capsule = page.getByTestId("workflow-dock-capsule");
+  await expect(capsule).toBeVisible();
+  await capsule.locator('[data-workflow-dock-tool="execution"]').click();
+  const dock = page.locator('[data-testid="workflow-dock"][data-open="true"]');
   await expect(dock).toBeVisible();
   return dock;
 }
@@ -453,7 +461,7 @@ function profileMenuButton(page) {
 }
 
 function newSessionButton(page) {
-  return visibleSessionSidebar(page).locator("[data-window-drag-region]").getByRole("button", { name: "新建对话" });
+  return visibleSessionSidebar(page).locator("[data-session-header]").getByRole("button", { name: "新建对话" });
 }
 
 function visibleSessionSidebar(page) {
@@ -475,4 +483,24 @@ function readUserMessage(page, content) {
 
 function readAssistantMessage(page, content) {
   return page.locator("[data-assistant-message]").filter({ hasText: content });
+}
+
+async function readWorkspaceRailGeometry(page) {
+  return page.evaluate(() => {
+    const readRect = (selector) => {
+      const element = document.querySelector(selector);
+      if (!element) return null;
+      const rect = element.getBoundingClientRect();
+      return { top: rect.top, left: rect.left, right: rect.right, bottom: rect.bottom };
+    };
+    const header = readRect('[data-testid="chat-header"]');
+    const capsule = readRect('[data-testid="workflow-dock-capsule"]');
+    const eventRail = readRect('[data-testid="chat-event-rail"]');
+    return {
+      chatHeaderBottom: header?.bottom ?? null,
+      workflowCapsuleTop: capsule?.top ?? null,
+      workflowCapsuleLeft: capsule?.left ?? null,
+      eventRailRight: eventRail?.right ?? null,
+    };
+  });
 }

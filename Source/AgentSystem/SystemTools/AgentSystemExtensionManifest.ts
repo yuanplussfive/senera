@@ -10,12 +10,23 @@ import {
   ToolResourceArgumentSchema,
   ToolRuntimeSchema,
   ToolSearchSchema,
+  ToolPlanningModesSchema,
 } from "../Schemas/AgentToolContractSchema.js";
-import { AgentToolObservationProjectionSchema } from "../Schemas/AgentToolObservationProjectionSchema.js";
+import { AgentToolPerceptionKinds, AgentToolPerceptionScopes } from "../Types/AgentToolPerceptionTypes.js";
 import { inspectAgentToolSchedulingContract } from "../Types/AgentToolRuntimeContract.js";
 import { AgentToolChildGrantModes, ToolLoadingModes } from "../Types/AgentToolContractTypes.js";
 import { isObjectJsonSchema } from "../ToolContracts/AgentJsonSchemaObjectRoot.js";
 import { AgentSystemExtensionPlatformSchema } from "./AgentSystemExtensionPlatform.js";
+import {
+  AgentSystemExtensionSettingsSurfaceValues,
+  AgentSystemExtensionSettingsSurfaces,
+} from "../Types/AgentSystemExtensionSettingsSurface.js";
+import {
+  AgentSystemToolPresentationOverrideSchema,
+  inspectAgentToolPresentationFactReferences,
+} from "./AgentSystemToolPresentation.js";
+import type { AgentToolPresentationOverride } from "../Types/AgentToolPresentationTypes.js";
+import { inspectAgentToolResultStorageContract } from "../ToolRuntime/AgentToolResultStorageContract.js";
 
 export const AgentSystemExtensionManifestFileName = "extension.json";
 
@@ -29,10 +40,25 @@ export const AgentSystemToolContractSchema = z
   .object({
     name: z.string().trim().min(1),
     description: SystemToolDescriptionSchema,
-    loading: z.enum([ToolLoadingModes.Bootstrap, ToolLoadingModes.Dynamic]).default(ToolLoadingModes.Bootstrap),
+    // Provider-schema exposure is intentionally explicit. A missing value
+    // would make a package's cache and token behavior depend on a hidden
+    // compatibility default.
+    loading: z.enum([ToolLoadingModes.Bootstrap, ToolLoadingModes.Dynamic]),
+    /** Limit a planner-only management contract without coupling it to a tool name. */
+    planningModes: ToolPlanningModesSchema.optional(),
+    /** Optional refinement of the owning extension domain's UI metadata. */
+    presentation: AgentSystemToolPresentationOverrideSchema.optional(),
     inputSchema: JsonObjectSchema,
     outputSchema: AgentSystemExtensionJsonSchema.optional(),
-    observationProjection: z.string().trim().min(1),
+    perception: z
+      .object({
+        kind: z.enum(AgentToolPerceptionKinds),
+        scope: z.enum(AgentToolPerceptionScopes).default(AgentToolPerceptionScopes.Remote),
+        object: z.string().trim().min(1).optional(),
+        template: z.string().trim().min(1).optional(),
+      })
+      .strict()
+      .optional(),
     permissions: z.array(z.string()).default([]),
     execution: ToolExecutionSchema,
     runtime: ToolRuntimeSchema,
@@ -56,6 +82,14 @@ export const AgentSystemToolContractSchema = z
         message: "System Tools must declare at least one capability.",
       });
     }
+    tool.search.Capabilities?.forEach((capability, index) => {
+      if (capability.Aliases && capability.Aliases.length > 0) return;
+      context.addIssue({
+        code: "custom",
+        path: ["search", "Capabilities", index, "Aliases"],
+        message: "System Tool capabilities must declare at least one operation alias for ToolSearch.",
+      });
+    });
     if (!tool.search.UseCases || tool.search.UseCases.length === 0) {
       context.addIssue({
         code: "custom",
@@ -85,6 +119,33 @@ export const AgentSystemToolContractSchema = z
         code: "custom",
         path: [...issuePaths[issue.field]],
         message: issue.message,
+      });
+    }
+    const resultStorageIssuePaths = {
+      artifacts: ["artifacts", "Evidence"],
+      workspace: ["artifacts", "Workspace"],
+    } as const;
+    for (const issue of inspectAgentToolResultStorageContract({
+      resultStorage: tool.runtime.ResultStorage,
+      artifacts: tool.artifacts,
+    })) {
+      context.addIssue({
+        code: "custom",
+        path: [...resultStorageIssuePaths[issue.field]],
+        message: issue.message,
+      });
+    }
+    // A result-side measure may only read facts this contract declares, so an
+    // undeclared pointer fails here instead of rendering an empty placeholder.
+    const declaredFacts = (tool.artifacts?.Evidence ?? []).flatMap((evidence) => [
+      ...evidence.PlannerMemory.Facts,
+      ...evidence.ModelProjection.Slots,
+    ]);
+    for (const message of inspectAgentToolPresentationFactReferences(tool.presentation?.activity?.v2, declaredFacts)) {
+      context.addIssue({
+        code: "custom",
+        path: ["presentation", "activity", "v2"],
+        message,
       });
     }
   });
@@ -121,17 +182,34 @@ const SkillContributionSchema = z
   })
   .strict();
 
+/**
+ * A package-owned role catalog. The orchestration runtime resolves this
+ * contribution through package discovery instead of owning a filesystem path.
+ */
+const AgentRoleContributionSchema = z
+  .object({
+    kind: z.literal("agentRoles"),
+    path: z.string().trim().min(1),
+  })
+  .strict();
+
 export const AgentSystemExtensionManifestSchema = z
   .object({
     $schema: z.string().optional(),
     schemaVersion: z.literal(1),
     id: AgentExtensionNameSchema,
+    /** Explicit semantic domain; validated against the package's directory owner. */
+    domain: AgentExtensionNameSchema,
+    /** Product settings surface that owns this package's configuration UI. */
+    settingsSurface: z.enum(AgentSystemExtensionSettingsSurfaceValues),
     version: z
       .string()
       .trim()
       .regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u),
     displayName: AgentExtensionLocalizedTextSchema,
     description: AgentExtensionLocalizedTextSchema,
+    /** Package-level refinement of the owning domain presentation. */
+    presentation: AgentSystemToolPresentationOverrideSchema.optional(),
     priority: z.number().finite().optional(),
     platforms: z.array(AgentSystemExtensionPlatformSchema).min(1).optional(),
     configuration: z
@@ -148,14 +226,28 @@ export const AgentSystemExtensionManifestSchema = z
           SidecarToolContributionSchema,
           McpServerContributionSchema,
           SkillContributionSchema,
+          AgentRoleContributionSchema,
         ]),
       )
       .max(64)
       .optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((manifest, context) => {
+    if (
+      manifest.settingsSurface === AgentSystemExtensionSettingsSurfaces.Channels &&
+      manifest.configuration === undefined
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["configuration"],
+        message: "The channels settings surface requires a configuration declaration.",
+      });
+    }
+  });
 
 export type AgentSystemToolContract = z.infer<typeof AgentSystemToolContractSchema>;
+export type { AgentToolPresentationOverride };
 export const AgentSystemSidecarToolContractSchema = z
   .object({
     name: z.string().trim().min(1),
@@ -169,4 +261,4 @@ export type AgentSystemExtensionManifest = z.infer<typeof AgentSystemExtensionMa
 export type { AgentSystemExtensionPlatform } from "./AgentSystemExtensionPlatform.js";
 export type AgentSystemHostToolContribution = z.infer<typeof HostToolContributionSchema>;
 export type AgentSystemSidecarToolContribution = z.infer<typeof SidecarToolContributionSchema>;
-export { AgentToolObservationProjectionSchema };
+export type AgentSystemAgentRoleContribution = z.infer<typeof AgentRoleContributionSchema>;

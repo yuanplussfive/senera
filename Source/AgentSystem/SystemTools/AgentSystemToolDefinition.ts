@@ -7,11 +7,12 @@ import type {
   ToolEvidenceCapabilityManifest,
   ToolApprovalManifest,
   ToolExecutionManifest,
+  ToolLoadingMode,
   ToolResourceArgumentManifest,
   ToolRuntimeManifest,
   ToolSearchManifest,
 } from "../Types/AgentToolContractTypes.js";
-import type { AgentToolObservationProjectionManifest } from "../Types/AgentToolObservationProjectionTypes.js";
+import type { AgentToolPerceptionDeclaration } from "../Types/AgentToolPerceptionTypes.js";
 import type { ConfigFormDocument } from "../Config/AgentConfigFormDocument.js";
 import type { AgentExtensionLocalizedText } from "../Extensions/AgentExtensionLocalization.js";
 import type { AgentToolArtifactPayload, AgentToolProcessError } from "../Types/ToolRuntimeTypes.js";
@@ -30,17 +31,35 @@ export interface AgentSystemToolExecutionResult<TOutput> {
   readonly artifactPayload?: AgentToolArtifactPayload;
   /** Optional structured failure while retaining the validated output shape. */
   readonly failure?: AgentToolProcessError;
+  /**
+   * Process facts are execution transport data, not part of the public tool
+   * schema. Output streaming tools can keep full transcripts in their output
+   * capture while exposing a compact result contract to the model.
+   */
+  readonly process?: AgentSystemToolExecutionProcess;
+}
+
+export interface AgentSystemToolExecutionProcess {
+  readonly stdout?: string;
+  readonly stderr?: string;
+  readonly exitCode?: number | null;
+  readonly signal?: NodeJS.Signals | null;
 }
 
 export function systemToolExecutionResult<TOutput>(
   result: TOutput,
-  options: { readonly artifactPayload?: AgentToolArtifactPayload; readonly failure?: AgentToolProcessError } = {},
+  options: {
+    readonly artifactPayload?: AgentToolArtifactPayload;
+    readonly failure?: AgentToolProcessError;
+    readonly process?: AgentSystemToolExecutionProcess;
+  } = {},
 ): AgentSystemToolExecutionResult<TOutput> {
   return Object.defineProperty(
     {
       result,
       ...(options.artifactPayload ? { artifactPayload: options.artifactPayload } : {}),
       ...(options.failure ? { failure: options.failure } : {}),
+      ...(options.process ? { process: options.process } : {}),
     },
     SystemToolExecutionResultMarker,
     { value: true },
@@ -77,6 +96,11 @@ export interface AgentSystemToolExtensionMetadata {
 
 export interface AgentSystemToolMetadata {
   readonly description: string;
+  /**
+   * Provider-schema exposure is part of the package contract. System tools
+   * are Dynamic unless a protocol-critical definition opts into Bootstrap.
+   */
+  readonly loading?: ToolLoadingMode;
   readonly permissions?: readonly string[];
   readonly execution?: ToolExecutionManifest;
   readonly runtime?: ToolRuntimeManifest;
@@ -86,7 +110,8 @@ export interface AgentSystemToolMetadata {
   readonly evidenceCapabilities?: readonly ToolEvidenceCapabilityManifest[];
   readonly approval?: ToolApprovalManifest;
   readonly artifacts?: ToolArtifactPolicyManifest;
-  readonly observation: AgentToolObservationProjectionManifest;
+  /** Optional first-person perception narration for this tool's results. */
+  readonly perception?: AgentToolPerceptionDeclaration;
 }
 
 export interface AgentSystemToolDefinition<

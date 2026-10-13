@@ -1,8 +1,7 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { AgentPiToolResultStatuses } from "./AgentPiTypes.js";
 import { readAgentPiToolObservation } from "./AgentPiToolObservation.js";
-import { AgentToolObservationContextCompiler } from "../ToolRuntime/AgentToolObservationContextCompiler.js";
-import { StandardAgentToolObservationProjection } from "../ToolRuntime/AgentToolObservationProjectionPlan.js";
+import type { AgentToolResultObservationCompressor } from "../ToolRuntime/AgentToolResultObservationCompressor.js";
 import { AgentToolExecutionStatuses, AgentToolOutputAvailabilities } from "../ToolRuntime/AgentToolResultOutcome.js";
 import type { AgentPiTurnState } from "./AgentPiTurnState.js";
 import { readAgentUnknownRecord } from "../Core/AgentUnknownValue.js";
@@ -15,16 +14,16 @@ interface AgentPiTerminalToolEvent {
   readonly isError: boolean;
 }
 
-/** Converts Pi-owned pre-execution failures into the same bounded protocol as executed Senera tools. */
+/** Projects Pi-owned pre-execution failures through the shared observation budget. */
 export class AgentPiTerminalToolObservationProjector {
-  private readonly compiler: AgentToolObservationContextCompiler;
   private readonly replacements = new Map<string, string>();
 
-  constructor(model: string) {
-    this.compiler = new AgentToolObservationContextCompiler({ model });
-  }
+  constructor(
+    private readonly compressor: AgentToolResultObservationCompressor,
+    private readonly tokenBudget: number,
+  ) {}
 
-  settle(turnState: AgentPiTurnState | undefined, event: AgentPiTerminalToolEvent): void {
+  async settle(turnState: AgentPiTurnState | undefined, event: AgentPiTerminalToolEvent): Promise<void> {
     if (!turnState) return;
     const existing = readAgentPiToolObservation(readTextContent(event.result));
     if (!event.isError || existing) {
@@ -33,35 +32,27 @@ export class AgentPiTerminalToolObservationProjector {
     }
 
     const errorMessage = readTextContent(event.result) || agentErrorMessage("pi.toolCallRejectedBeforeExecution");
-    const tokenLimit = turnState.toolObservationBudgetLimit(
-      event.toolCallId,
-      StandardAgentToolObservationProjection.maxTokens,
-    );
-    const observation = this.compiler.compile(
-      {
-        toolName: event.toolName,
-        callId: event.toolCallId,
-        batchId: turnState.toolBatchId(event.toolCallId),
-        status: AgentPiToolResultStatuses.Failure,
-        executionStatus: AgentToolExecutionStatuses.NotStarted,
-        outputAvailability: AgentToolOutputAvailabilities.None,
-        summary: agentErrorMessage("pi.toolCallRejectedBeforeExecution"),
-        error: {
-          code: "pi_tool_call_rejected",
-          kind: "invalid_request",
-          source: "pi",
-          retryable: true,
-          message: errorMessage,
-        },
-        outcome: undefined,
-        process: undefined,
-        result: undefined,
-        arguments: undefined,
-        artifact: undefined,
+    const observation = await this.compressor.compress({
+      requestId: event.toolCallId,
+      toolName: event.toolName,
+      status: AgentPiToolResultStatuses.Failure,
+      executionStatus: AgentToolExecutionStatuses.NotStarted,
+      outputAvailability: AgentToolOutputAvailabilities.None,
+      arguments: undefined,
+      process: undefined,
+      outcome: undefined,
+      result: undefined,
+      error: {
+        code: "pi_tool_call_rejected",
+        kind: "invalid_request",
+        source: "pi",
+        retryable: true,
+        message: errorMessage,
       },
-      StandardAgentToolObservationProjection,
-      tokenLimit,
-    );
+      systemPrompt: turnState.context.systemPrompt,
+      currentUserMessage: turnState.context.userMessage,
+      observationBudgetTokens: turnState.toolObservationBudgetTokens(event.toolCallId, this.tokenBudget),
+    });
     const content = JSON.stringify(observation);
     this.replacements.set(event.toolCallId, content);
     turnState.settleToolObservationBudget(event.toolCallId, content);

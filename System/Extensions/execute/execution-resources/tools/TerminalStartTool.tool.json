@@ -1,0 +1,101 @@
+{
+  "name": "TerminalStartTool",
+  "loading": "Bootstrap",
+  "presentation": {
+    "category": "terminal-start",
+    "icon": "terminal",
+    "activity": {
+      "action": { "zh-CN": "启动", "en-US": "Start" },
+      "argumentPath": "/command/script",
+      "detailPaths": ["/cwd", "/title"]
+    }
+  },
+  "description": "启动可交互的 PTY 终端，适用于需要键盘输入、TTY 或终端尺寸的 CLI。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "command": {
+        "type": "object",
+        "properties": {
+          "mode": { "type": "string", "const": "shell" },
+          "dialect": { "type": "string", "enum": ["posix-sh", "powershell"] },
+          "script": { "type": "string" }
+        },
+        "required": ["mode", "dialect", "script"],
+        "additionalProperties": false
+      },
+      "cwd": { "type": "string" },
+      "workspaceEffect": {
+        "type": "string",
+        "enum": ["read", "mutate"],
+        "description": "声明终端命令只读工作区，还是可能修改工作区内容。"
+      },
+      "title": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 80,
+        "description": "用于终端标签的简短任务标题，不要重复完整命令。"
+      },
+      "columns": { "type": "number" },
+      "rows": { "type": "number" }
+    },
+    "required": ["command", "workspaceEffect"],
+    "additionalProperties": false,
+    "definitions": {}
+  },
+  "permissions": ["process:shell", "filesystem:workspace"],
+  "execution": {
+    "Targets": ["Sandbox", "Local"],
+    "Network": "Allow",
+    "Workspace": "ReadWrite"
+  },
+  "runtime": {
+    "Lifecycle": "Persistent",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "SelfManaged",
+    "Capabilities": {
+      "OutputStreaming": true,
+      "InteractiveInput": true,
+      "Cancellation": true,
+      "ResumableEvents": true
+    }
+  },
+  "resources": [{ "Capability": "senera.workspace.path", "Pointer": "/cwd", "Parameters": { "Intent": "execute" } }],
+  "sources": [
+    {
+      "Id": "execution",
+      "Title": "Execution",
+      "Description": "Shell commands, processes, terminals, builds, tests, and other executable workloads."
+    }
+  ],
+  "search": {
+    "Summary": "启动需要键盘输入、TTY 或终端尺寸的交互式 CLI。",
+    "Capabilities": [
+      {
+        "Id": "execution.terminal-start",
+        "Title": "Start interactive terminal",
+        "Description": "Start an interactive PTY session for commands that require a TTY or input.",
+        "Facets": {
+          "Actions": ["start", "interact", "monitor"],
+          "Targets": ["terminal", "pty", "interactive-process"],
+          "Inputs": ["command", "cwd", "workspace-effect", "columns", "rows"],
+          "Outputs": ["resource-id", "process-state", "cursor"],
+          "Effects": ["process", "may-write-workspace", "network-possible"]
+        },
+        "Aliases": ["启动交互终端", "启动 PTY 终端", "打开交互式终端"]
+      }
+    ],
+    "UseCases": ["需要键盘输入、TTY 语义、终端尺寸或实时 PTY 输出时使用。"],
+    "Avoid": ["非交互命令、服务、构建和测试使用 ShellCommandTool。"],
+    "Tags": ["PTY", "终端", "交互进程"]
+  },
+  "evidenceCapabilities": [],
+  "artifacts": {
+    "Summary": {
+      "Template": "{{ toolName }} resource {{ result.resourceId }}: {{ result.state }}",
+      "ArtifactTemplate": "- resourceId: {{ result.resourceId }}\n  state: {{ result.state }}\n  cursor: {{ result.cursor }}{% if result.exitCode != blank %}\n  exitCode: {{ result.exitCode }}{% endif %}{% if result.signal %}\n  signal: {{ result.signal }}{% endif %}{% if result.historyTruncated %}\n  outputHistoryTruncated: true{% endif %}{% for update in result.updates %}{% if update.kind == 'output' %}\n\n[{{ update.stream }} cursor={{ update.cursor }}]\n{{ update.text }}{% elsif update.kind == 'state' %}\n\n[state cursor={{ update.cursor }}] {{ update.state }}{% if update.reason %}: {{ update.reason }}{% endif %}{% endif %}{% endfor %}"
+    }
+  }
+}

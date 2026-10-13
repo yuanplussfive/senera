@@ -7,4 +7,6 @@ export interface AgentLoopRunner {
   /** Provider resolved by this runtime lease, before the first model call. */
   readonly modelProvider?: AgentModelProviderMetadata;
   run(request: AgentRunRequest): Promise<AgentCompletedRunResult>;
+  finalizeCompletedTurn?(result: AgentCompletedRunResult): void;
+  discardCompletedTurn?(result?: AgentCompletedRunResult): void;
 }

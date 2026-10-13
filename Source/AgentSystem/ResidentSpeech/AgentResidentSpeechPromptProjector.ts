@@ -10,6 +10,7 @@ import { AgentJsonSchemaPromptContractProjector } from "../ToolContracts/AgentJs
 import type {
   AgentResidentSpeechAction,
   AgentResidentSpeechFocus,
+  AgentResidentSpeechProjectionTier,
   AgentResidentSpeechUtterance,
 } from "./AgentResidentSpeechTypes.js";
 import type { AgentResidentSpeechSourceLineage } from "./AgentResidentSpeechSessionLedger.js";
@@ -56,6 +57,7 @@ export function projectAgentResidentSpeechNativeContinuation(input: {
   readonly contract: RegisteredSidecarTool;
   readonly focus: AgentResidentSpeechFocus;
   readonly spokenUtterances: readonly AgentResidentSpeechUtterance[];
+  readonly projectionTier?: AgentResidentSpeechProjectionTier;
   readonly bridgeName: string;
   readonly timestamp: number;
 }): Context {
@@ -83,7 +85,9 @@ export function projectAgentResidentSpeechBamlInput(context: {
 }): AgentResidentSpeechBamlPromptInput {
   return {
     systemPrompt: context.systemPrompt,
-    conversation: context.messages.map(projectBamlConversationMessage),
+    conversation: context.messages.flatMap((message) =>
+      message.role === "user" || message.role === "assistant" ? [projectBamlConversationMessage(message)] : [],
+    ),
   };
 }
 
@@ -99,6 +103,7 @@ export function projectAgentResidentSpeechSystemPrompt(
 export function projectAgentResidentSpeechSceneMessage(input: {
   readonly focus: AgentResidentSpeechFocus;
   readonly spokenUtterances: readonly AgentResidentSpeechUtterance[];
+  readonly projectionTier?: AgentResidentSpeechProjectionTier;
   readonly lineage: AgentResidentSpeechSourceLineage;
   readonly sourceMessages: readonly Message[];
   readonly timestamp: number;
@@ -173,6 +178,7 @@ function projectNativeResidentSpeechSceneWire(input: {
   readonly contract: RegisteredSidecarTool;
   readonly focus: AgentResidentSpeechFocus;
   readonly spokenUtterances: readonly AgentResidentSpeechUtterance[];
+  readonly projectionTier?: AgentResidentSpeechProjectionTier;
   readonly bridgeName: string;
 }): string {
   const argumentContract = ResidentSpeechContractProjector.project(input.contract.inputSchema, "arguments");
@@ -188,6 +194,7 @@ function projectNativeResidentSpeechSceneWire(input: {
     },
     mode: input.focus.mode,
     draft: input.focus.draft,
+    ...(input.projectionTier ? { projection_tier: projectTierValue(input.projectionTier) } : {}),
     already_spoken: projectSpokenValues(input.spokenUtterances),
     novelty_boundary: projectNoveltyBoundary(input.focus),
     ...(input.focus.actions.length > 0 ? { pending_actions: projectPendingActionValues(input.focus) } : {}),
@@ -198,6 +205,7 @@ function projectNativeResidentSpeechSceneWire(input: {
 function projectResidentSpeechSceneWire(input: {
   readonly focus: AgentResidentSpeechFocus;
   readonly spokenUtterances: readonly AgentResidentSpeechUtterance[];
+  readonly projectionTier?: AgentResidentSpeechProjectionTier;
   readonly lineage: AgentResidentSpeechSourceLineage;
   readonly sourceMessages: readonly Message[];
 }): string {
@@ -208,10 +216,32 @@ function projectResidentSpeechSceneWire(input: {
     source_messages: input.sourceMessages.map(projectAgentResidentSpeechSourceMessage),
     mode: focus.mode,
     draft: focus.draft,
+    ...(input.projectionTier ? { projection_tier: projectTierValue(input.projectionTier) } : {}),
     already_spoken: projectSpokenValues(input.spokenUtterances),
     novelty_boundary: projectNoveltyBoundary(focus),
     ...(focus.actions.length > 0 ? { pending_actions: projectPendingActionValues(focus) } : {}),
   });
+}
+
+function projectTierValue(tier: AgentResidentSpeechProjectionTier): unknown {
+  if (tier === "reshape") {
+    return {
+      tier: "reshape",
+      provenance: "host-derived",
+      guidance:
+        "Rewrite the final answer through the persona: full reshape of tone and delivery is expected, honoring the resident contract.",
+    };
+  }
+  return {
+    tier: "polish",
+    provenance: "host-derived",
+    constraints: [
+      "Preserve every fact, figure, and tool-provided conclusion unchanged; do not add new facts or change their meaning.",
+      "Only adjust rhythm, phrasing, and flow; keep length close to the draft.",
+      "Follow the configured language style and preserve the draft's intent; do not invent a persona or personal history.",
+      "Do not restate already_spoken or recap the completed action process.",
+    ],
+  };
 }
 
 function projectSpokenValues(utterances: readonly AgentResidentSpeechUtterance[]): readonly unknown[] {
@@ -282,10 +312,9 @@ export function projectAgentResidentSpeechSourceMessage(message: Message): unkno
   }
 }
 
-function projectBamlConversationMessage(message: Message): AgentResidentSpeechConversationMessage {
-  if (message.role === "toolResult") {
-    throw new Error("Resident speech sidecar history cannot contain a tool result message.");
-  }
+function projectBamlConversationMessage(
+  message: Extract<Message, { role: "user" | "assistant" }>,
+): AgentResidentSpeechConversationMessage {
   return {
     role: message.role,
     content:

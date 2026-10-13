@@ -1,6 +1,6 @@
 import { EventKinds, type RunActivityChangedData } from "../../api/eventTypes";
 import { readCurrentRun, type RunEventHandlerMap } from "./runEventProjectionTypes";
-import { touchRun } from "./sessionRunProjection";
+import { isRunTerminal, touchRun } from "./sessionRunProjection";
 
 const ActivityStatusByState = {
   started: "running",
@@ -13,6 +13,7 @@ export const runActivityEventHandlers = {
     const run = readCurrentRun(state, env);
     if (!run) return;
     const data = env.data as RunActivityChangedData;
+    if (isRunTerminal(run)) return;
     const activities = (run.activities ??= []);
     const status = ActivityStatusByState[data.state];
     const existing = activities.find((activity) => activity.id === data.activityId);
@@ -27,6 +28,7 @@ export const runActivityEventHandlers = {
         activity: data.activity,
         status,
         step: env.step,
+        eventSequence: env.sequence,
         startedAt: data.startedAt,
         endedAt: data.state === "started" ? undefined : env.timestamp,
         durationMs: data.durationMs,

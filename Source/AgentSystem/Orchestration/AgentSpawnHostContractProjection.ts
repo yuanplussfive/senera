@@ -8,7 +8,10 @@ const RoleCatalogRevisionKeyword = "x-senera-agent-role-catalog-revision";
 export class AgentSpawnHostContractProjection {
   private invocationSchemaCache = new WeakMap<object, { revision: string; schema: Record<string, unknown> }>();
 
-  constructor(private readonly snapshot: () => AgentSubagentRoleCatalogSnapshot) {}
+  constructor(
+    private readonly snapshot: () => AgentSubagentRoleCatalogSnapshot,
+    private readonly resourceCapabilityIds: () => readonly string[],
+  ) {}
 
   createProjection(): AgentHostToolContractProjection {
     return {
@@ -19,15 +22,44 @@ export class AgentSpawnHostContractProjection {
 
   private projectInvocationSchema(schema: Readonly<Record<string, unknown>>): Record<string, unknown> {
     const snapshot = this.snapshot();
+    const resourceCapabilityIds = [...this.resourceCapabilityIds()].sort();
+    const revision = `${snapshot.revision}:${JSON.stringify(resourceCapabilityIds)}`;
     const cached = this.invocationSchemaCache.get(schema);
-    if (cached?.revision === snapshot.revision) return cached.schema;
+    if (cached?.revision === revision) return cached.schema;
     const properties = requireSchemaRecord(schema.properties, "AgentSpawn input schema properties");
     const agent = requireSchemaRecord(properties.agent, "AgentSpawn agent property schema");
+    const { resources: _resources, ...propertiesWithoutResources } = properties;
+    const resources = requireSchemaRecord(_resources, "AgentSpawn resource schema");
+    const resourceItems = requireSchemaRecord(resources.items, "AgentSpawn resource item schema");
+    const resourceProperties = requireSchemaRecord(resourceItems.properties, "AgentSpawn resource item properties");
+    const capability = requireSchemaRecord(resourceProperties.capability, "AgentSpawn resource capability schema");
+    const projectedResources =
+      resourceCapabilityIds.length > 0
+        ? {
+            ...resources,
+            items: {
+              ...resourceItems,
+              properties: {
+                ...resourceProperties,
+                capability: {
+                  ...capability,
+                  enum: resourceCapabilityIds,
+                  description: [
+                    typeof capability.description === "string" ? capability.description : undefined,
+                    "Use a registered resource capability ID, not a tool permission or authorization scope.",
+                  ]
+                    .filter((section): section is string => Boolean(section))
+                    .join(" "),
+                },
+              },
+            },
+          }
+        : undefined;
     const projected = deepFreeze({
       ...schema,
-      [RoleCatalogRevisionKeyword]: snapshot.revision,
+      [RoleCatalogRevisionKeyword]: revision,
       properties: {
-        ...properties,
+        ...propertiesWithoutResources,
         agent: {
           ...agent,
           enum: snapshot.roles.map((role) => role.id),
@@ -39,9 +71,10 @@ export class AgentSpawnHostContractProjection {
             .filter((section): section is string => Boolean(section))
             .join(" "),
         },
+        ...(projectedResources ? { resources: projectedResources } : {}),
       },
     });
-    this.invocationSchemaCache.set(schema, { revision: snapshot.revision, schema: projected });
+    this.invocationSchemaCache.set(schema, { revision, schema: projected });
     return projected;
   }
 

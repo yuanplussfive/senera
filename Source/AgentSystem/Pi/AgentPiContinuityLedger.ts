@@ -4,7 +4,7 @@ import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import {
   AgentContinuityLedgerCustomType,
   createAgentContinuityReference,
-  readAgentContinuityLedger,
+  AgentContinuityLedgerSchema,
   type AgentContinuityLedger,
 } from "../Continuity/AgentContinuityLedger.js";
 import { AgentContinuityLayer } from "../Continuity/AgentContinuityLayer.js";
@@ -13,7 +13,6 @@ import type { AgentPiCompactionToolCallIndex } from "./AgentPiCompactionToolInde
 
 const ContinuityProjectionLimits = Object.freeze({
   messageSummaryCharacters: 768,
-  searchCharacters: 1_536,
   references: 256,
   checkpoints: 32,
 });
@@ -74,8 +73,7 @@ export function readAgentPiContinuityLedger(entries: readonly SessionEntry[]): A
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
     if (entry?.type !== "custom" || entry.customType !== AgentContinuityLedgerCustomType) continue;
-    const ledger = readAgentContinuityLedger(entry.data);
-    if (ledger) return ledger;
+    return AgentContinuityLedgerSchema.parse(entry.data);
   }
   return undefined;
 }
@@ -102,7 +100,6 @@ function projectConversationReferences(messages: readonly AgentMessage[]) {
         uri: `senera://conversation/message/${digest.slice(0, 32)}`,
         revision: digest,
         summary,
-        searchText: trimText([text, ...toolNames].join(" "), ContinuityProjectionLimits.searchCharacters),
       }),
     ];
   });
@@ -115,17 +112,6 @@ function projectArtifactReferences(index: AgentPiArtifactIndex) {
       uri: artifact.artifactUri,
       revision: artifact.artifactUri,
       summary: `Artifact ${artifact.artifactUri}`,
-      searchText: trimText(
-        [
-          ...artifact.toolNames,
-          ...artifact.callIds,
-          ...artifact.evidenceUris,
-          ...artifact.refs,
-          artifact.workspaceCheckpointId ?? "",
-          artifact.workspaceRevision ?? "",
-        ].join(" "),
-        ContinuityProjectionLimits.searchCharacters,
-      ),
       metadata: {
         toolNames: artifact.toolNames,
         callIds: artifact.callIds,
@@ -145,14 +131,10 @@ function projectToolReferences(index: AgentPiCompactionToolCallIndex) {
       uri: `senera://tool-call/${call.callId}`,
       revision: call.callId,
       summary: call.summary ?? `${call.toolName} ${call.status}`,
-      searchText: trimText(
-        [call.toolName, call.argumentsPreview, call.artifactUri ?? "", ...call.evidenceUris].join(" "),
-        ContinuityProjectionLimits.searchCharacters,
-      ),
       metadata: {
         toolName: call.toolName,
         status: call.status,
-        ...(call.artifactUri ? { artifactUri: call.artifactUri } : {}),
+        ...(call.artifacts.length > 0 ? { artifactUris: call.artifacts.map((artifact) => artifact.artifactUri) } : {}),
       },
     }),
   );
@@ -165,7 +147,6 @@ function projectCompactionReference(summary: string) {
     uri: `senera://compaction/${digest.slice(0, 32)}`,
     revision: digest,
     summary: trimText(summary, ContinuityProjectionLimits.messageSummaryCharacters),
-    searchText: trimText(summary, ContinuityProjectionLimits.searchCharacters),
   });
 }
 

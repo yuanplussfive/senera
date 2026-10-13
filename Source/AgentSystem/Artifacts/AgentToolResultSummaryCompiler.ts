@@ -102,9 +102,6 @@ export class AgentToolResultSummaryCompiler {
       ...(projectedChanges.omitted > 0
         ? [`${projectedChanges.omitted} change records were omitted from the context projection.`]
         : []),
-      ...(input.deterministicSummary.trim()
-        ? []
-        : ["No tool summary projection produced a dedicated summary for this result."]),
     ]);
 
     return {
@@ -313,6 +310,23 @@ export class AgentToolResultSummaryCompiler {
       ...(input.workspace ? ["workspace"] : []),
     ]);
   }
+}
+
+/**
+ * Projects the canonical persisted summary into the Pi observation detail.
+ *
+ * Artifact/evidence coordinates are carried by the observation envelope, so
+ * this adapter only exposes the human-readable summary, change records, and
+ * limitations. Keeping this mapping next to the summary compiler prevents a
+ * second consumer from rebuilding a competing summary from the raw result.
+ */
+export function projectAgentToolResultSummaryForObservation(summary: AgentToolResultSummary): Record<string, unknown> {
+  const entries: Array<readonly [string, unknown]> = [];
+  if (summary.headline.trim()) entries.push(["headline", summary.headline]);
+  if (summary.summary.trim()) entries.push(["summary", summary.summary]);
+  if (summary.changes.length > 0) entries.push(["delta", summary.changes]);
+  if (summary.limitations.length > 0) entries.push(["limitations", summary.limitations]);
+  return Object.fromEntries(entries);
 }
 
 function boundSourceText(value: string, maximumCharacters: number): { text: string; truncated: boolean } {

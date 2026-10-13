@@ -2,16 +2,17 @@ import path from "node:path";
 import process from "node:process";
 import {
   resolveActionPlannerConfig,
+  resolveAgentMcpConnectionsConfig,
   resolveAgentLoopConfig,
+  resolveAgentPromptConfig,
   resolveArtifactsConfig,
   resolveModelProviderConfig,
-  resolvePresetsConfig,
   resolveSandboxRuntimeConfig,
+  resolveStateCardConfig,
+  resolveContinuityLearningConfig,
   resolveToolExecutionConfig,
-  resolveToolLearningConfig,
   resolveToolSearchConfig,
   resolveUploadsConfig,
-  resolveVectorModelsConfig,
 } from "../AgentDefaults.js";
 import { AgentActionPlannerModelClient } from "../ActionPlanner/AgentActionPlannerModelClient.js";
 import { AgentApprovalRuntime } from "../Approvals/AgentApprovalRuntime.js";
@@ -19,7 +20,9 @@ import { AgentToolExecutionArtifactRecorder } from "../Artifacts/AgentToolExecut
 import { AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
 import { AgentConversationProjector } from "../Conversation/AgentConversationProjector.js";
 import { AgentSchemaValidator } from "../Core/AgentSchemaValidator.js";
+import { resolveAgentWorkspaceLayout } from "../Core/AgentWorkspaceLayout.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
+import { registerAgentSkillCatalog } from "../Skills/AgentSkillCatalogRegistration.js";
 import { createSeneraExecutionEnvironments } from "../Execution/SeneraExecutionEnvFactory.js";
 import { resolveAgentDockerEngineGuestWorkspaceRoot } from "../Sandbox/DockerEngine/AgentDockerEngineRuntimeContract.js";
 import type { SeneraSandboxWorkerClient } from "../Execution/SeneraSandboxWorkerTypes.js";
@@ -30,7 +33,6 @@ import { AgentPiActiveSessionRegistry } from "../Pi/AgentPiActiveSessionRegistry
 import type { AgentPiDiagnosticSink } from "../Pi/AgentPiDiagnostics.js";
 import { AgentPiSubstrate } from "../Pi/AgentPiSubstrate.js";
 import { AgentExtensionRegistry } from "../Extensions/AgentExtensionRegistry.js";
-import { AgentPresetManager } from "../Presets/AgentPresetManager.js";
 import { AgentPromptContextBuilder } from "../Prompt/AgentPromptContextBuilder.js";
 import { AgentPromptRenderer } from "../Prompt/AgentPromptRenderer.js";
 import { AgentPromptAssetCatalog } from "../Prompt/AgentPromptAssetCatalog.js";
@@ -58,14 +60,16 @@ import { createAgentDefaultToolResourceCapabilities } from "../ToolRuntime/Agent
 import { AgentToolResourceClaimProjector } from "../ToolRuntime/AgentToolResourceClaimProjector.js";
 import type { AgentToolResourceLeaseCoordinator } from "../ToolRuntime/AgentToolResourceScheduler.js";
 import { AgentToolSearchRuntime } from "../ToolSearch/AgentToolSearchRuntime.js";
-import type { AgentToolSearchMemoryStore } from "../ToolSearch/AgentToolSearchMemoryTypes.js";
+import { AgentStateCardRuntime } from "../StateCard/AgentStateCardRuntime.js";
+import { AgentLocalEmbeddingClient, AgentLocalEmbeddingModelName } from "../ToolSearch/AgentLocalEmbeddingClient.js";
+import { AgentCapabilityEmbeddingFileStore } from "../ToolSearch/AgentCapabilityEmbeddingCache.js";
+import type { AgentToolSearchScenarioSource } from "../ToolSearch/AgentToolSearchScenarioSource.js";
 import { AgentToolSemanticAuditModes, type AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { createXmlProtocolPolicy } from "../Xml/AgentXmlPolicy.js";
 import { AgentRuntimeModuleComposer, type AgentRuntimeModule } from "./AgentRuntimeModule.js";
 import { createDefaultAgentRuntimeServices } from "./AgentRuntimeServices.js";
 import type { AgentMcpToolsChangedHandler } from "../Mcp/AgentMcpToolCatalogChange.js";
 import { AgentMcpToolClientPool } from "../Mcp/AgentMcpToolClientPool.js";
-import { AgentVectorModelClient } from "../Vector/AgentVectorModelClient.js";
 import type { AgentExtensionValueResolver } from "../Extensions/AgentExtensionValueExpression.js";
 import type { AgentMcpSamplingHandler } from "../Mcp/AgentMcpSamplingRuntime.js";
 import { createAgentMcpSamplingHandler } from "../Mcp/AgentMcpSamplingRuntime.js";
@@ -79,18 +83,28 @@ import type { AgentContinuityMemoryService } from "../Continuity/AgentContinuity
 import type { AgentExecutionLedgerService } from "../Goals/AgentExecutionLedgerService.js";
 import type { AgentTodoService } from "../Todos/AgentTodoService.js";
 import type { AgentContinuityLifecyclePort } from "../Continuity/AgentContinuityLifecycle.js";
+import type { AgentContinuityRecallService } from "../Continuity/AgentContinuityToolRuntime.js";
 import { AgentWorkflowPromptProjector } from "../Prompt/AgentWorkflowPromptProjector.js";
-import type { AgentWorldSnapshotProvider } from "../World/AgentWorldTypes.js";
 import type { AgentInferenceBudgetPort } from "../ModelEndpoints/AgentInferenceBudget.js";
 import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
-import type { AgentAgendaService } from "../Agenda/AgentAgendaService.js";
 import type { AgentContinuityIdentityContext } from "../Continuity/AgentContinuityIdentityStore.js";
 import { AgentResidentSpeechRuntime } from "../ResidentSpeech/AgentResidentSpeechRuntime.js";
 import { AgentResidentSpeechCapabilities } from "../ResidentSpeech/AgentResidentSpeechTypes.js";
 import type { AgentPluginHost } from "../Plugins/AgentPluginHost.js";
 import type { AgentMcpHostCapabilitySnapshot } from "../McpPackages/AgentMcpHostRequirements.js";
+import type { AgentBackgroundLearningRequestLedger } from "../Memory/AgentBackgroundLearningRequestLedger.js";
+import type { AgentContinuityMemOSRuntime } from "../Continuity/AgentContinuityMemOSRuntime.js";
+import type {
+  AgentMcpActivationCatalogEntry,
+  AgentMcpServiceDiscoveryEntry,
+} from "../McpPackages/AgentMcpPackageTypes.js";
+import type { AgentActivationCatalogEntryData } from "../Activation/AgentActivationTypes.js";
+import { createAgentPersonaContext } from "../Prompt/AgentPersonaContext.js";
 
 export interface AgentSystemRuntimeCompositionOptions {
+  mcpServices?: () => readonly AgentMcpServiceDiscoveryEntry[];
+  mcpActivationEntries?: () => readonly AgentMcpActivationCatalogEntry[];
+  systemActivationEntries?: () => readonly AgentActivationCatalogEntryData[];
   workspaceRoot: string;
   configPath: string;
   config: AgentSystemConfig;
@@ -110,7 +124,7 @@ export interface AgentSystemRuntimeCompositionOptions {
   dockerEngineWorker?: SeneraSandboxWorkerClient;
   /** Derived sandbox guest workspace root. Linux paths follow workspaceRoot; other hosts use the contract default. */
   sandboxGuestWorkspaceRoot?: string;
-  toolSearchMemoryStore?: AgentToolSearchMemoryStore;
+  toolSearchScenarioSource?: AgentToolSearchScenarioSource;
   onMcpToolsChanged?: AgentMcpToolsChangedHandler;
   mcpInputs?: AgentExtensionValueResolver;
   workspaceRuntime?: AgentWorkspaceRuntimeServices;
@@ -119,10 +133,10 @@ export interface AgentSystemRuntimeCompositionOptions {
   continuityMemory?: AgentContinuityMemoryService;
   continuityIdentity?: AgentContinuityIdentityContext;
   continuityLifecycle?: AgentContinuityLifecyclePort;
+  continuityRecall?: AgentContinuityRecallService;
+  continuityMemOS?: AgentContinuityMemOSRuntime;
   executionLedger?: AgentExecutionLedgerService;
   todos?: AgentTodoService;
-  agenda?: AgentAgendaService;
-  worldRuntime?: AgentWorldSnapshotProvider;
   inferenceBudget?: AgentInferenceBudgetPort;
   identityDisplayValues?: () => AgentIdentityDisplayValues;
   /** Host services bound to the `senera` self-service command tool. */
@@ -132,6 +146,10 @@ export interface AgentSystemRuntimeCompositionOptions {
   pluginHost?: AgentPluginHost;
   /** Shared with orchestration so delegated leases and Pi tool claims converge. */
   resourceCoordinator?: AgentToolResourceLeaseCoordinator;
+  /** Shared durable ledger for temporal-memory and state-card model work. */
+  learningRequests?: AgentBackgroundLearningRequestLedger;
+  /** Host callback for query-driven publication of deferred capabilities. */
+  beforeToolSearch?: (query: string, signal?: AbortSignal, serviceIds?: readonly string[]) => void | Promise<void>;
   /** Host capabilities used to preflight MCP packages before launch. */
   mcpHostCapabilities?: AgentMcpHostCapabilitySnapshot;
 }
@@ -168,11 +186,25 @@ export function createAgentRuntimeInfrastructure(options: AgentSystemRuntimeComp
     throw new Error("An available sandbox runtime requires an explicit Docker provider and Worker client.");
   }
   const executionResourceLimits = resolveAgentExecutionResourceLimits(options.config);
-  const mcpClientPool = options.workspaceRuntime?.mcpClientPool ?? new AgentMcpToolClientPool();
+  const mcpClientPool =
+    options.workspaceRuntime?.mcpClientPool ??
+    new AgentMcpToolClientPool({
+      policy: () => {
+        const resolved = resolveAgentMcpConnectionsConfig(options.config);
+        return { idleTtlMs: resolved.IdleTtlMs, sweepIntervalMs: resolved.SweepIntervalMs };
+      },
+      onCloseError: (error, connection) => {
+        options.logger?.warn("mcp.connection.cleanup_failed", {
+          serverId: connection.server.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
+    });
   const uploadStore =
     options.workspaceRuntime?.uploadStore ??
     new AgentUploadStore({ workspaceRoot: options.workspaceRoot, config: resolveUploadsConfig(options.config) });
   const resourceResolver = new AgentResourceResolver({
+    artifactManifestIndex: options.workspaceRuntime?.artifactManifestIndex,
     workspaceRoot: options.workspaceRoot,
     config: options.config,
     uploadStore,
@@ -215,6 +247,14 @@ export function createAgentRuntimeInfrastructure(options: AgentSystemRuntimeComp
     configurations: options.config.Extensions,
   });
   options.pluginHost?.applyTools(registry);
+  const skillDiagnostics = registerAgentSkillCatalog(registry, {
+    systemRoot: path.join(resourcesRoot, "System", "Skills"),
+    workspaceRoot: resolveAgentWorkspaceLayout(options.workspaceRoot).skillRoot,
+    systemToolBindings: systemExtensions.skillToolBindings(),
+  });
+  for (const diagnostic of skillDiagnostics) {
+    options.logger?.warn("resources.skills.invalid", { diagnostic });
+  }
   new AgentPromptAssetCatalog().registerRoot(registry, path.join(resourcesRoot, "System", "Prompts"));
   const residentSpeech = AgentResidentSpeechCapabilities.some((capability) => registry.getSidecarTool(capability))
     ? new AgentResidentSpeechRuntime({ registry, modelProvider: modelProviderConfig })
@@ -252,14 +292,12 @@ export function createAgentRuntimeInfrastructure(options: AgentSystemRuntimeComp
     ownsMcpClientPool: !options.workspaceRuntime,
     modelProviderConfig,
     systemTools,
-    systemSkillToolBindings: systemExtensions.skillToolBindings(),
     systemMcpContributions: systemExtensions.listMcpContributions(),
     residentSpeech,
     agentLoopConfig: resolveAgentLoopConfig(options.config),
     toolSearchConfig: resolveToolSearchConfig(options.config),
-    vectorModelsConfig: resolveVectorModelsConfig(options.config),
-    toolLearningConfig: resolveToolLearningConfig(options.config),
-    presetsConfig: resolvePresetsConfig(options.config),
+    stateCardConfig: resolveStateCardConfig(options.config),
+    promptConfig: resolveAgentPromptConfig(options.config),
     artifactsConfig: resolveArtifactsConfig(options.config),
     actionPlannerConfig: resolveActionPlannerConfig(options.config, options.modelProviderId),
     xmlPolicy: createXmlProtocolPolicy(options.config),
@@ -272,39 +310,67 @@ export function createAgentRuntimeAgentServices(
 ) {
   const availableExecutionTargets = () =>
     projectSeneraProcessBackendsToToolTargets(infrastructure.toolExecutionEnv.capabilities.processBackends);
-  const continuityIdentity = options.continuityIdentity;
-  const vectorClient = new AgentVectorModelClient(infrastructure.vectorModelsConfig, {
-    inferenceBudget: options.inferenceBudget,
-    inferenceBudgetScope:
-      options.inferenceBudget && continuityIdentity ? () => continuityIdentity.workspaceId : undefined,
-  });
-  const embedding = infrastructure.vectorModelsConfig.Embedding.Enabled
-    ? {
-        client: vectorClient,
-        model: infrastructure.vectorModelsConfig.Embedding.Model,
-      }
+  const embedding = infrastructure.toolSearchConfig.Embedding.Enabled
+    ? (() => {
+        const workspaceEmbedding = options.workspaceRuntime?.embedding;
+        const client = workspaceEmbedding?.client ?? new AgentLocalEmbeddingClient();
+        const cacheStore = new AgentCapabilityEmbeddingFileStore(
+          (options.workspaceRuntime?.layout ?? resolveAgentWorkspaceLayout(options.workspaceRoot)).caches
+            .toolSearchEmbeddings,
+          (error) =>
+            options.logger?.warn("routing.embedding.cache_invalid", {
+              message: error instanceof Error ? error.message : String(error),
+            }),
+        );
+        return {
+          client,
+          model: workspaceEmbedding?.model ?? AgentLocalEmbeddingModelName,
+          cacheStore,
+          closeEmbedding: workspaceEmbedding ? undefined : () => Promise.resolve(client.close?.()),
+        };
+      })()
     : undefined;
-  const rerank = infrastructure.vectorModelsConfig.Rerank.Enabled ? { client: vectorClient } : undefined;
+  const semanticBudgets = resolveContinuityLearningConfig(options.config).MemOS;
+  const stateCardRuntime = new AgentStateCardRuntime(
+    infrastructure.modelProviderConfig,
+    infrastructure.stateCardConfig,
+    {
+      maxRepairAttempts: infrastructure.actionPlannerConfig.MaxRepairAttempts,
+      learningRequests: options.learningRequests,
+      historyTurns: semanticBudgets.FragmentHistoryTurns,
+      assistantPreviewTokens: semanticBudgets.AssistantPreviewTokens,
+      ...(options.continuityMemOS
+        ? { readHistory: options.continuityMemOS.readStateCardHistory.bind(options.continuityMemOS) }
+        : {}),
+    },
+  );
   const toolSearch = new AgentToolSearchRuntime(
     infrastructure.registry,
     infrastructure.toolSearchConfig,
-    infrastructure.toolLearningConfig,
     options.workspaceRoot,
     infrastructure.modelProviderConfig,
     {
       logger: options.logger,
-      memoryStore: options.toolSearchMemoryStore,
+      scenarioSource: options.toolSearchScenarioSource,
       embedding,
-      rerank,
+      embeddingCacheStore: embedding?.cacheStore,
+      closeEmbedding: embedding?.closeEmbedding,
+      resourceDiscovery: infrastructure.resourceCapabilities,
       availableExecutionTargets,
+      stateCardRuntime,
+      memos: options.continuityMemOS,
+      beforeSearch: options.beforeToolSearch,
+      mcpServices: options.mcpServices,
     },
   );
   const skillActivation = new AgentSkillActivationService(infrastructure.registry, toolSearch);
   const promptContextBuilder = new AgentPromptContextBuilder(
     infrastructure.registry,
+    infrastructure.modelProviderConfig.ToolPlanningMode,
     options.workspaceRoot,
     () => infrastructure.toolExecutionEnv.capabilities,
     infrastructure.sandboxGuestWorkspaceRoot,
+    options.mcpServices,
   );
   const toolCatalog = new AgentToolCatalogProjector(infrastructure.registry, availableExecutionTargets);
   const artifactRecorder = new AgentToolExecutionArtifactRecorder({
@@ -313,10 +379,10 @@ export function createAgentRuntimeAgentServices(
     model: infrastructure.modelProviderConfig.Model,
     logger: options.logger,
   });
-  const presetManager = new AgentPresetManager({
-    workspaceRoot: options.workspaceRoot,
-    config: infrastructure.presetsConfig,
-  });
+  const persona = createAgentPersonaContext(
+    infrastructure.promptConfig.CorePersona,
+    infrastructure.promptConfig.LanguageStyle,
+  );
   const toolExecutionConfig = resolveToolExecutionConfig(options.config);
   const semanticAuditors =
     infrastructure.modelProviderConfig.ToolPlanningMode === "baml" &&
@@ -344,9 +410,11 @@ export function createAgentRuntimeAgentServices(
     toolPlanningMode: infrastructure.modelProviderConfig.ToolPlanningMode,
   });
   const hostCapabilities = createDefaultHostCapabilityRegistry({
+    artifactManifestIndex: options.workspaceRuntime?.artifactManifestIndex,
     toolSearch,
     executionResources: infrastructure.executionResources,
     orchestration: options.orchestration,
+    continuityRecall: options.continuityRecall,
   });
   options.orchestration?.delegation.bindResourceClaims(infrastructure.resourceClaims);
   registerAgentSystemToolHandlers(hostCapabilities, infrastructure.systemTools);
@@ -372,6 +440,7 @@ export function createAgentRuntimeAgentServices(
     identityDisplayValues: options.identityDisplayValues,
   });
   const piSubstrate = new AgentPiSubstrate({
+    workspaceLayout: options.workspaceRuntime?.layout,
     workspaceRoot: options.workspaceRoot,
     config: options.config,
     modelProvider: infrastructure.modelProviderConfig,
@@ -379,6 +448,7 @@ export function createAgentRuntimeAgentServices(
     residentSpeech: infrastructure.residentSpeech,
     registry: infrastructure.registry,
     toolCallExecutor,
+    workspaceChangeObserver: options.workspaceRuntime?.workspaceChangeObserver,
     artifactRecorder,
     executionEnv: infrastructure.executionEnv,
     resourceCapabilities: infrastructure.resourceCapabilities,
@@ -392,13 +462,23 @@ export function createAgentRuntimeAgentServices(
     beforeCompaction: options.continuityLifecycle
       ? (sessionId) => options.continuityLifecycle!.beforeCompaction(sessionId)
       : undefined,
+    afterCompaction: options.continuityLifecycle
+      ? (sessionId) => options.continuityLifecycle!.afterCompaction?.(sessionId)
+      : undefined,
+    onSessionContextInvalidated: options.continuityLifecycle
+      ? (sessionId) => options.continuityLifecycle!.invalidateSessionContext?.(sessionId)
+      : options.continuityMemory
+        ? (sessionId) => {
+            options.continuityMemory!.invalidateSessionContext(sessionId);
+          }
+        : undefined,
+    learningRequests: options.learningRequests,
   });
   const services = new AgentRuntimeModuleComposer().compose(
     createDefaultAgentRuntimeServices({
       artifactRecorder,
       toolCallExecutor,
       piSessionRegistry: infrastructure.piSessionRegistry,
-      presetManager,
       promptContextBuilder,
       piSubstrate,
       skillActivation,
@@ -408,7 +488,6 @@ export function createAgentRuntimeAgentServices(
       workflow: new AgentWorkflowPromptProjector({
         executionLedger: options.executionLedger,
         todos: options.todos,
-        worldRuntime: options.worldRuntime,
         delegation: options.orchestration?.delegation,
       }),
       executionLedger: options.executionLedger,
@@ -423,7 +502,7 @@ export function createAgentRuntimeAgentServices(
     toolSearch,
     toolCatalog,
     artifactRecorder,
-    presetManager,
+    persona,
     toolPermissionGate,
     toolCallExecutor,
     piSubstrate,

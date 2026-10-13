@@ -64,6 +64,7 @@ export class AgentResidentSpeechRuntime implements AgentResidentSpeechSessionRun
         contract,
         focus,
         spokenUtterances: input.spokenUtterances,
+        projectionTier: input.projectionTier,
         signal: input.signal,
       },
       async (context) => {
@@ -108,6 +109,7 @@ export class AgentResidentSpeechRuntime implements AgentResidentSpeechSessionRun
       contract,
       focus,
       spokenUtterances: input.spokenUtterances,
+      projectionTier: input.projectionTier,
       bridgeName: AgentPiNativeToolBridgeName,
       timestamp: input.message.timestamp,
     });

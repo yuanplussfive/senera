@@ -1,5 +1,5 @@
 import React from "react";
-import { globSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -11,15 +11,81 @@ import { installMemoryLocalStorage, resetFrontendStore } from "../frontendStoreT
 const { ToolStepInspector } = await import("../../../Frontend/src/features/workflow/ToolStepInspector.tsx");
 const { AgentExecutionFeed, AgentExecutionStageFeed, AgentExecutionStageFold } =
   await import("../../../Frontend/src/features/workflow/AgentExecutionFeed.tsx");
+const { projectToolBatchActivity } = await import("../../../Frontend/src/features/workflow/ToolBatchActivity.tsx");
+const { ChildRunBoard } = await import("../../../Frontend/src/features/workflow/ChildRunBoard.tsx");
 const { ToolActivityGroup } = await import("../../../Frontend/src/features/workflow/ToolActivityGroup.tsx");
 const { projectToolStagePresentation } =
   await import("../../../Frontend/src/features/workflow/toolStagePresentation.ts");
 const { projectToolActivityInspection } =
   await import("../../../Frontend/src/features/workflow/toolActivityPresentation.ts");
-const { AppMotionProvider } = await import("../../../Frontend/src/shared/motion/MotionProvider.tsx");
-const { TooltipProvider } = await import("../../../Frontend/src/shared/ui/Tooltip.tsx");
 const { frontendMessage } = await import("../../../Frontend/src/i18n/frontendMessageCatalog.ts");
-const { createRun, createStep, createToolBatchRun } = await import("./workflowComponentFixtures.mjs");
+const {
+  createRun,
+  createStep,
+  createToolBatchRun: createUnprojectedToolBatchRun,
+} = await import("./workflowComponentFixtures.mjs");
+const { discoverAgentSystemExtensionPackages } =
+  await import("../../../Source/AgentSystem/SystemTools/AgentSystemExtensionDiscovery.ts");
+const { resolveAgentSystemToolPresentation } =
+  await import("../../../Source/AgentSystem/SystemTools/AgentSystemToolPresentation.ts");
+
+const SystemToolOrigins = discoverSystemToolOrigins();
+const WorkflowLocale = "zh-CN";
+
+function createToolBatchRun(toolNames) {
+  const run = createUnprojectedToolBatchRun(toolNames);
+  for (const step of run.steps) {
+    if (!step.toolName || step.toolOrigin) continue;
+    const origin = SystemToolOrigins.get(step.toolName);
+    if (origin) step.toolOrigin = structuredClone(origin);
+  }
+  return run;
+}
+
+function systemToolOrigin(toolName) {
+  const origin = SystemToolOrigins.get(toolName);
+  if (!origin) throw new Error(`Missing System Tool origin fixture for ${toolName}.`);
+  return structuredClone(origin);
+}
+
+function systemToolText(toolName, path) {
+  const origin = systemToolOrigin(toolName);
+  const value = path(origin.presentation);
+  if (typeof value !== "string" || !value) {
+    throw new Error(`Missing ${WorkflowLocale} presentation text for ${toolName}.`);
+  }
+  return value;
+}
+
+function systemToolAction(toolName) {
+  return systemToolText(toolName, (presentation) => presentation.activity.action[WorkflowLocale]);
+}
+
+function systemToolGroupTitle(toolName) {
+  return systemToolText(toolName, (presentation) => presentation.group.title[WorkflowLocale]);
+}
+
+function discoverSystemToolOrigins() {
+  const workspaceRoot = resolveWorkspaceRoot();
+  const origins = new Map();
+  for (const source of discoverAgentSystemExtensionPackages(path.join(workspaceRoot, "System", "Extensions"))) {
+    for (const contribution of source.manifest.contributions ?? []) {
+      if (contribution.kind !== "hostTool") continue;
+      const contract = JSON.parse(readFileSync(path.join(source.packageRoot, contribution.contract), "utf8"));
+      origins.set(contract.name, {
+        kind: "system",
+        name: source.manifest.displayName["en-US"],
+        capability: contribution.capability,
+        presentation: resolveAgentSystemToolPresentation(
+          source.domain.presentation,
+          source.manifest.presentation,
+          contract.presentation,
+        ),
+      });
+    }
+  }
+  return origins;
+}
 
 beforeEach(() => {
   removeRadixPortalResidue();
@@ -45,86 +111,6 @@ function removeRadixPortalResidue() {
   document.body.style.removeProperty("overflow");
   document.body.removeAttribute("data-scroll-locked");
 }
-
-test("execution feed keeps action batches summarized until the user expands them", async () => {
-  const user = userEvent.setup();
-  const initialRun = createToolBatchRun(["WorkspaceReadFile", "WorkspaceSearchFiles"]);
-  initialRun.steps.find((step) => step.toolName === "WorkspaceReadFile").toolArgs = { path: "Source/runtime.ts" };
-  initialRun.steps.find((step) => step.toolName === "WorkspaceReadFile").toolResult = {
-    content: "export const runtime = true;",
-  };
-  Object.assign(
-    initialRun.steps.find((step) => step.toolName === "WorkspaceReadFile"),
-    {
-      purpose: "Inspect runtime initialization before changing the workflow.",
-      toolPresentation: {
-        type: "senera.tool_result_presentation.v1",
-        version: 1,
-        status: "success",
-        headline: "Read Source/runtime.ts",
-        facts: [],
-        evidence: [],
-        changes: [
-          {
-            kind: "workspace",
-            status: "changed",
-            key: "Source/runtime.ts",
-            summary: "modified: Source/runtime.ts",
-            addedLines: 6,
-            removedLines: 1,
-          },
-        ],
-      },
-    },
-  );
-  const view = renderWithFrontendProviders(
-    React.createElement(
-      AppMotionProvider,
-      { level: "none" },
-      React.createElement(AgentExecutionFeed, { run: initialRun }),
-    ),
-  );
-  const feed = document.querySelector("[data-execution-feed]");
-  const group = document.querySelector("[data-feed-group='tools:batch-actions']");
-
-  expect(feed).toBeInTheDocument();
-  expect(feed).not.toHaveClass("rounded-xl", "border", "bg-surface-raised", "shadow-panel");
-  expect(document.querySelector("[data-execution-rail]")).toBeInTheDocument();
-  expect(screen.queryByText("tool_preface")).not.toBeInTheDocument();
-  expect(group).toBeInstanceOf(HTMLButtonElement);
-  expect(group).toHaveAttribute("aria-expanded", "false");
-  expect(document.querySelector("[data-feed-detail-surface]")).not.toBeInTheDocument();
-  expect(screen.queryByText("WorkspaceReadFile")).not.toBeInTheDocument();
-  expect(screen.queryByText("WorkspaceSearchFiles")).not.toBeInTheDocument();
-
-  await user.click(group);
-  await waitFor(() => expect(screen.getByText("WorkspaceReadFile")).toBeVisible());
-  expect(screen.getByText("WorkspaceSearchFiles")).toBeVisible();
-  expect(screen.getByText("Read · Source/runtime.ts")).toBeVisible();
-  expect(group).toHaveAttribute("aria-expanded", "true");
-  expect(document.querySelector("[data-feed-detail-surface]")).toHaveClass("border-l", "border-line-subtle", "pl-3");
-  expect(document.querySelector("[data-feed-detail-surface]")).not.toHaveClass("rounded-md", "bg-surface-subtle/70");
-
-  expect(document.querySelector("[data-feed-tool-detail]")).not.toBeInTheDocument();
-  expect(document.querySelector("[data-tool-step-inspector]")).not.toBeInTheDocument();
-  expect(screen.queryByText("export const runtime = true;")).not.toBeInTheDocument();
-
-  view.rerender(
-    React.createElement(
-      TooltipProvider,
-      { delayDuration: 0 },
-      React.createElement(
-        AppMotionProvider,
-        { level: "none" },
-        React.createElement(AgentExecutionFeed, {
-          run: createToolBatchRun(["WorkspaceReadFile", "WorkspaceSearchFiles", "WorkspaceListDirectory"]),
-        }),
-      ),
-    ),
-  );
-  expect(screen.getByText("WorkspaceListDirectory")).toBeVisible();
-  expect(document.querySelector("[data-feed-group='tools:batch-actions']")).toHaveAttribute("aria-expanded", "true");
-});
 
 test("tool inspector keeps web search output in the generic result surface", () => {
   const step = createStep({
@@ -183,7 +169,9 @@ test("conversation tool rounds use the same compact batch activity for web resul
 
   expect(document.querySelector("[data-web-search-stage]")).not.toBeInTheDocument();
   expect(document.querySelectorAll("[data-web-search-activity]")).toHaveLength(0);
-  expect(document.querySelector("[data-tool-batch-activity]")).toHaveTextContent("Search · React security guidance");
+  const batchActivity = document.querySelector("[data-tool-batch-activity]");
+  expect(batchActivity).toHaveTextContent(`${systemToolAction("WebSearch")}React security guidance`);
+  expect(batchActivity?.querySelector("[data-tool-activity-arrow]")).toBeInTheDocument();
   expect(document.querySelector("[data-tool-activity-group='external']")).not.toBeInTheDocument();
   expect(screen.queryByText("WebSearch")).not.toBeInTheDocument();
   expect(document.querySelector("[data-tool-batch-activity-items]")).not.toBeInTheDocument();
@@ -207,8 +195,7 @@ test("completed execution intervals stay folded until the tool sequence is reque
   expect(fold?.querySelectorAll("[data-tool-batch-activity-item]")).toHaveLength(2);
 });
 
-test("completed tool batches collapse their tool calls until expanded", async () => {
-  const user = userEvent.setup();
+test("a single completed tool result stays in one row instead of repeating as a child", () => {
   const run = createToolBatchRun(["WebSearch"]);
   const searchStep = run.steps.find((step) => step.toolName === "WebSearch");
   searchStep.toolArgs = { query: "React security guidance" };
@@ -227,17 +214,16 @@ test("completed tool batches collapse their tool calls until expanded", async ()
 
   const fold = document.querySelector("[data-execution-stage-fold]");
   const trigger = fold?.querySelector("[data-tool-batch-activity-trigger]");
-  expect(trigger).toHaveAttribute("aria-expanded", "false");
+  expect(trigger.tagName).toBe("DIV");
+  expect(trigger).not.toHaveAttribute("aria-expanded");
   expect(fold?.querySelector("[data-tool-batch-activity-items]")).not.toBeInTheDocument();
-  await user.click(trigger);
-
-  await waitFor(() => expect(fold?.querySelector("[data-tool-batch-activity-items]")).toBeVisible());
-  expect(fold?.querySelector("[data-tool-batch-activity-item]")).toHaveTextContent("Search · React security guidance");
-  expect(fold?.querySelector("[data-tool-batch-activity-item] a")).not.toBeInTheDocument();
+  expect(trigger).toHaveTextContent(`${systemToolAction("WebSearch")}React security guidance`);
+  expect(trigger.querySelector("[data-tool-activity-arrow]")).toBeInTheDocument();
   expect(screen.queryByText("React security overview")).not.toBeInTheDocument();
 });
 
-test("active tool batches keep settled rows while unfinished calls remain visibly active", () => {
+test("active tool batches stay compact while preserving settled and unfinished tool details", async () => {
+  const user = userEvent.setup();
   const run = createToolBatchRun(["WebSearch", "WebSearch"]);
   const firstStep = run.steps.find((step) => step.toolName === "WebSearch");
   const secondStep = run.steps.filter((step) => step.toolName === "WebSearch")[1];
@@ -256,20 +242,158 @@ test("active tool batches keep settled rows while unfinished calls remain visibl
   renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run }));
 
   expect(document.querySelector("[data-tool-batch-activity]")).toHaveAttribute("data-state", "loading");
-  expect(document.querySelector("[data-tool-batch-activity-items]")).toBeVisible();
-  expect(document.querySelector("[data-tool-batch-activity-item][data-state='done']")).toHaveTextContent(
-    "Search · React security guidance",
-  );
-  expect(document.querySelector("[data-tool-batch-activity-item][data-state='done']")).toHaveClass("items-center");
+  const trigger = document.querySelector("[data-tool-batch-activity-trigger]");
+  expect(trigger).toHaveAttribute("aria-expanded", "false");
+  expect(trigger.querySelector("[data-tool-batch-activity-title]")).not.toHaveClass("motion-safe:animate-text-shimmer");
+  expect(document.querySelector("[data-tool-batch-activity-items]")).not.toBeInTheDocument();
+
+  await user.click(trigger);
+  await waitFor(() => expect(document.querySelector("[data-tool-batch-activity-items]")).toBeVisible());
+  const settledToolRow = document.querySelector("[data-tool-batch-activity-item][data-state='done']");
+  expect(settledToolRow).toHaveTextContent(`${systemToolAction("WebSearch")}React security guidance`);
+  expect(settledToolRow?.querySelector("[data-tool-activity-arrow]")).toBeInTheDocument();
+  expect(document.querySelector("[data-tool-action-icon]")).toHaveClass("align-middle", "leading-none");
+  expect(document.querySelector("[data-tool-batch-activity-item][data-state='done']")).toHaveClass("items-start");
   expect(document.querySelector("[data-tool-batch-activity-viewport]")).toHaveClass("tool-activity-viewport");
   expect(document.querySelector("[data-tool-batch-activity-item][data-state='done'] > span")).toHaveClass(
     "h-[18px]",
     "items-center",
   );
-  expect(
-    document.querySelector("[data-tool-batch-activity-item][data-state='loading'] .motion-safe\\:animate-spin"),
-  ).toBeInTheDocument();
+  const activeToolRow = document.querySelector("[data-tool-batch-activity-item][data-state='loading']");
+  expect(activeToolRow.querySelector("[data-workflow-live-marker]")).toBeInTheDocument();
+  expect(activeToolRow.querySelector('[class~="motion-safe:animate-text-shimmer"]')).not.toBeInTheDocument();
+  expect(activeToolRow.querySelector("[data-execution-status-icon='running']")).toBeInTheDocument();
   expect(screen.queryByText("WebSearch")).not.toBeInTheDocument();
+});
+
+test("an expanded parallel batch animates unfinished actions without opening itself", async () => {
+  const user = userEvent.setup();
+  const run = createToolBatchRun(["WebSearch", "WorkspaceRead"]);
+  run.steps
+    .filter((step) => step.kind === "tool" && step.toolName)
+    .forEach((step) => {
+      step.status = "running";
+    });
+
+  renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run }));
+
+  const trigger = document.querySelector("[data-tool-batch-activity-trigger]");
+  expect(trigger).toHaveAttribute("aria-expanded", "false");
+  expect(document.querySelectorAll("[data-tool-batch-activity-item]")).toHaveLength(0);
+
+  await user.click(trigger);
+  const activeRows = [...document.querySelectorAll("[data-tool-batch-activity-item][data-state='loading']")];
+  expect(activeRows).toHaveLength(2);
+  activeRows.forEach((row) => {
+    expect(row.querySelector('[class~="motion-safe:animate-text-shimmer"]')).not.toBeInTheDocument();
+    expect(row.querySelector("[data-execution-status-icon='running']")).toBeInTheDocument();
+  });
+});
+
+test("tool batch disclosure identity remains stable as concurrent tools join", () => {
+  const oneTool = createToolBatchRun(["WorkspaceRead"]);
+  const twoTools = createToolBatchRun(["WorkspaceRead", "WorkspaceGrep"]);
+
+  expect(projectToolBatchActivity(oneTool)?.id).toBe("tool-batch:batch-actions");
+  expect(projectToolBatchActivity(twoTools)?.id).toBe("tool-batch:batch-actions");
+});
+
+test("the last completed tool stays highlighted without a duplicate disclosure", () => {
+  const run = createToolBatchRun(["WorkspaceRead"]);
+  run.status = "completed";
+  run.endedAt = "2026-07-11T00:00:05.000Z";
+  run.steps.find((step) => step.kind === "model").status = "done";
+
+  renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run, liveActivity: true }));
+
+  const trigger = document.querySelector("[data-tool-batch-activity-trigger]");
+  expect(trigger).toHaveClass("activity-feed-row");
+  expect(trigger.querySelector("[data-tool-batch-activity-title]")).not.toHaveClass("motion-safe:animate-text-shimmer");
+  expect(trigger.querySelector("[data-tool-action-live]")).not.toBeInTheDocument();
+  expect(trigger.querySelector("[data-tool-action-icon]")).not.toHaveClass("senera-live-status-icon");
+  expect(trigger.querySelector(".senera-spinner")).not.toBeInTheDocument();
+  expect(screen.queryByText("Thinking...")).not.toBeInTheDocument();
+  expect(trigger).not.toHaveAttribute("aria-expanded");
+  expect(document.querySelector("[data-tool-batch-activity-items]")).not.toBeInTheDocument();
+});
+
+test("a single-file workspace edit uses one concise row without duplicate detail", () => {
+  const run = createToolBatchRun(["ShellCommandTool"]);
+  const step = run.steps.find((entry) => entry.toolName === "ShellCommandTool");
+  step.toolPresentation = {
+    type: "senera.tool_result_presentation.v1",
+    version: 1,
+    status: "success",
+    headline: "Command completed",
+    facts: [],
+    evidence: [],
+    changes: [
+      {
+        kind: "workspace",
+        status: "changed",
+        workspaceStatus: "modified",
+        key: "Source/AgentSystem/AgentWorkspaceSnapshotUtils.ts",
+        summary: "modified file",
+        addedLines: 70,
+        removedLines: 31,
+      },
+    ],
+  };
+
+  renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run }));
+
+  const trigger = document.querySelector("[data-tool-batch-activity-trigger]");
+  expect(trigger).toHaveTextContent("编辑 AgentWorkspaceSnapshotUtils.ts +70 −31");
+  expect(trigger.tagName).toBe("DIV");
+  expect(document.querySelector("[data-tool-batch-activity-items]")).not.toBeInTheDocument();
+  expect(trigger).not.toHaveTextContent("行");
+  expect(trigger.querySelector("[data-workspace-added-lines]")).toHaveClass("text-emerald-700");
+  expect(trigger.querySelector("[data-workspace-removed-lines]")).toHaveClass("text-rose-700");
+  expect(screen.queryByText("ShellCommandTool")).not.toBeInTheDocument();
+});
+
+test("plain activity and workspace file rows share one text column after the status mark", async () => {
+  const user = userEvent.setup();
+  const run = createToolBatchRun(["WorkspaceRead", "ShellCommandTool"]);
+  const readStep = run.steps.find((step) => step.toolName === "WorkspaceRead");
+  const editStep = run.steps.find((step) => step.toolName === "ShellCommandTool");
+  readStep.toolArgs = { path: "src/app.ts" };
+  editStep.toolPresentation = {
+    type: "senera.tool_result_presentation.v1",
+    version: 1,
+    status: "success",
+    headline: "Command completed",
+    facts: [],
+    evidence: [],
+    changes: [
+      {
+        kind: "workspace",
+        status: "changed",
+        workspaceStatus: "modified",
+        key: "src/app.ts",
+        summary: "modified file",
+        addedLines: 4,
+        removedLines: 2,
+      },
+    ],
+  };
+
+  renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run }));
+  await user.click(document.querySelector("[data-tool-batch-activity-trigger]"));
+
+  const items = [...document.querySelectorAll("[data-tool-batch-activity-item]")];
+  expect(items).toHaveLength(2);
+  for (const item of items) {
+    expect(item.children).toHaveLength(2);
+    expect(item.children[0]).toHaveClass("h-[18px]", "w-3.5", "items-center");
+    expect(item.children[1]).toHaveAttribute("data-tool-activity-content");
+    expect(item.children[1]).toHaveClass("min-w-0", "flex-1");
+  }
+  const fileRow = items[1].querySelector("[data-tool-file-change-row]");
+  expect(fileRow.querySelector("[data-tool-file-change-text]").nextElementSibling).toBe(
+    fileRow.querySelector("[data-workspace-added-lines]")?.parentElement,
+  );
+  expect(fileRow.querySelector("[data-tool-file-change-icon]")).toBeInTheDocument();
 });
 
 test("partial tool failures remain local to their individual chain steps", async () => {
@@ -293,22 +417,22 @@ test("partial tool failures remain local to their individual chain steps", async
   );
   const failedStep = fold?.querySelector("[data-tool-batch-activity-item][data-state='failed']");
   expect(failedStep).toBeInTheDocument();
-  expect(failedStep?.querySelector(".border-content-muted")).toBeInTheDocument();
+  expect(failedStep?.querySelector("[data-execution-status-icon='failed']")).toBeInTheDocument();
 });
 
 test("conversation tool stages keep details in the workflow dock", () => {
   const run = createToolBatchRun(["ExecutionResourceWait", "ExecutionResourceWait"]);
 
   expect(projectToolStagePresentation(run)).toMatchObject({
-    category: "background-wait",
+    category: "execution-resource",
     mode: "semantic-batch",
     status: "done",
-    title: "运行任务",
+    title: systemToolGroupTitle("ExecutionResourceWait"),
   });
 
   renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run }));
 
-  expect(screen.getByRole("status", { name: "运行任务" })).toBeVisible();
+  expect(screen.getByRole("status", { name: systemToolAction("ExecutionResourceWait") })).toBeVisible();
   expect(screen.queryByText("ExecutionResourceWait")).not.toBeInTheDocument();
   expect(screen.queryByText(/并发工具批次/)).not.toBeInTheDocument();
   expect(document.querySelector("[data-tool-stage-details]")).not.toBeInTheDocument();
@@ -323,45 +447,48 @@ test("conversation tool batches use one semantic batch activity without duplicat
     });
 
   expect(projectToolStagePresentation(run)).toMatchObject({
-    title: "探索代码库",
-    accessibleTitle: "探索代码库 · Read · Search · List",
-    summary: "Read · Search · List",
+    title: systemToolGroupTitle("WorkspaceRead"),
+    accessibleTitle: `${systemToolGroupTitle("WorkspaceRead")} · ${systemToolAction("WorkspaceRead")} · ${systemToolAction("WorkspaceGrep")} · ${systemToolAction("WorkspaceList")}`,
+    summary: `${systemToolAction("WorkspaceRead")} · ${systemToolAction("WorkspaceGrep")} · ${systemToolAction("WorkspaceList")}`,
     icons: ["file-text", "search"],
   });
 
   renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run }));
-  expect(document.querySelector("[data-tool-batch-activity]")).toHaveTextContent("探索代码库");
+  expect(document.querySelector("[data-tool-batch-activity]")).toHaveTextContent(systemToolAction("WorkspaceRead"));
   expect(screen.queryByText("检查前端结构与运行入口。")).not.toBeInTheDocument();
   expect(document.querySelector("[data-tool-batch-activity]")).toHaveAttribute("data-state", "done");
   expect(document.querySelector("[data-tool-batch-activity-items]")).not.toBeInTheDocument();
-  expect(screen.getAllByText("探索代码库")).toHaveLength(1);
+  expect(screen.getByText(systemToolAction("WorkspaceRead"))).toBeVisible();
+  expect(screen.queryByText(systemToolAction("WorkspaceGrep"))).not.toBeInTheDocument();
+  expect(screen.queryByText(systemToolAction("WorkspaceList"))).not.toBeInTheDocument();
+  expect(screen.queryByText(systemToolGroupTitle("WorkspaceRead"))).not.toBeInTheDocument();
 });
 
 test("conversation tool stage mappings classify semantic and mixed tool batches", () => {
   const toolSearch = createToolBatchRun(["ToolSearch"]);
   toolSearch.steps.find((step) => step.toolName).status = "running";
   expect(projectToolStagePresentation(toolSearch)).toMatchObject({
-    category: "tool-discovery",
+    category: "tool-search",
     icon: "search",
     mode: "single-tool",
     status: "running",
-    title: "Search",
+    title: systemToolAction("ToolSearch"),
   });
 
   expect(projectToolStagePresentation(createToolBatchRun(["ToolDescribe"]))).toMatchObject({
-    category: "tool-management",
-    icon: "tools",
+    category: "tool-describe",
+    icon: "search",
     mode: "single-tool",
-    title: "Inspect",
+    title: systemToolAction("ToolDescribe"),
   });
 
   expect(projectToolStagePresentation(createToolBatchRun(["WorkspaceFind", "WorkspaceGrep"]))).toMatchObject({
-    category: "workspace-search",
+    category: "workspace",
     icon: "search",
     icons: ["search"],
     mode: "semantic-batch",
     status: "done",
-    title: "探索代码库",
+    title: systemToolGroupTitle("WorkspaceFind"),
   });
   expect(projectToolStagePresentation(createToolBatchRun(["WorkspaceGrep", "ShellCommandTool"]))).toMatchObject({
     category: "tools",
@@ -369,7 +496,9 @@ test("conversation tool stage mappings classify semantic and mixed tool batches"
     icons: ["search", "terminal"],
     mode: "semantic-batch",
     status: "done",
-    title: "Search · Run",
+    // The batch spans two presentation groups, so it names the first Tool rather
+    // than enumerating every group it touches.
+    title: systemToolAction("WorkspaceGrep"),
   });
 
   const failedSearch = createToolBatchRun(["WorkspaceGrep"]);
@@ -378,15 +507,15 @@ test("conversation tool stage mappings classify semantic and mixed tool batches"
     category: "workspace-search",
     mode: "single-tool",
     status: "failed",
-    title: "Search",
+    title: systemToolAction("WorkspaceGrep"),
   });
 
   const mixedBatch = createToolBatchRun(["WorkspaceGrep", "WorkspaceFind", "WorkspaceRead"]);
   mixedBatch.steps.find((step) => step.toolName === "WorkspaceFind").status = "failed";
   expect(projectToolStagePresentation(mixedBatch)).toMatchObject({
     status: "done",
-    title: "探索代码库",
-    summary: "Search · Find · Read",
+    title: systemToolGroupTitle("WorkspaceGrep"),
+    summary: `${systemToolAction("WorkspaceGrep")} · ${systemToolAction("WorkspaceFind")} · ${systemToolAction("WorkspaceRead")}`,
     icons: ["search", "file-text"],
     counts: { total: 3, settled: 3, completed: 2, failed: 1 },
   });
@@ -396,9 +525,9 @@ test("conversation tool stage mappings classify semantic and mixed tool batches"
   waitingBatch.steps.find((step) => step.toolName === "WorkspaceFind").status = "failed";
   expect(projectToolStagePresentation(waitingBatch)).toMatchObject({
     status: "running",
-    title: "探索代码库",
-    accessibleTitle: "探索代码库 · Search · Find · 1 项未完成",
-    summary: "Search · Find",
+    title: systemToolGroupTitle("WorkspaceGrep"),
+    accessibleTitle: `${systemToolGroupTitle("WorkspaceGrep")} · ${systemToolAction("WorkspaceGrep")} · ${systemToolAction("WorkspaceFind")}`,
+    summary: `${systemToolAction("WorkspaceGrep")} · ${systemToolAction("WorkspaceFind")}`,
   });
 
   renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run: mixedBatch }));
@@ -411,10 +540,11 @@ test("tool activity labels stay action-focused and show concise safe arguments",
   const longQuery = "agentic-ui ".repeat(16).trim();
   const failedSearch = projectToolActivityInspection({
     toolName: "WebSearch",
+    origin: systemToolOrigin("WebSearch"),
     status: "failed",
     arguments: { query: longQuery },
   });
-  expect(failedSearch.label.startsWith("Search ·")).toBe(true);
+  expect(failedSearch.label.startsWith(`${systemToolAction("WebSearch")} ·`)).toBe(true);
   expect(failedSearch.label).not.toContain("失败");
   expect(failedSearch.label.endsWith("...")).toBe(true);
 
@@ -431,19 +561,35 @@ test("tool activity labels stay action-focused and show concise safe arguments",
 
   const shell = projectToolActivityInspection({
     toolName: "ShellCommandTool",
+    origin: systemToolOrigin("ShellCommandTool"),
     status: "completed",
     arguments: { command: { script: "npm run check.types" }, cwd: "E:\\senera" },
   });
-  expect(shell.label).toBe("Run · npm run check.types · E:\\senera");
+  expect(shell.label).toBe(`${systemToolAction("ShellCommandTool")} · npm run check.types · E:\\senera`);
 
   const system = projectToolActivityInspection({
     toolName: "CustomSystemTool",
     status: "failed",
     arguments: { path: "Source/AgentSystem", depth: 2, token: "must-not-display" },
   });
-  expect(system.label).toContain("Run · CustomSystemTool · path=Source/AgentSystem · depth=2");
+  expect(system.label).toContain("Use · CustomSystemTool · path=Source/AgentSystem · depth=2");
   expect(system.label).not.toContain("执行失败");
   expect(system.label).not.toContain("must-not-display");
+});
+
+test("tool activity targets use one arrow and link icons instead of dot separators", () => {
+  const run = createToolBatchRun(["SeneraCommand"]);
+  const step = run.steps.find((entry) => entry.toolName === "SeneraCommand");
+  step.toolArgs = { command: "skills", action: "read", name: "frontend-experience-inspection" };
+
+  renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run }));
+
+  const label = document.querySelector("[data-tool-batch-activity-title]");
+  expect(label).toBeInTheDocument();
+  expect(label).toHaveTextContent("管理skillsreadfrontend-experience-inspection");
+  expect(label).not.toHaveTextContent("·");
+  expect(label?.querySelectorAll("[data-tool-activity-arrow]")).toHaveLength(1);
+  expect(label?.querySelectorAll("[data-tool-activity-link]")).toHaveLength(2);
 });
 
 test("browser tools use the shared batch activity with semantic action labels", () => {
@@ -457,43 +603,51 @@ test("browser tools use the shared batch activity with semantic action labels", 
     "BrowserClose",
   ]);
 
-  expect(projectToolActivityInspection({ toolName: "BrowserSnapshot", status: "completed" })).toMatchObject({
+  expect(
+    projectToolActivityInspection({
+      toolName: "BrowserSnapshot",
+      origin: systemToolOrigin("BrowserSnapshot"),
+      status: "completed",
+    }),
+  ).toMatchObject({
     category: "browser-read",
-    label: "Read",
+    label: systemToolAction("BrowserSnapshot"),
   });
   expect(projectToolStagePresentation(run)).toMatchObject({
     category: "browser",
     icon: "globe",
-    icons: ["globe"],
+    icons: ["globe", "file-text", "clock"],
     mode: "semantic-batch",
-    title: "访问外部资源",
-    summary: "Navigate · Read · Interact · Wait · Capture · Manage · Close",
+    title: systemToolGroupTitle("BrowserOpen"),
+    summary: `${systemToolAction("BrowserOpen")} · ${systemToolAction("BrowserSnapshot")} · ${systemToolAction("BrowserClick")} · ${systemToolAction("BrowserWaitForLoad")} · ${systemToolAction("BrowserScreenshot")} · ${systemToolAction("BrowserTabClose")} · ${systemToolAction("BrowserClose")}`,
   });
 
   renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run }));
-  expect(document.querySelector("[data-tool-batch-activity]")).toHaveTextContent("访问外部资源");
+  expect(document.querySelector("[data-tool-batch-activity]")).toHaveTextContent(systemToolAction("BrowserOpen"));
 });
 
 test("visual browser tools have concrete activity and stage semantics", () => {
   expect(
     projectToolActivityInspection({
       toolName: "BrowserDownload",
+      origin: systemToolOrigin("BrowserDownload"),
       status: "completed",
       arguments: { selector: "a.download" },
     }),
   ).toMatchObject({
     category: "browser-download",
-    label: "Download · a.download",
+    label: `${systemToolAction("BrowserDownload")} · a.download`,
   });
   expect(
     projectToolActivityInspection({
       toolName: "BrowserComputer",
+      origin: systemToolOrigin("BrowserComputer"),
       status: "completed",
       arguments: { actions: [{ type: "click", x: 10, y: 20 }] },
     }),
   ).toMatchObject({
     category: "browser-computer",
-    label: "Interact · BrowserComputer · click",
+    label: `${systemToolAction("BrowserComputer")} · click`,
   });
 });
 
@@ -512,6 +666,7 @@ test("conversation activity rows show at most three tool icons and a quiet overf
     }),
   );
 
+  expect(document.querySelector("[data-tool-activity-trigger]")).toHaveClass("activity-feed-row");
   expect(document.querySelectorAll("[data-tool-activity-icon]")).toHaveLength(3);
   expect(document.querySelector("[data-tool-activity-icon-overflow]")).toHaveTextContent("…");
 });
@@ -529,7 +684,7 @@ test("large mixed tool batches use one compact semantic batch activity", () => {
       ]),
     ),
   ).toMatchObject({
-    title: "探索代码库 · Run · Delegate",
+    title: systemToolAction("WorkspaceRead"),
     icons: ["file-text", "search", "git-branch"],
   });
 
@@ -546,27 +701,28 @@ test("large mixed tool batches use one compact semantic batch activity", () => {
     }),
   );
   expect(document.querySelectorAll("[data-tool-batch-activity]")).toHaveLength(1);
-  expect(document.querySelector("[data-tool-batch-activity]")).toHaveTextContent("探索代码库 · Run · Delegate");
+  expect(document.querySelector("[data-tool-batch-activity]")).toHaveTextContent(systemToolAction("WorkspaceRead"));
+  expect(document.querySelector("[data-tool-batch-activity-trigger]")).toHaveClass("activity-feed-row");
   expect(document.querySelector("[data-tool-batch-activity-items]")).not.toBeInTheDocument();
   expect(document.querySelector(".tool-activity-icon-face")).not.toBeInTheDocument();
 });
 
-test("conversation single-tool stages use the shared collapsible batch activity", () => {
+test("conversation single-tool stages use one non-duplicated activity row", () => {
   const run = createToolBatchRun(["WorkspaceGrep"]);
   expect(projectToolStagePresentation(run)).toMatchObject({
     category: "workspace-search",
     mode: "single-tool",
     status: "done",
-    title: "Search",
+    title: systemToolAction("WorkspaceGrep"),
   });
 
   renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run }));
   const stage = document.querySelector("[data-execution-stage-feed]");
-  const summary = screen.getByRole("status", { name: "Search" });
+  const summary = screen.getByRole("status", { name: systemToolAction("WorkspaceGrep") });
   expect(stage).toHaveAttribute("data-tool-stage-mode", "single-tool");
   expect(stage).toHaveClass("w-full");
   expect(summary.querySelector("[data-tool-action-icon='search'][data-tool-action-status='done']")).toBeInTheDocument();
-  expect(summary.querySelector("[data-tool-batch-activity-trigger]")).toHaveAttribute("aria-expanded", "false");
+  expect(summary.querySelector("[data-tool-batch-activity-trigger]")).not.toHaveAttribute("aria-expanded");
   expect(summary.querySelector(".lucide-check, .lucide-x")).not.toBeInTheDocument();
   expect(document.querySelector("[data-tool-batch-activity-items]")).not.toBeInTheDocument();
 });
@@ -576,13 +732,13 @@ test("conversation tool stages use runtime provenance for shell and MCP wording"
   Object.assign(
     shellRun.steps.find((step) => step.toolName),
     {
-      toolOrigin: { kind: "system", name: "Shell", capability: "host.shell-command" },
+      toolOrigin: systemToolOrigin("ShellCommandTool"),
       toolArgs: { command: { mode: "shell", dialect: "powershell", script: "npm run check.types" } },
     },
   );
   expect(projectToolStagePresentation(shellRun)).toMatchObject({
     icon: "terminal",
-    title: "Run · npm run check.types",
+    title: `${systemToolAction("ShellCommandTool")} · npm run check.types`,
   });
 
   const mcpRun = createToolBatchRun(["github__list_pull_requests"]);
@@ -601,55 +757,47 @@ test("conversation tool stages use runtime provenance for shell and MCP wording"
   Object.assign(
     grepRun.steps.find((step) => step.toolName),
     {
-      toolOrigin: { kind: "system", name: "Workspace tools", capability: "workspace.content.search" },
+      toolOrigin: systemToolOrigin("WorkspaceGrep"),
       toolArgs: { pattern: "projectToolActivity" },
     },
   );
   expect(projectToolStagePresentation(grepRun)).toMatchObject({
-    title: "Search · projectToolActivity",
+    title: `${systemToolAction("WorkspaceGrep")} · projectToolActivity`,
   });
 
   const gitRun = createToolBatchRun(["GitInspect"]);
   Object.assign(
     gitRun.steps.find((step) => step.toolName),
     {
-      toolOrigin: { kind: "system", name: "Git", capability: "repository.git.inspect" },
+      toolOrigin: systemToolOrigin("GitInspect"),
       toolArgs: { operation: "diff" },
     },
   );
   expect(projectToolStagePresentation(gitRun)).toMatchObject({
-    title: "Inspect · diff",
+    title: `${systemToolAction("GitInspect")} · diff`,
   });
 
   const agentRun = createToolBatchRun(["AgentSpawn"]);
   Object.assign(
     agentRun.steps.find((step) => step.toolName),
     {
-      toolOrigin: { kind: "system", name: "Agent delegation", capability: "orchestration.agent-spawn" },
-      toolArgs: { role: "reviewer" },
+      toolOrigin: systemToolOrigin("AgentSpawn"),
+      toolArgs: { task: "Review the workflow", agent: "reviewer" },
     },
   );
   expect(projectToolStagePresentation(agentRun)).toMatchObject({
-    title: "Delegate · reviewer",
+    title: `${systemToolAction("AgentSpawn")} · Review the workflow · reviewer`,
   });
 });
 
 test("every bundled system tool has a concrete activity action", () => {
-  const workspaceRoot = resolveWorkspaceRoot();
-  const toolFiles = globSync("System/Extensions/*/extension.json", { cwd: workspaceRoot }).flatMap((manifestPath) => {
-    const manifest = JSON.parse(readFileSync(path.resolve(workspaceRoot, manifestPath), "utf8"));
-    return (manifest.contributions ?? [])
-      .filter((contribution) => contribution.kind === "hostTool")
-      .map((contribution) => path.join(path.dirname(manifestPath), contribution.contract));
-  });
-  expect(toolFiles.length).toBeGreaterThan(0);
-  const genericTools = toolFiles
-    .map((filePath) => JSON.parse(readFileSync(path.resolve(workspaceRoot, filePath), "utf8")).name)
-    .filter((name) => projectToolActivityInspection({ toolName: name, status: "completed" }).category === "system");
+  const genericTools = [...SystemToolOrigins]
+    .filter(([, origin]) => origin.presentation === undefined)
+    .map(([name]) => name);
   expect(genericTools).toEqual([]);
 });
 
-test("delegated child runs render a flat todo activity before optional tool details", async () => {
+test("delegated child traces stay separate from task lists shown in the workflow panel", async () => {
   const user = userEvent.setup();
   const childScope = {
     parentSessionId: "session-a",
@@ -682,6 +830,17 @@ test("delegated child runs render a flat todo activity before optional tool deta
               createdAt: "2026-07-11T00:00:01.000Z",
             },
           ],
+          thinkingBlocks: [
+            {
+              id: "child-thinking-1",
+              step: 4,
+              messageIndex: 0,
+              contentIndex: 1,
+              eventSequence: 3,
+              content: "子代理正在定位相关实现。",
+              status: "streaming",
+            },
+          ],
           toolCalls: { planned: 2, started: 2, completed: 1, failed: 0 },
           activeTools: ["WorkspaceGrep"],
           todo: {
@@ -698,6 +857,11 @@ test("delegated child runs render a flat todo activity before optional tool deta
       createStep({
         id: "tool-0",
         kind: "tool",
+        agentStep: 4,
+        modelMessageIndex: 0,
+        modelContentIndex: 0,
+        eventSequence: 2,
+        startedSequence: 2,
         title: "Call WorkspaceRead",
         status: "done",
         toolName: "WorkspaceRead",
@@ -707,6 +871,11 @@ test("delegated child runs render a flat todo activity before optional tool deta
       createStep({
         id: "tool-1",
         kind: "tool",
+        agentStep: 4,
+        modelMessageIndex: 0,
+        modelContentIndex: 2,
+        eventSequence: 4,
+        startedSequence: 4,
         title: "Call WorkspaceGrep",
         status: "running",
         toolName: "WorkspaceGrep",
@@ -722,14 +891,20 @@ test("delegated child runs render a flat todo activity before optional tool deta
   expect(card).toBeInTheDocument();
   expect(card).toHaveAttribute("data-child-run-status", "running");
   expect(screen.getByText("reviewer")).toBeVisible();
+  expect(screen.queryByText("子代理正在定位相关实现。")).not.toBeInTheDocument();
+  expect(card.querySelector("[data-child-run-status-text]")).not.toHaveClass("motion-safe:animate-text-shimmer");
+  expect(card.querySelector("[data-child-run-glyph] .senera-loading-pulse")).not.toBeInTheDocument();
+  expect(card.querySelector("[data-child-run-live-update]")).not.toHaveClass("motion-safe:animate-text-shimmer");
+  expect(card.querySelector("[data-child-run-live-update] [data-text-shimmer='true']")).toBeInTheDocument();
 
-  // 清单是主视图，工具明细仍保持折叠，避免子代理把时间线撑成日志墙。
+  // Task plans belong to the workflow panel, not to the conversation trace.
   expect(card.querySelector("[data-child-run-glyph]")).toBeInTheDocument();
   expect(card).not.toHaveTextContent(/1\/3/);
-  expect(screen.getByText(frontendMessage("chat.todoProgress.title"))).toBeVisible();
-  expect(screen.getByText("读取配置入口")).toBeVisible();
-  expect(screen.getByText("检查配置")).toBeVisible();
-  expect(screen.getByText("汇总结果")).toBeVisible();
+  expect(screen.queryByText(frontendMessage("chat.todoProgress.title"))).not.toBeInTheDocument();
+  expect(screen.queryByText("读取配置入口")).not.toBeInTheDocument();
+  expect(screen.queryByText("检查配置")).not.toBeInTheDocument();
+  expect(screen.queryByText("汇总结果")).not.toBeInTheDocument();
+  expect(document.querySelector("[data-workflow-task-progress]")).not.toBeInTheDocument();
   expect(screen.queryByText("WorkspaceRead")).not.toBeInTheDocument();
   expect(screen.queryByText("WorkspaceGrep")).not.toBeInTheDocument();
   expect(document.querySelector("[data-child-run-final-report]")).not.toBeInTheDocument();
@@ -737,13 +912,19 @@ test("delegated child runs render a flat todo activity before optional tool deta
   await user.click(card.querySelector("[data-child-run-card-trigger]"));
 
   await waitFor(() => expect(document.querySelector("[data-child-run-activity-details]")).toBeVisible());
-  expect(document.querySelector("[data-child-run-todo] [role='progressbar']")).not.toBeInTheDocument();
+  expect(document.querySelector("[data-child-run-todo]")).not.toBeInTheDocument();
   const body = document.querySelector("[data-child-run-activity-details]");
   expect(body).toBeInTheDocument();
   expect(body.className).not.toMatch(/max-h-/);
   expect(body.className).not.toMatch(/overflow-y-auto/);
-  expect(body.querySelector("[data-tool-batch-activity-viewport]")).toHaveClass("tool-activity-viewport");
   expect(document.querySelector("[data-tool-batch-activity]")).toBeInTheDocument();
+  expect(body.querySelector("[data-tool-batch-activity-trigger]")).toBeInTheDocument();
+  expect(body.querySelector("[data-tool-batch-activity-items]")).not.toBeInTheDocument();
+  expect(
+    [...body.querySelectorAll("[data-child-run-trace-item]")].map((item) =>
+      item.getAttribute("data-child-run-trace-item"),
+    ),
+  ).toEqual(["tools", "thinking", "tools"]);
 });
 
 test("stage feed isolates child-run tools into cards so the parent batch stays readable", () => {
@@ -812,6 +993,38 @@ test("stage feed isolates child-run tools into cards so the parent batch stays r
   expect(batchActivity).toBeInTheDocument();
   expect(batchActivity).not.toHaveTextContent("WorkspaceRead");
   expect(batchActivity).not.toHaveTextContent("WorkspaceGrep");
+});
+
+test("all unfinished child agents shimmer independently in the workflow board", () => {
+  const childRunStep = (id, name, status) =>
+    createStep({
+      id: `child-run:${id}`,
+      kind: "delegation",
+      title: name,
+      status: "running",
+      scope: {
+        parentSessionId: "session-a",
+        parentRequestId: "run-parallel-children",
+        childRunId: id,
+        agentName: name,
+        role: "childAgent",
+      },
+      childRun: { id, status, messages: [], activeTools: [] },
+    });
+  const run = createRun({
+    requestId: "run-parallel-children",
+    status: "running",
+    endedAt: undefined,
+    steps: [childRunStep("child-a", "scout", "running"), childRunStep("child-b", "reviewer", "queued")],
+  });
+
+  renderWithFrontendProviders(React.createElement(ChildRunBoard, { run }));
+
+  const liveActivities = [...document.querySelectorAll("[data-child-run-item] [data-live-activity-text]")];
+  expect(liveActivities).toHaveLength(2);
+  liveActivities.forEach((activity) => {
+    expect(activity).toHaveClass("motion-safe:animate-text-shimmer");
+  });
 });
 
 test("completed child run surfaces its final report inside the card", async () => {

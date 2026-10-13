@@ -165,6 +165,38 @@ describe("Session manager regeneration behavior", () => {
     ]);
   });
 
+  test("does not carry the old preparation into an edited replacement input", async () => {
+    const observedPreparations: unknown[] = [];
+    const fixture = createManagerFixture({
+      loopFactory: () => ({
+        run: async (request) => {
+          observedPreparations.push(request.preparation);
+          return completedRun(request.requestId);
+        },
+      }),
+    });
+    await fixture.manager.createSession({ sessionId: "session-edited-regenerate" });
+    fixture.store.persistEntries("session-edited-regenerate", [
+      userEntry("request-original", "原始问题"),
+      assistantEntry("request-original", "原始回答"),
+    ]);
+    fixture.store.persistTurnPreparation("session-edited-regenerate", "request-original", turnPreparation("原始问题"));
+
+    await fixture.manager.regenerateFromRequest({
+      approvalMode: "agent",
+      sessionId: "session-edited-regenerate",
+      fromRequestId: "request-original",
+      requestId: "request-edited",
+      input: "修改后的问题",
+    });
+
+    expect(observedPreparations).toEqual([undefined]);
+    expect(fixture.store.loadConversation("session-edited-regenerate")).toEqual([
+      expect.objectContaining({ requestId: "request-edited", kind: "user.message", content: "修改后的问题" }),
+      expect.objectContaining({ requestId: "request-edited", kind: "assistant.decision" }),
+    ]);
+  });
+
   test("keeps the old branch isolated when active-run settlement times out", async () => {
     const activeStarted = createDeferred<void>();
     const allowRunToSettle = createDeferred<void>();

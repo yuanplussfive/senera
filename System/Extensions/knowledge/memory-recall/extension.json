@@ -1,0 +1,37 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "memory-recall",
+  "domain": "knowledge",
+  "settingsSurface": "system-tools",
+  "presentation": {
+    "category": "memory-recall",
+    "icon": "book-open",
+    "group": {
+      "id": "memory-recall",
+      "title": { "zh-CN": "回忆历史", "en-US": "Recall memory" }
+    },
+    "activity": {
+      "action": { "zh-CN": "召回记忆", "en-US": "Recall memory" },
+      "argumentPath": "/query"
+    }
+  },
+  "version": "1.0.0",
+  "displayName": {
+    "zh-CN": "长期记忆召回",
+    "en-US": "Long-Term Memory Recall"
+  },
+  "description": {
+    "zh-CN": "查询已经沉淀的长期记忆；未命中时返回明确的未命中结果。",
+    "en-US": "Recalls consolidated long-term memories and reports a miss without reading ordinary conversation history."
+  },
+  "priority": 8,
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/MemoryRecallTool.tool.json",
+      "capability": "memory.recall",
+      "recommendedForSkills": []
+    }
+  ]
+}

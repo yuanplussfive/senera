@@ -1,32 +1,36 @@
-import type { ReactNode } from "react";
+import type { ReactNode, SVGProps } from "react";
 import type { FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
+import { AppIcon, type AppIconName } from "../../shared/ui";
+
+type ContinuityIcon = AppIconName | ((props: Pick<SVGProps<SVGSVGElement>, "className" | "aria-hidden">) => ReactNode);
 
 export function ContinuityGroup({
   id,
   title,
   summary,
   children,
+  icon: Icon,
 }: {
-  id: "identity" | "recall" | "conditions" | "agenda";
-  /** Kept for call-site compatibility; group headings intentionally stay icon-free. */
-  icon?: unknown;
+  id: "identity" | "recall" | "conditions";
+  icon?: ContinuityIcon;
   title: FrontendMessageKey;
   summary?: ReactNode;
   children: ReactNode;
 }): JSX.Element {
   return (
-    <section className="px-4 py-3" data-continuity-group={id}>
-      <header className="mb-2.5 flex min-h-6 items-baseline gap-2 border-b border-line-subtle pb-2">
-        <h3 className="min-w-0 flex-1 truncate text-[11px] font-medium leading-5 text-content-primary">
+    <section className="border-b border-line-subtle px-5 py-5" data-continuity-group={id}>
+      <header className="mb-4 flex min-h-7 items-center gap-2.5 border-b border-line-subtle pb-3">
+        {Icon ? <ContinuityIconView icon={Icon} className="h-4 w-4 shrink-0 text-accent-content" /> : null}
+        <h3 className="min-w-0 flex-1 truncate text-[14px] font-semibold leading-5 text-content-primary">
           {frontendMessage(title)}
         </h3>
         {summary ? (
-          <span className="shrink-0 text-[9px] tabular-nums leading-4 text-content-muted">{summary}</span>
+          <span className="shrink-0 text-[11px] tabular-nums leading-4 text-content-muted">{summary}</span>
         ) : null}
       </header>
-      <div className="space-y-3.5">{children}</div>
+      <div className="space-y-6">{children}</div>
     </section>
   );
 }
@@ -34,15 +38,16 @@ export function ContinuityGroup({
 export function ContinuitySubsection({
   title,
   children,
+  icon: Icon,
 }: {
-  /** Kept for call-site compatibility; subsection headings intentionally stay icon-free. */
-  icon?: unknown;
+  icon?: ContinuityIcon;
   title: FrontendMessageKey;
   children: ReactNode;
 }): JSX.Element {
   return (
     <div className="first:mt-0">
-      <div className="mb-1.5 flex min-h-5 items-center border-l border-accent-border pl-2 text-[10px] font-medium leading-4 text-content-secondary">
+      <div className="mb-2 flex min-h-6 items-center gap-2 text-[12px] font-semibold leading-5 text-content-primary">
+        {Icon ? <ContinuityIconView icon={Icon} className="h-3.5 w-3.5 shrink-0 text-umber-500" /> : null}
         <h4 className="min-w-0 flex-1 truncate">{frontendMessage(title)}</h4>
       </div>
       {children}
@@ -51,7 +56,13 @@ export function ContinuitySubsection({
 }
 
 export function ContinuityEmptyText({ children }: { children: ReactNode }): JSX.Element {
-  return <p className="text-[10.5px] leading-5 text-content-muted">{children}</p>;
+  return <p className="text-[12px] leading-5 text-content-muted">{children}</p>;
+}
+
+function ContinuityIconView({ icon, className }: { icon: ContinuityIcon; className: string }): JSX.Element {
+  if (typeof icon === "string") return <AppIcon icon={icon} className={className} aria-hidden="true" />;
+  const Icon = icon;
+  return <Icon className={className} aria-hidden="true" />;
 }
 
 export function ContinuityDetail({
@@ -64,8 +75,8 @@ export function ContinuityDetail({
   compact?: boolean;
 }): JSX.Element {
   return (
-    <p className={cn("text-[10.5px] leading-5 text-content-muted", compact ? "mt-0.5" : "mt-1.5")}>
-      <span className="mr-1 text-content-disabled">{frontendMessage(label)}:</span>
+    <p className={cn("text-[12px] leading-5 text-content-secondary", compact ? "mt-0.5" : "mt-1.5")}>
+      <span className="mr-1 text-content-muted">{frontendMessage(label)}:</span>
       {value}
     </p>
   );

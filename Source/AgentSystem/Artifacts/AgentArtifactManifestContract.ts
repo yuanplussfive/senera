@@ -1,1 +1,1 @@
-export const AgentArtifactManifestWriterSchemaVersion = 3 as const;
+export const AgentArtifactManifestWriterSchemaVersion = 4 as const;

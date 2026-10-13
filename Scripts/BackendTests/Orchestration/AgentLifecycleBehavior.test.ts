@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { AgentCancellationError } from "../../../Source/AgentSystem/Core/AgentCancellation.js";
-import { AgentEventKinds, type AgentEventSink } from "../../../Source/AgentSystem/Events/AgentEvent.js";
+import {
+  AgentEventKinds,
+  type AgentDomainEvent,
+  type AgentEventSink,
+} from "../../../Source/AgentSystem/Events/AgentEvent.js";
 import { AgentDelegationService } from "../../../Source/AgentSystem/Orchestration/AgentDelegationService.js";
 import { projectAgentChildRunView } from "../../../Source/AgentSystem/Orchestration/AgentOrchestrationHostTools.js";
 import { AgentOrchestrationEventRelay } from "../../../Source/AgentSystem/Orchestration/AgentOrchestrationEventRelay.js";
@@ -18,11 +23,35 @@ import type {
 import { AgentExecutionApprovalModes } from "../../../Source/AgentSystem/Safety/AgentExecutionApprovalMode.js";
 import { AgentSessionRunDispatcher } from "../../../Source/AgentSystem/Session/AgentSessionRunDispatcher.js";
 import { AgentSkillScanner } from "../../../Source/AgentSystem/Skills/AgentSkillScanner.js";
+import { validateToolContractValue } from "../../../Source/AgentSystem/ToolRuntime/AgentToolSignatureArgumentValidator.js";
 import { cleanupDelegationTestRoots, modelConfig, openDelegationTestDatabase } from "./AgentDelegationTestSupport.js";
 
 afterEach(() => cleanupDelegationTestRoots());
 
 describe("agent lifecycle", () => {
+  test("projects an unknown run ID to a schema-valid AgentWait result", () => {
+    const run = projectAgentChildRunView(undefined, "missing-run");
+    const contract = JSON.parse(
+      readFileSync(
+        path.resolve("System", "Extensions", "coordinate", "agent-delegation", "tools", "AgentWait.tool.json"),
+        "utf8",
+      ),
+    ) as { outputSchema: Record<string, unknown> };
+
+    expect(run).toEqual({
+      runId: "missing-run",
+      state: "not_found",
+      resources: { coverage: "unknown", claims: [] },
+      delivery: { parentResultDelivered: false },
+    });
+    expect(
+      validateToolContractValue({
+        schema: contract.outputSchema,
+        value: { runs: [run], waitTimedOut: false },
+      }),
+    ).toEqual([]);
+  });
+
   test("spawns asynchronously with the package-declared default role and host-owned workspace policy", async () => {
     const harness = createHarness();
     const run = await harness.service.spawn({ task: "Inspect and improve the assigned scope." }, parentContext());
@@ -39,7 +68,7 @@ describe("agent lifecycle", () => {
       workItemId: expect.any(String),
       taskDigest: expect.any(String),
       resources: { coverage: "unscoped", claims: [] },
-      consumption: { result: false, parentWake: false },
+      delivery: { parentResultDelivered: false },
     });
     await harness.dispatcher.waitForDispatches(1);
     expect(harness.dispatcher.requests[0]).toMatchObject({
@@ -61,7 +90,7 @@ describe("agent lifecycle", () => {
       workItemId: expect.any(String),
       taskDigest: expect.any(String),
       resources: { coverage: "unscoped", claims: [] },
-      consumption: { result: false, parentWake: false },
+      delivery: { parentResultDelivered: false },
       result: { content: "Default child completed." },
     });
     harness.close();
@@ -334,6 +363,71 @@ describe("agent lifecycle", () => {
       database.close();
     }
   });
+
+  test("publishes the terminal child state even when the parent request sink is gone", async () => {
+    const database = openDelegationTestDatabase();
+    const events: AgentDomainEvent[] = [];
+    const completion = vi.fn(async () => undefined);
+    const relay = new AgentOrchestrationEventRelay();
+    relay.setSink((event) => {
+      events.push(event);
+    });
+    const dispatcher = new ControlledDispatcher();
+    const repository = new AgentSqliteChildRunRepository(database);
+    const service = new AgentDelegationService({
+      workspaceRoot: process.cwd(),
+      configuration: () => ({ config: modelConfig() }),
+      repository,
+      dispatcher,
+      events: relay,
+      completion: { id: "test.cancelled-completion", completed: completion },
+    });
+    const parentSink = vi.fn(async () => {
+      throw new Error("parent request stream is already closed");
+    });
+
+    try {
+      const run = await service.spawn({ task: "Stop cleanly." }, { ...parentContext(), onEvent: parentSink });
+      await dispatcher.waitForDispatches(1);
+
+      await service.stop(run.id, "parent-session");
+      dispatcher.complete(run.childSessionId, "late provider completion");
+      await expect(service.wait(run.id, "parent-session")).resolves.toMatchObject({
+        status: AgentChildRunStatuses.Cancelled,
+      });
+
+      expect(events.some((event) => event.kind === AgentEventKinds.ChildRunCancelled)).toBe(true);
+      expect(events.filter((event) => event.kind === AgentEventKinds.ChildRunCancelled)[0]?.eventId).toEqual(
+        expect.any(String),
+      );
+      expect(completion).not.toHaveBeenCalled();
+    } finally {
+      await service.shutdown();
+      database.close();
+    }
+  });
+
+  test("propagates parent cancellation to a detached child execution", async () => {
+    const harness = createHarness();
+    const parent = new AbortController();
+    const run = await harness.service.spawn(
+      { task: "Stop when the parent is cancelled." },
+      { ...parentContext(), signal: parent.signal },
+    );
+    await harness.dispatcher.waitForDispatches(1);
+
+    parent.abort(new AgentCancellationError("Parent stopped."));
+    await vi.waitFor(() =>
+      expect(harness.dispatcher.requestCancellation).toHaveBeenCalledWith(run.childSessionId, undefined),
+    );
+    expect(harness.service.get(run.id, "parent-session")?.status).toBe(AgentChildRunStatuses.Cancelling);
+
+    harness.dispatcher.complete(run.childSessionId, "late completion");
+    await expect(harness.service.wait(run.id, "parent-session")).resolves.toMatchObject({
+      status: AgentChildRunStatuses.Cancelled,
+    });
+    harness.close();
+  });
 });
 
 function parentContext(parentSessionId = "parent-session", parentRequestId = "parent-request") {
@@ -350,7 +444,7 @@ function parentContext(parentSessionId = "parent-session", parentRequestId = "pa
 function testRegistry() {
   const skills = new Map(
     new AgentSkillScanner()
-      .scanRoot(path.resolve("System", "Extensions", "agent-delegation", "skills"))
+      .scanRoot(path.resolve("System", "Extensions", "coordinate", "agent-delegation", "skills"))
       .map((skill) => [skill.name, skill] as const),
   );
   return {

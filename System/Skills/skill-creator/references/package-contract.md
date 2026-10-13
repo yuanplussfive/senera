@@ -14,7 +14,8 @@ lowercase kebab-case identifier.
 ```
 
 The frontmatter `description` is the discovery summary. Keep it short and
-trigger-focused. Use `metadata.senera.recommended-tools` only for exact
+trigger-focused. Use `metadata.senera.icon` for an optional shared `AppIcon`
+name shown by the `@` capability picker. Use `metadata.senera.recommended-tools` only for exact
 registered tool names; it affects loading priority and never grants access.
 Set `disable-model-invocation: true` only when the package must remain
 explicit-only; `/skill-name` still works, while automatic Skill routing and

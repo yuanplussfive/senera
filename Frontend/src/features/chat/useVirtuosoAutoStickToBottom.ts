@@ -5,9 +5,6 @@ const SCROLL_AWAY_KEYS = new Set<KeyboardEvent["key"]>(["ArrowUp", "PageUp", "Ho
 const SCROLL_TOWARD_BOTTOM_KEYS = new Set<KeyboardEvent["key"]>(["ArrowDown", "PageDown", "End"]);
 const SCROLLBAR_HIT_SLOP_PX = 24;
 const USER_SCROLL_UP_EPSILON_PX = 2;
-// react-virtuoso keeps a 100 ms size-increase observer for each autoscroll request.
-// Keep only one request alive while a streamed row settles through several measurements.
-const DYNAMIC_HEIGHT_AUTOSCROLL_COOLDOWN_MS = 180;
 type VirtuosoScrollBehavior = "auto" | "smooth";
 type ScheduledScroll = {
   behavior: VirtuosoScrollBehavior;
@@ -41,6 +38,10 @@ export function shouldRequestDynamicHeightAutoscroll({
   return shouldStickToBottom && !hasPendingRequest;
 }
 
+export function shouldAutoscrollForListHeightChange(previousHeight: number | null, nextHeight: number): boolean {
+  return previousHeight === null || nextHeight > previousHeight;
+}
+
 export function useVirtuosoAutoStickToBottom({
   itemCount,
   resetKey,
@@ -54,7 +55,6 @@ export function useVirtuosoAutoStickToBottom({
   scrollerRef: (ref: HTMLElement | Window | null) => void;
   followOutput: (isAtBottom: boolean) => "auto" | false;
   atBottomStateChange: (atBottom: boolean) => void;
-  totalListHeightChanged: (height: number) => void;
   scrollToBottom: (behavior?: VirtuosoScrollBehavior) => void;
   beginManualScroll: () => void;
   endManualScroll: () => void;
@@ -71,8 +71,6 @@ export function useVirtuosoAutoStickToBottom({
   const scrollerTargetRef = useRef<HTMLElement | Window | null>(null);
   const frameRef = useRef<number | null>(null);
   const scheduledScrollRef = useRef<ScheduledScroll | null>(null);
-  const dynamicHeightAutoscrollFrameRef = useRef<number | null>(null);
-  const dynamicHeightAutoscrollCooldownRef = useRef<number | null>(null);
   const [scroller, setScroller] = useState<HTMLElement | Window | null>(null);
   itemCountRef.current = itemCount;
 
@@ -81,37 +79,6 @@ export function useVirtuosoAutoStickToBottom({
     window.cancelAnimationFrame(frameRef.current);
     frameRef.current = null;
     scheduledScrollRef.current = null;
-  }, []);
-
-  const clearDynamicHeightAutoscrollCooldown = useCallback((): void => {
-    if (dynamicHeightAutoscrollFrameRef.current !== null) {
-      window.cancelAnimationFrame(dynamicHeightAutoscrollFrameRef.current);
-      dynamicHeightAutoscrollFrameRef.current = null;
-    }
-    if (dynamicHeightAutoscrollCooldownRef.current === null) return;
-    window.clearTimeout(dynamicHeightAutoscrollCooldownRef.current);
-    dynamicHeightAutoscrollCooldownRef.current = null;
-  }, []);
-
-  const requestDynamicHeightAutoscroll = useCallback((): void => {
-    if (
-      !shouldRequestDynamicHeightAutoscroll({
-        shouldStickToBottom: stickToBottomRef.current,
-        hasPendingRequest:
-          dynamicHeightAutoscrollFrameRef.current !== null || dynamicHeightAutoscrollCooldownRef.current !== null,
-      })
-    ) {
-      return;
-    }
-
-    dynamicHeightAutoscrollFrameRef.current = window.requestAnimationFrame(() => {
-      dynamicHeightAutoscrollFrameRef.current = null;
-      if (!stickToBottomRef.current) return;
-      ref.current?.autoscrollToBottom();
-      dynamicHeightAutoscrollCooldownRef.current = window.setTimeout(() => {
-        dynamicHeightAutoscrollCooldownRef.current = null;
-      }, DYNAMIC_HEIGHT_AUTOSCROLL_COOLDOWN_MS);
-    });
   }, []);
 
   const markScrollAwayIntent = useCallback((): void => {
@@ -330,10 +297,9 @@ export function useVirtuosoAutoStickToBottom({
   ]);
 
   useEffect(() => {
-    clearDynamicHeightAutoscrollCooldown();
     resumeStickToBottom();
     scrollToBottom();
-  }, [clearDynamicHeightAutoscrollCooldown, resetKey, resumeStickToBottom, scrollToBottom]);
+  }, [resetKey, resumeStickToBottom, scrollToBottom]);
 
   const followOutput = useCallback(
     (_isAtBottom: boolean): "auto" | false => resolveVirtuosoFollowOutput(stickToBottomRef.current),
@@ -343,9 +309,8 @@ export function useVirtuosoAutoStickToBottom({
   useEffect(
     () => () => {
       cancelPendingScroll();
-      clearDynamicHeightAutoscrollCooldown();
     },
-    [cancelPendingScroll, clearDynamicHeightAutoscrollCooldown],
+    [cancelPendingScroll],
   );
 
   return {
@@ -363,9 +328,6 @@ export function useVirtuosoAutoStickToBottom({
       ) {
         resumeStickToBottom();
       }
-    },
-    totalListHeightChanged: () => {
-      requestDynamicHeightAutoscroll();
     },
     scrollToBottom: scrollToBottomAndResume,
     beginManualScroll,

@@ -4,21 +4,20 @@ import type {
   AgentArtifactsConfig,
   AgentConfigStoreConfig,
   AgentLoopConfig,
-  AgentPresetsConfig,
+  AgentMcpConnectionsConfig,
   AgentPromptConfig,
   AgentSandboxRuntimeConfig,
   AgentServerConfig,
   AgentTodosConfig,
   AgentToolExecutionConfig,
   AgentUploadsConfig,
-  AgentWorldConfig,
   AgentInferenceBudgetConfig,
+  AgentEventWriterConfig,
 } from "./AgentRuntimeConfigTypes.js";
 import type {
   AgentContinuityLearningConfig,
-  AgentToolLearningConfig,
+  AgentStateCardConfig,
   AgentToolSearchConfig,
-  AgentVectorModelsConfig,
 } from "./AgentToolAndMemoryConfigTypes.js";
 import type {
   AgentModelGroupConfig,
@@ -47,10 +46,8 @@ export interface AgentDefaultsConfig {
   AgentLoop?: AgentLoopConfig;
   Todos?: AgentTodosConfig;
   ToolSearch?: AgentToolSearchConfig;
-  VectorModels?: AgentVectorModelsConfig;
-  ToolLearning?: AgentToolLearningConfig;
+  StateCard?: AgentStateCardConfig;
   ContinuityLearning?: AgentContinuityLearningConfig;
-  Presets?: AgentPresetsConfig;
   Artifacts?: AgentArtifactsConfig;
   Uploads?: AgentUploadsConfig;
   ActionPlanner?: AgentActionPlannerConfig;
@@ -58,11 +55,12 @@ export interface AgentDefaultsConfig {
   Server?: AgentServerConfig;
   Persistence?: {
     Kind?: "sqlite" | "memory";
+    EventWriter?: AgentEventWriterConfig;
   };
   ConfigStore?: AgentConfigStoreConfig;
   Prompt?: AgentPromptConfig;
-  World?: AgentWorldConfig;
   InferenceBudget?: AgentInferenceBudgetConfig;
+  McpConnections?: AgentMcpConnectionsConfig;
 }
 
 export interface AgentSystemConfig {
@@ -99,10 +97,8 @@ export interface AgentSystemConfig {
   AgentLoop?: AgentLoopConfig;
   Todos?: AgentTodosConfig;
   ToolSearch?: AgentToolSearchConfig;
-  VectorModels?: AgentVectorModelsConfig;
-  ToolLearning?: AgentToolLearningConfig;
+  StateCard?: AgentStateCardConfig;
   ContinuityLearning?: AgentContinuityLearningConfig;
-  Presets?: AgentPresetsConfig;
   Artifacts?: AgentArtifactsConfig;
   Uploads?: AgentUploadsConfig;
   ActionPlanner?: AgentActionPlannerConfig;
@@ -110,11 +106,12 @@ export interface AgentSystemConfig {
   Server?: AgentServerConfig;
   Persistence?: {
     Kind?: "sqlite" | "memory";
+    EventWriter?: AgentEventWriterConfig;
   };
   ConfigStore?: AgentConfigStoreConfig;
   Prompt?: AgentPromptConfig;
-  World?: AgentWorldConfig;
   InferenceBudget?: AgentInferenceBudgetConfig;
+  McpConnections?: AgentMcpConnectionsConfig;
   Extensions?: Record<string, AgentSystemExtensionConfig>;
   Plugins?: AgentPluginsConfig;
 }

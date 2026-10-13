@@ -6,7 +6,6 @@ import type {
 import { AgentDefaults } from "./AgentDefaultValues.js";
 import type { ResolvedAgentDefaultsConfig } from "./AgentDefaultValues.js";
 import { disabledOrSecondsToMilliseconds, secondsToMilliseconds } from "./AgentTimeDefaults.js";
-import { mergeAgentContinuityRecallRanking } from "../Continuity/AgentContinuityRecallPolicy.js";
 
 export function resolveAgentDefaults(
   config: Pick<AgentSystemConfig, "Defaults"> | undefined,
@@ -87,13 +86,21 @@ export function resolveAgentDefaults(
         ...AgentDefaults.ToolSearch.Memory,
         ...defaults?.ToolSearch?.Memory,
       },
+      Tokenize: {
+        ...AgentDefaults.ToolSearch.Tokenize,
+        ...defaults?.ToolSearch?.Tokenize,
+      },
       Ranking: {
         ...AgentDefaults.ToolSearch.Ranking,
         ...defaults?.ToolSearch?.Ranking,
-        MemoryExpansion: {
-          ...AgentDefaults.ToolSearch.Ranking.MemoryExpansion,
-          ...defaults?.ToolSearch?.Ranking?.MemoryExpansion,
+        ChannelWeights: {
+          ...AgentDefaults.ToolSearch.Ranking.ChannelWeights,
+          ...defaults?.ToolSearch?.Ranking?.ChannelWeights,
         },
+      },
+      Disclosure: {
+        ...AgentDefaults.ToolSearch.Disclosure,
+        ...defaults?.ToolSearch?.Disclosure,
       },
       Rerank: {
         ...AgentDefaults.ToolSearch.Rerank,
@@ -104,32 +111,12 @@ export function resolveAgentDefaults(
         },
       },
     },
-    VectorModels: {
-      Embedding: {
-        ...AgentDefaults.VectorModels.Embedding,
-        ...defaults?.VectorModels?.Embedding,
-        TimeoutMs: secondsToMilliseconds(
-          defaults?.VectorModels?.Embedding?.TimeoutSeconds ?? AgentDefaults.VectorModels.Embedding.TimeoutSeconds,
-        ),
-      },
-      Rerank: {
-        ...AgentDefaults.VectorModels.Rerank,
-        ...defaults?.VectorModels?.Rerank,
-        TimeoutMs: secondsToMilliseconds(
-          defaults?.VectorModels?.Rerank?.TimeoutSeconds ?? AgentDefaults.VectorModels.Rerank.TimeoutSeconds,
-        ),
-      },
-    },
-    ToolLearning: {
-      ...AgentDefaults.ToolLearning,
-      ...defaults?.ToolLearning,
-      Patterns: {
-        ...AgentDefaults.ToolLearning.Patterns,
-        ...defaults?.ToolLearning?.Patterns,
-      },
+    StateCard: {
+      ...AgentDefaults.StateCard,
+      ...defaults?.StateCard,
       Client: {
-        ...AgentDefaults.ToolLearning.Client,
-        ...defaults?.ToolLearning?.Client,
+        ...AgentDefaults.StateCard.Client,
+        ...defaults?.StateCard?.Client,
       },
     },
     Todos: {
@@ -146,48 +133,16 @@ export function resolveAgentDefaults(
         ...AgentDefaults.ContinuityLearning.Runtime,
         ...defaults?.ContinuityLearning?.Runtime,
       },
-      LearningGate: {
-        ...AgentDefaults.ContinuityLearning.LearningGate,
-        ...defaults?.ContinuityLearning?.LearningGate,
-      },
-      LearningContext: {
-        ...AgentDefaults.ContinuityLearning.LearningContext,
-        ...defaults?.ContinuityLearning?.LearningContext,
-      },
-      TemporalMemory: {
-        ...AgentDefaults.ContinuityLearning.TemporalMemory,
-        ...defaults?.ContinuityLearning?.TemporalMemory,
+      MemOS: {
+        ...AgentDefaults.ContinuityLearning.MemOS,
+        ...defaults?.ContinuityLearning?.MemOS,
       },
       Recall: {
         ...AgentDefaults.ContinuityLearning.Recall,
-        TurnValueClassifier: {
-          ...AgentDefaults.ContinuityLearning.Recall.TurnValueClassifier,
-          ...defaults?.ContinuityLearning?.Recall?.TurnValueClassifier,
-        },
-        Prefetch: {
-          ...AgentDefaults.ContinuityLearning.Recall.Prefetch,
-          ...defaults?.ContinuityLearning?.Recall?.Prefetch,
-        },
         PromptBudget: {
           ...AgentDefaults.ContinuityLearning.Recall.PromptBudget,
           ...defaults?.ContinuityLearning?.Recall?.PromptBudget,
         },
-        Ranking: mergeAgentContinuityRecallRanking(
-          AgentDefaults.ContinuityLearning.Recall.Ranking,
-          defaults?.ContinuityLearning?.Recall?.Ranking,
-        ),
-        Semantic: {
-          ...AgentDefaults.ContinuityLearning.Recall.Semantic,
-          ...defaults?.ContinuityLearning?.Recall?.Semantic,
-        },
-      },
-    },
-    Presets: {
-      ...AgentDefaults.Presets,
-      ...defaults?.Presets,
-      PromptBudget: {
-        ...AgentDefaults.Presets.PromptBudget,
-        ...defaults?.Presets?.PromptBudget,
       },
     },
     ActionPlanner: {
@@ -258,6 +213,10 @@ export function resolveAgentDefaults(
     Persistence: {
       ...AgentDefaults.Persistence,
       ...defaults?.Persistence,
+      EventWriter: {
+        ...AgentDefaults.Persistence.EventWriter,
+        ...defaults?.Persistence?.EventWriter,
+      },
     },
     ConfigStore: {
       ...AgentDefaults.ConfigStore,
@@ -266,53 +225,6 @@ export function resolveAgentDefaults(
     Prompt: {
       ...AgentDefaults.Prompt,
       ...defaults?.Prompt,
-    },
-    World: {
-      ...AgentDefaults.World,
-      ...defaults?.World,
-      DayPhases: [...(defaults?.World?.DayPhases ?? AgentDefaults.World.DayPhases)],
-      GoalMicroLoop: {
-        ...AgentDefaults.World.GoalMicroLoop,
-        ...defaults?.World?.GoalMicroLoop,
-        Enabled: defaults?.World?.GoalMicroLoop?.Enabled ?? AgentDefaults.World.GoalMicroLoop.Enabled,
-        MaxCandidates: defaults?.World?.GoalMicroLoop?.MaxCandidates ?? AgentDefaults.World.GoalMicroLoop.MaxCandidates,
-        ReviewDelaySeconds:
-          defaults?.World?.GoalMicroLoop?.ReviewDelaySeconds ?? AgentDefaults.World.GoalMicroLoop.ReviewDelaySeconds,
-        AllowedToolNames: [
-          ...(defaults?.World?.GoalMicroLoop?.AllowedToolNames ?? AgentDefaults.World.GoalMicroLoop.AllowedToolNames),
-        ],
-      },
-      ResidentIdle: {
-        ...AgentDefaults.World.ResidentIdle,
-        ...defaults?.World?.ResidentIdle,
-        Enabled: defaults?.World?.ResidentIdle?.Enabled ?? AgentDefaults.World.ResidentIdle.Enabled,
-        MinIntervalSeconds:
-          defaults?.World?.ResidentIdle?.MinIntervalSeconds ?? AgentDefaults.World.ResidentIdle.MinIntervalSeconds,
-        MaxIntervalSeconds:
-          defaults?.World?.ResidentIdle?.MaxIntervalSeconds ?? AgentDefaults.World.ResidentIdle.MaxIntervalSeconds,
-        BackoffMultiplier:
-          defaults?.World?.ResidentIdle?.BackoffMultiplier ?? AgentDefaults.World.ResidentIdle.BackoffMultiplier,
-        MaxPending: defaults?.World?.ResidentIdle?.MaxPending ?? AgentDefaults.World.ResidentIdle.MaxPending,
-      },
-      ActionBudget: {
-        ...AgentDefaults.World.ActionBudget,
-        ...defaults?.World?.ActionBudget,
-        MaxActionsPerWake:
-          defaults?.World?.ActionBudget?.MaxActionsPerWake ?? AgentDefaults.World.ActionBudget.MaxActionsPerWake,
-        MaxDecisionCandidatesPerWake:
-          defaults?.World?.ActionBudget?.MaxDecisionCandidatesPerWake ??
-          AgentDefaults.World.ActionBudget.MaxDecisionCandidatesPerWake,
-        RetryDelaySeconds:
-          defaults?.World?.ActionBudget?.RetryDelaySeconds ?? AgentDefaults.World.ActionBudget.RetryDelaySeconds,
-        LeaseDurationSeconds:
-          defaults?.World?.ActionBudget?.LeaseDurationSeconds ?? AgentDefaults.World.ActionBudget.LeaseDurationSeconds,
-        FairShare: defaults?.World?.ActionBudget?.FairShare ?? AgentDefaults.World.ActionBudget.FairShare,
-        SourceOrder: [...(defaults?.World?.ActionBudget?.SourceOrder ?? AgentDefaults.World.ActionBudget.SourceOrder)],
-        SourceCaps: {
-          ...AgentDefaults.World.ActionBudget.SourceCaps,
-          ...(defaults?.World?.ActionBudget?.SourceCaps ?? {}),
-        },
-      },
     },
   };
 }

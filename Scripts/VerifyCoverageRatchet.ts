@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import fg from "fast-glob";
+import { globSync } from "tinyglobby";
 import {
   CoverageMetricNames,
   coverageRatchetPath,
@@ -153,7 +153,7 @@ function readCoverageSummary(coverageDirectory: string): CoverageSummaryReport {
 }
 
 function aggregateGroupActuals(summary: CoverageSummaryReport, pattern: string): CoverageRatchetThresholds {
-  const matchedFiles = new Set(fg.sync(pattern, { cwd: workspaceRoot, absolute: false }).map(toPosixPath));
+  const matchedFiles = new Set(globSync(pattern, { cwd: workspaceRoot, absolute: false }).map(toPosixPath));
   assert.ok(matchedFiles.size > 0, `Coverage ratchet group pattern matches no files on disk: ${pattern}`);
 
   const counts = new Map<CoverageMetricName, { total: number; covered: number }>(

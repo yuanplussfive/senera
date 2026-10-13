@@ -4,7 +4,7 @@ import { AgentCancellationError } from "../Core/AgentCancellation.js";
 import { createOpaqueId, createRequestId } from "../Core/AgentIds.js";
 import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
 import { type AgentConversationProjector } from "../Conversation/AgentConversationProjector.js";
-import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
+import { AgentConversationEntryKinds, type AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import type { AgentLoopRunner } from "../Loop/AgentLoopRunner.js";
 import { type AgentMemoryService } from "../Memory/AgentMemoryService.js";
@@ -25,6 +25,7 @@ import { type AgentSessionStore } from "./AgentSessionStore.js";
 import type { AgentTurnPreparationSnapshot } from "../Loop/AgentTurnPreparationSnapshot.js";
 import { AgentPiSessionLifecycleStates, withAgentPiSessionLifecycle } from "../Pi/AgentPiSessionLifecycleMetadata.js";
 import type { AgentSessionMessageQueueMode } from "./AgentSessionMessageQueueMode.js";
+import type { AgentSessionRunRecovery } from "./AgentSessionRunRecovery.js";
 import type { AgentSessionRunControlPolicy } from "./AgentSessionRunControlPolicy.js";
 import type { AgentSessionRunResource } from "./AgentSessionRunResource.js";
 import {
@@ -55,6 +56,7 @@ import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 import { createAgentPiLogicalCacheScope } from "../Pi/AgentPiPromptCache.js";
 import type { AgentToolResourceLeaseOwner } from "../ToolRuntime/AgentToolResourceScheduler.js";
+import type { AgentExplicitActivationSet } from "../Activation/AgentActivationTypes.js";
 
 export interface AgentSessionRunCoordinatorOptions {
   store: AgentSessionStore;
@@ -71,7 +73,6 @@ export interface AgentSessionRunCoordinatorOptions {
   loopFactory: (modelProviderId?: string) => AgentLoopRunner;
   /** Projects a live session snapshot for UI/channel observers. */
   snapshotEvent?: (session: AgentSession) => AgentDomainEvent;
-  eventObserver?: AgentEventSink;
 }
 
 interface AgentSessionRunRequest {
@@ -85,6 +86,7 @@ interface AgentSessionRunRequest {
   systemPromptLayer?: import("../Orchestration/AgentRunDispatchPort.js").AgentSystemPromptLayer;
   allowedToolNames?: readonly string[];
   pinnedSkills?: readonly AgentPinnedSkillReference[];
+  activations?: AgentExplicitActivationSet;
   thinkingLevel?: import("@earendil-works/pi-ai").ModelThinkingLevel;
   inheritProjectContext?: boolean;
   sessionOwnership?: AgentSessionOwnership;
@@ -93,6 +95,9 @@ interface AgentSessionRunRequest {
   interaction?: AgentInteractionContext;
   /** Allows a durable internal wake to reclaim its own crashed run receipt. */
   reclaimRunningCommand?: boolean;
+  /** Replays a failed turn without appending a duplicate user entry. */
+  reuseUserEntryFromRequestId?: string;
+  recovery?: AgentSessionRunRecovery;
 }
 
 export type { AgentSessionAvailability } from "./AgentSessionActiveRunController.js";
@@ -122,7 +127,19 @@ export class AgentSessionRunCoordinator {
     const channelScope = request.metadata?.channel?.platform
       ? { channel: request.metadata.channel.platform }
       : undefined;
-    const userEntry = projectSessionUserEntry(this.options.conversationProjector, requestId, request, timestamp);
+    const reusedUserEntry = request.reuseUserEntryFromRequestId
+      ? session.conversation.find(
+          (entry): entry is Extract<AgentConversationEntry, { kind: "user.message" }> =>
+            entry.kind === AgentConversationEntryKinds.UserMessage &&
+            entry.requestId === request.reuseUserEntryFromRequestId,
+        )
+      : undefined;
+    if (request.reuseUserEntryFromRequestId && !reusedUserEntry) {
+      throw new Error(`User entry ${request.reuseUserEntryFromRequestId} is unavailable for recovery.`);
+    }
+    const userEntry =
+      reusedUserEntry ?? projectSessionUserEntry(this.options.conversationProjector, requestId, request, timestamp);
+    const persistUserEntry = !reusedUserEntry;
     const command = createAgentSessionMessageCommand({
       requestId,
       modelProviderId: request.modelProviderId,
@@ -132,6 +149,7 @@ export class AgentSessionRunCoordinator {
       systemPromptLayer: request.systemPromptLayer,
       allowedToolNames: request.allowedToolNames,
       pinnedSkills: request.pinnedSkills,
+      activations: request.activations,
       thinkingLevel: request.thinkingLevel,
       inheritProjectContext: request.inheritProjectContext,
       createdAt: timestamp,
@@ -149,7 +167,9 @@ export class AgentSessionRunCoordinator {
       startedAt: timestamp,
       attachments: request.attachments,
     });
-    runningSession.conversation = mergeSessionConversationEntries([...runningSession.conversation, userEntry]);
+    runningSession.conversation = persistUserEntry
+      ? mergeSessionConversationEntries([...runningSession.conversation, userEntry])
+      : mergeSessionConversationEntries(runningSession.conversation);
     const runStartedEvent = withEventContext(
       {
         eventId: createOpaqueId("event"),
@@ -160,6 +180,7 @@ export class AgentSessionRunCoordinator {
           approvalMode: request.approvalMode,
           ...(request.attachments?.length ? { attachments: request.attachments } : {}),
           ...(request.metadata?.backgroundTask ? { internal: true, displayInput: "后台任务完成通知" } : {}),
+          ...(request.recovery ? { recovery: request.recovery } : {}),
         },
       },
       { sessionId: session.id, scope: channelScope },
@@ -167,7 +188,7 @@ export class AgentSessionRunCoordinator {
     const admission = this.options.store.persistRunStart(
       runningSession,
       requestId,
-      userEntry,
+      persistUserEntry ? userEntry : undefined,
       {
         sessionId: session.id,
         requestId,
@@ -204,17 +225,18 @@ export class AgentSessionRunCoordinator {
     const onRunEvent: AgentEventSink = async (event) => {
       if (!this.activeRuns.isCurrent(session.id, run)) return;
       const contextualEvent = withEventContext(event, { sessionId: session.id, requestId, scope: channelScope });
-      await this.observeEvent(contextualEvent);
       await emitAgentEvent(request.onEvent, contextualEvent);
     };
     let terminalSessionCommitted = false;
     let terminalCommitFailed = false;
+    let loop: AgentLoopRunner | undefined;
+    let completedResult: Awaited<ReturnType<AgentLoopRunner["run"]>> | undefined;
+    let learningFinalized = false;
 
     try {
       await emitAgentEvent(request.onEvent, runStartedEvent);
-      const workingConversation = [...session.conversation];
       const turnTerminalEvents: AgentDomainEvent[] = [];
-      const loop = this.options.loopFactory(request.modelProviderId);
+      loop = this.options.loopFactory(request.modelProviderId);
       const effectiveModel = loop.modelProvider
         ? {
             sessionId: session.id,
@@ -252,17 +274,19 @@ export class AgentSessionRunCoordinator {
         input: request.input,
         step: 1,
         preparation: request.preparation,
-        conversationEntries: workingConversation,
         terminalEvents: turnTerminalEvents,
         onEvent: onRunEvent,
       });
+      completedResult = result;
       const allFreshEntries: AgentConversationEntry[] = [];
       const pendingEntries: AgentConversationEntry[] = [];
       const pendingStepTraces = [] as typeof result.stepTraces;
       const allExecutedTools = [] as typeof result.executedTools;
-      const allContinuityRuleDeliveryUris: string[] = [];
 
-      if (!this.activeRuns.isCurrent(session.id, run)) return;
+      if (!this.activeRuns.isCurrent(session.id, run)) {
+        loop.discardCompletedTurn?.(completedResult);
+        return;
+      }
       const completedAt = new Date().toISOString();
       const assistantEntry = this.options.conversationProjector.projectAssistantDecision(
         requestId,
@@ -285,16 +309,12 @@ export class AgentSessionRunCoordinator {
             }
           : undefined,
       );
-      const freshEntries = collectFreshConversationEntries(session.conversation, [
-        ...result.conversationEntries,
-        assistantEntry,
-      ]);
+      const freshEntries = collectFreshConversationEntries(session.conversation, [assistantEntry]);
       allFreshEntries.push(...freshEntries);
       const turnStepTraces = stampSessionStepTraces(result.stepTraces, timestamp, completedAt);
       pendingEntries.push(...freshEntries);
       pendingStepTraces.push(...turnStepTraces);
       allExecutedTools.push(...result.executedTools);
-      allContinuityRuleDeliveryUris.push(...(result.continuityRuleDeliveryUris ?? []));
       terminalEvents.push(...turnTerminalEvents);
 
       run.terminalStatus = "completed";
@@ -347,7 +367,8 @@ export class AgentSessionRunCoordinator {
       }
       replaceAgentSessionState(session, completedSession);
       terminalSessionCommitted = true;
-      this.acknowledgeContinuityRuleDeliveries(allContinuityRuleDeliveryUris, completedAt);
+      loop.finalizeCompletedTurn?.(completedResult);
+      learningFinalized = true;
       this.activeRuns.detachTerminalRun(session.id, run);
       await this.publishTerminalEvents(request.onEvent, terminalEvents);
       this.recordCompletedTurn({
@@ -360,8 +381,10 @@ export class AgentSessionRunCoordinator {
         terminal: result.terminal,
         executedTools: allExecutedTools,
         modelProvider: result.modelProvider,
+        stateCard: completedResult.stateCard,
       });
     } catch (error) {
+      if (!learningFinalized) loop?.discardCompletedTurn?.(completedResult);
       if (!this.activeRuns.isCurrent(session.id, run)) {
         return;
       }
@@ -468,7 +491,6 @@ export class AgentSessionRunCoordinator {
     readonly step: number;
     readonly preparation?: AgentTurnPreparationSnapshot;
     readonly loadedToolNames?: readonly string[];
-    readonly conversationEntries: readonly AgentConversationEntry[];
     readonly terminalEvents: AgentDomainEvent[];
     readonly onEvent: AgentEventSink;
   }): Promise<Awaited<ReturnType<AgentLoopRunner["run"]>>> {
@@ -487,11 +509,12 @@ export class AgentSessionRunCoordinator {
       input: input.input,
       attachments: input.request.attachments,
       approvalMode: input.request.approvalMode,
-      conversationEntries: [...input.conversationEntries],
       loadedToolNames: loadedToolNames ? [...loadedToolNames] : undefined,
       systemPromptLayer: input.request.systemPromptLayer,
       allowedToolNames: input.request.allowedToolNames,
       pinnedSkills: input.request.pinnedSkills,
+      explicitActivations: input.request.activations?.explicit,
+      activationCatalogRevision: input.request.activations?.catalogRevision,
       thinkingLevel: input.request.thinkingLevel,
       inheritProjectContext: input.request.inheritProjectContext,
       resourceOwner,
@@ -561,18 +584,6 @@ export class AgentSessionRunCoordinator {
     }
   }
 
-  private acknowledgeContinuityRuleDeliveries(ruleUris: readonly string[] | undefined, deliveredAt: string): void {
-    if (!ruleUris || ruleUris.length === 0) return;
-    try {
-      this.options.memory.acknowledgeRuleDeliveries(ruleUris, deliveredAt);
-    } catch (error) {
-      this.options.logger?.warn("continuity.rule_delivery.acknowledgement_failed", {
-        ruleCount: ruleUris.length,
-        error: serializeError(error),
-      });
-    }
-  }
-
   private async replayDurableRunEvents(
     sessionId: string,
     requestId: string,
@@ -599,7 +610,6 @@ export class AgentSessionRunCoordinator {
   ): Promise<void> {
     for (const event of events) {
       try {
-        await this.observeEvent(event);
         await emitAgentEvent(onEvent, event);
       } catch (error) {
         this.options.logger?.warn("session.terminal_event.publish_failed", {
@@ -620,19 +630,7 @@ export class AgentSessionRunCoordinator {
     scope: Record<string, string> | undefined,
   ): Promise<void> {
     const contextual = withEventContext(event, { sessionId, requestId, scope });
-    await this.observeEvent(contextual);
     await emitAgentEvent(onEvent, contextual);
-  }
-
-  private async observeEvent(event: AgentDomainEvent): Promise<void> {
-    try {
-      await emitAgentEvent(this.options.eventObserver, event);
-    } catch (error) {
-      this.options.logger?.warn("continuity.event_observer.failed", {
-        kind: event.kind,
-        error: serializeError(error),
-      });
-    }
   }
 
   async cancelActiveRun(request: {
@@ -654,6 +652,7 @@ export class AgentSessionRunCoordinator {
     attachments?: AgentUploadAttachment[];
     metadata?: AgentConversationEntryMetadata;
     interaction?: AgentInteractionContext;
+    activations?: AgentExplicitActivationSet;
     queueMode: AgentSessionMessageQueueMode;
     onEvent?: AgentEventSink;
   }): Promise<boolean> {
@@ -678,6 +677,7 @@ export class AgentSessionRunCoordinator {
     input: string;
     onEvent?: AgentEventSink;
     requestId?: string;
+    metadata?: AgentConversationEntryMetadata;
     interaction?: AgentInteractionContext;
   }): Promise<boolean> {
     return this.activeRuns.followUpActiveRun(request);

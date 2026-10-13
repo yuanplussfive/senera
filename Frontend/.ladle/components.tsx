@@ -7,6 +7,7 @@ import {
   readSystemTheme,
   type ResolvedTheme,
 } from "../src/shared/theme/themeModel";
+import { TooltipProvider } from "../src/shared/ui";
 
 export const Provider: GlobalProvider = ({ children, globalState }) => {
   const resolvedTheme = resolveLadleTheme(globalState.theme);
@@ -23,7 +24,7 @@ export const Provider: GlobalProvider = ({ children, globalState }) => {
     });
   }, [resolvedTheme]);
 
-  return <>{children}</>;
+  return <TooltipProvider delayDuration={300}>{children}</TooltipProvider>;
 };
 
 function resolveLadleTheme(theme: GlobalState["theme"]): ResolvedTheme {

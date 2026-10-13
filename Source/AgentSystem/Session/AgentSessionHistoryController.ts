@@ -1,9 +1,11 @@
 import type { AgentEventSink } from "../Events/AgentEvent.js";
-import { AgentEventKinds, emitAgentEvent } from "../Events/AgentEvent.js";
+import { AgentEventKinds, emitAgentEvent, type AgentEventEnvelope } from "../Events/AgentEvent.js";
+import { sha256Hex } from "../Core/AgentHash.js";
 import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
 import type { AgentLocalizedMessage } from "../I18n/AgentMessageCatalog.js";
 import { projectAgentErrorMessage, projectAgentMessage } from "../I18n/AgentMessageProjection.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
+import { AgentConversationEntryKinds } from "../Conversation/AgentConversation.js";
 import type { AgentTurnPreparationSnapshot } from "../Loop/AgentTurnPreparationSnapshot.js";
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
 import type { AgentSession } from "./AgentSession.js";
@@ -18,9 +20,16 @@ import {
 } from "./AgentSessionLifecycleMetadata.js";
 import type { AgentSessionMessageAcceptance, AgentSessionMessageRequest } from "./AgentSessionMessageCoordinator.js";
 import type { AgentSessionRunCoordinator } from "./AgentSessionRunCoordinator.js";
+import type { AgentExplicitActivationSet } from "../Activation/AgentActivationTypes.js";
 import type { AgentSessionStore } from "./AgentSessionStore.js";
 import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
+import {
+  AgentSessionContinuationInput,
+  AgentSessionRecoveryModes,
+  readAgentSessionRecoveryModes,
+  type AgentSessionRecoveryMode,
+} from "./AgentSessionRunRecovery.js";
 
 export interface AgentSessionHistoryReplayRequest {
   readonly sessionId: string;
@@ -45,6 +54,19 @@ export interface AgentSessionRegenerateRequest {
   readonly input: string;
   readonly approvalMode: AgentExecutionApprovalMode;
   readonly attachments?: AgentUploadAttachment[];
+  readonly activations?: AgentExplicitActivationSet;
+  readonly onEvent?: AgentEventSink;
+}
+
+export interface AgentSessionRetryRequest {
+  readonly sessionId: string;
+  readonly failedRequestId: string;
+  readonly requestId: string;
+  readonly recoveryMode: AgentSessionRecoveryMode;
+  readonly modelProviderId?: string;
+  readonly thinkingLevel?: ModelThinkingLevel;
+  readonly approvalMode: AgentExecutionApprovalMode;
+  readonly activations?: AgentExplicitActivationSet;
   readonly onEvent?: AgentEventSink;
 }
 
@@ -91,7 +113,11 @@ export class AgentSessionHistoryController {
         lookup.session.metadata = clearAgentSessionRegenerationLineage(lookup.session.metadata);
         this.options.store.persistMetadata(lookup.session);
       }
-      await this.emitSessionTruncated(request, truncated?.removedEntries ?? 0);
+      await this.emitSessionTruncated(
+        request,
+        truncated?.removedEntries ?? 0,
+        truncated?.kind === "committed" ? truncated.removedRequestIds : undefined,
+      );
     });
   }
 
@@ -117,6 +143,8 @@ export class AgentSessionHistoryController {
           (inheritedLineage
             ? this.options.store.loadTurnPreparation(request.sessionId, inheritedLineage.currentRequestId)
             : undefined);
+        const reusablePreparation =
+          preparation && preparation.inputDigest === sha256Hex(request.input) ? preparation : undefined;
         if (lookup.kind === "found") {
           await this.discardActiveRunForRegeneration(lookup.session, request);
         }
@@ -148,8 +176,11 @@ export class AgentSessionHistoryController {
             currentRequestId: request.requestId,
           });
           this.options.store.persistMetadata(lookup.session);
-          if (preparation) {
-            this.options.store.persistTurnPreparation(request.sessionId, request.requestId, preparation);
+          // Carry the preparation only when this is a true regeneration of
+          // the same user input. An edited message must prepare from its new
+          // digest; otherwise the old turn can be mistaken for the new one.
+          if (reusablePreparation) {
+            this.options.store.persistTurnPreparation(request.sessionId, request.requestId, reusablePreparation);
           }
         }
         await this.emitSessionTruncated(
@@ -160,6 +191,7 @@ export class AgentSessionHistoryController {
             onEvent: request.onEvent,
           },
           mutationResult?.removedEntries ?? 0,
+          mutationResult?.kind === "committed" ? mutationResult.removedRequestIds : undefined,
         );
         if (!this.controlEpoch.isCurrent(token)) {
           await this.emitSupersededRegeneration(request);
@@ -174,7 +206,8 @@ export class AgentSessionHistoryController {
           input: request.input,
           approvalMode: request.approvalMode,
           attachments: request.attachments,
-          preparation,
+          activations: request.activations,
+          preparation: reusablePreparation,
           onEvent: request.onEvent,
         });
         completion = accepted.completion;
@@ -183,6 +216,86 @@ export class AgentSessionHistoryController {
     } finally {
       this.controlEpoch.retire(token);
     }
+  }
+
+  async retry(request: AgentSessionRetryRequest): Promise<void> {
+    await this.options.ready();
+    await this.options.admissions.run(request.sessionId, async () => {
+      const lookup = this.options.store.get(request.sessionId);
+      if (lookup.kind === "missing") {
+        throw new Error(`Session ${request.sessionId} was not found.`);
+      }
+      if (this.options.runs.hasActiveRun(request.sessionId)) {
+        throw new Error(`Session ${request.sessionId} still has an active run.`);
+      }
+
+      await this.recoverSession(request.sessionId);
+      lookup.session.conversation = this.options.store.loadConversation(request.sessionId);
+      const snapshot = this.options.store.loadRunSnapshot(request.sessionId, request.failedRequestId);
+      if (!snapshot) throw new Error(`Run ${request.failedRequestId} was not found.`);
+      if (!readAgentSessionRecoveryModes(snapshot.status).includes(request.recoveryMode)) {
+        throw new Error(`Run ${request.failedRequestId} is not terminal and cannot be recovered.`);
+      }
+
+      const loadRunStartedEvent = (requestId: string): AgentEventEnvelope | undefined =>
+        this.options.store.loadRunEvent(request.sessionId, requestId, AgentEventKinds.RunStarted);
+      const runStartedEvent = loadRunStartedEvent(request.failedRequestId);
+      const sourceRequestId = resolveRecoverySourceRequestId(
+        lookup.session.conversation,
+        request.failedRequestId,
+        runStartedEvent,
+        loadRunStartedEvent,
+      );
+      const sourceEntry = lookup.session.conversation.find(
+        (entry): entry is Extract<AgentSession["conversation"][number], { kind: "user.message" }> =>
+          entry.kind === AgentConversationEntryKinds.UserMessage && entry.requestId === sourceRequestId,
+      );
+      const input =
+        request.recoveryMode === AgentSessionRecoveryModes.Retry
+          ? requireRecoveryUserInput(sourceEntry, request.failedRequestId)
+          : AgentSessionContinuationInput;
+      const attachments = sourceEntry?.attachments ?? readRunStartedAttachments(runStartedEvent);
+      const preparation = this.options.store.loadTurnPreparation(request.sessionId, request.failedRequestId);
+
+      if (request.recoveryMode === AgentSessionRecoveryModes.Retry) {
+        if (preparation?.piBranchBoundaryId) {
+          const rewound = await this.options.mutations.rewindForRetry({
+            session: lookup.session,
+            preparation,
+          });
+          if (!rewound) throw new Error(`Pi session could not rewind run ${request.failedRequestId}.`);
+        }
+      }
+
+      const modelProviderId = request.modelProviderId ?? snapshot.modelProvider?.id;
+      const completion = this.options.runs.runTurn(lookup.session, {
+        requestId: request.requestId,
+        modelProviderId,
+        thinkingLevel: request.thinkingLevel,
+        input,
+        approvalMode: request.approvalMode,
+        attachments,
+        activations: request.activations,
+        preparation: request.recoveryMode === AgentSessionRecoveryModes.Retry ? preparation : undefined,
+        recovery: {
+          mode: request.recoveryMode,
+          sourceRequestId: request.failedRequestId,
+        },
+        ...(request.recoveryMode === AgentSessionRecoveryModes.Retry
+          ? { reuseUserEntryFromRequestId: sourceRequestId }
+          : {
+              activations: request.activations,
+              metadata: {
+                recovery: {
+                  mode: request.recoveryMode,
+                  sourceRequestId: request.failedRequestId,
+                },
+              },
+            }),
+        onEvent: request.onEvent,
+      });
+      await completion;
+    });
   }
 
   invalidate(sessionId: string): void {
@@ -284,6 +397,7 @@ export class AgentSessionHistoryController {
       onEvent?: AgentEventSink;
     },
     removedEntries: number,
+    removedRequestIds?: readonly string[],
   ): Promise<void> {
     return emitAgentEvent(request.onEvent, {
       kind: AgentEventKinds.SessionTruncated,
@@ -293,6 +407,7 @@ export class AgentSessionHistoryController {
         fromRequestId: request.requestId,
         removedEntries,
         replacementRequestId: request.replacementRequestId,
+        ...(removedRequestIds && removedRequestIds.length > 0 ? { removedRequestIds: [...removedRequestIds] } : {}),
       },
     });
   }
@@ -319,4 +434,49 @@ export class AgentSessionHistoryController {
 
 function elapsedMilliseconds(startedAt: number): number {
   return Math.max(0, Math.round((performance.now() - startedAt) * 100) / 100);
+}
+
+function resolveRecoverySourceRequestId(
+  entries: readonly { kind: string; requestId: string }[],
+  requestId: string,
+  runStartedEvent: AgentEventEnvelope | undefined,
+  loadRunStartedEvent: (requestId: string) => AgentEventEnvelope | undefined,
+): string {
+  const visited = new Set<string>();
+  let current = requestId;
+  while (!visited.has(current)) {
+    visited.add(current);
+    if (
+      entries.some((entry) => entry.kind === AgentConversationEntryKinds.UserMessage && entry.requestId === current)
+    ) {
+      return current;
+    }
+    const next = readRecoverySourceRequestId(runStartedEvent);
+    if (!next || next === current) return current;
+    current = next;
+    runStartedEvent = loadRunStartedEvent(current);
+  }
+  return current;
+}
+
+function readRecoverySourceRequestId(started: AgentEventEnvelope | undefined): string | undefined {
+  if (!started || !started.data || typeof started.data !== "object") return undefined;
+  const recovery = (started.data as { recovery?: unknown }).recovery;
+  if (!recovery || typeof recovery !== "object") return undefined;
+  const sourceRequestId = (recovery as { sourceRequestId?: unknown }).sourceRequestId;
+  return typeof sourceRequestId === "string" && sourceRequestId ? sourceRequestId : undefined;
+}
+
+function readRunStartedAttachments(started: AgentEventEnvelope | undefined): AgentUploadAttachment[] | undefined {
+  if (!started || !started.data || typeof started.data !== "object") return undefined;
+  const attachments = (started.data as { attachments?: unknown }).attachments;
+  return Array.isArray(attachments) ? (attachments as AgentUploadAttachment[]) : undefined;
+}
+
+function requireRecoveryUserInput(
+  entry: Extract<AgentSession["conversation"][number], { kind: "user.message" }> | undefined,
+  requestId: string,
+): string {
+  if (!entry) throw new Error(`Run ${requestId} has no durable user entry to retry.`);
+  return entry.content;
 }

@@ -8,15 +8,12 @@ import type {
   AgentModelThinkingProfile,
   AgentModelThinkingProfileConfig,
 } from "../ModelEndpoints/AgentModelThinking.js";
-import type { ThinkingLevelMap } from "@earendil-works/pi-ai";
 
 export interface AgentModelProviderConfig {
   Id: string;
   ProviderId: string;
   Icon?: string;
   Capabilities?: AgentModelCapabilitiesConfig;
-  /** Explicit Pi-level overrides. Missing values come from Pi model metadata. */
-  ThinkingLevelMap?: ThinkingLevelMap;
   ThinkingProfiles?: AgentModelThinkingProfileConfig[];
   DefaultThinkingLevel?: AgentModelThinkingLevel;
   ToolPlanningMode?: AgentModelToolPlanningMode;
@@ -41,8 +38,6 @@ export interface AgentModelProviderConfig {
 
 export interface AgentModelCapabilitiesConfig {
   Chat?: boolean;
-  Embedding?: boolean;
-  Rerank?: boolean;
   Vision?: boolean;
   ImageOutput?: boolean;
   Reasoning?: boolean;
@@ -72,6 +67,8 @@ export interface AgentModelProviderEndpointConfig {
   Icon?: string;
   Enabled?: boolean;
   Kind?: "OpenAICompatible";
+  /** Protocol used when a new model is created for this provider. */
+  DefaultEndpoint?: AgentModelEndpointKind;
   BaseUrl?: string;
   ApiKey?: string;
   ApiVersion?: string;
@@ -87,6 +84,7 @@ export interface ResolvedAgentModelProviderEndpointConfig {
   Icon: string;
   Enabled: boolean;
   Kind: "OpenAICompatible";
+  DefaultEndpoint?: AgentModelEndpointKind;
   BaseUrl: string;
   ApiKey: string;
   ApiVersion: string;
@@ -125,7 +123,6 @@ export interface ResolvedAgentModelProviderConfig {
   Capabilities?: AgentModelCapabilitiesConfig;
   /** Preserves whether a capability was explicitly declared or inherited. */
   DeclaredCapabilities?: AgentModelCapabilitiesConfig;
-  ThinkingLevelMap?: ThinkingLevelMap;
   ThinkingProfiles?: AgentModelThinkingProfileConfig[];
   DefaultThinkingLevel?: AgentModelThinkingLevel;
   ToolPlanningMode: AgentModelToolPlanningMode;

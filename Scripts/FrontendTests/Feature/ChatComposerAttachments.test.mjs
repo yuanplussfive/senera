@@ -1,5 +1,6 @@
 import React from "react";
 import { act, cleanup, screen, waitFor } from "@testing-library/react";
+import { renderHook } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
@@ -16,6 +17,7 @@ vi.mock("../../../Frontend/src/api/uploadClient.ts", async (importOriginal) => (
 
 const { ChatComposer } = await import("../../../Frontend/src/features/chat/ChatComposer.tsx");
 const { UploadPreviewProvider } = await import("../../../Frontend/src/features/chat/UploadPreviewRegistry.tsx");
+const { useComposerAttachments } = await import("../../../Frontend/src/features/chat/useComposerAttachments.ts");
 
 afterEach(() => {
   cleanup();
@@ -23,6 +25,32 @@ afterEach(() => {
   uploadFileMock.mockReset();
   vi.clearAllMocks();
   vi.unstubAllGlobals();
+});
+
+test("workspace attachment uploads finish after unmount and restore only in their original workspace", async () => {
+  let finish;
+  uploadFileMock.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const options = {
+    draftKey: "workspace-attachment-a",
+    uploadUrl: "http://server/api/resources?workspaceId=a",
+    interactionLocked: false,
+  };
+  const wrapper = ({ children }) => React.createElement(UploadPreviewProvider, null, children);
+  const a = renderHook(() => useComposerAttachments(options), { wrapper });
+  act(() => a.result.current.enqueueFiles([new File(["hello"], "hello.txt", { type: "text/plain" })]));
+  a.unmount();
+  const b = renderHook(() => useComposerAttachments({ ...options, draftKey: "workspace-attachment-b" }), { wrapper });
+  const attachment = { resourceUri: "senera://resource/upload-a", name: "hello.txt", mime: "text/plain", size: 5 };
+  await act(async () => finish(attachment));
+  expect(b.result.current.pendingAttachments).toEqual([]);
+  const restored = renderHook(() => useComposerAttachments(options), { wrapper });
+  expect(restored.result.current.collectUploadedAttachments()).toEqual([attachment]);
+  act(() => restored.result.current.removeAttachment(restored.result.current.pendingAttachments[0].id));
 });
 
 test("chat composer waits for an attachment upload and sends the uploaded reference", async () => {
@@ -222,17 +250,11 @@ function createComposerProps(overrides = {}) {
       onSaveConfig: vi.fn(() => null),
       onFetchProviderModels: vi.fn(),
     },
-    presetConfig: {
-      presets: [],
-      worldPackages: [],
-      activePresetName: null,
-      presetsEnabled: true,
-      presetRootDir: "",
-      presetOperations: {},
-      onRefreshPresets: vi.fn(),
-      onSavePreset: vi.fn(() => null),
-      onDeletePreset: vi.fn(() => null),
-      onSetActivePreset: vi.fn(() => null),
+    personaConfig: {
+      corePersona: "",
+      languageStyle: "",
+      operation: null,
+      onSave: vi.fn(() => null),
     },
     runtime: {
       socketStatus: "open",

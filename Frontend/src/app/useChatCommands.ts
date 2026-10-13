@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
 import { toast } from "sonner";
-import type { ModelThinkingLevel, UploadAttachmentData, WsRequest } from "../api/eventTypes";
+import type { ExplicitActivationSet, ModelThinkingLevel, UploadAttachmentData, WsRequest } from "../api/eventTypes";
 import type { ApprovalBatchReference, ApprovalDecision } from "../api/approvalEventTypes";
 import type { InteractionInputAction, InteractionInputContent } from "../api/eventTypes";
 import type { SocketStatus } from "../api/useAgentSocket";
-import { readActiveRun, useStore, type ChatMessage } from "../store/sessionStore";
+import { readActiveRun, useStore, type ChatMessage, type SessionRecord } from "../store/sessionStore";
+import { blocksSessionInput, readSessionHydrationState } from "../store/session/sessionHydration";
 import { generateId } from "../lib/util";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import type { ExecutionApprovalMode } from "../api/executionApprovalMode";
@@ -16,6 +17,7 @@ export interface RegenerateFromRequest {
   attachments?: UploadAttachmentData[];
   modelProviderId?: string;
   thinkingLevel?: ModelThinkingLevel;
+  activations?: ExplicitActivationSet;
 }
 
 export interface UseChatCommandsOptions {
@@ -25,7 +27,7 @@ export interface UseChatCommandsOptions {
     requestId: string,
     input: string,
     attachments?: UploadAttachmentData[],
-    options?: { createRun?: boolean },
+    options?: { createRun?: boolean; metadata?: import("../api/eventTypes").ConversationEntryMetadata },
   ) => void;
   lastSendRef: MutableRefObject<LastSentMessage | null>;
   registerSession: (sessionId: string, title?: string, modelProviderId?: string | null) => void;
@@ -40,6 +42,8 @@ export interface ChatCommandsHandle {
   editUserMessage: (message: ChatMessage, nextContent: string) => void;
   forkFromMessage: (message: Pick<ChatMessage, "requestId">) => void;
   regenerateMessage: (message: ChatMessage) => void;
+  retryRun: (message: ChatMessage) => void;
+  continueRun: (message: ChatMessage) => void;
   resolveApproval: (approvalId: string, decision: ApprovalDecision) => void;
   resolveApprovalBatch: (batch: ApprovalBatchReference, decision: ApprovalDecision) => void;
   resolveInteractionInput: (
@@ -47,7 +51,12 @@ export interface ChatCommandsHandle {
     action: InteractionInputAction,
     content?: InteractionInputContent,
   ) => void;
-  sendMessage: (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode) => boolean;
+  sendMessage: (
+    input: string,
+    attachments?: UploadAttachmentData[],
+    queueMode?: MessageQueueMode,
+    activations?: ExplicitActivationSet,
+  ) => boolean;
 }
 
 export type MessageQueueMode = Extract<WsRequest, { type: "session.message" }>["queueMode"];
@@ -61,27 +70,54 @@ export interface LastSentMessage {
   thinkingLevel?: ModelThinkingLevel;
   approvalMode: ExecutionApprovalMode;
   queueMode?: MessageQueueMode;
+  activations?: ExplicitActivationSet;
 }
 
 export type SendTargetResolution =
-  | { kind: "blocked_history_loading"; sessionId: string }
+  | { kind: "blocked_catalog_loading"; sessionId: string | null }
+  | { kind: "blocked_history_loading"; sessionId: string | null }
   | { kind: "ready"; sessionId: string; shouldCreateSession: boolean };
 
 export function resolveSendTargetSession({
   activeSessionId,
   createSessionId,
+  catalogSynced,
+  historyFailedIds,
+  historyLoadedIds,
   historyLoadingIds,
   missingOnServerIds,
+  sessions,
 }: {
   activeSessionId: string | null;
   createSessionId: () => string;
   historyLoadingIds: Record<string, boolean>;
+  historyLoadedIds: Record<string, boolean>;
+  historyFailedIds: Record<string, boolean>;
+  sessions: Record<string, SessionRecord>;
+  catalogSynced: boolean;
   missingOnServerIds: Record<string, boolean>;
 }): SendTargetResolution {
-  if (activeSessionId && historyLoadingIds[activeSessionId]) {
-    return { kind: "blocked_history_loading", sessionId: activeSessionId };
+  if (!catalogSynced && !activeSessionId) {
+    return { kind: "blocked_catalog_loading", sessionId: null };
   }
-  if (!activeSessionId || missingOnServerIds[activeSessionId]) {
+  if (activeSessionId) {
+    const session = sessions[activeSessionId];
+    const hydrationState = readSessionHydrationState({
+      catalogSynced,
+      session: session ?? null,
+      historyLoaded: Boolean(historyLoadedIds[activeSessionId]),
+      historyLoading: Boolean(historyLoadingIds[activeSessionId]),
+      historyFailed: Boolean(historyFailedIds[activeSessionId]),
+    });
+    if (blocksSessionInput(hydrationState)) {
+      return {
+        kind: hydrationState === "catalog_loading" ? "blocked_catalog_loading" : "blocked_history_loading",
+        sessionId: activeSessionId,
+      };
+    }
+  }
+  const activeSessionMissingFromCatalog = activeSessionId && catalogSynced && !sessions[activeSessionId];
+  if (!activeSessionId || missingOnServerIds[activeSessionId] || activeSessionMissingFromCatalog) {
     return { kind: "ready", sessionId: createSessionId(), shouldCreateSession: true };
   }
   return { kind: "ready", sessionId: activeSessionId, shouldCreateSession: false };
@@ -99,6 +135,7 @@ export function findRegenerateInput({
       kind: "found";
       input: string;
       requestId: string;
+      activations?: ExplicitActivationSet;
     }
   | { kind: "missing_request" }
   | { kind: "not_found" } {
@@ -119,6 +156,7 @@ export function findRegenerateInput({
     input: userMessage.content,
     attachments: userMessage.attachments,
     requestId: message.requestId,
+    activations: userMessage.metadata?.activation,
   };
 }
 
@@ -173,6 +211,7 @@ export function useChatCommands({
         input: request.nextInput,
         approvalMode,
         attachments: request.attachments,
+        activations: request.activations,
       });
       if (!ok) {
         toast.error(frontendMessage("chat.operationDisconnected"));
@@ -188,8 +227,11 @@ export function useChatCommands({
         modelProviderId: request.modelProviderId,
         thinkingLevel: request.thinkingLevel,
         approvalMode,
+        activations: request.activations,
       };
-      appendUserMessage(request.sessionId, requestId, request.nextInput, request.attachments);
+      appendUserMessage(request.sessionId, requestId, request.nextInput, request.attachments, {
+        metadata: request.activations ? { activation: request.activations } : undefined,
+      });
       return true;
     },
     [appendUserMessage, lastSendRef, send],
@@ -232,10 +274,73 @@ export function useChatCommands({
         attachments: result.attachments,
         modelProviderId: useStore.getState().selectedModelProviderId ?? undefined,
         thinkingLevel: useStore.getState().selectedThinkingLevel ?? undefined,
+        activations: result.activations,
       });
     },
     [activeSessionId, regenerateFromRequest, status],
   );
+
+  const recoverRun = useCallback(
+    (message: ChatMessage, recoveryMode: "retry" | "continue"): void => {
+      if (!activeSessionId || status !== "open" || !message.requestId) return;
+      const state = useStore.getState();
+      const failedRun = state.sessions[activeSessionId]?.runs.find((run) => run.requestId === message.requestId);
+      if (!failedRun || (failedRun.status !== "failed" && failedRun.status !== "cancelled")) return;
+      const sourceUserMessage = state.sessions[activeSessionId]?.messages.find(
+        (candidate) => candidate.role === "user" && candidate.requestId === message.requestId,
+      );
+      const activations = sourceUserMessage?.metadata?.activation;
+      const requestId = generateId();
+      const approvalMode = state.executionApprovalMode;
+      if (!failedRun.recoveryModes?.includes(recoveryMode)) return;
+      if (!state.beginRunRecovery(activeSessionId, message.requestId, requestId, recoveryMode)) return;
+      const ok = send({
+        type: "session.retry",
+        sessionId: activeSessionId,
+        failedRequestId: message.requestId,
+        requestId,
+        recoveryMode,
+        modelProviderId: state.selectedModelProviderId ?? undefined,
+        thinkingLevel: state.selectedThinkingLevel ?? undefined,
+        approvalMode,
+        activations,
+      });
+      if (!ok) {
+        state.rejectRunRecovery(activeSessionId, requestId, frontendMessage("chat.operationDisconnected"));
+        toast.error(frontendMessage("chat.operationDisconnected"));
+        return;
+      }
+      lastSendRef.current = {
+        sessionId: activeSessionId,
+        requestId,
+        input: recoveryMode === "continue" ? "continue" : failedRun.input,
+        modelProviderId: state.selectedModelProviderId ?? undefined,
+        thinkingLevel: state.selectedThinkingLevel ?? undefined,
+        approvalMode,
+        activations,
+      };
+    },
+    [activeSessionId, lastSendRef, send, status],
+  );
+
+  const retryRun = useCallback((message: ChatMessage): void => recoverRun(message, "retry"), [recoverRun]);
+  const continueRun = useCallback((message: ChatMessage): void => recoverRun(message, "continue"), [recoverRun]);
+
+  useEffect(() => {
+    if (status === "open") return;
+    const state = useStore.getState();
+    for (const session of Object.values(state.sessions)) {
+      for (const run of session.runs) {
+        if (run.recoveryAttempt?.status === "pending") {
+          state.rejectRunRecovery(
+            session.sessionId,
+            run.recoveryAttempt.requestId,
+            frontendMessage("chat.operationDisconnected"),
+          );
+        }
+      }
+    }
+  }, [status]);
 
   const forkFromMessage = useCallback(
     (message: Pick<ChatMessage, "requestId">): void => {
@@ -278,6 +383,7 @@ export function useChatCommands({
         attachments: message.attachments,
         modelProviderId: useStore.getState().selectedModelProviderId ?? undefined,
         thinkingLevel: useStore.getState().selectedThinkingLevel ?? undefined,
+        activations: message.metadata?.activation,
       });
     },
     [activeSessionId, regenerateFromRequest, status],
@@ -305,7 +411,12 @@ export function useChatCommands({
   );
 
   const sendMessage = useCallback(
-    (input: string, attachments?: UploadAttachmentData[], queueMode?: MessageQueueMode): boolean => {
+    (
+      input: string,
+      attachments?: UploadAttachmentData[],
+      queueMode?: MessageQueueMode,
+      activations?: ExplicitActivationSet,
+    ): boolean => {
       const state = useStore.getState();
       const modelProviderId = state.selectedModelProviderId ?? undefined;
       const thinkingLevel = state.selectedThinkingLevel ?? undefined;
@@ -313,10 +424,17 @@ export function useChatCommands({
       const target = resolveSendTargetSession({
         activeSessionId,
         createSessionId: generateId,
+        catalogSynced: state.catalogSynced.sessions,
+        historyFailedIds: state.historyFailedIds,
+        historyLoadedIds: state.historyLoadedIds,
         historyLoadingIds: state.historyLoadingIds,
         missingOnServerIds: state.missingOnServerIds,
+        sessions: state.sessions,
       });
 
+      if (target.kind === "blocked_catalog_loading") {
+        return false;
+      }
       if (target.kind === "blocked_history_loading") {
         toast.warning(frontendMessage("chat.historyRecovering"));
         return false;
@@ -340,6 +458,7 @@ export function useChatCommands({
         attachments,
         disposition: createIfMissing ? "create_if_missing" : undefined,
         queueMode,
+        activations,
       });
       if (!ok) {
         toast.error(frontendMessage("chat.sendDisconnected"));
@@ -351,6 +470,7 @@ export function useChatCommands({
       serverKnownSessionIdsRef.current.add(targetSessionId);
       appendUserMessage(targetSessionId, requestId, input, attachments, {
         createRun: queueMode === undefined,
+        metadata: activations ? { activation: activations } : undefined,
       });
       lastSendRef.current = {
         sessionId: targetSessionId,
@@ -361,6 +481,7 @@ export function useChatCommands({
         thinkingLevel,
         approvalMode,
         queueMode,
+        activations,
       };
       return true;
     },
@@ -427,6 +548,8 @@ export function useChatCommands({
     editUserMessage,
     forkFromMessage,
     regenerateMessage,
+    retryRun,
+    continueRun,
     resolveApproval,
     resolveApprovalBatch,
     resolveInteractionInput,

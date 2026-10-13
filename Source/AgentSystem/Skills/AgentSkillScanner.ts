@@ -11,8 +11,12 @@ import { AgentExtensionNameSchema, assertAgentExtensionName } from "../Extension
 import type { RegisteredSkill } from "./AgentSkillTypes.js";
 import { parseAgentSkillDocument } from "./AgentSkillDocument.js";
 import { agentSkillFrontmatterIssueDiagnostics } from "./AgentSkillFrontmatterDiagnostics.js";
-import { AgentSkillMetadataSchema, agentSkillRecommendedTools } from "./AgentSkillToolBinding.js";
+import { AgentSkillMetadataSchema, agentSkillIcon, agentSkillRecommendedTools } from "./AgentSkillToolBinding.js";
 import { AgentSkillValidationError } from "./AgentSkillValidationError.js";
+import {
+  extensionDiagnosticsFromError,
+  type AgentExtensionDiagnostic,
+} from "../ManagedExtensions/AgentExtensionDiagnostic.js";
 
 const SkillFileName = "SKILL.md";
 
@@ -61,28 +65,55 @@ interface AgentSkillFrontmatter {
   readonly description: string;
   readonly disableModelInvocation?: boolean;
   readonly recommendedTools: string[];
+  readonly icon?: string;
+  readonly content: string;
+}
+
+export interface AgentSkillScanCatalog {
+  readonly skills: readonly RegisteredSkill[];
+  readonly diagnostics: readonly AgentExtensionDiagnostic[];
 }
 
 export class AgentSkillScanner {
   private readonly catalogsByRoot = new Map<
     string,
-    { readonly revision: string; readonly skills: readonly RegisteredSkill[] }
+    { readonly revision: string; readonly catalog: AgentSkillScanCatalog }
   >();
 
   scanRoot(rootPath: string): RegisteredSkill[] {
+    const catalog = this.scanCatalog(rootPath);
+    if (catalog.diagnostics.length > 0) {
+      throw new AgentSkillValidationError(`Invalid Skills in ${path.resolve(rootPath)}.`, catalog.diagnostics);
+    }
+    return [...catalog.skills];
+  }
+
+  scanCatalog(rootPath: string): AgentSkillScanCatalog {
     const root = path.resolve(rootPath);
-    if (!fs.existsSync(root)) return [];
+    if (!fs.existsSync(root)) return { skills: [], diagnostics: [] };
     assertRegularDirectory(root);
     const revision = agentDirectoryRevision(root);
     const cached = this.catalogsByRoot.get(root);
-    if (cached?.revision === revision) return cached.skills.map(cloneRegisteredSkill);
+    if (cached?.revision === revision) return cloneScanCatalog(cached.catalog);
     const skills: RegisteredSkill[] = [];
+    const diagnostics: AgentExtensionDiagnostic[] = [];
     for (const entry of fs.readdirSync(root, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
       if (entry.name.startsWith(".") || !entry.isDirectory() || entry.isSymbolicLink()) continue;
-      skills.push(this.readSkillDirectory(path.join(root, entry.name), entry.name));
+      const skillRoot = path.join(root, entry.name);
+      try {
+        skills.push(this.readSkillDirectory(skillRoot, entry.name));
+      } catch (error) {
+        diagnostics.push(
+          ...extensionDiagnosticsFromError(error, {
+            code: "skill.resource.invalid",
+            fallbackFilePath: path.join(skillRoot, SkillFileName),
+          }),
+        );
+      }
     }
-    this.catalogsByRoot.set(root, { revision, skills: skills.map(cloneRegisteredSkill) });
-    return skills;
+    const catalog = { skills, diagnostics };
+    this.catalogsByRoot.set(root, { revision, catalog: cloneScanCatalog(catalog) });
+    return catalog;
   }
 
   readSkillDirectory(skillRoot: string, expectedName?: string, revision?: string): RegisteredSkill {
@@ -104,7 +135,9 @@ export class AgentSkillScanner {
       },
       name: frontmatter.name,
       description: frontmatter.description,
+      ...(frontmatter.icon ? { icon: frontmatter.icon } : {}),
       descriptionFile,
+      content: frontmatter.content,
       ...(frontmatter.disableModelInvocation === true ? { disableModelInvocation: true } : {}),
       revision: revision ?? agentDirectoryRevision(root),
       recommendedTools: frontmatter.recommendedTools,
@@ -146,6 +179,13 @@ export class AgentSkillScanner {
   static sourceRevision(rootPath: string): string {
     return agentDirectoryRevision(rootPath);
   }
+}
+
+function cloneScanCatalog(catalog: AgentSkillScanCatalog): AgentSkillScanCatalog {
+  return {
+    skills: catalog.skills.map(cloneRegisteredSkill),
+    diagnostics: structuredClone(catalog.diagnostics),
+  };
 }
 
 function cloneRegisteredSkill(skill: RegisteredSkill): RegisteredSkill {
@@ -200,8 +240,10 @@ function parseSkillFrontmatter(source: string, filePath: string): AgentSkillFron
     return {
       name: parsed.data.name,
       description: parsed.data.description,
+      ...(agentSkillIcon(parsed.data.metadata) ? { icon: agentSkillIcon(parsed.data.metadata) } : {}),
       ...(parsed.data["disable-model-invocation"] === true ? { disableModelInvocation: true } : {}),
       recommendedTools: agentSkillRecommendedTools(parsed.data.metadata),
+      content: document.content.trim(),
     };
   }
   throw new AgentSkillValidationError(

@@ -3,7 +3,12 @@ import { errorMessage } from "../Core/AgentErrors.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import { createOpaqueId } from "../Core/AgentIds.js";
 import { AgentEventKinds, emitAgentEvent, type AgentDomainEvent, type AgentEventSink } from "../Events/AgentEvent.js";
-import { AgentChildRunStatuses, type AgentChildRunRecord, type AgentChildRunStatus } from "./AgentChildRunTypes.js";
+import {
+  AgentChildRunStatuses,
+  isAgentChildRunResultTerminal,
+  isAgentChildRunSettled,
+  type AgentChildRunRecord,
+} from "./AgentChildRunTypes.js";
 import {
   AgentDelegationExecutionModes,
   type AgentDelegationRequest,
@@ -43,7 +48,7 @@ export interface AgentWorkflowDelegationPort {
   delegate(request: AgentDelegationRequest, context: AgentDelegationContext): Promise<AgentChildRunRecord>;
   get(id: string, parentSessionId: string): AgentChildRunRecord | undefined;
   listForOwner(ownerRunId: string): AgentChildRunRecord[];
-  markResultConsumed(id: string, parentSessionId: string, consumedAt?: string): AgentChildRunRecord | undefined;
+  markParentResultDelivered(id: string, parentSessionId: string, deliveredAt?: string): AgentChildRunRecord | undefined;
   wait(id: string, parentSessionId: string, signal?: AbortSignal): Promise<AgentChildRunRecord | undefined>;
   cancel(id: string, parentSessionId: string, onEvent?: AgentEventSink): Promise<AgentChildRunRecord | undefined>;
   resume(
@@ -315,7 +320,7 @@ export class AgentWorkflowService {
       if (persisted.childRunId) {
         const existing = this.options.delegation.get(persisted.childRunId, workflow.parentSessionId);
         if (existing?.status === AgentChildRunStatuses.Completed) {
-          this.options.delegation.markResultConsumed(existing.id, workflow.parentSessionId);
+          this.options.delegation.markParentResultDelivered(existing.id, workflow.parentSessionId);
           this.options.repository.markNodeTerminal(workflow.id, definition.id, AgentWorkflowNodeStatuses.Completed);
           return;
         }
@@ -327,7 +332,7 @@ export class AgentWorkflowService {
           context,
         );
         if (child && isChildResultTerminal(child.status)) {
-          child = this.options.delegation.markResultConsumed(child.id, workflow.parentSessionId) ?? child;
+          child = this.options.delegation.markParentResultDelivered(child.id, workflow.parentSessionId) ?? child;
         }
       } else {
         child = await this.options.delegation.delegate(
@@ -348,7 +353,7 @@ export class AgentWorkflowService {
         this.options.repository.markNodeRunning(workflow.id, definition.id, child.id);
         child = await this.options.delegation.wait(child.id, workflow.parentSessionId, context.signal);
         if (child && isChildResultTerminal(child.status)) {
-          child = this.options.delegation.markResultConsumed(child.id, workflow.parentSessionId) ?? child;
+          child = this.options.delegation.markParentResultDelivered(child.id, workflow.parentSessionId) ?? child;
         }
       }
       if (!child) throw new Error(`Child run for workflow node '${definition.id}' disappeared.`);
@@ -515,24 +520,11 @@ function projectNodeTerminal(child: AgentChildRunRecord): {
 }
 
 function isChildTerminal(status: AgentChildRunRecord["status"]): boolean {
-  return !isChildRunStatus(status, [
-    AgentChildRunStatuses.Queued,
-    AgentChildRunStatuses.Running,
-    AgentChildRunStatuses.WrappingUp,
-    AgentChildRunStatuses.Cancelling,
-  ]);
+  return isAgentChildRunSettled(status);
 }
 
 function isChildResultTerminal(status: AgentChildRunRecord["status"]): boolean {
-  const resultStatuses: readonly AgentChildRunStatus[] = [
-    AgentChildRunStatuses.Completed,
-    AgentChildRunStatuses.PartialCompleted,
-    AgentChildRunStatuses.Interrupted,
-    AgentChildRunStatuses.TimedOut,
-    AgentChildRunStatuses.Failed,
-    AgentChildRunStatuses.Cancelled,
-  ];
-  return resultStatuses.includes(status);
+  return isAgentChildRunResultTerminal(status);
 }
 
 function isWorkflowStatus(status: AgentWorkflowStatus, candidates: readonly AgentWorkflowStatus[]): boolean {
@@ -553,10 +545,6 @@ function isWorkflowNodeStatus(
   status: AgentWorkflowNodeStatus,
   candidates: readonly AgentWorkflowNodeStatus[],
 ): boolean {
-  return candidates.includes(status);
-}
-
-function isChildRunStatus(status: AgentChildRunStatus, candidates: readonly AgentChildRunStatus[]): boolean {
   return candidates.includes(status);
 }
 

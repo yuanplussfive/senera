@@ -9,7 +9,11 @@ import {
   projectAgentResidentSpeechSourceMessage,
   projectAgentResidentSpeechSystemPrompt,
 } from "./AgentResidentSpeechPromptProjector.js";
-import type { AgentResidentSpeechFocus, AgentResidentSpeechUtterance } from "./AgentResidentSpeechTypes.js";
+import type {
+  AgentResidentSpeechFocus,
+  AgentResidentSpeechProjectionTier,
+  AgentResidentSpeechUtterance,
+} from "./AgentResidentSpeechTypes.js";
 
 export type AgentResidentSpeechSourceLineage = "initial" | "append" | "rebase";
 
@@ -42,6 +46,7 @@ export class AgentResidentSpeechSessionLedger {
       readonly contract: RegisteredSidecarTool;
       readonly focus: AgentResidentSpeechFocus;
       readonly spokenUtterances: readonly AgentResidentSpeechUtterance[];
+      readonly projectionTier?: AgentResidentSpeechProjectionTier;
       readonly signal?: AbortSignal;
     },
     operation: (context: AgentResidentSpeechSessionContext) => Promise<AgentResidentSpeechTransactionResult<T>>,
@@ -69,6 +74,7 @@ export class AgentResidentSpeechSessionLedger {
         const scene = projectAgentResidentSpeechSceneMessage({
           focus: input.focus,
           spokenUtterances: input.spokenUtterances,
+          projectionTier: input.projectionTier,
           lineage,
           sourceMessages: sourceDelta,
           timestamp: input.message.timestamp,
@@ -105,7 +111,11 @@ function currentTurnMessages(messages: readonly Message[]): readonly Message[] {
 }
 
 function isTurnContextMessage(message: Extract<Message, { role: "user" }>): boolean {
-  return typeof message.content === "string" && isAgentPiTurnContextWireContent(message.content);
+  const content =
+    typeof message.content === "string"
+      ? message.content
+      : message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
+  return isAgentPiTurnContextWireContent(content);
 }
 
 function isFingerprintPrefix(prefix: readonly string[], value: readonly string[]): boolean {

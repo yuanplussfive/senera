@@ -32,6 +32,8 @@ export function buildArtifactDelta(input: {
             afterHash: change.afterHash,
             beforeSize: change.beforeSize,
             afterSize: change.afterSize,
+            beforeKind: change.beforeKind,
+            afterKind: change.afterKind,
             addedLines: change.addedLines,
             removedLines: change.removedLines,
             patch: change.patch,

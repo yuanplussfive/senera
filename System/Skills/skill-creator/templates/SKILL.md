@@ -7,6 +7,8 @@ description: Replace with one sentence that states the capability and the user r
 disable-model-invocation: false
 metadata:
   senera:
+    # Optional shared AppIcon name shown by the @ capability picker.
+    icon: sparkles
     recommended-tools: []
 ---
 

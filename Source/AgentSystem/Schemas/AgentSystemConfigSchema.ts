@@ -8,21 +8,15 @@ import {
   ConfigStoreSchema,
   PersistenceSchema,
   PromptSchema,
-  PresetsSchema,
   SandboxRuntimeSchema,
   ServerSchema,
   ToolExecutionSchema,
   TodosSchema,
   UploadsSchema,
-  WorldSchema,
   InferenceBudgetSchema,
+  McpConnectionsSchema,
 } from "./AgentRuntimeConfigSchema.js";
-import {
-  ContinuityLearningSchema,
-  ToolLearningSchema,
-  ToolSearchSchema,
-  VectorModelsSchema,
-} from "./AgentToolMemoryConfigSchema.js";
+import { ContinuityLearningSchema, StateCardSchema, ToolSearchSchema } from "./AgentToolMemoryConfigSchema.js";
 import { CurrentAgentConfigVersion } from "../Config/AgentConfigVersion.js";
 
 const AgentSystemExtensionConfigSchema = z
@@ -42,14 +36,13 @@ const AgentPluginsConfigSchema = z
 const AgentDefaultsSchema = z
   .object({
     ToolExecution: ToolExecutionSchema.optional(),
+    McpConnections: McpConnectionsSchema.optional(),
     SandboxRuntime: SandboxRuntimeSchema.optional(),
     AgentLoop: AgentLoopSchema.optional(),
     Todos: TodosSchema.optional(),
     ToolSearch: ToolSearchSchema.optional(),
-    VectorModels: VectorModelsSchema.optional(),
-    ToolLearning: ToolLearningSchema.optional(),
+    StateCard: StateCardSchema.optional(),
     ContinuityLearning: ContinuityLearningSchema.optional(),
-    Presets: PresetsSchema.optional(),
     Artifacts: ArtifactsSchema.optional(),
     Uploads: UploadsSchema.optional(),
     ActionPlanner: ActionPlannerSchema.optional(),
@@ -57,7 +50,6 @@ const AgentDefaultsSchema = z
     Server: ServerSchema.optional(),
     Persistence: PersistenceSchema.optional(),
     Prompt: PromptSchema.optional(),
-    World: WorldSchema.optional(),
     InferenceBudget: InferenceBudgetSchema.optional(),
     ConfigStore: ConfigStoreSchema.optional(),
   })
@@ -79,6 +71,7 @@ export const AgentSystemConfigSchema = z
       .strict()
       .optional(),
     ToolExecution: ToolExecutionSchema.optional(),
+    McpConnections: McpConnectionsSchema.optional(),
     SandboxRuntime: SandboxRuntimeSchema.optional(),
     ToolDocumentation: z
       .object({
@@ -109,10 +102,8 @@ export const AgentSystemConfigSchema = z
     AgentLoop: AgentLoopSchema.optional(),
     Todos: TodosSchema.optional(),
     ToolSearch: ToolSearchSchema.optional(),
-    VectorModels: VectorModelsSchema.optional(),
-    ToolLearning: ToolLearningSchema.optional(),
+    StateCard: StateCardSchema.optional(),
     ContinuityLearning: ContinuityLearningSchema.optional(),
-    Presets: PresetsSchema.optional(),
     Artifacts: ArtifactsSchema.optional(),
     Uploads: UploadsSchema.optional(),
     ActionPlanner: ActionPlannerSchema.optional(),
@@ -120,7 +111,6 @@ export const AgentSystemConfigSchema = z
     Server: ServerSchema.optional(),
     Persistence: PersistenceSchema.optional(),
     Prompt: PromptSchema.optional(),
-    World: WorldSchema.optional(),
     InferenceBudget: InferenceBudgetSchema.optional(),
     ConfigStore: ConfigStoreSchema.optional(),
     Extensions: z.record(z.string().trim().min(1), AgentSystemExtensionConfigSchema).optional(),

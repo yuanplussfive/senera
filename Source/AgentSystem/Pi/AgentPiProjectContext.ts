@@ -4,6 +4,7 @@ import {
   type AgentRegularTextFileSnapshot,
 } from "../Core/AgentFs.js";
 import { sha256Hex } from "../Core/AgentHash.js";
+import { loadProjectContextFiles } from "@earendil-works/pi-coding-agent";
 
 export interface AgentPiProjectContextSnapshot {
   readonly filePath: string;
@@ -14,8 +15,12 @@ export interface AgentPiProjectContextSnapshot {
 export class AgentPiProjectContext {
   private fileSnapshot: AgentRegularTextFileSnapshot | undefined;
   private current: AgentPiProjectContextSnapshot;
+  private nativeFiles: Array<{ path: string; content: string }> = [];
 
-  constructor(private readonly filePath: string) {
+  constructor(
+    private readonly filePath: string,
+    private readonly nativeContext?: { cwd: string; agentDir: string },
+  ) {
     this.current = this.absentSnapshot();
   }
 
@@ -32,13 +37,25 @@ export class AgentPiProjectContext {
       this.fileSnapshot = undefined;
       this.current = this.absentSnapshot();
     }
+    this.nativeFiles = this.nativeContext ? loadProjectContextFiles(this.nativeContext) : [];
+    this.current = {
+      ...this.current,
+      fingerprint: sha256Hex(
+        JSON.stringify({
+          project: this.current.fingerprint,
+          native: this.nativeFiles,
+        }),
+      ),
+    };
     return this.current;
   }
 
   agentsFiles(): { agentsFiles: Array<{ path: string; content: string }> } {
     return {
-      agentsFiles:
-        this.current.content === undefined ? [] : [{ path: this.current.filePath, content: this.current.content }],
+      agentsFiles: [
+        ...this.nativeFiles,
+        ...(this.current.content === undefined ? [] : [{ path: this.current.filePath, content: this.current.content }]),
+      ],
     };
   }
 

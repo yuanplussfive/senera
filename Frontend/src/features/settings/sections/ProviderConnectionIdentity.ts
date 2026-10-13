@@ -1,3 +1,5 @@
+import type { ProviderModelEndpointKind } from "../../../api/providerModelCommandTypes";
+
 export function isProtectedProvider(providerId: string): boolean {
   return protectedProviderIds.has(providerId);
 }
@@ -8,6 +10,7 @@ export interface ProviderPreset {
   id: string;
   label: string;
   icon: string;
+  endpoint: ProviderModelEndpointKind;
   baseUrl: string;
   apiVersion?: string;
   headers?: Record<string, string>;
@@ -15,34 +18,32 @@ export interface ProviderPreset {
 
 export const providerPresets: readonly ProviderPreset[] = [
   {
-    id: "openai-compatible",
-    label: "OpenAI Compatible",
+    id: "openai-chat-completions",
+    label: "OpenAI Chat Completions",
     icon: "openai",
-    baseUrl: "https://api.example.com/v1",
-  },
-  {
-    id: "openai",
-    label: "OpenAI",
-    icon: "openai",
+    endpoint: "ChatCompletions",
     baseUrl: "https://api.openai.com/v1",
   },
   {
-    id: "deepseek",
-    label: "DeepSeek",
-    icon: "deepseek",
-    baseUrl: "https://api.deepseek.com/v1",
+    id: "openai-responses",
+    label: "OpenAI Responses",
+    icon: "openai",
+    endpoint: "Responses",
+    baseUrl: "https://api.openai.com/v1",
   },
   {
-    id: "anthropic",
-    label: "Anthropic Compatible",
+    id: "anthropic-messages",
+    label: "Anthropic Claude Messages",
     icon: "anthropic",
+    endpoint: "ClaudeMessages",
     baseUrl: "https://api.anthropic.com/v1",
     headers: { "anthropic-version": "2023-06-01" },
   },
   {
-    id: "gemini",
-    label: "Gemini Compatible",
+    id: "gemini-generate-content",
+    label: "Google Gemini Generate Content",
     icon: "gemini",
-    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+    endpoint: "GoogleGenerateContent",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
   },
 ];

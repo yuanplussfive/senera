@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import fg from "fast-glob";
+import { globSync } from "tinyglobby";
 import ts from "typescript";
 import { toPosixRelative } from "./Support/FileWalk.js";
 import { isSeneraProtocolType } from "../Source/AgentSystem/Core/AgentProtocolIdentity.js";
@@ -68,19 +68,19 @@ const moduleBoundaryPolicies = [
   },
 ] as const;
 
-const moduleBoundaryFiles = fg.sync(["Source/**/*.ts", "Scripts/**/*.ts", "Frontend/**/*.ts", "Frontend/**/*.tsx"], {
+const moduleBoundaryFiles = globSync(["Source/**/*.ts", "Scripts/**/*.ts", "Frontend/**/*.ts", "Frontend/**/*.tsx"], {
   cwd: workspaceRoot,
   absolute: true,
   onlyFiles: true,
   ignore: ["Frontend/node_modules/**", "Source/AgentSystem/BamlClient/baml_client/**"],
 });
-const handWrittenAgentSystemFiles = fg.sync(["Source/AgentSystem/**/*.ts"], {
+const handWrittenAgentSystemFiles = globSync(["Source/AgentSystem/**/*.ts"], {
   cwd: workspaceRoot,
   absolute: true,
   onlyFiles: true,
   ignore: ["Source/AgentSystem/BamlClient/baml_client/**"],
 });
-const productionProtocolFiles = fg.sync(
+const productionProtocolFiles = globSync(
   ["Source/**/*.ts", "Apps/**/*.ts", "Frontend/src/**/*.ts", "Frontend/src/**/*.tsx"],
   {
     cwd: workspaceRoot,

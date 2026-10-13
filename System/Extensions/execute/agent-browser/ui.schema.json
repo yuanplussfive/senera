@@ -1,0 +1,183 @@
+{
+  "form": {
+    "version": 1,
+    "sections": [
+      {
+        "id": "runtime",
+        "label": { "zh-CN": "浏览器运行时", "en-US": "Browser runtime" },
+        "description": {
+          "zh-CN": "Senera 启动独立的受控浏览器会话；模型不能读取或修改浏览器启动参数、用户资料或认证状态。",
+          "en-US": "Senera launches isolated controlled browser sessions. Models cannot read or change browser launch arguments, profiles, or authentication state."
+        },
+        "fields": [
+          {
+            "path": ["runtime", "headed"],
+            "label": { "zh-CN": "显示浏览器窗口", "en-US": "Show browser window" },
+            "type": "boolean",
+            "required": true,
+            "essential": true
+          },
+          {
+            "path": ["runtime", "executablePath"],
+            "label": { "zh-CN": "浏览器可执行文件", "en-US": "Browser executable" },
+            "description": {
+              "zh-CN": "留空时自动查找 Chrome、Edge 或 Chromium；仅在自动发现失败或需要固定版本时填写。",
+              "en-US": "Leave empty to discover Chrome, Edge, or Chromium automatically. Set only when discovery fails or a fixed browser is required."
+            },
+            "type": "string",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["runtime", "requestTimeoutMs"],
+            "label": { "zh-CN": "默认操作超时（毫秒）", "en-US": "Default operation timeout (ms)" },
+            "description": {
+              "zh-CN": "模型未提供 timeoutMs 时使用。",
+              "en-US": "Used when the model does not provide timeoutMs."
+            },
+            "type": "number",
+            "min": 5000,
+            "max": 3600000,
+            "step": 1000,
+            "required": true,
+            "essential": true
+          },
+          {
+            "path": ["runtime", "maxOperationTimeoutMs"],
+            "label": { "zh-CN": "模型操作超时上限（毫秒）", "en-US": "Model operation timeout limit (ms)" },
+            "description": {
+              "zh-CN": "模型可在单次浏览器调用中使用 timeoutMs，但不能超过此值。",
+              "en-US": "The model may set timeoutMs per browser call, up to this value."
+            },
+            "type": "number",
+            "min": 5000,
+            "max": 3600000,
+            "step": 1000,
+            "required": true,
+            "essential": true
+          },
+          {
+            "path": ["runtime", "idleTimeoutMs"],
+            "label": { "zh-CN": "空闲会话回收（毫秒）", "en-US": "Idle session cleanup (ms)" },
+            "type": "number",
+            "min": 10000,
+            "max": 86400000,
+            "step": 10000,
+            "required": true,
+            "essential": false
+          },
+          {
+            "path": ["runtime", "outputMaxChars"],
+            "label": { "zh-CN": "页面输出字符上限", "en-US": "Page output character limit" },
+            "type": "number",
+            "min": 1024,
+            "max": 2000000,
+            "step": 1024,
+            "required": true,
+            "essential": true
+          },
+          {
+            "path": ["runtime", "maxUrlLength"],
+            "label": { "zh-CN": "URL 长度上限", "en-US": "URL length limit" },
+            "type": "number",
+            "min": 256,
+            "max": 65536,
+            "step": 1,
+            "required": true,
+            "essential": false
+          },
+          {
+            "path": ["runtime", "maxSelectorLength"],
+            "label": { "zh-CN": "元素定位符长度上限", "en-US": "Selector length limit" },
+            "type": "number",
+            "min": 64,
+            "max": 32768,
+            "step": 1,
+            "required": true,
+            "essential": false
+          },
+          {
+            "path": ["runtime", "maxTextChars"],
+            "label": { "zh-CN": "单次文本输入上限", "en-US": "Text input character limit" },
+            "type": "number",
+            "min": 1024,
+            "max": 2000000,
+            "step": 1024,
+            "required": true,
+            "essential": false
+          },
+          {
+            "path": ["runtime", "maxWaitMs"],
+            "label": { "zh-CN": "模型等待上限（毫秒）", "en-US": "Model wait limit (ms)" },
+            "type": "number",
+            "min": 1,
+            "max": 3600000,
+            "step": 1000,
+            "required": true,
+            "essential": false
+          }
+        ]
+      },
+      {
+        "id": "network",
+        "label": { "zh-CN": "网络边界", "en-US": "Network boundary" },
+        "description": {
+          "zh-CN": "默认可访问网络地址；这里配置的域名始终拒绝访问。本地文件和私有网络地址在完全权限模式下开放，其他模式需要审批。",
+          "en-US": "Network addresses are allowed by default; listed domains are always blocked. Local files and private networks require approval outside Full Access mode."
+        },
+        "fields": [
+          {
+            "path": ["network", "blockedDomains"],
+            "label": { "zh-CN": "拒绝访问的域名", "en-US": "Blocked domains" },
+            "description": {
+              "zh-CN": "使用 example.com 拒绝该域名，使用 *.example.com 拒绝其子域名；* 拒绝所有带主机名的地址。",
+              "en-US": "Use example.com to block one host, *.example.com to block its subdomains, or * to block all hostnames."
+            },
+            "type": "array",
+            "itemType": "string",
+            "required": false,
+            "essential": true
+          }
+        ]
+      },
+      {
+        "id": "capture",
+        "label": { "zh-CN": "截图", "en-US": "Screenshots" },
+        "fields": [
+          {
+            "path": ["capture", "defaultFormat"],
+            "label": { "zh-CN": "默认格式", "en-US": "Default format" },
+            "type": "string",
+            "options": ["png", "jpeg"],
+            "required": true,
+            "essential": false
+          },
+          {
+            "path": ["capture", "maxScreenshotBytes"],
+            "label": { "zh-CN": "截图字节上限", "en-US": "Screenshot byte limit" },
+            "type": "number",
+            "min": 131072,
+            "max": 134217728,
+            "step": 1024,
+            "required": true,
+            "essential": false
+          },
+          {
+            "path": ["capture", "maxDownloadBytes"],
+            "label": { "zh-CN": "下载文件大小上限", "en-US": "Download file size limit" },
+            "description": {
+              "zh-CN": "浏览器下载会作为 Artifact 保存，超过此大小的文件会被拒绝。",
+              "en-US": "Browser downloads are stored as Artifacts; files above this size are rejected."
+            },
+            "type": "number",
+            "min": 131072,
+            "max": 536870912,
+            "step": 1048576,
+            "required": true,
+            "essential": false
+          }
+        ]
+      }
+    ]
+  }
+}

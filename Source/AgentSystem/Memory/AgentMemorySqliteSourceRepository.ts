@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { AgentSqliteDatabaseKernel } from "../Database/AgentSqliteDatabaseKernel.js";
+import { AgentMemorySqliteExtensions } from "../Database/AgentSqliteVecExtension.js";
 import { uniqueTrimmed } from "./AgentMemoryCollections.js";
 import { buildEpisode } from "./AgentMemoryEpisodeRecords.js";
 import { buildSources } from "./AgentMemorySourceRecords.js";
@@ -32,6 +33,7 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
             databasePath: database,
             contract: AgentMemoryDatabaseContract,
             upgradeSession,
+            extensions: AgentMemorySqliteExtensions,
           })
         : database;
     this.db = this.kernel.connection;
@@ -87,11 +89,6 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
     return this.statements.listCompletedEpisodesStmt.all().map(rowToEpisode);
   }
 
-  listCompletedEpisodesInRange(startMs: number, endMs: number): AgentMemoryEpisodeRecord[] {
-    assertMemoryRange(startMs, endMs);
-    return this.statements.listCompletedEpisodesInRangeStmt.all(startMs, endMs).map(rowToEpisode);
-  }
-
   findEpisodesByUris(uris: readonly string[]): AgentMemoryEpisodeRecord[] {
     return uniqueTrimmed(uris).flatMap((uri) => {
       const row = this.statements.selectEpisodeByUriStmt.get(uri);
@@ -103,7 +100,7 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
     return this.statements.listSourcesStmt.all(episodeUri).map(rowToSource);
   }
 
-  listSourcesForEpisodes(episodeUris: readonly string[]): AgentMemorySourceRecord[] {
+  private listSourcesForEpisodes(episodeUris: readonly string[]): AgentMemorySourceRecord[] {
     const normalized = uniqueTrimmed(episodeUris);
     if (normalized.length === 0) return [];
     const placeholders = normalized.map(() => "?").join(", ");
@@ -115,23 +112,6 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
       )
       .all(...normalized)
       .map(rowToSource);
-  }
-
-  findMemorySourcesByRefs(refs: readonly string[]): AgentMemorySourceRecord[] {
-    const byUri = new Map<string, AgentMemorySourceRecord>();
-    for (const ref of uniqueTrimmed(refs)) {
-      const source = this.statements.selectSourceByUriStmt.get(ref);
-      if (source) byUri.set(source.uri, rowToSource(source));
-      for (const row of this.statements.selectSourcesByEvidenceUriStmt.all(ref)) {
-        byUri.set(row.uri, rowToSource(row));
-      }
-      for (const row of this.statements.selectSourcesByArtifactUriStmt.all(ref)) {
-        byUri.set(row.uri, rowToSource(row));
-      }
-    }
-    return [...byUri.values()].sort(
-      (left, right) => left.createdAtMs - right.createdAtMs || left.id.localeCompare(right.id),
-    );
   }
 
   close(): void {
@@ -158,10 +138,4 @@ export class SqliteAgentMemorySourceRepository implements AgentMemorySourceRepos
 
 function emptyDeletionImpact(sessionId: string, requestId: string): AgentMemoryDeletionImpact {
   return { sessionId, scope: "from_request", requestId, requestIds: [requestId], episodeUris: [], sourceUris: [] };
-}
-
-function assertMemoryRange(startMs: number, endMs: number): void {
-  if (!Number.isSafeInteger(startMs) || !Number.isSafeInteger(endMs) || endMs <= startMs) {
-    throw new Error("Memory episode range must contain increasing safe integer timestamps.");
-  }
 }

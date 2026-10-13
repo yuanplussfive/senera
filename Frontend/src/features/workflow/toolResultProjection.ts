@@ -5,13 +5,6 @@ const ResultPreviewLength = 140;
 /** Reads the raw execution result without exposing lifecycle or presentation metadata. */
 export function readToolResultValue(step: TimelineStep): unknown {
   if (step.toolResult !== undefined) return unwrapExecutionResult(step, step.toolResult);
-  if (step.toolOutput?.stdout || step.toolOutput?.stderr) {
-    return {
-      ...(step.toolOutput.stdout ? { stdout: step.toolOutput.stdout } : {}),
-      ...(step.toolOutput.stderr ? { stderr: step.toolOutput.stderr } : {}),
-    };
-  }
-  if (step.toolErrorMessage) return { error: step.toolErrorMessage };
   return undefined;
 }
 

@@ -2,8 +2,10 @@ import { deepFreeze } from "../Core/AgentDeepFreeze.js";
 import {
   hasSameAgentToolNameSequence,
   normalizeAgentToolNames,
+  isAgentToolAuthorized,
   type AgentToolAccessGrant,
 } from "./AgentToolAccessGrant.js";
+import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
 
 export interface AgentToolExposureSnapshot {
   readonly generation: number;
@@ -20,13 +22,33 @@ export interface AgentToolExposureDelta {
 }
 
 export class AgentToolExposureState {
+  static forRegistry(
+    grant: AgentToolAccessGrant,
+    registry: { getTool(name: string): RegisteredTool | undefined },
+  ): AgentToolExposureState {
+    return new AgentToolExposureState(grant, (name) => {
+      const tool = registry.getTool(name);
+      return tool !== undefined && isAgentToolAuthorized(grant, tool);
+    });
+  }
+
   private readonly authorizedToolNames: ReadonlySet<string>;
   private exposedToolNames: string[];
   private preferredToolNames: string[];
+  /**
+   * Dynamic contracts which the current model turn has actually received.
+   * This deliberately stays outside the exposure snapshot: exposure controls
+   * provider schemas, while confirmation is evidence for the fixed native
+   * execution bridge.
+   */
+  private readonly confirmedContractDigests = new Map<string, string | null>();
   private generation = 0;
   private readonly listeners = new Set<(snapshot: AgentToolExposureSnapshot) => void>();
 
-  constructor(grant: AgentToolAccessGrant) {
+  constructor(
+    grant: AgentToolAccessGrant,
+    private readonly authorizesDiscoveredTool?: (toolName: string) => boolean,
+  ) {
     this.authorizedToolNames = new Set(grant.authorizedToolNames);
     this.exposedToolNames = [...grant.exposedToolNames];
     this.preferredToolNames = [...grant.preferredToolNames];
@@ -44,6 +66,15 @@ export class AgentToolExposureState {
     return this.exposedToolNames.includes(toolName);
   }
 
+  confirmContract(toolName: string, contractDigest: string | undefined): void {
+    if (!this.isAuthorized(toolName)) return;
+    this.confirmedContractDigests.set(toolName, contractDigest ?? null);
+  }
+
+  hasConfirmedContract(toolName: string, contractDigest: string | undefined): boolean {
+    return this.confirmedContractDigests.get(toolName) === (contractDigest ?? null);
+  }
+
   subscribe(listener: (snapshot: AgentToolExposureSnapshot) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -51,8 +82,8 @@ export class AgentToolExposureState {
 
   expose(toolNames: readonly string[]): AgentToolExposureDelta {
     const requested = normalizeAgentToolNames(toolNames);
-    const accepted = requested.filter((toolName) => this.authorizedToolNames.has(toolName));
-    const rejectedToolNames = requested.filter((toolName) => !this.authorizedToolNames.has(toolName));
+    const accepted = requested.filter((toolName) => this.isAuthorized(toolName));
+    const rejectedToolNames = requested.filter((toolName) => !this.isAuthorized(toolName));
     const exposed = new Set(this.exposedToolNames);
     const addedToolNames = accepted.filter((toolName) => !exposed.has(toolName));
     const nextExposedToolNames = [...this.exposedToolNames, ...addedToolNames];
@@ -84,11 +115,9 @@ export class AgentToolExposureState {
     const protectedNames = new Set(normalizeAgentToolNames(options.protectedToolNames ?? []));
     const exposed = new Set(this.exposedToolNames);
     const protectedToolNames = requested.filter((toolName) => protectedNames.has(toolName));
-    const rejectedToolNames = requested.filter(
-      (toolName) => !this.authorizedToolNames.has(toolName) || !exposed.has(toolName),
-    );
+    const rejectedToolNames = requested.filter((toolName) => !this.isAuthorized(toolName) || !exposed.has(toolName));
     const removedToolNames = requested.filter(
-      (toolName) => this.authorizedToolNames.has(toolName) && exposed.has(toolName) && !protectedNames.has(toolName),
+      (toolName) => this.isAuthorized(toolName) && exposed.has(toolName) && !protectedNames.has(toolName),
     );
     const removed = new Set(removedToolNames);
     const nextExposedToolNames = this.exposedToolNames.filter((toolName) => !removed.has(toolName));
@@ -97,6 +126,7 @@ export class AgentToolExposureState {
     if (removedToolNames.length > 0) {
       this.exposedToolNames = nextExposedToolNames;
       this.preferredToolNames = nextPreferredToolNames;
+      for (const toolName of removedToolNames) this.confirmedContractDigests.delete(toolName);
       this.generation += 1;
       this.publish();
     }
@@ -113,6 +143,10 @@ export class AgentToolExposureState {
   private publish(): void {
     const snapshot = this.snapshot();
     for (const listener of this.listeners) listener(snapshot);
+  }
+
+  isAuthorized(toolName: string): boolean {
+    return this.authorizedToolNames.has(toolName) || this.authorizesDiscoveredTool?.(toolName) === true;
   }
 }
 

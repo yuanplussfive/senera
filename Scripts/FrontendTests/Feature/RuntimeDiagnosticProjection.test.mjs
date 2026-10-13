@@ -1,6 +1,12 @@
 import { expect, test } from "vitest";
 import { EventKinds, EventSpecs } from "../../../Frontend/src/api/generatedEventCatalog.ts";
-import { projectRuntimeDiagnostic } from "../../../Frontend/src/features/observability/runtimeDiagnosticProjection.ts";
+import {
+  mergeRuntimeUsageSnapshots,
+  projectRuntimeDiagnostic,
+  projectRuntimeDiagnosticFromRun,
+  projectRuntimeUsageFromSessionSnapshot,
+} from "../../../Frontend/src/features/observability/runtimeDiagnosticProjection.ts";
+import { mergeSessionRuntimeSnapshot } from "../../../Frontend/src/store/session/sessionRuntimeProjection.ts";
 
 test("projects only explicit activity and tool lifecycle intervals", () => {
   const model = projectRuntimeDiagnostic(
@@ -108,6 +114,77 @@ test("projects the Pi context capacity from the runtime status event", () => {
   });
 });
 
+test("retains the last measured context usage across a post-compaction unknown status", () => {
+  const model = projectRuntimeDiagnostic([
+    projected(EventKinds.SessionRuntimeStatus, 1, {
+      runtime: { contextUsage: { tokens: 12_000, contextWindow: 100_000, percent: 12 } },
+    }),
+    projected(EventKinds.SessionRuntimeStatus, 2, {
+      runtime: { contextUsage: { tokens: null, contextWindow: 100_000, percent: null } },
+    }),
+  ]);
+
+  expect(model.contextUsage).toEqual({ tokens: 12_000, contextWindow: 100_000, percent: 12 });
+});
+
+test("keeps session runtime usage available after the diagnostic journal is cleared", () => {
+  const previous = {
+    available: true,
+    observedAt: "2026-08-04T00:00:00.000Z",
+    runtime: {
+      contextUsage: { tokens: 2_000, contextWindow: 100_000, percent: 2 },
+      stats: { tokens: { total: 2_000 } },
+    },
+  };
+  const snapshot = mergeSessionRuntimeSnapshot(
+    previous,
+    {
+      sessionId: "session-1",
+      available: true,
+      runtime: { contextUsage: { tokens: null, contextWindow: 100_000, percent: null } },
+    },
+    "2026-08-04T00:00:01.000Z",
+  );
+
+  expect(projectRuntimeUsageFromSessionSnapshot(snapshot).contextUsage).toEqual({
+    tokens: 2_000,
+    contextWindow: 100_000,
+    percent: 2,
+  });
+  expect(snapshot.observedAt).toBe("2026-08-04T00:00:01.000Z");
+});
+
+test("prefers the retained value when the live journal only reports an unknown same-window value", () => {
+  expect(
+    mergeRuntimeUsageSnapshots(
+      { contextUsage: { tokens: null, contextWindow: 100_000, percent: null } },
+      { contextUsage: { tokens: 2_000, contextWindow: 100_000, percent: 2 } },
+    ),
+  ).toEqual({ contextUsage: { tokens: 2_000, contextWindow: 100_000, percent: 2 } });
+});
+
+test("does not carry a previous context value into a different model window", () => {
+  const snapshot = mergeSessionRuntimeSnapshot(
+    {
+      available: true,
+      observedAt: "2026-08-04T00:00:00.000Z",
+      runtime: { contextUsage: { tokens: 2_000, contextWindow: 100_000, percent: 2 } },
+    },
+    {
+      sessionId: "session-1",
+      available: true,
+      runtime: { contextUsage: { tokens: null, contextWindow: 200_000, percent: null } },
+    },
+    "2026-08-04T00:00:01.000Z",
+  );
+
+  expect(projectRuntimeUsageFromSessionSnapshot(snapshot).contextUsage).toEqual({
+    tokens: null,
+    contextWindow: 200_000,
+    percent: null,
+  });
+});
+
 test("scopes live usage and diagnostic spans to the active session", () => {
   const model = projectRuntimeDiagnostic(
     [
@@ -180,6 +257,59 @@ test("keeps parallel tools in separate waterfall tracks", () => {
 
   expect(model.lanes.find((lane) => lane.lane === "tools")).toMatchObject({ trackCount: 2 });
   expect(model.lanes.find((lane) => lane.lane === "tools")?.spans.map((span) => span.track)).toEqual([0, 1]);
+});
+
+test("keeps a cancelled run terminal and measures its final intervals from the run projection", () => {
+  const model = projectRuntimeDiagnosticFromRun(
+    {
+      requestId: "request-cancelled",
+      revision: 4,
+      startedAt: "2026-08-04T00:00:00.000Z",
+      endedAt: "2026-08-04T00:00:01.250Z",
+      status: "cancelled",
+      outputState: "pending",
+      input: "停止任务",
+      activities: [
+        {
+          id: "activity-turn",
+          activity: "running_agent_turn",
+          status: "cancelled",
+          startedAt: "2026-08-04T00:00:00.100Z",
+          endedAt: "2026-08-04T00:00:01.250Z",
+        },
+      ],
+      steps: [
+        {
+          id: "tool-1",
+          kind: "tool",
+          title: "执行工具",
+          status: "cancelled",
+          startedAt: "2026-08-04T00:00:00.200Z",
+          endedAt: "2026-08-04T00:00:01.250Z",
+          toolName: "ShellCommand",
+          callId: "call-1",
+        },
+      ],
+      streamingRaw: "",
+      xmlPreview: "",
+      visibleText: "",
+      displayText: "",
+      visibleKind: "unknown",
+      expectedOutputMode: "open",
+      decisionMode: "none",
+    },
+    { nowEpoch: Date.parse("2026-08-04T00:00:09.000Z") },
+  );
+
+  expect(model.connection).toBe("cancelled");
+  expect(model.spans).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ status: "cancelled", durationMs: 1150 }),
+      expect.objectContaining({ status: "cancelled", durationMs: 1050 }),
+    ]),
+  );
+  expect(model.spans.every((span) => span.status !== "running")).toBe(true);
+  expect(model.endAtEpoch).toBe(Date.parse("2026-08-04T00:00:01.250Z"));
 });
 
 test("does not let an undeclared payload become a diagnostic span", () => {

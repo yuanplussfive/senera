@@ -207,11 +207,13 @@ function runtimeRelativeImports(filePath: string, source: string): string[] {
 }
 
 function resolveRelativeImport(outputRoot: string, sourceFile: string, specifier: string): string | undefined {
-  const unresolved = path.resolve(path.dirname(sourceFile), specifier);
+  const resourceSpecifier = specifier.split(/[?#]/u, 1)[0];
+  const unresolved = path.resolve(path.dirname(sourceFile), resourceSpecifier);
   const relative = path.relative(outputRoot, unresolved);
   if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return undefined;
   const candidates = new Set<string>([unresolved]);
   const extension = path.extname(unresolved);
+  const knownModuleExtensions = new Set([".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".json"]);
   const replacements = new Map([
     [".js", [".ts", ".tsx"]],
     [".jsx", [".tsx", ".ts"]],
@@ -221,7 +223,7 @@ function resolveRelativeImport(outputRoot: string, sourceFile: string, specifier
   if (replacements) {
     const stem = unresolved.slice(0, -extension.length);
     for (const replacement of replacements) candidates.add(`${stem}${replacement}`);
-  } else if (!extension) {
+  } else if (!knownModuleExtensions.has(extension)) {
     for (const suffix of [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".json"]) {
       candidates.add(`${unresolved}${suffix}`);
       candidates.add(path.join(unresolved, `index${suffix}`));
@@ -242,7 +244,7 @@ function verifyRootPackage(outputRoot: string, value: NanoContract): void {
   assert.ok(nanoPackage.dependencies?.dockerode);
   assert.ok(nanoPackage.dependencies?.semver);
   assert.ok(nanoPackage.dependencies?.["tar-fs"]);
-  assert.equal(nanoPackage.dependencies?.["fast-glob"], undefined);
+  assert.equal(nanoPackage.dependencies?.tinyglobby, undefined);
   assert.deepEqual(Object.keys(nanoPackage.devDependencies ?? {}), value.rootPackage.devDependencies.names);
   for (const forbidden of ["electron", "electron-builder", "eslint", "vitest", "@vitest/coverage-v8"]) {
     assert.equal(nanoPackage.dependencies?.[forbidden], undefined);

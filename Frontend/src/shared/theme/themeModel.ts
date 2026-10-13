@@ -48,8 +48,8 @@ export const appearancePreferenceStorageKey = "senera.appearancePreference";
 
 export const defaultAppearancePreference = {
   themeMode: "system",
-  colorScheme: "senera",
-  accentColor: "terra",
+  colorScheme: "classic",
+  accentColor: "sky",
   fontFamily: "brand",
   fontScale: "standard",
 } as const satisfies AppearancePreference;
@@ -80,14 +80,18 @@ export const appearanceFontFamilies = ["brand", "fresh", "system"] as const sati
 export const fontScales = ["compact", "standard", "comfortable", "large"] as const satisfies readonly FontScale[];
 
 const emojiFontFamilyStack = '"Segoe UI Emoji", "Noto Color Emoji", emoji';
+const cjkFontFamilyStack = '"HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC"';
+const harmonySansFontFamilyStack = `${cjkFontFamilyStack}, "Segoe UI Variable", "Segoe UI", ${emojiFontFamilyStack}, ui-sans-serif, system-ui, sans-serif`;
 
 export const appearanceFontFamilyStacks: Record<AppearanceFontFamily, string> = {
-  brand: `"Geist", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", "Segoe UI Variable", "Segoe UI", ${emojiFontFamilyStack}, ui-sans-serif, system-ui, sans-serif`,
-  fresh: `"Nunito Sans Variable", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", "Segoe UI Variable", "Segoe UI", ${emojiFontFamilyStack}, ui-sans-serif, system-ui, sans-serif`,
+  brand: harmonySansFontFamilyStack,
+  fresh: `"Nunito Sans Variable", ${harmonySansFontFamilyStack}`,
   system: `-apple-system, "Segoe UI Variable", "Segoe UI", ${emojiFontFamilyStack}, "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", ui-sans-serif, system-ui, sans-serif`,
 };
 
-const themeMonoFontFamily = `"JetBrains Mono", "Cascadia Mono", ${emojiFontFamilyStack}, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+// Latin runs stay monospaced; CJK has no monospace face, so it falls through to
+// the same HarmonyOS stack the UI text uses instead of the browser default.
+const themeMonoFontFamily = `"JetBrains Mono", "Cascadia Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, ${emojiFontFamilyStack}, ${cjkFontFamilyStack}, monospace`;
 
 export const fontScaleValues: Record<FontScale, number> = {
   compact: 0.96,
@@ -110,6 +114,7 @@ const semanticColorAliases = {
   "--surface-panel": "rgb(var(--color-paper-50))",
   "--surface-raised": "var(--theme-elevated-bg)",
   "--surface-subtle": "rgb(var(--color-paper-100))",
+  "--surface-soft": "color-mix(in srgb, var(--surface-subtle) 50%, var(--surface-panel))",
   "--surface-muted": "rgb(var(--color-paper-200))",
   "--content-strong": "rgb(var(--color-ink-950))",
   "--content-primary": "rgb(var(--color-ink-900))",
@@ -143,7 +148,6 @@ const semanticColorRoleTokens: Record<ResolvedTheme, Record<string, string>> = {
     "--theme-hover-wash": "var(--surface-hover)",
     "--theme-selection-bg": "rgb(var(--color-accent-500) / 0.18)",
     "--theme-selection-fg": "var(--content-primary)",
-    "--theme-complete-highlight": "rgb(var(--color-accent-500) / 0.08)",
   },
   dark: {
     ...semanticColorAliases,
@@ -158,7 +162,6 @@ const semanticColorRoleTokens: Record<ResolvedTheme, Record<string, string>> = {
     "--theme-hover-wash": "var(--surface-hover)",
     "--theme-selection-bg": "rgb(var(--color-accent-500) / 0.26)",
     "--theme-selection-fg": "var(--content-strong)",
-    "--theme-complete-highlight": "rgb(var(--color-accent-500) / 0.13)",
   },
 };
 
@@ -191,7 +194,7 @@ const visualRoleTokens: Record<ResolvedTheme, Record<string, string>> = {
     "--theme-chat-assistant-line-height": "1.75",
     "--theme-chat-composer-bg": "rgb(var(--color-paper-100) / 0.80)",
     "--theme-chat-composer-focus-bg": "rgb(var(--color-paper-50))",
-    "--theme-session-active-bg": "var(--accent-surface)",
+    "--theme-session-active-bg": "rgb(var(--color-paper-300))",
     "--theme-tooltip-bg": "rgb(var(--color-ink-900))",
     "--theme-tooltip-fg": "rgb(var(--color-paper-50))",
     "--theme-tooltip-border": "rgb(var(--color-paper-50) / 0.18)",
@@ -211,7 +214,7 @@ const visualRoleTokens: Record<ResolvedTheme, Record<string, string>> = {
     "--theme-chat-assistant-line-height": "1.75",
     "--theme-chat-composer-bg": "rgb(var(--color-paper-50) / 0.76)",
     "--theme-chat-composer-focus-bg": "rgb(var(--color-paper-50) / 0.92)",
-    "--theme-session-active-bg": "var(--accent-surface)",
+    "--theme-session-active-bg": "rgb(var(--color-paper-200))",
     "--theme-tooltip-bg": "rgb(var(--color-paper-50))",
     "--theme-tooltip-fg": "rgb(var(--color-ink-950))",
     "--theme-tooltip-border": "rgb(var(--color-ink-950) / 0.16)",

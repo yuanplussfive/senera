@@ -1,22 +1,14 @@
-import { LightBulbIcon } from "@heroicons/react/24/outline";
-import { Plus, Trash2 } from "lucide-react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { cn } from "../../lib/util";
-import { Button, MenuSelect, Switch } from "../../shared/ui";
+import { AppIcon, Button, MenuSelect } from "../../shared/ui";
 import type { ModelThinkingLevel, ModelThinkingProfileConfig } from "../../api/eventTypes";
-import { ModelThinkingLevelMessageKeys, ModelThinkingLevels } from "./modelThinking";
+import { ModelThinkingLevels } from "./modelThinking";
 import type { ModelProviderDraft } from "./modelConfigTypes";
-import { SectionLabel, SettingRow, SettingsTable, TextRow } from "./ModelConfigPrimitives";
+import { SectionLabel, SettingRow, SettingsTable } from "./ModelConfigPrimitives";
 
 const thinkingLevelOptions = ModelThinkingLevels.map((level) => ({
   value: level,
-  label: frontendMessage(ModelThinkingLevelMessageKeys[level]),
+  label: level,
 }));
-
-const thinkingDefaultOptions = [
-  { value: "", label: frontendMessage("config.model.thinking.inherit") },
-  ...thinkingLevelOptions,
-];
 
 export function ModelThinkingControls({
   model,
@@ -24,38 +16,35 @@ export function ModelThinkingControls({
   reasoningEnabled,
   onChange,
 }: {
-  model: Pick<ModelProviderDraft, "ThinkingLevelMap" | "ThinkingProfiles" | "DefaultThinkingLevel">;
+  model: Pick<ModelProviderDraft, "ThinkingProfiles" | "DefaultThinkingLevel">;
   disabled: boolean;
   reasoningEnabled: boolean;
   onChange: (patch: Partial<ModelProviderDraft>) => void;
-}): JSX.Element {
-  const profiles = model.ThinkingProfiles ?? [];
-  const map = model.ThinkingLevelMap ?? {};
-  const availableLevels = ModelThinkingLevels.filter((level) => map[level] !== null);
+}): JSX.Element | null {
+  if (!reasoningEnabled) return null;
 
-  const updateMap = (level: ModelThinkingLevel, value: string | null | undefined): void => {
-    const next = { ...map };
-    if (value === undefined) delete next[level];
-    else next[level] = value;
-    onChange({ ThinkingLevelMap: Object.keys(next).length > 0 ? next : undefined });
-  };
+  const profiles = model.ThinkingProfiles ?? [];
+  const availableLevels = ModelThinkingLevels;
+  const defaultOptions = [
+    { value: "", label: frontendMessage("config.model.thinking.inherit") },
+    ...thinkingLevelOptions.filter((option) => availableLevels.includes(option.value)),
+  ];
 
   const updateProfile = (index: number, patch: Partial<ModelThinkingProfileConfig>): void => {
-    onChange({
-      ThinkingProfiles: profiles.map((profile, profileIndex) =>
-        profileIndex === index ? { ...profile, ...patch } : profile,
-      ),
-    });
+    const nextProfiles = profiles.map((profile, profileIndex) =>
+      profileIndex === index ? { ...profile, ...patch } : profile,
+    );
+    onChange({ ThinkingProfiles: nextProfiles });
   };
 
   const removeProfile = (index: number): void => {
-    const next = profiles.filter((_, profileIndex) => profileIndex !== index);
-    onChange({ ThinkingProfiles: next.length > 0 ? next : undefined });
+    const nextProfiles = profiles.filter((_, profileIndex) => profileIndex !== index);
+    onChange({ ThinkingProfiles: nextProfiles.length > 0 ? nextProfiles : undefined });
   };
 
   const addProfile = (): void => {
     const id = `profile-${crypto.randomUUID()}`;
-    const level = availableLevels.includes("medium") ? "medium" : (availableLevels[0] ?? "off");
+    const level = model.DefaultThinkingLevel ?? profiles[0]?.Level ?? availableLevels[0] ?? "off";
     onChange({
       ThinkingProfiles: [
         ...profiles,
@@ -65,82 +54,29 @@ export function ModelThinkingControls({
   };
 
   return (
-    <section data-model-thinking-controls>
+    <div className="mt-3 border-t border-ink-200/75 pt-3" data-model-thinking-controls>
       <SectionLabel
-        icon={<LightBulbIcon className="h-4 w-4" />}
+        icon={<AppIcon icon="lightbulb" size={16} />}
         title={frontendMessage("config.model.thinking.title")}
       />
-      <p className="mb-3 text-[11px] leading-4 text-ink-500">
-        {frontendMessage(
-          reasoningEnabled ? "config.model.thinking.description" : "config.model.thinking.disabledDescription",
-        )}
-      </p>
+      <p className="mb-3 text-[11px] leading-4 text-ink-500">{frontendMessage("config.model.thinking.description")}</p>
 
       <SettingsTable>
         <SettingRow
-          icon={<LightBulbIcon className="h-3.5 w-3.5" />}
+          icon={<AppIcon icon="lightbulb" size={14} />}
           label={frontendMessage("config.model.thinking.default")}
           description={frontendMessage("config.model.thinking.defaultDescription")}
         >
           <MenuSelect
             value={model.DefaultThinkingLevel ?? ""}
             placeholder={frontendMessage("config.model.thinking.inherit")}
-            options={thinkingDefaultOptions.map((option) => ({
-              ...option,
-              disabled: Boolean(option.value) && !availableLevels.includes(option.value as ModelThinkingLevel),
-            }))}
-            disabled={disabled || !reasoningEnabled}
+            options={defaultOptions}
+            disabled={disabled}
             ariaLabel={frontendMessage("config.model.thinking.default")}
             onChange={(value) => onChange({ DefaultThinkingLevel: value ? (value as ModelThinkingLevel) : undefined })}
           />
         </SettingRow>
       </SettingsTable>
-
-      <div className="mt-3 flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-[12.5px] font-medium text-ink-800">
-            {frontendMessage("config.model.thinking.mappingTitle")}
-          </div>
-          <div className="mt-0.5 text-[11px] leading-4 text-ink-500">
-            {frontendMessage("config.model.thinking.mappingDescription")}
-          </div>
-        </div>
-      </div>
-      <div
-        className={cn(
-          "mt-2 overflow-hidden rounded-md border border-ink-200/65 bg-paper-100/65",
-          !reasoningEnabled && "opacity-55",
-        )}
-      >
-        <div className="divide-y divide-ink-200/70">
-          {ModelThinkingLevels.map((level) => {
-            const configured = map[level];
-            const enabled = configured !== null;
-            return (
-              <TextRow
-                key={level}
-                icon={<span className="text-[11px] font-semibold uppercase text-ink-400">{level}</span>}
-                label={frontendMessage(ModelThinkingLevelMessageKeys[level])}
-                value={typeof configured === "string" ? configured : ""}
-                disabled={disabled || !reasoningEnabled || !enabled}
-                placeholder={frontendMessage("config.model.thinking.inherit")}
-                onChange={(value) => updateMap(level, value.trim() ? value : undefined)}
-                trailing={
-                  <Switch
-                    checked={enabled}
-                    disabled={disabled || !reasoningEnabled}
-                    ariaLabel={frontendMessage("config.model.thinking.enableLevel", {
-                      level: frontendMessage(ModelThinkingLevelMessageKeys[level]),
-                    })}
-                    className="mr-1 h-8 w-10 justify-center"
-                    onCheckedChange={(checked) => updateMap(level, checked ? undefined : null)}
-                  />
-                }
-              />
-            );
-          })}
-        </div>
-      </div>
 
       <div className="mt-4 flex items-center justify-between gap-3">
         <div className="min-w-0">
@@ -151,23 +87,12 @@ export function ModelThinkingControls({
             {frontendMessage("config.model.thinking.profilesDescription")}
           </div>
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={disabled || !reasoningEnabled}
-          onClick={addProfile}
-          className="shrink-0"
-        >
-          <Plus className="mr-1.5 h-3.5 w-3.5" />
+        <Button size="sm" variant="outline" disabled={disabled} onClick={addProfile} className="shrink-0">
+          <AppIcon icon="plus" size={14} className="mr-1.5" />
           {frontendMessage("config.model.thinking.addProfile")}
         </Button>
       </div>
-      <div
-        className={cn(
-          "mt-2 overflow-hidden rounded-md border border-ink-200/65 bg-paper-100/65",
-          !reasoningEnabled && "opacity-55",
-        )}
-      >
+      <div className="mt-2 overflow-hidden rounded-md border border-ink-200/65 bg-paper-100/65">
         {profiles.length > 0 ? (
           <div className="divide-y divide-ink-200/70">
             {profiles.map((profile, index) => (
@@ -177,37 +102,34 @@ export function ModelThinkingControls({
               >
                 <input
                   value={profile.Id}
-                  disabled={disabled || !reasoningEnabled}
+                  disabled={disabled}
                   aria-label={frontendMessage("config.model.thinking.profileId")}
                   className="h-8 min-w-0 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[12px] text-ink-800 outline-none focus:border-accent-border focus:ring-2 focus:ring-accent-focus disabled:opacity-55"
                   onChange={(event) => updateProfile(index, { Id: event.currentTarget.value })}
                 />
                 <input
                   value={profile.Label}
-                  disabled={disabled || !reasoningEnabled}
+                  disabled={disabled}
                   aria-label={frontendMessage("config.model.thinking.profileLabel")}
                   className="h-8 min-w-0 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[12px] text-ink-800 outline-none focus:border-accent-border focus:ring-2 focus:ring-accent-focus disabled:opacity-55"
                   onChange={(event) => updateProfile(index, { Label: event.currentTarget.value })}
                 />
-                <MenuSelect
+                <input
                   value={profile.Level}
-                  placeholder={frontendMessage("config.model.thinking.level")}
-                  options={thinkingLevelOptions.map((option) => ({
-                    ...option,
-                    disabled: !availableLevels.includes(option.value as ModelThinkingLevel),
-                  }))}
-                  disabled={disabled || !reasoningEnabled}
-                  ariaLabel={frontendMessage("config.model.thinking.level")}
-                  onChange={(value) => updateProfile(index, { Level: value as ModelThinkingLevel })}
+                  disabled={disabled}
+                  aria-label={frontendMessage("config.model.thinking.level")}
+                  placeholder={frontendMessage("config.model.thinking.levelPlaceholder")}
+                  className="h-8 min-w-0 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[12px] text-ink-800 outline-none focus:border-accent-border focus:ring-2 focus:ring-accent-focus disabled:opacity-55"
+                  onChange={(event) => updateProfile(index, { Level: event.currentTarget.value as ModelThinkingLevel })}
                 />
                 <button
                   type="button"
-                  disabled={disabled || !reasoningEnabled}
+                  disabled={disabled}
                   aria-label={frontendMessage("config.model.thinking.removeProfile")}
                   className="grid h-8 w-8 place-items-center rounded-md text-ink-500 transition hover:bg-brick-50 hover:text-brick-600 disabled:pointer-events-none disabled:opacity-45"
                   onClick={() => removeProfile(index)}
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
+                  <AppIcon icon="trash" size={14} />
                 </button>
               </div>
             ))}
@@ -218,6 +140,6 @@ export function ModelThinkingControls({
           </div>
         )}
       </div>
-    </section>
+    </div>
   );
 }

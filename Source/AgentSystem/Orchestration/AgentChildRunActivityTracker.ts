@@ -7,10 +7,15 @@ import {
   type AgentChildRunDeadlinePolicy,
   type AgentChildRunSnapshot,
 } from "./AgentChildRunTypes.js";
-import { AgentTodoWriteSources, type AgentTodoItem, type AgentTodoStatus } from "../Todos/AgentTodoTypes.js";
+import {
+  AgentTodoChangeSources,
+  AgentTodoStatuses,
+  type AgentTodoItem,
+  type AgentTodoStatus,
+} from "../Todos/AgentTodoTypes.js";
 import { createAgentContinuityCheckpoint } from "../Continuity/AgentContinuityLedger.js";
 
-const ChildRunTodoItemStatuses = new Set<AgentTodoStatus>(["pending", "in_progress", "completed", "cancelled"]);
+const ChildRunTodoItemStatuses: ReadonlySet<string> = new Set(Object.values(AgentTodoStatuses));
 
 function projectChildRunTodoItems(snapshot: unknown): AgentChildRunControlSnapshot["todo"]["items"] {
   const items = (snapshot as { items?: unknown } | undefined)?.items;
@@ -21,7 +26,7 @@ function projectChildRunTodoItems(snapshot: unknown): AgentChildRunControlSnapsh
     const content = (item as { content?: unknown }).content;
     const status = (item as { status?: unknown }).status;
     if (typeof content !== "string" || !content.trim()) continue;
-    if (typeof status !== "string" || !ChildRunTodoItemStatuses.has(status as AgentTodoStatus)) continue;
+    if (typeof status !== "string" || !ChildRunTodoItemStatuses.has(status)) continue;
     projected.push({ content: content.trim(), status: status as AgentTodoStatus });
   }
   return projected.length > 0 ? projected : undefined;
@@ -140,6 +145,10 @@ export class AgentChildRunActivityTracker {
         if (event.data.text.trim()) this.recordMeaningfulProgress(now);
         this.recordActivity(now);
         return;
+      case AgentEventKinds.ModelThinkingDelta:
+        this.lastModelOutputAt = now;
+        this.recordActivity(now);
+        return;
       case AgentEventKinds.ModelCompleted:
         if (event.data.text.trim()) this.currentModelText = event.data.text;
         if (this.currentModelText.trim()) this.checkpoint = this.modelCheckpoint(now, true);
@@ -192,7 +201,7 @@ export class AgentChildRunActivityTracker {
       case AgentEventKinds.TodoListWritten:
         this.todoCounts = { ...event.data.snapshot.counts };
         this.todoItems = projectChildRunTodoItems(event.data.snapshot) ?? this.todoItems;
-        if (event.data.source === AgentTodoWriteSources.Model) {
+        if (event.data.source === AgentTodoChangeSources.Model) {
           this.todoPlanObservedValue = true;
           this.recordMeaningfulProgress(now);
         }

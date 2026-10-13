@@ -23,7 +23,7 @@
   -> Pi Coding Agent 工具循环
   -> ToolRuntime / HostCapability / MCP
   -> Artifact + 领域事件
-  -> Session SQLite 终态原子提交 + Memory learning
+  -> Session SQLite 终态原子提交 + MemOS 场景记忆
   -> WebSocket 发布
   -> 前端 Session Projector 更新界面
 ```
@@ -78,9 +78,7 @@ MCP 客户端使用标准 `notifications/tools/list_changed` 能力协商。SDK 
 
 `Orchestration` 是子代理与持久化计划任务边界。生态包只解析 launch contract 或驱动 timer，实际任务统一通过 `AgentRunDispatchPort -> AgentSessionManager -> AgentLoop -> Pi` 回到主链路；父运行审批、工具 capability 交集、沙箱、Artifact、正式事件和 SQLite 状态都由 Senera 持有。具体不变量见[Orchestration 模块](../../Source/AgentSystem/Orchestration/README.md)。
 
-`GoalMicroLoop` 是世界运行时上的有界自主层，不另建第二套 Agent。每次世界唤醒只从 Agenda 选取到期或刚变化的 Goal，按优先级限制批量，调用结构化 `DecideGoalMicroLoop` 得到一个明确决定，再由宿主执行意图授权门禁并持久化 `progressed/paused/finished` 事件。只有 `committed` Goal 才能自主执行、重规划或完成；`suggested/tentative/observed` 会明确暂停并等待授权升级。`execute/replan` 通过现有 `AgentRunDispatchPort` 回到会话与 Pi；会话忙时进入已有 follow-up 队列，交互提问也不会绕过队列。单个 Goal 的模型、执行或验证失败会独立记录为可重试或暂停，不阻塞整个世界时钟。完成必须同时有终态运行和真实工具 evidence，不能只凭一句最终回答。决策调用的 cache scope 只包含世界、模型端点和调用合同，不包含 Goal 的易变状态，因此复查不会破坏现有稳定前缀缓存。Goal 事件仍由 Agenda 作为唯一事实源，世界树只做投影。
-
-`ResidentIdle` 是独立的稀疏主动性来源，不把“空闲”伪造成用户消息或 Goal。服务器启动时在 `agent_world_work_items` 中安排一个持久 tick；每次 tick 先经过共享 decision budget，再由结构化 `DecideResidentIdle` 在 `wait/reflect/create_goal/notify` 中选择一种类型结果。宿主持有所有 ID、时间、目标会话、Agenda authority 和副作用；模型不能直接调用工具。账本 payload 保存退避次数与世界显著性指纹：没有节点、Resident 状态、承诺、阶段或时间线变化时，后续 tick 直接记录 Wait 并指数退避，不发起模型请求；出现显著变化才重新进入模型决策。lease、ack、failed retry 和启动恢复沿用 World work ledger，通知使用统一的主动消息投递边界，不制造 synthetic user turn。`World.ResidentIdle` 的 min/max interval、backoff 和 pending 上限均由配置目录与 JSON form 暴露。
+执行计划只表示当前用户回合中的可验证工作步骤，由 Execution ledger、Todo 和 Pi 工具循环共同维护。Senera 不再创建脱离用户请求的自主任务，也不会在后台主动唤醒模型；需要长期信息时统一写入并检索 MemOS 记忆。
 
 ## 审批生命周期
 

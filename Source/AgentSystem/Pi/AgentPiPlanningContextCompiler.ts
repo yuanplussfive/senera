@@ -4,7 +4,7 @@ import { AgentJsonSchemaPromptContractProjector } from "../ToolContracts/AgentJs
 import type { AgentPromptContractProperty } from "../Prompt/AgentPromptContractTypes.js";
 import { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
-import { resolveAgentModelMaxTokens } from "../ModelEndpoints/AgentNativeToolModelProjector.js";
+import { resolveAgentPiCompactionWindow } from "./AgentPiCompactionSettings.js";
 import type {
   AgentPiAssistantMessageCompileInput,
   AgentPiToolContract,
@@ -13,21 +13,20 @@ import type {
 } from "../PiShared/AgentPiPlanningTypes.js";
 import { readAgentPiToolObservationStatus } from "../PiShared/AgentPiToolObservationStatus.js";
 import { readAgentToolOutputAvailability } from "../ToolRuntime/AgentToolResultOutcome.js";
-import { compactionSummaryOpen } from "../PiShared/AgentPiCompactionTags.js";
+import { projectAgentPiBamlContext } from "./AgentPiBamlContextAdapter.js";
 import {
   assertAgentPiToolObservationBounded,
   AgentPiToolObservationProtocolError,
   readAgentPiMessageTextContent,
   readAgentPiToolObservation,
   type AgentPiToolObservation,
-  readAgentPiToolObservationArtifactUri,
+  readAgentPiToolObservationArtifactReferences,
 } from "./AgentPiToolObservation.js";
 
 export interface AgentPiPlanningContextCompilerOptions {
-  modelProvider: Pick<
-    ResolvedAgentModelProviderConfig,
-    "ContextWindowTokens" | "MaxModelOutputTokens" | "MaxOutputTokens" | "Model"
-  >;
+  modelProvider: Pick<ResolvedAgentModelProviderConfig, "ContextWindowTokens" | "Model">;
+  /** Effective input capacity from the shared Pi context policy. */
+  inputCapacityTokens?: number;
 }
 
 export interface AgentPiPlanningContextCompileInput {
@@ -36,6 +35,8 @@ export interface AgentPiPlanningContextCompileInput {
   readonly maxTokens?: number;
   readonly reservedTokens?: number;
   readonly toolExecution?: "parallel" | "sequential";
+  /** Preserve the context supplied by Pi for its native compaction request. */
+  readonly preserveContext?: boolean;
 }
 
 export interface AgentPiPlanningContextCompilation {
@@ -72,38 +73,47 @@ export class AgentPiPlanningContextCompiler {
     this.tokenProjector = new AgentTokenProjector(options.modelProvider.Model);
     this.inputTokenCapacity = Math.max(
       1,
-      Math.floor(options.modelProvider.ContextWindowTokens) - resolveAgentModelMaxTokens(options.modelProvider),
+      Math.floor(
+        options.inputCapacityTokens ??
+          resolveAgentPiCompactionWindow(options.modelProvider.ContextWindowTokens).inputCapacityTokens,
+      ),
     );
   }
 
   compile(input: AgentPiPlanningContextCompileInput): AgentPiPlanningContextCompilation {
-    const tools = input.context.tools ?? [];
+    const context = projectAgentPiBamlContext(input.context);
+    const tools = context.tools ?? [];
     const routingCards = tools.map((tool) => this.projectToolCard(tool));
     const toolContracts = new Map(tools.map((tool) => [tool.name, authoritativeToolContract(tool)]));
-    const projectedMessages = input.context.messages.map<AgentPiProjectedMessage>((source, index) => ({
+    const projectedMessages = context.messages.map<AgentPiProjectedMessage>((source, index) => ({
       index,
       source,
       projected: projectMessage(source),
     }));
     const structuralTokens = this.tokenProjector.countJson({
       model: input.model,
-      systemPrompt: input.context.systemPrompt || undefined,
+      systemPrompt: context.systemPrompt || undefined,
       routingCards,
       toolExecution: input.toolExecution ?? "parallel",
       maxTokens: input.maxTokens,
     });
-    const messageBudget = Math.max(
-      1,
-      this.inputTokenCapacity - normalizeTokenCount(input.reservedTokens) - structuralTokens,
-    );
-    const messages = this.selectMessages(projectedMessages, messageBudget);
-    const compactionBoundaryIndex = findCompactionSummaryMessageIndex(input.context.messages);
-    const originalToolCallCount = countToolCalls(input.context.messages);
+    const completeTranscript = buildToolTranscript(projectedMessages.map((message) => message.source));
+    const completeProjection = projectedMessages.map((message) => message.projected);
+    // A Pi compaction request is already bounded by Pi's native preparation;
+    // report its measured payload size instead of applying Senera's reserve.
+    const messageBudget = input.preserveContext
+      ? this.tokenProjector.countJson({ messages: completeProjection, toolTranscript: completeTranscript })
+      : Math.max(1, this.inputTokenCapacity - normalizeTokenCount(input.reservedTokens) - structuralTokens);
+    const messages = input.preserveContext
+      ? { items: completeProjection, toolTranscript: completeTranscript, omittedOlderMessages: 0 }
+      : this.selectMessages(projectedMessages, messageBudget);
+    const compactionBoundaryIndex = findCompactionSummaryMessageIndex(context.messages);
+    const originalToolCallCount = countToolCalls(context.messages);
 
     return {
       planningContext: {
         model: input.model,
-        systemPrompt: input.context.systemPrompt || undefined,
+        systemPrompt: context.systemPrompt || undefined,
         messages: messages.items,
         toolTranscript: messages.toolTranscript,
         toolExecution: input.toolExecution ?? "parallel",
@@ -122,13 +132,6 @@ export class AgentPiPlanningContextCompiler {
       routingCards,
       toolContracts,
     };
-  }
-
-  detectCompactionSummaryText(messages: readonly Message[]): string | undefined {
-    const index = findCompactionSummaryMessageIndex(messages);
-    if (index === -1) return undefined;
-    const text = readMessageText(messages[index]);
-    return text.trim().length > 0 ? text : undefined;
   }
 
   private projectToolCard(tool: Tool): AgentPiToolRoutingCard {
@@ -293,7 +296,11 @@ function buildToolTranscript(messages: readonly Message[]): AgentPiToolTranscrip
             : typeof detail.summary === "string"
               ? detail.summary
               : undefined,
-        artifactUri: readAgentPiToolObservationArtifactUri(observation),
+        artifacts: readAgentPiToolObservationArtifactReferences(observation).map((reference) => ({
+          artifactUri: reference.artifactUri,
+          refs: [...reference.refs],
+          evidenceUris: [...reference.evidenceUris],
+        })),
         evidenceUris: detail.evidence.flatMap((entry) => (entry.evidence_uri ? [entry.evidence_uri] : [])),
         error: error
           ? {
@@ -335,17 +342,14 @@ function projectRoutingInputs(property: AgentPromptContractProperty): string[] {
 
 function findCompactionSummaryMessageIndex(messages: readonly Message[]): number {
   return messages.findIndex(
-    (message) =>
-      message.role === "user" &&
-      (readMessageText(message).includes(compactionSummaryOpen) ||
-        readMessageText(message).includes(PiNativeCompactionSummaryOpen)),
+    (message) => message.role === "user" && readMessageText(message).includes(PiNativeCompactionSummaryOpen),
   );
 }
 
 function findProjectedCompactionBoundary(messages: readonly unknown[]): number {
   return messages.findIndex((message) => {
     const text = JSON.stringify(message);
-    return text.includes(compactionSummaryOpen) || text.includes(PiNativeCompactionSummaryOpen);
+    return text.includes(PiNativeCompactionSummaryOpen);
   });
 }
 

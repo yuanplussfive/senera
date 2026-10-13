@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
+import fs from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { lookup as lookupMimeType } from "mime-types";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
 import { errorMessage } from "../Core/AgentErrors.js";
@@ -8,7 +10,16 @@ import type { AgentHostToolContext } from "../ToolRuntime/AgentToolHostCapabilit
 import type { AgentToolArtifactAsset, AgentToolArtifactPayload } from "../Types/ToolRuntimeTypes.js";
 import { AgentExecutionErrorCodes } from "../Xml/AgentXmlStatus.js";
 import { createAgentResourceId, createAgentResourceUri } from "../Resources/AgentResourceUri.js";
-import { assertSafeWebUrl, type AgentWebAddressResolver } from "../Web/AgentWebUrlPolicy.js";
+import type { AgentWebAddressResolver } from "../Web/AgentWebUrlPolicy.js";
+import { AgentExecutionApprovalModes } from "../Safety/AgentExecutionApprovalMode.js";
+import {
+  agentBrowserTargetAuthorizationMatches,
+  browserTargetScope,
+  canonicalizeAgentBrowserUrl,
+  inspectAgentBrowserTarget,
+  type AgentBrowserTargetInspection,
+  type AgentBrowserTargetAuthorization,
+} from "./AgentBrowserUrlPolicy.js";
 import { matchesAgentBrowserDomain, type AgentBrowserConfiguration } from "./AgentBrowserConfiguration.js";
 import type {
   AgentBrowserDriver,
@@ -94,6 +105,10 @@ const OperationSummary = {
 interface AgentBrowserSessionState {
   readonly key: string;
   lastActivityAt: number;
+  readonly approvedTargets: Set<string>;
+  readonly approvedLocalResourceRoots: Map<string, string>;
+  fullAccessActive: boolean;
+  activeTargetAuthorization?: AgentBrowserTargetAuthorization;
   driverSession?: AgentBrowserDriverSession;
   opening?: Promise<AgentBrowserDriverSession>;
 }
@@ -157,9 +172,11 @@ export class AgentBrowserRuntime {
 
     return this.runInSession(state.key, signal, async () => {
       if (this.closed) throw new AgentBrowserRuntimeError("The controlled browser runtime is closed.");
-      executionContext.reporter?.progress({ message: OperationSummary[operation] });
-      const prepared = await this.prepareArguments(operation, input, signal);
+      state.fullAccessActive = executionContext.approvalMode === AgentExecutionApprovalModes.FullAccess;
+      state.activeTargetAuthorization = executionContext.browserTargetAuthorization;
       try {
+        executionContext.reporter?.progress({ message: OperationSummary[operation] });
+        const prepared = await this.prepareArguments(operation, input, signal, state);
         const raw =
           operation === "close" && !state.driverSession && !state.opening
             ? { content: "Controlled browser session closed." }
@@ -184,6 +201,9 @@ export class AgentBrowserRuntime {
           );
         }
         throw this.toRuntimeError(error);
+      } finally {
+        state.fullAccessActive = false;
+        state.activeTargetAuthorization = undefined;
       }
     });
   }
@@ -233,6 +253,9 @@ export class AgentBrowserRuntime {
     const state: AgentBrowserSessionState = {
       key,
       lastActivityAt: Date.now(),
+      approvedTargets: new Set(),
+      approvedLocalResourceRoots: new Map(),
+      fullAccessActive: false,
     };
     this.sessions.set(key, state);
     return state;
@@ -273,6 +296,7 @@ export class AgentBrowserRuntime {
     operation: AgentBrowserOperation,
     input: Readonly<Record<string, unknown>>,
     signal: AbortSignal,
+    state: AgentBrowserSessionState,
   ): Promise<PreparedBrowserArguments> {
     const arguments_ = pickBrowserArguments(operation, input);
     if (
@@ -280,7 +304,7 @@ export class AgentBrowserRuntime {
       (operation === "read" && typeof arguments_.url === "string") ||
       (operation === "tab_new" && typeof arguments_.url === "string")
     ) {
-      arguments_.url = await this.admitNavigationUrl(String(arguments_.url), signal);
+      arguments_.url = await this.admitNavigationUrl(String(arguments_.url), signal, state);
     }
     if (operation === "screenshot") {
       const requested = arguments_.format;
@@ -293,41 +317,96 @@ export class AgentBrowserRuntime {
     };
   }
 
-  private async admitNavigationUrl(value: string, signal: AbortSignal): Promise<string> {
-    const url = await this.assertSafeUrl(value, signal);
-    if (this.configuration.network.accessMode === "allowlist") this.assertAllowedDomain(url.hostname, "navigation");
-    return url.toString();
+  private async admitNavigationUrl(
+    value: string,
+    signal: AbortSignal,
+    state: AgentBrowserSessionState,
+  ): Promise<string> {
+    const target = await this.inspectTarget(value, "navigation", state);
+    assertNotAborted(signal);
+    if (target.requiresApproval && !this.hasTargetAuthorization(target.url, state)) {
+      throw this.approvalRequiredError(target.url, "navigation");
+    }
+    if (target.requiresApproval) {
+      if (target.url.protocol === "file:") {
+        state.approvedLocalResourceRoots.set(target.scope, await resolveApprovedLocalResourceRoot(target.url));
+      }
+      state.approvedTargets.add(target.scope);
+    }
+    return target.url.toString();
   }
 
-  private async assertRequestPermitted(value: string, kind: AgentBrowserNetworkRequestKind): Promise<void> {
-    const url = await this.assertSafeUrl(value);
-    if (this.configuration.network.accessMode === "allowlist") this.assertAllowedDomain(url.hostname, kind);
+  private async assertRequestPermitted(
+    value: string,
+    kind: AgentBrowserNetworkRequestKind,
+    sourceUrl: string | undefined,
+    state: AgentBrowserSessionState,
+  ): Promise<void> {
+    const target = await this.inspectTarget(value, kind, state);
+    if (!target.requiresApproval || this.hasTargetAuthorization(target.url, state)) return;
+    if (sourceUrl && (await this.isApprovedSourceForTarget(sourceUrl, target, kind, state))) return;
+    throw this.approvalRequiredError(target.url, kind);
   }
 
-  private async assertSafeUrl(value: string, signal?: AbortSignal): Promise<URL> {
-    const url = await assertSafeWebUrl(
-      value,
-      {
-        maxUrlLength: this.configuration.runtime.maxUrlLength,
-        allowPrivateNetworks: this.configuration.network.allowPrivateNetworks,
-        allowSyntheticProxyAddresses: this.configuration.network.allowSyntheticProxyAddresses,
-      },
-      this.options.resolveHostAddresses,
+  private async inspectTarget(value: string, kind: AgentBrowserNetworkRequestKind, state: AgentBrowserSessionState) {
+    const canonical = canonicalizeAgentBrowserUrl(value, this.configuration.runtime.maxUrlLength);
+    this.assertNotBlockedDomain(canonical.hostname, kind);
+    return inspectAgentBrowserTarget(value, {
+      maxUrlLength: this.configuration.runtime.maxUrlLength,
+      fullAccess: state.fullAccessActive,
+      resolveHostAddresses: this.options.resolveHostAddresses,
+    });
+  }
+
+  private hasTargetAuthorization(url: URL, state: AgentBrowserSessionState): boolean {
+    if (state.fullAccessActive) return true;
+    if (agentBrowserTargetAuthorizationMatches(state.activeTargetAuthorization, url)) return true;
+    return false;
+  }
+
+  private async isApprovedSourceForTarget(
+    sourceUrl: string,
+    target: AgentBrowserTargetInspection,
+    kind: AgentBrowserNetworkRequestKind,
+    state: AgentBrowserSessionState,
+  ): Promise<boolean> {
+    try {
+      const sourceScope = browserTargetScope(sourceUrl);
+      if (sourceScope === target.scope && state.approvedTargets.has(sourceScope)) return true;
+      if (kind !== "subresource" || target.url.protocol !== "file:") return false;
+      return this.isApprovedLocalSubresource(sourceUrl, target.url, state);
+    } catch {
+      return false;
+    }
+  }
+
+  private async isApprovedLocalSubresource(
+    sourceUrl: string,
+    targetUrl: URL,
+    state: AgentBrowserSessionState,
+  ): Promise<boolean> {
+    const source = new URL(sourceUrl);
+    if (source.protocol !== "file:" || state.approvedLocalResourceRoots.size === 0) return false;
+    const [sourcePath, targetPath] = await Promise.all([resolveLocalFilePath(source), resolveLocalFilePath(targetUrl)]);
+    if (!sourcePath || !targetPath) return false;
+    return [...state.approvedLocalResourceRoots.values()].some(
+      (root) => isPathWithin(root, sourcePath) && isPathWithin(root, targetPath),
     );
-    if (signal) assertNotAborted(signal);
-    return url;
   }
 
-  private assertAllowedDomain(hostname: string, kind: AgentBrowserNetworkRequestKind): void {
-    const configured = this.configuration.network.allowedDomains;
-    if (configured.length === 0) {
+  private assertNotBlockedDomain(hostname: string, kind: AgentBrowserNetworkRequestKind): void {
+    if (!hostname) return;
+    if (this.configuration.network.blockedDomains.some((pattern) => matchesAgentBrowserDomain(hostname, pattern))) {
       throw new AgentBrowserRuntimeError(
-        `Browser ${kind === "navigation" ? "navigation" : "request"} is blocked because the configured allowlist is empty.`,
+        `Browser ${kind === "navigation" ? "navigation" : "request"} to ${hostname} is blocked by the configured domain blacklist.`,
       );
     }
-    if (configured.some((pattern) => matchesAgentBrowserDomain(hostname, pattern))) return;
-    throw new AgentBrowserRuntimeError(
-      `${kind === "navigation" ? "Browser navigation" : "Browser request"} to ${hostname} is outside the configured allowed domains.`,
+  }
+
+  private approvalRequiredError(url: URL, kind: AgentBrowserNetworkRequestKind): AgentBrowserRuntimeError {
+    const target = url.protocol === "file:" ? "local file access" : `private network target ${url.host}`;
+    return new AgentBrowserRuntimeError(
+      `Browser ${kind === "navigation" ? "navigation" : "request"} to ${target} requires explicit approval outside Full Access mode.`,
     );
   }
 
@@ -341,7 +420,7 @@ export class AgentBrowserRuntime {
       this.driver.createSession({
         requestTimeoutMs: this.configuration.runtime.requestTimeoutMs,
         maxDownloadBytes: this.configuration.capture.maxDownloadBytes,
-        assertRequestPermitted: (url, kind) => this.assertRequestPermitted(url, kind),
+        assertRequestPermitted: (url, kind, sourceUrl) => this.assertRequestPermitted(url, kind, sourceUrl, state),
       });
     state.opening = opening;
     void opening
@@ -692,6 +771,33 @@ function awaitBrowserCreation<TValue>(creation: Promise<TValue>, signal: AbortSi
 
 function composeBrowserSignals(signal: AbortSignal | undefined, shutdownSignal: AbortSignal): AbortSignal {
   return signal ? AbortSignal.any([signal, shutdownSignal]) : shutdownSignal;
+}
+
+async function resolveApprovedLocalResourceRoot(url: URL): Promise<string> {
+  const localPath = fileURLToPath(withoutUrlFragment(url));
+  const target = await fs.stat(localPath);
+  const rootPath = target.isDirectory() ? localPath : path.dirname(localPath);
+  return fs.realpath(rootPath);
+}
+
+async function resolveLocalFilePath(url: URL): Promise<string | undefined> {
+  try {
+    return await fs.realpath(fileURLToPath(withoutUrlFragment(url)));
+  } catch {
+    return undefined;
+  }
+}
+
+function withoutUrlFragment(url: URL): URL {
+  const normalized = new URL(url);
+  normalized.search = "";
+  normalized.hash = "";
+  return normalized;
+}
+
+function isPathWithin(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
 }
 
 function assertNotAborted(signal: AbortSignal): void {

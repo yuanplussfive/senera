@@ -13,6 +13,10 @@ import type {
 } from "../../../Source/AgentSystem/Pi/AgentPiPlanningCompiler.js";
 import { AgentPiSubstrate } from "../../../Source/AgentSystem/Pi/AgentPiSubstrate.js";
 import { AgentPiTurnState } from "../../../Source/AgentSystem/Pi/AgentPiTurnState.js";
+import {
+  readAgentPiMessageTextContent,
+  readAgentPiToolObservation,
+} from "../../../Source/AgentSystem/Pi/AgentPiToolObservation.js";
 import { AgentSkillScanner } from "../../../Source/AgentSystem/Skills/AgentSkillScanner.js";
 import { listDefaultAgentHostCapabilityNames } from "../../../Source/AgentSystem/AgentDefaultHostCapabilities.js";
 import { AgentSessionApprovalLeaseStore } from "../../../Source/AgentSystem/Safety/AgentSessionApprovalLeaseStore.js";
@@ -23,10 +27,7 @@ import {
 } from "../../../Source/AgentSystem/SystemTools/AgentSystemToolCatalog.js";
 import { AgentSystemExtensionCatalog } from "../../../Source/AgentSystem/SystemTools/AgentSystemToolSource.js";
 import { createAgentSystemTools } from "../../../Source/AgentSystem/SystemTools/AgentSystemTools.js";
-import {
-  AgentModelUsageLedger,
-  AgentModelUsageSources,
-} from "../../../Source/AgentSystem/ModelEndpoints/AgentModelUsage.js";
+import { AgentModelUsageLedger } from "../../../Source/AgentSystem/ModelEndpoints/AgentModelUsage.js";
 import { AgentPiToolPlanCoordinator } from "../../../Source/AgentSystem/PiShared/AgentPiToolPlanCoordinator.js";
 import { AgentTurnTokenBudget } from "../../../Source/AgentSystem/Text/AgentTurnTokenBudget.js";
 import { AgentToolCallExecutor } from "../../../Source/AgentSystem/ToolRuntime/AgentToolCallExecutor.js";
@@ -44,6 +45,10 @@ import type {
 import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
 import { createXmlProtocolSpec } from "../../../Source/AgentSystem/Xml/AgentXmlPolicy.js";
 import { createModelProvider } from "../Support/AgentTestFixtures.js";
+import { AgentToolSearchRuntime } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchRuntime.js";
+import { createToolSearchConfig } from "../ToolSearch/ToolSearchTestFixtures.js";
+import { VerificationScenarioSource } from "../../VerificationScenarioSource.js";
+import { resolveAgentWorkspaceLayout } from "../../../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
 
 const AddToolName = "AddNumbersTool";
 const AddCapability = "test.add_numbers";
@@ -59,6 +64,127 @@ afterEach(async () => {
 });
 
 describe("Pi Coding Agent production substrate", () => {
+  test("loads a newly discovered MCP schema in the same BAML Pi turn", async () => {
+    const workspaceRoot = await createTemporaryWorkspace();
+    const config = testConfig(workspaceRoot);
+    const modelProvider = createModelProvider({ ContextWindowTokens: 32_768, MaxModelOutputTokens: 1_024 });
+    const registry = new AgentExtensionRegistry();
+    const systemTools = createAgentSystemTools(config);
+    new AgentSystemExtensionCatalog().registerRoot(registry, path.resolve("System", "Extensions"), {
+      capabilities: new Set([...listDefaultAgentHostCapabilityNames(), ...systemTools.map(systemToolCapability)]),
+    });
+    const dynamicTool: RegisteredTool = {
+      ...addNumbersTool(workspaceRoot),
+      name: "mcp__calculator__sum",
+      handler: {
+        kind: "McpTool",
+        tool: "sum",
+        readOnly: true,
+        server: { id: "calculator", revision: "test-revision", transport: "http", url: "https://fixture.invalid/mcp" },
+      },
+    };
+    const search = new AgentToolSearchRuntime(registry, createToolSearchConfig(), workspaceRoot, modelProvider, {
+      scenarioSource: new VerificationScenarioSource(),
+      availableExecutionTargets: () => ["Local"],
+      mcpServices: () => [
+        {
+          id: "calculator",
+          revision: "test-revision",
+          title: "Calculator",
+          description: "Calculate arithmetic",
+          aliases: ["arithmetic"],
+          toolNames: ["sum"],
+          availability: { status: "unverified" },
+        },
+      ],
+      beforeSearch: (_query, _signal, ids) => {
+        expect(ids).toContain("calculator");
+        if (!registry.getTool(dynamicTool.name)) registry.registerToolExtension(dynamicTool.owner, [dynamicTool]);
+      },
+    });
+    const hostCapabilities = new AgentToolHostCapabilityRegistry()
+      .register("tool.search", search.createSearchHostHandler())
+      .register("tool.load", search.createLoadHostHandler());
+    const executionEnv = new SeneraLocalExecutionEnv({ workspaceRoot });
+    const executor = new AgentToolCallExecutor({
+      registry,
+      config,
+      protocol: createXmlProtocolSpec(config),
+      workspaceRoot,
+      hostCapabilities,
+      executionEnv,
+    });
+    const compiler = new RecordingCompilerFactory((request, index) => {
+      if (index === 0)
+        return {
+          kind: "tool_calls",
+          content: "",
+          toolCalls: [{ id: "search", name: "ToolSearch", arguments: { query: "arithmetic" } }],
+        };
+      if (index === 1)
+        return {
+          kind: "tool_calls",
+          content: "",
+          toolCalls: [{ id: "load", name: "ToolLoad", arguments: { tools: [dynamicTool.name] } }],
+        };
+      expect(request.context.tools?.find((tool) => tool.name === dynamicTool.name)?.parameters).toMatchObject({
+        required: ["left", "right"],
+      });
+      return { kind: "final_text", content: "New schema is available.", toolCalls: [] };
+    });
+    const substrate = new AgentPiSubstrate({
+      workspaceRoot,
+      config,
+      modelProvider,
+      registry,
+      toolCallExecutor: executor,
+      executionEnv,
+      planningCompilerFactory: compiler,
+      artifactRecorder: new AgentToolExecutionArtifactRecorder({
+        workspaceRoot,
+        config: resolveArtifactsConfig(config),
+        model: modelProvider.Model,
+      }),
+      resourcesPath: workspaceRoot,
+    });
+    const grant = createAgentToolAccessGrant({
+      authorizedToolNames: ["ToolSearch", "ToolLoad"],
+      exposedToolNames: ["ToolSearch", "ToolLoad"],
+      authorizedMcpServices: [{ id: "calculator", revision: "test-revision" }],
+    });
+    const turn = createTurnState(
+      "discovery-session",
+      "discovery-request",
+      1,
+      grant,
+      modelProvider,
+      [],
+      search.createToolExposure(grant),
+    );
+    try {
+      const lease = await substrate.leaseTurn({
+        sessionId: "discovery-session",
+        requestId: "discovery-request",
+        toolAccessGrant: grant,
+        toolExposure: turn.context.toolExposure,
+        turnState: turn,
+      });
+      try {
+        await lease.session.prompt("Calculate arithmetic.");
+        expect(lease.session.getLastAssistantText()).toBe("New schema is available.");
+        expect(lease.session.getActiveToolNames()).toContain(dynamicTool.name);
+        expect(grant.authorizedToolNames).not.toContain(dynamicTool.name);
+        expect(compiler.requests).toHaveLength(3);
+      } finally {
+        lease.session.dispose();
+      }
+    } finally {
+      await substrate.close();
+      await executor.close();
+      await search.close();
+    }
+  });
+
   test("authorizes and reads an external host file through the production WorkspaceRead chain", async () => {
     const workspaceRoot = await createTemporaryWorkspace();
     const externalRoot = await createTemporaryWorkspace();
@@ -142,7 +268,6 @@ describe("Pi Coding Agent production substrate", () => {
         turnState: turn,
       });
       try {
-        await lease.session.setHistory([]);
         await lease.session.prompt(`Read ${externalFile}.`, { source: "extension" });
         expect(lease.session.getLastAssistantText()).toBe("The external file was read.");
         const systemPrompt = compiler.requests[0]?.context.systemPrompt ?? "";
@@ -256,8 +381,6 @@ describe("Pi Coding Agent production substrate", () => {
         listenerCompleted = true;
       });
       try {
-        expect(lease.historyMigrationRequired).toBe(true);
-        expect(() => lease.session.setHistory([])).not.toThrow();
         expect(lease.session.getActiveToolNames()).toEqual([AddToolName]);
         const prompt = lease.session.prompt("Add 17 and 25.", { source: "extension" });
         await listenerStarted.promise;
@@ -278,126 +401,21 @@ describe("Pi Coding Agent production substrate", () => {
       expect(compiler.requests[0]?.model.api).toBe("senera-planning");
       const toolResult = compiler.requests[1]?.context.messages.find((message) => message.role === "toolResult");
       expect(toolResult).toBeDefined();
-      expect(JSON.stringify(toolResult)).toContain("senera.tool_observation.v4");
-      expect(JSON.stringify(toolResult)).toContain(artifactUris[0]);
+      expect(JSON.stringify(toolResult)).toContain("senera.tool_observation.v5");
+      // The complete observation fits the shared budget, so no completeness
+      // view is needed and the original result remains intact.
+      const toolResultObservation = readAgentPiToolObservation(readAgentPiMessageTextContent(toolResult!));
+      expect(toolResultObservation?.detail.result).toMatchObject({ sum: 42 });
+      expect(toolResultObservation?.observation_view).toBeUndefined();
+      expect(toolResultObservation?.artifact_uri).toBe(artifactUris[0]);
+      expect(artifactUris).toHaveLength(1);
     } finally {
       await substrate.close();
       await toolCallExecutor.close();
     }
   });
 
-  test("compacts during one repeated tool loop and continues with the rebuilt context", async () => {
-    const workspaceRoot = await createTemporaryWorkspace();
-    const config = testConfig(workspaceRoot);
-    const modelProvider = createModelProvider({
-      Id: "mid-run-compaction-test",
-      Model: "deterministic-mid-run-compaction",
-      ContextWindowTokens: 4_096,
-      MaxModelOutputTokens: 1_536,
-    });
-    const compiler = new RecordingCompilerFactory(
-      (_request, index) =>
-        index < 4
-          ? {
-              kind: "tool_calls",
-              content: `Collecting evidence ${index + 1}.`,
-              toolCalls: [
-                {
-                  id: `call_compaction_${index + 1}`,
-                  name: AddToolName,
-                  arguments: { left: index, right: index + 1 },
-                },
-              ],
-            }
-          : { kind: "final_text", content: "The compacted tool loop completed.", toolCalls: [] },
-      (_request, index) => [500, 1_000, 1_500, 1_800, 700][index] ?? 700,
-    );
-    const registry = new AgentExtensionRegistry();
-    const tool = addNumbersTool(workspaceRoot);
-    registry.registerToolExtension(tool.owner, [tool]);
-    const hostCapabilities = new AgentToolHostCapabilityRegistry().register(AddCapability, async (argumentsValue) => {
-      const arguments_ = AddArgumentsSchema.parse(argumentsValue);
-      return toolProcessSuccessResult({
-        sum: arguments_.left + arguments_.right,
-        evidence: "mid-run context evidence ".repeat(400),
-      });
-    });
-    const executionEnv = new SeneraLocalExecutionEnv({ workspaceRoot });
-    const toolCallExecutor = new AgentToolCallExecutor({
-      registry,
-      config,
-      protocol: createXmlProtocolSpec(config),
-      workspaceRoot,
-      hostCapabilities,
-      executionEnv,
-      emitLifecycleEvents: false,
-    });
-    const substrate = new AgentPiSubstrate({
-      workspaceRoot,
-      config,
-      modelProvider,
-      planningCompilerFactory: compiler,
-      registry,
-      toolCallExecutor,
-      artifactRecorder: new AgentToolExecutionArtifactRecorder({
-        workspaceRoot,
-        config: resolveArtifactsConfig(config),
-        model: modelProvider.Model,
-      }),
-      executionEnv,
-      resourcesPath: workspaceRoot,
-    });
-    const grant = createAgentToolAccessGrant({
-      authorizedToolNames: [AddToolName],
-      exposedToolNames: [AddToolName],
-      preferredToolNames: [AddToolName],
-    });
-    const turn = createTurnState("mid-run-session", "mid-run-request", 1, grant, modelProvider);
-
-    try {
-      const lease = await substrate.leaseTurn({
-        sessionId: "mid-run-session",
-        requestId: "mid-run-request",
-        step: 1,
-        input: "Collect enough evidence to require context compaction.",
-        systemPrompt: `Use ${AddToolName} repeatedly and then answer.`,
-        toolAccessGrant: grant,
-        toolExposure: turn.context.toolExposure,
-        tokenBudget: turn.context.tokenBudget,
-        turnState: turn,
-      });
-      try {
-        await lease.session.setHistory([]);
-        await lease.session.prompt("Run the repeated tool task.", { source: "extension" });
-        expect(lease.session.getLastAssistantText()).toBe("The compacted tool loop completed.");
-      } finally {
-        lease.session.dispose();
-      }
-
-      expect(compiler.requests).toHaveLength(5);
-      expect(compiler.summarizations).toBeGreaterThan(0);
-      expect(
-        compiler.requests.some((request) =>
-          request.context.messages.some(
-            (message) =>
-              message.role === "user" &&
-              (typeof message.content === "string"
-                ? message.content
-                : message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")
-              ).includes("<compaction_summary>"),
-          ),
-        ),
-      ).toBe(true);
-      const budget = turn.context.tokenBudget.snapshot();
-      expect(budget.occupiedTokens).toBeLessThan(budget.inputCapacityTokens);
-      expect(budget.availableTokens).toBeGreaterThan(0);
-    } finally {
-      await substrate.close();
-      await toolCallExecutor.close();
-    }
-  });
-
-  test("reloads a published Skill and project context for the next turn of one persistent session", async () => {
+  test("loads late-registered project Skills with hosted state and refreshes the next persistent turn", async () => {
     const workspaceRoot = await createTemporaryWorkspace();
     const config = testConfig(workspaceRoot);
     const modelProvider = createModelProvider({
@@ -414,7 +432,8 @@ describe("Pi Coding Agent production substrate", () => {
     const registry = new AgentExtensionRegistry();
     const projectContextFile = path.join(workspaceRoot, ".senera", "context", "PROJECT.md");
     await writeProjectContext(projectContextFile, "FIRST_PROJECT_CONTEXT");
-    const skillRoot = path.join(workspaceRoot, "System", "Extensions", "test-extension", "skills", "hot-skill");
+    await fs.writeFile(path.join(workspaceRoot, "AGENTS.md"), "FIRST_NATIVE_INSTRUCTIONS", "utf8");
+    const skillRoot = path.join(workspaceRoot, ".senera", "skills", "hot-skill");
     await writeSkill(skillRoot, "FIRST_SKILL_BODY");
     await writeSkill(
       path.join(workspaceRoot, ".senera", "skills", "unselected-skill"),
@@ -423,7 +442,6 @@ describe("Pi Coding Agent production substrate", () => {
     );
     const scanner = new AgentSkillScanner();
     const firstSkill = scanner.readSkillDirectory(skillRoot, "hot-skill");
-    registry.registerSkill(firstSkill);
 
     const executionEnv = new SeneraLocalExecutionEnv({ workspaceRoot });
     const toolCallExecutor = new AgentToolCallExecutor({
@@ -436,6 +454,7 @@ describe("Pi Coding Agent production substrate", () => {
     });
     const substrate = new AgentPiSubstrate({
       workspaceRoot,
+      workspaceLayout: resolveAgentWorkspaceLayout(workspaceRoot, path.join(workspaceRoot, "host-state")),
       config,
       modelProvider,
       planningCompilerFactory: compiler,
@@ -449,6 +468,7 @@ describe("Pi Coding Agent production substrate", () => {
       executionEnv,
       resourcesPath: workspaceRoot,
     });
+    registry.registerSkill(firstSkill);
     const grant = createAgentToolAccessGrant({
       authorizedToolNames: [],
       exposedToolNames: [],
@@ -473,14 +493,22 @@ describe("Pi Coding Agent production substrate", () => {
         activeSkills: [firstActivatedSkill],
       });
       try {
-        expect(firstLease.historyMigrationRequired).toBe(true);
         await firstLease.session.prompt("First turn.", { source: "extension" });
+        const durableUserMessage = firstLease.session.state.messages.find((message) => message.role === "user");
+        const durableUserText = durableUserMessage
+          ? typeof durableUserMessage.content === "string"
+            ? durableUserMessage.content
+            : durableUserMessage.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")
+          : "";
+        expect(durableUserText).toContain('<senera_turn_context protocol="senera.turn-context/v1"');
+        expect(durableUserText).toContain("First turn.");
       } finally {
         firstLease.session.dispose();
       }
 
       await writeSkill(skillRoot, "SECOND_SKILL_BODY");
       await writeProjectContext(projectContextFile, "SECOND_PROJECT_CONTEXT");
+      await fs.writeFile(path.join(workspaceRoot, "AGENTS.md"), "SECOND_NATIVE_INSTRUCTIONS", "utf8");
       const secondSkill = scanner.readSkillDirectory(skillRoot, "hot-skill");
       registry.replaceSkills("standalone:hot-skill", [secondSkill]);
       const secondActivatedSkill = activatedSkill(secondSkill);
@@ -500,7 +528,6 @@ describe("Pi Coding Agent production substrate", () => {
         activeSkills: [secondActivatedSkill],
       });
       try {
-        expect(secondLease.historyMigrationRequired).toBe(false);
         await secondLease.session.prompt("Second turn.", { source: "extension" });
       } finally {
         secondLease.session.dispose();
@@ -511,19 +538,30 @@ describe("Pi Coding Agent production substrate", () => {
       const secondPrompt = compiler.requests[1]?.context.systemPrompt ?? "";
       const firstRequest = JSON.stringify(compiler.requests[0]?.context ?? {});
       const secondRequest = JSON.stringify(compiler.requests[1]?.context ?? {});
+      const firstUserMessage = compiler.requests[0]?.context.messages.find((message) => message.role === "user");
+      const firstUserText = firstUserMessage
+        ? typeof firstUserMessage.content === "string"
+          ? firstUserMessage.content
+          : firstUserMessage.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")
+        : "";
       expect(firstPrompt).not.toContain("FIRST_SKILL_BODY");
-      expect(textOccurrences(firstRequest, "FIRST_SKILL_BODY")).toBe(1);
+      expect(firstRequest).not.toContain("FIRST_SKILL_BODY");
+      expect(firstUserText).toContain('<senera_turn_context protocol="senera.turn-context/v1"');
+      expect(firstUserText).toContain("First turn.");
       expect(textOccurrences(firstPrompt, "FIRST_PROJECT_CONTEXT")).toBe(1);
+      expect(textOccurrences(firstPrompt, "FIRST_NATIVE_INSTRUCTIONS")).toBe(1);
       expect(firstRequest).not.toContain("UNSELECTED_SKILL_BODY");
-      expect(textOccurrences(secondRequest, "FIRST_SKILL_BODY")).toBe(1);
+      expect(textOccurrences(secondRequest, "FIRST_SKILL_BODY")).toBe(0);
       expect(secondPrompt).not.toContain("FIRST_PROJECT_CONTEXT");
+      expect(secondPrompt).not.toContain("FIRST_NATIVE_INSTRUCTIONS");
       expect(secondPrompt).not.toContain("SECOND_SKILL_BODY");
-      expect(textOccurrences(secondRequest, "SECOND_SKILL_BODY")).toBe(1);
-      expect(secondRequest.lastIndexOf("SECOND_SKILL_BODY")).toBeGreaterThan(
-        secondRequest.lastIndexOf("FIRST_SKILL_BODY"),
-      );
-      expect(secondRequest).toContain("the latest senera_turn_context supersedes it");
+      expect(textOccurrences(secondRequest, "SECOND_SKILL_BODY")).toBe(0);
+      expect(secondRequest).toContain("senera.turn-context/v1");
+      expect(secondRequest).toContain("hot-skill");
+      expect(secondRequest).not.toContain("senera://skills/hot-skill/SKILL.md");
+      expect(secondRequest).not.toContain('revision="');
       expect(textOccurrences(secondPrompt, "SECOND_PROJECT_CONTEXT")).toBe(1);
+      expect(textOccurrences(secondPrompt, "SECOND_NATIVE_INSTRUCTIONS")).toBe(1);
       expect(secondRequest).not.toContain("UNSELECTED_SKILL_BODY");
     } finally {
       await substrate.close();
@@ -534,40 +572,20 @@ describe("Pi Coding Agent production substrate", () => {
 
 class RecordingCompilerFactory implements AgentPiPlanningCompilerFactory {
   readonly requests: AgentPiPlanningCompileRequest[] = [];
-  summarizations = 0;
 
   constructor(
     private readonly respond: (
       request: AgentPiPlanningCompileRequest,
       index: number,
     ) => Awaited<ReturnType<ReturnType<AgentPiPlanningCompilerFactory["create"]>["compile"]>>,
-    private readonly inputTokens?: (request: AgentPiPlanningCompileRequest, index: number) => number,
   ) {}
 
-  create(
-    options?: Parameters<AgentPiPlanningCompilerFactory["create"]>[0],
-  ): ReturnType<AgentPiPlanningCompilerFactory["create"]> {
+  create(): ReturnType<AgentPiPlanningCompilerFactory["create"]> {
     return {
       compile: async (request) => {
         this.requests.push(request);
         const index = this.requests.length - 1;
-        const inputTokens = this.inputTokens?.(request, index);
-        if (inputTokens !== undefined) {
-          options?.usageSink?.({
-            stage: "test.pi.mid_run",
-            usage: {
-              source: AgentModelUsageSources.ProviderReported,
-              inputTokens,
-              outputTokens: 10,
-              totalTokens: inputTokens + 10,
-            },
-          });
-        }
         return this.respond(request, index);
-      },
-      summarize: async () => {
-        this.summarizations += 1;
-        return "Native provider test summary.";
       },
     };
   }
@@ -580,14 +598,17 @@ function createTurnState(
   toolAccessGrant: AgentToolAccessGrant,
   modelProvider: ResolvedAgentModelProviderConfig,
   activeSkills: AgentPiTurnState["context"]["activeSkills"] = [],
+  toolExposure = new AgentToolExposureState(toolAccessGrant),
 ): AgentPiTurnState {
   return new AgentPiTurnState({
+    systemPrompt: "Test agent system context.",
+    userMessage: "Test substrate request.",
     approvalMode: "agent",
     sessionId,
     requestId,
     step,
     toolAccessGrant,
-    toolExposure: new AgentToolExposureState(toolAccessGrant),
+    toolExposure,
     activeSkills,
     usageLedger: new AgentModelUsageLedger(),
     toolPlan: new AgentPiToolPlanCoordinator(),
@@ -635,6 +656,18 @@ function addNumbersTool(workspaceRoot: string): RegisteredTool {
     execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
     runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, ResultAssessment: "ProcessExit" },
     sources: [],
+    search: {
+      Summary: "Add two numbers for deterministic arithmetic tasks.",
+      Tags: ["arithmetic", "math"],
+      Capabilities: [
+        {
+          Id: "test-math.add",
+          Title: "Add numbers",
+          Description: "Add two numeric values.",
+          Facets: { Actions: ["add"], Targets: ["arithmetic"], Effects: ["none"] },
+        },
+      ],
+    },
     childGrant: "inherit",
     evidenceCapabilities: [],
   };
@@ -688,6 +721,7 @@ function activatedSkill(skill: ReturnType<AgentSkillScanner["readSkillDirectory"
     recommendedTools: [],
     evidenceRequirements: [],
     descriptionFile: skill.descriptionFile,
+    content: skill.content,
     matchedTerms: ["hot-skill"],
     matchedFields: [{ term: "hot-skill", fields: ["explicitInvocation"] }],
     score: 1,

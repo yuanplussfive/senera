@@ -7,22 +7,19 @@ export const AgentTodoStatuses = {
 
 export type AgentTodoStatus = (typeof AgentTodoStatuses)[keyof typeof AgentTodoStatuses];
 
-/** Model-facing Todo operations. Keeping the operation explicit prevents a
- * write from being confused with a read when optional fields are omitted. */
-export const AgentTodoOperations = {
-  Read: "read",
-  Replace: "replace",
-  Merge: "merge",
+/** Stable model-facing Tool names shared by runtime, prompts, and extensions. */
+export const AgentTodoToolNames = {
+  Add: "TodoAdd",
+  Update: "TodoUpdate",
+  Read: "TodoRead",
 } as const;
 
-export type AgentTodoOperation = (typeof AgentTodoOperations)[keyof typeof AgentTodoOperations];
-
-export const AgentTodoWriteSources = {
+export const AgentTodoChangeSources = {
   Host: "host",
   Model: "model",
 } as const;
 
-export type AgentTodoWriteSource = (typeof AgentTodoWriteSources)[keyof typeof AgentTodoWriteSources];
+export type AgentTodoChangeSource = (typeof AgentTodoChangeSources)[keyof typeof AgentTodoChangeSources];
 
 export interface AgentTodoItem {
   readonly id: string;
@@ -33,10 +30,35 @@ export interface AgentTodoItem {
   readonly updatedAt: string;
 }
 
-export interface AgentTodoItemInput {
+export interface AgentTodoAddTaskInput {
+  readonly content: string;
+}
+
+export type AgentTodoUpdateItemInput =
+  | {
+      readonly id: string;
+      readonly content: string;
+      readonly status?: AgentTodoStatus;
+    }
+  | {
+      readonly id: string;
+      readonly content?: never;
+      readonly status: AgentTodoStatus;
+    };
+
+export interface AgentTodoTaskReference {
   readonly id: string;
-  readonly content?: string;
-  readonly status?: AgentTodoStatus;
+  readonly status: AgentTodoStatus;
+}
+
+export interface AgentTodoAddResult {
+  readonly created: readonly AgentTodoTaskReference[];
+  readonly counts: AgentTodoCounts;
+}
+
+export interface AgentTodoUpdateResult {
+  readonly updated: readonly AgentTodoTaskReference[];
+  readonly counts: AgentTodoCounts;
 }
 
 export interface AgentTodoCounts {

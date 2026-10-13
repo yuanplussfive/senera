@@ -4,16 +4,21 @@ import { resolveAppSurface, resolveSettingsSection } from "./app/appSurface";
 import { readDesktopBridge } from "./app/desktopBridge";
 import { useServerAuthentication } from "./app/useServerAuthentication";
 import type { AgentSocketReconnectPolicy } from "./api/useAgentSocket";
-import { AuthenticationSessionStates } from "./api/generatedEventCatalog";
+import { AuthenticationSessionStates, WebSocketCloseCodes } from "./api/generatedEventCatalog";
 import { resolveRuntimeHttpBaseUrl, resolveRuntimeWebSocketUrl } from "./config/runtimeConfig";
 import { FrontendI18nProvider, useFrontendLocale } from "./i18n/useFrontendLocale";
 import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
-import { AuthenticatedSurface } from "./app/AuthenticatedSurface";
+import { ApplicationSurfaceLoading, SettingsSurfaceLoading } from "./app/SurfaceLoading";
 import { useAuthenticatedApplicationPreload } from "./app/useAuthenticatedApplicationPreload";
 import { installViteDynamicImportRecovery } from "./app/viteDynamicImportRecovery";
-import "./styles/fonts.css";
 import "./index.css";
 import "./styles/transitions.css";
+import "./styles/fonts-bootstrap.css";
+
+// Keep the application shell independent from the full CJK font asset graph.
+// The font CSS remains a dynamic resource so the first authenticated surface
+// can render while the optional brand typeface is fetched in parallel.
+void import("./styles/fonts.css");
 
 const LazyDesktopWindowChrome = lazy(() =>
   import("./app/DesktopWindowChrome").then(({ DesktopWindowChrome }) => ({ default: DesktopWindowChrome })),
@@ -22,6 +27,14 @@ const LazyServerAuthenticationBoundary = lazy(() =>
   import("./app/ServerAuthenticationGate").then(({ ServerAuthenticationBoundary }) => ({
     default: ServerAuthenticationBoundary,
   })),
+);
+const LazyWorkspaceConnectionRecovery = lazy(() =>
+  import("./app/WorkspaceConnectionRecovery").then(({ WorkspaceConnectionRecovery }) => ({
+    default: WorkspaceConnectionRecovery,
+  })),
+);
+const LazyAuthenticatedSurface = lazy(() =>
+  import("./app/AuthenticatedSurface").then(({ AuthenticatedSurface }) => ({ default: AuthenticatedSurface })),
 );
 const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
 const HTTP_BASE_URL = resolveRuntimeHttpBaseUrl(WS_URL);
@@ -70,31 +83,55 @@ function ApplicationRoot(): JSX.Element {
     prepareAuthorizedSurface: authenticatedApplicationPreload.prepareAuthorizedSurface,
   });
   const revalidateAuthentication = authentication.revalidate;
-  const socketReconnectPolicy = useCallback<AgentSocketReconnectPolicy>(async () => {
-    const result = await revalidateAuthentication();
-    return result === "anonymous" || result === "rejected" ? "stop" : "retry";
-  }, [revalidateAuthentication]);
+  const [unavailableWorkspaceUrl, setUnavailableWorkspaceUrl] = useState<string>();
+  const socketReconnectPolicy = useCallback<AgentSocketReconnectPolicy>(
+    async (disconnect) => {
+      if (disconnect.code === WebSocketCloseCodes.WorkspaceNotFound) {
+        setUnavailableWorkspaceUrl(disconnect.url);
+        return "stop";
+      }
+      const result = await revalidateAuthentication();
+      return result === "anonymous" || result === "rejected" ? "stop" : "retry";
+    },
+    [revalidateAuthentication],
+  );
+  const authenticationLoadingFallback =
+    surface === "settings" ? <SettingsSurfaceLoading presentation="desktop" /> : <ApplicationSurfaceLoading />;
 
   const authenticatedContent = (
-    <Suspense fallback={<AuthenticationBoundaryLoading />}>
+    <Suspense fallback={authenticationLoadingFallback}>
       <LazyServerAuthenticationBoundary
         state={authentication.state}
         onLogin={authentication.login}
         onRetry={authentication.refresh}
+        loadingFallback={authenticationLoadingFallback}
       >
-        {(resolvedAuthentication) => (
-          <AuthenticatedSurface
-            authentication={resolvedAuthentication}
-            surface={surface}
-            settingsSection={settingsSection}
-            socketReconnectPolicy={socketReconnectPolicy}
-            onLogout={
-              resolvedAuthentication.state === AuthenticationSessionStates.Authenticated
-                ? authentication.logout
-                : undefined
-            }
-          />
-        )}
+        {(resolvedAuthentication) =>
+          unavailableWorkspaceUrl ? (
+            <Suspense fallback={authenticationLoadingFallback}>
+              <LazyWorkspaceConnectionRecovery
+                httpBaseUrl={resolveRuntimeHttpBaseUrl(unavailableWorkspaceUrl)}
+                onSelect={(workspaceId) => {
+                  const url = new URL(window.location.href);
+                  url.searchParams.set("workspaceId", workspaceId);
+                  window.location.assign(url.toString());
+                }}
+              />
+            </Suspense>
+          ) : (
+            <LazyAuthenticatedSurface
+              authentication={resolvedAuthentication}
+              surface={surface}
+              settingsSection={settingsSection}
+              socketReconnectPolicy={socketReconnectPolicy}
+              onLogout={
+                resolvedAuthentication.state === AuthenticationSessionStates.Authenticated
+                  ? authentication.logout
+                  : undefined
+              }
+            />
+          )
+        }
       </LazyServerAuthenticationBoundary>
     </Suspense>
   );
@@ -110,8 +147,4 @@ function ApplicationRoot(): JSX.Element {
       )}
     </FrontendI18nProvider>
   );
-}
-
-function AuthenticationBoundaryLoading(): JSX.Element {
-  return <main className="min-h-screen bg-paper-100" aria-busy="true" />;
 }

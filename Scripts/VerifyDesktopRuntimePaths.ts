@@ -3,18 +3,14 @@ import path from "node:path";
 import fs from "node:fs";
 import {
   DesktopRuntimePathResolutionError,
+  resolveDesktopApplicationRoot,
+  resolveDesktopApplicationDataRoot,
   resolveDesktopResourceRoot,
   resolveDesktopWorkspaceRoot,
 } from "../Apps/Desktop/DesktopRuntimePathResolver.js";
-import {
-  isCurrentDesktopInstallationSelection,
-  readDesktopInstallationSelection,
-  resolveDesktopInstallationSelectionPath,
-  writeDesktopInstallationSelection,
-} from "../Apps/Desktop/DesktopInstallationSelection.js";
+
 import {
   readDesktopWorkspaceSelection,
-  readLegacyDesktopWorkspaceSelection,
   resolveDesktopWorkspaceSelectionPath,
   writeDesktopWorkspaceSelection,
 } from "../Apps/Desktop/DesktopWorkspaceSelection.js";
@@ -24,35 +20,34 @@ const workspaceRoot = process.cwd();
 const packageManifest = JSON.parse(fs.readFileSync(path.join(workspaceRoot, "package.json"), "utf8")) as {
   build?: { nsis?: { include?: unknown; allowToChangeInstallationDirectory?: unknown } };
 };
-const installerScriptPath = path.join(workspaceRoot, "Build", "installer.nsh");
-const installerScript = fs.readFileSync(installerScriptPath, "utf8");
-assert.equal(packageManifest.build?.nsis?.include, "Build/installer.nsh");
+assert.equal(packageManifest.build?.nsis?.include, undefined);
 assert.equal(packageManifest.build?.nsis?.allowToChangeInstallationDirectory, true);
-for (const requiredInstallerContract of [
-  "!macro customPageAfterChangeDir",
-  "!macro customInstall",
-  "installation.json",
-  "SeneraWriteInstallationSelection",
-  "!ifndef BUILD_UNINSTALLER",
-  "SeneraHasValidInstallationSelection",
-  "SeneraVerifyInstallationSelection",
-]) {
-  assert.ok(
-    installerScript.includes(requiredInstallerContract),
-    `NSIS installer contract is missing: ${requiredInstallerContract}`,
-  );
-}
-assert.ok(!installerScript.includes("SeneraDataRoot"), "The installer must not expose a configurable data root.");
-assert.ok(
-  !installerScript.includes("SeneraCopySelectionToInstallAnchor"),
-  "The installer must not write an install anchor.",
-);
+assert.equal(resolveDesktopWorkspaceRoot({ resourceRoot: workspaceRoot, isPackaged: true }), undefined);
 const temporaryRoot = path.join(workspaceRoot, ".cache", "desktop-path-verification");
 fs.rmSync(temporaryRoot, { recursive: true, force: true });
 fs.mkdirSync(temporaryRoot, { recursive: true });
 
 const distDesktopRoot = path.join(workspaceRoot, "Dist", "Apps", "Desktop");
 const packagedResourceRoot = path.join(workspaceRoot, "resources");
+const packagedAppRoot = path.join(packagedResourceRoot, "app.asar");
+
+assert.equal(
+  resolveDesktopApplicationRoot({
+    appPath: distDesktopRoot,
+    isPackaged: false,
+    resourceRoot: workspaceRoot,
+  }),
+  workspaceRoot,
+);
+
+assert.equal(
+  resolveDesktopApplicationRoot({
+    appPath: packagedAppRoot,
+    isPackaged: true,
+    resourceRoot: packagedResourceRoot,
+  }),
+  packagedAppRoot,
+);
 
 assert.equal(
   resolveDesktopResourceRoot({
@@ -111,6 +106,17 @@ assert.equal(
 
 assert.equal(resolveDesktopWorkspaceRoot({ resourceRoot: workspaceRoot }), workspaceRoot);
 
+const previousDataRoot = process.env.SENERA_DATA_ROOT;
+try {
+  const applicationDataRoot = path.join(temporaryRoot, "application-data");
+  process.env.SENERA_DATA_ROOT = applicationDataRoot;
+  assert.equal(resolveDesktopApplicationDataRoot(), applicationDataRoot);
+  assert.notEqual(resolveDesktopApplicationDataRoot(), workspaceRoot);
+} finally {
+  if (previousDataRoot === undefined) delete process.env.SENERA_DATA_ROOT;
+  else process.env.SENERA_DATA_ROOT = previousDataRoot;
+}
+
 const workspaceLayout = resolveAgentWorkspaceLayout(workspaceRoot);
 assert.equal(workspaceLayout.desktopRuntimeRoot, path.join(workspaceRoot, ".senera", "desktop"));
 
@@ -138,34 +144,13 @@ assert.throws(
   DesktopRuntimePathResolutionError,
 );
 
-const selectionPath = resolveDesktopInstallationSelectionPath(temporaryRoot);
-writeDesktopInstallationSelection(selectionPath, {
-  workspaceRoot,
-});
-assert.deepEqual(readDesktopInstallationSelection(selectionPath), {
-  version: 2,
-  workspaceRoot,
-});
-assert.equal(isCurrentDesktopInstallationSelection(selectionPath), true);
-
-const legacySelectionPath = path.join(temporaryRoot, "legacy-installation.json");
-fs.writeFileSync(
-  legacySelectionPath,
-  `${JSON.stringify({ version: 1, dataRoot: path.join(temporaryRoot, "obsolete-data"), workspaceRoot }, null, 2)}\n`,
-  "utf8",
-);
-assert.deepEqual(readDesktopInstallationSelection(legacySelectionPath), {
-  version: 2,
-  workspaceRoot,
-});
-assert.equal(isCurrentDesktopInstallationSelection(legacySelectionPath), false);
-
 const legacyWorkspacePath = resolveDesktopWorkspaceSelectionPath(temporaryRoot);
 writeDesktopWorkspaceSelection(legacyWorkspacePath, temporaryRoot);
 assert.equal(readDesktopWorkspaceSelection(legacyWorkspacePath), path.resolve(temporaryRoot));
-assert.equal(readLegacyDesktopWorkspaceSelection(legacyWorkspacePath, temporaryRoot), undefined);
 writeDesktopWorkspaceSelection(legacyWorkspacePath, workspaceRoot);
-assert.equal(readLegacyDesktopWorkspaceSelection(legacyWorkspacePath, temporaryRoot), workspaceRoot);
+assert.equal(readDesktopWorkspaceSelection(legacyWorkspacePath), workspaceRoot);
+fs.writeFileSync(legacyWorkspacePath, "{", "utf8");
+assert.throws(() => readDesktopWorkspaceSelection(legacyWorkspacePath), SyntaxError);
 
 fs.rmSync(temporaryRoot, { recursive: true, force: true });
 

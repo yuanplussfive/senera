@@ -1,5 +1,4 @@
 import type { AgentEventSink } from "../Events/AgentEvent.js";
-import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
 import { AgentEventKinds, emitAgentEvent } from "../Events/AgentEvent.js";
 import type { AgentEventEnvelope } from "../Events/AgentEventBase.js";
 import { matchByKind } from "../Core/AgentMatch.js";
@@ -23,7 +22,10 @@ import {
   type AgentSessionMessageDisposition,
 } from "./AgentSessionMessageDisposition.js";
 import type { AgentSessionMessageQueueMode } from "./AgentSessionMessageQueueMode.js";
-import { AgentSessionMessageQueueModes } from "./AgentSessionMessageQueueMode.js";
+import type {
+  AgentSessionBackgroundWakeOutcome,
+  AgentSessionBackgroundWakeRequest,
+} from "./AgentSessionBackgroundWake.js";
 import { AgentSessionHistoryMutationCoordinator } from "./AgentSessionHistoryMutationCoordinator.js";
 import { createOpaqueId } from "../Core/AgentIds.js";
 import { AgentSessionOperations } from "./AgentSessionOperation.js";
@@ -36,7 +38,7 @@ import {
   AgentSessionMessageCoordinator,
   type AgentSessionMessageAcceptance,
 } from "./AgentSessionMessageCoordinator.js";
-import { AgentSessionHistoryController } from "./AgentSessionHistoryController.js";
+import { AgentSessionHistoryController, type AgentSessionRetryRequest } from "./AgentSessionHistoryController.js";
 import {
   resolveAgentSessionModelProviderId,
   type AgentConversationEntryMetadata,
@@ -48,13 +50,14 @@ import { mergeSessionConversationEntries } from "./AgentSessionRunProjection.js"
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 import type { AgentChannelFinalizationRecord } from "../Channels/AgentChannelFinalizationTypes.js";
 import type { AgentChannelKind } from "../Channels/AgentChannelTypes.js";
+import type { AgentExplicitActivationSet } from "../Activation/AgentActivationTypes.js";
 import {
   appendAgentChannelFinalizationRecord,
   readAgentChannelFinalizationHistory,
 } from "../Channels/AgentChannelFinalizationTypes.js";
 import { projectAssistantDeliveryXml } from "./AgentSessionDeliveryProjection.js";
 
-export type { AgentContinuityLearningSink, AgentSessionManagerOptions } from "./AgentSessionManagerOptions.js";
+export type { AgentSessionManagerOptions } from "./AgentSessionManagerOptions.js";
 
 export class AgentSessionManager {
   private readonly store: AgentSessionStore;
@@ -83,10 +86,9 @@ export class AgentSessionManager {
     this.memory =
       options.memoryService ??
       new AgentMemoryService({
-        continuityLearning: options.continuityLearning,
         sourceRepository: options.memorySourceRepository,
       });
-    this.eventFactory = new AgentSessionEventFactory(conversationPolicy);
+    this.eventFactory = new AgentSessionEventFactory();
     this.piManagement = new AgentSessionPiManagementController({
       store: this.store,
       service: options.piSessionManagement,
@@ -117,7 +119,6 @@ export class AgentSessionManager {
       runControl: options.runControl,
       loopFactory: options.loopFactory,
       snapshotEvent: (session) => this.eventFactory.snapshot(session),
-      eventObserver: options.eventObserver,
     });
     this.messageCoordinator = new AgentSessionMessageCoordinator({
       store: this.store,
@@ -222,6 +223,25 @@ export class AgentSessionManager {
     });
   }
 
+  async closeSessions(request: {
+    sessionIds: readonly string[];
+    onEvent?: AgentEventSink;
+  }): Promise<
+    readonly { readonly sessionId: string; readonly kind: "completed" | "failed"; readonly error?: unknown }[]
+  > {
+    const sessionIds = [...new Set(request.sessionIds)];
+    return Promise.all(
+      sessionIds.map(async (sessionId) => {
+        try {
+          await this.closeSession({ sessionId, onEvent: request.onEvent });
+          return { sessionId, kind: "completed" as const };
+        } catch (error) {
+          return { sessionId, kind: "failed" as const, error };
+        }
+      }),
+    );
+  }
+
   private async recoverRuntimeState(): Promise<void> {
     await this.forkCoordinator.recoverAll();
     await this.historyController.recoverAll();
@@ -239,6 +259,7 @@ export class AgentSessionManager {
     metadata?: AgentConversationEntryMetadata;
     disposition?: AgentSessionMessageDisposition;
     queueMode?: AgentSessionMessageQueueMode;
+    activations?: AgentExplicitActivationSet;
     onEvent?: AgentEventSink;
     preparation?: AgentTurnPreparationSnapshot;
     systemPromptLayer?: import("../Orchestration/AgentRunDispatchPort.js").AgentSystemPromptLayer;
@@ -251,59 +272,42 @@ export class AgentSessionManager {
     return this.messageCoordinator.submit(request);
   }
 
-  /**
-   * Re-enters a user session when detached work finishes. The first attempt
-   * queues behind an active turn; otherwise it creates a fresh model turn.
-   * The request id is supplied by the caller so replay after restart is
-   * idempotent through the normal session command store.
-   */
-  async wakeFromBackgroundTask(request: {
-    readonly sessionId: string;
-    readonly requestId: string;
-    readonly input: string;
-    readonly approvalMode: AgentExecutionApprovalMode;
-    readonly modelProviderId?: string;
-    readonly onEvent?: AgentEventSink;
-    readonly metadata?: AgentConversationEntryMetadata;
-  }): Promise<"accepted" | "queued" | "missing" | "busy"> {
+  /** Resolves pending detached results after the parent turn settles, then admits one fresh request. */
+  async wakeFromBackgroundTask(request: AgentSessionBackgroundWakeRequest): Promise<AgentSessionBackgroundWakeOutcome> {
     await this.ready();
-    const lookup = this.store.get(request.sessionId);
-    if (lookup.kind === "missing") return "missing";
-
-    if (this.runCoordinator.hasRunInFlight(request.sessionId)) {
-      const queued = await this.runCoordinator.enqueueActiveRunMessage({
-        session: lookup.session,
-        requestId: request.requestId,
-        input: request.input,
-        metadata: request.metadata,
-        queueMode: AgentSessionMessageQueueModes.FollowUp,
-        onEvent: request.onEvent,
-      });
-      if (queued) return "queued";
-      await this.runCoordinator.waitForIdle(request.sessionId);
-    }
-
-    // Admission can race with another request that starts between the idle
-    // check and accept(). Follow the active run to its settled boundary rather
-    // than relying on an arbitrary retry count or dropping the completion.
     while (true) {
-      const acceptance = await this.messageCoordinator.accept({
-        sessionId: request.sessionId,
-        requestId: request.requestId,
-        modelProviderId: request.modelProviderId,
-        input: request.input,
-        approvalMode: request.approvalMode,
-        metadata: request.metadata,
-        reclaimRunningCommand: true,
-        disposition: AgentSessionMessageDispositions.RequireExisting,
-        onEvent: request.onEvent,
-      });
-      if (acceptance.kind === "accepted") {
-        void acceptance.completion?.catch(() => undefined);
-        return "accepted";
+      if (this.runCoordinator.hasRunInFlight(request.sessionId)) {
+        await this.runCoordinator.waitForIdle(request.sessionId);
+        continue;
       }
-      if (acceptance.kind === "missing") return "missing";
-      if (!this.runCoordinator.hasRunInFlight(request.sessionId)) return "busy";
+
+      const outcome = await this.sessionAdmissions.run(request.sessionId, async () => {
+        const lookup = this.store.get(request.sessionId);
+        if (lookup.kind === "missing") return { kind: "missing" } as const;
+        if (this.runCoordinator.hasRunInFlight(request.sessionId)) return { kind: "busy" } as const;
+
+        const payload = request.resolve();
+        if (!payload) return { kind: "delivered" } as const;
+        const acceptance = await this.messageCoordinator.acceptUnderAdmission({
+          sessionId: request.sessionId,
+          requestId: payload.requestId,
+          modelProviderId: payload.modelProviderId,
+          input: payload.input,
+          approvalMode: payload.approvalMode,
+          metadata: payload.metadata,
+          reclaimRunningCommand: true,
+          disposition: AgentSessionMessageDispositions.RequireExisting,
+          onEvent: request.onEvent,
+        });
+        if (acceptance.kind === "accepted") {
+          request.acknowledge(payload);
+          void acceptance.completion?.catch(() => undefined);
+          return { kind: "accepted" } as const;
+        }
+        return acceptance.kind === "missing" ? ({ kind: "missing" } as const) : ({ kind: "busy" } as const);
+      });
+
+      if (outcome.kind !== "busy") return outcome.kind;
       await this.runCoordinator.waitForIdle(request.sessionId);
     }
   }
@@ -581,6 +585,7 @@ export class AgentSessionManager {
     input: string;
     onEvent?: AgentEventSink;
     requestId?: string;
+    metadata?: AgentConversationEntryMetadata;
     interaction?: AgentInteractionContext;
   }): Promise<boolean> {
     await this.ready();
@@ -610,9 +615,14 @@ export class AgentSessionManager {
     input: string;
     approvalMode: AgentExecutionApprovalMode;
     attachments?: AgentUploadAttachment[];
+    activations?: AgentExplicitActivationSet;
     onEvent?: AgentEventSink;
   }): Promise<void> {
     await this.historyController.regenerate(request);
+  }
+
+  async retryFailedRun(request: AgentSessionRetryRequest): Promise<void> {
+    await this.historyController.retry(request);
   }
 
   async forkSession(request: {
@@ -681,14 +691,6 @@ export class AgentSessionManager {
     onEvent?: AgentEventSink;
   }): Promise<void> {
     await this.ready();
-    try {
-      await this.memory.flushContinuityLearning();
-    } catch (error) {
-      this.options.logger?.warn("continuity.learning.flush_before_compaction_failed", {
-        sessionId: request.sessionId,
-        error: serializeError(error),
-      });
-    }
     await this.piManagement.run(
       request,
       AgentSessionOperations.Compact,

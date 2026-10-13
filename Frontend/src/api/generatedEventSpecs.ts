@@ -221,32 +221,11 @@ export const EventSpecs = {
       retention: "projection",
       projectionPointers: [
         "/data/enabled",
-        "/data/concepts",
-        "/data/graph",
-        "/data/graphRelations",
-        "/data/residentProfile",
-        "/data/factCatalog",
-        "/data/selection",
-        "/data/preset/enabled",
-        "/data/preset/activePresetName",
-        "/data/preset/title",
-        "/data/preset/corePersona",
-        "/data/preset/languageStyle",
-        "/data/evidenceCandidates",
+        "/data/query",
+        "/data/periodDigests",
         "/data/eventCandidates",
-        "/data/rejections",
-        "/data/nearMisses",
-        "/data/rules",
-        "/data/signals",
+        "/data/selection",
       ],
-    },
-  },
-  "continuity.rules.snapshot": {
-    layer: "snapshot",
-    phase: "prompt",
-    observation: {
-      retention: "projection",
-      projectionPointers: ["/data/rules", "/data/signals"],
     },
   },
   "continuity.recall.settled": {
@@ -275,22 +254,6 @@ export const EventSpecs = {
     observation: {
       retention: "projection",
       projectionPointers: ["/data/original", "/data/local"],
-    },
-  },
-  "agenda.snapshot": {
-    layer: "snapshot",
-    phase: "prompt",
-    observation: {
-      retention: "projection",
-      projectionPointers: ["/data/snapshot"],
-    },
-  },
-  "world.snapshot": {
-    layer: "snapshot",
-    phase: "prompt",
-    observation: {
-      retention: "projection",
-      projectionPointers: ["/data/snapshot"],
     },
   },
   "todo.list.written": {
@@ -346,7 +309,7 @@ export const EventSpecs = {
     phase: "model",
     observation: {
       retention: "projection",
-      projectionPointers: ["/data/model", "/data/providerId"],
+      projectionPointers: ["/data/model", "/data/providerId", "/data/messageIndex"],
     },
   },
   "model.delta": {
@@ -357,12 +320,28 @@ export const EventSpecs = {
       projectionPointers: [],
     },
   },
+  "model.thinking.delta": {
+    layer: "progress",
+    phase: "model",
+    observation: {
+      retention: "metadata",
+      projectionPointers: [],
+    },
+  },
+  "model.thinking.completed": {
+    layer: "snapshot",
+    phase: "model",
+    observation: {
+      retention: "projection",
+      projectionPointers: ["/data/messageIndex", "/data/contentIndex", "/data/status"],
+    },
+  },
   "model.completed": {
     layer: "snapshot",
     phase: "model",
     observation: {
       retention: "projection",
-      projectionPointers: ["/data/provider", "/data/usage"],
+      projectionPointers: ["/data/provider", "/data/usage", "/data/messageIndex"],
     },
   },
   "tool.calls.planned": {
@@ -370,7 +349,15 @@ export const EventSpecs = {
     phase: "tool",
     observation: {
       retention: "projection",
-      projectionPointers: ["/data/toolCount", "/data/tools", "/data/status", "/data/executionMode", "/data/batchId"],
+      projectionPointers: [
+        "/data/toolCount",
+        "/data/tools",
+        "/data/status",
+        "/data/executionMode",
+        "/data/batchId",
+        "/data/modelMessageIndex",
+        "/data/calls",
+      ],
     },
   },
   "tool.call.started": {
@@ -388,6 +375,8 @@ export const EventSpecs = {
         "/data/origin/capability",
         "/data/origin/server",
         "/data/origin/tool",
+        "/data/modelMessageIndex",
+        "/data/modelContentIndex",
         "/data/batchId",
         "/data/startedAt",
         "/data/durationMs",
@@ -502,6 +491,8 @@ export const EventSpecs = {
         "/data/content",
         "/data/terminal",
         "/data/toolCount",
+        "/data/modelMessageIndex",
+        "/data/modelContentIndex",
         "/data/reasonCode",
       ],
     },
@@ -1075,22 +1066,6 @@ export const EventSpecs = {
     observation: {
       retention: "metadata",
       projectionPointers: [],
-    },
-  },
-  "preset.snapshot": {
-    layer: "snapshot",
-    phase: "config",
-    observation: {
-      retention: "projection",
-      projectionPointers: ["/data/count", "/data/activePresetName"],
-    },
-  },
-  "preset.failed": {
-    layer: "error",
-    phase: "config",
-    observation: {
-      retention: "projection",
-      projectionPointers: ["/data/code", "/data/name"],
     },
   },
   "system_tool.snapshot": {

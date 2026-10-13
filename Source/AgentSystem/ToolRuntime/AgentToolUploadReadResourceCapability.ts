@@ -1,7 +1,10 @@
 import { z } from "zod";
 import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
 import type { ToolResourceArgumentManifest } from "../Types/AgentToolContractTypes.js";
-import type { AgentToolResourceCapability } from "./AgentToolResourceCapabilityRegistry.js";
+import type {
+  AgentToolResourceCapability,
+  AgentToolResourceManifestValidator,
+} from "./AgentToolResourceCapabilityRegistry.js";
 import { AgentToolResourceCapabilityIds } from "./AgentToolResourceCapabilityIds.js";
 import {
   AgentToolResourceAccessModes,
@@ -18,13 +21,26 @@ interface UploadReadResourceInput {
   args: Readonly<Record<string, unknown>>;
 }
 
+export const AgentToolUploadReadResourceManifestValidator: AgentToolResourceManifestValidator = Object.freeze({
+  id: AgentToolResourceCapabilityIds.UploadRead,
+  validateManifest(resource: ToolResourceArgumentManifest) {
+    UploadReadParametersSchema.parse(resource.Parameters ?? {});
+    BindingSchema.parse(resource.Binding);
+  },
+});
+
 export class AgentToolUploadReadResourceCapability implements AgentToolResourceCapability {
   readonly id = AgentToolResourceCapabilityIds.UploadRead;
   private readonly claimDomain = createExactAgentToolResourceClaimDomain(this.id);
 
   constructor(private readonly uploads: Pick<AgentUploadStore, "resolve">) {}
 
+  validateManifest(resource: ToolResourceArgumentManifest): void {
+    AgentToolUploadReadResourceManifestValidator.validateManifest(resource);
+  }
+
   async project(input: UploadReadResourceInput) {
+    this.validateManifest(input.resource);
     const upload = await this.resolve(input);
     const binding = BindingSchema.parse(input.resource.Binding);
     return {
@@ -43,6 +59,7 @@ export class AgentToolUploadReadResourceCapability implements AgentToolResourceC
   }
 
   async claim(input: UploadReadResourceInput) {
+    this.validateManifest(input.resource);
     const upload = await this.resolve(input);
     return [
       {
@@ -57,7 +74,6 @@ export class AgentToolUploadReadResourceCapability implements AgentToolResourceC
     if (typeof input.value !== "string") {
       throw new TypeError(`Upload resource ${input.resource.Pointer} must be a string.`);
     }
-    UploadReadParametersSchema.parse(input.resource.Parameters ?? {});
     const upload = await this.uploads.resolve(input.value);
     if (!upload) throw new Error(`Upload resource was not found: ${input.value}`);
     return upload;

@@ -76,6 +76,44 @@ describe("Docker Engine sandbox runtime", () => {
     });
   });
 
+  test("stages rootfs copies in read-only volumes while keeping the execution rootfs immutable", async () => {
+    const fixture = createRuntimeFixture("docker-engine");
+    const packageRoot = path.resolve("McpServers/imagen");
+
+    await fixture.runtime.prepare();
+    const process = await fixture.runtime.start({
+      requestId: "request-rootfs-copy",
+      command: "/usr/local/bin/node",
+      arguments: ["--version"],
+      cwd: "/opt/senera/mcp-packages/imagen",
+      environment: {},
+      interactive: false,
+      workspaceMount: "readonly",
+      network: "disabled",
+      rootfsCopies: [{ sourcePath: packageRoot, guestPath: "/opt/senera/mcp-packages/imagen" }],
+      writableMounts: [],
+      limits: { cpus: 1, memoryMiB: 256, processCount: 64, timeoutMs: 10_000 },
+    });
+
+    await expect(process.completion).resolves.toEqual({ exitCode: 0, signal: null });
+    await process.cleanup();
+
+    expect(fixture.created).toMatchObject({
+      HostConfig: {
+        ReadonlyRootfs: true,
+        Mounts: expect.arrayContaining([
+          {
+            Type: "volume",
+            Source: "rootfs-volume",
+            Target: "/opt/senera/mcp-packages/imagen",
+            ReadOnly: true,
+          },
+        ]),
+      },
+    });
+    expect(fixture.volumeRemove).toHaveBeenCalledOnce();
+  });
+
   test("selects gVisor when runsc is registered and daemon-default otherwise", async () => {
     const dockerWithRunsc = {
       info: vi.fn(async () => ({ OSType: "linux", Runtimes: { runc: {}, runsc: {} } })),
@@ -160,9 +198,11 @@ function createRuntimeFixture(provider: AgentDockerEngineSandboxProvider): {
   imageReference: string;
   remove: ReturnType<typeof vi.fn>;
   readonly created: Docker.ContainerCreateOptions | undefined;
+  readonly volumeRemove: ReturnType<typeof vi.fn>;
 } {
   const resolved = readAgentDockerEngineRuntimeContract(provider, "x64");
   const remove = vi.fn(async () => undefined);
+  const volumeRemove = vi.fn(async () => undefined);
   let created: Docker.ContainerCreateOptions | undefined;
   const docker = {
     version: vi.fn(async () => ({ ApiVersion: resolved.contract.engine.minimumApiVersion })),
@@ -183,6 +223,8 @@ function createRuntimeFixture(provider: AgentDockerEngineSandboxProvider): {
         putArchive: vi.fn(async () => undefined),
       };
     }),
+    createVolume: vi.fn(async () => ({ Name: "rootfs-volume" })),
+    getVolume: vi.fn(() => ({ name: "rootfs-volume", remove: volumeRemove })),
     modem: {
       demuxStream: (stream: PassThrough, stdout: PassThrough) => stream.pipe(stdout),
     },
@@ -192,7 +234,7 @@ function createRuntimeFixture(provider: AgentDockerEngineSandboxProvider): {
   const runtime = new AgentDockerEngineRuntime({
     docker,
     workspace: { kind: "bind", sourcePath: workspaceRoot, guestRoot: resolved.contract.guest.workspaceRoot },
-    copySourceRoots: [workspaceRoot],
+    copySourceRoots: [workspaceRoot, process.cwd()],
     runtimeContract: resolved,
     imageReference,
     pullPolicy: "never",
@@ -206,6 +248,7 @@ function createRuntimeFixture(provider: AgentDockerEngineSandboxProvider): {
     get created() {
       return created;
     },
+    volumeRemove,
   };
 }
 

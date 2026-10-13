@@ -1,5 +1,8 @@
 ---
 name: image-understanding
+metadata:
+  senera:
+    icon: image
 description: Analyze user-uploaded images and screenshots for visual description, OCR, visible errors, interface state, diagrams, or direct questions about image content. Use when the task requires inspecting pixels rather than reading a document container. 适用于分析用户上传的图片、截图、可见报错、界面状态、图表或执行 OCR。
 ---
 

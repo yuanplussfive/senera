@@ -1,5 +1,9 @@
 import { readArtifactMemoryHostTool } from "./Memory/AgentArtifactMemoryRuntime.js";
-import { recallContinuityHostTool, writeContinuityHostTool } from "./Continuity/AgentContinuityToolRuntime.js";
+import {
+  createRecallContinuityHostTool,
+  writeContinuityHostTool,
+  type AgentContinuityRecallService,
+} from "./Continuity/AgentContinuityToolRuntime.js";
 import { createShellCommandHostTool } from "./ToolRuntime/AgentShellCommandRuntime.js";
 import { applyWorkspacePatchHostTool } from "./ToolRuntime/AgentWorkspaceApplyPatchRuntime.js";
 import { restoreWorkspaceCheckpointHostTool } from "./ToolRuntime/AgentWorkspaceCheckpointRuntime.js";
@@ -13,6 +17,7 @@ import {
   type AgentOrchestrationHostRuntime,
 } from "./Orchestration/AgentOrchestrationHostTools.js";
 import { AgentSpawnHostContractProjection } from "./Orchestration/AgentSpawnHostContractProjection.js";
+import type { AgentArtifactManifestIndexCache } from "./Memory/AgentArtifactManifestIndexCache.js";
 
 export const AgentHostCapabilityNames = {
   ShellRun: "shell.run",
@@ -51,15 +56,19 @@ export function listDefaultAgentHostCapabilityNames(): ReadonlySet<string> {
 
 export function createDefaultHostCapabilityRegistry(
   options: {
+    artifactManifestIndex?: AgentArtifactManifestIndexCache;
     toolSearch?: AgentToolSearchRuntime;
     executionResources?: AgentExecutionResourceBroker;
     orchestration?: AgentOrchestrationHostRuntime;
+    continuityRecall?: AgentContinuityRecallService;
   } = {},
 ): AgentToolHostCapabilityRegistry {
   const registry = new AgentToolHostCapabilityRegistry()
     .register(AgentHostCapabilityNames.ShellRun, createShellCommandHostTool(options.executionResources))
-    .register(AgentHostCapabilityNames.ArtifactMemoryRead, readArtifactMemoryHostTool)
-    .register(AgentHostCapabilityNames.MemoryRecall, recallContinuityHostTool)
+    .register(AgentHostCapabilityNames.ArtifactMemoryRead, (args, context) =>
+      readArtifactMemoryHostTool(args, { ...context, artifactManifestIndex: options.artifactManifestIndex }),
+    )
+    .register(AgentHostCapabilityNames.MemoryRecall, createRecallContinuityHostTool(options.continuityRecall))
     .register(AgentHostCapabilityNames.MemoryWrite, writeContinuityHostTool)
     .register(AgentHostCapabilityNames.WorkspaceApplyPatch, applyWorkspacePatchHostTool)
     .register(AgentHostCapabilityNames.WorkspaceRestoreCheckpoint, restoreWorkspaceCheckpointHostTool);
@@ -81,8 +90,9 @@ export function createDefaultHostCapabilityRegistry(
   if (options.orchestration) {
     const handlers = createAgentOrchestrationHostHandlers(options.orchestration);
     const delegation = options.orchestration.delegation;
-    const spawnContract = new AgentSpawnHostContractProjection(() =>
-      delegation.roleCatalogSnapshot(),
+    const spawnContract = new AgentSpawnHostContractProjection(
+      () => delegation.roleCatalogSnapshot(),
+      () => delegation.resourceClaimCapabilityIds(),
     ).createProjection();
     registry
       .register(AgentHostCapabilityNames.AgentSpawn, handlers.spawn, spawnContract)
@@ -97,11 +107,7 @@ export function createDefaultHostCapabilityRegistry(
 
   if (options.toolSearch) {
     registry
-      .register(
-        AgentHostCapabilityNames.ToolSearch,
-        options.toolSearch.createSearchHostHandler(),
-        options.toolSearch.createHostContractProjection(),
-      )
+      .register(AgentHostCapabilityNames.ToolSearch, options.toolSearch.createSearchHostHandler())
       .register(AgentHostCapabilityNames.ToolDescribe, options.toolSearch.createDescribeHostHandler())
       .register(AgentHostCapabilityNames.ToolLoad, options.toolSearch.createLoadHostHandler())
       .register(AgentHostCapabilityNames.ToolUnload, options.toolSearch.createUnloadHostHandler());

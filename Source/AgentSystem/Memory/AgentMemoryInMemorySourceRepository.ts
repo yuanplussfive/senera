@@ -82,18 +82,6 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
       .sort((left, right) => right.completedAtMs - left.completedAtMs || left.id.localeCompare(right.id));
   }
 
-  listCompletedEpisodesInRange(startMs: number, endMs: number): AgentMemoryEpisodeRecord[] {
-    if (!Number.isSafeInteger(startMs) || !Number.isSafeInteger(endMs) || endMs <= startMs) {
-      throw new Error("Memory episode range must contain increasing safe integer timestamps.");
-    }
-    return [...this.episodes.values()]
-      .filter(
-        (episode) =>
-          episode.status === "completed" && episode.completedAtMs >= startMs && episode.completedAtMs < endMs,
-      )
-      .sort((left, right) => left.completedAtMs - right.completedAtMs || left.id.localeCompare(right.id));
-  }
-
   findEpisodesByUris(uris: readonly string[]): AgentMemoryEpisodeRecord[] {
     return uniqueTrimmed(uris).flatMap((uri) => {
       const episode = this.episodes.get(uri);
@@ -103,24 +91,6 @@ export class InMemoryAgentMemorySourceRepository implements AgentMemorySourceRep
 
   listSources(episodeUri: string): AgentMemorySourceRecord[] {
     return [...(this.sourcesByEpisode.get(episodeUri) ?? [])];
-  }
-
-  listSourcesForEpisodes(episodeUris: readonly string[]): AgentMemorySourceRecord[] {
-    const requested = new Set(uniqueTrimmed(episodeUris));
-    return [...requested].flatMap((episodeUri) => this.listSources(episodeUri));
-  }
-
-  findMemorySourcesByRefs(refs: readonly string[]): AgentMemorySourceRecord[] {
-    const requested = new Set(uniqueTrimmed(refs));
-    return [...this.sourcesByEpisode.values()]
-      .flat()
-      .filter(
-        (source) =>
-          requested.has(source.uri) ||
-          (source.evidenceUri !== "" && requested.has(source.evidenceUri)) ||
-          (source.artifactUri !== "" && requested.has(source.artifactUri)),
-      )
-      .sort((left, right) => left.createdAtMs - right.createdAtMs || left.id.localeCompare(right.id));
   }
 
   close(): void {}

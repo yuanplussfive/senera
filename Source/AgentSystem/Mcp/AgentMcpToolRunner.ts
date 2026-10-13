@@ -1,4 +1,4 @@
-import { resolveToolExecutionConfig } from "../AgentDefaults.js";
+import { resolveAgentMcpConnectionsConfig, resolveToolExecutionConfig } from "../AgentDefaults.js";
 import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 import type { AgentToolProcessRunResult } from "../ToolRuntime/AgentToolProcessTypes.js";
 import { toolProcessFailureResult, toolProcessSuccessResult } from "../ToolRuntime/AgentToolProcessEnvelope.js";
@@ -41,7 +41,14 @@ export class AgentMcpToolRunner {
   private readonly sampling: AgentMcpSamplingHandler;
 
   constructor(private readonly options: AgentMcpToolRunnerOptions) {
-    this.clients = options.clientPool ?? new AgentMcpToolClientPool();
+    this.clients =
+      options.clientPool ??
+      new AgentMcpToolClientPool({
+        policy: () => {
+          const resolved = resolveAgentMcpConnectionsConfig(options.config);
+          return { idleTtlMs: resolved.IdleTtlMs, sweepIntervalMs: resolved.SweepIntervalMs };
+        },
+      });
     this.ownsClientPool = !options.clientPool;
     this.sampling = options.sampling ?? createAgentMcpSamplingHandler(options.config, options.modelProviderId);
   }
@@ -60,6 +67,14 @@ export class AgentMcpToolRunner {
     }
 
     const handler = tool.handler;
+    if (handler.server.transport === "unresolved") {
+      return mcpToolFailure(`MCP service ${handler.server.id} is ${handler.server.availability.status}.`, {
+        toolName: tool.name,
+        serverId: handler.server.id,
+        availability: handler.server.availability,
+      });
+    }
+    const server = handler.server;
     const toolExecution = resolveToolExecutionConfig(this.options.config);
     try {
       const executionPlan = requireExecutionPlan(tool, context);
@@ -68,13 +83,14 @@ export class AgentMcpToolRunner {
         network: executionPlan.network,
         workspaceMount: executionPlan.workspaceMount,
         packageRoot: handler.server.transport === "http" ? undefined : handler.server.packageRoot,
+        packageName: handler.server.transport === "http" ? undefined : handler.server.packageName,
       });
       const runtime = resolveAgentToolRuntimeCapabilities(tool);
       if (runtime.interactiveInput && !this.options.interactionInput) {
         throw new Error(`Interactive MCP tool ${tool.name} requires the host interaction-input runtime.`);
       }
       const connection = {
-        server: handler.server,
+        server,
         requestTimeoutMs: toolExecution.TimeoutMs,
         spawnPersistentProcess: executionEnv.spawnPersistentProcess,
         executionProfile,
@@ -135,11 +151,13 @@ export class AgentMcpToolRunner {
           ? await callPooledTool()
           : await withAgentMcpToolClient({ ...connection, signal: context.signal }, callTool);
 
-      const projection = await projectAgentMcpToolFeedbackWithResources(result, this.options.resourcePublisher);
+      const projection = await projectAgentMcpToolFeedbackWithResources(result, this.options.resourcePublisher, {
+        signal: context.signal,
+      });
       if (agentUnknownRecordOrEmpty(result).isError === true) {
         const failure = mcpToolFailure(extractAgentMcpText(result) || `MCP tool ${handler.tool} failed.`, {
           toolName: tool.name,
-          serverId: handler.server,
+          serverId: server.id,
           mcpToolName: handler.tool,
           mcpIsError: true,
         });
@@ -147,13 +165,14 @@ export class AgentMcpToolRunner {
       }
       return toolProcessSuccessResult(projection.result, {
         ...(projection.artifactPayload ? { artifactPayload: projection.artifactPayload } : {}),
+        ...(projection.validationResult === undefined ? {} : { validationResult: projection.validationResult }),
       });
     } catch (error) {
       return mcpToolFailure(
         error,
         {
           toolName: tool.name,
-          serverId: handler.server,
+          serverId: server.id,
           mcpToolName: handler.tool,
         },
         { signal: context.signal, timeoutMs: toolExecution.TimeoutMs },

@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { appearancePreferenceStorageKey } from "../../../Frontend/src/shared/theme/themeModel.ts";
+import {
+  appearancePreferenceStorageKey,
+  createAppearanceSnapshot,
+} from "../../../Frontend/src/shared/theme/themeModel.ts";
 import { createAppearanceStore } from "../../../Frontend/src/shared/theme/themeStore.ts";
 function createMatchMediaMock(initialDark = false) {
   let media = null;
@@ -74,6 +77,34 @@ function createWindowMock() {
   };
 }
 describe("createAppearanceStore", () => {
+  it("applies theme tokens before subscribers mount", () => {
+    const storage = createStorageMock({ themeMode: "dark", colorScheme: "ocean" });
+    const { matchMedia } = createMatchMediaMock(false);
+    const store = createAppearanceStore({
+      readMatchMedia: () => matchMedia,
+      readStorage: () => storage,
+      readWindow: () => undefined,
+    });
+    const expected = createAppearanceSnapshot({
+      preference: {
+        themeMode: "dark",
+        colorScheme: "ocean",
+        accentColor: "sky",
+        fontFamily: "brand",
+        fontScale: "standard",
+      },
+      systemTheme: "light",
+    });
+
+    expect(store.getSnapshot().resolvedTheme).toBe("dark");
+    expect(document.documentElement.style.getPropertyValue("--theme-bg")).toBe(
+      expected.tokens.cssVariables["--theme-bg"],
+    );
+    expect(document.documentElement.style.getPropertyValue("--theme-skeleton-a")).toBe(
+      expected.tokens.cssVariables["--theme-skeleton-a"],
+    );
+  });
+
   it("persists partial preference updates and resolves them immediately", () => {
     const storage = createStorageMock();
     const { matchMedia } = createMatchMediaMock(false);

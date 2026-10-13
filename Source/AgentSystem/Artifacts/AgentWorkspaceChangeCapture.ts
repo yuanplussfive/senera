@@ -1,72 +1,96 @@
 import path from "node:path";
+import { materializeAgentWorkspaceMutationReceipt } from "./AgentWorkspaceMutationReceipt.js";
 import type { ToolArtifactPolicyManifest } from "../Types/AgentToolContractTypes.js";
-import type { ToolWorkspaceSnapshot } from "../Types/ToolRuntimeTypes.js";
-import {
-  type AgentWorkspaceChangeCaptureOptions,
-  type PreparedWorkspaceCapture,
-  type WorkspaceCaptureOptions,
-} from "./AgentWorkspaceCaptureTypes.js";
-import { resolveWorkspaceCaptureOptions, resolveWorkspacePathRules } from "./AgentWorkspaceCapturePolicy.js";
-import { AgentWorkspacePathSelector } from "./AgentWorkspacePathSelector.js";
-import { AgentWorkspaceSnapshotBuilder } from "./AgentWorkspaceSnapshotBuilder.js";
-import { compareWorkspaceSnapshots } from "./AgentWorkspaceSnapshotDiff.js";
-import { createAgentWorkspaceContinuityCheckpoint } from "../Continuity/AgentContinuityLedger.js";
+import type {
+  AgentWorkspaceMutationReceipt,
+  ToolWorkspaceCaptureResult,
+  ToolWorkspaceChangeSource,
+  ToolWorkspaceSnapshot,
+} from "../Types/ToolRuntimeTypes.js";
 
-export type { AgentWorkspaceChangeCaptureOptions, PreparedWorkspaceCapture } from "./AgentWorkspaceCaptureTypes.js";
+export interface AgentWorkspaceChangeCaptureOptions {
+  readonly workspaceRoot: string;
+}
 
+/**
+ * Turns a writer-owned transaction receipt into durable workspace provenance.
+ * It deliberately has no watcher, repository, or filesystem discovery path:
+ * a tool either proves its own mutation or it does not publish a workspace
+ * change set.
+ */
 export class AgentWorkspaceChangeCapture {
   private readonly workspaceRoot: string;
-  private readonly pathSelector: AgentWorkspacePathSelector;
 
   constructor(options: AgentWorkspaceChangeCaptureOptions) {
     this.workspaceRoot = path.resolve(options.workspaceRoot);
-    this.pathSelector = new AgentWorkspacePathSelector(this.workspaceRoot);
   }
 
-  async prepare(input: {
-    policy: ToolArtifactPolicyManifest | undefined;
-    args: Record<string, unknown>;
-  }): Promise<PreparedWorkspaceCapture> {
-    const workspace = input.policy?.Workspace;
-    if (!workspace || workspace.Capture !== "declared") {
-      return new NoopWorkspaceCapture();
-    }
+  capture(input: {
+    readonly policy: ToolArtifactPolicyManifest | undefined;
+    readonly mutationReceipt?: AgentWorkspaceMutationReceipt;
+  }): ToolWorkspaceCaptureResult | undefined {
+    const workspacePolicy = input.policy?.Workspace;
+    if (!workspacePolicy) return undefined;
 
-    const rules = resolveWorkspacePathRules(workspace);
-    const options = resolveWorkspaceCaptureOptions(workspace);
-    const beforePaths = this.pathSelector.selectDeclaredPaths(input.args, rules);
-    const before = await this.snapshot(beforePaths, options);
-
-    return {
-      complete: async (result: unknown) => {
-        const afterPaths = new Set([...beforePaths, ...this.pathSelector.selectDeclaredPaths(result, rules)]);
-        const after = await this.snapshot(afterPaths, options);
-        const changes = compareWorkspaceSnapshots(before, after);
-        return {
-          before,
-          after,
-          changes,
-          checkpoint: createAgentWorkspaceContinuityCheckpoint({ before, after, changes }),
-        };
-      },
-    };
-  }
-
-  private async snapshot(
-    relativePaths: Iterable<string>,
-    options: WorkspaceCaptureOptions,
-  ): Promise<ToolWorkspaceSnapshot> {
-    const builder = new AgentWorkspaceSnapshotBuilder(this.workspaceRoot, options);
-    for (const relativePath of [...relativePaths].sort()) {
-      await builder.capture(relativePath, 0);
-    }
-
-    return builder.toSnapshot();
+    return materializeAgentWorkspaceMutationReceipt({
+      receipt: input.mutationReceipt,
+      workspaceRoot: this.workspaceRoot,
+      workspacePolicy,
+    });
   }
 }
 
-class NoopWorkspaceCapture implements PreparedWorkspaceCapture {
-  async complete(): Promise<undefined> {
-    return undefined;
-  }
+export function mergeAgentWorkspaceCaptures(
+  exact: ToolWorkspaceCaptureResult | undefined,
+  observed: ToolWorkspaceCaptureResult | undefined,
+): ToolWorkspaceCaptureResult | undefined {
+  if (!observed) return exact;
+  if (!exact) return observed;
+
+  const sources = [...new Set([...captureSources(exact), ...captureSources(observed)])];
+  const status = worseCaptureStatus(exact.status, observed.status);
+  return {
+    type: observed.type ?? exact.type,
+    version: observed.version ?? exact.version,
+    source: "filesystem-observer",
+    sources,
+    coverage: "observed",
+    status,
+    scope: observed.scope,
+    before: mergeWorkspaceSnapshots(exact.before, observed.before, status),
+    after: mergeWorkspaceSnapshots(exact.after, observed.after, status),
+    changes: [...new Map([...exact.changes, ...observed.changes].map((change) => [change.path, change])).values()].sort(
+      (left, right) => left.path.localeCompare(right.path),
+    ),
+  };
+}
+
+function captureSources(capture: ToolWorkspaceCaptureResult): ToolWorkspaceChangeSource[] {
+  return [...(capture.sources ?? []), ...(capture.source ? [capture.source] : [])];
+}
+
+function worseCaptureStatus(
+  left: ToolWorkspaceCaptureResult["status"],
+  right: ToolWorkspaceCaptureResult["status"],
+): ToolWorkspaceCaptureResult["status"] {
+  const rank = { complete: 0, bounded: 1, degraded: 2 } as const;
+  if (!left) return right;
+  if (!right) return left;
+  return rank[left] >= rank[right] ? left : right;
+}
+
+function mergeWorkspaceSnapshots(
+  exact: ToolWorkspaceSnapshot,
+  observed: ToolWorkspaceSnapshot,
+  status: ToolWorkspaceSnapshot["status"],
+): ToolWorkspaceSnapshot {
+  const files = new Map(exact.files.map((entry) => [entry.path, entry]));
+  for (const entry of observed.files) if (!files.has(entry.path)) files.set(entry.path, entry);
+  const warnings = [...new Set([...(exact.warnings ?? []), ...(observed.warnings ?? [])])];
+  return {
+    files: [...files.values()].sort((left, right) => left.path.localeCompare(right.path)),
+    capturedAt: observed.capturedAt,
+    ...(status ? { status } : {}),
+    ...(warnings.length > 0 ? { warnings } : {}),
+  };
 }

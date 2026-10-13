@@ -1,4 +1,5 @@
 import type { AgentToolProcessRunResult } from "./AgentToolProcessTypes.js";
+import type { AgentToolAccessGrant } from "./AgentToolAccessGrant.js";
 import type { AgentToolHostCapabilityRegistry } from "./AgentToolHostCapabilityRegistry.js";
 import type { AgentEventSink } from "../Events/AgentEvent.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
@@ -18,6 +19,7 @@ import { projectAgentToolResourceArguments } from "./AgentToolResourceArgumentPr
 import { createAgentDefaultToolResourceCapabilities } from "./AgentToolResourceCapabilities.js";
 import { updateSeneraOutputSpoolState } from "../Execution/SeneraOutputSpool.js";
 import {
+  formatAgentToolContractValidationIssue,
   projectAgentToolContractDiagnostics,
   validateToolContractValue,
   validateToolSignatureArguments,
@@ -54,6 +56,8 @@ import type { AgentContinuityIdentityContext } from "../Continuity/AgentContinui
 import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
 import type { AgentToolCapabilityCacheEntry } from "../ToolSearch/AgentToolCapabilitySessionCache.js";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
+import type { AgentBrowserTargetAuthorization } from "../Browser/AgentBrowserUrlPolicy.js";
+import type { AgentWorkspaceObservationPort } from "../Artifacts/AgentWorkspaceChangeObserver.js";
 
 export interface AgentToolRunnerLike {
   run(
@@ -69,6 +73,8 @@ export interface AgentToolRunnerContext {
   logicalCacheScope?: string;
   requestId?: string;
   step?: number;
+  modelMessageIndex?: number;
+  modelContentIndex?: number;
   toolCallId?: string;
   batchId?: string;
   batchToolNames?: readonly string[];
@@ -76,6 +82,7 @@ export interface AgentToolRunnerContext {
   onEvent?: AgentEventSink;
   visibleToolNames?: readonly string[];
   authorizedToolNames?: readonly string[];
+  toolAccessGrant?: AgentToolAccessGrant;
   toolExposure?: AgentToolExposureState;
   signal?: AbortSignal;
   executionPlan?: AgentToolExecutionPlan;
@@ -85,6 +92,8 @@ export interface AgentToolRunnerContext {
   reusableCapabilities?: readonly AgentToolCapabilityCacheEntry[];
   thinkingLevel?: ModelThinkingLevel;
   resourceAccessGrant?: AgentResourceAccessGrant;
+  browserTargetAuthorization?: AgentBrowserTargetAuthorization;
+  workspaceObservation?: AgentWorkspaceObservationPort;
 }
 
 export class AgentToolRunner implements AgentToolRunnerLike {
@@ -180,13 +189,14 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     }
     const argumentContract = tool.contract?.arguments;
     if (argumentContract) {
+      const validationSchema = this.hostCapabilities.projectRuntimeValidationSchema(tool, argumentContract.jsonSchema);
       const issues = validateToolSignatureArguments({
-        contract: argumentContract,
+        contract: { ...argumentContract, jsonSchema: validationSchema },
         args: invocation.arguments,
       });
       if (issues.length > 0) {
         return this.failure(
-          `Invalid arguments for ${tool.name}.`,
+          issues.map((issue) => formatAgentToolContractValidationIssue(issue, tool.name)).join("; "),
           { toolName: tool.name, issues },
           AgentExecutionErrorCodes.InvalidToolArguments,
           AgentToolProcessErrorPhases.SchemaValidation,
@@ -326,12 +336,12 @@ export class AgentToolRunner implements AgentToolRunnerLike {
 
   private validateSuccessfulResult(tool: RegisteredTool, result: AgentToolProcessRunResult): AgentToolProcessRunResult {
     const outputSchema = tool.contract?.outputSchema;
-    if (!result.response.ok || !outputSchema) return result;
+    if (!result.response.ok || !outputSchema) return stripValidationResult(result);
     const issues = validateToolContractValue({
       schema: outputSchema,
-      value: result.response.result,
+      value: "validationResult" in result ? result.validationResult : result.response.result,
     });
-    if (issues.length === 0) return result;
+    if (issues.length === 0) return stripValidationResult(result);
     const failure = this.failure(
       agentErrorMessage("tool.resultInvalid", { toolName: tool.name }),
       { toolName: tool.name, issues },
@@ -339,7 +349,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       AgentToolProcessErrorPhases.ResponseValidation,
       projectAgentToolContractDiagnostics(issues),
     );
-    return { ...result, response: failure.response };
+    return { ...stripValidationResult(result), response: failure.response };
   }
 
   private async runHostCapability(
@@ -384,23 +394,28 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       logicalCacheScope: context.logicalCacheScope,
       requestId: context.requestId,
       step: context.step,
+      modelMessageIndex: context.modelMessageIndex,
+      modelContentIndex: context.modelContentIndex,
       toolCallId: context.toolCallId,
       batchId: context.batchId,
       batchToolNames: context.batchToolNames,
       onEvent: context.onEvent,
       visibleToolNames: context.visibleToolNames,
       authorizedToolNames: context.authorizedToolNames,
+      toolAccessGrant: context.toolAccessGrant,
       toolExposure: context.toolExposure,
       signal: context.signal,
       executionPlan: context.executionPlan,
       reporter,
       tokenBudget: context.tokenBudget,
       approvalMode: context.approvalMode,
+      browserTargetAuthorization: context.browserTargetAuthorization,
       modelProviderId: this.modelProviderId,
       activeSkills: context.activeSkills,
       reusableCapabilities: context.reusableCapabilities,
       thinkingLevel: context.thinkingLevel,
       todoService: this.todoService,
+      workspaceObservation: context.workspaceObservation,
     });
   }
 
@@ -421,4 +436,10 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       ...(diagnostics?.length ? { diagnostics: [...diagnostics] } : {}),
     });
   }
+}
+
+function stripValidationResult(result: AgentToolProcessRunResult): AgentToolProcessRunResult {
+  if (!("validationResult" in result)) return result;
+  const { validationResult: _validationResult, ...withoutValidationResult } = result;
+  return withoutValidationResult;
 }

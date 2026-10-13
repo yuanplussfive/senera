@@ -6,7 +6,6 @@ const WorkspaceLayout = {
   stateDirectory: ".senera",
   skillsDirectory: "skills",
   mcpDirectory: "mcp",
-  worldPackagesDirectory: "worlds",
   contextDirectory: "context",
   projectContextFile: "PROJECT.md",
   exportsDirectory: "exports",
@@ -19,7 +18,15 @@ const WorkspaceLayout = {
     memory: ["memory", "memory.sqlite"],
     orchestration: ["orchestration", "orchestration.sqlite"],
     channels: ["channels", "channels.sqlite"],
-    toolSearch: ["tool-search", "tool-search.sqlite"],
+    memos: ["memos", "memos.sqlite"],
+    artifactManifestIndex: ["artifacts", "manifest-index.sqlite"],
+    workspaceObserver: ["workspace-observer", "workspace-observer.sqlite"],
+  },
+  caches: {
+    toolSearchEmbeddings: ["tool-search", "embeddings.json"],
+    toolObservationSift: ["tool-observation", "sift"],
+    mcpSchemas: ["mcp", "schemas"],
+    workspaceObserverContents: ["workspace-observer", "contents"],
   },
   configSecretKey: ["config", "config-secrets.key"],
   credentialSecretKey: ["credentials", "credentials.key"],
@@ -32,8 +39,6 @@ const LegacyWorkspaceLayout = {
     { domain: "config", fileName: "Config.sqlite" },
     { domain: "sessions", fileName: "senera.db" },
     { domain: "memory", fileName: "Memory.sqlite" },
-    { domain: "toolSearch", fileName: "ToolSearchLearning.sqlite" },
-    { domain: "toolSearch", fileName: "ToolSearch.sqlite" },
   ],
   configSecretKey: "config-secrets.key",
 } as const;
@@ -61,12 +66,10 @@ export interface AgentWorkspaceResourceClassification {
 export interface AgentWorkspaceLayout {
   readonly root: string;
   readonly stateRoot: string;
-  /** Desktop-only writable runtime state kept with the selected workspace. */
+  /** Desktop runtime state when this layout represents the application directory. */
   readonly desktopRuntimeRoot: string;
   readonly skillRoot: string;
   readonly mcpRoot: string;
-  /** Declarative world packages owned by this workspace. */
-  readonly worldPackagesRoot: string;
   readonly contextRoot: string;
   readonly projectContextFile: string;
   readonly exportsRoot: string;
@@ -79,7 +82,22 @@ export interface AgentWorkspaceLayout {
     readonly memory: string;
     readonly orchestration: string;
     readonly channels: string;
-    readonly toolSearch: string;
+    /** MemOS graph database; semantic memory is isolated from the physical memory catalog. */
+    readonly memos: string;
+    /** Derived Artifact manifest lookup index; raw manifests remain canonical files. */
+    readonly artifactManifestIndex: string;
+    /** Derived filesystem baseline used by the workspace change observer. */
+    readonly workspaceObserver: string;
+  };
+  readonly caches: {
+    /** Derived capability vectors; safe to rebuild when missing or stale. */
+    readonly toolSearchEmbeddings: string;
+    /** Derived source stash used by content-aware tool observation projection. */
+    readonly toolObservationSift: string;
+    /** Derived MCP tools/list declarations; safe to rebuild when stale. */
+    readonly mcpSchemas: string;
+    /** Content-addressed text retained for changed-file before/after materialization. */
+    readonly workspaceObserverContents: string;
   };
   readonly configSecretKey: string;
   readonly credentialSecretKey: string;
@@ -87,29 +105,45 @@ export interface AgentWorkspaceLayout {
   readonly continuityIdentity: string;
 }
 
-export function resolveAgentWorkspaceLayout(workspaceRoot: string): AgentWorkspaceLayout {
+export function resolveAgentWorkspaceLayout(workspaceRoot: string, runtimeStateRoot?: string): AgentWorkspaceLayout {
   const root = path.resolve(workspaceRoot);
-  const stateRoot = path.join(root, WorkspaceLayout.stateDirectory);
+  const projectStateRoot = path.join(root, WorkspaceLayout.stateDirectory);
+  const stateRoot = runtimeStateRoot ? path.resolve(runtimeStateRoot) : projectStateRoot;
   const dataRoot = path.join(stateRoot, WorkspaceLayout.dataDirectory);
   return {
     root,
     stateRoot,
     desktopRuntimeRoot: path.join(stateRoot, "desktop"),
-    skillRoot: path.join(stateRoot, WorkspaceLayout.skillsDirectory),
-    mcpRoot: path.join(stateRoot, WorkspaceLayout.mcpDirectory),
-    worldPackagesRoot: path.join(stateRoot, WorkspaceLayout.worldPackagesDirectory),
-    contextRoot: path.join(stateRoot, WorkspaceLayout.contextDirectory),
-    projectContextFile: path.join(stateRoot, WorkspaceLayout.contextDirectory, WorkspaceLayout.projectContextFile),
-    exportsRoot: path.join(stateRoot, WorkspaceLayout.exportsDirectory),
-    sessionExportsRoot: path.join(stateRoot, WorkspaceLayout.exportsDirectory, WorkspaceLayout.sessionExportsDirectory),
+    skillRoot: path.join(projectStateRoot, WorkspaceLayout.skillsDirectory),
+    mcpRoot: path.join(projectStateRoot, WorkspaceLayout.mcpDirectory),
+    contextRoot: path.join(projectStateRoot, WorkspaceLayout.contextDirectory),
+    projectContextFile: path.join(
+      projectStateRoot,
+      WorkspaceLayout.contextDirectory,
+      WorkspaceLayout.projectContextFile,
+    ),
+    exportsRoot: path.join(projectStateRoot, WorkspaceLayout.exportsDirectory),
+    sessionExportsRoot: path.join(
+      projectStateRoot,
+      WorkspaceLayout.exportsDirectory,
+      WorkspaceLayout.sessionExportsDirectory,
+    ),
     dataRoot,
     databases: Object.fromEntries(
       Object.entries(WorkspaceLayout.databases).map(([domain, segments]) => [domain, path.join(dataRoot, ...segments)]),
     ) as AgentWorkspaceLayout["databases"],
+    caches: Object.fromEntries(
+      Object.entries(WorkspaceLayout.caches).map(([name, segments]) => [name, path.join(dataRoot, ...segments)]),
+    ) as AgentWorkspaceLayout["caches"],
     configSecretKey: path.join(dataRoot, ...WorkspaceLayout.configSecretKey),
     credentialSecretKey: path.join(dataRoot, ...WorkspaceLayout.credentialSecretKey),
     continuityIdentity: path.join(dataRoot, WorkspaceLayout.continuityIdentity),
   };
+}
+
+export function listAgentWorkspaceNonContentRoots(workspaceRoot: string): string[] {
+  const layout = resolveAgentWorkspaceLayout(workspaceRoot);
+  return [layout.stateRoot, ...RepositoryMetadataDirectories.map((directory) => path.join(layout.root, directory))];
 }
 
 export function classifyAgentWorkspaceResource(

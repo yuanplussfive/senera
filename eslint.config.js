@@ -31,6 +31,18 @@ const NodeFiles = [
 
 const FrontendFiles = ["Frontend/src/**/*.{ts,tsx}"];
 const FrontendTestFiles = ["Scripts/FrontendTests/**/*.{js,mjs,ts,tsx}"];
+const RestrictedIconVendorImports = [
+  "lucide-react",
+  "iconoir-react",
+  "@heroicons/react",
+  "@hugeicons/react",
+  "@hugeicons/core-free-icons",
+  "react-icons",
+  "@tabler/icons-react",
+  "@phosphor-icons/react",
+  "@iconify/react",
+  "@radix-ui/react-icons",
+];
 
 const recommendedTypeScriptConfigs = tseslint.configs.recommended.map((config) => ({
   ...config,
@@ -52,6 +64,7 @@ export default tseslint.config(
       "Release/**",
       "Source/AgentSystem/BamlClient/baml_client/**",
       "Plugins/**/Schemas/**/*.js",
+      "senera-assessment/**",
       "senera-evaluation/**",
       "senera-code-review/**",
       "senera-project-analysis/**",
@@ -116,6 +129,38 @@ export default tseslint.config(
     rules: {
       "react-hooks/exhaustive-deps": "error",
       "react-hooks/rules-of-hooks": "error",
+    },
+  },
+  {
+    files: ["Frontend/src/shared/ui/**/*.{ts,tsx}"],
+    ignores: ["Frontend/src/shared/ui/AppIcon.tsx", "Frontend/src/shared/ui/**/*.stories.tsx"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [...RestrictedIconVendorImports],
+        },
+      ],
+    },
+  },
+  {
+    files: [
+      "Frontend/src/app/**/*.{ts,tsx}",
+      "Frontend/src/layout/**/*.{ts,tsx}",
+      "Frontend/src/features/session/**/*.{ts,tsx}",
+    ],
+    ignores: [
+      "Frontend/src/app/**/*.stories.tsx",
+      "Frontend/src/layout/**/*.stories.tsx",
+      "Frontend/src/features/session/**/*.stories.tsx",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: RestrictedIconVendorImports,
+        },
+      ],
     },
   },
   {

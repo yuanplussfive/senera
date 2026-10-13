@@ -150,6 +150,23 @@ test("server refresh normalizes running metadata and settles completed history l
   expect(state.historyReplayBuffers.recovering).toBeDefined();
 });
 
+test("session list restores the last persisted runtime snapshot", () => {
+  const runtimeSnapshot = {
+    available: true,
+    observedAt: "2026-07-09T00:00:00.000Z",
+    runtime: {
+      sessionId: "restored",
+      cached: true,
+      contextUsage: { tokens: 12_000, contextWindow: 100_000, percent: 12 },
+    },
+  };
+  const state = createState({ runtimeSnapshotsBySession: { restored: runtimeSnapshot } });
+
+  ingestSessionList(state, [listItem("restored")]);
+
+  expect(state.sessions.restored.runtimeSnapshot).toEqual(runtimeSnapshot);
+});
+
 test("session list ingest projects the server-authoritative active request", () => {
   const state = createState({
     sessions: {
@@ -240,6 +257,7 @@ test("bulk runtime deletion removes sessions and descendants in one projection",
 function createState(overrides = {}) {
   return {
     sessions: {},
+    runtimeSnapshotsBySession: {},
     sessionOrder: [],
     activeSessionId: null,
     viewedRunIdBySession: {},

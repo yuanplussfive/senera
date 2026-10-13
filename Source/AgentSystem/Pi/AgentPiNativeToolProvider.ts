@@ -2,13 +2,15 @@ import {
   clampThinkingLevel,
   createAssistantMessageEventStream,
   createProvider,
+  getCurrentSystemPrompt,
+  getCurrentTools,
+  normalizeContext,
   type Api,
   type AssistantMessage,
   type AssistantMessageEvent,
   type AssistantMessageEventStream,
   type Context,
   type Model,
-  type Provider,
   type ProviderStreams,
   type SimpleStreamOptions,
   type StreamOptions,
@@ -19,12 +21,12 @@ import {
   type AgentNativeToolApi,
 } from "../ModelEndpoints/AgentModelEndpointContract.js";
 import { errorMessage } from "../Core/AgentErrors.js";
-import { ModelRequestTimeoutError, normalizeModelHttpError } from "../ModelEndpoints/ModelHttpErrors.js";
 import {
-  AgentModelUsageLedger,
-  AgentModelUsageSources,
-  type AgentModelUsageValue,
-} from "../ModelEndpoints/AgentModelUsage.js";
+  findModelRequestTimeoutError,
+  ModelRequestTimeoutError,
+  normalizeModelHttpError,
+} from "../ModelEndpoints/ModelHttpErrors.js";
+import { AgentModelUsageSources, type AgentModelUsageValue } from "../ModelEndpoints/AgentModelUsage.js";
 import type { AgentPiMutableSessionFrame } from "./AgentPiCodingAgentSessionFrame.js";
 import { registerAgentPiToolCallBatch } from "./AgentPiToolCallBatchProjector.js";
 import type { AgentPiTurnState } from "./AgentPiTurnState.js";
@@ -38,10 +40,8 @@ import type {
   AgentResidentSpeechProjector,
 } from "../ResidentSpeech/AgentResidentSpeechTypes.js";
 import { inspectAgentResidentSpeechFocus } from "../ResidentSpeech/AgentResidentSpeechPromptProjector.js";
-import { createAgentResidentSpeechUsageSink } from "../ResidentSpeech/AgentResidentSpeechUsage.js";
-import { shouldProjectResidentSpeech } from "../PiShared/AgentPiResidentSpeechProjection.js";
+import { resolveAgentResidentSpeechProjection } from "../PiShared/AgentPiResidentSpeechProjection.js";
 import { AgentPiDiagnosticSources, emitAgentPiDiagnostic } from "./AgentPiDiagnostics.js";
-import { emitAgentPiAssistantMessage } from "./AgentPiAssistantMessageStream.js";
 import {
   createAgentPiLogicalCacheScope,
   createAgentPiPromptCacheOptions,
@@ -56,9 +56,11 @@ import {
   resolveAgentPromptCacheStrategy,
 } from "../ModelEndpoints/AgentPromptWireSnapshot.js";
 import { AgentPiNativeToolBridgeName, projectAgentPiNativeToolCallDisplay } from "./AgentPiNativeToolBridge.js";
+import { exposeAgentPiContextProvider, type AgentPiContextProvider } from "./AgentPiProviderCompatibility.js";
+import { restrictAgentPiNativeTools } from "./AgentPiNativeToolContext.js";
 
 type NativeModel = Model<AgentNativeToolApi>;
-type NativeStreamOptions = SimpleStreamOptions & {
+type NativeStreamOptions = Omit<SimpleStreamOptions, "toolChoice"> & {
   readonly toolChoice?: ReturnType<typeof projectAgentNativeRequiredToolChoice> | "auto";
   readonly reasoningEffort?: string;
 };
@@ -75,33 +77,35 @@ export interface AgentPiNativeToolProviderOptions {
 export class AgentPiNativeToolProvider {
   constructor(private readonly options: AgentPiNativeToolProviderOptions) {}
 
-  create(): Provider<AgentNativeToolApi> {
+  create(): AgentPiContextProvider<AgentNativeToolApi> {
     const model = asNativeModel(this.options.projection.model, this.apiStreams);
-    return createProvider<AgentNativeToolApi>({
-      id: this.options.projection.providerId,
-      name: `Senera Native Tools (${this.options.modelProvider.ProviderId})`,
-      baseUrl: model.baseUrl,
-      headers: model.headers,
-      auth: {
-        apiKey: {
-          name: `Senera ${this.options.modelProvider.ProviderId} API key`,
-          resolve: async () => ({
-            auth: {
-              ...(this.options.modelProvider.ApiKey ? { apiKey: this.options.modelProvider.ApiKey } : {}),
-              headers: model.headers,
-            },
-            source: "Senera model configuration",
-          }),
+    return exposeAgentPiContextProvider(
+      createProvider<AgentNativeToolApi>({
+        id: this.options.projection.providerId,
+        name: `Senera Native Tools (${this.options.modelProvider.ProviderId})`,
+        baseUrl: model.baseUrl,
+        headers: model.headers,
+        auth: {
+          apiKey: {
+            name: `Senera ${this.options.modelProvider.ProviderId} API key`,
+            resolve: async () => ({
+              auth: {
+                ...(this.options.modelProvider.ApiKey ? { apiKey: this.options.modelProvider.ApiKey } : {}),
+                headers: model.headers,
+              },
+              source: "Senera model configuration",
+            }),
+          },
         },
-      },
-      models: [model],
-      api: {
-        stream: (requestModel, context, streamOptions) =>
-          this.stream(asNativeModel(requestModel, this.apiStreams), context, streamOptions, false),
-        streamSimple: (requestModel, context, streamOptions) =>
-          this.stream(asNativeModel(requestModel, this.apiStreams), context, streamOptions, true),
-      } satisfies ProviderStreams,
-    });
+        models: [model],
+        api: {
+          stream: (requestModel, context, streamOptions) =>
+            this.stream(asNativeModel(requestModel, this.apiStreams), context, streamOptions, false),
+          streamSimple: (requestModel, context, streamOptions) =>
+            this.stream(asNativeModel(requestModel, this.apiStreams), context, streamOptions, true),
+        } satisfies ProviderStreams,
+      }),
+    );
   }
 
   private stream(
@@ -139,38 +143,55 @@ export class AgentPiNativeToolProvider {
       "first_token",
     );
     const maxRequestTimer = startTimeout(maxRequestController, this.options.modelProvider.MaxRequestMs, "max_request");
-    const callerAborted = (): boolean =>
-      signal.aborted && !firstTokenController.signal.aborted && !maxRequestController.signal.aborted;
+    const deadlineFailure = (): ModelRequestTimeoutError | undefined =>
+      findModelRequestTimeoutError(firstTokenController.signal.reason) ??
+      findModelRequestTimeoutError(maxRequestController.signal.reason) ??
+      findModelRequestTimeoutError(signal.reason);
+    const callerAborted = (): boolean => signal.aborted && deadlineFailure() === undefined;
     let started = false;
-    const transactionalRoleplayStream = frame.roleplayPresetActive === true || frame.prefaceRewriteEnabled === true;
     try {
-      const request = this.requestContext(context, frame.nativeProviderToolNames);
-      turnState.context.tokenBudget.validateModelInput(request);
-      const stableTools =
-        request.tools?.map(({ name, description, parameters }) => ({ name, description, parameters })) ?? [];
+      const compactionRequest = isPiCompactionRequest(options);
+      const sourceRequest = this.requestContext(context, compactionRequest ? [] : frame.nativeProviderToolNames);
+      const preparedRequest = frame.prepareModelInput ? await frame.prepareModelInput(sourceRequest) : sourceRequest;
+      // ModelRuntime already gives this provider Pi's normalized transcript.
+      // Keep it intact; normalizeContext only handles the optional preparer
+      // compatibility path and is a no-op for an existing transcript.
+      const request = normalizeContext(preparedRequest);
+      // Pi consumes compaction summaries directly; they never enter the
+      // Senera run collector, so they must not reserve a model-message index.
+      const modelMessageIndex = compactionRequest ? undefined : turnState.beginModelRequest();
+      const stableTools = getCurrentTools(request.messages).map(({ name, description, parameters }) => ({
+        name,
+        description,
+        parameters,
+      }));
+      const systemPrompt = getCurrentSystemPrompt(request.messages);
       const stablePrefixRevision = projectAgentStablePrefixRevision({
-        systemPrompt: request.systemPrompt ?? "",
+        systemPrompt,
         tools: stableTools,
       });
       const stablePrefixBytes = projectAgentStablePrefixBytes({
-        systemPrompt: request.systemPrompt ?? "",
+        systemPrompt,
         tools: stableTools,
       });
       const logicalCacheScope =
         frame.logicalCacheScope ??
         createAgentPiLogicalCacheScope({ sessionId: requireAgentPiPromptCacheSessionId(frame.sessionId) });
       const cache = createAgentPiPromptCacheOptions({
-        phase: "native-conversation",
+        phase: compactionRequest ? "native-compaction" : "native-conversation",
         sessionId: frame.sessionId,
         logicalCacheScope,
         model: { provider: model.provider, api: model.api, model: model.id },
         stablePrefix: {
-          systemPrompt: request.systemPrompt,
+          systemPrompt,
           tools: stableTools,
         },
       });
       const cacheStrategy = resolveAgentPromptCacheStrategy(model.api);
-      const cacheRetention = projectAgentPromptCacheRetention(cacheStrategy, cache.retention);
+      const cacheRetention = projectAgentPromptCacheRetention(
+        cacheStrategy,
+        options?.cacheRetention ?? cache.retention,
+      );
       const wireCapture = createAgentPromptWireCapture({
         fetch: options?.fetch,
         onPayload: options?.onPayload,
@@ -193,6 +214,7 @@ export class AgentPiNativeToolProvider {
         if (event.type === "start") started = true;
         if (event.type === "done") {
           this.recordUsage(turnState, event.message.usage);
+          turnState.context.tokenBudget.recordProviderUsage(event.message.usage, event.message);
           firstTokenTimer?.clear();
           maxRequestTimer?.clear();
           const message = await this.projectResidentSpeech(
@@ -215,26 +237,24 @@ export class AgentPiNativeToolProvider {
             usage: event.message.usage,
           });
           await registerAgentPiToolCallBatch(this.options.frame, message, {
+            modelMessageIndex,
             projectDisplayCall: projectAgentPiNativeToolCallDisplay,
           });
-          if (transactionalRoleplayStream) emitAgentPiAssistantMessage(output, message);
-          else {
-            output.push({ ...event, message });
-            output.end(message);
-          }
+          output.push({ ...event, message });
+          output.end(message);
           return;
         }
         if (event.type === "error") {
+          const timeoutFailure = deadlineFailure();
           const callerCancelled = callerAborted();
-          const cancelled = callerCancelled || (event.reason === "aborted" && signal.aborted);
           this.fail(
             output,
             model,
             callerCancelled
               ? (signal.reason ?? new Error("Pi native provider request was aborted."))
-              : new Error(event.error.errorMessage ?? "Pi native provider request failed."),
-            started && !transactionalRoleplayStream,
-            cancelled,
+              : (timeoutFailure ?? new Error(event.error.errorMessage ?? "Pi native provider request failed.")),
+            started,
+            callerCancelled,
           );
           await this.emitPromptCacheObservation(frame, model, cache, wireCapture, {
             sessionId: requireAgentPiPromptCacheSessionId(frame.sessionId),
@@ -246,15 +266,14 @@ export class AgentPiNativeToolProvider {
           });
           return;
         }
-        if (!transactionalRoleplayStream) output.push(event);
+        output.push(event);
       }
       throw new Error("Pi native provider ended without a terminal event.");
     } catch (error) {
+      const timeoutFailure = deadlineFailure();
       const cancelled = callerAborted();
-      const failure = cancelled
-        ? (signal.reason ?? error)
-        : (firstTokenController.signal.reason ?? maxRequestController.signal.reason ?? error);
-      this.fail(output, model, failure, started && !transactionalRoleplayStream, cancelled);
+      const failure = cancelled ? (signal.reason ?? error) : (timeoutFailure ?? error);
+      this.fail(output, model, failure, started, cancelled);
     } finally {
       firstTokenTimer?.clear();
       maxRequestTimer?.clear();
@@ -268,31 +287,19 @@ export class AgentPiNativeToolProvider {
     simple: boolean,
   ): AssistantMessageEventStream {
     const streams = this.apiStreams[model.api];
-    if (!simple || options.toolChoice === undefined) {
-      return simple
-        ? streams.streamSimple(model, context, options)
-        : streams.stream(model, context, options as StreamOptions);
+    const transcript = normalizeContext(context);
+    if (!simple) return streams.stream(model, transcript, options as StreamOptions);
+    if (options.toolChoice === undefined) {
+      return streams.streamSimple(model, transcript, options as SimpleStreamOptions);
     }
 
     // The Responses simple adapter drops adapter-specific toolChoice. Native
     // continuations must preserve the explicit choice on the provider wire.
-    return streams.stream(model, context, projectExplicitToolChoiceOptions(model, options));
+    return streams.stream(model, transcript, projectExplicitToolChoiceOptions(model, options));
   }
 
   private requestContext(context: Context, providerToolNames: readonly string[]): Context {
-    const availableTools = new Map<string, NonNullable<Context["tools"]>[number]>();
-    for (const tool of context.tools ?? []) {
-      if (availableTools.has(tool.name)) {
-        throw new Error(`Pi native provider received duplicate tool definition: ${tool.name}.`);
-      }
-      availableTools.set(tool.name, tool);
-    }
-    const tools = providerToolNames.map((toolName) => {
-      const tool = availableTools.get(toolName);
-      if (!tool) throw new Error(`Pi native provider context is missing declared tool: ${toolName}.`);
-      return tool;
-    });
-    return { ...context, tools };
+    return restrictAgentPiNativeTools(context, providerToolNames);
   }
 
   private async projectResidentSpeech(
@@ -308,20 +315,18 @@ export class AgentPiNativeToolProvider {
   ): Promise<AssistantMessage> {
     const focus = inspectAgentResidentSpeechFocus(message);
     if (!focus) return message;
-    if (
-      !shouldProjectResidentSpeech({
-        focus,
-        prefaceRewriteEnabled: frame.prefaceRewriteEnabled,
-        roleplayPresetActive: frame.roleplayPresetActive,
-        hasRegisteredToolCalls: turnState.hasRegisteredToolCalls(),
-      })
-    ) {
-      return message;
-    }
+    const projection = resolveAgentResidentSpeechProjection({
+      focus,
+      prefaceRewriteEnabled: frame.prefaceRewriteEnabled,
+      personaActive: frame.personaActive,
+      finalResponseRewriteEnabled: frame.finalResponseRewriteEnabled,
+      hasRegisteredToolCalls: turnState.hasRegisteredToolCalls(),
+    });
+    if (!projection) return message;
     if (!this.options.residentSpeech) {
-      throw new Error("Active roleplay speech projection requires the resident-speech sidecar.");
+      throw new Error("Active persona speech projection requires the resident-speech sidecar.");
     }
-    const bridge = context.tools?.find((tool) => tool.name === AgentPiNativeToolBridgeName);
+    const bridge = getCurrentTools(context.messages).find((tool) => tool.name === AgentPiNativeToolBridgeName);
     if (!bridge) {
       throw new Error(`Resident speech continuation requires the ${AgentPiNativeToolBridgeName} bridge tool.`);
     }
@@ -331,7 +336,7 @@ export class AgentPiNativeToolProvider {
       logicalCacheScope,
       model: { provider: model.provider, api: model.api, model: model.id },
       stablePrefix: {
-        systemPrompt: context.systemPrompt ?? "",
+        systemPrompt: getCurrentSystemPrompt(context.messages),
         tools: [{ name: bridge.name, description: bridge.description, parameters: bridge.parameters }],
       },
     });
@@ -348,8 +353,7 @@ export class AgentPiNativeToolProvider {
       fetch: sidecarWireCapture.fetch,
       onPayload: sidecarWireCapture.onPayload,
     };
-    const sidecarUsage = new AgentModelUsageLedger();
-    const recordResidentUsage = createAgentResidentSpeechUsageSink(turnState.context);
+    const sidecarUsage = turnState.context.usageLedger.fork();
     const continuation: AgentResidentSpeechNativeContinuation = {
       stream: ({
         context: continuationContext,
@@ -376,6 +380,7 @@ export class AgentPiNativeToolProvider {
         message,
         focus,
         spokenUtterances: turnState.residentSpeechHistory(),
+        projectionTier: projection.tier,
         enabled: true,
         signal,
         sessionId: requireAgentPiPromptCacheSessionId(frame.sessionId),
@@ -383,7 +388,6 @@ export class AgentPiNativeToolProvider {
         nativeContinuation: continuation,
         usageSink: (usage) => {
           sidecarUsage.record(usage);
-          recordResidentUsage(usage);
         },
         timingSink: (timing) =>
           emitAgentPiDiagnostic(frame.diagnostics, {
@@ -425,7 +429,6 @@ export class AgentPiNativeToolProvider {
       reasoningTokens: usage.reasoning,
     };
     turnState.context.usageLedger.record({ stage: "pi.native.tool_calling", usage: value });
-    turnState.context.tokenBudget.recordProviderInputTokens(usage.input + usage.cacheRead + usage.cacheWrite);
   }
 
   private async emitPromptCacheObservation(
@@ -479,6 +482,10 @@ export class AgentPiNativeToolProvider {
   private get apiStreams(): AgentNativeToolApiStreamMap {
     return this.options.apiStreams ?? AgentNativeToolApiStreams;
   }
+}
+
+function isPiCompactionRequest(options: StreamOptions | SimpleStreamOptions | undefined): boolean {
+  return options?.cacheRetention === "none";
 }
 
 function asNativeModel(

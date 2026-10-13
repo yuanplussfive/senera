@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { errorMessage, toError } from "../../../Source/AgentSystem/Core/AgentErrors.js";
 import {
   removeAgentPathWithRetry,
+  withAgentFileAccessRetry,
   readRegularTextFileSnapshotSync,
   readRegularTextFileSync,
   writeFileAtomic,
@@ -133,6 +134,18 @@ describe("core utilities", () => {
     await expect(removeAgentPathWithRetry(filePath, { retryDelayMs: 0 })).resolves.toBe("removed");
     expect(fs.existsSync(filePath)).toBe(false);
     expect(removeSpy).toHaveBeenCalledTimes(2);
+  });
+
+  test("retries transient file reads without hiding permanent access failures", async () => {
+    const busy = Object.assign(new Error("file is busy"), { code: "EBUSY" });
+    const operation = vi.fn<() => Promise<string>>().mockRejectedValueOnce(busy).mockResolvedValueOnce("ready");
+
+    await expect(withAgentFileAccessRetry(operation, { retryDelayMs: 0 })).resolves.toBe("ready");
+    expect(operation).toHaveBeenCalledTimes(2);
+
+    const denied = Object.assign(new Error("access denied"), { code: "EACCES" });
+    const permanent = vi.fn<() => Promise<string>>().mockRejectedValue(denied);
+    await expect(withAgentFileAccessRetry(permanent, { maxDurationMs: 0 })).rejects.toBe(denied);
   });
 
   test("moves a still-locked file out of the active namespace after retries", async () => {

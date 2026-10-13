@@ -16,6 +16,7 @@ import { nodeErrorCode } from "../Core/AgentFs.js";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
 import { currentAgentTimeIso, DefaultAgentTimeZone, resolveAgentTimeZone } from "../Time/AgentTime.js";
 import { AgentSqliteTimeMetadataTable } from "./AgentSqliteDatabaseSchema.js";
+import { AgentSqliteVecExtension } from "./AgentSqliteVecExtension.js";
 
 export const AgentSqliteJournalModes = {
   Wal: "WAL",
@@ -34,6 +35,11 @@ export interface AgentSqliteDatabaseProfile {
   readonly checkpointOnClose: boolean;
 }
 
+export interface AgentSqliteDatabaseExtension {
+  readonly id: string;
+  load(database: Database.Database): void;
+}
+
 export const DefaultAgentSqliteDatabaseProfile: AgentSqliteDatabaseProfile = Object.freeze({
   busyTimeoutMs: 5_000,
   journalMode: AgentSqliteJournalModes.Wal,
@@ -46,6 +52,8 @@ export interface AgentSqliteDatabaseOptions {
   readonly contract: AgentSqliteStoreContract;
   readonly profile?: AgentSqliteDatabaseProfile;
   readonly upgradeSession?: AgentUpgradeSession;
+  /** Native SQLite extensions required before schema reconciliation or migration. */
+  readonly extensions?: readonly AgentSqliteDatabaseExtension[];
   /** Used only when the database has no persisted business-time policy yet. */
   readonly timeZone?: string;
 }
@@ -87,7 +95,13 @@ export class AgentSqliteDatabaseKernel {
     this.databasePath = path.resolve(options.databasePath);
     this.checkpointOnClose = profile.checkpointOnClose;
     fs.mkdirSync(path.dirname(this.databasePath), { recursive: true });
-    const opened = openDatabase(this.databasePath, profile, options.contract, options.upgradeSession);
+    const opened = openDatabase(
+      this.databasePath,
+      profile,
+      options.contract,
+      options.upgradeSession,
+      options.extensions ?? [AgentSqliteVecExtension],
+    );
     this.connection = opened.connection;
     this.recovery = opened.recovery;
     try {
@@ -133,12 +147,13 @@ function openDatabase(
   profile: AgentSqliteDatabaseProfile,
   contract: AgentSqliteStoreContract,
   upgradeSession?: AgentUpgradeSession,
+  extensions: readonly AgentSqliteDatabaseExtension[] = [],
 ): OpenedAgentSqliteDatabase {
   if (contract.dataClass === AgentSqliteStoreDataClasses.Authoritative) {
-    return openAuthoritativeDatabase(databasePath, profile, contract, upgradeSession);
+    return openAuthoritativeDatabase(databasePath, profile, contract, upgradeSession, extensions);
   }
   if (contract.dataClass === AgentSqliteStoreDataClasses.Derived) {
-    return openDerivedDatabase(databasePath, profile, contract, upgradeSession);
+    return openDerivedDatabase(databasePath, profile, contract, upgradeSession, extensions);
   }
   throw new TypeError("Unsupported SQLite store data class.");
 }
@@ -148,12 +163,14 @@ function openAuthoritativeDatabase(
   profile: AgentSqliteDatabaseProfile,
   contract: AgentSqliteStoreContract,
   upgradeSession?: AgentUpgradeSession,
+  extensions: readonly AgentSqliteDatabaseExtension[] = [],
 ): OpenedAgentSqliteDatabase {
   let database: Database.Database | undefined;
   let plan: AgentSqliteStoreReconciliation;
   try {
     database = new Database(databasePath);
     configureConnection(database, profile);
+    loadDatabaseExtensions(database, extensions);
     assertDatabaseIntegrity(database, contract.id);
     plan = reconcileStore(database, contract);
   } catch (error) {
@@ -168,7 +185,7 @@ function openAuthoritativeDatabase(
       contract,
       error,
     );
-    const recovered = recoverStoreDatabase(databasePath, profile, contract, error);
+    const recovered = recoverStoreDatabase(databasePath, profile, contract, error, extensions);
     if (upgradeRecoveryPrepared) upgradeSession?.markSqliteMigrationApplied(contract.id);
     return recovered;
   }
@@ -191,12 +208,14 @@ function openDerivedDatabase(
   profile: AgentSqliteDatabaseProfile,
   contract: AgentSqliteStoreContract,
   upgradeSession?: AgentUpgradeSession,
+  extensions: readonly AgentSqliteDatabaseExtension[] = [],
 ): OpenedAgentSqliteDatabase {
   let database: Database.Database | undefined;
   let plan: AgentSqliteStoreReconciliation;
   try {
     database = new Database(databasePath);
     configureConnection(database, profile);
+    loadDatabaseExtensions(database, extensions);
     assertDatabaseIntegrity(database, contract.id);
     plan = reconcileStore(database, contract);
   } catch (error) {
@@ -211,7 +230,7 @@ function openDerivedDatabase(
       contract,
       error,
     );
-    const recovered = recoverStoreDatabase(databasePath, profile, contract, error);
+    const recovered = recoverStoreDatabase(databasePath, profile, contract, error, extensions);
     if (upgradeRecoveryPrepared) upgradeSession?.markSqliteMigrationApplied(contract.id);
     return recovered;
   }
@@ -239,6 +258,8 @@ function openDerivedDatabase(
     profile,
     contract,
     `SQLite store ${contract.id} was rebuilt to match its current contract.`,
+    undefined,
+    extensions,
   );
   upgradeSession?.markSqliteMigrationApplied(contract.id);
   return replacement;
@@ -249,8 +270,9 @@ function recoverStoreDatabase(
   profile: AgentSqliteDatabaseProfile,
   contract: AgentSqliteStoreContract,
   cause: unknown,
+  extensions: readonly AgentSqliteDatabaseExtension[] = [],
 ): OpenedAgentSqliteDatabase {
-  return replaceAndOpenStoreWithRecovery(databasePath, profile, contract, errorMessage(cause), cause);
+  return replaceAndOpenStoreWithRecovery(databasePath, profile, contract, errorMessage(cause), cause, extensions);
 }
 
 function replaceAndOpenStoreWithRecovery(
@@ -259,12 +281,13 @@ function replaceAndOpenStoreWithRecovery(
   contract: AgentSqliteStoreContract,
   reason: string,
   warningCause?: unknown,
+  extensions: readonly AgentSqliteDatabaseExtension[] = [],
 ): OpenedAgentSqliteDatabase {
   const backupPath = recoveryBackupPath(databasePath, contract.id);
-  replaceStoreDatabase(databasePath, profile, contract, { preservePreviousAt: backupPath });
+  replaceStoreDatabase(databasePath, profile, contract, extensions, { preservePreviousAt: backupPath });
   let connection: Database.Database;
   try {
-    connection = openRebuiltStoreDatabase(databasePath, profile, contract);
+    connection = openRebuiltStoreDatabase(databasePath, profile, contract, extensions);
   } catch (error) {
     try {
       restoreStoreDatabaseFromBackup(databasePath, backupPath);
@@ -352,10 +375,12 @@ function openRebuiltStoreDatabase(
   databasePath: string,
   profile: AgentSqliteDatabaseProfile,
   contract: AgentSqliteStoreContract,
+  extensions: readonly AgentSqliteDatabaseExtension[] = [],
 ): Database.Database {
   const replacement = new Database(databasePath);
   try {
     configureConnection(replacement, profile);
+    loadDatabaseExtensions(replacement, extensions);
     assertDatabaseIntegrity(replacement, contract.id);
     if (reconcileStore(replacement, contract).kind !== "current") {
       throw new Error(`SQLite store ${contract.id} was not rebuilt to its current contract.`);
@@ -382,12 +407,14 @@ function replaceStoreDatabase(
   databasePath: string,
   profile: AgentSqliteDatabaseProfile,
   contract: AgentSqliteStoreContract,
+  extensions: readonly AgentSqliteDatabaseExtension[] = [],
   options: { preservePreviousAt?: string } = {},
 ): void {
   const stagingPath = `${databasePath}.${randomUUID()}.next`;
   const staging = new Database(stagingPath);
   try {
     configureConnection(staging, profile);
+    loadDatabaseExtensions(staging, extensions);
     migrateAgentSqliteStore(staging, contract);
     assertDatabaseIntegrity(staging, contract.id);
   } finally {
@@ -462,6 +489,19 @@ function configureConnection(database: Database.Database, profile: AgentSqliteDa
   database.pragma(`journal_mode = ${profile.journalMode}`);
   database.pragma(`synchronous = ${profile.synchronous}`);
   database.pragma("foreign_keys = ON");
+}
+
+function loadDatabaseExtensions(
+  database: Database.Database,
+  extensions: readonly AgentSqliteDatabaseExtension[],
+): void {
+  const seen = new Set<string>();
+  for (const extension of extensions) {
+    if (seen.has(extension.id)) throw new Error(`SQLite extension ${extension.id} was registered more than once.`);
+    if (extension.id.trim().length === 0) throw new Error("SQLite extension id must not be empty.");
+    seen.add(extension.id);
+    extension.load(database);
+  }
 }
 
 interface DatabaseTimeMetadataRow {

@@ -17,6 +17,7 @@ test("model delta events are buffered and coalesced by session request and step"
   const coalesced = coalesceStreamingEvents(queue);
 
   expect(isBufferedStreamingEvent(EventKinds.ModelDelta)).toBe(true);
+  expect(isBufferedStreamingEvent(EventKinds.ModelThinkingDelta)).toBe(true);
   expect(isBufferedStreamingEvent(EventKinds.ExecutionResourceOutput)).toBe(true);
   expect(isBufferedStreamingEvent(EventKinds.RunCompleted)).toBe(false);
   expect(StreamingEventMaxLatencyMs).toBeGreaterThan(0);
@@ -27,6 +28,24 @@ test("model delta events are buffered and coalesced by session request and step"
     ["session_a", "request_b", 1, 11, "2026-07-09T00:00:11.000Z", { text: "新" }],
     ["session_a", "request_a", 2, 12, "2026-07-09T00:00:12.000Z", { text: "步骤" }],
   ]);
+});
+
+test("thinking deltas coalesce by message and content block identity", () => {
+  const coalesced = coalesceStreamingEvents([
+    thinkingEvent(1, 0, 3, "先检查"),
+    thinkingEvent(2, 0, 3, "输入。"),
+    thinkingEvent(3, 1, 3, "新消息"),
+  ]);
+
+  expect(coalesced).toHaveLength(2);
+  expect(coalesced[0]).toMatchObject({
+    sequence: 1,
+    data: { messageIndex: 0, contentIndex: 3, delta: "先检查输入。" },
+  });
+  expect(coalesced[1]).toMatchObject({
+    sequence: 3,
+    data: { messageIndex: 1, contentIndex: 3, delta: "新消息" },
+  });
 });
 
 test("contiguous terminal output is coalesced without losing cursor boundaries", () => {
@@ -112,6 +131,14 @@ function event(sessionId, requestId, step, sequence, text) {
     requestId,
     step,
     data: { text },
+  };
+}
+
+function thinkingEvent(sequence, messageIndex, contentIndex, delta) {
+  return {
+    ...event("session_a", "request_a", 1, sequence, delta),
+    kind: EventKinds.ModelThinkingDelta,
+    data: { messageIndex, contentIndex, delta },
   };
 }
 

@@ -1,28 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
-import AcademicCapIcon from "@heroicons/react/24/outline/AcademicCapIcon";
 import ArrowPathIcon from "@heroicons/react/24/outline/ArrowPathIcon";
 import ArrowLeftIcon from "@heroicons/react/24/outline/ArrowLeftIcon";
-import ClipboardDocumentListIcon from "@heroicons/react/24/outline/ClipboardDocumentListIcon";
-import CodeBracketIcon from "@heroicons/react/24/outline/CodeBracketIcon";
 import CubeTransparentIcon from "@heroicons/react/24/outline/CubeTransparentIcon";
-import DocumentTextIcon from "@heroicons/react/24/outline/DocumentTextIcon";
-import FolderIcon from "@heroicons/react/24/outline/FolderIcon";
-import GlobeAltIcon from "@heroicons/react/24/outline/GlobeAltIcon";
-import MagnifyingGlassIcon from "@heroicons/react/24/outline/MagnifyingGlassIcon";
-import PhotoIcon from "@heroicons/react/24/outline/PhotoIcon";
-import QuestionMarkCircleIcon from "@heroicons/react/24/outline/QuestionMarkCircleIcon";
-import SpeakerWaveIcon from "@heroicons/react/24/outline/SpeakerWaveIcon";
-import SparklesIcon from "@heroicons/react/24/outline/SparklesIcon";
-import UsersIcon from "@heroicons/react/24/outline/UsersIcon";
 import WrenchScrewdriverIcon from "@heroicons/react/24/outline/WrenchScrewdriverIcon";
 import type { SystemExtensionSettingsItem } from "../../../api/eventTypes";
+import { useRef } from "react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import { resolveFrontendLocalizedText, type FrontendLocale } from "../../../i18n/frontendLocaleModel";
 import { useFrontendLocale } from "../../../i18n/useFrontendLocale";
 import { cn } from "../../../lib/util";
 import { JsonConfigSettingsView } from "../../../shared/config/JsonConfigForm";
 import { isJsonConfigObject } from "../../../shared/config/JsonConfigValue";
-import { IconButton, InlineError, ScrollArea, StateView, Switch } from "../../../shared/ui";
+import { AppIcon, IconButton, InlineError, ScrollArea, StateView, Switch } from "../../../shared/ui";
+import { FluidHoverHighlight, useFluidHover, useMotionLevel } from "../../../shared/motion";
+import { AgentToolPresentationAppIcons } from "../../../shared/workspace/agentToolPresentationIcons";
+import { AgentSystemExtensionSettingsSurfaces } from "../../../../../Source/AgentSystem/Types/AgentSystemExtensionSettingsSurface";
 import type { SettingsSystemConfigHandle } from "../SettingsContracts";
 import { projectSystemExtensionConfigurationSections } from "../systemExtensionConfigurationPresentation";
 import type { ConfigSettingsDraftState, ConfigDraftSaveMode } from "./configSettingsDraftState";
@@ -38,16 +30,29 @@ export function SystemToolsSection({
   systemConfig?: SettingsSystemConfigHandle;
 }): JSX.Element {
   const locale = useFrontendLocale();
-  // The channel gateway has a dedicated settings section; keep it out of the
-  // generic extension directory so both edits stay in one place.
+  const { disableMotion } = useMotionLevel();
+  const extensionListRef = useRef<HTMLDivElement>(null);
+  const extensionHover = useFluidHover(extensionListRef, {
+    axis: "y",
+    gapClick: false,
+    isItemDisabled: (element) => element.querySelector("button:disabled") !== null,
+  });
   const extensions = (systemConfig?.systemExtensions ?? EmptyExtensions).filter(
-    (extension) => extension.id !== "agent-channels",
+    (extension) => extension.settingsSurface === AgentSystemExtensionSettingsSurfaces.SystemTools,
   );
+  const domainGroups = projectSystemExtensionDirectoryGroups(extensions);
+  // Fluid hover registers one rect per row; domain headers are not rows, so the
+  // index runs across groups instead of restarting inside each section.
+  const extensionIndices = new Map<string, number>();
+  for (const group of domainGroups) {
+    for (const extension of group.extensions) {
+      extensionIndices.set(extension.id, extensionIndices.size);
+    }
+  }
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = selectedId ? (extensions.find((extension) => extension.id === selectedId) ?? null) : null;
   const selectedDisplayName = selected ? resolveFrontendLocalizedText(selected.displayName, locale) : "";
   const selectedDescription = selected ? resolveFrontendLocalizedText(selected.description, locale) : "";
-  const SelectedIcon = selected ? extensionIcon(selected.id) : CubeTransparentIcon;
   const selectedDraft = selected ? readExtensionDraft(draftState.draft, selected) : null;
   const enabled = selectedDraft?.enabled ?? true;
   const configuration = selectedDraft?.configuration ?? {};
@@ -126,22 +131,59 @@ export function SystemToolsSection({
           />
         ) : (
           <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full">
-            <div className="mx-auto w-full max-w-[980px] px-6 lg:px-8" data-system-extension-list>
-              {extensions.map((extension) => (
-                <ExtensionRow
-                  key={extension.id}
-                  extension={extension}
-                  locale={locale}
-                  directory
-                  selected={false}
-                  enabled={readExtensionDraft(draftState.draft, extension).enabled}
-                  onSelect={() => setSelectedId(extension.id)}
-                  onToggle={(next) => {
-                    const current = readExtensionDraft(draftState.draft, extension);
-                    updateExtensionFor(extension, next, current.configuration, draftState);
-                  }}
-                  disabled={!connected || draftState.saving}
-                />
+            <div
+              ref={extensionListRef}
+              className="relative mx-auto w-full max-w-[980px] px-6 lg:px-8"
+              data-system-extension-list
+              {...extensionHover.handlers}
+            >
+              <FluidHoverHighlight hover={extensionHover} hidden={disableMotion} className="rounded-md" />
+              {domainGroups.map((group) => (
+                <section
+                  key={group.domain.id}
+                  className="border-b border-line last:border-b-0"
+                  data-system-extension-domain={group.domain.id}
+                >
+                  <header className="flex min-w-0 items-start gap-2.5 pb-2 pt-5">
+                    <AppIcon
+                      icon={AgentToolPresentationAppIcons[group.domain.presentation.icon]}
+                      size={18}
+                      className="mt-0.5 shrink-0 text-content-secondary"
+                      aria-hidden="true"
+                    />
+                    <div className="min-w-0">
+                      <h3 className="text-[12.5px] font-semibold text-content-primary">
+                        {resolveFrontendLocalizedText(group.domain.displayName, locale)}
+                      </h3>
+                      <p className="mt-0.5 text-[10.5px] leading-4 text-content-muted">
+                        {resolveFrontendLocalizedText(group.domain.description, locale)}
+                      </p>
+                    </div>
+                    <span className="ml-auto pt-0.5 text-[10.5px] tabular-nums text-content-muted">
+                      {group.extensions.length}
+                    </span>
+                  </header>
+                  <div>
+                    {group.extensions.map((extension) => (
+                      <ExtensionRow
+                        key={extension.id}
+                        itemRef={extensionHover.getItemRef(extensionIndices.get(extension.id) ?? 0)}
+                        fluidHoverEnabled={!disableMotion}
+                        extension={extension}
+                        locale={locale}
+                        directory
+                        selected={false}
+                        enabled={readExtensionDraft(draftState.draft, extension).enabled}
+                        onSelect={() => setSelectedId(extension.id)}
+                        onToggle={(next) => {
+                          const current = readExtensionDraft(draftState.draft, extension);
+                          updateExtensionFor(extension, next, current.configuration, draftState);
+                        }}
+                        disabled={!connected || draftState.saving}
+                      />
+                    ))}
+                  </div>
+                </section>
               ))}
             </div>
           </ScrollArea>
@@ -162,7 +204,16 @@ export function SystemToolsSection({
           >
             <ArrowLeftIcon className="h-4 w-4" />
           </button>
-          <SelectedIcon className="mt-1 h-6 w-6 shrink-0 text-accent-content" aria-hidden="true" />
+          {selected ? (
+            <AppIcon
+              icon={AgentToolPresentationAppIcons[selected.presentation?.icon ?? "tools"]}
+              size={24}
+              className="mt-1 shrink-0 text-accent-content"
+              aria-hidden="true"
+            />
+          ) : (
+            <CubeTransparentIcon className="mt-1 h-6 w-6 shrink-0 text-accent-content" aria-hidden="true" />
+          )}
           <div className="min-w-0">
             <h3
               className="truncate text-[17px] font-semibold tracking-[-0.01em] text-content-primary"
@@ -224,6 +275,8 @@ export function SystemToolsSection({
 }
 
 function ExtensionRow({
+  itemRef,
+  fluidHoverEnabled,
   extension,
   locale,
   directory = false,
@@ -233,6 +286,8 @@ function ExtensionRow({
   onToggle,
   disabled,
 }: {
+  itemRef?: (element: HTMLElement | null) => void;
+  fluidHoverEnabled?: boolean;
   extension: SystemExtensionSettingsItem;
   locale: FrontendLocale;
   directory?: boolean;
@@ -244,16 +299,20 @@ function ExtensionRow({
 }): JSX.Element {
   const displayName = resolveFrontendLocalizedText(extension.displayName, locale);
   const description = resolveFrontendLocalizedText(extension.description, locale);
-  const Icon = extensionIcon(extension.id);
   return (
     <div
+      ref={itemRef}
       className={cn(
+        "relative z-10",
         directory
           ? "flex min-h-[68px] w-full min-w-0 items-center gap-3 border-b border-line px-1 py-3 text-left transition-colors"
           : "flex min-h-[58px] w-full min-w-0 items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors",
         !directory && selected
           ? "bg-accent-surface text-accent-content"
-          : "text-content-secondary hover:bg-surface-hover hover:text-content-primary",
+          : cn(
+              "text-content-secondary hover:text-content-primary",
+              fluidHoverEnabled ? "hover:bg-transparent" : "hover:bg-surface-hover",
+            ),
         !enabled && "text-ink-450",
       )}
     >
@@ -263,7 +322,12 @@ function ExtensionRow({
         onClick={onSelect}
         className="flex w-0 min-w-0 flex-1 items-center gap-2.5 text-left"
       >
-        <Icon className="h-5 w-5 shrink-0 text-content-secondary" aria-hidden="true" />
+        <AppIcon
+          icon={AgentToolPresentationAppIcons[extension.presentation?.icon ?? "tools"]}
+          size={20}
+          className="shrink-0 text-content-secondary"
+          aria-hidden="true"
+        />
         <span className="min-w-0">
           <span className="block truncate text-[12.5px] font-semibold">{displayName}</span>
           <span className="mt-0.5 block truncate text-[10.5px] text-content-muted">
@@ -307,7 +371,9 @@ function ExtensionToolList({
           >
             <div className="min-w-0">
               <div className="truncate text-[12px] font-semibold text-content-primary">
-                {humanizeToolName(tool.name, locale)}
+                {tool.presentation
+                  ? resolveFrontendLocalizedText(tool.presentation.activity.action, locale)
+                  : tool.name}
               </div>
               <code className="mt-0.5 block truncate text-[10px] text-content-muted">{tool.name}</code>
             </div>
@@ -338,54 +404,38 @@ function updateExtensionFor(
   draftState.updateDraft({ ...draftState.draft, Extensions: nextExtensions }, "immediate");
 }
 
-function extensionIcon(id: string): typeof CubeTransparentIcon {
-  const normalized = id.toLowerCase();
-  if (normalized.includes("ask-user") || normalized.includes("question")) return QuestionMarkCircleIcon;
-  if (normalized.includes("image") || normalized.includes("vision")) return PhotoIcon;
-  if (normalized.includes("document") || normalized.includes("artifact")) return DocumentTextIcon;
-  if (normalized.includes("learning") || normalized.includes("planner")) return AcademicCapIcon;
-  if (normalized.includes("skill") || normalized.includes("capability")) return SparklesIcon;
-  if (normalized.includes("delegat") || normalized.includes("agent-team")) return UsersIcon;
-  if (normalized.includes("memory") || normalized.includes("recall")) return ClipboardDocumentListIcon;
-  if (normalized.includes("todo") || normalized.includes("task")) return ClipboardDocumentListIcon;
-  if (normalized.includes("search") || normalized.includes("grep")) return MagnifyingGlassIcon;
-  if (normalized.includes("shell") || normalized.includes("command") || normalized.includes("execution")) {
-    return CodeBracketIcon;
-  }
-  if (normalized.includes("speech") || normalized.includes("voice")) return SpeakerWaveIcon;
-  if (normalized.includes("browser") || normalized.includes("web")) return GlobeAltIcon;
-  if (normalized.includes("git")) return CodeBracketIcon;
-  if (normalized.includes("workspace") || normalized.includes("file")) return FolderIcon;
-  return CubeTransparentIcon;
-}
-
-function humanizeToolName(name: string, locale: FrontendLocale): string {
-  const labels: Record<string, readonly [string, string]> = {
-    WebSearch: ["网页搜索", "Web search"],
-    WebFetch: ["读取网页", "Read web page"],
-    WorkspaceRead: ["读取工作区", "Read workspace"],
-    WorkspaceWrite: ["写入工作区", "Write workspace"],
-    WorkspaceList: ["浏览工作区", "Browse workspace"],
-    WorkspaceGrep: ["搜索工作区", "Search workspace"],
-    WorkspaceFind: ["查找文件", "Find files"],
-    WorkspaceApplyPatch: ["应用工作区补丁", "Apply workspace patch"],
-    GitInspect: ["查看 Git", "Inspect Git"],
-    GitMutate: ["执行 Git 操作", "Run Git operation"],
-    ShellCommandTool: ["执行命令", "Run command"],
-    BrowserOpen: ["打开网页", "Open page"],
-    BrowserSnapshot: ["查看页面", "Inspect page"],
-    BrowserClick: ["点击页面", "Click page"],
-    BrowserComputer: ["操作浏览器", "Control browser"],
-  };
-  const label = labels[name];
-  if (label) return label[locale === "zh-CN" ? 0 : 1];
-  return name.replace(/([a-z])([A-Z])/gu, "$1 $2");
-}
-
 function shortenExtensionDescription(value: string): string {
   const text = value.trim().replace(/[.!?。！？]+$/u, "");
   if (!text) return "";
   return `${text}…`;
+}
+
+export interface SystemExtensionDirectoryGroup {
+  readonly domain: SystemExtensionSettingsItem["domain"];
+  readonly extensions: readonly SystemExtensionSettingsItem[];
+}
+
+/**
+ * The manifest domain is the only grouping authority. Sorting by its stable
+ * identity keeps the directory deterministic across locale changes without
+ * teaching the UI any extension-specific category rules.
+ */
+export function projectSystemExtensionDirectoryGroups(
+  extensions: readonly SystemExtensionSettingsItem[],
+): readonly SystemExtensionDirectoryGroup[] {
+  const groups = new Map<
+    string,
+    { domain: SystemExtensionSettingsItem["domain"]; extensions: SystemExtensionSettingsItem[] }
+  >();
+  for (const extension of extensions) {
+    const current = groups.get(extension.domain.id);
+    if (current) {
+      current.extensions.push(extension);
+      continue;
+    }
+    groups.set(extension.domain.id, { domain: extension.domain, extensions: [extension] });
+  }
+  return [...groups.values()].sort((left, right) => left.domain.id.localeCompare(right.domain.id));
 }
 
 function readExtensionDraft(

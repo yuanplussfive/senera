@@ -1,5 +1,8 @@
 ---
 name: execution-workflow
+metadata:
+  senera:
+    icon: terminal
 description: Execute multi-step code changes, bug fixes, refactors, architecture cleanup, productization, runtime integration, or continue-until-done tasks with a tracked plan and deterministic verification. Use when work requires reading a repository, editing files, running tests or builds, and closing every requested outcome with evidence. 适用于全面优化、拓展、重构、修复问题、修改代码、运行测试或要求持续执行直到完成的任务。
 ---
 

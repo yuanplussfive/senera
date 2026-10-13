@@ -17,14 +17,17 @@ import type { AgentContinuityMemoryService } from "../Continuity/AgentContinuity
 import type { AgentExecutionLedgerService } from "../Goals/AgentExecutionLedgerService.js";
 import type { AgentTodoService } from "../Todos/AgentTodoService.js";
 import type { AgentContinuityLifecyclePort } from "../Continuity/AgentContinuityLifecycle.js";
-import type { AgentWorldSnapshotProvider } from "../World/AgentWorldTypes.js";
-import type { AgentAgendaService } from "../Agenda/AgentAgendaService.js";
+import type { AgentContinuityRecallService } from "../Continuity/AgentContinuityToolRuntime.js";
 import type { AgentContinuityIdentityContext } from "../Continuity/AgentContinuityIdentityStore.js";
 import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
 import type { AgentInferenceBudgetPort } from "../ModelEndpoints/AgentInferenceBudget.js";
 import type { AgentPluginHost } from "../Plugins/AgentPluginHost.js";
 import type { AgentToolResourceLeaseCoordinator } from "../ToolRuntime/AgentToolResourceScheduler.js";
 import type { AgentMcpHostCapabilitySnapshot } from "../McpPackages/AgentMcpHostRequirements.js";
+import type { AgentMcpActivationCatalogEntry } from "../McpPackages/AgentMcpPackageTypes.js";
+import type { AgentActivationCatalogEntryData } from "../Activation/AgentActivationTypes.js";
+import type { AgentContinuityMemOSRuntime } from "../Continuity/AgentContinuityMemOSRuntime.js";
+import type { AgentBackgroundLearningRequestLedger } from "../Memory/AgentBackgroundLearningRequestLedger.js";
 
 export interface AgentSystemRuntimeCacheSnapshot {
   version: number;
@@ -63,10 +66,10 @@ export interface AgentSystemRuntimeCacheRuntimeFactoryInput {
   continuityMemory?: AgentContinuityMemoryService;
   continuityIdentity?: AgentContinuityIdentityContext;
   continuityLifecycle?: AgentContinuityLifecyclePort;
+  continuityRecall?: AgentContinuityRecallService;
+  continuityMemOS?: AgentContinuityMemOSRuntime;
   executionLedger?: AgentExecutionLedgerService;
   todos?: AgentTodoService;
-  agenda?: AgentAgendaService;
-  worldRuntime?: AgentWorldSnapshotProvider;
   inferenceBudget?: AgentInferenceBudgetPort;
   identityDisplayValues?: () => AgentIdentityDisplayValues;
   /** Host services bound to the `senera` self-service command tool. */
@@ -74,8 +77,12 @@ export interface AgentSystemRuntimeCacheRuntimeFactoryInput {
   /** Loaded plugin host; its tools/skills are applied per runtime composition. */
   pluginHost?: AgentPluginHost;
   resourceCoordinator?: AgentToolResourceLeaseCoordinator;
+  learningRequests?: AgentBackgroundLearningRequestLedger;
   /** Shared capability snapshot used by MCP discovery and management projections. */
   mcpHostCapabilities?: AgentMcpHostCapabilitySnapshot;
+  /** Shared management projection so composer and execution validate one catalog. */
+  mcpActivationEntries?: () => readonly AgentMcpActivationCatalogEntry[];
+  systemActivationEntries?: () => readonly AgentActivationCatalogEntryData[];
 }
 
 export interface AgentSystemRuntimeLease<TRuntime extends AgentSystemRuntimeCacheRuntime> {
@@ -114,6 +121,7 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
   private readonly pendingClosures = new Set<Promise<void>>();
   private readonly maxIdleEntries: number;
   private accessSequence = 0;
+  private observed = true;
 
   constructor(private readonly options: AgentSystemRuntimeCacheOptions<TRuntime>) {
     this.maxIdleEntries = normalizeMaxIdleEntries(options.maxIdleEntries);
@@ -161,6 +169,12 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
     const failures = outcomes.flatMap((outcome) => (outcome.status === "rejected" ? [outcome.reason] : []));
     if (failures.length === 1) throw failures[0];
     if (failures.length > 1) throw new AggregateError(failures, "Runtime cache shutdown failed.");
+  }
+
+  /** Keeps active leases intact while releasing idle model/Pi instances for hidden workspaces. */
+  setObserved(observed: boolean): void {
+    this.observed = observed;
+    this.trimIdleEntries();
   }
 
   private createRuntime(snapshot: AgentSystemRuntimeCacheSnapshot, modelProviderId: string | undefined): TRuntime {
@@ -239,6 +253,7 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
     if (entry.state === "failed" || this.entries.get(entry.fingerprint) !== entry) return;
     entry.state = "ready";
     this.evictSupersededIdleEntries(entry);
+    this.trimIdleEntries();
   }
 
   private rejectEntry(entry: RuntimeCacheEntry<TRuntime>, error: unknown): void {
@@ -262,7 +277,7 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
     const idleEntries = [...this.entries.values()]
       .filter((entry) => entry.leases === 0 && entry.state === "ready")
       .sort((left, right) => right.lastAccess - left.lastAccess);
-    for (const entry of idleEntries.slice(this.maxIdleEntries)) {
+    for (const entry of idleEntries.slice(this.observed ? this.maxIdleEntries : 0)) {
       this.closeEntry(entry);
       this.entries.delete(entry.fingerprint);
     }

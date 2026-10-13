@@ -11,6 +11,8 @@ export function createComposerProps(overrides = {}) {
       modelProviders: [],
       selectedModelProviderId: null,
       onSelectModelProvider: vi.fn(),
+      selectedThinkingLevel: null,
+      onSelectThinkingLevel: vi.fn(),
     },
     approvalConfig: {
       mode: "agent",
@@ -26,17 +28,11 @@ export function createComposerProps(overrides = {}) {
       onSaveConfig: vi.fn(() => null),
       onFetchProviderModels: vi.fn(),
     },
-    presetConfig: {
-      presets: [],
-      worldPackages: [],
-      activePresetName: null,
-      presetsEnabled: false,
-      presetRootDir: "",
-      presetOperations: {},
-      onRefreshPresets: vi.fn(),
-      onSavePreset: vi.fn(() => null),
-      onDeletePreset: vi.fn(() => null),
-      onSetActivePreset: vi.fn(() => null),
+    personaConfig: {
+      corePersona: "",
+      languageStyle: "",
+      operation: null,
+      onSave: vi.fn(() => null),
     },
     runtime: {
       socketStatus: "open",
@@ -55,6 +51,8 @@ export function createChatPanelProps(overrides = {}) {
       modelProviders: [],
       selectedModelProviderId: null,
       onSelectModelProvider: vi.fn(),
+      selectedThinkingLevel: null,
+      onSelectThinkingLevel: vi.fn(),
     },
     approvalConfig: {
       mode: "agent",
@@ -70,17 +68,11 @@ export function createChatPanelProps(overrides = {}) {
       onSaveConfig: vi.fn(() => null),
       onFetchProviderModels: vi.fn(),
     },
-    presetConfig: {
-      presets: [],
-      worldPackages: [],
-      activePresetName: null,
-      presetsEnabled: false,
-      presetRootDir: "",
-      presetOperations: {},
-      onRefreshPresets: vi.fn(),
-      onSavePreset: vi.fn(() => null),
-      onDeletePreset: vi.fn(() => null),
-      onSetActivePreset: vi.fn(() => null),
+    personaConfig: {
+      corePersona: "",
+      languageStyle: "",
+      operation: null,
+      onSave: vi.fn(() => null),
     },
     runtime: {
       socketStatus: "open",
@@ -136,6 +128,7 @@ export function resetChatStore(overrides = {}) {
   clearPersistedStore();
   useStore.setState({
     sessions: {},
+    runtimeSnapshotsBySession: {},
     sessionOrder: [],
     activeSessionId: null,
     historyLoadingIds: {},

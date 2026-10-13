@@ -4,7 +4,10 @@ import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
 import type { AgentResourceAccessIntent } from "../Execution/SeneraResourceAccess.js";
 import { AgentResourceAccessIntents } from "../Execution/SeneraResourceAccess.js";
 import type { ToolResourceArgumentManifest } from "../Types/AgentToolContractTypes.js";
-import type { AgentToolResourceCapability } from "./AgentToolResourceCapabilityRegistry.js";
+import type {
+  AgentToolResourceCapability,
+  AgentToolResourceManifestValidator,
+} from "./AgentToolResourceCapabilityRegistry.js";
 import { AgentToolResourceCapabilityIds } from "./AgentToolResourceCapabilityIds.js";
 import { AgentToolResourceAccessModes } from "./AgentToolResourceClaimTypes.js";
 import { AgentWorkspacePathClaimDomain } from "./AgentToolWorkspacePathResourceCapability.js";
@@ -21,6 +24,13 @@ interface WorkspaceRootResourceInput {
   args: Readonly<Record<string, unknown>>;
 }
 
+export const AgentToolWorkspaceRootResourceManifestValidator: AgentToolResourceManifestValidator = Object.freeze({
+  id: AgentToolResourceCapabilityIds.WorkspaceRoot,
+  validateManifest(resource: ToolResourceArgumentManifest) {
+    parseWorkspaceRootIntent(resource);
+  },
+});
+
 /**
  * Declares an exclusive claim for the whole workspace without adding a
  * model-facing path argument. The empty RFC 6901 pointer addresses the tool
@@ -31,13 +41,17 @@ export class AgentToolWorkspaceRootResourceCapability implements AgentToolResour
 
   constructor(private readonly executionEnv: Pick<SeneraExecutionEnv, "workspaceRoot" | "inspectResourcePath">) {}
 
+  validateManifest(resource: ToolResourceArgumentManifest): void {
+    AgentToolWorkspaceRootResourceManifestValidator.validateManifest(resource);
+  }
+
   async project(input: WorkspaceRootResourceInput) {
-    this.assertParameters(input);
+    parseWorkspaceRootIntent(input.resource);
     return { target: "argument" as const, value: input.value };
   }
 
   async claim(input: WorkspaceRootResourceInput) {
-    const intent = this.assertParameters(input);
+    const intent = parseWorkspaceRootIntent(input.resource);
     return [
       {
         domain: AgentWorkspacePathClaimDomain,
@@ -50,13 +64,16 @@ export class AgentToolWorkspaceRootResourceCapability implements AgentToolResour
   }
 
   async inspect(input: WorkspaceRootResourceInput) {
-    const intent = this.assertParameters(input);
+    const intent = parseWorkspaceRootIntent(input.resource);
     return [await this.executionEnv.inspectResourcePath(".", intent)];
   }
+}
 
-  private assertParameters(input: WorkspaceRootResourceInput): AgentResourceAccessIntent {
-    return RootParametersSchema.parse(input.resource.Parameters ?? {}).Intent;
+function parseWorkspaceRootIntent(resource: ToolResourceArgumentManifest): AgentResourceAccessIntent {
+  if (resource.Binding !== undefined) {
+    throw new TypeError(`${AgentToolResourceCapabilityIds.WorkspaceRoot} does not support resource bindings.`);
   }
+  return RootParametersSchema.parse(resource.Parameters ?? {}).Intent;
 }
 
 function sharedWorkspaceIntent(intent: AgentResourceAccessIntent): boolean {

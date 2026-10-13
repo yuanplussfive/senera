@@ -23,9 +23,9 @@ export function resetFrontendStore(overrides = {}) {
   clearPersistedStore();
   useStore.setState({
     sessions: {},
+    runtimeSnapshotsBySession: {},
     sessionOrder: [],
     activeSessionId: null,
-    agenda: undefined,
     sidebarCollapsed: false,
     rightPanelCollapsed: false,
     workflowDockWidth: 420,
@@ -56,13 +56,9 @@ export function resetFrontendStore(overrides = {}) {
     selectedThinkingLevel: null,
     selectedThinkingLevelsBySession: {},
     executionApprovalMode: "agent",
-    presets: [],
-    activePresetName: null,
-    presetsEnabled: true,
-    presetRootDir: "",
     configSnapshot: null,
     userProfile: DEFAULT_USER_PROFILE,
-    catalogSynced: { sessions: false, presets: false },
+    catalogSynced: { sessions: false },
     ...overrides,
   });
 }

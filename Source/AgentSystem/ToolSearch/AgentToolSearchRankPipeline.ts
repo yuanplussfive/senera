@@ -1,6 +1,7 @@
 import type { ResolvedAgentToolSearchConfig } from "../Types/AgentConfigTypes.js";
 import type { AgentToolSearchTokenizer } from "./AgentToolSearchTokenizer.js";
 import type { AgentToolSearchMemoryEvidence } from "./AgentToolSearchMemory.js";
+import type { AgentToolResourceQueryShape } from "../ToolRuntime/AgentToolResourceDiscovery.js";
 import { AgentCapabilityKinds, type AgentCapabilitySearchIndex } from "./AgentCapabilitySearchIndex.js";
 import { AgentToolSearchReranker } from "./AgentToolSearchReranker.js";
 import type {
@@ -10,11 +11,24 @@ import type {
   AgentToolSearchRankMap,
   ToolSearchDocument,
 } from "./AgentToolSearchTypes.js";
-import {
-  AgentToolSearchMemoryExpansionModes,
-  type AgentToolSearchMemoryExpansionMode,
-} from "../Types/AgentToolAndMemoryConfigTypes.js";
-import { AgentToolSearchResultModes } from "./AgentToolSearchTypes.js";
+import { matchToolCapabilities } from "./AgentToolSearchCapabilities.js";
+
+/**
+ * Request evidence derived by AgentToolSearchIndex from the original request.
+ * It is intentionally not part of AgentToolSearchOptions: callers supply a
+ * task, while the index owns normalization, resource detection, and local
+ * semantic retrieval as one inseparable operation.
+ */
+export interface AgentToolSearchRankInput extends AgentToolSearchOptions {
+  readonly retrievalQuery: string;
+  readonly resourceQueryShapes: readonly AgentToolResourceQueryShape[];
+  readonly semanticEvidence: readonly AgentToolSearchSemanticEvidence[];
+}
+
+export interface AgentToolSearchSemanticEvidence {
+  readonly toolName: string;
+  readonly score: number;
+}
 
 export interface AgentToolSearchRankPipelineResult {
   entries: AgentToolSearchRankedEntry[];
@@ -38,53 +52,58 @@ export class AgentToolSearchRankPipeline {
     this.reranker = new AgentToolSearchReranker(config.Rerank, tokenizer);
   }
 
-  rank(options: AgentToolSearchOptions): AgentToolSearchRankPipelineResult {
-    const queryTokens = this.tokenizer.tokenize(options.query);
+  rank(options: AgentToolSearchRankInput): AgentToolSearchRankPipelineResult {
+    const stopwords = new Set(this.config.Tokenize.Stopwords);
+    // Rank only on content-bearing terms. This is the same token view used by
+    // lexical-completeness checks and avoids function words or segmentation
+    // fragments becoming accidental cross-domain ranking evidence.
+    const retrievalQuery = options.retrievalQuery;
+    const queryTokens = this.tokenizer
+      .tokenizeContent(retrievalQuery)
+      .filter((token) => this.tokenizer.isIndependentContentToken(token) && !stopwords.has(token));
+    const lexicalQuery = queryTokens.join(" ");
     const authorized = options.authorizedToolNames ? new Set(options.authorizedToolNames) : undefined;
     // Visibility is presentation state, not an authorization boundary. A
     // loaded tool must remain searchable so ToolSearch can report that its
     // contract is already available instead of making the model search in a
-    // loop. `includeLoaded` is retained for protocol compatibility and is no
-    // longer used to hide candidates.
+    // loop.
     const candidates = this.docs.filter((doc) => !authorized || authorized.has(doc.toolName));
     const initialNames = new Set(candidates.map((doc) => doc.toolName));
-    const rankers = this.rankers(options, queryTokens, initialNames);
-    const catalogMode = options.resultMode === AgentToolSearchResultModes.Catalog;
-    const candidateNames = this.relevantCandidates(rankers, options.memoryEvidence ?? [], catalogMode, initialNames);
-    const fused = this.fuse(rankers, candidateNames, catalogMode);
+    const rankers = this.rankers(options, queryTokens, lexicalQuery, initialNames);
+    const candidateNames = this.relevantCandidates(rankers);
+    const fused = this.fuse(rankers, candidateNames, options.query, queryTokens);
     const reranked = this.reranker.rerank(fused, {
+      query: options.query,
       queryTokens,
-      plannerTagTokens: this.tokenizer.tokenize((options.plannerTags ?? []).join(" ")),
+      resourceQueryShapes: options.resourceQueryShapes,
+      plannerTagTokens: this.tokenizer.tokenizeContent((options.plannerTags ?? []).join(" ")),
       rankers,
       docsByTool: this.docsByTool,
       memoryByTool: toMemoryEvidenceMap(options.memoryEvidence ?? []),
       inverseDocumentFrequency: (token) => this.inverseDocumentFrequency(token),
     });
-    const ordered = catalogMode ? reranked : this.diversify(reranked);
-
     return {
-      entries: ordered
-        .filter((entry) => catalogMode || entry.score >= this.config.Ranking.MinScore)
-        .slice(0, catalogMode ? undefined : this.config.Ranking.MaxResults),
+      entries: reranked,
       rankers,
       queryTokens,
     };
   }
 
   private rankers(
-    options: AgentToolSearchOptions,
+    options: AgentToolSearchRankInput,
     queryTokens: string[],
+    retrievalQuery: string,
     candidateNames: Set<string>,
   ): Record<AgentToolSearchRankerName, AgentToolSearchRankMap> {
-    const bm25 = this.bm25Rank(options.query, candidateNames);
+    const bm25 = this.bm25Rank(retrievalQuery, candidateNames);
     return {
       bm25,
       exact: this.exactRank(queryTokens, candidateNames),
-      fuzzy: this.fuzzyRank(options.query, candidateNames),
-      semantic: this.semanticRank(options.semanticEvidence ?? [], candidateNames),
+      example: this.exampleRank(options.query, candidateNames),
+      fuzzy: this.fuzzyRank(retrievalQuery, candidateNames),
+      semantic: this.semanticRank(options.semanticEvidence, candidateNames),
+      structural: this.structuralRank(options.resourceQueryShapes, retrievalQuery, candidateNames),
       memory: this.memoryRank(options.memoryEvidence ?? [], candidateNames),
-      priority: this.priorityRank(candidateNames),
-      source: this.sourcePreferenceRank(options.preferredSourceIds ?? [], candidateNames),
     };
   }
 
@@ -93,27 +112,26 @@ export class AgentToolSearchRankPipeline {
     const matches = this.capabilityIndex.fuzzy(query, AgentCapabilityKinds.Tool, {
       allowedNames: candidateNames,
       minScore: this.config.Fuzzy.MinScore,
-      limit: this.config.Fuzzy.CandidateLimit,
     });
-    return toRankMap(matches.map((match) => match.name));
+    return toRankMap(matches.map((match) => ({ name: match.name, score: match.score })));
   }
 
   private bm25Rank(query: string, candidateNames: Set<string>): AgentToolSearchRankMap {
     const results = this.capabilityIndex
       .lexical(query, AgentCapabilityKinds.Tool, candidateNames)
       .sort((left, right) => right.score - left.score);
-    return toRankMap(results.map((result) => result.name));
+    return toRankMap(results.map((result) => ({ name: result.name, score: result.score })));
   }
 
   private semanticRank(
-    evidence: readonly NonNullable<AgentToolSearchOptions["semanticEvidence"]>[number][],
+    evidence: readonly AgentToolSearchSemanticEvidence[],
     candidateNames: Set<string>,
   ): AgentToolSearchRankMap {
     return toRankMap(
       evidence
         .filter((entry) => candidateNames.has(entry.toolName))
         .sort((left, right) => right.score - left.score || left.toolName.localeCompare(right.toolName))
-        .map((entry) => entry.toolName),
+        .map((entry) => ({ name: entry.toolName, score: entry.score })),
     );
   }
 
@@ -127,7 +145,37 @@ export class AgentToolSearchRankPipeline {
       .filter((entry) => entry.score > 0)
       .sort((left, right) => right.score - left.score || left.toolName.localeCompare(right.toolName));
 
-    return toRankMap(scored.map((entry) => entry.toolName));
+    return toRankMap(scored.map((entry) => ({ name: entry.toolName, score: entry.score })));
+  }
+
+  private exampleRank(query: string, candidateNames: Set<string>): AgentToolSearchRankMap {
+    return toRankMap(
+      this.docs
+        .filter((document) => candidateNames.has(document.toolName))
+        .filter((document) =>
+          document.examplePhrases?.some((example) => this.tokenizer.matchesExactPhrase(example, query)),
+        )
+        .map((document) => ({ name: document.toolName, score: 1 }))
+        .sort((left, right) => left.name.localeCompare(right.name)),
+    );
+  }
+
+  private structuralRank(
+    queryShapes: readonly AgentToolResourceQueryShape[],
+    retrievalQuery: string,
+    candidateNames: Set<string>,
+  ): AgentToolSearchRankMap {
+    if (queryShapes.length === 0) return new Map();
+    const queryTokens = this.tokenizer.tokenizeContent(retrievalQuery);
+    const scored = this.docs
+      .filter((document) => candidateNames.has(document.toolName))
+      .filter((document) => document.resourceQueryShapes?.some((shape) => queryShapes.includes(shape)))
+      .map((document) => ({
+        toolName: document.toolName,
+        score: Math.max(0, ...matchToolCapabilities(document, queryTokens, this.tokenizer).map((match) => match.score)),
+      }))
+      .sort((left, right) => right.score - left.score || left.toolName.localeCompare(right.toolName));
+    return toRankMap(scored.map((entry) => ({ name: entry.toolName, score: entry.score })));
   }
 
   private exactScore(queryTokens: Set<string>, doc: ToolSearchDocument | undefined): number {
@@ -149,134 +197,66 @@ export class AgentToolSearchRankPipeline {
       evidence
         .filter((entry) => candidateNames.has(entry.toolName))
         .sort((left, right) => right.rankScore - left.rankScore || left.toolName.localeCompare(right.toolName))
-        .map((entry) => entry.toolName),
-    );
-  }
-
-  private priorityRank(candidateNames: Set<string>): AgentToolSearchRankMap {
-    const ranked = [...candidateNames]
-      .map((toolName) => this.docsByTool.get(toolName))
-      .filter((doc): doc is ToolSearchDocument => Boolean(doc))
-      .sort((left, right) => left.priority - right.priority || left.toolName.localeCompare(right.toolName));
-    return toRankMap(ranked.map((doc) => doc.toolName));
-  }
-
-  private sourcePreferenceRank(
-    preferredSourceIds: readonly string[],
-    candidateNames: ReadonlySet<string>,
-  ): AgentToolSearchRankMap {
-    if (preferredSourceIds.length === 0) return new Map();
-    const preferred = new Set(preferredSourceIds);
-    return new Map(
-      [...candidateNames]
-        .filter((toolName) => this.docsByTool.get(toolName)?.sourceIds.some((sourceId) => preferred.has(sourceId)))
-        .map((toolName) => [toolName, 1]),
+        .map((entry) => ({ name: entry.toolName, score: entry.rankScore })),
     );
   }
 
   private fuse(
     rankers: Record<AgentToolSearchRankerName, AgentToolSearchRankMap>,
     candidateNames: Set<string>,
-    includeUnmatched: boolean,
+    query: string,
+    queryTokens: readonly string[],
   ): AgentToolSearchRankedEntry[] {
     const k = this.config.Ranking.RrfK;
+    const weights = this.config.Ranking.ChannelWeights;
 
     return [...candidateNames]
       .map((toolName) => ({
         toolName,
-        score: (Object.keys(rankers) as AgentToolSearchRankerName[]).reduce((total, name) => {
-          const rank = rankers[name].get(toolName);
-          return rank === undefined ? total : total + 1 / (k + rank);
-        }, 0),
+        score:
+          (Object.keys(rankers) as AgentToolSearchRankerName[]).reduce((total, name) => {
+            const rank = rankers[name].get(toolName);
+            return rank === undefined ? total : total + (weights[name] ?? 1) / (k + rank);
+          }, 0) + this.identityConfidenceContribution(toolName, query, queryTokens),
       }))
-      .filter((entry) => includeUnmatched || entry.score > 0)
-      .sort((left, right) => right.score - left.score || left.toolName.localeCompare(right.toolName));
-  }
-
-  private diversify(entries: AgentToolSearchRankedEntry[]): AgentToolSearchRankedEntry[] {
-    const selected: AgentToolSearchRankedEntry[] = [];
-    const remaining = [...entries];
-
-    while (remaining.length > 0 && selected.length < this.config.Ranking.MaxResults) {
-      const bestScore = Math.max(...remaining.map((entry) => entry.score));
-      const pool = remaining.filter((entry) => entry.score >= bestScore * this.config.Ranking.MmrCandidateScoreRatio);
-      const next = pool
-        .map((entry) => ({
-          entry,
-          score: this.diversifiedScore(entry, selected),
-        }))
-        .sort((left, right) => right.score - left.score || left.entry.toolName.localeCompare(right.entry.toolName))[0];
-
-      if (!next) {
-        break;
-      }
-
-      selected.push(next.entry);
-      remaining.splice(
-        remaining.findIndex((entry) => entry.toolName === next.entry.toolName),
-        1,
+      .sort(
+        (left, right) =>
+          right.score - left.score ||
+          (this.docsByTool.get(left.toolName)?.priority ?? Number.MAX_SAFE_INTEGER) -
+            (this.docsByTool.get(right.toolName)?.priority ?? Number.MAX_SAFE_INTEGER) ||
+          left.toolName.localeCompare(right.toolName),
       );
-    }
-
-    return selected;
   }
 
-  private diversifiedScore(entry: AgentToolSearchRankedEntry, selected: AgentToolSearchRankedEntry[]): number {
-    const doc = this.docsByTool.get(entry.toolName);
-    if (!doc) {
-      return entry.score;
-    }
+  /**
+   * Rank fusion normally only sees channel positions. A complete phrase from
+   * an extension-declared identifier or complete natural-language identity is
+   * stronger evidence than a coincidental generic word, so preserve it as a
+   * bounded share of the existing exact-channel weight. A partial natural
+   * alias is only recall evidence: treating it as identity would let a word
+   * such as "screenshot" override a more specific "analyze screenshot"
+   * request.
+   */
+  private identityConfidenceContribution(toolName: string, query: string, queryTokens: readonly string[]): number {
+    const document = this.docsByTool.get(toolName);
+    if (!document || queryTokens.length === 0) return 0;
 
-    const lambda = this.config.Ranking.MmrLambda;
-    const relevance = entry.score;
-    const redundancy =
-      selected.length === 0
-        ? 0
-        : Math.max(
-            ...selected.map((selectedEntry) =>
-              this.documentSimilarity(doc, this.docsByTool.get(selectedEntry.toolName)),
-            ),
-          );
-    return lambda * relevance - (1 - lambda) * redundancy;
+    const formalPhrases = new Set(document.formalIdentityPhrases ?? [document.toolName]);
+    const coverage = Math.max(
+      0,
+      ...document.identityPhrases.map((phrase) => {
+        const phraseTokens = this.tokenizer.tokenizeContent(phrase);
+        if (phraseTokens.length === 0 || !this.tokenizer.containsDeclaredPhrase(phrase, query)) return 0;
+        if (formalPhrases.has(phrase)) return phraseTokens.length / queryTokens.length;
+        const phraseTokenSet = new Set(phraseTokens);
+        return queryTokens.every((token) => phraseTokenSet.has(token)) ? 1 : 0;
+      }),
+    );
+    return (coverage * (this.config.Ranking.ChannelWeights.exact ?? 1)) / (this.config.Ranking.RrfK + 1);
   }
 
-  private relevantCandidates(
-    rankers: Record<AgentToolSearchRankerName, AgentToolSearchRankMap>,
-    memoryEvidence: readonly AgentToolSearchMemoryEvidence[],
-    includeUnmatched: boolean,
-    initialNames: ReadonlySet<string>,
-  ): Set<string> {
-    if (includeUnmatched) return new Set(initialNames);
-    const lexical = new Set([...rankers.bm25.keys(), ...rankers.exact.keys(), ...rankers.fuzzy.keys()]);
-    const semantic = new Set(rankers.semantic.keys());
-    const memory = this.qualifiedMemoryCandidates(memoryEvidence, rankers.memory);
-    const expand = MemoryExpansionPolicies[this.config.Ranking.MemoryExpansion.Mode];
-    const recalled = new Set([...lexical, ...semantic]);
-    return new Set([...recalled, ...expand({ lexical: recalled, memory })]);
-  }
-
-  private qualifiedMemoryCandidates(
-    evidence: readonly AgentToolSearchMemoryEvidence[],
-    memoryRanks: AgentToolSearchRankMap,
-  ): string[] {
-    const policy = this.config.Ranking.MemoryExpansion;
-    return evidence
-      .filter((entry) => memoryRanks.has(entry.toolName))
-      .filter((entry) => entry.confidence >= policy.MinConfidence && entry.evidence >= policy.MinEvidence)
-      .slice(0, policy.MaxResults)
-      .map((entry) => entry.toolName);
-  }
-
-  private documentSimilarity(left: ToolSearchDocument, right: ToolSearchDocument | undefined): number {
-    if (!right) {
-      return 0;
-    }
-
-    const leftTokens = this.documentTokens(left);
-    const rightTokens = this.documentTokens(right);
-    const intersection = [...leftTokens].filter((token) => rightTokens.has(token)).length;
-    const union = new Set([...leftTokens, ...rightTokens]).size;
-    return union === 0 ? 0 : intersection / union;
+  private relevantCandidates(rankers: Record<AgentToolSearchRankerName, AgentToolSearchRankMap>): Set<string> {
+    return new Set((Object.keys(rankers) as AgentToolSearchRankerName[]).flatMap((name) => [...rankers[name].keys()]));
   }
 
   private inverseDocumentFrequency(token: string): number {
@@ -295,25 +275,40 @@ export class AgentToolSearchRankPipeline {
   private documentTokens(doc: ToolSearchDocument): ReadonlySet<string> {
     const cached = this.documentTokensByTool.get(doc.toolName);
     if (cached) return cached;
-    const tokens = new Set(this.tokenizer.tokenize(doc.coreText));
+    const tokens = new Set(this.tokenizer.tokenizeContent(doc.anchorText));
     this.documentTokensByTool.set(doc.toolName, tokens);
     return tokens;
   }
 }
 
-interface MemoryExpansionPolicyInput {
-  lexical: ReadonlySet<string>;
-  memory: readonly string[];
+interface RankInput {
+  readonly name: string;
+  readonly score: number;
 }
 
-const MemoryExpansionPolicies = {
-  [AgentToolSearchMemoryExpansionModes.Disabled]: () => [],
-  [AgentToolSearchMemoryExpansionModes.Fallback]: ({ lexical, memory }) => (lexical.size === 0 ? [...memory] : []),
-  [AgentToolSearchMemoryExpansionModes.Augment]: ({ memory }) => [...memory],
-} satisfies Record<AgentToolSearchMemoryExpansionMode, (input: MemoryExpansionPolicyInput) => string[]>;
+/**
+ * RRF ranks are ordinal evidence, so equal raw scores must share an ordinal.
+ * Assigning an increasing index to ties manufactures a preference that was
+ * never present in the channel and can split an otherwise flat semantic
+ * frontier into artificial confidence bands.
+ */
+function toRankMap(entries: readonly RankInput[]): AgentToolSearchRankMap {
+  const unique = new Map<string, RankInput>();
+  for (const entry of entries) {
+    const previous = unique.get(entry.name);
+    if (!previous || entry.score > previous.score) unique.set(entry.name, entry);
+  }
 
-function toRankMap(toolNames: string[]): AgentToolSearchRankMap {
-  return new Map(toolNames.map((toolName, index) => [toolName, index + 1]));
+  const ordered = [...unique.values()];
+  const ranks = new Map<string, number>();
+  let rank = 0;
+  let previousScore: number | undefined;
+  ordered.forEach((entry, index) => {
+    if (index === 0 || entry.score !== previousScore) rank = index + 1;
+    ranks.set(entry.name, rank);
+    previousScore = entry.score;
+  });
+  return ranks;
 }
 
 function toMemoryEvidenceMap(

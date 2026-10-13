@@ -211,8 +211,10 @@ export function useProviderConnectionDraftQueue({
       const operation = operations[providerId];
       if (!operation || operation.commandId !== activeSave.requestId || operation.status === "pending") continue;
       if (operation.status === "error") {
+        const queuedDraft = current.queuedDraft;
         entriesRef.current.set(providerId, {
           ...current,
+          draft: queuedDraft ?? current.draft,
           active: undefined,
           queuedDraft: undefined,
           error: isConfigConflict(operation)
@@ -343,6 +345,13 @@ export function useProviderConnectionDraftQueue({
         bumpVersion((version) => version + 1);
         return;
       }
+      entriesRef.current.set(nextDraft.Id, {
+        ...current,
+        draft: nextDraft,
+        error: undefined,
+        autoSaveBlocked: false,
+      });
+      bumpVersion((version) => version + 1);
       sendRef.current(nextDraft, true);
     },
     registerActive: (draft, providerId, requestId) => {

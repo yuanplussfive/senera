@@ -56,7 +56,7 @@ export const applyWorkspacePatchHostTool: AgentHostToolHandler = async (args, co
       operationCount: plan.operations.length,
       changedPaths,
     };
-    const totalStages = plan.dryRun ? 2 : 4;
+    const totalStages = 4;
     reporting.reporter.progress({
       message: "Workspace patch planned.",
       completed: 1,
@@ -77,35 +77,35 @@ export const applyWorkspacePatchHostTool: AgentHostToolHandler = async (args, co
       total: totalStages,
       unit: "stage",
     });
-    if (!plan.dryRun) {
-      await validateWorkspacePatchPreconditions(plan, context.executionEnv);
-      reporting.reporter.progress({
-        message: "Workspace patch preconditions validated.",
-        completed: 3,
-        total: totalStages,
-        unit: "stage",
-      });
-      await applyWorkspacePatchTransaction(plan, commitEnv);
-      reporting.reporter.progress({
-        message: "Workspace patch applied.",
-        completed: 4,
-        total: totalStages,
-        unit: "stage",
-      });
-    }
-
-    return toolProcessSuccessResult({
-      text: plan.dryRun
-        ? `Workspace patch dry run validated ${plan.operations.length} operation(s) over ${changedPaths.length} path(s).`
-        : `Workspace patch applied ${plan.operations.length} operation(s) over ${changedPaths.length} path(s).`,
-      applied: !plan.dryRun,
-      dryRun: plan.dryRun,
-      fuzzFactor: plan.fuzzFactor,
-      operationCount: plan.operations.length,
-      changedPaths,
-      operations: plan.operations,
-      extensions: extensionValidations,
+    await validateWorkspacePatchPreconditions(plan, context.executionEnv);
+    reporting.reporter.progress({
+      message: "Workspace patch preconditions validated.",
+      completed: 3,
+      total: totalStages,
+      unit: "stage",
     });
+    const workspaceMutationReceipt = await applyWorkspacePatchTransaction(plan, commitEnv);
+    const appliedChangedPaths = workspaceMutationReceipt.entries.map((entry) => entry.path);
+    reporting.reporter.progress({
+      message: "Workspace patch applied.",
+      completed: 4,
+      total: totalStages,
+      unit: "stage",
+    });
+
+    return toolProcessSuccessResult(
+      {
+        text: `Workspace patch applied ${plan.operations.length} operation(s) over ${appliedChangedPaths.length} path(s).`,
+        applied: true,
+        operationCount: plan.operations.length,
+        changedPaths: appliedChangedPaths,
+        operations: plan.operations,
+        extensions: extensionValidations,
+      },
+      {
+        workspaceMutationReceipt,
+      },
+    );
   } catch (error) {
     if (error instanceof AgentExtensionPatchPreflightError) {
       return workspacePatchFailure({

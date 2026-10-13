@@ -8,17 +8,17 @@ import { readAgentNonBlankString } from "../Core/AgentUnknownValue.js";
 import { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
 import {
   readAgentPiMessageTextContent,
-  readAgentPiToolObservationArtifactUri,
+  readAgentPiToolObservationArtifactReferences,
   readAgentPiToolObservation,
   type AgentPiToolObservation,
 } from "./AgentPiToolObservation.js";
 import {
-  DefaultAgentPiCompactionProjectionPolicy,
+  DefaultAgentPiCompactionIndexPolicy,
   normalizeAgentPiCompactionLimit,
-} from "./AgentPiCompactionProjectionPolicy.js";
+} from "./AgentPiCompactionIndexPolicy.js";
 import { projectAgentPiNativeToolCallDisplay } from "./AgentPiNativeToolBridge.js";
 
-export const AgentPiCompactionToolIndexProtocol = defineSeneraProtocol("compaction_tool_index", 1);
+export const AgentPiCompactionToolIndexProtocol = defineSeneraProtocol("compaction_tool_index", 2);
 export const AgentPiCompactionToolIndexCustomType = "senera.compaction_tool_index";
 
 const NonBlankStringSchema = z.string().trim().min(1);
@@ -32,6 +32,13 @@ const ToolCallErrorSchema = z
   })
   .strict();
 
+export const AgentPiCompactionToolArtifactReferenceSchema = z
+  .object({
+    artifactUri: NonBlankStringSchema,
+    refs: z.array(NonBlankStringSchema),
+  })
+  .strict();
+
 export const AgentPiCompactionToolCallEntrySchema = z
   .object({
     callId: NonBlankStringSchema,
@@ -39,7 +46,7 @@ export const AgentPiCompactionToolCallEntrySchema = z
     status: z.enum(["success", "failure", "empty"]),
     argumentsPreview: z.string(),
     summary: NonBlankStringSchema.optional(),
-    artifactUri: NonBlankStringSchema.optional(),
+    artifacts: z.array(AgentPiCompactionToolArtifactReferenceSchema),
     evidenceUris: z.array(NonBlankStringSchema),
     error: ToolCallErrorSchema.optional(),
   })
@@ -59,6 +66,7 @@ export const AgentPiCompactionToolCallIndexSchema = z
   .strict();
 
 export type AgentPiCompactionToolCallEntry = z.infer<typeof AgentPiCompactionToolCallEntrySchema>;
+export type AgentPiCompactionToolArtifactReference = z.infer<typeof AgentPiCompactionToolArtifactReferenceSchema>;
 export type AgentPiCompactionToolCallIndex = z.infer<typeof AgentPiCompactionToolCallIndexSchema>;
 
 export interface AgentPiCompactionToolIndexReadResult {
@@ -72,8 +80,8 @@ export interface AgentPiCompactionToolIndexLimits {
 }
 
 export const DefaultAgentPiCompactionToolIndexLimits: Readonly<AgentPiCompactionToolIndexLimits> = Object.freeze({
-  maxIndexedCalls: DefaultAgentPiCompactionProjectionPolicy.maxIndexedCalls,
-  argumentsPreviewTokenBudget: DefaultAgentPiCompactionProjectionPolicy.argumentsPreviewTokenBudget,
+  maxIndexedCalls: DefaultAgentPiCompactionIndexPolicy.maxIndexedCalls,
+  argumentsPreviewTokenBudget: DefaultAgentPiCompactionIndexPolicy.argumentsPreviewTokenBudget,
 });
 
 export function createAgentPiCompactionToolCallIndex(
@@ -199,7 +207,10 @@ function projectToolCallEntry(call: ResolvedToolCall): AgentPiCompactionToolCall
   const detail = obs.detail;
   const status = resolveEntryStatus(obs);
   const summaryText = readObservationSummary(detail);
-  const artifactUriValue = readAgentPiToolObservationArtifactUri(obs);
+  const artifacts = readAgentPiToolObservationArtifactReferences(obs).map((reference) => ({
+    artifactUri: reference.artifactUri,
+    refs: [...reference.refs],
+  }));
   const evidenceUriList = uniqueStrings(
     detail.evidence.flatMap((entry) => (entry.evidence_uri ? [entry.evidence_uri] : [])),
   );
@@ -211,7 +222,7 @@ function projectToolCallEntry(call: ResolvedToolCall): AgentPiCompactionToolCall
     status,
     argumentsPreview: call.argumentsPreview,
     ...(summaryText ? { summary: summaryText } : {}),
-    ...(artifactUriValue ? { artifactUri: artifactUriValue } : {}),
+    artifacts,
     evidenceUris: evidenceUriList,
     ...(error ? { error } : {}),
   };
@@ -241,7 +252,7 @@ function resolveEntryStatus(observation: AgentPiToolObservation): "success" | "f
   const detail = observation.detail;
   const hasContent = Boolean(
     readObservationSummary(detail) ||
-    readAgentNonBlankString(readAgentPiToolObservationArtifactUri(observation)) ||
+    readAgentPiToolObservationArtifactReferences(observation).length > 0 ||
     detail.evidence.some((entry) => entry.evidence_uri !== undefined),
   );
   return hasContent ? "success" : "empty";
@@ -294,7 +305,7 @@ function aggregateToolCallIndex(
     failureCount: countByStatus(calls, "failure"),
     emptyCount: countByStatus(calls, "empty"),
     evidenceUris: uniqueStrings(calls.flatMap((c) => c.evidenceUris)),
-    artifactUris: uniqueStrings(calls.flatMap((c) => (c.artifactUri ? [c.artifactUri] : []))),
+    artifactUris: uniqueStrings(calls.flatMap((call) => call.artifacts.map((artifact) => artifact.artifactUri))),
   };
 }
 

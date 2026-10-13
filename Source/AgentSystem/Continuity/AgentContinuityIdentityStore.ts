@@ -22,7 +22,6 @@ export interface AgentContinuityIdentityContext {
   readonly workspaceId: string;
   readonly accountId?: string;
   readonly userId?: string;
-  readonly worldId?: string;
   readonly runtimeId: string;
   readonly sessionId?: string;
 }
@@ -32,30 +31,36 @@ export class AgentContinuityIdentityStore {
   private readonly runtimeId = createOpaqueId("runtime");
   private document: AgentContinuityIdentityDocument | undefined;
 
-  constructor(readonly filePath: string) {}
+  constructor(
+    readonly filePath: string,
+    private readonly workspaceId?: string,
+  ) {}
 
-  context(input: { readonly worldId?: string; readonly sessionId?: string } = {}): AgentContinuityIdentityContext {
+  context(input: { readonly sessionId?: string } = {}): AgentContinuityIdentityContext {
     const document = (this.document ??= this.readOrCreate());
     return {
-      workspaceId: document.workspaceId,
+      workspaceId: this.workspaceId ?? document.workspaceId,
       accountId: document.accountId,
       userId: document.userId,
       runtimeId: this.runtimeId,
-      ...(input.worldId ? { worldId: requireIdentity(input.worldId, "world") } : {}),
       ...(input.sessionId ? { sessionId: requireIdentity(input.sessionId, "session") } : {}),
     };
   }
 
   private readOrCreate(): AgentContinuityIdentityDocument {
     if (fs.existsSync(this.filePath)) {
-      return AgentContinuityIdentityDocumentSchema.parse(
+      const document = AgentContinuityIdentityDocumentSchema.parse(
         parseJsonText(fs.readFileSync(this.filePath, "utf8"), "Continuity identity document"),
       );
+      if (this.workspaceId !== undefined && document.workspaceId !== this.workspaceId) {
+        throw new Error("Continuity identity does not belong to the registered workspace.");
+      }
+      return document;
     }
 
     const document: AgentContinuityIdentityDocument = {
       version: AgentContinuityIdentityDocumentVersion,
-      workspaceId: createOpaqueId("workspace"),
+      workspaceId: this.workspaceId ?? createOpaqueId("workspace"),
       accountId: createOpaqueId("account"),
       userId: createOpaqueId("user"),
       createdAt: new Date().toISOString(),
@@ -76,7 +81,7 @@ export function withAgentContinuitySession(
 
 export function requireAgentContinuityIdentity(
   identity: AgentContinuityIdentityContext,
-  kind: "account" | "user" | "world",
+  kind: "account" | "user",
 ): string {
   const value = identity[`${kind}Id`];
   if (!value) throw new Error(`Continuity ${kind} identity is required for this operation.`);

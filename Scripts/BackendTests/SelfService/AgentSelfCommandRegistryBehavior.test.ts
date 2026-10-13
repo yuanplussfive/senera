@@ -30,7 +30,7 @@ describe("senera self command registry", () => {
   test("unknown specs resolve to undefined", () => {
     expect(findAgentSelfCommandSpec("config", "frobnicate")).toBeUndefined();
     expect(findAgentSelfCommandSpec("unknown", undefined)).toBeUndefined();
-    expect(findAgentSelfCommandSpec("preset", "reset")?.action).toBe("use");
+    expect(findAgentSelfCommandSpec("preset", "reset")).toBeUndefined();
   });
 
   test("sensitive commands are marked", () => {
@@ -47,7 +47,6 @@ describe("senera self command registry", () => {
       expect(help).toContain(spec.usage);
     }
     expect(help).toContain("senera config");
-    expect(help).toContain("senera preset");
     expect(help).toContain("senera sessions");
     expect(help).toContain("senera logs");
     expect(help).toContain("senera status");
@@ -71,7 +70,6 @@ describe("senera self command registry", () => {
         expect.objectContaining({ id: agentSelfCommandId(spec.command, spec.action) }),
       );
     }
-    expect(capabilities).toContainEqual(expect.objectContaining({ id: "preset.use", actionAliases: ["reset"] }));
   });
 
   test("keeps session model CLI positions conditional on the operation", () => {

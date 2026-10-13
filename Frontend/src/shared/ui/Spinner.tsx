@@ -1,20 +1,25 @@
 import type { SVGAttributes } from "react";
 import { cn } from "../../lib/util";
+import { AppIcon } from "./AppIcon";
 
 export type SpinnerSize = "xs" | "sm" | "md";
 
 const sizeClasses: Record<SpinnerSize, string> = {
-  xs: "h-3 w-4",
-  sm: "h-3.5 w-5",
-  md: "h-4 w-6",
+  xs: "h-3 w-3",
+  sm: "h-3.5 w-3.5",
+  md: "h-4 w-4",
 };
 
-const spinnerTrace = "M1 8 C4 8 4 8 6 5 C8 2 9 2 11 8 C13 14 14 14 16 8 C18 2 19 2 21 5 C23 8 24 8 27 8";
+const sizePixels: Record<SpinnerSize, number> = {
+  xs: 12,
+  sm: 14,
+  md: 16,
+};
 
 /**
- * Compact form of the Senera resonance trace for dense rows and buttons.
- * The viewBox remains small and stable, while the stroke carries the
- * current text color from its parent.
+ * Quiet activity indicator for dense rows and buttons. The public name stays
+ * Spinner for call-site compatibility, using the shared radial Loader glyph
+ * so loading affordances and execution status have one visual language.
  */
 export function Spinner({
   size = "sm",
@@ -24,16 +29,15 @@ export function Spinner({
   size?: SpinnerSize;
   className?: string;
 } & Omit<SVGAttributes<SVGSVGElement>, "className">): JSX.Element {
+  const { height: _height, width: _width, strokeWidth: _strokeWidth, ...appIconProps } = props;
   return (
-    <svg
-      viewBox="0 0 28 16"
-      fill="none"
+    <AppIcon
+      icon="progress"
+      size={sizePixels[size]}
       focusable="false"
       aria-hidden="true"
-      className={cn("senera-spinner-trace motion-safe:animate-spin shrink-0", sizeClasses[size], className)}
-      {...props}
-    >
-      <path d={spinnerTrace} />
-    </svg>
+      className={cn("senera-spinner shrink-0", sizeClasses[size], className)}
+      {...appIconProps}
+    />
   );
 }

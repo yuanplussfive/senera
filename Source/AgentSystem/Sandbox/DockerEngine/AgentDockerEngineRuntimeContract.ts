@@ -50,6 +50,7 @@ const AgentDockerEngineCommonPolicySchema = z
       .object({
         workspaceRoot: PosixAbsolutePathSchema,
         user: z.string().trim().min(1),
+        bootstrapUser: z.string().trim().min(1),
         shell: z.object({ command: PosixAbsolutePathSchema, arguments: z.array(z.string()).max(16) }).strict(),
         terminal: z
           .object({ command: PosixAbsolutePathSchema, arguments: z.array(z.string()).min(1).max(16) })

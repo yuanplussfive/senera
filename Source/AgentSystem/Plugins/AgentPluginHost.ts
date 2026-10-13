@@ -15,7 +15,7 @@ import {
   type AgentPluginListEntry,
   type AgentPluginLoadError,
 } from "./AgentPluginTypes.js";
-
+import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 /** Loads a plugin entry module; the real host uses dynamic `import()`, tests
  * inject a fixture loader. */
 export type AgentPluginEntryLoader = (directory: string, entry: string) => Promise<AgentPluginEntryModule>;
@@ -133,14 +133,17 @@ export class AgentPluginHost {
         id: plugin.manifest.id,
         name: plugin.manifest.name ?? plugin.manifest.id,
         version: plugin.manifest.version,
+        revision: pluginCapabilityRevision(plugin, loaded),
         kind: plugin.manifest.kind,
         description: plugin.manifest.description,
+        ...(plugin.manifest.icon ? { icon: plugin.manifest.icon } : {}),
         source: plugin.source,
         builtin: plugin.builtin,
         enabled: plugin.enabled,
         directory: plugin.directory,
         requires: plugin.manifest.requires ?? [],
         loaded: loaded !== undefined,
+        capabilityCount: loaded ? loaded.tools.length + loaded.skills.length : 0,
         ...(loaded === undefined && this.loadErrors.has(plugin.manifest.id)
           ? { error: this.loadErrors.get(plugin.manifest.id) }
           : {}),
@@ -322,7 +325,10 @@ export function pluginExtensionOwner(plugin: AgentPluginDescriptor): AgentExtens
     revision: plugin.manifest.version,
     priority: 2,
     trusted: plugin.builtin,
-    requiresApproval: false,
+    // Third-party (non-bundled) plugin tools carry the same approval boundary
+    // as third-party MCP servers: every call is adjudicated by the approval
+    // system instead of silently trusted.
+    requiresApproval: !plugin.builtin,
   };
 }
 
@@ -341,6 +347,7 @@ function stampPluginToolOwners(plugin: AgentPluginDescriptor, tools: readonly Re
 function projectPluginSkills(plugin: AgentPluginDescriptor, skills: readonly RegisteredSkill[]): RegisteredSkill[] {
   return skills.map((skill) => ({
     ...skill,
+    revision: plugin.manifest.version,
     source: {
       kind: "standalone",
       id: `plugin:${plugin.manifest.id}`,
@@ -351,4 +358,46 @@ function projectPluginSkills(plugin: AgentPluginDescriptor, skills: readonly Reg
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function pluginCapabilityRevision(plugin: AgentPluginDescriptor, loaded: LoadedAgentPlugin | undefined): string {
+  if (!loaded) return plugin.manifest.version;
+  return sha256HexOfCanonicalJson({
+    manifestVersion: plugin.manifest.version,
+    icon: plugin.manifest.icon,
+    tools: loaded.tools
+      .map((tool) => ({
+        name: tool.name,
+        loading: tool.loading,
+        planningModes: tool.planningModes,
+        contract: tool.contract,
+        permissions: tool.permissions,
+        handler: tool.handler,
+        execution: tool.execution,
+        runtime: tool.runtime,
+        perception: tool.perception,
+        sources: tool.sources,
+        search: tool.search,
+        childGrant: tool.childGrant,
+        evidenceCapabilities: tool.evidenceCapabilities,
+        approval: tool.approval,
+        artifactPolicy: tool.artifactPolicy,
+        interactionSurfaces: tool.interactionSurfaces,
+      }))
+      .sort((left, right) => left.name.localeCompare(right.name)),
+    skills: loaded.skills
+      .map((skill) => ({
+        name: skill.name,
+        title: skill.title,
+        description: skill.description,
+        icon: skill.icon,
+        descriptionFile: skill.descriptionFile,
+        content: skill.content,
+        disableModelInvocation: skill.disableModelInvocation,
+        recommendedTools: skill.recommendedTools,
+        evidenceRequirements: skill.evidenceRequirements,
+        search: skill.search,
+      }))
+      .sort((left, right) => left.name.localeCompare(right.name)),
+  });
 }

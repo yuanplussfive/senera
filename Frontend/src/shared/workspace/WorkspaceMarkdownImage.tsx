@@ -1,7 +1,8 @@
-import { Image as ImageIcon } from "lucide-react";
-import { useState, type ImgHTMLAttributes } from "react";
+import { useEffect, useState, type ImgHTMLAttributes } from "react";
 import { buildWorkspaceResourceUrl } from "../../api/workspaceResourceClient";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
+import { AppIcon } from "../ui";
 import type { WorkspaceResourceLocator } from "./WorkspaceResourceLocator";
 import { useWorkspaceResourceController } from "./WorkspaceResourceProvider";
 
@@ -14,7 +15,13 @@ export function WorkspaceMarkdownImage({
 }): JSX.Element {
   const controller = useWorkspaceResourceController();
   const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const source = controller ? buildWorkspaceResourceUrl(controller.httpBaseUrl, locator.path, true) : undefined;
+
+  useEffect(() => {
+    setFailed(false);
+    setLoaded(false);
+  }, [source]);
 
   return (
     <button
@@ -31,18 +38,25 @@ export function WorkspaceMarkdownImage({
         <img
           src={source}
           alt={alt ?? ""}
-          className="markdown-renderer__image max-w-full object-contain transition-transform duration-150 group-hover:scale-[1.01]"
+          className={cn(
+            "markdown-renderer__image max-w-full object-contain transition-transform duration-150 [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.01]",
+            !loaded && "sr-only",
+          )}
           loading="lazy"
           decoding="async"
           fetchPriority="low"
+          onLoad={() => setLoaded(true)}
           onError={() => setFailed(true)}
         />
-      ) : (
+      ) : null}
+      {!source || failed || !loaded ? (
         <span className="flex items-center gap-2 px-4 py-6 text-[12px] text-content-muted">
-          <ImageIcon className="h-4 w-4" />
-          <span className="max-w-56 truncate">{failed ? alt || locator.path : alt || locator.path}</span>
+          <AppIcon icon="image" size={16} aria-hidden="true" />
+          <span className="max-w-56 truncate">
+            {failed ? alt || locator.path : loaded ? alt || locator.path : frontendMessage("ui.loading")}
+          </span>
         </span>
-      )}
+      ) : null}
     </button>
   );
 }

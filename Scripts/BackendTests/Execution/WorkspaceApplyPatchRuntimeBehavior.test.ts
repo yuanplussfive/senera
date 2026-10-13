@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
@@ -22,21 +21,14 @@ afterEach(() => {
 });
 
 describe("Workspace apply patch runtime behavior", () => {
-  test("replaces a whole file when its expected SHA-256 still matches", async () => {
+  test("writes a full file over an existing file", async () => {
     const workspaceRoot = createWorkspace();
     const target = path.join(workspaceRoot, "value.txt");
     await fs.writeFile(target, "before\n", "utf8");
 
     const result = await applyWorkspacePatchHostTool(
       {
-        operations: [
-          {
-            kind: "replace",
-            path: "value.txt",
-            content: "after\n",
-            expectedSha256: digest("before\n"),
-          },
-        ],
+        operations: [{ kind: "write", path: "value.txt", content: "after\n" }],
       },
       context(workspaceRoot),
     );
@@ -45,27 +37,41 @@ describe("Workspace apply patch runtime behavior", () => {
     expect(await fs.readFile(target, "utf8")).toBe("after\n");
   });
 
-  test("rejects a stale expected SHA-256 without changing the file", async () => {
+  test("returns the net transaction receipt without rereading the workspace", async () => {
     const workspaceRoot = createWorkspace();
-    const target = path.join(workspaceRoot, "value.txt");
-    await fs.writeFile(target, "current\n", "utf8");
+    await fs.mkdir(path.join(workspaceRoot, "src"), { recursive: true });
+    await fs.mkdir(path.join(workspaceRoot, "docs"), { recursive: true });
+    await fs.writeFile(path.join(workspaceRoot, "src", "move-me.ts"), "alpha\nbeta\n", "utf8");
+    await fs.writeFile(path.join(workspaceRoot, "docs", "obsolete.md"), "obsolete\n", "utf8");
 
     const result = await applyWorkspacePatchHostTool(
       {
         operations: [
-          {
-            kind: "replace",
-            path: "value.txt",
-            content: "after\n",
-            expectedSha256: digest("stale\n"),
-          },
+          { kind: "move", source: "src/move-me.ts", destination: "src/moved.ts" },
+          { kind: "update", path: "src/moved.ts", oldStr: "beta", newStr: "gamma" },
+          { kind: "delete", path: "docs/obsolete.md" },
+          { kind: "add", path: "transient.txt", content: "temporary\n" },
+          { kind: "delete", path: "transient.txt" },
         ],
       },
       context(workspaceRoot),
     );
 
-    expect(result.response.ok).toBe(false);
-    expect(await fs.readFile(target, "utf8")).toBe("current\n");
+    expect(result.response.ok).toBe(true);
+    if (!result.response.ok || !result.workspaceMutationReceipt) throw new Error("Expected an exact mutation receipt.");
+    expect(result.response.result).toMatchObject({
+      changedPaths: ["docs/obsolete.md", "src/move-me.ts", "src/moved.ts"],
+    });
+
+    const entries = new Map(result.workspaceMutationReceipt.entries.map((entry) => [entry.path, entry]));
+    expect(entries.get("docs/obsolete.md")).toMatchObject({ before: { kind: "file" }, after: { kind: "missing" } });
+    expect(entries.get("src/move-me.ts")).toMatchObject({ before: { kind: "file" }, after: { kind: "missing" } });
+    const moved = entries.get("src/moved.ts");
+    expect(moved?.before).toMatchObject({ kind: "missing" });
+    expect(moved?.after.kind).toBe("file");
+    if (moved?.after.kind !== "file") throw new Error("Expected moved file bytes in receipt.");
+    expect(Buffer.from(moved.after.bytes).toString("utf8")).toBe("alpha\ngamma\n");
+    expect(entries.has("transient.txt")).toBe(false);
   });
 
   test("revalidates planned source files immediately before committing", async () => {
@@ -97,7 +103,8 @@ describe("Workspace apply patch runtime behavior", () => {
           {
             kind: "update",
             path: "value.txt",
-            patch: "@@ -1,1 +1,1 @@\n-before\n+after",
+            oldStr: "before\n",
+            newStr: "after\n",
           },
         ],
       },
@@ -131,7 +138,7 @@ describe("Workspace apply patch runtime behavior", () => {
 
     const result = await applyWorkspacePatchHostTool(
       {
-        operations: [{ kind: "replace", path: "value.txt", content: "after\n" }],
+        operations: [{ kind: "write", path: "value.txt", content: "after\n" }],
       },
       context(workspaceRoot, executionEnv),
     );
@@ -165,8 +172,8 @@ describe("Workspace apply patch runtime behavior", () => {
     const result = await applyWorkspacePatchHostTool(
       {
         operations: [
-          { kind: "replace", path: "first.txt", content: "first-after\n" },
-          { kind: "replace", path: "second.txt", content: "second-after\n" },
+          { kind: "write", path: "first.txt", content: "first-after\n" },
+          { kind: "write", path: "second.txt", content: "second-after\n" },
         ],
       },
       context(workspaceRoot, executionEnv),
@@ -196,7 +203,7 @@ describe("Workspace apply patch runtime behavior", () => {
       {
         operations: [
           {
-            kind: "replace",
+            kind: "write",
             path: `${skillRelativeRoot}/patch-gated-skill/SKILL.md`,
             content: "---\nname: patch-gated-skill\n---\nIncomplete candidate.\n",
           },
@@ -237,8 +244,6 @@ describe("Workspace apply patch runtime behavior", () => {
     const result = await applyWorkspacePatchHostTool(
       {
         operations: [
-          { kind: "createDirectory", path: `${skillRelativeRoot}/csv-columns` },
-          { kind: "createDirectory", path: `${skillRelativeRoot}/csv-columns/scripts` },
           {
             kind: "add",
             path: `${skillRelativeRoot}/csv-columns/SKILL.md`,
@@ -280,7 +285,6 @@ describe("Workspace apply patch runtime behavior", () => {
     const result = await applyWorkspacePatchHostTool(
       {
         operations: [
-          { kind: "createDirectory", path: `${skillRelativeRoot}/missing-tool-skill` },
           {
             kind: "add",
             path: `${skillRelativeRoot}/missing-tool-skill/SKILL.md`,
@@ -311,8 +315,6 @@ describe("Workspace apply patch runtime behavior", () => {
     const result = await applyWorkspacePatchHostTool(
       {
         operations: [
-          { kind: "createDirectory", path: `${mcpRelativeRoot}/csv-toolkit` },
-          { kind: "createDirectory", path: `${mcpRelativeRoot}/csv-toolkit/mcp` },
           {
             kind: "add",
             path: `${mcpRelativeRoot}/csv-toolkit/.mcp.json`,
@@ -353,7 +355,6 @@ describe("Workspace apply patch runtime behavior", () => {
     const result = await applyWorkspacePatchHostTool(
       {
         operations: [
-          { kind: "createDirectory", path: `${mcpRelativeRoot}/broken-toolkit` },
           {
             kind: "add",
             path: `${mcpRelativeRoot}/broken-toolkit/.mcp.json`,
@@ -397,7 +398,6 @@ describe("Workspace apply patch runtime behavior", () => {
     const result = await applyWorkspacePatchHostTool(
       {
         operations: [
-          { kind: "createDirectory", path: ".senera/skills/atomic-policy" },
           {
             kind: "add",
             path: ".senera/skills/atomic-policy/SKILL.md",
@@ -419,19 +419,155 @@ describe("Workspace apply patch runtime behavior", () => {
     });
   });
 
-  test("does not allow a validated publication scope to mutate a managed collection root", async () => {
+  test("rejects a delete whose target is a directory instead of a file", async () => {
     const workspaceRoot = createWorkspace();
-    const skillRoot = resolveAgentWorkspaceLayout(workspaceRoot).skillRoot;
-    await fs.mkdir(skillRoot, { recursive: true });
+    await fs.mkdir(path.join(workspaceRoot, "dir-only"), { recursive: true });
     const result = await applyWorkspacePatchHostTool(
-      {
-        operations: [{ kind: "deleteDirectory", path: ".senera/skills", recursive: true }],
-      },
+      { operations: [{ kind: "delete", path: "dir-only" }] },
       context(workspaceRoot, governedExecutionEnv(workspaceRoot)),
     );
 
     expect(result.response.ok).toBe(false);
-    expect((await fs.stat(skillRoot)).isDirectory()).toBe(true);
+    await expect(fs.stat(path.join(workspaceRoot, "dir-only"))).resolves.toMatchObject({
+      isDirectory: expect.any(Function),
+    });
+  });
+
+  test("applies multiple update operations to one file in order", async () => {
+    const workspaceRoot = createWorkspace();
+    const target = path.join(workspaceRoot, "order.txt");
+    await fs.writeFile(target, "a = 1;\nb = 2;\n", "utf8");
+
+    const result = await applyWorkspacePatchHostTool(
+      {
+        operations: [
+          { kind: "update", path: "order.txt", oldStr: "a = 1;", newStr: "a = 10;" },
+          { kind: "update", path: "order.txt", oldStr: "b = 2;", newStr: "b = 20;" },
+        ],
+      },
+      context(workspaceRoot),
+    );
+
+    expect(result.response.ok).toBe(true);
+    expect(await fs.readFile(target, "utf8")).toBe("a = 10;\nb = 20;\n");
+  });
+
+  test("applies an update on top of an added file inside the same call", async () => {
+    const workspaceRoot = createWorkspace();
+    const target = path.join(workspaceRoot, "staged.txt");
+    const result = await applyWorkspacePatchHostTool(
+      {
+        operations: [
+          { kind: "add", path: "staged.txt", content: "draft\n" },
+          { kind: "update", path: "staged.txt", oldStr: "draft", newStr: "final" },
+        ],
+      },
+      context(workspaceRoot),
+    );
+
+    expect(result.response.ok).toBe(true);
+    expect(await fs.readFile(target, "utf8")).toBe("final\n");
+  });
+
+  test("treats an added-then-deleted staged file as a no-op transaction", async () => {
+    const workspaceRoot = createWorkspace();
+    const target = path.join(workspaceRoot, "transient.txt");
+    const result = await applyWorkspacePatchHostTool(
+      {
+        operations: [
+          { kind: "add", path: "transient.txt", content: "temporary\n" },
+          { kind: "delete", path: "transient.txt" },
+        ],
+      },
+      context(workspaceRoot),
+    );
+
+    expect(result.response.ok).toBe(true);
+    if (!result.response.ok) throw new Error("Expected a successful no-op patch result.");
+    expect(result.response.result).toMatchObject({ operationCount: 2, changedPaths: [] });
+    expect(result.workspaceMutationReceipt?.entries).toEqual([]);
+    await expect(fs.stat(target)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  test("rejects an update whose oldStr does not match the file", async () => {
+    const workspaceRoot = createWorkspace();
+    await fs.writeFile(path.join(workspaceRoot, "value.txt"), "before\n", "utf8");
+
+    const result = await applyWorkspacePatchHostTool(
+      {
+        operations: [{ kind: "update", path: "value.txt", oldStr: "missing text", newStr: "after" }],
+      },
+      context(workspaceRoot),
+    );
+
+    expect(result.response.ok).toBe(false);
+    if (result.response.ok) throw new Error("Expected an oldStr mismatch failure.");
+    expect(result.response.error?.diagnostics?.[0]).toMatchObject({
+      pointer: "/operations/0/oldStr",
+      suggestion: expect.stringContaining("oldStr"),
+    });
+    expect(await fs.readFile(path.join(workspaceRoot, "value.txt"), "utf8")).toBe("before\n");
+  });
+
+  test("reports how many times an update fragment matched and replaces only the first", async () => {
+    const workspaceRoot = createWorkspace();
+    await fs.writeFile(path.join(workspaceRoot, "repeat.txt"), "x y x\n", "utf8");
+
+    const result = await applyWorkspacePatchHostTool(
+      {
+        operations: [{ kind: "update", path: "repeat.txt", oldStr: "x", newStr: "z" }],
+      },
+      context(workspaceRoot),
+    );
+
+    expect(result.response.ok).toBe(true);
+    if (!result.response.ok) throw new Error("Expected a successful multi-match update.");
+    expect(result.response.result).toMatchObject({ operations: [{ kind: "update", matches: 2 }] });
+    expect(await fs.readFile(path.join(workspaceRoot, "repeat.txt"), "utf8")).toBe("z y x\n");
+  });
+
+  test("writes a new file when the path does not exist yet", async () => {
+    const workspaceRoot = createWorkspace();
+    const result = await applyWorkspacePatchHostTool(
+      { operations: [{ kind: "write", path: "fresh.txt", content: "created\n" }] },
+      context(workspaceRoot),
+    );
+
+    expect(result.response.ok).toBe(true);
+    expect(await fs.readFile(path.join(workspaceRoot, "fresh.txt"), "utf8")).toBe("created\n");
+  });
+
+  test("deletes a file", async () => {
+    const workspaceRoot = createWorkspace();
+    const target = path.join(workspaceRoot, "gone.txt");
+    await fs.writeFile(target, "remove me\n", "utf8");
+
+    const result = await applyWorkspacePatchHostTool(
+      { operations: [{ kind: "delete", path: "gone.txt" }] },
+      context(workspaceRoot),
+    );
+
+    expect(result.response.ok).toBe(true);
+    await expect(fs.stat(target)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  test("moves a file and allows a follow-up update at the destination", async () => {
+    const workspaceRoot = createWorkspace();
+    await fs.writeFile(path.join(workspaceRoot, "old.ts"), "export const x = 1;\n", "utf8");
+
+    const result = await applyWorkspacePatchHostTool(
+      {
+        operations: [
+          { kind: "move", source: "old.ts", destination: "lib/new.ts" },
+          { kind: "update", path: "lib/new.ts", oldStr: "x = 1", newStr: "x = 2" },
+        ],
+      },
+      context(workspaceRoot),
+    );
+
+    expect(result.response.ok).toBe(true);
+    await expect(fs.stat(path.join(workspaceRoot, "old.ts"))).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await fs.readFile(path.join(workspaceRoot, "lib", "new.ts"), "utf8")).toBe("export const x = 2;\n");
   });
 });
 
@@ -467,8 +603,4 @@ function context(
     requestId: "request-extension-gate",
     registry: { getTool: () => undefined },
   } as unknown as AgentHostToolContext;
-}
-
-function digest(content: string): string {
-  return createHash("sha256").update(content).digest("hex");
 }

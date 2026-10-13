@@ -84,6 +84,14 @@ describe("Artifact evidence source projection", () => {
         xml: "Artifact loaded.",
       },
       terminal: { kind: "FinalAnswer", content: "Artifact loaded." },
+      modelProvider: {
+        id: "test",
+        providerId: "test",
+        kind: "test",
+        endpoint: "openai-chat",
+        baseUrl: "http://localhost",
+        model: "test-model",
+      },
       executedTools: [
         {
           callId: "call-1",

@@ -1,0 +1,128 @@
+{
+  "name": "ArtifactReadTool",
+  "loading": "Bootstrap",
+  "presentation": {
+    "category": "artifact-read",
+    "icon": "file-text",
+    "activity": { "action": { "zh-CN": "读取", "en-US": "Read" }, "detailPaths": ["/artifactUris/*", "/view"] }
+  },
+  "description": "按 Artifact URI 读取结果。compact 优先返回先前生成的 LLM 摘要，否则返回确定性摘要并标记压缩方式；full 返回经过完整性校验的原始结果。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "artifactUris": {
+        "minItems": 1,
+        "type": "array",
+        "items": { "type": "string", "minLength": 1 },
+        "description": "Canonical artifact URIs, for example senera://artifact/art_1234567890abcdef12345678."
+      },
+      "view": {
+        "type": "string",
+        "enum": ["compact", "full"],
+        "description": "compact returns a saved LLM summary when available, otherwise a deterministic summary; full returns the raw result."
+      }
+    },
+    "required": ["artifactUris", "view"],
+    "additionalProperties": false
+  },
+  "permissions": ["filesystem:read:artifacts"],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "ResultStorage": "SourceView",
+    "Scheduling": "Parallel",
+    "Capabilities": { "Cancellation": true }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "artifact",
+      "Title": "Artifact",
+      "Description": "Persisted artifact content and evidence available to the current agent."
+    }
+  ],
+  "search": {
+    "Summary": "读取 Artifact 的压缩摘要或完整原始结果。",
+    "Tags": ["证据读取", "产物读取", "完整结果", "历史资料"],
+    "Capabilities": [
+      {
+        "Id": "artifact.read",
+        "Title": "Artifact resource read",
+        "Description": "Load the compact summary or complete original result for one or more canonical Artifact URIs.",
+        "Facets": {
+          "Actions": ["read", "hydrate", "inspect"],
+          "Targets": ["artifact-resource", "artifact-projection", "artifact-evidence"],
+          "Inputs": ["artifact-uri-list", "view"],
+          "Outputs": ["compact-summary", "raw-result"],
+          "Evidence": ["artifact-resource"],
+          "Effects": ["read-only"]
+        },
+        "Aliases": ["读取产物", "展开证据", "read artifact", "hydrate artifact evidence"],
+        "Risk": { "SideEffect": "read-only", "Permission": "artifact-read" }
+      }
+    ],
+    "UseCases": ["查看历史工具结果摘要或需要完整原始结果时读取 Artifact。"],
+    "Examples": ["读取这个 Artifact 的压缩摘要", "完整读取这个工具结果"],
+    "Avoid": [
+      "artifactUri 缺失时先使用当前上下文或检索工具定位 Artifact URI。",
+      "只需要结论时使用 compact；只有需要核实或展开来源数据时使用 full。"
+    ]
+  },
+  "evidenceCapabilities": [],
+  "artifacts": {
+    "Evidence": [
+      {
+        "Kind": "artifact_memory",
+        "Records": "$.artifacts.item[*]",
+        "Slots": {
+          "artifactUri": "$.artifactUri",
+          "artifactId": "$.artifactId",
+          "status": "$.status",
+          "message": "$.message",
+          "view": "$.view",
+          "artifactRefs": "$.artifactRefs[*]",
+          "compressionMethod": "$.compressionMethod",
+          "sourceSha256": "$.sourceSha256"
+        },
+        "Identity": { "Parts": ["artifactUri", "view"] },
+        "Presentation": {
+          "Locator": "{{ artifactUri }}",
+          "Display": "artifact {{ view }} {{ status }}: {{ artifactUri }}",
+          "Label": "{{ artifactUri }}",
+          "Source": "{{ message }}"
+        },
+        "ModelProjection": {
+          "Slots": [
+            "artifactUri",
+            "artifactId",
+            "status",
+            "message",
+            "view",
+            "artifactRefs",
+            "compressionMethod",
+            "sourceSha256"
+          ]
+        },
+        "PlannerMemory": {
+          "Facts": ["artifactUri", "artifactId", "status", "view", "artifactRefs", "compressionMethod", "sourceSha256"],
+          "ArtifactUri": "artifactUri",
+          "ArtifactRefsSlot": "artifactRefs"
+        },
+        "Projection": {
+          "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.view }} {{ e.slots.status }} {{ e.slots.artifactUri }}{% if e.slots.compressionMethod %} ({{ e.slots.compressionMethod }}){% endif %}\n{% endfor %}",
+          "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} artifact read\n  uri: {{ e.slots.artifactUri }}\n  view: {{ e.slots.view }}\n  status: {{ e.slots.status }}\n  compressionMethod: {{ e.slots.compressionMethod }}\n  sourceSha256: {{ e.slots.sourceSha256 }}\n  message: {{ e.slots.message }}\n{% endfor %}"
+        },
+        "Confidence": 0.9,
+        "Metadata": {
+          "status": "$.status",
+          "view": "$.view",
+          "compressionMethod": "$.compressionMethod",
+          "sourceSha256": "$.sourceSha256"
+        }
+      }
+    ]
+  }
+}

@@ -43,20 +43,19 @@ McpServers/example/
 }
 ```
 
-The MCP server owns tool schemas through `tools/list`. Use `@modelcontextprotocol/sdk`, forward cancellation signals to I/O, and return standard `content` plus optional `structuredContent`. Do not add generic timeout fields, a custom stdout protocol, plaintext Secrets, a package `.env`, a Senera tool schema, or a Senera observation projection file.
+The MCP server owns tool schemas through `tools/list`. Use `@modelcontextprotocol/sdk`, forward cancellation signals to I/O, and return standard `content` plus optional `structuredContent`. Do not add generic timeout fields, a custom stdout protocol, plaintext Secrets, a package `.env`, or a Senera tool schema. MCP results use the same host-owned observation budget as System Tools.
 
 ## System extension
 
-Create `System/Extensions/<id>/extension.json`, one contract per `hostTool` contribution, and at least one package-local observation projection. The manifest owns package metadata and references a capability already registered by Senera. Contracts own tool input/output, execution, runtime, resource, search and artifact policies.
+Create `System/Extensions/<domain>/<extension>/extension.json` and one contract per `hostTool` contribution. Start with the owning `System/Extensions/<domain>/domain.json`; the package directory name must equal `extension.id`, and `extension.domain` must equal the domain manifest ID. The manifest owns package metadata and references a capability already registered by Senera. Contracts own tool input/output, execution, runtime, resource, search and artifact policies.
 
 ```text
-System/Extensions/example/
+System/Extensions/example-domain/example-extension/
   extension.json
   tools/ExampleTool.tool.json
-  observations/default.projection.json
 ```
 
-The Tool contract references `observationProjection`. Declare protocol sources and explicit structural limits in that file; do not select payload fields by name in runtime code. Use RFC 6901 `pointer` only when a Tool intentionally projects one subvalue. The runtime centrally preserves identity, status, artifact URI, and the canonical failure envelope. See [Tool Observation Projection](../Architecture/ToolObservationProjection.md).
+The host records the complete redacted result as an Artifact when durable capture is applicable, then the Pi bridge applies a shared token budget to the model-facing observation. Tool packages must not define observation projection files, content policies, inline thresholds, or per-tool compression behavior. See [Tool Observation Compression](../Architecture/ToolObservationCompression.md).
 
 Host implementation code stays under `Source/AgentSystem/SystemTools` or another host-owned module and is registered in code. A package cannot name a module to import. For a Zod-defined tool, run:
 

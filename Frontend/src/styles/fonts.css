@@ -1,10 +1,4 @@
-@font-face {
-  font-family: "Geist";
-  font-style: normal;
-  font-display: swap;
-  font-weight: 100 900;
-  src: url("@fontsource-variable/geist/files/geist-latin-wght-normal.woff2") format("woff2-variations");
-}
+@import "@lobehub/webfont-harmony-sans-sc-mini/css/index.css";
 
 @font-face {
   font-family: "Nunito Sans Variable";

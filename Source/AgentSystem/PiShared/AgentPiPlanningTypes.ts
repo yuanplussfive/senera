@@ -87,7 +87,6 @@ export interface AgentPiAssistantMessageCompileInput {
     rootCommand?: AgentRootCommand;
     activeSkills?: readonly AgentPiPlanningSkill[];
     planState?: AgentPiToolPlanState;
-    conversationSummaryText?: string;
   };
 }
 
@@ -121,7 +120,7 @@ export interface AgentPiToolTranscriptItem {
     status: AgentPiToolObservationStatus;
     outputAvailability: AgentToolOutputAvailability;
     summary?: string;
-    artifactUri?: string;
+    artifacts: AgentPiToolTranscriptArtifact[];
     evidenceUris: string[];
     error?: {
       code?: string;
@@ -131,6 +130,13 @@ export interface AgentPiToolTranscriptItem {
       message?: string;
     };
   };
+}
+
+/** Canonical durable coordinates associated with one historical tool observation. */
+export interface AgentPiToolTranscriptArtifact {
+  artifactUri: string;
+  refs: string[];
+  evidenceUris: string[];
 }
 
 export interface AgentPiToolRoutingCard {

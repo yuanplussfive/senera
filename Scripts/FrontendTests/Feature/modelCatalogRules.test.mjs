@@ -30,18 +30,10 @@ test("model catalogue resolves labs providers before parent-provider aliases", (
   expect(inferModelProviderIcon("openai-labs", false)).toBe("labs");
 });
 
-test("model capability inference recognizes embedding, rerank, and multimodal models", () => {
-  expect(inferModelCatalogCapabilities("text-embedding-3-large", "openai")).toMatchObject({
-    Chat: false,
-    Embedding: true,
-  });
-  expect(inferModelCatalogCapabilities("qwen3-reranker-0.6b", "qwen")).toMatchObject({
-    Chat: false,
-    Rerank: true,
-  });
-  const rerankCapabilities = inferModelCatalogCapabilities("bge-reranker-v2-m3", "custom");
-  expect(rerankCapabilities).toMatchObject({ Chat: false, Rerank: true });
-  expect(rerankCapabilities).not.toHaveProperty("Embedding");
+test("model capability inference recognizes chat and multimodal models without embedding/rerank special casing", () => {
+  expect(inferModelCatalogCapabilities("text-embedding-3-large", "openai")).toEqual({});
+  expect(inferModelCatalogCapabilities("qwen3-reranker-0.6b", "qwen")).toMatchObject({ Chat: true });
+  expect(inferModelCatalogCapabilities("bge-reranker-v2-m3", "custom")).not.toHaveProperty("Rerank");
   expect(inferModelCatalogCapabilities("gemini-2.5-pro", "google")).toMatchObject({
     Chat: true,
     Vision: true,
@@ -52,13 +44,13 @@ test("explicit model capability flags remain authoritative over catalogue hints"
   expect(
     readModelCapabilities(
       {
-        Id: "custom/text-embedding",
+        Id: "custom/gpt-4o",
         ProviderId: "custom",
         Endpoint: "chat",
-        Model: "text-embedding-3-large",
-        Capabilities: { Chat: true, Embedding: false },
+        Model: "gpt-4o",
+        Capabilities: { Chat: true, Vision: false },
       },
       {},
     ),
-  ).toMatchObject({ Chat: true, Embedding: false });
+  ).toMatchObject({ Chat: true, Vision: false });
 });

@@ -15,7 +15,12 @@ import {
   type ToolArtifactPolicyManifest,
   type ToolSearchManifest,
 } from "../Types/AgentToolContractTypes.js";
-import type { AgentToolObservationProjectionManifest } from "../Types/AgentToolObservationProjectionTypes.js";
+import {
+  AgentToolPerceptionKinds,
+  AgentToolPerceptionScopes,
+  type AgentToolPerceptionDeclaration,
+} from "../Types/AgentToolPerceptionTypes.js";
+import { AgentToolResourceCapabilityIds } from "../ToolRuntime/AgentToolResourceCapabilityIds.js";
 
 function createWebSearchInput(configuration: AgentWebToolsConfigurationSchemaOutput) {
   return z
@@ -170,9 +175,6 @@ const WebFetchSearch = {
 const WebSearchArtifacts = createSearchArtifactPolicy();
 const WebFetchArtifacts = createFetchArtifactPolicy();
 
-const WebSearchObservation = createWebObservationProjection();
-const WebFetchObservation = createWebObservationProjection();
-
 export function createWebSystemTools(
   extensionConfiguration?: Record<string, unknown>,
 ): readonly AgentSystemToolDefinition[] {
@@ -187,7 +189,7 @@ export function createWebSystemTools(
         "查找当前公开网页中的信息，用来核实外部事实、最新动态或官方资料。",
         WebSearchSearch,
         WebSearchArtifacts,
-        WebSearchObservation,
+        { kind: AgentToolPerceptionKinds.Retrieved, scope: AgentToolPerceptionScopes.Remote },
       ),
       name: "WebSearch",
       input: webSearchInput,
@@ -199,12 +201,15 @@ export function createWebSystemTools(
     }),
     defineSystemTool({
       extension: WebToolsExtension,
-      metadata: webToolMetadata(
-        "打开公开网页并提取正文、链接和可追溯引用，适合继续核对搜索到的资料。",
-        WebFetchSearch,
-        WebFetchArtifacts,
-        WebFetchObservation,
-      ),
+      metadata: {
+        ...webToolMetadata(
+          "打开公开网页并提取正文、链接和可追溯引用，适合继续核对搜索到的资料。",
+          WebFetchSearch,
+          WebFetchArtifacts,
+          { kind: AgentToolPerceptionKinds.Retrieved, scope: AgentToolPerceptionScopes.Remote },
+        ),
+        resources: [{ Capability: AgentToolResourceCapabilityIds.NetworkUrl, Pointer: "/url" }],
+      },
       name: "WebFetch",
       input: webFetchInput,
       output: WebFetchOutput,
@@ -222,7 +227,7 @@ function webToolMetadata(
   description: string,
   search: ToolSearchManifest,
   artifacts: ToolArtifactPolicyManifest,
-  observation: AgentToolObservationProjectionManifest,
+  perception?: AgentToolPerceptionDeclaration,
 ): AgentSystemToolMetadata {
   return {
     description,
@@ -238,58 +243,7 @@ function webToolMetadata(
     sources: [AgentSystemToolDiscoverySources.Web],
     search,
     artifacts,
-    observation,
-  };
-}
-
-function createWebObservationProjection(): AgentToolObservationProjectionManifest {
-  return {
-    schemaVersion: 2,
-    maxTokens: 16_000,
-    maxOmissions: 64,
-    artifactFallback: { strategy: "reference", requiredWhenTruncated: true },
-    sources: [
-      {
-        source: "headline",
-        mode: "text",
-        priority: "essential",
-        requiredForCompletion: true,
-        maxTokens: 128,
-        limits: { maxDepth: 1, maxArrayItems: 4, maxObjectProperties: 8, maxNodes: 16 },
-      },
-      {
-        source: "summary",
-        mode: "text",
-        priority: "high",
-        requiredForCompletion: true,
-        maxTokens: 800,
-        limits: { maxDepth: 1, maxArrayItems: 4, maxObjectProperties: 8, maxNodes: 16 },
-      },
-      {
-        source: "retrieval",
-        mode: "json",
-        priority: "high",
-        requiredForCompletion: true,
-        maxTokens: 256,
-        limits: { maxDepth: 4, maxArrayItems: 16, maxObjectProperties: 16, maxNodes: 128 },
-      },
-      {
-        source: "evidence",
-        mode: "orderedArray",
-        priority: "normal",
-        requiredForCompletion: false,
-        maxTokens: 4_000,
-        limits: { maxDepth: 8, maxArrayItems: 64, maxObjectProperties: 24, maxNodes: 512 },
-      },
-      {
-        source: "limitations",
-        mode: "orderedArray",
-        priority: "low",
-        requiredForCompletion: false,
-        maxTokens: 256,
-        limits: { maxDepth: 4, maxArrayItems: 16, maxObjectProperties: 8, maxNodes: 64 },
-      },
-    ],
+    ...(perception ? { perception } : {}),
   };
 }
 

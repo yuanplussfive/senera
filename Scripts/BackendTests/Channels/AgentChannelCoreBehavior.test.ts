@@ -30,7 +30,7 @@ import {
   agentChannelMediaIdentity,
   projectAgentChannelFinalParts,
 } from "../../../Source/AgentSystem/Channels/AgentChannelOutboundMedia.js";
-import { parseAgentChannelFinalDelivery } from "../../../Source/AgentSystem/Channels/AgentChannelFinalResponse.js";
+import { projectAgentChannelFinalParts as validateFinalParts } from "../../../Source/AgentSystem/Channels/AgentChannelFinalResponse.js";
 import {
   appendAgentChannelFinalizationRecord,
   readAgentChannelFinalizationHistory,
@@ -58,16 +58,14 @@ describe("channel session identity", () => {
 
 describe("structured channel final delivery", () => {
   test("validates ordered parts without Markdown routing", async () => {
-    const parts = parseAgentChannelFinalDelivery(
-      JSON.stringify({
-        parts: [
-          { kind: "text", text: "前文" },
-          { kind: "resource", uri: "senera://resource/image", alt: "截图" },
-          { kind: "code", language: "svg", code: "<svg />" },
-          { kind: "text", text: "后文" },
-        ],
-      }),
-    );
+    const parts = validateFinalParts({
+      parts: [
+        { kind: "text", text: "前文" },
+        { kind: "resource", uri: "senera://resource/image", alt: "截图" },
+        { kind: "code", language: "svg", code: "<svg />" },
+        { kind: "text", text: "后文" },
+      ],
+    });
     const projection = await projectAgentChannelFinalParts(parts, {
       resourceResolver: {
         resolve: async () => ({

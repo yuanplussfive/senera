@@ -1,5 +1,10 @@
 import path from "node:path";
 import { Worker } from "node:worker_threads";
+import {
+  resolveAgentWorkerThreadData,
+  resolveAgentWorkerThreadEntry,
+  resolveAgentWorkerThreadExecArgv,
+} from "../Core/AgentWorkerThread.js";
 import type { AgentEventEnvelope } from "../Events/AgentEventBase.js";
 import {
   AgentEventPersistenceStates,
@@ -16,10 +21,6 @@ export type {
 } from "./AgentRunEventWriter.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { withDeadline } from "../Core/AgentTiming.js";
-
-const DefaultWriterCloseTimeoutMs = 5_000;
-const DefaultOutboxDrainBatchSize = 256;
-const DefaultCommittedOutboxRetentionMs = 7 * 24 * 60 * 60 * 1_000;
 
 interface AppendMessage {
   readonly type: "append";
@@ -72,10 +73,10 @@ interface PendingRequest {
 
 export interface AgentSqliteRunEventWriterOptions {
   readonly databasePath: string;
-  readonly restartDelayMs?: number;
-  readonly closeTimeoutMs?: number;
-  readonly drainBatchSize?: number;
-  readonly committedRetentionMs?: number;
+  readonly restartDelayMs: number;
+  readonly closeTimeoutMs: number;
+  readonly drainBatchSize: number;
+  readonly committedRetentionMs: number;
 }
 
 export class AgentSqliteRunEventWriter implements AgentRunEventWriter {
@@ -100,16 +101,10 @@ export class AgentSqliteRunEventWriter implements AgentRunEventWriter {
 
   constructor(options: AgentSqliteRunEventWriterOptions) {
     this.databasePath = path.resolve(options.databasePath);
-    this.restartDelayMs = normalizeDelay(options.restartDelayMs);
-    this.closeTimeoutMs = normalizeDelay(options.closeTimeoutMs ?? DefaultWriterCloseTimeoutMs);
-    this.drainBatchSize = normalizePositiveInteger(
-      options.drainBatchSize ?? DefaultOutboxDrainBatchSize,
-      "drainBatchSize",
-    );
-    this.committedRetentionMs = normalizePositiveInteger(
-      options.committedRetentionMs ?? DefaultCommittedOutboxRetentionMs,
-      "committedRetentionMs",
-    );
+    this.restartDelayMs = normalizeDelay(options.restartDelayMs, "restartDelayMs");
+    this.closeTimeoutMs = normalizeDelay(options.closeTimeoutMs, "closeTimeoutMs");
+    this.drainBatchSize = normalizePositiveInteger(options.drainBatchSize, "drainBatchSize");
+    this.committedRetentionMs = normalizePositiveInteger(options.committedRetentionMs, "committedRetentionMs");
     this.startWorker();
   }
 
@@ -155,13 +150,14 @@ export class AgentSqliteRunEventWriter implements AgentRunEventWriter {
       import.meta.url.endsWith(".ts") ? "./AgentSqliteRunEventWriterWorker.ts" : "./AgentSqliteRunEventWriterWorker.js",
       import.meta.url,
     );
-    const worker = new Worker(resolveWorkerEntry(workerUrl), {
+    const worker = new Worker(resolveAgentWorkerThreadEntry(workerUrl), {
       workerData: {
+        ...resolveAgentWorkerThreadData(workerUrl),
         databasePath: this.databasePath,
         drainBatchSize: this.drainBatchSize,
         committedRetentionMs: this.committedRetentionMs,
       },
-      execArgv: process.execArgv.filter((argument) => !argument.startsWith("--input-type")),
+      execArgv: resolveAgentWorkerThreadExecArgv(),
     });
     this.worker = worker;
     worker.on("message", (message: WorkerResponse) => this.handleResponse(message));
@@ -300,26 +296,16 @@ export class AgentSqliteRunEventWriter implements AgentRunEventWriter {
   }
 }
 
-function normalizeDelay(value: number | undefined): number {
-  if (value === undefined) return 250;
-  if (!Number.isSafeInteger(value) || value < 0)
-    throw new RangeError("restartDelayMs must be a non-negative safe integer.");
+function normalizeDelay(value: number, name: string): number {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new RangeError(`${name} must be a non-negative safe integer.`);
+  }
   return value;
 }
 
 function normalizePositiveInteger(value: number, name: string): number {
   if (!Number.isSafeInteger(value) || value <= 0) throw new RangeError(`${name} must be a positive safe integer.`);
   return value;
-}
-
-function resolveWorkerEntry(workerUrl: URL): URL {
-  if (!workerUrl.pathname.endsWith(".ts")) return workerUrl;
-  const tsxApiUrl = import.meta.resolve("tsx/esm/api");
-  const source = [
-    `import { tsImport } from ${JSON.stringify(tsxApiUrl)};`,
-    `await tsImport(${JSON.stringify(workerUrl.href)}, import.meta.url);`,
-  ].join("\n");
-  return new URL(`data:text/javascript,${encodeURIComponent(source)}`);
 }
 
 function createError(error: { readonly name: string; readonly message: string; readonly code?: string }): Error {

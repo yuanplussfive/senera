@@ -15,6 +15,7 @@ import { AgentWorkspaceRuntime } from "../Source/AgentSystem/Runtime/AgentWorksp
 import { AgentRuntimeUpdateDeployments } from "../Source/AgentSystem/Runtime/AgentRuntimeUpdateContract.js";
 import type { AgentRuntimeUpdateHttpApiOptions } from "../Source/AgentSystem/Runtime/AgentRuntimeUpdateHttpApi.js";
 import type { AgentRuntimeUpdateOrigin } from "../Source/AgentSystem/Runtime/AgentRuntimeUpdateOrigin.js";
+import http from "node:http";
 
 export type ServerEventLogDetail = "compact" | "verbose";
 
@@ -70,15 +71,19 @@ export async function closeRuntimeInfrastructure(
 }
 
 export async function probeSeneraReadiness(healthUrl: string): Promise<void> {
-  let response: Response;
-  try {
-    response = await fetch(healthUrl, { signal: AbortSignal.timeout(5_000) });
-  } catch (error) {
-    throw new Error(`Senera readiness check failed for ${healthUrl}.`, { cause: error });
-  }
-  if (!response.ok) {
-    throw new Error(`Senera readiness check failed for ${healthUrl}: HTTP ${response.status}.`);
-  }
+  // Startup must use a fresh connection, independent of pooled connections to a previous process on this port.
+  await new Promise<void>((resolve, reject) => {
+    const request = http.get(healthUrl, { agent: false, signal: AbortSignal.timeout(5_000) }, (response) => {
+      response.resume();
+      response.once("error", reject);
+      response.once("end", () =>
+        response.statusCode === 200
+          ? resolve()
+          : reject(new Error(`Senera readiness check failed for ${healthUrl}: HTTP ${response.statusCode}.`)),
+      );
+    });
+    request.once("error", (cause) => reject(new Error(`Senera readiness check failed for ${healthUrl}.`, { cause })));
+  });
 }
 
 export function resolveHealthCheckHost(host: string): string {
@@ -142,13 +147,13 @@ export function createRepository(
   config: AgentSystemConfig,
   upgradeSession: AgentUpgradeSession,
   logger: AgentLogger,
+  databasePath = resolveAgentWorkspaceLayout(workspaceRoot).databases.sessions,
 ): AgentSessionRepository {
   const persistence = resolvePersistenceConfig(config);
   if (persistence.Kind === "memory") {
     return new InMemorySessionRepository();
   }
-  const dbPath = resolveAgentWorkspaceLayout(workspaceRoot).databases.sessions;
-  return new SqliteSessionRepository(dbPath, upgradeSession, (sessionId, issue) =>
+  return new SqliteSessionRepository(databasePath, upgradeSession, (sessionId, issue) =>
     logger.warn("session.entry.decode_failed", { sessionId, ...issue }),
   );
 }

@@ -15,106 +15,128 @@ afterEach(() => {
 });
 
 describe("Todo service", () => {
-  test("replaces and persists ordered items while projecting only active prompt context", () => {
-    const fixture = createFixture("senera-todo-replace");
+  test("adds tasks with host-assigned stable ids and preserves their declared order", () => {
+    const fixture = createFixture("senera-todo-add");
     try {
-      const snapshot = fixture.service.write({
+      const created = fixture.service.add({
         sessionId: "session-1",
-        merge: false,
         now: new Date("2026-09-01T00:00:00.000Z"),
-        items: [
-          { id: "pending", content: "待处理" },
-          { id: "active", content: "处理中", status: AgentTodoStatuses.InProgress },
-          { id: "done", content: "已完成", status: AgentTodoStatuses.Completed },
+        tasks: [{ content: "待处理" }, { content: "处理中" }, { content: "已完成" }],
+      });
+      fixture.service.update({
+        sessionId: "session-1",
+        updates: [
+          { id: created.created[1]!.id, status: AgentTodoStatuses.InProgress },
+          { id: created.created[2]!.id, status: AgentTodoStatuses.Completed },
         ],
       });
+      const snapshot = fixture.service.read("session-1");
 
-      expect(snapshot.items.map((item) => item.id)).toEqual(["active", "pending", "done"]);
+      expect(created.created.every((item) => item.status === AgentTodoStatuses.Pending)).toBe(true);
+      expect(new Set(created.created.map((item) => item.id)).size).toBe(3);
+      expect(snapshot.items.map((item) => item.content)).toEqual(["待处理", "处理中", "已完成"]);
+      expect(snapshot.items.map((item) => item.order)).toEqual([0, 1, 2]);
       expect(snapshot.counts).toEqual({ total: 3, pending: 1, inProgress: 1, completed: 1, cancelled: 0 });
-      expect(fixture.service.read("session-1")).toEqual(snapshot);
-      expect(fixture.service.promptContext("session-1").items.map((item) => item.id)).toEqual(["active", "pending"]);
+      expect(fixture.service.promptContext("session-1").items.map((item) => item.content)).toEqual([
+        "待处理",
+        "处理中",
+      ]);
       expect(fixture.service.read("other-session").items).toEqual([]);
     } finally {
       fixture.close();
     }
   });
 
-  test("merges updates by stable id and preserves creation timestamps", () => {
-    const fixture = createFixture("senera-todo-merge");
+  test("updates by stable id while preserving omitted fields and creation timestamps", () => {
+    const fixture = createFixture("senera-todo-update");
     try {
-      const initial = fixture.service.write({
+      const initial = fixture.service.add({
         sessionId: "session-1",
-        merge: false,
         now: new Date("2026-09-01T00:00:00.000Z"),
-        items: [
-          { id: "first", content: "第一项" },
-          { id: "second", content: "第二项" },
-        ],
+        tasks: [{ content: "第一项" }, { content: "第二项" }],
       });
-      const merged = fixture.service.write({
+      const firstId = initial.created[0]!.id;
+      const secondId = initial.created[1]!.id;
+      const initialSnapshot = fixture.service.read("session-1");
+      const updated = fixture.service.update({
         sessionId: "session-1",
-        merge: true,
         now: new Date("2026-09-01T01:00:00.000Z"),
-        items: [
-          { id: "second", content: "更新后的第二项", status: AgentTodoStatuses.InProgress },
-          { id: "third", content: "第三项" },
+        updates: [
+          { id: secondId, content: "更新后的第二项", status: AgentTodoStatuses.InProgress },
+          { id: firstId, status: AgentTodoStatuses.Completed },
         ],
       });
+      const snapshot = fixture.service.read("session-1");
 
-      expect(merged.items.map((item) => item.id)).toEqual(["second", "first", "third"]);
-      expect(merged.items[0]).toMatchObject({ content: "更新后的第二项", status: AgentTodoStatuses.InProgress });
-      expect(merged.items.find((item) => item.id === "second")?.createdAt).toBe(initial.items[1]?.createdAt);
-      expect(merged.items.find((item) => item.id === "second")?.updatedAt).toBe("2026-09-01T01:00:00.000Z");
+      expect(updated.updated).toEqual([
+        { id: secondId, status: AgentTodoStatuses.InProgress },
+        { id: firstId, status: AgentTodoStatuses.Completed },
+      ]);
+      expect(snapshot.items.map((item) => item.content)).toEqual(["第一项", "更新后的第二项"]);
+      expect(snapshot.items[0]).toMatchObject({ id: firstId, status: AgentTodoStatuses.Completed });
+      expect(snapshot.items[1]).toMatchObject({ id: secondId, status: AgentTodoStatuses.InProgress });
+      expect(snapshot.items[1]?.createdAt).toBe(initialSnapshot.items.find((item) => item.id === secondId)?.createdAt);
+      expect(snapshot.items[1]?.updatedAt).toBe("2026-09-01T01:00:00.000Z");
+
+      const appended = fixture.service.add({
+        sessionId: "session-1",
+        tasks: [{ content: "第三项" }],
+      });
+      expect(appended.created).toHaveLength(1);
+      expect(fixture.service.read("session-1").items.map((item) => item.content)).toEqual([
+        "第一项",
+        "更新后的第二项",
+        "第三项",
+      ]);
     } finally {
       fixture.close();
     }
   });
 
-  test("rejects duplicate ids, multiple active items, and configured item limits before persistence", () => {
+  test("rejects invalid status transitions and task limits before persistence", () => {
     const fixture = createFixture("senera-todo-validation", {
       maxItems: 2,
       maxContentCharacters: 8,
     });
     try {
+      const created = fixture.service.add({
+        sessionId: "session-1",
+        tasks: [{ content: "one" }, { content: "two" }],
+      });
       expect(() =>
-        fixture.service.write({
+        fixture.service.add({
           sessionId: "session-1",
-          merge: false,
-          items: [
-            { id: "duplicate", content: "one" },
-            { id: "duplicate", content: "two" },
-          ],
-        }),
-      ).toThrow("Todo id is duplicated: duplicate.");
-      expect(() =>
-        fixture.service.write({
-          sessionId: "session-1",
-          merge: false,
-          items: [
-            { id: "first", content: "one", status: AgentTodoStatuses.InProgress },
-            { id: "second", content: "two", status: AgentTodoStatuses.InProgress },
-          ],
-        }),
-      ).toThrow("Only one Todo may be in_progress.");
-      expect(() =>
-        fixture.service.write({
-          sessionId: "session-1",
-          merge: false,
-          items: [
-            { id: "first", content: "one" },
-            { id: "second", content: "two" },
-            { id: "third", content: "three" },
-          ],
+          tasks: [{ content: "third" }],
         }),
       ).toThrow("Todo list exceeds 2 items.");
       expect(() =>
-        fixture.service.write({
+        fixture.service.update({
           sessionId: "session-1",
-          merge: false,
-          items: [{ id: "long", content: "123456789" }],
+          updates: created.created.map(({ id }) => ({ id, status: AgentTodoStatuses.InProgress })),
         }),
-      ).toThrow("Todo long exceeds 8 content characters.");
-      expect(fixture.store.list("session-1")).toEqual([]);
+      ).toThrow("At most one Todo may be in_progress.");
+      expect(() =>
+        fixture.service.update({
+          sessionId: "session-1",
+          updates: [
+            { id: created.created[0]!.id, status: AgentTodoStatuses.Completed },
+            { id: created.created[0]!.id, status: AgentTodoStatuses.Pending },
+          ],
+        }),
+      ).toThrow("updated more than once");
+      expect(() =>
+        fixture.service.update({
+          sessionId: "session-1",
+          updates: [{ id: "missing", status: AgentTodoStatuses.Completed }],
+        }),
+      ).toThrow("does not exist");
+      expect(() =>
+        fixture.service.update({
+          sessionId: "session-1",
+          updates: [{ id: created.created[0]!.id, content: "123456789" }],
+        }),
+      ).toThrow(`Todo ${created.created[0]!.id} exceeds 8 content characters.`);
+      expect(fixture.service.read("session-1").items).toHaveLength(2);
     } finally {
       fixture.close();
     }
@@ -127,10 +149,9 @@ describe("Todo service", () => {
     });
     try {
       expect(() =>
-        fixture.service.write({
+        fixture.service.add({
           sessionId: "session-1",
-          merge: false,
-          items: [{ id: "large", content: "x".repeat(120) }],
+          tasks: [{ content: "x".repeat(120) }],
         }),
       ).toThrow("Todo result exceeds the configured result limit.");
       expect(fixture.store.list("session-1")).toEqual([]);

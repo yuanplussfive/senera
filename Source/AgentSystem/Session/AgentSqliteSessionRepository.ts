@@ -405,6 +405,10 @@ export class SqliteSessionRepository implements AgentSessionRepository {
     return this.history.loadRunSnapshotsForRequests(sessionId, requestIds, throughRevision);
   }
 
+  loadRunSnapshot(sessionId: string, requestId: string): StoredRunSnapshot | undefined {
+    return this.history.loadRunSnapshot(sessionId, requestId);
+  }
+
   loadRunSnapshotPage(
     sessionId: string,
     request: AgentSessionCursorPageRequest,
@@ -467,6 +471,10 @@ export class SqliteSessionRepository implements AgentSessionRepository {
     request: AgentSessionCursorPageRequest,
   ): AgentSessionCursorPage<AgentEventEnvelope> {
     return this.history.loadRunEventPage(sessionId, request);
+  }
+
+  loadRunEvent(sessionId: string, requestId: string, kind: string): AgentEventEnvelope | undefined {
+    return this.history.loadRunEvent(sessionId, requestId, kind);
   }
 
   deleteRunEventsFrom(sessionId: string, requestId: string): number {

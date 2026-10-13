@@ -10,9 +10,9 @@ export const States: Story = () => {
     <div className="min-h-[520px] bg-surface-canvas p-6 text-content-primary sm:p-10">
       <div className="mx-auto max-w-[760px] space-y-6">
         <div>
-          <h1 className="text-[20px] font-semibold text-content-strong">主题强调色开关</h1>
+          <h1 className="text-[20px] font-semibold text-content-strong">开关</h1>
           <p className="mt-1 text-[12.5px] leading-5 text-content-muted">
-            公共开关只负责轨道、状态和焦点；页面文字放在外层普通布局中。
+            开态轨道用中性强色（content-strong），不跟随主题强调色；公共开关只负责轨道、状态和焦点，页面文字放在外层普通布局中。
           </p>
         </div>
 
