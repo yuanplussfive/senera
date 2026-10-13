@@ -273,6 +273,7 @@ test("app shell renders persistent wide panels and closes obsolete drawers", asy
   expect(screen.queryByText("Terminal panel")).not.toBeInTheDocument();
   expect(screen.queryByText("Session drawer")).not.toBeInTheDocument();
   expect(screen.queryByText("Workflow drawer")).not.toBeInTheDocument();
+  expect(document.querySelector("[data-workspace-main]")).toHaveAttribute("data-window-controls-scope", "contained");
   await waitFor(() => {
     expect(onSessionDrawerOpenChange).toHaveBeenCalledWith(false);
     expect(onWorkflowDrawerOpenChange).toHaveBeenCalledWith(false);
@@ -339,6 +340,7 @@ test("desktop overlay opens from a floating capsule and switches accessible hori
   const dock = document.querySelector("[data-workflow-dock]");
   const toggle = document.querySelector("[data-workflow-dock-toggle]");
   expect(dock).toHaveAttribute("data-workflow-dock-layout", "overlay");
+  expect(document.querySelector("[data-workspace-main]")).toHaveAttribute("data-window-controls-scope", "viewport");
   expect(dock).toHaveClass("z-30");
   expect(document.querySelector("[data-workflow-panel-surface]")).not.toBeInTheDocument();
   expect(document.querySelectorAll("[data-workflow-dock-tool]")).toHaveLength(4);

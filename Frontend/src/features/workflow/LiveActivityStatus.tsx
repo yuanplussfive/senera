@@ -47,13 +47,20 @@ export function LiveActivityStatus({
           </span>
         ) : (
           <span
-            className={cn("activity-feed-row__icon text-content-secondary thinking-status-icon", active && "thinking-status-icon--active")}
+            className={cn(
+              "activity-feed-row__icon text-content-secondary thinking-status-icon",
+              active && "thinking-status-icon--active",
+            )}
             aria-hidden="true"
             data-thinking-status-icon
             data-live-activity-icon
             data-thinking-status-active={active || undefined}
           >
-            {icon === "brain" || icon === "thinking" ? <AppIcon icon="brain" size={16} /> : <AppIcon icon={icon} size={14} />}
+            {icon === "brain" || icon === "thinking" ? (
+              <AppIcon icon="brain" size={16} />
+            ) : (
+              <AppIcon icon={icon} size={14} />
+            )}
           </span>
         )}
         {!usesThinkingIndicator ? (

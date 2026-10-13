@@ -2278,20 +2278,18 @@ html[data-motion-level="none"] .senera-state-enter {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  @container workspace-main (min-width: 860px) {
-    .chat-event-rail {
-      display: flex;
-    }
+  [data-chat-rail-mode="overlay"] .chat-event-rail {
+    display: flex;
+  }
 
-    [data-chat-container="true"] {
-      scrollbar-gutter: auto;
-      scrollbar-width: none;
-    }
+  [data-chat-rail-mode="overlay"] [data-chat-container="true"] {
+    scrollbar-gutter: auto;
+    scrollbar-width: none;
+  }
 
-    [data-chat-container="true"]::-webkit-scrollbar {
-      width: 0;
-      height: 0;
-    }
+  [data-chat-rail-mode="overlay"] [data-chat-container="true"]::-webkit-scrollbar {
+    width: 0;
+    height: 0;
   }
 }
 
@@ -2874,6 +2872,10 @@ html[data-senera-window-controls="custom"] [data-desktop-window-controls] {
 }
 
 html[data-senera-window-controls="custom"] [data-window-controls-inset] {
+  padding-inline-end: calc(var(--senera-window-controls-width) + var(--senera-window-controls-gap));
+}
+
+html[data-senera-window-controls="custom"] [data-window-controls-scope="viewport"] [data-chat-header] {
   padding-inline-end: calc(var(--senera-window-controls-width) + var(--senera-window-controls-gap));
 }
 

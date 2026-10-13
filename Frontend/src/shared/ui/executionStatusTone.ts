@@ -12,14 +12,7 @@
  * `cancelling` keeps the warm umber so the two live states stay distinguishable.
  */
 export type ActivityStatus =
-  | "pending"
-  | "running"
-  | "cancelling"
-  | "done"
-  | "completed"
-  | "failed"
-  | "cancelled"
-  | "neutral";
+  "pending" | "running" | "cancelling" | "done" | "completed" | "failed" | "cancelled" | "neutral";
 
 export type ActivityStatusMotion = "none" | "pulse" | "spin";
 

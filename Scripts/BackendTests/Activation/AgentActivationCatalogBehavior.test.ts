@@ -23,12 +23,7 @@ describe("@ activation catalog", () => {
   });
 
   test("rejects stale, disabled, and revision-mismatched selections", () => {
-    const catalog = createAgentActivationCatalog(
-      [skill("workspace-search", "skill-r1")],
-      [plugin("weather")],
-      [],
-      [],
-    );
+    const catalog = createAgentActivationCatalog([skill("workspace-search", "skill-r1")], [plugin("weather")], [], []);
     const valid = {
       catalogRevision: catalog.revision,
       explicit: [{ kind: "skill" as const, id: "workspace-search", revision: "skill-r1" }],
@@ -71,12 +66,7 @@ describe("@ activation catalog", () => {
       selectable: true,
       source: "bundled:weather",
     };
-    const catalog = createAgentActivationCatalog(
-      [skill("weather", "skill-r1")],
-      [plugin("weather")],
-      [mcp],
-      [],
-    );
+    const catalog = createAgentActivationCatalog([skill("weather", "skill-r1")], [plugin("weather")], [mcp], []);
 
     expect(catalog.entries.map((entry) => `${entry.kind}:${entry.id}`)).toEqual([
       "mcp:weather",
@@ -115,12 +105,9 @@ describe("@ activation catalog", () => {
 
   test("requires a catalog revision for structured activations", () => {
     const catalog = createAgentActivationCatalog([], [], [], []);
-    expect(() =>
-      assertAgentExplicitActivationsCurrent(
-        { catalogRevision: " ", explicit: [] },
-        catalog,
-      ),
-    ).toThrow(/catalog revision/u);
+    expect(() => assertAgentExplicitActivationsCurrent({ catalogRevision: " ", explicit: [] }, catalog)).toThrow(
+      /catalog revision/u,
+    );
   });
 });
 

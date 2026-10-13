@@ -202,10 +202,7 @@ function DockStepNode({
         <AppIcon
           icon="chevron-down"
           size={14}
-          className={cn(
-            "mt-1 shrink-0 text-content-muted transition-transform duration-200",
-            expanded && "rotate-180",
-          )}
+          className={cn("mt-1 shrink-0 text-content-muted transition-transform duration-200", expanded && "rotate-180")}
           aria-hidden="true"
         />
       ) : null}

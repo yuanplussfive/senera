@@ -533,10 +533,7 @@ function FeedGroupBlock({
           <AppIcon
             icon="chevron-down"
             size={14}
-            className={cn(
-              "shrink-0 text-content-muted transition-transform duration-200",
-              expanded && "rotate-180",
-            )}
+            className={cn("shrink-0 text-content-muted transition-transform duration-200", expanded && "rotate-180")}
             aria-hidden="true"
           />
         </button>

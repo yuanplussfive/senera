@@ -299,6 +299,7 @@ export class AgentMcpPackageDiscovery {
         network: "default",
         workspaceMount: "readonly",
         packageRoot: context.endpoint.packageRoot,
+        packageName: package_.name,
       }),
       terminationGraceMs: execution.Resources.TerminationGraceMs,
       maxFrameBytes: Math.max(execution.MaxStdoutBytes, execution.MaxStderrBytes),

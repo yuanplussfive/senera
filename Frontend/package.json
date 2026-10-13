@@ -80,7 +80,7 @@
     "react-virtuoso": "^4.18.7",
     "remark-gfm": "^4.0.0",
     "sigma": "^3.0.3",
-    "smol-toml": "^1.8.0",
+    "smol-toml": "^1.9.1",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.6.0",
     "zod": "^4.4.3",

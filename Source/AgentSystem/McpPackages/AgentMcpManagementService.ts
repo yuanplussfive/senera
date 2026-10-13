@@ -3,11 +3,7 @@ import type { AgentExtensionInputValue } from "../Extensions/AgentExtensionInput
 import type { AgentMcpInputService, AgentMcpInputStatus } from "../Credentials/AgentMcpInputService.js";
 import { deepFreeze } from "../Core/AgentDeepFreeze.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
-import type {
-  AgentMcpActivationCatalogEntry,
-  AgentMcpPackage,
-  AgentMcpPackageServer,
-} from "./AgentMcpPackageTypes.js";
+import type { AgentMcpActivationCatalogEntry, AgentMcpPackage, AgentMcpPackageServer } from "./AgentMcpPackageTypes.js";
 import {
   createAgentExtensionLocalizedText,
   resolveAgentExtensionLocalizedText,

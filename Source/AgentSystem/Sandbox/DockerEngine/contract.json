@@ -12,6 +12,7 @@
   "guest": {
     "workspaceRoot": "/workspace",
     "user": "node",
+    "bootstrapUser": "0",
     "shell": {
       "command": "/bin/sh",
       "arguments": ["-lc"]

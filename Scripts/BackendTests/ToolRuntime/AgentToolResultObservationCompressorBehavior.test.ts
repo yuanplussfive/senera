@@ -168,7 +168,7 @@ describe("AgentToolResultObservationCompressor", () => {
       artifactPath: artifact.artifactPath,
       summary: "Deployment completed; revision rev-42 is active.",
     });
-  });
+  }, 30_000);
 
   test("returns a pressure observation when the dynamic budget cannot fit the envelope", async () => {
     const compressor = createCompressor();

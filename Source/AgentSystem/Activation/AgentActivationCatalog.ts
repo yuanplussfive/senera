@@ -78,9 +78,7 @@ export function createAgentActivationCatalog(
   return deepFreeze({ revision: sha256HexOfCanonicalJson(entries), entries });
 }
 
-function assertUniqueActivationEntries(
-  entries: readonly AgentActivationCatalogEntry[],
-): void {
+function assertUniqueActivationEntries(entries: readonly AgentActivationCatalogEntry[]): void {
   const seen = new Set<string>();
   for (const entry of entries) {
     const key = `${entry.kind}:${entry.id}`;

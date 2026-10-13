@@ -134,9 +134,7 @@ describe("MCP management", () => {
 
     management.setInput("credential-test", "TEST_SECRET", "configured-for-activation");
     expect(
-      management
-        .activationCatalog([])
-        .entries.find((entry) => entry.kind === "mcp" && entry.id === "credential-test"),
+      management.activationCatalog([]).entries.find((entry) => entry.kind === "mcp" && entry.id === "credential-test"),
     ).toMatchObject({ enabled: true, selectable: true });
   });
 
@@ -305,9 +303,7 @@ describe("MCP management", () => {
     const snapshot = events[0];
     if (snapshot.kind !== "mcp_server.snapshot") throw new Error("Expected an MCP snapshot event.");
     expect(snapshot.data.activation.entries).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: "mcp", id: "credential-test", selectable: true }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ kind: "mcp", id: "credential-test", selectable: true })]),
     );
     expect(JSON.stringify(events)).not.toContain(secret);
   });

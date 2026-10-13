@@ -83,6 +83,7 @@ export class AgentMcpToolRunner {
         network: executionPlan.network,
         workspaceMount: executionPlan.workspaceMount,
         packageRoot: handler.server.transport === "http" ? undefined : handler.server.packageRoot,
+        packageName: handler.server.transport === "http" ? undefined : handler.server.packageName,
       });
       const runtime = resolveAgentToolRuntimeCapabilities(tool);
       if (runtime.interactiveInput && !this.options.interactionInput) {

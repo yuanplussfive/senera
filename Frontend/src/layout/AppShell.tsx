@@ -461,7 +461,11 @@ export function AppShell({
           </motion.div>
         ) : null}
 
-        <div className="workspace-main relative flex min-w-0 flex-1 overflow-hidden" data-workspace-main>
+        <div
+          className="workspace-main relative flex min-w-0 flex-1 overflow-hidden"
+          data-workspace-main
+          data-window-controls-scope={renderPlan.workflowPanelLayout === "inline" ? "contained" : "viewport"}
+        >
           {chatPanel}
         </div>
 

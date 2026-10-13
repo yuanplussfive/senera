@@ -19,6 +19,30 @@ export function isPathWithin(root: string, target: string): boolean {
   return relativePathWithin(root, target) !== undefined;
 }
 
+export type AgentHostGuestPathMapping =
+  { readonly hostRoot: string; readonly guestRoot: string } | { readonly hostPath: string; readonly guestPath: string };
+
+/**
+ * Projects an absolute host path through the longest matching rootfs mapping.
+ * Non-path values are returned unchanged so callers can safely apply this to
+ * argv and environment values at a process boundary.
+ */
+export function projectHostPathThroughMappings(value: string, mappings: readonly AgentHostGuestPathMapping[]): string {
+  if (!path.isAbsolute(value) || mappings.length === 0) return value;
+  const match = mappings
+    .map((mapping) => ({
+      mapping,
+      hostRoot: "hostRoot" in mapping ? mapping.hostRoot : mapping.hostPath,
+      guestRoot: "guestRoot" in mapping ? mapping.guestRoot : mapping.guestPath,
+    }))
+    .map((mapping) => ({ ...mapping, relative: relativePathWithin(mapping.hostRoot, value) }))
+    .sort((left, right) => path.resolve(right.hostRoot).length - path.resolve(left.hostRoot).length)
+    .find((entry) => entry.relative !== undefined);
+  if (!match || match.relative === undefined) return value;
+  const relative = match.relative.split(path.sep).join("/");
+  return relative ? `${match.guestRoot}/${relative}` : match.guestRoot;
+}
+
 export function isSamePath(left: string, right: string): boolean {
   return path.relative(path.resolve(left), path.resolve(right)) === "";
 }

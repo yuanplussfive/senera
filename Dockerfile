@@ -22,6 +22,7 @@ COPY . .
 
 RUN npm run build
 RUN npm --workspace senera-frontend run build
+RUN npm run desktop.prepare-mcp-runtime
 RUN --mount=type=cache,target=/root/.npm,sharing=locked npm prune --omit=dev
 RUN node Dist/Scripts/VerifyDockerNativeSqlite.js
 
@@ -46,7 +47,7 @@ COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/Dist ./Dist
 COPY --from=builder --chown=node:node /app/Frontend/dist ./Frontend/dist
-COPY --from=builder /app/McpServers ./McpServers
+COPY --from=builder /app/.cache/desktop-mcp-runtime/McpServers ./McpServers
 COPY --from=builder /app/System ./System
 COPY --from=builder /app/Packages ./Packages
 COPY --from=builder /app/senera.config.example.json ./senera.config.example.json

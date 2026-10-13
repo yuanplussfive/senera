@@ -14,7 +14,11 @@ import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type { AgentToolSearchScenarioSource } from "../ToolSearch/AgentToolSearchScenarioSource.js";
 import type { AgentRuntimeModule } from "./AgentRuntimeModule.js";
 import { AgentMcpPackageScanner, assertUniqueAgentMcpServerNames } from "../McpPackages/AgentMcpPackageScanner.js";
-import { AgentMcpPackageDiscovery } from "../McpPackages/AgentMcpPackageDiscovery.js";
+import {
+  AgentMcpPackageDiscovery,
+  AgentMcpPackageDiscoveryError,
+  type AgentUnavailableMcpServer,
+} from "../McpPackages/AgentMcpPackageDiscovery.js";
 import { AgentMcpPackageSourceKinds } from "../McpPackages/AgentMcpPackageTypes.js";
 import { isAgentMcpPackageToolNameForServer } from "../McpPackages/AgentMcpPackageIdentity.js";
 import { AgentMcpPackageCatalog } from "../McpPackages/AgentMcpPackageCatalog.js";
@@ -314,7 +318,20 @@ export class AgentSystemRuntime {
       .filter((activation) => activation.kind === "mcp")
       .map((activation) => activation.id);
     if (serverIds.length === 0) return;
-    await this.mcpPackageCatalog.discoverServices([...new Set(serverIds)], signal);
+    const requested = [...new Set(serverIds)];
+    const result = await this.mcpPackageCatalog.discoverServices(requested, signal);
+    if (result.failures.length > 0) throw new AgentMcpPackageDiscoveryError(result.failures);
+    if (result.unavailableServers.length > 0) {
+      throw new Error(formatExplicitMcpUnavailable(result.unavailableServers));
+    }
+    if (result.notFound.length > 0) {
+      const declared = new Set(this.mcpPackageCatalog.services().map((service) => service.id));
+      const unknown = result.notFound.filter((serverId) => !declared.has(serverId));
+      if (unknown.length > 0) {
+        throw new Error(`Explicit MCP service is not registered: ${unknown.join(", ")}.`);
+      }
+      throw new Error(`Explicit MCP has no registered capabilities: ${result.notFound.join(", ")}.`);
+    }
   }
 
   close(): Promise<void> {
@@ -400,7 +417,7 @@ export class AgentSystemRuntime {
         [...deferredMcpServerNames].some((serverName) => isAgentMcpPackageToolNameForServer(toolName, serverName)),
     });
     this.mcpPackageCatalog.registerDeferred(
-      [...discovery.deferredServers, ...discovery.servers],
+      packages.flatMap((package_) => package_.servers.map((server) => ({ package_, server }))),
       {
         discover: (server, signal) =>
           packageDiscovery.discover(
@@ -503,6 +520,16 @@ export class AgentSystemRuntime {
     task.controller.abort("Agent runtime is closing.");
     return task.promise;
   }
+}
+
+function formatExplicitMcpUnavailable(servers: readonly AgentUnavailableMcpServer[]): string {
+  const details = servers.map((server) => {
+    if (server.reason === "needs_input") {
+      return `${server.serverName} requires configuration inputs: ${server.inputIds.join(", ")}`;
+    }
+    return `${server.serverName} is missing host capabilities: ${server.missingCapabilities.join(", ")}`;
+  });
+  return `Explicit MCP is unavailable. ${details.join("; ")}.`;
 }
 
 interface AgentToolSearchPrewarmTask {

@@ -4,10 +4,7 @@ import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { assertInsideRoot, parseAgentArtifactUri } from "../Artifacts/AgentArtifactLocator.js";
 import { AgentArtifactManifestIndexCache } from "../Memory/AgentArtifactManifestIndexCache.js";
-import {
-  WorkspaceSnapshotContentsSchema,
-  type ArtifactSnapshotContent,
-} from "../Memory/AgentArtifactMemoryTypes.js";
+import { WorkspaceSnapshotContentsSchema, type ArtifactSnapshotContent } from "../Memory/AgentArtifactMemoryTypes.js";
 import { resolveArtifactsConfig } from "../AgentDefaults.js";
 import { SeneraWorkspaceBoundary } from "../Execution/SeneraWorkspaceBoundary.js";
 import { AgentResourceAccessIntents } from "../Safety/AgentResourceAccessPolicy.js";

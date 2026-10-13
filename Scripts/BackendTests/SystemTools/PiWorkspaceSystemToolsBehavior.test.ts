@@ -37,7 +37,7 @@ describe("Pi workspace System Tools", () => {
       unpackedPath,
     );
     expect(() => resolveAsarUnpackedExecutablePath(packagedPath, () => false)).toThrow(
-      "Packaged native executable is missing",
+      "Packaged native resource is missing",
     );
     expect(resolveAsarUnpackedExecutablePath(path.join("runtime", "node_modules", "rg.exe"))).toBe(
       path.join("runtime", "node_modules", "rg.exe"),

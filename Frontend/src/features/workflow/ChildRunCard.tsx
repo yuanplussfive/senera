@@ -100,10 +100,7 @@ export function ChildRunActivity({ childRun, agentName, childToolSteps }: ChildR
           <AppIcon
             icon="chevron-down"
             size={14}
-            className={cn(
-              "shrink-0 text-content-muted transition-transform duration-200",
-              open && "rotate-180",
-            )}
+            className={cn("shrink-0 text-content-muted transition-transform duration-200", open && "rotate-180")}
             aria-hidden="true"
           />
         ) : null}

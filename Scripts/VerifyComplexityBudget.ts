@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import fg from "fast-glob";
+import { globSync } from "tinyglobby";
 import { toPosixPath } from "./Support/FileWalk.js";
 
 interface ComplexityBudget {
@@ -144,14 +144,12 @@ function inspectDirectoryBudgets(): string[] {
 
 function readSourceFileMetrics(): SourceFileMetric[] {
   const patterns = budget.sourceRoots.map((root) => `${toPosixPath(root)}/**/*`);
-  return fg
-    .sync(patterns, {
-      cwd: workspaceRoot,
-      absolute: false,
-      onlyFiles: true,
-      unique: true,
-      ignore: budget.ignoredGlobs,
-    })
+  return globSync(patterns, {
+    cwd: workspaceRoot,
+    absolute: false,
+    onlyFiles: true,
+    ignore: budget.ignoredGlobs,
+  })
     .filter((file) => budget.fileExtensions.includes(path.extname(file)))
     .sort((left, right) => left.localeCompare(right))
     .map((file) => ({

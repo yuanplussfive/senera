@@ -18,6 +18,16 @@ textarea::-webkit-scrollbar {
   width: var(--scrollbar-size);
   height: var(--scrollbar-size);
 }
+.scrollbar-thin::-webkit-scrollbar-button,
+[data-virtuoso-scroller="true"]::-webkit-scrollbar-button,
+.markdown-renderer__table-wrap::-webkit-scrollbar-button,
+.code-artifact-viewer__source::-webkit-scrollbar-button,
+[data-code]::-webkit-scrollbar-button,
+textarea::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
 .scrollbar-thin::-webkit-scrollbar-thumb,
 [data-virtuoso-scroller="true"]::-webkit-scrollbar-thumb,
 .markdown-renderer__table-wrap::-webkit-scrollbar-thumb,

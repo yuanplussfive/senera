@@ -106,7 +106,11 @@ export function CodeArtifactViewer({
                   aria-label={frontendMessage("code.copy")}
                 >
                   <MotionIconSwap stateKey={copied ? "copied" : "copy"}>
-                    {copied ? <AppIcon icon="checkmark" size={14} className="text-moss-500" /> : <AppIcon icon="copy" size={14} />}
+                    {copied ? (
+                      <AppIcon icon="checkmark" size={14} className="text-moss-500" />
+                    ) : (
+                      <AppIcon icon="copy" size={14} />
+                    )}
                   </MotionIconSwap>
                 </button>
               </Tooltip>

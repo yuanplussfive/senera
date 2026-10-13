@@ -6,9 +6,7 @@ import type { TimelineStep } from "./types";
  * durable answer trace. The two records have different storage ids, so the
  * semantic key is used when reconciling those projections.
  */
-export function assistantTerminalStepKey(
-  step: Pick<TimelineStep, "kind" | "decisionKind">,
-): string | undefined {
+export function assistantTerminalStepKey(step: Pick<TimelineStep, "kind" | "decisionKind">): string | undefined {
   if (step.kind !== "answer") return undefined;
   return `answer:${step.decisionKind?.trim() || "final_answer"}`;
 }

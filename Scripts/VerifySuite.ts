@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import fg from "fast-glob";
+import { globSync } from "tinyglobby";
 import { toPosixRelative } from "./Support/FileWalk.js";
 
 interface VerifySuitesConfig {
@@ -96,14 +96,11 @@ function resolveSuiteDefinition(name: string, suite: VerifySuiteDefinition): str
   const unresolvedPatterns: string[] = [];
 
   for (const includePattern of includePatterns) {
-    const matches = fg
-      .sync([includePattern, ...excludePatterns], {
-        cwd: distScriptsRoot,
-        absolute: true,
-        onlyFiles: true,
-        unique: true,
-      })
-      .sort((left, right) => path.basename(left).localeCompare(path.basename(right)));
+    const matches = globSync([includePattern, ...excludePatterns], {
+      cwd: distScriptsRoot,
+      absolute: true,
+      onlyFiles: true,
+    }).sort((left, right) => path.basename(left).localeCompare(path.basename(right)));
 
     if (matches.length === 0) {
       unresolvedPatterns.push(includePattern);

@@ -20,7 +20,6 @@ const { frontendMessage } = await import("../../../Frontend/src/i18n/frontendMes
 const { AppMotionProvider } = await import("../../../Frontend/src/shared/motion/MotionProvider.tsx");
 const { Position, ReactFlowProvider } = await import("@xyflow/react");
 const { useStore } = await import("../../../Frontend/src/store/sessionStore.ts");
-const { frontendFeatureMessage } = await import("../../../Frontend/src/i18n/frontendFeatureMessageCatalog.ts");
 const { projectWorkflowActivities, projectWorkflowSteps } =
   await import("../../../Frontend/src/features/workflow/workflowPresentationProjection.ts");
 const {
@@ -297,7 +296,7 @@ test("chat header exposes one neutral workflow tool entry for panel toggling", a
   expect(document.querySelector("[data-testid='chat-header']")).toHaveClass("h-[var(--senera-top-chrome-height)]");
   expect(document.querySelector("[data-workflow-dock]")).not.toBeInTheDocument();
   expect(document.querySelector('[data-workflow-dock-trigger="header"]')).toContainElement(expandButton);
-  expect(document.querySelector("[data-window-controls-inset]")).toBeInTheDocument();
+  expect(document.querySelector("[data-chat-header]")).not.toHaveAttribute("data-window-controls-inset");
   expect(expandButton).toHaveAttribute("aria-expanded", "false");
   expect(expandButton.className).not.toMatch(/terra|blue|indigo|violet/);
   await user.click(expandButton);

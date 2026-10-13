@@ -83,12 +83,6 @@ export function useConfigMutationController({
       deleteProviderModel: providerModelMutations.deleteProviderModel,
       setDefaultProviderModel: providerModelMutations.setDefaultProviderModel,
     }),
-    [
-      configCommands,
-      endpointMutations,
-      ingestConfigMutationEvent,
-      providerModelMutations,
-      socketStatus,
-    ],
+    [configCommands, endpointMutations, ingestConfigMutationEvent, providerModelMutations, socketStatus],
   );
 }

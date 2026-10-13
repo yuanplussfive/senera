@@ -49,7 +49,7 @@
   },
   "_meta": {
     "ai.senera/execution": {
-      "targets": ["local"],
+      "targets": ["local", "sandbox"],
       "preferred": "local"
     },
     "ai.senera/tool-i18n": {

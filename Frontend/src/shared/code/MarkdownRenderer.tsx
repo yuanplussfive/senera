@@ -158,7 +158,9 @@ function MarkdownLink({
       rel={external ? "noreferrer noopener" : props.rel}
     >
       {children}
-      {external ? <AppIcon icon="external-link" size={14} className="markdown-renderer__link-icon" aria-hidden="true" /> : null}
+      {external ? (
+        <AppIcon icon="external-link" size={14} className="markdown-renderer__link-icon" aria-hidden="true" />
+      ) : null}
     </a>
   );
 }
@@ -423,7 +425,11 @@ function CodeBlockHeader({
             aria-label={frontendMessage("code.copyLanguage", { language })}
           >
             <MotionIconSwap stateKey={copied ? "copied" : "copy"}>
-              {copied ? <AppIcon icon="checkmark" size={14} className="text-moss-500" /> : <AppIcon icon="copy" size={14} />}
+              {copied ? (
+                <AppIcon icon="checkmark" size={14} className="text-moss-500" />
+              ) : (
+                <AppIcon icon="copy" size={14} />
+              )}
             </MotionIconSwap>
           </button>
         </Tooltip>

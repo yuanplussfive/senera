@@ -1,5 +1,4 @@
 import type { AgentEventSink } from "../Events/AgentEvent.js";
-import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
 import { AgentEventKinds, emitAgentEvent } from "../Events/AgentEvent.js";
 import type { AgentEventEnvelope } from "../Events/AgentEventBase.js";
 import { matchByKind } from "../Core/AgentMatch.js";
@@ -232,15 +231,15 @@ export class AgentSessionManager {
   > {
     const sessionIds = [...new Set(request.sessionIds)];
     return Promise.all(
-        sessionIds.map(async (sessionId) => {
-          try {
-            await this.closeSession({ sessionId, onEvent: request.onEvent });
-            return { sessionId, kind: "completed" as const };
-          } catch (error) {
-            return { sessionId, kind: "failed" as const, error };
-          }
-        }),
-      );
+      sessionIds.map(async (sessionId) => {
+        try {
+          await this.closeSession({ sessionId, onEvent: request.onEvent });
+          return { sessionId, kind: "completed" as const };
+        } catch (error) {
+          return { sessionId, kind: "failed" as const, error };
+        }
+      }),
+    );
   }
 
   private async recoverRuntimeState(): Promise<void> {
@@ -692,13 +691,6 @@ export class AgentSessionManager {
     onEvent?: AgentEventSink;
   }): Promise<void> {
     await this.ready();
-    try {
-    } catch (error) {
-      this.options.logger?.warn("memory.flush_before_compaction_failed", {
-        sessionId: request.sessionId,
-        error: serializeError(error),
-      });
-    }
     await this.piManagement.run(
       request,
       AgentSessionOperations.Compact,

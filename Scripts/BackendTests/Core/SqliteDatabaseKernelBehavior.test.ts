@@ -30,6 +30,9 @@ describe("SQLite database kernel", () => {
     const initial = new AgentSqliteDatabaseKernel({ databasePath, contract: AgentConfigDatabaseContract });
 
     expect(initial.timeZone).toBe(DefaultAgentTimeZone);
+    expect(initial.connection.prepare("SELECT vec_version() AS version").get()).toEqual({
+      version: expect.stringMatching(/^v\d+\.\d+\.\d+$/),
+    });
     expect(initial.connection.prepare(`SELECT time_zone FROM ${AgentSqliteTimeMetadataTable}`).all()).toEqual([
       { time_zone: DefaultAgentTimeZone },
     ]);

@@ -261,9 +261,15 @@ async function startSeneraServerHost(
     cleanup.defer(() => configService.close());
     const embedding = new AgentWorkspaceEmbeddingRuntime();
     cleanup.defer(() => embedding.close());
+    const transportConfig = (): AgentSystemConfig => {
+      const config = configService.snapshot().value;
+      const projected = options.runtimeConfigProjection?.(config);
+      if (!projected || projected.Server === config.Server) return config;
+      return { ...config, Server: projected.Server };
+    };
     const transport = new AgentWebSocketTransport({
       applicationRoot: applicationStateRoot,
-      config: () => configService.snapshot().value,
+      config: transportConfig,
       defaultWorkspaceId: catalog.register(workspaceRoot).id,
       catalog,
       openWorkspace: async (id) => {

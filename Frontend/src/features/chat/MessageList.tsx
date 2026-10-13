@@ -441,7 +441,10 @@ export function MessageList({
 
   return (
     <PerformanceMonitor id="MessageList" enabled={import.meta.env.DEV}>
-      <div className="relative flex min-h-0 flex-1 flex-col">
+      <div
+        className="relative flex min-h-0 flex-1 flex-col"
+        data-chat-rail-mode={supportsHover && !prefersCompactControls ? "overlay" : "native"}
+      >
         <Suspense fallback={<MessageListVirtualizerLoadingState />}>
           <LazyMessageListVirtualizer
             ref={autoScroll.ref}

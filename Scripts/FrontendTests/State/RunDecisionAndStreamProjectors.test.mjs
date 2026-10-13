@@ -1,12 +1,7 @@
 import { expect, test } from "vitest";
 import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
 import { applyEvent } from "../../../Frontend/src/store/session/sessionProjector.ts";
-import {
-  createEvent,
-  createTestState,
-  TestRequestId,
-  TestSessionId,
-} from "./sessionProjectorTestUtils.mjs";
+import { createEvent, createTestState, TestRequestId, TestSessionId } from "./sessionProjectorTestUtils.mjs";
 
 test("regeneration truncation acknowledgement preserves the optimistic replacement request", () => {
   const state = createTestState();

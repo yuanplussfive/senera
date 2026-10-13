@@ -1,7 +1,16 @@
 import { useEffect, useState } from "react";
 import type { ConfigMutationState } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { AppIcon, Button, Dialog, DialogActionButton, DialogActions, DialogContent, IconButton, Spinner } from "../../shared/ui";
+import {
+  AppIcon,
+  Button,
+  Dialog,
+  DialogActionButton,
+  DialogActions,
+  DialogContent,
+  IconButton,
+  Spinner,
+} from "../../shared/ui";
 
 export function PersonaControl({
   open,

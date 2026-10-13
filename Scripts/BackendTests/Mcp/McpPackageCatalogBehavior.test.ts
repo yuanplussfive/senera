@@ -35,7 +35,10 @@ describe("MCP package catalog", () => {
         ],
       }),
     });
-    await catalog.discoverServices([cached.server.name]);
+    const outcome = await catalog.discoverServices([cached.server.name]);
+    expect(outcome.failures).toHaveLength(1);
+    expect(outcome.failures[0]?.serverName).toBe(cached.server.name);
+    expect(outcome.notFound).toEqual([]);
     expect(registry.getTool("mcp__catalog_fixture__stable")?.availability).toEqual({
       status: "unavailable",
       reason: "discovery_failed",
@@ -45,6 +48,30 @@ describe("MCP package catalog", () => {
       type: "object",
     });
     expect(catalog.services()[0]?.availability.status).toBe("unavailable");
+  });
+
+  test("reports a declared server with no callable capabilities as not found", async () => {
+    const registry = new AgentExtensionRegistry();
+    const catalog = new AgentMcpPackageCatalog(registry, { refresh: vi.fn() });
+    const discovered = serverFixture([]);
+    catalog.registerPackages([discovered.package_]);
+    catalog.registerDeferred([discovered], {
+      discover: async () => ({
+        servers: [discovered],
+        deferredServers: [],
+        unavailableServers: [],
+        failures: [],
+      }),
+    });
+
+    const outcome = await catalog.discoverServices([discovered.server.name]);
+
+    expect(outcome).toEqual({
+      ready: [],
+      failures: [],
+      unavailableServers: [],
+      notFound: [discovered.server.name],
+    });
   });
 
   test("does not turn cancellation into service failure or cancel the next discovery", async () => {

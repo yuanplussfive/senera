@@ -7,7 +7,9 @@ import {
   validateAgentMcpToolDeclarations,
   type AgentDeferredMcpServer,
   type AgentDiscoveredMcpServer,
+  type AgentMcpPackageDiscoveryFailure,
   type AgentMcpPackageDiscoveryResult,
+  type AgentUnavailableMcpServer,
 } from "./AgentMcpPackageDiscovery.js";
 import { createAgentMcpPackageOwner, projectAgentMcpPackageTools } from "./AgentMcpPackageToolProjector.js";
 import type { AgentMcpPackage, AgentMcpServiceDiscoveryEntry } from "./AgentMcpPackageTypes.js";
@@ -25,6 +27,13 @@ export interface AgentMcpPackageCatalogInstallOptions {
 
 export interface AgentMcpPackageCatalogDeferredDiscovery {
   discover(server: AgentDeferredMcpServer, signal?: AbortSignal): Promise<AgentMcpPackageDiscoveryResult>;
+}
+
+export interface AgentMcpServiceDiscoveryResult {
+  readonly ready: readonly string[];
+  readonly failures: readonly AgentMcpPackageDiscoveryFailure[];
+  readonly unavailableServers: readonly AgentUnavailableMcpServer[];
+  readonly notFound: readonly string[];
 }
 
 export class AgentMcpPackageCatalog {
@@ -147,14 +156,28 @@ export class AgentMcpPackageCatalog {
    * current request. The catalog remains empty for unrelated servers, so a
    * search for one MCP capability cannot start every installed process.
    */
-  async discoverServices(serviceIds: readonly string[], signal?: AbortSignal): Promise<void> {
+  async discoverServices(serviceIds: readonly string[], signal?: AbortSignal): Promise<AgentMcpServiceDiscoveryResult> {
     throwIfAborted(signal);
+    const requested = [...new Set(serviceIds)];
+    const failures: AgentMcpPackageDiscoveryFailure[] = [];
+    const unavailableServers: AgentUnavailableMcpServer[] = [];
     const discovery = this.deferredDiscovery;
-    if (!discovery || this.deferredServers.size === 0) return;
-    const candidates = [...this.deferredServers.values()].filter((server) => serviceIds.includes(server.server.name));
-    for (const server of candidates) {
-      await this.discoverDeferredServer(server, discovery, signal);
+    if (discovery && this.deferredServers.size > 0) {
+      const candidates = [...this.deferredServers.values()].filter((server) => requested.includes(server.server.name));
+      for (const server of candidates) {
+        const result = await this.discoverDeferredServer(server, discovery, signal);
+        failures.push(...(result?.failures ?? []));
+        unavailableServers.push(...(result?.unavailableServers ?? []));
+      }
     }
+    const ready = requested.filter((serviceId) => this.registry.listToolsForOwnerName("mcp", serviceId).length > 0);
+    const failedIds = new Set(failures.map((failure) => failure.serverName));
+    const unavailableIds = new Set(unavailableServers.map((server) => server.serverName));
+    const readyIds = new Set(ready);
+    const notFound = requested.filter(
+      (serviceId) => !readyIds.has(serviceId) && !failedIds.has(serviceId) && !unavailableIds.has(serviceId),
+    );
+    return { ready, failures, unavailableServers, notFound };
   }
 
   async update(change: AgentMcpToolsChanged): Promise<void> {
@@ -197,11 +220,11 @@ export class AgentMcpPackageCatalog {
     server: AgentDeferredMcpServer,
     discovery: AgentMcpPackageCatalogDeferredDiscovery,
     signal?: AbortSignal,
-  ): Promise<void> {
-    await this.discoveryLeases.run(
+  ): Promise<AgentMcpPackageDiscoveryResult | undefined> {
+    return await this.discoveryLeases.run(
       server.server.name,
       async () => {
-        if (!this.deferredServers.has(server.server.name)) return;
+        if (!this.deferredServers.has(server.server.name)) return undefined;
         const result = await discovery.discover(server, signal);
         throwIfAborted(signal);
         this.recordDiscoveryIssues(result);
@@ -219,8 +242,9 @@ export class AgentMcpPackageCatalog {
             servers: result.unavailableServers.map((unavailable) => unavailable.serverName),
           });
         }
-        if (result.servers.length === 0) return;
+        if (result.servers.length === 0) return result;
         await this.install(result.servers, this.referenceValidation);
+        return result;
       },
       signal,
     );

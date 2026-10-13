@@ -34,6 +34,18 @@ describe("standard MCP package discovery", () => {
     expect(packages.find((package_) => package_.name === "weather")?.configurationPath).toBe(
       path.resolve("McpServers", "weather", "manifest.json"),
     );
+    expect(packages.find((package_) => package_.name === "imagen")?.execution).toEqual({
+      targets: ["local", "sandbox"],
+      preferred: "local",
+    });
+    expect(packages.find((package_) => package_.name === "weather")?.execution).toEqual({
+      targets: ["local", "sandbox"],
+      preferred: "local",
+    });
+    expect(packages.find((package_) => package_.name === "zavora-computer-use")?.execution).toEqual({
+      targets: ["local"],
+      preferred: "local",
+    });
     expect(packages.every((package_) => package_.execution?.preferred === "local")).toBe(true);
     expect(packages.find((package_) => package_.name === "zavora-computer-use")?.requirements).toEqual({
       hostCapabilities: ["interactive-desktop"],

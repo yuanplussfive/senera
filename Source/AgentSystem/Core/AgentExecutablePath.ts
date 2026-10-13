@@ -10,6 +10,6 @@ export function resolveAsarUnpackedExecutablePath(
   const segmentIndex = candidate.indexOf(asarSegment);
   if (segmentIndex < 0) return candidate;
   const unpacked = `${candidate.slice(0, segmentIndex)}${path.sep}app.asar.unpacked${path.sep}${candidate.slice(segmentIndex + asarSegment.length)}`;
-  if (!fileExists(unpacked)) throw new Error(`Packaged native executable is missing: ${unpacked}`);
+  if (!fileExists(unpacked)) throw new Error(`Packaged native resource is missing: ${unpacked}`);
   return unpacked;
 }

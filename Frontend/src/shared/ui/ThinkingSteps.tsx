@@ -181,9 +181,9 @@ export function ThinkingStep({
   className,
   ...props
 }: ThinkingStepProps): JSX.Element | null {
+  const { rail } = useThinkingStepsContext("ThinkingStep");
   if (status === "pending") return null;
 
-  const { rail } = useThinkingStepsContext("ThinkingStep");
   const active = status === "active";
   const iconNode =
     leading ??

@@ -334,7 +334,11 @@ function relativeModuleSpecifiers(filePath: string, source: string): readonly st
 }
 
 function resolveRelativeModuleSource(sourceRoot: string, sourcePath: string, specifier: string): string {
-  const unresolved = path.resolve(path.dirname(sourcePath), specifier);
+  // Bundlers attach query/hash metadata (for example `?inline`) to a source
+  // path. The distribution closure follows the filesystem resource, while
+  // the bundler remains responsible for interpreting that metadata later.
+  const resourceSpecifier = specifier.split(/[?#]/u, 1)[0];
+  const unresolved = path.resolve(path.dirname(sourcePath), resourceSpecifier);
   const relative = path.relative(sourceRoot, unresolved);
   if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
     throw new Error(`Nano relative module import escapes the source root: ${toPosixPath(sourcePath)} -> ${specifier}`);
@@ -350,6 +354,7 @@ function resolveRelativeModuleSource(sourceRoot: string, sourcePath: string, spe
 function relativeModuleCandidates(unresolved: string): readonly string[] {
   const candidates = new Set<string>([unresolved]);
   const extension = path.extname(unresolved);
+  const knownModuleExtensions = new Set([".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".json"]);
   const replacementExtensions = new Map<string, readonly string[]>([
     [".js", [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx"]],
     [".jsx", [".tsx", ".ts", ".jsx", ".js"]],
@@ -359,7 +364,7 @@ function relativeModuleCandidates(unresolved: string): readonly string[] {
   if (replacementExtensions) {
     const stem = unresolved.slice(0, -extension.length);
     for (const replacement of replacementExtensions) candidates.add(`${stem}${replacement}`);
-  } else if (!extension) {
+  } else if (!knownModuleExtensions.has(extension)) {
     for (const suffix of [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".d.ts", ".json"]) {
       candidates.add(`${unresolved}${suffix}`);
       candidates.add(path.join(unresolved, `index${suffix}`));

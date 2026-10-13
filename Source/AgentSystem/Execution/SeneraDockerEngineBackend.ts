@@ -38,6 +38,7 @@ import {
   createSeneraSandboxTerminalDescriptor,
   projectSeneraSandboxTerminalMetadata,
 } from "./SeneraSandboxTerminalDescriptor.js";
+import { projectHostPathThroughMappings } from "../Core/AgentPath.js";
 
 export interface SeneraDockerEngineBackendOptions {
   workspaceRoot: string;
@@ -94,14 +95,16 @@ export class SeneraDockerEngineBackend implements SeneraProcessExecutionBackend,
       environment: request.env,
       profile: request.profile,
     });
+    const command = projectHostPathThroughMappings(request.command, context.rootfsCopies);
+    const args = request.args.map((argument) => projectHostPathThroughMappings(argument, context.rootfsCopies));
     let handle: Awaited<ReturnType<SeneraSandboxWorkerClient["start"]>> | undefined;
     let result: SeneraShellExecutionResult | undefined;
     let primaryError: SeneraExecutionError | undefined;
     try {
       handle = await this.options.worker.start({
         requestId: this.requestIdFactory(),
-        command: request.command,
-        arguments: [...request.args],
+        command,
+        arguments: [...args],
         cwd: context.guestCwd,
         environment: context.environment,
         ...(request.stdin === undefined ? {} : { stdin: request.stdin }),
@@ -170,12 +173,16 @@ export class SeneraDockerEngineBackend implements SeneraProcessExecutionBackend,
       environment: options.env,
       profile: options.profile,
     });
+    const sandboxCommand = projectHostPathThroughMappings(invocation.command, context.rootfsCopies);
+    const sandboxArgs = invocation.args.map((argument) =>
+      projectHostPathThroughMappings(argument, context.rootfsCopies),
+    );
     let handle: Awaited<ReturnType<SeneraSandboxWorkerClient["start"]>>;
     try {
       handle = await this.options.worker.start({
         requestId: this.requestIdFactory(),
-        command: invocation.command,
-        arguments: [...invocation.args],
+        command: sandboxCommand,
+        arguments: [...sandboxArgs],
         cwd: context.guestCwd,
         environment: context.environment,
         interactive: false,

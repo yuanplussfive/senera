@@ -44,7 +44,7 @@ export type AgentActionPlannerBamlFunctionArgs =
       input: AgentBamlToolRiskAuditPromptInput;
       invalidAudit: string;
       issues: string[];
-    }
+    };
 
 export class AgentActionPlannerBamlPromptFactory {
   private readonly promptRegistry = createAgentBamlPromptBuilderRegistry();

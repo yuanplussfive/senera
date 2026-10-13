@@ -32,7 +32,8 @@ interface SizeContextValue {
 const SizeContext = createContext<SizeContextValue | null>(null);
 
 function useSizeVariant(override?: SizeVariant | null): SizeVariant {
-  return override ?? useContext(SizeContext)?.size ?? "default";
+  const context = useContext(SizeContext);
+  return override ?? context?.size ?? "default";
 }
 
 function useSize(override?: SizeVariant | null): SizeClasses {

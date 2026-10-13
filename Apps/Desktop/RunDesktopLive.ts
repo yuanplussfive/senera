@@ -3,7 +3,6 @@ import path from "node:path";
 import process from "node:process";
 import { sync as spawnSync } from "cross-spawn";
 import { DesktopNativeModuleMaintenance } from "../../Build/DesktopNativeModuleMaintenance.js";
-import { workspaceHasElectronNativeArtifacts } from "../../Build/PrepareElectronNativeModules.js";
 import { isMainModule } from "../../Source/AgentSystem/Core/AgentPath.js";
 import { sleep } from "../../Source/AgentSystem/Core/AgentTiming.js";
 import {
@@ -22,6 +21,7 @@ interface CommandInvocation {
 
 const DesktopChildTerminationGraceMs = 2_000;
 const DesktopElectronDevelopmentArguments = ["--disable-gpu", "--disable-gpu-compositing", "--in-process-gpu"];
+const ElectronNativeDependencyArguments = [`--platform=${process.platform}`, `--arch=${process.arch}`];
 const desktopLiveUserDataDir = path.join(process.cwd(), ".senera", "data", "desktop");
 const configuredFrontendUrl = process.env.SENERA_DESKTOP_FRONTEND_URL?.trim();
 const defaultFrontendUrl = "http://127.0.0.1:5173";
@@ -46,14 +46,11 @@ async function main(): Promise<void> {
     registerShutdownHandlers();
     await nativeMaintenance.clearRebuildMetadata();
 
-    const setupSteps = [command("npm", ["run", "build"])];
-    const nativeRebuildRequired = !workspaceHasElectronNativeArtifacts(process.cwd());
-    if (nativeRebuildRequired) {
-      nativeDependenciesRequireRestore = true;
-      setupSteps.push(command("electron-builder", ["install-app-deps", "--platform=win32", "--arch=x64"]));
-    } else {
-      console.log("\n> using better-sqlite3 N-API prebuild; skipping electron-builder install-app-deps");
-    }
+    const setupSteps = [
+      command("npm", ["run", "build"]),
+      command("electron-builder", ["install-app-deps", ...ElectronNativeDependencyArguments]),
+    ];
+    nativeDependenciesRequireRestore = true;
 
     for (const step of setupSteps) {
       const result = run(step);

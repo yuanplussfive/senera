@@ -415,8 +415,7 @@ function projectRunSpans(run: RunRecord): RuntimeDiagnosticSpan[] {
     ...steps.map((step) => spanFromTimelineStep(run, step)),
     ...(run.activities ?? []).map((activity) => spanFromActivity(run.requestId, activity)),
     ...projectThinkingSpans(run),
-  ]
-    .filter((span): span is RuntimeDiagnosticSpan => span !== undefined);
+  ].filter((span): span is RuntimeDiagnosticSpan => span !== undefined);
 }
 
 function deduplicateAssistantTerminalSteps(steps: readonly TimelineStep[]): readonly TimelineStep[] {
@@ -500,7 +499,9 @@ function timelineStepDescription(run: RunRecord, step: TimelineStep): string | u
   if (step.kind === "understand") return run.input.trim() || undefined;
   if (step.kind === "answer" || step.kind === "decision") {
     const messageContent = readString(isRecord(step.detailJson) ? step.detailJson.content : undefined);
-    return messageContent ?? (step.description?.trim() || run.displayText.trim() || run.visibleText.trim() || undefined);
+    return (
+      messageContent ?? (step.description?.trim() || run.displayText.trim() || run.visibleText.trim() || undefined)
+    );
   }
   return step.description?.trim() || undefined;
 }
@@ -520,11 +521,16 @@ function projectThinkingSpans(run: RunRecord): RuntimeDiagnosticSpan[] {
     .filter((span): span is RuntimeDiagnosticSpan => span !== undefined);
 }
 
-function spanFromThinkingStream(run: RunRecord, blocks: readonly ModelThinkingBlock[]): RuntimeDiagnosticSpan | undefined {
+function spanFromThinkingStream(
+  run: RunRecord,
+  blocks: readonly ModelThinkingBlock[],
+): RuntimeDiagnosticSpan | undefined {
   const firstBlock = blocks[0];
   if (!firstBlock) return undefined;
   const content = [...blocks]
-    .sort((left, right) => left.contentIndex - right.contentIndex || (left.eventSequence ?? 0) - (right.eventSequence ?? 0))
+    .sort(
+      (left, right) => left.contentIndex - right.contentIndex || (left.eventSequence ?? 0) - (right.eventSequence ?? 0),
+    )
     .map((block) => block.content.trim())
     .filter(Boolean)
     .join(" ")
@@ -532,9 +538,7 @@ function spanFromThinkingStream(run: RunRecord, blocks: readonly ModelThinkingBl
   if (!content) return undefined;
   const modelStep = run.steps.find(
     (step) =>
-      step.kind === "model" &&
-      step.agentStep === firstBlock.step &&
-      step.modelMessageIndex === firstBlock.messageIndex,
+      step.kind === "model" && step.agentStep === firstBlock.step && step.modelMessageIndex === firstBlock.messageIndex,
   );
   const startedAt = modelStep?.startedAt ?? run.startedAt;
   const startedAtEpoch = parseTimestamp(startedAt);
@@ -548,7 +552,7 @@ function spanFromThinkingStream(run: RunRecord, blocks: readonly ModelThinkingBl
         : blocks.some((block) => block.status === "interrupted")
           ? "cancelled"
           : "completed";
-  const endedAt = status === "running" ? undefined : modelStep?.endedAt ?? run.endedAt;
+  const endedAt = status === "running" ? undefined : (modelStep?.endedAt ?? run.endedAt);
   const endedAtEpoch = endedAt ? parseTimestamp(endedAt) : undefined;
   return {
     id: `run:${run.requestId}:thinking:${firstBlock.step}:${firstBlock.messageIndex}`,

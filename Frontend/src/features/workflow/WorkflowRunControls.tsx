@@ -96,7 +96,11 @@ export function RunSelector({
               {current.input || frontendMessage("workflow.run.emptyInput")}
             </div>
           </div>
-          <AppIcon icon="chevron-down" size={14} className="mt-1 shrink-0 text-ink-400 transition-transform group-data-[state=open]:rotate-180" />
+          <AppIcon
+            icon="chevron-down"
+            size={14}
+            className="mt-1 shrink-0 text-ink-400 transition-transform group-data-[state=open]:rotate-180"
+          />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="scrollbar-thin max-h-[60vh] w-[420px] overflow-y-auto">
@@ -108,7 +112,13 @@ export function RunSelector({
             <DropdownMenuItem
               key={run.requestId}
               onSelect={() => onSelect(run.requestId)}
-              icon={isCurrent ? <AppIcon icon="checkmark" size={14} className="text-ink-800" /> : <span className="block h-3.5 w-3.5" />}
+              icon={
+                isCurrent ? (
+                  <AppIcon icon="checkmark" size={14} className="text-ink-800" />
+                ) : (
+                  <span className="block h-3.5 w-3.5" />
+                )
+              }
             >
               <div className="flex min-w-0 flex-1 items-center gap-2">
                 <span className="shrink-0 text-[10.5px] tabular-nums text-ink-400">

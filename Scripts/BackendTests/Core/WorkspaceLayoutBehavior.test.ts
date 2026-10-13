@@ -43,12 +43,7 @@ describe("agent workspace layout", () => {
     fs.mkdirSync(path.dirname(legacySkill), { recursive: true });
     fs.mkdirSync(stateRoot, { recursive: true });
     fs.writeFileSync(legacySkill, "skill");
-    for (const name of [
-      "Config.sqlite",
-      "Config.sqlite-wal",
-      "Memory.sqlite",
-      "senera.db",
-    ]) {
+    for (const name of ["Config.sqlite", "Config.sqlite-wal", "Memory.sqlite", "senera.db"]) {
       fs.writeFileSync(path.join(stateRoot, name), name);
     }
     fs.writeFileSync(path.join(stateRoot, "config-secrets.key"), "key");

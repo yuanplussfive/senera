@@ -75,7 +75,11 @@ export class AgentSkillSelector {
         ]),
       });
     });
-    const scenarioRanked = this.mergeScenarioEvidence([...merged.values()], skillsByName, options.scenarioEvidence ?? []);
+    const scenarioRanked = this.mergeScenarioEvidence(
+      [...merged.values()],
+      skillsByName,
+      options.scenarioEvidence ?? [],
+    );
     return this.evidenceFrontier(
       [...scenarioRanked].sort(
         (left, right) => right.score - left.score || this.compareSkillOrder(left.skill, right.skill),

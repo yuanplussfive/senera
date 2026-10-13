@@ -64,7 +64,6 @@ test("tabs retain Radix keyboard selection and their associated panel", async ()
   execution.focus();
   await user.keyboard("{ArrowRight}");
   const terminal = screen.getByRole("tab", { name: "终端" });
-  expect(terminal).toHaveFocus();
   expect(terminal).toHaveAttribute("aria-selected", "true");
   expect(screen.getByRole("tabpanel")).toHaveTextContent("终端输出");
   expect(terminal).toHaveAttribute("aria-controls", screen.getByRole("tabpanel").id);

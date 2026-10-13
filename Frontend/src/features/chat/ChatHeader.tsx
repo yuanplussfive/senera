@@ -30,7 +30,6 @@ export function ChatHeader({
       data-chat-header
       data-testid="chat-header"
       data-window-drag-region
-      data-window-controls-inset
     >
       {onOpenSessionPanel ? (
         <IconButton

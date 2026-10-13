@@ -317,9 +317,7 @@ function TextResourceBody({
     return (
       <div className="min-w-0 bg-surface-muted/70 px-1.5 py-1.5" data-resource-preview-content={diff ? "diff" : "text"}>
         {diff ? <DiffPreview text={state.text} /> : null}
-        {!diff ? (
-          <PierreFilePreview code={state.text} fileName={resource.name} bounded lineNumbers={false} />
-        ) : null}
+        {!diff ? <PierreFilePreview code={state.text} fileName={resource.name} bounded lineNumbers={false} /> : null}
         {state.truncated ? (
           <div className="px-1 pt-1 text-[10px] text-content-muted">
             {frontendMessage("workflow.resource.textTruncated")}

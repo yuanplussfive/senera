@@ -314,6 +314,8 @@ test("native editor saves, discards and protects against external version confli
   await expect(surface).toHaveAttribute("data-editing", "false");
   await preview.getByRole("button", { name: "编辑", exact: true }).click();
   const input = preview.getByRole("textbox", { name: "example.ts", exact: true });
+  await expect(input).toBeVisible();
+  await expect(input).toBeEnabled();
   await input.focus();
   await page.keyboard.press("Control+End");
   await page.keyboard.insertText("// saved through Pierre\n");
@@ -322,6 +324,8 @@ test("native editor saves, discards and protects against external version confli
   expect(await fs.readFile(path.join(harness.a, "src/example.ts"), "utf8")).toContain("saved through Pierre");
 
   await preview.getByRole("button", { name: "编辑", exact: true }).click();
+  await expect(input).toBeVisible();
+  await expect(input).toBeEnabled();
   await input.focus();
   await page.keyboard.insertText("UNSAVED");
   await preview.getByRole("button", { name: "取消", exact: true }).click();
@@ -331,6 +335,8 @@ test("native editor saves, discards and protects against external version confli
   await expect(preview.locator("diffs-container")).not.toContainText("UNSAVED");
 
   await preview.getByRole("button", { name: "编辑", exact: true }).click();
+  await expect(input).toBeVisible();
+  await expect(input).toBeEnabled();
   await input.focus();
   await page.keyboard.insertText("CONFLICT");
   await fs.writeFile(path.join(harness.a, "src/example.ts"), "// external version\n");

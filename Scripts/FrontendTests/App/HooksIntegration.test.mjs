@@ -7,7 +7,6 @@ import { useSandboxRuntimeStatus } from "../../../Frontend/src/app/useSandboxRun
 import { useSessionCatalogSync } from "../../../Frontend/src/app/useSessionCatalogSync.ts";
 import { useSettingsRuntime } from "../../../Frontend/src/app/useSettingsRuntime.ts";
 import { useSocketPostIngestEffects } from "../../../Frontend/src/app/useSocketPostIngestEffects.ts";
-import { frontendMessage } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
 import { clearTestToastCalls, readTestToastCalls } from "../mocks/sonner.mjs";
 import { resolveSocketErrorToast, useSocketErrorToasts } from "../../../Frontend/src/app/useSocketErrorToasts.ts";
 import { clearPersistedStore, DEFAULT_USER_PROFILE, useStore } from "../../../Frontend/src/store/sessionStore.ts";

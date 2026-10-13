@@ -8,13 +8,17 @@ import { AuthenticationSessionStates, WebSocketCloseCodes } from "./api/generate
 import { resolveRuntimeHttpBaseUrl, resolveRuntimeWebSocketUrl } from "./config/runtimeConfig";
 import { FrontendI18nProvider, useFrontendLocale } from "./i18n/useFrontendLocale";
 import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
-import { AuthenticatedSurface } from "./app/AuthenticatedSurface";
 import { ApplicationSurfaceLoading, SettingsSurfaceLoading } from "./app/SurfaceLoading";
 import { useAuthenticatedApplicationPreload } from "./app/useAuthenticatedApplicationPreload";
 import { installViteDynamicImportRecovery } from "./app/viteDynamicImportRecovery";
-import "./styles/fonts.css";
 import "./index.css";
 import "./styles/transitions.css";
+import "./styles/fonts-bootstrap.css";
+
+// Keep the application shell independent from the full CJK font asset graph.
+// The font CSS remains a dynamic resource so the first authenticated surface
+// can render while the optional brand typeface is fetched in parallel.
+void import("./styles/fonts.css");
 
 const LazyDesktopWindowChrome = lazy(() =>
   import("./app/DesktopWindowChrome").then(({ DesktopWindowChrome }) => ({ default: DesktopWindowChrome })),
@@ -28,6 +32,9 @@ const LazyWorkspaceConnectionRecovery = lazy(() =>
   import("./app/WorkspaceConnectionRecovery").then(({ WorkspaceConnectionRecovery }) => ({
     default: WorkspaceConnectionRecovery,
   })),
+);
+const LazyAuthenticatedSurface = lazy(() =>
+  import("./app/AuthenticatedSurface").then(({ AuthenticatedSurface }) => ({ default: AuthenticatedSurface })),
 );
 const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
 const HTTP_BASE_URL = resolveRuntimeHttpBaseUrl(WS_URL);
@@ -112,7 +119,7 @@ function ApplicationRoot(): JSX.Element {
               />
             </Suspense>
           ) : (
-            <AuthenticatedSurface
+            <LazyAuthenticatedSurface
               authentication={resolvedAuthentication}
               surface={surface}
               settingsSection={settingsSection}

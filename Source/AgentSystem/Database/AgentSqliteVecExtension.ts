@@ -1,5 +1,6 @@
-import { load as loadSqliteVec } from "sqlite-vec";
+import { getLoadablePath as getSqliteVecLoadablePath } from "sqlite-vec";
 import type Database from "better-sqlite3";
+import { resolveAsarUnpackedExecutablePath } from "../Core/AgentExecutablePath.js";
 import type { AgentSqliteDatabaseExtension } from "./AgentSqliteDatabaseKernel.js";
 
 const loadedDatabases = new WeakSet<object>();
@@ -7,7 +8,7 @@ const loadedDatabases = new WeakSet<object>();
 /** Loads sqlite-vec once for a better-sqlite3 connection. */
 export function loadAgentSqliteVec(database: Database.Database): void {
   if (loadedDatabases.has(database)) return;
-  loadSqliteVec(database);
+  database.loadExtension(resolveAsarUnpackedExecutablePath(getSqliteVecLoadablePath()));
   loadedDatabases.add(database);
 }
 

@@ -56,9 +56,7 @@ export function resolveAgentModelThinking(input: AgentModelThinkingInput): Agent
   const catalogModel = findPiCatalogModel(input.api, input.model, input.provider);
   const declaredReasoning = input.declaredCapabilities?.Reasoning;
   const map = normalizeThinkingLevelMap(catalogModel?.thinkingLevelMap);
-  const hasConfiguredThinking =
-    (input.thinkingProfiles?.length ?? 0) > 0 ||
-    input.defaultThinkingLevel !== undefined;
+  const hasConfiguredThinking = (input.thinkingProfiles?.length ?? 0) > 0 || input.defaultThinkingLevel !== undefined;
   const reasoning =
     declaredReasoning ??
     (hasConfiguredThinking ? true : undefined) ??

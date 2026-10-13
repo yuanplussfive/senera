@@ -66,17 +66,20 @@ export const AssistantTurnRow = memo(function AssistantTurnRow({
   onResolveInteractionInput,
 }: AssistantTurnRowProps): JSX.Element {
   const { run } = turn;
+  const runRequestId = run?.requestId;
+  const runStatus = run?.status;
+  const runStepsLength = run?.steps.length ?? 0;
   useEffect(() => {
-    if (!run || run.steps.length === 0) return;
+    if (runStepsLength === 0) return;
     const preload = (): void => {
       void Promise.all([preloadMarkdownRenderer(), loadAgentExecutionFeed(), loadToolRunOutputSummary()]);
     };
-    if (run.status === "running" || run.status === "cancelling") {
+    if (runStatus === "running" || runStatus === "cancelling") {
       preload();
       return;
     }
     return scheduleIdleTask(preload);
-  }, [run?.requestId, run?.status, run?.steps.length]);
+  }, [runRequestId, runStatus, runStepsLength]);
   const prefaces = turn.messages.filter((message) => message.kind === "AssistantToolPreface");
   const terminalMessages = turn.messages.filter((message) => message.kind !== "AssistantToolPreface");
   const actionMessage = readAssistantTurnActionMessage(turn);
@@ -265,11 +268,7 @@ function CompletedTurnPresentation({
         <RunElapsedRow run={run} />
       )}
       {hasProcess ? (
-        <MotionDisclosure
-          id={processId}
-          open={processOpen}
-          className="assistant-turn-process-disclosure"
-        >
+        <MotionDisclosure id={processId} open={processOpen} className="assistant-turn-process-disclosure">
           <div className="assistant-turn-process-list flex min-w-0 flex-col" data-completed-turn-process>
             {processStages.map((stage) => (
               <AssistantStage key={stage.id} stage={stage} displayMode="process" showExecution={false} />

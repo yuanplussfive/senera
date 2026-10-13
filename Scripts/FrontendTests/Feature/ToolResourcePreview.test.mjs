@@ -72,11 +72,13 @@ test("keeps media resources compact, opens them explicitly, and previews documen
   await waitFor(() => expect(document.body.querySelector("[data-resource-hover-preview]")).toBeNull());
 
   fireEvent.pointerEnter(view.container.querySelector(`[data-tool-resource="senera://resource/${resourceIds[4]}"]`));
-  await waitFor(() => expect(document.body.querySelector('[data-resource-preview-content="text"] diffs-container')).not.toBeNull());
   await waitFor(() =>
-    expect(document.body.querySelector('[data-resource-preview-content="text"] diffs-container')?.shadowRoot?.textContent).toContain(
-      "42",
-    ),
+    expect(document.body.querySelector('[data-resource-preview-content="text"] diffs-container')).not.toBeNull(),
+  );
+  await waitFor(() =>
+    expect(
+      document.body.querySelector('[data-resource-preview-content="text"] diffs-container')?.shadowRoot?.textContent,
+    ).toContain("42"),
   );
   expect(fetchMock).toHaveBeenCalledWith(
     expect.stringContaining(`/resources/${resourceIds[4]}`),

@@ -433,7 +433,11 @@ export function ChatComposer({
                     touchSafe
                     className="[&[data-state=open]>svg]:rotate-45"
                   >
-                    <AppIcon icon="plus" size={16} className="transition-transform duration-[var(--icon-rotate-dur)] ease-[var(--icon-rotate-ease)]" />
+                    <AppIcon
+                      icon="plus"
+                      size={16}
+                      className="transition-transform duration-[var(--icon-rotate-dur)] ease-[var(--icon-rotate-ease)]"
+                    />
                   </IconButton>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" side="top" sideOffset={6} alignOffset={6}>
@@ -686,12 +690,7 @@ function stepActivationIndex(
 
 function activationMatchScore(entry: AgentActivationCatalogEntry, query: string): number {
   if (!query) return 0;
-  const values = [
-    entry.id,
-    entry.title,
-    entry.localizedTitle?.["zh-CN"],
-    entry.localizedTitle?.["en-US"],
-  ]
+  const values = [entry.id, entry.title, entry.localizedTitle?.["zh-CN"], entry.localizedTitle?.["en-US"]]
     .filter((value): value is string => Boolean(value))
     .map((value) => value.toLocaleLowerCase());
   if (values.some((value) => value === query)) return 3;
@@ -862,7 +861,9 @@ function ActivationPalette({
                             </span>
                           ) : null}
                         </span>
-                        {isSelected ? <AppIcon icon="checkmark" size={14} className="mt-1 text-accent-content" /> : null}
+                        {isSelected ? (
+                          <AppIcon icon="checkmark" size={14} className="mt-1 text-accent-content" />
+                        ) : null}
                       </button>
                     </MotionListItem>
                   );
@@ -1055,7 +1056,7 @@ function AttachmentTray({
                 className="absolute right-0.5 top-0.5 bg-ink-950/70 text-paper-50 hover:bg-ink-900"
                 onClick={() => onRemove(entry.id)}
               >
-                    <AppIcon icon="close" size={12} />
+                <AppIcon icon="close" size={12} />
               </IconButton>
             </div>
           ) : (

@@ -39,6 +39,8 @@ const SourceMessageKeys = {
 
 type TimelineSelection = "total" | "run";
 
+const EMPTY_RUNS: RunRecord[] = [];
+
 export function RuntimeDiagnosticPanel(): JSX.Element {
   const records = useEventJournalStore((state) => state.records);
   const viewPausedAt = useEventJournalStore((state) => state.viewPausedAt);
@@ -48,7 +50,7 @@ export function RuntimeDiagnosticPanel(): JSX.Element {
   const setViewedRun = useStore((state) => state.setViewedRun);
   const [nowEpoch, setNowEpoch] = useState(() => Date.now());
   const [timelineSelection, setTimelineSelection] = useState<TimelineSelection>("run");
-  const runs = session?.runs ?? [];
+  const runs = session?.runs ?? EMPTY_RUNS;
   const latestRun = runs.at(-1);
   const selectedRun = runs.find((run) => run.requestId === viewedRunId) ?? latestRun;
   const isHistorical = selectedRun !== undefined && selectedRun.requestId !== latestRun?.requestId;
@@ -166,11 +168,7 @@ function RunHistoryStrip({
   // The selected run paints its own wash; the hover layer yields on that row.
   const selectedRunPosition = runs.findIndex((run) => run.requestId === selectedRun?.requestId);
   const selectedRunIndex =
-    selection === "total"
-      ? 0
-      : selectedRunPosition >= 0
-        ? selectedRunPosition + (hasTotalStream ? 1 : 0)
-        : -1;
+    selection === "total" ? 0 : selectedRunPosition >= 0 ? selectedRunPosition + (hasTotalStream ? 1 : 0) : -1;
   if (runs.length === 0 && !hasTotalStream) return null;
   return (
     <section className="border-b border-line-subtle px-3 pb-2 pt-2.5 sm:px-4" data-run-history>
@@ -331,8 +329,10 @@ function RunHistoryStatus({ status }: { status: RunRecord["status"] }): JSX.Elem
   if (status === "running" || status === "cancelling") {
     return <ActivityStatusIcon status={status} size={13} className="text-accent-content" />;
   }
-  if (status === "failed") return <AppIcon icon="alert-circle" size={12} className="text-brick-600" aria-hidden="true" />;
-  if (status === "cancelled") return <AppIcon icon="close" size={12} className="text-content-muted" aria-hidden="true" />;
+  if (status === "failed")
+    return <AppIcon icon="alert-circle" size={12} className="text-brick-600" aria-hidden="true" />;
+  if (status === "cancelled")
+    return <AppIcon icon="close" size={12} className="text-content-muted" aria-hidden="true" />;
   return <AppIcon icon="checkmark" size={12} className="text-moss-600" aria-hidden="true" />;
 }
 
@@ -414,11 +414,7 @@ function SessionUsageConsole({
   );
 }
 
-function RuntimeConsole({
-  model,
-}: {
-  model: RuntimeDiagnosticModel;
-}): JSX.Element | null {
+function RuntimeConsole({ model }: { model: RuntimeDiagnosticModel }): JSX.Element | null {
   const spans = readTimelineSpans(model);
   if (spans.length === 0) return null;
   const events = spans.map(runtimeTimelineEvent);
@@ -457,22 +453,13 @@ function runtimeTimelineEvent(span: RuntimeDiagnosticSpan): AgentTimelineEvent {
   return {
     id: span.id,
     type: runtimeTimelineType(span),
-    label:
-      span.source === "tool" ? (
-        <RuntimeToolTimelineLabel span={span} />
-      ) : (
-        <RuntimeStepTimelineLabel span={span} />
-      ),
+    label: span.source === "tool" ? <RuntimeToolTimelineLabel span={span} /> : <RuntimeStepTimelineLabel span={span} />,
     timestamp: new Date(span.startedAtEpoch),
     status: runtimeTimelineStatus([span]),
   };
 }
 
-function RuntimeStepTimelineLabel({
-  span,
-}: {
-  span: RuntimeDiagnosticSpan;
-}): JSX.Element {
+function RuntimeStepTimelineLabel({ span }: { span: RuntimeDiagnosticSpan }): JSX.Element {
   const title = spanLabel(span);
   const preview = span.operation
     ? runActivityLabel(span.operation)
@@ -534,11 +521,7 @@ function runtimeStepCardResult(span: RuntimeDiagnosticSpan): string | undefined 
   return span.isThinking || span.kind === "decision" || span.kind === "answer" ? span.description?.trim() : undefined;
 }
 
-function RuntimeToolTimelineLabel({
-  span,
-}: {
-  span: RuntimeDiagnosticSpan;
-}): JSX.Element {
+function RuntimeToolTimelineLabel({ span }: { span: RuntimeDiagnosticSpan }): JSX.Element {
   return (
     <span className="runtime-vinyasa-tool-label" data-runtime-vinyasa-tool-event data-runtime-tool-call={span.id}>
       <ToolCallCard
@@ -597,7 +580,12 @@ function toolCallInspection(span: RuntimeDiagnosticSpan) {
     toolName: span.toolName ?? toolOriginLabel(span),
     origin: span.toolOrigin,
     arguments: span.toolArguments,
-    status: span.status === "running" ? "active" : span.status === "failed" || span.status === "cancelled" ? "failed" : "completed",
+    status:
+      span.status === "running"
+        ? "active"
+        : span.status === "failed" || span.status === "cancelled"
+          ? "failed"
+          : "completed",
   });
 }
 
@@ -637,9 +625,11 @@ function readTimelineEventSpans(
     // Ambient activity labels duplicate concrete steps. Keep only foreground
     // lifecycle activity in the complete session stream.
     if (span.source === "activity") {
-      return options.includeForegroundActivities &&
+      return (
+        options.includeForegroundActivities &&
         span.operation !== undefined &&
-        runActivityPresentationPriority(span.operation) === RunActivityPresentationPriorities.Foreground;
+        runActivityPresentationPriority(span.operation) === RunActivityPresentationPriorities.Foreground
+      );
     }
     if (span.source === "tool" && isUnidentifiedToolSpan(span)) return false;
     return true;
@@ -660,7 +650,7 @@ function spanLabel(span: RuntimeDiagnosticSpan): string {
     const model = compactEventText(span.modelName ?? span.description);
     return model
       ? frontendMessage("observability.diagnostic.timeline.requestModel", { model })
-      : compactEventText(span.label) ?? "";
+      : (compactEventText(span.label) ?? "");
   }
   if (span.kind === "answer") {
     const detail = compactEventText(span.description);
@@ -697,7 +687,10 @@ function formatTokenCount(tokens: number): string {
 }
 
 function formatCompactUnit(value: number, suffix: string): string {
-  const rounded = value.toFixed(2).replace(/\.0+$/u, "").replace(/(\.\d*[1-9])0+$/u, "$1");
+  const rounded = value
+    .toFixed(2)
+    .replace(/\.0+$/u, "")
+    .replace(/(\.\d*[1-9])0+$/u, "$1");
   return `${rounded}${suffix}`;
 }
 
