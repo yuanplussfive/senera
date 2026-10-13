@@ -12,7 +12,11 @@ import {
 import { isAgentToolAuthorized } from "../../../Source/AgentSystem/ToolRuntime/AgentToolAccessGrant.js";
 
 const temporaryRoots: string[] = [];
-const ProcessBackedDiscoveryTestTimeoutMs = 15_000;
+// These cases intentionally exercise real stdio MCP lifecycles, including
+// cache restore and credential transitions. Coverage instrumentation and
+// shared-runner contention make the lifecycle materially slower than a unit
+// test, so keep the bound local to process-backed discovery cases.
+const ProcessBackedDiscoveryTestTimeoutMs = 45_000;
 
 afterEach(() => {
   temporaryRoots.splice(0).forEach((root) => fs.rmSync(root, { recursive: true, force: true }));
