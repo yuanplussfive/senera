@@ -2,6 +2,13 @@
 
 这里记录 Senera 每个正式版本中的新增功能、问题修复和兼容性变化。
 
+## [1.16.1](https://github.com/yuanplussfive/senera/compare/v1.16.0...v1.16.1) (2026-10-13)
+
+
+### 问题修复
+
+* **ci:** update gVisor runtime installer ([#142](https://github.com/yuanplussfive/senera/issues/142)) ([01703d6](https://github.com/yuanplussfive/senera/commit/01703d67ddc69deeadc041bc98e218edad7628cc))
+
 ## [1.16.0](https://github.com/yuanplussfive/senera/compare/v1.15.3...v1.16.0) (2026-10-13)
 
 
