@@ -16,7 +16,7 @@ on:
         required: true
         type: string
       recovery_sha:
-        description: Exact merged release commit to fully verify before recovering a missing tag.
+        description: Merged release commit or verified descendant to fully verify before recovering a missing tag.
         required: false
         type: string
 
@@ -40,7 +40,7 @@ jobs:
         with:
           ref: ${{ inputs.recovery_sha }}
           fetch-depth: 0
-      - name: Require a recoverable release tag at its merged manifest commit
+      - name: Require a recoverable release tag in its merged manifest lineage
         shell: bash
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
@@ -57,7 +57,7 @@ jobs:
           test "v${release_version}" = "$RELEASE_TAG"
 
           manifest_commit="$(git log -1 --format=%H -- Build/Release/ReleasePleaseManifest.json)"
-          test "$manifest_commit" = "$RECOVERY_SHA"
+          git merge-base --is-ancestor "$manifest_commit" "$RECOVERY_SHA"
 
           if git ls-remote --exit-code --tags origin "refs/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
             git fetch origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
@@ -261,7 +261,11 @@ jobs:
           else
             current_version_sha="$(git log -1 --format=%H -- Build/Release/ReleasePleaseManifest.json)"
             if [ -z "$current_version_sha" ] || [ "$current_version_sha" != "$VERIFIED_SHA" ]; then
-              echo "::error::Current manifest release ${current_tag} belongs to ${current_version_sha:-unknown}, but this run verified ${VERIFIED_SHA}. Dispatch Product Release with release_tag=${current_tag} and recovery_sha=${current_version_sha} to reverify and recover that exact release commit."
+              if [ -n "$current_version_sha" ] && git merge-base --is-ancestor "$current_version_sha" "$VERIFIED_SHA"; then
+                echo "::error::Current manifest release ${current_tag} belongs to ${current_version_sha}, but this run verified its descendant ${VERIFIED_SHA}. Dispatch Product Release with release_tag=${current_tag} and recovery_sha=${VERIFIED_SHA} to reverify and recover the verified release source."
+              else
+                echo "::error::Current manifest release ${current_tag} belongs to ${current_version_sha:-unknown}, but this run verified ${VERIFIED_SHA}. Dispatch Product Release with release_tag=${current_tag} and recovery_sha=${current_version_sha} to reverify and recover that exact release commit."
+              fi
               exit 1
             fi
             echo "skip_pull_request=true" >> "$GITHUB_OUTPUT"
