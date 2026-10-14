@@ -2,6 +2,13 @@
 
 这里记录 Senera 每个正式版本中的新增功能、问题修复和兼容性变化。
 
+## [1.17.0](https://github.com/yuanplussfive/senera/compare/v1.16.1...v1.17.0) (2026-10-14)
+
+
+### 新增功能
+
+* **runtime:** adopt agent-browser and harden execution flows ([#144](https://github.com/yuanplussfive/senera/issues/144)) ([3602057](https://github.com/yuanplussfive/senera/commit/3602057a26fc455dd95f1368aab179536ce1d03c))
+
 ## [1.16.1](https://github.com/yuanplussfive/senera/compare/v1.16.0...v1.16.1) (2026-10-13)
 
 
