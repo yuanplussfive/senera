@@ -43,6 +43,7 @@ describe("modelServiceState", () => {
         selectedModel: slot.selectedModel?.Id ?? null,
       })),
     ).toEqual([{ id: "assistant", status: "ready", selectedModel: "openai/gpt-4.1" }]);
+    expect(state.defaultModel?.provider?.Id).toBe("openai");
     expect(state.defaultModelStatus).toBe("可用");
   });
   it("exposes only the real assistant slot", () => {

@@ -32,7 +32,6 @@ export const AgentDefaults = {
   ModelRuntime: {
     Kind: "OpenAICompatible",
     Endpoint: "ChatCompletions",
-    Model: "mistral-large-latest",
     Capabilities: {
       Chat: true,
       Vision: false,

@@ -14,7 +14,10 @@ export interface SettingsSectionDefinition {
   label: string;
   icon: AppIconName;
   description: string;
+  headerMode: SettingsSectionHeaderMode;
 }
+
+export type SettingsSectionHeaderMode = "global" | "local" | "none";
 
 export const settingsSections = [
   defineSettingsSection(
@@ -22,18 +25,21 @@ export const settingsSections = [
     "link",
     "settings.section.modelService.label",
     "settings.section.modelService.description",
+    "local",
   ),
   defineSettingsSection(
     "default-model",
     "target",
     "settings.section.defaultModel.label",
     "settings.section.defaultModel.description",
+    "local",
   ),
   defineSettingsSection(
     "runtime",
     "activity",
     "settings.section.runtime.label",
     "settings.section.runtime.description",
+    "none",
   ),
   defineSettingsSection(
     "planning",
@@ -87,6 +93,7 @@ function defineSettingsSection(
   icon: AppIconName,
   labelKey: FrontendMessageKey,
   descriptionKey: FrontendMessageKey,
+  headerMode: SettingsSectionHeaderMode = "global",
 ): SettingsSectionDefinition {
   return {
     id,
@@ -97,6 +104,7 @@ function defineSettingsSection(
     get description() {
       return frontendMessage(descriptionKey);
     },
+    headerMode,
   };
 }
 export function readSettingsSection(sectionId: SettingsSectionId): SettingsSectionDefinition {

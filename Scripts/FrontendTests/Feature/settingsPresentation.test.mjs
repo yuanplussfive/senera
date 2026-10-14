@@ -40,6 +40,13 @@ describe("settings presentation", () => {
     expect(isSettingsSectionId("system")).toBe(false);
   });
 
+  it("declares section-owned header treatment instead of deriving it from section ids", () => {
+    expect(settingsSections.find((section) => section.id === "model-service")?.headerMode).toBe("local");
+    expect(settingsSections.find((section) => section.id === "default-model")?.headerMode).toBe("local");
+    expect(settingsSections.find((section) => section.id === "runtime")?.headerMode).toBe("none");
+    expect(settingsSections.find((section) => section.id === "planning")?.headerMode).toBe("global");
+  });
+
   it("groups navigation in product-domain order", () => {
     expect(settingsSectionGroups).toEqual([
       { id: "model", label: "模型", sectionIds: ["model-service", "default-model"] },

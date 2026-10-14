@@ -8,6 +8,18 @@ import { DEFAULT_SESSION_TITLE, useStore } from "../../../Frontend/src/store/ses
 import { clearTestToastCalls, readTestToastCalls } from "../mocks/sonner.mjs";
 import { installMemoryLocalStorage, registerTestSession, resetFrontendStore } from "../frontendStoreTestHarness.mjs";
 
+function configuredChatModel(id, isDefault = false) {
+  return {
+    id,
+    capabilities: { Chat: true },
+    kind: "openai",
+    endpoint: "chat",
+    baseUrl: "https://models.invalid/v1",
+    model: id,
+    isDefault,
+  };
+}
+
 beforeEach(() => {
   installMemoryLocalStorage();
   clearTestToastCalls();
@@ -22,6 +34,7 @@ afterEach(() => {
 test("useChatCommands creates a missing session and sends its first message as one transaction", () => {
   useStore.setState({
     selectedModelProviderId: "model-primary",
+    modelProviders: [configuredChatModel("model-primary", true)],
     catalogSynced: { sessions: true },
   });
   const send = vi.fn(() => true);
@@ -80,6 +93,28 @@ test("useChatCommands blocks sends while history is recovering without mutating 
       title: frontendMessage("chat.historyRecovering"),
     }),
   );
+});
+
+test("omits a persisted model selection that is absent from the current catalog", () => {
+  const sessionId = "session-stale-model";
+  registerTestSession(sessionId);
+  useStore.setState({
+    selectedModelProviderId: "deleted-model",
+    modelProviders: [configuredChatModel("replacement-model", true)],
+  });
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  renderChatCommands({ activeSessionId: sessionId, handleRef, send });
+
+  act(() => handleRef.current.sendMessage("Use the replacement model"));
+
+  expect(send).toHaveBeenCalledWith(
+    expect.objectContaining({
+      type: "session.message",
+      input: "Use the replacement model",
+    }),
+  );
+  expect(send.mock.calls[0][0].modelProviderId).toBeUndefined();
 });
 
 test("useChatCommands blocks sends until the startup session catalog arrives", () => {
@@ -225,7 +260,10 @@ test("useChatCommands regenerates from the matching user message immediately wit
   const requestId = "request-original";
   registerTestSession(sessionId);
   useStore.getState().appendUserMessage(sessionId, requestId, "Original input");
-  useStore.setState({ selectedModelProviderId: "model-edits" });
+  useStore.setState({
+    selectedModelProviderId: "model-edits",
+    modelProviders: [configuredChatModel("model-edits")],
+  });
   const send = vi.fn(() => true);
   const handleRef = { current: null };
   renderChatCommands({
@@ -361,7 +399,10 @@ test("useChatCommands validates and applies edited user messages through regener
   const requestId = "request-original";
   registerTestSession(sessionId);
   useStore.getState().appendUserMessage(sessionId, requestId, "Original input");
-  useStore.setState({ selectedModelProviderId: "model-edits" });
+  useStore.setState({
+    selectedModelProviderId: "model-edits",
+    modelProviders: [configuredChatModel("model-edits")],
+  });
   const send = vi.fn(() => true);
   const handleRef = { current: null };
   renderChatCommands({

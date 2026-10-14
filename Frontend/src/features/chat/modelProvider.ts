@@ -13,6 +13,19 @@ export function readChatModelProviders(models: readonly ModelProviderListItem[])
   return models.filter((model) => model.capabilities.Chat === true);
 }
 
+/**
+ * Returns a selected model only while it is present in the current chat
+ * catalog. Persisted selections can outlive a deleted or reconfigured model;
+ * omitting those stale IDs lets the backend resolve the current configuration.
+ */
+export function readConfiguredChatModelProviderId(
+  models: readonly ModelProviderListItem[],
+  selectedId: string | null | undefined,
+): string | undefined {
+  if (!selectedId) return undefined;
+  return readChatModelProviders(models).some((model) => model.id === selectedId) ? selectedId : undefined;
+}
+
 export function formatModelProviderName(provider?: ModelProviderMetadata | ModelProviderListItem): string {
   if (!provider) return frontendMessage("config.model.assistantFallback");
   const model = provider.model?.trim();

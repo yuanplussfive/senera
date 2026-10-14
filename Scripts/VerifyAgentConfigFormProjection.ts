@@ -71,6 +71,8 @@ assert.equal(models.itemFields?.find((field) => field.key === "Chat")?.essential
 assert.equal((models.effectiveValue as Array<{ Capabilities?: { Chat?: boolean } }>)[0]?.Capabilities?.Chat, true);
 
 assert.equal(findOptionalField(form, ["AgentLoop", "LoadedTools"]), undefined);
+assert.equal(findOptionalField(form, ["Prompt", "CorePersona"]), undefined);
+assert.equal(findOptionalField(form, ["Prompt", "LanguageStyle"]), undefined);
 
 assert.equal(
   findField(form, ["ActionPlanner", "Enabled"]).description,

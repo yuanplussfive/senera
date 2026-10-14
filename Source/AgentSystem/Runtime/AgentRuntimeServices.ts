@@ -19,7 +19,6 @@ import {
 } from "../Prompt/AgentWorkflowPromptContext.js";
 import type { AgentWorkflowPromptProjector } from "../Prompt/AgentWorkflowPromptProjector.js";
 import type { AgentPersonaContext } from "../Prompt/AgentPersonaContext.js";
-import { EmptyAgentPersonaContext } from "../Prompt/AgentPersonaContext.js";
 import type { AgentExplicitActivationReference } from "../Activation/AgentActivationTypes.js";
 
 export interface AgentRetrievalService {
@@ -108,7 +107,7 @@ export interface AgentRuntimeServiceDependencies {
   artifactRecorder: AgentToolExecutionArtifactRecorder;
   toolCallExecutor: AgentToolCallExecutor;
   piSessionRegistry: AgentPiActiveSessionRegistry;
-  persona?: AgentPersonaContext;
+  persona: AgentPersonaContext;
   promptContextBuilder: AgentPromptContextBuilder;
   piSubstrate: AgentPiSubstrate;
   skillActivation: AgentSkillActivationService;
@@ -144,7 +143,7 @@ export function createDefaultAgentRuntimeServices(dependencies: AgentRuntimeServ
         dependencies.skillActivation.recommendedToolRouting(skills, explicitActivations),
       buildBaseContext: (options) => dependencies.promptContextBuilder.buildBaseContext(options),
       buildRootCommand: (options) => dependencies.promptContextBuilder.buildRootCommand(options),
-      promptPersona: () => dependencies.persona ?? EmptyAgentPersonaContext,
+      promptPersona: () => dependencies.persona,
       toolCatalog: () => dependencies.toolCatalog.list(),
       liveContinuityMemory: async (input) => {
         if (!dependencies.continuityMemory) return EmptyAgentContinuityMemoryPromptContext;

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { ConfigMutationState } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import {
@@ -8,6 +8,9 @@ import {
   DialogActionButton,
   DialogActions,
   DialogContent,
+  FormField,
+  FormHint,
+  FormLabel,
   IconButton,
   Spinner,
 } from "../../shared/ui";
@@ -69,7 +72,7 @@ export function PersonaControl({
           title={frontendMessage("persona.ui.title")}
           description={frontendMessage("persona.ui.description")}
           motionPreset="focus"
-          className="w-[min(640px,calc(100vw-24px))]"
+          className="w-[min(760px,calc(100vw-24px))]"
           bodyClassName="min-h-0 overflow-y-auto"
           footer={
             <DialogActions>
@@ -83,14 +86,12 @@ export function PersonaControl({
             </DialogActions>
           }
         >
-          <div className="flex flex-col gap-5 px-6 py-5">
-            <label className="flex flex-col gap-2">
-              <span className="text-[13px] font-semibold text-content-primary">
-                {frontendMessage("persona.ui.corePersona")}
-              </span>
-              <span className="text-[12px] leading-5 text-content-muted">
-                {frontendMessage("persona.ui.corePersonaDescription")}
-              </span>
+          <div className="grid gap-px border-t border-line-subtle bg-line-subtle sm:grid-cols-2">
+            <PersonaField
+              icon="user"
+              label={frontendMessage("persona.ui.corePersona")}
+              description={frontendMessage("persona.ui.corePersonaDescription")}
+            >
               <textarea
                 value={draftCorePersona}
                 onChange={(event) => setDraftCorePersona(event.currentTarget.value)}
@@ -99,14 +100,12 @@ export function PersonaControl({
                 placeholder={frontendMessage("persona.ui.corePersonaPlaceholder")}
                 className={textareaClass}
               />
-            </label>
-            <label className="flex flex-col gap-2">
-              <span className="text-[13px] font-semibold text-content-primary">
-                {frontendMessage("persona.ui.languageStyle")}
-              </span>
-              <span className="text-[12px] leading-5 text-content-muted">
-                {frontendMessage("persona.ui.languageStyleDescription")}
-              </span>
+            </PersonaField>
+            <PersonaField
+              icon="language"
+              label={frontendMessage("persona.ui.languageStyle")}
+              description={frontendMessage("persona.ui.languageStyleDescription")}
+            >
               <textarea
                 value={draftLanguageStyle}
                 onChange={(event) => setDraftLanguageStyle(event.currentTarget.value)}
@@ -115,7 +114,7 @@ export function PersonaControl({
                 placeholder={frontendMessage("persona.ui.languageStylePlaceholder")}
                 className={textareaClass}
               />
-            </label>
+            </PersonaField>
           </div>
         </DialogContent>
       </Dialog>
@@ -123,5 +122,30 @@ export function PersonaControl({
   );
 }
 
+function PersonaField({
+  icon,
+  label,
+  description,
+  children,
+}: {
+  icon: "language" | "user";
+  label: string;
+  description: string;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <div className="bg-surface-panel px-5 py-4 sm:px-6 sm:py-5">
+      <FormField className="gap-1.5">
+        <div className="flex items-center gap-1.5">
+          <AppIcon icon={icon} size={14} className="text-accent-content" aria-hidden="true" />
+          <FormLabel className="font-semibold">{label}</FormLabel>
+        </div>
+        <FormHint className="min-h-10">{description}</FormHint>
+        {children}
+      </FormField>
+    </div>
+  );
+}
+
 const textareaClass =
-  "min-h-24 w-full resize-y rounded-md border border-line bg-surface-panel px-3 py-2.5 text-[13px] leading-6 text-content-primary outline-none placeholder:text-content-muted focus:border-accent-border focus:ring-2 focus:ring-accent-focus disabled:cursor-not-allowed disabled:opacity-60";
+  "min-h-28 w-full resize-y rounded-md border border-line-subtle bg-surface-subtle px-3 py-2.5 text-[13px] leading-6 text-content-primary outline-none transition-[background-color,border-color,box-shadow] placeholder:text-content-muted hover:border-line-strong focus:border-accent-border focus:bg-surface-panel focus:ring-2 focus:ring-accent-focus disabled:cursor-not-allowed disabled:opacity-60";

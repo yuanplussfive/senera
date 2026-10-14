@@ -480,6 +480,7 @@ export function createAgentRuntimeAgentServices(
       artifactRecorder,
       toolCallExecutor,
       piSessionRegistry: infrastructure.piSessionRegistry,
+      persona,
       promptContextBuilder,
       piSubstrate,
       skillActivation,

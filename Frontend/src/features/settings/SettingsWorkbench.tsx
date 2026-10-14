@@ -56,7 +56,7 @@ export function SettingsWorkbench({
     [sectionSearch, settingsSearchEntries],
   );
   const pendingChanges = configDraftState.dirty || entityDraftDirty;
-  const showSectionHeader = !usesOwnSectionHeader(section) || environment.surface === "desktop";
+  const showSectionHeader = activeSection.headerMode === "global";
   useEffect(() => {
     onPendingChangesChange?.(pendingChanges);
   }, [onPendingChangesChange, pendingChanges]);
@@ -130,10 +130,6 @@ export function SettingsWorkbench({
       />
     </SettingsWorkbenchLayout>
   );
-}
-
-function usesOwnSectionHeader(sectionId: SettingsSectionId): boolean {
-  return sectionId === "model-service" || sectionId === "default-model";
 }
 
 function noop(): void {}

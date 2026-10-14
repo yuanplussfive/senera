@@ -231,7 +231,6 @@
     {
       "Id": "main",
       "ProviderId": "main",
-      "Icon": "mistral",
       "Capabilities": {
         "ToolCalling": true,
         "DeveloperRole": false,
@@ -239,7 +238,7 @@
       },
       "ToolPlanningMode": "native",
       "Endpoint": "ChatCompletions",
-      "Model": "mistral-large-latest",
+      "Model": "YOUR_MODEL_ID",
       "MaxOutputTokens": -1,
       "MaxNetworkRetries": 1,
       "RetryBaseDelaySeconds": 0.25,

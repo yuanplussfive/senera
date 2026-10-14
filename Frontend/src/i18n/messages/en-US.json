@@ -1475,6 +1475,8 @@
   "settings.provider.statusOn": "ON",
   "settings.provider.statusOff": "OFF",
   "settings.provider.connectionToggle": "Toggle provider connection availability",
+  "settings.provider.defaultConnectionToggle": "Default-model provider connection (cannot be disabled)",
+  "settings.provider.defaultConnectionCannotDisable": "This provider is used by the default model. Choose another default model before disabling it.",
   "settings.provider.chooseRequired": "Select a provider.",
   "settings.provider.idRequired": "Provider ID cannot be empty.",
   "settings.provider.addCustomTitle": "Add custom provider",

@@ -1475,6 +1475,8 @@
   "settings.provider.statusOn": "ON",
   "settings.provider.statusOff": "OFF",
   "settings.provider.connectionToggle": "切换供应商连接可用状态",
+  "settings.provider.defaultConnectionToggle": "默认模型供应商连接可用状态（不可关闭）",
+  "settings.provider.defaultConnectionCannotDisable": "默认模型正在使用此供应商。请先切换默认模型，再关闭此连接。",
   "settings.provider.chooseRequired": "请选择供应商。",
   "settings.provider.idRequired": "供应商 ID 不能为空。",
   "settings.provider.addCustomTitle": "添加自定义供应商",
