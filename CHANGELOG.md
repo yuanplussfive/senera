@@ -2,6 +2,13 @@
 
 这里记录 Senera 每个正式版本中的新增功能、问题修复和兼容性变化。
 
+## [1.17.1](https://github.com/yuanplussfive/senera/compare/v1.17.0...v1.17.1) (2026-10-14)
+
+
+### 问题修复
+
+* **runtime:** stabilize model routing and settings ownership ([#146](https://github.com/yuanplussfive/senera/issues/146)) ([859cade](https://github.com/yuanplussfive/senera/commit/859cadebf7d760e71e07d219c57b776c30feaa42))
+
 ## [1.17.0](https://github.com/yuanplussfive/senera/compare/v1.16.1...v1.17.0) (2026-10-14)
 
 
