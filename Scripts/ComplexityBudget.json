@@ -195,7 +195,7 @@
     },
     {
       "path": "Source/AgentSystem/Continuity/AgentMemOSSemanticLearningRuntime.ts",
-      "baselineLines": 978,
+      "baselineLines": 903,
       "owner": "continuity-runtime",
       "splitTarget": "Extract semantic learning ingestion, clustering, and projection into focused continuity modules."
     },
