@@ -18,8 +18,8 @@ export {
 } from "./modelServiceLayout";
 export type { ModelServiceLayout, ModelServiceLayoutStore } from "./modelServiceLayout";
 export * from "./settingsLayout";
-export { readWindowControlsInsetWidth } from "./windowControlsLayout";
-export type { WindowControlsOverlayGeometry } from "./windowControlsLayout";
+export { readWindowControlsInsetWidth, readWindowControlsOverlapWidth } from "./windowControlsLayout";
+export type { WindowControlsOverlayGeometry, WindowLayoutRect } from "./windowControlsLayout";
 export {
   clampWorkflowDockWidth,
   DEFAULT_WORKFLOW_DOCK_WIDTH,

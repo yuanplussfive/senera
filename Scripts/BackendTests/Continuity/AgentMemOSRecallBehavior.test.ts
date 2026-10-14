@@ -4,6 +4,7 @@ import { z } from "zod";
 import { MemOS } from "@mem-os/sdk";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { AgentContinuityMemOSRuntime } from "../../../Source/AgentSystem/Continuity/AgentContinuityMemOSRuntime.js";
+import { AgentMemOSSemanticLearningRuntime } from "../../../Source/AgentSystem/Continuity/AgentMemOSSemanticLearningRuntime.js";
 import { AgentContinuityMemoryService } from "../../../Source/AgentSystem/Continuity/AgentContinuityMemoryService.js";
 import { AgentContinuitySqliteStore } from "../../../Source/AgentSystem/Continuity/AgentContinuitySqliteStore.js";
 import { AgentMemOSTags } from "../../../Source/AgentSystem/Continuity/AgentMemOSSemanticTypes.js";
@@ -18,6 +19,7 @@ import {
 } from "../../../Source/AgentSystem/Continuity/AgentContinuityToolRuntime.js";
 import type { AgentToolSearchEpisode } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchMemoryTypes.js";
 import { createToolProcessSuccessResponse } from "../../../Source/AgentSystem/ToolRuntime/AgentToolProcessEnvelope.js";
+import { AgentInvalidModelToolArgumentsError } from "../../../Source/AgentSystem/ModelEndpoints/AgentModelFailureMapper.js";
 
 const cleanups: Array<() => Promise<void>> = [];
 const tokenBudget = { maxTokens: 16384, estimateTokens: (text: string) => text.length };
@@ -88,7 +90,7 @@ async function fixture() {
         knowledgeCandidateLimit: 8,
         assistantPreviewTokens: 256,
         digestInputTokenBudget: 8192,
-        digestSummaryCharacterLimit: 50,
+        digestSummaryTokenLimit: 50,
       }),
     });
     runtimes.push(runtime);
@@ -110,6 +112,19 @@ async function fixture() {
 }
 
 describe("native MemOS recall", () => {
+  test("keeps detached semantic-learning failures out of the foreground flush boundary", async () => {
+    const f = await fixture();
+    const runtime = f.createRuntime();
+    const flush = vi
+      .spyOn(AgentMemOSSemanticLearningRuntime.prototype, "flush")
+      .mockRejectedValueOnce(new AgentInvalidModelToolArgumentsError("MemOSPeriodDigest", ["summary"]));
+    try {
+      await expect(runtime.flush()).resolves.toBeUndefined();
+    } finally {
+      flush.mockRestore();
+    }
+  });
+
   test("publishes reference constraints and decodes references at the tool boundary", () => {
     const validate = new Ajv({ strict: false }).compile(
       z.toJSONSchema(ContinuityRecallArgumentsSchema, { target: "draft-7", io: "input" }),

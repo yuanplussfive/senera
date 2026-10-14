@@ -9,13 +9,14 @@ import {
 } from "../../../Source/AgentSystem/Continuity/AgentMemOSSemanticTypes.js";
 import { AgentBackgroundLearningRequestLedger } from "../../../Source/AgentSystem/Memory/AgentBackgroundLearningRequestLedger.js";
 import { AgentMemoryDatabaseContract } from "../../../Source/AgentSystem/Memory/AgentMemorySqlSchema.js";
+import { AgentInvalidModelToolArgumentsError } from "../../../Source/AgentSystem/ModelEndpoints/AgentModelFailureMapper.js";
 import {
   InMemoryAgentMemorySourceRepository,
   type AgentMemoryRecordedTurn,
 } from "../../../Source/AgentSystem/Memory/AgentMemorySourceRepository.js";
 import { AgentSqliteDatabaseKernel } from "../../../Source/AgentSystem/Database/AgentSqliteDatabaseKernel.js";
 import type { AgentStateCard } from "../../../Source/AgentSystem/StateCard/AgentStateCardTypes.js";
-import { AgentModelTokenEstimator } from "../../../Source/AgentSystem/Text/AgentTextBudget.js";
+import { AgentModelTextPreviewer, AgentModelTokenEstimator } from "../../../Source/AgentSystem/Text/AgentTextBudget.js";
 import { createModelProvider, createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 
 const cleanup: Array<() => Promise<void>> = [];
@@ -38,8 +39,10 @@ async function fixture(maxAttempts = 2) {
     experimental: { namespaces: true },
   });
   await memos.init();
+  const previewSummary = (text: string): string =>
+    new AgentModelTextPreviewer({ model: "test-model", tokenLimit: 50 }).preview(text).text;
   const learners: AgentMemOSSemanticLearningRuntime[] = [];
-  const createLearner = (attemptBudget = maxAttempts) => {
+  const createLearner = (attemptBudget = maxAttempts, digestSummaryTokenLimit = 50) => {
     const learner = new AgentMemOSSemanticLearningRuntime({
       memos,
       namespace: "test",
@@ -59,7 +62,7 @@ async function fixture(maxAttempts = 2) {
         knowledgeCandidateLimit: 8,
         assistantPreviewTokens: 256,
         digestInputTokenBudget: 8192,
-        digestSummaryCharacterLimit: 50,
+        digestSummaryTokenLimit,
       }),
     });
     learners.push(learner);
@@ -69,7 +72,7 @@ async function fixture(maxAttempts = 2) {
     .spyOn(AgentMemOSSemanticModelClient.prototype, "extractFragment")
     .mockImplementation(async (input) => ({
       topic: input.user,
-      summary: input.assistant.slice(0, 50),
+      summary: previewSummary(input.assistant),
       type: "preference",
       action: input.candidates.length > 0 ? "update" : "new",
       ...(input.candidates.length > 0 ? { candidate: input.candidates[0]!.ref } : {}),
@@ -80,7 +83,7 @@ async function fixture(maxAttempts = 2) {
       summary: input.entries
         .map((entry) => entry.summary)
         .join(";")
-        .slice(0, 50),
+        .trim(),
     }));
   cleanup.push(async () => {
     await Promise.allSettled(learners.map((learner) => learner.stop()));
@@ -321,6 +324,22 @@ describe("MemOS semantic learning with real storage", () => {
         .sort(),
     ).toEqual([1, 2]);
     expect((await f.nodes(AgentMemOSTags.knowledge))[0]?.type).toBe("entity");
+  });
+
+  test("does not surface a failed background digest and retries after its contract changes", async () => {
+    const f = await fixture(1);
+    f.summarize.mockRejectedValueOnce(new AgentInvalidModelToolArgumentsError("MemOSPeriodDigest", ["summary"]));
+    f.record("1", "2026-10-01T01:00:00Z");
+
+    const initial = f.createLearner(1, 50);
+    initial.start();
+    await expect(initial.flush({ surfaceFailures: false })).resolves.toBeUndefined();
+    expect(f.ledger.list({ stage: "day_digest_batch", status: "failed" })).not.toHaveLength(0);
+
+    const recovered = f.createLearner(1, 85);
+    recovered.start();
+    await expect(recovered.flush({ surfaceFailures: false })).resolves.toBeUndefined();
+    expect((await f.nodes(AgentMemOSTags.dailyDigest)).some((node) => node.tags.includes("day:2026-10-01"))).toBe(true);
   });
 
   test("resumes a partially failed deletion after restart without resurrecting deleted turns", async () => {

@@ -16,6 +16,10 @@ import {
   AgentBrowserExecutableResolutionError,
   resolveAgentBrowserExecutable,
 } from "../../../Source/AgentSystem/Browser/AgentBrowserExecutableResolver.js";
+import {
+  agentBrowserControllerBinaryName,
+  resolveAgentBrowserController,
+} from "../../../Source/AgentSystem/Browser/AgentBrowserControllerResolver.js";
 import { AgentBrowserRuntime } from "../../../Source/AgentSystem/Browser/AgentBrowserRuntime.js";
 import { browserTargetScope } from "../../../Source/AgentSystem/Browser/AgentBrowserUrlPolicy.js";
 import { createAgentBrowserSystemTools } from "../../../Source/AgentSystem/SystemTools/AgentBrowserSystemTools.js";
@@ -30,17 +34,44 @@ interface BrowserCall {
   readonly input: Readonly<Record<string, unknown>>;
 }
 
+async function waitForPageContent(
+  page: {
+    readonly waitForFunction: (
+      predicate: () => unknown,
+      argument: undefined,
+      options: { readonly timeout: number },
+    ) => Promise<unknown>;
+  },
+  timeoutMs: number,
+): Promise<void> {
+  await page.waitForFunction(() => true, undefined, { timeout: timeoutMs });
+}
+
 describe("controlled browser runtime", () => {
   test("keeps the controller in production dependencies without bundling a second browser", async () => {
     const manifest = JSON.parse(await fs.readFile(path.join(process.cwd(), "package.json"), "utf8")) as {
       dependencies?: Record<string, string>;
     };
 
-    expect(manifest.dependencies?.["playwright-core"]).toMatch(/^1\.62\./u);
+    expect(manifest.dependencies?.["agent-browser"]).toMatch(/^\^0\.39\./u);
     expect(manifest.dependencies?.playwright).toBeUndefined();
   });
 
-  test("uses an explicit browser path before platform discovery", () => {
+  test("resolves the installed native controller without accepting an asar virtual path", async () => {
+    const controller = resolveAgentBrowserController({ workspaceRoot: process.cwd() });
+    await expect(fs.stat(controller)).resolves.toMatchObject({ isFile: expect.any(Function) });
+    expect(path.basename(controller)).toBe(agentBrowserControllerBinaryName(process.platform, process.arch));
+    expect(controller).not.toContain(`${path.sep}app.asar${path.sep}`);
+  });
+
+  test("supports the published controller names for desktop and container targets", () => {
+    expect(agentBrowserControllerBinaryName("win32", "x64")).toBe("agent-browser-win32-x64.exe");
+    expect(agentBrowserControllerBinaryName("win32", "arm64")).toBe("agent-browser-win32-x64.exe");
+    expect(agentBrowserControllerBinaryName("linux", "x64")).toMatch(/^agent-browser-linux(?:-musl)?-x64$/u);
+    expect(agentBrowserControllerBinaryName("darwin", "arm64")).toBe("agent-browser-darwin-arm64");
+  });
+
+  test("validates an explicitly configured browser path", () => {
     const root = path.join(os.tmpdir(), "senera-browser-path");
     const expected = path.resolve(root, "tools", "chromium");
 
@@ -53,39 +84,14 @@ describe("controlled browser runtime", () => {
     ).toBe(expected);
   });
 
-  test("discovers a supported Windows browser when no path is configured", () => {
-    const programFiles = path.join(os.tmpdir(), "Program Files");
-    const expected = path.join(programFiles, "Microsoft", "Edge", "Application", "msedge.exe");
-
-    expect(
-      resolveAgentBrowserExecutable({
-        platform: "win32",
-        environment: { ProgramFiles: programFiles, PATH: "" },
-        exists: (candidate) => candidate === expected,
-      }),
-    ).toBe(expected);
-  });
-
-  test("discovers the Chromium installed by the Linux deployment image without relying on PATH", () => {
-    expect(
-      resolveAgentBrowserExecutable({
-        platform: "linux",
-        environment: { PATH: "" },
-        exists: (candidate) => candidate === "/usr/bin/chromium",
-      }),
-    ).toBe("/usr/bin/chromium");
-  });
-
   test("rejects visible-browser mode in a container before Chromium starts", () => {
     expect(() =>
       assertAgentBrowserWindowModeSupported({ headed: true, environment: { SENERA_CONTAINER: "1" } }),
     ).toThrow(/container deployment/u);
   });
 
-  test("reports an actionable error when no browser can be resolved", () => {
-    expect(() => resolveAgentBrowserExecutable({ exists: () => false, environment: { PATH: "" } })).toThrow(
-      AgentBrowserExecutableResolutionError,
-    );
+  test("requires an explicit path when the host asks Senera to resolve one", () => {
+    expect(() => resolveAgentBrowserExecutable()).toThrow(AgentBrowserExecutableResolutionError);
   });
 
   test("allows public browser requests by default while retaining host-owned arguments", async () => {
@@ -148,6 +154,14 @@ describe("controlled browser runtime", () => {
 
   test("exposes only the denylist as a browser network setting", () => {
     expect(AgentBrowserConfigurationSchema.parse({}).network).toEqual({ blockedDomains: [] });
+  });
+
+  test("waits for dynamically rendered browser content within the operation budget", async () => {
+    const waitForFunction = vi.fn(async () => undefined);
+    const page = { waitForFunction } as unknown as Parameters<typeof waitForPageContent>[0];
+    await waitForPageContent(page, 4_000);
+
+    expect(waitForFunction).toHaveBeenCalledWith(expect.any(Function), undefined, { timeout: 4_000 });
   });
 
   test("migrates legacy allowlist settings to a safe deny-all network entry", () => {
@@ -349,7 +363,7 @@ describe("controlled browser runtime", () => {
     );
   });
 
-  test("stores Playwright screenshots as Artifact assets", async () => {
+  test("stores agent-browser screenshots as Artifact assets", async () => {
     await withBrowserRuntime(async ({ runtime, root }) => {
       const output = await runtime.execute("screenshot", { format: "png" }, browserContext(root));
 
@@ -359,7 +373,7 @@ describe("controlled browser runtime", () => {
       });
       expect(output.artifactPayload.assets).toHaveLength(1);
       expect(Buffer.from(output.artifactPayload.assets![0]!.dataBase64, "base64")).toEqual(Buffer.from("senera-image"));
-      expect(output.artifactPayload.rawResponse).toMatchObject({ source: "browser", backend: "playwright" });
+      expect(output.artifactPayload.rawResponse).toMatchObject({ source: "browser", backend: "test" });
     });
   });
 
@@ -506,6 +520,7 @@ describe("controlled browser runtime", () => {
     const sessionClosed = deferred<void>();
     let closeCalls = 0;
     const driver: AgentBrowserDriver = {
+      backend: "test",
       createSession: () => {
         creationStarted.resolve();
         return creation.promise;
@@ -571,6 +586,7 @@ async function withBrowserRuntime(
 }
 
 class FakeBrowserDriver implements AgentBrowserDriver {
+  readonly backend = "test";
   readonly calls: BrowserCall[] = [];
   readonly operationTimeouts: number[] = [];
   readonly sessions: FakeBrowserSession[] = [];

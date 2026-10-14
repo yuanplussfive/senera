@@ -23,7 +23,7 @@ const releaseWorkflow = read(".github/workflows/release.yml");
 const providerRegistry = readRecord(parseYaml(read("Source/AgentSystem/Sandbox/ProviderRegistry/contract.json")));
 const dockerEnginePolicy = readRecord(parseYaml(read("Source/AgentSystem/Sandbox/DockerEngine/contract.json")));
 const compose = readRecord(parseYaml(read("compose.yaml"), { merge: true }));
-const browserDriver = read("Source/AgentSystem/Browser/AgentPlaywrightBrowserDriver.ts");
+const browserDriver = read("Source/AgentSystem/Browser/AgentNativeBrowserDriver.ts");
 
 assert.match(
   dockerfile,
@@ -177,8 +177,8 @@ assert.equal(
 );
 assert.ok(
   browserDriver.includes('SENERA_CONTAINER === "1"') &&
-    browserDriver.includes('"--no-sandbox"') &&
-    browserDriver.includes("isContainerRoot"),
+    browserDriver.includes("--no-sandbox") &&
+    browserDriver.includes("process.getuid?.() === 0"),
   "The browser driver must only weaken Chromium's sandbox for the container root path.",
 );
 

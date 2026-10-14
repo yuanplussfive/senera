@@ -13,7 +13,7 @@
     },
     "activity": {
       "action": { "zh-CN": "运行命令", "en-US": "Run" },
-      "argumentPath": "/command/script",
+      "argumentPath": "/script",
       "detailPaths": ["/cwd"]
     }
   },

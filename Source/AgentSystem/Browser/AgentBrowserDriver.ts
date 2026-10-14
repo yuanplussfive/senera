@@ -3,6 +3,8 @@ import type { AgentBrowserOperation } from "./AgentBrowserTypes.js";
 export type AgentBrowserNetworkRequestKind = "navigation" | "subresource";
 
 export interface AgentBrowserDriverSessionOptions {
+  /** Stable host-owned identity used by the agent-browser daemon. */
+  readonly sessionId: string;
   readonly requestTimeoutMs: number;
   readonly maxDownloadBytes: number;
   readonly assertRequestPermitted: (
@@ -48,6 +50,7 @@ export interface AgentBrowserDriverSession {
 }
 
 export interface AgentBrowserDriver {
+  readonly backend: string;
   createSession(options: AgentBrowserDriverSessionOptions): Promise<AgentBrowserDriverSession>;
   close(): Promise<void>;
 }

@@ -19,6 +19,7 @@ import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes
 import type { AgentToolSearchEpisode } from "../ToolSearch/AgentToolSearchMemoryTypes.js";
 import {
   AgentMemOSSemanticLearningRuntime,
+  type AgentMemOSSemanticLearningFlushOptions,
   type AgentMemOSSemanticLearningConfig,
 } from "./AgentMemOSSemanticLearningRuntime.js";
 import { AgentMemOSTags, projectAgentMemOSOccurredAt, projectAgentMemOSPeriod } from "./AgentMemOSSemanticTypes.js";
@@ -382,12 +383,32 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
       });
   }
 
-  async flush(): Promise<void> {
+  /**
+   * Drains continuity work without turning detached learning failures into a
+   * foreground run failure. Callers that own an explicit maintenance boundary
+   * can opt into promotion with `surfaceFailures: true`.
+   */
+  async flush(options: AgentMemOSSemanticLearningFlushOptions = {}): Promise<void> {
+    const surfaceFailures = options.surfaceFailures === true;
     await this.ready;
     await this.writeTail;
     await this.semanticCommandTail;
-    await this.semanticLearning.flush();
-    await this.awaitReadable();
+    try {
+      await this.semanticLearning.flush({ surfaceFailures });
+    } catch (error) {
+      if (surfaceFailures) throw error;
+      this.options.logger?.warn("memory.memos.semantic_learning.flush_failed", {
+        message: errorMessage(error),
+      });
+    }
+    try {
+      await this.awaitReadable();
+    } catch (error) {
+      if (surfaceFailures) throw error;
+      this.options.logger?.warn("memory.memos.readiness.flush_failed", {
+        message: errorMessage(error),
+      });
+    }
   }
 
   close(): Promise<void> {
@@ -399,7 +420,7 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
         failure = error;
       } finally {
         try {
-          await this.semanticLearning.stop();
+          await this.semanticLearning.stop({ surfaceFailures: false });
         } finally {
           try {
             await this.recallDedupe.stop();

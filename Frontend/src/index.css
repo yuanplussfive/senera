@@ -1350,7 +1350,8 @@ html[data-motion-level="none"] .senera-state-enter {
   max-width: min(var(--theme-conversation-track-width, 64rem), 100%);
   min-width: 0;
   margin-inline: auto;
-  padding-inline: clamp(16px, 2.2vw, 28px);
+  --conversation-frame-inline-padding: clamp(16px, 2.2vw, 28px);
+  padding-inline: var(--conversation-frame-inline-padding);
 }
 
 .conversation-frame--prose {
@@ -2055,7 +2056,7 @@ html[data-motion-level="none"] .senera-state-enter {
 @container workspace-main (max-width: 720px) {
   .conversation-frame {
     max-width: none;
-    padding-inline: 14px;
+    --conversation-frame-inline-padding: 14px;
   }
 }
 
@@ -2064,13 +2065,19 @@ html[data-motion-level="none"] .senera-state-enter {
 }
 
 /* Reply navigator: Grok-style local landmarks without restoring a native scrollbar track. */
+:root {
+  --chat-event-rail-inline-size: 40px;
+  --chat-event-rail-edge-offset: 10px;
+  --chat-event-rail-content-clearance: 8px;
+}
+
 .chat-event-rail {
   position: absolute;
   z-index: 15;
   top: 50%;
-  inset-inline-end: 10px;
+  inset-inline-end: var(--chat-event-rail-edge-offset);
   display: none;
-  width: 40px;
+  width: var(--chat-event-rail-inline-size);
   max-height: calc(100% - 64px);
   flex-direction: column;
   align-items: center;
@@ -2142,7 +2149,7 @@ html[data-motion-level="none"] .senera-state-enter {
 .chat-event-rail__event {
   position: relative;
   display: flex;
-  width: 40px;
+  width: var(--chat-event-rail-inline-size);
   height: 12px;
   padding: 0;
   padding-inline: 10px;
@@ -2278,6 +2285,21 @@ html[data-motion-level="none"] .senera-state-enter {
 }
 
 @media (hover: hover) and (pointer: fine) {
+  [data-chat-rail-mode="overlay"] {
+    --chat-event-rail-reserve: clamp(
+      0px,
+      calc(
+        var(--theme-conversation-track-width, 64rem) + var(--chat-event-rail-inline-size) +
+          var(--chat-event-rail-content-clearance) - 100cqw
+      ),
+      calc(var(--chat-event-rail-inline-size) + var(--chat-event-rail-content-clearance))
+    );
+  }
+
+  [data-chat-rail-mode="overlay"] .conversation-frame {
+    padding-inline-end: calc(var(--conversation-frame-inline-padding) + var(--chat-event-rail-reserve, 0px));
+  }
+
   [data-chat-rail-mode="overlay"] .chat-event-rail {
     display: flex;
   }
@@ -2847,6 +2869,26 @@ html[data-motion-level="none"]::view-transition-new(root) {
 }
 
 /* Electron desktop chrome -------------------------------------------------- */
+.chat-header-shell {
+  --chat-header-inline-padding: 12px;
+  padding-inline: var(--chat-header-inline-padding);
+}
+
+@media (min-width: 640px) {
+  .chat-header-shell {
+    --chat-header-inline-padding: 20px;
+  }
+}
+
+[data-chat-run-status] {
+  line-height: 1;
+  white-space: nowrap;
+}
+
+[data-chat-run-status] [data-execution-status-icon] {
+  display: block;
+}
+
 html[data-senera-window-controls="custom"] {
   --senera-titlebar-height: 52px;
   --senera-top-chrome-height: var(--senera-titlebar-height);
@@ -2875,8 +2917,8 @@ html[data-senera-window-controls="custom"] [data-window-controls-inset] {
   padding-inline-end: calc(var(--senera-window-controls-width) + var(--senera-window-controls-gap));
 }
 
-html[data-senera-window-controls="custom"] [data-window-controls-scope="viewport"] [data-chat-header] {
-  padding-inline-end: calc(var(--senera-window-controls-width) + var(--senera-window-controls-gap));
+html[data-senera-window-controls="custom"] [data-chat-header] {
+  padding-inline-end: calc(var(--chat-header-inline-padding) + var(--chat-header-window-controls-inset, 0px));
 }
 
 html[data-senera-window-controls="custom"] [data-workflow-dock-titlebar-spacer] {

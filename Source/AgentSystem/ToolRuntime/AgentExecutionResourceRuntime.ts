@@ -33,7 +33,7 @@ const ResourceIdSchema = z
 
 const TerminalStartArgumentsSchema = z
   .object({
-    command: SeneraShellCommandSpecSchema,
+    ...SeneraShellCommandSpecSchema.shape,
     cwd: z.string().trim().min(1).optional(),
     workspaceEffect: AgentWorkspaceEffectSchema,
     title: z.string().trim().min(1).max(80).optional(),
@@ -226,7 +226,9 @@ function requireExecutionPlan(context: AgentHostToolContext) {
 async function startTerminalResource(
   broker: AgentExecutionResourceBroker,
   args: {
-    command: z.output<typeof SeneraShellCommandSpecSchema>;
+    mode: z.output<typeof SeneraShellCommandSpecSchema>["mode"];
+    dialect: z.output<typeof SeneraShellCommandSpecSchema>["dialect"];
+    script: z.output<typeof SeneraShellCommandSpecSchema>["script"];
     cwd?: string;
     workspaceEffect: z.output<typeof AgentWorkspaceEffectSchema>;
     title?: string;
@@ -238,15 +240,20 @@ async function startTerminalResource(
   const cwdResult = await context.executionEnv.canonicalPath(args.cwd ?? ".");
   if (!cwdResult.ok) throw cwdResult.error;
   const profile = createAgentShellExecutionProfile(requireExecutionPlan(context));
+  const shellCommand = {
+    mode: args.mode,
+    dialect: args.dialect,
+    script: args.script,
+  } satisfies z.output<typeof SeneraShellCommandSpecSchema>;
   const workspaceLease =
     args.workspaceEffect === AgentWorkspaceEffects.Mutate
       ? await context.workspaceObservation?.openResourceLease?.()
       : undefined;
   const request = {
-    command: args.command.script,
+    command: shellCommand.script,
     args: [],
-    shellCommand: args.command,
-    displayCommand: args.command.script,
+    shellCommand,
+    displayCommand: shellCommand.script,
     cwd: cwdResult.value,
     executionEnv: context.executionEnv,
     profile,

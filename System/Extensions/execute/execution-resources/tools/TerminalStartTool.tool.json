@@ -6,25 +6,23 @@
     "icon": "terminal",
     "activity": {
       "action": { "zh-CN": "启动", "en-US": "Start" },
-      "argumentPath": "/command/script",
+      "argumentPath": "/script",
       "detailPaths": ["/cwd", "/title"]
     }
   },
-  "description": "启动可交互的 PTY 终端，适用于需要键盘输入、TTY 或终端尺寸的 CLI。",
+  "description": "启动可交互的 PTY 终端。mode、dialect、script、cwd、workspaceEffect、title、columns 和 rows 均为顶层参数，适用于需要键盘输入、TTY 或终端尺寸的 CLI。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
+    "description": "所有参数均为顶层字段；不要把 mode、dialect、script 或 workspaceEffect 放入 command 对象。",
     "properties": {
-      "command": {
-        "type": "object",
-        "properties": {
-          "mode": { "type": "string", "const": "shell" },
-          "dialect": { "type": "string", "enum": ["posix-sh", "powershell"] },
-          "script": { "type": "string" }
-        },
-        "required": ["mode", "dialect", "script"],
-        "additionalProperties": false
+      "mode": { "type": "string", "const": "shell", "description": "固定填写 shell。" },
+      "dialect": {
+        "type": "string",
+        "enum": ["posix-sh", "powershell"],
+        "description": "与当前执行目标匹配的 shell 方言。"
       },
+      "script": { "type": "string", "minLength": 1, "description": "要启动的终端命令脚本。" },
       "cwd": { "type": "string" },
       "workspaceEffect": {
         "type": "string",
@@ -40,7 +38,7 @@
       "columns": { "type": "number" },
       "rows": { "type": "number" }
     },
-    "required": ["command", "workspaceEffect"],
+    "required": ["mode", "dialect", "script", "workspaceEffect"],
     "additionalProperties": false,
     "definitions": {}
   },
@@ -80,7 +78,7 @@
         "Facets": {
           "Actions": ["start", "interact", "monitor"],
           "Targets": ["terminal", "pty", "interactive-process"],
-          "Inputs": ["command", "cwd", "workspace-effect", "columns", "rows"],
+          "Inputs": ["mode", "dialect", "script", "cwd", "workspace-effect", "columns", "rows"],
           "Outputs": ["resource-id", "process-state", "cursor"],
           "Effects": ["process", "may-write-workspace", "network-possible"]
         },

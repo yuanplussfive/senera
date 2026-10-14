@@ -86,12 +86,6 @@
       "splitTarget": "Split session admission, cancellation, and persistence coverage into focused test files."
     },
     {
-      "path": "Source/AgentSystem/Browser/AgentPlaywrightBrowserDriver.ts",
-      "baselineLines": 976,
-      "owner": "browser-runtime",
-      "splitTarget": "Extract page lifecycle and locator interaction helpers into focused modules."
-    },
-    {
       "path": "Source/AgentSystem/Channels/AgentChannelOutboundMedia.ts",
       "baselineLines": 926,
       "owner": "channel-runtime",
@@ -201,7 +195,7 @@
     },
     {
       "path": "Source/AgentSystem/Continuity/AgentMemOSSemanticLearningRuntime.ts",
-      "baselineLines": 978,
+      "baselineLines": 903,
       "owner": "continuity-runtime",
       "splitTarget": "Extract semantic learning ingestion, clustering, and projection into focused continuity modules."
     },

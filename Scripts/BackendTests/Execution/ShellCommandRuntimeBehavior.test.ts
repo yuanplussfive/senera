@@ -30,18 +30,33 @@ describe("Shell command runtime", () => {
   it("accepts zero as a numeric no-time-limit request only", () => {
     expect(
       ShellCommandArgumentsSchema.safeParse({
-        command: shellCommand("node server.js"),
+        ...shellCommand("node server.js"),
         timeoutMs: 0,
         workspaceEffect: "read",
       }).success,
     ).toBe(true);
     expect(
       ShellCommandArgumentsSchema.safeParse({
-        command: shellCommand("node server.js"),
+        ...shellCommand("node server.js"),
         timeoutMs: null,
         workspaceEffect: "read",
       }).success,
     ).toBe(false);
+  });
+
+  it("requires the shell command fields and workspace effect at the top level", () => {
+    expect(
+      ShellCommandArgumentsSchema.safeParse({
+        command: shellCommand("echo nested"),
+        workspaceEffect: "read",
+      }).success,
+    ).toBe(false);
+    expect(
+      ShellCommandArgumentsSchema.safeParse({
+        ...shellCommand("echo flat"),
+        workspaceEffect: "read",
+      }).success,
+    ).toBe(true);
   });
 
   it("runs through the resolved sandbox plan and returns a short command inline", async () => {
@@ -53,7 +68,7 @@ describe("Shell command runtime", () => {
     const fixture = createFixture(spawn);
 
     try {
-      const result = await fixture.run({ command: shellCommand("echo ok") });
+      const result = await fixture.run(shellCommand("echo ok"));
 
       expect(result.response).toMatchObject({
         ok: true,
@@ -92,7 +107,7 @@ describe("Shell command runtime", () => {
     );
 
     try {
-      await fixture.run({ command: shellCommand("node --version"), workspaceEffect: "read" });
+      await fixture.run({ ...shellCommand("node --version"), workspaceEffect: "read" });
       expect(openResourceLease).not.toHaveBeenCalled();
     } finally {
       await fixture.broker.close();
@@ -119,7 +134,7 @@ describe("Shell command runtime", () => {
     );
 
     try {
-      await fixture.run({ command: shellCommand("touch output.txt"), workspaceEffect: "mutate" });
+      await fixture.run({ ...shellCommand("touch output.txt"), workspaceEffect: "mutate" });
       expect(openResourceLease).toHaveBeenCalledTimes(1);
       expect(lease.complete).toHaveBeenCalledTimes(1);
     } finally {
@@ -140,7 +155,7 @@ describe("Shell command runtime", () => {
     }, events);
 
     try {
-      const result = await fixture.run({ command: shellCommand("echo hello") });
+      const result = await fixture.run(shellCommand("echo hello"));
 
       expect(result.response).toMatchObject({
         ok: true,
@@ -167,7 +182,7 @@ describe("Shell command runtime", () => {
     const fixture = createFixture(async () => child, [], 0.001);
 
     try {
-      const result = await fixture.run({ command: shellCommand("npm run dev") });
+      const result = await fixture.run(shellCommand("npm run dev"));
       const projected = successResult(result.response);
 
       expect(projected).toMatchObject({ state: "running" });
@@ -210,7 +225,7 @@ describe("Shell command runtime", () => {
     const fixture = createFixture(spawn, [], 0.1);
 
     try {
-      const result = await fixture.run({ command: shellCommand("python -m http.server"), timeoutMs: 0 });
+      const result = await fixture.run({ ...shellCommand("python -m http.server"), timeoutMs: 0 });
       const projected = successResult(result.response);
 
       expect(projected).toMatchObject({
@@ -239,7 +254,7 @@ describe("Shell command runtime", () => {
     });
 
     try {
-      const result = await fixture.run({ command: shellCommand("echo retained") }, async () => {
+      const result = await fixture.run(shellCommand("echo retained"), async () => {
         throw new Error("socket disconnected");
       });
 
@@ -261,7 +276,7 @@ describe("Shell command runtime", () => {
     const fixture = createFixture(spawn, [], 0.1, 1);
 
     try {
-      await fixture.run({ command: shellCommand("echo bounded"), timeoutMs: 5_000 });
+      await fixture.run({ ...shellCommand("echo bounded"), timeoutMs: 5_000 });
       expect(spawn).toHaveBeenCalledWith("echo bounded", [], expect.objectContaining({ maxDurationMs: 1_000 }));
     } finally {
       await fixture.broker.close();
@@ -285,7 +300,7 @@ describe("Shell command runtime", () => {
     });
 
     try {
-      const result = await fixture.run({ command: shellCommand("echo outcome") });
+      const result = await fixture.run(shellCommand("echo outcome"));
       expect(result.response).toMatchObject({ ok: false, error: { code: expectedCode } });
     } finally {
       await fixture.broker.close();
@@ -312,7 +327,7 @@ describe("Shell command runtime", () => {
     });
 
     try {
-      const result = await fixture.run({ command: shellCommand("echo outcome") });
+      const result = await fixture.run(shellCommand("echo outcome"));
       expect(result.response).toMatchObject({
         ok: false,
         error: {
@@ -413,7 +428,7 @@ function createFixture(
     outputSpool,
     context,
     run: (
-      args: { command: ReturnType<typeof shellCommand>; timeoutMs?: number; workspaceEffect?: "read" | "mutate" },
+      args: ReturnType<typeof shellCommand> & { timeoutMs?: number; workspaceEffect?: "read" | "mutate" },
       onEvent: (event: AgentDomainEvent) => Promise<void> = async (event) => {
         events.push(event);
       },

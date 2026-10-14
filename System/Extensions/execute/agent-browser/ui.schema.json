@@ -21,8 +21,19 @@
             "path": ["runtime", "executablePath"],
             "label": { "zh-CN": "浏览器可执行文件", "en-US": "Browser executable" },
             "description": {
-              "zh-CN": "留空时自动查找 Chrome、Edge 或 Chromium；仅在自动发现失败或需要固定版本时填写。",
-              "en-US": "Leave empty to discover Chrome, Edge, or Chromium automatically. Set only when discovery fails or a fixed browser is required."
+              "zh-CN": "留空时由 agent-browser 发现系统浏览器或其已下载的浏览器；仅在需要固定版本时填写。",
+              "en-US": "Leave empty for agent-browser to discover a system or managed browser. Set only when a fixed executable is required."
+            },
+            "type": "string",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["runtime", "controllerPath"],
+            "label": { "zh-CN": "agent-browser 控制器", "en-US": "agent-browser controller" },
+            "description": {
+              "zh-CN": "留空时从已安装的 agent-browser 包和打包资源中按平台自动解析。",
+              "en-US": "Leave empty to resolve the native agent-browser controller from the installed package and packaged resources."
             },
             "type": "string",
             "required": false,

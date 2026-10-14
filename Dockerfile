@@ -24,7 +24,9 @@ RUN npm run build
 RUN npm --workspace senera-frontend run build
 RUN npm run desktop.prepare-mcp-runtime
 RUN --mount=type=cache,target=/root/.npm,sharing=locked npm prune --omit=dev
+RUN chmod 755 node_modules/agent-browser/bin/agent-browser-linux-*
 RUN node Dist/Scripts/VerifyDockerNativeSqlite.js
+RUN node Dist/Scripts/VerifyDockerAgentBrowser.js
 
 FROM ${NODE_IMAGE} AS runtime
 

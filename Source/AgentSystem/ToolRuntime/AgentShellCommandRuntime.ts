@@ -44,7 +44,7 @@ const ShellTimeoutSchema = z
   .optional();
 export const ShellCommandArgumentsSchema = z
   .object({
-    command: SeneraShellCommandSpecSchema,
+    ...SeneraShellCommandSpecSchema.shape,
     cwd: ShellCwdSchema.optional(),
     timeoutMs: ShellTimeoutSchema,
     workspaceEffect: AgentWorkspaceEffectSchema,
@@ -107,6 +107,11 @@ export function createShellCommandHostTool(
     const executionPolicy = resolveAgentShellCommandExecutionPolicy(context.config, parsed.data.timeoutMs);
     const executionProfile = createAgentShellExecutionProfile(requireExecutionPlan(context));
     const owner = shellResourceOwner(context);
+    const shellCommand = {
+      mode: parsed.data.mode,
+      dialect: parsed.data.dialect,
+      script: parsed.data.script,
+    } satisfies z.output<typeof SeneraShellCommandSpecSchema>;
     const workspaceLease =
       parsed.data.workspaceEffect === AgentWorkspaceEffects.Mutate
         ? await context.workspaceObservation?.openResourceLease?.()
@@ -120,10 +125,10 @@ export function createShellCommandHostTool(
         toolCallId: context.toolCallId,
       });
       const started = await broker.startProcess({
-        command: parsed.data.command.script,
+        command: shellCommand.script,
         args: [],
-        shellCommand: parsed.data.command,
-        displayCommand: parsed.data.command.script,
+        shellCommand,
+        displayCommand: shellCommand.script,
         cwd: cwdResult.value,
         executionEnv: context.executionEnv,
         profile: executionProfile,
@@ -180,8 +185,8 @@ export function createShellCommandHostTool(
       }
       return {
         response: createToolProcessSuccessResponse({
-          command: parsed.data.command.script,
-          shellDialect: parsed.data.command.dialect,
+          command: shellCommand.script,
+          shellDialect: shellCommand.dialect,
           cwd: cwdResult.value,
           ...projectAgentExecutionResourceResult(result, { fromCursor: started.cursor }),
         }),
@@ -198,7 +203,7 @@ export function createShellCommandHostTool(
       workspaceLease?.cancel();
       const failure = shellExecutionFailure({
         error,
-        command: parsed.data.command.script,
+        command: shellCommand.script,
         cwd: cwdResult.value,
         timeoutMs: executionPolicy.maxDurationMs,
         signal: context.signal,

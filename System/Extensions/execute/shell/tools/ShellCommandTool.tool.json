@@ -4,23 +4,16 @@
   "presentation": {
     "category": "shell-command",
     "icon": "terminal",
-    "activity": { "action": { "zh-CN": "执行", "en-US": "Run" }, "argumentPath": "/command/script" }
+    "activity": { "action": { "zh-CN": "执行", "en-US": "Run" }, "argumentPath": "/script" }
   },
-  "description": "在工作区执行 Shell 命令并保留可查询输出。服务以前台方式运行；timeoutMs=0 表示持续跟踪进程树，直到退出或显式停止。",
+  "description": "在工作区执行 Shell 命令并保留可查询输出。mode、dialect、script、cwd、timeoutMs 和 workspaceEffect 均为顶层参数；服务以前台方式运行，timeoutMs=0 表示持续跟踪进程树，直到退出或显式停止。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
     "properties": {
-      "command": {
-        "type": "object",
-        "properties": {
-          "mode": { "type": "string", "const": "shell" },
-          "dialect": { "type": "string", "enum": ["posix-sh", "powershell"] },
-          "script": { "type": "string", "minLength": 1 }
-        },
-        "required": ["mode", "dialect", "script"],
-        "additionalProperties": false
-      },
+      "mode": { "type": "string", "const": "shell" },
+      "dialect": { "type": "string", "enum": ["posix-sh", "powershell"] },
+      "script": { "type": "string", "minLength": 1 },
       "cwd": { "type": "string", "minLength": 1 },
       "timeoutMs": {
         "type": "integer",
@@ -34,7 +27,7 @@
         "description": "Whether the command only reads the workspace or may change workspace content."
       }
     },
-    "required": ["command", "workspaceEffect"],
+    "required": ["mode", "dialect", "script", "workspaceEffect"],
     "additionalProperties": false
   },
   "permissions": ["process:shell", "filesystem:workspace"],
@@ -64,7 +57,7 @@
         "Facets": {
           "Actions": ["run", "execute", "test", "build", "check"],
           "Targets": ["shell", "process", "workspace", "test-suite", "build-system"],
-          "Inputs": ["command", "cwd", "timeout", "workspace-effect"],
+          "Inputs": ["mode", "dialect", "script", "cwd", "timeout", "workspace-effect"],
           "Outputs": ["exit-code", "stdout", "stderr", "shell-execution", "resource-id", "cursor"],
           "Evidence": ["shell-execution"],
           "Effects": ["process", "may-write-workspace", "network-possible"]

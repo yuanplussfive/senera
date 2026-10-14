@@ -244,6 +244,8 @@ function verifyRootPackage(outputRoot: string, value: NanoContract): void {
   assert.ok(nanoPackage.dependencies?.dockerode);
   assert.ok(nanoPackage.dependencies?.semver);
   assert.ok(nanoPackage.dependencies?.["tar-fs"]);
+  assert.ok(nanoPackage.dependencies?.["agent-browser"]);
+  assert.equal(nanoPackage.dependencies?.["playwright-core"], undefined);
   assert.equal(nanoPackage.dependencies?.tinyglobby, undefined);
   assert.deepEqual(Object.keys(nanoPackage.devDependencies ?? {}), value.rootPackage.devDependencies.names);
   for (const forbidden of ["electron", "electron-builder", "eslint", "vitest", "@vitest/coverage-v8"]) {

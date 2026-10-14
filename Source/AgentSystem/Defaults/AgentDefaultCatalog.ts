@@ -263,7 +263,7 @@ export const AgentDefaults = {
       KnowledgeCandidateLimit: 8,
       AssistantPreviewTokens: 256,
       DigestInputTokenBudget: 8_192,
-      DigestSummaryCharacterLimit: 50,
+      DigestSummaryTokenLimit: 85,
     },
     Recall: {
       PromptBudget: AgentContinuityPromptBudgetDefaults,

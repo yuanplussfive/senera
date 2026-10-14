@@ -232,6 +232,7 @@ export function createAgentRuntimeInfrastructure(options: AgentSystemRuntimeComp
   const resourceClaims = new AgentToolResourceClaimProjector(resourceCapabilities);
   const browserRuntime = new AgentBrowserRuntime({
     workspaceRoot: options.workspaceRoot,
+    resourcesPath: options.resourcesPath,
     configuration: AgentBrowserConfigurationSchema.parse(
       options.config.Extensions?.["agent-browser"]?.Configuration ?? {},
     ),

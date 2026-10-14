@@ -97,7 +97,7 @@ export function createAgentContinuityRuntime(input: {
           knowledgeCandidateLimit: memosConfig.KnowledgeCandidateLimit,
           assistantPreviewTokens: memosConfig.AssistantPreviewTokens,
           digestInputTokenBudget: memosConfig.DigestInputTokenBudget,
-          digestSummaryCharacterLimit: memosConfig.DigestSummaryCharacterLimit,
+          digestSummaryTokenLimit: memosConfig.DigestSummaryTokenLimit,
         };
       },
       semanticScopeKey: baseIdentity.workspaceId,
@@ -131,7 +131,7 @@ export function createAgentContinuityRuntime(input: {
     const lifecycle = new AgentContinuityLifecycleCoordinator({
       memory: {
         close: memory.close.bind(memory),
-        flushSemanticLearning: () => memos.flush(),
+        flushSemanticLearning: () => memos.flush({ surfaceFailures: false }),
       },
       promptContext,
     });

@@ -119,6 +119,9 @@ try {
   for (const requiredField of ['"mode"', '"dialect"', '"script"', '"posix-sh"', '"powershell"']) {
     assert.ok(shellSchema.includes(requiredField), `ShellCommandTool schema is missing ${requiredField}`);
   }
+  const shellProperties = readRecord(shellDefinition.parameters.properties);
+  assert.deepEqual(Object.keys(shellProperties), ["mode", "dialect", "script", "cwd", "timeoutMs", "workspaceEffect"]);
+  assert.equal(shellProperties.command, undefined, "ShellCommandTool must use flat command arguments.");
   assert.equal(
     runtime.services.pi.toolDefinitions().some((tool) => tool.name === "ShellStartTool"),
     false,

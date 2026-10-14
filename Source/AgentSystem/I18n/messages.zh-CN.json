@@ -153,7 +153,7 @@
   "tool.callFailed": "工具调用失败。",
   "tool.settingsRequestFailed": "工具设置操作失败。",
   "tool.processFailed": "工具进程执行失败：{reason}",
-  "tool.shellArgumentsInvalid": "ShellCommandTool 参数无效。",
+  "tool.shellArgumentsInvalid": "ShellCommandTool 参数无效：mode、dialect、script 和 workspaceEffect 必须直接放在顶层，不能放入 command。",
   "tool.shellCommandTimeout": "命令执行超时，超过 {timeoutMs}ms：{command}",
   "tool.shellCwdSuggestion": "把 cwd 设置为工作区内的相对路径，例如 .、Frontend、McpServers/server-name。",
   "toolProcess.lastJsonLineInvalid": "工具进程最后一行 stdout 不是合法 JSON。",

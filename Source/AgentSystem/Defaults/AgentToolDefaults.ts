@@ -120,7 +120,7 @@ function validateMemOSConfig(config: {
   KnowledgeCandidateLimit: number;
   AssistantPreviewTokens: number;
   DigestInputTokenBudget: number;
-  DigestSummaryCharacterLimit: number;
+  DigestSummaryTokenLimit: number;
 }): void {
   const { AutoLinkThreshold, RecallDedupeThreshold, ...integerSettings } = config;
   for (const [name, value] of Object.entries({ AutoLinkThreshold, RecallDedupeThreshold })) {
