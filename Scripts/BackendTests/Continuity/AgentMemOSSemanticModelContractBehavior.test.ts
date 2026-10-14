@@ -7,6 +7,7 @@ import {
   createAgentMemOSExtractionRecordSchema,
 } from "../../../Source/AgentSystem/Continuity/AgentMemOSSemanticModelClient.js";
 import type { AgentMemOSFragmentPromptInput } from "../../../Source/AgentSystem/Continuity/AgentMemOSSemanticTypes.js";
+import { AgentModelTokenEstimator } from "../../../Source/AgentSystem/Text/AgentTextBudget.js";
 import { createModelProvider } from "../Support/AgentTestFixtures.js";
 import { completedTestPiStream } from "../Support/AgentPiModelTestStream.js";
 
@@ -27,12 +28,12 @@ const current: AgentMemOSFragmentPromptInput = {
 beforeEach(() => createConfiguredProvider.mockReset());
 afterEach(() => vi.restoreAllMocks());
 
-function nativeClient(responses: readonly JsonObject[]) {
+function nativeClient(responses: readonly JsonObject[], toolName = "MemOSSemanticFragment") {
   const requests: Context[] = [];
   const stream = vi.fn((_model: unknown, context: Context) => {
     const index = requests.push(context) - 1;
     const response = responses[Math.min(index, responses.length - 1)]!;
-    return completedTestPiStream(assistantMessage(response));
+    return completedTestPiStream(assistantMessage(response, toolName));
   });
   createConfiguredProvider.mockReturnValue({
     model: {
@@ -108,15 +109,42 @@ describe("MemOS semantic model source contract", () => {
     expect(f.stream).toHaveBeenCalledTimes(1);
   });
 
-  test("advertises text bounds, native types, and no additional fields in the same validating schema", async () => {
+  test("advertises native types and no additional fields in the same validating schema", async () => {
     const f = nativeClient([{ ...baseFragment, action: "new" }]);
     await f.client.extractFragment(current, "extract-shape");
     const validate = publishedSchema(f.requests);
-    expect(validate({ ...baseFragment, action: "new", summary: "x".repeat(51) })).toBe(false);
+    expect(validate({ ...baseFragment, action: "new" })).toBe(true);
     expect(validate({ ...baseFragment, action: "new", type: "profile" })).toBe(false);
     expect(validate({ ...baseFragment, action: "new", type: "entity" })).toBe(true);
     expect(validate({ ...baseFragment, action: "new", topic: "" })).toBe(false);
     expect(validate({ ...baseFragment, action: "new", explanation: "extra" })).toBe(false);
+  });
+
+  test("enforces summary limits with the local model tokenizer", async () => {
+    const estimator = new AgentModelTokenEstimator({ model: "test-model" });
+    let oversized = "summary";
+    while (estimator.estimate(oversized).tokenCount <= 50) oversized += " detail";
+    const f = nativeClient([{ ...baseFragment, action: "new", summary: oversized }]);
+    await expect(f.client.extractFragment(current, "extract-token-limit")).rejects.toThrow("invalid arguments");
+    expect(f.stream).toHaveBeenCalledOnce();
+  });
+
+  test("enforces the same token contract for period digests", async () => {
+    const estimator = new AgentModelTokenEstimator({ model: "test-model" });
+    let oversized = "summary";
+    while (estimator.estimate(oversized).tokenCount <= 50) oversized += " detail";
+    const f = nativeClient([{ summary: oversized }], "MemOSPeriodDigest");
+    await expect(
+      f.client.summarizePeriod(
+        {
+          period: "day",
+          periodKey: "2026-10-13",
+          entries: [{ summary: "记忆", type: "context", occurredAt: "2026-10-13T00:00:00Z" }],
+        },
+        "digest-token-limit",
+      ),
+    ).rejects.toThrow("invalid arguments");
+    expect(f.stream).toHaveBeenCalledOnce();
   });
 
   test("supplies the identical output contract to the text planning path", async () => {
@@ -140,7 +168,7 @@ describe("MemOS semantic model source contract", () => {
   });
 
   test("reads persisted decisions strictly without requesting the model again", () => {
-    const schema = createAgentMemOSExtractionRecordSchema(50);
+    const schema = createAgentMemOSExtractionRecordSchema("test-model", 50);
     const created = { fragment: { ...baseFragment, action: "new" } };
     const updated = { fragment: { ...baseFragment, action: "update", candidate: 3 }, candidateId: "real-node" };
     expect(schema.parse(created)).toEqual(created);
@@ -154,13 +182,13 @@ describe("MemOS semantic model source contract", () => {
   });
 });
 
-function assistantMessage(argumentsValue: JsonObject): AssistantMessage {
+function assistantMessage(argumentsValue: JsonObject, toolName: string): AssistantMessage {
   return {
     role: "assistant",
     api: "openai-completions",
     provider: "test-provider",
     model: "test-model",
-    content: [{ type: "toolCall", id: "memory-call", name: "MemOSSemanticFragment", arguments: argumentsValue }],
+    content: [{ type: "toolCall", id: "memory-call", name: toolName, arguments: argumentsValue }],
     usage: {
       input: 2,
       output: 1,

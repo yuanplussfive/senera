@@ -80,13 +80,13 @@ Docker 镜像运行的是标准 Node.js 24，不是 Electron，因此不需要�
 
 ### 受控浏览器
 
-受控浏览器的控制层是生产依赖 `playwright-core`，它不下载也不携带浏览器二进制。这样桌面安装包不会额外内置第二个 Chromium，运行时也不会在用户机器上隐式下载浏览器。
+受控浏览器的控制层是生产依赖 `agent-browser`。Senera 直接调用其与 npm 版本一致的原生控制器，不再通过 Playwright API 维护另一套浏览器会话实现；页面快照、交互引用、标签页和 daemon 生命周期由 agent-browser 统一负责。
 
-- Windows 桌面端自动发现当前用户已安装的 Chrome、Edge 或 Brave。`runtime.headed: true` 会打开独立的受控浏览器窗口，不使用 Electron 的渲染窗口；留空 `runtime.executablePath` 即可，只有自动发现失败或要固定版本时才填写路径。
+- Windows 桌面端由 agent-browser 发现当前用户已安装的 Chrome、Edge、Brave 或其通过 `agent-browser install` 管理的浏览器。`runtime.headed: true` 会打开独立的受控浏览器窗口，不使用 Electron 的渲染窗口；留空 `runtime.executablePath` 即可，只有要固定版本时才填写路径。
 
 - 官方 Docker 镜像已安装 Chromium 与运行所需字体，容器部署不需要挂载宿主浏览器。镜像没有显示服务器，因此必须保持 `runtime.headed: false`；启用可见窗口会在启动前返回明确配置错误。容器默认以 root 运行 Chromium 并自动附加 `--no-sandbox`（`SENERA_CONTAINER=1` 且进程 uid 为 0 时），并启用 `--disable-dev-shm-usage` 以适配 Docker 默认共享内存大小。
 
-- 裸 Linux 源码或二进制部署需要自行安装 Chrome、Chromium 或兼容的发行版包及其系统依赖，然后保持默认自动发现，或通过 `runtime.executablePath` 指向实际可执行文件。不要执行 `playwright install` 作为 Senera 运行时前提；那是仓库 E2E 测试使用的受管测试浏览器。
+- 裸 Linux 源码或二进制部署需要安装 Chrome、Chromium 或兼容的发行版包及其系统依赖，或者使用 `agent-browser install --with-deps` 管理浏览器；保持默认自动发现，或通过 `runtime.executablePath` 指向实际可执行文件。`agent-browser` 原生控制器随 Senera 的生产依赖和桌面安装包按平台分发；若发行包校验发现控制器缺失，会返回明确的配置错误，不会退回 Playwright、Electron WebView 或静默关闭浏览能力。仓库的 Playwright 仅用于 Web/Electron E2E 测试，不是运行时浏览器后端。
 
 受控会话拥有单独的临时 profile，不读取或改写用户日常浏览器的 profile、Cookie 与启动参数。浏览器找不到时会指出应安装浏览器或配置可执行路径，而不是退回 Electron WebView 或静默关闭浏览能力。
 

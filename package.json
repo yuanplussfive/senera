@@ -217,7 +217,8 @@
       "**/better-sqlite3/**",
       "**/@node-rs/**",
       "**/@vscode/ripgrep*/bin/**",
-      "**/tokenjuice/**"
+      "**/tokenjuice/**",
+      "**/agent-browser/bin/**"
     ],
     "win": {
       "icon": "Apps/Desktop/Assets/senera-icon.ico",
@@ -262,6 +263,7 @@
     "@vscode/ripgrep": "^1.18.0",
     "@xmldom/xmldom": "^0.9.12",
     "@zavora-ai/computer-use-mcp": "7.6.1",
+    "agent-browser": "^0.39.1",
     "ai": "^7.0.15",
     "ai-sdk-guardrails": "^6.0.1",
     "ajv": "^8.20.0",
@@ -303,7 +305,6 @@
     "minisearch": "^7.2.0",
     "officeparser": "^7.2.1",
     "parse5": "^8.0.1",
-    "playwright-core": "1.62.1",
     "readdirp": "^5.1.1",
     "rrule": "^2.8.1",
     "saxes": "^6.0.0",

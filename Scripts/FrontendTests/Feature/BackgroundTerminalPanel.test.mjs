@@ -696,7 +696,7 @@ function pendingApproval() {
     subject: {
       kind: "tool_call",
       toolName: "ShellCommandTool",
-      arguments: { command: "npm test" },
+      arguments: { mode: "shell", dialect: "powershell", script: "npm test", workspaceEffect: "read" },
     },
   };
 }

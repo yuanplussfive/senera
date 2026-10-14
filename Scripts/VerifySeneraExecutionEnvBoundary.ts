@@ -73,7 +73,9 @@ async function main(): Promise<void> {
     const result = await runner.run(
       shellTool,
       {
-        command: { mode: "shell", dialect, script: "echo boundary" },
+        mode: "shell",
+        dialect,
+        script: "echo boundary",
         cwd: ".",
         workspaceEffect: "read",
       },

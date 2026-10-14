@@ -36,7 +36,9 @@ async function main(): Promise<void> {
     assert.equal(command.loading, ToolLoadingModes.Bootstrap);
     assert.equal(patch.loading, ToolLoadingModes.Bootstrap);
     assert.deepEqual(schemaFieldNames(command.contract?.arguments?.jsonSchema ?? {}), [
-      "command",
+      "mode",
+      "dialect",
+      "script",
       "cwd",
       "timeoutMs",
       "workspaceEffect",
@@ -46,7 +48,7 @@ async function main(): Promise<void> {
     const contract = command.contract?.arguments;
     assert.deepEqual(
       contract?.properties.map((property) => property.name),
-      ["command", "cwd", "timeoutMs", "workspaceEffect"],
+      ["mode", "dialect", "script", "cwd", "timeoutMs", "workspaceEffect"],
     );
 
     const nativeDefinitions = runtime.services.pi.toolDefinitions({ toolAccessGrant });
@@ -90,7 +92,9 @@ async function main(): Promise<void> {
 
     const argumentsDraft = parsePiToolArgumentsDraft({
       arguments: {
-        command: { mode: "shell", dialect: "powershell", script: "rg ModelProviders Source" },
+        mode: "shell",
+        dialect: "powershell",
+        script: "rg ModelProviders Source",
         cwd: ".",
       },
       missingInputs: [],

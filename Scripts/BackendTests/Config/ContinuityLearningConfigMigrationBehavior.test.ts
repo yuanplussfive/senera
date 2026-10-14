@@ -179,4 +179,31 @@ describe("continuity learning configuration migration", () => {
       },
     });
   });
+
+  test("renames the summary character setting to a model-token setting", () => {
+    expect(
+      migrateAgentConfigPayload({
+        ConfigVersion: 35,
+        ContinuityLearning: { MemOS: { DigestSummaryCharacterLimit: 50 } },
+        Defaults: { ContinuityLearning: { MemOS: { DigestSummaryCharacterLimit: 64 } } },
+      }),
+    ).toEqual({
+      sourceVersion: 35,
+      targetVersion: CurrentAgentConfigVersion,
+      migratedPaths: [
+        "ContinuityLearning.MemOS.DigestSummaryTokenLimit",
+        "Defaults.ContinuityLearning.MemOS.DigestSummaryTokenLimit",
+        "ConfigVersion",
+      ],
+      removedPaths: [
+        "ContinuityLearning.MemOS.DigestSummaryCharacterLimit",
+        "Defaults.ContinuityLearning.MemOS.DigestSummaryCharacterLimit",
+      ],
+      config: {
+        ConfigVersion: CurrentAgentConfigVersion,
+        ContinuityLearning: { MemOS: { DigestSummaryTokenLimit: 50 } },
+        Defaults: { ContinuityLearning: { MemOS: { DigestSummaryTokenLimit: 64 } } },
+      },
+    });
+  });
 });

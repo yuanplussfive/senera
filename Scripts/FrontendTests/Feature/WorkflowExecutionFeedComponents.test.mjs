@@ -563,7 +563,7 @@ test("tool activity labels stay action-focused and show concise safe arguments",
     toolName: "ShellCommandTool",
     origin: systemToolOrigin("ShellCommandTool"),
     status: "completed",
-    arguments: { command: { script: "npm run check.types" }, cwd: "E:\\senera" },
+    arguments: { script: "npm run check.types", cwd: "E:\\senera" },
   });
   expect(shell.label).toBe(`${systemToolAction("ShellCommandTool")} · npm run check.types · E:\\senera`);
 
@@ -733,7 +733,7 @@ test("conversation tool stages use runtime provenance for shell and MCP wording"
     shellRun.steps.find((step) => step.toolName),
     {
       toolOrigin: systemToolOrigin("ShellCommandTool"),
-      toolArgs: { command: { mode: "shell", dialect: "powershell", script: "npm run check.types" } },
+      toolArgs: { mode: "shell", dialect: "powershell", script: "npm run check.types" },
     },
   );
   expect(projectToolStagePresentation(shellRun)).toMatchObject({

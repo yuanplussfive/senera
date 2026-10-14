@@ -95,7 +95,7 @@ export const ContinuityLearningSchema = z
         KnowledgeCandidateLimit: z.number().int().positive().optional(),
         AssistantPreviewTokens: z.number().int().positive().optional(),
         DigestInputTokenBudget: z.number().int().positive().optional(),
-        DigestSummaryCharacterLimit: z.number().int().positive().optional(),
+        DigestSummaryTokenLimit: z.number().int().positive().optional(),
       })
       .strict()
       .optional(),

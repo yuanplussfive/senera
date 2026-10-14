@@ -1845,9 +1845,9 @@
             "essential": false
           },
           {
-            "path": ["ContinuityLearning", "MemOS", "DigestSummaryCharacterLimit"],
-            "label": "日月摘要字符上限",
-            "description": "片段和日/月摘要允许写入 MemOS 的最大字符数。",
+            "path": ["ContinuityLearning", "MemOS", "DigestSummaryTokenLimit"],
+            "label": "日月摘要 token 上限",
+            "description": "片段和日/月摘要允许写入 MemOS 的模型 token 上限，按当前模型的本地编码器估算。",
             "type": "number",
             "min": 1,
             "step": 1,

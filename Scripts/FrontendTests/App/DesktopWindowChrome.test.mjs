@@ -2,7 +2,10 @@ import React from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DesktopWindowChrome, shouldUseCustomWindowControls } from "../../../Frontend/src/app/DesktopWindowChrome.tsx";
-import { readWindowControlsInsetWidth } from "../../../Frontend/src/shared/responsive/windowControlsLayout.ts";
+import {
+  readWindowControlsInsetWidth,
+  readWindowControlsOverlapWidth,
+} from "../../../Frontend/src/shared/responsive/windowControlsLayout.ts";
 import { Dialog, DialogContent } from "../../../Frontend/src/shared/ui/Dialog.tsx";
 
 describe("desktop window chrome", () => {
@@ -23,6 +26,27 @@ describe("desktop window chrome", () => {
       }),
     ).toBe(138);
     expect(readWindowControlsInsetWidth({ fallbackWidth: 138, viewportWidth: 1440 })).toBe(138);
+  });
+
+  it("derives only the rendered window-control overlap for split surfaces", () => {
+    const header = { left: 266, right: 1054, top: 0, bottom: 52 };
+    const controls = { left: 922, right: 1060, top: 0, bottom: 52 };
+
+    expect(readWindowControlsOverlapWidth({ containerRect: header, controlsRect: controls, gap: 12 })).toBe(144);
+    expect(
+      readWindowControlsOverlapWidth({
+        containerRect: header,
+        controlsRect: { left: 1100, right: 1238, top: 0, bottom: 52 },
+        gap: 12,
+      }),
+    ).toBe(0);
+    expect(
+      readWindowControlsOverlapWidth({
+        containerRect: header,
+        controlsRect: { left: 922, right: 1060, top: 80, bottom: 132 },
+        gap: 12,
+      }),
+    ).toBe(0);
   });
 
   it("renders custom controls only for custom-framed desktop windows", () => {

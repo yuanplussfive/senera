@@ -599,7 +599,11 @@ test("history replay interrupts recovered runs that are no longer active on the 
               title: "Approve shell",
               reason: "high impact",
               availableDecisions: ["approve_once", "deny", "deny_and_interrupt"],
-              subject: { kind: "tool_call", toolName: "ShellCommandTool", arguments: { command: "pwd" } },
+              subject: {
+                kind: "tool_call",
+                toolName: "ShellCommandTool",
+                arguments: { mode: "shell", dialect: "posix-sh", script: "pwd", workspaceEffect: "read" },
+              },
               createdAt: "2026-07-09T00:00:02.000Z",
             },
             { sequence: 4, phase: "approval" },

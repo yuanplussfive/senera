@@ -137,9 +137,34 @@ export function migrateAgentConfigRetirementStep(options: AgentConfigRetirementM
       removeRetiredMemoryCountBudgets(config, "", removedPaths);
       if (isRecord(config.Defaults)) removeRetiredMemoryCountBudgets(config.Defaults, "Defaults.", removedPaths);
       return 35;
+    case 35:
+      renameDigestSummaryTokenLimit(config, "", migratedPaths, removedPaths);
+      if (isRecord(config.Defaults)) {
+        renameDigestSummaryTokenLimit(config.Defaults, "Defaults.", migratedPaths, removedPaths);
+      }
+      return 36;
     default:
       return undefined;
   }
+}
+
+/** The summary contract now measures the configured model's tokens, not UTF-16 characters. */
+function renameDigestSummaryTokenLimit(
+  container: Record<string, unknown>,
+  prefix: string,
+  migratedPaths: string[],
+  removedPaths: string[],
+): void {
+  const continuity = container.ContinuityLearning;
+  if (!isRecord(continuity) || !isRecord(continuity.MemOS)) return;
+  const memos = continuity.MemOS;
+  if (!Object.hasOwn(memos, "DigestSummaryCharacterLimit")) return;
+  if (!Object.hasOwn(memos, "DigestSummaryTokenLimit")) {
+    memos.DigestSummaryTokenLimit = memos.DigestSummaryCharacterLimit;
+    migratedPaths.push(`${prefix}ContinuityLearning.MemOS.DigestSummaryTokenLimit`);
+  }
+  delete memos.DigestSummaryCharacterLimit;
+  removedPaths.push(`${prefix}ContinuityLearning.MemOS.DigestSummaryCharacterLimit`);
 }
 
 /** Count/character policies have no token equivalent; retire them at the config boundary. */

@@ -125,15 +125,18 @@ function shellGuidance(
   localWorkspaceRoot: string,
   sandboxWorkspaceRoot: string | undefined,
 ): string[] {
+  const shellArgumentGuidance =
+    "For ShellCommandTool and TerminalStartTool, set mode, dialect, script, and workspaceEffect as top-level arguments; never nest them under command.";
   if (windows) {
     return [
       ...(sandboxWorkspaceRoot
         ? [
             `Sandbox shell tools run in an isolated Linux container with the posix-sh dialect; its workspace root is ${sandboxWorkspaceRoot}.`,
             `The host workspace ${localWorkspaceRoot} is bind-mounted at ${sandboxWorkspaceRoot}; use workspace-relative paths instead of host Windows paths in Sandbox commands.`,
-            "Set command.mode, command.dialect, and command.script explicitly; never send PowerShell syntax to a posix-sh target.",
+            "Never send PowerShell syntax to a posix-sh target.",
           ]
         : []),
+      shellArgumentGuidance,
       `Local shell tools run on the Windows host through governed process execution using ${shellCommand}; its workspace root is ${localWorkspaceRoot}.`,
       "Use PowerShell syntax for Local execution, for example: $c=Get-Content -Path Source\\File.ts; $c[0..120].",
       "Use Get-ChildItem, Select-String, Get-Content, Get-Command, and rg when they fit the task.",
@@ -154,7 +157,7 @@ function shellGuidance(
           ]
       : []),
     `Local shell tools run on the host through governed process execution using POSIX sh; its workspace root is ${localWorkspaceRoot}.`,
-    "Set command.mode, command.dialect, and command.script explicitly.",
+    shellArgumentGuidance,
     "Use POSIX shell syntax for local inspection, for example: sed -n '1,120p' Source/File.ts.",
     "Use ls, find, grep, sed, awk, and rg when they fit the task.",
   ];

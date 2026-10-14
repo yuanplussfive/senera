@@ -120,8 +120,8 @@ export interface AgentContinuityLearningConfig {
     AssistantPreviewTokens?: number;
     /** Maximum model-token payload for one daily/monthly digest batch. */
     DigestInputTokenBudget?: number;
-    /** Maximum characters emitted by fragment and period summaries. */
-    DigestSummaryCharacterLimit?: number;
+    /** Maximum model tokens emitted by fragment and period summaries. */
+    DigestSummaryTokenLimit?: number;
   };
   Recall?: {
     PromptBudget?: {
@@ -146,7 +146,7 @@ export interface AgentContinuityMemOSConfig {
   KnowledgeCandidateLimit: number;
   AssistantPreviewTokens: number;
   DigestInputTokenBudget: number;
-  DigestSummaryCharacterLimit: number;
+  DigestSummaryTokenLimit: number;
 }
 
 export interface AgentContinuityLearningRuntimeConfig {

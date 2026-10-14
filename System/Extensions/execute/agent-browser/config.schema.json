@@ -18,6 +18,7 @@
       "properties": {
         "headed": { "default": false, "type": "boolean" },
         "executablePath": { "type": "string", "minLength": 1, "maxLength": 32768 },
+        "controllerPath": { "type": "string", "minLength": 1, "maxLength": 32768 },
         "requestTimeoutMs": { "default": 180000, "type": "integer", "minimum": 5000, "maximum": 3600000 },
         "maxOperationTimeoutMs": { "default": 900000, "type": "integer", "minimum": 5000, "maximum": 3600000 },
         "idleTimeoutMs": { "default": 900000, "type": "integer", "minimum": 10000, "maximum": 86400000 },

@@ -54,7 +54,12 @@ export interface AgentMemOSSemanticLearningConfig {
   readonly knowledgeCandidateLimit: number;
   readonly assistantPreviewTokens: number;
   readonly digestInputTokenBudget: number;
-  readonly digestSummaryCharacterLimit: number;
+  readonly digestSummaryTokenLimit: number;
+}
+
+export interface AgentMemOSSemanticLearningFlushOptions {
+  /** Background failures remain durable and observable without blocking a foreground lifecycle boundary. */
+  readonly surfaceFailures?: boolean;
 }
 
 export interface AgentMemOSSemanticLearningRuntimeOptions {
@@ -216,19 +221,19 @@ export class AgentMemOSSemanticLearningRuntime {
     return task;
   }
 
-  async flush(): Promise<void> {
+  async flush(options: AgentMemOSSemanticLearningFlushOptions = {}): Promise<void> {
     while (this.tasks.size > 0) await Promise.allSettled([...this.tasks]);
-    if (this.failures.size > 0)
+    if (options.surfaceFailures !== false && this.failures.size > 0)
       throw new AggregateError([...this.failures.values()], "MemOS background learning failed.");
   }
 
-  async stop(): Promise<void> {
+  async stop(options: AgentMemOSSemanticLearningFlushOptions = {}): Promise<void> {
     if (this.stopped) return;
     this.stopped = true;
     this.shutdown.abort(new AgentCancellationError("Memory learning runtime stopped."));
     if (this.timer) clearTimeout(this.timer);
     this.timer = undefined;
-    await this.flush();
+    await this.flush(options);
   }
 
   private async learnFragment(recordedTurn: AgentMemoryRecordedTurn, force = false): Promise<void> {
@@ -256,7 +261,7 @@ export class AgentMemOSSemanticLearningRuntime {
     if (!stateCard) return;
     const model = this.options.modelProvider();
     const config = this.options.config();
-    const extractionRecordSchema = createAgentMemOSExtractionRecordSchema(config.digestSummaryCharacterLimit);
+    const extractionRecordSchema = createAgentMemOSExtractionRecordSchema(model.Model, config.digestSummaryTokenLimit);
     await this.withLearningSlot(async () => {
       await this.runWithRetry(
         {
@@ -301,7 +306,7 @@ export class AgentMemOSSemanticLearningRuntime {
           const client = new AgentMemOSSemanticModelClient(
             model,
             this.options.cacheScopeKey,
-            config.digestSummaryCharacterLimit,
+            config.digestSummaryTokenLimit,
           );
           const result: AgentMemOSSemanticFragment = cachedExtraction
             ? cachedExtraction.fragment
@@ -532,6 +537,8 @@ export class AgentMemOSSemanticLearningRuntime {
   }
 
   private async aggregateDay(localDate: string): Promise<void> {
+    const config = this.options.config();
+    const model = this.options.modelProvider();
     const periodTag = agentMemOSDayTag(localDate);
     const existing = await this.findByTags([AgentMemOSTags.semantic, AgentMemOSTags.dailyDigest, periodTag]);
     const fragments = await this.listSemanticNodes([AgentMemOSTags.semantic, AgentMemOSTags.fragment, periodTag]);
@@ -542,9 +549,13 @@ export class AgentMemOSSemanticLearningRuntime {
     const entries = fragments
       .map(projectDigestEntry)
       .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt));
-    const sourceRevision = digestSourceRevision(entries);
+    const sourceRevision = digestSourceRevision(entries, {
+      summaryTokenLimit: config.digestSummaryTokenLimit,
+      providerId: model.Id,
+      model: model.Model,
+    });
     if (existing && this.hasCompletedLearning("daily_digest", `memos:day:${localDate}`, sourceRevision)) return;
-    const summary = await this.summarizeEntries("day", localDate, entries);
+    const summary = await this.summarizeEntries("day", localDate, entries, config, model);
     const tags = [
       AgentMemOSTags.semantic,
       AgentMemOSTags.dailyDigest,
@@ -558,8 +569,8 @@ export class AgentMemOSSemanticLearningRuntime {
         stage: "daily_digest",
         entityUri: `memos:day:${localDate}`,
         sourceRevision,
-        providerId: this.options.modelProvider().Id,
-        model: this.options.modelProvider().Model,
+        providerId: model.Id,
+        model: model.Model,
       },
       async () => {
         if (existing) {
@@ -579,6 +590,8 @@ export class AgentMemOSSemanticLearningRuntime {
   }
 
   private async aggregateMonth(localMonth: string): Promise<void> {
+    const config = this.options.config();
+    const model = this.options.modelProvider();
     const periodTag = agentMemOSMonthTag(localMonth);
     const existing = await this.findByTags([AgentMemOSTags.semantic, AgentMemOSTags.monthlyDigest, periodTag]);
     const digests = await this.listSemanticNodes([AgentMemOSTags.semantic, AgentMemOSTags.dailyDigest, periodTag]);
@@ -589,9 +602,13 @@ export class AgentMemOSSemanticLearningRuntime {
     const entries = digests
       .map(projectDigestEntry)
       .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt));
-    const sourceRevision = digestSourceRevision(entries);
+    const sourceRevision = digestSourceRevision(entries, {
+      summaryTokenLimit: config.digestSummaryTokenLimit,
+      providerId: model.Id,
+      model: model.Model,
+    });
     if (existing && this.hasCompletedLearning("monthly_digest", `memos:month:${localMonth}`, sourceRevision)) return;
-    const summary = await this.summarizeEntries("month", localMonth, entries);
+    const summary = await this.summarizeEntries("month", localMonth, entries, config, model);
     const tags = [AgentMemOSTags.semantic, AgentMemOSTags.monthlyDigest, periodTag];
     await this.runWithRetry(
       {
@@ -600,8 +617,8 @@ export class AgentMemOSSemanticLearningRuntime {
         stage: "monthly_digest",
         entityUri: `memos:month:${localMonth}`,
         sourceRevision,
-        providerId: this.options.modelProvider().Id,
-        model: this.options.modelProvider().Model,
+        providerId: model.Id,
+        model: model.Model,
       },
       async () => {
         if (existing) {
@@ -624,9 +641,9 @@ export class AgentMemOSSemanticLearningRuntime {
     period: "day" | "month",
     periodKey: string,
     entries: readonly AgentMemOSDigestEntry[],
+    config: AgentMemOSSemanticLearningConfig = this.options.config(),
+    model: ResolvedAgentModelProviderConfig = this.options.modelProvider(),
   ): Promise<string> {
-    const config = this.options.config();
-    const model = this.options.modelProvider();
     const chunks = splitByTokenBudget(entries, config.digestInputTokenBudget, model.Model);
     const summaries: AgentMemOSDigestEntry[] = [];
     for (let offset = 0; offset < chunks.length; offset += this.options.policy().maxJobsPerDrain) {
@@ -640,7 +657,11 @@ export class AgentMemOSSemanticLearningRuntime {
                 board: "semantic_memory",
                 stage: `${period}_digest_batch`,
                 entityUri: `senera://memos/${period}/${periodKey}/batch/${offset + index}`,
-                sourceRevision: digestSourceRevision(chunk),
+                sourceRevision: digestSourceRevision(chunk, {
+                  summaryTokenLimit: config.digestSummaryTokenLimit,
+                  providerId: model.Id,
+                  model: model.Model,
+                }),
                 providerId: model.Id,
                 model: model.Model,
               },
@@ -648,7 +669,7 @@ export class AgentMemOSSemanticLearningRuntime {
                 new AgentMemOSSemanticModelClient(
                   model,
                   this.options.cacheScopeKey,
-                  config.digestSummaryCharacterLimit,
+                  config.digestSummaryTokenLimit,
                 ).summarizePeriod(
                   { period, periodKey, entries: chunk },
                   `memos:${period}:batch:${periodKey}:${offset + index}`,
@@ -674,15 +695,19 @@ export class AgentMemOSSemanticLearningRuntime {
           board: "semantic_memory",
           stage: `${period}_digest_final`,
           entityUri: `senera://memos/${period}/${periodKey}`,
-          sourceRevision: digestSourceRevision(summaries),
-          providerId: this.options.modelProvider().Id,
-          model: this.options.modelProvider().Model,
+          sourceRevision: digestSourceRevision(summaries, {
+            summaryTokenLimit: config.digestSummaryTokenLimit,
+            providerId: model.Id,
+            model: model.Model,
+          }),
+          providerId: model.Id,
+          model: model.Model,
         },
         () =>
           new AgentMemOSSemanticModelClient(
             model,
             this.options.cacheScopeKey,
-            config.digestSummaryCharacterLimit,
+            config.digestSummaryTokenLimit,
           ).summarizePeriod(
             { period, periodKey, entries: summaries },
             `memos:${period}:final:${periodKey}`,
@@ -951,8 +976,15 @@ function fragmentTaskKey(episode: AgentMemoryEpisodeRecord): string {
   return `fragment:${episode.uri}:${episode.updatedAt}`;
 }
 
-function digestSourceRevision(entries: readonly AgentMemOSDigestEntry[]): string {
-  return sha256HexOfCanonicalJson(entries);
+function digestSourceRevision(
+  entries: readonly AgentMemOSDigestEntry[],
+  context: {
+    readonly summaryTokenLimit: number;
+    readonly providerId: string;
+    readonly model: string;
+  },
+): string {
+  return sha256HexOfCanonicalJson({ entries, context });
 }
 
 function unique(values: readonly string[]): string[] {

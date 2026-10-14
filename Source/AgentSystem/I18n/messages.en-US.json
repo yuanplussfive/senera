@@ -153,7 +153,7 @@
   "tool.callFailed": "The tool call failed.",
   "tool.settingsRequestFailed": "The tool settings operation failed.",
   "tool.processFailed": "The tool process failed: {reason}",
-  "tool.shellArgumentsInvalid": "The ShellCommandTool arguments are invalid.",
+  "tool.shellArgumentsInvalid": "The ShellCommandTool arguments are invalid: mode, dialect, script, and workspaceEffect must be top-level fields, not nested under command.",
   "tool.shellCommandTimeout": "The command exceeded the {timeoutMs}ms timeout: {command}",
   "tool.shellCwdSuggestion": "Set cwd to a relative path inside the workspace, such as ., Frontend, or McpServers/server-name.",
   "toolProcess.lastJsonLineInvalid": "The final stdout line from the tool process is not valid JSON.",

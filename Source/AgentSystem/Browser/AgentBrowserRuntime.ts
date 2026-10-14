@@ -29,7 +29,8 @@ import type {
   AgentBrowserNetworkRequestKind,
 } from "./AgentBrowserDriver.js";
 import { AgentBrowserExecutableResolutionError } from "./AgentBrowserExecutableResolver.js";
-import { AgentPlaywrightBrowserDriver } from "./AgentPlaywrightBrowserDriver.js";
+import { AgentBrowserControllerResolutionError } from "./AgentBrowserControllerResolver.js";
+import { AgentNativeBrowserDriver } from "./AgentNativeBrowserDriver.js";
 import type {
   AgentBrowserOperation,
   AgentBrowserOperationExecution,
@@ -119,6 +120,8 @@ export interface AgentBrowserRuntimeOptions {
   readonly driver?: AgentBrowserDriver;
   readonly resolveHostAddresses?: AgentWebAddressResolver;
   readonly resolveExecutable?: () => string;
+  readonly resolveController?: () => string;
+  readonly resourcesPath?: string;
 }
 
 export class AgentBrowserRuntimeError extends AgentBaseError {
@@ -133,7 +136,7 @@ export class AgentBrowserRuntimeError extends AgentBaseError {
 
 /**
  * Maintains Senera-owned browser sessions. Page execution is delegated to a
- * Playwright driver; policy, approval boundaries, artifact publication, and
+ * agent-browser driver; policy, approval boundaries, artifact publication, and
  * session ownership stay in the host runtime.
  */
 export class AgentBrowserRuntime {
@@ -151,10 +154,12 @@ export class AgentBrowserRuntime {
     this.configuration = options.configuration;
     this.driver =
       options.driver ??
-      new AgentPlaywrightBrowserDriver({
+      new AgentNativeBrowserDriver({
         workspaceRoot: this.workspaceRoot,
         configuration: this.configuration,
         resolveExecutable: options.resolveExecutable,
+        resolveController: options.resolveController,
+        resourcesPath: options.resourcesPath,
       });
   }
 
@@ -418,6 +423,7 @@ export class AgentBrowserRuntime {
     const opening =
       state.opening ??
       this.driver.createSession({
+        sessionId: state.key,
         requestTimeoutMs: this.configuration.runtime.requestTimeoutMs,
         maxDownloadBytes: this.configuration.capture.maxDownloadBytes,
         assertRequestPermitted: (url, kind, sourceUrl) => this.assertRequestPermitted(url, kind, sourceUrl, state),
@@ -554,7 +560,7 @@ export class AgentBrowserRuntime {
     return {
       rawResponse: {
         source: "browser",
-        backend: "playwright",
+        backend: this.driver.backend,
         operation,
         input: sanitizeBrowserInput(arguments_),
         ...(content ? { content } : {}),
@@ -583,7 +589,7 @@ export class AgentBrowserRuntime {
                 label: "Untrusted browser content",
                 source: "browser",
                 confidence: 0.5,
-                metadata: { trust: BrowserContentTrust, backend: "playwright" },
+                metadata: { trust: BrowserContentTrust, backend: this.driver.backend },
               },
             ]
           : []),
@@ -598,7 +604,7 @@ export class AgentBrowserRuntime {
                 source: "browser",
                 confidence: 1,
                 artifactRefs: [screenshot.id],
-                metadata: { trust: BrowserContentTrust, mediaType: screenshot.mediaType, backend: "playwright" },
+                metadata: { trust: BrowserContentTrust, mediaType: screenshot.mediaType, backend: this.driver.backend },
               },
             ]
           : []),
@@ -617,7 +623,7 @@ export class AgentBrowserRuntime {
                   trust: BrowserContentTrust,
                   mediaType: download.asset.mediaType,
                   sourceUrl: download.sourceUrl,
-                  backend: "playwright",
+                  backend: this.driver.backend,
                 },
               },
             ]
@@ -629,6 +635,11 @@ export class AgentBrowserRuntime {
   private toRuntimeError(error: unknown): AgentBrowserRuntimeError {
     if (error instanceof AgentBrowserRuntimeError) return error;
     if (error instanceof AgentBrowserExecutableResolutionError) {
+      return new AgentBrowserRuntimeError(error.message, AgentExecutionErrorCodes.ToolProcessConfigurationInvalid, {
+        cause: error,
+      });
+    }
+    if (error instanceof AgentBrowserControllerResolutionError) {
       return new AgentBrowserRuntimeError(error.message, AgentExecutionErrorCodes.ToolProcessConfigurationInvalid, {
         cause: error,
       });
