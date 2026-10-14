@@ -9,6 +9,7 @@ import { blocksSessionInput, readSessionHydrationState } from "../store/session/
 import { generateId } from "../lib/util";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import type { ExecutionApprovalMode } from "../api/executionApprovalMode";
+import { readConfiguredChatModelProviderId } from "../features/chat/modelProvider";
 
 export interface RegenerateFromRequest {
   sessionId: string;
@@ -201,12 +202,16 @@ export function useChatCommands({
     (request: RegenerateFromRequest): boolean => {
       const requestId = generateId();
       const approvalMode = useStore.getState().executionApprovalMode;
+      const modelProviderId = readConfiguredChatModelProviderId(
+        useStore.getState().modelProviders,
+        request.modelProviderId,
+      );
       const ok = send({
         type: "session.regenerate",
         sessionId: request.sessionId,
         fromRequestId: request.fromRequestId,
         requestId,
-        modelProviderId: request.modelProviderId,
+        modelProviderId,
         thinkingLevel: request.thinkingLevel,
         input: request.nextInput,
         approvalMode,
@@ -224,7 +229,7 @@ export function useChatCommands({
         requestId,
         input: request.nextInput,
         attachments: request.attachments,
-        modelProviderId: request.modelProviderId,
+        modelProviderId,
         thinkingLevel: request.thinkingLevel,
         approvalMode,
         activations: request.activations,
@@ -272,7 +277,10 @@ export function useChatCommands({
         fromRequestId: result.requestId,
         nextInput: result.input,
         attachments: result.attachments,
-        modelProviderId: useStore.getState().selectedModelProviderId ?? undefined,
+        modelProviderId: readConfiguredChatModelProviderId(
+          useStore.getState().modelProviders,
+          useStore.getState().selectedModelProviderId,
+        ),
         thinkingLevel: useStore.getState().selectedThinkingLevel ?? undefined,
         activations: result.activations,
       });
@@ -300,7 +308,7 @@ export function useChatCommands({
         failedRequestId: message.requestId,
         requestId,
         recoveryMode,
-        modelProviderId: state.selectedModelProviderId ?? undefined,
+        modelProviderId: readConfiguredChatModelProviderId(state.modelProviders, state.selectedModelProviderId),
         thinkingLevel: state.selectedThinkingLevel ?? undefined,
         approvalMode,
         activations,
@@ -314,7 +322,7 @@ export function useChatCommands({
         sessionId: activeSessionId,
         requestId,
         input: recoveryMode === "continue" ? "continue" : failedRun.input,
-        modelProviderId: state.selectedModelProviderId ?? undefined,
+        modelProviderId: readConfiguredChatModelProviderId(state.modelProviders, state.selectedModelProviderId),
         thinkingLevel: state.selectedThinkingLevel ?? undefined,
         approvalMode,
         activations,
@@ -381,7 +389,10 @@ export function useChatCommands({
         fromRequestId: message.requestId,
         nextInput: trimmed,
         attachments: message.attachments,
-        modelProviderId: useStore.getState().selectedModelProviderId ?? undefined,
+        modelProviderId: readConfiguredChatModelProviderId(
+          useStore.getState().modelProviders,
+          useStore.getState().selectedModelProviderId,
+        ),
         thinkingLevel: useStore.getState().selectedThinkingLevel ?? undefined,
         activations: message.metadata?.activation,
       });
@@ -418,7 +429,7 @@ export function useChatCommands({
       activations?: ExplicitActivationSet,
     ): boolean => {
       const state = useStore.getState();
-      const modelProviderId = state.selectedModelProviderId ?? undefined;
+      const modelProviderId = readConfiguredChatModelProviderId(state.modelProviders, state.selectedModelProviderId);
       const thinkingLevel = state.selectedThinkingLevel ?? undefined;
       const approvalMode = state.executionApprovalMode;
       const target = resolveSendTargetSession({

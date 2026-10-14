@@ -267,7 +267,12 @@ export class AgentSessionHistoryController {
         }
       }
 
-      const modelProviderId = request.modelProviderId ?? snapshot.modelProvider?.id;
+      // A retry starts a new turn. The model receipt on the failed snapshot is
+      // historical evidence for rendering and recovery, not a routing choice;
+      // it may refer to a provider that has since been removed or reconfigured.
+      // When the caller does not select a model, let the current runtime resolve
+      // the active session/default configuration.
+      const modelProviderId = request.modelProviderId;
       const completion = this.options.runs.runTurn(lookup.session, {
         requestId: request.requestId,
         modelProviderId,

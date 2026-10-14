@@ -32,6 +32,7 @@ export function ProviderConnectionEditor({
   dirty,
   draftProvider,
   disabled,
+  isDefaultProvider,
   localError,
   operation,
   providerIndex,
@@ -46,6 +47,7 @@ export function ProviderConnectionEditor({
   dirty: boolean;
   draftProvider: ProviderEndpointDraft | null;
   disabled: boolean;
+  isDefaultProvider: boolean;
   localError: string | null;
   operation?: SettingsConfigCommands["providerEndpointOperations"][string];
   providerIndex: number;
@@ -139,6 +141,22 @@ export function ProviderConnectionEditor({
   const pending = operation?.status === "pending";
   const operationError = operation?.status === "error" ? operation.message : null;
   const errorMessage = localError ?? operationError;
+  const defaultProviderCannotDisable = isDefaultProvider && provider.Enabled !== false;
+  const connectionToggleDisabled = disabled || pending || defaultProviderCannotDisable;
+  const connectionToggle = (
+    <Switch
+      checked={provider.Enabled !== false}
+      size="sm"
+      disabled={connectionToggleDisabled}
+      ariaLabel={frontendMessage(
+        isDefaultProvider ? "settings.provider.defaultConnectionToggle" : "settings.provider.connectionToggle",
+      )}
+      onCheckedChange={(next) => {
+        if (isDefaultProvider && !next) return;
+        onConfirm({ Enabled: next });
+      }}
+    />
+  );
   const ghostIconActionClassName =
     "grid h-7 w-7 shrink-0 place-items-center rounded-md border border-transparent bg-transparent text-content-secondary transition hover:border-line-subtle hover:bg-surface-hover hover:text-content-primary disabled:pointer-events-none disabled:opacity-45 active:scale-[0.95]";
 
@@ -166,13 +184,13 @@ export function ProviderConnectionEditor({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
-            <Switch
-              checked={provider.Enabled !== false}
-              size="sm"
-              disabled={disabled || pending}
-              ariaLabel={frontendMessage("settings.provider.connectionToggle")}
-              onCheckedChange={(next) => onConfirm({ Enabled: next })}
-            />
+            {defaultProviderCannotDisable ? (
+              <Tooltip content={frontendMessage("settings.provider.defaultConnectionCannotDisable")} side="top">
+                <span className="inline-flex">{connectionToggle}</span>
+              </Tooltip>
+            ) : (
+              connectionToggle
+            )}
             {errorMessage && dirty ? (
               <Button size="sm" variant="outline" disabled={disabled || pending} onClick={() => onConfirm()}>
                 <AppIcon icon="refresh" size={14} />

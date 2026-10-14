@@ -23,6 +23,14 @@
           "reason": "工具文档质量规则由项目维护，不属于运行时用户设置。"
         },
         {
+          "path": ["Prompt", "CorePersona"],
+          "reason": "核心人设由专用人设编辑器管理，避免与运行配置重复。"
+        },
+        {
+          "path": ["Prompt", "LanguageStyle"],
+          "reason": "语言风格由专用人设编辑器管理，避免与运行配置重复。"
+        },
+        {
           "path": ["ModelProviderEndpoints", "Kind"],
           "reason": "当前 schema 仅允许 OpenAICompatible，界面无需展示单值选择。"
         },
@@ -784,24 +792,6 @@
             "type": "string",
             "required": false,
             "essential": false
-          },
-          {
-            "path": ["Prompt", "CorePersona"],
-            "label": "核心人设",
-            "description": "定义助手稳定的身份、边界和行为基调；只作为表达约束，不替代当前请求和工具事实。",
-            "type": "string",
-            "multiline": true,
-            "required": false,
-            "essential": true
-          },
-          {
-            "path": ["Prompt", "LanguageStyle"],
-            "label": "语言风格",
-            "description": "定义回答的语言、语气和表达习惯；不包含世界书、示例、规则包或其他扩展字段。",
-            "type": "string",
-            "multiline": true,
-            "required": false,
-            "essential": true
           },
           {
             "path": ["Prompt", "PrefaceRewrite"],

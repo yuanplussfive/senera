@@ -96,7 +96,6 @@ export interface ResolvedAgentModelProviderEndpointConfig {
 export interface AgentModelRuntimeDefaultsConfig {
   Kind: "OpenAICompatible";
   Endpoint: AgentModelEndpointKind;
-  Model: string;
   Capabilities: Required<AgentModelCapabilitiesConfig>;
   ToolPlanningMode: AgentModelToolPlanningMode;
   ContextWindowTokens: number;

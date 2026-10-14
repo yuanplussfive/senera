@@ -228,6 +228,7 @@ export function ModelServiceSection({
             operation={actions.providerOperation}
             providerIndex={actions.selectedProviderIndex}
             disabled={false}
+            isDefaultProvider={selectedProvider?.Id === state.defaultModel?.provider?.Id}
             onReadApiKey={systemConfig.readProviderApiKey}
             onChange={actions.updateDraftProvider}
             onConfirm={actions.confirmDraft}

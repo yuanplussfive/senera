@@ -25,6 +25,10 @@ describe("Model capability contract", () => {
     expect(resolveAgentModelToolPlanningMode({})).toBe("native");
   });
 
+  test("does not choose a fixed model identity for configured runtimes", () => {
+    expect(Object.prototype.hasOwnProperty.call(AgentDefaults.ModelRuntime, "Model")).toBe(false);
+  });
+
   test("rejects capabilities outside the provider-independent runtime contract", () => {
     expect(
       ModelCapabilitiesSchema.safeParse({
