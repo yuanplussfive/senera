@@ -1,9 +1,10 @@
-import { Check, Copy, GitBranch, GitFork, MoreHorizontal, RotateCcw, Trash2 } from "lucide-react";
+import { Check, Copy, GitBranch, GitFork, MoreHorizontal, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { MotionIconSwap } from "../../shared/motion";
 import {
+  AppIcon,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -149,7 +150,7 @@ function MessageActionMenuItem({
   }
   if (intent === "regenerate") {
     return (
-      <DropdownMenuItem icon={<RotateCcw className="h-3.5 w-3.5" />} onSelect={onRegenerate}>
+      <DropdownMenuItem icon={<AppIcon icon="refresh" size={14} aria-hidden="true" />} onSelect={onRegenerate}>
         {frontendMessage("chat.action.regenerateFromHere")}
       </DropdownMenuItem>
     );
