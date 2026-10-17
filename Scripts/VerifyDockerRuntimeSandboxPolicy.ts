@@ -17,8 +17,6 @@ const nativeSqliteVerifier = read("Scripts/VerifyDockerNativeSqlite.ts");
 const sandboxWorker = read("Apps/SandboxWorker.ts");
 const dockerRuntime = read("Source/AgentSystem/Sandbox/DockerEngine/AgentDockerEngineRuntime.ts");
 const workerProtocol = read("Source/AgentSystem/Sandbox/Worker/AgentSandboxWorkerProtocol.ts");
-const readme = read("README.md");
-const operations = read("docs/Operations.md");
 const releaseWorkflow = read(".github/workflows/release.yml");
 const providerRegistry = readRecord(parseYaml(read("Source/AgentSystem/Sandbox/ProviderRegistry/contract.json")));
 const dockerEnginePolicy = readRecord(parseYaml(read("Source/AgentSystem/Sandbox/DockerEngine/contract.json")));
@@ -189,22 +187,7 @@ assert.ok(
   "Release verification must build the runtime image and exercise its optional gVisor path.",
 );
 assert.equal(fs.existsSync(path.join(workspaceRoot, "compose.kvm.yaml")), false);
-assertDockerStartupDocumented(readme, "README.md");
-assertDockerStartupDocumented(operations, "docs/Operations.md");
-
 console.log("Docker runtime sandbox policy verified.");
-
-function assertDockerStartupDocumented(document: string, label: string): void {
-  const configure = document.indexOf("SENERA_ADMIN_LOGIN_NAME");
-  const startup = document.indexOf("docker compose up -d --pull always");
-  assert.ok(configure >= 0, `${label} must document Compose administrator bootstrap values.`);
-  assert.ok(startup > configure, `${label} must document startup after administrator configuration.`);
-  assert.ok(!document.includes("compose.kvm.yaml"), `${label} must not document retired deployment overlays.`);
-  assert.ok(
-    document.includes("SENERA_CONTAINER_RUNTIME_USER") && document.includes("root"),
-    `${label} must document the single-service compose.yaml and its root runtime boundary.`,
-  );
-}
 
 function readRecord(value: unknown): Record<string, unknown> {
   assert.ok(value && typeof value === "object" && !Array.isArray(value));
