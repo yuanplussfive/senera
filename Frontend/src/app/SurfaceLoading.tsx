@@ -99,7 +99,11 @@ export function ApplicationSurfaceLoading(): JSX.Element {
   );
 }
 
-export function SettingsSurfaceLoading({ presentation }: { presentation: "desktop" | "overlay" }): JSX.Element {
+export function SettingsSurfaceLoading({
+  presentation,
+}: {
+  presentation: "desktop" | "overlay" | "embedded";
+}): JSX.Element {
   const overlayRef = useRef<HTMLDivElement>(null);
   useInertSiblings(overlayRef, presentation === "overlay");
 
@@ -108,6 +112,7 @@ export function SettingsSurfaceLoading({ presentation }: { presentation: "deskto
       className={cn(
         "settings-loading-shell relative flex h-full min-h-0 w-full overflow-hidden border border-line-subtle bg-surface-canvas text-content-primary",
         presentation === "overlay" && "rounded-[10px] max-sm:rounded-none max-sm:border-0",
+        presentation === "embedded" && "rounded-none border-0",
       )}
       role="status"
       aria-busy="true"
@@ -175,6 +180,10 @@ export function SettingsSurfaceLoading({ presentation }: { presentation: "deskto
       </main>
     </section>
   );
+
+  if (presentation === "embedded") {
+    return shell;
+  }
 
   if (presentation === "desktop") {
     return <div className="h-dvh min-h-[320px] w-full bg-surface-canvas">{shell}</div>;

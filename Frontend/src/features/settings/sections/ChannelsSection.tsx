@@ -19,6 +19,7 @@ import { readSettingsExtensionDraft, writeSettingsExtensionDraft } from "./Syste
 import type { ConfigSettingsDraftState, ConfigDraftSaveMode } from "./configSettingsDraftState";
 import { projectSectionConfigFields } from "./runtimeModelAssignments";
 import { AgentSystemExtensionSettingsSurfaces } from "../../../../../Source/AgentSystem/Types/AgentSystemExtensionSettingsSurface";
+import { SettingsSectionLoading } from "../SettingsLoading";
 
 const ChannelSectionIds = ["telegram", "qq", "discord"] as const;
 
@@ -138,11 +139,7 @@ export function ChannelsSection({
   }, [channelExtension]);
 
   if (!systemConfig || !systemConfig.toolSettingsSynced.systemTools) {
-    return (
-      <div className="grid min-h-[180px] place-items-center text-[12px] text-content-muted">
-        {frontendMessage("settings.tools.loading")}
-      </div>
-    );
+    return <SettingsSectionLoading variant="split" />;
   }
 
   const refreshButton = (

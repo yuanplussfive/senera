@@ -1,7 +1,8 @@
 import { lazy, Suspense } from "react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { WebSettingsController } from "../../app/useWebSettingsController";
-import { AppIcon, Dialog, DialogContent, IconButton, StateView } from "../../shared/ui";
+import { SettingsSurfaceLoading } from "../../app/SurfaceLoading";
+import { AppIcon, Dialog, DialogContent, IconButton } from "../../shared/ui";
 import { DiscardDraftDialog } from "./DiscardDraftDialog";
 import type { SettingsWorkbenchProps } from "./SettingsWorkbenchContracts";
 
@@ -50,7 +51,7 @@ export function SettingsOverlay({
               controller.returnFocusRef.current?.focus({ preventScroll: true });
             }}
           >
-            <Suspense fallback={<StateView status="loading" className="h-full" />}>
+            <Suspense fallback={<SettingsSurfaceLoading presentation="embedded" />}>
               <LazySettingsWorkbench
                 {...workbench}
                 section={section}

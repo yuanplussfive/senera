@@ -17,6 +17,7 @@ import {
 import { projectDesktopRuntimeConfig } from "./DesktopRuntimeConfig.js";
 import { isTrustedDesktopNavigation } from "./DesktopNavigationPolicy.js";
 import { DesktopClosePolicy, type DesktopCloseIntent } from "./DesktopClosePolicy.js";
+import { focusExistingSettingsWindow } from "./DesktopSettingsWindow.js";
 import { hideDesktopWindows, showDesktopWindows } from "./DesktopWindowVisibility.js";
 import { desktopMessage } from "./DesktopMessageCatalog.js";
 import {
@@ -347,14 +348,7 @@ function openSettingsWindow(options?: { section?: string }): void {
   }
   const section = resolveSettingsSection(options?.section);
   if (settingsWindow && !settingsWindow.isDestroyed()) {
-    if (settingsWindow.isMinimized()) settingsWindow.restore();
-    settingsWindow.focus();
-    if (!settingsClosePolicy.dirty) {
-      startDesktopFrontendLoad(settingsWindow, {
-        surface: "settings",
-        section,
-      });
-    }
+    focusExistingSettingsWindow(settingsWindow, section, settingsClosePolicy.dirty);
     return;
   }
 

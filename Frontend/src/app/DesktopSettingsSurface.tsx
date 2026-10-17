@@ -1,11 +1,11 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useAgentSocket, type AgentSocketReconnectPolicy, type SocketStatus } from "../api/useAgentSocket";
 import type { WsRequest } from "../api/eventTypes";
 import { buildSettingsSurfaceSyncRequests } from "./settingsSurfaceSync";
 import { readDesktopBridge } from "./desktopBridge";
 import { useSettingsRuntime } from "./useSettingsRuntime";
 import { DiscardDraftDialog } from "../features/settings/DiscardDraftDialog";
-import type { SettingsSectionId } from "../features/settings/settingsSectionContract";
+import { isSettingsSectionId, type SettingsSectionId } from "../features/settings/settingsSectionContract";
 import { SettingsSurfaceLoading } from "./SurfaceLoading";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import { AppMotionProvider } from "../shared/motion/MotionProvider";
@@ -74,13 +74,19 @@ export function DesktopSettingsSurface({
     return bridge?.onSettingsCloseRequested?.(() => setCloseConfirmationOpen(true));
   }, [bridge]);
 
-  const changeSection = (nextSection: SettingsSectionId): void => {
+  const changeSection = useCallback((nextSection: SettingsSectionId): void => {
     const search = new URLSearchParams(window.location.search);
     search.set("surface", "settings");
     search.set("section", nextSection);
     window.history.replaceState(window.history.state, "", `${window.location.pathname}?${search.toString()}`);
     setSection(nextSection);
-  };
+  }, []);
+
+  useEffect(() => {
+    return bridge?.onSettingsSectionRequested?.((nextSection) => {
+      if (isSettingsSectionId(nextSection)) changeSection(nextSection);
+    });
+  }, [bridge, changeSection]);
 
   return (
     <AppMotionProvider level={motionLevel}>

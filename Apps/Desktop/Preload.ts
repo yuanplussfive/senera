@@ -20,6 +20,11 @@ contextBridge.exposeInMainWorld("seneraDesktop", {
     ipcRenderer.on("senera:settings.request-close", handler);
     return () => ipcRenderer.removeListener("senera:settings.request-close", handler);
   },
+  onSettingsSectionRequested: (listener: (section: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, section: string): void => listener(section);
+    ipcRenderer.on("senera:settings.section-requested", handler);
+    return () => ipcRenderer.removeListener("senera:settings.section-requested", handler);
+  },
   confirmSettingsClose: () => ipcRenderer.invoke("senera:settings.confirm-close"),
   cancelSettingsClose: () => ipcRenderer.invoke("senera:settings.cancel-close"),
   openExternalUrl: (url: string) => ipcRenderer.invoke("senera:external-url.open", url),

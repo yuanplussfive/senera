@@ -83,6 +83,35 @@ describe("desktop window chrome", () => {
     expect(closeButton.className).not.toContain("#c42b1c");
   });
 
+  it("paints all three window controls at one stroke weight", () => {
+    window.seneraDesktop = {
+      isDesktop: true,
+      windowControls: "custom",
+      getWindowState: vi.fn().mockResolvedValue({ isMaximized: false }),
+    };
+
+    render(
+      React.createElement(
+        DesktopWindowChrome,
+        { surface: "main" },
+        React.createElement("div", null, "Desktop content"),
+      ),
+    );
+
+    const glyphs = [...document.querySelectorAll("[data-window-control] svg")];
+    expect(glyphs.map((glyph) => glyph.getAttribute("data-window-control-glyph"))).toEqual([
+      "minimize",
+      "maximize",
+      "close",
+    ]);
+
+    // Uneven stroke weight across these three is the defect this guards: one
+    // shared width on one shared viewBox keeps the bar reading as one family.
+    const strokes = new Set(glyphs.map((glyph) => glyph.getAttribute("stroke-width")));
+    expect(strokes).toEqual(new Set(["1.5"]));
+    expect(new Set(glyphs.map((glyph) => glyph.getAttribute("viewBox")))).toEqual(new Set(["0 0 24 24"]));
+  });
+
   it("keeps custom controls below modal portal layers", () => {
     window.seneraDesktop = {
       isDesktop: true,

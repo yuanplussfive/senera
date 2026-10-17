@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import { readDesktopBridge, type SeneraDesktopBridge } from "./desktopBridge";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
-import { AppIcon } from "../shared/ui";
+import { WindowControlGlyph } from "../shared/ui/WindowControlGlyph";
 
 export type DesktopWindowSurface = "main" | "settings";
 
@@ -87,16 +87,20 @@ function DesktopWindowControls({ bridge }: { bridge: SeneraDesktopBridge }): JSX
         label={frontendMessage("desktop.window.minimize")}
         onClick={() => void bridge.minimizeWindow?.()}
       >
-        <AppIcon icon="minus" className="h-4 w-4" />
+        <WindowControlGlyph glyph="minimize" className="h-4 w-4" />
       </WindowControlButton>
       <WindowControlButton
         label={frontendMessage(isMaximized ? "desktop.window.restore" : "desktop.window.maximize")}
         onClick={toggleMaximize}
       >
-        {isMaximized ? <AppIcon icon="restore" className="h-4 w-4" /> : <AppIcon icon="maximize" className="h-4 w-4" />}
+        {isMaximized ? (
+          <WindowControlGlyph glyph="restore" className="h-4 w-4" />
+        ) : (
+          <WindowControlGlyph glyph="maximize" className="h-4 w-4" />
+        )}
       </WindowControlButton>
       <WindowControlButton label={frontendMessage("desktop.window.close")} onClick={() => void bridge.closeWindow?.()}>
-        <AppIcon icon="close" className="h-4 w-4" />
+        <WindowControlGlyph glyph="close" className="h-4 w-4" />
       </WindowControlButton>
     </div>
   );

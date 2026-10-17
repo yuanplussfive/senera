@@ -40,7 +40,7 @@
 
 - 页面或面板结构等待数据时使用 `Skeleton`；骨架只负责保留布局，不叠加额外的波形或轨迹动画。
 - 短时动作（保存、刷新、提交、重试）使用共享 `Button loading`、`IconButton loading` 或 `Spinner`，保持控件尺寸不变并设置 `aria-busy`。
-- 面板/列表的完整状态使用 `StateView`；所有 `Suspense` fallback 必须有可见内容、`role="status"` 和可理解的文案。
+- 面板/列表的结构性完整状态使用 `StateView`；已知真实布局的界面用骨架组件保留几何（聊天首屏用 `ChatPanelLoadingSurface`，设置正文用 `SettingsSectionLoading` 或 `SettingsSurfaceLoading`），不要退回通用 `StateView`。所有 `Suspense` fallback 必须有可见内容、`role="status"` 和可理解的文案。
 - 后台刷新不得用全屏遮罩阻塞已有内容；真正的 modal loading 必须设置 `aria-modal`，并隔离背景焦点。
 - 通用 loading 动画只通过 `.senera-spinner`、`.senera-loading-pulse` 和 `.shimmer`；`reduced`/`none` 下全部停止，状态仍由文案或静态图标表达。
 

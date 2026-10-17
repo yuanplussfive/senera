@@ -65,4 +65,14 @@ describe("application loading surfaces", () => {
     expect(document.querySelector("button")).toHaveProperty("inert", true);
     expect(document.activeElement).toBe(overlay);
   });
+
+  it("keeps the existing dialog body geometry for embedded settings loading", () => {
+    render(React.createElement(SettingsSurfaceLoading, { presentation: "embedded" }));
+
+    const status = screen.getByRole("status", { name: frontendMessage("settings.loading") });
+    expect(status).toHaveAttribute("data-settings-loading-presentation", "embedded");
+    expect(status).toHaveClass("border-0", "rounded-none");
+    expect(status.querySelector("aside")).toHaveClass("w-[224px]");
+    expect(screen.queryByRole("dialog", { name: frontendMessage("settings.loading") })).not.toBeInTheDocument();
+  });
 });

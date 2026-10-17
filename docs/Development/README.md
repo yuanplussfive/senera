@@ -9,6 +9,8 @@
 - [学习系统边界与诊断](./Learning.md)
 - [前端设置工作台约束](./FrontendSettingsWorkbench.md)
 - [前端 Ladle 组件约束](./FrontendLadleConstraints.md)
+- [图标像素相位](./FrontendIconPixelPhase.md)
+- [后续改进清单](./FollowUpBacklog.md)
 - [前端动效策略](./FrontendMotionPolicy.md)
 - [前端性能预算](./FrontendPerformanceBudgets.md)
 

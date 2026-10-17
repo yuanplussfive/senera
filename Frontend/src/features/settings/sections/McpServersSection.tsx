@@ -24,6 +24,7 @@ import {
 } from "../../../shared/ui";
 import type { AppIconName } from "../../../shared/ui";
 import type { SettingsSystemConfigHandle } from "../SettingsContracts";
+import { SettingsSectionLoading } from "../SettingsLoading";
 
 const EmptyMcpServers: readonly McpServerSettingsItem[] = [];
 const McpInputSyncDebounceMs = 350;
@@ -195,7 +196,7 @@ export function McpServersSection({
   }, [connected, drafts, pendingChanges, selectedServer, sendDrafts, syncing]);
 
   if (!systemConfig || !systemConfig.toolSettingsSynced.mcpServers) {
-    return <StateView status="loading" description={frontendMessage("settings.mcp.loading")} />;
+    return <SettingsSectionLoading variant="split" />;
   }
 
   const resetServerView = (): void => {

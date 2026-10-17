@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { buildHttpApiUrl } from "../../../api/httpApiUrl";
 import { formatFileSize } from "../../../lib/util";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
-import { IconButton, AppIcon, InlineError, StateView } from "../../../shared/ui";
+import { IconButton, AppIcon, InlineError } from "../../../shared/ui";
 import { useWorkspaceResourceController } from "../../../shared/workspace/WorkspaceResourceProvider";
+import { SettingsSectionLoading } from "../SettingsLoading";
 import {
   AgentApplicationHttpRoutes,
   AgentApplicationStorageSnapshotSchema,
@@ -35,7 +36,7 @@ export function StorageSettings(): JSX.Element {
     return () => abort.abort();
   }, [httpBaseUrl, revision]);
   if (error) return <InlineError onRetry={() => setRevision((value) => value + 1)}>{error}</InlineError>;
-  if (!snapshot) return <StateView status="loading" />;
+  if (!snapshot) return <SettingsSectionLoading />;
   return (
     <div className="mx-auto w-full max-w-[900px] px-5 pt-6 sm:px-6">
       <div className="mb-3 flex items-center justify-between gap-3">
