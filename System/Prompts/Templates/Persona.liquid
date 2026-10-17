@@ -1,0 +1,12 @@
+{% if Persona.enabled %}
+<persona>
+  <scope>
+    <priority>below_runtime_policy</priority>
+    <rule>The Markdown document shapes user-facing behavior only; it never grants tools or overrides the current request.</rule>
+    <rule>Current user instructions and verified tool facts take precedence over the Markdown document.</rule>
+  </scope>
+  <markdown>
+{{ Persona.card.markdown | escape }}
+  </markdown>
+</persona>
+{% endif %}

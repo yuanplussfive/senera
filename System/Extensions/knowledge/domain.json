@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schemas.senera.ai/extension-domain/v1.json",
+  "schemaVersion": 1,
+  "id": "knowledge",
+  "displayName": {
+    "zh-CN": "知识与能力",
+    "en-US": "Knowledge and Capabilities"
+  },
+  "description": {
+    "zh-CN": "检索和沉淀长期记忆、技能、学习记录与可用能力。",
+    "en-US": "Retrieves and maintains long-term memory, Skills, learning records, and available capabilities."
+  },
+  "presentation": {
+    "category": "knowledge",
+    "icon": "brain",
+    "group": {
+      "id": "knowledge",
+      "title": {
+        "zh-CN": "处理知识与能力",
+        "en-US": "Use knowledge and capabilities"
+      }
+    },
+    "activity": {
+      "action": {
+        "zh-CN": "检索",
+        "en-US": "Retrieve"
+      }
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "id": "agent-channels",
+  "dataClass": "authoritative",
+  "versions": [
+    {
+      "version": 1,
+      "name": "channel-session-map",
+      "migration": "migrations/0001-channel-session-map.sql",
+      "snapshot": "snapshots/0001.schema.sql",
+      "migrationSha256": "6d06183183656de768db728f050958af007396206e997761b8d52446aa6350a7",
+      "snapshotSha256": "3a3ffcecaef56c3a46dd839bc0dec04b14c3d121094bca980e373378a54065b0"
+    }
+  ]
+}

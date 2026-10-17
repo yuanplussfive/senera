@@ -1,0 +1,130 @@
+{
+  "name": "TodoUpdate",
+  "loading": "Bootstrap",
+  "description": "Update existing tasks by stable ID. Send only the fields to change; omitted content or status stays unchanged. Use TodoAdd for new tasks and TodoRead to inspect IDs. Keep at most one task in_progress; zero is valid when all work is terminal. Mark completed only after verification.",
+  "presentation": {
+    "category": "todo-update",
+    "icon": "list-checks",
+    "activity": { "action": { "zh-CN": "更新", "en-US": "Update tasks" }, "detailPaths": ["/updates/*/id"] }
+  },
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "updates": {
+        "minItems": 1,
+        "type": "array",
+        "items": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string", "minLength": 1, "description": "Stable ID returned by TodoAdd or TodoRead." },
+                "status": {
+                  "type": "string",
+                  "enum": ["pending", "in_progress", "completed", "cancelled"],
+                  "description": "Replacement status for this task."
+                }
+              },
+              "required": ["id", "status"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string", "minLength": 1, "description": "Stable ID returned by TodoAdd or TodoRead." },
+                "content": { "type": "string", "minLength": 1, "description": "Replacement task description." }
+              },
+              "required": ["id", "content"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string", "minLength": 1, "description": "Stable ID returned by TodoAdd or TodoRead." },
+                "content": { "type": "string", "minLength": 1, "description": "Replacement task description." },
+                "status": {
+                  "type": "string",
+                  "enum": ["pending", "in_progress", "completed", "cancelled"],
+                  "description": "Replacement status for this task."
+                }
+              },
+              "required": ["id", "content", "status"],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "description": "Existing task IDs and the fields to change. Omitted fields remain unchanged."
+      }
+    },
+    "required": ["updates"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "updated": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "status": { "type": "string", "enum": ["pending", "in_progress", "completed", "cancelled"] }
+          },
+          "required": ["id", "status"],
+          "additionalProperties": false
+        }
+      },
+      "counts": {
+        "type": "object",
+        "properties": {
+          "total": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "pending": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "inProgress": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "completed": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "cancelled": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+        },
+        "required": ["total", "pending", "inProgress", "completed", "cancelled"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["updated", "counts"],
+    "additionalProperties": false
+  },
+  "permissions": ["session:todo"],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "SelfManaged",
+    "Capabilities": { "Cancellation": true }
+  },
+  "resources": [],
+  "sources": [],
+  "search": {
+    "Summary": "按稳定任务 ID 更新描述或状态，未传字段保持不变。",
+    "Tags": ["任务清单", "todo", "计划", "进度"],
+    "Capabilities": [
+      {
+        "Id": "todo.update",
+        "Title": "Task list management",
+        "Description": "Patch existing task content or status by stable ID.",
+        "Facets": {
+          "Actions": ["update", "complete", "cancel"],
+          "Targets": ["session-task-list"],
+          "Inputs": ["updates", "id", "content", "status"],
+          "Outputs": ["updated-task-ids", "task-counts"],
+          "Effects": ["session-state"]
+        },
+        "Aliases": ["更新任务状态", "标记任务完成", "取消任务", "update todo status"],
+        "Risk": { "SideEffect": "session-state", "Permission": "write" }
+      }
+    ],
+    "UseCases": ["推进已创建任务的状态", "修订现有任务描述", "标记已验证完成或无法继续的任务"],
+    "Examples": ["把对应任务标记为完成", "将当前任务设为进行中"],
+    "Avoid": ["不要用它创建新任务", "不要在验证前标记完成"]
+  },
+  "evidenceCapabilities": []
+}

@@ -1,0 +1,530 @@
+import type { StopReason } from "@earendil-works/pi-ai";
+import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import { readAgentUnknownRecord as readRecord } from "../Core/AgentUnknownValue.js";
+import { AgentEventKinds, emitAgentEvent, type AgentDomainEvent, type AgentEventSink } from "../Events/AgentEvent.js";
+import { AgentLoopEventFactory } from "../Loop/AgentLoopEventFactory.js";
+import { DefaultAgentToolArgumentProjection, projectAgentToolArguments } from "../Core/AgentToolArgumentProjection.js";
+import type { StepTrace } from "../Core/AgentStepTrace.js";
+import { collectAgentToolPresentationArgumentPointers } from "../SystemTools/AgentSystemToolPresentation.js";
+import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
+import { projectAgentToolResultPresentation } from "../ToolRuntime/AgentToolResultPresentation.js";
+import type { AgentPiTurnState } from "./AgentPiTurnState.js";
+import { projectAgentPiToolResultContentForDisplay } from "./AgentPiToolObservation.js";
+import { AgentRunActivities } from "../Events/AgentRunEventTypes.js";
+import {
+  AgentRunActivityReporter,
+  type AgentRunActivityClock,
+  type AgentRunActivityHandle,
+} from "../Events/AgentRunActivityReporter.js";
+import { SystemAgentLifecycleClock } from "../Events/AgentLifecycleClock.js";
+import {
+  emitAgentPiDiagnostic,
+  projectPiSessionDiagnosticEvent,
+  type AgentPiDiagnosticSink,
+} from "../Diagnostics/AgentPiDiagnostics.js";
+import { AgentPiCompactionActivityObserver } from "./AgentPiCompactionActivityObserver.js";
+import { isAgentPiCompactionLifecycleEvent, isAgentPiRunEvent, type AgentPiRunEvent } from "./AgentPiSessionEvents.js";
+import type { AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
+
+export interface AgentPiToolExecutionObservation {
+  readonly toolName: string;
+  readonly callId: string;
+  readonly batchId?: string;
+  readonly purpose: string;
+  readonly status: "dispatched" | "completed" | "failed";
+  readonly failure?: string;
+}
+
+export interface AgentPiRunCollectorOptions {
+  sessionId?: string;
+  requestId: string;
+  step: number;
+  onEvent?: AgentEventSink;
+  diagnostics?: AgentPiDiagnosticSink;
+  streamModelDeltas?: boolean;
+  /** Provider identity for the model lifecycle events projected to the UI. */
+  modelProvider?: AgentModelProviderMetadata;
+  turnState: AgentPiTurnState;
+  activityReporter?: AgentRunActivityReporter;
+  onFinalResponseAvailable?: (content: string, messageIndex: number, contentIndex?: number) => void | Promise<void>;
+  onToolExecutionObserved?: (observation: AgentPiToolExecutionObservation) => void | Promise<void>;
+  /** Clock used to stamp tool spans; tests may provide a deterministic implementation. */
+  clock?: AgentRunActivityClock;
+}
+
+export interface AgentPiRunProjection {
+  traces: StepTrace[];
+  executedTools: ExecutedToolCallResult[];
+}
+
+interface ActiveToolTrace {
+  seq: number;
+  toolName: string;
+  callId: string;
+  args: unknown;
+  startedAtMonotonic?: number;
+  startedAt?: string;
+}
+
+interface ActiveThinkingBlock {
+  messageIndex: number;
+  contentIndex: number;
+  content: string;
+}
+
+export class AgentPiRunCollector {
+  private readonly eventFactory = new AgentLoopEventFactory();
+  private readonly activityReporter: AgentRunActivityReporter;
+  private readonly compactionActivity: AgentPiCompactionActivityObserver;
+  private readonly clock: AgentRunActivityClock;
+  private readonly traces: StepTrace[] = [];
+  private readonly activeToolTraces = new Map<string, ActiveToolTrace>();
+  private readonly activeThinkingBlocks = new Map<string, ActiveThinkingBlock>();
+  private readonly executedTools: ExecutedToolCallResult[] = [];
+  private pending = Promise.resolve();
+  private textDelta = "";
+  private assistantMessageIndex = -1;
+  private activeAssistantResponse?: AgentRunActivityHandle;
+  private finalResponsePublished = false;
+
+  constructor(private readonly options: AgentPiRunCollectorOptions) {
+    this.clock = options.clock ?? SystemAgentLifecycleClock;
+    this.activityReporter =
+      options.activityReporter ??
+      new AgentRunActivityReporter({
+        sessionId: options.sessionId,
+        requestId: options.requestId,
+        step: options.step,
+        onEvent: options.onEvent,
+      });
+    this.compactionActivity = new AgentPiCompactionActivityObserver(this.activityReporter);
+  }
+
+  collect(event: AgentSessionEvent): Promise<void> {
+    this.pending = this.pending.then(
+      () => this.projectEvent(event),
+      () => this.projectEvent(event),
+    );
+    return this.pending;
+  }
+
+  async drain(): Promise<void> {
+    await this.pending;
+  }
+
+  snapshot(): AgentPiRunProjection {
+    return {
+      traces: [...this.traces],
+      executedTools: [...this.executedTools],
+    };
+  }
+
+  private async projectEvent(event: AgentSessionEvent): Promise<void> {
+    if (isAgentPiCompactionLifecycleEvent(event)) {
+      await this.compactionActivity.observe(event);
+      return;
+    }
+    if (event.type === "agent_end") {
+      await this.closeActiveThinkingBlocks(this.assistantMessageIndex, "interrupted");
+      return;
+    }
+    if (!isAgentPiRunEvent(event)) return;
+
+    if (event.type !== "message_update") {
+      await emitAgentPiDiagnostic(
+        this.options.diagnostics,
+        projectPiSessionDiagnosticEvent({
+          context: {
+            sessionId: this.options.sessionId,
+            requestId: this.options.requestId,
+            step: this.options.step,
+          },
+          event,
+        }),
+      );
+    }
+
+    switch (event.type) {
+      case "message_start":
+        await this.messageStarted(event);
+        break;
+      case "message_update": {
+        for (const projected of this.messageUpdated(event)) {
+          await this.emit(projected);
+        }
+        break;
+      }
+      case "message_end":
+        await this.messageEnded(event);
+        break;
+      case "tool_execution_start":
+        await this.toolExecutionStarted(event);
+        break;
+      case "tool_execution_end":
+        for (const projected of this.toolExecutionEnded(event)) {
+          await this.emit(projected);
+        }
+        await this.observeToolExecutionEnd(event);
+        break;
+    }
+  }
+
+  private async messageStarted(event: Extract<AgentPiRunEvent, { type: "message_start" }>): Promise<void> {
+    if (event.message.role !== "assistant") return;
+    if (this.activeAssistantResponse) {
+      throw new Error("Pi emitted overlapping assistant message lifecycles.");
+    }
+    this.assistantMessageIndex = this.options.turnState.claimModelMessageIndex();
+    this.textDelta = "";
+    await emitAgentEvent(this.options.onEvent, {
+      kind: AgentEventKinds.ModelStarted,
+      context: { requestId: this.options.requestId, step: this.options.step },
+      data: {
+        model: event.message.model,
+        ...(this.options.modelProvider ? { provider: this.options.modelProvider } : {}),
+        messageIndex: this.assistantMessageIndex,
+      },
+    });
+    this.activeAssistantResponse = await this.activityReporter.start(AgentRunActivities.GeneratingResponse);
+  }
+
+  private async messageEnded(event: Extract<AgentPiRunEvent, { type: "message_end" }>): Promise<void> {
+    if (event.message.role !== "assistant") return;
+    await this.closeActiveThinkingBlocks(
+      this.assistantMessageIndex,
+      isInterruptedAssistantMessage(event.message) ? "interrupted" : "complete",
+    );
+    const activity = this.activeAssistantResponse;
+    this.activeAssistantResponse = undefined;
+    await activity?.complete();
+    await emitAgentEvent(this.options.onEvent, {
+      kind: AgentEventKinds.ModelCompleted,
+      context: { requestId: this.options.requestId, step: this.options.step },
+      data: {
+        text: "",
+        ...(this.options.modelProvider ? { provider: this.options.modelProvider } : {}),
+        messageIndex: this.assistantMessageIndex,
+      },
+    });
+    if (isFinalAssistantResponse(event.message.stopReason)) {
+      if (this.finalResponsePublished) return;
+      const content = extractText(event.message).trim();
+      if (!content) return;
+      this.finalResponsePublished = true;
+      await this.options.onFinalResponseAvailable?.(
+        content,
+        this.assistantMessageIndex,
+        extractTextContentIndex(event.message),
+      );
+    }
+  }
+
+  private async toolExecutionStarted(event: Extract<AgentPiRunEvent, { type: "tool_execution_start" }>): Promise<void> {
+    const seq = this.traces.length + this.activeToolTraces.size;
+    const startedAtEpoch = this.clock.now();
+    const startedAtMonotonic = this.clock.monotonicNow();
+    const startedAt = this.clock.timestamp(startedAtEpoch);
+    this.activeToolTraces.set(event.toolCallId, {
+      seq,
+      toolName: event.toolName,
+      callId: event.toolCallId,
+      args: event.args,
+      startedAtMonotonic,
+      startedAt,
+    });
+    await this.options.onToolExecutionObserved?.({
+      toolName: event.toolName,
+      callId: event.toolCallId,
+      ...(this.batchIdFor(event.toolCallId) ? { batchId: this.batchIdFor(event.toolCallId) } : {}),
+      purpose: this.options.turnState.toolCallPurpose(event.toolCallId) ?? event.toolName,
+      status: "dispatched",
+    });
+  }
+
+  private async observeToolExecutionEnd(
+    event: Extract<AgentPiRunEvent, { type: "tool_execution_end" }>,
+  ): Promise<void> {
+    await this.options.onToolExecutionObserved?.({
+      toolName: event.toolName,
+      callId: event.toolCallId,
+      ...(this.batchIdFor(event.toolCallId) ? { batchId: this.batchIdFor(event.toolCallId) } : {}),
+      purpose: this.options.turnState.toolCallPurpose(event.toolCallId) ?? event.toolName,
+      status: event.isError ? "failed" : "completed",
+      ...(event.isError ? { failure: readToolErrorMessage(event.result) } : {}),
+    });
+  }
+
+  private toolExecutionEnded(
+    event: Extract<AgentPiRunEvent, { type: "tool_execution_end" }>,
+  ): readonly AgentDomainEvent[] {
+    const active = this.activeToolTraces.get(event.toolCallId) ?? readMissingToolTrace(event, this.traces.length);
+    this.activeToolTraces.delete(event.toolCallId);
+
+    const captured = this.options.turnState.takeExecutedToolResult(event.toolCallId);
+    const presentation =
+      captured?.presentation ?? (captured ? projectAgentToolResultPresentation(captured) : undefined);
+    const executed = captured && presentation ? { ...captured, presentation } : captured;
+    if (executed) {
+      this.executedTools.push(executed);
+    }
+    const resultValue = projectAgentPiToolResultContentForDisplay(event.result.content);
+    const trace = this.buildToolTrace(active, event, executed, resultValue);
+    this.traces.push(trace);
+    const lifecycleTiming =
+      active.startedAtMonotonic === undefined || active.startedAt === undefined
+        ? {}
+        : {
+            startedAt: active.startedAt,
+            durationMs: Math.max(0, Math.round(this.clock.monotonicNow() - active.startedAtMonotonic)),
+          };
+
+    const lifecycle = event.isError
+      ? this.eventFactory.toolCallFailed(
+          this.options.requestId,
+          this.options.step,
+          active.seq,
+          event.toolName,
+          event.toolCallId,
+          readToolErrorMessage(event.result),
+          undefined,
+          {
+            batchId: this.batchIdFor(event.toolCallId),
+            ...lifecycleTiming,
+          },
+        )
+      : this.eventFactory.toolCallCompleted(
+          this.options.requestId,
+          this.options.step,
+          active.seq,
+          event.toolName,
+          event.toolCallId,
+          presentation,
+          {
+            batchId: this.batchIdFor(event.toolCallId),
+            ...lifecycleTiming,
+          },
+        );
+    const resultDetail = this.eventFactory.toolCallResultDetail(
+      this.options.requestId,
+      this.options.step,
+      active.seq,
+      event.toolName,
+      event.toolCallId,
+      resultValue,
+      {
+        batchId: this.batchIdFor(event.toolCallId),
+        presentation,
+      },
+    );
+    const executorStatus = this.options.turnState.executorLifecycleStatus(event.toolCallId);
+    // The executor lifecycle is already published before Pi emits tool_execution_end.
+    // A later Pi success must not overwrite a host-confirmed failure and create two
+    // terminal events for the same call. Pi failures still supersede an earlier
+    // executor success because post-execution finalization can discover new errors.
+    if (
+      executorStatus === (event.isError ? "failed" : "completed") ||
+      (executorStatus === "failed" && !event.isError)
+    ) {
+      return [resultDetail];
+    }
+    return [lifecycle, resultDetail];
+  }
+
+  private messageUpdated(event: Extract<AgentPiRunEvent, { type: "message_update" }>): AgentDomainEvent[] {
+    const projected: AgentDomainEvent[] = [];
+    const streamEvent = event.assistantMessageEvent;
+    if (streamEvent.type === "thinking_start") {
+      const key = thinkingBlockKey(this.assistantMessageIndex, streamEvent.contentIndex);
+      this.activeThinkingBlocks.set(key, {
+        messageIndex: this.assistantMessageIndex,
+        contentIndex: streamEvent.contentIndex,
+        content: "",
+      });
+    } else if (streamEvent.type === "thinking_delta") {
+      const key = thinkingBlockKey(this.assistantMessageIndex, streamEvent.contentIndex);
+      const block = this.activeThinkingBlocks.get(key) ?? {
+        messageIndex: this.assistantMessageIndex,
+        contentIndex: streamEvent.contentIndex,
+        content: "",
+      };
+      block.content += streamEvent.delta;
+      this.activeThinkingBlocks.set(key, block);
+      if (streamEvent.delta) {
+        projected.push({
+          kind: AgentEventKinds.ModelThinkingDelta,
+          context: { requestId: this.options.requestId, step: this.options.step },
+          data: {
+            messageIndex: block.messageIndex,
+            contentIndex: block.contentIndex,
+            delta: streamEvent.delta,
+          },
+        });
+      }
+    } else if (streamEvent.type === "thinking_end") {
+      const key = thinkingBlockKey(this.assistantMessageIndex, streamEvent.contentIndex);
+      this.activeThinkingBlocks.delete(key);
+      if (streamEvent.content) {
+        projected.push({
+          kind: AgentEventKinds.ModelThinkingCompleted,
+          context: { requestId: this.options.requestId, step: this.options.step },
+          data: {
+            messageIndex: this.assistantMessageIndex,
+            contentIndex: streamEvent.contentIndex,
+            content: streamEvent.content,
+            status: "complete",
+          },
+        });
+      }
+    }
+
+    if (this.options.streamModelDeltas === false) {
+      const text = extractText(event.message);
+      this.textDelta = text;
+      return projected;
+    }
+
+    const text = extractText(event.message);
+    if (text.length <= this.textDelta.length || !text.startsWith(this.textDelta)) {
+      this.textDelta = text;
+      return projected;
+    }
+
+    const delta = text.slice(this.textDelta.length);
+    this.textDelta = text;
+    if (delta.length > 0) {
+      projected.push({
+        kind: AgentEventKinds.ModelDelta,
+        context: {
+          requestId: this.options.requestId,
+          step: this.options.step,
+        },
+        data: {
+          text: delta,
+          messageIndex: this.assistantMessageIndex,
+        },
+      });
+    }
+    return projected;
+  }
+
+  private async closeActiveThinkingBlocks(messageIndex: number, status: "complete" | "interrupted"): Promise<void> {
+    for (const [key, block] of this.activeThinkingBlocks) {
+      if (block.messageIndex !== messageIndex) continue;
+      this.activeThinkingBlocks.delete(key);
+      if (!block.content) continue;
+      await this.emit({
+        kind: AgentEventKinds.ModelThinkingCompleted,
+        context: { requestId: this.options.requestId, step: this.options.step },
+        data: {
+          messageIndex: block.messageIndex,
+          contentIndex: block.contentIndex,
+          content: block.content,
+          status,
+        },
+      });
+    }
+  }
+
+  private buildToolTrace(
+    active: ActiveToolTrace,
+    event: Extract<AgentPiRunEvent, { type: "tool_execution_end" }>,
+    executed: ExecutedToolCallResult | undefined,
+    resultValue: unknown,
+  ): StepTrace {
+    const presentation = executed?.origin?.presentation;
+    const args = projectAgentToolArguments(executed?.arguments ?? active.args, {
+      keepPointers: collectAgentToolPresentationArgumentPointers(presentation),
+      ...DefaultAgentToolArgumentProjection,
+    });
+    return {
+      step: this.options.step,
+      seq: active.seq,
+      kind: "tool",
+      status: event.isError ? "failed" : "done",
+      toolName: event.toolName,
+      toolOrigin: executed?.origin,
+      callId: event.toolCallId,
+      batchId: this.batchIdFor(event.toolCallId),
+      purpose: this.options.turnState.toolCallPurpose(event.toolCallId),
+      toolArgs: args.value,
+      ...(args.omissions.length > 0 ? { toolArgsOmissions: args.omissions } : {}),
+      toolPreview: executed?.presentation?.headline,
+      toolPresentation: executed?.presentation,
+      toolResult: projectAgentToolArguments(resultValue, {
+        keepPointers: [],
+        ...DefaultAgentToolArgumentProjection,
+      }).value,
+      toolErrorMessage: event.isError ? readToolErrorMessage(event.result) : undefined,
+    };
+  }
+
+  private batchIdFor(callId: string): string | undefined {
+    return this.options.turnState.toolBatchId(callId);
+  }
+
+  private async emit(event: AgentDomainEvent): Promise<void> {
+    await emitAgentEvent(this.options.onEvent, event);
+  }
+}
+
+function readToolErrorMessage(value: unknown): string {
+  return readFirstTextContent(value) ?? "Pi 工具执行失败。";
+}
+
+function readFirstTextContent(value: unknown): string | undefined {
+  const content = readRecord(value)?.content;
+  if (!Array.isArray(content)) {
+    return undefined;
+  }
+  const text = content
+    .map((entry) => readRecord(entry))
+    .find((entry) => entry?.type === "text" && typeof entry.text === "string")?.text;
+  return typeof text === "string" && text.length > 0 ? text : undefined;
+}
+
+function extractText(message: unknown): string {
+  const record = readRecord(message);
+  const content = record?.content;
+  return Array.isArray(content)
+    ? content
+        .flatMap((entry) => {
+          const item = readRecord(entry);
+          return item?.type === "text" && typeof item.text === "string" ? [item.text] : [];
+        })
+        .join("")
+    : "";
+}
+
+function extractTextContentIndex(message: unknown): number | undefined {
+  const content = readRecord(message)?.content;
+  if (!Array.isArray(content)) return undefined;
+  const index = content.findIndex((entry) => readRecord(entry)?.type === "text");
+  return index < 0 ? undefined : index;
+}
+
+const VisibleAssistantResponseStopReasons = new Set<StopReason>(["stop", "length"]);
+
+function isFinalAssistantResponse(stopReason: StopReason): boolean {
+  return VisibleAssistantResponseStopReasons.has(stopReason);
+}
+
+function isInterruptedAssistantMessage(message: unknown): boolean {
+  const stopReason = readRecord(message)?.stopReason;
+  return stopReason === "error" || stopReason === "aborted";
+}
+
+function thinkingBlockKey(messageIndex: number, contentIndex: number): string {
+  return `${messageIndex}:${contentIndex}`;
+}
+
+function readMissingToolTrace(
+  event: Extract<AgentPiRunEvent, { type: "tool_execution_end" }>,
+  seq: number,
+): ActiveToolTrace {
+  return {
+    seq,
+    toolName: event.toolName,
+    callId: event.toolCallId,
+    args: undefined,
+  };
+}

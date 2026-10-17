@@ -1,0 +1,75 @@
+import type { AssistantMessage, AssistantMessageEventStream, Context } from "@earendil-works/pi-ai";
+import type { AgentModelUsageSink } from "../ModelEndpoints/AgentModelUsage.js";
+import type { AgentModelTimingSink } from "../ModelEndpoints/AgentModelTiming.js";
+
+export const AgentResidentActionSpeechCapability = "resident-speech.action";
+export const AgentResidentFinalSpeechCapability = "resident-speech.final";
+
+export const AgentResidentSpeechCapabilities = [
+  AgentResidentActionSpeechCapability,
+  AgentResidentFinalSpeechCapability,
+] as const;
+
+export type AgentResidentSpeechMode = "action_preface" | "final_response";
+
+/** Shape of the rewrite: full persona reshape when a card is present, vocabulary-light polish otherwise. */
+export type AgentResidentSpeechProjectionTier = "reshape" | "polish";
+
+export interface AgentResidentSpeechAction {
+  readonly callId: string;
+  readonly name: string;
+  readonly arguments: Readonly<Record<string, unknown>>;
+  readonly purpose?: string;
+}
+
+export interface AgentResidentSpeechFocus {
+  readonly mode: AgentResidentSpeechMode;
+  readonly draft: string;
+  readonly actions: readonly AgentResidentSpeechAction[];
+}
+
+export interface AgentResidentSpeechUtterance {
+  readonly mode: AgentResidentSpeechMode;
+  readonly content: string;
+}
+
+/** Continuation of the owning native request with only scene evidence and the required bridge call changed. */
+export interface AgentResidentSpeechNativeContinuation {
+  stream(input: {
+    readonly context: Context;
+    readonly requiredToolName: string;
+    /** Structured continuations always require the bridge call. */
+    readonly toolChoice?: "required" | "auto";
+    readonly signal: AbortSignal;
+  }): AssistantMessageEventStream;
+}
+
+export interface AgentResidentSpeechProjectionInput {
+  readonly context: Context;
+  readonly message: AssistantMessage;
+  readonly focus: AgentResidentSpeechFocus;
+  readonly spokenUtterances: readonly AgentResidentSpeechUtterance[];
+  /** Rewrite shape: reshape (card present) rewrites with persona, polish keeps facts and tones only. */
+  readonly projectionTier?: AgentResidentSpeechProjectionTier;
+  readonly enabled: boolean;
+  readonly signal?: AbortSignal;
+  readonly sessionId: string;
+  /** Stable conversation affinity shared with the owning Pi turn. */
+  readonly logicalCacheScope?: string;
+  readonly nativeContinuation?: AgentResidentSpeechNativeContinuation;
+  readonly usageSink?: AgentModelUsageSink;
+  readonly timingSink?: AgentModelTimingSink;
+}
+
+export interface AgentResidentSpeechProjector {
+  project(input: AgentResidentSpeechProjectionInput): Promise<AssistantMessage>;
+}
+
+export interface AgentResidentSpeechSessionRuntime extends AgentResidentSpeechProjector {
+  resetSession(sessionId: string): void;
+  close(): void;
+}
+
+export interface AgentResidentSpeechResult {
+  readonly utterance: string;
+}

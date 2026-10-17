@@ -1,0 +1,22 @@
+{
+  "id": "workspace-observer",
+  "dataClass": "derived",
+  "versions": [
+    {
+      "version": 1,
+      "name": "workspace-observer-baseline",
+      "migration": "migrations/0001-workspace-observer-baseline.sql",
+      "snapshot": "snapshots/0001.schema.sql",
+      "migrationSha256": "92f671fa4d97a67cd1bf8260a13f032263a51b5eb26650e616ab9a248345f2e3",
+      "snapshotSha256": "3c222de34b60616de9ffceda9716da8d0fb350daaceb7e72c61a3c6ea7ca331e"
+    },
+    {
+      "version": 2,
+      "name": "workspace-observer-scan-generation",
+      "migration": "migrations/0002-workspace-observer-scan-generation.sql",
+      "snapshot": "snapshots/0002.schema.sql",
+      "migrationSha256": "5ea73c8092ef232dd3ddbe70f6babda50851a355894cdf2b5edd413c49fe4b70",
+      "snapshotSha256": "9ae717c911b7cbb4a61e6c52792f13de6dca984899b76b27132618a81110a781"
+    }
+  ]
+}

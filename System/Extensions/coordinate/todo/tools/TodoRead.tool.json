@@ -1,0 +1,87 @@
+{
+  "name": "TodoRead",
+  "loading": "Bootstrap",
+  "description": "Read all tasks and their current statuses for the active session.",
+  "presentation": {
+    "category": "todo-read",
+    "icon": "list-checks",
+    "activity": { "action": { "zh-CN": "读取 Todo 待办", "en-US": "Read task list" } }
+  },
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "content": { "type": "string" },
+            "status": { "type": "string", "enum": ["pending", "in_progress", "completed", "cancelled"] },
+            "order": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+            "createdAt": { "type": "string" },
+            "updatedAt": { "type": "string" }
+          },
+          "required": ["id", "content", "status", "order", "createdAt", "updatedAt"],
+          "additionalProperties": false
+        }
+      },
+      "counts": {
+        "type": "object",
+        "properties": {
+          "total": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "pending": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "inProgress": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "completed": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "cancelled": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+        },
+        "required": ["total", "pending", "inProgress", "completed", "cancelled"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["items", "counts"],
+    "additionalProperties": false
+  },
+  "permissions": ["session:todo"],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "SelfManaged",
+    "Capabilities": { "Cancellation": true }
+  },
+  "resources": [],
+  "sources": [],
+  "search": {
+    "Summary": "读取本轮任务清单、稳定 ID 与当前状态。",
+    "Tags": ["任务清单", "todo", "计划", "进度"],
+    "Capabilities": [
+      {
+        "Id": "todo.read",
+        "Title": "Task list management",
+        "Description": "Read the current session task list and status counts.",
+        "Facets": {
+          "Actions": ["read"],
+          "Targets": ["session-task-list"],
+          "Inputs": [],
+          "Outputs": ["task-list", "task-counts"],
+          "Effects": ["session-state-read"]
+        },
+        "Aliases": ["查看任务清单", "读取待办状态", "list todo tasks"],
+        "Risk": { "SideEffect": "read-only", "Permission": "read" }
+      }
+    ],
+    "UseCases": ["需要核对任务 ID、描述或状态"],
+    "Examples": ["查看当前任务进度"],
+    "Avoid": ["已有清晰任务上下文时不要重复读取"]
+  },
+  "evidenceCapabilities": []
+}

@@ -1,0 +1,68 @@
+HarmonyOS Sans Fonts
+Copyright 2021 Huawei Device Co., Ltd.
+
+HarmonyOS Sans Fonts Software is licensed under the following agreement.
+
+HARMONYOS SANS FONTS LICENSE AGREEMENT
+
+This HarmonyOS Sans Fonts License Agreement ("Agreement") is a legal agreement
+between you (either a single individual or single legal entity) and Huawei
+Device Co., Ltd. ("Licensor") for the use of HarmonyOS Sans Fonts.
+
+By downloading, copying or otherwise using HarmonyOS Sans Fonts you indicate
+that you agree to be bound by all of the terms of this Agreement. If you do not
+agree to the terms of this Agreement, you may not download, copy or otherwise
+use HarmonyOS Sans Fonts, and you shall promptly destroy and delete all of the
+HarmonyOS Sans Fonts.
+
+1. Definitions
+
+"HarmonyOS Sans Fonts" means the collection of font software components
+provided by the Licensor and clearly marked as "HarmonyOS Sans".
+
+"You" means an individual or legal entity exercising the permissions granted
+by this Agreement.
+
+2. Grant of license
+
+Subject to the terms and conditions of this Agreement, the Licensor grants you
+a non-transferable, non-exclusive, royalty-free, revocable, worldwide copyright
+license to use, copy, merge, embed, bundle, redistribute and sell unmodified
+copies of HarmonyOS Sans Fonts with any software except font software, subject
+to the following conditions:
+
+1) You shall make a prominent notice in the software to state that HarmonyOS
+   Sans Fonts are used.
+2) You may not make any modifications to HarmonyOS Sans Fonts or any of their
+   individual components.
+3) Neither HarmonyOS Sans Fonts nor any of their individual components may be
+   redistributed or sold on a standalone basis. This limitation does not apply
+   to work created using HarmonyOS Sans Fonts. You may freely distribute or
+   sell work created using HarmonyOS Sans Fonts, such as materials, logos and
+   application software.
+4) You shall retain the copyright notice and this Agreement in any copies of
+   HarmonyOS Sans Fonts.
+
+3. Termination
+
+This Agreement will be automatically terminated if you breach any of its terms.
+
+4. No warranty
+
+You agree that HarmonyOS Sans Fonts are provided by the Licensor on an "AS IS"
+basis. The Licensor makes no warranty, express, implied or statutory, with
+respect to HarmonyOS Sans Fonts, including without limitation any implied
+warranties of merchantability, satisfactory quality, fitness for a particular
+purpose or non-infringement.
+
+5. No liability
+
+In no event shall the Licensor be liable for any direct or indirect, special,
+incidental, or consequential damages arising in any way from the use of or
+inability to use HarmonyOS Sans Fonts, whether under contract, tort, strict
+liability or any other legal theory, even if the Licensor has been advised of
+the possibility of such damages.
+
+You expressly assume all liabilities and risks for use of HarmonyOS Sans Fonts.
+Should HarmonyOS Sans Fonts prove defective, you assume the entire cost of all
+necessary servicing, repair or correction.

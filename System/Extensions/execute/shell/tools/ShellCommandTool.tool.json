@@ -1,0 +1,131 @@
+{
+  "name": "ShellCommandTool",
+  "loading": "Bootstrap",
+  "presentation": {
+    "category": "shell-command",
+    "icon": "terminal",
+    "activity": { "action": { "zh-CN": "执行", "en-US": "Run" }, "argumentPath": "/script" }
+  },
+  "description": "在工作区执行 Shell 命令并保留可查询输出。mode、dialect、script、cwd、timeoutMs 和 workspaceEffect 均为顶层参数；服务以前台方式运行，timeoutMs=0 表示持续跟踪进程树，直到退出或显式停止。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "mode": { "type": "string", "const": "shell" },
+      "dialect": { "type": "string", "enum": ["posix-sh", "powershell"] },
+      "script": { "type": "string", "minLength": 1 },
+      "cwd": { "type": "string", "minLength": 1 },
+      "timeoutMs": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991,
+        "description": "0 表示不设运行时限，持续跟踪进程树直到退出或显式停止；正数受系统工具超时配置约束。"
+      },
+      "workspaceEffect": {
+        "type": "string",
+        "enum": ["read", "mutate"],
+        "description": "Whether the command only reads the workspace or may change workspace content."
+      }
+    },
+    "required": ["mode", "dialect", "script", "workspaceEffect"],
+    "additionalProperties": false
+  },
+  "permissions": ["process:shell", "filesystem:workspace"],
+  "execution": { "Targets": ["Sandbox", "Local"], "Network": "Allow", "Workspace": "ReadWrite" },
+  "runtime": {
+    "Lifecycle": "OneShot",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "Unassessed",
+    "Scheduling": "Parallel",
+    "Capabilities": { "OutputStreaming": true, "Cancellation": true, "ResumableEvents": true }
+  },
+  "resources": [{ "Capability": "senera.workspace.path", "Pointer": "/cwd", "Parameters": { "Intent": "execute" } }],
+  "sources": [
+    {
+      "Id": "execution",
+      "Title": "Execution",
+      "Description": "Shell commands, processes, terminals, builds, tests, and other executable workloads."
+    }
+  ],
+  "search": {
+    "Summary": "运行命令、测试和构建；服务以前台方式托管，timeoutMs=0 表示不设时限。",
+    "Capabilities": [
+      {
+        "Id": "host.shell-command",
+        "Title": "Run shell command",
+        "Description": "Run a shell command and retain its output as a resumable process resource.",
+        "Facets": {
+          "Actions": ["run", "execute", "test", "build", "check"],
+          "Targets": ["shell", "process", "workspace", "test-suite", "build-system"],
+          "Inputs": ["mode", "dialect", "script", "cwd", "timeout", "workspace-effect"],
+          "Outputs": ["exit-code", "stdout", "stderr", "shell-execution", "resource-id", "cursor"],
+          "Evidence": ["shell-execution"],
+          "Effects": ["process", "may-write-workspace", "network-possible"]
+        },
+        "Aliases": ["bash", "运行命令", "开发服务器", "后台服务", "run tests", "npm run check"],
+        "Risk": {
+          "SideEffect": "process",
+          "Permission": "shell",
+          "Notes": ["Commands can read, write, spawn processes, or access network depending on the command."]
+        }
+      }
+    ],
+    "UseCases": [
+      "需要运行命令、测试、构建或开发服务器时使用。",
+      "服务进程以前台方式运行并持续托管时设置 timeoutMs=0。",
+      "需要验证刚才的文件修改是否通过时使用。"
+    ],
+    "Examples": [
+      "npm run check",
+      "node --version",
+      "Windows PowerShell: Get-Command pm2 -ErrorAction SilentlyContinue"
+    ],
+    "Avoid": [
+      "需要交互输入或 PTY 时使用 TerminalStartTool；服务请以前台命令运行，并设置 timeoutMs=0。",
+      "不要用于直接编辑文件；工作区文件变更优先使用 WorkspaceApplyPatch。",
+      "不要用于 Git 操作；仓库检查和本地变更分别使用 GitInspect 与 GitMutate。",
+      "普通文件读取、内容搜索、文件查找和目录浏览分别使用 WorkspaceRead、WorkspaceGrep、WorkspaceFind、WorkspaceList。",
+      "不要在未知影响范围内执行删除、移动、覆盖、安装或网络命令。"
+    ],
+    "Tags": ["命令执行", "项目构建", "测试检查", "代码处理", "终端操作"]
+  },
+  "evidenceCapabilities": [],
+  "artifacts": {
+    "Evidence": [
+      {
+        "Kind": "shell_execution",
+        "Records": "$",
+        "Slots": {
+          "cwd": "$.cwd",
+          "command": "$.command",
+          "exitCode": "$.exitCode",
+          "signal": "$.signal",
+          "stdout": "$.stdout",
+          "stderr": "$.stderr"
+        },
+        "Identity": { "Parts": ["cwd", "command", "exitCode"] },
+        "Presentation": {
+          "Locator": "{{ cwd }}",
+          "Display": "shell exit {{ exitCode }}: {{ command }}",
+          "Label": "{{ command }}",
+          "Source": "{% if stderr != blank %}{{ stderr }}{% else %}{{ stdout }}{% endif %}"
+        },
+        "Confidence": 0.74,
+        "Metadata": { "cwd": "$.cwd", "exitCode": "$.exitCode", "signal": "$.signal" },
+        "ModelProjection": { "Slots": ["cwd", "command", "exitCode", "signal"] },
+        "PlannerMemory": {
+          "Facts": ["cwd", "command", "exitCode", "signal"],
+          "ArtifactRefs": ["evidence", "projection"]
+        },
+        "Projection": {
+          "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} shell exit {{ e.slots.exitCode }}: {{ e.slots.command }}\n{% endfor %}",
+          "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} shell execution\n  cwd: {{ e.slots.cwd }}\n  command: {{ e.slots.command }}\n  exitCode: {{ e.slots.exitCode }}{% if e.slots.signal %}\n  signal: {{ e.slots.signal }}{% endif %}\n  output: {{ e.source }}\n{% endfor %}"
+        }
+      }
+    ],
+    "Summary": {
+      "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+      "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}{% if workspace %}{% for change in workspace.changes %}- {{ change.status }} {{ change.path }}\n{% endfor %}{% endif %}"
+    }
+  }
+}

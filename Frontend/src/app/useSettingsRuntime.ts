@@ -1,0 +1,236 @@
+import { useCallback, useMemo, useState, type MutableRefObject } from "react";
+import {
+  EventKinds,
+  type ChannelStatusItem,
+  type EventEnvelope,
+  type McpInputMutationState,
+  type McpInputValue,
+  type McpServerSnapshotData,
+  type WsRequest,
+} from "../api/eventTypes";
+import type { SocketStatus } from "../api/useAgentSocket";
+import type { SettingsSystemConfigHandle } from "../features/settings/SettingsContracts";
+import { useStore } from "../store/sessionStore";
+import { useConfigMutationController, type ConfigMutationController } from "./useConfigMutationController";
+import { generateId } from "../lib/util";
+import { resolveBackendMessage } from "../i18n/backendMessage";
+import { useWorkspaceController, type WorkspaceControllerHandle } from "./useWorkspaceController";
+
+export interface SettingsRuntimeHandle {
+  controller: ConfigMutationController;
+  systemConfig: SettingsSystemConfigHandle;
+  workspace: WorkspaceControllerHandle;
+  ingestSettingsEvent: (event: EventEnvelope) => boolean;
+}
+
+export function useSettingsRuntime({
+  httpBaseUrl,
+  sendRef,
+  statusRef,
+  status,
+  onWorkspaceReady,
+}: {
+  httpBaseUrl: string;
+  sendRef: MutableRefObject<((request: WsRequest) => boolean) | null>;
+  statusRef: MutableRefObject<SocketStatus>;
+  status: SocketStatus;
+  onWorkspaceReady?: (snapshot: import("../api/workspaceEventTypes").WorkspaceSnapshotData, switched: boolean) => void;
+}): SettingsRuntimeHandle {
+  const configSnapshot = useStore((state) => state.configSnapshot);
+  const providerModelCatalogs = useStore((state) => state.providerModelCatalogs);
+  const providerModelErrors = useStore((state) => state.providerModelErrors);
+  const systemTools = useStore((state) => state.systemTools);
+  const systemExtensions = useStore((state) => state.systemExtensions);
+  const mcpServers = useStore((state) => state.mcpServers);
+  const runtimeDependenciesById = useStore((state) => state.runtimeDependencies);
+  const toolSettingsSynced = useStore((state) => state.toolSettingsSynced);
+  const channelStatuses = useStore((state) => state.channelStatuses);
+  const [mcpInputOperation, setMcpInputOperation] = useState<McpInputMutationState | null>(null);
+  const controller = useConfigMutationController({ configSnapshot, sendRef, statusRef });
+  const workspace = useWorkspaceController({ sendRef, statusRef, status, onWorkspaceReady });
+  const workspaceId = workspace.snapshot?.workspaceId ?? null;
+  const sendWhenConnected = useCallback(
+    (request: WsRequest): boolean => statusRef.current === "open" && Boolean(sendRef.current?.(request)),
+    [sendRef, statusRef],
+  );
+  const refreshToolSettings = useCallback((): boolean => {
+    const systemToolsSent = sendWhenConnected({ type: "systemTool.list" });
+    const mcpServersSent = sendWhenConnected({ type: "mcpServer.list" });
+    return systemToolsSent && mcpServersSent;
+  }, [sendWhenConnected]);
+  const refreshRuntimeDependencies = useCallback(
+    (): boolean => sendWhenConnected({ type: "runtimeDependency.list" }),
+    [sendWhenConnected],
+  );
+  const checkRuntimeDependency = useCallback(
+    (dependencyId: string): boolean => sendWhenConnected({ type: "runtimeDependency.check", dependencyId }),
+    [sendWhenConnected],
+  );
+  const installRuntimeDependency = useCallback(
+    (dependencyId: string): boolean => sendWhenConnected({ type: "runtimeDependency.install", dependencyId }),
+    [sendWhenConnected],
+  );
+  const updateMcpInputs = useCallback(
+    (serverId: string, values: Record<string, McpInputValue>, deletes?: string[]): string | null => {
+      const requestId = generateId();
+      if (
+        !sendWhenConnected({
+          type: "mcpInput.update",
+          requestId,
+          serverId,
+          values,
+          ...(deletes?.length ? { deletes } : {}),
+        })
+      ) {
+        return null;
+      }
+      setMcpInputOperation({ requestId, status: "pending" });
+      return requestId;
+    },
+    [sendWhenConnected],
+  );
+  const restartMcpServer = useCallback(
+    (serverId: string): boolean => sendWhenConnected({ type: "mcpServer.restart", serverId }),
+    [sendWhenConnected],
+  );
+  const connectChannel = useCallback(
+    (kind: ChannelStatusItem["kind"]): boolean => sendWhenConnected({ type: "channel.connect", kind }),
+    [sendWhenConnected],
+  );
+  const readProviderApiKey = useCallback(
+    async (providerId: string): Promise<string> => {
+      const url = new URL("/api/provider-credentials", `${httpBaseUrl}/`);
+      url.searchParams.set("providerId", providerId);
+      const response = await fetch(url, {
+        cache: "no-store",
+        credentials: "include",
+        headers: { Accept: "application/json" },
+      });
+      const payload: unknown = await response.json();
+      if (!response.ok || !isProviderCredentialResponse(payload, providerId)) {
+        throw new Error(`Unable to read credentials for provider ${providerId}.`);
+      }
+      return payload.apiKey;
+    },
+    [httpBaseUrl],
+  );
+  const readExtensionSecret = useCallback(
+    async (extensionId: string, path: readonly string[]): Promise<string> => {
+      const url = new URL("/api/extension-secrets", `${httpBaseUrl}/`);
+      url.searchParams.set("extensionId", extensionId);
+      for (const part of path) url.searchParams.append("path", part);
+      const response = await fetch(url, {
+        cache: "no-store",
+        credentials: "include",
+        headers: { Accept: "application/json" },
+      });
+      const payload: unknown = await response.json();
+      if (!response.ok || !isExtensionSecretResponse(payload, extensionId, path)) {
+        throw new Error(`Unable to read secret for extension ${extensionId}.`);
+      }
+      return payload.value;
+    },
+    [httpBaseUrl],
+  );
+
+  const systemConfig = useMemo<SettingsSystemConfigHandle>(
+    () => ({
+      ...controller,
+      configSnapshot,
+      workspaceId,
+      systemTools,
+      systemExtensions,
+      mcpServers,
+      runtimeDependencies: Object.values(runtimeDependenciesById),
+      channelStatuses,
+      toolSettingsSynced,
+      mcpInputOperation,
+      providerModelCatalogs,
+      providerModelErrors,
+      readProviderApiKey,
+      readExtensionSecret,
+      refreshToolSettings,
+      refreshRuntimeDependencies,
+      checkRuntimeDependency,
+      installRuntimeDependency,
+      updateMcpInputs,
+      restartMcpServer,
+      connectChannel,
+    }),
+    [
+      configSnapshot,
+      channelStatuses,
+      connectChannel,
+      controller,
+      mcpServers,
+      runtimeDependenciesById,
+      mcpInputOperation,
+      providerModelCatalogs,
+      providerModelErrors,
+      readProviderApiKey,
+      readExtensionSecret,
+      refreshToolSettings,
+      refreshRuntimeDependencies,
+      checkRuntimeDependency,
+      installRuntimeDependency,
+      restartMcpServer,
+      updateMcpInputs,
+      systemExtensions,
+      systemTools,
+      toolSettingsSynced,
+      workspaceId,
+    ],
+  );
+
+  const ingestSettingsEvent = useCallback(
+    (event: EventEnvelope): boolean => {
+      const configHandled = controller.ingestConfigMutationEvent(event);
+      const workspaceHandled = workspace.ingestWorkspaceEvent(event);
+      if (event.kind === EventKinds.McpServerSnapshot) {
+        const operation = (event.data as McpServerSnapshotData).operation;
+        if (operation?.kind === "mcp_input_update") {
+          setMcpInputOperation({ requestId: operation.requestId, status: "success" });
+          return true;
+        }
+      }
+      if (event.kind === EventKinds.RequestInvalid) {
+        const data = event.data as { message?: string; details?: Record<string, unknown> };
+        if (data.details?.requestType === "mcpInput.update" && typeof data.details.requestId === "string") {
+          setMcpInputOperation({
+            requestId: data.details.requestId,
+            status: "error",
+            message: resolveBackendMessage(data),
+          });
+          return true;
+        }
+      }
+      return configHandled || workspaceHandled;
+    },
+    [controller, workspace],
+  );
+
+  return { controller, systemConfig, workspace, ingestSettingsEvent };
+}
+
+function isProviderCredentialResponse(value: unknown, providerId: string): value is { apiKey: string } {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return record.ok === true && record.providerId === providerId && typeof record.apiKey === "string";
+}
+
+function isExtensionSecretResponse(
+  value: unknown,
+  extensionId: string,
+  path: readonly string[],
+): value is { value: string } {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    record.ok === true &&
+    record.extensionId === extensionId &&
+    Array.isArray(record.path) &&
+    record.path.length === path.length &&
+    record.path.every((part, index) => part === path[index]) &&
+    typeof record.value === "string"
+  );
+}

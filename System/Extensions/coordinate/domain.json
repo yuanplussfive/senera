@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schemas.senera.ai/extension-domain/v1.json",
+  "schemaVersion": 1,
+  "id": "coordinate",
+  "displayName": {
+    "zh-CN": "协调与计划",
+    "en-US": "Coordinate and Plan"
+  },
+  "description": {
+    "zh-CN": "协调用户输入、待办事项、定时任务和子代理工作。",
+    "en-US": "Coordinates user input, todos, schedules, and child-agent work."
+  },
+  "presentation": {
+    "category": "coordinate",
+    "icon": "users",
+    "group": {
+      "id": "coordinate",
+      "title": {
+        "zh-CN": "协调任务",
+        "en-US": "Coordinate work"
+      }
+    },
+    "activity": {
+      "action": {
+        "zh-CN": "协调",
+        "en-US": "Coordinate"
+      }
+    }
+  }
+}

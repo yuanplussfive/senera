@@ -1,0 +1,2987 @@
+@config "../tailwind.config.js";
+@import "tailwindcss";
+@import "./styles/scrollbar.css";
+
+@utility animate-text-shimmer {
+  background-clip: text;
+  background-image: linear-gradient(
+    90deg,
+    currentColor 0%,
+    currentColor calc(50% - var(--senera-text-scan-beam, 0.45em)),
+    color-mix(in oklab, var(--senera-brand-violet) 55%, currentColor) calc(50% - 0.18em),
+    color-mix(in oklab, var(--senera-brand-gold) 72%, currentColor) 50%,
+    color-mix(in oklab, var(--senera-brand-violet) 55%, currentColor) calc(50% + 0.18em),
+    currentColor calc(50% + var(--senera-text-scan-beam, 0.45em)),
+    currentColor 100%
+  );
+  background-position: 180% center;
+  background-repeat: repeat;
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: senera-text-scan var(--senera-text-shimmer-duration) cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+@keyframes senera-text-scan {
+  0%,
+  10% {
+    background-position: 180% center;
+  }
+
+  50% {
+    background-position: 0% center;
+  }
+
+  90%,
+  100% {
+    background-position: -180% center;
+  }
+}
+
+@keyframes senera-activity-status-pulse {
+  0%,
+  100% {
+    opacity: 0.62;
+    transform: scale(0.94);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+}
+
+@keyframes senera-progress-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+[data-live-activity-icon]:not([data-tool-action-icon]):not(.tool-execution-status-mark):not(.thinking-status-icon) {
+  animation: senera-activity-status-pulse var(--senera-activity-pulse-duration) ease-in-out infinite;
+  transform-origin: center;
+}
+
+.senera-activity-status-pulse {
+  animation: senera-activity-status-pulse var(--senera-activity-pulse-duration) ease-in-out infinite;
+  transform-origin: center;
+}
+
+.senera-activity-status-spin {
+  animation: senera-progress-spin 1.35s linear infinite;
+  transform-origin: center;
+}
+
+.thinking-status-icon {
+  position: relative;
+  overflow: visible;
+}
+
+.thinking-status-icon--active {
+  color: var(--accent-content);
+}
+
+.thinking-indicator {
+  min-width: 0;
+  color: currentColor;
+  font-family: var(--theme-ui-font-family);
+}
+
+.thinking-indicator.thinking-indicator--inline {
+  padding: 0;
+}
+
+.live-activity-status--thinking {
+  grid-template-columns: minmax(0, 1fr) 14px;
+  justify-items: start;
+}
+
+.live-activity-status--thinking .live-activity-status__indicator {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-self: start;
+}
+
+.live-activity-status--thinking .activity-feed-row__trailing {
+  grid-column: 2;
+  justify-self: end;
+}
+
+.shimmer-text {
+  color: transparent;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--content-secondary) 70%, transparent) 0%,
+    color-mix(in srgb, var(--content-secondary) 70%, transparent) 35%,
+    var(--content-primary) 50%,
+    color-mix(in srgb, var(--content-secondary) 70%, transparent) 65%,
+    color-mix(in srgb, var(--content-secondary) 70%, transparent) 100%
+  );
+  background-size: 300% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: fluid-thinking-shimmer 1.5s ease-in-out infinite;
+}
+
+html:is([data-motion-level="reduced"], [data-motion-level="none"]) .shimmer-text {
+  animation: none;
+  background: none;
+  color: var(--content-secondary);
+  -webkit-text-fill-color: currentColor;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer-text {
+    animation: none;
+    background: none;
+    color: var(--content-secondary);
+    -webkit-text-fill-color: currentColor;
+  }
+}
+
+@keyframes fluid-thinking-shimmer {
+  from {
+    background-position: 0% 0;
+  }
+
+  to {
+    background-position: 100% 0;
+  }
+}
+
+.senera-activity-mark {
+  display: block;
+  flex: none;
+  overflow: visible;
+}
+
+.senera-activity-mark__main,
+.senera-activity-mark__tail {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.senera-activity-mark__main {
+  stroke: var(--senera-brand-violet);
+  stroke-width: 1.9;
+}
+
+.senera-activity-mark__tail {
+  stroke: var(--senera-brand-gold);
+  stroke-width: 1.9;
+  opacity: 0.88;
+}
+
+.senera-activity-mark__dot {
+  fill: var(--senera-brand-gold);
+}
+
+.senera-activity-mark--active .senera-activity-mark__main,
+.senera-activity-mark--active .senera-activity-mark__tail {
+  stroke-dasharray: 28 28;
+  stroke-dashoffset: 0;
+  animation:
+    senera-signal-flow 2.8s linear infinite,
+    senera-signal-breathe 2.8s ease-in-out infinite;
+  will-change: stroke-dashoffset, opacity;
+}
+
+/* AppIcon's `activity` entry is the static Senera mark. A live StatusGlyph
+   owns the motion so the same brand glyph can remain still after completion. */
+.senera-status-glyph[data-status-glyph-live="true"] .senera-activity-mark__main,
+.senera-status-glyph[data-status-glyph-live="true"] .senera-activity-mark__tail {
+  stroke-dasharray: 28 28;
+  stroke-dashoffset: 0;
+  animation:
+    senera-signal-flow 2.8s linear infinite,
+    senera-signal-breathe 2.8s ease-in-out infinite;
+  will-change: stroke-dashoffset, opacity;
+}
+
+@keyframes senera-signal-flow {
+  0% {
+    stroke-dashoffset: 0;
+  }
+
+  100% {
+    stroke-dashoffset: -56px;
+  }
+}
+
+@keyframes senera-signal-breathe {
+  0%,
+  100% {
+    opacity: 0.58;
+  }
+
+  50% {
+    opacity: 0.96;
+  }
+}
+
+/* One glyph wrapper carries every execution state: the status tone plus an
+   explicit live treatment. The glyph itself never changes, so a running row
+   keeps its identity instead of swapping icons on each event. */
+.senera-status-glyph {
+  transition: color var(--senera-motion-feedback) ease-out;
+}
+
+.senera-loader-glyph {
+  display: block;
+  flex: none;
+  color: currentColor;
+  transform-origin: center;
+}
+
+@keyframes senera-quiet-pulse {
+  0%,
+  100% {
+    opacity: 0.62;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+.senera-status-glyph[data-status-glyph-motion="quiet"] {
+  animation: senera-quiet-pulse 2.2s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.senera-status-glyph__ring {
+  position: absolute;
+  inset: -2px;
+  border-radius: 9999px;
+  background: conic-gradient(
+    from 0deg,
+    var(--senera-brand-violet) 0deg,
+    var(--senera-brand-gold) 52deg,
+    transparent 108deg,
+    transparent 360deg
+  );
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 calc(100% - 1.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 calc(100% - 1.5px));
+  animation: senera-tool-brand-sweep 1.8s linear infinite;
+  opacity: 0.72;
+  pointer-events: none;
+  transform-origin: center;
+  will-change: transform, opacity;
+}
+
+@keyframes senera-tool-brand-sweep {
+  0% {
+    opacity: 0.48;
+    transform: rotate(0deg);
+  }
+
+  50% {
+    opacity: 0.96;
+  }
+
+  100% {
+    opacity: 0.48;
+    transform: rotate(360deg);
+  }
+}
+
+.activity-feed-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 14px;
+  align-items: center;
+  column-gap: 8px;
+  min-height: 32px;
+  padding-block: 4px;
+}
+
+.activity-feed-row__icon {
+  display: inline-flex;
+  min-width: 16px;
+  height: 16px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.activity-feed-row__content {
+  min-width: 0;
+  font-size: var(--theme-chat-assistant-font-size-scaled, 13px);
+  line-height: var(--theme-chat-assistant-line-height, 20px);
+}
+
+.activity-feed-row__trailing {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+}
+
+/* A single activity position is shared by waiting, tool and completion
+   feedback. Layers are stacked in one grid cell, so replacing a provider
+   event cannot push the message body down for one frame. */
+.senera-stable-activity-slot {
+  min-width: 0;
+  min-height: var(--theme-chat-activity-row-min-height);
+}
+
+.senera-stable-activity-slot--row {
+  position: relative;
+  display: block;
+  height: var(--theme-chat-activity-row-min-height);
+  overflow: visible;
+}
+
+.senera-stable-activity-slot--content {
+  display: block;
+  min-height: 0;
+}
+
+.senera-stable-activity-slot__layer {
+  min-width: 0;
+  min-height: var(--theme-chat-activity-row-min-height);
+}
+
+.senera-stable-activity-slot--row > .senera-stable-activity-slot__layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.senera-stable-activity-slot--content > .senera-stable-activity-slot__layer {
+  min-height: 0;
+}
+
+.senera-stable-activity-slot__layer > [data-activity-feed-row],
+.senera-stable-activity-slot__layer > .execution-feed-headline,
+.senera-stable-activity-slot__layer > .execution-feed-fallback {
+  min-height: var(--theme-chat-activity-row-min-height);
+}
+
+/*
+ * Disclosure content inside a measured conversation row stays mounted. The
+ * grid track gives it one continuous geometry transition; AnimatePresence
+ * would otherwise remove the old tree first and make the row report zero
+ * height while the replacement is waiting to mount.
+ */
+.motion-disclosure--stable {
+  display: grid;
+  grid-template-rows: 0fr;
+  min-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition:
+    grid-template-rows 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 130ms ease-out;
+  will-change: grid-template-rows, opacity;
+}
+
+.motion-disclosure--stable-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.motion-disclosure--stable__inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+html:is([data-motion-level="reduced"], [data-motion-level="none"]) .motion-disclosure--stable {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motion-disclosure--stable {
+    transition: none;
+  }
+}
+
+/* Execution rows share one geometry across tool labels, activity headlines,
+   and thinking summaries. Keeping the row box stable prevents the lazy
+   execution projection from pushing the conversation down on its first frame. */
+.execution-feed-headline,
+.execution-feed-fallback {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: var(--theme-chat-item-gap);
+  min-height: var(--theme-chat-activity-row-min-height);
+  padding-block: var(--theme-chat-activity-row-padding-block);
+}
+
+.execution-feed-headline__body {
+  display: flex;
+  min-width: 0;
+  min-height: var(--theme-chat-activity-row-min-height);
+  flex-direction: column;
+  justify-content: center;
+}
+
+.execution-feed-headline__meta {
+  column-gap: var(--theme-chat-item-gap);
+  row-gap: 0;
+  min-height: var(--theme-chat-activity-row-min-height);
+  align-content: center;
+}
+
+.execution-feed-headline__title {
+  min-width: 0;
+  line-height: var(--theme-tool-line-height);
+}
+
+.execution-feed-headline__subtitle {
+  margin-top: var(--theme-chat-inline-gap);
+  line-height: var(--theme-tool-line-height);
+}
+
+.execution-feed-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  column-gap: var(--theme-chat-item-gap);
+}
+
+.execution-feed-item__body {
+  min-width: 0;
+}
+
+.execution-feed-item__body--failed {
+  border-inline-start: 2px solid rgb(var(--color-brick-500));
+  padding-block: var(--theme-chat-inline-gap);
+  padding-inline-start: var(--theme-chat-inline-gap);
+}
+
+.execution-feed-group__body {
+  min-width: 0;
+}
+
+.execution-feed-group__meta {
+  column-gap: var(--theme-chat-item-gap);
+  row-gap: 0;
+  min-height: var(--theme-chat-activity-row-min-height);
+  align-content: center;
+}
+
+.execution-feed-group__items {
+  gap: var(--theme-chat-inline-gap);
+  margin-top: var(--theme-chat-inline-gap);
+}
+
+.execution-feed-group__trigger {
+  width: calc(100% + var(--theme-chat-item-gap) + var(--theme-chat-item-gap));
+  min-height: var(--theme-chat-activity-row-min-height);
+  margin-inline: calc(0px - var(--theme-chat-item-gap));
+  column-gap: var(--theme-chat-item-gap);
+  padding-block: var(--theme-chat-activity-row-padding-block);
+}
+
+.execution-feed-group__details {
+  gap: var(--theme-chat-inline-gap);
+  margin-top: var(--theme-chat-inline-gap);
+}
+
+.execution-feed-row {
+  padding-block: var(--theme-chat-inline-gap);
+}
+
+.execution-feed-row__layout {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  column-gap: var(--theme-chat-item-gap);
+}
+
+.execution-feed-item-content {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  column-gap: var(--theme-chat-item-gap);
+  row-gap: 0;
+}
+
+.execution-feed-item-content__title {
+  line-height: var(--theme-tool-line-height);
+}
+
+.execution-feed-item-content__subtitle {
+  margin-top: var(--theme-chat-inline-gap);
+  line-height: var(--theme-tool-line-height);
+}
+
+.execution-feed-item-content__meta {
+  line-height: var(--theme-tool-line-height);
+}
+
+/* Todo is part of the execution rail, not a document-like checklist. Keep
+   its icon gutter identical to tool/output rows while letting the list own
+   its compact, stateful rhythm. */
+.workflow-task-progress {
+  display: flex;
+  max-height: min(24dvh, 13rem);
+  flex-shrink: 0;
+  flex-direction: column;
+  border-bottom: 1px solid var(--line-subtle);
+  background: transparent;
+}
+
+.workflow-section-header {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+  min-height: 32px;
+  padding: 6px 12px 4px;
+}
+
+.workflow-section-header__icon {
+  color: var(--content-secondary);
+}
+
+.workflow-section-header__title {
+  min-width: 0;
+  overflow: hidden;
+  flex: 1 1 auto;
+  color: var(--content-secondary);
+  font-size: var(--theme-tool-font-size);
+  font-weight: 500;
+  line-height: var(--theme-tool-line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-section-header__meta {
+  flex: none;
+  color: var(--content-muted);
+  font-family: var(--theme-mono-font-family);
+  font-size: var(--theme-tool-meta-size);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.workflow-task-progress__bar {
+  height: 3px;
+  margin: 0 12px 6px 36px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--line-subtle);
+}
+
+.workflow-task-progress__bar > span {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  border-radius: inherit;
+  background: var(--accent-content);
+  transition: width 240ms ease-out;
+}
+
+.workflow-task-progress__list {
+  position: relative;
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: 2px 12px 8px;
+  overscroll-behavior: contain;
+}
+
+.workflow-task-progress__group {
+  position: relative;
+  min-width: 0;
+}
+
+.workflow-task-progress__owner {
+  min-height: 22px;
+  padding: 4px 0 1px 24px;
+  color: var(--content-muted);
+  font-size: var(--theme-tool-meta-size);
+  line-height: 17px;
+}
+
+.workflow-task-progress__items {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workflow-task-progress__row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 8px;
+  min-height: 30px;
+  padding: 4px 0;
+  color: var(--content-secondary);
+  font-size: var(--theme-tool-meta-size);
+  line-height: 18px;
+  transition:
+    background-color var(--senera-motion-feedback) ease-out,
+    color var(--senera-motion-feedback) ease-out;
+}
+
+.workflow-task-progress__row--active {
+  color: var(--content-primary);
+}
+
+.workflow-task-progress__status-icon {
+  position: relative;
+  z-index: 1;
+  color: inherit;
+  background: transparent;
+}
+
+.workflow-task-progress__label {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workflow-task-progress__bar > span {
+    transition: none;
+  }
+}
+
+.model-thinking-preview .markdown-renderer {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.model-thinking-preview .markdown-renderer > * {
+  display: inline;
+  margin: 0;
+}
+
+.model-thinking-preview .markdown-renderer > :not(:first-child) {
+  display: none;
+}
+
+.model-thinking-preview .markdown-renderer p {
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.model-thinking-flow {
+  position: relative;
+}
+
+/* The brain is the origin node of the expanded thinking rail. Only the
+ * bridge into the first streamed block bends; the transcript itself remains
+ * a calm, straight spine. */
+[data-thinking-steps][data-thinking-steps-rail="organic"] .model-thinking-flow__brain {
+  position: relative;
+  z-index: 1;
+}
+
+.model-thinking-flow__rail {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.model-thinking-flow__rail path {
+  fill: none;
+  stroke: color-mix(in srgb, var(--content-primary) 44%, var(--line-strong));
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.model-thinking-flow__rail-terminal {
+  fill: var(--content-secondary);
+}
+
+.live-activity-markdown.markdown-renderer:is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6),
+.live-activity-markdown.markdown-renderer > :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6) {
+  @apply animate-text-shimmer;
+}
+
+/* The parent paragraph uses transparent text while the shimmer moves. Keep
+ * inline semantic surfaces readable: citations and code have their own
+ * background/pill treatment, so inheriting transparent text turns them into
+ * empty boxes during a live response. */
+.live-activity-markdown.markdown-renderer .markdown-renderer__citation,
+.live-activity-markdown.markdown-renderer .markdown-renderer__citation-host,
+.live-activity-markdown.markdown-renderer .markdown-renderer__link,
+.live-activity-markdown.markdown-renderer :not(pre) > code {
+  background-image: none;
+  -webkit-text-fill-color: currentColor;
+}
+
+.tool-execution-status-mark {
+  position: relative;
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border: 1px solid var(--accent-content);
+  border-radius: 50%;
+}
+
+.tool-execution-status-mark[data-live-activity-icon] {
+  animation: senera-activity-status-pulse var(--senera-activity-pulse-duration) ease-in-out infinite;
+  transform-origin: center;
+}
+
+.workflow-canvas-live-node {
+  box-shadow:
+    var(--shadow-panel),
+    0 0 0 1px rgb(var(--color-accent-500) / 0.14),
+    0 8px 22px -16px rgb(var(--color-accent-700) / 0.5);
+}
+
+/* ----- base ----- */
+:root {
+  color-scheme: light;
+  --senera-activity-pulse-duration: 1.25s;
+  --senera-text-shimmer-duration: 7.2s;
+  --senera-brand-violet: #7e67c2;
+  --senera-brand-gold: #f6cf52;
+  font-family: var(--theme-ui-font-family, ui-sans-serif, system-ui, sans-serif);
+  font-feature-settings:
+    "tnum" on,
+    "ss01" on;
+  --color-paper-50: 255 255 255;
+  --color-paper-100: 248 248 246;
+  --color-paper-200: 239 238 235;
+  --color-paper-300: 224 223 219;
+  --color-paper-400: 199 197 189;
+  --color-ink-950: 33 30 24;
+  --color-ink-900: 43 40 32;
+  --color-ink-850: 50 47 39;
+  --color-ink-800: 63 58 49;
+  --color-ink-700: 81 76 64;
+  --color-ink-650: 98 93 80;
+  --color-ink-600: 106 101 88;
+  --color-ink-500: 115 112 95;
+  --color-ink-400: 150 145 127;
+  --color-ink-350: 170 165 146;
+  --color-ink-300: 186 181 166;
+  --color-ink-200: 224 223 219;
+  --color-ink-100: 234 233 229;
+  --color-ink-50: 244 244 241;
+  --color-accent-50: 252 244 239;
+  --color-accent-100: 246 226 214;
+  --color-accent-200: 236 195 171;
+  --color-accent-300: 214 143 111;
+  --color-accent-400: 194 105 74;
+  --color-accent-500: 180 93 64;
+  --color-accent-600: 168 87 59;
+  --color-accent-700: 132 64 43;
+  --color-terra-50: var(--color-accent-50);
+  --color-terra-100: var(--color-accent-100);
+  --color-terra-200: var(--color-accent-200);
+  --color-terra-300: var(--color-accent-300);
+  --color-terra-400: var(--color-accent-400);
+  --color-terra-500: var(--color-accent-500);
+  --color-terra-600: var(--color-accent-600);
+  --color-terra-700: var(--color-accent-700);
+  --color-accent-contrast: 255 255 255;
+  --color-moss-50: 240 243 235;
+  --color-moss-100: 219 226 203;
+  --color-moss-400: 125 152 102;
+  --color-moss-500: 90 125 76;
+  --color-moss-600: 69 98 57;
+  --color-umber-50: 247 240 228;
+  --color-umber-100: 234 220 197;
+  --color-umber-200: 210 186 141;
+  --color-umber-500: 138 106 63;
+  --color-umber-600: 112 86 50;
+  --color-brick-50: 254 246 238;
+  --color-brick-100: 253 232 215;
+  --color-brick-200: 250 201 164;
+  --color-brick-500: 217 119 6;
+  --color-brick-600: 180 83 9;
+  --color-brick-700: 146 64 14;
+  --theme-bg: rgb(248 248 246);
+  --theme-bg-image:
+    radial-gradient(circle at 0% 0%, rgb(194 105 74 / 0.018) 0, transparent 35%),
+    radial-gradient(circle at 100% 100%, rgb(90 125 76 / 0.016) 0, transparent 35%);
+  --theme-fg: rgb(43 40 32);
+  --theme-sidebar-bg: rgb(244 244 241);
+  --theme-elevated-bg: rgb(255 255 255);
+  --theme-border: rgb(224 223 219);
+  --theme-accent-soft: var(--accent-surface);
+  --theme-surface-shadow: 0 1px 2px rgb(43 40 32 / 0.04), 0 12px 24px rgb(43 40 32 / 0.06);
+  --theme-overlay-shadow: 0 30px 72px -26px rgb(24 25 28 / 0.42), 0 10px 28px -16px rgb(24 25 28 / 0.24);
+  --theme-dialog-backdrop: rgb(24 25 28 / 0.52);
+  --theme-sheet-backdrop: rgb(24 25 28 / 0.44);
+  --theme-panel-glaze: rgb(255 255 255 / 0.56);
+  --theme-hover-wash: var(--surface-hover);
+  --theme-selection-bg: rgb(var(--color-accent-500) / 0.18);
+  --theme-selection-fg: var(--content-primary);
+  --theme-skeleton-a: rgb(43 40 32 / 0.035);
+  --theme-skeleton-b: rgb(43 40 32 / 0.09);
+  --senera-motion-feedback: 200ms;
+  --senera-signal-violet: rgb(var(--color-accent-500));
+  --senera-signal-gold: rgb(var(--color-umber-500));
+  --theme-code-editor-bg: rgb(255 255 255);
+  --theme-code-editor-fg: rgb(var(--color-ink-850));
+  --theme-code-editor-font-size: calc(13px * var(--theme-font-scale-safe));
+  --theme-code-output-bg: rgb(var(--color-ink-950));
+  --theme-code-output-fg: rgb(var(--color-paper-50));
+  --theme-code-output-border: rgb(var(--color-ink-200) / 0.24);
+  --theme-code-output-muted: rgb(var(--color-paper-300) / 0.72);
+  --theme-code-editor-gutter-bg: rgb(var(--color-paper-200) / 0.72);
+  --theme-code-editor-gutter-border: rgb(var(--color-ink-900) / 0.1);
+  --theme-code-editor-gutter-fg: rgb(var(--color-ink-900) / 0.42);
+  --theme-code-editor-active-line-bg: rgb(var(--color-terra-500) / 0.07);
+  --theme-code-editor-active-gutter-bg: rgb(var(--color-terra-500) / 0.09);
+  --theme-code-editor-active-gutter-fg: rgb(var(--color-terra-700));
+  --theme-code-editor-selection-bg: rgb(var(--color-terra-500) / 0.18);
+  --theme-code-editor-caret: rgb(var(--color-terra-500));
+  --theme-code-token-keyword: rgb(var(--color-terra-600));
+  --theme-code-token-string: rgb(var(--color-moss-600));
+  --theme-code-token-property: rgb(var(--color-umber-600));
+  --theme-code-token-literal: rgb(39 107 117);
+  --theme-code-token-comment: rgb(var(--color-ink-500));
+  --theme-code-token-name: rgb(var(--color-ink-800));
+  --theme-code-token-punctuation: rgb(var(--color-ink-500));
+  --theme-code-token-invalid: rgb(var(--color-brick-700));
+  --senera-top-chrome-height: 52px;
+  --senera-top-rail-gap: 12px;
+  --theme-config-nav-bg: rgb(244 244 241);
+  --theme-config-list-bg: rgb(248 248 246);
+  --theme-config-header-bg: rgb(239 238 235);
+  --theme-config-toolbar-bg: rgb(244 244 241);
+  --theme-config-stage-bg: rgb(248 248 246);
+  --theme-config-panel-bg: rgb(255 255 255);
+  --theme-config-editor-loading-bg: rgb(255 255 255);
+  --theme-chat-user-bg: rgb(var(--color-paper-200));
+  --theme-chat-user-fg: rgb(var(--color-ink-900));
+  --theme-chat-user-hover-bg: rgb(var(--color-paper-300) / 0.8);
+  --theme-chat-user-font-size: 14.5px;
+  --theme-chat-user-line-height: 1.55;
+  --theme-chat-assistant-font-size: 15px;
+  --theme-chat-assistant-line-height: 1.75;
+  --theme-chat-user-font-size-scaled: calc(var(--theme-chat-user-font-size) * var(--theme-font-scale));
+  --theme-chat-assistant-font-size-scaled: calc(var(--theme-chat-assistant-font-size) * var(--theme-font-scale));
+  --theme-chat-user-metrics-font-size: calc(var(--theme-chat-user-font-size-scaled) * 0.8);
+  --theme-chat-assistant-metrics-font-size: calc(var(--theme-chat-assistant-font-size-scaled) * 0.8);
+  --theme-chat-activity-row-min-height: calc(1.625rem * var(--theme-font-scale-safe));
+  --theme-chat-activity-row-padding-block: calc(0.0625rem * var(--theme-font-scale-safe));
+  --theme-chat-stage-gap: calc(0.5rem * var(--theme-font-scale-safe));
+  --theme-chat-inline-gap: calc(0.1875rem * var(--theme-font-scale-safe));
+  --theme-chat-item-gap: calc(0.25rem * var(--theme-font-scale-safe));
+  --theme-tool-font-size: calc(13px * var(--theme-font-scale-safe));
+  --theme-tool-meta-size: calc(11.5px * var(--theme-font-scale-safe));
+  --theme-tool-line-height: 1.5;
+  --theme-chat-composer-bg: rgb(var(--color-paper-100) / 0.8);
+  --theme-chat-composer-focus-bg: rgb(var(--color-paper-50));
+  --theme-session-active-bg: rgb(var(--color-paper-300));
+  --theme-tooltip-bg: rgb(var(--color-ink-900));
+  --theme-tooltip-fg: rgb(var(--color-paper-50));
+  --theme-tooltip-border: rgb(var(--color-paper-50) / 0.18);
+  --theme-tooltip-shadow: var(--shadow-soft);
+  --surface-canvas: var(--theme-bg);
+  --surface-sidebar: var(--theme-sidebar-bg);
+  --surface-panel: rgb(var(--color-paper-50));
+  --surface-raised: var(--theme-elevated-bg);
+  --surface-subtle: rgb(var(--color-paper-100));
+  --surface-soft: color-mix(in srgb, var(--surface-subtle) 50%, var(--surface-panel));
+  --surface-muted: rgb(var(--color-paper-200));
+  --surface-hover: rgb(var(--color-ink-900) / 0.05);
+  --content-strong: rgb(var(--color-ink-950));
+  --content-primary: rgb(var(--color-ink-900));
+  --content-secondary: rgb(var(--color-ink-650));
+  --content-muted: rgb(var(--color-ink-400));
+  --content-disabled: rgb(var(--color-ink-350));
+  --content-inverse: rgb(var(--color-paper-50));
+  --line-subtle: rgb(var(--color-ink-200) / 0.7);
+  --line-default: var(--theme-border);
+  --line-strong: rgb(var(--color-ink-300));
+  --accent-solid: rgb(var(--color-accent-500));
+  --accent-solid-hover: rgb(var(--color-accent-600));
+  --accent-solid-pressed: rgb(var(--color-accent-700));
+  --accent-content: rgb(var(--color-accent-700));
+  --accent-content-hover: rgb(var(--color-accent-600));
+  --accent-surface: rgb(var(--color-accent-50));
+  --accent-surface-hover: rgb(var(--color-accent-100));
+  --accent-border: rgb(var(--color-accent-200));
+  --accent-border-strong: rgb(var(--color-accent-300));
+  --accent-focus-ring: rgb(var(--color-accent-200) / 0.7);
+  --accent-on-solid: rgb(var(--color-accent-contrast));
+  --accent-shadow: 0 1px 2px rgb(var(--color-accent-700) / 0.24), 0 7px 16px -10px rgb(var(--color-accent-700) / 0.58);
+  --shadow-bubble-user: 0 1px 1px rgb(43 40 32 / 0.04);
+  --shadow-bubble-ai: 0 1px 0 rgb(43 40 32 / 0.05), 0 0 0 1px rgb(43 40 32 / 0.045);
+  --shadow-panel: 0 0 0 1px rgb(43 40 32 / 0.055);
+  --shadow-soft: 0 8px 24px -12px rgb(43 40 32 / 0.16);
+  --shadow-avatar-cropper: inset 0 0 0 1px rgb(255 255 255 / 0.18), 0 10px 30px rgb(43 40 32 / 0.14);
+  --theme-font-scale: 1;
+  --theme-font-scale-safe: clamp(0.9, var(--theme-font-scale), 1.12);
+  --theme-emoji-font-family: "Segoe UI Emoji", "Noto Color Emoji", emoji;
+  --theme-ui-font-family:
+    "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", "Segoe UI Variable", "Segoe UI",
+    var(--theme-emoji-font-family), ui-sans-serif, system-ui, sans-serif;
+  --theme-reading-font-family: var(--theme-ui-font-family);
+  --theme-mono-font-family:
+    "JetBrains Mono", "Cascadia Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, var(--theme-emoji-font-family),
+    "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", monospace;
+  --scrollbar-size: 8px;
+  --scrollbar-thumb: rgb(43 40 32 / 0.15);
+  --scrollbar-thumb-hover: rgb(43 40 32 / 0.25);
+  --scrollbar-track: transparent;
+  --code-source-max-height: 500px;
+  --icon-swap-dur: 200ms;
+  --icon-swap-blur: 2px;
+  --icon-swap-start-scale: 0.25;
+  --icon-swap-ease: ease-in-out;
+  --modal-open-dur: 250ms;
+  --modal-close-dur: 150ms;
+  --modal-scale: 0.96;
+  --modal-scale-close: 0.96;
+  --modal-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --dialog-presence-exit-dur: 320ms;
+  --overlay-radius: 10px;
+  --menu-surface-radius: 16px;
+  --menu-item-radius: 10px;
+  --menu-open-dur: 220ms;
+  --menu-close-dur: 130ms;
+  --menu-reduced-open-dur: 120ms;
+  --menu-item-dur: 150ms;
+  --menu-check-dur: 220ms;
+  --menu-open-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --menu-close-ease: cubic-bezier(0.3, 0, 0.8, 0.15);
+  --menu-check-opacity-dur: 160ms;
+  --menu-item-ease: linear;
+  --menu-ease-out: var(--menu-open-ease);
+  --menu-exit-ease: var(--menu-close-ease);
+  --menu-check-ease: cubic-bezier(0.2, 0.9, 0.2, 1.25);
+  --icon-rotate-dur: 200ms;
+  --icon-rotate-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --menu-surface-shadow: 0 4px 16.4px rgb(var(--color-ink-950) / 0.1);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  --theme-code-preview-bg: rgb(255 255 255);
+  --theme-code-loading-bg: rgb(255 255 255 / 0.96);
+  --theme-code-loading-border: rgb(43 40 32 / 0.1);
+  --theme-code-loading-shadow: 0 12px 32px rgb(43 40 32 / 0.13);
+  --theme-code-line-rule: rgb(224 223 219 / 0.7);
+  --theme-code-line-number: rgb(115 112 95 / 0.55);
+  --theme-canvas-grid: rgb(43 40 32 / 0.09);
+  --theme-node-shadow: 0 1px 2px rgb(43 40 32 / 0.035), 0 4px 12px rgb(43 40 32 / 0.09);
+  --theme-inset-highlight: inset 0 1px 0 rgb(255 255 255 / 0.55);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+html {
+  font-size: 16px;
+}
+
+body {
+  margin: 0;
+  background: var(--theme-bg);
+  color: var(--theme-fg);
+  background-image: var(--theme-bg-image);
+  /* Scale text without changing layout geometry or control hit areas. */
+  font-size: calc(16px * var(--theme-font-scale-safe));
+}
+
+/* Tailwind's fixed-pixel text utilities need an explicit type scale because
+   changing body font-size alone cannot affect them. Keep this list limited to
+   typography utilities so spacing and icon dimensions stay stable. */
+.text-xs {
+  font-size: calc(0.75rem * var(--theme-font-scale-safe));
+}
+
+.text-sm {
+  font-size: calc(0.875rem * var(--theme-font-scale-safe));
+}
+
+.text-base {
+  font-size: calc(1rem * var(--theme-font-scale-safe));
+}
+
+.text-lg {
+  font-size: calc(1.125rem * var(--theme-font-scale-safe));
+}
+
+.text-xl {
+  font-size: calc(1.25rem * var(--theme-font-scale-safe));
+}
+
+.text-2xl {
+  font-size: calc(1.5rem * var(--theme-font-scale-safe));
+}
+
+.text-3xl {
+  font-size: calc(1.875rem * var(--theme-font-scale-safe));
+}
+
+.text-4xl {
+  font-size: calc(2.25rem * var(--theme-font-scale-safe));
+}
+
+[class~="text-[7px]"] {
+  font-size: calc(7px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[8px]"] {
+  font-size: calc(8px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[8.5px]"] {
+  font-size: calc(8.5px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[9px]"] {
+  font-size: calc(9px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[9.5px]"] {
+  font-size: calc(9.5px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[10px]"] {
+  font-size: calc(10px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[10.5px]"] {
+  font-size: calc(10.5px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[11px]"] {
+  font-size: calc(11px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[11.5px]"] {
+  font-size: calc(11.5px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[12px]"] {
+  font-size: calc(12px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[12.5px]"] {
+  font-size: calc(12.5px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[12.75px]"] {
+  font-size: calc(12.75px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[13px]"] {
+  font-size: calc(13px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[13.5px]"] {
+  font-size: calc(13.5px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[14px]"] {
+  font-size: calc(14px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[14.5px]"] {
+  font-size: calc(14.5px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[15px]"] {
+  font-size: calc(15px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[16px]"] {
+  font-size: calc(16px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[17px]"] {
+  font-size: calc(17px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[18px]"] {
+  font-size: calc(18px * var(--theme-font-scale-safe));
+}
+
+[class~="text-[20px]"] {
+  font-size: calc(20px * var(--theme-font-scale-safe));
+}
+
+/* The appearance slider draws its own spring marker; keep the native thumb
+   transparent while retaining the input's keyboard and pointer semantics. */
+.appearance-font-range {
+  appearance: none;
+  -webkit-appearance: none;
+  display: block;
+  margin: 0;
+  background: transparent;
+}
+
+.appearance-font-range::-webkit-slider-thumb {
+  width: 0;
+  height: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.appearance-font-range::-webkit-slider-runnable-track {
+  height: 4px;
+  background: transparent;
+  border: 0;
+}
+
+.appearance-font-range::-moz-range-thumb {
+  width: 0;
+  height: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.appearance-font-range::-moz-range-track {
+  height: 4px;
+  background: transparent;
+  border: 0;
+}
+
+.theme-tooltip {
+  border: 1px solid var(--theme-tooltip-border);
+  background: var(--theme-tooltip-bg);
+  color: var(--theme-tooltip-fg);
+  box-shadow: var(--theme-tooltip-shadow);
+}
+
+.theme-tooltip__arrow {
+  fill: var(--theme-tooltip-bg);
+}
+
+:where(
+  a[href],
+  button:not(:disabled),
+  summary,
+  select:not(:disabled),
+  input:is([type="checkbox"], [type="radio"], [type="range"]):not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="menuitem"]:not([aria-disabled="true"]):not([data-disabled]),
+  [role="option"]:not([aria-disabled="true"]),
+  [role="tab"]:not([aria-disabled="true"])
+) {
+  cursor: pointer;
+}
+
+:where(button:disabled, select:disabled, input:disabled, [aria-disabled="true"], [data-disabled]) {
+  cursor: not-allowed;
+}
+
+/* Interactive state is communicated by hover, selection, and control-specific borders. */
+:where(button, input, textarea, select, [role="button"], [role="menuitem"], [tabindex]):focus,
+:where(button, input, textarea, select, [role="button"], [role="menuitem"], [tabindex]):focus-visible {
+  outline: none !important;
+}
+
+:where(button, [role="button"], [role="menuitem"], [role="tab"], [role="option"]) {
+  user-select: none;
+}
+
+[data-ui-chrome] {
+  user-select: none;
+}
+
+[data-ui-chrome] :where(input, textarea, [contenteditable="true"], [data-selectable="true"]) {
+  user-select: text;
+}
+
+/* Terminal rails stay visually quiet until the user moves into the viewport. */
+.terminal-tablist {
+  scrollbar-color: var(--terminal-scrollbar-thumb) transparent;
+  scrollbar-width: thin;
+}
+
+.terminal-tablist::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.terminal-tablist::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--terminal-scrollbar-thumb);
+}
+
+.terminal-tablist::-webkit-scrollbar-thumb:hover {
+  background: var(--terminal-scrollbar-thumb-hover);
+}
+
+.terminal-tablist::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+[data-terminal-viewport] .xterm-viewport {
+  scrollbar-color: transparent transparent;
+  scrollbar-gutter: auto;
+  scrollbar-width: thin;
+}
+
+[data-terminal-viewport]:hover .xterm-viewport {
+  scrollbar-color: var(--terminal-scrollbar-thumb) transparent;
+}
+
+[data-terminal-viewport] .xterm-viewport::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+[data-terminal-viewport] .xterm-viewport::-webkit-scrollbar-thumb {
+  min-height: 28px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  background-clip: padding-box;
+}
+
+[data-terminal-viewport]:hover .xterm-viewport::-webkit-scrollbar-thumb {
+  background: var(--terminal-scrollbar-thumb);
+  background-clip: padding-box;
+}
+
+[data-terminal-viewport] .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: var(--terminal-scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+
+[data-terminal-viewport] .xterm-viewport::-webkit-scrollbar-track,
+[data-terminal-viewport] .xterm-viewport::-webkit-scrollbar-corner {
+  background: transparent;
+}
+.workspace-main {
+  container-name: workspace-main;
+  container-type: inline-size;
+}
+
+.app-loading-shell {
+  box-sizing: border-box;
+}
+
+.settings-loading-shell {
+  box-sizing: border-box;
+  container-name: settings-loading;
+  container-type: inline-size;
+}
+
+.settings-loading-sidebar,
+.settings-loading-header--persistent {
+  display: none;
+}
+
+@container settings-loading (min-width: 800px) {
+  .settings-loading-sidebar {
+    display: flex;
+  }
+
+  .settings-loading-header--compact {
+    display: none;
+  }
+
+  .settings-loading-header--persistent {
+    display: block;
+  }
+}
+
+/* Recovery keeps status quiet without turning a render failure into a blocking
+   card or exposing implementation diagnostics. */
+[data-error-boundary] {
+  isolation: isolate;
+}
+
+/* State views (StateView / ErrorBanner) enter with a short container settle.
+   StateView uses --state-enter-delay once so its contents arrive together. */
+.senera-state-enter {
+  animation: senera-state-enter 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--state-enter-delay, 0ms);
+}
+
+@keyframes senera-state-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+html[data-motion-level="reduced"] .senera-state-enter {
+  animation-duration: 0.12s;
+  animation-delay: 0ms;
+}
+
+html[data-motion-level="none"] .senera-state-enter {
+  animation: none;
+}
+
+.conversation-frame {
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+  max-width: min(var(--theme-conversation-track-width, 64rem), 100%);
+  min-width: 0;
+  margin-inline: auto;
+  --conversation-frame-inline-padding: clamp(16px, 2.2vw, 28px);
+  padding-inline: var(--conversation-frame-inline-padding);
+}
+
+.conversation-frame--prose {
+  flex-direction: column;
+}
+
+.conversation-frame--wide,
+.conversation-frame--composer {
+  flex-direction: column;
+}
+
+.conversation-frame--user {
+  flex-direction: row;
+}
+
+.conversation-frame--user > div {
+  max-width: min(100%, 46rem);
+}
+
+.assistant-turn-content {
+  width: 100%;
+  max-width: min(var(--theme-conversation-reading-width, 58rem), 100%);
+}
+
+.assistant-turn-flow {
+  width: 100%;
+  min-width: 0;
+}
+
+.assistant-turn-flow [id^="conversation-event:"] {
+  scroll-margin-block: 64px;
+}
+
+.assistant-turn-stage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--theme-chat-item-gap);
+}
+
+.assistant-turn-process-list {
+  gap: var(--theme-chat-item-gap);
+  padding-block: var(--theme-chat-item-gap);
+}
+
+.assistant-turn-process-list > .assistant-turn-stage + .assistant-turn-stage {
+  margin-top: 0;
+}
+
+.assistant-turn-stage + .assistant-turn-stage {
+  margin-top: var(--theme-chat-stage-gap);
+}
+
+.assistant-turn-stage [data-execution-stage-feed] {
+  margin-top: var(--theme-chat-inline-gap);
+}
+
+.assistant-turn-stage [data-execution-stage-fold] {
+  margin-top: var(--theme-chat-inline-gap);
+}
+
+.assistant-turn-process-list [data-execution-stage-fold] {
+  margin-top: 0;
+}
+
+.execution-stage-fold__details {
+  --thinking-tool-surface: var(--surface-canvas);
+}
+
+.assistant-turn-stage-interactions:not(:empty) {
+  margin-top: var(--theme-chat-stage-gap);
+}
+
+.assistant-turn-response-items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--theme-chat-item-gap);
+}
+
+.assistant-turn-response-item {
+  min-height: var(--theme-chat-activity-row-min-height);
+}
+
+.activity-feed-row {
+  min-height: var(--theme-chat-activity-row-min-height);
+  padding-block: var(--theme-chat-activity-row-padding-block);
+}
+
+[data-execution-feed] {
+  gap: var(--theme-chat-stage-gap);
+}
+
+[data-execution-timeline] > [role="list"] {
+  gap: var(--theme-chat-item-gap);
+  margin-top: var(--theme-chat-stage-gap);
+}
+
+[data-runtime-event-stream],
+[data-runtime-total-event-stream] {
+  --vinyasa-primary: var(--accent-content);
+  --vinyasa-secondary: var(--surface-subtle);
+  --vinyasa-surface: var(--surface-raised);
+  --vinyasa-text-default: var(--content-primary);
+  --vinyasa-text-muted: var(--content-muted);
+  --vinyasa-border-color-default: var(--line-subtle);
+  --vinyasa-focus: var(--accent-focus);
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+[data-runtime-diagnostic] {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+[data-runtime-event-stream-list],
+[data-runtime-total-event-stream-list] {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+[data-runtime-event-stream] [role="log"],
+[data-runtime-total-event-stream] [role="log"] {
+  min-width: 0;
+  max-width: 100%;
+  gap: var(--theme-chat-inline-gap);
+  overflow-x: hidden;
+}
+
+[data-runtime-event-stream] [role="log"] > li,
+[data-runtime-total-event-stream] [role="log"] > li {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+[data-runtime-event-stream] [role="log"] > li:last-child,
+[data-runtime-total-event-stream] [role="log"] > li:last-child {
+  margin-bottom: 0;
+}
+
+/* Keep Vinyasa's timestamp as the ordering anchor, but remove its generic
+   type caption because Senera renders the concrete event in the row itself. */
+[data-runtime-event-stream] [role="log"] > li > div > div:first-child > :first-child,
+[data-runtime-total-event-stream] [role="log"] > li > div > div:first-child > :first-child {
+  display: none;
+}
+
+.runtime-vinyasa-step-label,
+.runtime-vinyasa-tool-label {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.runtime-vinyasa-step-label__trigger,
+.runtime-vinyasa-tool-label__summary {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  align-items: center;
+  gap: var(--theme-chat-inline-gap);
+}
+
+.runtime-vinyasa-step-label__trigger {
+  padding: 2px 0;
+  border: 0;
+  color: var(--content-primary);
+  font: inherit;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+  outline: none;
+  transition:
+    color 160ms ease,
+    opacity 160ms ease;
+}
+
+.runtime-vinyasa-step-label__static {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  align-items: baseline;
+  gap: var(--theme-chat-inline-gap);
+  padding: 2px 0;
+  color: var(--content-primary);
+  font: inherit;
+  text-align: left;
+}
+
+.runtime-vinyasa-step-label__trigger:hover {
+  color: var(--accent-content);
+}
+
+.runtime-vinyasa-step-label__trigger:focus-visible {
+  border-radius: 4px;
+  box-shadow: 0 0 0 2px var(--accent-focus);
+}
+
+.runtime-vinyasa-step-label__preview {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--content-muted);
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runtime-vinyasa-step-label__static > :first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-runtime-event-stream] [data-runtime-vinyasa-tool-event] > div,
+[data-runtime-total-event-stream] [data-runtime-vinyasa-tool-event] > div {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+[data-runtime-event-stream]
+  [role="log"]
+  > li:has([data-runtime-vinyasa-tool-event])
+  > span:first-child
+  > span:first-child,
+[data-runtime-total-event-stream]
+  [role="log"]
+  > li:has([data-runtime-vinyasa-tool-event])
+  > span:first-child
+  > span:first-child {
+  visibility: hidden;
+}
+
+[data-runtime-event-stream] [data-runtime-vinyasa-tool-event],
+[data-runtime-total-event-stream] [data-runtime-vinyasa-tool-event] {
+  --vinyasa-border-color-default: color-mix(in srgb, var(--line-subtle) 88%, transparent);
+}
+
+[data-runtime-event-stream] button,
+[data-runtime-total-event-stream] button {
+  max-width: 100%;
+}
+
+[data-runtime-event-stream] pre,
+[data-runtime-total-event-stream] pre,
+[data-runtime-event-stream] code,
+[data-runtime-total-event-stream] code {
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+[data-workflow-dock-graph] {
+  --vinyasa-primary: var(--accent-content);
+  --vinyasa-secondary: var(--surface-subtle);
+  --vinyasa-surface: var(--surface-raised);
+  --vinyasa-text-default: var(--content-primary);
+  --vinyasa-text-muted: var(--content-muted);
+  --vinyasa-border-color-default: var(--line-subtle);
+  --vinyasa-focus: var(--accent-focus);
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+[data-workflow-tool-call-card] {
+  min-width: 0;
+  max-width: 100%;
+  --vinyasa-font-size-sm: 12px;
+  --vinyasa-font-size-xs: 10.5px;
+}
+
+[data-workflow-tool-call-card] > div {
+  min-width: 0;
+  max-width: 100%;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+}
+
+[data-workflow-tool-call-card] button {
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 7px;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+/* The dock supplies the prototype's semantic marker. Keep Vinyasa's card
+   disclosure, but remove its second generic status circle and match the
+   compact graph typography. */
+[data-workflow-tool-call-card] button > span:first-child {
+  display: none;
+}
+
+[data-workflow-tool-call-card] button > span:nth-child(2) {
+  min-width: 0;
+  font-size: 12px !important;
+  line-height: 18px !important;
+}
+
+/* The dock owns a pointer-following hover layer and a provider-owned card
+   subtree. Keep actual disclosure controls above those visual layers so a
+   settled run remains keyboard- and mouse-interactive after the provider
+   swaps its contents. */
+[data-workflow-dock-graph] button,
+[data-workflow-dock-graph] [role="button"] {
+  pointer-events: auto;
+}
+
+/* Conversation-side disclosures keep their own hit target when a stable
+   activity slot is crossfading between provider states. */
+[data-completed-turn-toggle],
+[data-execution-stage-fold-trigger],
+[data-model-thinking-toggle-row],
+[data-tool-batch-activity-trigger],
+[data-tool-activity-trigger],
+[data-feed-group] {
+  position: relative;
+  z-index: 1;
+  pointer-events: auto;
+}
+
+/* Rewamp's expanding navigation, using the production Button and theme. */
+.pill-expand-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 4px;
+  border: 1px solid var(--line-subtle);
+  border-radius: 999px;
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-panel);
+}
+
+.pill-expand-nav-item {
+  flex: none;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 10px;
+  gap: 0;
+  border-radius: 999px;
+  color: var(--content-muted);
+  overflow: hidden;
+}
+
+.pill-expand-nav-item:hover,
+.pill-expand-nav-item--expanded {
+  color: var(--content-primary);
+  background: var(--surface-hover);
+  box-shadow: none;
+}
+
+.pill-expand-nav-item--active {
+  color: var(--content-primary);
+  background: var(--surface-muted);
+}
+
+.pill-expand-nav-item--active.pill-expand-nav-item--expanded {
+  background: var(--surface-hover);
+}
+
+.pill-expand-nav-item:active {
+  translate: none;
+}
+
+.pill-expand-nav-icon {
+  display: inline-grid;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+}
+
+.pill-expand-nav-item > span > span {
+  gap: 0;
+}
+
+.pill-expand-nav-label {
+  display: block;
+  max-width: min(128px, 34vw);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: calc(13px * var(--theme-font-scale-safe));
+  font-weight: 500;
+}
+
+[data-workflow-tool-call-card] code {
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.workflow-tool-call-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr) 4.75rem;
+  align-items: start;
+  column-gap: 8px;
+}
+
+.workflow-tool-call-duration,
+.workflow-dock-duration {
+  display: block;
+  min-width: 4.75rem;
+  padding-top: 5px;
+  color: var(--content-muted);
+  font-size: 10.5px;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.workflow-dock-batch-segments {
+  display: inline-flex;
+  flex: 0 1 4.75rem;
+  min-width: 2.75rem;
+  max-width: 4.75rem;
+  height: 5px;
+  align-items: stretch;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.workflow-dock-batch-segment {
+  display: block;
+  min-width: 3px;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--content-muted);
+  opacity: 0.72;
+}
+
+.workflow-dock-batch-segment--done {
+  background: rgb(var(--color-moss-400));
+}
+
+.workflow-dock-batch-segment--failed {
+  background: rgb(var(--color-brick-500));
+}
+
+.workflow-dock-batch-segment--running {
+  background: var(--accent-solid);
+}
+
+.workflow-dock-batch-segment--pending {
+  background: var(--line-strong);
+}
+
+.workflow-run-execution-segments {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 7rem;
+  height: 5px;
+  align-items: stretch;
+  gap: 2px;
+  overflow: hidden;
+  vertical-align: middle;
+}
+
+.workflow-run-execution-segment {
+  display: block;
+  width: 9px;
+  min-width: 4px;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--line-strong);
+  opacity: 0.78;
+}
+
+.workflow-run-execution-segment--done {
+  background: rgb(var(--color-moss-400));
+}
+
+.workflow-run-execution-segment--failed {
+  background: rgb(var(--color-brick-500));
+}
+
+.workflow-run-execution-segment--running {
+  background: var(--accent-solid);
+}
+
+.workflow-run-execution-segment--pending {
+  background: var(--line-strong);
+}
+
+.workflow-dock-step-summary {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) 4.75rem;
+  align-items: baseline;
+  column-gap: 10px;
+}
+
+.workflow-dock-step-summary .workflow-dock-duration {
+  padding-top: 0;
+}
+
+.workflow-tool-call-payload {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--content-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.workflow-tool-call-payload [data-data-view] {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.workflow-tool-call-preview {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 12px 2px 36px;
+  color: var(--content-muted);
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+.workflow-tool-call-preview__row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.workflow-tool-call-preview__title,
+.workflow-tool-call-preview__description {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-tool-call-preview__title {
+  color: var(--content-primary);
+}
+
+.workflow-tool-call-preview__meta,
+.workflow-tool-call-preview__more {
+  color: var(--content-muted);
+  white-space: nowrap;
+}
+
+.workflow-tool-call-preview__more {
+  align-self: flex-start;
+  border-bottom: 1px solid var(--line-subtle);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-runtime-event-stream] [role="log"] > li,
+  [data-runtime-total-event-stream] [role="log"] > li {
+    animation: none;
+    transition: none;
+  }
+}
+
+[data-execution-feed-body] {
+  padding-top: var(--theme-chat-inline-gap);
+}
+
+[data-execution-feed-footer] {
+  padding-top: var(--theme-chat-inline-gap);
+}
+
+[data-tool-batch-activity-items] {
+  gap: var(--theme-chat-item-gap);
+}
+
+[data-tool-batch-activity-items] > ul {
+  gap: var(--theme-chat-inline-gap);
+  padding-block: var(--theme-chat-inline-gap);
+}
+
+[data-tool-activity-viewport] {
+  column-gap: var(--theme-chat-item-gap);
+  row-gap: var(--theme-chat-inline-gap);
+  padding-bottom: var(--theme-chat-inline-gap);
+  padding-top: var(--theme-chat-inline-gap);
+}
+
+.assistant-turn-stage [data-feed-group] {
+  width: 100%;
+  margin-inline: 0;
+}
+
+.assistant-turn-stage[data-current-stage="true"] [data-execution-stage-feed] {
+  position: relative;
+}
+
+/* Tool calls are first-class. They recede through color (secondary/muted
+   content) rather than a translucent wash — dimming whole rows cost contrast
+   and made finished work look disabled. */
+.tool-activity-group__title {
+  color: var(--content-secondary);
+  font-family: var(--theme-ui-font-family);
+  font-size: var(--theme-tool-font-size) !important;
+  font-variation-settings: "wght" 430;
+  font-weight: 450;
+  letter-spacing: 0.01em;
+  line-height: var(--theme-tool-line-height);
+}
+
+.message-metrics {
+  font-family: var(--theme-ui-font-family);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease-out;
+}
+
+[data-message-hover-surface]:is(:hover, :focus-within) .message-metrics {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .message-metrics {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+.message-metrics--user {
+  font-size: var(--theme-chat-user-metrics-font-size);
+}
+
+.message-metrics--assistant {
+  font-size: var(--theme-chat-assistant-metrics-font-size);
+}
+
+.tool-activity-group__content > div {
+  font-family: var(--theme-ui-font-family);
+  font-size: var(--theme-tool-meta-size);
+  line-height: var(--theme-tool-line-height);
+}
+
+.tool-batch-activity {
+  font-family: var(--theme-ui-font-family);
+  font-size: var(--theme-tool-font-size);
+  font-variation-settings: "wght" 430;
+  line-height: var(--theme-tool-line-height);
+}
+
+.tool-batch-activity [data-tool-batch-activity-item] {
+  font-size: var(--theme-tool-meta-size);
+  line-height: var(--theme-tool-line-height);
+}
+
+/* Tool traces share one bounded viewport. It keeps long runs readable while
+   preserving a quiet, theme-aware surface for the surrounding conversation. */
+.tool-activity-viewport {
+  min-height: 0;
+  max-height: min(20rem, 42dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.tool-activity-stage-list--connected::before {
+  position: absolute;
+  top: 18px;
+  bottom: 18px;
+  left: 8px;
+  width: 1px;
+  background: var(--line-subtle);
+  content: "";
+}
+
+.tool-activity-stage-list--connected .tool-activity-group::before {
+  position: absolute;
+  top: 21px;
+  left: -12px;
+  width: 8px;
+  height: 1px;
+  background: var(--line-subtle);
+  content: "";
+}
+
+@container workspace-main (max-width: 720px) {
+  .conversation-frame {
+    max-width: none;
+    --conversation-frame-inline-padding: 14px;
+  }
+}
+
+.chat-message-item {
+  contain: layout paint;
+}
+
+/* Reply navigator: Grok-style local landmarks without restoring a native scrollbar track. */
+:root {
+  --chat-event-rail-inline-size: 40px;
+  --chat-event-rail-edge-offset: 10px;
+  --chat-event-rail-content-clearance: 8px;
+}
+
+.chat-event-rail {
+  position: absolute;
+  z-index: 15;
+  top: 50%;
+  inset-inline-end: var(--chat-event-rail-edge-offset);
+  display: none;
+  width: var(--chat-event-rail-inline-size);
+  max-height: calc(100% - 64px);
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  pointer-events: auto;
+  transform: translateY(-50%);
+}
+
+.chat-event-rail__events {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0;
+}
+
+.chat-event-rail__step {
+  display: flex;
+  width: 32px;
+  height: 32px;
+  margin-inline-end: -8px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--content-secondary);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    color 150ms ease,
+    background-color 150ms ease,
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.chat-event-rail__step svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2;
+  stroke-linecap: square;
+  stroke-linejoin: round;
+}
+
+.chat-event-rail__step--previous {
+  transform: translateY(4px);
+}
+
+.chat-event-rail__step--next {
+  transform: translateY(-4px);
+}
+
+.chat-event-rail:is(:hover, :focus-within) .chat-event-rail__step {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.chat-event-rail__step:is(:hover, :focus-visible) {
+  background: var(--surface-hover);
+  color: var(--content-primary);
+  outline: none;
+}
+
+.chat-event-rail__step:disabled {
+  cursor: default;
+  opacity: 0 !important;
+}
+
+.chat-event-rail__event {
+  position: relative;
+  display: flex;
+  width: var(--chat-event-rail-inline-size);
+  height: 12px;
+  padding: 0;
+  padding-inline: 10px;
+  align-items: center;
+  justify-content: flex-end;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.chat-event-rail__tick {
+  display: block;
+  width: 6px;
+  height: 1px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--content-muted) 84%, transparent);
+  opacity: 0.76;
+  transition:
+    width 150ms ease,
+    background-color 120ms ease,
+    opacity 120ms ease,
+    transform 150ms ease;
+}
+
+.chat-event-rail__event[data-kind="user_request"] .chat-event-rail__tick {
+  width: 12px;
+  background: color-mix(in srgb, var(--content-secondary) 88%, transparent);
+}
+
+.chat-event-rail__event:nth-child(even) .chat-event-rail__tick {
+  width: 12px;
+}
+
+.chat-event-rail__event[data-active="true"] .chat-event-rail__tick {
+  width: 16px;
+  background: var(--content-primary);
+  opacity: 1;
+}
+
+.chat-event-rail__events:hover .chat-event-rail__event[data-active="true"] .chat-event-rail__tick {
+  background: var(--content-primary);
+}
+
+.chat-event-rail__event:is(:hover, :focus-visible) .chat-event-rail__tick,
+.chat-event-rail__event[data-hovered="true"] .chat-event-rail__tick {
+  width: 16px;
+  background: var(--content-strong);
+  opacity: 1;
+}
+
+.chat-event-rail__event:focus-visible {
+  outline: 2px solid var(--accent-focus-ring);
+  outline-offset: -1px;
+}
+
+.chat-event-rail--idle {
+  opacity: 0.42;
+}
+
+.chat-event-rail__preview {
+  position: absolute;
+  z-index: 5;
+  top: 50%;
+  right: calc(100% + 8px);
+  display: block;
+  width: max-content;
+  max-width: min(420px, calc(100vw - 96px));
+  padding: 2px 8px;
+  border: 0;
+  outline: 1px solid color-mix(in srgb, var(--line-default) 46%, transparent);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.04);
+  color: var(--content-primary);
+  text-align: left;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translateY(-50%);
+  animation: chat-event-rail-preview-in 120ms ease;
+}
+
+@keyframes chat-event-rail-preview-in {
+  from {
+    opacity: 0;
+    transform: translate(4px, -50%);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(0, -50%) scale(1);
+  }
+}
+
+.chat-event-rail__preview-meta {
+  display: inline;
+  margin: 0 6px 0 0;
+  color: var(--content-secondary);
+  font-size: calc(12px * var(--theme-font-scale-safe));
+  line-height: 1.35;
+}
+
+.chat-event-rail__preview-body {
+  display: inline-block;
+  max-width: min(360px, calc(100vw - 140px));
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  color: var(--content-primary);
+  font-size: calc(14px * var(--theme-font-scale-safe));
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
+.thinking-tool-popover {
+  --thinking-tool-surface: color-mix(in srgb, var(--surface-raised) 94%, var(--surface-sidebar));
+  border-color: color-mix(in srgb, var(--line-default) 64%, transparent);
+  background: var(--thinking-tool-surface);
+  box-shadow: 0 12px 32px -24px color-mix(in srgb, var(--content-primary) 38%, transparent);
+}
+
+.thinking-tool-popover__body {
+  background: color-mix(in srgb, var(--thinking-tool-surface) 98%, transparent);
+}
+
+/* Structured value previews keep the same material language as the execution rail. */
+.data-value-popover {
+  border-color: color-mix(in srgb, var(--line-default) 72%, transparent);
+  background: color-mix(in srgb, var(--surface-raised) 94%, var(--surface-sidebar));
+  box-shadow: 0 14px 34px -26px color-mix(in srgb, var(--content-primary) 42%, transparent);
+  backdrop-filter: blur(12px) saturate(1.03);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  [data-chat-rail-mode="overlay"] {
+    --chat-event-rail-reserve: clamp(
+      0px,
+      calc(
+        var(--theme-conversation-track-width, 64rem) + var(--chat-event-rail-inline-size) +
+          var(--chat-event-rail-content-clearance) - 100cqw
+      ),
+      calc(var(--chat-event-rail-inline-size) + var(--chat-event-rail-content-clearance))
+    );
+  }
+
+  [data-chat-rail-mode="overlay"] .conversation-frame {
+    padding-inline-end: calc(var(--conversation-frame-inline-padding) + var(--chat-event-rail-reserve, 0px));
+  }
+
+  [data-chat-rail-mode="overlay"] .chat-event-rail {
+    display: flex;
+  }
+
+  [data-chat-rail-mode="overlay"] [data-chat-container="true"] {
+    scrollbar-gutter: auto;
+    scrollbar-width: none;
+  }
+
+  [data-chat-rail-mode="overlay"] [data-chat-container="true"]::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-event-rail__tick,
+  .chat-event-rail__step,
+  .chat-event-rail__preview {
+    transition: none;
+    animation: none;
+  }
+}
+
+html[data-motion-level="reduced"] *,
+html[data-motion-level="reduced"] *::before,
+html[data-motion-level="reduced"] *::after,
+html[data-motion-level="none"] *,
+html[data-motion-level="none"] *::before,
+html[data-motion-level="none"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  scroll-behavior: auto !important;
+}
+
+/* reduced 级别只保留颜色/透明度类状态反馈，移除位移、缩放与布局类过渡 */
+html[data-motion-level="reduced"] *,
+html[data-motion-level="reduced"] *::before,
+html[data-motion-level="reduced"] *::after {
+  transition-property:
+    color, background-color, border-color, outline-color, text-decoration-color, opacity, box-shadow, fill, stroke !important;
+  transition-duration: 120ms !important;
+  transition-delay: 0s !important;
+}
+
+html[data-motion-level="none"] *,
+html[data-motion-level="none"] *::before,
+html[data-motion-level="none"] *::after {
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+}
+
+html[data-motion-level="reduced"] .menu-surface [role^="menuitem"],
+html[data-motion-level="none"] .menu-surface [role^="menuitem"],
+html[data-motion-level="reduced"] button[role="switch"],
+html[data-motion-level="none"] button[role="switch"] {
+  transform: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-property:
+      color, background-color, border-color, outline-color, text-decoration-color, opacity, box-shadow, fill, stroke !important;
+    transition-duration: 120ms !important;
+    transition-delay: 0s !important;
+  }
+}
+
+/* ----- 打字光标 ----- */
+.caret-blink::after {
+  content: "▋";
+  display: inline-block;
+  margin-left: 2px;
+  font-weight: 400;
+  color: rgb(var(--color-accent-500));
+  animation: caret 1.1s ease-in-out infinite;
+}
+
+/* ----- 流式骨架 shimmer ----- */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--theme-skeleton-a) 25%,
+    var(--theme-skeleton-b) 50%,
+    var(--theme-skeleton-a) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s linear infinite;
+}
+
+.senera-spinner {
+  display: block;
+  color: currentColor;
+  animation: senera-progress-spin 1.35s linear infinite;
+  transform-origin: center;
+}
+
+.senera-loading-pulse {
+  animation: senera-loading-pulse 1.6s ease-in-out infinite;
+}
+
+html:is([data-motion-level="reduced"], [data-motion-level="none"]) .shimmer,
+html:is([data-motion-level="reduced"], [data-motion-level="none"]) .senera-loading-pulse,
+html:is([data-motion-level="reduced"], [data-motion-level="none"]) .animate-text-shimmer,
+html:is([data-motion-level="reduced"], [data-motion-level="none"])
+  .live-activity-markdown.markdown-renderer:is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6),
+html:is([data-motion-level="reduced"], [data-motion-level="none"])
+  .live-activity-markdown.markdown-renderer
+  > :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6) {
+  animation: none;
+  background-image: none;
+  -webkit-text-fill-color: currentColor;
+}
+
+html:is([data-motion-level="reduced"], [data-motion-level="none"])
+  :is(
+    .senera-status-glyph__ring,
+    .tool-execution-status-mark[data-live-activity-icon],
+    [data-live-activity-icon]:not([data-tool-action-icon]):not(.tool-execution-status-mark):not(.thinking-status-icon)
+  ) {
+  animation: none;
+  box-shadow: none;
+  opacity: 1;
+  transform: none;
+}
+
+html:is([data-motion-level="reduced"], [data-motion-level="none"]) .senera-activity-status-spin {
+  animation: none;
+  transform: none;
+}
+
+html:is([data-motion-level="reduced"], [data-motion-level="none"])
+  .senera-activity-mark--active
+  :is(.senera-activity-mark__main, .senera-activity-mark__tail),
+html:is([data-motion-level="reduced"], [data-motion-level="none"])
+  .senera-status-glyph[data-status-glyph-live="true"]
+  :is(.senera-activity-mark__main, .senera-activity-mark__tail),
+html:is([data-motion-level="reduced"], [data-motion-level="none"]) .senera-status-glyph__ring {
+  animation: none;
+  opacity: 1;
+  transform: none;
+}
+
+html:is([data-motion-level="reduced"], [data-motion-level="none"])
+  .senera-status-glyph[data-status-glyph-motion="quiet"] {
+  animation: none;
+  opacity: 1;
+  transform: none;
+}
+
+/* Authentication is a connection state, not a modal panel. */
+.senera-auth-status__signal {
+  display: grid;
+  min-height: 28px;
+  place-items: center;
+}
+
+.senera-save-status {
+  position: relative;
+  isolation: isolate;
+  transition: opacity var(--senera-motion-feedback) ease-out;
+}
+
+.senera-save-status::before,
+.senera-save-status::after {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 2px;
+  content: "";
+  pointer-events: none;
+}
+
+.senera-save-status::before {
+  background: rgb(var(--color-accent-500) / 0.08);
+  opacity: 0;
+  transition: opacity 180ms ease-out;
+}
+
+.senera-save-status::after {
+  width: 0;
+  background: linear-gradient(90deg, var(--senera-signal-violet), var(--senera-signal-gold));
+  opacity: 0;
+  transform-origin: left center;
+  transition:
+    width 420ms cubic-bezier(0.22, 0.7, 0.2, 1),
+    opacity 180ms ease-out;
+}
+
+.senera-save-status[data-save-phase="pending"]::before,
+.senera-save-status[data-save-phase="pending"]::after,
+.senera-save-status[data-save-phase="saving"]::before,
+.senera-save-status[data-save-phase="saving"]::after,
+.senera-save-status[data-save-phase="saved"]::before,
+.senera-save-status[data-save-phase="saved"]::after {
+  opacity: 1;
+}
+
+.senera-save-status[data-save-phase="pending"]::after {
+  width: 18%;
+  opacity: 0.68;
+}
+
+.senera-save-status[data-save-phase="saving"]::after {
+  width: 34%;
+  animation: senera-save-progress-sweep 1.25s ease-in-out infinite;
+}
+
+.senera-save-status[data-save-phase="saved"]::after {
+  width: 100%;
+  animation: none;
+}
+
+.resource-header::after {
+  position: absolute;
+  inset-inline: 0;
+  bottom: -1px;
+  height: 2px;
+  width: 0;
+  background: linear-gradient(90deg, var(--senera-signal-violet), var(--senera-signal-gold));
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  transform-origin: left center;
+  transition:
+    width 420ms cubic-bezier(0.22, 0.7, 0.2, 1),
+    opacity 180ms ease-out;
+}
+
+.resource-header[data-save-phase="saving"]::after {
+  width: 34%;
+  opacity: 1;
+  animation: senera-save-progress-sweep 1.25s ease-in-out infinite;
+}
+
+.resource-header[data-save-phase="saved"]::after {
+  width: 100%;
+  opacity: 1;
+  animation: none;
+}
+
+.senera-save-status[data-state="visible"] {
+  opacity: 1;
+}
+
+/* ----- Senera status strip -----------------------------------------------
+   A toast is a transient line of feedback, not a second content card. */
+.senera-toast {
+  --senera-toast-accent: rgb(var(--color-accent-500));
+  width: max-content !important;
+  max-width: min(360px, calc(100vw - 24px));
+  min-height: 40px;
+  border: 0 !important;
+  border-radius: 6px !important;
+  background: color-mix(in srgb, var(--surface-raised) 90%, transparent) !important;
+  color: var(--content-primary) !important;
+  padding: 8px 12px !important;
+  box-shadow: 0 12px 28px -20px rgb(var(--color-ink-950) / 0.34) !important;
+  backdrop-filter: blur(12px);
+}
+
+.senera-toast[data-type="info"] {
+  --senera-toast-accent: rgb(var(--color-ink-600));
+}
+
+.senera-toast[data-type="warning"] {
+  --senera-toast-accent: rgb(var(--color-umber-500));
+}
+
+.senera-toast[data-type="error"] {
+  --senera-toast-accent: rgb(var(--color-brick-600));
+}
+
+.senera-toast-icon {
+  display: inline-flex !important;
+  width: 17px !important;
+  height: 17px !important;
+  margin: 0 3px 0 0 !important;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.senera-toast-icon-glyph {
+  display: inline-flex;
+  width: 17px;
+  height: 17px;
+  align-items: center;
+  justify-content: center;
+  color: var(--senera-toast-accent);
+}
+
+.senera-toast-icon-glyph svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.9;
+}
+
+.senera-toast-content {
+  min-width: 0;
+  gap: 1px !important;
+}
+
+.senera-toast-title {
+  max-width: min(270px, calc(100vw - 100px));
+  overflow: hidden;
+  font-size: calc(12.5px * var(--theme-font-scale-safe));
+  font-weight: 600;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.senera-toast-description {
+  max-width: min(300px, calc(100vw - 80px));
+  overflow: hidden;
+  color: var(--content-secondary) !important;
+  font-size: calc(11.5px * var(--theme-font-scale-safe));
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.senera-toast-action,
+.senera-toast-cancel {
+  border-radius: 5px !important;
+  font-family: inherit;
+}
+
+.senera-toast-close {
+  color: var(--content-secondary) !important;
+}
+
+@keyframes senera-save-progress-sweep {
+  0% {
+    transform: translateX(-115%);
+  }
+
+  100% {
+    transform: translateX(315%);
+  }
+}
+
+@keyframes senera-loading-pulse {
+  0%,
+  100% {
+    opacity: 0.52;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer,
+  .senera-loading-pulse,
+  .tool-execution-status-mark[data-live-activity-icon],
+  .senera-activity-status-pulse,
+  .senera-activity-status-spin,
+  [data-live-activity-icon]:not([data-tool-action-icon]):not(.tool-execution-status-mark):not(.thinking-status-icon) {
+    animation: none;
+    box-shadow: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .senera-activity-mark--active :is(.senera-activity-mark__main, .senera-activity-mark__tail),
+  .senera-status-glyph[data-status-glyph-live="true"] :is(.senera-activity-mark__main, .senera-activity-mark__tail),
+  .senera-status-glyph__ring {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .senera-status-glyph[data-status-glyph-motion="quiet"] {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  :is(
+    .animate-text-shimmer,
+    .live-activity-markdown.markdown-renderer:is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6),
+    .live-activity-markdown.markdown-renderer > :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6)
+  ) {
+    animation: none;
+    background-image: none;
+    -webkit-text-fill-color: currentColor;
+  }
+
+  .senera-save-status::after {
+    animation: none;
+    transform: none;
+  }
+
+  .resource-header[data-save-phase="saving"]::after {
+    animation: none;
+    transform: none;
+  }
+
+  .senera-spinner {
+    animation: none;
+  }
+
+  .senera-state-enter {
+    animation: none;
+  }
+}
+
+@keyframes caret {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  50.01%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* ----- 菜单动效 ----- */
+.menu-surface {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.965);
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--menu-close-dur) var(--menu-close-ease),
+    transform var(--menu-open-dur) var(--menu-open-ease),
+    visibility 0s linear var(--menu-open-dur);
+  will-change: transform, opacity;
+}
+
+.menu-surface[data-state="open"] {
+  opacity: 1;
+  transform: none;
+  visibility: visible;
+  pointer-events: auto;
+  transition-delay: 0s;
+  animation: menu-surface-presence-in var(--menu-open-dur) linear both;
+}
+
+.menu-surface[data-state="closed"] {
+  pointer-events: none !important;
+  animation: menu-surface-presence-out var(--menu-close-dur) linear both;
+}
+
+@starting-style {
+  .menu-surface[data-state="open"] {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.965);
+  }
+}
+
+.menu-check {
+  opacity: 0;
+  transform: scale(0.5);
+  transition:
+    opacity var(--menu-check-opacity-dur) var(--menu-item-ease),
+    transform var(--menu-check-dur) var(--menu-check-ease);
+}
+
+[data-state="checked"] .menu-check,
+[data-state="indeterminate"] .menu-check {
+  opacity: 1;
+  transform: scale(1);
+}
+
+html[data-motion-level="reduced"] .menu-surface,
+html[data-motion-level="none"] .menu-surface {
+  transition: none;
+}
+
+html[data-motion-level="reduced"] .menu-surface[data-state="open"] {
+  animation-duration: var(--menu-reduced-open-dur);
+}
+
+html[data-motion-level="reduced"] .menu-surface[data-state="closed"] {
+  animation-duration: var(--menu-close-dur);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-surface[data-state="open"] {
+    animation-duration: var(--menu-reduced-open-dur);
+  }
+
+  .menu-surface[data-state="closed"] {
+    animation-duration: var(--menu-close-dur);
+  }
+}
+
+html[data-motion-level="none"] .menu-surface[data-state] {
+  animation-duration: 0.001ms !important;
+}
+
+html[data-motion-level="reduced"] .menu-check,
+html[data-motion-level="none"] .menu-check {
+  transition: none;
+}
+
+/* Radix Presence waits for animationend; this no-op track keeps transition exits mounted. */
+@keyframes menu-surface-presence-in {
+  from {
+    outline-color: transparent;
+  }
+  to {
+    outline-color: transparent;
+  }
+}
+
+@keyframes menu-surface-presence-out {
+  from {
+    outline-color: transparent;
+  }
+  to {
+    outline-color: transparent;
+  }
+}
+
+/* ----- 选中文字 ----- */
+::selection {
+  background: var(--theme-selection-bg);
+  color: var(--theme-selection-fg);
+}
+
+.theme-transition-fallback,
+.theme-transition-fallback body {
+  transition:
+    background-color var(--theme-transition-duration, 160ms) ease,
+    border-color var(--theme-transition-duration, 160ms) ease,
+    box-shadow var(--theme-transition-duration, 160ms) ease,
+    color var(--theme-transition-duration, 160ms) ease,
+    fill var(--theme-transition-duration, 160ms) ease,
+    stroke var(--theme-transition-duration, 160ms) ease !important;
+}
+
+html[data-motion-level="none"] .theme-transition-fallback,
+html[data-motion-level="none"] .theme-transition-fallback body {
+  transition-duration: 0s !important;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--theme-transition-duration, 160ms);
+  animation-timing-function: ease;
+}
+
+html[data-motion-level="reduced"]::view-transition-old(root),
+html[data-motion-level="reduced"]::view-transition-new(root),
+html[data-motion-level="none"]::view-transition-old(root),
+html[data-motion-level="none"]::view-transition-new(root) {
+  animation-duration: 1ms;
+}
+
+/* Electron desktop chrome -------------------------------------------------- */
+.chat-header-shell {
+  --chat-header-inline-padding: 12px;
+  padding-inline: var(--chat-header-inline-padding);
+}
+
+@media (min-width: 640px) {
+  .chat-header-shell {
+    --chat-header-inline-padding: 20px;
+  }
+}
+
+[data-chat-run-status] {
+  line-height: 1;
+  white-space: nowrap;
+}
+
+[data-chat-run-status] [data-execution-status-icon] {
+  display: block;
+}
+
+html[data-senera-window-controls="custom"] {
+  --senera-titlebar-height: 52px;
+  --senera-top-chrome-height: var(--senera-titlebar-height);
+  --senera-window-controls-width: 138px;
+  --senera-window-controls-gap: 12px;
+}
+
+html[data-senera-desktop-window="true"] [data-window-drag-region] {
+  -webkit-app-region: drag;
+  app-region: drag;
+  user-select: none;
+}
+
+html[data-senera-desktop-window="true"] :is([role="dialog"], .menu-surface) {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+html[data-senera-window-controls="custom"] [data-desktop-window-controls] {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  user-select: none;
+}
+
+html[data-senera-window-controls="custom"] [data-window-controls-inset] {
+  padding-inline-end: calc(var(--senera-window-controls-width) + var(--senera-window-controls-gap));
+}
+
+html[data-senera-window-controls="custom"] [data-chat-header] {
+  padding-inline-end: calc(var(--chat-header-inline-padding) + var(--chat-header-window-controls-inset, 0px));
+}
+
+html[data-senera-window-controls="custom"] [data-workflow-dock-titlebar-spacer] {
+  display: block;
+  height: var(--senera-top-chrome-height);
+}
+
+html[data-senera-desktop-window="true"]
+  [data-window-drag-region]
+  :is(
+    button,
+    a,
+    input,
+    textarea,
+    select,
+    [role="button"],
+    [role="separator"],
+    [contenteditable="true"],
+    [data-window-no-drag]
+  ) {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+html[data-senera-window-controls="custom"] [data-workspace-main] {
+  height: 100%;
+}
+
+html[data-senera-window-controls="custom"] [data-settings-workbench] {
+  box-sizing: border-box;
+  height: 100%;
+  padding-top: var(--senera-top-chrome-height);
+}
+
+/* The settings rail owns the surface title. It lifts into the titlebar band so the
+   title sits level with the window controls, while every other column keeps the
+   offset above and stays where it was. Paired with the padding-top rule, so a
+   surface without the custom frame keeps the whole workbench flush at the top. */
+html[data-senera-window-controls="custom"] [data-settings-navigation-rail] {
+  margin-top: calc(var(--senera-top-chrome-height) * -1);
+}
+
+/* Full-height split workspaces (such as model-service) manage their own column headers flush to the top
+   so middle provider rail and detail column align seamlessly with the navigation rail and window controls. */
+html[data-senera-window-controls="custom"] [data-settings-workbench][data-settings-section="model-service"] {
+  padding-top: var(--senera-top-chrome-height);
+}
+html[data-senera-window-controls="custom"]
+  [data-settings-workbench][data-settings-section="model-service"]
+  [data-settings-navigation-rail] {
+  margin-top: calc(var(--senera-top-chrome-height) * -1);
+}
+
+html[data-senera-window-controls="custom"] [data-settings-loading][data-settings-loading-presentation="desktop"] {
+  box-sizing: border-box;
+  padding-top: var(--senera-top-chrome-height);
+}
+
+html[data-senera-window-controls="custom"] [data-application-loading] {
+  box-sizing: border-box;
+  padding-top: var(--senera-top-chrome-height);
+}
+
+html[data-senera-window-controls="custom"][data-senera-desktop-surface="settings"] [data-authentication-loading] {
+  padding-top: var(--senera-top-chrome-height);
+}

@@ -1,0 +1,8 @@
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.wasm binary
+Source/AgentSystem/Safety/*.rego text eol=lf
+Source/AgentSystem/Safety/*.json text eol=lf
+Source/AgentSystem/BamlClient/baml_client/** text eol=lf -whitespace linguist-generated=true
