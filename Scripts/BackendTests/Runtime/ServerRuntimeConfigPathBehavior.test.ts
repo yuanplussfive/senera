@@ -8,8 +8,8 @@ import {
 import { resolveAgentWorkspaceLayout } from "../../../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
 
 test("keeps configuration ownership inside the selected workspace", () => {
-  const root = path.join("C:\\tmp", "senera host with spaces", "初始工作区");
-  const next = path.join("C:\\tmp", "senera host with spaces", "另一个工作区");
+  const root = path.resolve("test-workspaces", "senera host with spaces", "初始工作区");
+  const next = path.resolve("test-workspaces", "senera host with spaces", "另一个工作区");
   const nested = resolveServerConfigSource(root, { configPath: "config/profiles/local.json" });
 
   expect(nested).toEqual({ kind: "json", configPath: path.join(root, "config", "profiles", "local.json") });
@@ -19,7 +19,7 @@ test("keeps configuration ownership inside the selected workspace", () => {
   });
 
   const external = resolveServerConfigSource(root, {
-    configPath: path.join("C:\\shared", "senera.config.json"),
+    configPath: path.join(path.dirname(root), "shared", "senera.config.json"),
   });
   expect(resolveWorkspaceServerConfigSource(next, external, root)).toEqual({
     kind: "json",

@@ -6,11 +6,11 @@
 
 本文档描述 Senera Server 暴露的双向 WebSocket 端点。客户端消息会被严格校验，服务端消息使用统一事件 envelope。上传 HTTP 接口和模型供应商 API 不属于本协议。
 
-连接到服务根 WebSocket 地址，比如 `ws://127.0.0.1:8787`。实际地址以服务端配置的 Host 和 Port 为准。
+连接到服务根 WebSocket 地址，例如 `ws://127.0.0.1:8787`。实际地址以服务端配置的 Host 和 Port 为准。
 
 ## 管理员认证
 
-当服务的 `Server.AccessControl` 要求认证时，浏览器必须先在同源 HTTPS 页面完成管理员登录。会话由 HttpOnly Cookie 承载。不要把密码、Cookie 或会话 token 放进 WebSocket URL、本地存储或日志。
+当服务的 `Server.AccessControl` 要求认证时，浏览器必须先在同源 HTTPS 页面完成管理员登录。会话由 HttpOnly Cookie 承载；不要将密码、Cookie 或会话 token 放入 WebSocket URL、本地存储或日志。
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
@@ -18,7 +18,7 @@
 | `POST` | `/api/auth/login` | 提交 `{ loginName, password }`，成功后设置 HttpOnly session Cookie，并返回已认证会话及内存 CSRF token。 |
 | `POST` | `/api/auth/logout` | 需要 `X-Senera-Csrf`，撤销当前会话并清除 Cookie。 |
 
-服务端会在 WebSocket 升级前验证 Cookie 和 Origin。未认证、跨 Origin、超出连接配额或超过握手频率的连接不会建立。已建立连接的会话失效时使用应用关闭码 `4401`；浏览器应停止盲目重连并重新检查会话。远程部署要走 HTTPS/WSS。反向代理终止 TLS 时，只配置明确可信的代理地址。
+服务端会在 WebSocket 升级前验证 Cookie 和 Origin。未认证、跨 Origin、超出连接配额或超过握手频率的连接不会建立。已建立连接的会话失效时使用应用关闭码 `4401`；浏览器应停止盲目重连并重新检查会话。远程部署必须使用 HTTPS/WSS；反向代理终止 TLS 时仅应配置明确可信的代理地址。
 
 ## 健康检查
 
@@ -37,7 +37,7 @@
 | --- | --- |
 | `approval.resolve` | 提交审批决定：单次允许、会话允许、拒绝继续或拒绝并中断。 |
 | `approval.resolve_batch` | 按会话、请求和工具批次原子提交一组审批决定。 |
-| `channel.connect` | 按当前配置重新连接指定渠道（telegram、qq 或 discord），不用重启服务。 |
+| `channel.connect` | 按当前配置重新连接指定渠道（telegram、qq 或 discord），无需重启服务。 |
 | `config.get` | 获取当前有效系统配置及表单投影。 |
 | `config.update` | 保存完整系统配置，可选择同步 JSON 镜像。 |
 | `execution.resource.close` | 关闭并移除指定后台执行资源。 |
@@ -76,7 +76,7 @@
 | `session.close_many` | 批量关闭多个会话；保留逐会话清理和结果事件。 |
 | `session.compact` | 使用 Pi 会话压缩器压缩指定会话的当前上下文分支。 |
 | `session.create` | 创建会话；可选指定会话和模型提供方。 |
-| `session.export` | 把指定 Pi 会话的当前分支导出为 JSONL 或 HTML。 |
+| `session.export` | 将指定 Pi 会话的当前分支导出为 JSONL 或 HTML。 |
 | `session.fork` | 复制指定请求及之前的完整可重放状态，创建独立会话分支。 |
 | `session.history` | 拉取指定会话的可重放历史；`refresh` 用于主动重新同步。 |
 | `session.list` | 获取服务端当前可用会话的摘要列表。 |
@@ -88,7 +88,7 @@
 | `session.truncate_from` | 从指定请求起截断会话历史。 |
 | `systemTool.list` | 获取常驻系统工具目录。 |
 | `workspace.get` | 获取当前工作区标识，包括工作区根目录、配置路径和 WebSocket 地址。 |
-| `workspace.switch` | 热切换到指定工作区根目录；目标运行时准备完成并发送确认后，没有别的客户端连着的旧运行时按配置驱动的停止链路结束；还有别的客户端时，等它们全部断开再回收，客户端随后重连并重新获取状态。 |
+| `workspace.switch` | 热切换到指定工作区根目录；目标运行时准备完成并发送确认后，没有其它客户端连接的旧运行时按配置驱动的停止链路结束；若仍有其它客户端，待其全部断开后再回收，客户端随后重连并重新获取状态。 |
 
 ### 请求示例
 
@@ -276,11 +276,11 @@
 1. 连接建立后发送 `session.list`，发现服务端拥有的会话。
 2. 对当前会话发送 `session.history`。一次回放会依次产生 `session.history.started`、零到多个 history chunk、可选的 step/run-history chunk，最后是 `session.history.completed`。
 3. 连接替换或本地状态过期时，使用 `refresh: true` 再次请求历史；不要把 `sequence` 当成可持久化游标。
-4. 把 `session.not_found` 当作服务端权威删除，把 `run.failed` 和 `request.invalid` 当作错误，而不是成功终态。
+4. 将 `session.not_found` 视为服务端权威删除；将 `run.failed` 和 `request.invalid` 视为错误，而不是成功终态。
 
 ## 兼容性规则
 
 - 保留服务端 event envelope 和 payload 中的未知字段；新版本服务端可能增加可选数据。
 - 拒绝未知客户端请求字段。请求 schema 有意采用 strict 模式。
 - 不要从 `model.delta` 推断最终回答；等待 `assistant.message.created` 的 `terminal: true` 以及 run 终态事件。
-- 把 `tool.call.result.detail` 当作可选详情数据。面向用户的工具终态由 `tool.call.completed` 或 `tool.call.failed` 表达。
+- 将 `tool.call.result.detail` 视为可选详情数据。面向用户的工具终态由 `tool.call.completed` 或 `tool.call.failed` 表达。

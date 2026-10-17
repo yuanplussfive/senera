@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createOpaqueId } from "../Core/AgentIds.js";
+import { isFileExistsError } from "../Core/AgentFs.js";
 import { serializeError } from "./AgentErrorSerializer.js";
 import {
   AgentWorkspaceLogSchemaVersion,
@@ -335,12 +336,14 @@ export class AgentWorkspaceLogStore {
     }
     fs.mkdirSync(this.referenceRoot, { recursive: true, mode: 0o700 });
     const manifestPath = path.join(this.root, "manifest.json");
-    if (!fs.existsSync(manifestPath)) {
+    try {
       fs.writeFileSync(
         manifestPath,
         `${JSON.stringify({ schemaVersion: AgentWorkspaceLogSchemaVersion, createdAt: new Date().toISOString() }, null, 2)}\n`,
-        { encoding: "utf8", mode: 0o600 },
+        { encoding: "utf8", flag: "wx", mode: 0o600 },
       );
+    } catch (error) {
+      if (!isFileExistsError(error)) throw error;
     }
     this.pruneExpiredFiles(policy);
     this.initialized = true;
