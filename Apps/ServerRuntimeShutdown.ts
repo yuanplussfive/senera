@@ -1,4 +1,5 @@
 import { collectRejected, closeRuntimeInfrastructure } from "./ServerRuntimeSupport.js";
+import type { AgentConfigService } from "../Source/AgentSystem/Config/AgentConfigService.js";
 import type { AgentArtifactRetentionService } from "../Source/AgentSystem/Artifacts/AgentArtifactRetentionService.js";
 import type { AgentChannelService } from "../Source/AgentSystem/Channels/AgentChannelService.js";
 import type { AgentContinuityRuntime } from "../Source/AgentSystem/Continuity/AgentContinuityRuntime.js";
@@ -13,6 +14,7 @@ import type { AgentWorkflowService } from "../Source/AgentSystem/Orchestration/A
 import type { AgentScheduleRuntime } from "../Source/AgentSystem/Orchestration/AgentScheduleRuntime.js";
 import type { AgentSystemRuntimeCache } from "../Source/AgentSystem/Runtime/AgentSystemRuntimeCache.js";
 import type { AgentWorkspaceRuntime } from "../Source/AgentSystem/Runtime/AgentWorkspaceRuntime.js";
+import type { AgentRuntimeDependencyService } from "../Source/AgentSystem/Runtime/AgentRuntimeDependencyTypes.js";
 import type { SeneraServerRuntimePlatform } from "./ServerRuntimePlatform.js";
 
 export interface SeneraServerRuntimeShutdownInput {
@@ -30,6 +32,7 @@ export interface SeneraServerRuntimeShutdownInput {
   readonly unbindRuntimeBindings: () => void;
   readonly runtimeCache: AgentSystemRuntimeCache;
   readonly workspaceRuntime: AgentWorkspaceRuntime;
+  readonly runtimeDependencies: AgentRuntimeDependencyService;
   readonly executionResources: AgentExecutionResourceBroker;
   readonly interactionInput: AgentInteractionInputRuntime;
   readonly mcpInputs: AgentMcpInputService;
@@ -39,6 +42,7 @@ export interface SeneraServerRuntimeShutdownInput {
   readonly repository: AgentSessionRepository;
   readonly orchestrationDatabase: AgentOrchestrationDatabase;
   readonly channelsDatabase: { close(): void };
+  readonly configService?: AgentConfigService;
 }
 
 export function createSeneraServerRuntimeStop(input: SeneraServerRuntimeShutdownInput): () => Promise<void> {
@@ -56,6 +60,7 @@ export function createSeneraServerRuntimeStop(input: SeneraServerRuntimeShutdown
         failures,
       );
       collectRejected(await Promise.allSettled([input.server.stop(), input.sessionManager.shutdown()]), failures);
+      collectRejected(await Promise.allSettled([input.runtimeDependencies.close()]), failures);
       collectRejected(await Promise.allSettled([input.platform.stop()]), failures);
       input.orchestrationEvents.setSink(undefined);
       input.unbindRuntimeBindings();
@@ -71,6 +76,7 @@ export function createSeneraServerRuntimeStop(input: SeneraServerRuntimeShutdown
             input.mcpInputs.close(),
             input.artifactRetention.close(),
             input.sandboxRuntimeService.close(),
+            input.configService ? Promise.resolve().then(() => input.configService!.close()) : Promise.resolve(),
           ]),
           failures,
         );

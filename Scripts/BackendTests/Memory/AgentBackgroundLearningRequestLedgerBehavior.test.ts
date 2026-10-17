@@ -41,6 +41,13 @@ describe("background learning request ledger", () => {
       ).rejects.toThrow("last attempt failed");
       const records = ledger.list();
       expect(records).toHaveLength(2);
+      expect(records.find((record) => record.attempt === 2)?.status).toBe("exhausted");
+      expect(
+        ledger.isRecoverable(
+          records.find((record) => record.attempt === 2)!,
+          policy,
+        ),
+      ).toBe(false);
       expect(records.find((record) => record.attempt === 2)?.usage).toMatchObject({ inputTokens: 7, totalTokens: 9 });
       let invoked = false;
       await expect(

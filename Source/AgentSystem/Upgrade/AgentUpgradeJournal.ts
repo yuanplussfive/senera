@@ -6,7 +6,7 @@ import {
   type AgentRuntimeVersionMarker,
   type AgentUpgradeManifest,
 } from "./AgentUpgradeContract.js";
-import { writeFileAtomicSync } from "../Core/AgentFs.js";
+import { removeAgentPathSync, writeFileAtomicSync } from "../Core/AgentFs.js";
 import { parseJsonText } from "../Core/AgentJsonParsing.js";
 
 const UpgradeDirectoryName = "upgrades";
@@ -41,7 +41,7 @@ export class AgentUpgradeJournal {
   }
 
   clearRuntimeMarker(): void {
-    fs.rmSync(path.join(this.root, RuntimeMarkerFileName), { force: true });
+    removeAgentPathSync(path.join(this.root, RuntimeMarkerFileName), { force: true });
   }
 
   listManifests(): AgentUpgradeManifest[] {
@@ -72,7 +72,7 @@ export class AgentUpgradeJournal {
     for (const manifest of completed.slice(0, Math.max(0, completed.length - retain))) {
       const operationRoot = this.operationRoot(manifest.upgradeId);
       assertInside(this.root, operationRoot, "Upgrade operation");
-      fs.rmSync(operationRoot, { recursive: true, force: true });
+      removeAgentPathSync(operationRoot, { recursive: true, force: true });
     }
   }
 }

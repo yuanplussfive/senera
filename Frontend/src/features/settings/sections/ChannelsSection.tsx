@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import AdjustmentsHorizontalIcon from "@heroicons/react/24/outline/AdjustmentsHorizontalIcon";
 import ArrowLeftIcon from "@heroicons/react/24/outline/ArrowLeftIcon";
-import ArrowPathIcon from "@heroicons/react/24/outline/ArrowPathIcon";
 import CubeTransparentIcon from "@heroicons/react/24/outline/CubeTransparentIcon";
 import PaperAirplaneIcon from "@heroicons/react/24/outline/PaperAirplaneIcon";
 import ServerStackIcon from "@heroicons/react/24/outline/ServerStackIcon";
@@ -12,7 +11,7 @@ import { cn } from "../../../lib/util";
 import { JsonConfigSettingsView } from "../../../shared/config/JsonConfigForm";
 import { isJsonConfigObject } from "../../../shared/config/JsonConfigValue";
 import { FluidHoverHighlight, useFluidHover, useMotionLevel } from "../../../shared/motion";
-import { Button, IconButton, InlineError, ScrollArea, StateView, Switch } from "../../../shared/ui";
+import { AppIcon, Button, IconButton, InlineError, ScrollArea, StateView, Switch } from "../../../shared/ui";
 import type { SettingsSystemConfigHandle } from "../SettingsContracts";
 import { projectSystemExtensionConfigurationSections } from "../systemExtensionConfigurationPresentation";
 import { readSettingsExtensionDraft, writeSettingsExtensionDraft } from "./SystemToolsSection";
@@ -133,6 +132,14 @@ export function ChannelsSection({
     return all.filter((section) => section.fields.length > 0);
   }, [channelExtension, locale, systemConfig?.configSnapshot]);
 
+  const readSecret = useMemo(() => {
+    if (!channelExtension || !systemConfig) return undefined;
+    const extensionId = channelExtension.id;
+    const selectedPathPrefix = selectedId && selectedId !== "general" ? [selectedId] : [];
+    return (field: import("../../../api/eventTypes").ConfigFormFieldData): Promise<string> =>
+      systemConfig.readExtensionSecret(extensionId, [...selectedPathPrefix, ...field.path]);
+  }, [channelExtension, selectedId, systemConfig]);
+
   useEffect(() => {
     if (!channelExtension) setSelectedId(null);
   }, [channelExtension]);
@@ -157,7 +164,7 @@ export function ChannelsSection({
         systemConfig.refreshToolSettings();
       }}
     >
-      <ArrowPathIcon className="h-4 w-4" />
+      <AppIcon icon="refresh" size={16} aria-hidden="true" />
     </IconButton>
   );
 
@@ -324,7 +331,7 @@ export function ChannelsSection({
                 requestConnection(channelKind);
               }}
             >
-              <ArrowPathIcon className="h-3.5 w-3.5" />
+              <AppIcon icon="refresh" size={14} aria-hidden="true" />
               {frontendMessage(
                 channelStatus?.state === "connected" ? "settings.channels.reconnect" : "settings.channels.connect",
               )}
@@ -355,6 +362,7 @@ export function ChannelsSection({
             sections={[withoutEnabled]}
             value={entryId === "general" ? configuration : channelValue}
             disabled={!connected}
+            readSecret={readSecret}
             onChange={(next, mode) => {
               if (entryId === "general") {
                 updateExtension(enabled, stripUndefined(next), mode ?? "debounced");

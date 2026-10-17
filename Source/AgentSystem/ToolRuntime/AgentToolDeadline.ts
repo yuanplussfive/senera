@@ -4,13 +4,15 @@ import { AgentBaseError } from "../Core/AgentBaseError.js";
 
 export class AgentToolDeadlineExceededError extends AgentBaseError {
   constructor(readonly timeoutMs: number) {
-    super(`Tool call exceeded the configured ${timeoutMs}ms deadline.`);
+    super(`Tool call exceeded its ${timeoutMs}ms deadline.`);
   }
 }
 
 export interface AgentToolDeadlineScope {
   readonly signal: AbortSignal;
   readonly timeoutMs: number;
+  /** Extends the deadline when the tool contract delegates budget ownership to the tool. */
+  readonly extendTo?: (timeoutMs: number) => void;
   close(): void;
 }
 
@@ -27,8 +29,12 @@ export function resolveAgentToolCallTimeoutMs(config: AgentSystemConfig, request
   return Math.min(requestedTimeoutMs ?? configuredTimeoutMs, configuredTimeoutMs);
 }
 
-export function openAgentToolDeadline(config: AgentSystemConfig, parentSignal?: AbortSignal): AgentToolDeadlineScope {
-  const timeoutMs = resolveAgentToolCallTimeoutMs(config);
+export function openAgentToolDeadline(
+  config: AgentSystemConfig,
+  parentSignal?: AbortSignal,
+  options: { readonly allowExtension?: boolean } = {},
+): AgentToolDeadlineScope {
+  let timeoutMs = resolveAgentToolCallTimeoutMs(config);
   const controller = new AbortController();
   let timer: NodeJS.Timeout | undefined;
 
@@ -41,18 +47,37 @@ export function openAgentToolDeadline(config: AgentSystemConfig, parentSignal?: 
     if (!controller.signal.aborted) controller.abort(reason);
   };
   const onParentAbort = (): void => abort(parentSignal?.reason);
+  const schedule = (): void => {
+    clearTimer();
+    if (controller.signal.aborted) return;
+    timer = setTimeout(() => abort(new AgentToolDeadlineExceededError(timeoutMs)), timeoutMs);
+    timer.unref();
+  };
+  const extendTo = (requestedTimeoutMs: number): void => {
+    if (!options.allowExtension) {
+      throw new Error("Tool deadline extension is not enabled by the runtime contract.");
+    }
+    if (!Number.isFinite(requestedTimeoutMs) || requestedTimeoutMs <= 0) {
+      throw new RangeError(`Requested tool timeout must be a positive duration, received ${requestedTimeoutMs}ms.`);
+    }
+    if (requestedTimeoutMs <= timeoutMs) return;
+    timeoutMs = Math.max(1, Math.floor(requestedTimeoutMs));
+    schedule();
+  };
 
   if (parentSignal?.aborted) {
     abort(parentSignal.reason);
   } else {
     parentSignal?.addEventListener("abort", onParentAbort, { once: true });
-    timer = setTimeout(() => abort(new AgentToolDeadlineExceededError(timeoutMs)), timeoutMs);
-    timer.unref();
+    schedule();
   }
 
   return {
     signal: controller.signal,
-    timeoutMs,
+    get timeoutMs() {
+      return timeoutMs;
+    },
+    ...(options.allowExtension ? { extendTo } : {}),
     close: () => {
       clearTimer();
       parentSignal?.removeEventListener("abort", onParentAbort);

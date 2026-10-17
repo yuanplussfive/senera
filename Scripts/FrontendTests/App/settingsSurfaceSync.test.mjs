@@ -8,6 +8,7 @@ describe("buildSettingsSurfaceSyncRequests", () => {
       { type: "model.list" },
       { type: "systemTool.list" },
       { type: "mcpServer.list" },
+      { type: "runtimeDependency.list" },
     ]);
   });
 });

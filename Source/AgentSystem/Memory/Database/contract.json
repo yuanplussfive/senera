@@ -17,6 +17,14 @@
       "snapshot": "snapshots/0002.schema.sql",
       "migrationSha256": "cf5adc1a52ebcd814061774ca856c07a144185e531bd9489e88b08f6347aa2b3",
       "snapshotSha256": "08b22f8c5c9d25f3742d2b83a4bb076efb222e7b44ef83f598da44b47debd8c9"
+    },
+    {
+      "version": 3,
+      "name": "background-learning-exhausted-state",
+      "migration": "migrations/0003-background-learning-exhausted-state.sql",
+      "snapshot": "snapshots/0003.schema.sql",
+      "migrationSha256": "33b34eeae8cf9b06ef5c11e7d45e9a92ecb18d42b47bf33d6f17992f8d55878a",
+      "snapshotSha256": "711715b4ca4bf332e8cff707595736637b2f09f70beecbf4d1e3fe78e6674bf2"
     }
   ]
 }

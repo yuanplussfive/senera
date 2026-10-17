@@ -12,9 +12,6 @@ export function readAgentSessionRecoveryModes(status: string): AgentSessionRecov
   return RecoverableRunStatuses.has(status) ? Object.values(AgentSessionRecoveryModes) : [];
 }
 
-/** The only user input used when resuming a failed turn from its checkpoint. */
-export const AgentSessionContinuationInput = "continue";
-
 export interface AgentSessionRunRecovery {
   readonly mode: AgentSessionRecoveryMode;
   readonly sourceRequestId: string;

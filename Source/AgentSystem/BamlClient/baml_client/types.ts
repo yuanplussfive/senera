@@ -47,10 +47,6 @@ export function all_succeeded<CheckName extends string>(checks: Record<CheckName
 export function get_checks<CheckName extends string>(checks: Record<CheckName, Check>): Check[] {
     return Object.values(checks)
 }
-export enum AskUserDecisionKind {
-  AskUser = "AskUser",
-}
-
 export enum DirectDecisionKind {
   Direct = "Direct",
 }
@@ -104,12 +100,6 @@ export interface ActionRunState {
   progress: ProgressSignals
   warnings: RepeatedCallWarning[]
   calls: PlannerToolCallStateItem[]
-  
-}
-
-export interface AskUserDecision {
-  kind: AskUserDecisionKind
-  question: string
   
 }
 
@@ -392,7 +382,7 @@ export interface ToolRiskAudit {
   
 }
 
-export type ControllerDecision = DirectDecision | AskUserDecision | ExecuteDecision
+export type ControllerDecision = DirectDecision | ExecuteDecision
 
 export interface ToolCallArgumentValue {
   [key: string]: ToolCallArgumentValue

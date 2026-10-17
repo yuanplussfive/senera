@@ -83,6 +83,18 @@ export const ToolSchedulingModes = {
 export type ToolSchedulingMode = (typeof ToolSchedulingModes)[keyof typeof ToolSchedulingModes];
 
 /**
+ * Declares how the host deadline is owned by a tool. Model-aware tools may
+ * extend the initial host budget after resolving the request budget they
+ * actually use; all other tools remain bounded by ToolExecution.Timeout.
+ */
+export const ToolDeadlinePolicies = {
+  Configured: "Configured",
+  ModelAware: "ModelAware",
+} as const;
+
+export type ToolDeadlinePolicy = (typeof ToolDeadlinePolicies)[keyof typeof ToolDeadlinePolicies];
+
+/**
  * Controls whether a tool result creates a new durable Artifact or is a
  * bounded view over an Artifact that already exists.
  */
@@ -97,6 +109,8 @@ export interface ToolRuntimeManifest {
   Lifecycle: "Immediate" | "OneShot" | "Persistent" | "RemoteJob";
   ProtocolVersion?: typeof AgentHostToolProtocolVersion;
   ResultAssessment: ToolResultAssessmentPolicy;
+  /** Optional request-aware deadline policy for host-owned execution. */
+  DeadlinePolicy?: ToolDeadlinePolicy;
   /** Omitted means the tool publishes a new durable Artifact. */
   ResultStorage?: ToolResultStorageMode;
   Scheduling?: ToolSchedulingMode;

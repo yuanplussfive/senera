@@ -9,6 +9,7 @@ import { deepFreeze } from "../Core/AgentDeepFreeze.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import { resolveAgentWorkspaceLayout } from "../Core/AgentWorkspaceLayout.js";
 import { projectAgentConfigFormOptions } from "../Config/AgentConfigFormOptionProjector.js";
+import { AgentConfigSecretContract } from "../Config/AgentConfigSecretContract.js";
 import { createAgentSystemTools } from "../SystemTools/AgentSystemTools.js";
 import { systemToolCapability } from "../SystemTools/AgentSystemToolCatalog.js";
 import {
@@ -171,7 +172,7 @@ export class AgentMcpManagementCatalog {
       ...(extension.configuration
         ? {
             configuration: {
-              ...extension.configuration,
+              ...redactExtensionConfiguration(extension.configuration),
               sections: projectAgentConfigFormOptions(extension.configuration.sections, {
                 [AgentConfigFormOptionCatalogs.Skills]: skillOptions,
               }),
@@ -195,4 +196,59 @@ export class AgentMcpManagementCatalog {
     this.systemCache = { key, catalog, snapshot, skills: deepFreeze(skills) };
     return this.systemCache;
   }
+}
+
+function redactExtensionConfiguration(
+  configuration: NonNullable<AgentSystemExtensionSettingsItem["configuration"]>,
+): NonNullable<AgentSystemExtensionSettingsItem["configuration"]> {
+  const fields = configuration.sections.flatMap((section) => flattenFields(section.fields));
+  return {
+    ...configuration,
+    value: redactConfigurationValue(configuration.value, fields),
+    effectiveValue: redactConfigurationValue(configuration.effectiveValue, fields),
+    defaults: redactConfigurationValue(configuration.defaults, fields),
+  };
+}
+
+function redactConfigurationValue(
+  source: Readonly<Record<string, unknown>>,
+  fields: readonly { readonly path: readonly string[]; readonly secret?: boolean; readonly type: string }[],
+): Readonly<Record<string, unknown>> {
+  const value = structuredClone(source) as Record<string, unknown>;
+  for (const field of fields) {
+    if (!field.secret || field.type !== "string") continue;
+    const current = readPath(value, field.path);
+    if (typeof current === "string" && current.length > 0)
+      writePath(value, field.path, AgentConfigSecretContract.RedactedPlaceholder);
+  }
+  return value;
+}
+
+function flattenFields<T extends { readonly itemFields?: readonly T[] }>(fields: readonly T[]): readonly T[] {
+  return fields.flatMap((field) => [field, ...flattenFields(field.itemFields ?? [])]);
+}
+
+function readPath(source: unknown, path: readonly string[]): unknown {
+  let current = source;
+  for (const part of path) {
+    if (!isRecord(current)) return undefined;
+    current = current[part];
+  }
+  return current;
+}
+
+function writePath(source: Record<string, unknown>, path: readonly string[], value: unknown): void {
+  const last = path[path.length - 1];
+  if (!last) return;
+  let current = source;
+  for (const part of path.slice(0, -1)) {
+    const next = current[part];
+    if (!isRecord(next)) return;
+    current = next;
+  }
+  current[last] = value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

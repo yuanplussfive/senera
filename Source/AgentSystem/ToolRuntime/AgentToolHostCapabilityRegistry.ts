@@ -24,6 +24,7 @@ import type { AgentBrowserTargetAuthorization } from "../Browser/AgentBrowserUrl
 import type { AgentWorkspaceObservationPort } from "../Artifacts/AgentWorkspaceChangeObserver.js";
 import type { AgentToolAccessGrant } from "./AgentToolAccessGrant.js";
 import type { AgentArtifactManifestIndexCache } from "../Memory/AgentArtifactManifestIndexCache.js";
+import type { AgentToolDeadlineScope } from "./AgentToolDeadline.js";
 
 export interface AgentHostToolContext {
   artifactManifestIndex?: AgentArtifactManifestIndexCache;
@@ -54,6 +55,7 @@ export interface AgentHostToolContext {
   authorizedToolNames?: readonly string[];
   toolExposure?: AgentToolExposureState;
   signal?: AbortSignal;
+  deadline?: AgentToolDeadlineScope;
   executionPlan?: AgentToolExecutionPlan;
   browserTargetAuthorization?: AgentBrowserTargetAuthorization;
   reporter?: AgentToolExecutionReporter;

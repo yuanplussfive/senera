@@ -1,13 +1,16 @@
 import { AgentBaseError } from "../Core/AgentBaseError.js";
 import { isAgentUnknownRecord } from "../Core/AgentUnknownValue.js";
 import { sha256Hex } from "../Core/AgentHash.js";
-import { parseHTML } from "linkedom";
+import { randomUUID } from "node:crypto";
 import { AgentWebHttpError, requestWebResource, decodeWebBody } from "./AgentWebHttpClient.js";
 import type { AgentWebToolsConfiguration } from "./AgentWebConfiguration.js";
 import type { AgentWebSearchFreshness, AgentWebSearchProviderResult, AgentWebSearchRequest } from "./AgentWebTypes.js";
 
 export interface AgentWebSearchProviderOptions {
   readonly configuration: AgentWebToolsConfiguration;
+  readonly model?: string;
+  /** Maps a model catalog entry to the provider-facing model identifier. */
+  readonly resolveModel?: (configuredModelId: string) => string;
   readonly fetchImpl?: typeof fetch;
   readonly resolveHostAddresses?: (hostname: string) => Promise<readonly string[]>;
 }
@@ -33,12 +36,12 @@ export function createAgentWebSearchProvider(options: AgentWebSearchProviderOpti
   switch (providerId) {
     case "exa":
       return new ExaSearchProvider(options);
+    case "codex":
+      return new CodexSearchProvider(options);
     case "tavily":
       return new TavilySearchProvider(options);
     case "brave":
       return new BraveSearchProvider(options);
-    case "duckduckgo":
-      return new DuckDuckGoSearchProvider(options);
     case "searxng":
       return new SearxngSearchProvider(options);
   }
@@ -132,7 +135,7 @@ abstract class HttpSearchProvider implements AgentWebSearchProvider {
     };
   }
 
-  protected requireApiKey(key: "tavilyApiKey" | "braveApiKey"): string {
+  protected requireApiKey(key: "codexApiKey" | "tavilyApiKey" | "braveApiKey"): string {
     const apiKey = this.options.configuration.search[key].trim();
     if (apiKey) return apiKey;
     throw new AgentWebSearchError(
@@ -207,6 +210,49 @@ class ExaSearchProvider extends HttpSearchProvider {
   }
 }
 
+class CodexSearchProvider extends HttpSearchProvider {
+  readonly id = "codex" as const;
+
+  override async search(input: AgentWebSearchRequest, signal?: AbortSignal): Promise<AgentWebSearchProviderResult[]> {
+    try {
+      const configuredModel = this.options.configuration.search.codexModel.trim();
+      const model = this.options.resolveModel?.(configuredModel)?.trim() ?? configuredModel;
+      if (!configuredModel || !model) {
+        throw new AgentWebSearchError(
+          "provider_not_configured",
+          "Codex Search requires a model in the web-tools configuration.",
+          { provider: this.id },
+        );
+      }
+      const endpoint = this.options.configuration.search.codexEndpoint.trim();
+      if (!endpoint) {
+        throw new AgentWebSearchError(
+          "provider_not_configured",
+          "Codex Search requires an endpoint in the web-tools configuration.",
+          { provider: this.id },
+        );
+      }
+      const data = await this.postJsonResponse(
+        endpoint,
+        createCodexSearchRequest(model, input),
+        input.timeoutMs ?? this.options.configuration.search.requestTimeoutMs,
+        signal,
+        { Authorization: `Bearer ${this.requireApiKey("codexApiKey")}` },
+      );
+      const structured = projectSearchResults(readOptionalResultArray(data, ["results"]) ?? []);
+      if (structured.length > 0) return structured;
+      const output = isAgentUnknownRecord(data) ? readText(data.output) : "";
+      const projectedOutput = projectSearchResults(parseCodexSearchOutput(output));
+      if (projectedOutput.length > 0) return projectedOutput;
+      throw new AgentWebSearchError("invalid_response", "Codex Search returned no citeable search results.", {
+        provider: this.id,
+      });
+    } catch (error) {
+      throw normalizeProviderError(this.id, error);
+    }
+  }
+}
+
 class TavilySearchProvider extends HttpSearchProvider {
   readonly id = "tavily" as const;
 
@@ -249,26 +295,6 @@ class BraveSearchProvider extends HttpSearchProvider {
   }
 }
 
-class DuckDuckGoSearchProvider extends HttpSearchProvider {
-  readonly id = "duckduckgo" as const;
-
-  override async search(input: AgentWebSearchRequest, signal?: AbortSignal): Promise<AgentWebSearchProviderResult[]> {
-    const endpoint = this.endpoint("https://html.duckduckgo.com/html/");
-    const query = new URLSearchParams({
-      q: input.query,
-      kl: "wt-wt",
-      ...(input.freshness === "any" ? {} : { df: duckDuckGoFreshness(input.freshness) }),
-    });
-    const response = await this.get(
-      endpoint,
-      query,
-      input.timeoutMs ?? this.options.configuration.search.requestTimeoutMs,
-      signal,
-    );
-    return parseDuckDuckGoResults(decodeWebBody(response.body, response.contentType), response.url);
-  }
-}
-
 class SearxngSearchProvider extends HttpSearchProvider {
   readonly id = "searxng" as const;
 
@@ -290,58 +316,6 @@ class SearxngSearchProvider extends HttpSearchProvider {
       signal,
     );
     return projectSearchResults(readResultArray(data, ["results"]));
-  }
-}
-
-export function parseDuckDuckGoResults(source: string, baseUrl: string): AgentWebSearchProviderResult[] {
-  const document = parseHTML(source).document;
-  const results: AgentWebSearchProviderResult[] = [];
-  for (const result of Array.from(document.querySelectorAll(".result"))) {
-    const titleElement = result.querySelector("a.result__a, h2 a");
-    const href = titleElement?.getAttribute("href")?.trim();
-    const url = resolveDuckDuckGoResultUrl(href, baseUrl);
-    const title = compactText(titleElement?.textContent ?? "", 512);
-    if (!url || !title) continue;
-    results.push({
-      title,
-      url,
-      summary: compactText(result.querySelector(".result__snippet")?.textContent ?? "", 4_000),
-    });
-  }
-  return results;
-}
-
-function resolveDuckDuckGoResultUrl(value: string | undefined, baseUrl: string): string | undefined {
-  if (!value) return undefined;
-  try {
-    const parsed = new URL(value, baseUrl);
-    if (isDuckDuckGoHost(parsed.hostname) && parsed.pathname.startsWith("/l/")) {
-      const destination = parsed.searchParams.get("uddg");
-      if (!destination) return undefined;
-      return normalizeResultUrl(destination);
-    }
-    if (isDuckDuckGoHost(parsed.hostname)) return undefined;
-    return normalizeResultUrl(parsed.toString());
-  } catch {
-    return undefined;
-  }
-}
-
-function isDuckDuckGoHost(hostname: string): boolean {
-  const normalized = hostname.toLowerCase();
-  return normalized === "duckduckgo.com" || normalized.endsWith(".duckduckgo.com");
-}
-
-function normalizeResultUrl(value: string): string | undefined {
-  try {
-    const parsed = new URL(value);
-    if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || parsed.username || parsed.password) {
-      return undefined;
-    }
-    parsed.hash = "";
-    return parsed.toString();
-  } catch {
-    return undefined;
   }
 }
 
@@ -452,6 +426,31 @@ function exaDomainFilters(input: AgentWebSearchRequest): Record<string, readonly
   };
 }
 
+function createCodexSearchRequest(model: string, input: AgentWebSearchRequest): Record<string, unknown> {
+  const searchQuery = {
+    q: input.query,
+    ...(input.freshness === "any" ? {} : { recency: freshnessDays(input.freshness) }),
+    ...(input.allowedDomains.length > 0 ? { domains: input.allowedDomains } : {}),
+  };
+  const filters = {
+    ...(input.allowedDomains.length > 0 ? { allowed_domains: input.allowedDomains } : {}),
+    ...(input.blockedDomains.length > 0 ? { blocked_domains: input.blockedDomains } : {}),
+  };
+  return {
+    id: randomUUID(),
+    model,
+    commands: {
+      search_query: [searchQuery],
+      response_length: "short",
+    },
+    settings: {
+      search_context_size: "low",
+      external_web_access: true,
+      ...(Object.keys(filters).length > 0 ? { filters } : {}),
+    },
+  };
+}
+
 function freshnessStartDate(value: Exclude<AgentWebSearchFreshness, "any">): string {
   const date = new Date(Date.now() - freshnessDays(value) * 86_400_000);
   return date.toISOString();
@@ -466,11 +465,22 @@ function braveFreshness(value: Exclude<AgentWebSearchFreshness, "any">): string 
 }
 
 function normalizeProviderError(provider: AgentWebSearchProvider["id"], error: unknown): Error {
-  if (error instanceof AgentWebHttpError && error.code === "http_error" && error.details.status === 429) {
+  if (error instanceof AgentWebHttpError && error.code === "http_error") {
+    const status = typeof error.details.status === "number" ? error.details.status : undefined;
+    if (status === 429) {
+      return new AgentWebSearchError(
+        "rate_limited",
+        `${provider === "exa" ? "Exa Remote MCP" : provider} is temporarily rate limited. Add an access key or choose another search provider.`,
+        { provider, ...error.details },
+        { cause: error },
+      );
+    }
+    const bodyPreview = typeof error.details.bodyPreview === "string" ? error.details.bodyPreview.trim() : "";
+    const detail = bodyPreview ? ` Response: ${bodyPreview}` : "";
     return new AgentWebSearchError(
-      "rate_limited",
-      `${provider === "exa" ? "Exa Remote MCP" : provider} is temporarily rate limited. Add an access key or choose another search provider.`,
-      { provider, status: 429 },
+      "provider_failed",
+      `${provider} search request failed with HTTP ${status ?? "unknown"}.${detail}`,
+      { provider, ...error.details },
       { cause: error },
     );
   }
@@ -480,7 +490,59 @@ function normalizeProviderError(provider: AgentWebSearchProvider["id"], error: u
 function readResultArray(root: unknown, path: readonly string[]): unknown[] {
   let value = root;
   for (const key of path) value = isAgentUnknownRecord(value) ? value[key] : undefined;
-  return Array.isArray(value) ? value : [];
+  if (!Array.isArray(value)) {
+    throw new AgentWebSearchError("invalid_response", `Search provider response is missing ${path.join(".")}.`, {
+      path: path.join("."),
+    });
+  }
+  return value;
+}
+
+function readOptionalResultArray(root: unknown, path: readonly string[]): unknown[] | undefined {
+  let value = root;
+  for (const key of path) value = isAgentUnknownRecord(value) ? value[key] : undefined;
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value)) {
+    throw new AgentWebSearchError(
+      "invalid_response",
+      `Search provider response field ${path.join(".")} is not an array.`,
+      {
+        path: path.join("."),
+      },
+    );
+  }
+  return value;
+}
+
+function parseCodexSearchOutput(output: string): Array<Record<string, string>> {
+  const lines = output.split(/\r?\n/gu);
+  return lines.flatMap((line, index) => {
+    const match = line.match(/https?:\/\/[^\s)<>]+/u);
+    if (!match) return [];
+    const url = match[0].replace(/[.,;:!?]+$/u, "");
+    const title = compactText(
+      line
+        .slice(0, match.index)
+        .replace(/[|(:-]+\s*$/u, "")
+        .trim(),
+      512,
+    );
+    if (!title) return [];
+    const summary = compactText(
+      lines
+        .slice(index + 1, index + 4)
+        .map((candidate) =>
+          candidate
+            .replace(/cite[^]*/gu, "")
+            .replace(/\[wordlim\s*:?\s*\d+\]/giu, "")
+            .trim(),
+        )
+        .filter((candidate) => candidate && !candidate.startsWith("---"))
+        .join(" "),
+      4_000,
+    );
+    return [{ title, url, snippet: summary }];
+  });
 }
 
 function projectSearchResult(value: unknown): AgentWebSearchProviderResult | undefined {
@@ -569,10 +631,6 @@ function readSearchSummary(value: Record<string, unknown>): string {
 
 function compactText(value: string, maxChars: number): string {
   return Array.from(value.replaceAll(/\s+/gu, " ").trim()).slice(0, maxChars).join("");
-}
-
-function duckDuckGoFreshness(value: Exclude<AgentWebSearchFreshness, "any">): string {
-  return { day: "d", week: "w", month: "m", year: "y" }[value];
 }
 
 function searxngFreshness(value: Exclude<AgentWebSearchFreshness, "any">): string {

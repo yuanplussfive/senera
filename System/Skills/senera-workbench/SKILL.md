@@ -18,11 +18,11 @@ this Skill is the procedural projection and must not create a competing policy.
 Its revision and rule index are evidence from the host, not values to guess.
 The core invariants are:
 
-1. **Evidence first** — every observed state comes from the runtime snapshot or a tool result; never assume, and never claim a change succeeded without the command result.
-2. **No silent downgrades** — if a capability, endpoint, or configuration path is unavailable, report it plainly. Never pretend a path or value exists.
-3. **Governed self-modification** — configuration and host-owned state change only through the command surface. Do not patch files under `.senera/` directly, and do not reach into databases with shell tools.
-4. **Verify every mutation** — use the returned revision and a fresh `config check`, `status`, or snapshot before reporting success; use history/rollback when verification fails.
-5. **Progressive disclosure** — start with the live catalog and compact summaries. Inspect one Skill, command contract, or diagnostic detail only when the current task requires it. Reuse a confirmed revision and arguments across turns; do not trigger another search or repeat a full document merely because the resource is already visible.
+1. **Evidence first**: every observed state comes from the runtime snapshot or a tool result; never assume, and never claim a change succeeded without the command result.
+2. **No silent downgrades**: if a capability, endpoint, or configuration path is unavailable, report it plainly. Never pretend a path or value exists.
+3. **Governed self-modification**: configuration and host-owned state change only through the command surface. Do not patch files under `.senera/` directly, and do not reach into databases with shell tools.
+4. **Verify every mutation**: use the returned revision and a fresh `config check`, `status`, or snapshot before reporting success; use history/rollback when verification fails.
+5. **Progressive disclosure**: start with the live catalog and compact summaries. Inspect one Skill, command contract, or diagnostic detail only when the current task requires it. Reuse a confirmed revision and arguments across turns; do not trigger another search or repeat a full document merely because the resource is already visible.
 
 The host may expose a stable `senera.skill_library` directory before the turn
 starts. It is metadata, not Skill instructions: choose by name, summary, tags,
@@ -62,6 +62,60 @@ revision recoverable. Never overwrite a changed revision: pass the revision
 returned by `list`/`inspect` as `expectedRevision`, and re-read after a
 conflict. System Skills remain immutable. Use `skills history NAME` followed by
 `skills restore NAME REVISION` for an explicit rollback.
+
+## Logs and runtime evidence
+
+Use the workspace-local structured log contract when a run, tool, Skill, or
+background service needs diagnosis. Start with `logs health`, then use
+`logs streams` to discover available foreground/background streams. Use
+`logs latest` for a bounded recent snapshot, `logs range FROM TO` for a
+time-bounded query, `logs session SESSION_ID` for one session, and
+`logs trace REQUEST_ID` for one causal request chain. Continue a returned page
+only with `logs next CURSOR`; the cursor carries the original query context.
+Filter by observed `kind`, `level`, `scope`, or `stream`; do not invent
+identifiers or read another workspace's log directory. Use `logs detail
+DETAIL_ID` only when a record explicitly returns that detail ID. Details are
+redacted and size-limited; they are evidence, not a second source of truth for
+session replay.
+
+When a Skill is involved, first resolve the Skill with `skills list/search` and
+keep its returned revision. After `skills inspect/read/check`, correlate the
+actual activation and tool results through `logs latest`, `logs range`, or `logs trace` before
+claiming that the Skill ran or that a repair worked. Background scopes such as
+`background/memos` and `background/learning` are separate evidence streams; a background warning is not
+automatically a foreground request failure. If `logs health` or a query is
+unavailable, report that boundary instead of falling back to arbitrary file
+scanning.
+
+## Markdown prompt presets
+
+Prompt presets are workspace content, not Skills, provider configuration, or a
+second persona configuration. The supported shape is one user-authored
+Markdown document under the fixed workspace-local `prompts/` directory.
+
+- Inspect existing presets with `WorkspaceList` and `WorkspaceRead`, keeping the
+  path relative to the current workspace. Do not search another workspace or
+  invent a configurable preset root.
+- The model may create, complete, or revise a preset with
+  `WorkspaceApplyPatch` after reading the current file. Preserve useful user
+  material, make the requested change explicit, and keep the result as plain
+  Markdown. Do not wrap it in JSON/XML metadata and do not create a parallel
+  `CorePersona`/`LanguageStyle` file.
+- Only `prompts/*.md` documents are eligible. Never edit
+  `.senera/prompt-preset.json` directly; that file is host-owned state. Select
+  the document and change its enabled state from the Prompt preset settings
+  surface, which writes the guarded pointer and enabled flag atomically.
+- After a write, read the same path again and report the observed content. A
+  successful file edit does not imply that the preset is enabled; verify the
+  settings state separately when activation matters.
+
+When a user asks the model to “写好/完善预设”, the expected workflow is:
+read the current Markdown (or create a new file in `prompts/`), improve its
+instruction hierarchy and examples without changing the requested intent,
+write it through the workspace patch contract, then leave activation to the
+explicit UI switch. If the workspace edit capability is unavailable, report
+that boundary instead of writing `.senera` state or falling back to shell file
+editing.
 
 ## Command Surface
 

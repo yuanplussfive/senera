@@ -28,7 +28,7 @@ export function resolveAgentPiRecentWindowTokens(contextWindowTokens: number): n
 }
 
 /**
- * Resolves the one context policy shared by Pi compaction and Senera's
+ * Resolves the one window policy shared by Pi compaction and Senera's
  * observation budget. Pi still owns when compaction runs; this only supplies
  * the settings and matching input capacity for the current model window.
  */
@@ -51,7 +51,7 @@ export function resolveAgentPiCompactionSettings(
   config: ResolvedAgentPiCompactionConfig,
   model: AgentPiProviderProjection["model"],
 ): AgentPiResolvedCompactionSettings {
-  // The compaction reserve belongs to Pi's context policy, not to a provider's
+  // The compaction reserve belongs to Pi's window policy, not to a provider's
   // output cap. Provider max-output metadata may be absent, overly generous,
   // or unrelated to the amount of history Pi can retain.
   const window = resolveAgentPiCompactionWindow(model.contextWindow);

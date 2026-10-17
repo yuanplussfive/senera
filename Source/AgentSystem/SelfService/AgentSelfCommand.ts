@@ -27,7 +27,14 @@ import { describeAgentSelfWorkspace, projectAgentSelfWorkspaceInfo } from "./Age
 import { describeAgentSelfDoctor, projectAgentSelfDoctorReport } from "./AgentSelfDoctor.js";
 import { executeAgentSelfSessionModel, listAgentSelfSessions } from "./AgentSelfSessions.js";
 import { describeAgentSelfStatus, projectAgentSelfStatus } from "./AgentSelfStatus.js";
-import { listAgentSelfLogs, readAgentSelfLogTail } from "./AgentSelfLogs.js";
+import {
+  listAgentSelfLogs,
+  listAgentSelfLogStreams,
+  queryAgentSelfLogCommand,
+  readAgentSelfLogDetail,
+  readAgentSelfLogHealth,
+  readAgentSelfLogTail,
+} from "./AgentSelfLogs.js";
 import { projectAgentSelfRedacted } from "./AgentSelfRedaction.js";
 import { findAgentSelfPluginCommand, listAgentSelfBuiltinCommandSpecs } from "./AgentSelfCommandRegistry.js";
 import { AgentSelfCommandSchema, AgentSelfPluginCommandEnvelopeSchema } from "./AgentSelfCommandSchema.js";
@@ -439,6 +446,19 @@ async function executeLogs(
   switch (invocation.action) {
     case "list":
       return listAgentSelfLogs(port);
+    case "latest":
+    case "range":
+    case "session":
+    case "next":
+      return queryAgentSelfLogCommand(port, invocation);
+    case "detail":
+      return readAgentSelfLogDetail(port, invocation.detailId);
+    case "trace":
+      return queryAgentSelfLogCommand(port, invocation);
+    case "health":
+      return readAgentSelfLogHealth(port);
+    case "streams":
+      return listAgentSelfLogStreams(port);
     case "tail":
       return readAgentSelfLogTail(port, invocation.name, invocation.lines);
   }

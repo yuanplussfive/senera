@@ -99,6 +99,56 @@ const input = {
 };
 
 describe("native non-destructive near-duplicate recall", () => {
+  test("drains queued embeddings before deleting a node", async () => {
+    const root = createTemporaryDirectory("senera-native-delete-embedding");
+    let release!: () => void;
+    let signalStarted!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      signalStarted = resolve;
+    });
+    const sdk = new AgentMemOSEmbeddingRuntime(
+      {
+        dbPath: path.join(root, "memos.sqlite"),
+        experimental: { namespaces: true, semanticSearch: true },
+        embeddingQueue: { synchronous: false },
+      },
+      {
+        dimensions: 3,
+        providerId: "test",
+        embed: async (request) => {
+          if (request.role === "document") {
+            signalStarted();
+            await blocked;
+          }
+          return { model: "test", vectors: request.input.map(() => [1, 0, 0]) };
+        },
+      },
+      { id: "test", model: "test", dimensions: 3 },
+    );
+    await sdk.init();
+    try {
+      const node = (await sdk.store("删除竞态测试", { summary: "删除竞态测试", namespace: "test" })).node;
+      const deletion = sdk.forget(node.id);
+      await started;
+      let settled = false;
+      void deletion.then(() => {
+        settled = true;
+      });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(settled).toBe(false);
+
+      release();
+      await expect(deletion).resolves.toBe(true);
+      expect(sdk.embeddingStatus(node.id)?.status).toBe("ready");
+    } finally {
+      await sdk.close();
+      removeDirectory(root);
+    }
+  });
+
   test("covers Chinese paraphrases across ranking changes, new duplicate nodes, and updated versions", async () => {
     const f = await fixture();
     const first = await f.add("用户喜欢吃牛肉。", [1, 0, 0]);
@@ -167,8 +217,9 @@ describe("native non-destructive near-duplicate recall", () => {
     await f.index.synchronize();
     vi.spyOn(f.sdk, "dedupe").mockRejectedValueOnce(new Error("native scan failed"));
     f.config.threshold = 0.99;
-    await expect(f.index.synchronize()).rejects.toThrow("native scan failed");
-    await expect(f.index.synchronize()).rejects.toThrow("native scan failed");
+    await expect(f.index.synchronize({ surfaceFailures: true })).rejects.toThrow("native scan failed");
+    await expect(f.index.synchronize({ surfaceFailures: true })).rejects.toThrow("native scan failed");
+    await expect(f.index.synchronize()).resolves.toBeUndefined();
     await f.add("用户喝咖啡。", [0, 0, 1]);
     await expect(f.index.synchronize()).resolves.toBeUndefined();
   });

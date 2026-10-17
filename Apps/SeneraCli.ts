@@ -6,6 +6,7 @@ import { isMainModule } from "../Source/AgentSystem/Core/AgentPath.js";
 import { AgentUpgradeJournal } from "../Source/AgentSystem/Upgrade/AgentUpgradeJournal.js";
 import { rollbackAgentUpgrade } from "../Source/AgentSystem/Upgrade/AgentUpgradeSession.js";
 import { errorMessage } from "../Source/AgentSystem/Core/AgentErrors.js";
+import { resolveAgentWorkspaceLayout } from "../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
 import type {
   AgentSelfCommand,
   AgentSelfCommandOutput,
@@ -132,7 +133,9 @@ export function runSeneraCli(invocation: SeneraCliInvocation): void {
     return;
   }
   if (invocation.command === "upgrade-status") {
-    const journal = new AgentUpgradeJournal(invocation.stateRoot ?? path.join(invocation.workspaceRoot, ".senera"));
+    const journal = new AgentUpgradeJournal(
+      invocation.stateRoot ?? resolveAgentWorkspaceLayout(invocation.workspaceRoot).stateRoot,
+    );
     const report = {
       runtime: journal.readRuntimeMarker() ?? null,
       upgrades: journal.listManifests(),
@@ -159,7 +162,7 @@ export function runSeneraCli(invocation: SeneraCliInvocation): void {
       status: manifest.status,
       restoredRuntime: manifest.source,
       retainedFailedState: path.join(
-        invocation.stateRoot ?? path.join(invocation.workspaceRoot, ".senera"),
+        invocation.stateRoot ?? resolveAgentWorkspaceLayout(invocation.workspaceRoot).stateRoot,
         "upgrades",
         manifest.upgradeId,
         "failed-state",

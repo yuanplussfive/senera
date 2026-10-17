@@ -1,7 +1,16 @@
 import { AnimatePresence, motion } from "framer-motion";
 import type { ChatMessage, RunRecord } from "../../store/sessionStore";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { AppIcon, Button, IconButton, Popover, PopoverContent, PopoverTrigger, Spinner } from "../../shared/ui";
+import {
+  AppIcon,
+  Button,
+  IconButton,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  Spinner,
+  useClipboardCopy,
+} from "../../shared/ui";
 import { motionTimings, useMotionLevel } from "../../shared/motion";
 
 export interface SystemMessageRowProps {
@@ -29,6 +38,7 @@ export function SystemMessageRow({
     : frontendMessage("chat.runFailure.title");
   const details =
     message.failure?.details === undefined ? message.content : JSON.stringify(message.failure.details, null, 2);
+  const { copied, copyText } = useClipboardCopy({ successMessage: frontendMessage("clipboard.copied") });
 
   return (
     <AnimatePresence initial={false} onExitComplete={onDismissed}>
@@ -79,11 +89,23 @@ export function SystemMessageRow({
                     <PopoverContent
                       side="top"
                       align="end"
-                      className="w-[min(28rem,calc(100vw-2rem))]"
+                      className="relative w-[min(28rem,calc(100vw-2rem))]"
                       aria-label={frontendMessage("chat.runFailure.details")}
                     >
-                      <p className="mb-2 text-xs font-medium">{frontendMessage("chat.runFailure.details")}</p>
-                      <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-content-secondary">
+                      <div className="mb-2 flex items-center justify-between gap-2 pr-8">
+                        <p className="text-xs font-medium">{frontendMessage("chat.runFailure.details")}</p>
+                      </div>
+                      <IconButton
+                        size="sm"
+                        tone="muted"
+                        className="absolute right-2 top-2"
+                        label={frontendMessage("chat.runFailure.copyDetails")}
+                        tooltip={frontendMessage("chat.runFailure.copyDetails")}
+                        onClick={() => void copyText(details)}
+                      >
+                        <AppIcon icon={copied ? "checkmark" : "copy"} size={15} aria-hidden="true" />
+                      </IconButton>
+                      <pre className="max-h-[min(55vh,28rem)] overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-5 text-content-secondary">
                         {details}
                       </pre>
                     </PopoverContent>

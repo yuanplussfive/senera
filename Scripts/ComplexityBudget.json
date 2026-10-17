@@ -15,7 +15,7 @@
   "legacyLargeFiles": [
     {
       "path": "Apps/ServerRuntime.ts",
-      "baselineLines": 1082,
+      "baselineLines": 1061,
       "owner": "runtime-platform",
       "splitTarget": "Keep ServerRuntime focused on current-turn composition after retiring autonomous world runtime."
     },
@@ -33,7 +33,7 @@
     },
     {
       "path": "Scripts/BackendTests/Pi/PiToolExecutionBridgeBehavior.test.ts",
-      "baselineLines": 914,
+      "baselineLines": 874,
       "owner": "pi-runtime",
       "splitTarget": "Split bridge contract and failure scenarios into focused test files."
     },
@@ -117,7 +117,7 @@
     },
     {
       "path": "Scripts/BackendTests/Pi/PiNativeToolProviderBehavior.test.ts",
-      "baselineLines": 1144,
+      "baselineLines": 930,
       "owner": "pi-runtime",
       "splitTarget": "Split native provider request projection, compaction, and stream lifecycle scenarios."
     },
@@ -171,7 +171,7 @@
     },
     {
       "path": "Frontend/src/features/chat/ChatComposer.tsx",
-      "baselineLines": 1160,
+      "baselineLines": 899,
       "owner": "frontend-platform",
       "splitTarget": "Extract command palette, attachment handling, and submission orchestration into focused composer modules."
     },
@@ -192,6 +192,12 @@
       "baselineLines": 831,
       "owner": "frontend-platform",
       "splitTarget": "Split tool activity projection, grouping, and interaction scenarios into focused workflow tests."
+    },
+    {
+      "path": "Scripts/FrontendTests/App/CommandHooks.test.mjs",
+      "baselineLines": 868,
+      "owner": "frontend-platform",
+      "splitTarget": "Split session command hooks, regeneration recovery, and workspace command scenarios into focused app test files."
     },
     {
       "path": "Source/AgentSystem/Continuity/AgentMemOSSemanticLearningRuntime.ts",

@@ -28,6 +28,7 @@ import {
 import { createAgentPiLogicalCacheScope } from "../Pi/AgentPiPromptCache.js";
 import { createModelProviderMetadata, type AgentEffectiveModelReceipt } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { AgentToolResourceLeaseOwner } from "../ToolRuntime/AgentToolResourceScheduler.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 export interface AgentLoopOptions {
   runtime: AgentSystemRuntime;
@@ -44,6 +45,10 @@ export interface AgentRunRequest {
   turnNumber?: number;
   step?: number;
   input: string;
+  /** Resume the existing Pi transcript without creating a synthetic user turn. */
+  continueFromTranscript?: boolean;
+  /** Identifies the durable turn whose Pi transcript should be resumed. */
+  continuationSourceRequestId?: string;
   attachments?: AgentUploadAttachment[];
   interaction?: AgentInteractionContext;
   approvalMode: AgentExecutionApprovalMode;
@@ -84,6 +89,7 @@ export class AgentLoop {
         tokenEstimator: options.runtime.tokenEstimator,
         piDiagnostics: options.runtime.piDiagnostics,
         uploadStore: options.runtime.uploadStore,
+        logger: options.runtime.logger,
         promptConfig: () => options.runtime.promptConfig,
       } satisfies AgentPiTurnRuntimePort,
     });
@@ -102,7 +108,14 @@ export class AgentLoop {
       return completed;
     } finally {
       if (!completed?.routingObservation) {
-        this.options.runtime.services.retrieval.finishRequest(request.requestId);
+        try {
+          this.options.runtime.services.retrieval.finishRequest(request.requestId);
+        } catch (error) {
+          this.options.runtime.logger?.warn("routing.request_cleanup_failed", {
+            requestId: request.requestId,
+            message: errorMessage(error),
+          });
+        }
       }
     }
   }
@@ -112,14 +125,36 @@ export class AgentLoop {
     if (!observation) return;
     try {
       this.options.runtime.services.retrieval.recordCompletedTurnScenario(observation);
+    } catch (error) {
+      // Routing evidence is a post-commit learning side effect. The model
+      // response is already durable, so this must not reopen it as run.failed.
+      this.options.runtime.logger?.warn("routing.scenario.finalize_failed", {
+        requestId: observation.requestId,
+        message: errorMessage(error),
+      });
     } finally {
-      this.options.runtime.services.retrieval.finishRequest(observation.requestId);
+      try {
+        this.options.runtime.services.retrieval.finishRequest(observation.requestId);
+      } catch (error) {
+        this.options.runtime.logger?.warn("routing.request_cleanup_failed", {
+          requestId: observation.requestId,
+          message: errorMessage(error),
+        });
+      }
     }
   }
 
   discardCompletedTurn(result?: AgentCompletedRunResult): void {
     const requestId = result?.routingObservation?.requestId;
-    if (requestId) this.options.runtime.services.retrieval.finishRequest(requestId);
+    if (!requestId) return;
+    try {
+      this.options.runtime.services.retrieval.finishRequest(requestId);
+    } catch (error) {
+      this.options.runtime.logger?.warn("routing.request_cleanup_failed", {
+        requestId,
+        message: errorMessage(error),
+      });
+    }
   }
 
   private async runTurn(request: AgentRunRequest): Promise<AgentCompletedRunResult> {
@@ -143,6 +178,7 @@ export class AgentLoop {
       effectiveModel: request.effectiveModel,
       turnNumber: request.turnNumber,
       interaction: request.interaction,
+      signal: request.signal,
       loadedToolNames: prepared.loadedToolNames,
       reusableCapabilities: prepared.reusableCapabilities,
       authorizedToolNames: prepared.toolAccessGrant.authorizedToolNames,
@@ -157,6 +193,7 @@ export class AgentLoop {
         step,
         prompt.harness,
         resolveAgentModelToolPlanningMode(this.options.runtime.modelProviderConfig),
+        prepared.activeSkills,
       ),
     ]);
 
@@ -172,6 +209,8 @@ export class AgentLoop {
         requestId: request.requestId,
         step,
         input: request.input,
+        continueFromTranscript: request.continueFromTranscript,
+        continuationSourceRequestId: request.continuationSourceRequestId,
         attachments: request.attachments,
         interaction: normalizeAgentInteractionContext(
           request.interaction ?? { surface: AgentInteractionSurfaces.Console },
@@ -258,10 +297,20 @@ export class AgentLoop {
     } else {
       await this.emitAll(request.onEvent, terminalEvents);
     }
-    this.options.runtime.services.promptContext.commitLiveContextDelivery?.({
-      sessionId: request.sessionId,
-      memory: prompt.continuityMemory,
-    });
+    try {
+      this.options.runtime.services.promptContext.commitLiveContextDelivery?.({
+        sessionId: request.sessionId,
+        memory: prompt.continuityMemory,
+      });
+    } catch (error) {
+      // Delivery receipts are derived continuity state and are written after
+      // the assistant response is available. Keep them out of run failure.
+      this.options.runtime.logger?.warn("memory.live_context_delivery_failed", {
+        sessionId: request.sessionId,
+        requestId: request.requestId,
+        message: errorMessage(error),
+      });
+    }
     return completed;
   }
 

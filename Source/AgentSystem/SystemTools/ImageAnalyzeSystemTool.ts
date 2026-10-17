@@ -15,6 +15,13 @@ import { resolveAgentSystemLocalResource } from "./AgentSystemResource.js";
 import { AgentResourceSourceSchema, type AgentResourceSource } from "../Resources/AgentResourceSource.js";
 import { fetchWebResource } from "../Web/AgentWebHttpClient.js";
 import type { AgentHostToolContext } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
+import {
+  AgentHostToolProtocolVersion,
+  ToolDeadlinePolicies,
+  ToolResultAssessmentPolicies,
+  ToolSchedulingModes,
+} from "../Types/AgentToolContractTypes.js";
+import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 
 const AgentImageAnalyzeTasks = ["describe", "ocr", "question"] as const;
 const AgentImageAnalyzeTask = z.enum(AgentImageAnalyzeTasks);
@@ -363,6 +370,13 @@ export function createImageAnalyzeSystemTool(
         "Analyze one or more workspace-relative or absolute local paths, canonical Senera resources, or public HTTP(S) image URLs together for visible evidence, OCR, or a specific question. Prefer an attachment's local_path when present; use its resource_uri as the stable fallback.",
       permissions: ["resources:read", "model:vision"],
       execution: { Targets: ["Local"], Network: "Allow", Workspace: "ReadOnly" },
+      runtime: {
+        Lifecycle: "Immediate",
+        ProtocolVersion: AgentHostToolProtocolVersion,
+        ResultAssessment: ToolResultAssessmentPolicies.ProcessExit,
+        Scheduling: ToolSchedulingModes.Parallel,
+        DeadlinePolicy: ToolDeadlinePolicies.ModelAware,
+      },
       search: {
         Summary: "一起分析一张或多张图片，读取画面、文字和与当前问题有关的可见证据。",
         Tags: ["image", "vision", "ocr", "screenshot"],
@@ -390,12 +404,14 @@ export function createImageAnalyzeSystemTool(
     input: ImageAnalyzeInput,
     output: ImageAnalyzeOutput,
     async execute(input, context) {
+      const provider = resolveAgentVisionProvider(context.config, {
+        conversationModelProviderId,
+        configuredModelProviderId: configuration.model.modelProviderId,
+      });
+      context.deadline?.extendTo?.(resolveImageAnalysisDeadlineMs(provider, input, configuration));
       const images = await resolveImageInputs(input, context, configuration);
       const response = await new AgentImageVisionModelClient().complete({
-        provider: resolveAgentVisionProvider(context.config, {
-          conversationModelProviderId,
-          configuredModelProviderId: configuration.model.modelProviderId,
-        }),
+        provider,
         systemPrompt: configuration.prompt.systemPrompt,
         prompt: createImagePrompt(input.task, input.question, images),
         images: images.map((image) => ({ mime: image.mime, base64: image.base64 })),
@@ -410,6 +426,18 @@ export function createImageAnalyzeSystemTool(
       };
     },
   });
+}
+
+function resolveImageAnalysisDeadlineMs(
+  provider: ResolvedAgentModelProviderConfig,
+  input: z.output<typeof ImageAnalyzeInput>,
+  configuration: z.output<typeof AgentImageAnalyzeExtensionConfigurationSchema>,
+): number {
+  const modelBudgetMs = Math.max(provider.TimeoutMs, provider.FirstTokenTimeoutMs, provider.MaxRequestMs, 0);
+  const remoteImages = input.images.filter((source) => source.kind === "http_url").length;
+  const remoteRequestTimeoutMs = resolveImageRequestTimeout(input.timeoutMs, configuration.remote);
+  const imageDownloadBudgetMs = remoteImages * remoteRequestTimeoutMs;
+  return modelBudgetMs + imageDownloadBudgetMs;
 }
 
 interface ResolvedImageInput {

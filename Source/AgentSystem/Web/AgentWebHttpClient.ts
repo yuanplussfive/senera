@@ -198,8 +198,11 @@ interface RequestControl {
 }
 
 function normalizeTimeout(value: number | undefined): number | undefined {
-  if (value === undefined || !Number.isFinite(value) || value <= 0) return undefined;
-  return Math.floor(value);
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new RangeError("Web request timeoutMs must be a positive safe integer.");
+  }
+  return value;
 }
 
 async function waitForAbort<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {

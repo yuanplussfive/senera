@@ -1,8 +1,8 @@
 import path from "node:path";
 import type { AgentConfigService } from "../Source/AgentSystem/Config/AgentConfigService.js";
 import type { AgentLogger } from "../Source/AgentSystem/Diagnostics/AgentLogger.js";
+import type { AgentWorkspaceLogStore } from "../Source/AgentSystem/Diagnostics/AgentWorkspaceLogStore.js";
 import type { AgentWorkspaceLayout } from "../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
-import { resolveAgentWorkspaceLayout } from "../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { AgentSessionStore } from "../Source/AgentSystem/Session/AgentSessionStore.js";
 import { errorMessage } from "../Source/AgentSystem/Core/AgentErrors.js";
@@ -33,7 +33,6 @@ export interface SeneraServerRuntimePlatform {
 }
 
 export interface SeneraServerRuntimePlatformInput {
-  readonly applicationStateRoot: string;
   readonly resourceRoot: string;
   readonly workspaceRoot: string;
   readonly workspaceLayout: AgentWorkspaceLayout;
@@ -41,6 +40,7 @@ export interface SeneraServerRuntimePlatformInput {
   readonly configSnapshot: () => AgentSystemConfig;
   readonly configService: AgentConfigService;
   readonly sessionStore: AgentSessionStore;
+  readonly logStore: AgentWorkspaceLogStore;
   readonly logger: Pick<AgentLogger, "error" | "warn">;
 }
 
@@ -71,7 +71,7 @@ export async function createSeneraServerRuntimePlatform(
     configSnapshot: input.configSnapshot,
     configService: input.configService,
     sessionStore: input.sessionStore,
-    logsRoot: input.workspaceLayout.stateRoot,
+    logStore: input.logStore,
     pluginHost,
     skillSources: [
       {
@@ -132,15 +132,15 @@ function resolveAgentPluginDiscoverySources(
   input: SeneraServerRuntimePlatformInput,
 ): readonly AgentPluginDiscoverySource[] {
   const directories = (input.configSnapshot().Plugins?.Directories ?? []).map((directory) =>
-    path.resolve(input.applicationStateRoot, directory),
+    path.resolve(input.workspaceRoot, directory),
   );
   return [
     { source: AgentPluginSourceKinds.Bundled, directory: path.join(input.resourceRoot, "System", "Plugins") },
     {
       source: AgentPluginSourceKinds.User,
-      directory: path.join(resolveAgentWorkspaceLayout(input.applicationStateRoot).stateRoot, "plugins"),
+      directory: input.workspaceLayout.userPluginsRoot,
     },
-    { source: AgentPluginSourceKinds.Project, directory: path.join(input.workspaceRoot, ".senera", "plugins") },
+    { source: AgentPluginSourceKinds.Project, directory: input.workspaceLayout.projectPluginsRoot },
     { source: AgentPluginSourceKinds.Project, directory: path.join(input.workspaceRoot, "plugins") },
     ...directories.map((directory) => ({ source: AgentPluginSourceKinds.Pip, directory })),
   ];

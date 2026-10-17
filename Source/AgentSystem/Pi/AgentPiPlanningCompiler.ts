@@ -32,7 +32,6 @@ import type { AgentPiReadyToolPlanNode, AgentPiToolPlanCoordinator } from "../Pi
 import { matchByKind } from "../Core/AgentMatch.js";
 import { orderToolNamesByPreference, type AgentToolAccessGrant } from "../ToolRuntime/AgentToolAccessGrant.js";
 import { validateAgentPiCompletion } from "./AgentPiCompletionGate.js";
-import { AgentPiContextPolicyProtocol } from "../PiShared/AgentPiContextPolicyProtocol.js";
 import type { AgentPiTurnStateOptions } from "./AgentPiTurnState.js";
 import type { AgentPiModelApi } from "./AgentPiTypes.js";
 import { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
@@ -300,11 +299,6 @@ export class AgentPiPlanningCompiler implements AgentPiPlanningCompilerPort {
         content: direct.response,
         toolCalls: [],
       }),
-      AskUser: async (ask) => ({
-        kind: "final_text" as const,
-        content: ask.question,
-        toolCalls: [],
-      }),
       Execute: (execute) => this.projectToolCallsDecision(execute, input, toolContracts, modelOptions, toolPlan),
     });
   }
@@ -520,9 +514,6 @@ export class AgentPiPlanningCompiler implements AgentPiPlanningCompilerPort {
       return tool ? [tool] : [];
     });
     const seneraRuntime: AgentPiAssistantMessageCompileInput["seneraRuntime"] = {
-      protocols: {
-        contextPolicy: AgentPiContextPolicyProtocol,
-      },
       modelProviderId: this.options.modelProvider.Id,
       model: this.options.modelProvider.Model,
       toolAccessGrant: input.toolAccessGrant,

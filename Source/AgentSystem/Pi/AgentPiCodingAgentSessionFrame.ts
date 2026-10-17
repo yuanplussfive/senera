@@ -6,7 +6,6 @@ import type { AgentToolAccessGrant } from "../ToolRuntime/AgentToolAccessGrant.j
 import type { AgentToolExposureState } from "../ToolRuntime/AgentToolExposureState.js";
 import type { AgentToolEventOrigin } from "../ToolRuntime/AgentToolEventOrigin.js";
 import type { AgentTurnTokenBudget } from "../Text/AgentTurnTokenBudget.js";
-import type { AgentPiContextPolicyFrame } from "./AgentPiContextPolicy.js";
 import type { AgentPiDiagnosticSink } from "./AgentPiDiagnostics.js";
 import type { AgentPiSelectedPromptTemplateFrame } from "./AgentPiPromptFrameProjector.js";
 import type { AgentSkillLibraryCatalog } from "../Skills/AgentSkillLibraryCatalog.js";
@@ -49,7 +48,6 @@ export interface AgentPiCodingAgentSessionFrame {
   toolAccessGrant: AgentToolAccessGrant;
   toolExposure: AgentToolExposureState;
   selectedPromptTemplates: readonly AgentPiSelectedPromptTemplateFrame[];
-  contextPolicy?: AgentPiContextPolicyFrame;
   tokenBudget?: AgentTurnTokenBudget;
   signal?: AbortSignal;
   /**

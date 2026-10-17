@@ -474,6 +474,11 @@ export class AgentChannelRunRenderer {
           signal: this.finalizationAbortController.signal,
           context: {
             ...(resourceManifest ? { resourceManifest } : {}),
+            platformTruth: {
+              kind: this.options.adapter.kind,
+              chatType: this.options.source.chatType,
+              capabilities: this.options.adapter.capabilities,
+            },
             history: this.options.finalizationHistory ?? [],
           },
         });

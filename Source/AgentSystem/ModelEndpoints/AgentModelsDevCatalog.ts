@@ -3,6 +3,7 @@ import path from "node:path";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { parseJsonText } from "../Core/AgentJsonParsing.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
+import { removeAgentPathWithRetry } from "../Core/AgentFs.js";
 
 /** Public source used for model facts and provider-specific limits/pricing. */
 export const AgentModelsDevCatalogDefaults = {
@@ -326,7 +327,7 @@ export class AgentModelsDevCatalog {
       await fs.writeFile(temporaryPath, `${JSON.stringify(stored)}\n`, "utf8");
       await fs.rename(temporaryPath, this.cachePath);
     } catch (error) {
-      await fs.rm(temporaryPath, { force: true }).catch(() => undefined);
+      await removeAgentPathWithRetry(temporaryPath).catch(() => undefined);
       throw error;
     }
   }

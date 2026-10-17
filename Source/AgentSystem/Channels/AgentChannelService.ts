@@ -711,7 +711,7 @@ export class AgentChannelService {
       source,
       streamProgress: channel.config.streamProgress !== false,
       resourceResolver: this.options.resourceResolver,
-      finalResponseRewriter: this.options.finalResponseRewriter,
+      finalResponseRewriter: this.resolveFinalResponseRewriter(),
       sessionId,
       requestId,
       logicalCacheScope,
@@ -951,7 +951,7 @@ export class AgentChannelService {
       source,
       streamProgress: false,
       resourceResolver: this.options.resourceResolver,
-      finalResponseRewriter: this.options.finalResponseRewriter,
+      finalResponseRewriter: this.resolveFinalResponseRewriter(),
       sessionId,
       requestId,
       logicalCacheScope,
@@ -969,6 +969,18 @@ export class AgentChannelService {
       onFinalizationPersistFailed: (error) =>
         this.log("warn", "channels.finalization_persist_failed", { kind: channel.kind, message: describe(error) }),
     });
+  }
+
+  /**
+   * The channel setting is resolved at renderer creation time so a saved
+   * configuration takes effect on the next delivery without restarting the
+   * gateway. The model-backed projection is never enabled by merely
+   * constructing a rewriter.
+   */
+  private resolveFinalResponseRewriter(): AgentChannelFinalResponseRewriter | undefined {
+    const rewriter = this.options.finalResponseRewriter;
+    if (!rewriter) return undefined;
+    return this.options.config().finalResponseRewrite === true ? rewriter : undefined;
   }
 
   private async loadFinalizationHistory(

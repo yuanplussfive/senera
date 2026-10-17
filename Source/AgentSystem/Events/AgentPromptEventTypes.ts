@@ -24,6 +24,14 @@ export type AgentPromptDomainEvent =
       context: AgentStepContext;
       data: {
         profile: "native" | "baml";
+        skills: readonly {
+          name: string;
+          revision: string;
+          score: number;
+          matchedTerms: readonly string[];
+          matchedFields: readonly { term: string; fields: readonly string[] }[];
+          recommendedTools: readonly string[];
+        }[];
         sections: {
           frozen: { bytes: number; tokens: number; revision: string };
           stable: { bytes: number; tokens: number; revision: string };

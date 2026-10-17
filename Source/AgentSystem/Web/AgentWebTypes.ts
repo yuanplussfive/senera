@@ -1,4 +1,7 @@
 import type { AgentWebToolsConfiguration } from "./AgentWebConfiguration.js";
+import type { AgentWebRenderStrategy } from "./AgentWebDynamicPolicy.js";
+import type { AgentWebRenderDiagnostics } from "./AgentWebRenderTypes.js";
+import type { AgentHostToolContext } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
 
 export const AgentWebSearchFreshnessValues = ["any", "day", "week", "month", "year"] as const;
 export type AgentWebSearchFreshness = (typeof AgentWebSearchFreshnessValues)[number];
@@ -37,6 +40,7 @@ export interface AgentWebFetchRequest {
   readonly extractPrompt?: string;
   readonly maxBytes?: number;
   readonly contentMode: AgentWebContentMode;
+  readonly renderStrategy?: AgentWebRenderStrategy;
   /** Optional host-bounded deadline for this request. */
   readonly timeoutMs?: number;
 }
@@ -67,16 +71,25 @@ export interface AgentWebFetchOutput {
   readonly links: readonly AgentWebFetchLink[];
   readonly citationId: string;
   readonly transfer: AgentWebFetchTransfer;
+  readonly render: AgentWebRenderDiagnostics;
 }
 
 export interface AgentWebRuntimeOptions {
+  readonly model?: string;
+  /** Resolves a configured Senera model entry to the model identifier expected by the selected provider. */
+  readonly resolveModel?: (configuredModelId: string) => string;
   readonly fetchImpl?: typeof fetch;
   readonly resolveHostAddresses?: (hostname: string) => Promise<readonly string[]>;
   readonly now?: () => number;
+  readonly browserRuntime?: import("../Browser/AgentBrowserRuntime.js").AgentBrowserRuntime;
 }
 
 export interface AgentWebRuntime {
   readonly configuration: AgentWebToolsConfiguration;
   search(input: AgentWebSearchRequest, signal?: AbortSignal): Promise<AgentWebSearchOutput>;
-  fetch(input: AgentWebFetchRequest, signal?: AbortSignal): Promise<AgentWebFetchOutput>;
+  fetch(
+    input: AgentWebFetchRequest,
+    signal?: AbortSignal,
+    context?: AgentHostToolContext,
+  ): Promise<AgentWebFetchOutput>;
 }

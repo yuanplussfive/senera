@@ -17,7 +17,7 @@ export interface AgentConfigLoadResult {
 }
 
 export interface AgentConfigLoadOptions {
-  secretCodec?: AgentConfigSecretCodec;
+  secretCodec: AgentConfigSecretCodec;
   onMigrationDetected?: (migration: {
     sourceVersion: number;
     targetVersion: number;
@@ -26,13 +26,13 @@ export interface AgentConfigLoadOptions {
 }
 
 export class AgentConfigLoader {
-  static load(configPath: string, secretCodec?: AgentConfigSecretCodec): AgentSystemConfig {
+  static load(configPath: string, secretCodec: AgentConfigSecretCodec): AgentSystemConfig {
     return this.loadWithMetadata(configPath, { secretCodec }).config;
   }
 
-  static loadWithMetadata(configPath: string, options: AgentConfigLoadOptions = {}): AgentConfigLoadResult {
+  static loadWithMetadata(configPath: string, options: AgentConfigLoadOptions): AgentConfigLoadResult {
     const absolutePath = path.resolve(configPath);
-    const codec = options.secretCodec ?? new AgentConfigSecretCodec({ workspaceRoot: path.dirname(absolutePath) });
+    const codec = options.secretCodec;
     let migration: AgentConfigMigrationResult | undefined;
     let secretsNeedPersistence = false;
     const config = new AgentJsonFileLoader().load(absolutePath, AgentSystemConfigSchema, (payload) => {

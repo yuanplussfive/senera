@@ -28,6 +28,7 @@ import { errorMessage } from "../Core/AgentErrors.js";
 import { AgentWebSocketTransport } from "./AgentWebSocketTransport.js";
 import { AgentWorkspaceResourceHttpApi } from "../WorkspaceResources/AgentWorkspaceResourceHttpApi.js";
 import { AgentProviderCredentialHttpApi } from "../Config/AgentProviderCredentialHttpApi.js";
+import { AgentExtensionSecretHttpApi } from "../Config/AgentExtensionSecretHttpApi.js";
 import { AgentRuntimeUpdateHttpApi } from "../Runtime/AgentRuntimeUpdateHttpApi.js";
 import { AgentResourceResolver } from "../Resources/AgentResourceResolver.js";
 import { AgentModelsDevCatalog } from "../ModelEndpoints/AgentModelsDevCatalog.js";
@@ -38,6 +39,9 @@ export type { AgentWebSocketServerOptions } from "./AgentWebSocketTypes.js";
 /** Workspace endpoint; the application transport owns the listener and shared services. */
 export class AgentWebSocketServer {
   readonly transport: AgentWebSocketTransport;
+  get clientCount(): number {
+    return this.clients.size;
+  }
   private readonly ownsTransport: boolean;
   private readonly workspaceId: string;
   private readonly clients = new Set<WebSocket>();
@@ -47,6 +51,7 @@ export class AgentWebSocketServer {
   private readonly httpRouter: AgentWebSocketHttpRouter;
   private readonly uploadApi: AgentUploadHttpApi;
   private readonly providerCredentialApi: AgentProviderCredentialHttpApi;
+  private readonly extensionSecretApi: AgentExtensionSecretHttpApi;
   private readonly workspaceResourceApi: AgentWorkspaceResourceHttpApi;
   private readonly messageRouter: AgentWebSocketMessageRouter;
   private readonly accessGuard: AgentServerAccessGuard;
@@ -123,6 +128,11 @@ export class AgentWebSocketServer {
       configSnapshot,
       isOriginAllowed: (origin, corsRequest) => this.accessGuard.allowsOrigin(origin, corsRequest),
     });
+    this.extensionSecretApi = new AgentExtensionSecretHttpApi({
+      configSnapshot,
+      systemExtensions: () => options.mcpManagement?.listSystemExtensions() ?? [],
+      isOriginAllowed: (origin, corsRequest) => this.accessGuard.allowsOrigin(origin, corsRequest),
+    });
     this.workspaceResourceApi = new AgentWorkspaceResourceHttpApi({
       workspaceRoot: options.workspaceRoot ?? process.cwd(),
       maxTextBytes: this.serverConfig.RequestMaxBytes,
@@ -138,6 +148,7 @@ export class AgentWebSocketServer {
     this.httpRouter = new AgentWebSocketHttpRouter({
       uploadApi: this.uploadApi,
       providerCredentialApi: this.providerCredentialApi,
+      extensionSecretApi: this.extensionSecretApi,
       workspaceResourceApi: this.workspaceResourceApi,
       artifactMemoryApi,
       staticFrontendApi: options.staticFrontendRoot
@@ -165,8 +176,10 @@ export class AgentWebSocketServer {
         executionResources: options.executionResources,
         interactiveTerminals: options.interactiveTerminals,
         workspaceRoot: options.workspaceRoot ?? process.cwd(),
+        logger: this.logger,
         mcpManagement: options.mcpManagement,
         pluginHost: options.pluginHost,
+        runtimeDependencies: options.runtimeDependencies,
         workspaceInfo: options.workspaceInfo,
         workspaceSwitchRequest: options.workspaceSwitchRequest,
       },

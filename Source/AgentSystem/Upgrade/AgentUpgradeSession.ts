@@ -18,6 +18,8 @@ import {
 } from "../Database/AgentSqliteMigrationRunner.js";
 import type { AgentSqliteStoreContract } from "../Database/AgentSqliteStoreContract.js";
 import { errorMessage } from "../Core/AgentErrors.js";
+import { removeAgentPathSync } from "../Core/AgentFs.js";
+import { resolveAgentWorkspaceLayout } from "../Core/AgentWorkspaceLayout.js";
 
 export interface AgentUpgradeSessionOptions {
   readonly workspaceRoot: string;
@@ -61,7 +63,7 @@ export class AgentUpgradeSession {
 
   constructor(private readonly options: AgentUpgradeSessionOptions) {
     const workspaceRoot = path.resolve(options.workspaceRoot);
-    this.journal = new AgentUpgradeJournal(options.stateRoot ?? path.join(workspaceRoot, ".senera"));
+    this.journal = new AgentUpgradeJournal(options.stateRoot ?? resolveAgentWorkspaceLayout(workspaceRoot).stateRoot);
     this.allowedDataRoots = Object.freeze([
       workspaceRoot,
       ...(options.allowedDataRoots ?? []).map((root) => path.resolve(root)),
@@ -473,7 +475,7 @@ function restoreFileSnapshot(input: {
     fs.copyFileSync(input.backupPath, stagingPath, fs.constants.COPYFILE_EXCL);
     fs.renameSync(stagingPath, input.sourcePath);
   } finally {
-    fs.rmSync(stagingPath, { force: true });
+    removeAgentPathSync(stagingPath, { force: true });
   }
 }
 
@@ -483,7 +485,7 @@ function moveFilePreservingSource(sourcePath: string, targetPath: string): void 
   } catch (error) {
     if (!(error instanceof Error && "code" in error && error.code === "EXDEV")) throw error;
     fs.copyFileSync(sourcePath, targetPath, fs.constants.COPYFILE_EXCL);
-    fs.rmSync(sourcePath);
+    removeAgentPathSync(sourcePath);
   }
 }
 
@@ -504,7 +506,7 @@ function assertSqliteHealth(database: Database.Database, id: string): void {
 
 function removeSqliteFiles(databasePath: string): void {
   for (const filePath of [databasePath, `${databasePath}-wal`, `${databasePath}-shm`]) {
-    fs.rmSync(filePath, { force: true });
+    removeAgentPathSync(filePath, { force: true });
   }
 }
 

@@ -11,9 +11,9 @@ import {
 import { projectAgentConfigForm } from "./AgentConfigFormProjector.js";
 
 /**
- * 密钥只存在于 ModelProviderEndpoints：ApiKey 与可能承载凭证的请求头。
- * 快照离开进程边界前替换为占位符；回写时凭占位符按端点 Id 还原真实值，
- * 因此密钥永远不会进入前端内存，也不会因为用户保存配置而被占位符覆盖。
+ * 快照离开进程边界前会把供应商凭据和扩展配置中的敏感字段替换为占位符；
+ * 回写时按供应商 ID 或扩展配置路径从当前受保护配置还原占位符，因此保存整份配置
+ * 不会把已保存的密钥覆盖成占位符，也不会把解密后的值放进通用配置快照。
  */
 
 interface AgentEndpointSecretFields {

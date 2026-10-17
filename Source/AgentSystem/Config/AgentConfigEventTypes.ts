@@ -6,6 +6,7 @@ import type { AgentConfigDiagnostic, AgentConfigSnapshot, AgentConfigSnapshotSou
 import type { AgentProviderModelSnapshot } from "./AgentProviderModelDiscovery.js";
 import type { AgentLocalizedMessage } from "../I18n/AgentMessageCatalog.js";
 import type { AgentModelsDevCatalogStatus } from "../ModelEndpoints/AgentModelsDevCatalog.js";
+import type { AgentRuntimeDependencySnapshot } from "../Runtime/AgentRuntimeDependencyTypes.js";
 
 export type AgentSystemConfigOperationKind =
   | "config_update"
@@ -24,6 +25,7 @@ export interface AgentSystemConfigOperationResult {
 
 export interface AgentWorkspaceSnapshotData {
   workspaceId: string;
+  defaultWorkspaceId: string;
   workspaces: readonly import("../WorkspaceResources/AgentWorkspaceCatalog.js").AgentWorkspaceDescriptor[];
   capabilities: { browseDirectories: boolean };
   workspaceRoot: string;
@@ -87,6 +89,14 @@ export type AgentConfigDomainEvent =
       context: AgentEventContext;
       data: AgentConfigSnapshot & {
         operation?: AgentSystemConfigOperationResult;
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.RuntimeDependencySnapshot;
+      context: AgentEventContext;
+      data: {
+        dependencies: readonly AgentRuntimeDependencySnapshot[];
+        complete?: boolean;
       };
     }
   | {

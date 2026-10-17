@@ -57,6 +57,12 @@ export class AgentMemOSEmbeddingRuntime extends MemOS {
     if (input.content !== undefined || input.summary !== undefined) await this.flushEmbeddings();
     return this.embeddingRole.run("document", () => super.update(id, input));
   }
+  override async forget(id: string) {
+    // The SDK queue persists vectors by node id. Drain document work before
+    // deleting a node so an in-flight persist cannot race the foreign key.
+    await this.flushEmbeddings();
+    return super.forget(id);
+  }
   override search(query: string | SearchFilter) {
     return this.embeddingRole.run("query", () => super.search(query));
   }

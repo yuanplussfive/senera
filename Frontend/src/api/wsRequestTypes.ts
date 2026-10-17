@@ -66,6 +66,9 @@ export type WsRequest =
   | { type: "workspace.switch"; requestId: string; workspaceRoot: string }
   | { type: "systemTool.list" }
   | { type: "mcpServer.list" }
+  | { type: "runtimeDependency.list" }
+  | { type: "runtimeDependency.check"; dependencyId: string }
+  | { type: "runtimeDependency.install"; dependencyId: string }
   | { type: "mcpServer.restart"; serverId: string }
   | { type: "channel.connect"; kind: "telegram" | "qq" | "discord" }
   | {

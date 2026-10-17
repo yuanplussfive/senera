@@ -2,6 +2,12 @@ export type AgentConfigFormFieldType = "boolean" | "string" | "number" | "array"
 
 export type AgentConfigFormFieldOptionValue = string | number | boolean;
 
+export interface AgentConfigFormVisibilityCondition {
+  path: string[];
+  equals?: AgentConfigFormFieldOptionValue;
+  in?: AgentConfigFormFieldOptionValue[];
+}
+
 export type AgentConfigFormFieldLevel = "basic" | "advanced" | "internal";
 
 export type AgentConfigFormValueSource = "explicit" | "inherited" | "default" | "missing";
@@ -27,6 +33,7 @@ export interface AgentConfigFormModelSelection {
   capability: AgentConfigFormModelCapability;
   valueKind: "model-id";
   mutation: "config" | "default-model";
+  presentation?: "assignment" | "inline";
   cardinality?: "one" | "many";
   inheritance?: {
     source: "parent-model" | "default-model";
@@ -83,4 +90,5 @@ export interface AgentConfigFormField<TText = string> {
   keyPlaceholder?: string;
   valuePlaceholder?: string;
   modelSelection?: AgentConfigFormModelSelection;
+  visibleWhen?: AgentConfigFormVisibilityCondition;
 }

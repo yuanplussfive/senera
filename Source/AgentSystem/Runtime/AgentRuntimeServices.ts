@@ -107,7 +107,7 @@ export interface AgentRuntimeServiceDependencies {
   artifactRecorder: AgentToolExecutionArtifactRecorder;
   toolCallExecutor: AgentToolCallExecutor;
   piSessionRegistry: AgentPiActiveSessionRegistry;
-  persona: AgentPersonaContext;
+  personaProvider: () => AgentPersonaContext;
   promptContextBuilder: AgentPromptContextBuilder;
   piSubstrate: AgentPiSubstrate;
   skillActivation: AgentSkillActivationService;
@@ -143,7 +143,7 @@ export function createDefaultAgentRuntimeServices(dependencies: AgentRuntimeServ
         dependencies.skillActivation.recommendedToolRouting(skills, explicitActivations),
       buildBaseContext: (options) => dependencies.promptContextBuilder.buildBaseContext(options),
       buildRootCommand: (options) => dependencies.promptContextBuilder.buildRootCommand(options),
-      promptPersona: () => dependencies.persona,
+      promptPersona: () => dependencies.personaProvider(),
       toolCatalog: () => dependencies.toolCatalog.list(),
       liveContinuityMemory: async (input) => {
         if (!dependencies.continuityMemory) return EmptyAgentContinuityMemoryPromptContext;

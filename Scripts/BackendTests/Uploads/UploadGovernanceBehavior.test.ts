@@ -311,8 +311,8 @@ describe("upload governance behavior", () => {
 
     const textResponse = await fetch(buildContentUrl(harness.baseUrl, text.resourceUri));
     expect(textResponse.status).toBe(200);
-    expect(textResponse.headers.get("content-type")).toBe("application/octet-stream");
-    expect(textResponse.headers.get("content-disposition")).toContain("attachment");
+    expect(textResponse.headers.get("content-type")).toBe("text/plain");
+    expect(textResponse.headers.get("content-disposition")).toContain("inline");
 
     const svgResponse = await fetch(buildContentUrl(harness.baseUrl, svg.resourceUri));
     expect(svgResponse.status).toBe(200);

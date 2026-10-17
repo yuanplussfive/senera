@@ -78,6 +78,30 @@ describe("Tool invocation deadline", () => {
       removeDirectory(workspaceRoot);
     }
   });
+
+  test("lets a model-aware host tool extend its initial deadline", async () => {
+    const workspaceRoot = createTemporaryDirectory("senera-model-aware-deadline");
+    const tool = registeredTool(workspaceRoot, "Immediate", "ModelAware");
+    const capabilities = new AgentToolHostCapabilityRegistry().register("test.deadline", async (_args, context) => {
+      context.deadline?.extendTo?.(40);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return toolProcessSuccessResult({ completed: true });
+    });
+    const runner = new AgentToolRunner(
+      configWithTimeout(0.01),
+      workspaceRoot,
+      capabilities,
+      { getTool: () => tool },
+      new SeneraLocalExecutionEnv({ workspaceRoot }),
+    );
+
+    try {
+      await expect(runner.run(tool, {})).resolves.toMatchObject({ response: { ok: true } });
+    } finally {
+      await runner.close();
+      removeDirectory(workspaceRoot);
+    }
+  });
 });
 
 function configWithTimeout(timeoutSeconds: number): AgentSystemConfig {
@@ -87,6 +111,7 @@ function configWithTimeout(timeoutSeconds: number): AgentSystemConfig {
 function registeredTool(
   workspaceRoot: string,
   lifecycle: RegisteredTool["runtime"]["Lifecycle"] = "Immediate",
+  deadlinePolicy?: RegisteredTool["runtime"]["DeadlinePolicy"],
 ): RegisteredTool {
   return {
     owner: {
@@ -106,6 +131,7 @@ function registeredTool(
       Lifecycle: lifecycle,
       ProtocolVersion: 2,
       ResultAssessment: "ProcessExit",
+      ...(deadlinePolicy ? { DeadlinePolicy: deadlinePolicy } : {}),
       Capabilities: { Cancellation: true },
     },
     sources: [],

@@ -5,7 +5,7 @@ import { SeneraOutputSpoolMarkerFileName, type SeneraOutputSpoolState } from "..
 import { AgentArtifactFileNames, assertInsideRoot } from "./AgentArtifactLocator.js";
 import { SeneraWorkspaceBoundary } from "../Execution/SeneraWorkspaceBoundary.js";
 import { AgentResourceAccessIntents } from "../Safety/AgentResourceAccessPolicy.js";
-import { isMissingFileError } from "../Core/AgentFs.js";
+import { isMissingFileError, removeAgentPathWithRetry } from "../Core/AgentFs.js";
 import { isPathWithin } from "../Core/AgentPath.js";
 import { parseJsonText } from "../Core/AgentJsonParsing.js";
 import { AgentArtifactFileWriter } from "./AgentArtifactFileWriter.js";
@@ -574,7 +574,7 @@ async function removeDirectoryTree(directory: string, canonicalRoot: string): Pr
       await removeDirectoryTree(child, canonicalRoot);
       continue;
     }
-    await fs.rm(child, { force: true, recursive: false });
+    await removeAgentPathWithRetry(child);
   }
   await fs.rmdir(canonicalDirectory).catch((error: unknown) => {
     if (!isMissingFileError(error)) throw error;

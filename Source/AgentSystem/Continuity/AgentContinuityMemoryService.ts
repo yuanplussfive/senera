@@ -4,7 +4,7 @@ import {
 } from "./AgentContinuityMemoryTypes.js";
 import { AgentContinuitySqliteStore } from "./AgentContinuitySqliteStore.js";
 import type { AgentMemoryDeletionImpact } from "../Memory/AgentMemorySourceRepository.js";
-import { throwAbortReason } from "../Core/AgentCancellation.js";
+import { AgentCancellationError, throwAbortReason } from "../Core/AgentCancellation.js";
 import type { AgentContinuityLearningRecallConfig } from "../Types/AgentToolAndMemoryConfigTypes.js";
 import {
   applyAgentContinuityPromptBudget,
@@ -19,6 +19,8 @@ import {
   AgentMemOSSummarySchema,
 } from "./AgentMemOSSemanticTypes.js";
 import { agentMemOSReference } from "./AgentMemOSReference.js";
+import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
 interface RecallInput {
   readonly userInput: string;
@@ -34,6 +36,8 @@ export interface AgentContinuityMemoryServiceOptions {
   readonly store: AgentContinuitySqliteStore;
   readonly recallConfig: () => AgentContinuityLearningRecallConfig;
   readonly memos: Pick<AgentContinuityMemOSRuntime, "search" | "searchRecent">;
+  /** Prompt continuity is enrichment; its derived-memory failures are observable but non-fatal. */
+  readonly logger?: AgentLogger;
 }
 
 /** Builds prompt memory from the single MemOS authority. */
@@ -52,26 +56,40 @@ export class AgentContinuityMemoryService {
         ...(input.userInput.trim() ? { query: input.userInput.trim() } : {}),
         ...(deliveryEpoch === undefined ? {} : { deliveryEpoch }),
       };
-    const results = input.userInput.trim()
-      ? await this.options.memos.search(input.userInput, { excludedKeys: input.excludedMemoryKeys })
-      : await this.options.memos.searchRecent({ excludedKeys: input.excludedMemoryKeys });
-    throwAbortReason(input.signal);
-    const budgeted = applyAgentContinuityPromptBudget(
-      {
-        digests: results.flatMap(projectMemOSPeriodDigest),
-        events: results.flatMap(projectMemOSEvent),
-        historicalTokenBudget: input.historicalTokenBudget,
-      },
-      recall.PromptBudget,
-    );
-    return {
-      enabled: true,
-      ...(input.userInput.trim() ? { query: input.userInput.trim() } : {}),
-      ...(deliveryEpoch === undefined ? {} : { deliveryEpoch }),
-      periodDigests: budgeted.digests,
-      eventCandidates: budgeted.events,
-      selection: budgeted.selection,
-    };
+    let results: AgentContinuityMemOSSearchResult[];
+    try {
+      results = input.userInput.trim()
+        ? await this.options.memos.search(input.userInput, { excludedKeys: input.excludedMemoryKeys })
+        : await this.options.memos.searchRecent({ excludedKeys: input.excludedMemoryKeys });
+      throwAbortReason(input.signal);
+      const budgeted = applyAgentContinuityPromptBudget(
+        {
+          digests: results.flatMap(projectMemOSPeriodDigest),
+          events: results.flatMap(projectMemOSEvent),
+          historicalTokenBudget: input.historicalTokenBudget,
+        },
+        recall.PromptBudget,
+      );
+      return {
+        enabled: true,
+        ...(input.userInput.trim() ? { query: input.userInput.trim() } : {}),
+        ...(deliveryEpoch === undefined ? {} : { deliveryEpoch }),
+        periodDigests: budgeted.digests,
+        eventCandidates: budgeted.events,
+        selection: budgeted.selection,
+      };
+    } catch (error) {
+      // Continuity is derived context. A failed recall must not turn a model
+      // turn into run.failed; explicit recall tools keep their strict boundary.
+      if (error instanceof AgentCancellationError) throw error;
+      throwAbortReason(input.signal);
+      this.options.logger?.warn("memory.memos.prompt_context_failed", {
+        sessionId: input.sessionId,
+        requestId: input.requestId,
+        message: errorMessage(error),
+      });
+      return this.emptyPromptContext(input.userInput, deliveryEpoch);
+    }
   }
   async liveContext(
     input: Omit<RecallInput, "userInput"> & { readonly userInput?: string } = {},
@@ -116,6 +134,15 @@ export class AgentContinuityMemoryService {
   }
   private deliveryEpoch(sessionId: string): number {
     return this.deliveryEpochs.get(sessionId) ?? 0;
+  }
+
+  private emptyPromptContext(userInput: string, deliveryEpoch?: number): AgentContinuityMemoryPromptContext {
+    return {
+      ...EmptyAgentContinuityMemoryPromptContext,
+      enabled: true,
+      ...(userInput.trim() ? { query: userInput.trim() } : {}),
+      ...(deliveryEpoch === undefined ? {} : { deliveryEpoch }),
+    };
   }
 }
 

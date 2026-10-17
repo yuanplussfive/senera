@@ -27,6 +27,7 @@ import type { AgentWebSocketTransport } from "./AgentWebSocketTransport.js";
 import type { AgentWorkspaceCatalog } from "../WorkspaceResources/AgentWorkspaceCatalog.js";
 import type { AgentArtifactManifestIndexCache } from "../Memory/AgentArtifactManifestIndexCache.js";
 import type { AgentPluginHost } from "../Plugins/AgentPluginHost.js";
+import type { AgentRuntimeDependencyService } from "../Runtime/AgentRuntimeDependencyTypes.js";
 
 export type AgentPluginCatalogSource = Pick<AgentPluginHost, "list">;
 
@@ -39,7 +40,20 @@ export interface AgentChannelServiceControl {
 /** Read-only workspace identity reported to connected clients. */
 export type AgentWorkspaceInfoSnapshot = AgentWorkspaceSnapshotData;
 
-export type AgentWorkspaceSwitchRequest = (workspaceRoot: string) => Promise<AgentWorkspaceInfoSnapshot>;
+export interface AgentWorkspaceSwitchResult {
+  snapshot: AgentWorkspaceInfoSnapshot;
+  /** Runs after the switched event has been delivered to the requesting client. */
+  finalize?: () => Promise<void>;
+}
+
+/**
+ * The snapshot form remains accepted for transports that do not own a runtime
+ * lifecycle. Workspace hosts use the result form to retire the previous
+ * runtime only after the client has received the new workspace identity.
+ */
+export type AgentWorkspaceSwitchRequest = (
+  workspaceRoot: string,
+) => Promise<AgentWorkspaceInfoSnapshot | AgentWorkspaceSwitchResult>;
 
 export interface AgentWebSocketServerOptions {
   artifactManifestIndex?: AgentArtifactManifestIndexCache;
@@ -71,6 +85,7 @@ export interface AgentWebSocketServerOptions {
   eventWriter: AgentRunEventWriter;
   mcpManagement?: AgentMcpManagementService;
   pluginHost?: AgentPluginCatalogSource;
+  runtimeDependencies?: AgentRuntimeDependencyService;
   uploadStore?: AgentUploadStore;
   resourceResolver?: AgentResourceResolverLike;
   runtimeUpdate?: AgentRuntimeUpdateHttpApiOptions;
@@ -95,8 +110,10 @@ export interface AgentWebSocketRequestContext {
   executionResources?: AgentExecutionResourceBroker;
   interactiveTerminals?: AgentInteractiveTerminalRuntime;
   workspaceRoot: string;
+  logger?: AgentLogger;
   mcpManagement?: AgentMcpManagementService;
   pluginHost?: AgentPluginCatalogSource;
+  runtimeDependencies?: AgentRuntimeDependencyService;
   workspaceInfo?: () => AgentWorkspaceInfoSnapshot;
   workspaceSwitchRequest?: AgentWorkspaceSwitchRequest;
 }

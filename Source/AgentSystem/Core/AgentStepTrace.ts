@@ -47,15 +47,15 @@ function clampPreview(value: string | undefined): string | undefined {
   return normalized.length > MAX_PREVIEW_CHARS ? `${normalized.slice(0, MAX_PREVIEW_CHARS)}…` : normalized;
 }
 
-/** 终结节点：生成回复 / 向用户提问。 */
-export function buildAnswerTrace(step: number, seq: number, decisionKind: "final_answer" | "ask_user"): StepTrace {
+/** 终结节点：生成回复。 */
+export function buildAnswerTrace(step: number, seq: number, decisionKind: "final_answer"): StepTrace {
   return {
     step,
     seq,
     kind: "answer",
     decisionKind,
     status: "done",
-    title: decisionKind === "ask_user" ? "向用户提问" : "生成回复",
+    title: "生成回复",
   };
 }
 

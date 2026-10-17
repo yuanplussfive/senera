@@ -102,6 +102,29 @@ describe("budgeted JSON projection", () => {
       limit,
     );
   });
+
+  test("projects oversized model text by complete units and keeps source order", () => {
+    const projector = new AgentTokenProjector("test-model");
+    const estimator = new AgentModelTokenEstimator({ model: "test-model" });
+    const source = ["第一段说明背景。", "第二段记录决定。", "第三段记录待处理事项。", "第四段给出结论。"].join("\n\n");
+
+    const projection = projector.projectText(source, 20);
+
+    expect(projection.truncated).toBe(true);
+    expect(projection.complete).toBe(false);
+    expect(projection.omittedUnits).toBeGreaterThan(0);
+    expect(estimator.estimate(projection.text).tokenCount).toBeLessThanOrEqual(20);
+    expect(projection.text.indexOf("第一段")).toBeLessThan(projection.text.indexOf("第四段"));
+  });
+
+  test("keeps an unbroken oversized summary inside the budget", () => {
+    const projector = new AgentTokenProjector("test-model");
+    const projection = projector.projectText("x".repeat(300_000), 64);
+
+    expect(projection.truncated).toBe(true);
+    expect(projection.tokenCount).toBeLessThanOrEqual(64);
+    expect(projection.text.length).toBeGreaterThan(0);
+  });
 });
 
 describe("turn token budget", () => {

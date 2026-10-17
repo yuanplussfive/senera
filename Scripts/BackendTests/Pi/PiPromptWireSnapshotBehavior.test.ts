@@ -12,16 +12,10 @@ import {
 } from "../../../Source/AgentSystem/ModelEndpoints/AgentPromptWireSnapshot.js";
 
 describe("Pi prompt wire snapshot", () => {
-  test("captures the post-projection payload and exact HTTP body identity", async () => {
-    const capture = createAgentPromptWireCapture({
-      fetch: async () => new Response("", { status: 200 }),
-    });
+  test("captures the post-projection payload without intercepting HTTP transport", async () => {
+    const capture = createAgentPromptWireCapture({});
     const model = modelFor("openai-responses");
     await capture.onPayload({ messages: [{ role: "system", content: "stable" }] }, model);
-    await capture.fetch("https://example.test/v1/responses", {
-      method: "POST",
-      body: '{"messages":[{"role":"system","content":"stable"}]}',
-    });
 
     const snapshot = capture.snapshot({
       model,
@@ -41,47 +35,57 @@ describe("Pi prompt wire snapshot", () => {
       logicalCacheScope: "logical-a",
       providerCacheScope: "provider-a",
       observation: "hit",
-      wireBodyBytes: 51,
+      payloadBytes: 51,
       cacheReadTokens: 128,
     });
     expect(snapshot.payloadDigest).toMatch(/^[a-f0-9]{64}$/u);
-    expect(snapshot.wireBodyDigest).toMatch(/^[a-f0-9]{64}$/u);
     expect(snapshot.wireStablePrefixDigest).toMatch(/^[a-f0-9]{64}$/u);
+    expect(snapshot).not.toHaveProperty("wireBodyDigest");
+    expect(capture).not.toHaveProperty("fetch");
   });
 
-  test("verifies the exact serialized prefix across volatile request changes", async () => {
-    const capture = createAgentPromptWireCapture({
-      fetch: async () => new Response("", { status: 200 }),
-    });
+  test("verifies the provider stable prefix across volatile payload changes", async () => {
+    const capture = createAgentPromptWireCapture({});
     const model = modelFor("openai-responses");
-    const stable = '{"system":"stable","tools":[{"name":"ToolSearch"}],"messages":';
-    await capture.fetch("https://example.test/v1/responses", { body: `${stable}[{"content":"one"}]` });
+    const stablePayload = {
+      model: "test-model",
+      input: [
+        { role: "developer", content: "stable" },
+        { role: "user", content: [{ type: "input_text", text: "one" }] },
+      ],
+      tools: [{ type: "function", name: "ToolSearch" }],
+    };
+    await capture.onPayload(stablePayload, model);
     const first = capture.snapshot({
       model,
       stablePrefixRevision: "stable",
-      stablePrefixBytes: Buffer.byteLength(stable),
+      stablePrefixBytes: 1,
       retention: "long",
       observation: "requested",
       usage: { cacheRead: 0, cacheWrite: 0 },
     });
-    await capture.fetch("https://example.test/v1/responses", { body: `${stable}[{"content":"two"}]` });
+    await capture.onPayload(
+      {
+        ...stablePayload,
+        input: [stablePayload.input[0], { role: "user", content: [{ type: "input_text", text: "two" }] }],
+      },
+      model,
+    );
     const second = capture.snapshot({
       model,
       stablePrefixRevision: "stable",
-      stablePrefixBytes: Buffer.byteLength(stable),
+      stablePrefixBytes: 1,
       retention: "long",
       observation: "requested",
       usage: { cacheRead: 0, cacheWrite: 0 },
     });
 
-    expect(first.wireBodyDigest).not.toBe(second.wireBodyDigest);
+    expect(first.payloadDigest).not.toBe(second.payloadDigest);
     expect(verifyAgentPromptWireStablePrefix(first, second)).toEqual({ stable: true });
   });
 
   test("projects the provider payload instead of slicing the JSON envelope", async () => {
-    const capture = createAgentPromptWireCapture({
-      fetch: async () => new Response("", { status: 200 }),
-    });
+    const capture = createAgentPromptWireCapture({});
     const model = modelFor("openai-responses");
     const stablePayload = {
       model: "test-model",

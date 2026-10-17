@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type Database from "better-sqlite3";
-import { withAgentFileAccessRetry } from "../Core/AgentFs.js";
+import { removeAgentPathWithRetry, withAgentFileAccessRetry } from "../Core/AgentFs.js";
 import { createOpaqueId } from "../Core/AgentIds.js";
 import { AgentSqliteDatabaseKernel } from "../Database/AgentSqliteDatabaseKernel.js";
 import type { ToolWorkspaceFileContentSnapshot } from "../Types/ToolRuntimeTypes.js";
@@ -142,7 +142,7 @@ export class AgentWorkspaceObserverSqliteStore {
       await withAgentFileAccessRetry(() => fs.writeFile(temporaryPath, text, "utf8"));
       await withAgentFileAccessRetry(() => fs.rename(temporaryPath, filePath));
     } finally {
-      await fs.rm(temporaryPath, { force: true });
+      await removeAgentPathWithRetry(temporaryPath);
     }
   }
 

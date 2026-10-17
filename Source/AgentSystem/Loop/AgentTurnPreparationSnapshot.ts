@@ -37,7 +37,7 @@ const VisibleOutputRuleSchema = z
 const RootCommandSnapshotSchema = z
   .object({
     authority: z.literal("senera_runtime_root"),
-    action: z.enum(["answer", "ask_user", "discover_tools", "use_tools"]),
+    action: z.enum(["answer", "discover_tools", "use_tools"]),
     outputMode: z.enum(["final_text", "open"]),
     toolAccess: z.enum(["disabled", "restricted", "discovery_only"]),
     objective: z.string(),

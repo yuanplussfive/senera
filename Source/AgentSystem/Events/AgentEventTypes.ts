@@ -10,6 +10,8 @@ import type { AgentOrchestrationDomainEvent } from "../Orchestration/AgentOrches
 import type { AgentExecutionLedgerDomainEvent } from "../Goals/AgentExecutionEventTypes.js";
 import type { AgentTodoDomainEvent } from "../Todos/AgentTodoEventTypes.js";
 import type { AgentChannelDomainEvent } from "../Channels/AgentChannelEventTypes.js";
+import type { AgentRuntimeDependencySnapshot } from "../Runtime/AgentRuntimeDependencyTypes.js";
+import type { AgentEventKinds } from "./AgentEventCatalog.js";
 
 type AgentDomainEventPayload =
   | AgentSessionDomainEvent
@@ -23,7 +25,15 @@ type AgentDomainEventPayload =
   | AgentOrchestrationDomainEvent
   | AgentExecutionLedgerDomainEvent
   | AgentTodoDomainEvent
-  | AgentChannelDomainEvent;
+  | AgentChannelDomainEvent
+  | {
+      kind: typeof AgentEventKinds.RuntimeDependencySnapshot;
+      context: Record<string, never>;
+      data: {
+        readonly dependencies: readonly AgentRuntimeDependencySnapshot[];
+        readonly complete?: boolean;
+      };
+    };
 
 export type AgentDomainEvent = AgentDomainEventPayload & {
   readonly eventId?: string;

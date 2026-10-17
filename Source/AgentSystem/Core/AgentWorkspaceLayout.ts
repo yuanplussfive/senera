@@ -1,9 +1,21 @@
 import fs from "node:fs";
 import path from "node:path";
 import { relativePathWithin } from "./AgentPath.js";
+import {
+  AgentPromptPresetDirectoryName,
+  AgentPromptPresetStateDirectoryName,
+  AgentPromptPresetStateFileName,
+} from "./AgentPromptPresetContract.js";
+
+export const AgentWorkspaceStateDirectoryName = AgentPromptPresetStateDirectoryName;
+export const AgentWorkspaceConfigFileName = "senera.config.json";
+export const AgentWorkspaceSandboxRuntimeDirectoryName = "sandbox-runtime";
+export const AgentWorkspacePromptPresetStateFileName = AgentPromptPresetStateFileName;
+export const AgentWorkspaceUserPluginsDirectoryName = "user-plugins";
+export const AgentWorkspaceProjectPluginsDirectoryName = "plugins";
 
 const WorkspaceLayout = {
-  stateDirectory: ".senera",
+  stateDirectory: AgentWorkspaceStateDirectoryName,
   skillsDirectory: "skills",
   mcpDirectory: "mcp",
   contextDirectory: "context",
@@ -66,10 +78,25 @@ export interface AgentWorkspaceResourceClassification {
 export interface AgentWorkspaceLayout {
   readonly root: string;
   readonly stateRoot: string;
+  /** Workspace-local structured observability root. */
+  readonly logsRoot: string;
+  readonly configFile: string;
+  /** Workspace-local directory containing user-authored Markdown prompt presets. */
+  readonly promptPresetRoot: string;
+  /** Workspace-local pointer to the active Markdown prompt preset. */
+  readonly promptPresetStateFile: string;
+  /** Pi session history owned by this workspace. */
+  readonly piSessionsRoot: string;
+  readonly sandboxRuntimeRoot: string;
   /** Desktop runtime state when this layout represents the application directory. */
   readonly desktopRuntimeRoot: string;
   readonly skillRoot: string;
   readonly mcpRoot: string;
+  readonly agentRolesRoot: string;
+  /** Host/user plugin root. It is always distinct from the project plugin root. */
+  readonly userPluginsRoot: string;
+  /** Workspace-owned project plugin root. */
+  readonly projectPluginsRoot: string;
   readonly contextRoot: string;
   readonly projectContextFile: string;
   readonly exportsRoot: string;
@@ -105,7 +132,11 @@ export interface AgentWorkspaceLayout {
   readonly continuityIdentity: string;
 }
 
-export function resolveAgentWorkspaceLayout(workspaceRoot: string, runtimeStateRoot?: string): AgentWorkspaceLayout {
+export function resolveAgentWorkspaceLayout(
+  workspaceRoot: string,
+  runtimeStateRoot?: string,
+  userPluginsRoot?: string,
+): AgentWorkspaceLayout {
   const root = path.resolve(workspaceRoot);
   const projectStateRoot = path.join(root, WorkspaceLayout.stateDirectory);
   const stateRoot = runtimeStateRoot ? path.resolve(runtimeStateRoot) : projectStateRoot;
@@ -113,9 +144,18 @@ export function resolveAgentWorkspaceLayout(workspaceRoot: string, runtimeStateR
   return {
     root,
     stateRoot,
+    logsRoot: path.join(stateRoot, "logs"),
+    configFile: path.join(root, AgentWorkspaceConfigFileName),
+    promptPresetRoot: path.join(root, AgentPromptPresetDirectoryName),
+    promptPresetStateFile: path.join(projectStateRoot, AgentWorkspacePromptPresetStateFileName),
+    piSessionsRoot: path.join(stateRoot, "pi-sessions"),
+    sandboxRuntimeRoot: path.join(stateRoot, AgentWorkspaceSandboxRuntimeDirectoryName),
     desktopRuntimeRoot: path.join(stateRoot, "desktop"),
     skillRoot: path.join(projectStateRoot, WorkspaceLayout.skillsDirectory),
     mcpRoot: path.join(projectStateRoot, WorkspaceLayout.mcpDirectory),
+    agentRolesRoot: path.join(projectStateRoot, "agents"),
+    userPluginsRoot: path.resolve(userPluginsRoot ?? path.join(stateRoot, AgentWorkspaceUserPluginsDirectoryName)),
+    projectPluginsRoot: path.join(projectStateRoot, AgentWorkspaceProjectPluginsDirectoryName),
     contextRoot: path.join(projectStateRoot, WorkspaceLayout.contextDirectory),
     projectContextFile: path.join(
       projectStateRoot,
@@ -139,6 +179,13 @@ export function resolveAgentWorkspaceLayout(workspaceRoot: string, runtimeStateR
     credentialSecretKey: path.join(dataRoot, ...WorkspaceLayout.credentialSecretKey),
     continuityIdentity: path.join(dataRoot, WorkspaceLayout.continuityIdentity),
   };
+}
+
+export function resolveAgentWorkspaceConfigPath(
+  workspaceRoot: string,
+  configuredPath: string = AgentWorkspaceConfigFileName,
+): string {
+  return path.resolve(workspaceRoot, configuredPath);
 }
 
 export function listAgentWorkspaceNonContentRoots(workspaceRoot: string): string[] {

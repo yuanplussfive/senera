@@ -39,8 +39,9 @@ import type {
 
 const BrowserContentTrust = "untrusted_browser_content" as const;
 
-const PublicArgumentsByOperation = {
+const ArgumentsByOperation = {
   open: ["url"],
+  render_html: ["url", "timeoutMs", "settleTimeoutMs", "settlePollMs", "stableSamples", "maxHtmlChars"],
   read: ["url"],
   snapshot: ["selector", "interactive", "compact", "includeUrls", "depth"],
   click: ["selector", "newTab"],
@@ -73,6 +74,7 @@ const PublicArgumentsByOperation = {
 
 const OperationSummary = {
   open: "Opened a controlled browser page.",
+  render_html: "Rendered a page with the controlled headless browser.",
   read: "Read browser content.",
   snapshot: "Captured an accessibility snapshot.",
   click: "Activated a browser element.",
@@ -306,6 +308,7 @@ export class AgentBrowserRuntime {
     const arguments_ = pickBrowserArguments(operation, input);
     if (
       operation === "open" ||
+      operation === "render_html" ||
       (operation === "read" && typeof arguments_.url === "string") ||
       (operation === "tab_new" && typeof arguments_.url === "string")
     ) {
@@ -473,7 +476,11 @@ export class AgentBrowserRuntime {
     raw: AgentBrowserDriverOperationResult,
     arguments_: Readonly<Record<string, unknown>>,
   ): BrowserOperationProjection {
-    const content = truncateText(raw.content ?? "", this.configuration.runtime.outputMaxChars);
+    const requestedMaxChars =
+      operation === "render_html" && typeof arguments_.maxHtmlChars === "number"
+        ? Math.min(this.configuration.runtime.outputMaxChars, Math.max(1, Math.floor(arguments_.maxHtmlChars)))
+        : this.configuration.runtime.outputMaxChars;
+    const content = truncateText(raw.content ?? "", requestedMaxChars);
     const screenshot = raw.screenshot
       ? this.createScreenshotAsset(raw.screenshot.data, raw.screenshot.mediaType)
       : undefined;
@@ -698,7 +705,7 @@ function pickBrowserArguments(
   input: Readonly<Record<string, unknown>>,
 ): Record<string, unknown> {
   return Object.fromEntries(
-    PublicArgumentsByOperation[operation].filter((key) => input[key] !== undefined).map((key) => [key, input[key]]),
+    ArgumentsByOperation[operation].filter((key) => input[key] !== undefined).map((key) => [key, input[key]]),
   );
 }
 

@@ -1,5 +1,7 @@
 import {
   normalizeContext,
+  getCurrentSystemPrompt,
+  getCurrentTools,
   type AssistantMessage,
   type AssistantMessageEventStream,
   type Context,
@@ -26,6 +28,7 @@ import {
   resolveAgentPromptCacheObservation,
   resolveAgentPromptCacheStrategy,
 } from "./AgentPromptWireSnapshot.js";
+import { createAgentStreamIdleWatchdog, isAgentStreamActivityEvent } from "./AgentModelRequestTimeout.js";
 
 export interface AgentPiModelExecutionRequest {
   readonly requestId: string;
@@ -68,20 +71,26 @@ export class AgentPiModelRequestExecutor {
     const startedAt = performance.now();
     const firstToken = new AbortController();
     const deadline = new AbortController();
+    const streamIdle = new AbortController();
     const lifetime = new AbortController();
     const signal = AbortSignal.any(
-      [input.signal, firstToken.signal, deadline.signal, lifetime.signal].filter(
+      [input.signal, firstToken.signal, deadline.signal, streamIdle.signal, lifetime.signal].filter(
         (value): value is AbortSignal => value !== undefined,
       ),
     );
     const responseBudget = new AgentPiModelResponseBudget(this.configuration);
     const firstTokenTimer = startDeadline(firstToken, this.configuration.FirstTokenTimeoutMs, "first_token");
     const requestTimer = startDeadline(deadline, this.configuration.MaxRequestMs, "max_request");
+    const streamIdleWatchdog = createAgentStreamIdleWatchdog(
+      streamIdle,
+      this.configuration.MaxRequestMs,
+      this.configuration.FirstTokenTimeoutMs,
+    );
     const context = normalizeContext(input.context);
     const requestCharacters = JSON.stringify(context).length;
     const stablePrefix = {
-      systemPrompt: input.context.systemPrompt ?? "",
-      tools: (input.context.tools ?? []).map(projectStableTool),
+      systemPrompt: getCurrentSystemPrompt(context.messages),
+      tools: getCurrentTools(context.messages).map(projectStableTool),
     };
     const strategy = resolveAgentPromptCacheStrategy(this.pi.model.api);
     const retention = projectAgentPromptCacheRetention(strategy, input.cache?.retention ?? "none");
@@ -154,7 +163,7 @@ export class AgentPiModelRequestExecutor {
         maxRetries: input.providerRetries === false ? 0 : this.configuration.MaxNetworkRetries,
         maxRetryDelayMs: this.configuration.RetryAfterMaxDelayMs,
         ...(input.cache ? { sessionId: input.cache.scope, cacheRetention: retention } : {}),
-        ...(capture ? { fetch: capture.fetch, onPayload: capture.onPayload } : {}),
+        ...(capture ? { onPayload: capture.onPayload } : {}),
         ...(input.omitOutputTokenLimit || this.configuration.MaxOutputTokens <= 0
           ? {}
           : { maxTokens: this.configuration.MaxOutputTokens }),
@@ -186,6 +195,7 @@ export class AgentPiModelRequestExecutor {
           firstTokenMs ??= Math.max(0, Math.round(performance.now() - startedAt));
           if (firstTokenTimer) clearTimeout(firstTokenTimer);
         }
+        if (isAgentStreamActivityEvent(event)) streamIdleWatchdog.reset();
         if (event.type === "done") {
           break;
         }
@@ -202,7 +212,7 @@ export class AgentPiModelRequestExecutor {
       await report("completed");
       return message;
     } catch (error) {
-      const timeout = firstToken.signal.reason ?? deadline.signal.reason;
+      const timeout = firstToken.signal.reason ?? streamIdle.signal.reason ?? deadline.signal.reason;
       const failure = timeout ?? (input.signal?.aborted ? input.signal.reason : error);
       await report("failed", failure);
       if (timeout || input.signal?.aborted) throw failure;
@@ -213,6 +223,7 @@ export class AgentPiModelRequestExecutor {
       lifetime.abort();
       if (firstTokenTimer) clearTimeout(firstTokenTimer);
       if (requestTimer) clearTimeout(requestTimer);
+      streamIdleWatchdog.clear();
     }
   }
 }

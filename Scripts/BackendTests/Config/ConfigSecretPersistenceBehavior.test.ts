@@ -30,6 +30,7 @@ describe("configuration secret persistence", () => {
           Configuration: {
             search: {
               exaApiKey: "exa-extension-secret",
+              codexApiKey: "codex-extension-secret",
               endpoint: "https://mcp.exa.ai/mcp",
             },
           },
@@ -40,6 +41,7 @@ describe("configuration secret persistence", () => {
     const protectedConfig = codec.protectConfig(config);
     const protectedSearch = protectedConfig.Extensions?.["web-tools"]?.Configuration?.search as Record<string, unknown>;
     expect(protectedSearch.exaApiKey).toMatch(/^senera:secret:v1:/u);
+    expect(protectedSearch.codexApiKey).toMatch(/^senera:secret:v1:/u);
     expect(protectedSearch.endpoint).toBe("https://mcp.exa.ai/mcp");
     expect(config.Extensions?.["web-tools"]?.Configuration?.search).toMatchObject({
       exaApiKey: "exa-extension-secret",

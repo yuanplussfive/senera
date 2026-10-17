@@ -5,7 +5,8 @@ export interface AgentPiTurnGuardOptions<T> {
   phase: string;
   timeoutMs: number;
   signal?: AbortSignal;
-  abort?: () => void | Promise<void>;
+  abort?: (reason?: Error) => void | Promise<void>;
+  timeoutAbort?: (reason?: Error) => void | Promise<void>;
   run: () => Promise<T>;
 }
 
@@ -38,22 +39,22 @@ interface InterruptionPromise extends Promise<never> {
 function createInterruptionPromise<T>(options: AgentPiTurnGuardOptions<T>): InterruptionPromise {
   const disposers: Array<() => void> = [];
   const promise = new Promise<never>((_resolve, reject) => {
-    const rejectWith = (error: Error) => {
-      void options.abort?.();
+    const rejectWith = (error: Error, abort?: (reason?: Error) => void | Promise<void>) => {
+      if (abort) void Promise.resolve(abort(error)).catch(() => undefined);
       reject(error);
     };
 
     if (isEnabledTimeout(options.timeoutMs)) {
-      const timer = setTimeout(
-        () => rejectWith(new AgentPiTurnPhaseTimeoutError(options.phase, options.timeoutMs)),
-        options.timeoutMs,
-      );
+      const timer = setTimeout(() => {
+        const error = new AgentPiTurnPhaseTimeoutError(options.phase, options.timeoutMs);
+        rejectWith(error, options.timeoutAbort ?? options.abort);
+      }, options.timeoutMs);
       disposers.push(() => clearTimeout(timer));
     }
 
     const signal = options.signal;
     if (signal) {
-      const onAbort = () => rejectWith(new AgentCancellationError(readAbortMessage(signal)));
+      const onAbort = () => rejectWith(new AgentCancellationError(readAbortMessage(signal)), options.abort);
       signal.addEventListener("abort", onAbort, { once: true });
       disposers.push(() => signal.removeEventListener("abort", onAbort));
     }

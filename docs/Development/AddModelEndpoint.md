@@ -21,7 +21,7 @@ native 使用从契约生成的必选 tool call，BAML 使用正式的请求生�
 - `Source/AgentSystem/ModelEndpoints/AgentModelEndpointContract.ts`
 - `Source/AgentSystem/ModelEndpoints/AgentNativeToolApiStreams.ts`
 - `Source/AgentSystem/ModelEndpoints/AgentNativeToolModelProjector.ts`
-- 配置类型、schema、defaults 和 form projection；仅在用户可见配置改变时同步前端。
+- 配置类型、schema、defaults 和 form projection；只在用户可见配置改变时同步前端。
 
 供应商负责 API 根、鉴权和 headers，模型负责名字、能力和运行参数。图片数据以 Pi 原生图片块发送，不放入提示文本。Embedding 使用本地 query/document 接口，独立于模型生成请求。
 

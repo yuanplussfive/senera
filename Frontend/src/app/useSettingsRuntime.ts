@@ -42,6 +42,7 @@ export function useSettingsRuntime({
   const systemTools = useStore((state) => state.systemTools);
   const systemExtensions = useStore((state) => state.systemExtensions);
   const mcpServers = useStore((state) => state.mcpServers);
+  const runtimeDependenciesById = useStore((state) => state.runtimeDependencies);
   const toolSettingsSynced = useStore((state) => state.toolSettingsSynced);
   const channelStatuses = useStore((state) => state.channelStatuses);
   const [mcpInputOperation, setMcpInputOperation] = useState<McpInputMutationState | null>(null);
@@ -57,6 +58,18 @@ export function useSettingsRuntime({
     const mcpServersSent = sendWhenConnected({ type: "mcpServer.list" });
     return systemToolsSent && mcpServersSent;
   }, [sendWhenConnected]);
+  const refreshRuntimeDependencies = useCallback(
+    (): boolean => sendWhenConnected({ type: "runtimeDependency.list" }),
+    [sendWhenConnected],
+  );
+  const checkRuntimeDependency = useCallback(
+    (dependencyId: string): boolean => sendWhenConnected({ type: "runtimeDependency.check", dependencyId }),
+    [sendWhenConnected],
+  );
+  const installRuntimeDependency = useCallback(
+    (dependencyId: string): boolean => sendWhenConnected({ type: "runtimeDependency.install", dependencyId }),
+    [sendWhenConnected],
+  );
   const updateMcpInputs = useCallback(
     (serverId: string, values: Record<string, McpInputValue>, deletes?: string[]): string | null => {
       const requestId = generateId();
@@ -101,6 +114,24 @@ export function useSettingsRuntime({
     },
     [httpBaseUrl],
   );
+  const readExtensionSecret = useCallback(
+    async (extensionId: string, path: readonly string[]): Promise<string> => {
+      const url = new URL("/api/extension-secrets", `${httpBaseUrl}/`);
+      url.searchParams.set("extensionId", extensionId);
+      for (const part of path) url.searchParams.append("path", part);
+      const response = await fetch(url, {
+        cache: "no-store",
+        credentials: "include",
+        headers: { Accept: "application/json" },
+      });
+      const payload: unknown = await response.json();
+      if (!response.ok || !isExtensionSecretResponse(payload, extensionId, path)) {
+        throw new Error(`Unable to read secret for extension ${extensionId}.`);
+      }
+      return payload.value;
+    },
+    [httpBaseUrl],
+  );
 
   const systemConfig = useMemo<SettingsSystemConfigHandle>(
     () => ({
@@ -110,13 +141,18 @@ export function useSettingsRuntime({
       systemTools,
       systemExtensions,
       mcpServers,
+      runtimeDependencies: Object.values(runtimeDependenciesById),
       channelStatuses,
       toolSettingsSynced,
       mcpInputOperation,
       providerModelCatalogs,
       providerModelErrors,
       readProviderApiKey,
+      readExtensionSecret,
       refreshToolSettings,
+      refreshRuntimeDependencies,
+      checkRuntimeDependency,
+      installRuntimeDependency,
       updateMcpInputs,
       restartMcpServer,
       connectChannel,
@@ -127,11 +163,16 @@ export function useSettingsRuntime({
       connectChannel,
       controller,
       mcpServers,
+      runtimeDependenciesById,
       mcpInputOperation,
       providerModelCatalogs,
       providerModelErrors,
       readProviderApiKey,
+      readExtensionSecret,
       refreshToolSettings,
+      refreshRuntimeDependencies,
+      checkRuntimeDependency,
+      installRuntimeDependency,
       restartMcpServer,
       updateMcpInputs,
       systemExtensions,
@@ -175,4 +216,21 @@ function isProviderCredentialResponse(value: unknown, providerId: string): value
   if (!value || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
   return record.ok === true && record.providerId === providerId && typeof record.apiKey === "string";
+}
+
+function isExtensionSecretResponse(
+  value: unknown,
+  extensionId: string,
+  path: readonly string[],
+): value is { value: string } {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    record.ok === true &&
+    record.extensionId === extensionId &&
+    Array.isArray(record.path) &&
+    record.path.length === path.length &&
+    record.path.every((part, index) => part === path[index]) &&
+    typeof record.value === "string"
+  );
 }

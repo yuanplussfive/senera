@@ -5,6 +5,7 @@ import { type AgentLogger } from "./AgentLogger.js";
 export interface AgentServerEventLoggerOptions {
   logger: AgentLogger;
   detail?: "compact" | "verbose";
+  persistHiddenEvents?: boolean | (() => boolean);
 }
 
 const HiddenCompactEvents = new Set<string>([
@@ -25,13 +26,17 @@ export class AgentServerEventLogger {
   constructor(private readonly options: AgentServerEventLoggerOptions) {}
 
   event(envelope: AgentEventEnvelope<string, unknown>): void {
-    if (this.shouldHide(envelope)) {
-      return;
-    }
+    const hidden = this.shouldHide(envelope);
+    const persistHiddenEvents =
+      typeof this.options.persistHiddenEvents === "function"
+        ? this.options.persistHiddenEvents()
+        : this.options.persistHiddenEvents === true;
+    this.options.logger.event(envelope, {
+      display: !hidden,
+      persist: !hidden || persistHiddenEvents,
+    });
 
-    this.options.logger.event(envelope);
-
-    if (this.shouldPrintPayload(envelope)) {
+    if (!hidden && this.shouldPrintPayload(envelope)) {
       this.options.logger.tree(`${envelope.kind} payload`, envelope.data);
     }
   }

@@ -37,9 +37,9 @@ describe("local administrator account", () => {
     expect(normalizeDisplayName("  王小明  ")).toBe("王小明");
   });
 
-  test("requires a long administrator password", () => {
-    expect(() => validateAdminPassword("short-password")).toThrow();
-    expect(() => validateAdminPassword("a".repeat(15))).not.toThrow();
+  test("enforces the six-character administrator password minimum", () => {
+    expect(() => validateAdminPassword("12345")).toThrow();
+    expect(() => validateAdminPassword("123456")).not.toThrow();
   });
 
   test("stores only a password hash and verifies the original credentials", async () => {

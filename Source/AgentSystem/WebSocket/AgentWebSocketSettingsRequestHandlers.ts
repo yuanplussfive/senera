@@ -1,6 +1,7 @@
-import { AgentEventKinds } from "../Events/AgentEvent.js";
 import type { AgentWebSocketRequestOf } from "./AgentWebSocketProtocol.js";
 import type { AgentWebSocketEventSender, AgentWebSocketRequestContext } from "./AgentWebSocketTypes.js";
+import { AgentEventKinds } from "../Events/AgentEvent.js";
+import { findAgentRuntimeDependency } from "../Runtime/AgentRuntimeDependencyCatalog.js";
 
 export class AgentWebSocketToolSettingsRequestHandlers {
   constructor(private readonly context: AgentWebSocketRequestContext) {}
@@ -24,6 +25,59 @@ export class AgentWebSocketToolSettingsRequestHandlers {
 
   listMcpServers(sendEvent: AgentWebSocketEventSender): Promise<void> {
     return this.sendMcpSnapshot(sendEvent);
+  }
+
+  async listRuntimeDependencies(sendEvent: AgentWebSocketEventSender): Promise<void> {
+    const service = this.requireRuntimeDependencies();
+    const dependencies = await service.list();
+    await sendEvent({
+      kind: AgentEventKinds.RuntimeDependencySnapshot,
+      context: {},
+      data: { dependencies, complete: true },
+    });
+  }
+
+  async checkRuntimeDependency(
+    request: AgentWebSocketRequestOf<"runtimeDependency.check">,
+    sendEvent: AgentWebSocketEventSender,
+  ): Promise<void> {
+    const service = this.requireRuntimeDependencies();
+    const descriptor = findAgentRuntimeDependency(request.dependencyId);
+    if (!descriptor) throw new Error(`Unknown runtime dependency: ${request.dependencyId}`);
+    await sendEvent({
+      kind: AgentEventKinds.RuntimeDependencySnapshot,
+      context: {},
+      data: {
+        dependencies: [
+          {
+            ...descriptor,
+            status: "checking",
+            checkedAt: new Date().toISOString(),
+          },
+        ],
+        complete: false,
+      },
+    });
+    const snapshot = await service.check(request.dependencyId);
+    await sendEvent({
+      kind: AgentEventKinds.RuntimeDependencySnapshot,
+      context: {},
+      data: { dependencies: [snapshot], complete: false },
+    });
+  }
+
+  async installRuntimeDependency(
+    request: AgentWebSocketRequestOf<"runtimeDependency.install">,
+    sendEvent: AgentWebSocketEventSender,
+  ): Promise<void> {
+    const service = this.requireRuntimeDependencies();
+    await service.install(request.dependencyId, ({ snapshot }) => {
+      void sendEvent({
+        kind: AgentEventKinds.RuntimeDependencySnapshot,
+        context: {},
+        data: { dependencies: [snapshot], complete: false },
+      });
+    });
   }
 
   setCredential(
@@ -94,6 +148,11 @@ export class AgentWebSocketToolSettingsRequestHandlers {
   private requirePluginHost() {
     if (!this.context.pluginHost) throw new Error("Plugin host is unavailable in this runtime.");
     return this.context.pluginHost;
+  }
+
+  private requireRuntimeDependencies() {
+    if (!this.context.runtimeDependencies) throw new Error("Runtime dependency management is unavailable.");
+    return this.context.runtimeDependencies;
   }
 }
 

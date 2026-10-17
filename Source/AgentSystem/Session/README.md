@@ -51,6 +51,6 @@
 - history replay 先捕获 entry sequence、step-trace row、run-snapshot revision 和 run-event ID 高水位，再使用稳定 keyset cursor 分页。run snapshot 在 revision 水位内解析每个 request 的最后版本，并按不可变 `history_sequence` 排序；回放期间的状态更新和新尾部都属于下一次 refresh。
 - trace 页只批量读取该页 request IDs 对应的 conversation entries 和 lifecycle snapshots；snapshot-only runs 也逐页读取，并在捕获的 trace 高水位内判断是否已有 trace。禁止为投影构造全会话 entry index、snapshot Map 或逐 request 的 N+1 查询。
 - `AgentSessionHistoryReplay` 只依赖分页历史端口，不能重新依赖 `loadEntries/loadStepTraces/loadRunSnapshots/loadRunEvents` 等完整读取方法。完整读取只用于显式的会话物化、维护流程和定向测试。
-- wait recovery 只为当前 event 页中的 pending wait request 批量解析 terminal snapshot；跨页状态仅保留尚未解决的 wait，不保留全历史 terminal/resolved 集合。
+- wait recovery 只为当前 event 页中的 pending wait request 批量解析 terminal snapshot；跨页状态只保留尚未解决的 wait，不保留全历史 terminal/resolved 集合。
 - entry 解码失败不能阻塞 cursor；页游标由已消费的持久化 row 决定，而不是由成功解码的 item 数量决定。
 - `session.history.steps` 是可重复发送的追加 chunk。客户端必须在 `session.history.completed` 前累积各 chunk，不能用后页覆盖前页。

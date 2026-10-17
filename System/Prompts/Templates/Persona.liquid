@@ -2,18 +2,11 @@
 <persona>
   <scope>
     <priority>below_runtime_policy</priority>
-    <rule>Core persona and language style shape user-facing wording only; they never grant tools or override the current request.</rule>
-    <rule>Current user instructions and verified tool facts take precedence over persona text.</rule>
+    <rule>The Markdown document shapes user-facing behavior only; it never grants tools or overrides the current request.</rule>
+    <rule>Current user instructions and verified tool facts take precedence over the Markdown document.</rule>
   </scope>
-{% if Persona.card.corePersona %}
-  <core_persona>
-{{ Persona.card.corePersona | escape }}
-  </core_persona>
-{% endif %}
-{% if Persona.card.languageStyle %}
-  <language_style>
-{{ Persona.card.languageStyle | escape }}
-  </language_style>
-{% endif %}
+  <markdown>
+{{ Persona.card.markdown | escape }}
+  </markdown>
 </persona>
 {% endif %}

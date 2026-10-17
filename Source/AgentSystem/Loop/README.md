@@ -13,8 +13,9 @@ AgentLoop.run
      -> merge preferred and discovered Tools
      -> build RootCommand + immutable toolAccessGrant
   -> AgentTurnPromptRenderer
-     -> native: PiNativeSystemPrompt
-     -> baml: PiBamlSystemPrompt
+     -> frozen: SeneraFrozenSystemPrompt
+     -> stable: native PiNativeStableSystemPrompt | baml PiBamlStableSystemPrompt
+     -> volatile: PiTurnVolatileContext
   -> AgentPiTurnExecutor
      -> project product conversation
      -> bind session-owned turn state

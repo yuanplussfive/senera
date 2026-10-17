@@ -54,6 +54,8 @@ export function createAgentContinuityRuntime(input: {
   readonly embeddingModel: () => string;
   readonly identityDisplayValues?: () => AgentIdentityDisplayValues;
   readonly logger?: AgentLogger;
+  /** Dedicated projection stream for semantic-learning queue and promotion work. */
+  readonly learningLogger?: AgentLogger;
 }): AgentContinuityRuntime {
   assertDistinctDatabasePaths(input.databasePath, input.memosDatabasePath);
   const database = new AgentSqliteDatabaseKernel({
@@ -65,7 +67,7 @@ export function createAgentContinuityRuntime(input: {
   try {
     const identityStore = new AgentContinuityIdentityStore(input.identityPath, input.workspaceId);
     const baseIdentity = identityStore.context();
-    const learningRequests = new AgentBackgroundLearningRequestLedger(database, input.logger);
+    const learningRequests = new AgentBackgroundLearningRequestLedger(database, input.learningLogger);
     const sourceRepository = new SqliteAgentMemorySourceRepository(database);
     const memos = new AgentContinuityMemOSRuntime({
       databasePath: input.memosDatabasePath,
@@ -102,6 +104,7 @@ export function createAgentContinuityRuntime(input: {
       },
       semanticScopeKey: baseIdentity.workspaceId,
       logger: input.logger,
+      learningLogger: input.learningLogger,
     });
     memosForCleanup = memos;
     const store = new AgentContinuitySqliteStore(database);
@@ -118,12 +121,13 @@ export function createAgentContinuityRuntime(input: {
       store,
       recallConfig: () => resolveContinuityLearningConfig(input.configSnapshot()).Recall,
       memos,
+      logger: input.logger,
     });
     const memory = new AgentMemoryService({
       sourceRepository,
       completedTurnSinks: [memos],
       completedTurnSinkFailure: ({ error }) =>
-        input.logger?.warn("memory.completed_turn_sink.failed", {
+        input.learningLogger?.warn("memory.completed_turn_sink.failed", {
           error: errorMessage(error),
         }),
       deletionSinks: [store, promptContext, memos],

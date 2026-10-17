@@ -6,6 +6,9 @@ import { resolveAgentTurnPromptProfile } from "./AgentTurnPromptProfile.js";
 import type { AgentSystemPromptLayer } from "../Orchestration/AgentRunDispatchPort.js";
 import type { AgentPersonaContext } from "../Prompt/AgentPersonaContext.js";
 import type { AgentContinuityMemoryPromptContext } from "../Continuity/AgentContinuityMemoryTypes.js";
+import { EmptyAgentContinuityMemoryPromptContext } from "../Continuity/AgentContinuityMemoryTypes.js";
+import { AgentCancellationError, throwAbortReason } from "../Core/AgentCancellation.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 import { normalizeAgentWorkflowTemplateContext } from "../Prompt/AgentPromptTemplateContextNormalizer.js";
 import type { AgentWorkflowPromptContext } from "../Prompt/AgentWorkflowPromptContext.js";
 import { composeAgentPromptHarness, type AgentPromptHarnessComposition } from "../Prompt/AgentPromptHarness.js";
@@ -61,6 +64,7 @@ export class AgentTurnPromptRenderer {
     effectiveModel?: AgentEffectiveModelReceipt;
     turnNumber?: number;
     interaction?: AgentInteractionContext;
+    signal?: AbortSignal;
     loadedToolNames: string[];
     reusableCapabilities: readonly AgentToolCapabilityCacheEntry[];
     authorizedToolNames?: readonly string[];
@@ -90,16 +94,37 @@ export class AgentTurnPromptRenderer {
     const wireRenderOptions = {
       estimateTokens: (text: string) => this.runtime.tokenEstimator.estimate(text).tokenCount,
     };
-    const loadContinuityMemory = async (historicalTokenBudget: number) =>
-      this.runtime.services.promptContext.liveContinuityMemory({
-        sessionId: input.sessionId,
-        userInput: input.stateCard?.standaloneRequest ?? input.userInput,
-        requestId: input.requestId,
-        historicalTokenBudget: {
-          maxTokens: historicalTokenBudget,
-          estimateTokens: wireRenderOptions.estimateTokens,
-        },
-      });
+    const loadContinuityMemory = async (historicalTokenBudget: number): Promise<AgentContinuityMemoryPromptContext> => {
+      try {
+        return await this.runtime.services.promptContext.liveContinuityMemory({
+          sessionId: input.sessionId,
+          userInput: input.stateCard?.standaloneRequest ?? input.userInput,
+          requestId: input.requestId,
+          signal: input.signal,
+          historicalTokenBudget: {
+            maxTokens: historicalTokenBudget,
+            estimateTokens: wireRenderOptions.estimateTokens,
+          },
+        });
+      } catch (error) {
+        // Continuity is a derived prompt enrichment. Keep its failure out of
+        // the model turn while preserving cancellation as a control signal.
+        if (error instanceof AgentCancellationError) throw error;
+        throwAbortReason(input.signal);
+        this.runtime.logger?.warn("memory.prompt_continuity_failed", {
+          sessionId: input.sessionId,
+          requestId: input.requestId,
+          message: errorMessage(error),
+        });
+        return {
+          ...EmptyAgentContinuityMemoryPromptContext,
+          enabled: true,
+          ...((input.stateCard?.standaloneRequest ?? input.userInput).trim()
+            ? { query: (input.stateCard?.standaloneRequest ?? input.userInput).trim() }
+            : {}),
+        };
+      }
+    };
     let continuityMemory = await loadContinuityMemory(0);
     const stateCardWire = input.stateCard ? renderStateCardWire(input.stateCard, wireRenderOptions) : "";
     const frozenPrompt = joinPromptSections(

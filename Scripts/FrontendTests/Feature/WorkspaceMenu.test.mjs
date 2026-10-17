@@ -155,7 +155,7 @@ test("browser folder selection remains mounted and interactive after the menu cl
   renderWithFrontendProviders(React.createElement(MenuHarness, { workspace }));
   await openMenu(user);
   await user.click(screen.getByRole("tab", { name: "切换" }));
-  await user.click(screen.getByRole("button", { name: "打开文件夹" }));
+  await user.click(screen.getByRole("button", { name: "浏览服务器文件夹" }));
   await screen.findByRole("dialog");
   await screen.findByRole("button", { name: "Source" });
   expect(screen.queryByRole("menuitem", { name: /工作区/ })).not.toBeInTheDocument();
@@ -171,7 +171,7 @@ test("deployment permissions disable folder opening and desktop tray uses a sing
   const view = renderWithFrontendProviders(React.createElement(MenuHarness, { workspace }));
   await openMenu(user);
   await user.click(screen.getByRole("tab", { name: "切换" }));
-  expect(screen.getByRole("button", { name: "打开文件夹" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "浏览服务器文件夹" })).toBeDisabled();
   view.unmount();
   let listener;
   const unsubscribe = vi.fn();

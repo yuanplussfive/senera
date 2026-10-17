@@ -117,6 +117,7 @@ export const useStore = create<StoreState>()(
       systemExtensions: [],
       activationCatalog: null,
       mcpServers: [],
+      runtimeDependencies: {},
       toolSettingsSynced: { systemTools: false, mcpServers: false, activation: false },
       channelStatuses: [],
       userProfile: DEFAULT_USER_PROFILE,

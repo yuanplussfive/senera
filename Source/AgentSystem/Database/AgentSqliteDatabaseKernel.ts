@@ -12,7 +12,7 @@ import {
 import { AgentSqliteStoreDataClasses, type AgentSqliteStoreContract } from "./AgentSqliteStoreContract.js";
 import type { AgentUpgradeSession } from "../Upgrade/AgentUpgradeSession.js";
 import { errorMessage } from "../Core/AgentErrors.js";
-import { nodeErrorCode } from "../Core/AgentFs.js";
+import { nodeErrorCode, removeAgentPathSync } from "../Core/AgentFs.js";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
 import { currentAgentTimeIso, DefaultAgentTimeZone, resolveAgentTimeZone } from "../Time/AgentTime.js";
 import { AgentSqliteTimeMetadataTable } from "./AgentSqliteDatabaseSchema.js";
@@ -449,7 +449,7 @@ function replaceStoreDatabase(
 
 function removeDatabaseFiles(databasePath: string): void {
   for (const filePath of databaseFilePaths(databasePath)) {
-    fs.rmSync(filePath, { force: true });
+    removeAgentPathSync(filePath, { force: true });
   }
 }
 

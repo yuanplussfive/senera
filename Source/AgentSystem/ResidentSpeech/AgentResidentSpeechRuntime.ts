@@ -1,5 +1,11 @@
 import type { AgentExtensionRegistry } from "../Extensions/AgentExtensionRegistry.js";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
+import { resolveAgentPiCompactionWindow } from "../Pi/AgentPiCompactionSettings.js";
+import {
+  AgentModelInputBudgetError,
+  type AgentModelInputInspection,
+  AgentTurnTokenBudget,
+} from "../Text/AgentTurnTokenBudget.js";
 import {
   projectAgentResidentSpeechBamlInput,
   projectAgentResidentSpeechNativeContinuation,
@@ -34,6 +40,7 @@ export class AgentResidentSpeechRuntime implements AgentResidentSpeechSessionRun
   private readonly contracts;
   private readonly nativeClient;
   private readonly bamlClient;
+  private readonly inputBudget: AgentTurnTokenBudget;
   private readonly bamlSessions: Readonly<Record<AgentResidentSpeechMode, AgentResidentSpeechSessionLedger>> = {
     action_preface: new AgentResidentSpeechSessionLedger(),
     final_response: new AgentResidentSpeechSessionLedger(),
@@ -43,6 +50,13 @@ export class AgentResidentSpeechRuntime implements AgentResidentSpeechSessionRun
     const action = requireResidentSpeechContract(options.registry, AgentResidentActionSpeechCapability);
     const final = requireResidentSpeechContract(options.registry, AgentResidentFinalSpeechCapability);
     this.contracts = { action_preface: action, final_response: final };
+    const compactionWindow = resolveAgentPiCompactionWindow(options.modelProvider.ContextWindowTokens);
+    this.inputBudget = new AgentTurnTokenBudget({
+      model: options.modelProvider.Model,
+      contextWindowTokens: compactionWindow.contextWindowTokens,
+      inputCapacityTokens: compactionWindow.inputCapacityTokens,
+      windowHeadroomTokens: compactionWindow.reserveTokens,
+    });
     this.nativeClient = options.nativeClient ?? new AgentResidentSpeechNativeClient(options.modelProvider);
     this.bamlClient = options.bamlClient ?? new AgentResidentSpeechBamlClient(options.modelProvider);
   }
@@ -62,6 +76,8 @@ export class AgentResidentSpeechRuntime implements AgentResidentSpeechSessionRun
         context: input.context,
         message: input.message,
         contract,
+        model: this.options.modelProvider.Model,
+        inspect: (context) => this.inputBudget.inspectModelInput(projectAgentResidentSpeechBamlInput(context)),
         focus,
         spokenUtterances: input.spokenUtterances,
         projectionTier: input.projectionTier,
@@ -69,7 +85,7 @@ export class AgentResidentSpeechRuntime implements AgentResidentSpeechSessionRun
       },
       async (context) => {
         const prompt = projectAgentResidentSpeechBamlInput(context);
-        assertResidentSpeechInputFits(input.inputBudget?.inspectModelInput(prompt));
+        assertResidentSpeechInputFits(this.inputBudget.inspectModelInput(prompt));
         const raw = await this.bamlClient.project({
           prompt,
           sessionId: input.sessionId,
@@ -104,7 +120,7 @@ export class AgentResidentSpeechRuntime implements AgentResidentSpeechSessionRun
     if (!input.nativeContinuation) {
       throw new Error("Resident speech native projection requires the owning native request continuation.");
     }
-    const context = projectAgentResidentSpeechNativeContinuation({
+    const continuationInput = {
       context: input.context,
       contract,
       focus,
@@ -112,8 +128,13 @@ export class AgentResidentSpeechRuntime implements AgentResidentSpeechSessionRun
       projectionTier: input.projectionTier,
       bridgeName: AgentPiNativeToolBridgeName,
       timestamp: input.message.timestamp,
-    });
-    assertResidentSpeechInputFits(input.inputBudget?.inspectModelInput(context));
+    } as const;
+    const context = fitResidentSpeechNativeContinuation(
+      continuationInput,
+      this.inputBudget,
+      this.options.modelProvider.Model,
+    );
+    assertResidentSpeechInputFits(this.inputBudget.inspectModelInput(context));
     const raw = await this.nativeClient.project({
       context,
       continuation: input.nativeContinuation,
@@ -137,12 +158,50 @@ function requireResidentSpeechContract(registry: AgentExtensionRegistry, capabil
   return contract;
 }
 
-function assertResidentSpeechInputFits(
-  inspection:
-    ReturnType<NonNullable<AgentResidentSpeechProjectionInput["inputBudget"]>["inspectModelInput"]> | undefined,
-): void {
-  if (!inspection || inspection.fits) return;
-  throw new Error(
-    `Resident speech input requires ${inspection.tokenCount} tokens but the model input capacity is ${inspection.capacityTokens}.`,
-  );
+function assertResidentSpeechInputFits(inspection: AgentModelInputInspection): void {
+  if (inspection.fits) return;
+  throw new AgentModelInputBudgetError(inspection);
+}
+
+function fitResidentSpeechNativeContinuation(
+  input: Parameters<typeof projectAgentResidentSpeechNativeContinuation>[0],
+  budget: AgentTurnTokenBudget,
+  model: string,
+): ReturnType<typeof projectAgentResidentSpeechNativeContinuation> {
+  const full = projectAgentResidentSpeechNativeContinuation(input);
+  const fullInspection = budget.inspectModelInput(full);
+  if (fullInspection.fits) return full;
+
+  const base = {
+    ...full,
+    messages: [...input.context.messages],
+  } satisfies ReturnType<typeof projectAgentResidentSpeechNativeContinuation>;
+  const baseInspection = budget.inspectModelInput(base);
+  if (!baseInspection.fits) throw new AgentModelInputBudgetError(baseInspection);
+
+  const minimumCandidate = projectAgentResidentSpeechNativeContinuation({
+    ...input,
+    sceneProjection: { model, tokenLimit: 1 },
+  });
+  const minimumInspection = budget.inspectModelInput(minimumCandidate);
+  if (!minimumInspection.fits) throw new AgentModelInputBudgetError(minimumInspection);
+
+  let lower = 2;
+  let upper = Math.max(1, fullInspection.capacityTokens - baseInspection.tokenCount);
+  let best = minimumCandidate;
+  while (lower <= upper) {
+    const middle = Math.floor((lower + upper) / 2);
+    const candidate = projectAgentResidentSpeechNativeContinuation({
+      ...input,
+      sceneProjection: { model, tokenLimit: middle },
+    });
+    const candidateInspection = budget.inspectModelInput(candidate);
+    if (candidateInspection.fits) {
+      best = candidate;
+      lower = middle + 1;
+    } else {
+      upper = middle - 1;
+    }
+  }
+  return best;
 }

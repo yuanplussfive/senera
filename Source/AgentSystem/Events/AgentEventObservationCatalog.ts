@@ -182,6 +182,7 @@ export const AgentEventObservationSpecTable = {
   [AgentEventKinds.PromptSummary]: projection("/data/chars", "/data/lines", "/data/tokenCount"),
   [AgentEventKinds.PromptHarnessComposed]: projection(
     "/data/profile",
+    "/data/skills",
     "/data/sections/frozen/bytes",
     "/data/sections/frozen/tokens",
     "/data/sections/stable/bytes",
@@ -571,6 +572,7 @@ export const AgentEventObservationSpecTable = {
   [AgentEventKinds.ConfigReloaded]: projection("/data/revision", "/data/version"),
   [AgentEventKinds.ConfigFailed]: projection("/data/code"),
   [AgentEventKinds.ConfigSnapshot]: projection("/data/revision", "/data/version"),
+  [AgentEventKinds.RuntimeDependencySnapshot]: metadata(),
   [AgentEventKinds.ModelListSnapshot]: projection("/data/count", "/data/revision"),
   [AgentEventKinds.ProviderModelsSnapshot]: projection("/data/providerId", "/data/count", "/data/source"),
   [AgentEventKinds.ProviderModelsFailed]: projection("/data/providerId", "/data/code"),

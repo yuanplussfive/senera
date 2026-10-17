@@ -30,7 +30,6 @@ import type {
 import { projectAgentPiSkillCatalog } from "./AgentPiSkillCatalog.js";
 import { projectAgentSkillLibraryCatalog } from "../Skills/AgentSkillLibraryCatalog.js";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
-import { AgentPiContextPolicy } from "./AgentPiContextPolicy.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { createAgentDefaultToolResourceCapabilities } from "../ToolRuntime/AgentToolResourceCapabilities.js";
 import type { AgentToolResourceCapabilityRegistry } from "../ToolRuntime/AgentToolResourceCapabilityRegistry.js";
@@ -130,7 +129,6 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
   private readonly permissionHook: AgentPiToolPermissionHook;
   private readonly promptTemplateProjector: AgentPiPromptTemplateProjector;
   private readonly sessionPool: AgentPiCodingAgentSessionPool;
-  private readonly contextPolicy: AgentPiContextPolicy;
   private readonly maxConcurrentToolPreflights: number;
   private readonly compactionSettings: ReturnType<typeof resolveAgentPiCompactionSettings>;
   private readonly observationCompressor: AgentToolResultObservationCompressor;
@@ -163,7 +161,6 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
       thinkingProfiles: options.modelProvider.ThinkingProfiles,
       defaultThinkingLevel: options.modelProvider.DefaultThinkingLevel,
     });
-    this.contextPolicy = new AgentPiContextPolicy(options.modelProvider.Model);
     this.promptTemplateProjector = new AgentPiPromptTemplateProjector(options.registry);
     const systemResourcesRoot = path.resolve(options.resourcesPath ?? options.workspaceRoot);
     this.sessionPool =
@@ -181,7 +178,16 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
         compaction: piSessionsConfig.Compaction,
         diagnostics: options.diagnostics,
         beforeCompaction: options.beforeCompaction,
-        afterCompaction: options.afterCompaction,
+        afterCompaction: async (sessionId) => {
+          try {
+            await options.afterCompaction?.(sessionId);
+          } finally {
+            // Resident Speech keeps a derived transcript. A Pi compaction
+            // changes the canonical lineage, so the next sidecar request must
+            // rebuild its projection instead of appending to stale history.
+            options.residentSpeech?.resetSession(sessionId);
+          }
+        },
         observationCompressor: this.observationCompressor,
         observationTokenBudget: artifactConfig.ToolObservationMaxTokens,
       });
@@ -288,12 +294,6 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
       );
     }
     const allTools = this.toolProjector.createToolSet(undefined, [], undefined, options.nativeToolNames);
-    const contextPolicy = this.contextPolicy.createFrame({
-      requestId: options.requestId,
-      model: this.options.modelProvider.Model,
-      registeredTools: this.options.registry.listTools(),
-      visibleToolNames: toolExposure.snapshot().exposedToolNames,
-    });
     const promptTemplateProjection = this.promptTemplateProjector.project({
       input: options.input,
       activeSkills: options.activeSkills,
@@ -367,7 +367,6 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
         toolAccessGrant,
         toolExposure,
         selectedPromptTemplates,
-        contextPolicy,
         tokenBudget:
           options.tokenBudget ??
           new AgentTurnTokenBudget({
@@ -463,8 +462,16 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
     return forked;
   }
 
-  compactSession(sessionId: string, customInstructions?: string): Promise<AgentPiSessionCompactionResult | undefined> {
-    return this.sessionPool.compact(sessionId, customInstructions);
+  async compactSession(
+    sessionId: string,
+    customInstructions?: string,
+  ): Promise<AgentPiSessionCompactionResult | undefined> {
+    const result = await this.sessionPool.compact(sessionId, customInstructions);
+    // Custom session pools do not necessarily install the default pool's
+    // after-compaction hook. Invalidate the derived sidecar ledger at the
+    // substrate boundary so every compaction path has the same lineage rule.
+    this.options.residentSpeech?.resetSession(sessionId);
+    return result;
   }
 
   sessionStatus(sessionId: string): Promise<AgentPiSessionRuntimeStatus | undefined> {

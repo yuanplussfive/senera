@@ -3,7 +3,6 @@ import type { AgentToolAccessGrant } from "../ToolRuntime/AgentToolAccessGrant.j
 import type { AgentToolExposureSnapshot } from "../ToolRuntime/AgentToolExposureState.js";
 import type { AgentPiToolObservationStatus } from "./AgentPiToolObservationStatus.js";
 import type { AgentToolOutputAvailability } from "../ToolRuntime/AgentToolResultOutcome.js";
-import type { AgentPiContextPolicyProtocol } from "./AgentPiContextPolicyProtocol.js";
 
 export interface AgentPiPlanningEvidenceRequirement {
   readonly Need: string;
@@ -77,9 +76,6 @@ export interface AgentPiAssistantMessageCompileInput {
     };
   };
   seneraRuntime: {
-    protocols: {
-      contextPolicy: typeof AgentPiContextPolicyProtocol;
-    };
     modelProviderId: string;
     model: string;
     toolAccessGrant: AgentToolAccessGrant;

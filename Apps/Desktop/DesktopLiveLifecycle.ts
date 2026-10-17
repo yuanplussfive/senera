@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { isFileExistsError, isMissingFileError } from "../../Source/AgentSystem/Core/AgentFs.js";
+import { isFileExistsError, isMissingFileError, removeAgentPathSync } from "../../Source/AgentSystem/Core/AgentFs.js";
 
 const DesktopLiveLockRelativePath = path.join(".cache", "desktop-live.lock");
 const LockAcquireAttempts = 3;
@@ -70,7 +70,7 @@ export function acquireDesktopLiveLock(workspaceRoot: string, options: DesktopLi
 function releaseDesktopLiveLock(lockPath: string, token: string): void {
   const owner = readDesktopLiveLockOwner(lockPath);
   if (!owner || owner.token !== token) return;
-  fs.rmSync(lockPath, { force: true });
+  removeAgentPathSync(lockPath, { force: true });
 }
 
 function quarantineStaleLock(lockPath: string, processId: number): void {
@@ -81,7 +81,7 @@ function quarantineStaleLock(lockPath: string, processId: number): void {
     if (isMissingFileError(error)) return;
     throw error;
   }
-  fs.rmSync(stalePath, { force: true });
+  removeAgentPathSync(stalePath, { force: true });
 }
 
 function readDesktopLiveLockOwner(lockPath: string): DesktopLiveLockOwner | undefined {

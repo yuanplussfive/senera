@@ -4,6 +4,7 @@ import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import type { AgentMemoryEpisodeRecord, AgentMemoryRecordedTurn } from "../Memory/AgentMemorySourceRepository.js";
 import { DefaultAgentTimeZone, projectAgentTime } from "../Time/AgentTime.js";
 import { AgentModelTextPreviewer, AgentModelTokenEstimator } from "../Text/AgentTextBudget.js";
+import { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
 import { AgentStateCardSchema, AgentStateCardSchemaVersion } from "../StateCard/AgentStateCardTypes.js";
 import type { AgentMemOSDigestEntry } from "./AgentMemOSSemanticTypes.js";
 import { AgentMemOSSummarySchema, projectAgentMemOSOccurredAt } from "./AgentMemOSSemanticTypes.js";
@@ -64,19 +65,23 @@ export function splitByTokenBudget(
   tokenBudget: number,
   model: string,
 ): AgentMemOSDigestEntry[][] {
+  if (!Number.isSafeInteger(tokenBudget) || tokenBudget < 1)
+    throw new Error("MemOS digest input token budget must be a positive integer.");
   const estimator = new AgentModelTokenEstimator({ model });
+  const projector = new AgentTokenProjector(model);
+  const projectedEntries = entries.map((entry) => projectDigestEntryToBudget(entry, tokenBudget, estimator, projector));
   const chunks: AgentMemOSDigestEntry[][] = [];
   let current: AgentMemOSDigestEntry[] = [];
-  for (const entry of entries) {
+  for (const entry of projectedEntries) {
     const candidate = [...current, entry];
     const tokens = estimator.estimate(JSON.stringify({ entries: candidate })).tokenCount;
     if (current.length === 0 && tokens > tokenBudget)
-      throw new Error("A MemOS digest entry exceeds the configured token budget.");
+      throw new Error("Configured MemOS digest input budget cannot fit the entry metadata.");
     if (tokens > tokenBudget && current.length > 0) {
       chunks.push(current);
       current = [entry];
       if (estimator.estimate(JSON.stringify({ entries: current })).tokenCount > tokenBudget) {
-        throw new Error("A MemOS digest entry exceeds the configured token budget.");
+        throw new Error("Configured MemOS digest input budget cannot fit the entry metadata.");
       }
     } else {
       current = candidate;
@@ -84,6 +89,33 @@ export function splitByTokenBudget(
   }
   if (current.length > 0) chunks.push(current);
   return chunks;
+}
+
+function projectDigestEntryToBudget(
+  entry: AgentMemOSDigestEntry,
+  tokenBudget: number,
+  estimator: AgentModelTokenEstimator,
+  projector: AgentTokenProjector,
+): AgentMemOSDigestEntry {
+  const full = JSON.stringify({ entries: [entry] });
+  if (estimator.estimate(full).tokenCount <= tokenBudget) return entry;
+
+  let lower = 1;
+  let upper = tokenBudget;
+  let best: AgentMemOSDigestEntry | undefined;
+  while (lower <= upper) {
+    const summaryLimit = Math.floor((lower + upper) / 2);
+    const summary = projector.projectText(entry.summary, summaryLimit).text;
+    const candidate = { ...entry, summary };
+    if (estimator.estimate(JSON.stringify({ entries: [candidate] })).tokenCount <= tokenBudget) {
+      best = candidate;
+      lower = summaryLimit + 1;
+    } else {
+      upper = summaryLimit - 1;
+    }
+  }
+  if (!best) throw new Error("Configured MemOS digest input budget cannot fit the entry metadata.");
+  return best;
 }
 
 export function fragmentSourceRevision(episode: AgentMemoryEpisodeRecord): string {
@@ -104,6 +136,7 @@ export function fragmentTaskKey(episode: AgentMemoryEpisodeRecord): string {
 export function digestSourceRevision(
   entries: readonly AgentMemOSDigestEntry[],
   context: {
+    readonly inputTokenBudget: number;
     readonly summaryTokenLimit: number;
     readonly providerId: string;
     readonly model: string;

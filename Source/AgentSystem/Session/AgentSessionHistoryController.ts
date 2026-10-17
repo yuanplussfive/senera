@@ -25,7 +25,6 @@ import type { AgentSessionStore } from "./AgentSessionStore.js";
 import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import {
-  AgentSessionContinuationInput,
   AgentSessionRecoveryModes,
   readAgentSessionRecoveryModes,
   type AgentSessionRecoveryMode,
@@ -250,10 +249,11 @@ export class AgentSessionHistoryController {
         (entry): entry is Extract<AgentSession["conversation"][number], { kind: "user.message" }> =>
           entry.kind === AgentConversationEntryKinds.UserMessage && entry.requestId === sourceRequestId,
       );
-      const input =
-        request.recoveryMode === AgentSessionRecoveryModes.Retry
-          ? requireRecoveryUserInput(sourceEntry, request.failedRequestId)
-          : AgentSessionContinuationInput;
+      // Recovery keeps the durable user message as the input identity. The
+      // Pi request distinguishes native continuation from a full retry; no
+      // synthetic user message containing the literal word "continue" is
+      // appended to the conversation.
+      const input = requireRecoveryUserInput(sourceEntry, request.failedRequestId);
       const attachments = sourceEntry?.attachments ?? readRunStartedAttachments(runStartedEvent);
       const preparation = this.options.store.loadTurnPreparation(request.sessionId, request.failedRequestId);
 
@@ -286,17 +286,19 @@ export class AgentSessionHistoryController {
           mode: request.recoveryMode,
           sourceRequestId: request.failedRequestId,
         },
-        ...(request.recoveryMode === AgentSessionRecoveryModes.Retry
-          ? { reuseUserEntryFromRequestId: sourceRequestId }
-          : {
-              activations: request.activations,
+        reuseUserEntryFromRequestId: sourceRequestId,
+        ...(request.recoveryMode === AgentSessionRecoveryModes.Continue
+          ? {
+              continueFromTranscript: true,
+              continuationSourceRequestId: sourceRequestId,
               metadata: {
                 recovery: {
                   mode: request.recoveryMode,
                   sourceRequestId: request.failedRequestId,
                 },
               },
-            }),
+            }
+          : {}),
         onEvent: request.onEvent,
       });
       await completion;
@@ -451,15 +453,18 @@ function resolveRecoverySourceRequestId(
   let current = requestId;
   while (!visited.has(current)) {
     visited.add(current);
+    const next = readRecoverySourceRequestId(runStartedEvent);
+    if (next && next !== current) {
+      current = next;
+      runStartedEvent = loadRunStartedEvent(current);
+      continue;
+    }
     if (
       entries.some((entry) => entry.kind === AgentConversationEntryKinds.UserMessage && entry.requestId === current)
     ) {
       return current;
     }
-    const next = readRecoverySourceRequestId(runStartedEvent);
-    if (!next || next === current) return current;
-    current = next;
-    runStartedEvent = loadRunStartedEvent(current);
+    return current;
   }
   return current;
 }

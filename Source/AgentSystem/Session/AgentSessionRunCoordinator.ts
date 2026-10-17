@@ -97,6 +97,10 @@ interface AgentSessionRunRequest {
   reclaimRunningCommand?: boolean;
   /** Replays a failed turn without appending a duplicate user entry. */
   reuseUserEntryFromRequestId?: string;
+  /** Requests Pi to continue its existing transcript rather than prompt text. */
+  continueFromTranscript?: boolean;
+  /** Identifies the durable turn whose Pi transcript should be resumed. */
+  continuationSourceRequestId?: string;
   recovery?: AgentSessionRunRecovery;
 }
 
@@ -288,26 +292,16 @@ export class AgentSessionRunCoordinator {
         return;
       }
       const completedAt = new Date().toISOString();
+      const assistantMetadata: AgentConversationEntryMetadata | undefined = buildAssistantEntryMetadata(
+        request,
+        result,
+        effectiveModel,
+      );
       const assistantEntry = this.options.conversationProjector.projectAssistantDecision(
         requestId,
         result.decisionXml,
         completedAt,
-        result.modelProvider
-          ? {
-              run: {
-                modelProvider: result.modelProvider,
-                usage: result.usage,
-                ...(effectiveModel
-                  ? {
-                      receipt: {
-                        ...effectiveModel,
-                        ...(result.physicalPiSessionId ? { physicalPiSessionId: result.physicalPiSessionId } : {}),
-                      },
-                    }
-                  : {}),
-              },
-            }
-          : undefined,
+        assistantMetadata,
       );
       const freshEntries = collectFreshConversationEntries(session.conversation, [assistantEntry]);
       allFreshEntries.push(...freshEntries);
@@ -367,7 +361,18 @@ export class AgentSessionRunCoordinator {
       }
       replaceAgentSessionState(session, completedSession);
       terminalSessionCommitted = true;
-      loop.finalizeCompletedTurn?.(completedResult);
+      try {
+        loop.finalizeCompletedTurn?.(completedResult);
+      } catch (error) {
+        // Scenario learning is a post-commit side effect. A custom loop must
+        // not be able to reopen an already durable assistant response as a
+        // foreground run failure.
+        this.options.logger?.warn("routing.scenario.finalize_failed", {
+          sessionId: session.id,
+          requestId,
+          error: serializeError(error),
+        });
+      }
       learningFinalized = true;
       this.activeRuns.detachTerminalRun(session.id, run);
       await this.publishTerminalEvents(request.onEvent, terminalEvents);
@@ -384,7 +389,17 @@ export class AgentSessionRunCoordinator {
         stateCard: completedResult.stateCard,
       });
     } catch (error) {
-      if (!learningFinalized) loop?.discardCompletedTurn?.(completedResult);
+      if (!learningFinalized) {
+        try {
+          loop?.discardCompletedTurn?.(completedResult);
+        } catch (cleanupError) {
+          this.options.logger?.warn("routing.request_cleanup_failed", {
+            sessionId: session.id,
+            requestId,
+            error: serializeError(cleanupError),
+          });
+        }
+      }
       if (!this.activeRuns.isCurrent(session.id, run)) {
         return;
       }
@@ -469,13 +484,26 @@ export class AgentSessionRunCoordinator {
       await this.publishTerminalEvents(request.onEvent, [failedEvent]);
       return;
     } finally {
-      await this.activeRuns.finalize({
-        session,
-        requestId,
-        run,
-        terminalSessionCommitted,
-        terminalCommitFailed,
-      });
+      try {
+        await this.activeRuns.finalize({
+          session,
+          requestId,
+          run,
+          terminalSessionCommitted,
+          terminalCommitFailed,
+        });
+      } catch (error) {
+        // Resource cleanup is detached from the authoritative terminal
+        // commit. Keep the persisted run terminal when lifecycle cleanup is
+        // unavailable instead of emitting a second failure outcome.
+        this.options.logger?.error("session.run_finalization_failed", {
+          sessionId: session.id,
+          requestId,
+          terminalSessionCommitted,
+          terminalCommitFailed,
+          error: serializeError(error),
+        });
+      }
     }
   }
 
@@ -507,6 +535,9 @@ export class AgentSessionRunCoordinator {
       turnNumber: input.session.conversation.filter((entry) => entry.kind === "user.message").length,
       step: input.step,
       input: input.input,
+      continueFromTranscript:
+        input.request.continueFromTranscript === true || input.request.recovery?.mode === "continue",
+      continuationSourceRequestId: input.request.continuationSourceRequestId,
       attachments: input.request.attachments,
       approvalMode: input.request.approvalMode,
       loadedToolNames: loadedToolNames ? [...loadedToolNames] : undefined,
@@ -718,4 +749,30 @@ export class AgentSessionRunCoordinator {
   requestActiveRunCancellation(sessionId: string): boolean {
     return this.activeRuns.requestActiveRunCancellation(sessionId);
   }
+}
+
+function buildAssistantEntryMetadata(
+  request: AgentSessionRunRequest,
+  result: Awaited<ReturnType<AgentLoopRunner["run"]>>,
+  effectiveModel: AgentEffectiveModelReceipt | undefined,
+): AgentConversationEntryMetadata | undefined {
+  const metadata: AgentConversationEntryMetadata = {};
+  if (request.reuseUserEntryFromRequestId) {
+    metadata.sourceRequestId = request.reuseUserEntryFromRequestId;
+  }
+  if (result.modelProvider) {
+    metadata.run = {
+      modelProvider: result.modelProvider,
+      usage: result.usage,
+      ...(effectiveModel
+        ? {
+            receipt: {
+              ...effectiveModel,
+              ...(result.physicalPiSessionId ? { physicalPiSessionId: result.physicalPiSessionId } : {}),
+            },
+          }
+        : {}),
+    };
+  }
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
 }

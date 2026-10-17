@@ -21,7 +21,6 @@ import { projectRuntimeUsageFromSessionSnapshot } from "../observability/runtime
 export function ChatPanel({
   userProfile,
   modelConfig,
-  personaConfig,
   runtime,
   messageActions,
   navigationActions,
@@ -137,7 +136,6 @@ export function ChatPanel({
           onValueChange={setComposerValue}
           modelConfig={modelConfig}
           approvalConfig={{ mode: approvalMode, onSelectMode: setApprovalMode }}
-          personaConfig={personaConfig}
           runtime={{
             draftKey,
             socketStatus: runtime.socketStatus,

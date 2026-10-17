@@ -14,16 +14,37 @@ let observer: AgentWorkspaceChangeObserver | undefined;
 let currentConfig: ResolvedAgentArtifactsConfig | undefined;
 const leases = new Map<string, AgentWorkspaceObservationLease>();
 const leaseResourceIds = new Map<string, string>();
+const activeCompletionRequests = new Set<Promise<void>>();
 let dispatchQueue: Promise<void> = Promise.resolve();
 
 process.on("message", (value: unknown) => {
+  let request: AgentWorkspaceObserverWorkerRequest;
+  try {
+    request = readWorkerRequest(value);
+  } catch (error) {
+    sendFailure(undefined, error);
+    return;
+  }
+
+  // A completed tool call may wait for sibling calls in the same batch before
+  // resolving its response. Dispatch these join points concurrently so the
+  // sibling completion messages can reach the observer and release the batch.
+  if (request.type === "complete_call") {
+    const operation = dispatchWorkerRequest(request).catch((error: unknown) => sendFailure(request.requestId, error));
+    activeCompletionRequests.add(operation);
+    void operation.then(
+      () => activeCompletionRequests.delete(operation),
+      () => activeCompletionRequests.delete(operation),
+    );
+    return;
+  }
+
   dispatchQueue = dispatchQueue.then(async () => {
-    let request: AgentWorkspaceObserverWorkerRequest | undefined;
     try {
-      request = readWorkerRequest(value);
+      if (request.type === "close") await Promise.all([...activeCompletionRequests]);
       await dispatchWorkerRequest(request);
     } catch (error) {
-      sendFailure(request?.requestId, error);
+      sendFailure(request.requestId, error);
     }
   });
 });

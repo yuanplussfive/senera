@@ -21,6 +21,9 @@ export function SettingsOverlay({
   return (
     <>
       <Dialog
+        // Pierre's source editor uses a Shadow DOM scrollport. Radix's modal
+        // remove-scroll layer retargets wheel events before they reach it.
+        modal={false}
         open={section !== null}
         onOpenChange={(open) => {
           if (!open) controller.requestClose();

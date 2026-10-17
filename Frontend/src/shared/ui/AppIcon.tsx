@@ -208,7 +208,7 @@ const AppIconCatalog = {
   "shield-alert": ShieldAlert,
   "shield-off": ShieldOff,
   plus: PlusIcon,
-  refresh: ArrowPathIcon,
+  refresh: RotateCcw,
   "rotate-ccw": RotateCcw,
   undo: ArrowUturnLeftIcon,
   archive: ArchiveBoxIcon,

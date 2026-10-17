@@ -172,7 +172,6 @@ export function ProviderConnectionList({
       <AppIcon icon="plus" size={16} aria-hidden="true" />
     </IconButton>
   );
-
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       {compact ? (

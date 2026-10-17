@@ -40,7 +40,6 @@
         "VerifyPiSessionLazyLifecycle.js",
         "VerifyPiCodingAgentSessionReuse.js",
         "VerifyPiRuntimeQueueSteering.js",
-        "VerifyPiContextPolicy.js",
         "VerifyAgentLoopRuntimeBoundary.js",
         "VerifyPiTurnExecutorContracts.js",
         "VerifyPiPlanningCompiler.js",

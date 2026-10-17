@@ -26,6 +26,7 @@ export function JsonConfigSettingsView({
   emptyText = frontendMessage("config.form.empty"),
   onChange,
   onCommit,
+  readSecret,
 }: {
   layoutMode?: "panel" | "embedded";
   sections: ConfigFormSectionData[];
@@ -35,9 +36,10 @@ export function JsonConfigSettingsView({
   emptyText?: string;
   onChange: (value: JsonConfigObject, mode?: "debounced" | "immediate") => void;
   onCommit?: () => void;
+  readSecret?: (field: ConfigFormFieldData) => Promise<string>;
 }): JSX.Element {
   const [fieldVisibility, setFieldVisibility] = useState<ConfigFieldVisibility>("essential");
-  const { allFields, visibleSections } = projectJsonConfigFieldVisibility(sections, fieldVisibility);
+  const { allFields, visibleSections } = projectJsonConfigFieldVisibility(sections, fieldVisibility, value);
   const visibilityControl = (
     <ConfigFieldVisibilityControl fields={allFields} value={fieldVisibility} onChange={setFieldVisibility} />
   );
@@ -61,6 +63,7 @@ export function JsonConfigSettingsView({
               headerAction={index === 0 ? visibilityControl : undefined}
               value={value}
               disabled={Boolean(disabled)}
+              readSecret={readSecret}
               onUpdateField={(field, nextValue) =>
                 onChange(
                   writeJsonConfigFieldValue(value, field.path, normalizeJsonConfigFieldValue(field, nextValue)),
@@ -105,6 +108,7 @@ function JsonSettingsSection({
   headerAction,
   value,
   disabled,
+  readSecret,
   onUpdateField,
 }: {
   section: ConfigFormSectionData;
@@ -113,6 +117,7 @@ function JsonSettingsSection({
   headerAction?: ReactNode;
   value: JsonConfigObject;
   disabled: boolean;
+  readSecret?: (field: ConfigFormFieldData) => Promise<string>;
   onUpdateField: (field: ConfigFormFieldData, value: unknown) => void;
 }): JSX.Element {
   return (
@@ -137,6 +142,7 @@ function JsonSettingsSection({
             field={field}
             value={readDraftOrEffectiveValue(value, field)}
             disabled={disabled}
+            readSecret={readSecret}
             onChange={(nextValue) => onUpdateField(field, nextValue)}
           />
         ))}

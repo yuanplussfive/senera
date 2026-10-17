@@ -1,7 +1,7 @@
 {
   "chat.composer.toolkit.tooltip": "Tools",
   "chat.composer.toolkit.fileAndImage": "Files & images",
-  "chat.composer.toolkit.persona": "Persona",
+  "chat.composer.toolkit.persona": "Prompt preset",
   "chat.composer.toolkit.plugins": "Plugins",
   "chat.composer.toolkit.skills": "Skills",
   "chat.composer.toolkit.webSearch": "Web search",

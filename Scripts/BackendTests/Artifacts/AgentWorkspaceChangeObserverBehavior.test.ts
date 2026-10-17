@@ -248,11 +248,14 @@ describe("AgentWorkspaceChangeObserver", () => {
     });
     processObservers.push(observer);
 
-    await observer.beginBatch("process-batch-first", ["process-call-first"]);
+    await observer.beginBatch("process-batch-first", ["process-call-first", "process-call-second"]);
     await fs.writeFile(path.join(workspaceRoot, "first.txt"), "first\n", "utf8");
-    expect((await observer.completeCall("process-batch-first", "process-call-first"))?.changes).toEqual([
-      expect.objectContaining({ path: "first.txt", status: "added" }),
+    const [firstCapture, secondCapture] = await Promise.all([
+      observer.completeCall("process-batch-first", "process-call-first"),
+      observer.completeCall("process-batch-first", "process-call-second"),
     ]);
+    expect(firstCapture?.changes).toEqual([expect.objectContaining({ path: "first.txt", status: "added" })]);
+    expect(secondCapture).toBeUndefined();
 
     await new Promise((resolve) => setTimeout(resolve, 150));
 

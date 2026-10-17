@@ -306,27 +306,6 @@ export function App({
     onWorkspaceReady: handleWorkspaceReady,
   });
   const settingsReady = Boolean(settingsRuntime.systemConfig.configSnapshot);
-  const personaConfig = useMemo(() => {
-    const prompt = readRecord(settingsRuntime.systemConfig.configSnapshot?.value.Prompt);
-    return {
-      corePersona: readString(prompt.CorePersona),
-      languageStyle: readString(prompt.LanguageStyle),
-      operation: settingsRuntime.controller.configOperation,
-      onSave: (input: { corePersona: string; languageStyle: string }): string | null => {
-        const snapshot = settingsRuntime.systemConfig.configSnapshot;
-        if (!snapshot) return null;
-        const currentPrompt = readRecord(snapshot.value.Prompt);
-        return settingsRuntime.controller.saveConfig({
-          ...snapshot.value,
-          Prompt: {
-            ...currentPrompt,
-            CorePersona: input.corePersona,
-            LanguageStyle: input.languageStyle,
-          },
-        });
-      },
-    };
-  }, [settingsRuntime.controller, settingsRuntime.systemConfig.configSnapshot]);
   settingsEventHandlerRef.current = settingsRuntime.ingestSettingsEvent;
   const executionResourceCommands = useExecutionResourceCommands({
     activeSessionId: activeId,
@@ -540,7 +519,6 @@ export function App({
                               .catch(() => toast.error(frontendMessage("settings.loadFailed")));
                           },
                         }}
-                        personaConfig={personaConfig}
                         runtime={{
                           workspaceId: workspaceIdentity,
                           socketStatus: status,
@@ -672,7 +650,6 @@ export function App({
     </AppMotionProvider>
   );
 }
-
 function DeferredThinkingTimeline(props: ThinkingTimelineProps): JSX.Element {
   return (
     <Suspense
@@ -687,12 +664,4 @@ function DeferredThinkingTimeline(props: ThinkingTimelineProps): JSX.Element {
       <LazyThinkingTimeline {...props} />
     </Suspense>
   );
-}
-
-function readRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
-
-function readString(value: unknown): string {
-  return typeof value === "string" ? value : "";
 }

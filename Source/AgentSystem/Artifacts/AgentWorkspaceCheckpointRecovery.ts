@@ -441,7 +441,7 @@ async function restoreFile(
         `Cannot restore directory ${entry.path}: the current workspace entry has a different type.`,
       );
     }
-    if (existing && !existing.isDirectory()) await fs.rm(absolutePath, { force: true });
+    if (existing && !existing.isDirectory()) await removeAgentPathWithRetry(absolutePath);
     await fs.mkdir(absolutePath, { recursive: true });
     return { kind: "restored" };
   }
@@ -614,5 +614,5 @@ async function removeFile(filePath: string): Promise<void> {
       throw new AgentWorkspaceCheckpointConflictError(`Refusing to remove non-empty workspace directory: ${filePath}`);
     }
   }
-  await fs.rm(filePath, { force: true, recursive: stat.isDirectory() && !stat.isSymbolicLink() });
+  await removeAgentPathWithRetry(filePath, { recursive: stat.isDirectory() && !stat.isSymbolicLink() });
 }

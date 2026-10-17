@@ -14,6 +14,11 @@
       "enum": ["agent", "always_ask", "full_access"],
       "description": "Approval mode used for agent turns started from channels."
     },
+    "finalResponseRewrite": {
+      "type": "boolean",
+      "default": false,
+      "description": "Use the configured model to serialize settled channel answers into platform delivery parts."
+    },
     "profileRoutes": {
       "type": "array",
       "maxItems": 512,

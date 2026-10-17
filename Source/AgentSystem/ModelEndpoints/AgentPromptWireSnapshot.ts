@@ -1,5 +1,5 @@
-import type { AssistantMessage, FetchFunction, Model, SimpleStreamOptions, StreamOptions } from "@earendil-works/pi-ai";
-import { sha256Hex, sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
+import type { AssistantMessage, Model, SimpleStreamOptions, StreamOptions } from "@earendil-works/pi-ai";
+import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import type { AgentNativeToolApi } from "./AgentModelEndpointContract.js";
 
 /**
@@ -30,13 +30,12 @@ export interface AgentPromptWireSnapshot {
   readonly stablePrefixBytes: number;
   readonly strategy: AgentPromptCacheStrategy;
   readonly retention: NonNullable<SimpleStreamOptions["cacheRetention"]>;
+  /** Digest and size of the provider-shaped payload observed through Pi. */
   readonly payloadDigest?: string;
   readonly payloadBytes?: number;
-  readonly wireBodyDigest?: string;
-  readonly wireBodyBytes?: number;
-  /** Digest of the provider-shaped stable prompt projection on the wire. */
+  /** Digest of the provider-shaped stable prompt projection observed through Pi. */
   readonly wireStablePrefixDigest?: string;
-  readonly wireStablePrefixSource?: "provider-projection" | "serialized-prefix";
+  readonly wireStablePrefixSource?: "provider-projection";
   readonly observation: AgentPromptCacheObservation;
   readonly cacheReadTokens?: number;
   readonly cacheWriteTokens?: number;
@@ -44,7 +43,6 @@ export interface AgentPromptWireSnapshot {
 
 export interface AgentPromptWireCapture {
   readonly onPayload: NonNullable<SimpleStreamOptions["onPayload"]>;
-  readonly fetch: FetchFunction;
   snapshot(input: {
     readonly model: Model<AgentNativeToolApi>;
     readonly sessionId?: string;
@@ -80,13 +78,12 @@ export function resolveAgentPromptCacheObservation(
 }
 
 export function createAgentPromptWireCapture(
-  options: Pick<StreamOptions | SimpleStreamOptions, "fetch" | "onPayload">,
+  options: Pick<StreamOptions | SimpleStreamOptions, "onPayload">,
 ): AgentPromptWireCapture {
+  // Pi adapters expose the provider payload here. Keep observation at this
+  // protocol boundary so adapters that reject custom transport fetches remain usable.
   let payloadDigest: string | undefined;
   let payloadBytes: number | undefined;
-  let wireBodyDigest: string | undefined;
-  let wireBodyBytes: number | undefined;
-  let wireBodyValue: Buffer | undefined;
   let payloadValue: unknown;
   const originalPayload = options.onPayload;
   const onPayload: NonNullable<SimpleStreamOptions["onPayload"]> = async (payload, model) => {
@@ -105,26 +102,8 @@ export function createAgentPromptWireCapture(
     }
     return replacement;
   };
-  const originalFetch = options.fetch ?? globalThis.fetch;
-  const fetch: FetchFunction = async (input, init) => {
-    try {
-      const bodyIdentity = projectBodyIdentity(init?.body);
-      if (bodyIdentity) {
-        wireBodyDigest = bodyIdentity.digest;
-        wireBodyBytes = bodyIdentity.bytes;
-        wireBodyValue = bodyIdentity.value;
-      }
-    } catch {
-      wireBodyDigest = undefined;
-      wireBodyBytes = undefined;
-      wireBodyValue = undefined;
-    }
-    return originalFetch(input, init);
-  };
-
   return {
     onPayload,
-    fetch,
     snapshot(input) {
       return {
         version: 1,
@@ -140,9 +119,7 @@ export function createAgentPromptWireCapture(
         retention: input.retention,
         ...(payloadDigest ? { payloadDigest } : {}),
         ...(payloadBytes === undefined ? {} : { payloadBytes }),
-        ...(wireBodyDigest ? { wireBodyDigest } : {}),
-        ...(wireBodyBytes === undefined ? {} : { wireBodyBytes }),
-        ...projectWireStablePrefixObservation(input.model.api, payloadValue, wireBodyValue, input.stablePrefixBytes),
+        ...projectWireStablePrefixObservation(input.model.api, payloadValue),
         observation: input.observation,
         ...(input.usage.cacheRead === undefined ? {} : { cacheReadTokens: input.usage.cacheRead }),
         ...(input.usage.cacheWrite === undefined ? {} : { cacheWriteTokens: input.usage.cacheWrite }),
@@ -163,26 +140,6 @@ export function projectAgentStablePrefixRevision(input: {
   readonly tools: readonly unknown[];
 }): string {
   return sha256HexOfCanonicalJson({ systemPrompt: input.systemPrompt, tools: input.tools });
-}
-
-function projectBodyIdentity(
-  value: unknown,
-): { readonly digest: string; readonly bytes: number; readonly value: Buffer } | undefined {
-  if (typeof value === "string") {
-    const bytes = Buffer.from(value, "utf8");
-    return { digest: sha256Hex(bytes), bytes: bytes.byteLength, value: bytes };
-  }
-  if (value instanceof ArrayBuffer) {
-    const viewBytes = new Uint8Array(value);
-    const body = Buffer.from(viewBytes);
-    return { digest: sha256Hex(body), bytes: body.byteLength, value: body };
-  }
-  if (ArrayBuffer.isView(value)) {
-    const viewBytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
-    const body = Buffer.from(viewBytes);
-    return { digest: sha256Hex(body), bytes: body.byteLength, value: body };
-  }
-  return undefined;
 }
 
 export function verifyAgentPromptWireStablePrefix(
@@ -234,11 +191,9 @@ const AgentWireStablePrefixProjectors: Readonly<Record<AgentNativeToolApi, WireP
 function projectWireStablePrefixObservation(
   api: AgentNativeToolApi,
   payload: unknown,
-  wireBodyValue: Buffer | undefined,
-  stablePrefixBytes: number,
 ): {
   readonly wireStablePrefixDigest?: string;
-  readonly wireStablePrefixSource?: "provider-projection" | "serialized-prefix";
+  readonly wireStablePrefixSource?: "provider-projection";
 } {
   const record = asRecord(payload);
   if (record) {
@@ -248,14 +203,10 @@ function projectWireStablePrefixObservation(
         wireStablePrefixSource: "provider-projection",
       };
     } catch {
-      // Continue with the raw body only when the adapter payload cannot be projected.
+      // A malformed adapter payload must not affect the provider request.
     }
   }
-  if (!wireBodyValue || stablePrefixBytes > wireBodyValue.byteLength) return {};
-  return {
-    wireStablePrefixDigest: sha256Hex(wireBodyValue.subarray(0, stablePrefixBytes)),
-    wireStablePrefixSource: "serialized-prefix",
-  };
+  return {};
 }
 
 function leadingStableMessages(value: unknown): unknown[] {

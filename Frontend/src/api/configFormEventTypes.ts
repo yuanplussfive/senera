@@ -2,6 +2,12 @@ export type ConfigFormFieldType = "boolean" | "string" | "number" | "array" | "t
 
 export type ConfigFormFieldOptionValue = string | number | boolean;
 
+export interface ConfigFormVisibilityCondition {
+  path: string[];
+  equals?: ConfigFormFieldOptionValue;
+  in?: ConfigFormFieldOptionValue[];
+}
+
 export type ConfigFormValueSource = "explicit" | "inherited" | "default" | "missing";
 
 export type ConfigFormModelCapability =
@@ -12,6 +18,7 @@ export interface ConfigFormModelSelectionData {
   capability: ConfigFormModelCapability;
   valueKind: "model-id";
   mutation: "config" | "default-model";
+  presentation?: "assignment" | "inline";
   cardinality?: "one" | "many";
   inheritance?: {
     source: "parent-model" | "default-model";
@@ -70,4 +77,5 @@ export interface ConfigFormFieldData<TText = string> {
   keyPlaceholder?: string;
   valuePlaceholder?: string;
   modelSelection?: ConfigFormModelSelectionData;
+  visibleWhen?: ConfigFormVisibilityCondition;
 }

@@ -1,15 +1,8 @@
-export type AgentActionKind = "answer" | "ask_user" | "discover_tools" | "use_tools";
+export type AgentActionKind = "answer" | "discover_tools" | "use_tools";
 
 export type AgentActionDecision =
   | {
       action: "answer";
-    }
-  | {
-      action: "ask_user";
-      askUser: {
-        question: string;
-        reason: string | null;
-      };
     }
   | {
       action: "discover_tools";
@@ -57,9 +50,6 @@ export function agentActionCapabilityNeeds(decision: AgentActionDecision | undef
 export function agentActionInstruction(decision: AgentActionDecision | undefined): string {
   if (decision?.action === "use_tools") {
     return decision.useTools.instruction;
-  }
-  if (decision?.action === "ask_user") {
-    return decision.askUser.question;
   }
   return "";
 }

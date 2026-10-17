@@ -7,7 +7,7 @@
 - `AgentXmlPolicy` / `AgentXmlStatus`：定义 XML 协议、运行时字段规则、错误码和状态码。
 - `AgentXmlParser`：完整 XML 文档的唯一解析入口，不从 Markdown、流式文本或普通回复中猜测 XML 边界。
 - `AgentXmlSyntaxGuard` / `AgentXmlDocumentValidator`：拒绝禁止语法、未闭合文档、尾随文本和多根文档。
-- `AgentOrderedXmlTreeParser` / `AgentXmlStructureValidator`：保留节点顺序，并验证深度、重复字段、CDATA 和属性约束。
+- `AgentOrderedXmlTree`（`AgentOrderedXmlTreeParser`）/ `AgentXmlStructureValidator`：保留节点顺序，并验证深度、重复字段、CDATA 和属性约束。
 - `AgentXmlParserTextLimits` / `AgentXmlNodeNormalizer`：执行文本预算并归一化最终解析值。
 - `AgentToolResultXmlRenderer`：把工具结果渲染成历史上下文可复用的 XML observation。
 

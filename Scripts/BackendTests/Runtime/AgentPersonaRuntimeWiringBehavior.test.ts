@@ -16,9 +16,17 @@ afterEach(async () => {
 });
 
 describe("agent persona runtime wiring", () => {
-  test("publishes configured persona through runtime prompt services", async () => {
+  test("publishes the workspace Markdown prompt through runtime prompt services", async () => {
     const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "senera-persona-runtime-"));
     temporaryRoots.push(workspaceRoot);
+    fs.mkdirSync(path.join(workspaceRoot, ".senera"), { recursive: true });
+    fs.mkdirSync(path.join(workspaceRoot, "prompts"), { recursive: true });
+    fs.writeFileSync(
+      path.join(workspaceRoot, ".senera", "prompt-preset.json"),
+      JSON.stringify({ version: 1, activePath: "prompts/prompt.md" }),
+      "utf8",
+    );
+    fs.writeFileSync(path.join(workspaceRoot, "prompts", "prompt.md"), "# 可靠助手\n\n先给出可验证的结论。", "utf8");
     const baseConfig = JSON.parse(
       fs.readFileSync(path.resolve("senera.config.example.json"), "utf8"),
     ) as AgentSystemConfig;
@@ -29,11 +37,6 @@ describe("agent persona runtime wiring", () => {
       toolSearchScenarioSource: new VerificationScenarioSource(),
       config: {
         ...baseConfig,
-        Prompt: {
-          ...baseConfig.Prompt,
-          CorePersona: "可靠的系统助手",
-          LanguageStyle: "使用简洁、直接的中文",
-        },
       },
     });
 
@@ -41,9 +44,14 @@ describe("agent persona runtime wiring", () => {
       expect(runtime.services.promptContext.promptPersona()).toEqual({
         enabled: true,
         card: {
-          corePersona: "可靠的系统助手",
-          languageStyle: "使用简洁、直接的中文",
+          markdown: "# 可靠助手\n\n先给出可验证的结论。",
+          sourcePath: "prompts/prompt.md",
         },
+      });
+      fs.writeFileSync(path.join(workspaceRoot, "prompts", "prompt.md"), "# 更新后的助手", "utf8");
+      expect(runtime.services.promptContext.promptPersona()).toMatchObject({
+        enabled: true,
+        card: { markdown: "# 更新后的助手", sourcePath: "prompts/prompt.md" },
       });
     } finally {
       await runtime.close();

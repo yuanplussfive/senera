@@ -143,8 +143,28 @@ export function migrateAgentConfigRetirementStep(options: AgentConfigRetirementM
         renameDigestSummaryTokenLimit(config.Defaults, "Defaults.", migratedPaths, removedPaths);
       }
       return 36;
+    case 36:
+      removeRetiredPersonaConfiguration(config, "", removedPaths);
+      if (isRecord(config.Defaults)) removeRetiredPersonaConfiguration(config.Defaults, "Defaults.", removedPaths);
+      return 38;
     default:
       return undefined;
+  }
+}
+
+function removeRetiredPersonaConfiguration(
+  container: Record<string, unknown>,
+  prefix: string,
+  removedPaths: string[],
+): void {
+  const prompt = container.Prompt;
+  if (!isRecord(prompt)) return;
+  for (const property of ["CorePersona", "LanguageStyle"] as const) {
+    if (removeProperty(prompt, property)) removedPaths.push(`${prefix}Prompt.${property}`);
+  }
+  if (Object.keys(prompt).length === 0) {
+    delete container.Prompt;
+    removedPaths.push(`${prefix}Prompt`);
   }
 }
 

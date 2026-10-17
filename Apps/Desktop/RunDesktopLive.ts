@@ -1,10 +1,10 @@
 import net from "node:net";
-import path from "node:path";
 import process from "node:process";
 import { sync as spawnSync } from "cross-spawn";
 import { DesktopNativeModuleMaintenance } from "../../Build/DesktopNativeModuleMaintenance.js";
 import { isMainModule } from "../../Source/AgentSystem/Core/AgentPath.js";
 import { sleep } from "../../Source/AgentSystem/Core/AgentTiming.js";
+import { resolveAgentWorkspaceLayout } from "../../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
 import {
   spawnSeneraInheritedProcess,
   terminateSeneraOwnedProcessWithEscalation,
@@ -22,7 +22,7 @@ interface CommandInvocation {
 const DesktopChildTerminationGraceMs = 2_000;
 const DesktopElectronDevelopmentArguments = ["--disable-gpu", "--disable-gpu-compositing", "--in-process-gpu"];
 const ElectronNativeDependencyArguments = [`--platform=${process.platform}`, `--arch=${process.arch}`];
-const desktopLiveUserDataDir = path.join(process.cwd(), ".senera", "data", "desktop");
+const desktopLiveUserDataDir = resolveAgentWorkspaceLayout(process.cwd()).desktopRuntimeRoot;
 const configuredFrontendUrl = process.env.SENERA_DESKTOP_FRONTEND_URL?.trim();
 const defaultFrontendUrl = "http://127.0.0.1:5173";
 const runningChildren = new Set<SeneraInheritedOwnedProcess>();

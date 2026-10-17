@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { executeAgentSelfCommand } from "../../../Source/AgentSystem/SelfService/AgentSelfCommand.js";
 import { executeAgentSelfInvocation } from "../../../Source/AgentSystem/SelfService/AgentSelfCommand.js";
+import { AgentSelfCommandContractVersion } from "../../../Source/AgentSystem/SelfService/AgentSelfCommandContract.js";
 import {
   readAgentSelfConfigPath,
   updateAgentSelfConfigPath,
@@ -151,7 +152,10 @@ describe("senera self-service workspace and doctor", () => {
     expect(output.data).toMatchObject({
       protocolVersion: 1,
       mutationWorkflow: expect.any(Array),
-      commandContract: { version: 1, revision: expect.stringMatching(/^[a-f0-9]{64}$/u) },
+      commandContract: {
+        version: AgentSelfCommandContractVersion,
+        revision: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      },
     });
     expect(JSON.stringify(output.data)).toContain("config.update");
   });

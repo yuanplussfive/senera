@@ -13,6 +13,7 @@ import { resolveContinuityLearningConfig, resolveModelProviderConfig } from "../
 import { AgentModelTokenEstimator } from "../Text/AgentTextBudget.js";
 import type { AgentContinuityHistoricalTokenBudget } from "./AgentContinuityPromptBudget.js";
 import { DefaultAgentTimeZone } from "../Time/AgentTime.js";
+import { prefixAgentContinuityMemorySummary } from "./AgentContinuityMemoryPresentation.js";
 import type { AgentContinuityMemOSRuntime } from "./AgentContinuityMemOSRuntime.js";
 import { agentMemOSRevision, projectAgentMemOSOccurredAt, projectAgentMemOSPeriod } from "./AgentMemOSSemanticTypes.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
@@ -154,7 +155,7 @@ export async function recallContinuity(
       revision: agentMemOSRevision(node),
       type: node.type,
       content: node.content,
-      summary: node.summary,
+      summary: prefixAgentContinuityMemorySummary(node.summary, period?.start ?? projectAgentMemOSOccurredAt(node)),
       occurredAt: projectAgentMemOSOccurredAt(node),
       score,
       matchedBy: ["memos", ...Object.keys(scores ?? {})],

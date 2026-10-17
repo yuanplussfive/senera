@@ -2,6 +2,7 @@ import type { BackendLocalizedMessage } from "../i18n/backendMessage";
 
 export interface WorkspaceSnapshotData {
   workspaceId: string;
+  defaultWorkspaceId: string;
   workspaces: readonly { id: string; root: string; name: string }[];
   capabilities: { browseDirectories: boolean };
   workspaceRoot: string;

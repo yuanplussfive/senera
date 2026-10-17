@@ -8,11 +8,13 @@ export function JsonConfigFieldControl({
   field,
   value,
   disabled,
+  readSecret,
   onChange,
 }: {
   field: ConfigFormFieldData;
   value: unknown;
   disabled: boolean;
+  readSecret?: (field: ConfigFormFieldData) => Promise<string>;
   onChange: (value: unknown) => void;
 }): JSX.Element {
   const wide = field.type === "array" && field.itemType === "table";
@@ -31,7 +33,7 @@ export function JsonConfigFieldControl({
         <SettingsControlRow
           label={label}
           description={field.description}
-          control={renderJsonConfigFieldInput(field, value ?? field.defaultValue, disabled, onChange)}
+          control={renderJsonConfigFieldInput(field, value ?? field.defaultValue, disabled, onChange, readSecret)}
           controlClassName="md:max-w-[320px]"
         />
       </div>
@@ -50,8 +52,8 @@ export function JsonConfigFieldControl({
         {label}
         {field.description ? <p className="mt-0.5 text-[11.5px] leading-5 text-ink-500">{field.description}</p> : null}
       </div>
-      <div className={cn("min-w-0 md:justify-self-end", wide && "md:w-full md:justify-self-stretch")}>
-        {renderJsonConfigFieldInput(field, value ?? field.defaultValue, disabled, onChange)}
+      <div className={cn("min-w-0 w-full md:justify-self-stretch", wide && "md:w-full")}>
+        {renderJsonConfigFieldInput(field, value ?? field.defaultValue, disabled, onChange, readSecret)}
       </div>
     </div>
   );

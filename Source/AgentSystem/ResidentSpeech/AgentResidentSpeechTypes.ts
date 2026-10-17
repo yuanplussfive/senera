@@ -1,7 +1,6 @@
 import type { AssistantMessage, AssistantMessageEventStream, Context } from "@earendil-works/pi-ai";
 import type { AgentModelUsageSink } from "../ModelEndpoints/AgentModelUsage.js";
 import type { AgentModelTimingSink } from "../ModelEndpoints/AgentModelTiming.js";
-import type { AgentModelInputInspection } from "../Text/AgentTurnTokenBudget.js";
 
 export const AgentResidentActionSpeechCapability = "resident-speech.action";
 export const AgentResidentFinalSpeechCapability = "resident-speech.final";
@@ -60,9 +59,6 @@ export interface AgentResidentSpeechProjectionInput {
   readonly nativeContinuation?: AgentResidentSpeechNativeContinuation;
   readonly usageSink?: AgentModelUsageSink;
   readonly timingSink?: AgentModelTimingSink;
-  readonly inputBudget?: {
-    inspectModelInput(payload: unknown): AgentModelInputInspection;
-  };
 }
 
 export interface AgentResidentSpeechProjector {

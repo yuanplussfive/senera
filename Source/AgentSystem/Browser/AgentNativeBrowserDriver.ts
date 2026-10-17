@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import type { Readable } from "node:stream";
 import { resolveAgentBrowserController } from "./AgentBrowserControllerResolver.js";
+import { removeAgentPathWithRetry } from "../Core/AgentFs.js";
+import { sha256Hex } from "../Core/AgentHash.js";
 import type { AgentBrowserConfiguration } from "./AgentBrowserConfiguration.js";
 import {
   assertAgentBrowserWindowModeSupported,
@@ -78,7 +80,7 @@ export class AgentNativeBrowserDriver implements AgentBrowserDriver {
   async run(sessionId: string, args: readonly string[], options: AgentBrowserDriverOperationOptions): Promise<unknown> {
     if (this.closed) throw new Error("The controlled browser driver is closed.");
     await this.ensureNetworkPolicy(sessionId, options);
-    const command = [...this.globalArguments(sessionId), ...args];
+    const command = [...this.globalArguments(sessionId, options.headed), ...args];
     const controller = this.controller();
     return runAgentBrowserCommand(controller, command, this.options.workspaceRoot, this.options.environment, options);
   }
@@ -107,7 +109,7 @@ export class AgentNativeBrowserDriver implements AgentBrowserDriver {
     if (this.networkPolicySessions.has(sessionId)) return;
     for (const pattern of this.options.configuration.network.blockedDomains) {
       const route = agentBrowserRoutePattern(pattern);
-      const command = [...this.globalArguments(sessionId), "network", "route", route, "--abort"];
+      const command = [...this.globalArguments(sessionId, options.headed), "network", "route", route, "--abort"];
       await runAgentBrowserCommand(
         this.controller(),
         command,
@@ -131,10 +133,10 @@ export class AgentNativeBrowserDriver implements AgentBrowserDriver {
     return this.controllerPath;
   }
 
-  private globalArguments(sessionId: string): string[] {
+  private globalArguments(sessionId: string, headed = this.options.configuration.runtime.headed): string[] {
     const args = ["--json", "--session", sessionId];
     const environment = this.options.environment ?? process.env;
-    assertAgentBrowserWindowModeSupported({ headed: this.options.configuration.runtime.headed, environment });
+    assertAgentBrowserWindowModeSupported({ headed, environment });
     const configuredExecutable = this.options.configuration.runtime.executablePath?.trim();
     if (configuredExecutable) {
       const executable =
@@ -145,10 +147,10 @@ export class AgentNativeBrowserDriver implements AgentBrowserDriver {
         });
       args.push("--executable-path", executable);
     }
-    if (this.options.configuration.runtime.headed) args.push("--headed");
+    if (headed) args.push("--headed");
     args.push(
       "--idle-timeout",
-      `${this.options.configuration.runtime.idleTimeoutMs}ms`,
+      String(this.options.configuration.runtime.idleTimeoutMs),
       "--max-output",
       String(this.options.configuration.runtime.outputMaxChars),
       "--pin-tab",
@@ -180,7 +182,8 @@ class AgentNativeBrowserSession implements AgentBrowserDriverSession {
   ): Promise<AgentBrowserDriverOperationResult> {
     if (this.closed) throw new Error("The controlled browser session is closed.");
     const result = await this.executeOperation(operation, input, options);
-    if (operation === "close" || operation === "tab_list" || operation === "read") return result;
+    if (operation === "close" || operation === "tab_list" || operation === "read" || operation === "render_html")
+      return result;
     if (operation === "tab_close" && !result.page) return result;
     return { ...result, page: await this.pageState(options) };
   }
@@ -193,7 +196,7 @@ class AgentNativeBrowserSession implements AgentBrowserDriverSession {
     } finally {
       this.driver.forget(this);
       const directory = await this.tempDirectoryPromise;
-      await fs.rm(directory, { recursive: true, force: true });
+      await removeAgentPathWithRetry(directory, { recursive: true });
     }
   }
 
@@ -209,6 +212,8 @@ class AgentNativeBrowserSession implements AgentBrowserDriverSession {
         const data = await this.run(["open", url], options);
         return { content: pageDescription(data), page: pageFromData(data) };
       }
+      case "render_html":
+        return this.renderHtml(input, options);
       case "read": {
         const url = optionalString(input, "url");
         if (url) await this.options.assertRequestPermitted(url, "navigation");
@@ -317,6 +322,70 @@ class AgentNativeBrowserSession implements AgentBrowserDriverSession {
       case "computer":
         return this.computer(input, options);
     }
+  }
+
+  private async renderHtml(
+    input: Readonly<Record<string, unknown>>,
+    options: AgentBrowserDriverOperationOptions,
+  ): Promise<AgentBrowserDriverOperationResult> {
+    const renderOptions = { ...options, headed: false };
+    const operationDeadline = Date.now() + renderOptions.timeoutMs;
+    const url = requiredString(input, "url");
+    await this.options.assertRequestPermitted(url, "navigation");
+    const opened = await this.runWithRemaining(["open", url], renderOptions, operationDeadline);
+    const settleTimeoutMs = requiredPositiveNumber(input, "settleTimeoutMs");
+    const pollMs = requiredPositiveNumber(input, "settlePollMs");
+    const stableSamples = requiredPositiveInteger(input, "stableSamples");
+    const deadline = Math.min(operationDeadline, Date.now() + settleTimeoutMs);
+    await this.runWithRemaining(
+      ["wait", String(Math.min(pollMs, Math.max(1, deadline - Date.now())))],
+      renderOptions,
+      deadline,
+    );
+    let html = await this.readHtml(renderOptions, deadline);
+    let signature = renderedHtmlSignature(html);
+    let stable = 1;
+    while (stable < stableSamples && Date.now() < deadline) {
+      await this.runWithRemaining(
+        ["wait", String(Math.min(pollMs, Math.max(1, deadline - Date.now())))],
+        renderOptions,
+        deadline,
+      );
+      const next = await this.readHtml(renderOptions, deadline);
+      const nextSignature = renderedHtmlSignature(next);
+      if (nextSignature === signature) stable += 1;
+      else {
+        stable = 1;
+        signature = nextSignature;
+      }
+      html = next;
+    }
+    return { content: html, page: pageFromData(opened) ?? (await this.pageStateWithDeadline(renderOptions, deadline)) };
+  }
+
+  private async readHtml(options: AgentBrowserDriverOperationOptions, deadline: number): Promise<string> {
+    const data = await this.runWithRemaining(["get", "html", "html"], options, deadline);
+    const value = recordValue(data, "html");
+    if (typeof value !== "string") throw new Error("agent-browser did not return rendered HTML.");
+    return value;
+  }
+
+  private async pageStateWithDeadline(options: AgentBrowserDriverOperationOptions, deadline: number) {
+    const [url, title] = await Promise.all([
+      this.runWithRemaining(["get", "url"], options, deadline).then((data) => stringValue(data, "url")),
+      this.runWithRemaining(["get", "title"], options, deadline).then((data) => stringValue(data, "title")),
+    ]);
+    return { url, title };
+  }
+
+  private async runWithRemaining(
+    args: readonly string[],
+    options: AgentBrowserDriverOperationOptions,
+    deadline: number,
+  ): Promise<unknown> {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw new DOMException("Browser rendering timed out.", "TimeoutError");
+    return this.run(args, { ...options, timeoutMs: Math.min(options.timeoutMs, remaining) });
   }
 
   private async screenshot(
@@ -614,6 +683,20 @@ function requiredString(input: Readonly<Record<string, unknown>>, key: string): 
   return value;
 }
 
+function requiredPositiveNumber(input: Readonly<Record<string, unknown>>, key: string): number {
+  const value = input[key];
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    throw new Error(`Browser operation requires ${key} as a positive number.`);
+  }
+  return value;
+}
+
+function requiredPositiveInteger(input: Readonly<Record<string, unknown>>, key: string): number {
+  const value = requiredPositiveNumber(input, key);
+  if (!Number.isInteger(value)) throw new Error(`Browser operation requires ${key} as a positive integer.`);
+  return value;
+}
+
 function requiredStringArray(input: Readonly<Record<string, unknown>>, key: string): string[] {
   const value = input[key];
   if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string"))
@@ -648,4 +731,8 @@ function stringValue(value: unknown, key: string): string {
   if (candidate !== undefined) return JSON.stringify(candidate);
   if (typeof value === "string") return value;
   return "Browser operation completed.";
+}
+
+function renderedHtmlSignature(value: string): string {
+  return sha256Hex(value.replace(/\s+/gu, " ").trim());
 }

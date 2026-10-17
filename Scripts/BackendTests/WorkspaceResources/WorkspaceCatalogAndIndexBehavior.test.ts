@@ -39,6 +39,18 @@ test("mounted-root containment and directory browsing use canonical paths", asyn
   expect(catalog.browse(input.a).directories).toEqual([{ path: path.join(input.a, "child"), name: "child" }]);
 });
 
+test("forget removes only the catalog registration and survives reopening", async () => {
+  const input = await fixture();
+  await fs.writeFile(path.join(input.a, "keep.txt"), "workspace data");
+  const catalog = new AgentWorkspaceCatalog({ stateRoot: input.stateRoot, allowedRoots: [input.root] });
+  const record = catalog.register(input.a);
+
+  expect(catalog.forget(record.id)).toEqual(record);
+  expect(catalog.list()).toEqual([]);
+  expect(await fs.readFile(path.join(input.a, "keep.txt"), "utf8")).toBe("workspace data");
+  expect(new AgentWorkspaceCatalog({ stateRoot: input.stateRoot, allowedRoots: [input.root] }).list()).toEqual([]);
+});
+
 test("file search covers unopened directories and nested ignore rules", async () => {
   const { a } = await fixture();
   await fs.mkdir(path.join(a, "src", "deep"), { recursive: true });

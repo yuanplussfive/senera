@@ -4,6 +4,7 @@ import type { AgentContinuityMemoryPromptContext } from "../Continuity/AgentCont
 import { AgentEventKinds } from "../Events/AgentEventCatalog.js";
 import type { AgentPromptHarnessComposition } from "../Prompt/AgentPromptHarness.js";
 import type { AgentModelToolPlanningMode } from "../ModelEndpoints/AgentModelEndpointContract.js";
+import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 
 export class AgentLoopPromptEventFactory {
   promptRendered(
@@ -34,12 +35,21 @@ export class AgentLoopPromptEventFactory {
     step: number,
     harness: AgentPromptHarnessComposition,
     mode: AgentModelToolPlanningMode,
+    activeSkills: readonly AgentActivatedSkill[],
   ): AgentDomainEvent {
     return {
       kind: AgentEventKinds.PromptHarnessComposed,
       context: { requestId, step },
       data: {
         profile: mode,
+        skills: activeSkills.map((skill) => ({
+          name: skill.name,
+          revision: skill.revision,
+          score: skill.score,
+          matchedTerms: [...skill.matchedTerms],
+          matchedFields: skill.matchedFields.map((field) => ({ term: field.term, fields: [...field.fields] })),
+          recommendedTools: [...skill.recommendedTools],
+        })),
         sections: harness.sections,
         merged: harness.merged,
       },

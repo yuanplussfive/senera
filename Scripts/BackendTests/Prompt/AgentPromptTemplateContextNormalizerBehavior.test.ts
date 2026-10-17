@@ -31,6 +31,7 @@ describe("native MemOS template context", () => {
       },
     );
     expect(text).toContain("用户喜欢咖啡。");
+    expect(text).toContain("[2026-08-23 08:00] 用户喜欢咖啡。");
     expect(text).toContain("memos:internal-id");
     expect(text).not.toContain("internal-revision");
     expect(text).not.toContain("senera.profile");

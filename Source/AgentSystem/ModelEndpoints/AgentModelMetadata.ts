@@ -59,6 +59,11 @@ export interface AgentChannelMetadata {
 }
 
 export interface AgentConversationEntryMetadata {
+  /**
+   * Durable user turn answered by an assistant entry. Recovery attempts have
+   * their own run request id, so this relation must not be inferred from it.
+   */
+  sourceRequestId?: string;
   run?: AgentRunMetadata;
   channel?: AgentChannelMetadata;
   scheduledTask?: {

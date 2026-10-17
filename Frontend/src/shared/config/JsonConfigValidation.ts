@@ -1,6 +1,7 @@
 import type { ConfigFormFieldData, ConfigFormSectionData } from "../../api/eventTypes";
 import {
   isJsonConfigObject,
+  isJsonConfigFieldVisible,
   readDraftOrEffectiveValue,
   readRelativeItemPath,
   readValueAtPath,
@@ -9,8 +10,13 @@ import {
 } from "./JsonConfigValue";
 
 export function validateJsonConfigDraft(sections: readonly ConfigFormSectionData[], value: JsonConfigObject): string[] {
+  const allFields = sections.flatMap((section) => section.fields);
   return sections.flatMap((section) =>
-    section.fields.flatMap((field) => validateJsonConfigField(field, readDraftOrEffectiveValue(value, field))),
+    section.fields.flatMap((field) =>
+      isJsonConfigFieldVisible(field, value, allFields)
+        ? validateJsonConfigField(field, readDraftOrEffectiveValue(value, field))
+        : [],
+    ),
   );
 }
 

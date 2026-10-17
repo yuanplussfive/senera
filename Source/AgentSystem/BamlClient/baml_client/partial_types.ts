@@ -20,7 +20,7 @@ $ pnpm add @boundaryml/baml
 
 import type { Image, Audio, Pdf, Video } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
-import type {  ActionPlanInput,  ActionRunState,  AskUserDecision,  AskUserDecisionKind,  AuxiliaryImageAnalysis,  AuxiliarySummary,  ChannelCodePart,  ChannelDelivery,  ChannelResourcePart,  ChannelTextPart,  DirectDecision,  DirectDecisionKind,  EvidenceSlot,  ExecuteDecision,  ExecuteDecisionKind,  ExecutionDeltaOp,  MemOSFragment,  PiToolArgumentsDraft,  PlanFragment,  PlannedToolCall,  PlannerActiveSkill,  PlannerCurrentUserTurn,  PlannerEvidenceMemoryItem,  PlannerEvidenceRequirement,  PlannerEvidenceStateItem,  PlannerJournalItem,  PlannerTimelineTurn,  PlannerToolCallStateItem,  ProgressSignals,  RepeatedCallWarning,  ResidentSpeechProjection,  StateCardRewrite,  ToolCallArgumentValue,  ToolCallStatus,  ToolCapabilityFacets,  ToolCapabilityItem,  ToolCapabilityRisk,  ToolCatalogItem,  ToolCatalogSummaryItem,  ToolEvidenceCapabilityItem,  ToolRiskAudit,  ToolRiskAuditDecision,  ToolRiskLevel } from "./types.js"
+import type {  ActionPlanInput,  ActionRunState,  AuxiliaryImageAnalysis,  AuxiliarySummary,  ChannelCodePart,  ChannelDelivery,  ChannelResourcePart,  ChannelTextPart,  DirectDecision,  DirectDecisionKind,  EvidenceSlot,  ExecuteDecision,  ExecuteDecisionKind,  ExecutionDeltaOp,  MemOSFragment,  PiToolArgumentsDraft,  PlanFragment,  PlannedToolCall,  PlannerActiveSkill,  PlannerCurrentUserTurn,  PlannerEvidenceMemoryItem,  PlannerEvidenceRequirement,  PlannerEvidenceStateItem,  PlannerJournalItem,  PlannerTimelineTurn,  PlannerToolCallStateItem,  ProgressSignals,  RepeatedCallWarning,  ResidentSpeechProjection,  StateCardRewrite,  ToolCallArgumentValue,  ToolCallStatus,  ToolCapabilityFacets,  ToolCapabilityItem,  ToolCapabilityRisk,  ToolCatalogItem,  ToolCatalogSummaryItem,  ToolEvidenceCapabilityItem,  ToolRiskAudit,  ToolRiskAuditDecision,  ToolRiskLevel } from "./types.js"
 import type * as types from "./types.js"
 
 /******************************************************************************
@@ -54,10 +54,6 @@ export namespace partial_types {
       progress?: ProgressSignals | null
       warnings: RepeatedCallWarning[]
       calls: PlannerToolCallStateItem[]
-    }
-    export interface AskUserDecision {
-      kind?: types.AskUserDecisionKind | null
-      question?: string | null
     }
     export interface AuxiliaryImageAnalysis {
       analysis?: string | null
@@ -274,7 +270,7 @@ export namespace partial_types {
       matchedConcerns: string[]
       safeAlternative?: string | null
     }
-export type ControllerDecision = DirectDecision | AskUserDecision | ExecuteDecision | null
+export type ControllerDecision = DirectDecision | ExecuteDecision | null
 
 export interface ToolCallArgumentValue {
   [key: string]: string | number | boolean | ToolCallArgumentValue[] | Record<string, ToolCallArgumentValue> | null

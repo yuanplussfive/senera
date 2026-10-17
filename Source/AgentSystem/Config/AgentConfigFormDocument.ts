@@ -18,6 +18,26 @@ const ConfigFormFieldTypeSchema = z.enum(["boolean", "string", "number", "array"
 
 const ConfigFormFieldOptionValueSchema = z.union([z.string(), z.number(), z.boolean()]);
 
+const ConfigFormVisibilityConditionSchema = z
+  .object({
+    path: z.array(z.string().min(1)).min(1),
+    equals: ConfigFormFieldOptionValueSchema.optional(),
+    in: z.array(ConfigFormFieldOptionValueSchema).min(1).optional(),
+  })
+  .strict()
+  .superRefine((condition, context) => {
+    if (condition.equals === undefined && condition.in === undefined) {
+      context.addIssue({ code: "custom", message: "A visibility condition needs equals or in.", path: ["equals"] });
+    }
+    if (condition.equals !== undefined && condition.in !== undefined) {
+      context.addIssue({
+        code: "custom",
+        message: "A visibility condition cannot use equals and in together.",
+        path: ["in"],
+      });
+    }
+  });
+
 const ConfigFormFieldLevelSchema = z.enum(["basic", "advanced", "internal"]);
 
 const ConfigFormOptionSourceSchema = z
@@ -39,6 +59,7 @@ const ConfigFormModelSelectionSchema = z
     capability: z.enum(["Chat", "Vision", "ImageOutput", "Reasoning", "DeveloperRole", "StreamingUsage"]),
     valueKind: z.enum(["model-id"]),
     mutation: z.enum(["config", "default-model"]),
+    presentation: z.enum(["assignment", "inline"]).optional(),
     cardinality: z.enum(["one", "many"]).optional(),
     inheritance: ConfigFormModelInheritanceSchema.optional(),
     required: z.boolean(),
@@ -96,6 +117,7 @@ export type ConfigFormFieldDefinition<TText = string> = {
   keyPlaceholder?: string;
   valuePlaceholder?: string;
   modelSelection?: z.infer<typeof ConfigFormModelSelectionSchema>;
+  visibleWhen?: z.infer<typeof ConfigFormVisibilityConditionSchema>;
 };
 
 export type ConfigFormSectionDefinition<TText = string> = {
@@ -138,6 +160,7 @@ function createConfigFormFieldSchema<TText>(textSchema: z.ZodType<TText>): z.Zod
         keyPlaceholder: z.string().min(1).optional(),
         valuePlaceholder: z.string().min(1).optional(),
         modelSelection: ConfigFormModelSelectionSchema.optional(),
+        visibleWhen: ConfigFormVisibilityConditionSchema.optional(),
       })
       .strict(),
   );

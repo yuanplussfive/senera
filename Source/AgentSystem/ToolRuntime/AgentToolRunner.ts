@@ -58,6 +58,8 @@ import type { AgentToolCapabilityCacheEntry } from "../ToolSearch/AgentToolCapab
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 import type { AgentBrowserTargetAuthorization } from "../Browser/AgentBrowserUrlPolicy.js";
 import type { AgentWorkspaceObservationPort } from "../Artifacts/AgentWorkspaceChangeObserver.js";
+import { ToolDeadlinePolicies } from "../Types/AgentToolContractTypes.js";
+import type { AgentToolDeadlineScope } from "./AgentToolDeadline.js";
 
 export interface AgentToolRunnerLike {
   run(
@@ -94,6 +96,7 @@ export interface AgentToolRunnerContext {
   resourceAccessGrant?: AgentResourceAccessGrant;
   browserTargetAuthorization?: AgentBrowserTargetAuthorization;
   workspaceObservation?: AgentWorkspaceObservationPort;
+  deadline?: AgentToolDeadlineScope;
 }
 
 export class AgentToolRunner implements AgentToolRunnerLike {
@@ -147,8 +150,11 @@ export class AgentToolRunner implements AgentToolRunnerLike {
         return this.invocationFailure(tool, error, context.signal);
       }
     }
-    const deadline = openAgentToolDeadline(this.config, context.signal);
-    const scopedContext = { ...context, signal: deadline.signal };
+    const deadline = openAgentToolDeadline(this.config, context.signal, {
+      allowExtension:
+        tool.handler.kind === "HostCapability" && tool.runtime.DeadlinePolicy === ToolDeadlinePolicies.ModelAware,
+    });
+    const scopedContext = { ...context, signal: deadline.signal, deadline };
     try {
       const result = await this.runInvocation(tool, args, scopedContext);
       const exceeded = readAgentToolDeadlineExceeded(deadline.signal);
@@ -405,6 +411,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       toolAccessGrant: context.toolAccessGrant,
       toolExposure: context.toolExposure,
       signal: context.signal,
+      deadline: context.deadline,
       executionPlan: context.executionPlan,
       reporter,
       tokenBudget: context.tokenBudget,

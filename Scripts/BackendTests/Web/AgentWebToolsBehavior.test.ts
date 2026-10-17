@@ -7,7 +7,7 @@ import {
 } from "../../../Source/AgentSystem/Web/AgentWebContentExtractor.js";
 import { fetchWebResource } from "../../../Source/AgentSystem/Web/AgentWebHttpClient.js";
 import { DefaultAgentWebRuntime } from "../../../Source/AgentSystem/Web/AgentWebRuntime.js";
-import { parseDuckDuckGoResults } from "../../../Source/AgentSystem/Web/AgentWebSearchProviders.js";
+import { assessAgentWebDocument } from "../../../Source/AgentSystem/Web/AgentWebDynamicPolicy.js";
 import { assertSafeWebUrl } from "../../../Source/AgentSystem/Web/AgentWebUrlPolicy.js";
 import { createWebSystemTools } from "../../../Source/AgentSystem/SystemTools/WebSystemTools.js";
 
@@ -184,6 +184,32 @@ describe("web host tools", () => {
     expect(result.links).toEqual([{ title: "Documentation", url: "https://docs.example/docs" }]);
   });
 
+  test("detects an empty application shell without relying on framework names", () => {
+    const assessment = assessAgentWebDocument(
+      `<!doctype html><html><head><script src="/assets/app.js"></script></head><body><div id="app"></div></body></html>`,
+      "",
+      AgentWebToolsConfigurationSchema.parse({}).fetch.render.detection,
+    );
+
+    expect(assessment.decision).toBe("dynamic_likely");
+    expect(assessment.signals.visibleTextChars).toBe(0);
+    expect(assessment.signals.scriptCount).toBe(1);
+    expect(assessment.reasons).toContain("静态正文不足");
+  });
+
+  test("uses visible document text for detection so capped Markdown does not create a false dynamic signal", () => {
+    const article = "Readable static article content. ".repeat(24);
+    const assessment = assessAgentWebDocument(
+      `<html><body><article>${article}</article></body></html>`,
+      "Readable static article content.",
+      AgentWebToolsConfigurationSchema.parse({}).fetch.render.detection,
+    );
+
+    expect(assessment.decision).toBe("static_sufficient");
+    expect(assessment.signals.visibleTextChars).toBeGreaterThan(240);
+    expect(assessment.signals.markdownChars).toBeLessThan(assessment.signals.visibleTextChars);
+  });
+
   test("uses a configured keyless SearXNG provider, filters domains, cites, and caches", async () => {
     const fetchImpl = vi.fn(
       async () =>
@@ -291,6 +317,113 @@ describe("web host tools", () => {
     });
   });
 
+  test("uses the configured Codex Search route with its configured model and structured filters", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            encrypted_output: "opaque-search-state",
+            output: "Codex result summary",
+            results: [
+              {
+                type: "text_result",
+                title: "Codex documentation",
+                url: "https://docs.example/codex#overview",
+                snippet: "Official Codex documentation.",
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    const configuration = AgentWebToolsConfigurationSchema.parse({
+      search: {
+        provider: "codex",
+        codexEndpoint: "https://search.example/v1/alpha/search",
+        codexModel: "gpt-5.6-luna",
+        codexApiKey: "codex-secret",
+      },
+    });
+    const runtime = new DefaultAgentWebRuntime(configuration, {
+      model: "unused-active-model",
+      fetchImpl,
+      resolveHostAddresses: publicAddressResolver,
+    });
+
+    const output = await runtime.search({
+      query: "Codex documentation",
+      allowedDomains: ["docs.example"],
+      blockedDomains: ["blocked.example"],
+      freshness: "week",
+      maxResults: 3,
+    });
+
+    expect(output.results).toEqual([
+      expect.objectContaining({
+        title: "Codex documentation",
+        url: "https://docs.example/codex",
+        summary: "Official Codex documentation.",
+      }),
+    ]);
+    const requestCall = fetchImpl.mock.calls[0] as unknown as [RequestInfo | URL, RequestInit | undefined] | undefined;
+    expect(String(requestCall?.[0])).toBe("https://search.example/v1/alpha/search");
+    expect(requestCall?.[1]?.method).toBe("POST");
+    expect(requestCall?.[1]?.headers).toMatchObject({ Authorization: "Bearer codex-secret" });
+    expect(JSON.parse(String(requestCall?.[1]?.body))).toMatchObject({
+      model: "gpt-5.6-luna",
+      commands: {
+        search_query: [{ q: "Codex documentation", recency: 7, domains: ["docs.example"] }],
+        response_length: "short",
+      },
+      settings: {
+        search_context_size: "low",
+        external_web_access: true,
+        filters: { allowed_domains: ["docs.example"], blocked_domains: ["blocked.example"] },
+      },
+    });
+  });
+
+  test("projects Codex Search citations when the endpoint returns only output text", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            output:
+              "Codex documentation | OpenAI (https://docs.example/codex)\nciteturn0search0 [wordlim: 200] Official docs.",
+            results: [],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    const runtime = new DefaultAgentWebRuntime(
+      AgentWebToolsConfigurationSchema.parse({
+        search: {
+          provider: "codex",
+          codexEndpoint: "https://search.example/v1/alpha/search",
+          codexModel: "gpt-5.6-luna",
+          codexApiKey: "codex-secret",
+        },
+      }),
+      { model: "gpt-5.6-luna", fetchImpl, resolveHostAddresses: publicAddressResolver },
+    );
+
+    const output = await runtime.search({
+      query: "Codex documentation",
+      allowedDomains: [],
+      blockedDomains: [],
+      freshness: "any",
+      maxResults: 3,
+    });
+
+    expect(output.results).toEqual([
+      expect.objectContaining({
+        title: "Codex documentation | OpenAI",
+        url: "https://docs.example/codex",
+        summary: "Official docs.",
+      }),
+    ]);
+  });
+
   test("uses provider-specific credentials without sending them to another provider", async () => {
     const tavilyFetch = vi.fn<typeof fetch>(
       async () =>
@@ -354,64 +487,6 @@ describe("web host tools", () => {
         maxResults: 5,
       }),
     ).rejects.toMatchObject({ code: "rate_limited", details: { provider: "exa", status: 429 } });
-  });
-
-  test("uses DuckDuckGo HTML search without credentials", async () => {
-    const destination = encodeURIComponent("https://docs.example/guide#part");
-    const fetchImpl = vi.fn(
-      async () =>
-        new Response(
-          `<div class="result"><h2 class="result__title"><a class="result__a" href="https://html.duckduckgo.com/l/?uddg=${destination}">Docs</a></h2><a class="result__snippet">A useful result.</a></div>`,
-          { status: 200, headers: { "content-type": "text/html; charset=utf-8" } },
-        ),
-    );
-    const configuration = AgentWebToolsConfigurationSchema.parse({
-      search: { provider: "duckduckgo" },
-    });
-    const runtime = new DefaultAgentWebRuntime(configuration, {
-      fetchImpl,
-      resolveHostAddresses: publicAddressResolver,
-    });
-
-    const output = await runtime.search({
-      query: "senera",
-      allowedDomains: [],
-      blockedDomains: [],
-      freshness: "any",
-      maxResults: 5,
-    });
-
-    expect(output.results).toHaveLength(1);
-    expect(output.results[0]).toMatchObject({
-      title: "Docs",
-      url: "https://docs.example/guide",
-      summary: "A useful result.",
-    });
-    const requestCall = fetchImpl.mock.calls[0] as unknown as [RequestInfo | URL, RequestInit | undefined] | undefined;
-    expect(String(requestCall?.[0])).toContain("html.duckduckgo.com/html/");
-    expect(String(requestCall?.[0])).toContain("q=senera");
-    const requestInit = requestCall?.[1];
-    expect(requestInit?.body).toBeUndefined();
-    expect(JSON.stringify(requestInit?.headers)).not.toMatch(/TAVILY|BRAVE|api.key/iu);
-  });
-
-  test("projects DuckDuckGo result links, ignores internal links, and preserves lookalike hosts", () => {
-    const lookalikeDestination = encodeURIComponent("https://attacker.example/redirect");
-    const results = parseDuckDuckGoResults(
-      `<div class="result"><h2><a class="result__a" href="/l/?uddg=${encodeURIComponent("https://docs.example/guide#part")}">Docs</a></h2><div class="result__snippet">Summary</div></div>
-       <div class="result"><h2><a class="result__a" href="/settings">Internal</a></h2></div>
-       <div class="result"><h2><a class="result__a" href="https://evilduckduckgo.com/l/?uddg=${lookalikeDestination}">Lookalike</a></h2></div>`,
-      "https://html.duckduckgo.com/html/",
-    );
-
-    expect(results).toEqual([
-      { title: "Docs", url: "https://docs.example/guide", summary: "Summary" },
-      {
-        title: "Lookalike",
-        url: `https://evilduckduckgo.com/l/?uddg=${lookalikeDestination}`,
-        summary: "",
-      },
-    ]);
   });
 
   test("evicts the oldest search entry when the configured cache capacity is reached", async () => {
@@ -574,6 +649,30 @@ describe("web host tools", () => {
       links: [],
       citationId: "citation_docs",
       transfer: { maxBytes: 5_000_000, receivedBytes: 40, truncated: false },
+      render: {
+        strategy: "http",
+        decision: "not_requested",
+        usedBrowser: false,
+        browserContentChanged: false,
+        browserOutputTruncated: false,
+        score: 0,
+        reasons: [],
+        signals: {
+          htmlChars: 100,
+          visibleTextChars: 40,
+          markdownChars: 40,
+          markdownBlockCount: 1,
+          scriptCount: 0,
+          scriptChars: 0,
+          scriptShare: 0,
+          contentDensity: 0.4,
+          textDeficit: 0,
+          densityDeficit: 0,
+          scriptPressure: 0,
+          structureDeficit: 0,
+          dynamicScore: 0,
+        },
+      },
     });
 
     expect(output).toMatchObject({ content: completeContent });

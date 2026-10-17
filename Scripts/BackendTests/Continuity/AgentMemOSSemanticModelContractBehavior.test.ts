@@ -120,30 +120,32 @@ describe("MemOS semantic model source contract", () => {
     expect(validate({ ...baseFragment, action: "new", explanation: "extra" })).toBe(false);
   });
 
-  test("enforces summary limits with the local model tokenizer", async () => {
+  test("projects oversized fragment summaries with the local model tokenizer", async () => {
     const estimator = new AgentModelTokenEstimator({ model: "test-model" });
     let oversized = "summary";
     while (estimator.estimate(oversized).tokenCount <= 50) oversized += " detail";
     const f = nativeClient([{ ...baseFragment, action: "new", summary: oversized }]);
-    await expect(f.client.extractFragment(current, "extract-token-limit")).rejects.toThrow("invalid arguments");
+    const result = await f.client.extractFragment(current, "extract-token-limit");
+    expect(estimator.estimate(result.summary).tokenCount).toBeLessThanOrEqual(50);
+    expect(result.summary).not.toBe(oversized);
     expect(f.stream).toHaveBeenCalledOnce();
   });
 
-  test("enforces the same token contract for period digests", async () => {
+  test("projects oversized period digests with the same token contract", async () => {
     const estimator = new AgentModelTokenEstimator({ model: "test-model" });
     let oversized = "summary";
     while (estimator.estimate(oversized).tokenCount <= 50) oversized += " detail";
     const f = nativeClient([{ summary: oversized }], "MemOSPeriodDigest");
-    await expect(
-      f.client.summarizePeriod(
-        {
-          period: "day",
-          periodKey: "2026-10-13",
-          entries: [{ summary: "记忆", type: "context", occurredAt: "2026-10-13T00:00:00Z" }],
-        },
-        "digest-token-limit",
-      ),
-    ).rejects.toThrow("invalid arguments");
+    const result = await f.client.summarizePeriod(
+      {
+        period: "day",
+        periodKey: "2026-10-13",
+        entries: [{ summary: "记忆", type: "context", occurredAt: "2026-10-13T00:00:00Z" }],
+      },
+      "digest-token-limit",
+    );
+    expect(estimator.estimate(result.summary).tokenCount).toBeLessThanOrEqual(50);
+    expect(result.summary).not.toBe(oversized);
     expect(f.stream).toHaveBeenCalledOnce();
   });
 
@@ -165,10 +167,16 @@ describe("MemOS semantic model source contract", () => {
     complete.mockResolvedValueOnce(JSON.stringify({ ...baseFragment, action: "update:4" }));
     await expect(client.extractFragment(input, "extract-text-invalid")).rejects.toThrow();
     expect(complete.mock.calls[0]![0].retryMode).toBe("pi");
+    const estimator = new AgentModelTokenEstimator({ model: "test-model" });
+    let oversized = "summary";
+    while (estimator.estimate(oversized).tokenCount <= 50) oversized += " detail";
+    complete.mockResolvedValueOnce(JSON.stringify({ ...baseFragment, action: "update:3", summary: oversized }));
+    const projected = await client.extractFragment(input, "extract-text-token-limit");
+    expect(estimator.estimate(projected.summary).tokenCount).toBeLessThanOrEqual(50);
   });
 
   test("reads persisted decisions strictly without requesting the model again", () => {
-    const schema = createAgentMemOSExtractionRecordSchema("test-model", 50);
+    const schema = createAgentMemOSExtractionRecordSchema(50);
     const created = { fragment: { ...baseFragment, action: "new" } };
     const updated = { fragment: { ...baseFragment, action: "update", candidate: 3 }, candidateId: "real-node" };
     expect(schema.parse(created)).toEqual(created);

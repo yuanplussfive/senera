@@ -7,6 +7,7 @@ import type { AgentAccessFailure, AgentServerAccessGuard } from "../Auth/AgentSe
 import type { AgentHealthHttpApi } from "./AgentHealthHttpApi.js";
 import type { AgentWorkspaceResourceHttpApi } from "../WorkspaceResources/AgentWorkspaceResourceHttpApi.js";
 import type { AgentProviderCredentialHttpApi } from "../Config/AgentProviderCredentialHttpApi.js";
+import type { AgentExtensionSecretHttpApi } from "../Config/AgentExtensionSecretHttpApi.js";
 import type { AgentRuntimeUpdateHttpApi } from "../Runtime/AgentRuntimeUpdateHttpApi.js";
 import type { AgentChannelWebhookApi } from "../Channels/AgentChannelWebhookApi.js";
 import type { AgentSelfHttpApi } from "../SelfService/AgentSelfHttpApi.js";
@@ -17,6 +18,7 @@ export class AgentWebSocketHttpRouter {
     private readonly options: {
       uploadApi: AgentUploadHttpApi;
       providerCredentialApi?: AgentProviderCredentialHttpApi;
+      extensionSecretApi?: AgentExtensionSecretHttpApi;
       workspaceResourceApi?: AgentWorkspaceResourceHttpApi;
       staticFrontendApi?: AgentStaticFrontendHttpApi;
       authenticationApi?: AgentAuthenticationHttpApi;
@@ -67,6 +69,14 @@ export class AgentWebSocketHttpRouter {
         return;
       }
       this.options.providerCredentialApi.handle(request, response);
+      return;
+    }
+
+    if (this.options.extensionSecretApi?.canHandle(request)) {
+      if (request.method !== "OPTIONS" && !this.authorize(request, response)) {
+        return;
+      }
+      this.options.extensionSecretApi.handle(request, response);
       return;
     }
 

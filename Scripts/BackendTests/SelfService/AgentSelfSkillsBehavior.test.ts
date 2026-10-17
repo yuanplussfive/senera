@@ -63,6 +63,7 @@ describe("senera self-service Skill inventory", () => {
       matchedFields: expect.any(Array),
     });
     expect(JSON.stringify(matches)).not.toContain("# Search workflow");
+    expect(() => port.search!("workspace", 0)).toThrow(/limit 必须是正整数/iu);
   });
 
   test("lists and reads package resources with a revision guard", () => {

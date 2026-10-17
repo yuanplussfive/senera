@@ -7,6 +7,7 @@ import {
   resolveServerConfig,
 } from "../Source/AgentSystem/AgentDefaults.js";
 import { loadConfigFile } from "../Source/AgentSystem/Config/AgentConfigService.js";
+import { AgentConfigSecretCodec } from "../Source/AgentSystem/Config/AgentConfigSecretProtection.js";
 import { moduleDirPath } from "../Source/AgentSystem/Core/AgentPath.js";
 import { resolveAgentLocalAdminAccountPath } from "../Source/AgentSystem/Auth/AgentLocalAdminAccount.js";
 import { AgentSandboxWorkerClient } from "../Source/AgentSystem/Sandbox/Worker/AgentSandboxWorkerClient.js";
@@ -25,16 +26,24 @@ import {
 import { errorMessage } from "../Source/AgentSystem/Core/AgentErrors.js";
 import { DefaultAgentTimeZone } from "../Source/AgentSystem/Time/AgentTime.js";
 import { resolveAgentApplicationPaths } from "../Source/AgentSystem/Core/AgentApplicationPaths.js";
+import {
+  AgentWorkspaceConfigFileName,
+  resolveAgentWorkspaceConfigPath,
+  resolveAgentWorkspaceLayout,
+} from "../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
 
 const AppRoot = resolveAppRoot();
 const WorkspaceRoot = path.resolve(process.env.SENERA_WORKSPACE_ROOT?.trim() || "/data");
 const ApplicationRoot = resolveAgentApplicationPaths().root;
-const ConfigPath = resolveWorkspacePath(process.env.AGENT_CONFIG_PATH?.trim() || "senera.config.json");
+const ConfigPath = resolveAgentWorkspaceConfigPath(
+  WorkspaceRoot,
+  process.env.AGENT_CONFIG_PATH?.trim() || AgentWorkspaceConfigFileName,
+);
 const FrontendRoot = path.join(AppRoot, "Frontend", "dist");
 const ExampleConfigPath = path.join(AppRoot, "senera.config.example.json");
 const RuntimeConfigFileName = "senera-runtime-config.js";
 const DockerSandboxRuntime = {
-  BaseDir: path.join(WorkspaceRoot, ".senera", "sandbox-runtime"),
+  BaseDir: resolveAgentWorkspaceLayout(WorkspaceRoot).sandboxRuntimeRoot,
 } as const;
 const DockerComposeDeploymentHint =
   "Start Senera with the complete compose.yaml deployment; the application container requires sandbox-worker.";
@@ -52,9 +61,9 @@ await main();
 async function main(): Promise<void> {
   fs.mkdirSync(WorkspaceRoot, { recursive: true });
   ensureFrontendBundleExists();
-  ensureRuntimeConfigFile({ configPath: ConfigPath, templatePath: ExampleConfigPath });
+  ensureRuntimeConfigFile({ workspaceRoot: WorkspaceRoot, configPath: ConfigPath, templatePath: ExampleConfigPath });
 
-  const config = loadConfigFile(ConfigPath);
+  const config = loadConfigFile(ConfigPath, new AgentConfigSecretCodec({ workspaceRoot: WorkspaceRoot }));
   const workerBootstrap = await resolveDockerSandboxWorkerBootstrap(config);
   const worker = workerBootstrap.client;
   const sandboxProvider = await resolveDockerSandboxProvider(config, worker);
@@ -311,10 +320,6 @@ function resolveDockerPort(): number {
 function readPort(value: string | undefined, defaultValue: number): number {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed >= 1 && parsed <= 65535 ? parsed : defaultValue;
-}
-
-function resolveWorkspacePath(value: string): string {
-  return path.isAbsolute(value) ? path.normalize(value) : path.resolve(WorkspaceRoot, value);
 }
 
 function resolveAppRoot(): string {

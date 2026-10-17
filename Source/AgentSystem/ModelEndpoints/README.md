@@ -13,7 +13,7 @@
 
 ## API 根路径与 Pi adapter
 
-配置的 BaseUrl 表示供应商 API 根。路径重叠仅按完整 URL segment 处理，供应商 payload 和流解析由 Pi adapter 管理。native 和 BAML 使用同一供应商投影。新增协议或升级 SDK 时，需要验证真实 adapter 的最终请求 URL。
+配置的 BaseUrl 表示供应商 API 根。路径重叠只按完整 URL segment 处理，供应商 payload 和流解析由 Pi adapter 管理。native 和 BAML 使用同一供应商投影。新增协议或升级 SDK 时，需要验证真实 adapter 的最终请求 URL。
 
 新增辅助模型功能请参阅 [公共请求架构](../../../docs/Architecture/AuxiliaryModelRequests.md)；新增协议请参阅 [开发手册](../../../docs/Development/AddModelEndpoint.md)。
 

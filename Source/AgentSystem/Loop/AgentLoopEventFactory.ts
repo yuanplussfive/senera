@@ -10,6 +10,7 @@ import type { AgentToolEventOrigin } from "../ToolRuntime/AgentToolEventOrigin.j
 import type { AgentContinuityMemoryPromptContext } from "../Continuity/AgentContinuityMemoryTypes.js";
 import type { AgentPromptHarnessComposition } from "../Prompt/AgentPromptHarness.js";
 import type { AgentModelToolPlanningMode } from "../ModelEndpoints/AgentModelEndpointContract.js";
+import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 
 export class AgentLoopEventFactory {
   private readonly runEvents = new AgentLoopRunEventFactory();
@@ -55,8 +56,9 @@ export class AgentLoopEventFactory {
     step: number,
     harness: AgentPromptHarnessComposition,
     mode: AgentModelToolPlanningMode,
+    activeSkills: readonly AgentActivatedSkill[],
   ): AgentDomainEvent {
-    return this.promptEvents.promptHarnessComposed(requestId, step, harness, mode);
+    return this.promptEvents.promptHarnessComposed(requestId, step, harness, mode, activeSkills);
   }
 
   toolCallsPlanned(

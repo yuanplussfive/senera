@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import ArrowPathIcon from "@heroicons/react/24/outline/ArrowPathIcon";
 import ArrowLeftIcon from "@heroicons/react/24/outline/ArrowLeftIcon";
 import CubeTransparentIcon from "@heroicons/react/24/outline/CubeTransparentIcon";
 import WrenchScrewdriverIcon from "@heroicons/react/24/outline/WrenchScrewdriverIcon";
@@ -51,6 +50,7 @@ export function SystemToolsSection({
   }
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = selectedId ? (extensions.find((extension) => extension.id === selectedId) ?? null) : null;
+  const selectedExtensionId = selected?.id;
   const selectedDisplayName = selected ? resolveFrontendLocalizedText(selected.displayName, locale) : "";
   const selectedDescription = selected ? resolveFrontendLocalizedText(selected.description, locale) : "";
   const selectedDraft = selected ? readExtensionDraft(draftState.draft, selected) : null;
@@ -68,6 +68,12 @@ export function SystemToolsSection({
       .filter((section) => section.fields.length > 0);
   }, [locale, selected?.configuration?.sections, systemConfig?.configSnapshot]);
   const hasConfiguration = configurationSections.length > 0;
+  const readSecret = useMemo(() => {
+    if (!selectedExtensionId || !systemConfig) return undefined;
+    const extensionId = selectedExtensionId;
+    return (field: import("../../../api/eventTypes").ConfigFormFieldData): Promise<string> =>
+      systemConfig.readExtensionSecret(extensionId, field.path);
+  }, [selectedExtensionId, systemConfig]);
 
   useEffect(() => {
     if (extensions.length === 0) {
@@ -102,7 +108,7 @@ export function SystemToolsSection({
         systemConfig.refreshToolSettings();
       }}
     >
-      <ArrowPathIcon className="h-4 w-4" />
+      <AppIcon icon="refresh" size={16} aria-hidden="true" />
     </IconButton>
   );
 
@@ -251,10 +257,12 @@ export function SystemToolsSection({
                 <span className="text-[11px] text-content-muted">{configurationSections.length}</span>
               </div>
               <JsonConfigSettingsView
+                key={selected.id}
                 layoutMode="embedded"
                 sections={configurationSections}
                 value={configuration}
                 disabled={!connected}
+                readSecret={selected ? readSecret : undefined}
                 onChange={(next) => updateExtension(enabled, next, "debounced")}
                 onCommit={draftState.flushSave}
               />

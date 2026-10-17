@@ -42,6 +42,13 @@ export const settingsSections = [
     "none",
   ),
   defineSettingsSection(
+    "prompt",
+    "file-text",
+    "settings.section.prompt.label",
+    "settings.section.prompt.description",
+    "none",
+  ),
+  defineSettingsSection(
     "planning",
     "route",
     "settings.section.planning.label",
@@ -58,6 +65,13 @@ export const settingsSections = [
     "package",
     "settings.section.systemTools.label",
     "settings.section.systemTools.description",
+  ),
+  defineSettingsSection(
+    "dependencies",
+    "download",
+    "settings.section.dependencies.label",
+    "settings.section.dependencies.description",
+    "none",
   ),
   defineSettingsSection(
     "mcp-servers",

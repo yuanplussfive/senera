@@ -145,9 +145,7 @@ export function findRegenerateInput({
   }
 
   const session = useStore.getState().sessions[activeSessionId];
-  const userMessage = session?.messages.find(
-    (candidate) => candidate.requestId === message.requestId && candidate.role === "user",
-  );
+  const userMessage = resolveRegenerateSourceUser(session, message);
   if (!userMessage) {
     return { kind: "not_found" };
   }
@@ -156,9 +154,61 @@ export function findRegenerateInput({
     kind: "found",
     input: userMessage.content,
     attachments: userMessage.attachments,
-    requestId: message.requestId,
+    requestId: userMessage.requestId,
     activations: userMessage.metadata?.activation,
   };
+}
+
+function resolveRegenerateSourceUser(
+  session: SessionRecord | undefined,
+  message: ChatMessage,
+): (ChatMessage & { readonly requestId: string }) | undefined {
+  if (!session || !message.requestId) return undefined;
+
+  const usersByRequestId = new Map(
+    session.messages.filter(isUserMessageWithRequestId).map((candidate) => [candidate.requestId, candidate] as const),
+  );
+  const assistantSourcesByRequestId = new Map(
+    session.messages
+      .filter((candidate) => candidate.role === "assistant" && candidate.requestId)
+      .map((candidate) => [candidate.requestId!, candidate.metadata?.sourceRequestId] as const),
+  );
+  const runsByRequestId = new Map(session.runs.map((run) => [run.requestId, run] as const));
+
+  let candidateRequestId = message.metadata?.sourceRequestId ?? message.requestId;
+  const visited = new Set<string>();
+  let durableInputRun = runsByRequestId.get(message.requestId);
+  while (candidateRequestId && !visited.has(candidateRequestId)) {
+    visited.add(candidateRequestId);
+    const userMessage = usersByRequestId.get(candidateRequestId);
+    if (userMessage) return userMessage;
+
+    const run = runsByRequestId.get(candidateRequestId);
+    if (run) durableInputRun = run;
+    const nextRequestId = assistantSourcesByRequestId.get(candidateRequestId) ?? run?.recovery?.sourceRequestId;
+    if (!nextRequestId || nextRequestId === candidateRequestId) break;
+    candidateRequestId = nextRequestId;
+  }
+
+  // History can arrive in separate pages. The durable run still carries the
+  // original input, so a first assistant turn remains regenerable while its
+  // user entry is being hydrated or when an older projection omitted it.
+  if (durableInputRun && typeof durableInputRun.input === "string") {
+    return {
+      id: `${candidateRequestId ?? durableInputRun.requestId}:user`,
+      role: "user",
+      content: durableInputRun.input,
+      createdAt: durableInputRun.startedAt,
+      requestId: candidateRequestId ?? durableInputRun.requestId,
+    };
+  }
+  return undefined;
+}
+
+function isUserMessageWithRequestId(
+  candidate: ChatMessage,
+): candidate is ChatMessage & { readonly role: "user"; readonly requestId: string } {
+  return candidate.role === "user" && typeof candidate.requestId === "string" && candidate.requestId.length > 0;
 }
 
 export function normalizeEditedMessageContent(content: string): string | null {
@@ -321,7 +371,7 @@ export function useChatCommands({
       lastSendRef.current = {
         sessionId: activeSessionId,
         requestId,
-        input: recoveryMode === "continue" ? "continue" : failedRun.input,
+        input: failedRun.input,
         modelProviderId: readConfiguredChatModelProviderId(state.modelProviders, state.selectedModelProviderId),
         thinkingLevel: state.selectedThinkingLevel ?? undefined,
         approvalMode,

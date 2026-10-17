@@ -1,6 +1,6 @@
-import fs from "node:fs/promises";
 import path from "node:path";
 import { updateSeneraOutputSpoolState } from "../Execution/SeneraOutputSpool.js";
+import { removeAgentPathWithRetry } from "../Core/AgentFs.js";
 import { ReadableArtifactRefDefinitions, ReadableArtifactRefs } from "../Memory/AgentArtifactMemoryTypes.js";
 import type { ResolvedAgentArtifactsConfig } from "../Types/AgentConfigTypes.js";
 import type { ExecutedToolCallArtifact, ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
@@ -146,7 +146,7 @@ export class AgentArtifactPublicationSession {
 
   async commit(): Promise<void> {
     await finalizeAgentToolOutputCapture(this.input.outputCapture);
-    await fs.rm(this.markerPath, { force: true }).catch(() => undefined);
+    await removeAgentPathWithRetry(this.markerPath).catch(() => undefined);
   }
 
   async fail(): Promise<void> {
@@ -371,5 +371,5 @@ function retainReceipt(receipts: Map<string, AgentArtifactFileReceipt>, receipt:
 
 async function cleanupOutputCapture(capture: ExecutedToolCallResult["outputCapture"]): Promise<void> {
   if (!capture) return;
-  await fs.rm(capture.directory, { recursive: true, force: true }).catch(() => undefined);
+  await removeAgentPathWithRetry(capture.directory, { recursive: true }).catch(() => undefined);
 }

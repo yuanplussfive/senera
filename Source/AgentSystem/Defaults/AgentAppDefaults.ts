@@ -92,6 +92,10 @@ export function resolvePersistenceConfig(config: AgentSystemConfig): ResolvedAge
       ...defaults.Persistence.EventWriter,
       ...config.Persistence?.EventWriter,
     },
+    Logs: {
+      ...defaults.Persistence.Logs,
+      ...config.Persistence?.Logs,
+    },
   };
 }
 

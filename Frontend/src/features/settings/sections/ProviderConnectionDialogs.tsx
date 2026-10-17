@@ -221,19 +221,17 @@ function ProviderConfigDialog({
       return;
     }
     if (!preset || !onAdd) return;
-    onAdd(
-      normalizeProviderEndpointDraft({
-        Id: id,
-        Icon: preset.icon,
-        Enabled: true,
-        Kind: "OpenAICompatible",
-        BaseUrl: baseUrl.trim() || preset.baseUrl,
-        ApiKey: apiKey.trim(),
-        ApiVersion: preset.apiVersion ?? "2023-06-01",
-        Headers: nextHeaders,
-      }),
-      defaultEndpoint,
-    );
+    const providerInput = {
+      Id: id,
+      Icon: preset.icon,
+      Enabled: true,
+      Kind: "OpenAICompatible",
+      BaseUrl: baseUrl.trim() || preset.baseUrl,
+      ApiKey: apiKey.trim(),
+      Headers: nextHeaders,
+      ...(preset.apiVersion ? { ApiVersion: preset.apiVersion } : {}),
+    } satisfies ProviderEndpointDraft;
+    onAdd(normalizeProviderEndpointDraft(providerInput), defaultEndpoint);
   };
 
   return (

@@ -1,7 +1,8 @@
 import path from "node:path";
 import type { AgentApprovalRuntime } from "../Approvals/AgentApprovalRuntime.js";
 import { AgentConfigLoader } from "../Config/AgentConfigLoader.js";
-import { resolveAgentWorkspaceLayout } from "../Core/AgentWorkspaceLayout.js";
+import { AgentConfigSecretCodec } from "../Config/AgentConfigSecretProtection.js";
+import { resolveAgentWorkspaceConfigPath, resolveAgentWorkspaceLayout } from "../Core/AgentWorkspaceLayout.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import type { SeneraSandboxWorkerClient } from "../Execution/SeneraSandboxWorkerTypes.js";
 import type { AgentExecutionResourceBroker } from "../ExecutionResources/AgentExecutionResourceBroker.js";
@@ -340,18 +341,18 @@ export class AgentSystemRuntime {
 
   static load(options: AgentSystemRuntimeLoadOptions = {}): AgentSystemRuntime {
     const workspaceRoot = path.resolve(options.workspaceRoot ?? process.cwd());
-    const configPath = path.resolve(workspaceRoot, options.configPath ?? "senera.config.json");
+    const configPath = resolveAgentWorkspaceConfigPath(workspaceRoot, options.configPath);
     return this.create({
       ...options,
       workspaceRoot,
       configPath,
-      config: AgentConfigLoader.load(configPath),
+      config: AgentConfigLoader.load(configPath, new AgentConfigSecretCodec({ workspaceRoot })),
     });
   }
 
   static fromConfig(options: AgentSystemRuntimeFromConfigOptions): AgentSystemRuntime {
     const workspaceRoot = path.resolve(options.workspaceRoot ?? process.cwd());
-    const configPath = path.resolve(workspaceRoot, options.configPath ?? "senera.config.json");
+    const configPath = resolveAgentWorkspaceConfigPath(workspaceRoot, options.configPath);
     return this.create({ ...options, workspaceRoot, configPath });
   }
 

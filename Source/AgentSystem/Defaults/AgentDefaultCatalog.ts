@@ -262,7 +262,7 @@ export const AgentDefaults = {
       KnowledgeCandidateLimit: 8,
       AssistantPreviewTokens: 256,
       DigestInputTokenBudget: 8_192,
-      DigestSummaryTokenLimit: 85,
+      DigestSummaryTokenLimit: 100,
     },
     Recall: {
       PromptBudget: AgentContinuityPromptBudgetDefaults,
@@ -375,6 +375,15 @@ export const AgentDefaults = {
       DrainBatchSize: 256,
       CommittedRetentionMs: 7 * 24 * 60 * 60 * 1_000,
     },
+    Logs: {
+      Enabled: true,
+      DetailMaxBytes: 1_048_576,
+      ProjectionMaxBytes: 256 * 1_024 * 1_024,
+      RetentionHours: 7 * 24,
+      QueryPageSize: 120,
+      TailLineCount: 200,
+      CaptureHiddenEvents: false,
+    },
   },
   ConfigStore: {
     Enabled: true,
@@ -387,8 +396,6 @@ export const AgentDefaults = {
   Prompt: {
     UserMessageEnvelope: true,
     TimeZone: "Asia/Shanghai",
-    CorePersona: "",
-    LanguageStyle: "",
     PrefaceRewrite: false,
     FinalResponseRewrite: false,
     BamlToolAttribution: true,

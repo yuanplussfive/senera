@@ -12,6 +12,7 @@ import {
 } from "../Source/AgentSystem/ToolSearch/AgentToolMetaToolProtocol.js";
 import { projectToolDescription } from "../Source/AgentSystem/ToolSearch/AgentToolMetaToolProjector.js";
 import { resolveAgentToolOwner } from "../Source/AgentSystem/Types/AgentToolOwner.js";
+import { resolveAgentWorkspaceConfigPath } from "../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
 import { AgentJsonSchemaPromptContractProjector } from "../Source/AgentSystem/ToolContracts/AgentJsonSchemaPromptContractProjector.js";
 import { projectAgentToolInvocationSchema } from "../Source/AgentSystem/ToolRuntime/AgentToolExecutionPlan.js";
 import { projectAgentToolInteraction } from "../Source/AgentSystem/ToolRuntime/AgentToolInteractionProjector.js";
@@ -50,7 +51,7 @@ void main().catch((error) => {
 async function main(): Promise<void> {
   const { values } = parseArgs({ options: argumentsSchema, allowPositionals: false });
   const workspaceRoot = path.resolve(values.workspace ?? process.cwd());
-  const configPath = path.resolve(workspaceRoot, values.config ?? "senera.config.json");
+  const configPath = resolveAgentWorkspaceConfigPath(workspaceRoot, values.config);
   const prompts = values.prompt?.map((prompt) => prompt.trim()).filter(Boolean) ?? [...DefaultPrompts];
   const settleMilliseconds = parseNonNegativeInteger(values["settle-ms"], "settle-ms");
   const repetitions = parsePositiveInteger(values.repetitions, "repetitions") ?? 1;

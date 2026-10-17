@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { writeFileAtomicSync } from "../Core/AgentFs.js";
+import { copyAgentPathSync, removeAgentPathSync, writeFileAtomicSync } from "../Core/AgentFs.js";
 import { relativePathWithin } from "../Core/AgentPath.js";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
 import type { AgentExtensionDiagnostic } from "./AgentExtensionDiagnostic.js";
@@ -67,7 +67,8 @@ export function stageAgentExtensionCandidate(input: {
   const candidatePath = path.join(stagingRoot, input.name);
   const previousExists = fs.existsSync(sourcePath);
   try {
-    if (previousExists) fs.cpSync(sourcePath, candidatePath, { recursive: true, errorOnExist: true, force: false });
+    if (previousExists)
+      copyAgentPathSync(sourcePath, candidatePath, { recursive: true, errorOnExist: true, force: false });
     materializeCandidate(input.plan, input.workspaceRoot, sourcePath, candidatePath);
     return {
       name: input.name,
@@ -75,10 +76,10 @@ export function stageAgentExtensionCandidate(input: {
       candidatePath,
       previousExists,
       exists: fs.existsSync(candidatePath),
-      dispose: () => fs.rmSync(stagingRoot, { recursive: true, force: true }),
+      dispose: () => removeAgentPathSync(stagingRoot, { recursive: true, force: true }),
     };
   } catch (error) {
-    fs.rmSync(stagingRoot, { recursive: true, force: true });
+    removeAgentPathSync(stagingRoot, { recursive: true, force: true });
     throw error;
   }
 }
@@ -95,7 +96,7 @@ function materializeCandidate(
   }
   for (const deletion of plan.deletes.values()) {
     const target = projectCandidatePath(workspaceRoot, sourcePath, candidatePath, deletion.target.relativePath);
-    if (target) fs.rmSync(target);
+    if (target) removeAgentPathSync(target, { force: true });
   }
 }
 

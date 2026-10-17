@@ -2,20 +2,30 @@ import fs from "node:fs";
 import path from "node:path";
 import { loadConfigFile, type AgentConfigSourceOptions } from "../Source/AgentSystem/Config/AgentConfigService.js";
 import { writeAgentConfigJsonMirror } from "../Source/AgentSystem/Config/AgentConfigServicePaths.js";
+import { AgentConfigSecretCodec } from "../Source/AgentSystem/Config/AgentConfigSecretProtection.js";
 import { errorMessage } from "../Source/AgentSystem/Core/AgentErrors.js";
+import {
+  AgentWorkspaceConfigFileName,
+  resolveAgentWorkspaceConfigPath,
+} from "../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
 
-const RuntimeConfigFileName = "senera.config.json";
 const RuntimeConfigTemplateFileName = "senera.config.example.json";
 
 export interface RuntimeConfigSeedOptions {
+  workspaceRoot: string;
   configPath: string;
   templatePath: string;
 }
 
-export function seedRuntimeConfigForSource(source: AgentConfigSourceOptions, resourceRoot: string): void {
+export function seedRuntimeConfigForSource(
+  source: AgentConfigSourceOptions,
+  resourceRoot: string,
+  workspaceRoot: string,
+): void {
   if (source.kind !== "json") return;
   try {
     ensureRuntimeConfigFile({
+      workspaceRoot,
       configPath: source.configPath,
       templatePath: path.join(resourceRoot, RuntimeConfigTemplateFileName),
     });
@@ -28,12 +38,14 @@ export function seedRuntimeConfigForSource(source: AgentConfigSourceOptions, res
 
 export function ensureRuntimeConfigFile(options: RuntimeConfigSeedOptions): void {
   if (fs.existsSync(options.configPath)) return;
-  writeAgentConfigJsonMirror(loadConfigFile(options.templatePath), options.configPath);
+  const secretCodec = new AgentConfigSecretCodec({ workspaceRoot: options.workspaceRoot });
+  writeAgentConfigJsonMirror(loadConfigFile(options.templatePath, secretCodec), options.configPath, secretCodec);
 }
 
 export function ensureSeneraDevelopmentConfig(workspaceRoot: string): string {
   const configPath = resolveSeneraServerConfigPath(workspaceRoot);
   ensureRuntimeConfigFile({
+    workspaceRoot,
     configPath,
     templatePath: path.resolve(workspaceRoot, RuntimeConfigTemplateFileName),
   });
@@ -42,5 +54,5 @@ export function ensureSeneraDevelopmentConfig(workspaceRoot: string): string {
 
 export function resolveSeneraServerConfigPath(workspaceRoot: string): string {
   const configured = process.env.AGENT_CONFIG_PATH?.trim();
-  return path.resolve(workspaceRoot, configured || RuntimeConfigFileName);
+  return resolveAgentWorkspaceConfigPath(workspaceRoot, configured || AgentWorkspaceConfigFileName);
 }

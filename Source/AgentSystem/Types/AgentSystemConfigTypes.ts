@@ -13,6 +13,7 @@ import type {
   AgentUploadsConfig,
   AgentInferenceBudgetConfig,
   AgentEventWriterConfig,
+  AgentLogsConfig,
 } from "./AgentRuntimeConfigTypes.js";
 import type {
   AgentContinuityLearningConfig,
@@ -56,6 +57,7 @@ export interface AgentDefaultsConfig {
   Persistence?: {
     Kind?: "sqlite" | "memory";
     EventWriter?: AgentEventWriterConfig;
+    Logs?: AgentLogsConfig;
   };
   ConfigStore?: AgentConfigStoreConfig;
   Prompt?: AgentPromptConfig;
@@ -107,6 +109,7 @@ export interface AgentSystemConfig {
   Persistence?: {
     Kind?: "sqlite" | "memory";
     EventWriter?: AgentEventWriterConfig;
+    Logs?: AgentLogsConfig;
   };
   ConfigStore?: AgentConfigStoreConfig;
   Prompt?: AgentPromptConfig;

@@ -15,11 +15,11 @@ Senera 的事件观测面板用于诊断当前浏览器连接能看到的真实�
   -> Events 工作坞
 
 客户端命令 / 连接状态
-  -> agentTransportObserver（仅类型、关联 ID、状态和大小）
+  -> agentTransportObserver（只有类型、关联 ID、状态和大小）
   -> 有界 Event Journal
 ```
 
-认证准备流程会先安装 Event Journal recorder，再渲染主工作台或独立设置页。因此两个界面建立的 WebSocket 都进入同一个观测边界，首批连接和命令事件也不会因 React effect 顺序而丢失。事件面板本身保持懒加载。
+认证准备流程会先安装 Event Journal recorder，再渲染主工作台或独立设置页。所以两个界面建立的 WebSocket 都进入同一个观测边界，首批连接和命令事件也不会因 React effect 顺序而丢失。事件面板本身保持懒加载。
 
 ## 正式运行阶段
 

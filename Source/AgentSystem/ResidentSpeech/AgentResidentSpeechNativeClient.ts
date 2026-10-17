@@ -1,4 +1,4 @@
-import type { Context } from "@earendil-works/pi-ai";
+import { getCurrentTools, type Context } from "@earendil-works/pi-ai";
 import { AgentPiModelRequestExecutor } from "../ModelEndpoints/AgentPiModelRequestExecutor.js";
 import type { AgentModelUsageSink } from "../ModelEndpoints/AgentModelUsage.js";
 import type { AgentModelTimingSink } from "../ModelEndpoints/AgentModelTiming.js";
@@ -25,7 +25,8 @@ export class AgentResidentSpeechNativeClient {
     readonly usageSink?: AgentModelUsageSink;
     readonly timingSink?: AgentModelTimingSink;
   }): Promise<unknown> {
-    if (!input.context.tools?.some((tool) => tool.name === AgentPiNativeToolBridgeName))
+    const availableTools = input.context.tools ?? getCurrentTools(input.context.messages);
+    if (!availableTools.some((tool) => tool.name === AgentPiNativeToolBridgeName))
       throw new Error(`Resident speech requires the ${AgentPiNativeToolBridgeName} bridge.`);
     let context = input.context;
     for (let attempt = 0; ; attempt += 1) {

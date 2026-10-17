@@ -2,11 +2,11 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import { createRequestId } from "../Core/AgentIds.js";
-import { AgentCancellationError } from "../Core/AgentCancellation.js";
+import { AgentCancellationError, awaitWithAbortSignal } from "../Core/AgentCancellation.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import type { AgentToolExecutionArtifactRecorder } from "../Artifacts/AgentToolExecutionArtifactRecorder.js";
 import { AgentToolSourceViewInvariantError } from "../Artifacts/AgentToolSourceView.js";
-import type { AskUserControlResult, SuspendChildRunControlResult } from "../ToolRuntime/AgentToolCallExecutionTypes.js";
+import type { SuspendChildRunControlResult } from "../ToolRuntime/AgentToolCallExecutionTypes.js";
 import type { AgentToolCallExecutor } from "../ToolRuntime/AgentToolCallExecutor.js";
 import { projectAgentToolResultForHistory, type ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import { AgentToolPerceptionComposer } from "../ToolRuntime/AgentToolPerceptionComposer.js";
@@ -146,10 +146,6 @@ export class AgentPiToolExecutionBridge {
           )
         : execute());
 
-      if (execution.kind === "AskUser") {
-        turnState.skipWorkspaceChangeCall(input.toolCallId);
-        return await this.projectAskUser(input, execution.value, reservation);
-      }
       if (execution.kind === "SuspendChildRun") {
         turnState.skipWorkspaceChangeCall(input.toolCallId);
         return await this.projectChildRunSuspension(input, execution.value, reservation);
@@ -161,7 +157,10 @@ export class AgentPiToolExecutionBridge {
           ? result.workspaceCapture.changes.map((change) => change.path)
           : [],
       );
-      const batchCapture = await turnState.completeWorkspaceChangeCall(input.toolCallId, exactPaths);
+      const batchCapture = await awaitWithAbortSignal(
+        turnState.completeWorkspaceChangeCall(input.toolCallId, exactPaths),
+        input.signal,
+      );
       workspaceCapture =
         resourceObservation?.workspaceObservation?.state === "active"
           ? resourceObservation.workspaceCapture
@@ -206,7 +205,10 @@ export class AgentPiToolExecutionBridge {
       }
       try {
         if (!workspaceObservationCompleted) {
-          workspaceCapture = await turnState.completeWorkspaceChangeCall(input.toolCallId);
+          workspaceCapture = await awaitWithAbortSignal(
+            turnState.completeWorkspaceChangeCall(input.toolCallId),
+            input.signal,
+          );
         }
         return await this.projectFailureResult(input, error, reservation, workspaceCapture);
       } catch {
@@ -223,7 +225,10 @@ export class AgentPiToolExecutionBridge {
     let reservation: AgentToolTokenReservation | undefined;
     try {
       reservation = turnState.claimToolObservationBudget(input.toolCallId, this.options.observationTokenBudget);
-      const workspaceCapture = await turnState.completeWorkspaceChangeCall(input.toolCallId);
+      const workspaceCapture = await awaitWithAbortSignal(
+        turnState.completeWorkspaceChangeCall(input.toolCallId),
+        input.signal,
+      );
       return await this.projectFailureResult(input, error, reservation, workspaceCapture);
     } catch {
       reservation?.release();
@@ -289,47 +294,6 @@ export class AgentPiToolExecutionBridge {
     };
     turnState.registerExecutedToolResult(input.toolCallId, executed);
     return this.projectToolResult(input, executed, executed, reservation);
-  }
-
-  private async projectAskUser(
-    input: AgentPiToolExecutionInput,
-    result: AskUserControlResult,
-    reservation: AgentToolTokenReservation,
-  ): Promise<AgentPiToolResult> {
-    const observation = await this.options.observationCompressor.compress({
-      requestId: input.toolCallId,
-      toolName: input.tool.name,
-      status: "waiting",
-      executionStatus: AgentToolExecutionStatuses.Completed,
-      outputAvailability: AgentToolOutputAvailabilities.Complete,
-      arguments: input.params,
-      process: undefined,
-      outcome: undefined,
-      result,
-      systemPrompt: input.context.turnState?.context.systemPrompt ?? "",
-      currentUserMessage: input.context.turnState?.context.userMessage ?? "",
-      observationBudgetTokens: reservation.observationBudgetTokens,
-      signal: input.signal,
-    });
-    const content = this.wrapObservationContent(JSON.stringify(observation));
-    reservation.commit(content);
-    return {
-      content: [
-        {
-          type: "text",
-          text: content,
-        },
-      ],
-      details: {
-        senera: {
-          toolName: input.tool.name,
-          status: AgentPiToolResultStatuses.Success,
-          executionStatus: AgentToolExecutionStatuses.Completed,
-          outputAvailability: AgentToolOutputAvailabilities.Complete,
-        },
-      },
-      terminate: true,
-    };
   }
 
   private async projectChildRunSuspension(

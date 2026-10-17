@@ -203,6 +203,7 @@ export const EventSpecs = {
       retention: "projection",
       projectionPointers: [
         "/data/profile",
+        "/data/skills",
         "/data/sections/frozen/bytes",
         "/data/sections/frozen/tokens",
         "/data/sections/stable/bytes",
@@ -1034,6 +1035,14 @@ export const EventSpecs = {
     observation: {
       retention: "projection",
       projectionPointers: ["/data/revision", "/data/version"],
+    },
+  },
+  "runtime_dependency.snapshot": {
+    layer: "progress",
+    phase: "config",
+    observation: {
+      retention: "metadata",
+      projectionPointers: [],
     },
   },
   "model.list.snapshot": {

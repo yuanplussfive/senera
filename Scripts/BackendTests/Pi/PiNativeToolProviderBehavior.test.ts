@@ -2,19 +2,13 @@ import {
   createAssistantMessageEventStream,
   getCurrentSystemPrompt,
   getCurrentTools,
-  type Api,
   type AssistantMessage,
-  type AssistantMessageEventStream,
   type Context,
-  type Model,
-  type ProviderStreams,
   type SimpleStreamOptions,
   type StreamOptions,
 } from "@earendil-works/pi-ai";
 import { describe, expect, test } from "vitest";
 import { AgentEventKinds, type AgentDomainEvent } from "../../../Source/AgentSystem/Events/AgentEvent.js";
-import { AgentModelUsageLedger } from "../../../Source/AgentSystem/ModelEndpoints/AgentModelUsage.js";
-import type { AgentNativeToolApiStreams } from "../../../Source/AgentSystem/ModelEndpoints/AgentNativeToolApiStreams.js";
 import { AgentPiMutableSessionFrame } from "../../../Source/AgentSystem/Pi/AgentPiCodingAgentSessionFrame.js";
 import { AgentPiNativeToolBridgeName } from "../../../Source/AgentSystem/Pi/AgentPiNativeToolBridge.js";
 import { projectSeneraModelProviderToPi } from "../../../Source/AgentSystem/Pi/AgentPiModelProjector.js";
@@ -22,14 +16,56 @@ import {
   AgentPiNativeToolProvider,
   type AgentPiNativeToolProviderOptions,
 } from "../../../Source/AgentSystem/Pi/AgentPiNativeToolProvider.js";
-import { AgentPiTurnState } from "../../../Source/AgentSystem/Pi/AgentPiTurnState.js";
-import { AgentPiToolPlanCoordinator } from "../../../Source/AgentSystem/PiShared/AgentPiToolPlanCoordinator.js";
-import { AgentTurnTokenBudget } from "../../../Source/AgentSystem/Text/AgentTurnTokenBudget.js";
-import { createAgentToolAccessGrant } from "../../../Source/AgentSystem/ToolRuntime/AgentToolAccessGrant.js";
-import { AgentToolExposureState } from "../../../Source/AgentSystem/ToolRuntime/AgentToolExposureState.js";
 import { createModelProvider } from "../Support/AgentTestFixtures.js";
+import {
+  completedStream,
+  createFrame,
+  createTurnState,
+  nativeApiStreams,
+  tool,
+} from "../Support/PiNativeToolProviderFixtures.js";
 
 describe("Pi native tool provider", () => {
+  test("observes Google payloads without replacing Pi's transport fetch", async () => {
+    const modelProvider = createModelProvider({
+      ToolPlanningMode: "native",
+      Capabilities: { ToolCalling: true },
+      Endpoint: "GoogleGenerateContent",
+    });
+    const projection = projectSeneraModelProviderToPi(modelProvider);
+    const turnState = createTurnState(modelProvider.Model);
+    const frame = createFrame(turnState, "google-observation-session", "google-observation-request");
+    let requestOptions: StreamOptions | SimpleStreamOptions | undefined;
+    const routes: string[] = [];
+    const provider = new AgentPiNativeToolProvider({
+      projection,
+      modelProvider,
+      frame,
+      apiStreams: nativeApiStreams(
+        (model, _context, options) => {
+          requestOptions = options;
+          return completedStream(model, [{ type: "text", text: "ready" }]);
+        },
+        (route) => routes.push(route),
+      ),
+    }).create();
+    const model = provider.getModels()[0];
+    if (!model) throw new Error("Expected the native Pi model.");
+
+    const result = await provider
+      .streamSimple(model, {
+        messages: [{ role: "user", content: "Observe this request", timestamp: 1 }],
+        tools: [tool("ToolSearch")],
+      })
+      .result();
+
+    expect(model.api).toBe("google-generative-ai");
+    expect(result.stopReason).toBe("stop");
+    expect(routes).toEqual(["simple"]);
+    expect(requestOptions?.fetch).toBeUndefined();
+    expect(requestOptions?.onPayload).toEqual(expect.any(Function));
+  });
+
   test("forwards Pi's normalized transcript without flattening system sections", async () => {
     const modelProvider = createModelProvider({
       ToolPlanningMode: "native",
@@ -890,254 +926,4 @@ describe("Pi native tool provider", () => {
     expect(result.stopReason).toBe("stop");
     expect(forwardedImage).toBe(true);
   });
-
-  test("reports an upstream stream error as a provider failure when the caller was not aborted", async () => {
-    const modelProvider = createModelProvider({
-      ToolPlanningMode: "native",
-      Capabilities: { ToolCalling: true },
-      Endpoint: "Responses",
-    });
-    const projection = projectSeneraModelProviderToPi(modelProvider);
-    const turnState = createTurnState(modelProvider.Model);
-    const frame = createFrame(turnState, "provider-failure-session", "provider-failure-request");
-    const provider = new AgentPiNativeToolProvider({
-      projection,
-      modelProvider,
-      frame,
-      apiStreams: nativeApiStreams((model) => {
-        const stream = createAssistantMessageEventStream();
-        stream.push({
-          type: "start",
-          partial: { ...failureMessage(model, "stream_read_error"), content: [], stopReason: "pending" },
-        });
-        stream.push({ type: "error", reason: "error", error: failureMessage(model, "stream_read_error") });
-        return stream;
-      }),
-    }).create();
-    const model = provider.getModels()[0];
-    if (!model) throw new Error("Expected the native Pi model.");
-
-    const result = await provider
-      .streamSimple(model, {
-        messages: [{ role: "user", content: "Continue.", timestamp: 1 }],
-        tools: [tool("ToolSearch")],
-      })
-      .result();
-
-    expect(result).toMatchObject({ stopReason: "error" });
-    expect(result.errorMessage).toContain("stream_read_error");
-  });
-
-  test("reports the provider request deadline as an error instead of caller cancellation", async () => {
-    const modelProvider = createModelProvider({
-      ToolPlanningMode: "native",
-      Capabilities: { ToolCalling: true },
-      Endpoint: "Responses",
-      FirstTokenTimeoutMs: -1,
-      MaxRequestMs: 10,
-    });
-    const projection = projectSeneraModelProviderToPi(modelProvider);
-    const turnState = createTurnState(modelProvider.Model);
-    const frame = createFrame(turnState, "provider-timeout-session", "provider-timeout-request");
-    const provider = new AgentPiNativeToolProvider({
-      projection,
-      modelProvider,
-      frame,
-      apiStreams: nativeApiStreams((model, _context, options) => {
-        const stream = createAssistantMessageEventStream();
-        options?.signal?.addEventListener(
-          "abort",
-          () => {
-            const failure = failureMessage(model, "upstream aborted after the provider deadline");
-            stream.push({ type: "error", reason: "aborted", error: failure });
-            stream.end(failure);
-          },
-          { once: true },
-        );
-        return stream;
-      }),
-    }).create();
-    const model = provider.getModels()[0];
-    if (!model) throw new Error("Expected the native Pi model.");
-
-    const result = await provider
-      .streamSimple(model, {
-        messages: [{ role: "user", content: "Wait for the deadline.", timestamp: 1 }],
-        tools: [tool("ToolSearch")],
-      })
-      .result();
-
-    expect(result.stopReason).toBe("error");
-    expect(result.errorMessage).not.toContain("upstream aborted after the provider deadline");
-  });
-
-  test("preserves caller cancellation when the upstream reports an error after abort", async () => {
-    const modelProvider = createModelProvider({
-      ToolPlanningMode: "native",
-      Capabilities: { ToolCalling: true },
-      Endpoint: "Responses",
-    });
-    const projection = projectSeneraModelProviderToPi(modelProvider);
-    const turnState = createTurnState(modelProvider.Model);
-    const frame = createFrame(turnState, "provider-cancel-session", "provider-cancel-request");
-    const abortController = new AbortController();
-    abortController.abort(new Error("User stopped the run."));
-    let observedSignal: AbortSignal | undefined;
-    const provider = new AgentPiNativeToolProvider({
-      projection,
-      modelProvider,
-      frame,
-      apiStreams: nativeApiStreams((model, _context, options) => {
-        observedSignal = options?.signal;
-        const stream = createAssistantMessageEventStream();
-        stream.push({ type: "error", reason: "error", error: failureMessage(model, "stream_read_error") });
-        return stream;
-      }),
-    }).create();
-    const model = provider.getModels()[0];
-    if (!model) throw new Error("Expected the native Pi model.");
-
-    const result = await provider
-      .streamSimple(
-        model,
-        {
-          messages: [{ role: "user", content: "Stop.", timestamp: 1 }],
-          tools: [tool("ToolSearch")],
-        },
-        { signal: abortController.signal },
-      )
-      .result();
-
-    expect(observedSignal?.aborted).toBe(true);
-    expect(result).toMatchObject({ stopReason: "aborted", errorMessage: "User stopped the run." });
-  });
 });
-
-function createTurnState(model: string, contextWindowTokens = 16_384, outputReserveTokens = 1_024): AgentPiTurnState {
-  const toolAccessGrant = createAgentToolAccessGrant({
-    authorizedToolNames: ["ToolSearch", "ArtifactRead"],
-    exposedToolNames: ["ToolSearch"],
-  });
-  return new AgentPiTurnState({
-    systemPrompt: "Test agent system context.",
-    userMessage: "Test native-provider request.",
-    approvalMode: "agent",
-    sessionId: "native-tools-session",
-    requestId: "native-tools-request",
-    step: 1,
-    toolAccessGrant,
-    toolExposure: new AgentToolExposureState(toolAccessGrant),
-    activeSkills: [],
-    usageLedger: new AgentModelUsageLedger(),
-    toolPlan: new AgentPiToolPlanCoordinator(),
-    tokenBudget: new AgentTurnTokenBudget({
-      model,
-      contextWindowTokens,
-      outputReserveTokens,
-    }),
-  });
-}
-
-function createFrame(turnState: AgentPiTurnState, sessionId: string, requestId: string): AgentPiMutableSessionFrame {
-  return new AgentPiMutableSessionFrame({
-    sessionId,
-    requestId,
-    step: 1,
-    turnState,
-    skillCatalog: { skills: [], fingerprint: "test" },
-    nativeProviderToolNames: ["ToolSearch"],
-    toolAccessGrant: turnState.context.toolAccessGrant,
-    toolExposure: turnState.context.toolExposure,
-    selectedPromptTemplates: [],
-    tokenBudget: turnState.context.tokenBudget,
-    preflight: async () => undefined,
-  });
-}
-
-function failureMessage(model: Model<Api>, errorMessage: string): AssistantMessage {
-  return {
-    role: "assistant",
-    api: model.api,
-    provider: model.provider,
-    model: model.id,
-    content: [],
-    usage: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-      totalTokens: 0,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-    },
-    stopReason: "error",
-    errorMessage,
-    timestamp: Date.now(),
-  };
-}
-
-function nativeApiStreams(
-  stream: (
-    model: Model<Api>,
-    context: Context,
-    options?: StreamOptions | SimpleStreamOptions,
-  ) => AssistantMessageEventStream,
-  onRoute?: (route: "stream" | "simple") => void,
-): AgentNativeToolApiStreams {
-  const providerStreams: ProviderStreams = {
-    stream: (model, context, options) => {
-      onRoute?.("stream");
-      return stream(model, context, options);
-    },
-    streamSimple: (model, context, options) => {
-      onRoute?.("simple");
-      return stream(model, context, options);
-    },
-  };
-  return {
-    "openai-responses": providerStreams,
-    "openai-completions": providerStreams,
-    "anthropic-messages": providerStreams,
-    "google-generative-ai": providerStreams,
-  };
-}
-
-function completedStream(
-  model: Model<Api>,
-  content: AssistantMessage["content"],
-  inputTokens = 6,
-): AssistantMessageEventStream {
-  const stream = createAssistantMessageEventStream();
-  const message: AssistantMessage = {
-    role: "assistant",
-    api: model.api,
-    provider: model.provider,
-    model: model.id,
-    content,
-    usage: {
-      input: inputTokens,
-      output: 3,
-      cacheRead: 2,
-      cacheWrite: 0,
-      totalTokens: inputTokens + 5,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-    },
-    stopReason: content.some((block) => block.type === "toolCall") ? "toolUse" : "stop",
-    timestamp: Date.now(),
-  };
-  stream.push({ type: "start", partial: { ...message, content: [], stopReason: "pending" } });
-  stream.push({
-    type: "done",
-    reason: message.stopReason === "toolUse" ? "toolUse" : "stop",
-    message,
-  });
-  stream.end(message);
-  return stream;
-}
-
-function tool(name: string): NonNullable<Context["tools"]>[number] {
-  return {
-    name,
-    description: `${name} test tool`,
-    parameters: { type: "object", properties: {}, additionalProperties: false } as never,
-  };
-}

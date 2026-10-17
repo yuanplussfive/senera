@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { writeFileAtomicSync } from "../Core/AgentFs.js";
+import { removeAgentPathSync, writeFileAtomicSync } from "../Core/AgentFs.js";
 import { parseAgentSkillDocument, stringifyAgentSkillDocument } from "../Skills/AgentSkillDocument.js";
 import { AgentSkillScanner } from "../Skills/AgentSkillScanner.js";
 import { assertAgentSkillToolReferences, withAgentSkillRecommendedTools } from "../Skills/AgentSkillToolBinding.js";
@@ -163,7 +163,7 @@ export class AgentManagedExtensionService {
       writeFileAtomicSync(path.join(stagingPath, "SKILL.md"), content);
       return this.validateSkillDirectory(stagingPath, name);
     } finally {
-      fs.rmSync(stagingRoot, { recursive: true, force: true });
+      removeAgentPathSync(stagingRoot, { recursive: true, force: true });
     }
   }
 }

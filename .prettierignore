@@ -19,6 +19,7 @@ docs/API/WebSocketProtocol.md
 docs/API/WebSocketProtocol.schema.json
 senera-evaluation/
 senera-code-review/
+prompts/
 tmp/
 
 package-lock.json

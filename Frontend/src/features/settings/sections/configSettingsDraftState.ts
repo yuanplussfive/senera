@@ -3,7 +3,11 @@ import type { ConfigMutationState, ConfigSnapshotData } from "../../../api/event
 import type { SocketStatus } from "../../../api/useAgentSocket";
 import { isConfigConflict } from "../../../app/configMutationFailure";
 import { validateJsonConfigDraft, type JsonConfigObject } from "../../../shared/config/JsonConfigForm";
-import { sameJsonValue, sameJsonValueReconciled } from "../../../shared/config/JsonConfigValue";
+import {
+  isRedactedConfigSecretValue,
+  sameJsonValue,
+  sameJsonValueReconciled,
+} from "../../../shared/config/JsonConfigValue";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import { motionDurations } from "../../../shared/motion";
 
@@ -116,8 +120,9 @@ export function useConfigSettingsDraftState({
         dirtyRef.current = nextDirty;
         setDirty(nextDirty);
         if (!nextDirty) {
-          draftRef.current = snapshot.value;
-          setDraft(snapshot.value);
+          const reconciledDraft = preserveRedactedDraftValues(draftRef.current, snapshot.value);
+          draftRef.current = reconciledDraft;
+          setDraft(reconciledDraft);
         }
       }
       return;
@@ -279,6 +284,25 @@ function isObject(value: unknown): value is JsonConfigObject {
 
 function cloneObject(value: JsonConfigObject): JsonConfigObject {
   return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, cloneJsonValue(item)]));
+}
+
+function preserveRedactedDraftValues(draft: unknown, snapshot: unknown): JsonConfigObject {
+  const value = preserveRedactedValue(draft, snapshot);
+  return isObject(value) ? value : {};
+}
+
+function preserveRedactedValue(draft: unknown, snapshot: unknown): unknown {
+  if (isRedactedConfigSecretValue(snapshot) && typeof draft === "string" && draft.length > 0) return draft;
+  if (Array.isArray(snapshot)) {
+    return snapshot.map((item, index) => preserveRedactedValue(Array.isArray(draft) ? draft[index] : undefined, item));
+  }
+  if (isObject(snapshot)) {
+    const draftObject = isObject(draft) ? draft : {};
+    return Object.fromEntries(
+      Object.entries(snapshot).map(([key, item]) => [key, preserveRedactedValue(draftObject[key], item)]),
+    );
+  }
+  return snapshot;
 }
 
 function cloneJsonValue(value: unknown): unknown {

@@ -1,6 +1,6 @@
 # Auxiliary model requests
 
-Auxiliary model features provide a domain prompt and a strict output contract to `AgentStructuredModelClient`. StateCard resolution, MemOS fragment reconciliation, day/month summaries, tool observation summaries, channel serialization, image analysis and MCP image sampling use this path.
+Auxiliary model features provide a domain prompt and a strict output contract to `AgentStructuredModelClient`. StateCard resolution, MemOS fragment reconciliation, day/month summaries, tool observation summaries, Pi compaction summaries (`SummarizePiContext`), channel serialization, image analysis and MCP image sampling use this path.
 
 In native mode the client generates the Pi tool schema from Zod and requires exactly one named tool call. Repairs retain that required selection. Ordinary text is never accepted as a replacement tool call. In BAML mode the generated BAML function renders the output contract locally; Pi performs the supplier request, and the generated BAML parser validates its output against the same domain schema. MemOS action choices are built from the actual supplied candidates in both modes.
 

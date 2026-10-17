@@ -14,3 +14,16 @@
   width: 100%;
   min-width: 0;
 }
+
+[data-workspace-code] {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+[data-workspace-code] .workspace-source-viewport {
+  min-width: 0;
+  min-height: 0;
+  overscroll-behavior: contain;
+  overflow-anchor: none;
+}

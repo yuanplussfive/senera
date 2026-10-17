@@ -7,7 +7,7 @@ import { Readable, Transform, type Duplex, type TransformCallback } from "node:s
 import { SeneraWorkspaceBoundary, SeneraWorkspaceBoundaryError } from "../Execution/SeneraWorkspaceBoundary.js";
 import { isAgentBase64 } from "../Core/AgentBase64.js";
 import { AgentResourceAccessIntents, type AgentResourceAccessIntent } from "../Safety/AgentResourceAccessPolicy.js";
-import { writeFileAtomic } from "../Core/AgentFs.js";
+import { removeAgentPathWithRetry, writeFileAtomic } from "../Core/AgentFs.js";
 import {
   openVerifiedArtifactFile,
   type AgentArtifactContentIdentity,
@@ -41,7 +41,7 @@ export class AgentArtifactFileWriter {
       await fs.link(temporary, target.absolutePath);
       return { filePath: target.absolutePath, ...receipt };
     } finally {
-      await fs.rm(temporary, { force: true }).catch(() => undefined);
+      await removeAgentPathWithRetry(temporary).catch(() => undefined);
     }
   }
 
@@ -81,11 +81,11 @@ export class AgentArtifactFileWriter {
         return { filePath: target.absolutePath, ...totalBytes };
       }
       const preview = await readUtf8Prefix(source, maxBytes);
-      await fs.rm(source, { force: true });
+      await removeAgentPathWithRetry(source);
       const bounded = fitJsonPreview({ truncated: true, originalBytes: totalBytes.byteLength, preview }, maxBytes);
       return this.writeJsonStream(filePath, bounded);
     } finally {
-      await fs.rm(source, { force: true }).catch(() => undefined);
+      await removeAgentPathWithRetry(source).catch(() => undefined);
     }
   }
 
@@ -122,7 +122,7 @@ export class AgentArtifactFileWriter {
       await fs.rename(temporary, target.absolutePath);
       return { filePath: target.absolutePath, ...receipt };
     } finally {
-      await fs.rm(temporary, { force: true }).catch(() => undefined);
+      await removeAgentPathWithRetry(temporary).catch(() => undefined);
     }
   }
 
@@ -191,7 +191,7 @@ export class AgentArtifactFileWriter {
     } finally {
       readStream.destroy();
       await source.handle.close().catch(() => undefined);
-      await fs.rm(temporary, { force: true }).catch(() => undefined);
+      await removeAgentPathWithRetry(temporary).catch(() => undefined);
     }
   }
 }

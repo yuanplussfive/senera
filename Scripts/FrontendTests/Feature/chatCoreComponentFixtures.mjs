@@ -28,12 +28,6 @@ export function createComposerProps(overrides = {}) {
       onSaveConfig: vi.fn(() => null),
       onFetchProviderModels: vi.fn(),
     },
-    personaConfig: {
-      corePersona: "",
-      languageStyle: "",
-      operation: null,
-      onSave: vi.fn(() => null),
-    },
     runtime: {
       socketStatus: "open",
       uploadUrl: "/api/resources",
@@ -67,12 +61,6 @@ export function createChatPanelProps(overrides = {}) {
       onRefreshConfig: vi.fn(),
       onSaveConfig: vi.fn(() => null),
       onFetchProviderModels: vi.fn(),
-    },
-    personaConfig: {
-      corePersona: "",
-      languageStyle: "",
-      operation: null,
-      onSave: vi.fn(() => null),
     },
     runtime: {
       socketStatus: "open",

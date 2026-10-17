@@ -2,10 +2,13 @@ import path from "node:path";
 import process from "node:process";
 import { parseArgs } from "node:util";
 import { z } from "zod";
-import { resolveAgentLoopConfig } from "../Source/AgentSystem/AgentDefaults.js";
 import { AgentJsonFileLoader } from "../Source/AgentSystem/Config/AgentJsonFileLoader.js";
 import { AgentPiSessionHistoryMaintenance } from "../Source/AgentSystem/Pi/AgentPiSessionHistoryMaintenance.js";
 import { errorMessage } from "../Source/AgentSystem/Core/AgentErrors.js";
+import {
+  resolveAgentWorkspaceConfigPath,
+  resolveAgentWorkspaceLayout,
+} from "../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
 
 const argumentsSchema = {
   workspace: { type: "string" },
@@ -81,13 +84,13 @@ async function main(): Promise<void> {
 
 function resolveSessionsRoot(workspaceRoot: string, configuredPath?: string, explicitRoot?: string): string {
   if (explicitRoot) return path.resolve(workspaceRoot, explicitRoot);
-  const configPath = path.resolve(workspaceRoot, configuredPath ?? "senera.config.json");
+  const configPath = resolveAgentWorkspaceConfigPath(workspaceRoot, configuredPath);
   const config = new AgentJsonFileLoader().load(configPath, PiSessionsPathSchema);
   return path.resolve(
     workspaceRoot,
     config.AgentLoop?.PiSessions?.RootDir ??
       config.Defaults?.AgentLoop?.PiSessions?.RootDir ??
-      resolveAgentLoopConfig({ ModelProviders: [] }).PiSessions.RootDir,
+      resolveAgentWorkspaceLayout(workspaceRoot).piSessionsRoot,
   );
 }
 

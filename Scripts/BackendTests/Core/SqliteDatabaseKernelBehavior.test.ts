@@ -155,7 +155,6 @@ describe("SQLite database kernel", () => {
   test("initializes only the current physical and execution schema", () => {
     const databasePath = temporaryDatabasePath("memory-current-baseline.sqlite");
     withDatabaseKernel(databasePath, AgentMemoryDatabaseContract, (kernel) => {
-      expect(AgentMemoryDatabaseContract.migrations).toHaveLength(2);
       expect(kernel.connection.prepare("PRAGMA table_info(memory_episodes)").all()).not.toEqual(
         expect.arrayContaining([expect.objectContaining({ name: "context_mode" })]),
       );

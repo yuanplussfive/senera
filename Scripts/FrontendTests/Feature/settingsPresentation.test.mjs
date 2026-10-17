@@ -24,9 +24,11 @@ describe("settings presentation", () => {
       "model-service",
       "default-model",
       "runtime",
+      "prompt",
       "planning",
       "retrieval",
       "system-tools",
+      "dependencies",
       "mcp-servers",
       "channels",
       "general",
@@ -53,9 +55,9 @@ describe("settings presentation", () => {
       {
         id: "capabilities",
         label: "能力与运行",
-        sectionIds: ["runtime", "planning", "retrieval"],
+        sectionIds: ["runtime", "prompt", "planning", "retrieval"],
       },
-      { id: "tools", label: "工具", sectionIds: ["system-tools", "mcp-servers", "channels"] },
+      { id: "tools", label: "工具", sectionIds: ["system-tools", "dependencies", "mcp-servers", "channels"] },
       { id: "personal", label: "个人", sectionIds: ["general", "appearance"] },
       { id: "system", label: "系统", sectionIds: ["storage", "workspace", "about"] },
     ]);
