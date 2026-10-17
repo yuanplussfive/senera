@@ -1,8 +1,7 @@
-import fs from "node:fs";
-import path from "node:path";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { AgentConfigService } from "../Source/AgentSystem/Config/AgentConfigService.js";
 import type { AgentSessionStore } from "../Source/AgentSystem/Session/AgentSessionStore.js";
+import type { AgentWorkspaceLogStore } from "../Source/AgentSystem/Diagnostics/AgentWorkspaceLogStore.js";
 import type {
   AgentSelfServicePort,
   AgentSelfSessionSummary,
@@ -21,8 +20,8 @@ export interface SeneraSelfServicePortInput {
   readonly configPath?: string;
   /** Session store for `senera sessions list`. */
   readonly sessionStore?: AgentSessionStore;
-  /** Log directory for `senera logs list/tail`; files must carry a `.log` suffix. */
-  readonly logsRoot?: string;
+  /** Workspace-local structured log store for `senera logs`. */
+  readonly logStore?: AgentWorkspaceLogStore;
   /** Plugin host for `senera plugins list`. */
   readonly pluginHost?: AgentPluginHost;
   /** Ordered Skill roots; earlier sources win only when a name is unique. */
@@ -45,7 +44,7 @@ export function createSeneraSelfServicePort(input: SeneraSelfServicePortInput): 
     status: {
       manifest: () => readAgentRuntimeManifest(input.workspaceRoot),
     },
-    logs: input.logsRoot ? createLogsPort(input.logsRoot) : undefined,
+    logs: input.logStore ? createLogsPort(input.logStore) : undefined,
     plugins: input.pluginHost ? createPluginsPort(input.pluginHost) : undefined,
     skills: input.skillSources ? createAgentSelfSkillsPort(input.skillSources) : undefined,
   };
@@ -80,38 +79,14 @@ function createSessionsPort(store: AgentSessionStore): NonNullable<AgentSelfServ
   };
 }
 
-function createLogsPort(root: string): NonNullable<AgentSelfServicePort["logs"]> {
+function createLogsPort(store: AgentWorkspaceLogStore): NonNullable<AgentSelfServicePort["logs"]> {
   return {
-    root: () => root,
-    list: () => {
-      let entries: fs.Dirent[];
-      try {
-        entries = fs.readdirSync(root, { withFileTypes: true });
-      } catch {
-        return [];
-      }
-      return entries
-        .filter((entry) => entry.isFile() && entry.name.endsWith(".log"))
-        .map((entry) => {
-          const stat = fs.statSync(path.join(root, entry.name));
-          return { name: entry.name, sizeBytes: stat.size, updatedAt: stat.mtime.toISOString() };
-        })
-        .sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
-    },
-    read: (name, lines) => {
-      if (name.includes("..") || /[\\/]/.test(name)) {
-        return { status: "rejected" as const, error: `非法的日志文件名: ${name}` };
-      }
-      const target = path.resolve(root, name);
-      if (target !== root && !target.startsWith(root + path.sep)) {
-        return { status: "rejected" as const, error: "日志文件路径越界。" };
-      }
-      try {
-        const content = fs.readFileSync(target, "utf8");
-        return { status: "found" as const, content: content.split(/\r?\n/).slice(-lines).join("\n") };
-      } catch {
-        return { status: "missing" as const, error: `日志文件不存在: ${name}` };
-      }
-    },
+    root: () => store.root,
+    list: () => store.listFiles(),
+    read: (name, lines) => store.readFile(name, lines),
+    query: (query) => store.query(query),
+    detail: (detailId) => store.detail(detailId),
+    health: () => store.health(),
+    streams: () => store.listStreams(),
   };
 }

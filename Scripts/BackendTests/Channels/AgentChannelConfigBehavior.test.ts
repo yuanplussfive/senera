@@ -28,6 +28,13 @@ describe("channel config resolution", () => {
     expect(resolved.channels.qq.enabled).toBe(true);
   });
 
+  test("channel final response rewrite is independently disabled by default", () => {
+    expect(resolveAgentChannelsConfig(configWithChannelsExtension({})).finalResponseRewrite).toBe(false);
+    expect(
+      resolveAgentChannelsConfig(configWithChannelsExtension({ finalResponseRewrite: true })).finalResponseRewrite,
+    ).toBe(true);
+  });
+
   test("absent extension section keeps the subsystem disabled", () => {
     const resolved = resolveAgentChannelsConfig({} as unknown as AgentSystemConfig);
     expect(resolved.enabled).toBe(false);

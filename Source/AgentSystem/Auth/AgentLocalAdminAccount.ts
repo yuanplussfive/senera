@@ -6,7 +6,7 @@ import { writeFileAtomicSync } from "../Core/AgentFs.js";
 import { parseJsonText } from "../Core/AgentJsonParsing.js";
 import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 
-const PasswordMinimumLength = 15;
+const PasswordMinimumLength = 6;
 const PasswordMaximumLength = 1024;
 const PasswordKeyLength = 64;
 const PasswordScryptParameters = {

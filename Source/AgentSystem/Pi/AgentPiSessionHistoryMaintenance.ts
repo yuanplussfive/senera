@@ -1,10 +1,11 @@
 import { createReadStream } from "node:fs";
-import { access, open, readdir, rename, rm, stat, type FileHandle } from "node:fs/promises";
+import { access, open, readdir, rename, stat, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { compactRecord } from "../Core/AgentCollections.js";
 import { readAgentUnknownRecord as readRecord } from "../Core/AgentUnknownValue.js";
 import { createOpaqueId } from "../Core/AgentIds.js";
+import { removeAgentPathWithRetry } from "../Core/AgentFs.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { parseJsonText } from "../Core/AgentJsonParsing.js";
 
@@ -131,7 +132,7 @@ export class AgentPiSessionHistoryMaintenance {
       if (!dryRun && rewritableEntries > 0) {
         await replaceFileWithRollback(filePath, temporaryPath);
       } else if (!dryRun) {
-        await rm(temporaryPath, { force: true });
+        await removeAgentPathWithRetry(temporaryPath);
       }
       return {
         scannedEntries,
@@ -144,7 +145,7 @@ export class AgentPiSessionHistoryMaintenance {
       };
     } finally {
       await output?.close().catch(() => undefined);
-      await rm(temporaryPath, { force: true }).catch(() => undefined);
+      await removeAgentPathWithRetry(temporaryPath).catch(() => undefined);
     }
   }
 }
@@ -206,9 +207,9 @@ async function replaceFileWithRollback(filePath: string, temporaryPath: string):
   await rename(filePath, backupPath);
   try {
     await rename(temporaryPath, filePath);
-    await rm(backupPath, { force: true });
+    await removeAgentPathWithRetry(backupPath);
   } catch (error) {
-    await rm(filePath, { force: true }).catch(() => undefined);
+    await removeAgentPathWithRetry(filePath).catch(() => undefined);
     await rename(backupPath, filePath).catch(() => undefined);
     throw error;
   }

@@ -6,6 +6,7 @@ import { AgentWebSocketWorkspaceRequestHandlers } from "../../../Source/AgentSys
 
 const workspaceSnapshot = {
   workspaceId: "d86cbfc3-9535-4c2c-b150-5343c289f285",
+  defaultWorkspaceId: "d86cbfc3-9535-4c2c-b150-5343c289f285",
   workspaces: [],
   capabilities: { browseDirectories: true },
   workspaceRoot: "E:\\senera",
@@ -93,6 +94,42 @@ describe("Workspace WebSocket projection", () => {
         }),
       }),
     );
+  });
+
+  test("finalizes the previous runtime only after the switched event is sent", async () => {
+    const order: string[] = [];
+    const finalize = vi.fn(async () => {
+      order.push("finalize");
+    });
+    const switchWorkspace = vi.fn(async () => ({
+      snapshot: { ...workspaceSnapshot, workspaceRoot: "E:\\other" },
+      finalize,
+    }));
+    const send = vi.fn(async (event: AgentDomainEvent) => {
+      if (event.kind === "workspace.switched") order.push("switched");
+    });
+    const handlers = new AgentWebSocketWorkspaceRequestHandlers({ workspaceSwitchRequest: switchWorkspace });
+
+    await handlers.switch({ type: "workspace.switch", requestId: "open-finalize", workspaceRoot: "E:\\other" }, send);
+
+    expect(order).toEqual(["switched", "finalize"]);
+    expect(finalize).toHaveBeenCalledOnce();
+  });
+
+  test("finalizes even when the switched event cannot be delivered", async () => {
+    const finalize = vi.fn(async () => undefined);
+    const switchWorkspace = vi.fn(async () => ({ snapshot: workspaceSnapshot, finalize }));
+    const send = vi.fn(async (event: AgentDomainEvent) => {
+      if (event.kind === "workspace.switched") throw new Error("socket closed");
+    });
+    const handlers = new AgentWebSocketWorkspaceRequestHandlers({ workspaceSwitchRequest: switchWorkspace });
+
+    await handlers.switch(
+      { type: "workspace.switch", requestId: "open-finalize-failed", workspaceRoot: "E:\\other" },
+      send,
+    );
+
+    expect(finalize).toHaveBeenCalledOnce();
   });
 
   test("rejects workspace.switch when no switcher is available", async () => {

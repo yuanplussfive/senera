@@ -49,13 +49,6 @@ export interface ChatSystemConfig {
   onSaveConfig: (config: Record<string, unknown>) => string | null;
   onFetchProviderModels: (providerId: string, force?: boolean, endpoint?: ProviderModelEndpointInput) => void;
 }
-export interface ChatPersonaConfig {
-  corePersona: string;
-  languageStyle: string;
-  operation?: ConfigMutationState | null;
-  onSave: (input: { corePersona: string; languageStyle: string }) => string | null;
-}
-
 export interface ChatRuntimeState {
   workspaceId?: string;
   socketStatus: SocketStatus;
@@ -100,7 +93,6 @@ export interface ChatNavigationActions {
 export interface ChatPanelProps {
   userProfile: UserProfile;
   modelConfig: ChatModelConfig;
-  personaConfig: ChatPersonaConfig;
   runtime: ChatRuntimeState;
   messageActions: ChatMessageActions;
   navigationActions?: ChatNavigationActions;

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { renderJsonConfigFieldInput } from "../../../Frontend/src/shared/config/JsonConfigFieldInput.tsx";
@@ -37,6 +37,68 @@ test("optional model selection can return to automatic resolution", async () => 
   await user.selectOptions(screen.getByRole("combobox"), "");
 
   expect(onChange).toHaveBeenCalledWith(undefined);
+});
+
+test("loads a redacted extension secret through the scoped reader", async () => {
+  const readSecret = vi.fn(async () => "sk-extension-secret");
+  render(
+    renderJsonConfigFieldInput(
+      {
+        label: "Codex Search access key",
+        section: "search",
+        key: "codexApiKey",
+        path: ["search", "codexApiKey"],
+        type: "string",
+        value: "__senera_redacted_secret__",
+        effectiveValue: "__senera_redacted_secret__",
+        configured: true,
+        missing: false,
+        valueSource: "explicit",
+        secret: true,
+        required: true,
+        essential: true,
+      },
+      "__senera_redacted_secret__",
+      false,
+      vi.fn(),
+      readSecret,
+    ),
+  );
+
+  const input = screen.getByLabelText("Codex Search access key");
+  await waitFor(() => expect(input).toHaveValue("sk-extension-secret"));
+  expect(readSecret).toHaveBeenCalledTimes(1);
+});
+
+test("recovers a saved extension secret when the form snapshot is empty", async () => {
+  const readSecret = vi.fn(async () => "sk-extension-secret");
+  render(
+    renderJsonConfigFieldInput(
+      {
+        label: "Codex Search access key",
+        section: "search",
+        key: "codexApiKey",
+        path: ["search", "codexApiKey"],
+        type: "string",
+        value: "",
+        effectiveValue: "",
+        configured: false,
+        missing: true,
+        valueSource: "missing",
+        secret: true,
+        required: true,
+        essential: true,
+      },
+      "",
+      false,
+      vi.fn(),
+      readSecret,
+    ),
+  );
+
+  const input = screen.getByLabelText("Codex Search access key");
+  await waitFor(() => expect(input).toHaveValue("sk-extension-secret"));
+  expect(readSecret).toHaveBeenCalledTimes(1);
 });
 
 function modelField(options) {

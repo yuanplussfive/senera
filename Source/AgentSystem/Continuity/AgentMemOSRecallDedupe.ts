@@ -21,6 +21,11 @@ interface Coverage {
   readonly keys: readonly string[];
 }
 
+export interface AgentMemOSRecallDedupeSynchronizeOptions {
+  /** Promote a failed background rebuild to an explicit maintenance caller. */
+  readonly surfaceFailures?: boolean;
+}
+
 /** Read-only native vector grouping. Cached snapshots never merge or delete knowledge. */
 export class AgentMemOSRecallDedupe {
   private revision = 0;
@@ -61,12 +66,21 @@ export class AgentMemOSRecallDedupe {
     this.schedule();
   }
 
-  async synchronize(): Promise<void> {
+  async synchronize(options: AgentMemOSRecallDedupeSynchronizeOptions = {}): Promise<void> {
     if (!this.started) throw new Error("MemOS recall duplicate index is not initialized.");
     if (this.stopped) throw new Error("MemOS recall duplicate index is closed.");
-    if (this.failure?.config === JSON.stringify(this.options.config())) throw this.failure.error;
+    if (this.failure?.config === JSON.stringify(this.options.config())) {
+      if (options.surfaceFailures === true) throw this.failure.error;
+      return;
+    }
     this.schedule();
-    await this.task;
+    try {
+      await this.task;
+    } catch (error) {
+      // The index is derived state. A failed rebuild leaves the last complete
+      // snapshot intact, so foreground recall can continue with that snapshot.
+      if (options.surfaceFailures === true) throw error;
+    }
   }
 
   get generation(): number {

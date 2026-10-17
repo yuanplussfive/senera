@@ -40,7 +40,13 @@
 
 ## 前端投影
 
-后端领域事件由 `AgentWebSocketServer` 序列化。前端事件类型在 `Frontend/src/api` 下维护。
+后端领域事件由 `AgentWebSocketServer` 序列化。`Frontend/src/api/generatedEventCatalog.ts`、`generatedEventSpecs.ts` 和 `generatedRuntimeDiagnosticCatalog.ts` 由 `Build/GenerateFrontendEventCatalog.ts` 从后端事件目录生成，不手写；改动后端事件后运行：
+
+```bash
+npm run generate.frontend-events
+```
+
+`npm run build` 会先执行 `npm run verify.frontend-events`（同一生成器的 `--check` 模式），生成物与后端不同步时构建直接失败。手写的前端事件类型只在 `Frontend/src/api` 的非 generated 文件中维护。
 
 前端状态更新应该进入已有 owner：
 
@@ -57,6 +63,7 @@
 
 ```bash
 npm run check.types
+npm run verify.frontend-events
 npm run build
 npm run verify.suite -- workspace core
 ```

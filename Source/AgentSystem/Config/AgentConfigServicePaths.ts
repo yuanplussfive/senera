@@ -18,7 +18,7 @@ export function resolveConfigPath(workspaceRoot: string, value: string): string 
 export function writeAgentConfigJsonMirror(
   config: AgentSystemConfig,
   configPath: string,
-  secretCodec = new AgentConfigSecretCodec({ workspaceRoot: path.dirname(path.resolve(configPath)) }),
+  secretCodec: AgentConfigSecretCodec,
 ): void {
   const normalized = AgentSystemConfigSchema.parse(config);
   writeProtectedJsonFile(secretCodec.protectConfig(normalized), configPath);
@@ -28,7 +28,7 @@ export function persistMigratedAgentConfigJson(
   config: AgentSystemConfig,
   configPath: string,
   sourceVersion: number,
-  secretCodec = new AgentConfigSecretCodec({ workspaceRoot: path.dirname(path.resolve(configPath)) }),
+  secretCodec: AgentConfigSecretCodec,
 ): { backupPath?: string } {
   const backupPath = `${configPath}.v${sourceVersion}.bak`;
   let createdBackupPath: string | undefined;

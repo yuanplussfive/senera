@@ -19,6 +19,7 @@ import { AgentResourceSourceSchema, type AgentResourceSource } from "../Resource
 import { AgentWebToolsConfigurationSchema } from "../Web/AgentWebConfiguration.js";
 import { fetchWebResource } from "../Web/AgentWebHttpClient.js";
 import { sha256Hex } from "../Core/AgentHash.js";
+import { removeAgentPathWithRetry } from "../Core/AgentFs.js";
 import type { AgentHostToolContext } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
 
 const DocumentExtractInput = z
@@ -403,7 +404,7 @@ async function resolveDocumentSource(
   try {
     await fs.writeFile(filePath, response.body, { flag: "wx" });
   } catch (error) {
-    await fs.rm(directory, { recursive: true, force: true });
+    await removeAgentPathWithRetry(directory, { recursive: true });
     throw error;
   }
   const bytes = Buffer.from(response.body);
@@ -415,7 +416,9 @@ async function resolveDocumentSource(
     ...(declaredMime ? { declaredMime } : {}),
     size: bytes.byteLength,
     sha256: sha256Hex(bytes),
-    cleanup: () => fs.rm(directory, { recursive: true, force: true }),
+    cleanup: async () => {
+      await removeAgentPathWithRetry(directory, { recursive: true });
+    },
   };
 }
 

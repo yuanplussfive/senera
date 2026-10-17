@@ -5,7 +5,6 @@ import {
   Ellipsis,
   Info,
   Plus,
-  RefreshCw,
   Search,
   Square,
   SquareTerminal,
@@ -23,6 +22,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  AppIcon,
   IconButton,
   Tooltip,
 } from "../../shared/ui";
@@ -238,7 +238,7 @@ function TerminalActionsMenu(
         className="w-64 border-[var(--terminal-border)] bg-[var(--terminal-elevated)] text-[var(--terminal-foreground)] shadow-2xl"
       >
         <DropdownMenuItem
-          icon={<RefreshCw className="h-3.5 w-3.5" />}
+          icon={<AppIcon icon="refresh" size={14} aria-hidden="true" />}
           onSelect={props.onRefresh}
           className={terminalMenuItemClassName}
         >

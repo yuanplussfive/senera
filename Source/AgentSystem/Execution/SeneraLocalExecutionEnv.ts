@@ -8,7 +8,6 @@ import {
   mkdtemp,
   readdir,
   rename,
-  rm,
   rmdir,
   type FileHandle,
   writeFile,
@@ -41,6 +40,7 @@ import type { SeneraProcessExecutionBackend } from "./SeneraProcessExecutionBack
 import { isSeneraShellDialectCompatible } from "./SeneraShellCommand.js";
 import { createSeneraLocalPersistentProcessSpawner } from "./SeneraPersistentProcessSpawner.js";
 import { SeneraWorkspaceBoundary, SeneraWorkspaceBoundaryError } from "./SeneraWorkspaceBoundary.js";
+import { removeAgentPathWithRetry } from "../Core/AgentFs.js";
 import {
   AgentResourceAccessAuthorities,
   AgentResourceAccessIntents,
@@ -594,7 +594,7 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
       if (stats.isDirectory() && !recursive) {
         await rmdir(resolved);
       } else {
-        await rm(resolved, { recursive, force: options?.force ?? false });
+        await removeAgentPathWithRetry(resolved, { recursive });
       }
       const verification = await this.workspaceBoundary.inspect(value, AgentResourceAccessIntents.Remove);
       if (verification.absolutePath && verification.absolutePath !== resolved) {
@@ -647,7 +647,7 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
   async cleanup(_context?: Context): Promise<void> {
     const roots = [...this.ownedTempRoots];
     this.ownedTempRoots.clear();
-    await Promise.all(roots.map(([root]) => rm(root, { recursive: true, force: true })));
+    await Promise.all(roots.map(([root]) => removeAgentPathWithRetry(root, { recursive: true })));
   }
 
   private async resolveWorkspaceCwd(value: string | undefined): Promise<string> {
@@ -746,7 +746,7 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
       await rename(temporary, target);
       await this.assertStableWorkspaceTarget(value, AgentResourceAccessIntents.Replace, target);
     } finally {
-      await rm(temporary, { force: true }).catch(() => undefined);
+      await removeAgentPathWithRetry(temporary).catch(() => undefined);
     }
   }
 

@@ -7,7 +7,7 @@ import { applyCredentialedCors, writeCorsPreflight } from "../Auth/AgentCredenti
 import { projectAgentErrorMessage, projectAgentMessage } from "../I18n/AgentMessageProjection.js";
 import { AgentResourceHttpRoutes } from "../Resources/AgentResourceContract.js";
 import { createAgentResourceUri, normalizeResourceId } from "../Resources/AgentResourceUri.js";
-import { isAgentInlineImageMime } from "./AgentUploadMime.js";
+import { isAgentInlinePreviewMime } from "./AgentUploadMime.js";
 import { AgentUploadError, AgentUploadFailureKinds, type AgentUploadStore } from "./AgentUploadStore.js";
 import type { AgentUploadAttachment } from "./AgentUploadTypes.js";
 import { isMissingFileError } from "../Core/AgentFs.js";
@@ -183,7 +183,7 @@ export class AgentUploadHttpApi {
     }
 
     const detectedMime = resolved.mime;
-    const inline = isAgentInlineImageMime(detectedMime);
+    const inline = isAgentInlinePreviewMime(detectedMime);
 
     let contentLength: number;
     try {

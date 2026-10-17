@@ -1,5 +1,5 @@
 import React from "react";
-import { act, cleanup, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { renderHook } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
@@ -199,6 +199,21 @@ test("chat composer previews an original image and transfers its ownership after
   expect(previewApi.revokeObjectURL).toHaveBeenCalledWith("blob:senera-preview");
 });
 
+test("chat composer previews a pending text attachment before sending", async () => {
+  uploadFileMock.mockReturnValue(new Promise(() => undefined));
+  const user = userEvent.setup();
+  renderComposer(createComposerProps());
+
+  await user.upload(
+    document.querySelector("input[type='file']"),
+    new File(["line one\nline two"], "notes.txt", { type: "text/plain" }),
+  );
+
+  await user.click(screen.getByRole("button", { name: "查看文件：notes.txt" }));
+  const dialog = await screen.findByRole("dialog", { name: "查看文件：notes.txt" });
+  expect(within(dialog).getByText((_, element) => element?.tagName === "PRE")).toHaveTextContent(/line one\s+line two/);
+});
+
 test("chat composer releases pending image previews when it unmounts", async () => {
   const previewApi = installPreviewUrlApi();
   uploadFileMock.mockReturnValue(new Promise(() => undefined));
@@ -249,12 +264,6 @@ function createComposerProps(overrides = {}) {
       onRefreshConfig: vi.fn(),
       onSaveConfig: vi.fn(() => null),
       onFetchProviderModels: vi.fn(),
-    },
-    personaConfig: {
-      corePersona: "",
-      languageStyle: "",
-      operation: null,
-      onSave: vi.fn(() => null),
     },
     runtime: {
       socketStatus: "open",

@@ -56,6 +56,72 @@ describe("ImageAnalyze system tool", () => {
     expect(output).toMatchObject({ answer: "visible evidence", model: "gpt-vision" });
   });
 
+  it("projects the selected model budget into the host tool deadline", async () => {
+    const workspaceRoot = createTemporaryDirectory("senera-image-deadline");
+    temporaryDirectories.push(workspaceRoot);
+    const filePath = path.join(workspaceRoot, "image.png");
+    fs.writeFileSync(filePath, "image-content");
+    const complete = vi.spyOn(AgentImageVisionModelClient.prototype, "complete").mockResolvedValue({
+      text: "visible evidence",
+      provider: { id: "vision-model", endpoint: "ChatCompletions", model: "gpt-vision" },
+    });
+    const extendTo = vi.fn();
+    const controller = new AbortController();
+    const config = testConfig();
+    config.ModelProviders = config.ModelProviders.map((provider) =>
+      provider.Id === "vision-model"
+        ? { ...provider, TimeoutSeconds: 3, FirstTokenTimeoutSeconds: 2, MaxRequestSeconds: 4 }
+        : provider,
+    );
+
+    await createImageAnalyzeSystemTool({ model: { modelProviderId: "vision-model" } }).execute(
+      { images: [{ kind: "local_path", path: "image.png" }], task: "describe" },
+      {
+        workspaceRoot,
+        config,
+        deadline: { signal: controller.signal, timeoutMs: 120_000, extendTo, close: vi.fn() },
+      } as unknown as AgentHostToolContext,
+    );
+
+    expect(complete).toHaveBeenCalledTimes(1);
+    expect(extendTo).toHaveBeenCalledWith(4_000);
+  });
+
+  it("includes remote image download time before the visual request", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(new Response(Buffer.from("remote-image"), { headers: { "content-type": "image/png" } })),
+    );
+    vi.spyOn(AgentImageVisionModelClient.prototype, "complete").mockResolvedValue({
+      text: "remote evidence",
+      provider: { id: "vision-model", endpoint: "ChatCompletions", model: "gpt-vision" },
+    });
+    const extendTo = vi.fn();
+    const controller = new AbortController();
+    const config = testConfig();
+    config.ModelProviders = config.ModelProviders.map((provider) =>
+      provider.Id === "vision-model"
+        ? { ...provider, TimeoutSeconds: 3, FirstTokenTimeoutSeconds: 2, MaxRequestSeconds: 4 }
+        : provider,
+    );
+
+    await createImageAnalyzeSystemTool({
+      model: { modelProviderId: "vision-model" },
+      remote: { allowPrivateNetworks: true },
+    }).execute(
+      { images: [{ kind: "http_url", url: "http://127.0.0.1/example.png" }], task: "describe", timeoutMs: 10_000 },
+      {
+        workspaceRoot: process.cwd(),
+        config,
+        deadline: { signal: controller.signal, timeoutMs: 120_000, extendTo, close: vi.fn() },
+      } as unknown as AgentHostToolContext,
+    );
+
+    expect(extendTo).toHaveBeenCalledWith(14_000);
+  });
+
   it("rejects an image before reading it when the extension byte budget is exceeded", async () => {
     const workspaceRoot = createTemporaryDirectory("senera-image-budget");
     temporaryDirectories.push(workspaceRoot);

@@ -35,7 +35,10 @@ export function readRuntimeModelAssignmentFields(
   sections: readonly ConfigFormSectionData[],
 ): RuntimeModelAssignmentField[] {
   return sections.flatMap((section) =>
-    section.fields.filter((field): field is RuntimeModelAssignmentField => Boolean(field.modelSelection)),
+    section.fields.filter(
+      (field): field is RuntimeModelAssignmentField =>
+        field.modelSelection !== undefined && field.modelSelection.presentation !== "inline",
+    ),
   );
 }
 

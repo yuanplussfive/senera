@@ -10,7 +10,10 @@ import { AgentWebSocketServer } from "../../../Source/AgentSystem/WebSocket/Agen
 import { AgentWebSocketTransport } from "../../../Source/AgentSystem/WebSocket/AgentWebSocketTransport.js";
 import { AgentCallbackRunEventWriter } from "../../../Source/AgentSystem/WebSocket/AgentCallbackRunEventWriter.js";
 import type { AgentDomainEvent } from "../../../Source/AgentSystem/Events/AgentEvent.js";
-import { AgentWorkspaceCatalog } from "../../../Source/AgentSystem/WorkspaceResources/AgentWorkspaceCatalog.js";
+import {
+  AgentWorkspaceCatalog,
+  AgentWorkspaceInUseError,
+} from "../../../Source/AgentSystem/WorkspaceResources/AgentWorkspaceCatalog.js";
 import { AgentWorkspaceCatalogRoute } from "../../../Source/AgentSystem/WorkspaceResources/AgentWorkspaceCatalogContract.js";
 import {
   AgentWebSocketCloseCodes,
@@ -173,6 +176,51 @@ test("one transport isolates workspace events and files while sharing applicatio
     for (const socket of sockets) socket.terminate();
     await secondary.stop();
     await primary.stop();
+    await transport.stop();
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("catalog DELETE forgets a registration without deleting its workspace", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "senera-workspace-forget-"));
+  const child = path.join(root, "child");
+  await fs.mkdir(child);
+  const catalog = new AgentWorkspaceCatalog({ stateRoot: path.join(root, ".senera") });
+  const primary = catalog.register(root);
+  const forgotten = catalog.register(child);
+  const probe = net.createServer();
+  probe.listen(0, "127.0.0.1");
+  await once(probe, "listening");
+  const address = probe.address();
+  if (!address || typeof address === "string") throw new Error("No test port.");
+  await new Promise<void>((resolve) => probe.close(() => resolve()));
+  const config = { Server: { Host: "127.0.0.1", Port: address.port }, ModelProviders: [] };
+  const transport = new AgentWebSocketTransport({
+    applicationRoot: root,
+    config: () => config,
+    defaultWorkspaceId: primary.id,
+    catalog,
+    automaticLoopbackHttp: true,
+    forgetWorkspace: async (id) => {
+      if (id === primary.id) throw new AgentWorkspaceInUseError(id);
+      catalog.forget(id);
+      return { workspaces: [...catalog.list()], defaultWorkspaceId: primary.id };
+    },
+  });
+  try {
+    await transport.start();
+    const origin = `http://127.0.0.1:${address.port}`;
+    const response = await fetch(`${origin}${AgentWorkspaceCatalogRoute}?workspaceId=${forgotten.id}`, {
+      method: "DELETE",
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ workspaces: [primary], defaultWorkspaceId: primary.id });
+    await fs.access(child);
+    const protectedResponse = await fetch(`${origin}${AgentWorkspaceCatalogRoute}?workspaceId=${primary.id}`, {
+      method: "DELETE",
+    });
+    expect(protectedResponse.status).toBe(409);
+  } finally {
     await transport.stop();
     await fs.rm(root, { recursive: true, force: true });
   }

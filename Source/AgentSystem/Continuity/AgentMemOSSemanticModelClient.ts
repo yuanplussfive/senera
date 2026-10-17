@@ -2,7 +2,7 @@ import { z } from "zod";
 import { AgentStructuredModelClient } from "../ModelEndpoints/AgentStructuredModelClient.js";
 import TypeBuilder from "../BamlClient/baml_client/type_builder.js";
 import { AgentNativeToolApiByEndpoint } from "../ModelEndpoints/AgentModelEndpointContract.js";
-import { AgentModelTokenEstimator } from "../Text/AgentTextBudget.js";
+import { AgentTokenProjector } from "../Text/AgentTokenProjection.js";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 import { createAgentMemOSSemanticPromptCache } from "./AgentMemOSSemanticPromptCache.js";
 import {
@@ -16,31 +16,22 @@ import {
 
 const FragmentToolName = "MemOSSemanticFragment";
 const DigestToolName = "MemOSPeriodDigest";
-function createSummarySchema(model: string, summaryTokenLimit: number) {
-  const estimator = new AgentModelTokenEstimator({ model });
+function createSummarySchema(summaryTokenLimit: number) {
   return AgentMemOSSummarySchema.describe(
-    `A non-empty summary of at most ${summaryTokenLimit} tokens estimated with the configured model tokenizer.`,
-  ).superRefine((summary, context) => {
-    const tokenCount = estimator.estimate(summary).tokenCount;
-    if (tokenCount > summaryTokenLimit) {
-      context.addIssue({
-        code: "custom",
-        message: `Summary uses ${tokenCount} model tokens; the limit is ${summaryTokenLimit}.`,
-      });
-    }
-  });
+    `A non-empty summary. The returned text is normalized to the configured ${summaryTokenLimit}-token budget after parsing.`,
+  );
 }
 
-function fragmentFields(model: string, summaryTokenLimit: number) {
+function fragmentFields(summaryTokenLimit: number) {
   return {
     topic: z.string().trim().min(1),
-    summary: createSummarySchema(model, summaryTokenLimit),
+    summary: createSummarySchema(summaryTokenLimit),
     type: z.enum(AgentMemOSSemanticMemoryTypes),
   };
 }
 
-function createFragmentSchema(model: string, summaryTokenLimit: number) {
-  const fields = fragmentFields(model, summaryTokenLimit);
+function createFragmentSchema(summaryTokenLimit: number) {
+  const fields = fragmentFields(summaryTokenLimit);
   const newFragment = z.object({ ...fields, action: z.literal("new") }).strict();
   const candidate = z.number().int().nonnegative();
   return z.discriminatedUnion("action", [
@@ -50,11 +41,7 @@ function createFragmentSchema(model: string, summaryTokenLimit: number) {
   ]);
 }
 
-function createFragmentExtractionSchema(
-  model: string,
-  summaryTokenLimit: number,
-  candidates: readonly AgentMemOSSemanticCandidate[],
-) {
+function createFragmentExtractionSchema(summaryTokenLimit: number, candidates: readonly AgentMemOSSemanticCandidate[]) {
   const actions = new Map<string, Pick<AgentMemOSSemanticFragment, "action" | "candidate">>([
     ["new", { action: "new" }],
   ]);
@@ -65,23 +52,23 @@ function createFragmentExtractionSchema(
   }
   return z
     .object({
-      ...fragmentFields(model, summaryTokenLimit),
+      ...fragmentFields(summaryTokenLimit),
       action: z.enum([...actions.keys()]),
     })
     .strict()
     .transform(({ action, ...fragment }) => ({ ...fragment, ...actions.get(action)! }));
 }
 
-export function createAgentMemOSExtractionRecordSchema(model: string, summaryTokenLimit: number) {
-  const [newFragment, updateFragment, supersedeFragment] = createFragmentSchema(model, summaryTokenLimit).options;
+export function createAgentMemOSExtractionRecordSchema(summaryTokenLimit: number) {
+  const [newFragment, updateFragment, supersedeFragment] = createFragmentSchema(summaryTokenLimit).options;
   return z.union([
     z.object({ fragment: newFragment, candidateId: z.never().optional() }).strict(),
     z.object({ fragment: z.union([updateFragment, supersedeFragment]), candidateId: z.string().min(1) }).strict(),
   ]);
 }
 
-function createDigestSchema(model: string, summaryTokenLimit: number) {
-  return z.object({ summary: createSummarySchema(model, summaryTokenLimit) }).strict();
+function createDigestSchema(summaryTokenLimit: number) {
+  return z.object({ summary: createSummarySchema(summaryTokenLimit) }).strict();
 }
 
 function createFragmentSystemPrompt(summaryTokenLimit: number): string {
@@ -105,6 +92,7 @@ function createDigestSystemPrompt(summaryTokenLimit: number): string {
 
 export class AgentMemOSSemanticModelClient {
   private readonly client: AgentStructuredModelClient;
+  private readonly textProjector: AgentTokenProjector;
   constructor(
     private readonly configuration: ResolvedAgentModelProviderConfig,
     private readonly cacheScopeKey: string,
@@ -113,13 +101,23 @@ export class AgentMemOSSemanticModelClient {
     if (!Number.isSafeInteger(summaryTokenLimit) || summaryTokenLimit < 1)
       throw new Error("MemOS summary token limit must be a positive integer.");
     this.client = new AgentStructuredModelClient(configuration, "MemOSSemantic");
+    this.textProjector = new AgentTokenProjector(configuration.Model);
   }
+
+  private projectSummary(summary: string): string {
+    return this.textProjector.projectText(summary, this.summaryTokenLimit).text;
+  }
+
+  normalizeFragment(fragment: AgentMemOSSemanticFragment): AgentMemOSSemanticFragment {
+    return { ...fragment, summary: this.projectSummary(fragment.summary) };
+  }
+
   async extractFragment(
     input: AgentMemOSFragmentPromptInput,
     requestId: string,
     signal?: AbortSignal,
   ): Promise<AgentMemOSSemanticFragment> {
-    const schema = createFragmentExtractionSchema(this.configuration.Model, this.summaryTokenLimit, input.candidates);
+    const schema = createFragmentExtractionSchema(this.summaryTokenLimit, input.candidates);
     const actions = [
       "new",
       ...input.candidates.flatMap((candidate) => [`update:${candidate.ref}`, `supersede:${candidate.ref}`]),
@@ -132,7 +130,11 @@ export class AgentMemOSSemanticModelClient {
         : tb.union(actions.map((action) => tb.literalString(action))),
     );
     const systemPrompt = createFragmentSystemPrompt(this.summaryTokenLimit);
-    return this.client.execute({
+    const candidates = input.candidates.map((candidate) => ({
+      ...candidate,
+      summary: this.projectSummary(candidate.summary),
+    }));
+    const result = await this.client.execute({
       contract: {
         name: FragmentToolName,
         description: "Extract and reconcile one memory from a completed turn.",
@@ -148,7 +150,7 @@ export class AgentMemOSSemanticModelClient {
           ...(input.stateCard ? { stateCard: input.stateCard } : {}),
           ...(input.memoryIntents.length ? { memoryIntents: input.memoryIntents } : {}),
         },
-        ...(input.candidates.length ? { candidates: input.candidates } : {}),
+        ...(candidates.length ? { candidates } : {}),
         ...(input.history.length ? { history: input.history } : {}),
       }),
       requestId,
@@ -156,6 +158,7 @@ export class AgentMemOSSemanticModelClient {
       managedRetries: true,
       cache: this.cache("fragment", systemPrompt, z.toJSONSchema(schema, { io: "input", target: "draft-7" })),
     });
+    return this.normalizeFragment(result);
   }
   async summarizePeriod(
     input: AgentMemOSDigestPromptInput,
@@ -163,9 +166,9 @@ export class AgentMemOSSemanticModelClient {
     signal?: AbortSignal,
   ): Promise<{ readonly summary: string }> {
     if (!input.entries.length) throw new Error("MemOS period digest requires entries.");
-    const schema = createDigestSchema(this.configuration.Model, this.summaryTokenLimit);
+    const schema = createDigestSchema(this.summaryTokenLimit);
     const systemPrompt = createDigestSystemPrompt(this.summaryTokenLimit);
-    return this.client.execute({
+    const result = await this.client.execute({
       contract: {
         name: DigestToolName,
         description: "Compress memory fragments into one short period summary.",
@@ -183,6 +186,7 @@ export class AgentMemOSSemanticModelClient {
         z.toJSONSchema(schema, { io: "input", target: "draft-7" }),
       ),
     });
+    return { ...result, summary: this.projectSummary(result.summary) };
   }
   private cache(phase: "fragment" | "daily" | "monthly", systemPrompt: string, contract: unknown) {
     return createAgentMemOSSemanticPromptCache({

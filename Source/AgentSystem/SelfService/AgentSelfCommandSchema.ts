@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { AgentLogPolicyLimits } from "../Types/AgentLogPolicyLimits.js";
+import { AgentSelfSkillSearchLimits } from "./AgentSelfSkills.js";
 
 /**
  * Single source of truth for the `senera` self-service command vocabulary.
@@ -30,14 +32,79 @@ const ConfigCommandSchema = z.discriminatedUnion("action", [
     .strict(),
 ]);
 
+const LogFilterShape = {
+  kind: z.string().trim().min(1).max(256).optional(),
+  level: z.string().trim().min(1).max(64).optional(),
+  scope: z.string().trim().min(1).max(128).optional(),
+  stream: z.string().trim().min(1).max(128).optional(),
+} as const;
+const LogLimitSchema = z.number().int().positive().max(AgentLogPolicyLimits.maximumQueryPageSize).optional();
+const LogTimestampSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .describe("带时区的 RFC3339 时间，例如 2026-10-16T20:00:00+08:00");
+
 const LogsCommandSchema = z.discriminatedUnion("action", [
   z.object({ command: z.literal("logs"), action: z.literal("list") }).strict(),
   z
     .object({
       command: z.literal("logs"),
+      action: z.literal("latest"),
+      ...LogFilterShape,
+      limit: LogLimitSchema,
+    })
+    .strict(),
+  z
+    .object({
+      command: z.literal("logs"),
+      action: z.literal("range"),
+      from: LogTimestampSchema,
+      to: LogTimestampSchema,
+      ...LogFilterShape,
+      limit: LogLimitSchema,
+    })
+    .strict(),
+  z
+    .object({
+      command: z.literal("logs"),
+      action: z.literal("session"),
+      sessionId: z.string().trim().min(1).max(256),
+      limit: LogLimitSchema,
+    })
+    .strict(),
+  z
+    .object({
+      command: z.literal("logs"),
+      action: z.literal("next"),
+      cursor: z.string().trim().min(1).max(AgentLogPolicyLimits.maximumQueryCursorLength),
+      limit: LogLimitSchema,
+    })
+    .strict(),
+  z
+    .object({
+      command: z.literal("logs"),
+      action: z.literal("detail"),
+      detailId: z.string().trim().min(1).max(256),
+    })
+    .strict(),
+  z
+    .object({
+      command: z.literal("logs"),
+      action: z.literal("trace"),
+      requestId: z.string().trim().min(1).max(256),
+      limit: z.number().int().positive().max(AgentLogPolicyLimits.maximumQueryPageSize).optional(),
+    })
+    .strict(),
+  z.object({ command: z.literal("logs"), action: z.literal("health") }).strict(),
+  z.object({ command: z.literal("logs"), action: z.literal("streams") }).strict(),
+  z
+    .object({
+      command: z.literal("logs"),
       action: z.literal("tail"),
       name: z.string().min(1).max(128),
-      lines: z.number().int().positive().max(2000).optional(),
+      lines: z.number().int().positive().max(AgentLogPolicyLimits.maximumTailLineCount).optional(),
     })
     .strict(),
 ]);
@@ -69,7 +136,7 @@ const SkillsCommandSchema = z.discriminatedUnion("action", [
       command: z.literal("skills"),
       action: z.literal("search"),
       query: z.string().trim().min(1).max(2048),
-      limit: z.number().int().positive().max(12).optional(),
+      limit: z.number().int().positive().max(AgentSelfSkillSearchLimits.maximum).optional(),
     })
     .strict(),
   z

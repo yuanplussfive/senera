@@ -23,14 +23,6 @@
           "reason": "工具文档质量规则由项目维护，不属于运行时用户设置。"
         },
         {
-          "path": ["Prompt", "CorePersona"],
-          "reason": "核心人设由专用人设编辑器管理，避免与运行配置重复。"
-        },
-        {
-          "path": ["Prompt", "LanguageStyle"],
-          "reason": "语言风格由专用人设编辑器管理，避免与运行配置重复。"
-        },
-        {
           "path": ["ModelProviderEndpoints", "Kind"],
           "reason": "当前 schema 仅允许 OpenAICompatible，界面无需展示单值选择。"
         },
@@ -1433,6 +1425,74 @@
             "type": "number",
             "min": 1,
             "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Persistence", "Logs", "Enabled"],
+            "label": "启用工作区日志",
+            "description": "在当前工作区的 .senera/logs 中保存结构化日志投影和可召回详情。",
+            "type": "boolean",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Persistence", "Logs", "DetailMaxBytes"],
+            "label": "日志详情上限",
+            "description": "单条脱敏详情的最大字节数，超出时保留摘要和截断标记。",
+            "type": "number",
+            "min": 128,
+            "step": 1024,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Persistence", "Logs", "ProjectionMaxBytes"],
+            "label": "日志投影上限",
+            "description": "结构化事件投影文件的最大字节数，达到上限后按保留策略轮转。",
+            "type": "number",
+            "min": 1,
+            "step": 1048576,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Persistence", "Logs", "RetentionHours"],
+            "label": "日志保留时间",
+            "description": "日志投影和详情的保留小时数；权威会话事件仍遵循会话存储保留策略。",
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Persistence", "Logs", "QueryPageSize"],
+            "label": "日志默认分页条数",
+            "description": "logs latest/range/session/trace/next 未指定 limit 时使用的分页大小。",
+            "type": "number",
+            "min": 1,
+            "max": 1000,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Persistence", "Logs", "TailLineCount"],
+            "label": "日志尾部行数",
+            "description": "logs tail 未指定行数时读取的最大行数。",
+            "type": "number",
+            "min": 1,
+            "max": 2000,
+            "step": 1,
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["Persistence", "Logs", "CaptureHiddenEvents"],
+            "label": "记录隐藏事件",
+            "description": "是否将终端默认隐藏的高频增量事件写入结构化日志；默认关闭以避免高频磁盘写入。",
+            "type": "boolean",
             "required": false,
             "essential": false
           },

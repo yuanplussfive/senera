@@ -7,7 +7,7 @@
 - `AgentExecutionEventTypes`：执行期事件 union 出口。
 - `AgentRunEventTypes`：请求开始、终态、失败、取消和无效请求事件。
 - `AgentPromptEventTypes`：提示词明细和摘要事件。
-- `AgentPlannerEventTypes`：Action Planner 阶段、路由和规划结果事件。
+- `../ExecutionResources/AgentExecutionResourceEventTypes`：执行资源生命周期事件（类型定义在 ExecutionResources 模块，由本模块的 union 出口组合）。
 - `AgentModelEventTypes`：模型请求、流式输出和完成事件。
 - `AgentExecutionEventSharedTypes`：多个事件域共享的投影类型。
 

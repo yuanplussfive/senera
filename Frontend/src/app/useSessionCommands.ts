@@ -32,16 +32,34 @@ export function normalizeSessionTitle(title: string): string | null {
 export function findReusableEmptySessionId({
   sessions,
   sessionOrder,
-}: Pick<StoreState, "sessions" | "sessionOrder">): string | undefined {
+  pendingDeletedSessionIds,
+}: Pick<StoreState, "sessions" | "sessionOrder" | "pendingDeletedSessionIds">): string | undefined {
   return sessionOrder.find((sessionId) => {
     const session = sessions[sessionId];
-    if (!session || session.status === "closed" || session.title !== DEFAULT_SESSION_TITLE) return false;
+    if (
+      !session ||
+      pendingDeletedSessionIds[sessionId] ||
+      session.status === "closed" ||
+      session.title !== DEFAULT_SESSION_TITLE
+    ) {
+      return false;
+    }
     return (
       session.entryCount === 0 &&
       session.messageCount === 0 &&
       session.messages.length === 0 &&
       session.runs.length === 0 &&
       !session.activeRequestId
+    );
+  });
+}
+
+function readDeletableSessionIds(state: StoreState): readonly string[] {
+  return state.sessionOrder.filter((sessionId) => {
+    return (
+      Boolean(state.sessions[sessionId]) &&
+      !state.missingOnServerIds[sessionId] &&
+      !state.pendingDeletedSessionIds[sessionId]
     );
   });
 }
@@ -90,13 +108,21 @@ export function useSessionCommands({
       if (requestedSessionIds.length === 0) {
         return { acceptedSessionIds: [], rejectedSessionIds: [] };
       }
+      const deletableSessionIds = readDeletableSessionIds(useStore.getState());
+      const deletesEntireCatalog =
+        deletableSessionIds.length > 0 &&
+        deletableSessionIds.length === requestedSessionIds.length &&
+        deletableSessionIds.every((sessionId) => requestedSessionIds.includes(sessionId));
       const accepted = send({ type: "session.close_many", sessionIds: requestedSessionIds });
       const acceptedSessionIds = accepted ? requestedSessionIds : [];
       const rejectedSessionIds = accepted ? [] : requestedSessionIds;
-      if (acceptedSessionIds.length > 0) requestSessionDeletions(acceptedSessionIds);
+      if (acceptedSessionIds.length > 0) {
+        requestSessionDeletions(acceptedSessionIds);
+        if (deletesEntireCatalog) createSession();
+      }
       return { acceptedSessionIds, rejectedSessionIds };
     },
-    [requestSessionDeletions, send],
+    [createSession, requestSessionDeletions, send],
   );
   const closeSession = useCallback(
     (sessionId: string): boolean => closeSessions([sessionId]).acceptedSessionIds.length > 0,

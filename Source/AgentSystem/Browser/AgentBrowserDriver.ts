@@ -17,6 +17,8 @@ export interface AgentBrowserDriverSessionOptions {
 export interface AgentBrowserDriverOperationOptions {
   readonly timeoutMs: number;
   readonly signal?: AbortSignal;
+  /** Internal render operations may force a headless session without changing user-facing browser settings. */
+  readonly headed?: boolean;
 }
 
 export interface AgentBrowserDriverScreenshot {

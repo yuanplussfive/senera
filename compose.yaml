@@ -16,10 +16,10 @@ services:
       # 主进程与沙箱挂载共享同一个可配置的 Linux 工作区命名空间
       SENERA_WORKSPACE_ROOT: "${SENERA_WORKSPACE_ROOT:-/data}"
       SENERA_DATA_ROOT: "/var/lib/senera"
-      # 首次启动必填，之后重启仍以此为准
-      SENERA_ADMIN_LOGIN_NAME: "yuan"
+      # 默认管理员，首次启动创建；对外暴露前请改成自己的账号和口令
+      SENERA_ADMIN_LOGIN_NAME: "senera"
       SENERA_ADMIN_DISPLAY_NAME: "Senera Administrator"
-      SENERA_ADMIN_PASSWORD: "114514114514114514"
+      SENERA_ADMIN_PASSWORD: "114514"
       # 建议固定密钥；留空则在工作区/.senera 持久化本地 key
       SENERA_CONFIG_SECRET_KEY: "${SENERA_CONFIG_SECRET_KEY:-}"
       # 可选：覆盖沙箱运行时镜像与拉取策略；留空则使用内置分发契约版本

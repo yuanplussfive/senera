@@ -36,7 +36,7 @@ test("discards a stale configuration save error and continues with the newer dra
   expect(handleRef.current.draft).toEqual({ mode: "second" });
 });
 
-test("reconciles a saved secret against the redacted snapshot without looping", async () => {
+test("reconciles a saved secret without replacing the editable draft with its redacted marker", async () => {
   const onSave = vi.fn(() => "save-secret");
   const handleRef = { current: null };
   const snapshot = createSnapshot({ value: { ApiKey: "__senera_redacted_secret__" } });
@@ -58,7 +58,7 @@ test("reconciles a saved secret against the redacted snapshot without looping", 
 
   await waitFor(() => {
     expect(handleRef.current.dirty).toBe(false);
-    expect(handleRef.current.draft).toEqual({ ApiKey: "__senera_redacted_secret__" });
+    expect(handleRef.current.draft).toEqual({ ApiKey: "sk-real-key" });
   });
   expect(onSave).toHaveBeenCalledTimes(1);
 });

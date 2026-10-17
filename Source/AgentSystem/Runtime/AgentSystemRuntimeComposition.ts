@@ -6,8 +6,10 @@ import {
   resolveAgentLoopConfig,
   resolveAgentPromptConfig,
   resolveArtifactsConfig,
+  resolveModelProviderCatalog,
   resolveModelProviderConfig,
   resolveSandboxRuntimeConfig,
+  resolveServerConfig,
   resolveStateCardConfig,
   resolveContinuityLearningConfig,
   resolveToolExecutionConfig,
@@ -99,7 +101,7 @@ import type {
   AgentMcpServiceDiscoveryEntry,
 } from "../McpPackages/AgentMcpPackageTypes.js";
 import type { AgentActivationCatalogEntryData } from "../Activation/AgentActivationTypes.js";
-import { createAgentPersonaContext } from "../Prompt/AgentPersonaContext.js";
+import { readAgentMarkdownPromptPreset } from "../Prompt/AgentMarkdownPromptPreset.js";
 
 export interface AgentSystemRuntimeCompositionOptions {
   mcpServices?: () => readonly AgentMcpServiceDiscoveryEntry[];
@@ -165,6 +167,7 @@ export type AgentRuntimeInfrastructure = ReturnType<typeof createAgentRuntimeInf
 
 export function createAgentRuntimeInfrastructure(options: AgentSystemRuntimeCompositionOptions) {
   const registry = new AgentExtensionRegistry();
+  const modelProviderCatalog = resolveModelProviderCatalog(options.config);
   const modelProviderConfig = resolveModelProviderConfig(options.config, options.modelProviderId);
   const resourcesRoot = path.resolve(options.resourcesPath ?? options.workspaceRoot);
   const approvalRuntime = options.approvalRuntime ?? new AgentApprovalRuntime();
@@ -239,6 +242,9 @@ export function createAgentRuntimeInfrastructure(options: AgentSystemRuntimeComp
   });
   const systemTools = createAgentSystemTools(options.config, options.modelProviderId, {
     browserRuntime,
+    model: modelProviderConfig.Model,
+    resolveModel: (configuredModelId) =>
+      modelProviderCatalog.providers.find((provider) => provider.Id === configuredModelId)?.Model ?? configuredModelId,
     selfService: options.selfService,
     approvalRuntime,
   });
@@ -380,10 +386,22 @@ export function createAgentRuntimeAgentServices(
     model: infrastructure.modelProviderConfig.Model,
     logger: options.logger,
   });
-  const persona = createAgentPersonaContext(
-    infrastructure.promptConfig.CorePersona,
-    infrastructure.promptConfig.LanguageStyle,
-  );
+  const promptPresetMaxBytes = resolveServerConfig(options.config).RequestMaxBytes;
+  let lastPromptPresetDiagnostic: string | undefined;
+  const personaProvider = () => {
+    const result = readAgentMarkdownPromptPreset(options.workspaceRoot, promptPresetMaxBytes);
+    const diagnostic = result.error ? `${result.path ?? ""}\u0000${result.error}` : undefined;
+    if (diagnostic !== lastPromptPresetDiagnostic) {
+      if (result.error) {
+        options.logger?.warn("prompt.preset.read_failed", {
+          path: result.path,
+          error: result.error,
+        });
+      }
+      lastPromptPresetDiagnostic = diagnostic;
+    }
+    return result.context;
+  };
   const toolExecutionConfig = resolveToolExecutionConfig(options.config);
   const semanticAuditors =
     infrastructure.modelProviderConfig.ToolPlanningMode === "baml" &&
@@ -480,7 +498,7 @@ export function createAgentRuntimeAgentServices(
       artifactRecorder,
       toolCallExecutor,
       piSessionRegistry: infrastructure.piSessionRegistry,
-      persona,
+      personaProvider,
       promptContextBuilder,
       piSubstrate,
       skillActivation,
@@ -504,7 +522,6 @@ export function createAgentRuntimeAgentServices(
     toolSearch,
     toolCatalog,
     artifactRecorder,
-    persona,
     toolPermissionGate,
     toolCallExecutor,
     piSubstrate,

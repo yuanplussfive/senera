@@ -2,6 +2,7 @@ import type {
   ChannelStatusItem,
   ConfigMutationState,
   ConfigSnapshotData,
+  AgentRuntimeDependencySnapshot,
   McpInputValue,
   McpInputMutationState,
   McpServerSettingsItem,
@@ -25,6 +26,7 @@ export interface SettingsConfigCommands {
   providerModelErrors: Record<string, ProviderModelsFailedData & { updatedAt: string }>;
   providerModelLoadingIds: Record<string, boolean>;
   readProviderApiKey: (providerId: string) => Promise<string>;
+  readExtensionSecret: (extensionId: string, path: readonly string[]) => Promise<string>;
   refreshConfig: () => void;
   saveConfig: (config: Record<string, unknown>) => string | null;
   fetchProviderModels: (providerId: string, force?: boolean, endpoint?: ProviderModelEndpointInput) => void;
@@ -46,14 +48,19 @@ export interface SettingsSystemConfigHandle extends ConfigMutationController {
   configSnapshot: ConfigSnapshotData | null;
   workspaceId: string | null;
   readProviderApiKey: (providerId: string) => Promise<string>;
+  readExtensionSecret: (extensionId: string, path: readonly string[]) => Promise<string>;
   systemTools: readonly SystemToolSettingsItem[];
   systemExtensions: readonly SystemExtensionSettingsItem[];
   mcpServers: readonly McpServerSettingsItem[];
+  runtimeDependencies: readonly AgentRuntimeDependencySnapshot[];
   mcpInputOperation: McpInputMutationState | null;
   toolSettingsSynced: { readonly systemTools: boolean; readonly mcpServers: boolean };
   providerModelCatalogs: Record<string, ProviderModelsSnapshotData>;
   providerModelErrors: Record<string, ProviderModelsFailedData & { updatedAt: string }>;
   refreshToolSettings: () => boolean;
+  refreshRuntimeDependencies: () => boolean;
+  checkRuntimeDependency: (dependencyId: string) => boolean;
+  installRuntimeDependency: (dependencyId: string) => boolean;
   updateMcpInputs: (serverId: string, values: Record<string, McpInputValue>, deletes?: string[]) => string | null;
   restartMcpServer: (serverId: string) => boolean;
   channelStatuses: readonly ChannelStatusItem[];

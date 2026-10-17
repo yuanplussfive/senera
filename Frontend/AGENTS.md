@@ -14,18 +14,18 @@
 
 ## 第三方组件源码
 
-- shadcn CLI 仅作为受控源码入口；详细流程见 `../docs/Development/FrontendComponentRegistry.md`。
+- shadcn CLI 只作为受控源码入口；详细流程见 `../docs/Development/FrontendComponentRegistry.md`。
 - 只运行项目固定版本提供的 `ui.registry.view` 和 `ui.registry.dry-run`，禁止 `init`、写入式 `add`、`--all` 和 `--overwrite`。
 - `src/shared/ui/_incoming` 不能提交或导入。适配后的公共组件直接进入 `src/shared/ui`，不保留平行的生成实现。
 - 默认只允许官方 Tailwind 3 registry。第三方 registry 必须先完成来源、许可证和依赖审查并加入白名单。
 
 ## 图标治理
 
-- 生产业务代码只能通过 `src/shared/ui/AppIcon.tsx` 的语义 API 使用通用图标，例如 `<AppIcon icon="search" />`；禁止直接引入 `lucide-react`、`iconoir-react`、`@heroicons/react`、`@hugeicons/*` 或其他通用图标包。
+- 生产业务代码只能通过 `src/shared/ui/AppIcon.tsx` 的语义 API 使用通用图标，比如 `<AppIcon icon="search" />`；禁止直接引入 `lucide-react`、`iconoir-react`、`@heroicons/react`、`@hugeicons/*` 或其他通用图标包。
 - 新语义先登记到 `AppIconCatalog`，组件类型不得泄漏供应商组件类型。`AppIcon` 内部可以替换供应商，业务代码不依赖具体图标库。
 - `src/shared/ui/AppIcon.tsx` 是唯一通用图标适配层。`src/dev/**` 临时视觉对比、模型厂商/品牌资源，以及 `Spinner` 等专用 SVG 属于明确例外；例外应保持在自己的适配边界内，不扩散到功能代码。
 - 生产代码不得从远程 URL 加载图标。迁移期间保留的历史直引由架构测试基线管理；新代码必须先走 `AppIcon`，并通过架构测试。
-- `components.json` 的 `iconLibrary` 仅服务 shadcn 生成器兼容性，不是生产图标规范；不要据此在功能代码中引入 Lucide。
+- `components.json` 的 `iconLibrary` 只服务 shadcn 生成器兼容性，不是生产图标规范；不要据此在功能代码中引入 Lucide。
 - 当前 `AppIcon` 以 MIT 许可的 Heroicons 为基础；截图圈出的新建会话、侧栏展开/收起和账户触发器允许使用 MIT 许可的 Iconoir。Central 等非仓库内开源资产在取得并记录许可前不得加入生产构建。
 
 ## 组件语义

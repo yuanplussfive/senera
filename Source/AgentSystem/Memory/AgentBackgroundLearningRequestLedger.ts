@@ -34,7 +34,13 @@ export const AgentBackgroundLearningBoards = [
 ] as const;
 export type AgentBackgroundLearningBoard = (typeof AgentBackgroundLearningBoards)[number];
 
-export const AgentBackgroundLearningRequestStatuses = ["started", "completed", "failed", "cancelled"] as const;
+export const AgentBackgroundLearningRequestStatuses = [
+  "started",
+  "completed",
+  "failed",
+  "exhausted",
+  "cancelled",
+] as const;
 export type AgentBackgroundLearningRequestStatus = (typeof AgentBackgroundLearningRequestStatuses)[number];
 
 export const AgentBackgroundLearningFailureCodes = [
@@ -71,6 +77,8 @@ export interface AgentBackgroundLearningRequestFinish {
 export interface AgentBackgroundLearningRequestFailure {
   readonly error: unknown;
   readonly code?: AgentBackgroundLearningFailureCode;
+  /** Marks the final attempt so recovery does not replay the operation automatically. */
+  readonly exhausted?: boolean;
   readonly retryAtMs?: number;
   readonly usage?: AgentModelUsageValue;
   readonly metadata?: Readonly<Record<string, unknown>>;
@@ -127,6 +135,21 @@ export interface AgentBackgroundLearningRequestHandle {
   complete(input?: AgentBackgroundLearningRequestFinish): void;
   fail(input: AgentBackgroundLearningRequestFailure): void;
   cancel(reason?: unknown): void;
+}
+
+export class AgentBackgroundLearningExhaustedError extends Error {
+  constructor(
+    readonly operationKey: string,
+    cause?: unknown,
+  ) {
+    super(
+      `Background learning exhausted its configured attempts: ${operationKey}.${
+        cause ? ` ${errorMessage(cause)}` : ""
+      }`,
+      cause === undefined ? undefined : { cause },
+    );
+    this.name = new.target.name;
+  }
 }
 
 const DiagnosticMessageLimit = 2_000;
@@ -221,9 +244,7 @@ export class AgentBackgroundLearningRequestLedger {
       .sort((left, right) => right.attempt - left.attempt || right.startedAtMs - left.startedAtMs)[0];
     let attempt = previous && previous.status !== "completed" ? previous.attempt + 1 : 1;
     if (attempt > policy.maxAttempts)
-      throw new Error(
-        `Background learning exhausted its configured attempts: ${input.operationKey}. ${previous?.errorMessage ?? ""}`,
-      );
+      throw new AgentBackgroundLearningExhaustedError(input.operationKey, previous?.errorMessage ?? undefined);
     const waitUntil = async (deadline: number) => {
       try {
         await delay(Math.max(0, deadline - Date.now()), undefined, { signal });
@@ -251,6 +272,7 @@ export class AgentBackgroundLearningRequestLedger {
         handle.fail({
           error,
           usage: usage.aggregate(),
+          ...(retry.kind === "failed" ? { exhausted: true } : {}),
           ...(retry.kind === "failed" ? {} : { retryAtMs: retry.nextAttemptAtMs }),
         });
         if (retry.kind === "failed") {
@@ -321,6 +343,17 @@ export class AgentBackgroundLearningRequestLedger {
     return this.list({ ...input, limit: row.count });
   }
 
+  /**
+   * Recovery is driven by the persisted lifecycle fields and configured
+   * attempt budget, not by a board or operation-specific rule. This keeps
+   * pre-migration failed rows recoverable while their configured budget remains.
+   */
+  isRecoverable(record: AgentBackgroundLearningRequestRecord, policy: AgentBackgroundLearningRetryPolicy): boolean {
+    if (record.status === "started") return true;
+    if (record.status !== "failed" && record.status !== "exhausted") return false;
+    return record.attempt < policy.maxAttempts;
+  }
+
   private complete(requestId: string, input: AgentBackgroundLearningRequestFinish): void {
     const completedAtMs = Date.now();
     this.write("complete", () => {
@@ -358,7 +391,7 @@ export class AgentBackgroundLearningRequestLedger {
             WHERE request_id = ? AND status = 'started'`,
         )
         .run(
-          code === "cancelled" ? "cancelled" : "failed",
+          code === "cancelled" ? "cancelled" : input.exhausted ? "exhausted" : "failed",
           new Date(completedAtMs).toISOString(),
           completedAtMs,
           completedAtMs,

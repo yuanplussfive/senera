@@ -1,6 +1,5 @@
 import type { z } from "zod";
 import { AgentHostCapabilityNames } from "../AgentDefaultHostCapabilities.js";
-import { AskUserArgumentsSchema } from "../Conversation/AgentAskUserRuntime.js";
 import { ArtifactMemoryReadArgumentsSchema } from "../Memory/AgentArtifactMemoryTypes.js";
 import {
   ContinuityRecallArgumentsSchema,
@@ -54,10 +53,6 @@ export const AgentBundledHostToolInputContracts = Object.freeze([
   {
     capability: AgentHostCapabilityNames.WorkspaceRestoreCheckpoint,
     input: WorkspaceRestoreCheckpointArgumentsSchema,
-  },
-  {
-    capability: AgentHostCapabilityNames.AskUser,
-    input: AskUserArgumentsSchema,
   },
   {
     capability: AgentHostCapabilityNames.AgentSpawn,

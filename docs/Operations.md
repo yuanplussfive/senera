@@ -4,14 +4,14 @@
 
 ## Artifact 维护
 
-服务运行期间会按 `Artifacts.MaintenanceIntervalMinutes` 自动执行 artifact 保留、总量配额和半成品回收。目录扫描使用 `Artifacts.MaintenanceMaxConcurrency` 控制文件系统并发，默认值为 4，避免大量 artifact 同时打开过多文件句柄。需要手动检查时，默认命令只分析，不删除文件：
+服务运行期间会按 `Artifacts.MaintenanceIntervalMinutes` 自动执行 artifact 保留、总量配额和半成品回收。目录扫描用 `Artifacts.MaintenanceMaxConcurrency` 控制文件系统并发，默认值为 4，避免大量 artifact 同时打开过多文件句柄。需要手动检查时，默认命令只分析，不删除文件：
 
 ```powershell
 npm run maintenance.artifacts
 npm run maintenance.artifacts.json
 ```
 
-确认报告后使用 `npm run maintenance.artifacts.apply` 执行清理。工作区、配置文件或 artifact 根目录不在默认位置时，可传 `--workspace`、`--config` 或 `--root`。
+确认报告后用 `npm run maintenance.artifacts.apply` 执行清理。工作区、配置文件或 artifact 根目录不在默认位置时，可传 `--workspace`、`--config` 或 `--root`。
 
 ## Docker 启动
 
@@ -19,19 +19,21 @@ npm run maintenance.artifacts.json
 
 受控浏览器随应用镜像安装 Chromium，因此 Docker 部署不需要再执行 `playwright install` 或在宿主机安装 Chrome。容器没有图形显示服务器，浏览器扩展应保持 `runtime.headed: false`；需要观察页面操作时，请在桌面端启用“显示浏览器窗口”。
 
-同一原因，标准无头镜像不会启动 `zavora-computer-use`。MCP manifest 声明的宿主能力会在进程启动前统一预检；没有 `DISPLAY`/Wayland 图形会话时，Zavora 显示为“当前环境不可用”，不会产生原生库加载或 MCP discovery 失败。若需要 Linux 桌面控制，请在带 X11/Wayland 的宿主或 WSLg 会话中运行 Zavora；若 Senera 必须保持无头，把 Zavora 放在宿主侧并通过认证的 Streamable HTTP MCP sidecar 接入。仅向镜像添加 X11 动态库不能让它控制宿主 Windows 桌面。
+同一原因，标准无头镜像不会启动 `zavora-computer-use`。MCP manifest 声明的宿主能力会在进程启动前统一预检；没有 `DISPLAY`/Wayland 图形会话时，Zavora 显示为“当前环境不可用”，不会产生原生库加载或 MCP discovery 失败。需要 Linux 桌面控制时，请在带 X11/Wayland 的宿主或 WSLg 会话中运行 Zavora。Senera 必须保持无头时，把 Zavora 放在宿主侧，通过认证的 Streamable HTTP MCP sidecar 接入。只往镜像里加 X11 动态库，也控制不了宿主 Windows 桌面。
 
 如果确实要制作专用的 Linux 图形镜像，除了 Zavora 发布包要求的 Node 24 和原生桌面库，还必须把真实的 X11/Wayland socket、认证信息、`XDG_RUNTIME_DIR` 以及 AT-SPI/DBus 会话以受控方式提供给容器；使用虚拟显示时还要维护 Xvfb 生命周期。这个镜像应作为单独部署变体维护，不应把 GUI 库、显示 socket 或宿主权限加入标准无头镜像。
 
 镜像入口默认在权限准备阶段以 root 运行后通过 `exec` 降权为 `node`；`compose.yaml` 显式设置 `SENERA_CONTAINER_RUNTIME_USER: root`，主进程保持 root 运行，使容器内嵌入的沙箱 Worker 能访问 Docker Engine。嵌入 Worker 只接受版本化 Worker 协议允许的镜像、挂载和资源策略，主服务通过进程内私有 Unix Socket 访问它。
 
-Senera 不提供可直接用于生产的默认密码。首次启动前，直接编辑 `compose.yaml` 中已写明的管理员资料。浏览器同源访问会根据请求 Host 自动放行；只有跨域前端才需要在 `Server.AccessControl.AllowedOrigins` 中额外声明：
+`compose.yaml` 带一组默认管理员资料，管理员口令最少 6 位。浏览器同源访问会根据请求 Host 自动放行；只有跨域前端才需要在 `Server.AccessControl.AllowedOrigins` 中额外声明：
 
 ```yaml
-SENERA_ADMIN_LOGIN_NAME: "admin"
-SENERA_ADMIN_DISPLAY_NAME: "Your Name"
-SENERA_ADMIN_PASSWORD: "replace-with-a-strong-password"
+SENERA_ADMIN_LOGIN_NAME: "senera"
+SENERA_ADMIN_DISPLAY_NAME: "Senera Administrator"
+SENERA_ADMIN_PASSWORD: "114514"
 ```
+
+这组默认值只用来让本机先跑起来。端口发布为 `8787:8787`，容器内主进程监听 `0.0.0.0`，同网段可直接访问该端口；非回环地址的明文 HTTP 登录默认拒绝（`Server.AccessControl.AllowInsecureHttp` 默认 `false`），所以弱口令在网络层还有一道闸。一旦前置 TLS 或显式放行明文登录，就必须先改掉这三个字段；改动后 `docker compose restart senera` 会同步账户并撤销全部会话。
 
 然后启动：
 
@@ -49,23 +51,23 @@ docker compose logs -f senera
 
 #### 单服务安全边界
 
-`compose.yaml` 是单服务模式：Senera 与嵌入的沙箱 Worker 合并为单个容器，管理字段只有端口、管理员资料、数据卷和 Docker Engine socket。使用前必须理解其安全边界：
+`compose.yaml` 是单服务模式：Senera 与嵌入的沙箱 Worker 合并为单个容器，管理字段只有端口、管理员资料、数据卷和 Docker Engine socket。用之前必须清楚它的安全边界：
 
 - 主进程保持 root 运行（`SENERA_CONTAINER_RUNTIME_USER: root` 显式门控），容器直挂 `/var/run/docker.sock`，因此任何能以该进程身份执行的漏洞都直接控制 Docker Engine。
 
-- 受控浏览器在 root 下运行，容器内的 Chromium 会自动附加 `--no-sandbox`（仅当 `SENERA_CONTAINER=1` 且进程 uid 为 0），放弃浏览器进程自身的沙箱。
+- 受控浏览器在 root 下运行，容器内的 Chromium 会自动附加 `--no-sandbox`（只在 `SENERA_CONTAINER=1` 且进程 uid 为 0 时附加），放弃浏览器进程自身的沙箱。
 
-- 嵌入 Worker 使用固定卷名 `senera-data` 和 Docker Engine 端点；沙箱容器本身仍保持只读根文件系统、能力全移除与 `no-new-privileges`。
+- 嵌入 Worker 用固定卷名 `senera-data` 和 Docker Engine 端点；沙箱容器本身仍保持只读根文件系统、能力全移除与 `no-new-privileges`。
 
-- 适合内网单机、开发验证或管理型部署；生产、多租户或不可信网络请前置 HTTPS 反向代理并加固宿主。若宿主运行了不受信任的容器，Docker Socket 挂载会扩大其影响范围。
+- 适合内网单机、开发验证或管理型部署；生产、多租户或不可信网络请前置 HTTPS 反向代理并加固宿主。宿主上有不受信任的容器在运行时，Docker Socket 挂载会扩大影响范围。
 
 如需覆盖沙箱运行时镜像，在 `environment` 中设置 `SENERA_DOCKER_SANDBOX_IMAGE` 与 `SENERA_DOCKER_SANDBOX_PULL_POLICY`；未设置时使用内置分发契约镜像。
 
-Docker Web 的认证、上传和其他 HTTP API 默认校验浏览器 Origin 与当前请求 Host 的同源关系。容器入口显式启用的回环 HTTP 例外还允许本机 `localhost`、`127.0.0.1` 或 `::1` 在不同端口提供前端（例如开发 Vite 或本机端口映射）；公网域名/IP 仍必须使用 `Server.AccessControl.AllowedOrigins` 显式声明并配合 HTTPS。因此通过 `https://senera.example.com` 反向代理时，浏览器请求保持在同一域名并经过代理；容器内部的 `127.0.0.1` 不会暴露给访问者。动态 `senera-runtime-config.js` 使用 `no-store`，代理也不应覆盖该响应的缓存策略。
+Docker Web 的认证、上传和其他 HTTP API 默认校验浏览器 Origin 与当前请求 Host 是否同源。容器入口显式启用的回环 HTTP 例外，还允许本机 `localhost`、`127.0.0.1` 或 `::1` 在不同端口提供前端，比如开发 Vite 或本机端口映射。公网域名/IP 必须把 Origin 显式写进 `Server.AccessControl.AllowedOrigins`，并配合 HTTPS。通过 `https://senera.example.com` 反向代理时，浏览器请求保持在同一域名并经过代理，容器内部的 `127.0.0.1` 不会暴露给访问者。动态 `senera-runtime-config.js` 带 `no-store`，代理也不应覆盖该响应的缓存策略。
 
-容器每次启动都会读取这三个管理员环境变量并与 `${SENERA_WORKSPACE_ROOT:-/data}/.senera/access/admin-account.json` 对账。内容相同则不重写；登录名、显示名或密码变化时原子更新账户，因此编辑 YAML 后重启即可生效。密码只以 `scrypt` 哈希写入账户文件，但原始密码仍会出现在部署 YAML 和 Docker 容器环境中，因此不得提交包含真实密码的 `compose.yaml`。启动成功后打开 `http://localhost:8787` 或实际访问地址。
+容器每次启动都会读取这三个管理员环境变量，并与 `${SENERA_WORKSPACE_ROOT:-/data}/.senera/access/admin-account.json` 对账。内容相同就不重写，登录名、显示名或密码变了就原子更新账户，所以改完 YAML 重启即可生效。密码只以 `scrypt` 哈希写入账户文件，但原始密码仍会出现在部署 YAML 和 Docker 容器环境里，包含真实密码的 `compose.yaml` 不能提交进仓库。启动成功后打开 `http://localhost:8787` 或实际访问地址。
 
-容器健康检查使用 `GET /health/ready`，不会把登录状态误判成服务故障。排障时可以分别检查：
+容器健康检查用 `GET /health/ready`，不会把登录状态误判成服务故障。排障时可以分别检查：
 
 ```bash
 curl http://127.0.0.1:8787/health/live
@@ -86,7 +88,7 @@ Docker 镜像运行的是标准 Node.js 24，不是 Electron，因此不需要�
 
 - 官方 Docker 镜像已安装 Chromium 与运行所需字体，容器部署不需要挂载宿主浏览器。镜像没有显示服务器，因此必须保持 `runtime.headed: false`；启用可见窗口会在启动前返回明确配置错误。容器默认以 root 运行 Chromium 并自动附加 `--no-sandbox`（`SENERA_CONTAINER=1` 且进程 uid 为 0 时），并启用 `--disable-dev-shm-usage` 以适配 Docker 默认共享内存大小。
 
-- 裸 Linux 源码或二进制部署需要安装 Chrome、Chromium 或兼容的发行版包及其系统依赖，或者使用 `agent-browser install --with-deps` 管理浏览器；保持默认自动发现，或通过 `runtime.executablePath` 指向实际可执行文件。`agent-browser` 原生控制器随 Senera 的生产依赖和桌面安装包按平台分发；若发行包校验发现控制器缺失，会返回明确的配置错误，不会退回 Playwright、Electron WebView 或静默关闭浏览能力。仓库的 Playwright 仅用于 Web/Electron E2E 测试，不是运行时浏览器后端。
+- 裸 Linux 源码或二进制部署需要安装 Chrome、Chromium 或兼容的发行版包及其系统依赖，或者用 `agent-browser install --with-deps` 管理浏览器；保持默认自动发现，或通过 `runtime.executablePath` 指向实际可执行文件。`agent-browser` 原生控制器随 Senera 的生产依赖和桌面安装包按平台分发，发行包校验发现控制器缺失时会返回明确的配置错误，不会退回 Playwright、Electron WebView 或静默关闭浏览能力。仓库的 Playwright 只用于 Web/Electron E2E 测试，不是运行时浏览器后端。
 
 受控会话拥有单独的临时 profile，不读取或改写用户日常浏览器的 profile、Cookie 与启动参数。浏览器找不到时会指出应安装浏览器或配置可执行路径，而不是退回 Electron WebView 或静默关闭浏览能力。
 
@@ -94,9 +96,9 @@ Docker 镜像运行的是标准 Node.js 24，不是 Electron，因此不需要�
 
 默认 `compose.yaml` 做了这些事情：
 
-- `senera-data:${SENERA_WORKSPACE_ROOT:-/data}`：配置、数据库、会话、artifact 和工作区 Skills（卷名固定为 `senera-data`，与嵌入 Worker 使用同一个派生工作区根）。
+- `senera-data:${SENERA_WORKSPACE_ROOT:-/data}`：配置、数据库、会话、artifact 和工作区 Skills（卷名固定为 `senera-data`，与嵌入 Worker 用同一个派生工作区根）。
 
-- `8787:8787`：宿主机所有网络接口发布 `8787`，访问控制由同源校验、仅限回环来源的自动跨端口例外、可选公网 Origin 配置和管理员认证负责。
+- `8787:8787`：宿主机所有网络接口发布 `8787`，访问控制由同源校验、只对本机回环来源生效的自动跨端口例外、可选公网 Origin 配置和管理员认证负责。
 
 - `/var/run/docker.sock:/var/run/docker.sock`：容器直挂 Docker Engine socket，供嵌入 Worker 创建受限沙箱容器。
 
@@ -104,11 +106,31 @@ Docker 镜像运行的是标准 Node.js 24，不是 Electron，因此不需要�
 
 Docker 不会把 Sandbox 请求改为本机执行。`runsc` 未注册时，启动协商会锁定受限 Docker Engine provider；Docker Engine 不可连接、声明的 runtime 镜像不可用或 Worker 不可用时，容器会在打开 Web 服务前明确失败，不会在工具执行阶段静默切换。Local 工具与 Sandbox 边界保持独立。
 
-`compose.yaml` 以 root 运行主进程；未设置 `SENERA_CONTAINER_RUNTIME_USER` 时入口会在权限准备后降权为 `node`。手工执行容器内诊断命令时应沿用进程实际身份，例如 `docker compose exec -T senera id`；不要依赖 `docker exec` 的默认用户。
+`compose.yaml` 以 root 运行主进程；未设置 `SENERA_CONTAINER_RUNTIME_USER` 时入口会在权限准备后降权为 `node`。手工执行容器内诊断命令时要沿用进程实际身份，比如 `docker compose exec -T senera id`，不要依赖 `docker exec` 的默认用户。
 
 工作区 Skill 位于数据卷的 `${SENERA_WORKSPACE_ROOT:-/data}/.senera/skills`。它由运行时用户直接维护，不会在容器启动时被内置资源覆盖；官方只读 Skills 和 MCP packages 随镜像位于 `/app/System/Skills` 与 `/app/McpServers`。
 
-运行时数据库不接受配置路径，统一由工作区布局解析并按领域存放：配置修订与本地密钥位于 `.senera/data/config/`，会话位于 `.senera/data/sessions/`，长期记忆位于 `.senera/data/memory/`，Tool/Skill 路由学习位于 `.senera/data/tool-search/`。升级时旧数据库文件族会整体迁移，WAL、SHM 和 recovery 文件不会被拆散；当新旧库同时存在时，旧库保存在对应领域的 `legacy/` 目录，不覆盖当前库。
+运行时数据库不接受配置路径，统一由工作区布局解析并按领域存放：
+
+- 配置修订：`.senera/data/config/`
+
+- 本地密钥：`.senera/data/credentials/`
+
+- 会话：`.senera/data/sessions/`
+
+- 上下文记忆：`.senera/data/memory/`
+
+- 编排：`.senera/data/orchestration/`
+
+- 渠道：`.senera/data/channels/`
+
+- MemOS 长期记忆和 Tool/Skill 路由学习：`.senera/data/memos/`
+
+- 产物清单索引：`.senera/data/artifacts/`
+
+- 文件观察基线：`.senera/data/workspace-observer/`
+
+`.senera/data/tool-search/embeddings.json` 只是工具检索的向量缓存，删除后可重建，不是权威存储。升级时旧数据库文件族会整体迁移，WAL、SHM 和 recovery 文件不会被拆散；当新旧库同时存在时，旧库保存在对应领域的 `legacy/` 目录，不覆盖当前库。
 
 如果服务器上 `8787` 已被占用，在启动前指定另一个主机端口：
 
@@ -117,7 +139,7 @@ ports:
   - "18787:8787"
 ```
 
-无需再把端口地址逐个加入环境变量；浏览器同源 Origin 会自动匹配当前 Host，本机回环前端也可使用不同端口。公网或其他非回环跨域前端仍需在工作区配置中的 `Server.AccessControl.AllowedOrigins` 声明完整 Origin。所有部署值都直接在 `compose.yaml` 或工作区配置中修改。
+浏览器同源 Origin 会自动匹配当前 Host，本机回环前端也能用不同端口，不用再把端口地址逐个加进环境变量。公网或其他非回环跨域前端仍要在工作区配置里给 `Server.AccessControl.AllowedOrigins` 填完整 Origin。所有部署值都直接改 `compose.yaml` 或工作区配置。
 
 ## 管理员访问
 
@@ -129,7 +151,7 @@ ports:
 docker compose restart senera
 ```
 
-本机源码运行时使用同一套命令：
+本机源码运行时用同一套命令：
 
 ```bash
 npm run access.admin -- init --workspace .
@@ -139,15 +161,15 @@ npm run access.admin -- init --workspace .
 
 ## 本机与公网
 
-`compose.yaml` 将端口发布为 `8787:8787`，本机可直接访问：
+`compose.yaml` 把端口发布为 `8787:8787`，本机可直接访问：
 
 ```bash
 http://localhost:8787
 ```
 
-默认 YAML 自动接受浏览器当前地址的同源 Origin，也允许本机回环地址使用不同端口，不需要逐个填写本机 IP。跨域前端仍需在 `Server.AccessControl.AllowedOrigins` 中填写完整公网 Origin，例如 `https://senera.example.com`。
+默认 YAML 自动接受浏览器当前地址的同源 Origin，也允许本机回环地址用不同端口，不需要逐个填写本机 IP。跨域前端仍要在工作区配置的 `Server.AccessControl.AllowedOrigins` 里填完整公网 Origin，比如 `https://senera.example.com`。
 
-Docker 镜像不终止 TLS。回环地址的本地 HTTP 会自动工作，非回环地址默认要求 HTTPS；公网正式部署应使用 HTTPS/WSS 反向代理，并只在 `Server.AccessControl.TrustedProxyAddresses` 中填写实际代理地址：
+Docker 镜像不终止 TLS。回环地址的本地 HTTP 会自动工作，非回环地址默认要求 HTTPS；公网正式部署要走 HTTPS/WSS 反向代理，只在 `Server.AccessControl.TrustedProxyAddresses` 里填实际代理地址：
 
 ```yaml
 Server:
@@ -155,7 +177,7 @@ Server:
     TrustedProxyAddresses: ["172.20.0.10"]
 ```
 
-远程服务的明文 HTTP 登录默认拒绝；只有配置文件中的 `Server.AccessControl.AllowInsecureHttp: true` 才会显式放行可信网络。若 TLS 在反向代理终止，`TrustedProxyAddresses` 只能填写实际代理的内部地址，不能信任任意 `X-Forwarded-Proto` 请求头。不要把明文登录端口直接暴露给公网。
+远程服务的明文 HTTP 登录默认拒绝；只有配置文件里的 `Server.AccessControl.AllowInsecureHttp: true` 才会显式放行可信网络。TLS 在反向代理终止时，`TrustedProxyAddresses` 只能填实际代理的内部地址，不能信任任意 `X-Forwarded-Proto` 请求头。不要把明文登录端口直接暴露给公网。
 
 `Server.AccessControl` 提供会话、连接、握手和消息配额；密码、Cookie、管理员账户文件和 CSRF 值不属于该配置，也不应提交到仓库。WebSocket、上传和模型兼容 API 使用同一认证边界，外部协议见 [WebSocket 协议参考](API/WebSocketProtocol.md)。
 
@@ -176,7 +198,7 @@ docker compose exec -T senera sh -lc "cat > /data/senera.config.json" < senera.c
 docker compose restart senera
 ```
 
-重点填这几项：
+日常配置优先用设置页：在“模型 → 供应商”里添加供应商、填接口地址和 Key，检测模型后设为默认，提交即生效。下面的字段路径用于批量初始化或无界面部署，重点填这几项：
 
 - `ModelProviderEndpoints[].BaseUrl`
 
@@ -184,7 +206,11 @@ docker compose restart senera
 
 - `ModelProviders[].Model`
 
-`ApiKey` 可以在首次配置时暂时以明文填写；运行时读取后会立即以 AES-256-GCM 密文写回 JSON 镜像和 SQLite 的全部配置 revision，配置迁移备份也使用密文。推荐通过设置页修改供应商凭据，避免直接操作已经由 SQLite 接管的 JSON 镜像。
+提供方分两层：端点（`ModelProviderEndpoints[]`，BaseUrl 和 Key）和模型（`ModelProviders[]`，具体 Model、协议类型、输出上限）。供应商重命名时，遵循 `providerId/model` 约定的模型 ID、默认模型、分组和运行时客户端引用都会同步迁移；旧模型 ID 保留为兼容别名，历史会话仍能解析。
+
+`ApiKey` 可以在首次配置时暂时以明文填写；运行时读取后会立即以 AES-256-GCM 密文写回 JSON 镜像和 SQLite 的全部配置 revision，配置迁移备份也是密文。推荐通过设置页修改供应商凭据，避免直接操作已经由 SQLite 接管的 JSON 镜像。
+
+运行期间通过设置界面提交的配置由配置服务直接生效，并同步写回 JSON 镜像，不会触发开发服务器重启；绕过设置页直接编辑磁盘上的配置文件时，需要显式重启开发服务才会重新读取。
 
 密钥优先从 `SENERA_CONFIG_SECRET_KEY` 读取，值必须是 32 字节随机数据的 base64url 编码。可以用 Node.js 生成：
 
@@ -192,7 +218,7 @@ docker compose restart senera
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
 ```
 
-密钥只能生成一次并持久保存，不要在每次启动时重新生成。Compose 已把宿主机变量映射进主服务；本地部署可以将 `SENERA_CONFIG_SECRET_KEY=<生成值>` 写入仓库已忽略的 `.env`，正式部署应使用平台提供的独立 secret。
+密钥只能生成一次并持久保存，不要在每次启动时重新生成。Compose 已把宿主机变量映射进主服务；本地部署可以把 `SENERA_CONFIG_SECRET_KEY=<生成值>` 写入仓库已忽略的 `.env`，正式部署应改用平台提供的独立 secret。
 
 未设置该变量时，运行时会生成 `.senera/data/config/config-secrets.key`（Docker 数据目录下为 `/data/.senera/data/config/config-secrets.key`）。这个本地 key 能防止配置 JSON 或数据库被单独复制后直接读出 API key，但不能抵御同时取得数据目录和 key 文件的主机级攻击。备份时必须保留密钥，丢失或直接更换密钥会导致已有凭据无法解密。
 
@@ -210,7 +236,7 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'
 
 - `MaxStoredBytes`：上传根目录总容量，默认 2 GiB，必须不小于 `MaxFileBytes`；容量不足时返回 HTTP 507。
 
-- `RetentionHours`：上传成功后的保留时间，默认 720 小时（30 天）。过期文件会被删除，旧会话中的对应附件也将无法再次读取。
+- `RetentionHours`：上传成功后的保留时间，默认 720 小时（30 天）。过期文件会被删除，旧会话里的对应附件以后也读不到了。
 
 - `MaintenanceIntervalMinutes`：容量核对和过期回收间隔，默认 15 分钟。服务启动时也会立即执行一次维护。
 
@@ -230,7 +256,7 @@ volumes:
   - /var/run/docker.sock:/var/run/docker.sock
 ```
 
-Linux 主机上使用 bind mount 时，宿主机目录要允许容器内的沙箱用户写入（沙箱容器仍以非 root `node` 用户运行）：
+Linux 主机上用 bind mount 时，宿主机目录要允许容器内的沙箱用户写入（沙箱容器仍以非 root `node` 用户运行）：
 
 ```bash
 mkdir -p docker-data
@@ -252,7 +278,9 @@ docker compose up -d --pull always
 docker compose images
 ```
 
-未配置 `SENERA_UPDATE_MANIFEST_URL` 时，运行时会从产品仓库的最新 Release 读取 `senera-update.json`。自建镜像或发布源应将该变量指向同样结构的清单；清单只用于检查和展示，Docker 镜像仍以 Compose 中的镜像引用为准。
+启动前先看 `compose.yaml` 里的 `SENERA_ADMIN_LOGIN_NAME`、`SENERA_ADMIN_DISPLAY_NAME` 和 `SENERA_ADMIN_PASSWORD`。每次启动都会用这三项同步数据卷里的管理员账户：任意一项与已存储的值不同，就改写登录名并重新设置口令。仓库的 `compose.yaml` 带的是默认管理员（`senera` / `114514`），所以如果上游文件覆盖了你改过的这三行，旧口令会在这次升级启动后直接失效。服务重启本身也会撤销全部会话，所有人都要重新登录。
+
+未配置 `SENERA_UPDATE_MANIFEST_URL` 时，运行时会从产品仓库的最新 Release 读取 `senera-update.json`。自建镜像或发布源应把该变量指向同样结构的清单；清单只用于检查和展示，Docker 镜像仍以 Compose 中的镜像引用为准。
 
 Senera 对需要迁移的权威配置和 SQLite 数据执行固定流程：`备份 -> 校验 -> dry-run -> 迁移 -> 启动 -> GET /health/ready`。升级日志和运行时标记使用 `schemaVersion: 3`，保存在 `.senera/upgrades/`；只有 readiness 探测成功才提交健康状态。可用下面的命令查看运行中镜像声明的版本和镜像 ID：
 
@@ -280,7 +308,7 @@ senera upgrade status --workspace /data
 senera rollback --yes --workspace /data --data-root /data
 ```
 
-可用 `--upgrade <id>` 指定 `upgrade status` 列出的操作。回滚会恢复该操作的备份并保留被替换的数据；它不会替换正在运行的程序或容器镜像。Docker 部署还需要把 `SENERA_IMAGE` 和 `SENERA_DOCKER_SANDBOX_IMAGE` 改回清单 `source` 中记录的旧 digest，再重新启动。容器内执行 CLI 时可使用：
+可用 `--upgrade <id>` 指定 `upgrade status` 列出的操作。回滚会恢复该操作的备份并保留被替换的数据；它不会替换正在运行的程序或容器镜像。Docker 部署还需要把 `SENERA_IMAGE` 和 `SENERA_DOCKER_SANDBOX_IMAGE` 改回清单 `source` 中记录的旧 digest，再重新启动。容器内执行 CLI 时可以用：
 
 ```bash
 docker compose stop
@@ -312,13 +340,13 @@ GitHub 的验证、版本决策和产物构建彼此分离。普通提交不会�
 
 - `docs:`、`test:`、`chore:` 默认不单独推进产品版本。
 
-提交标题必须使用 Conventional Commit 的英文类型和半角冒号，说明文字可以使用中文。例如 `fix: 修复 Windows 沙箱启动失败`、`feat: 增加管理员登录`、`refactor: 拆分配置变更控制器`。不要使用裸中文标题或全角冒号（如 `修复：...`）；Verify 会校验本次提交范围，避免 Release Please 静默跳过版本发布。
+提交标题要用 Conventional Commit 的英文类型和半角冒号，说明文字可以用中文。比如 `fix: 修复 Windows 沙箱启动失败`、`feat: 增加管理员登录`、`refactor: 拆分配置变更控制器`。不要用裸中文标题或全角冒号（如 `修复：...`），Verify 会校验本次提交范围，避免 Release Please 静默跳过版本发布。
 
 GitHub Advanced Security 的 Copilot Autofix 会生成固定格式的安全修复提交，该完整消息由 commitlint
 单独识别。GitHub squash merge 可能把官方 bot 的超长 `Co-authored-by` 行加入标准提交；只有该固定行免于
 footer 长度限制，其他 Conventional Commit 和 footer 规则仍然生效。
 
-Release Please 创建的 PR 需要正常通过 Verify。仓库必须在 `Settings -> General -> Pull Requests` 启用 `Allow auto-merge`。建议配置 `RELEASE_PLEASE_TOKEN`，使用可触发 Pull Request 工作流的 GitHub App token 或细粒度 PAT；未配置时工作流会回退到 `GITHUB_TOKEN`，bot PR 可能需要维护者手动批准工作流。
+Release Please 创建的 PR 需要正常通过 Verify。仓库必须在 `Settings -> General -> Pull Requests` 启用 `Allow auto-merge`。建议配置 `RELEASE_PLEASE_TOKEN`，用一个能触发 Pull Request 工作流的 GitHub App token 或细粒度 PAT；未配置时工作流会回退到 `GITHUB_TOKEN`，bot PR 可能需要维护者手动批准工作流。
 
 正式发布失败时，手动运行 `Product Release`，填写已经存在的 `vX.Y.Z`。工作流会重新验证并覆盖上传同一标签的产物，不会创建新版本。
 
@@ -365,9 +393,9 @@ docker compose up -d
 
 ## 沙箱状态
 
-Docker 的沙箱运行时使用现有公开 `senera` GHCR package 中独立的 `sandbox-runtime-*` 标签发布，拥有自己的 OCI manifest 与 digest，不需要维护第二个 package 的可见性。默认镜像由应用启动时从内置分发契约解析（`resolveAgentSandboxDistributionTarget(...).registryImage`），生产环境可在 `environment` 中通过 `SENERA_DOCKER_SANDBOX_IMAGE` 固定 digest；Worker 核对分发 ID、版本、架构和固定源镜像 digest labels，再使用启动时锁定的 provider 执行隔离探测。Worker 没有归档导入、隐式拉取或 fallback 路径；主服务不直接调用 Docker CLI。
+Docker 的沙箱运行时用现有公开 `senera` GHCR package 里独立的 `sandbox-runtime-*` 标签发布，拥有自己的 OCI manifest 与 digest，不需要维护第二个 package 的可见性。默认镜像由应用启动时从内置分发契约解析（`resolveAgentSandboxDistributionTarget(...).registryImage`），生产环境可在 `environment` 中通过 `SENERA_DOCKER_SANDBOX_IMAGE` 固定 digest；Worker 核对分发 ID、版本、架构和固定源镜像 digest labels，再使用启动时锁定的 provider 执行隔离探测。Worker 没有归档导入、隐式拉取或 fallback 路径；主服务不直接调用 Docker CLI。
 
-发布流水线使用 BuildKit 为应用镜像和沙箱镜像生成并附加 SPDX SBOM。可按 digest 检查远端 attestation：
+发布流水线用 BuildKit 给应用镜像和沙箱镜像生成并附加 SPDX SBOM。可按 digest 检查远端 attestation：
 
 ```bash
 docker buildx imagetools inspect "$SENERA_IMAGE" --format '{{ json .SBOM }}'
@@ -378,13 +406,13 @@ Compose 镜像部署使用 Docker Worker 协议与 OCI 运行时合同。`auto` 
 
 需要验证 Compose 沙箱运行时时，可运行 `npm run sandbox.prepare`。该命令从固定 digest 的 Node 基础镜像构建本地 runtime，写入分发身份 labels，同时添加 registry 标签，然后以只读根文件系统、非 root 用户、无网络和全能力移除策略逐项探测 `bash`、`git`、`node`、`npm`、`python`、`pip`、`rg`、`jq`、`curl`、`ssh` 与 Linux Terminal Sidecar。正常启动按 `SandboxRuntime.Docker.PullPolicy` 使用 `always`、`if-missing` 或 `never`；镜像 labels、Engine API、Linux OS 或工具探针不符合合同都会在准备阶段失败。PTY Sidecar 及其 Linux 原生依赖直接属于版本化 runtime 镜像。
 
-桌面端、Nano 和源码开发使用受治理的宿主机 Node/进程边界，不启动 Docker Worker，也不要求用户安装 Docker。只有 Compose 镜像部署在容器内启动嵌入 Worker 访问 Docker Engine；Windows 使用 named pipe，Unix 使用私有 Unix Socket。应用主进程不直接调用 Docker API。
+桌面端、Nano 和源码开发用受治理的宿主机 Node/进程边界，不启动 Docker Worker，也不要求用户安装 Docker。只有 Compose 镜像部署在容器内启动嵌入 Worker 访问 Docker Engine；Windows 用 named pipe，Unix 用私有 Unix Socket。应用主进程不直接调用 Docker API。
 
 工作区通过 Docker bind 或 named volume 直接挂载，不复制源码树，因此 `.git`、`.senera` 和普通项目文件都保持可见，启动成本不随仓库体积线性增长。执行合同决定整个工作区挂载是只读还是可写；额外可写挂载和 rootfs copy 都必须落在 Worker 启动时建立的来源白名单内。
 
 Worker 协议不接受镜像字段，模型或工具调用无法选择任意镜像。镜像、runtime、网络模式、只读根、capability、资源上限和挂载策略全部由部署及版本化合同控制。单次容器失败只影响该调用；Engine 协商或镜像准备失败则通过正式沙箱状态事件暴露，不存在字符串猜测式重试或全局隐式降级。
 
-桌面和 Nano 不携带离线沙箱归档。发布流水线只为 Compose 构建一次候选 runtime 镜像，使用 Compose + 可选 gVisor 做真实 smoke，再把已验证 digest 提升为稳定标签。应用镜像和 runtime 镜像均附带 SBOM；生产部署应固定 digest。
+桌面和 Nano 不携带离线沙箱归档。发布流水线只为 Compose 构建一次候选 runtime 镜像，用 Compose + 可选 gVisor 做真实 smoke，再把已验证 digest 提升为稳定标签。应用镜像和 runtime 镜像均附带 SBOM；生产部署应固定 digest。
 
 修改 Worker、挂载或 runtime 合同后执行 `npm run verify.sandbox.real`。该命令构建并探测本地 runtime，再验证真实 Shell 和 PTY 链路；它需要已启动的 Linux Docker Engine。
 

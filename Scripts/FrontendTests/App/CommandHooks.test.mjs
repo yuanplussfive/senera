@@ -296,6 +296,209 @@ test("useChatCommands regenerates from the matching user message immediately wit
   expect(send.mock.calls.map(([request]) => request.type)).toEqual(["session.regenerate"]);
 });
 
+test("useChatCommands regenerates from durable run input when the user projection is not hydrated", () => {
+  const sessionId = "session-durable-regenerate";
+  const requestId = "request-durable-input";
+  registerTestSession(sessionId);
+  useStore.setState((state) => ({
+    sessions: {
+      ...state.sessions,
+      [sessionId]: {
+        ...state.sessions[sessionId],
+        runs: [
+          {
+            requestId,
+            status: "completed",
+            input: "Original input from the durable run",
+            startedAt: "2026-07-11T00:00:00.000Z",
+            steps: [],
+          },
+        ],
+      },
+    },
+  }));
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  renderChatCommands({ activeSessionId: sessionId, handleRef, send });
+
+  act(() =>
+    handleRef.current.regenerateMessage({
+      id: "assistant-durable-input",
+      role: "assistant",
+      content: "Original answer",
+      createdAt: "2026-07-11T00:00:01.000Z",
+      requestId,
+    }),
+  );
+
+  expect(send).toHaveBeenCalledWith(
+    expect.objectContaining({
+      type: "session.regenerate",
+      fromRequestId: requestId,
+      input: "Original input from the durable run",
+    }),
+  );
+});
+
+test("useChatCommands preserves recovered source request identity when only the recovery run is hydrated", () => {
+  const sessionId = "session-durable-recovery-source";
+  const sourceRequestId = "request-durable-source";
+  const recoveredRequestId = "request-durable-recovery";
+  registerTestSession(sessionId);
+  useStore.setState((state) => ({
+    sessions: {
+      ...state.sessions,
+      [sessionId]: {
+        ...state.sessions[sessionId],
+        runs: [
+          {
+            requestId: recoveredRequestId,
+            status: "completed",
+            input: "Original recovered input",
+            startedAt: "2026-07-11T00:00:00.000Z",
+            steps: [],
+            recovery: { mode: "retry", sourceRequestId },
+          },
+        ],
+      },
+    },
+  }));
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  renderChatCommands({ activeSessionId: sessionId, handleRef, send });
+
+  act(() =>
+    handleRef.current.regenerateMessage({
+      id: "assistant-durable-recovery",
+      role: "assistant",
+      content: "Recovered answer",
+      createdAt: "2026-07-11T00:00:01.000Z",
+      requestId: recoveredRequestId,
+    }),
+  );
+
+  expect(send).toHaveBeenCalledWith(
+    expect.objectContaining({
+      type: "session.regenerate",
+      fromRequestId: sourceRequestId,
+      input: "Original recovered input",
+    }),
+  );
+});
+
+test("useChatCommands regenerates a recovered assistant turn from its durable source user message", () => {
+  const sessionId = "session-recovered-assistant";
+  const sourceRequestId = "request-source";
+  const recoveredRequestId = "request-recovered";
+  registerTestSession(sessionId);
+  useStore.getState().appendUserMessage(sessionId, sourceRequestId, "Original recovery input");
+  useStore.setState((state) => ({
+    sessions: {
+      ...state.sessions,
+      [sessionId]: {
+        ...state.sessions[sessionId],
+        messages: [
+          ...state.sessions[sessionId].messages,
+          {
+            id: "assistant-recovered",
+            role: "assistant",
+            content: "Recovered answer",
+            createdAt: "2026-07-11T00:00:01.000Z",
+            requestId: recoveredRequestId,
+            metadata: { sourceRequestId },
+          },
+        ],
+        runs: [
+          {
+            requestId: recoveredRequestId,
+            status: "completed",
+            input: "Original recovery input",
+            steps: [],
+          },
+        ],
+      },
+    },
+  }));
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  renderChatCommands({ activeSessionId: sessionId, handleRef, send });
+
+  act(() =>
+    handleRef.current.regenerateMessage({
+      id: "assistant-recovered",
+      role: "assistant",
+      content: "Recovered answer",
+      createdAt: "2026-07-11T00:00:01.000Z",
+      requestId: recoveredRequestId,
+      metadata: { sourceRequestId },
+    }),
+  );
+
+  expect(send).toHaveBeenCalledWith(
+    expect.objectContaining({
+      type: "session.regenerate",
+      fromRequestId: sourceRequestId,
+      input: "Original recovery input",
+    }),
+  );
+});
+
+test("useChatCommands follows an existing recovery run when an older assistant entry has no source metadata", () => {
+  const sessionId = "session-legacy-recovery";
+  const sourceRequestId = "request-source";
+  const recoveredRequestId = "request-recovered";
+  registerTestSession(sessionId);
+  useStore.getState().appendUserMessage(sessionId, sourceRequestId, "Original legacy input");
+  useStore.setState((state) => ({
+    sessions: {
+      ...state.sessions,
+      [sessionId]: {
+        ...state.sessions[sessionId],
+        messages: [
+          ...state.sessions[sessionId].messages,
+          {
+            id: "assistant-legacy-recovered",
+            role: "assistant",
+            content: "Recovered legacy answer",
+            createdAt: "2026-07-11T00:00:01.000Z",
+            requestId: recoveredRequestId,
+          },
+        ],
+        runs: [
+          {
+            requestId: recoveredRequestId,
+            status: "completed",
+            input: "Original legacy input",
+            steps: [],
+            recovery: { mode: "retry", sourceRequestId },
+          },
+        ],
+      },
+    },
+  }));
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  renderChatCommands({ activeSessionId: sessionId, handleRef, send });
+
+  act(() =>
+    handleRef.current.regenerateMessage({
+      id: "assistant-legacy-recovered",
+      role: "assistant",
+      content: "Recovered legacy answer",
+      createdAt: "2026-07-11T00:00:01.000Z",
+      requestId: recoveredRequestId,
+    }),
+  );
+
+  expect(send).toHaveBeenCalledWith(
+    expect.objectContaining({
+      type: "session.regenerate",
+      fromRequestId: sourceRequestId,
+      input: "Original legacy input",
+    }),
+  );
+});
+
 test("useChatCommands retries a terminal run without duplicating its user message", () => {
   const sessionId = "session-retry";
   const failedRequestId = "request-failed";
@@ -502,6 +705,37 @@ test("useSessionCommands dispatches bulk closes together and commits pending sta
   expect(useStore.getState().pendingDeletedSessionIds).toEqual({ "session-delete-a": true, "session-delete-b": true });
 });
 
+test("useSessionCommands opens a fresh session after closing the entire catalog", () => {
+  registerTestSession("session-current", "Current");
+  registerTestSession("session-history", "History");
+  useStore.getState().selectSession("session-current");
+  const send = vi.fn(() => true);
+  const serverKnownSessionIdsRef = { current: new Set(["session-current", "session-history"]) };
+  const handleRef = { current: null };
+  renderSessionCommands({ handleRef, send, serverKnownSessionIdsRef, status: "open" });
+
+  act(() => handleRef.current.closeSessions(["session-current", "session-history"]));
+
+  expect(send.mock.calls.map(([request]) => request)).toEqual([
+    {
+      type: "session.close_many",
+      sessionIds: ["session-current", "session-history"],
+    },
+    {
+      type: "session.create",
+      sessionId: expect.any(String),
+    },
+  ]);
+  const newSessionId = send.mock.calls[1][0].sessionId;
+  expect(useStore.getState().activeSessionId).toBe(newSessionId);
+  expect(useStore.getState().sessionOrder).toEqual([newSessionId]);
+  expect(useStore.getState().pendingDeletedSessionIds).toEqual({
+    "session-current": true,
+    "session-history": true,
+  });
+  expect(serverKnownSessionIdsRef.current).toContain(newSessionId);
+});
+
 test("useSessionCommands reuses an existing empty new conversation while offline", () => {
   registerTestSession("session-empty", DEFAULT_SESSION_TITLE);
   registerTestSession("session-current", "Current work");
@@ -516,6 +750,20 @@ test("useSessionCommands reuses an existing empty new conversation while offline
   expect(readTestToastCalls()).not.toContainEqual(
     expect.objectContaining({ title: frontendMessage("session.createOffline") }),
   );
+});
+
+test("useSessionCommands does not reuse a new conversation while its deletion is pending", () => {
+  registerTestSession("session-empty", DEFAULT_SESSION_TITLE);
+  useStore.getState().requestSessionDeletions(["session-empty"]);
+  const send = vi.fn(() => true);
+  const serverKnownSessionIdsRef = { current: new Set(["session-empty"]) };
+  const handleRef = { current: null };
+  renderSessionCommands({ handleRef, send, serverKnownSessionIdsRef, status: "open" });
+
+  act(() => handleRef.current.createSession());
+
+  expect(send).toHaveBeenCalledWith({ type: "session.create", sessionId: expect.any(String) });
+  expect(useStore.getState().activeSessionId).not.toBe("session-empty");
 });
 
 test.each([

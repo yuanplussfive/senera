@@ -59,7 +59,9 @@ describe("agent prompt context compiler", () => {
   });
   test("persona and workflow change their own revisions", () => {
     const first = compile();
-    const persona = compile({ persona: { enabled: true, card: { corePersona: "可靠的助手", languageStyle: "简洁" } } });
+    const persona = compile({
+      persona: { enabled: true, card: { markdown: "# 可靠的助手\n\n简洁" } },
+    });
     expect(persona.ContextRevisions.stable).not.toBe(first.ContextRevisions.stable);
     const workflow = compile({
       workflow: {

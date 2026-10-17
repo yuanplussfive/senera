@@ -171,6 +171,13 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
       return;
     }
 
+    case EventKinds.RuntimeDependencySnapshot: {
+      const snapshot = env.data as import("../../api/eventTypes").RuntimeDependencySnapshotData;
+      if (snapshot.complete) state.runtimeDependencies = {};
+      for (const dependency of snapshot.dependencies) state.runtimeDependencies[dependency.id] = dependency;
+      return;
+    }
+
     case EventKinds.ChannelStatusSnapshot: {
       state.channelStatuses = (env.data as ChannelStatusSnapshotData).statuses;
       return;

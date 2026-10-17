@@ -16,6 +16,8 @@ import type { ConfigSettingsDraftState } from "./sections/configSettingsDraftSta
 import { GeneralSettings } from "./sections/GeneralSettings";
 import { projectSectionConfigFields } from "./sections/runtimeModelAssignments";
 import { StorageSettings } from "./sections/StorageSettings";
+import { RuntimeDependenciesSection } from "./sections/RuntimeDependenciesSection";
+import { PromptPresetSection } from "./sections/PromptPresetSection";
 
 const WorkspaceSettings = lazy(() =>
   import("./sections/WorkspaceSettings").then((module) => ({ default: module.WorkspaceSettings })),
@@ -160,6 +162,8 @@ function renderSettingsContent({
           systemConfig={systemConfig}
         />
       );
+    case "prompt":
+      return <PromptPresetSection />;
     case "storage":
       return (
         <>
@@ -189,6 +193,8 @@ function renderSettingsContent({
           onEntityDraftChange={onEntityDraftChange}
         />
       );
+    case "dependencies":
+      return <RuntimeDependenciesSection systemConfig={systemConfig} />;
     case "channels":
       return <ChannelsSection draftState={configDraftState} systemConfig={systemConfig} />;
     case "about":
@@ -337,6 +343,8 @@ function isFullHeightWorkspace(sectionId: SettingsSectionId): boolean {
   return (
     sectionId === "model-service" ||
     sectionId === "system-tools" ||
+    sectionId === "dependencies" ||
+    sectionId === "prompt" ||
     sectionId === "mcp-servers" ||
     sectionId === "channels"
   );

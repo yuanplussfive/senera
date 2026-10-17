@@ -3,7 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
 import {
+  AgentWorkspaceConfigFileName,
   migrateLegacyAgentWorkspaceLayout,
+  resolveAgentWorkspaceConfigPath,
   resolveAgentWorkspaceLayout,
 } from "../../../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
 
@@ -13,8 +15,18 @@ describe("agent workspace layout", () => {
     const layout = resolveAgentWorkspaceLayout(root);
 
     expect(layout.desktopRuntimeRoot).toBe(path.join(root, ".senera", "desktop"));
+    expect(layout.configFile).toBe(path.join(root, AgentWorkspaceConfigFileName));
+    expect(layout.promptPresetRoot).toBe(path.join(root, "prompts"));
+    expect(layout.promptPresetStateFile).toBe(path.join(root, ".senera", "prompt-preset.json"));
+    expect(layout.piSessionsRoot).toBe(path.join(root, ".senera", "pi-sessions"));
+    expect(layout.logsRoot).toBe(path.join(root, ".senera", "logs"));
+    expect(layout.sandboxRuntimeRoot).toBe(path.join(root, ".senera", "sandbox-runtime"));
     expect(layout.skillRoot).toBe(path.join(root, ".senera", "skills"));
     expect(layout.mcpRoot).toBe(path.join(root, ".senera", "mcp"));
+    expect(layout.agentRolesRoot).toBe(path.join(root, ".senera", "agents"));
+    expect(layout.userPluginsRoot).toBe(path.join(root, ".senera", "user-plugins"));
+    expect(layout.projectPluginsRoot).toBe(path.join(root, ".senera", "plugins"));
+    expect(layout.userPluginsRoot).not.toBe(layout.projectPluginsRoot);
     expect(layout.databases).toEqual({
       config: path.join(root, ".senera", "data", "config", "config.sqlite"),
       credentials: path.join(root, ".senera", "data", "credentials", "credentials.sqlite"),
@@ -34,6 +46,15 @@ describe("agent workspace layout", () => {
     });
     expect(layout.configSecretKey).toBe(path.join(root, ".senera", "data", "config", "config-secrets.key"));
     expect(layout.credentialSecretKey).toBe(path.join(root, ".senera", "data", "credentials", "credentials.key"));
+  });
+
+  test("resolves relative configuration paths from the workspace and preserves absolute paths", () => {
+    const root = path.join(os.tmpdir(), "senera layout with spaces", "项目");
+    const external = path.join(os.tmpdir(), "senera-external", "config.json");
+
+    expect(resolveAgentWorkspaceConfigPath(root)).toBe(path.join(root, AgentWorkspaceConfigFileName));
+    expect(resolveAgentWorkspaceConfigPath(root, "config/custom.json")).toBe(path.join(root, "config", "custom.json"));
+    expect(resolveAgentWorkspaceConfigPath(root, external)).toBe(path.normalize(external));
   });
 
   test("moves legacy Skills, SQLite companions, and the config key without dual reads", () => {

@@ -82,14 +82,14 @@ src/
 
 ## 三栏映射的事件源
 
-| 区域             | 数据来源（后端事件）                                                                               |
-| ---------------- | -------------------------------------------------------------------------------------------------- |
-| 左栏会话标题     | 首条用户消息客户端截取 24 字                                                                       |
-| 中栏用户气泡     | 本地立即渲染                                                                                       |
-| 中栏助手气泡     | `assistant.message.created`；`terminal=false` 立即可见，`terminal=true` 以同一 message ID 提交     |
-| 中栏"正在生成"   | `model.delta` 流式占位                                                                             |
-| 右栏卡片         | `run.started` / `prompt.summary` / `model.*` / `pi.trace` / `tool.*` / `assistant.message.created` |
-| 右栏 callId 关联 | `tool.call.started.callId` ↔ `tool.call.result.detail.callId`                                      |
+| 区域             | 数据来源（后端事件）                                                                                           |
+| ---------------- | -------------------------------------------------------------------------------------------------------------- |
+| 左栏会话标题     | 首条用户消息客户端截取 24 字                                                                                   |
+| 中栏用户气泡     | 本地立即渲染                                                                                                   |
+| 中栏助手气泡     | `assistant.message.created`；`terminal=false` 立即可见，`terminal=true` 以同一 message ID 提交                 |
+| 中栏"正在生成"   | `model.delta` 流式占位                                                                                         |
+| 右栏卡片         | `run.started` / `run.activity.changed` / `prompt.summary` / `model.*` / `tool.*` / `assistant.message.created` |
+| 右栏 callId 关联 | `tool.call.started.callId` ↔ `tool.call.result.detail.callId`                                                  |
 
 ## 协议同步
 

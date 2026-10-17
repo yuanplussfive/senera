@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
   AgentPiToolExecutionBridge as AgentPiToolExecutionBridgeBase,
   type AgentPiToolExecutionBridgeOptions,
@@ -16,6 +16,7 @@ import { AgentModelUsageLedger } from "../../../Source/AgentSystem/ModelEndpoint
 import { AgentPiToolPlanCoordinator } from "../../../Source/AgentSystem/PiShared/AgentPiToolPlanCoordinator.js";
 import { AgentToolSuccessOutcome } from "../../../Source/AgentSystem/ToolRuntime/AgentToolResultOutcome.js";
 import { createTestToolObservationCompressor } from "../Support/PiToolObservationFixtures.js";
+import type { AgentWorkspaceChangeObserverPort } from "../../../Source/AgentSystem/Artifacts/AgentWorkspaceChangeObserver.js";
 
 class AgentPiToolExecutionBridge extends AgentPiToolExecutionBridgeBase {
   constructor(
@@ -220,6 +221,44 @@ describe("Pi tool execution bridge failures", () => {
       }),
     ).rejects.toThrow("User stopped while persisting the Artifact.");
   });
+
+  test("cancels a pending workspace capture when the tool deadline aborts", async () => {
+    const controller = new AbortController();
+    let completeStarted!: () => void;
+    const completeReady = new Promise<void>((resolve) => {
+      completeStarted = resolve;
+    });
+    const workspaceChangeObserver: AgentWorkspaceChangeObserverPort = {
+      beginBatch: vi.fn(async () => undefined),
+      completeCall: vi.fn(
+        async () =>
+          await new Promise<undefined>(() => {
+            completeStarted();
+          }),
+      ),
+      skipCall: vi.fn(),
+      cancelCall: vi.fn(),
+      cancelPendingBatches: vi.fn(),
+    };
+    const bridge = new AgentPiToolExecutionBridge({
+      executeToolCall: async () => ({ kind: "ToolResults", value: [toolResult({ callId: "call-deadline" })] }),
+      recordToolArtifacts: async () => [toolResult({ callId: "call-deadline" })],
+    });
+
+    const pending = bridge.execute({
+      tool: registeredTool("SearchTool"),
+      params: {},
+      toolCallId: "call-deadline",
+      signal: controller.signal,
+      context: createToolContext("SearchTool", "call-deadline", workspaceChangeObserver),
+    });
+    await completeReady;
+
+    controller.abort(new AgentCancellationError("Tool deadline exceeded."));
+
+    await expect(pending).rejects.toThrow("Tool deadline exceeded.");
+    expect(workspaceChangeObserver.cancelCall).toHaveBeenCalledWith("batch-call-deadline", "call-deadline");
+  });
 });
 
 function toolResult(overrides: Partial<ExecutedToolCallResult> = {}): ExecutedToolCallResult {
@@ -272,7 +311,11 @@ function textContent(content: unknown): string {
     : "";
 }
 
-function createToolContext(toolName: string, callId: string) {
+function createToolContext(
+  toolName: string,
+  callId: string,
+  workspaceChangeObserver?: AgentWorkspaceChangeObserverPort,
+) {
   const grant = toolAccessGrant([toolName]);
   const tokenBudget = new AgentTurnTokenBudget({
     model: "test-model",
@@ -291,6 +334,7 @@ function createToolContext(toolName: string, callId: string) {
     usageLedger: new AgentModelUsageLedger(),
     toolPlan: new AgentPiToolPlanCoordinator(),
     tokenBudget,
+    workspaceChangeObserver,
   });
   turnState.registerToolBatch(`batch-${callId}`, [{ toolCallId: callId, toolName, input: {} }]);
   return {

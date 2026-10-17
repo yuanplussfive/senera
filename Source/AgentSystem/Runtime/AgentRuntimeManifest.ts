@@ -101,7 +101,7 @@ export class AgentRuntimeManifestStore {
     const manifest = readAgentRuntimeManifest(this.workspaceRoot);
     if (!manifest || manifest.pid !== process.pid) return;
     try {
-      fs.rmSync(this.manifestPath, { force: true });
+      fs.unlinkSync(this.manifestPath);
     } catch {
       // best effort on Windows
     }

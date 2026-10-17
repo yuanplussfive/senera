@@ -22,6 +22,7 @@ export function buildConnectionOpenSyncRequests(userProfile: UserProfile): WsReq
     { type: "sandbox.status" },
     { type: "systemTool.list" },
     { type: "mcpServer.list" },
+    { type: "runtimeDependency.list" },
   ];
 
   if (userProfile.syncState === "pending") {
@@ -44,6 +45,7 @@ export function buildManualRefreshRequests(): WsRequest[] {
     { type: "sandbox.status" },
     { type: "systemTool.list" },
     { type: "mcpServer.list" },
+    { type: "runtimeDependency.list" },
   ];
 }
 

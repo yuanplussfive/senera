@@ -8,7 +8,18 @@
     "activity": {
       "action": { "zh-CN": "管理", "en-US": "Manage" },
       "argumentPath": "/command",
-      "detailPaths": ["/action", "/name", "/path", "/query", "/approvalId", "/modelProviderId", "/decision"]
+      "detailPaths": [
+        "/action",
+        "/name",
+        "/path",
+        "/from",
+        "/to",
+        "/stream",
+        "/cursor",
+        "/approvalId",
+        "/modelProviderId",
+        "/decision"
+      ]
     }
   },
   "inputSchema": {
@@ -103,6 +114,107 @@
                 "properties": {
                   "command": { "type": "string", "const": "logs" },
                   "action": { "type": "string", "const": "list" }
+                },
+                "required": ["command", "action"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "logs" },
+                  "action": { "type": "string", "const": "latest" },
+                  "kind": { "type": "string", "minLength": 1, "maxLength": 256 },
+                  "level": { "type": "string", "minLength": 1, "maxLength": 64 },
+                  "scope": { "type": "string", "minLength": 1, "maxLength": 128 },
+                  "stream": { "type": "string", "minLength": 1, "maxLength": 128 },
+                  "limit": { "type": "integer", "exclusiveMinimum": 0, "maximum": 1000 }
+                },
+                "required": ["command", "action"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "logs" },
+                  "action": { "type": "string", "const": "range" },
+                  "from": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "description": "带时区的 RFC3339 时间，例如 2026-10-16T20:00:00+08:00"
+                  },
+                  "to": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "description": "带时区的 RFC3339 时间，例如 2026-10-16T20:00:00+08:00"
+                  },
+                  "kind": { "type": "string", "minLength": 1, "maxLength": 256 },
+                  "level": { "type": "string", "minLength": 1, "maxLength": 64 },
+                  "scope": { "type": "string", "minLength": 1, "maxLength": 128 },
+                  "stream": { "type": "string", "minLength": 1, "maxLength": 128 },
+                  "limit": { "type": "integer", "exclusiveMinimum": 0, "maximum": 1000 }
+                },
+                "required": ["command", "action", "from", "to"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "logs" },
+                  "action": { "type": "string", "const": "session" },
+                  "sessionId": { "type": "string", "minLength": 1, "maxLength": 256 },
+                  "limit": { "type": "integer", "exclusiveMinimum": 0, "maximum": 1000 }
+                },
+                "required": ["command", "action", "sessionId"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "logs" },
+                  "action": { "type": "string", "const": "next" },
+                  "cursor": { "type": "string", "minLength": 1, "maxLength": 4096 },
+                  "limit": { "type": "integer", "exclusiveMinimum": 0, "maximum": 1000 }
+                },
+                "required": ["command", "action", "cursor"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "logs" },
+                  "action": { "type": "string", "const": "detail" },
+                  "detailId": { "type": "string", "minLength": 1, "maxLength": 256 }
+                },
+                "required": ["command", "action", "detailId"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "logs" },
+                  "action": { "type": "string", "const": "trace" },
+                  "requestId": { "type": "string", "minLength": 1, "maxLength": 256 },
+                  "limit": { "type": "integer", "exclusiveMinimum": 0, "maximum": 1000 }
+                },
+                "required": ["command", "action", "requestId"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "logs" },
+                  "action": { "type": "string", "const": "health" }
+                },
+                "required": ["command", "action"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "string", "const": "logs" },
+                  "action": { "type": "string", "const": "streams" }
                 },
                 "required": ["command", "action"],
                 "additionalProperties": false
@@ -424,6 +536,14 @@
             "sessions.list",
             "session.model",
             "logs.list",
+            "logs.latest",
+            "logs.range",
+            "logs.session",
+            "logs.next",
+            "logs.detail",
+            "logs.trace",
+            "logs.health",
+            "logs.streams",
             "logs.tail",
             "status",
             "doctor.status",

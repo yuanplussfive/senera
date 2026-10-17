@@ -1,8 +1,9 @@
-import { cpSync, existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { copyAgentPathSync, removeAgentPathSync } from "../Core/AgentFs.js";
 import { isPathWithin } from "../Core/AgentPath.js";
 import { SeneraExecutionError, SeneraExecutionErrorCodes } from "./SeneraExecutionTypes.js";
 import { parseJsonText } from "../Core/AgentJsonParsing.js";
@@ -137,7 +138,7 @@ function uniqueDependencies(dependencies: readonly SeneraDependencyPackage[]): S
 }
 
 function copySourceTree(input: { source: string; target: string }): void {
-  cpSync(input.source, input.target, {
+  copyAgentPathSync(input.source, input.target, {
     recursive: true,
     force: true,
     filter: (source) => !shouldExcludeSource(input.source, source),
@@ -155,5 +156,5 @@ function relativeFromWorkspace(workspaceRoot: string, value: string): string {
 }
 
 function cleanupBundle(bundleRoot: string): void {
-  rmSync(bundleRoot, { recursive: true, force: true });
+  removeAgentPathSync(bundleRoot, { recursive: true, force: true });
 }

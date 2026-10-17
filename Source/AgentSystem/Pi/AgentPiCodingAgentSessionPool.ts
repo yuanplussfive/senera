@@ -31,6 +31,16 @@ import {
 } from "./AgentPiSessionManagement.js";
 import { AgentPiDiagnosticSources, emitAgentPiDiagnostic } from "./AgentPiDiagnostics.js";
 
+const AgentPiSessionLeasePhases = {
+  Queue: "queue",
+  OpenOrCreate: "open_or_create",
+  RuntimeRebuild: "runtime_rebuild",
+  Configure: "configure",
+  RefreshContext: "refresh_context",
+} as const;
+
+type AgentPiSessionLeasePhase = (typeof AgentPiSessionLeasePhases)[keyof typeof AgentPiSessionLeasePhases];
+
 export type { AgentPiCodingAgentSessionFrame } from "./AgentPiCodingAgentSessionFrame.js";
 export type {
   AgentPiCodingAgentLeaseInput,
@@ -64,27 +74,34 @@ export class AgentPiCodingAgentSessionPool {
     const finishOperation = this.lifecycle.beginOperation();
     let releaseLease: (() => void) | undefined;
     let pooled: AgentPiPooledCodingSession | undefined;
+    let phase: AgentPiSessionLeasePhase = AgentPiSessionLeasePhases.Queue;
+    const startedAt = performance.now();
     try {
-      releaseLease = await this.leases.acquire(input.sessionId, input.signal);
+      releaseLease = await this.trackLeasePhase(input, phase, () => this.leases.acquire(input.sessionId, input.signal));
       this.lifecycle.assertOpen();
-      let opened = await this.openOrCreate(input);
+      phase = AgentPiSessionLeasePhases.OpenOrCreate;
+      let opened = await this.trackLeasePhase(input, phase, () => this.openOrCreate(input));
       if (this.requiresDeferredRuntimeRebuild(opened.value, input)) {
+        phase = AgentPiSessionLeasePhases.RuntimeRebuild;
         opened = {
           ...opened,
-          value: await this.rebuildRuntimeForNextLease(opened.value, input),
+          value: await this.trackLeasePhase(input, phase, () => this.rebuildRuntimeForNextLease(opened.value, input)),
         };
       }
-      pooled = opened.value;
-      const leasedSession = pooled;
+      const leasedPooled = opened.value;
+      pooled = leasedPooled;
+      const leasedSession = leasedPooled;
       const leasedRelease = releaseLease;
-      pooled.activeLeases += 1;
-      pooled.lastAccess = this.lifecycle.nextAccessSequence();
-      await this.factory.configure(pooled, input);
+      leasedPooled.activeLeases += 1;
+      leasedPooled.lastAccess = this.lifecycle.nextAccessSequence();
+      phase = AgentPiSessionLeasePhases.Configure;
+      await this.trackLeasePhase(input, phase, () => this.factory.configure(leasedPooled, input));
       // SessionManager is the durable source of truth for compaction, rewind,
       // and branch mutations. Refresh the SDK's public transcript before a
       // lease exposes it to the next Pi turn; otherwise a pooled AgentSession
       // can retain the pre-compaction message snapshot indefinitely.
-      pooled.session.refreshContext();
+      phase = AgentPiSessionLeasePhases.RefreshContext;
+      await this.trackLeasePhase(input, phase, () => leasedPooled.session.refreshContext());
       return {
         storage: opened.storage,
         session: new AgentPiCodingAgentSession(pooled.session, pooled.sessionManager, pooled.frame, () =>
@@ -98,8 +115,56 @@ export class AgentPiCodingAgentSessionPool {
         releaseLease?.();
         finishOperation();
       }
+      this.emitLeaseDiagnostic(input, "session.lease.failed", {
+        phase,
+        durationMs: elapsedMilliseconds(startedAt),
+        error: errorMessage(error),
+      });
       throw error;
     }
+  }
+
+  private async trackLeasePhase<T>(
+    input: AgentPiCodingAgentLeaseInput,
+    phase: AgentPiSessionLeasePhase,
+    operation: () => Promise<T> | T,
+  ): Promise<T> {
+    const startedAt = performance.now();
+    this.emitLeaseDiagnostic(input, "session.lease.phase.started", { phase });
+    try {
+      const value = await operation();
+      this.emitLeaseDiagnostic(input, "session.lease.phase.completed", {
+        phase,
+        durationMs: elapsedMilliseconds(startedAt),
+      });
+      return value;
+    } catch (error) {
+      this.emitLeaseDiagnostic(input, "session.lease.phase.failed", {
+        phase,
+        durationMs: elapsedMilliseconds(startedAt),
+        error: errorMessage(error),
+      });
+      throw error;
+    }
+  }
+
+  private emitLeaseDiagnostic(
+    input: AgentPiCodingAgentLeaseInput,
+    name: string,
+    details: Record<string, unknown>,
+  ): void {
+    const frame = input.frame;
+    if (!frame) return;
+    void emitAgentPiDiagnostic(frame.diagnostics ?? this.options.diagnostics, {
+      context: {
+        sessionId: frame.sessionId,
+        requestId: frame.requestId,
+        step: frame.step,
+      },
+      source: AgentPiDiagnosticSources.Substrate,
+      name,
+      details,
+    });
   }
 
   async rewind(sessionId: string, entryId: string): Promise<boolean> {
@@ -449,4 +514,12 @@ export class AgentPiCodingAgentSessionPool {
   private sessionsRoot(): string {
     return path.resolve(this.options.workspaceRoot, this.options.sessionsRoot);
   }
+}
+
+function elapsedMilliseconds(startedAt: number): number {
+  return Math.max(0, Math.round(performance.now() - startedAt));
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
 }

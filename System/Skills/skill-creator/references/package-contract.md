@@ -32,6 +32,12 @@ Use `senera skills list`, `inspect`, `resources`, and `read` for bounded
 discovery and resource access. System Skills are read-only; workspace Skills
 are changed only through the revision-guarded self-service surface.
 
+After a create, update, archive, or restore, use the returned revision with
+`senera skills check` before claiming that the package is valid. Runtime use is
+verified separately with `senera logs health` and a bounded `logs latest`,
+`logs range`, or `logs trace`; background memory and learning streams are evidence of side
+effects, not foreground Skill activation.
+
 The runtime uses progressive disclosure: discovery exposes metadata, activation
 loads the selected `SKILL.md`, and package resources remain on demand. Do not
 duplicate the full body in the frozen system prompt.

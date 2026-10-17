@@ -7,7 +7,8 @@ let harness;
 test.beforeEach(async () => {
   harness = await createWorkspaceHostHarness();
 });
-test.afterEach(async () => {
+test.afterEach(async ({ page }) => {
+  await page.close();
   await harness?.stop();
 });
 
@@ -33,6 +34,10 @@ async function openWorkspaceMenu(page, tab = "文件") {
   const menu = page.locator("[data-workspace-menu]");
   await menu.getByRole("tab", { name: tab, exact: true }).click();
   return menu;
+}
+
+function workspaceFolderAction(menu) {
+  return menu.locator("[data-workspace-folder-action]");
 }
 
 for (const width of [390, 1280]) {
@@ -84,7 +89,7 @@ test("storage settings show the actual application directory without deployment 
   const settings = page.locator("[data-settings-workbench]");
   await expect(settings).toBeVisible();
   await expect(settings.getByText(harness.applicationRoot, { exact: true })).toBeVisible();
-  await expect(settings.getByText("workspace-a", { exact: true })).toBeVisible();
+  await expect(settings.getByTitle(harness.a, { exact: true })).toBeVisible();
   await expect(settings.getByText("插件目录", { exact: true })).toHaveCount(0);
   await expect(settings.getByText("产物目录", { exact: true })).toHaveCount(0);
   await expect(settings.getByRole("button", { name: "刷新存储占用", exact: true })).toBeEnabled();
@@ -95,7 +100,7 @@ test("switches real workspace scopes and restores the original composer draft", 
   await expect(page.getByLabel("输入消息")).toBeEnabled();
   await page.getByLabel("输入消息").fill("工作区 A 的草稿");
   const selector = await openWorkspaceMenu(page, "切换");
-  await selector.getByRole("button", { name: "打开文件夹", exact: true }).click();
+  await workspaceFolderAction(selector).click();
   const browser = page.getByRole("dialog", { name: "切换工作区", exact: true });
   await browser.getByLabel("目标工作区目录").fill(harness.b);
   await browser.getByRole("button", { name: "浏览", exact: true }).click();
@@ -148,8 +153,8 @@ for (const width of [390, 900, 1280, 1440, 1600]) {
     await page.goto(harness.httpOrigin);
     await expect(page.getByLabel("输入消息")).toBeVisible();
     const selector = await openWorkspaceMenu(page, "切换");
-    await expect(selector.getByRole("button", { name: "打开文件夹", exact: true })).toBeEnabled();
-    await selector.getByRole("button", { name: "打开文件夹", exact: true }).click();
+    await expect(workspaceFolderAction(selector)).toBeEnabled();
+    await workspaceFolderAction(selector).click();
     const browser = page.getByRole("dialog", { name: "切换工作区", exact: true });
     await expect(browser.getByRole("button", { name: "src", exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -159,7 +164,7 @@ for (const width of [390, 900, 1280, 1440, 1600]) {
     await useDarkAppearance(page);
     await page.reload();
     await openWorkspaceMenu(page, "切换");
-    await selector.getByRole("button", { name: "打开文件夹", exact: true }).click();
+    await workspaceFolderAction(selector).click();
     await expect(browser.getByRole("button", { name: "src", exact: true })).toBeVisible();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -187,7 +192,7 @@ test("directory browser supports child, parent, repeated browse and error recove
   await page.goto(harness.httpOrigin);
   await expect(page.getByLabel("输入消息")).toBeEnabled();
   const selector = await openWorkspaceMenu(page, "切换");
-  await selector.getByRole("button", { name: "打开文件夹", exact: true }).click();
+  await workspaceFolderAction(selector).click();
   const browser = page.getByRole("dialog", { name: "切换工作区", exact: true });
   const directory = browser.getByLabel("目标工作区目录");
   await expect(browser.getByRole("button", { name: "src", exact: true })).toBeVisible();

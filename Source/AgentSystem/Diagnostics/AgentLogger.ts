@@ -8,17 +8,52 @@ import type { AgentEventEnvelope } from "../Events/AgentEvent.js";
 import { renderAgentEventDisplay, type AgentEventDisplayMode } from "../TerminalDisplay/AgentEventDisplayCatalog.js";
 import { measureTerminalWidth } from "../Text/AgentTerminalText.js";
 import { serializeError } from "./AgentErrorSerializer.js";
+import { createOpaqueId } from "../Core/AgentIds.js";
+import { DefaultAgentTimeZone, formatAgentTimeMinute, resolveAgentTimeZone } from "../Time/AgentTime.js";
+
+export interface AgentLoggerRecord {
+  readonly recordId: string;
+  readonly timestamp: string;
+  readonly level: string;
+  readonly message: string;
+  readonly eventId?: string;
+  readonly kind?: string;
+  readonly layer?: string;
+  readonly phase?: string;
+  readonly scope?: string;
+  readonly sessionId?: string;
+  readonly requestId?: string;
+  readonly step?: number;
+  readonly detailId?: string;
+  readonly stream?: string;
+  readonly details?: unknown;
+  readonly tokens?: readonly string[];
+}
+
+export interface AgentLoggerSink {
+  append(record: AgentLoggerRecord): void;
+}
 
 export interface AgentLoggerOptions {
   verbose?: boolean;
   eventDisplayMode?: AgentEventDisplayMode;
   output?: NodeJS.WriteStream;
+  sink?: AgentLoggerSink;
+  stream?: string;
+  /** Human-facing display zone; persisted timestamps remain UTC instants. */
+  timeZone?: string | (() => string);
+}
+
+export interface AgentLoggerEventOptions {
+  readonly display?: boolean;
+  readonly persist?: boolean;
 }
 
 export class AgentLogger {
   private readonly treeFormatter: AgentConsoleTreeFormatter;
   private readonly eventDisplayMode: AgentEventDisplayMode;
   private readonly output: NodeJS.WriteStream;
+  private readonly sink?: AgentLoggerSink;
   private transientRowCount = 0;
 
   constructor(private readonly options: AgentLoggerOptions = {}) {
@@ -29,6 +64,11 @@ export class AgentLogger {
     });
     this.eventDisplayMode = options.eventDisplayMode ?? "compact";
     this.output = options.output ?? process.stdout;
+    this.sink = options.sink;
+  }
+
+  scoped(stream: string): AgentLogger {
+    return new AgentLogger({ ...this.options, stream, output: this.output });
   }
 
   banner(title: string, details: Record<string, unknown> = {}): void {
@@ -60,11 +100,47 @@ export class AgentLogger {
     this.output.write(AgentConsoleTheme.xml(text));
   }
 
-  event(event: AgentEventEnvelope<string, unknown>): void {
+  event(event: AgentEventEnvelope<string, unknown>, options: AgentLoggerEventOptions = {}): void {
+    const rendered = renderAgentEventDisplay(event, this.eventDisplayMode);
+    if (options.persist !== false && options.display === false) {
+      this.sink?.append({
+        recordId: event.eventId ?? createOpaqueId("log"),
+        timestamp: event.timestamp,
+        level: rendered.label,
+        message: rendered.message,
+        eventId: event.eventId,
+        kind: event.kind,
+        layer: event.layer,
+        phase: event.phase,
+        scope: event.scope?.workflowName ?? event.scope?.role ?? "foreground",
+        sessionId: event.sessionId,
+        requestId: event.requestId,
+        step: event.step,
+        detailId: event.detailId,
+        ...(this.options.stream ? { stream: this.options.stream } : {}),
+        details: event.data,
+        ...(rendered.tokens.length > 0 ? { tokens: rendered.tokens } : {}),
+      });
+      return;
+    }
+    if (options.persist === false) return;
     this.clearTransient();
     const color = colorByEventType(event.kind);
-    const rendered = renderAgentEventDisplay(event, this.eventDisplayMode);
-    this.line(rendered.label, color, rendered.message, rendered.details, rendered.tokens);
+    this.line(rendered.label, color, rendered.message, rendered.details, rendered.tokens, {
+      recordId: event.eventId ?? createOpaqueId("log"),
+      timestamp: event.timestamp,
+      eventId: event.eventId,
+      kind: event.kind,
+      layer: event.layer,
+      phase: event.phase,
+      scope: event.scope?.workflowName ?? event.scope?.role ?? "foreground",
+      sessionId: event.sessionId,
+      requestId: event.requestId,
+      step: event.step,
+      detailId: event.detailId,
+      details: event.data,
+      ...(this.options.stream ? { stream: this.options.stream } : {}),
+    });
   }
 
   block(title: string, content: unknown, color: (value: string) => string = AgentConsoleTheme.frame): void {
@@ -126,10 +202,32 @@ export class AgentLogger {
     message: string,
     details: Record<string, unknown>,
     tokens: string[] = [],
+    structured: Partial<AgentLoggerRecord> = {},
   ): void {
+    const timestamp = structured.timestamp ?? new Date().toISOString();
+    const sinkDetails = structured.details ?? (Object.keys(details).length > 0 ? details : undefined);
+    this.sink?.append({
+      recordId: structured.recordId ?? createOpaqueId("log"),
+      timestamp,
+      level: label,
+      message,
+      ...structured,
+      ...(sinkDetails !== undefined ? { details: sinkDetails } : {}),
+      ...(this.options.stream ? { stream: this.options.stream } : {}),
+      ...(tokens.length > 0 ? { tokens } : {}),
+    });
     const prefix = color(this.padLabel(label, 20));
     const suffix = this.inlineDetails(details, tokens);
-    this.writeLine(`${prefix} ${AgentConsoleTheme.value(message)}${suffix}`);
+    const displayTime = AgentConsoleTheme.muted(`[${formatAgentTimeMinute(timestamp, this.displayTimeZone())}]`);
+    this.writeLine(`${displayTime} ${prefix} ${AgentConsoleTheme.value(message)}${suffix}`);
+  }
+
+  private displayTimeZone(): string {
+    const configured =
+      typeof this.options.timeZone === "function"
+        ? this.options.timeZone()
+        : (this.options.timeZone ?? DefaultAgentTimeZone);
+    return resolveAgentTimeZone(configured);
   }
 
   private inlineDetails(details: Record<string, unknown>, tokens: string[] = []): string {

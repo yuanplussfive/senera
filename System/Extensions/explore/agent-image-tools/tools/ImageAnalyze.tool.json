@@ -152,7 +152,8 @@
     "Lifecycle": "Immediate",
     "ProtocolVersion": 2,
     "ResultAssessment": "ProcessExit",
-    "Scheduling": "Parallel"
+    "Scheduling": "Parallel",
+    "DeadlinePolicy": "ModelAware"
   },
   "resources": [],
   "sources": [],

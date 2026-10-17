@@ -20,7 +20,13 @@ export type SocketPostIngestEffectPlan =
         Extract<
           WsRequest,
           {
-            type: "config.get" | "model.list" | "sandbox.status" | "systemTool.list" | "workspace.get";
+            type:
+              | "config.get"
+              | "model.list"
+              | "sandbox.status"
+              | "systemTool.list"
+              | "runtimeDependency.list"
+              | "workspace.get";
           }
         >
       >;
@@ -64,6 +70,7 @@ export function resolveSocketPostIngestEffect(env: EventEnvelope): SocketPostIng
         { type: "model.list" },
         { type: "sandbox.status" },
         { type: "systemTool.list" },
+        { type: "runtimeDependency.list" },
       ],
     };
   }

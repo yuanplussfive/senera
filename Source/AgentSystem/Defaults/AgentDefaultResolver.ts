@@ -217,6 +217,10 @@ export function resolveAgentDefaults(
         ...AgentDefaults.Persistence.EventWriter,
         ...defaults?.Persistence?.EventWriter,
       },
+      Logs: {
+        ...AgentDefaults.Persistence.Logs,
+        ...defaults?.Persistence?.Logs,
+      },
     },
     ConfigStore: {
       ...AgentDefaults.ConfigStore,

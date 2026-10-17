@@ -92,13 +92,13 @@ export function ContinuityRecallView({ run, showTitle = true }: { run: RunRecord
                         />
                         <span className="truncate">{recordLabel(record)}</span>
                       </span>
-                      <span className="mt-1 block truncate text-[10px] leading-4 text-content-muted">
-                        {formatDateTime(record.kind === "digest" ? record.periodStart : record.occurredAt)}
-                      </span>
                     </span>
                     <span className="min-w-0">
                       <span className="block break-words text-[12px] leading-5 text-content-primary">
-                        {record.summary}
+                        <span className="mr-1 text-[10px] tabular-nums text-content-muted">
+                          [{formatDateTime(record.kind === "digest" ? record.periodStart : record.occurredAt)}]
+                        </span>
+                        <span>{record.summary}</span>
                       </span>
                       <span className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-[10px] text-content-muted">
                         {record.matchedBy.map((method) => (

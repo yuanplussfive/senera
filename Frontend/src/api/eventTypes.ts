@@ -10,6 +10,7 @@ import type {
 } from "./generatedEventCatalog";
 import type { ProviderModelConfigOperationKind } from "./providerModelCommandTypes";
 import type { BackendLocalizedMessage } from "../i18n/backendMessage";
+import type { AgentRuntimeDependencySnapshot } from "../../../Source/AgentSystem/Runtime/AgentRuntimeDependencyTypes";
 import type { ModelThinkingLevel, ModelThinkingProfile } from "./modelThinkingTypes";
 import type { ConfigFormSnapshotData } from "./configFormEventTypes";
 import type {
@@ -133,6 +134,13 @@ export type {
   McpServerSettingsItem,
   McpServerSnapshotData,
 } from "./mcpSettingsEventTypes";
+
+export interface RuntimeDependencySnapshotData {
+  dependencies: AgentRuntimeDependencySnapshot[];
+  complete?: boolean;
+}
+
+export type { AgentRuntimeDependencySnapshot };
 
 export { EventChannels, EventKinds, EventLayers, EventPhases };
 export type {
@@ -622,6 +630,8 @@ export interface ModelUsageMetadata {
 }
 
 export interface ConversationEntryMetadata {
+  /** Durable user turn answered by an assistant entry. */
+  sourceRequestId?: string;
   channel?: SessionChannelMetadata;
   run?: {
     modelProvider: ModelProviderMetadata;

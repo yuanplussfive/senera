@@ -212,6 +212,19 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
     .strict(),
   z.object({ type: z.literal("systemTool.list") }).strict(),
   z.object({ type: z.literal("mcpServer.list") }).strict(),
+  z.object({ type: z.literal("runtimeDependency.list") }).strict(),
+  z
+    .object({
+      type: z.literal("runtimeDependency.check"),
+      dependencyId: z.string().trim().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("runtimeDependency.install"),
+      dependencyId: z.string().trim().min(1),
+    })
+    .strict(),
   z
     .object({
       type: z.literal("mcpServer.restart"),

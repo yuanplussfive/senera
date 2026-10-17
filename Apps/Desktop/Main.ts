@@ -27,6 +27,7 @@ import { SeneraServerDeployments } from "../ServerRuntime.js";
 import { DesktopUpdateService } from "./DesktopUpdateService.js";
 import type { DesktopUpdateSnapshot } from "./DesktopUpdateProtocol.js";
 import { readAgentProductMetadata } from "../../Source/AgentSystem/Core/AgentProductMetadata.js";
+import { resolveAgentWorkspaceConfigPath } from "../../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
 
 let serverHandle: SeneraServerHandle | undefined;
 let mainWindow: BrowserWindow | undefined;
@@ -124,8 +125,9 @@ if (!ownsDesktopInstance) {
         upgradeStateRoot: paths.upgradeStateRoot,
         upgradeDataRoots: [paths.desktopDataRoot],
         configSource,
+        legacyConfigPath: resolveAgentWorkspaceConfigPath(paths.dataRoot),
         deployment: SeneraServerDeployments.Local,
-        runtimeConfigProjection: (config) => projectDesktopRuntimeConfig(paths, config),
+        runtimeConfigProjection: (config, workspaceRoot) => projectDesktopRuntimeConfig(config, workspaceRoot),
         automaticLoopbackHttp: true,
       });
       mainWindow = createMainWindow();
@@ -231,11 +233,7 @@ function registerDesktopIpc(): void {
   });
   ipcMain.handle("senera:workspace.choose-folder", async (event) => {
     if (!resolveManagedWindow(event)) return null;
-    try {
-      return (await chooseDesktopWorkspace()) ?? null;
-    } catch {
-      return null;
-    }
+    return (await chooseDesktopWorkspace()) ?? null;
   });
   ipcMain.handle("senera:update.get-state", () => desktopUpdateService?.getSnapshot());
   ipcMain.handle("senera:update.check", () => desktopUpdateService?.checkForUpdates());

@@ -51,6 +51,7 @@ export function resolveAgentChannelsConfig(config: AgentSystemConfig): AgentChan
     return {
       enabled: false,
       defaultApprovalMode: "agent",
+      finalResponseRewrite: false,
       channels: cloneDefaults(),
       profileRoutes: new AgentProfileRouteRegistry([]),
     };
@@ -65,6 +66,7 @@ export function resolveAgentChannelsConfig(config: AgentSystemConfig): AgentChan
     source.defaultApprovalMode === "always_ask" || source.defaultApprovalMode === "full_access"
       ? source.defaultApprovalMode
       : "agent";
+  const finalResponseRewrite = source.finalResponseRewrite === true;
   const subsystemDefaults: AgentChannelSubsystemDefaults = {
     busyMessageMode: busyMessageModeField(source.busyMessageMode) ?? AgentChannelBusyMessageModes.Steer,
   };
@@ -74,6 +76,7 @@ export function resolveAgentChannelsConfig(config: AgentSystemConfig): AgentChan
   return {
     enabled,
     defaultApprovalMode,
+    finalResponseRewrite,
     channels,
     profileRoutes: new AgentProfileRouteRegistry(AgentProfileRouteCollectionSchema.parse(source.profileRoutes ?? [])),
   };

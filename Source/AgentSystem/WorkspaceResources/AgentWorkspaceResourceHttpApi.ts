@@ -7,7 +7,12 @@ import { isText } from "istextorbinary";
 import { lookup } from "mime-types";
 import { applyCredentialedCors, writeCorsPreflight } from "../Auth/AgentCredentialedCors.js";
 import { errorMessage } from "../Core/AgentErrors.js";
-import { isMissingFileError, withAgentFileAccessRetry, writeFileAtomic } from "../Core/AgentFs.js";
+import {
+  isMissingFileError,
+  removeAgentPathWithRetry,
+  withAgentFileAccessRetry,
+  writeFileAtomic,
+} from "../Core/AgentFs.js";
 import { AgentKeyedLeaseQueue } from "../Core/AgentKeyedLeaseQueue.js";
 import {
   SeneraWorkspaceBoundary,
@@ -447,7 +452,7 @@ export class AgentWorkspaceResourceHttpApi {
         "Delete a directory recursively to remove it.",
       );
     }
-    await fs.promises.rm(target.absolutePath, { recursive, force: false });
+    await removeAgentPathWithRetry(target.absolutePath, { recursive });
   }
 
   private readResourcePath(request: IncomingMessage, allowDefault = false): string {

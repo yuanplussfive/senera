@@ -47,7 +47,7 @@ System/Extensions/<domain>/<extension>/
 
 `agent-image-tools` 当前拥有三组配置：视觉模型选择、单图读取预算和视觉系统提示词。留空模型选择时优先使用当前会话模型，不具备 Vision 能力时回退到首个可用视觉模型；显式选择的模型不存在或不支持 Vision 时直接返回结构化错误，不静默猜测其他模型。
 
-`workspace-tools` 是 Pi 文件工具与 Senera 宿主协议之间的薄适配包。`read/grep/find/ls` 的参数、结果格式、排序、继续读取提示和截断语义来自 Pi 公共 API；Senera 只提供工作区路径授权、只读本地执行、取消、Artifact、Observation v3 和前端事件。`grep/find` 固定使用随应用发布的 `@vscode/ripgrep`，运行时不得下载二进制文件。
+`workspace-tools` 是 Pi 文件工具与 Senera 宿主协议之间的薄适配包。`read/grep/find/ls` 的参数、结果格式、排序、继续读取提示和截断语义来自 Pi 公共 API；Senera 只提供工作区路径授权、只读本地执行、取消、Artifact、Observation v5 和前端事件。`grep/find` 固定使用随应用发布的 `@vscode/ripgrep`，运行时不得下载二进制文件。
 
 ## 代码边界
 

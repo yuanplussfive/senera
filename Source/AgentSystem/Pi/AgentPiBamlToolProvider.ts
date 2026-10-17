@@ -254,7 +254,6 @@ export class AgentPiBamlToolProvider {
           name: "model_timing",
           details: timing,
         }),
-      inputBudget: turnState.context.tokenBudget,
     });
     const projectedFocus = inspectAgentResidentSpeechFocus(projected, purposesByCallId);
     if (!projectedFocus) throw new Error("Resident speech projection returned no visible utterance.");

@@ -6,6 +6,10 @@ import type Token from "markdown-it/lib/token.mjs";
 import type { AgentResourceResolverLike, AgentResolvedResource } from "../Resources/AgentResourceResolver.js";
 import { normalizeAgentResourceUri } from "../Resources/AgentResourceUri.js";
 import type { AgentChannelMedia } from "./AgentChannelTypes.js";
+import {
+  agentChannelMarkdownResourceIdentity,
+  appendAgentChannelMarkdownResourceAlias,
+} from "./AgentChannelMarkdownResourceIdentity.js";
 
 /** Bounded policy for media projected from model and tool output. */
 export const AgentChannelOutboundMediaDefaults = Object.freeze({
@@ -36,31 +40,35 @@ export interface AgentChannelOutboundMediaProjection {
  * original source is retained so the final serializer can preserve wording;
  * resolved values are hints for selecting the correct outbound resource.
  * Unresolved references are intentionally represented instead of guessed.
+ * When multiple Markdown sources resolve to the same target, later sources
+ * are retained as aliases so every source occurrence remains resolvable while
+ * publication can still emit the target only once.
  */
+interface AgentChannelMarkdownResourceReferenceBase {
+  readonly source: string;
+  readonly aliases?: readonly string[];
+}
+
 export type AgentChannelMarkdownResourceReference =
-  | {
-      readonly source: string;
+  | (AgentChannelMarkdownResourceReferenceBase & {
       readonly kind: "senera";
       readonly resourceUri: string;
       readonly name?: string;
       readonly mime?: string;
-    }
-  | {
-      readonly source: string;
+    })
+  | (AgentChannelMarkdownResourceReferenceBase & {
       readonly kind: "http";
       readonly url: string;
-    }
-  | {
-      readonly source: string;
+    })
+  | (AgentChannelMarkdownResourceReferenceBase & {
       readonly kind: "workspace";
       readonly absolutePath: string;
       readonly name: string;
       readonly mime: string;
-    }
-  | {
-      readonly source: string;
+    })
+  | (AgentChannelMarkdownResourceReferenceBase & {
       readonly kind: "unresolved";
-    };
+    });
 
 export interface AgentChannelMarkdownResourceManifest {
   readonly references: readonly AgentChannelMarkdownResourceReference[];
@@ -128,20 +136,28 @@ export async function collectAgentChannelMarkdownResourceManifest(
 ): Promise<AgentChannelMarkdownResourceManifest> {
   const maxEntries = positiveBound(options.maxEntries ?? AgentChannelOutboundMediaDefaults.maxResourceManifestEntries);
   const scannedContent = content.slice(0, AgentChannelOutboundMediaDefaults.maxScannedCharacters);
-  const references: AgentChannelMarkdownResourceReference[] = [];
-  const seen = new Set<string>();
+  const references = new Map<string, AgentChannelMarkdownResourceReference>();
+  const seenSources = new Set<string>();
 
   for (const occurrence of readMarkdownImageOccurrences(scannedContent)) {
-    if (references.length >= maxEntries) break;
     const source = normalizeMarkdownReference(occurrence.span.destination);
-    if (!source || !isManifestValue(source) || seen.has(source)) continue;
-    seen.add(source);
+    if (!source || !isManifestValue(source) || seenSources.has(source)) continue;
+    seenSources.add(source);
 
     const reference = await describeMarkdownResourceReference(source, options.resourceResolver);
-    if (reference) references.push(reference);
+    if (!reference) continue;
+
+    const identity = agentChannelMarkdownResourceIdentity(reference);
+    const existing = references.get(identity);
+    if (existing) {
+      references.set(identity, appendAgentChannelMarkdownResourceAlias(existing, source));
+      continue;
+    }
+    if (references.size >= maxEntries) continue;
+    references.set(identity, reference);
   }
 
-  return { references };
+  return { references: [...references.values()] };
 }
 
 async function describeMarkdownResourceReference(
@@ -322,7 +338,11 @@ function findManifestReference(
   destination: string,
 ): AgentChannelMarkdownResourceReference | undefined {
   const normalized = normalizeMarkdownReference(destination);
-  return manifest?.references.find((reference) => sameMarkdownDestination(reference.source, normalized));
+  return manifest?.references.find(
+    (reference) =>
+      sameMarkdownDestination(reference.source, normalized) ||
+      reference.aliases?.some((alias) => sameMarkdownDestination(alias, normalized)),
+  );
 }
 
 function manifestReferenceTarget(

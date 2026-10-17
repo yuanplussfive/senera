@@ -6,21 +6,21 @@
         "id": "search",
         "label": { "zh-CN": "搜索服务", "en-US": "Search provider" },
         "description": {
-          "zh-CN": "默认通过 Exa Remote MCP 搜索，无需密钥。可选服务在填写访问密钥后立即生效。",
-          "en-US": "Exa Remote MCP is the keyless default. Optional providers become available as soon as an access key is added."
+          "zh-CN": "默认通过 Exa Remote MCP 搜索，无需密钥。切换供应商后只显示该服务需要的地址、模型和密钥配置。",
+          "en-US": "Exa Remote MCP is the keyless default. Switching providers shows only that service's endpoint, model, and credential settings."
         },
         "fields": [
           {
             "path": ["search", "provider"],
             "label": { "zh-CN": "搜索服务", "en-US": "Provider" },
             "type": "string",
-            "options": ["exa", "tavily", "brave", "searxng", "duckduckgo"],
+            "options": ["exa", "codex", "tavily", "brave", "searxng"],
             "optionLabels": {
               "exa": { "zh-CN": "Exa（推荐）", "en-US": "Exa (recommended)" },
+              "codex": { "zh-CN": "Codex Search", "en-US": "Codex Search" },
               "tavily": { "zh-CN": "Tavily", "en-US": "Tavily" },
               "brave": { "zh-CN": "Brave Search", "en-US": "Brave Search" },
-              "searxng": { "zh-CN": "SearXNG", "en-US": "SearXNG" },
-              "duckduckgo": { "zh-CN": "DuckDuckGo（兼容）", "en-US": "DuckDuckGo (compatibility)" }
+              "searxng": { "zh-CN": "SearXNG", "en-US": "SearXNG" }
             },
             "required": true,
             "essential": true
@@ -34,7 +34,8 @@
             },
             "type": "string",
             "required": false,
-            "essential": false
+            "essential": false,
+            "visibleWhen": { "path": ["search", "provider"], "in": ["exa", "tavily", "brave", "searxng"] }
           },
           {
             "path": ["search", "exaApiKey"],
@@ -47,7 +48,54 @@
             "secret": true,
             "required": false,
             "essential": false,
-            "level": "advanced"
+            "level": "advanced",
+            "visibleWhen": { "path": ["search", "provider"], "in": ["exa"] }
+          },
+          {
+            "path": ["search", "codexEndpoint"],
+            "label": { "zh-CN": "Codex Search 地址", "en-US": "Codex Search endpoint" },
+            "description": {
+              "zh-CN": "填写兼容 Codex Search 协议的 alpha/search 接口地址。",
+              "en-US": "Enter the alpha/search endpoint that implements the Codex Search protocol."
+            },
+            "type": "string",
+            "required": true,
+            "essential": true,
+            "visibleWhen": { "path": ["search", "provider"], "in": ["codex"] }
+          },
+          {
+            "path": ["search", "codexModel"],
+            "label": { "zh-CN": "Codex Search 模型", "en-US": "Codex Search model" },
+            "description": {
+              "zh-CN": "从模型目录选择供应商模型；请求会发送该条目的供应商模型 ID，不包含 Senera 内部条目标识。",
+              "en-US": "Choose a provider model from the model catalog; requests use its provider model ID, without the Senera catalog identifier."
+            },
+            "type": "string",
+            "maxLength": 256,
+            "modelSelection": {
+              "id": "web-tools.codex-search-model",
+              "capability": "Chat",
+              "valueKind": "model-id",
+              "mutation": "config",
+              "presentation": "inline",
+              "required": true
+            },
+            "required": true,
+            "essential": true,
+            "visibleWhen": { "path": ["search", "provider"], "in": ["codex"] }
+          },
+          {
+            "path": ["search", "codexApiKey"],
+            "label": { "zh-CN": "Codex Search 访问密钥", "en-US": "Codex Search access key" },
+            "description": {
+              "zh-CN": "用于 Codex Search 路由的访问密钥；保存时由工作区密钥保护。",
+              "en-US": "Access key for the Codex Search route; protected by the workspace secret store when saved."
+            },
+            "type": "string",
+            "secret": true,
+            "required": true,
+            "essential": true,
+            "visibleWhen": { "path": ["search", "provider"], "in": ["codex"] }
           },
           {
             "path": ["search", "tavilyApiKey"],
@@ -56,7 +104,8 @@
             "secret": true,
             "required": false,
             "essential": false,
-            "level": "advanced"
+            "level": "advanced",
+            "visibleWhen": { "path": ["search", "provider"], "in": ["tavily"] }
           },
           {
             "path": ["search", "braveApiKey"],
@@ -65,7 +114,8 @@
             "secret": true,
             "required": false,
             "essential": false,
-            "level": "advanced"
+            "level": "advanced",
+            "visibleWhen": { "path": ["search", "provider"], "in": ["brave"] }
           },
           {
             "path": ["search", "defaultMaxResults"],
@@ -169,8 +219,8 @@
         "id": "fetch",
         "label": { "zh-CN": "网页读取", "en-US": "Web fetch" },
         "description": {
-          "zh-CN": "控制网页读取、正文提取、重定向和响应大小边界。",
-          "en-US": "Control web fetch, article extraction, redirects, and response-size boundaries."
+          "zh-CN": "控制网页读取、正文提取、重定向、响应大小和动态页面渲染判定。",
+          "en-US": "Control web fetch, article extraction, redirects, response-size limits, and dynamic-page rendering decisions."
         },
         "fields": [
           {
@@ -242,6 +292,218 @@
             "essential": false
           },
           {
+            "path": ["fetch", "render", "strategy"],
+            "label": { "zh-CN": "动态页面渲染策略", "en-US": "Dynamic page render strategy" },
+            "description": {
+              "zh-CN": "HTTP 优先；仅在静态正文不足时使用受控无头浏览器。",
+              "en-US": "Prefer HTTP and use the controlled headless browser only when static content is insufficient."
+            },
+            "type": "string",
+            "options": ["http", "auto", "browser"],
+            "optionLabels": {
+              "http": { "zh-CN": "仅 HTTP", "en-US": "HTTP only" },
+              "auto": { "zh-CN": "自动判断", "en-US": "Automatic" },
+              "browser": { "zh-CN": "始终使用浏览器", "en-US": "Always use browser" }
+            },
+            "required": true,
+            "essential": true
+          },
+          {
+            "path": ["fetch", "render", "detection", "minimumUsefulTextChars"],
+            "label": { "zh-CN": "最小有效正文字符数", "en-US": "Minimum useful text characters" },
+            "type": "number",
+            "min": 1,
+            "max": 1000000,
+            "step": 1,
+            "required": true,
+            "essential": false,
+            "level": "advanced"
+          },
+          {
+            "path": ["fetch", "render", "detection", "minimumContentDensity"],
+            "label": { "zh-CN": "最小正文密度", "en-US": "Minimum content density" },
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": true,
+            "essential": false,
+            "level": "advanced"
+          },
+          {
+            "path": ["fetch", "render", "detection", "minimumContentBlocks"],
+            "label": { "zh-CN": "最小内容块数", "en-US": "Minimum content blocks" },
+            "type": "number",
+            "min": 0,
+            "max": 10000,
+            "step": 1,
+            "required": true,
+            "essential": false,
+            "level": "advanced"
+          },
+          {
+            "path": ["fetch", "render", "detection", "maximumScriptShare"],
+            "label": { "zh-CN": "脚本负载占比上限", "en-US": "Maximum script share" },
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": true,
+            "essential": false,
+            "level": "advanced"
+          },
+          {
+            "path": ["fetch", "render", "detection", "dynamicScoreThreshold"],
+            "label": { "zh-CN": "动态判断阈值", "en-US": "Dynamic detection threshold" },
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": true,
+            "essential": false,
+            "level": "advanced"
+          },
+          {
+            "path": ["fetch", "render", "detection", "reasonScoreThreshold"],
+            "label": { "zh-CN": "判定依据阈值", "en-US": "Detection reason threshold" },
+            "description": {
+              "zh-CN": "只展示达到此分值的判定依据，避免把弱信号误报为主要原因。",
+              "en-US": "Only surface signals at or above this score as reasons for the decision."
+            },
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": true,
+            "essential": false,
+            "level": "advanced"
+          },
+          {
+            "path": ["fetch", "render", "detection", "weights", "textDeficit"],
+            "label": { "zh-CN": "正文不足信号权重", "en-US": "Text deficit weight" },
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": true,
+            "essential": false,
+            "level": "advanced"
+          },
+          {
+            "path": ["fetch", "render", "detection", "weights", "densityDeficit"],
+            "label": { "zh-CN": "正文密度信号权重", "en-US": "Density deficit weight" },
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": true,
+            "essential": false,
+            "level": "advanced"
+          },
+          {
+            "path": ["fetch", "render", "detection", "weights", "scriptPressure"],
+            "label": { "zh-CN": "脚本负载信号权重", "en-US": "Script pressure weight" },
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": true,
+            "essential": false,
+            "level": "advanced"
+          },
+          {
+            "path": ["fetch", "render", "detection", "weights", "structureDeficit"],
+            "label": { "zh-CN": "语义结构信号权重", "en-US": "Structure deficit weight" },
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "required": true,
+            "essential": false,
+            "level": "advanced"
+          },
+          {
+            "path": ["fetch", "render", "browser", "minimumRemainingTimeoutMs"],
+            "label": { "zh-CN": "浏览器最小剩余预算（毫秒）", "en-US": "Minimum browser budget (ms)" },
+            "description": {
+              "zh-CN": "HTTP 阶段结束后至少保留此预算才会启动浏览器渲染。",
+              "en-US": "Start browser rendering only when this budget remains after the HTTP phase."
+            },
+            "type": "number",
+            "min": 250,
+            "max": 60000,
+            "step": 250,
+            "required": true,
+            "essential": false,
+            "level": "advanced"
+          },
+          {
+            "path": ["fetch", "render", "browser", "settleTimeoutMs"],
+            "label": { "zh-CN": "浏览器内容稳定等待上限（毫秒）", "en-US": "Browser settle timeout (ms)" },
+            "type": "number",
+            "min": 250,
+            "max": 300000,
+            "step": 250,
+            "required": true,
+            "essential": false,
+            "level": "advanced"
+          },
+          {
+            "path": ["fetch", "render", "browser", "settlePollMs"],
+            "label": { "zh-CN": "浏览器内容采样间隔（毫秒）", "en-US": "Browser settle poll interval (ms)" },
+            "type": "number",
+            "min": 50,
+            "max": 10000,
+            "step": 50,
+            "required": true,
+            "essential": false,
+            "level": "advanced"
+          },
+          {
+            "path": ["fetch", "render", "browser", "stableSamples"],
+            "label": { "zh-CN": "连续稳定采样次数", "en-US": "Stable samples" },
+            "type": "number",
+            "min": 1,
+            "max": 20,
+            "step": 1,
+            "required": true,
+            "essential": false,
+            "level": "advanced"
+          },
+          {
+            "path": ["fetch", "render", "browser", "maxHtmlChars"],
+            "label": { "zh-CN": "渲染 HTML 字符上限", "en-US": "Rendered HTML character limit" },
+            "type": "number",
+            "min": 1024,
+            "max": 10000000,
+            "step": 1024,
+            "required": true,
+            "essential": false,
+            "level": "advanced"
+          },
+          {
+            "path": ["fetch", "render", "browser", "minimumContentGainChars"],
+            "label": { "zh-CN": "最小正文增量字符数", "en-US": "Minimum content gain characters" },
+            "type": "number",
+            "min": 1,
+            "max": 10000000,
+            "step": 1,
+            "required": true,
+            "essential": false,
+            "level": "advanced"
+          },
+          {
+            "path": ["fetch", "render", "browser", "minimumContentGainRatio"],
+            "label": { "zh-CN": "最小正文增量比例", "en-US": "Minimum content gain ratio" },
+            "type": "number",
+            "min": 0,
+            "max": 1000,
+            "step": 0.01,
+            "required": true,
+            "essential": false,
+            "level": "advanced"
+          },
+          {
             "path": ["fetch", "requestTimeoutMs"],
             "label": { "zh-CN": "读取请求超时（毫秒）", "en-US": "Fetch request timeout (ms)" },
             "type": "number",
@@ -291,6 +553,8 @@
             "path": ["fetch", "userAgent"],
             "label": { "zh-CN": "User-Agent", "en-US": "User-Agent" },
             "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
             "required": true,
             "essential": false
           }

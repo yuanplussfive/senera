@@ -135,6 +135,38 @@ test("non-image attachments retain the compact file presentation", () => {
   expect(document.querySelector("[data-message-image-gallery]")).toBeNull();
 });
 
+test("text attachments open a content preview from the authenticated resource", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => ({
+      ok: true,
+      text: async () => "line one\nline two",
+    })),
+  );
+  const user = userEvent.setup();
+  renderAttachments({
+    uploadUrl: "http://agent.test/api/resources",
+    attachments: [
+      {
+        resourceUri: "senera://resource/notes-preview",
+        name: "notes.txt",
+        mime: "text/plain",
+        size: 18,
+        status: "uploaded",
+      },
+    ],
+  });
+
+  await user.click(screen.getByRole("button", { name: "查看文件：notes.txt" }));
+
+  const dialog = await screen.findByRole("dialog", { name: "查看文件：notes.txt" });
+  expect(within(dialog).getByText((_, element) => element?.tagName === "PRE")).toHaveTextContent(/line one\s+line two/);
+  expect(fetch).toHaveBeenCalledWith("http://agent.test/api/resources/notes-preview", {
+    credentials: "include",
+    signal: expect.any(AbortSignal),
+  });
+});
+
 test("non-image attachments download through the authenticated resource URL", async () => {
   const NativeUrl = globalThis.URL;
   class DownloadUrl extends NativeUrl {}

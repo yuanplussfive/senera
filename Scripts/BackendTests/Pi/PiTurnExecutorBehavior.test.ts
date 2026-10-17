@@ -71,6 +71,32 @@ describe("Pi turn executor behavior", () => {
     );
   });
 
+  test("keeps the completed response when routing observation fails", async () => {
+    const fixture = new PiTurnRuntimeFixture();
+    fixture.afterToolResults.mockImplementation(() => {
+      throw new Error("routing memory unavailable");
+    });
+
+    const result = await new AgentPiTurnExecutor({ runtime: fixture.runtime }).run(createPiTurnCommand());
+    expect(result.responseText).toBe("The workspace inspection is complete.");
+    expect(result.routingObservation).toBeUndefined();
+  });
+
+  test("continues the existing Pi transcript without prompting with a synthetic word", async () => {
+    const fixture = new PiTurnRuntimeFixture();
+    const command = {
+      ...createPiTurnCommand(),
+      continueFromTranscript: true,
+      continuationSourceRequestId: "source-request",
+    };
+
+    await new AgentPiTurnExecutor({ runtime: fixture.runtime }).run(command);
+
+    expect(fixture.session.prompts).toEqual([]);
+    expect(fixture.session.continuations).toHaveLength(1);
+    expect(fixture.session.continuationSourceRequestIds).toEqual(["source-request"]);
+  });
+
   test("publishes the stable answer before post-turn compaction settles", async () => {
     const fixture = new PiTurnRuntimeFixture({ deferCompaction: true });
     const events: AgentDomainEvent[] = [];
@@ -174,6 +200,24 @@ describe("Pi turn executor behavior", () => {
     expect(fixture.session.disposed).toBe(true);
   });
 
+  test("cancels the lease operation when its phase deadline expires", async () => {
+    const fixture = new PiTurnRuntimeFixture({ deferSessionCreate: true, leaseTimeoutMs: 25 });
+    const executor = new AgentPiTurnExecutor({ runtime: fixture.runtime });
+    const pending = executor.run(createPiTurnCommand());
+
+    await fixture.sessionCreateStarted;
+    await expect(pending).rejects.toMatchObject({
+      name: "AgentPiTurnPhaseTimeoutError",
+      phase: "session.lease",
+      timeoutMs: 25,
+    });
+    expect(fixture.lastSessionOptions?.signal?.aborted).toBe(true);
+
+    fixture.completeSessionCreate();
+    await fixture.session.disposedPromise;
+    expect(fixture.session.disposed).toBe(true);
+  });
+
   test("reports a failure diagnostic and disposes a provider-failed session", async () => {
     const fixture = new PiTurnRuntimeFixture({ promptFailure: new Error("provider rejected request") });
     const events: AgentDomainEvent[] = [];
@@ -251,6 +295,7 @@ class PiTurnRuntimeFixture {
       promptFailure?: Error;
       modelTimeoutMs?: number;
       maxRequestMs?: number;
+      leaseTimeoutMs?: number;
     } = {},
   ) {
     this.session = new ScriptedPiSession(behavior);
@@ -287,7 +332,10 @@ class PiTurnRuntimeFixture {
         TimeoutMs: behavior.modelTimeoutMs ?? modelProviderConfig.TimeoutMs,
         MaxRequestMs: behavior.maxRequestMs ?? modelProviderConfig.MaxRequestMs,
       },
-      agentLoopConfig: { PiTurnLeaseTimeoutMs: 5_000, PiSessions: { Compaction: { Enabled: true } } },
+      agentLoopConfig: {
+        PiTurnLeaseTimeoutMs: behavior.leaseTimeoutMs ?? 5_000,
+        PiSessions: { Compaction: { Enabled: true } },
+      },
       tokenEstimator: { estimate: (text) => ({ tokenCount: text.length }) },
       promptConfig: () =>
         ({
@@ -318,6 +366,8 @@ class ScriptedPiSession implements AgentPiSession {
   } as AgentState;
   readonly model = this.state.model;
   readonly prompts: string[] = [];
+  readonly continuations: number[] = [];
+  readonly continuationSourceRequestIds: Array<string | undefined> = [];
   private readonly listeners = new Set<AgentPiSessionEventListener>();
   private turnState?: AgentPiTurnState;
   private resolvePromptStarted!: () => void;
@@ -366,6 +416,15 @@ class ScriptedPiSession implements AgentPiSession {
     if (this.behavior.promptFailure) {
       throw this.behavior.promptFailure;
     }
+    await this.emitTurnEvents();
+  }
+
+  prepareContinuation(sourceRequestId?: string): void {
+    this.continuationSourceRequestIds.push(sourceRequestId);
+  }
+
+  async continue(): Promise<void> {
+    this.continuations.push(this.continuations.length + 1);
     await this.emitTurnEvents();
   }
 

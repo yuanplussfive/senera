@@ -1,5 +1,9 @@
 import path from "node:path";
 import type { AgentConfigSourceOptions } from "../Source/AgentSystem/Config/AgentConfigService.js";
+import {
+  resolveAgentWorkspaceConfigPath,
+  resolveAgentWorkspaceLayout,
+} from "../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
 
 export interface SeneraServerConfigSourceOptions {
   readonly configPath?: string;
@@ -19,7 +23,9 @@ export function resolveServerConfigSource(
 
   return {
     kind: "json",
-    configPath: options.configPath ? path.resolve(workspaceRoot, options.configPath) : resolveConfigPath(workspaceRoot),
+    configPath: options.configPath
+      ? resolveAgentWorkspaceConfigPath(workspaceRoot, options.configPath)
+      : resolveConfigPath(workspaceRoot),
   };
 }
 
@@ -29,11 +35,38 @@ export function resolveServerRuntimeConfigPath(workspaceRoot: string, source: Ag
     : (source.label ?? resolveWorkspacePath(workspaceRoot, source.databasePath));
 }
 
+/** Derives a workspace-local config source from the host's source contract. */
+export function resolveWorkspaceServerConfigSource(
+  workspaceRoot: string,
+  template: AgentConfigSourceOptions,
+  sourceWorkspaceRoot?: string,
+): AgentConfigSourceOptions {
+  if (template.kind === "json") {
+    const targetRoot = path.resolve(workspaceRoot);
+    const sourceRoot = path.resolve(sourceWorkspaceRoot ?? path.dirname(template.configPath));
+    const relative = path.relative(sourceRoot, path.resolve(template.configPath));
+    const isPortableRelativePath = relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+    return {
+      kind: "json",
+      configPath: isPortableRelativePath
+        ? path.resolve(targetRoot, relative)
+        : resolveAgentWorkspaceConfigPath(targetRoot),
+    };
+  }
+  const layout = resolveAgentWorkspaceLayout(workspaceRoot);
+  return {
+    kind: "sqlite",
+    databasePath: layout.databases.config,
+    seedConfig: template.seedConfig,
+    label: layout.databases.config,
+  };
+}
+
 function resolveConfigPath(workspaceRoot: string): string {
   const configuredPath = process.env.AGENT_CONFIG_PATH?.trim();
   return configuredPath
-    ? path.resolve(workspaceRoot, configuredPath)
-    : path.resolve(workspaceRoot, "senera.config.json");
+    ? resolveAgentWorkspaceConfigPath(workspaceRoot, configuredPath)
+    : resolveAgentWorkspaceConfigPath(workspaceRoot);
 }
 
 function normalizeConfigSource(workspaceRoot: string, source: AgentConfigSourceOptions): AgentConfigSourceOptions {

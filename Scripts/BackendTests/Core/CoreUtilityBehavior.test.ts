@@ -129,7 +129,7 @@ describe("core utilities", () => {
     const filePath = path.join(directory, "session.jsonl");
     fs.writeFileSync(filePath, "session\n", "utf8");
     const busy = Object.assign(new Error("file is busy"), { code: "EBUSY" });
-    const removeSpy = vi.spyOn(fs.promises, "rm").mockRejectedValueOnce(busy);
+    const removeSpy = vi.spyOn(fs.promises, "unlink").mockRejectedValueOnce(busy);
 
     await expect(removeAgentPathWithRetry(filePath, { retryDelayMs: 0 })).resolves.toBe("removed");
     expect(fs.existsSync(filePath)).toBe(false);
@@ -153,7 +153,7 @@ describe("core utilities", () => {
     const filePath = path.join(directory, "session.jsonl");
     fs.writeFileSync(filePath, "session\n", "utf8");
     const busy = Object.assign(new Error("file is busy"), { code: "EBUSY" });
-    vi.spyOn(fs.promises, "rm").mockRejectedValue(busy);
+    vi.spyOn(fs.promises, "unlink").mockRejectedValue(busy);
 
     await expect(
       removeAgentPathWithRetry(filePath, { maxAttempts: 2, retryDelayMs: 0, deferOnBusy: true }),

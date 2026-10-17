@@ -827,6 +827,55 @@
       "properties": {
         "type": {
           "type": "string",
+          "const": "runtimeDependency.list"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "runtimeDependency.check"
+        },
+        "dependencyId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "dependencyId"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "runtimeDependency.install"
+        },
+        "dependencyId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "dependencyId"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
           "const": "mcpServer.restart"
         },
         "serverId": {
@@ -1086,7 +1135,7 @@
           "properties": {
             "ConfigVersion": {
               "type": "number",
-              "const": 36
+              "const": 38
             },
             "Defaults": {
               "type": "object",
@@ -2111,6 +2160,43 @@
                         }
                       },
                       "additionalProperties": false
+                    },
+                    "Logs": {
+                      "type": "object",
+                      "properties": {
+                        "Enabled": {
+                          "type": "boolean"
+                        },
+                        "DetailMaxBytes": {
+                          "type": "integer",
+                          "minimum": 128,
+                          "maximum": 9007199254740991
+                        },
+                        "ProjectionMaxBytes": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "RetentionHours": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "QueryPageSize": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 1000
+                        },
+                        "TailLineCount": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 2000
+                        },
+                        "CaptureHiddenEvents": {
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": false
                     }
                   },
                   "additionalProperties": false
@@ -2124,12 +2210,6 @@
                     "TimeZone": {
                       "type": "string",
                       "minLength": 1
-                    },
-                    "CorePersona": {
-                      "type": "string"
-                    },
-                    "LanguageStyle": {
-                      "type": "string"
                     },
                     "PrefaceRewrite": {
                       "type": "boolean"
@@ -3722,6 +3802,43 @@
                     }
                   },
                   "additionalProperties": false
+                },
+                "Logs": {
+                  "type": "object",
+                  "properties": {
+                    "Enabled": {
+                      "type": "boolean"
+                    },
+                    "DetailMaxBytes": {
+                      "type": "integer",
+                      "minimum": 128,
+                      "maximum": 9007199254740991
+                    },
+                    "ProjectionMaxBytes": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "RetentionHours": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "QueryPageSize": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 1000
+                    },
+                    "TailLineCount": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 2000
+                    },
+                    "CaptureHiddenEvents": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false
                 }
               },
               "additionalProperties": false
@@ -3735,12 +3852,6 @@
                 "TimeZone": {
                   "type": "string",
                   "minLength": 1
-                },
-                "CorePersona": {
-                  "type": "string"
-                },
-                "LanguageStyle": {
-                  "type": "string"
                 },
                 "PrefaceRewrite": {
                   "type": "boolean"

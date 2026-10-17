@@ -1,1 +1,1 @@
-export const CurrentAgentConfigVersion = 36 as const;
+export const CurrentAgentConfigVersion = 38 as const;

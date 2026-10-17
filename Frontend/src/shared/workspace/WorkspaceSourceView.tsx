@@ -140,7 +140,10 @@ function PreparedSource(props: WorkspaceSourceProps & { onRetry: () => void }): 
     );
 
   return (
-    <Virtualizer className="scrollbar-thin min-h-0 flex-1 overflow-auto" contentClassName="py-3">
+    <Virtualizer
+      className="workspace-source-viewport scrollbar-thin min-h-0 min-w-0 flex-1 overflow-auto"
+      contentClassName="min-w-full py-3"
+    >
       <EditProvider createEditor={createEditor}>
         <WorkspaceCodeDocument {...props} />
       </EditProvider>

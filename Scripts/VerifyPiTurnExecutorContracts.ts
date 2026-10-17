@@ -403,6 +403,12 @@ class FakePiSession {
     await this.emitScriptedEvents();
   }
 
+  prepareContinuation(): void {}
+
+  async continue(): Promise<void> {
+    await this.emitScriptedEvents();
+  }
+
   finishPrompt(): void {
     this.promptFinishResolve();
   }

@@ -61,6 +61,8 @@ export interface AgentContinuityMemOSRuntimeOptions {
   readonly semanticConfig: () => AgentMemOSSemanticLearningConfig;
   readonly semanticScopeKey: string;
   readonly logger?: AgentLogger;
+  /** Dedicated stream for semantic-learning queue, extraction and promotion. */
+  readonly learningLogger?: AgentLogger;
 }
 
 /**
@@ -75,6 +77,8 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
   private writeTail: Promise<void> = Promise.resolve();
   private semanticCommandTail: Promise<void> = Promise.resolve();
   private writeError: Error | undefined;
+  private readonly reportedEmbeddingFailures = new Set<string>();
+  private readinessFailureReported = false;
   private closePromise: Promise<void> | undefined;
   private readonly semanticLearning: AgentMemOSSemanticLearningRuntime;
   private readonly recallDedupe: AgentMemOSRecallDedupe;
@@ -110,7 +114,7 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
       policy: options.semanticPolicy,
       config: options.semanticConfig,
       cacheScopeKey: options.semanticScopeKey,
-      logger: options.logger,
+      logger: options.learningLogger,
     });
     this.ready = this.memos
       .init()
@@ -131,7 +135,9 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
       .then(() => this.semanticLearning.recordCompletedTurn(recordedTurn))
       .catch((error) => {
         this.writeError ??= toError(error);
-        this.options.logger?.warn("memory.memos.semantic_learning.enqueue_failed", { message: errorMessage(error) });
+        this.options.learningLogger?.warn("memory.memos.semantic_learning.enqueue_failed", {
+          message: errorMessage(error),
+        });
       });
   }
 
@@ -141,14 +147,31 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
       .sort((left, right) => left.completedAtMs - right.completedAtMs)
       .slice(-this.options.semanticConfig().fragmentHistoryTurns)
       .map((episode) => {
-        const toolHistory = AgentStateCardToolHistorySchema.optional().parse(episode.metadata.toolHistory);
-        return {
-          request: episode.rawUserText,
-          assistant: episode.assistantText,
-          layer: AgentStateCardHistoryLayers.Fine,
-          tools: toolHistory?.tools ?? [],
-          artifacts: toolHistory?.artifacts ?? [],
-        };
+        try {
+          const toolHistory = AgentStateCardToolHistorySchema.optional().parse(episode.metadata.toolHistory);
+          return {
+            request: episode.rawUserText,
+            assistant: episode.assistantText,
+            layer: AgentStateCardHistoryLayers.Fine,
+            tools: toolHistory?.tools ?? [],
+            artifacts: toolHistory?.artifacts ?? [],
+          };
+        } catch (error) {
+          // State-card tool history is derived metadata. Keep the durable
+          // request/answer usable when an older record cannot be projected.
+          this.options.logger?.warn("memory.memos.state_card_history_projection_failed", {
+            sessionId,
+            requestId: episode.requestId,
+            message: errorMessage(error),
+          });
+          return {
+            request: episode.rawUserText,
+            assistant: episode.assistantText,
+            layer: AgentStateCardHistoryLayers.Fine,
+            tools: [],
+            artifacts: [],
+          };
+        }
       });
   }
 
@@ -199,7 +222,7 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
     const normalizedProjectId = projectId.trim();
     const resolvedLimit = positiveLimit(limit);
     if (!normalizedProjectId || resolvedLimit === 0) return [];
-    await this.awaitReadable();
+    if (!(await this.awaitReadable())) return [];
     const results = await this.memos.search({
       query: query.trim() || undefined,
       namespace: this.namespace,
@@ -215,7 +238,7 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
     const normalizedProjectId = projectId.trim();
     const resolvedLimit = positiveLimit(limit);
     if (!normalizedProjectId || resolvedLimit === 0) return [];
-    await this.awaitReadable();
+    if (!(await this.awaitReadable())) return [];
     const results = await this.memos.search({
       namespace: this.namespace,
       tags: [...MemOSTags.ToolRouting, `project:${encodeURIComponent(normalizedProjectId)}`],
@@ -292,7 +315,7 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
       return selected;
     };
     if (nodeIds.length > 0) {
-      await this.awaitReadable();
+      if (!(await this.awaitReadable())) return [];
       return (await read()).map((memory) => ({ memory, memoryKey: memoryKey(memory) }));
     }
     return this.readRecall(read);
@@ -316,7 +339,7 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
     let results: ScoredMemory[];
     let generation: number;
     do {
-      await this.awaitReadable();
+      if (!(await this.awaitReadable())) return [];
       await this.recallDedupe.synchronize();
       generation = this.recallDedupe.generation;
       results = await read();
@@ -367,7 +390,9 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
       })
       .catch((error) => {
         this.writeError ??= toError(error);
-        this.options.logger?.warn("memory.memos.semantic_learning.delete_failed", { message: errorMessage(error) });
+        this.options.learningLogger?.warn("memory.memos.semantic_learning.delete_failed", {
+          message: errorMessage(error),
+        });
       });
   }
 
@@ -379,7 +404,9 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
       .then(() => this.deleteRoutingTags([toolRoutingSessionTag(normalized)]))
       .catch((error) => {
         this.writeError ??= toError(error);
-        this.options.logger?.warn("memory.memos.routing_learning.delete_failed", { message: errorMessage(error) });
+        this.options.learningLogger?.warn("memory.memos.routing_learning.delete_failed", {
+          message: errorMessage(error),
+        });
       });
   }
 
@@ -390,22 +417,30 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
    */
   async flush(options: AgentMemOSSemanticLearningFlushOptions = {}): Promise<void> {
     const surfaceFailures = options.surfaceFailures === true;
-    await this.ready;
     await this.writeTail;
     await this.semanticCommandTail;
+    if (!(await this.awaitReady(surfaceFailures))) return;
     try {
       await this.semanticLearning.flush({ surfaceFailures });
     } catch (error) {
       if (surfaceFailures) throw error;
-      this.options.logger?.warn("memory.memos.semantic_learning.flush_failed", {
+      this.options.learningLogger?.warn("memory.memos.semantic_learning.flush_failed", {
         message: errorMessage(error),
       });
     }
     try {
-      await this.awaitReadable();
+      await this.awaitReadable({ surfaceFailures });
     } catch (error) {
       if (surfaceFailures) throw error;
       this.options.logger?.warn("memory.memos.readiness.flush_failed", {
+        message: errorMessage(error),
+      });
+    }
+    try {
+      await this.recallDedupe.synchronize({ surfaceFailures });
+    } catch (error) {
+      if (surfaceFailures) throw error;
+      this.options.logger?.warn("memory.memos.recall_dedupe.flush_failed", {
         message: errorMessage(error),
       });
     }
@@ -446,16 +481,40 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
       });
   }
 
-  private async awaitReadable(): Promise<void> {
-    await this.ready;
+  private async awaitReadable(options: { readonly surfaceFailures?: boolean } = {}): Promise<boolean> {
+    const surfaceFailures = options.surfaceFailures === true;
+    if (!(await this.awaitReady(surfaceFailures))) return false;
     await this.writeTail;
     if (this.writeError) {
       const error = this.writeError;
       this.writeError = undefined;
-      throw error;
+      if (surfaceFailures) throw error;
+      this.options.logger?.warn("memory.memos.detached_write_failed", { message: error.message });
     }
-    await this.memos.flushEmbeddings();
-    this.assertEmbeddingsHealthy();
+    try {
+      await this.memos.flushEmbeddings();
+    } catch (error) {
+      if (surfaceFailures) throw error;
+      this.options.logger?.warn("memory.memos.embedding_flush_failed", { message: errorMessage(error) });
+      return false;
+    }
+    if (surfaceFailures) this.assertEmbeddingsHealthy();
+    else this.reportEmbeddingFailures();
+    return true;
+  }
+
+  private async awaitReady(surfaceFailures: boolean): Promise<boolean> {
+    try {
+      await this.ready;
+      return true;
+    } catch (error) {
+      if (surfaceFailures) throw error;
+      if (!this.readinessFailureReported) {
+        this.readinessFailureReported = true;
+        this.options.logger?.warn("memory.memos.readiness_suppressed", { message: errorMessage(error) });
+      }
+      return false;
+    }
   }
 
   private async findRoutingTag(routingTag: string): Promise<MemoryNode | undefined> {
@@ -487,6 +546,23 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
       .map((node) => `${node.nodeId}: ${node.lastError}`);
     if (failed.length > 0) {
       throw new Error(`MemOS embedding queue has failed nodes: ${failed.join("; ")}`);
+    }
+  }
+
+  private reportEmbeddingFailures(): void {
+    const failures = this.memos
+      .embeddingStatus()
+      .nodes.filter((node) => node.status === "failed" && node.lastError)
+      .map((node) => ({ nodeId: node.nodeId, message: node.lastError! }));
+    const current = new Set(failures.map(({ nodeId, message }) => `${nodeId}:${message}`));
+    for (const key of this.reportedEmbeddingFailures) {
+      if (!current.has(key)) this.reportedEmbeddingFailures.delete(key);
+    }
+    for (const failure of failures) {
+      const key = `${failure.nodeId}:${failure.message}`;
+      if (this.reportedEmbeddingFailures.has(key)) continue;
+      this.reportedEmbeddingFailures.add(key);
+      this.options.logger?.warn("memory.memos.embedding_failed", failure);
     }
   }
 }

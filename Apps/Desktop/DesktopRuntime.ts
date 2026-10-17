@@ -13,9 +13,10 @@ import {
   resolveDesktopWorkspaceSelectionPath,
   writeDesktopWorkspaceSelection,
 } from "./DesktopWorkspaceSelection.js";
-import { resolveAgentWorkspaceLayout } from "../../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
-import { loadConfigFile } from "../../Source/AgentSystem/Config/AgentConfigService.js";
-import { writeAgentConfigJsonMirror } from "../../Source/AgentSystem/Config/AgentConfigServicePaths.js";
+import {
+  resolveAgentWorkspaceConfigPath,
+  resolveAgentWorkspaceLayout,
+} from "../../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
 
 const { app, dialog } = electron;
 
@@ -72,12 +73,11 @@ export async function prepareDesktopRuntime(): Promise<DesktopRuntimePaths> {
       if (!workspaceRoot) throw new DesktopWorkspaceSelectionRequiredError(workspaceSelectionPath);
     }
   }
-  const workspaceLayout = resolveAgentWorkspaceLayout(applicationDataRoot);
+  const workspaceLayout = resolveAgentWorkspaceLayout(workspaceRoot);
   const desktopDataRoot = workspaceLayout.desktopRuntimeRoot;
   const configDatabasePath = workspaceLayout.databases.config;
   const configSeedPath = path.join(resourceRoot, ConfigTemplateFileName);
-  const configPath = path.join(applicationDataRoot, "senera.config.json");
-  ensureDesktopConfigFile(configPath, configSeedPath);
+  const configPath = resolveAgentWorkspaceConfigPath(workspaceRoot);
   const sandboxRuntimeRoot = path.join(desktopDataRoot, "sandbox");
   const upgradeStateRoot = path.join(desktopDataRoot, "upgrades");
 
@@ -108,7 +108,7 @@ export async function chooseDesktopWorkspace(): Promise<string | undefined> {
     title: "选择 Senera 工作区",
     buttonLabel: "使用此文件夹",
     properties: ["openDirectory", "createDirectory"],
-    message: "选择或新建工作区。会话、记忆和项目文件按工作区保存，应用配置由所有工作区共享。",
+    message: "选择或新建工作区。配置、会话、记忆和项目文件都会保存在该工作区中。",
   });
   const selected = result.filePaths[0];
   return result.canceled || !selected || !isDesktopWorkspaceDirectory(selected) ? undefined : path.resolve(selected);
@@ -119,12 +119,6 @@ export function persistDesktopWorkspace(paths: DesktopRuntimePaths, workspaceRoo
   if (!isDesktopWorkspaceDirectory(resolved)) throw new DesktopWorkspaceResolutionError(resolved);
   writeDesktopWorkspaceSelection(resolveDesktopWorkspaceSelectionPath(paths.dataRoot), resolved);
   return resolved;
-}
-
-/** Seeds a new application config; project selection never supplies configuration. */
-export function ensureDesktopConfigFile(configPath: string, configSeedPath: string): void {
-  if (fs.existsSync(configPath)) return;
-  writeAgentConfigJsonMirror(loadConfigFile(configSeedPath), configPath);
 }
 
 export class DesktopWorkspaceResolutionError extends Error {

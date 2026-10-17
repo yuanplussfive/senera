@@ -179,6 +179,9 @@ test.describe("authenticationMode=disabled", () => {
 
     await newSessionButton(page).click();
     const sessionRow = page.locator("[data-session-row]").first();
+    const sessionId = await sessionRow.getAttribute("data-session-row");
+    expect(sessionId).toBeTruthy();
+    const stableSessionRow = page.locator(`[data-session-row="${sessionId}"]`);
     const selection = sessionRow.getByRole("button", { name: /^打开会话：/ });
     await expect(selection).toBeVisible();
     await expect(sessionRow.getByRole("button", { name: "more" })).toHaveCount(0);
@@ -214,7 +217,7 @@ test.describe("authenticationMode=disabled", () => {
     const confirmation = page.getByRole("dialog", { name: "删除当前会话" });
     await expectPortaledOutsideSessionSidebar(confirmation);
     await confirmation.getByRole("button", { name: "永久删除" }).click();
-    await expect(sessionRow).toHaveCount(0);
+    await expect(stableSessionRow).toHaveCount(0);
   });
 
   test("navigates the real workflow dock tabs with browser focus and arrow keys", async ({ page }) => {

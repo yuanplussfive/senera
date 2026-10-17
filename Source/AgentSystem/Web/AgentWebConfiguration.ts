@@ -1,14 +1,47 @@
 import { z } from "zod";
-import type { ConfigFormDocument } from "../Config/AgentConfigFormDocument.js";
-import type { AgentExtensionLocalizedText } from "../Extensions/AgentExtensionLocalization.js";
 import { AgentWebContentModeValues } from "./AgentWebTypes.js";
+import { AgentWebRenderStrategyValues } from "./AgentWebDynamicPolicy.js";
+import { createAgentWebToolsConfigurationUi } from "./AgentWebConfigurationUi.js";
 
-export const AgentWebSearchProviderValues = ["exa", "tavily", "brave", "searxng", "duckduckgo"] as const;
+export const AgentWebSearchProviderValues = ["exa", "codex", "tavily", "brave", "searxng"] as const;
 export type AgentWebSearchProvider = (typeof AgentWebSearchProviderValues)[number];
 
 export const AgentWebToolsConfigurationLimits = {
+  apiKeyMaxLength: 4_096,
+  userAgentLength: { min: 1, max: 256 },
   requestTimeoutMs: { min: 1_000, max: 15 * 60 * 1_000 },
   searchCacheMaxEntries: { min: 0, max: 4_096 },
+  search: {
+    modelNameLength: { min: 1, max: 256 },
+    maxResults: { min: 1, max: 100 },
+    responseMaxBytes: { min: 1_024, max: 64 * 1024 * 1024 },
+    cacheTtlSeconds: { min: 0, max: 86_400 },
+  },
+  fetch: {
+    responseMaxBytes: { min: 1_024, max: 256 * 1024 * 1024 },
+    markdownMaxChars: { min: 1_024, max: 10_000_000 },
+    maxRedirects: { min: 0, max: 20 },
+    maxUrlLength: { min: 256, max: 32_768 },
+    maxLinks: { min: 0, max: 2_000 },
+    maxExtractBlocks: { min: 1, max: 256 },
+  },
+  detection: {
+    minimumUsefulTextChars: { min: 1, max: 1_000_000 },
+    minimumContentDensity: { min: 0, max: 1 },
+    minimumContentBlocks: { min: 0, max: 10_000 },
+    maximumScriptShare: { min: 0, max: 1 },
+    score: { min: 0, max: 1 },
+    weight: { min: 0, max: 1 },
+  },
+  browserRender: {
+    minimumRemainingTimeoutMs: { min: 250, max: 60_000 },
+    settleTimeoutMs: { min: 250, max: 300_000 },
+    settlePollMs: { min: 50, max: 10_000 },
+    stableSamples: { min: 1, max: 20 },
+    maxHtmlChars: { min: 1_024, max: 10_000_000 },
+    minimumContentGainChars: { min: 1, max: 10_000_000 },
+    minimumContentGainRatio: { min: 0, max: 1_000 },
+  },
 } as const;
 
 export const DefaultAgentWebToolsConfiguration = {
@@ -16,6 +49,9 @@ export const DefaultAgentWebToolsConfiguration = {
     provider: "exa" as const,
     endpoint: "",
     exaApiKey: "",
+    codexEndpoint: "",
+    codexModel: "",
+    codexApiKey: "",
     tavilyApiKey: "",
     braveApiKey: "",
     defaultMaxResults: 8,
@@ -36,6 +72,32 @@ export const DefaultAgentWebToolsConfiguration = {
     maxLinks: 128,
     maxExtractBlocks: 12,
     defaultContentMode: "auto" as const,
+    render: {
+      strategy: "auto" as const,
+      detection: {
+        minimumUsefulTextChars: 240,
+        minimumContentDensity: 0.04,
+        minimumContentBlocks: 2,
+        maximumScriptShare: 0.5,
+        dynamicScoreThreshold: 0.58,
+        reasonScoreThreshold: 0.35,
+        weights: {
+          textDeficit: 0.34,
+          densityDeficit: 0.26,
+          scriptPressure: 0.24,
+          structureDeficit: 0.16,
+        },
+      },
+      browser: {
+        minimumRemainingTimeoutMs: 1_000,
+        settleTimeoutMs: 8_000,
+        settlePollMs: 250,
+        stableSamples: 2,
+        maxHtmlChars: 96_000,
+        minimumContentGainChars: 80,
+        minimumContentGainRatio: 0.15,
+      },
+    },
     requestTimeoutMs: 180_000,
     maxOperationTimeoutMs: 900_000,
     allowPrivateNetworks: false,
@@ -54,27 +116,62 @@ export const AgentWebToolsConfigurationSchema = z
           .trim()
           .refine((value) => value === "" || isValidUrl(value), "Endpoint must be an absolute URL or empty.")
           .default(DefaultAgentWebToolsConfiguration.search.endpoint),
-        exaApiKey: z.string().trim().max(4_096).default(DefaultAgentWebToolsConfiguration.search.exaApiKey),
-        tavilyApiKey: z.string().trim().max(4_096).default(DefaultAgentWebToolsConfiguration.search.tavilyApiKey),
-        braveApiKey: z.string().trim().max(4_096).default(DefaultAgentWebToolsConfiguration.search.braveApiKey),
+        exaApiKey: z
+          .string()
+          .trim()
+          .max(AgentWebToolsConfigurationLimits.apiKeyMaxLength)
+          .default(DefaultAgentWebToolsConfiguration.search.exaApiKey),
+        codexEndpoint: z
+          .string()
+          .trim()
+          .refine(
+            (value) => value === "" || isValidUrl(value),
+            "Codex Search endpoint must be an absolute URL or empty.",
+          )
+          .default(DefaultAgentWebToolsConfiguration.search.codexEndpoint),
+        codexModel: z
+          .string()
+          .trim()
+          .max(AgentWebToolsConfigurationLimits.search.modelNameLength.max)
+          .default(DefaultAgentWebToolsConfiguration.search.codexModel),
+        codexApiKey: z
+          .string()
+          .trim()
+          .max(AgentWebToolsConfigurationLimits.apiKeyMaxLength)
+          .default(DefaultAgentWebToolsConfiguration.search.codexApiKey),
+        tavilyApiKey: z
+          .string()
+          .trim()
+          .max(AgentWebToolsConfigurationLimits.apiKeyMaxLength)
+          .default(DefaultAgentWebToolsConfiguration.search.tavilyApiKey),
+        braveApiKey: z
+          .string()
+          .trim()
+          .max(AgentWebToolsConfigurationLimits.apiKeyMaxLength)
+          .default(DefaultAgentWebToolsConfiguration.search.braveApiKey),
         defaultMaxResults: z
           .number()
           .int()
-          .min(1)
-          .max(100)
+          .min(AgentWebToolsConfigurationLimits.search.maxResults.min)
+          .max(AgentWebToolsConfigurationLimits.search.maxResults.max)
           .default(DefaultAgentWebToolsConfiguration.search.defaultMaxResults),
-        maxMaxResults: z.number().int().min(1).max(100).default(DefaultAgentWebToolsConfiguration.search.maxMaxResults),
+        maxMaxResults: z
+          .number()
+          .int()
+          .min(AgentWebToolsConfigurationLimits.search.maxResults.min)
+          .max(AgentWebToolsConfigurationLimits.search.maxResults.max)
+          .default(DefaultAgentWebToolsConfiguration.search.maxMaxResults),
         responseMaxBytes: z
           .number()
           .int()
-          .min(1_024)
-          .max(64 * 1024 * 1024)
+          .min(AgentWebToolsConfigurationLimits.search.responseMaxBytes.min)
+          .max(AgentWebToolsConfigurationLimits.search.responseMaxBytes.max)
           .default(DefaultAgentWebToolsConfiguration.search.responseMaxBytes),
         cacheTtlSeconds: z
           .number()
           .int()
-          .min(0)
-          .max(86_400)
+          .min(AgentWebToolsConfigurationLimits.search.cacheTtlSeconds.min)
+          .max(AgentWebToolsConfigurationLimits.search.cacheTtlSeconds.max)
           .default(DefaultAgentWebToolsConfiguration.search.cacheTtlSeconds),
         cacheMaxEntries: z
           .number()
@@ -106,32 +203,167 @@ export const AgentWebToolsConfigurationSchema = z
         responseMaxBytes: z
           .number()
           .int()
-          .min(1_024)
-          .max(256 * 1024 * 1024)
+          .min(AgentWebToolsConfigurationLimits.fetch.responseMaxBytes.min)
+          .max(AgentWebToolsConfigurationLimits.fetch.responseMaxBytes.max)
           .default(DefaultAgentWebToolsConfiguration.fetch.responseMaxBytes),
         markdownMaxChars: z
           .number()
           .int()
-          .min(1_024)
-          .max(10_000_000)
+          .min(AgentWebToolsConfigurationLimits.fetch.markdownMaxChars.min)
+          .max(AgentWebToolsConfigurationLimits.fetch.markdownMaxChars.max)
           .default(DefaultAgentWebToolsConfiguration.fetch.markdownMaxChars),
-        maxRedirects: z.number().int().min(0).max(20).default(DefaultAgentWebToolsConfiguration.fetch.maxRedirects),
+        maxRedirects: z
+          .number()
+          .int()
+          .min(AgentWebToolsConfigurationLimits.fetch.maxRedirects.min)
+          .max(AgentWebToolsConfigurationLimits.fetch.maxRedirects.max)
+          .default(DefaultAgentWebToolsConfiguration.fetch.maxRedirects),
         maxUrlLength: z
           .number()
           .int()
-          .min(256)
-          .max(32_768)
+          .min(AgentWebToolsConfigurationLimits.fetch.maxUrlLength.min)
+          .max(AgentWebToolsConfigurationLimits.fetch.maxUrlLength.max)
           .default(DefaultAgentWebToolsConfiguration.fetch.maxUrlLength),
-        maxLinks: z.number().int().min(0).max(2_000).default(DefaultAgentWebToolsConfiguration.fetch.maxLinks),
+        maxLinks: z
+          .number()
+          .int()
+          .min(AgentWebToolsConfigurationLimits.fetch.maxLinks.min)
+          .max(AgentWebToolsConfigurationLimits.fetch.maxLinks.max)
+          .default(DefaultAgentWebToolsConfiguration.fetch.maxLinks),
         maxExtractBlocks: z
           .number()
           .int()
-          .min(1)
-          .max(256)
+          .min(AgentWebToolsConfigurationLimits.fetch.maxExtractBlocks.min)
+          .max(AgentWebToolsConfigurationLimits.fetch.maxExtractBlocks.max)
           .default(DefaultAgentWebToolsConfiguration.fetch.maxExtractBlocks),
         defaultContentMode: z
           .enum(AgentWebContentModeValues)
           .default(DefaultAgentWebToolsConfiguration.fetch.defaultContentMode),
+        render: z
+          .object({
+            strategy: z
+              .enum(AgentWebRenderStrategyValues)
+              .default(DefaultAgentWebToolsConfiguration.fetch.render.strategy),
+            detection: z
+              .object({
+                minimumUsefulTextChars: z
+                  .number()
+                  .int()
+                  .min(AgentWebToolsConfigurationLimits.detection.minimumUsefulTextChars.min)
+                  .max(AgentWebToolsConfigurationLimits.detection.minimumUsefulTextChars.max)
+                  .default(DefaultAgentWebToolsConfiguration.fetch.render.detection.minimumUsefulTextChars),
+                minimumContentDensity: z
+                  .number()
+                  .finite()
+                  .min(AgentWebToolsConfigurationLimits.detection.minimumContentDensity.min)
+                  .max(AgentWebToolsConfigurationLimits.detection.minimumContentDensity.max)
+                  .default(DefaultAgentWebToolsConfiguration.fetch.render.detection.minimumContentDensity),
+                minimumContentBlocks: z
+                  .number()
+                  .int()
+                  .min(AgentWebToolsConfigurationLimits.detection.minimumContentBlocks.min)
+                  .max(AgentWebToolsConfigurationLimits.detection.minimumContentBlocks.max)
+                  .default(DefaultAgentWebToolsConfiguration.fetch.render.detection.minimumContentBlocks),
+                maximumScriptShare: z
+                  .number()
+                  .finite()
+                  .min(AgentWebToolsConfigurationLimits.detection.maximumScriptShare.min)
+                  .max(AgentWebToolsConfigurationLimits.detection.maximumScriptShare.max)
+                  .default(DefaultAgentWebToolsConfiguration.fetch.render.detection.maximumScriptShare),
+                dynamicScoreThreshold: z
+                  .number()
+                  .finite()
+                  .min(AgentWebToolsConfigurationLimits.detection.score.min)
+                  .max(AgentWebToolsConfigurationLimits.detection.score.max)
+                  .default(DefaultAgentWebToolsConfiguration.fetch.render.detection.dynamicScoreThreshold),
+                reasonScoreThreshold: z
+                  .number()
+                  .finite()
+                  .min(AgentWebToolsConfigurationLimits.detection.score.min)
+                  .max(AgentWebToolsConfigurationLimits.detection.score.max)
+                  .default(DefaultAgentWebToolsConfiguration.fetch.render.detection.reasonScoreThreshold),
+                weights: z
+                  .object({
+                    textDeficit: z
+                      .number()
+                      .finite()
+                      .min(AgentWebToolsConfigurationLimits.detection.weight.min)
+                      .max(AgentWebToolsConfigurationLimits.detection.weight.max)
+                      .default(DefaultAgentWebToolsConfiguration.fetch.render.detection.weights.textDeficit),
+                    densityDeficit: z
+                      .number()
+                      .finite()
+                      .min(AgentWebToolsConfigurationLimits.detection.weight.min)
+                      .max(AgentWebToolsConfigurationLimits.detection.weight.max)
+                      .default(DefaultAgentWebToolsConfiguration.fetch.render.detection.weights.densityDeficit),
+                    scriptPressure: z
+                      .number()
+                      .finite()
+                      .min(AgentWebToolsConfigurationLimits.detection.weight.min)
+                      .max(AgentWebToolsConfigurationLimits.detection.weight.max)
+                      .default(DefaultAgentWebToolsConfiguration.fetch.render.detection.weights.scriptPressure),
+                    structureDeficit: z
+                      .number()
+                      .finite()
+                      .min(AgentWebToolsConfigurationLimits.detection.weight.min)
+                      .max(AgentWebToolsConfigurationLimits.detection.weight.max)
+                      .default(DefaultAgentWebToolsConfiguration.fetch.render.detection.weights.structureDeficit),
+                  })
+                  .strict()
+                  .default(DefaultAgentWebToolsConfiguration.fetch.render.detection.weights),
+              })
+              .strict()
+              .default(DefaultAgentWebToolsConfiguration.fetch.render.detection),
+            browser: z
+              .object({
+                minimumRemainingTimeoutMs: z
+                  .number()
+                  .int()
+                  .min(AgentWebToolsConfigurationLimits.browserRender.minimumRemainingTimeoutMs.min)
+                  .max(AgentWebToolsConfigurationLimits.browserRender.minimumRemainingTimeoutMs.max)
+                  .default(DefaultAgentWebToolsConfiguration.fetch.render.browser.minimumRemainingTimeoutMs),
+                settleTimeoutMs: z
+                  .number()
+                  .int()
+                  .min(AgentWebToolsConfigurationLimits.browserRender.settleTimeoutMs.min)
+                  .max(AgentWebToolsConfigurationLimits.browserRender.settleTimeoutMs.max)
+                  .default(DefaultAgentWebToolsConfiguration.fetch.render.browser.settleTimeoutMs),
+                settlePollMs: z
+                  .number()
+                  .int()
+                  .min(AgentWebToolsConfigurationLimits.browserRender.settlePollMs.min)
+                  .max(AgentWebToolsConfigurationLimits.browserRender.settlePollMs.max)
+                  .default(DefaultAgentWebToolsConfiguration.fetch.render.browser.settlePollMs),
+                stableSamples: z
+                  .number()
+                  .int()
+                  .min(AgentWebToolsConfigurationLimits.browserRender.stableSamples.min)
+                  .max(AgentWebToolsConfigurationLimits.browserRender.stableSamples.max)
+                  .default(DefaultAgentWebToolsConfiguration.fetch.render.browser.stableSamples),
+                maxHtmlChars: z
+                  .number()
+                  .int()
+                  .min(AgentWebToolsConfigurationLimits.browserRender.maxHtmlChars.min)
+                  .max(AgentWebToolsConfigurationLimits.browserRender.maxHtmlChars.max)
+                  .default(DefaultAgentWebToolsConfiguration.fetch.render.browser.maxHtmlChars),
+                minimumContentGainChars: z
+                  .number()
+                  .int()
+                  .min(AgentWebToolsConfigurationLimits.browserRender.minimumContentGainChars.min)
+                  .max(AgentWebToolsConfigurationLimits.browserRender.minimumContentGainChars.max)
+                  .default(DefaultAgentWebToolsConfiguration.fetch.render.browser.minimumContentGainChars),
+                minimumContentGainRatio: z
+                  .number()
+                  .finite()
+                  .min(AgentWebToolsConfigurationLimits.browserRender.minimumContentGainRatio.min)
+                  .max(AgentWebToolsConfigurationLimits.browserRender.minimumContentGainRatio.max)
+                  .default(DefaultAgentWebToolsConfiguration.fetch.render.browser.minimumContentGainRatio),
+              })
+              .strict()
+              .default(DefaultAgentWebToolsConfiguration.fetch.render.browser),
+          })
+          .strict()
+          .default(DefaultAgentWebToolsConfiguration.fetch.render),
         requestTimeoutMs: z
           .number()
           .int()
@@ -148,7 +380,12 @@ export const AgentWebToolsConfigurationSchema = z
         allowSyntheticProxyAddresses: z
           .boolean()
           .default(DefaultAgentWebToolsConfiguration.fetch.allowSyntheticProxyAddresses),
-        userAgent: z.string().trim().min(1).max(256).default(DefaultAgentWebToolsConfiguration.fetch.userAgent),
+        userAgent: z
+          .string()
+          .trim()
+          .min(AgentWebToolsConfigurationLimits.userAgentLength.min)
+          .max(AgentWebToolsConfigurationLimits.userAgentLength.max)
+          .default(DefaultAgentWebToolsConfiguration.fetch.userAgent),
       })
       .strict()
       .default(DefaultAgentWebToolsConfiguration.fetch),
@@ -176,317 +413,31 @@ export const AgentWebToolsConfigurationSchema = z
         message: "Maximum operation timeout must not be lower than the default request timeout.",
       });
     }
+    if (configuration.fetch.render.browser.settlePollMs > configuration.fetch.render.browser.settleTimeoutMs) {
+      context.addIssue({
+        code: "custom",
+        path: ["fetch", "render", "browser", "settlePollMs"],
+        message: "Browser settle polling must not exceed the settle timeout.",
+      });
+    }
+    const weights = configuration.fetch.render.detection.weights;
+    if (weights.textDeficit + weights.densityDeficit + weights.scriptPressure + weights.structureDeficit <= 0) {
+      context.addIssue({
+        code: "custom",
+        path: ["fetch", "render", "detection", "weights"],
+        message: "At least one dynamic-page detection weight must be greater than zero.",
+      });
+    }
   });
 
 export type AgentWebToolsConfiguration = z.output<typeof AgentWebToolsConfigurationSchema>;
 
-export const AgentWebToolsConfigurationUi = {
-  form: {
-    version: 1,
-    sections: [
-      {
-        id: "search",
-        label: { "zh-CN": "搜索服务", "en-US": "Search provider" },
-        description: {
-          "zh-CN": "默认通过 Exa Remote MCP 搜索，无需密钥。可选服务在填写访问密钥后立即生效。",
-          "en-US":
-            "Exa Remote MCP is the keyless default. Optional providers become available as soon as an access key is added.",
-        },
-        fields: [
-          {
-            path: ["search", "provider"],
-            label: { "zh-CN": "搜索服务", "en-US": "Provider" },
-            type: "string",
-            options: [...AgentWebSearchProviderValues],
-            optionLabels: {
-              exa: { "zh-CN": "Exa（推荐）", "en-US": "Exa (recommended)" },
-              tavily: { "zh-CN": "Tavily", "en-US": "Tavily" },
-              brave: { "zh-CN": "Brave Search", "en-US": "Brave Search" },
-              searxng: { "zh-CN": "SearXNG", "en-US": "SearXNG" },
-              duckduckgo: { "zh-CN": "DuckDuckGo（兼容）", "en-US": "DuckDuckGo (compatibility)" },
-            },
-            required: true,
-            essential: true,
-          },
-          {
-            path: ["search", "endpoint"],
-            label: { "zh-CN": "服务地址", "en-US": "Endpoint" },
-            description: {
-              "zh-CN": "通常留空。SearXNG 必须填写实例地址；其他服务可填写兼容的自定义地址。",
-              "en-US":
-                "Usually leave empty. SearXNG requires an instance URL; other providers may use a compatible custom endpoint.",
-            },
-            type: "string",
-            required: false,
-            essential: false,
-          },
-          {
-            path: ["search", "exaApiKey"],
-            label: { "zh-CN": "Exa 访问密钥", "en-US": "Exa access key" },
-            description: {
-              "zh-CN": "留空时使用无需密钥的 Exa Remote MCP；填写后自动使用 Exa 官方 API。",
-              "en-US": "Leave empty to use keyless Exa Remote MCP. Add a key to use the Exa API automatically.",
-            },
-            type: "string",
-            secret: true,
-            required: false,
-            essential: false,
-            level: "advanced",
-          },
-          {
-            path: ["search", "tavilyApiKey"],
-            label: { "zh-CN": "Tavily 访问密钥", "en-US": "Tavily access key" },
-            type: "string",
-            secret: true,
-            required: false,
-            essential: false,
-            level: "advanced",
-          },
-          {
-            path: ["search", "braveApiKey"],
-            label: { "zh-CN": "Brave 访问密钥", "en-US": "Brave access key" },
-            type: "string",
-            secret: true,
-            required: false,
-            essential: false,
-            level: "advanced",
-          },
-          {
-            path: ["search", "defaultMaxResults"],
-            label: { "zh-CN": "默认结果数", "en-US": "Default result count" },
-            type: "number",
-            min: 1,
-            max: 100,
-            step: 1,
-            required: true,
-            essential: true,
-          },
-          {
-            path: ["search", "maxMaxResults"],
-            label: { "zh-CN": "结果数上限", "en-US": "Maximum result count" },
-            type: "number",
-            min: 1,
-            max: 100,
-            step: 1,
-            required: true,
-            essential: true,
-          },
-          {
-            path: ["search", "responseMaxBytes"],
-            label: { "zh-CN": "搜索响应上限", "en-US": "Search response limit" },
-            type: "number",
-            min: 1_024,
-            max: 64 * 1024 * 1024,
-            step: 1,
-            required: true,
-            essential: true,
-          },
-          {
-            path: ["search", "cacheTtlSeconds"],
-            label: { "zh-CN": "搜索缓存时间", "en-US": "Search cache TTL" },
-            type: "number",
-            min: 0,
-            max: 86_400,
-            step: 1,
-            required: true,
-            essential: false,
-          },
-          {
-            path: ["search", "cacheMaxEntries"],
-            label: { "zh-CN": "缓存条目上限", "en-US": "Maximum cached queries" },
-            type: "number",
-            min: AgentWebToolsConfigurationLimits.searchCacheMaxEntries.min,
-            max: AgentWebToolsConfigurationLimits.searchCacheMaxEntries.max,
-            step: 1,
-            required: true,
-            essential: false,
-          },
-          {
-            path: ["search", "requestTimeoutMs"],
-            label: { "zh-CN": "搜索请求超时（毫秒）", "en-US": "Search request timeout (ms)" },
-            type: "number",
-            min: AgentWebToolsConfigurationLimits.requestTimeoutMs.min,
-            max: AgentWebToolsConfigurationLimits.requestTimeoutMs.max,
-            step: 1_000,
-            required: true,
-            essential: true,
-          },
-          {
-            path: ["search", "maxOperationTimeoutMs"],
-            label: { "zh-CN": "模型操作超时上限（毫秒）", "en-US": "Model operation timeout limit (ms)" },
-            description: {
-              "zh-CN": "模型可通过单次 WebSearch 调用的 timeoutMs 覆盖默认值，但不能超过此上限。",
-              "en-US":
-                "The model may override the default with timeoutMs on an individual WebSearch call, up to this limit.",
-            },
-            type: "number",
-            min: AgentWebToolsConfigurationLimits.requestTimeoutMs.min,
-            max: AgentWebToolsConfigurationLimits.requestTimeoutMs.max,
-            step: 1_000,
-            required: true,
-            essential: true,
-          },
-          {
-            path: ["search", "allowPrivateNetworks"],
-            label: { "zh-CN": "允许访问私有网络", "en-US": "Allow private network access" },
-            description: {
-              "zh-CN": "仅用于受信的内网搜索服务；默认关闭。",
-              "en-US": "Only enable for a trusted internal search service; disabled by default.",
-            },
-            type: "boolean",
-            required: true,
-            essential: false,
-          },
-          {
-            path: ["search", "allowSyntheticProxyAddresses"],
-            label: { "zh-CN": "允许代理映射地址", "en-US": "Allow proxy-mapped addresses" },
-            description: {
-              "zh-CN": "允许本机代理将公开域名映射到 198.18.0.0/15；不会放开本机或局域网地址。",
-              "en-US":
-                "Allows public domains mapped to 198.18.0.0/15 by a local proxy without allowing localhost or private networks.",
-            },
-            type: "boolean",
-            required: true,
-            essential: false,
-          },
-        ],
-      },
-      {
-        id: "fetch",
-        label: { "zh-CN": "网页读取", "en-US": "Web fetch" },
-        description: {
-          "zh-CN": "控制网页读取、正文提取、重定向和响应大小边界。",
-          "en-US": "Control web fetch, article extraction, redirects, and response-size boundaries.",
-        },
-        fields: [
-          {
-            path: ["fetch", "responseMaxBytes"],
-            label: { "zh-CN": "响应字节上限", "en-US": "Response byte limit" },
-            type: "number",
-            min: 1_024,
-            max: 256 * 1024 * 1024,
-            step: 1,
-            required: true,
-            essential: true,
-          },
-          {
-            path: ["fetch", "markdownMaxChars"],
-            label: { "zh-CN": "Markdown 上限", "en-US": "Markdown character limit" },
-            type: "number",
-            min: 1_024,
-            max: 10_000_000,
-            step: 1,
-            required: true,
-            essential: true,
-          },
-          {
-            path: ["fetch", "maxRedirects"],
-            label: { "zh-CN": "最大重定向次数", "en-US": "Maximum redirects" },
-            type: "number",
-            min: 0,
-            max: 20,
-            step: 1,
-            required: true,
-            essential: true,
-          },
-          {
-            path: ["fetch", "maxUrlLength"],
-            label: { "zh-CN": "URL 长度上限", "en-US": "URL length limit" },
-            type: "number",
-            min: 256,
-            max: 32_768,
-            step: 1,
-            required: true,
-            essential: false,
-          },
-          {
-            path: ["fetch", "maxLinks"],
-            label: { "zh-CN": "链接数量上限", "en-US": "Maximum links" },
-            type: "number",
-            min: 0,
-            max: 2_000,
-            step: 1,
-            required: true,
-            essential: false,
-          },
-          {
-            path: ["fetch", "maxExtractBlocks"],
-            label: { "zh-CN": "相关段落数量", "en-US": "Relevant content blocks" },
-            type: "number",
-            min: 1,
-            max: 256,
-            step: 1,
-            required: true,
-            essential: false,
-          },
-          {
-            path: ["fetch", "defaultContentMode"],
-            label: { "zh-CN": "默认内容模式", "en-US": "Default content mode" },
-            type: "string",
-            options: [...AgentWebContentModeValues],
-            required: true,
-            essential: false,
-          },
-          {
-            path: ["fetch", "requestTimeoutMs"],
-            label: { "zh-CN": "读取请求超时（毫秒）", "en-US": "Fetch request timeout (ms)" },
-            type: "number",
-            min: AgentWebToolsConfigurationLimits.requestTimeoutMs.min,
-            max: AgentWebToolsConfigurationLimits.requestTimeoutMs.max,
-            step: 1_000,
-            required: true,
-            essential: true,
-          },
-          {
-            path: ["fetch", "maxOperationTimeoutMs"],
-            label: { "zh-CN": "模型操作超时上限（毫秒）", "en-US": "Model operation timeout limit (ms)" },
-            description: {
-              "zh-CN": "模型可通过单次 WebFetch 调用的 timeoutMs 覆盖默认值，但不能超过此上限。",
-              "en-US":
-                "The model may override the default with timeoutMs on an individual WebFetch call, up to this limit.",
-            },
-            type: "number",
-            min: AgentWebToolsConfigurationLimits.requestTimeoutMs.min,
-            max: AgentWebToolsConfigurationLimits.requestTimeoutMs.max,
-            step: 1_000,
-            required: true,
-            essential: true,
-          },
-          {
-            path: ["fetch", "allowPrivateNetworks"],
-            label: { "zh-CN": "允许私有网络", "en-US": "Allow private networks" },
-            description: {
-              "zh-CN": "仅适用于明确受信的内网部署；默认关闭以防止 SSRF。",
-              "en-US": "Only enable for trusted internal deployments; disabled by default for SSRF protection.",
-            },
-            type: "boolean",
-            required: true,
-            essential: true,
-          },
-          {
-            path: ["fetch", "allowSyntheticProxyAddresses"],
-            label: { "zh-CN": "允许代理映射地址", "en-US": "Allow proxy-mapped addresses" },
-            description: {
-              "zh-CN": "允许本机代理将公开域名映射到 198.18.0.0/15；不会放开本机或局域网地址。",
-              "en-US":
-                "Allows public domains mapped to 198.18.0.0/15 by a local proxy without allowing localhost or private networks.",
-            },
-            type: "boolean",
-            required: true,
-            essential: false,
-          },
-          {
-            path: ["fetch", "userAgent"],
-            label: { "zh-CN": "User-Agent", "en-US": "User-Agent" },
-            type: "string",
-            required: true,
-            essential: false,
-          },
-        ],
-      },
-    ],
-  },
-} satisfies ConfigFormDocument<AgentExtensionLocalizedText>;
+export const AgentWebToolsConfigurationUi = createAgentWebToolsConfigurationUi({
+  searchProviderValues: AgentWebSearchProviderValues,
+  contentModeValues: AgentWebContentModeValues,
+  renderStrategyValues: AgentWebRenderStrategyValues,
+  limits: AgentWebToolsConfigurationLimits,
+});
 
 function isValidUrl(value: string): boolean {
   try {

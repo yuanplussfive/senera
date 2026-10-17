@@ -1,13 +1,13 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { ReactNode } from "react";
-import { AlertTriangle, Check, ChevronDown, RefreshCw, Search } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, Search } from "lucide-react";
 import type {
   ModelsDevModelMetadata,
   ProviderModelsFailedData,
   ProviderModelsSnapshotData,
 } from "../../api/eventTypes";
 import { cn, formatShortTime } from "../../lib/util";
-import { Spinner, StateView, Switch, Tooltip } from "../../shared/ui";
+import { AppIcon, Spinner, StateView, Switch, Tooltip } from "../../shared/ui";
 import { ModelsDevCapabilityStrip } from "./ModelsDevCapabilityIcons";
 import { readModelsDevCapabilityKeys } from "./modelsDevCapabilities";
 import { ModelProviderIcon } from "./ModelProviderIcon";
@@ -283,7 +283,7 @@ export function ProviderStatusIcon({
   if (catalog) {
     return <Check className="h-3.5 w-3.5 text-moss-600" />;
   }
-  return <RefreshCw className="h-3.5 w-3.5 text-ink-350" />;
+  return <AppIcon icon="refresh" size={14} className="text-ink-350" aria-hidden="true" />;
 }
 
 export function ProviderCatalogStatus({
@@ -309,7 +309,7 @@ export function ProviderCatalogStatus({
   ) : catalog ? (
     <Check className="h-3.5 w-3.5" />
   ) : (
-    <RefreshCw className="h-3.5 w-3.5" />
+    <AppIcon icon="refresh" size={14} aria-hidden="true" />
   );
   const text = disabled
     ? frontendMessage("config.model.statusProviderDisabled")

@@ -26,10 +26,11 @@ import {
 } from "./AgentToolMetaToolProtocol.js";
 import { buildToolSearchResultProjection, readToolNamesFromSearchResult } from "./AgentToolSearchResultProjector.js";
 import { AgentToolSearchUsageMemory, type AgentToolSearchObservation } from "./AgentToolSearchUsageMemory.js";
-import { throwIfAborted } from "../Core/AgentCancellation.js";
+import { AgentCancellationError, throwIfAborted } from "../Core/AgentCancellation.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import {
   AgentToolSearchMemOSScenarioSource,
+  type AgentToolSearchScenarioMatch,
   type AgentToolSearchScenarioSource,
 } from "./AgentToolSearchScenarioSource.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
@@ -496,7 +497,7 @@ export class AgentToolSearchRuntime {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       throwIfAborted(signal);
       const snapshot = this.catalog.searchSnapshot();
-      const scenarios = await this.memory.prepare(options.query, this.projectId);
+      const scenarios = await this.prepareScenarioMatches(options.query, signal);
       const memoryEvidence = this.memory.rank(scenarios, this.projectId);
       const discovery = await snapshot.index.discoverHybrid(
         {
@@ -582,8 +583,9 @@ export class AgentToolSearchRuntime {
   async skillScenarioEvidence(options: {
     query: string;
     skills: readonly RegisteredSkill[];
+    signal?: AbortSignal;
   }): Promise<AgentSkillSelectionScenarioEvidence[]> {
-    const matches = await this.memory.prepare(options.query, this.projectId);
+    const matches = await this.prepareScenarioMatches(options.query, options.signal);
     return this.memory.rankSkillScenarios({
       matches,
       projectId: this.projectId,
@@ -618,6 +620,26 @@ export class AgentToolSearchRuntime {
     // Keep session evidence across registry/index rebuilds. Lookups still
     // revalidate catalog revision and contract digest, so changed capabilities
     // become unavailable without an unrelated cache cold start.
+  }
+
+  private async prepareScenarioMatches(
+    query: string,
+    signal?: AbortSignal,
+  ): Promise<readonly AgentToolSearchScenarioMatch[]> {
+    try {
+      return await this.memory.prepare(query, this.projectId);
+    } catch (error) {
+      // Scenario history is ranking evidence, not a prerequisite for the
+      // current catalog or skill selection. Preserve lexical discovery when
+      // the detached continuity store is unavailable.
+      if (error instanceof AgentCancellationError) throw error;
+      throwIfAborted(signal);
+      this.logger?.warn("routing.scenario.recall_failed", {
+        projectId: this.projectId,
+        message: errorMessage(error),
+      });
+      return [];
+    }
   }
 
   private async runToolSearch(

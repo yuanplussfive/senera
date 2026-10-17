@@ -95,6 +95,32 @@ describe("required native structured execution", () => {
       expect(stream).toHaveBeenCalledOnce();
     },
   );
+  test("aborts a silent stream using the derived idle budget after its first delta", async () => {
+    vi.useFakeTimers();
+    const stream = vi.fn((_model: unknown, _context: Context, _options: { signal: AbortSignal }) => {
+      const output = createAssistantMessageEventStream();
+      const partial = testPiAssistantMessage([{ type: "text", text: "partial" }], { stopReason: "pending" });
+      output.push({ type: "text_delta", contentIndex: 0, delta: "partial", partial });
+      return output;
+    });
+    const call = fixture(stream, { FirstTokenTimeoutMs: 1_000, MaxRequestMs: 61_000 });
+    const pending = call.execute(input);
+    let settled = false;
+    void pending.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(pending).rejects.toMatchObject({ kind: "stream_idle" });
+    expect(stream).toHaveBeenCalledOnce();
+  });
   test("retains caller cancellation without treating it as a provider timeout", async () => {
     const controller = new AbortController();
     const reason = new Error("caller stopped");

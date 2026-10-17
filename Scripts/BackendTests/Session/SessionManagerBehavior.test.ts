@@ -682,8 +682,20 @@ describe("Session manager behavior", () => {
   });
 
   test("continues a progressed failed run as a durable continuation turn", async () => {
+    let continuationRequest:
+      | {
+          input?: string;
+          continueFromTranscript?: boolean;
+          continuationSourceRequestId?: string;
+        }
+      | undefined;
     const fixture = createManagerFixture({
-      loopFactory: () => ({ run: async (request) => completedRun(request.requestId ?? "continue") }),
+      loopFactory: () => ({
+        run: async (request) => {
+          continuationRequest = request;
+          return completedRun(request.requestId ?? "continue");
+        },
+      }),
     });
     const sessionId = "session-continue-after-progress";
     const failedRequestId = "request-failed-after-progress";
@@ -717,15 +729,14 @@ describe("Session manager behavior", () => {
     });
 
     const conversation = fixture.store.loadConversation(sessionId);
-    expect(conversation.filter((entry) => entry.kind === "user.message")).toHaveLength(2);
-    expect(conversation).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          requestId: continuationRequestId,
-          content: "continue",
-          metadata: { recovery: { mode: "continue", sourceRequestId: failedRequestId } },
-        }),
-      ]),
+    expect(conversation.filter((entry) => entry.kind === "user.message")).toHaveLength(1);
+    expect(conversation).toEqual([originalUserEntry, expect.objectContaining({ requestId: continuationRequestId })]);
+    expect(continuationRequest).toEqual(
+      expect.objectContaining({
+        input: "Original task",
+        continueFromTranscript: true,
+        continuationSourceRequestId: failedRequestId,
+      }),
     );
   });
 

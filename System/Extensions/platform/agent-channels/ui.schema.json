@@ -29,6 +29,18 @@
             },
             "required": false,
             "essential": true
+          },
+          {
+            "path": ["finalResponseRewrite"],
+            "label": { "zh-CN": "渠道最终改写", "en-US": "Channel final response rewrite" },
+            "description": {
+              "zh-CN": "开启后，渠道最终消息会根据当前平台能力整理为文本、代码和资源；默认关闭。",
+              "en-US": "When enabled, the configured model serializes settled channel answers using the live platform capabilities. Off by default."
+            },
+            "type": "boolean",
+            "defaultValue": false,
+            "required": false,
+            "essential": true
           }
         ]
       },

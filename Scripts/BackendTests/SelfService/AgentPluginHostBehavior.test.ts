@@ -84,6 +84,23 @@ describe("senera plugin host", () => {
     expect(errors.some((error) => error.message.includes("Duplicate plugin id"))).toBe(true);
   });
 
+  test("does not scan one physical directory twice when scopes overlap", () => {
+    const root = createTemporaryRoot();
+    writePlugin(root, "shared", { id: "shared", source: "user" });
+
+    const host = new AgentPluginHost({
+      sources: [
+        { source: "user", directory: path.join(root, "user-dir") },
+        { source: "project", directory: path.join(root, "user-dir", ".") },
+      ],
+    });
+    host.discover();
+
+    expect(host.list()).toHaveLength(1);
+    expect(host.discoveryErrors()).toEqual([]);
+    expect(host.list()[0]?.source).toBe("user");
+  });
+
   test("bundled plugins load by default; user plugins need the opt-in whitelist", async () => {
     const root = createTemporaryRoot();
     writePlugin(root, "bundled-a", { id: "bundled-a", source: "bundled" });

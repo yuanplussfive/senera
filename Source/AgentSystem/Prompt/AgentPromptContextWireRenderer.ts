@@ -1,5 +1,7 @@
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import type { AgentContinuityMemoryPromptContext } from "../Continuity/AgentContinuityMemoryTypes.js";
+import { prefixAgentContinuityMemorySummary } from "../Continuity/AgentContinuityMemoryPresentation.js";
+import { DefaultAgentTimeZone } from "../Time/AgentTime.js";
 import { AgentExecutionStepStatuses } from "../Goals/AgentExecutionLedgerTypes.js";
 import type { AgentWorkflowPromptContext } from "./AgentWorkflowPromptContext.js";
 import { AgentTodoStatuses } from "../Todos/AgentTodoTypes.js";
@@ -139,6 +141,8 @@ function renderContinuityWire(
     "rule=digests-are-coarse-time-range-summaries;prefer-them-over-individual-events-when-current-period-recall-suffices",
     "rule=exact-detail-requires-explicit-memory-or-artifact-recall",
     "rule=missing-fields-are-unknown;do-not-infer",
+    `memory-time-zone=${DefaultAgentTimeZone}`,
+    "rule=memory-summary-prefix-is-local-time-to-the-minute",
   ]);
 }
 
@@ -291,7 +295,7 @@ function buildContinuityBlocks(memory: AgentContinuityMemoryPromptContext): Agen
           ref: digest.uri,
           granularity: digest.granularity,
           period: digest.periodStart + ".." + digest.periodEnd,
-          summary: digest.summary,
+          summary: prefixAgentContinuityMemorySummary(digest.summary, digest.periodStart),
         })),
       },
       allowedEncodings: [AgentPromptWireEncodings.Toon, AgentPromptWireEncodings.CompactJson],
@@ -304,7 +308,7 @@ function buildContinuityBlocks(memory: AgentContinuityMemoryPromptContext): Agen
           ref: entry.uri,
           type: entry.type,
           occurredAt: entry.occurredAt,
-          summary: entry.summary,
+          summary: prefixAgentContinuityMemorySummary(entry.summary, entry.occurredAt),
         })),
       },
       allowedEncodings: [AgentPromptWireEncodings.Toon, AgentPromptWireEncodings.CompactJson],

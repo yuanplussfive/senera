@@ -45,12 +45,10 @@ export function resolveAgentTodosConfig(config: AgentSystemConfig): ResolvedAgen
 export function resolveAgentPromptConfig(config: AgentSystemConfig): ResolvedAgentPromptConfig {
   const defaults = resolveAgentDefaults(config);
   const configured = config.Prompt;
-  const timeZone = configured?.TimeZone?.trim() ?? defaults.Prompt.TimeZone;
+  const timeZone = configured?.TimeZone?.trim() || defaults.Prompt.TimeZone;
   return {
     UserMessageEnvelope: configured?.UserMessageEnvelope ?? defaults.Prompt.UserMessageEnvelope,
-    TimeZone: timeZone || "Asia/Shanghai",
-    CorePersona: configured?.CorePersona?.trim() ?? defaults.Prompt.CorePersona,
-    LanguageStyle: configured?.LanguageStyle?.trim() ?? defaults.Prompt.LanguageStyle,
+    TimeZone: timeZone,
     PrefaceRewrite: configured?.PrefaceRewrite ?? defaults.Prompt.PrefaceRewrite,
     FinalResponseRewrite: configured?.FinalResponseRewrite ?? defaults.Prompt.FinalResponseRewrite,
     BamlToolAttribution: configured?.BamlToolAttribution ?? defaults.Prompt.BamlToolAttribution,

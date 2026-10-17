@@ -295,6 +295,11 @@ export interface AgentChannelsConfig {
   readonly channels: Readonly<Record<AgentChannelKind, AgentChannelConfig>>;
   readonly enabled: boolean;
   readonly defaultApprovalMode?: "agent" | "always_ask" | "full_access";
+  /**
+   * Enables the model-backed final projection used only for external channel
+   * delivery. This is intentionally separate from the console Pi rewrite.
+   */
+  readonly finalResponseRewrite: boolean;
   /** Host-owned conversation routing, resolved from the extension configuration. */
   readonly profileRoutes?: AgentProfileRouteRegistry;
 }

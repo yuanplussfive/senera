@@ -4,9 +4,11 @@ import process from "node:process";
 import { parseArgs } from "node:util";
 import { AgentArtifactRetentionService } from "../Source/AgentSystem/Artifacts/AgentArtifactRetentionService.js";
 import { loadConfigFile } from "../Source/AgentSystem/Config/AgentConfigService.js";
+import { AgentConfigSecretCodec } from "../Source/AgentSystem/Config/AgentConfigSecretProtection.js";
 import { resolveArtifactsConfig } from "../Source/AgentSystem/Defaults/AgentAppDefaults.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentSystemConfigTypes.js";
 import { errorMessage } from "../Source/AgentSystem/Core/AgentErrors.js";
+import { resolveAgentWorkspaceConfigPath } from "../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
 
 const argumentsSchema = {
   workspace: { type: "string" },
@@ -34,8 +36,10 @@ async function main(): Promise<void> {
 }
 
 function loadConfiguredSystemConfig(workspaceRoot: string, configuredPath?: string): AgentSystemConfig {
-  const configPath = path.resolve(workspaceRoot, configuredPath ?? "senera.config.json");
-  return fs.existsSync(configPath) ? loadConfigFile(configPath) : { ModelProviders: [] };
+  const configPath = resolveAgentWorkspaceConfigPath(workspaceRoot, configuredPath);
+  return fs.existsSync(configPath)
+    ? loadConfigFile(configPath, new AgentConfigSecretCodec({ workspaceRoot }))
+    : { ModelProviders: [] };
 }
 
 function parseOutput(value: string): "text" | "json" {

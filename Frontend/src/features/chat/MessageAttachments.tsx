@@ -7,6 +7,7 @@ import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { downloadUrl } from "../../lib/download";
 import { isImageFilePreview } from "../../lib/filePreview";
 import { cn, formatFileSize } from "../../lib/util";
+import { FilePreviewDialog } from "../../shared/media/FilePreviewDialog";
 import { ImagePreviewDialog } from "../../shared/media/ImagePreviewDialog";
 import { IconButton } from "../../shared/ui";
 import { FilePreviewIcon } from "./FilePreviewIcon";
@@ -20,6 +21,12 @@ interface MessageAttachmentsProps {
 interface ImageAttachmentSource {
   attachment: UploadAttachmentData;
   canonicalSource: string;
+  previewSource?: string;
+}
+
+interface FileAttachmentSource {
+  attachment: UploadAttachmentData;
+  canonicalSource?: string;
   previewSource?: string;
 }
 
@@ -48,6 +55,8 @@ export function MessageAttachments({ attachments, uploadUrl }: MessageAttachment
     (item) => !item.imageCandidate || !item.canonicalSource || failedResourceUris.has(item.attachment.resourceUri),
   );
   const selectedImage = images.find((image) => image.attachment.resourceUri === selectedResourceUri) ?? null;
+  const selectedFile: FileAttachmentSource | null =
+    files.find((file) => file.attachment.resourceUri === selectedResourceUri) ?? null;
 
   const markPreviewUnavailable = (resourceUri: string): void => {
     setFailedResourceUris((current) => new Set(current).add(resourceUri));
@@ -103,6 +112,7 @@ export function MessageAttachments({ attachments, uploadUrl }: MessageAttachment
               attachment={attachment}
               downloadSource={canonicalSource}
               previewUnavailable={imageCandidate}
+              onPreview={canonicalSource ? () => setSelectedResourceUri(attachment.resourceUri) : undefined}
             />
           ))}
         </div>
@@ -114,6 +124,18 @@ export function MessageAttachments({ attachments, uploadUrl }: MessageAttachment
           image={selectedImage}
           onClose={() => setSelectedResourceUri(null)}
           onLoadError={() => markPreviewUnavailable(selectedImage.attachment.resourceUri)}
+        />
+      ) : null}
+      {selectedFile ? (
+        <FilePreviewDialog
+          mime={selectedFile.attachment.mime}
+          name={selectedFile.attachment.name}
+          size={selectedFile.attachment.size}
+          source={selectedFile.previewSource ?? selectedFile.canonicalSource}
+          open
+          onOpenChange={(open) => {
+            if (!open) setSelectedResourceUri(null);
+          }}
         />
       ) : null}
     </div>
@@ -164,10 +186,12 @@ function AttachmentFileRow({
   attachment,
   downloadSource,
   previewUnavailable,
+  onPreview,
 }: {
   attachment: UploadAttachmentData;
   downloadSource?: string;
   previewUnavailable: boolean;
+  onPreview?: () => void;
 }): JSX.Element {
   const download = (): void => {
     if (!downloadSource) return;
@@ -180,6 +204,20 @@ function AttachmentFileRow({
     <div
       className="flex max-w-full items-center gap-1.5 rounded-md border border-line-subtle bg-surface-raised px-2 py-1 text-[11px] text-content-secondary"
       data-attachment-preview-unavailable={previewUnavailable || undefined}
+      role={onPreview ? "button" : undefined}
+      tabIndex={onPreview ? 0 : undefined}
+      aria-label={onPreview ? frontendMessage("chat.attachment.filePreview", { name: attachment.name }) : undefined}
+      onClick={onPreview}
+      onKeyDown={
+        onPreview
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onPreview();
+              }
+            }
+          : undefined
+      }
     >
       <FilePreviewIcon name={attachment.name} mime={attachment.mime} />
       <span className="min-w-0 truncate">{attachment.name}</span>
@@ -195,7 +233,10 @@ function AttachmentFileRow({
         size="sm"
         className="h-6 w-6 shrink-0 text-content-muted hover:bg-surface-hover hover:text-content-primary"
         disabled={!downloadSource}
-        onClick={download}
+        onClick={(event) => {
+          event.stopPropagation();
+          download();
+        }}
       >
         <Download className="h-3.5 w-3.5" />
       </IconButton>

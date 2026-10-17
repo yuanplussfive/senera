@@ -632,8 +632,8 @@ export class AgentConfigService {
   }
 }
 
-export function loadConfigFile(filePath: string): AgentSystemConfig {
-  return AgentConfigLoader.load(filePath);
+export function loadConfigFile(filePath: string, secretCodec: AgentConfigSecretCodec): AgentSystemConfig {
+  return AgentConfigLoader.load(filePath, secretCodec);
 }
 
 function diagnosticsForRepair(repair: AgentConfigRepairResult): AgentConfigDiagnostic[] {

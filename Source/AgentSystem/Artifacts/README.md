@@ -10,7 +10,7 @@ Artifacts records a tool call as a traceable evidence package while keeping the 
 - `AgentArtifactRedaction` applies structured and stream redaction.
 - `AgentWorkspaceChangeCapture` materializes exact, writer-owned workspace mutation receipts.
 - `AgentArtifactLocator` resolves artifact and evidence URIs.
-- `SeneraOutputSpool` preserves bounded stdout/stderr independently of live UI projection.
+- `../Execution/SeneraOutputSpool` (owned by the Execution module; consumed here) preserves bounded stdout/stderr independently of live UI projection.
 
 Raw output, model projection, and durable evidence are separate surfaces. Evidence must remain traceable through an URI. Tool artifact policy is already normalized by the registry; this module must not branch on a tool or MCP package name. Spool data is removed only after artifact commit and retained for diagnosis when sealing or commit fails.
 

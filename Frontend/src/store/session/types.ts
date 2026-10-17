@@ -30,6 +30,7 @@ import type {
   SessionChannelMetadata,
   SystemExtensionSettingsItem,
   AgentActivationCatalogSnapshot,
+  AgentRuntimeDependencySnapshot,
   SystemToolSettingsItem,
   TodoSnapshotData,
   UploadAttachmentData,
@@ -531,6 +532,7 @@ export interface StoreState {
   systemExtensions: SystemExtensionSettingsItem[];
   activationCatalog: AgentActivationCatalogSnapshot | null;
   mcpServers: McpServerSettingsItem[];
+  runtimeDependencies: Record<string, AgentRuntimeDependencySnapshot>;
   toolSettingsSynced: { systemTools: boolean; mcpServers: boolean; activation: boolean };
   channelStatuses: ChannelStatusItem[];
   userProfile: UserProfile;

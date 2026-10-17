@@ -63,6 +63,7 @@ test("displays the selected native knowledge and budget without obsolete tabs", 
   );
   renderPanel();
   expect(screen.getByText("先给结论。")).toBeVisible();
+  expect(screen.getByText(/16:00/)).toBeVisible();
   expect(screen.getByText("检索：偏好")).toBeVisible();
   expect(screen.getByText("24 / 2048 tokens")).toBeVisible();
   expect(screen.getAllByRole("tab")).toHaveLength(2);

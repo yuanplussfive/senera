@@ -47,7 +47,7 @@
 ## 评审清单
 
 1. 动效是否解释了状态或空间关系，而不是纯装饰。
-2. 是否复用了 `Frontend/src/shared/motion` 与 `Frontend/src/styles/transitions.css` 的现有能力。
+2. 是否复用了 `Frontend/src/shared/motion` 与 `Frontend/src/index.css` 的现有能力（`.senera-spinner`、`.senera-loading-pulse`、`.shimmer` 及其 `reduced`/`none` 覆盖都定义在 `index.css`；`styles/transitions.css` 只承载图标切换等过渡）。
 3. 是否覆盖完整、减少和关闭三档，并且关闭态不截获指针事件。
 4. presence 内容是否通过动画生命周期管理，而非重复硬编码毫秒数。
 5. 菜单是否在视口边缘保持正确原点，动态列表是否避免大量元素 stagger。

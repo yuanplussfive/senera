@@ -206,6 +206,32 @@ describe("Session run coordinator behavior", () => {
     ]);
   });
 
+  test("persists the durable source user request on a recovered assistant entry", async () => {
+    const fixture = createCoordinatorFixture({
+      loop: {
+        run: async (request) => completedRun(request.requestId),
+      },
+    });
+
+    await fixture.coordinator.runTurn(fixture.session, {
+      approvalMode: "agent",
+      requestId: "request-source",
+      input: "Original recovery input",
+    });
+    await fixture.coordinator.runTurn(fixture.session, {
+      approvalMode: "agent",
+      requestId: "request-recovered",
+      input: "Original recovery input",
+      recovery: { mode: "retry", sourceRequestId: "request-failed" },
+      reuseUserEntryFromRequestId: "request-source",
+    });
+
+    const assistantEntries = fixture.store
+      .loadConversation(fixture.session.id)
+      .filter((entry) => entry.kind === "assistant.decision");
+    expect(assistantEntries.at(-1)?.metadata).toMatchObject({ sourceRequestId: "request-source" });
+  });
+
   test("inherits the last compatible tool availability snapshot across session turns", async () => {
     const loadedToolRequests: Array<"all" | string[] | undefined> = [];
     const loop: AgentLoopRunner = {
@@ -304,6 +330,57 @@ describe("Session run coordinator behavior", () => {
       ]),
     );
     expect(fixture.session.status).toBe(AgentSessionStatuses.Idle);
+  });
+
+  test("keeps a committed run completed when post-commit learning fails", async () => {
+    const fixture = createCoordinatorFixture({
+      loop: {
+        run: async (request) => completedRun(request.requestId),
+        finalizeCompletedTurn: () => {
+          throw new Error("routing index unavailable");
+        },
+      },
+    });
+
+    await expect(
+      fixture.coordinator.runTurn(fixture.session, {
+        approvalMode: "agent",
+        requestId: "request-post-commit-learning-failure",
+        input: "Keep the durable answer",
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(fixture.store.loadRunSnapshots(fixture.session.id)).toEqual([
+      expect.objectContaining({ requestId: "request-post-commit-learning-failure", status: "completed" }),
+    ]);
+    expect(fixture.session.status).toBe(AgentSessionStatuses.Idle);
+  });
+
+  test("does not replace the foreground failure when cleanup also fails", async () => {
+    const fixture = createCoordinatorFixture({
+      loop: {
+        run: async () => {
+          throw new Error("model transport failed");
+        },
+        discardCompletedTurn: () => {
+          throw new Error("routing cleanup failed");
+        },
+      },
+    });
+
+    await fixture.coordinator.runTurn(fixture.session, {
+      approvalMode: "agent",
+      requestId: "request-foreground-and-cleanup-failure",
+      input: "Preserve the model error",
+    });
+
+    expect(fixture.store.loadRunSnapshots(fixture.session.id)).toEqual([
+      expect.objectContaining({
+        requestId: "request-foreground-and-cleanup-failure",
+        status: "failed",
+        errorMessage: "model transport failed",
+      }),
+    ]);
   });
 
   test("replays a matching durable command without executing the loop twice", async () => {

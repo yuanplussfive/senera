@@ -1,3 +1,4 @@
+import type { KeyboardEvent, MouseEvent } from "react";
 import type { ChatMessage, RunRecord, UserProfile } from "../../store/sessionStore";
 import { cn } from "../../lib/util";
 import { ConversationFrame } from "../../shared/ui";
@@ -7,6 +8,7 @@ import { MessageAttachments } from "./MessageAttachments";
 import { MessageAvatar, MessageMeta } from "./MessageChrome";
 import { InlineMessageEditor } from "./InlineMessageEditor";
 import { MessageMetrics } from "./MessageMetrics";
+import { ChatMessageMarkdown } from "./ChatMessageMarkdown";
 
 export interface UserMessageRowProps {
   message: ChatMessage;
@@ -43,6 +45,20 @@ export function UserMessageRow({
   onDelete,
   onViewWorkflow,
 }: UserMessageRowProps): JSX.Element {
+  const canEdit = Boolean(message.requestId && onClickBubble);
+
+  const handleBubbleClick = (event: MouseEvent<HTMLDivElement>): void => {
+    if (!canEdit || (event.target instanceof Element && event.target.closest("a, button"))) return;
+    onClickBubble?.();
+  };
+
+  const handleBubbleKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if (!canEdit || event.target !== event.currentTarget) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    onClickBubble?.();
+  };
+
   return (
     <ConversationFrame mode="user" className="group/msg items-start justify-end gap-2.5" data-message-hover-surface>
       <div className="flex min-w-0 max-w-full flex-col items-end">
@@ -59,19 +75,30 @@ export function UserMessageRow({
           />
         ) : (
           <>
-            <button
-              type="button"
-              onClick={onClickBubble}
+            <div
+              onClick={handleBubbleClick}
+              onKeyDown={handleBubbleKeyDown}
+              role={canEdit ? "button" : undefined}
+              tabIndex={canEdit ? 0 : undefined}
               className={cn(
-                "mt-1 max-w-full whitespace-pre-wrap wrap-anywhere rounded-2xl rounded-tr-[5px] bg-[var(--theme-chat-user-bg)] px-4 py-2.5 text-left text-[length:var(--theme-chat-user-font-size-scaled)] leading-[var(--theme-chat-user-line-height)] text-[var(--theme-chat-user-fg)] shadow-[var(--shadow-bubble-user)] transition",
-                message.requestId
+                "mt-1 max-w-full min-w-0 overflow-hidden rounded-2xl rounded-tr-[5px] bg-[var(--theme-chat-user-bg)] px-4 py-2.5 text-left text-[length:var(--theme-chat-user-font-size-scaled)] leading-[var(--theme-chat-user-line-height)] text-[var(--theme-chat-user-fg)] shadow-[var(--shadow-bubble-user)] transition",
+                canEdit
                   ? "cursor-pointer hover:bg-[var(--theme-chat-user-hover-bg)] focus:outline-none focus:ring-2 focus:ring-accent-focus"
                   : "cursor-default",
               )}
-              aria-label={frontendMessage("chat.editMessage")}
+              aria-label={canEdit ? frontendMessage("chat.editMessage") : undefined}
+              data-user-message-bubble
             >
-              {message.content}
-            </button>
+              <ChatMessageMarkdown
+                content={message.content}
+                className="min-w-0 max-w-full"
+                contentClassName={cn(
+                  "text-[length:var(--theme-chat-user-font-size-scaled)] leading-[var(--theme-chat-user-line-height)] text-[var(--theme-chat-user-fg)]",
+                  canEdit && "cursor-pointer",
+                )}
+                externalLinkPresentation="text"
+              />
+            </div>
             <MessageMetrics role="user" text={message.content} />
             <MessageActions
               content={message.content}

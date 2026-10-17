@@ -18,18 +18,29 @@ import { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import {
+  AgentWorkspaceInUseError,
   AgentWorkspaceNotFoundError,
   type AgentWorkspaceCatalog,
 } from "../WorkspaceResources/AgentWorkspaceCatalog.js";
 import {
   AgentWorkspaceCatalogRoute,
+  AgentWorkspaceIdSchema,
   AgentWorkspaceCatalogSnapshotSchema,
+  type AgentWorkspaceCatalogSnapshot,
 } from "../WorkspaceResources/AgentWorkspaceCatalogContract.js";
 import { AgentWebSocketCloseCodes, AgentWebSocketCloseReasons } from "./AgentWebSocketCloseContract.js";
 import { AgentWorkspaceScopeParameter } from "../WorkspaceResources/AgentWorkspaceTransportScope.js";
 import { resolveAgentApplicationPaths } from "../Core/AgentApplicationPaths.js";
 import { readAgentApplicationStorage } from "../WorkspaceResources/AgentApplicationStorage.js";
-import { AgentApplicationHttpRoutes } from "../WorkspaceResources/AgentApplicationStorageContract.js";
+import {
+  AgentApplicationHttpRoutes,
+  AgentApplicationStorageScopes,
+  type AgentApplicationStorageScope,
+} from "../WorkspaceResources/AgentApplicationStorageContract.js";
+import {
+  readAgentWorkspaceStateMigrationInventory,
+  removeAgentWorkspaceStateMigrationBackup,
+} from "../WorkspaceResources/AgentWorkspaceStateMigrationMaintenance.js";
 
 export interface AgentWorkspaceTransportEndpoint {
   connect(socket: WebSocket, access: AgentAuthenticatedAccess): void;
@@ -43,6 +54,7 @@ export interface AgentWebSocketTransportOptions {
   defaultWorkspaceId: string;
   catalog?: AgentWorkspaceCatalog;
   openWorkspace?: (id: string) => Promise<void>;
+  forgetWorkspace?: (id: string) => Promise<AgentWorkspaceCatalogSnapshot>;
   staticFrontendRoot?: string;
   automaticLoopbackHttp?: boolean;
   accessGuard?: AgentServerAccessGuard;
@@ -120,6 +132,27 @@ export class AgentWebSocketTransport {
           response.writeHead(404, { "Cache-Control": "no-store", "Content-Type": "application/json" });
           response.end(
             JSON.stringify({ ok: false, error: { code: "workspace_not_found", workspaceId: error.workspaceId } }),
+          );
+          return;
+        }
+        if (error instanceof AgentWorkspaceInUseError && !response.headersSent) {
+          if (
+            !applyCredentialedCors(request, response, {
+              allowedMethods: ["GET", "DELETE", "OPTIONS"],
+              allowedHeaders: ["x-senera-csrf"],
+              isOriginAllowed: (origin, corsRequest) => this.accessGuard.allowsOrigin(origin, corsRequest),
+            })
+          ) {
+            response.writeHead(403);
+            response.end();
+            return;
+          }
+          response.writeHead(409, { "Cache-Control": "no-store", "Content-Type": "application/json" });
+          response.end(
+            JSON.stringify({
+              ok: false,
+              error: { code: "workspace_in_use", workspaceId: error.workspaceId, message: error.message },
+            }),
           );
           return;
         }
@@ -265,11 +298,131 @@ export class AgentWebSocketTransport {
     }
     const url = new URL(request.url ?? "/", "http://senera.local");
     if (url.pathname === AgentWorkspaceCatalogRoute && this.options.catalog) {
-      if (!this.authorizeApplicationRead(request, response)) return;
-      const data = AgentWorkspaceCatalogSnapshotSchema.parse({
-        workspaces: this.options.catalog.list(),
-        defaultWorkspaceId: this.options.defaultWorkspaceId,
-      });
+      if (
+        !applyCredentialedCors(request, response, {
+          allowedMethods: ["GET", "DELETE", "OPTIONS"],
+          allowedHeaders: ["x-senera-csrf"],
+          isOriginAllowed: (origin, corsRequest) => this.accessGuard.allowsOrigin(origin, corsRequest),
+        })
+      ) {
+        response.writeHead(403);
+        response.end();
+        return;
+      }
+      if (request.method === "OPTIONS") {
+        writeCorsPreflight(response);
+        return;
+      }
+      const method = request.method ?? "GET";
+      const authorization = this.accessGuard.authorizeHttp(request, { requireCsrf: method === "DELETE" });
+      if (!authorization.ok) {
+        response.writeHead(authorization.failure.status);
+        response.end();
+        return;
+      }
+      if (method === "GET") {
+        const data = AgentWorkspaceCatalogSnapshotSchema.parse({
+          workspaces: this.options.catalog.list(),
+          defaultWorkspaceId: this.options.defaultWorkspaceId,
+        });
+        response.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+        response.end(JSON.stringify(data));
+        return;
+      }
+      if (method !== "DELETE") {
+        response.writeHead(405, { Allow: "GET, DELETE" });
+        response.end();
+        return;
+      }
+      if (!this.options.forgetWorkspace) {
+        response.writeHead(405, { Allow: "GET" });
+        response.end();
+        return;
+      }
+      const workspaceId = url.searchParams.get("workspaceId");
+      const parsedWorkspaceId = workspaceId ? AgentWorkspaceIdSchema.safeParse(workspaceId) : undefined;
+      if (!parsedWorkspaceId?.success) {
+        response.writeHead(400, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+        response.end(
+          JSON.stringify({
+            ok: false,
+            error: { code: "workspace_id_invalid", message: "A valid workspaceId is required." },
+          }),
+        );
+        return;
+      }
+      const data = await this.options.forgetWorkspace(parsedWorkspaceId.data);
+      response.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+      response.end(JSON.stringify(AgentWorkspaceCatalogSnapshotSchema.parse(data)));
+      return;
+    }
+    if (url.pathname === AgentApplicationHttpRoutes.StorageMigrations) {
+      if (
+        !applyCredentialedCors(request, response, {
+          allowedMethods: ["GET", "DELETE", "OPTIONS"],
+          allowedHeaders: ["x-senera-csrf"],
+          isOriginAllowed: (origin, corsRequest) => this.accessGuard.allowsOrigin(origin, corsRequest),
+        })
+      ) {
+        response.writeHead(403);
+        response.end();
+        return;
+      }
+      if (request.method === "OPTIONS") {
+        writeCorsPreflight(response);
+        return;
+      }
+      const authorization = this.accessGuard.authorizeHttp(request, { requireCsrf: request.method === "DELETE" });
+      if (!authorization.ok) {
+        response.writeHead(authorization.failure.status);
+        response.end();
+        return;
+      }
+      if (!this.options.catalog) {
+        response.writeHead(503, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+        response.end(JSON.stringify({ ok: false, error: { code: "workspace_catalog_unavailable" } }));
+        return;
+      }
+      if (request.method !== "GET" && request.method !== "DELETE") {
+        response.writeHead(405, { Allow: "GET, DELETE" });
+        response.end();
+        return;
+      }
+      const workspaceId = url.searchParams.get("workspaceId");
+      const parsedWorkspaceId = workspaceId ? AgentWorkspaceIdSchema.safeParse(workspaceId) : undefined;
+      if (workspaceId && !parsedWorkspaceId?.success) {
+        response.writeHead(400, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+        response.end(JSON.stringify({ ok: false, error: { code: "workspace_id_invalid" } }));
+        return;
+      }
+      const paths = resolveAgentApplicationPaths(this.options.applicationRoot);
+      if (request.method === "DELETE") {
+        if (!parsedWorkspaceId?.success || !url.searchParams.get("backupId")) {
+          response.writeHead(400, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+          response.end(JSON.stringify({ ok: false, error: { code: "migration_backup_target_required" } }));
+          return;
+        }
+        const workspace = this.options.catalog.get(parsedWorkspaceId.data);
+        await removeAgentWorkspaceStateMigrationBackup({
+          stateRoot: paths.workspaceLayout(workspace.root, workspace.id).stateRoot,
+          backupId: url.searchParams.get("backupId")!,
+        });
+      }
+      const workspaces = parsedWorkspaceId?.success
+        ? [this.options.catalog.get(parsedWorkspaceId.data)]
+        : this.options.catalog.list();
+      const data = {
+        workspaces: await Promise.all(
+          workspaces.map(async (workspace) => ({
+            id: workspace.id,
+            name: workspace.name,
+            root: workspace.root,
+            inventory: await readAgentWorkspaceStateMigrationInventory(
+              paths.workspaceLayout(workspace.root, workspace.id).stateRoot,
+            ),
+          })),
+        ),
+      };
       response.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
       response.end(JSON.stringify(data));
       return;
@@ -301,9 +454,17 @@ export class AgentWebSocketTransport {
         response.end();
         return;
       }
+      const requestedScope = url.searchParams.get("scope") ?? AgentApplicationStorageScopes.Runtime;
+      const knownScopes = new Set(Object.values(AgentApplicationStorageScopes));
+      if (!knownScopes.has(requestedScope as AgentApplicationStorageScope)) {
+        response.writeHead(400, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+        response.end(JSON.stringify({ ok: false, error: { code: "storage_scope_invalid" } }));
+        return;
+      }
       const data = await readAgentApplicationStorage(
         resolveAgentApplicationPaths(this.options.applicationRoot),
         this.options.catalog,
+        { includeProject: requestedScope === AgentApplicationStorageScopes.Project },
       );
       response.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
       response.end(JSON.stringify(data));

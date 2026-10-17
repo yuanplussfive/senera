@@ -5,7 +5,8 @@ let harness;
 test.beforeEach(async () => {
   harness = await createWorkspaceHostHarness();
 });
-test.afterEach(async () => {
+test.afterEach(async ({ page }) => {
+  await page.close();
   await harness?.stop();
 });
 

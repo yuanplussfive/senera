@@ -31,7 +31,7 @@ const Turndown = new TurndownService({
 });
 
 export function extractAgentWebContent(input: AgentWebContentExtractionInput): AgentWebContentExtractionResult {
-  if (input.mode === "text" || !isHtmlContentType(input.contentType)) {
+  if (input.mode === "text" || !isAgentWebHtmlContentType(input.contentType)) {
     const markdown = normalizeMarkdown(input.source, input.maxMarkdownChars);
     return {
       title: input.finalUrl,
@@ -65,7 +65,7 @@ export function selectRelevantBlocks(value: string, prompt: string | undefined, 
     .map((block) => block.trim())
     .filter(Boolean);
   if (blocks.length === 0) return "";
-  const limit = Math.max(1, Math.floor(maxBlocks));
+  const limit = requirePositiveInteger(maxBlocks, "maxExtractBlocks");
   if (!prompt?.trim()) return blocks.slice(0, limit).join("\n\n");
 
   const query = prompt.trim().toLocaleLowerCase();
@@ -84,7 +84,7 @@ export function selectRelevantBlocks(value: string, prompt: string | undefined, 
   return (relevant.length > 0 ? relevant : scored.slice(0, limit)).map((entry) => entry.block).join("\n\n");
 }
 
-function isHtmlContentType(contentType: string): boolean {
+export function isAgentWebHtmlContentType(contentType: string): boolean {
   return HtmlContentTypes.has(contentType.split(";", 1)[0]!.trim().toLowerCase());
 }
 
@@ -101,8 +101,9 @@ function collectLinks(
 ): Array<{ title: string; url: string }> {
   const seen = new Set<string>();
   const result: Array<{ title: string; url: string }> = [];
+  const limit = requireNonNegativeInteger(maxLinks, "maxLinks");
   for (const element of Array.from(document.querySelectorAll("a"))) {
-    if (result.length >= Math.max(0, Math.floor(maxLinks))) break;
+    if (result.length >= limit) break;
     const href = element.getAttribute("href")?.trim();
     if (!href || href.startsWith("#")) continue;
     try {
@@ -126,18 +127,30 @@ function tokenize(value: string): string[] {
 }
 
 function normalizeMarkdown(value: string, maxChars: number): string {
+  const limit = requirePositiveInteger(maxChars, "maxMarkdownChars");
   const normalized = value
     .replaceAll("\r\n", "\n")
     .replaceAll("\r", "\n")
     .replaceAll(/[ \t]+\n/gu, "\n")
     .replaceAll(/\n{3,}/gu, "\n\n")
     .trim();
-  return Array.from(normalized)
-    .slice(0, Math.max(0, Math.floor(maxChars)))
-    .join("")
-    .trim();
+  return Array.from(normalized).slice(0, limit).join("").trim();
 }
 
 function compactText(value: string, maxChars: number): string {
   return Array.from(value.replaceAll(/\s+/gu, " ").trim()).slice(0, maxChars).join("");
+}
+
+function requirePositiveInteger(value: number, name: string): number {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new RangeError(`${name} must be a positive safe integer.`);
+  }
+  return value;
+}
+
+function requireNonNegativeInteger(value: number, name: string): number {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new RangeError(`${name} must be a non-negative safe integer.`);
+  }
+  return value;
 }

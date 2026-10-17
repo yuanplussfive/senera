@@ -6,6 +6,7 @@ import { z } from "zod";
 import { deepFreeze } from "../Core/AgentDeepFreeze.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import { isPathWithin } from "../Core/AgentPath.js";
+import { resolveAgentWorkspaceLayout } from "../Core/AgentWorkspaceLayout.js";
 import { discoverAgentSystemExtensionPackages } from "../SystemTools/AgentSystemExtensionDiscovery.js";
 import { resolveSystemExtensionPackageDirectory } from "../SystemTools/AgentSystemExtensionPackagePath.js";
 import type { AgentSystemAgentRoleContribution } from "../SystemTools/AgentSystemExtensionManifest.js";
@@ -151,7 +152,7 @@ function discoverRoleDefinitions(workspaceRoot: string, configuredBuiltinRoot?: 
   if (!fs.existsSync(builtinRoot)) throw new Error(`Bundled subagent role directory does not exist: ${builtinRoot}`);
   return [
     ...readRoleDirectory(builtinRoot, "builtin"),
-    ...readRoleDirectory(path.join(workspaceRoot, ".senera", "agents"), "workspace"),
+    ...readRoleDirectory(resolveAgentWorkspaceLayout(workspaceRoot).agentRolesRoot, "workspace"),
   ];
 }
 

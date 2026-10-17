@@ -62,7 +62,10 @@ export class AgentWorkspacePathIndex {
       process.once("error", reject);
       process.once("close", (code) => {
         if (code !== 0 && code !== 1) reject(new Error(diagnostic || `Workspace indexing exited with code ${code}.`));
-        else resolve(files);
+        else {
+          if (tail.length > 0) files.push(tail.toString("utf8").split(path.sep).join("/"));
+          resolve(files);
+        }
       });
     });
   }

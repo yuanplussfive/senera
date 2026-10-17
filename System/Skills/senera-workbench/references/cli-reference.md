@@ -2,8 +2,8 @@
 
 The `senera` command surface has one vocabulary and two equal entry points:
 
-- **`SeneraCommand`** host tool — the model-facing surface, executed in-process against the live host services (revision guard, mirror write, live broadcast).
-- **`senera` CLI** — the human-facing surface (`senera config get ...`, `--json` supported), which discovers the running service through `.senera/runtime.json` and dispatches the identical command implementation over `POST /senera/self` with the runtime bearer token. There is no offline file-writing path: if the service is not running, the CLI reports that plainly and touches nothing.
+- **`SeneraCommand`** host tool: the model-facing surface, executed in-process against the live host services (revision guard, mirror write, live broadcast).
+- **`senera` CLI**: the human-facing surface (`senera config get ...`, `--json` supported), which discovers the running service through `.senera/runtime.json` and dispatches the identical command implementation over `POST /senera/self` with the runtime bearer token. There is no offline file-writing path: if the service is not running, the CLI reports that plainly and touches nothing.
 
 Both entry points therefore commit through the same host services, so a change made from either side is revision-guarded, schema-validated, mirrored, and broadcast to the frontend.
 
@@ -18,20 +18,20 @@ same invocation instead of falling back to raw shell or direct file edits.
 
 | Action | Arguments | Returns                                                                                                                                                               |
 | ------ | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| —      | —         | The live self-service protocol version, every built-in/plugin command with its usage, arguments and sensitivity, the governing invariants, and the mutation workflow. |
+| -      | -         | The live self-service protocol version, every built-in/plugin command with its usage, arguments and sensitivity, the governing invariants, and the mutation workflow. |
 
 Use this command before relying on remembered command names. Plugin commands are only listed after the live plugin registry has loaded them.
 
 ## config
 
-| Action      | Arguments              | Returns                                                                                                                                               |
-| ----------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `get`       | `path?` (dot notation) | Value at path; secrets redacted (`***`). Omit path for the whole effective snapshot.                                                                  |
-| `models`    | —                      | Model provider list: id, providerId, model, planning mode, context tokens.                                                                            |
-| `endpoints` | —                      | Default provider id and endpoint list: id, enabled, kind, baseUrl.                                                                                    |
-| `history`   | —                      | Retained configuration revisions, newest first (revision, source, timestamp). Empty when the config store is disabled — never a silent approximation. |
-| `rollback`  | `revision`             | Restores a historical revision as a NEW revision on top of the current state. History is append-only; the target revision is never rewritten.         |
-| `update`    | `path`, `value`        | Commits one path change through the host config service. `value` of `null` clears the key.                                                            |
+| Action      | Arguments              | Returns                                                                                                                                              |
+| ----------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `get`       | `path?` (dot notation) | Value at path; secrets redacted (`***`). Omit path for the whole effective snapshot.                                                                 |
+| `models`    | -                      | Model provider list: id, providerId, model, planning mode, context tokens.                                                                           |
+| `endpoints` | -                      | Default provider id and endpoint list: id, enabled, kind, baseUrl.                                                                                   |
+| `history`   | -                      | Retained configuration revisions, newest first (revision, source, timestamp). Empty when the config store is disabled, never a silent approximation. |
+| `rollback`  | `revision`             | Restores a historical revision as a NEW revision on top of the current state. History is append-only; the target revision is never rewritten.        |
+| `update`    | `path`, `value`        | Commits one path change through the host config service. `value` of `null` clears the key.                                                           |
 
 Examples:
 
@@ -69,7 +69,7 @@ The CLI performs this handshake automatically: when a command defers, it prompts
 
 | Action | Arguments | Returns                                                                                          |
 | ------ | --------- | ------------------------------------------------------------------------------------------------ |
-| `info` | —         | Workspace root, state/data directories, skills root, MCP root, database paths, deployment modes. |
+| `info` | -         | Workspace root, state/data directories, skills root, MCP root, database paths, deployment modes. |
 
 ## session
 
@@ -88,7 +88,7 @@ The session model preference is intentionally separate from the effective model 
 
 | Action      | Arguments                             | Returns                                                                                               |
 | ----------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `list`      | —                                     | System and workspace Skills with source, revision, recommended tools, and validation state.           |
+| `list`      | -                                     | System and workspace Skills with source, revision, recommended tools, and validation state.           |
 | `search`    | `query`, `limit?`                     | Bounded metadata candidates ranked for a task; Skill bodies are not loaded.                           |
 | `inspect`   | `name`                                | The full `SKILL.md`, package resource catalog, and source metadata for one uniquely resolved Skill.   |
 | `resources` | `name`                                | Lists package resources with type, byte size, and digest.                                             |
@@ -116,7 +116,12 @@ duplicate name, conflict, or malformed history entry is reported explicitly.
 ## sessions, logs, plugins, status
 
 - `senera sessions list` returns the recent session catalog exposed by the host.
-- `senera logs list` lists bounded `.log` files; `senera logs tail NAME [LINES]` reads only a bounded tail.
+- `senera logs health` checks the workspace-local projection and detail store.
+- `senera logs streams` lists the foreground and background streams currently present; use it before choosing a stream filter.
+- `senera logs list` lists structured projection/detail files; `senera logs latest [STREAM] [LEVEL] [KIND] [SCOPE] [LIMIT]` reads the newest bounded page.
+- `senera logs range FROM TO [STREAM] [LEVEL] [KIND] [SCOPE] [LIMIT]` reads a bounded RFC3339 time range; `senera logs session SESSION_ID [LIMIT]` narrows to one session.
+- `senera logs trace REQUEST_ID [LIMIT]` reads one request chain; `senera logs next CURSOR [LIMIT]` continues any returned page without repeating its filters. Use `STREAM=background/memos` for background memory evidence and `senera logs detail DETAIL_ID` for one redacted detail.
+- `senera logs tail NAME [LINES]` remains available for bounded inspection of a known projection file; omitted lines use the configured workspace policy.
 - `senera plugins list` reports discovered, enabled, loaded and failed plugins without hiding discovery errors.
 - `senera status` reports the live service manifest and current configuration revision.
 
@@ -126,7 +131,7 @@ These commands are observational. They do not replace the workspace/edit/test/Gi
 
 | Action   | Arguments | Returns                                                                                              |
 | -------- | --------- | ---------------------------------------------------------------------------------------------------- |
-| `status` | —         | Local health: config validity (has a default model), workspace read/write, state directory presence. |
+| `status` | -         | Local health: config validity (has a default model), workspace read/write, state directory presence. |
 
 Notes:
 

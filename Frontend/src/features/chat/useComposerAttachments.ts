@@ -128,9 +128,9 @@ export function useComposerAttachments(options: ComposerAttachmentsOptions): Com
     if (files.length === 0) return;
     for (const file of files) {
       const id = generateId();
-      const previewUrl = isImageFilePreview({ name: file.name, mime: file.type })
-        ? URL.createObjectURL(file)
-        : undefined;
+      // Keep one local preview source for every file type. The shared preview
+      // dialog decides whether it is an image, text, media, or binary file.
+      const previewUrl = URL.createObjectURL(file);
       setPendingAttachments((current) => [
         ...current,
         {
@@ -186,7 +186,12 @@ export function useComposerAttachments(options: ComposerAttachmentsOptions): Com
   // the message list can keep rendering them; everything else is revoked.
   const commitSentAttachments = (): void => {
     for (const entry of pendingAttachments) {
-      if (entry.previewUrl && entry.status === "uploaded" && entry.attachment) {
+      if (
+        entry.previewUrl &&
+        entry.status === "uploaded" &&
+        entry.attachment &&
+        isImageFilePreview({ name: entry.fileName, mime: entry.mime ?? entry.attachment.mime })
+      ) {
         uploadPreviewRegistry.register(entry.attachment.resourceUri, entry.previewUrl);
       } else {
         revokePreviewUrl(entry.previewUrl);

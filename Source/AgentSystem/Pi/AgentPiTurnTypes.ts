@@ -24,6 +24,10 @@ export interface AgentPiTurnRequest {
   requestId: string;
   step: number;
   input: string;
+  /** Resume the existing Pi transcript instead of appending a new prompt. */
+  continueFromTranscript?: boolean;
+  /** Identifies the durable turn whose Pi transcript should be resumed. */
+  continuationSourceRequestId?: string;
   attachments?: AgentUploadAttachment[];
   interaction?: AgentInteractionContext;
   prompt: string;

@@ -8,6 +8,7 @@ export function projectAgentSelfWorkspaceInfo(port: AgentSelfServicePort): Agent
   return {
     root: layout.root,
     stateRoot: layout.stateRoot,
+    logsRoot: port.logs?.root() ?? layout.logsRoot,
     dataRoot: layout.dataRoot,
     skillRoot: layout.skillRoot,
     mcpRoot: layout.mcpRoot,
@@ -20,6 +21,7 @@ export function describeAgentSelfWorkspace(info: AgentSelfWorkspaceInfo): string
   return [
     `workspace: ${info.root}`,
     `state: ${info.stateRoot}`,
+    `logs: ${info.logsRoot}`,
     `data: ${info.dataRoot}`,
     `skills: ${info.skillRoot}`,
     `mcp: ${info.mcpRoot}`,

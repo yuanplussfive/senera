@@ -48,6 +48,17 @@ export interface AgentPathRemovalOptions {
   deferOnBusy?: boolean;
 }
 
+export interface AgentPathCopyOptions {
+  /** Copies directories recursively when set. */
+  recursive?: boolean;
+  /** Replaces existing files or directories when set. */
+  force?: boolean;
+  /** Fails when the destination entry already exists. */
+  errorOnExist?: boolean;
+  /** Skips a source entry when the predicate returns false. */
+  filter?: (sourcePath: string) => boolean;
+}
+
 export type AgentPathRemovalResult = "removed" | "deferred";
 
 /**
@@ -105,7 +116,7 @@ export async function removeAgentPathWithRetry(
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
-      await fs.promises.rm(targetPath, { force: true, recursive });
+      await removeAgentPathOnce(targetPath, recursive);
       return "removed";
     } catch (error) {
       if (isMissingFileError(error)) return "removed";
@@ -127,6 +138,71 @@ export async function removeAgentPathWithRetry(
   }
 
   throw lastError ?? new Error(`Unable to remove managed path: ${targetPath}`);
+}
+
+/** Removes a managed path synchronously without Node's Windows `rm` path walker. */
+export function removeAgentPathSync(targetPath: string, options: { recursive?: boolean; force?: boolean } = {}): void {
+  const recursive = options.recursive ?? false;
+  const force = options.force ?? false;
+  try {
+    removeAgentPathOnceSync(targetPath, recursive);
+  } catch (error) {
+    if (force && isMissingFileError(error)) return;
+    throw error;
+  }
+}
+
+/**
+ * Copies a managed path without Node's Windows `cp` walker. Node 24 can
+ * terminate the process while copying a non-ASCII path, so workspace-owned
+ * copies use the same lstat/readdir primitives as managed deletion.
+ */
+export function copyAgentPathSync(sourcePath: string, targetPath: string, options: AgentPathCopyOptions = {}): void {
+  if (options.filter && !options.filter(sourcePath)) return;
+  const source = fs.lstatSync(sourcePath);
+  const existing = readPathStatsSync(targetPath);
+  const force = options.force ?? false;
+  const errorOnExist = options.errorOnExist ?? false;
+  if (existing && errorOnExist) throw createPathExistsError(targetPath);
+
+  if (source.isSymbolicLink()) {
+    if (existing) {
+      if (!force) return;
+      removeAgentPathSync(targetPath, { recursive: true, force: true });
+    }
+    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+    const link = fs.readlinkSync(sourcePath);
+    let linkType: "junction" | "file" = "file";
+    try {
+      linkType = fs.statSync(sourcePath).isDirectory() ? "junction" : "file";
+    } catch {
+      // A dangling link is still copied as a link; the target does not need to resolve.
+    }
+    fs.symlinkSync(link, targetPath, linkType);
+    return;
+  }
+
+  if (source.isDirectory()) {
+    if (!options.recursive) throw new Error(`Cannot copy directory without recursive mode: ${sourcePath}`);
+    if (existing && (!existing.isDirectory() || existing.isSymbolicLink())) {
+      if (!force) return;
+      removeAgentPathSync(targetPath, { recursive: true, force: true });
+    }
+    fs.mkdirSync(targetPath, { recursive: true });
+    preserveFileMode(targetPath, source.mode);
+    for (const entry of fs.readdirSync(sourcePath)) {
+      copyAgentPathSync(path.join(sourcePath, entry), path.join(targetPath, entry), options);
+    }
+    return;
+  }
+
+  if (existing) {
+    if (!force) return;
+    removeAgentPathSync(targetPath, { recursive: true, force: true });
+  }
+  fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+  fs.copyFileSync(sourcePath, targetPath);
+  preserveFileMode(targetPath, source.mode);
 }
 
 export interface AgentRegularTextFileSnapshot {
@@ -222,7 +298,7 @@ export function writeFileAtomicSync(
     }
     fs.renameSync(temporaryPath, filePath);
   } finally {
-    fs.rmSync(temporaryPath, { force: true });
+    unlinkFileIfPresentSync(temporaryPath);
   }
 }
 
@@ -243,8 +319,87 @@ export async function writeFileAtomic(
     }
     await fs.promises.rename(temporaryPath, filePath);
   } finally {
-    await fs.promises.rm(temporaryPath, { force: true });
+    await unlinkFileIfPresent(temporaryPath);
   }
+}
+
+function unlinkFileIfPresentSync(filePath: string): void {
+  try {
+    fs.unlinkSync(filePath);
+  } catch (error) {
+    if (nodeErrorCode(error) !== "ENOENT") throw error;
+  }
+}
+
+async function unlinkFileIfPresent(filePath: string): Promise<void> {
+  try {
+    await fs.promises.unlink(filePath);
+  } catch (error) {
+    if (nodeErrorCode(error) !== "ENOENT") throw error;
+  }
+}
+
+async function removeAgentPathOnce(targetPath: string, recursive: boolean): Promise<void> {
+  let entry: fs.Stats;
+  try {
+    entry = await fs.promises.lstat(targetPath);
+  } catch (error) {
+    if (isMissingFileError(error)) return;
+    throw error;
+  }
+  if (!entry.isDirectory() || entry.isSymbolicLink()) {
+    await fs.promises.unlink(targetPath);
+    return;
+  }
+  if (!recursive) {
+    await fs.promises.rmdir(targetPath);
+    return;
+  }
+  for (const child of await fs.promises.readdir(targetPath)) {
+    await removeAgentPathOnce(path.join(targetPath, child), true);
+  }
+  await fs.promises.rmdir(targetPath);
+}
+
+function removeAgentPathOnceSync(targetPath: string, recursive: boolean): void {
+  let entry: fs.Stats;
+  try {
+    entry = fs.lstatSync(targetPath);
+  } catch (error) {
+    if (isMissingFileError(error)) return;
+    throw error;
+  }
+  if (!entry.isDirectory() || entry.isSymbolicLink()) {
+    fs.unlinkSync(targetPath);
+    return;
+  }
+  if (!recursive) {
+    fs.rmdirSync(targetPath);
+    return;
+  }
+  for (const child of fs.readdirSync(targetPath)) {
+    removeAgentPathOnceSync(path.join(targetPath, child), true);
+  }
+  fs.rmdirSync(targetPath);
+}
+
+function readPathStatsSync(targetPath: string): fs.Stats | undefined {
+  try {
+    return fs.lstatSync(targetPath);
+  } catch (error) {
+    if (isMissingFileError(error)) return undefined;
+    throw error;
+  }
+}
+
+function createPathExistsError(targetPath: string): NodeJS.ErrnoException {
+  const error = new Error(`Destination already exists: ${targetPath}`) as NodeJS.ErrnoException;
+  error.code = "EEXIST";
+  return error;
+}
+
+function preserveFileMode(filePath: string, mode: number): void {
+  if (process.platform !== "win32") fs.chmodSync(filePath, mode & 0o777);
 }
 
 function temporaryPathFor(filePath: string): string {

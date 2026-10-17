@@ -13,7 +13,7 @@ export class ModelProviderHttpError extends AgentBaseError {
 }
 
 export class ModelRequestTimeoutError extends AgentBaseError {
-  constructor(readonly kind: "request_header" | "max_request" | "first_token") {
+  constructor(readonly kind: "request_header" | "max_request" | "first_token" | "stream_idle") {
     super(kind);
   }
 }

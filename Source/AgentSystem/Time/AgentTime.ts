@@ -19,19 +19,7 @@ export function projectAgentTime(isoText: string, timeZone = DefaultAgentTimeZon
   }
 
   const resolvedTimeZone = resolveAgentTimeZone(timeZone);
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat("en-CA", {
-      timeZone: resolvedTimeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      hourCycle: "h23",
-    })
-      .formatToParts(date)
-      .filter((part) => part.type !== "literal")
-      .map((part) => [part.type, part.value]),
-  );
+  const parts = formatAgentTimeParts(date, resolvedTimeZone);
   const year = readTimePart(parts, "year");
   const month = readTimePart(parts, "month");
   const day = readTimePart(parts, "day");
@@ -44,6 +32,19 @@ export function projectAgentTime(isoText: string, timeZone = DefaultAgentTimeZon
     localDate,
     localHour: `${localDate}T${hour}`,
   };
+}
+
+/** Formats a persisted instant as a stable, minute-precision local timestamp. */
+export function formatAgentTimeMinute(isoText: string, timeZone = DefaultAgentTimeZone): string {
+  const date = new Date(isoText);
+  const epochMs = date.getTime();
+  if (!Number.isFinite(epochMs)) {
+    throw new Error(`Invalid timestamp: ${isoText}`);
+  }
+
+  const resolvedTimeZone = resolveAgentTimeZone(timeZone);
+  const parts = formatAgentTimeParts(date, resolvedTimeZone);
+  return `${readTimePart(parts, "year")}-${readTimePart(parts, "month")}-${readTimePart(parts, "day")} ${readTimePart(parts, "hour")}:${readTimePart(parts, "minute")}`;
 }
 
 /** Returns the canonical UTC representation used for persisted instants and duration calculations. */
@@ -70,4 +71,21 @@ function readTimePart(parts: Record<string, string>, key: string): string {
     throw new Error(`Intl time projection missing part: ${key}`);
   }
   return value;
+}
+
+function formatAgentTimeParts(date: Date, timeZone: string): Record<string, string> {
+  return Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(date)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
 }

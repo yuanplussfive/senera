@@ -98,6 +98,7 @@ test("useSessionCatalogSync sends open-connection and manual refresh requests", 
     "sandbox.status",
     "systemTool.list",
     "mcpServer.list",
+    "runtimeDependency.list",
     "profile.update",
   ]);
   expect(send.mock.calls.at(-1)?.[0].profile.name).toBe("Alice");
@@ -114,6 +115,7 @@ test("useSessionCatalogSync sends open-connection and manual refresh requests", 
     "sandbox.status",
     "systemTool.list",
     "mcpServer.list",
+    "runtimeDependency.list",
   ]);
 });
 
@@ -213,6 +215,7 @@ test("useSocketPostIngestEffects runs config reload requests and profile sync", 
     "model.list",
     "sandbox.status",
     "systemTool.list",
+    "runtimeDependency.list",
   ]);
 
   const profile = {

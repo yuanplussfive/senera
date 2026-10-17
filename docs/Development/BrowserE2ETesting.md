@@ -36,7 +36,7 @@ npm run test.e2e.desktop
 npm run test.e2e.desktop.run
 ```
 
-测试使用动态回环端口和临时工作区，不需要手动启动开发服务器。失败时结果和 trace 位于 `.cache/playwright-results`，HTML 报告位于 `.cache/playwright-report`。
+测试使用动态回环端口和临时工作区，不需要手动启动开发服务器。失败时结果和 trace 位于 `.cache/playwright-results`。HTML 报告只在 CI 环境生成到 `.cache/playwright-report`；本地运行使用 list reporter，需要报告时显式追加 `--reporter=html`。
 
 ## 边界
 

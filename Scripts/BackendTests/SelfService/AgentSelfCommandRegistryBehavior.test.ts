@@ -16,7 +16,7 @@ describe("senera self command registry", () => {
   test("keeps the executable Zod command contract aligned with the CLI registry", () => {
     expect(() => assertAgentSelfCommandContract()).not.toThrow();
     const contract = projectAgentSelfCommandContract();
-    expect(contract.version).toBe(1);
+    expect(contract.version).toBe(2);
     expect(contract.revision).toMatch(/^[a-f0-9]{64}$/u);
     expect(contract.builtInCommands).toContain("session.model");
   });

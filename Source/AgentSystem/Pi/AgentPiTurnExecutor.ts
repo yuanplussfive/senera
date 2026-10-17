@@ -3,6 +3,7 @@ import type { AgentEventSink } from "../Events/AgentEvent.js";
 import { AgentRunActivities } from "../Events/AgentRunEventTypes.js";
 import { AgentRunActivityReporter } from "../Events/AgentRunActivityReporter.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 import { buildAnswerTrace } from "../Core/AgentStepTrace.js";
 import { AgentPiRunCollector } from "./AgentPiRunCollector.js";
 import type { AgentPiRuntimeService, AgentPiSessionResult } from "./AgentPiRuntimeTypes.js";
@@ -37,6 +38,7 @@ import { AgentPiTurnState } from "./AgentPiTurnState.js";
 import { resolveAgentPiCompactionSettings } from "./AgentPiCompactionSettings.js";
 import { projectAgentPiImageAttachments } from "./AgentPiImageAttachmentProjector.js";
 import type { ImageContent } from "@earendil-works/pi-ai";
+import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 
 type AgentPiTurnRuntimeService = Pick<
   AgentPiRuntimeService,
@@ -57,6 +59,7 @@ export interface AgentPiTurnRuntimePort {
   tokenEstimator: {
     estimate(text: string): { tokenCount: number };
   };
+  logger?: AgentLogger;
   piDiagnostics?: AgentPiDiagnosticSink;
   uploadStore?: AgentTurnAttachmentUploadStore;
   promptConfig: () => import("../Types/AgentConfigTypes.js").ResolvedAgentPromptConfig;
@@ -248,7 +251,7 @@ export class AgentPiTurnExecutor {
       });
       const sessionResult = await activities.track(AgentRunActivities.InitializingRuntime, () =>
         this.leaseSessionWithGuard(
-          () =>
+          (leaseSignal) =>
             this.options.runtime.services.pi.leaseTurn({
               requestId: command.requestId,
               sessionId: command.sessionId,
@@ -263,7 +266,7 @@ export class AgentPiTurnExecutor {
               nativeToolNames: command.nativeToolNames,
               toolExposure,
               onEvent,
-              signal,
+              signal: leaseSignal,
               turnState,
               activeSkills: command.activeSkills,
               personaActive: command.personaActive,
@@ -296,26 +299,34 @@ export class AgentPiTurnExecutor {
 
       unsubscribe = activeSession.subscribe((event) => collector.collect(event));
       throwIfAborted(signal);
+      if (command.continueFromTranscript) {
+        activeSession.prepareContinuation(command.continuationSourceRequestId);
+      }
       const piBranchBoundaryId = await activeSession.markTurnBoundary(command.requestId);
       await command.onPiBranchBoundary?.(piBranchBoundaryId);
       const promptConfig = this.options.runtime.promptConfig();
-      const attachmentReferences = await resolveAgentTurnAttachmentReferences(
-        command.attachments,
-        this.options.runtime.uploadStore,
-      );
-      const wireInput = composeAgentTurnRequest({
-        userInput: command.input,
-        attachments: command.attachments,
-        attachmentReferences,
-        interaction: command.interaction,
-        options: {
-          enabled: promptConfig.UserMessageEnvelope,
-          timeZone: promptConfig.TimeZone,
-        },
-      });
+      const wireInput = command.continueFromTranscript
+        ? command.input
+        : composeAgentTurnRequest({
+            userInput: command.input,
+            attachments: command.attachments,
+            attachmentReferences: await resolveAgentTurnAttachmentReferences(
+              command.attachments,
+              this.options.runtime.uploadStore,
+            ),
+            interaction: command.interaction,
+            options: {
+              enabled: promptConfig.UserMessageEnvelope,
+              timeZone: promptConfig.TimeZone,
+            },
+          });
 
       await this.emitDiagnostic(command, PiTurnTraceEvents.PromptStarted, {
         inputChars: wireInput.length,
+        continuation: command.continueFromTranscript === true,
+        ...(command.continuationSourceRequestId
+          ? { continuationSourceRequestId: command.continuationSourceRequestId }
+          : {}),
       });
       await activities.track(AgentRunActivities.RunningAgentTurn, () =>
         runAgentPiGuardedPhase({
@@ -324,11 +335,13 @@ export class AgentPiTurnExecutor {
           signal,
           abort: () => activeSession.abort().catch(() => undefined),
           run: () =>
-            activeSession.prompt(wireInput, {
-              expandPromptTemplates: false,
-              source: "extension",
-              ...(images.length > 0 ? { images } : {}),
-            }),
+            command.continueFromTranscript
+              ? activeSession.continue()
+              : activeSession.prompt(wireInput, {
+                  expandPromptTemplates: false,
+                  source: "extension",
+                  ...(images.length > 0 ? { images } : {}),
+                }),
         }),
       );
       await this.emitDiagnostic(command, PiTurnTraceEvents.PromptCompleted);
@@ -357,17 +370,27 @@ export class AgentPiTurnExecutor {
       const responseText = activeSession.getLastAssistantText() ?? "";
       const runtimeProjection = collector.snapshot();
       const loadedToolNames = toolExposure.snapshot().exposedToolNames.slice();
-      const routing = this.options.runtime.services.retrieval.afterToolResults({
-        requestId: command.requestId,
-        userInput: command.input,
-        sessionId: command.sessionId,
-        logicalCacheScope: command.logicalCacheScope,
-        interaction: command.interaction,
-        loadedTools: loadedToolNames,
-        execution: { value: [...runtimeProjection.executedTools] },
-        activeSkills: command.activeSkills,
-        stateCard: command.stateCard,
-      });
+      let routingObservation: AgentPiTurnResult["routingObservation"];
+      try {
+        routingObservation = this.options.runtime.services.retrieval.afterToolResults({
+          requestId: command.requestId,
+          userInput: command.input,
+          sessionId: command.sessionId,
+          logicalCacheScope: command.logicalCacheScope,
+          interaction: command.interaction,
+          loadedTools: loadedToolNames,
+          execution: { value: [...runtimeProjection.executedTools] },
+          activeSkills: command.activeSkills,
+          stateCard: command.stateCard,
+        }).observation;
+      } catch (error) {
+        // Routing observation is derived telemetry after the model/tool turn
+        // has completed. Keep its failure out of the authoritative answer.
+        this.options.runtime.logger?.warn("routing.scenario.observation_failed", {
+          requestId: command.requestId,
+          message: errorMessage(error),
+        });
+      }
       const usage =
         usageLedger.aggregate() ??
         createLocalTurnUsage(
@@ -395,7 +418,7 @@ export class AgentPiTurnExecutor {
         executedTools: runtimeProjection.executedTools,
         loadedToolNames,
         ...(sessionResult.piSessionId ? { physicalPiSessionId: sessionResult.piSessionId } : {}),
-        routingObservation: routing.observation,
+        ...(routingObservation ? { routingObservation } : {}),
       };
     } catch (error) {
       await this.emitDiagnostic(command, PiTurnTraceEvents.TurnFailed, errorPayload(error));
@@ -408,18 +431,21 @@ export class AgentPiTurnExecutor {
   }
 
   private async leaseSessionWithGuard(
-    leaseSession: () => Promise<AgentPiSessionResult>,
+    leaseSession: (signal: AbortSignal) => Promise<AgentPiSessionResult>,
     timeoutMs: number,
     signal?: AbortSignal,
   ): Promise<AgentPiSessionResult> {
+    const timeoutController = new AbortController();
+    const leaseSignal = signal ? AbortSignal.any([signal, timeoutController.signal]) : timeoutController.signal;
     let leaseSessionPromise: Promise<AgentPiSessionResult> | undefined;
     try {
       return await runAgentPiGuardedPhase({
         phase: PiTurnPhases.LeaseSession,
         timeoutMs,
         signal,
+        timeoutAbort: (reason) => timeoutController.abort(reason),
         run: () => {
-          leaseSessionPromise = leaseSession();
+          leaseSessionPromise = leaseSession(leaseSignal);
           return leaseSessionPromise;
         },
       });

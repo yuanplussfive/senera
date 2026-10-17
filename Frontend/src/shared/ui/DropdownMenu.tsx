@@ -18,7 +18,20 @@ interface ContentProps extends React.ComponentPropsWithoutRef<typeof DropdownMen
 }
 
 export const DropdownMenuContent = forwardRef<HTMLDivElement, ContentProps>(
-  ({ className, side = "bottom", align = "center", sideOffset = 6, collisionPadding = 8, children, ...props }, ref) => (
+  (
+    {
+      className,
+      side = "bottom",
+      align = "center",
+      sideOffset = 6,
+      collisionPadding = 8,
+      children,
+      onPointerDown,
+      onClick,
+      ...props
+    },
+    ref,
+  ) => (
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Content
         ref={ref}
@@ -27,6 +40,14 @@ export const DropdownMenuContent = forwardRef<HTMLDivElement, ContentProps>(
         sideOffset={sideOffset}
         collisionPadding={collisionPadding}
         className={cn(menuSurfaceClassName, "dropdown-menu-surface", className)}
+        onPointerDown={(event) => {
+          onPointerDown?.(event);
+          event.stopPropagation();
+        }}
+        onClick={(event) => {
+          onClick?.(event);
+          event.stopPropagation();
+        }}
         {...props}
       >
         {children}
@@ -70,7 +91,10 @@ interface SubContentProps extends React.ComponentPropsWithoutRef<typeof Dropdown
 }
 
 export const DropdownMenuSubContent = forwardRef<HTMLDivElement, SubContentProps>(
-  ({ className, sideOffset = 12, alignOffset = -4, collisionPadding = 8, children, ...props }, ref) => (
+  (
+    { className, sideOffset = 12, alignOffset = -4, collisionPadding = 8, children, onPointerDown, onClick, ...props },
+    ref,
+  ) => (
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.SubContent
         ref={ref}
@@ -78,6 +102,14 @@ export const DropdownMenuSubContent = forwardRef<HTMLDivElement, SubContentProps
         alignOffset={alignOffset}
         collisionPadding={collisionPadding}
         className={cn(menuSurfaceClassName, "dropdown-menu-surface", className)}
+        onPointerDown={(event) => {
+          onPointerDown?.(event);
+          event.stopPropagation();
+        }}
+        onClick={(event) => {
+          onClick?.(event);
+          event.stopPropagation();
+        }}
         {...props}
       >
         {children}

@@ -1,32 +1,26 @@
-/**
- * The complete user-authored persona surface.  Runtime prompts intentionally
- * accept only these two text fields; memories, tools, runtime state and current
- * requests remain separate host-owned context layers.
- */
+/** User-authored Markdown rendered as one prompt layer inside the system prompt. */
 export interface AgentPersonaContext {
   readonly enabled: boolean;
   readonly card: {
-    readonly corePersona: string;
-    readonly languageStyle: string;
+    readonly markdown: string;
+    readonly sourcePath?: string;
   };
 }
 
 export const EmptyAgentPersonaContext: AgentPersonaContext = {
   enabled: false,
   card: {
-    corePersona: "",
-    languageStyle: "",
+    markdown: "",
   },
 };
 
-export function createAgentPersonaContext(corePersona = "", languageStyle = ""): AgentPersonaContext {
-  const normalizedCorePersona = corePersona.trim();
-  const normalizedLanguageStyle = languageStyle.trim();
+export function createAgentPersonaContext(markdown = "", sourcePath?: string): AgentPersonaContext {
+  const normalizedMarkdown = markdown.trim();
   return {
-    enabled: normalizedCorePersona.length > 0 || normalizedLanguageStyle.length > 0,
+    enabled: normalizedMarkdown.length > 0,
     card: {
-      corePersona: normalizedCorePersona,
-      languageStyle: normalizedLanguageStyle,
+      markdown: normalizedMarkdown,
+      ...(sourcePath ? { sourcePath } : {}),
     },
   };
 }

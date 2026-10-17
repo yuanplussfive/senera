@@ -1,19 +1,13 @@
 import type { AgentSystemConfig } from "../../Source/AgentSystem/Types/AgentConfigTypes.js";
+import { resolveAgentWorkspaceLayout } from "../../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
 
-export interface DesktopRuntimeConfigPaths {
-  sandboxRuntimeRoot: string;
-}
-
-export function projectDesktopRuntimeConfig(
-  paths: DesktopRuntimeConfigPaths,
-  config: AgentSystemConfig,
-): AgentSystemConfig {
+export function projectDesktopRuntimeConfig(config: AgentSystemConfig, workspaceRoot: string): AgentSystemConfig {
   return {
     ...config,
     SandboxRuntime: {
       ...config.SandboxRuntime,
       Provider: "auto",
-      BaseDir: paths.sandboxRuntimeRoot,
+      BaseDir: resolveAgentWorkspaceLayout(workspaceRoot).desktopRuntimeRoot,
     },
   };
 }

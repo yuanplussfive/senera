@@ -71,4 +71,28 @@ describe("complete serialized recall token budgets", () => {
     expect(empty.events).toHaveLength(0);
     expect(empty.selection.usedTokens).toBe(0);
   });
+
+  test("prefixes event and digest summaries with Shanghai minute markers", () => {
+    const context = {
+      ...EmptyAgentContinuityMemoryPromptContext,
+      enabled: true,
+      periodDigests: [
+        {
+          id: "digest",
+          uri: "memos:digest",
+          revision: "digest-v1",
+          granularity: "day" as const,
+          periodStart: "2026-10-09T00:00:00Z",
+          periodEnd: "2026-10-10T00:00:00Z",
+          summary: "当天摘要。",
+          score: 0.9,
+          matchedBy: ["memos"],
+        },
+      ],
+      eventCandidates: [entry("event", "事件摘要。")],
+    };
+    const wire = renderAgentContinuityPromptWire(context, { estimateTokens });
+    expect(wire.text).toContain("[2026-10-09 08:00] 当天摘要。");
+    expect(wire.text).toContain("[2026-10-09 08:00] 事件摘要。");
+  });
 });

@@ -46,6 +46,10 @@ export interface AgentPiSession {
     text: string,
     options?: { expandPromptTemplates?: boolean; source?: string; images?: readonly ImageContent[] },
   ): Promise<void>;
+  /** Aligns the native continuation with the latest persisted Pi branch. */
+  prepareContinuation(sourceRequestId?: string): void;
+  /** Continues the prepared Pi transcript without appending a new user message. */
+  continue(): Promise<void>;
   steer(text: string, images?: readonly ImageContent[]): Promise<void>;
   followUp(text: string, images?: readonly ImageContent[]): Promise<void>;
   requestFinalAnswer(instruction: string): Promise<boolean>;

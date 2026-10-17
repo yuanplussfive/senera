@@ -14,6 +14,7 @@ import {
   ToolResultStorageModes,
   ToolResultAssessmentPolicies,
   ToolSchedulingModes,
+  ToolDeadlinePolicies,
 } from "../Types/AgentToolContractTypes.js";
 import { isAgentJsonPointer } from "../Core/AgentJsonPointerOperations.js";
 import { inspectAgentToolResultStorageContract } from "../ToolRuntime/AgentToolResultStorageContract.js";
@@ -114,6 +115,7 @@ export const ToolRuntimeSchema = z
     Lifecycle: z.enum(["Immediate", "OneShot", "Persistent", "RemoteJob"]),
     ProtocolVersion: z.literal(AgentHostToolProtocolVersion).optional(),
     ResultAssessment: z.enum(ToolResultAssessmentPolicies),
+    DeadlinePolicy: z.enum(ToolDeadlinePolicies).optional(),
     ResultStorage: z.enum([ToolResultStorageModes.Artifact, ToolResultStorageModes.SourceView]).optional(),
     Scheduling: z.enum(ToolSchedulingModes).optional(),
     MaxConcurrency: z.number().int().min(1).max(1_000).optional(),

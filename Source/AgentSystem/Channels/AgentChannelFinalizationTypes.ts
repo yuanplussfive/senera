@@ -107,6 +107,9 @@ function normalizeManifestReference(
 ): AgentChannelMarkdownResourceManifest["references"][number][] {
   const source = reference.source.trim().slice(0, AgentChannelFinalizationDefaults.maxManifestValueCharacters);
   if (!source) return [];
+  const aliases = normalizeManifestAliases(reference.aliases, source);
+  const withAliases = <T extends AgentChannelMarkdownResourceManifest["references"][number]>(value: T): T =>
+    aliases.length > 0 ? ({ ...value, aliases } as T) : value;
   switch (reference.kind) {
     case "senera": {
       const resourceUri = reference.resourceUri
@@ -114,19 +117,19 @@ function normalizeManifestReference(
         .slice(0, AgentChannelFinalizationDefaults.maxManifestValueCharacters);
       return resourceUri
         ? [
-            {
+            withAliases({
               source,
               kind: "senera",
               resourceUri,
               ...(reference.name?.trim() ? { name: reference.name.trim().slice(0, 512) } : {}),
               ...(reference.mime?.trim() ? { mime: reference.mime.trim().slice(0, 256) } : {}),
-            },
+            }),
           ]
         : [];
     }
     case "http": {
       const url = reference.url.trim().slice(0, AgentChannelFinalizationDefaults.maxManifestValueCharacters);
-      return url ? [{ source, kind: "http", url }] : [];
+      return url ? [withAliases({ source, kind: "http", url })] : [];
     }
     case "workspace": {
       const absolutePath = reference.absolutePath
@@ -134,11 +137,21 @@ function normalizeManifestReference(
         .slice(0, AgentChannelFinalizationDefaults.maxManifestValueCharacters);
       const name = reference.name.trim().slice(0, 512);
       const mime = reference.mime.trim().slice(0, 256);
-      return absolutePath && name && mime ? [{ source, kind: "workspace", absolutePath, name, mime }] : [];
+      return absolutePath && name && mime ? [withAliases({ source, kind: "workspace", absolutePath, name, mime })] : [];
     }
     case "unresolved":
-      return [{ source, kind: "unresolved" }];
+      return [withAliases({ source, kind: "unresolved" })];
   }
+}
+
+function normalizeManifestAliases(aliases: readonly string[] | undefined, source: string): string[] {
+  const unique = new Set<string>();
+  for (const alias of aliases ?? []) {
+    const normalized = alias.trim().slice(0, AgentChannelFinalizationDefaults.maxManifestValueCharacters);
+    if (normalized && normalized !== source) unique.add(normalized);
+    if (unique.size >= AgentChannelFinalizationDefaults.maxManifestEntries) break;
+  }
+  return [...unique];
 }
 
 function isFinalizationRecord(value: unknown): value is AgentChannelFinalizationRecord {

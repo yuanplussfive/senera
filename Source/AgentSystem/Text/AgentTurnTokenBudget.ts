@@ -6,7 +6,7 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 export interface AgentTurnTokenBudgetOptions {
   readonly model: string;
   readonly contextWindowTokens: number;
-  /** Effective input capacity resolved by the active context policy. */
+  /** Effective input capacity resolved by the active Pi window policy. */
   readonly inputCapacityTokens?: number;
   /** Dynamic context headroom owned by the caller's compaction policy. */
   readonly windowHeadroomTokens?: number;

@@ -1,100 +1,117 @@
-# senera
+<p align="center">
+  <img src="docs/brand.svg" alt="senera" width="76">
+</p>
 
-> 一个可观测、可校验、可扩展的 Agent 工作台。
-> 让模型像正常聊天一样表达，也能在需要行动时稳定地搜索、读写文件、调用工具、留下证据。
+<h1 align="center">senera</h1>
 
-<p>
+<p align="center">
+  <strong>本机 Agent 运行时</strong><br />
+  模型只出意图，授权、执行和留证都由宿主完成，不支持原生工具调用的模型也能把活干完。
+</p>
+
+<p align="center">
+  <a href="https://github.com/yuanplussfive/senera/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/yuanplussfive/senera"></a>
+  <a href="https://github.com/yuanplussfive/senera/actions/workflows/verify.yml"><img alt="Verify" src="https://img.shields.io/github/actions/workflow/status/yuanplussfive/senera/verify.yml?branch=main"></a>
+  <a href="https://github.com/yuanplussfive/senera/releases/latest"><img alt="Windows 桌面安装包" src="https://img.shields.io/badge/Desktop-Windows-0078D6?logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgcm9sZT0iaW1nIj48cGF0aCBkPSJNMCwwSDExLjM3N1YxMS4zNzJIMFpNMTIuNjIzLDBIMjRWMTEuMzcySDEyLjYyM1pNMCwxMi42MjNIMTEuMzc3VjI0SDBabTEyLjYyMywwSDI0VjI0SDEyLjYyMyIvPjwvc3ZnPg==&logoColor=white"></a>
+  <a href="./docs/Operations.md"><img alt="Linux Docker 部署" src="https://img.shields.io/badge/Deploy-Linux-FCC624?logo=linux&logoColor=black"></a>
   <img alt="Node" src="https://img.shields.io/badge/Node.js-24-43853d">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-strict-3178c6">
-  <img alt="Protocols" src="https://img.shields.io/badge/LLM-OpenAI%20%7C%20Claude%20%7C%20Gemini-8a2be2">
   <img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue">
 </p>
 
-写 senera 的起点是一个很具体的烦恼：常见的 Agent 应用，要么是聊天壳，模型说得好听、动手全凭运气；要么把工具调用押在供应商的原生 tools 实现上，换一家模型服务，行为就跟着变。参数里多一个没转义的引号，整条链路断在半路，用户只能对着加载圈干等，事后连模型到底做过什么都查不到。
+<p align="center">
+  <strong>中文</strong> · <a href="./README.en.md">English</a>
+</p>
 
-所以 senera 把两件事放进同一个产品里认真做：让模型正常说话，也让它的每一次行动都过校验、可审批、留证据。Pi Coding Agent 是唯一的会话与多步工具循环内核；每个模型可以明确选择原生 Tool Calling 或 BAML 结构化规划，两条路径共享同一套校验、授权、执行、观测和会话语义，不会在运行中静默切换。
+<p align="center">
+  <img src="docs/screenshot/chat-execution.png" alt="工作台主界面：左侧会话列表，中间对话流，右侧当前回合的执行轨迹，包含节点、工具调用与耗时">
+</p>
 
----
+<p align="center">
+  <img src="docs/screenshot/workspace-files.png" alt="工作区文件树与 Markdown 实时预览" width="49%">
+  <img src="docs/screenshot/settings-provider.png" alt="供应商配置：协议类型、端点管理与加密存储的 API Key" width="49%">
+</p>
 
-## 它是怎么做的
+## 设计动机
 
-senera 把状态按职责拆开：产品 Conversation 保存用户消息和最终回答；Pi Session JSONL 保存 assistant、tool call、tool result、分支和压缩记录；Artifact 保存原始输出、投影、证据、工作区变更和完整性 receipt；Memory 保存指向这些来源的学习索引。Pi provider 可以把支持 Tool Calling 的端点直接适配为原生工具流，也可以通过 BAML 把普通模型输出编译成可校验动作；供应商差异被挡在模型适配层外面。
+现有 Agent 工具普遍存在一处断层：对话表现稳定，执行表现不可控。一类实现把稳定性寄托在参数拼接上，一个未转义的引号就能让调用链中断，且中断后无法还原当时执行到哪个工具、哪一步失败；另一类把执行能力完全绑定在供应商的原生 Tool Calling 上，更换模型或端点时行为随之变化。
 
-工具调用不靠模型"猜对格式"。每个注册工具都有输入、输出和执行合同，模型生成的动作先过结构校验，参数再由 AJV 或 Zod 对真实 schema 校验。结构错了，会带着具体字段路径进入修复流程，而不是把坏 JSON 直接交给工具执行。执行过程对用户也不是黑箱：前端把预回复、工具计划、审批、开始执行、结果摘要、失败原因和最终回复分开展示，看到的是"边说边做"的过程，而不是等很久之后只拿到一个最终答案。
+**senera 的处理方式是彻底分离意图生成与执行。**
 
-工具多了会把上下文塞爆，这件事没有银弹，senera 的取舍是动态检索：结合本地索引、BM25/RRF/MMR 和 SQLite 记忆反馈，只把当前任务真正可能用到的工具放进上下文。工具结果则生成 artifact/evidence 包，长期上下文优先使用摘要和证据投影，需要时再取回原始内容——旧日志、旧搜索结果不会一直躺在上下文里，追查时也能回到模型当时真正依据的东西。
+模型生成意图，宿主运行时负责执行。会话树、多步工具循环与上下文压缩由 [Pi Coding Agent](https://github.com/earendil-works/pi) 承担；参数校验、权限策略、沙箱边界、证据打包与实时观测由 senera 实现。工作台右栏的执行树来自当前回合的实时事件，不是事后由日志重建的结果。
 
-工具边界由注册合同确定：执行目标、网络能力、工作区权限、资源语义和 artifact 策略。System Tool 可以使用受信任的宿主能力，MCP package 可以放进 Docker Linux 沙箱边界。Sandbox 不可用或被部署禁用时，运行时会明确拒绝该执行目标，绝不会悄悄改在本机执行。
+## 核心能力
 
----
+### 1. 统一约束，不依赖模型的原生工具调用
 
-## 具体怎么写
+不要求模型具备原生工具调用能力。每个模型可在设置中指定规划路径：
 
-### Agent 动作协议
+- **`native`**：模型与端点适配器均支持原生 Tool Calling 时直接用这条链路，步骤更少，延迟更低。
+- **`baml`**：面向不支持原生调用，或需要结构化规划的模型，由 [BAML](https://github.com/BoundaryML/baml) 生成类型安全的动作计划。
 
-senera 把每一轮任务拆成清晰的动作：
+两条路径仅在入口分流，参数校验、审批流程、执行合同与结果回填完全共用，运行期间不会切换。供应商差异只出现在适配层，更换模型不影响已有工作流。
 
-- `FinalAnswer`：信息足够，直接回复用户。
-- `AskUser`：缺少必要输入，向用户追问。
-- `CallTools`：需要行动，先给出一段自然语言预回复，再规划工具调用。
+### 2. 策略判定与显式审批
 
-`CallTools` 不要求模型一次性写出所有复杂参数。运行时会先让模型选择需要的工具和依赖关系，再并发生成各个工具的参数。工具调用 ID 由宿主生成，例如 `call_xxx`，依赖关系在宿主侧投影和校验，避免把稳定性押在模型自己编 ID 上。
+工具能否调用、路径能否读写，由编译为 WebAssembly 的 [Open Policy Agent (OPA)](https://github.com/open-policy-agent/opa) `.rego` 策略判定，结果为 `allow`、`ask` 或 `deny`：
 
-### Pi Provider + 双工具规划链路
+- **`deny` 直接拦截**：判定为 `deny` 的调用不进入审批界面。
+- **`ask` 只有四个选项**：**仅本次**、**本会话**、**拒绝**、**拒绝并停止**，不做推测性匹配。
+- **执行目标由合同声明**：每个工具合同都显式声明执行目标与网络权限。要求沙箱容器执行的工具，在 Docker 未启动或沙箱不可用时直接报错终止，不会退回宿主机执行。
 
-Pi 负责会话树、流式消息、工具调用、多步循环和 compaction。每个模型显式选择一种工具规划模式，运行中不会静默切换：
+### 3. 证据完整，上下文不膨胀
 
-1. `native` 由对应 Endpoint 的 Pi adapter 把真实 JSON Schema 直接交给供应商 Tool Calling API；模型返回的 tool calls 进入 Pi 原生工具循环，不经过 BAML 动作提示词或二次规划。
-2. `baml` 由 PlanningContextCompiler 验证 Observation v3 并生成规划 DTO，再由 PlanningCompiler 生成 `Direct`、`AskUser` 或 `Execute`；BAML prompt 同样经对应的 Pi API adapter 请求当前供应商，返回文本再进行 BAML parse、宿主校验和定向 repair，不维护另一套供应商协议解析。
-3. 两条链路在类型化工具调用边界汇合，共享参数校验、授权、审批、资源租约和受控并发调度。
-4. 工具桥把完整结果发布为 Artifact，只把一次声明式、可恢复的 Observation v3 投影写回 Pi。
-5. Pi 继续下一步或生成最终回答；历史压缩、分支和工具消息生命周期始终由 Pi session 管理。
+长时间运行常见问题有两类：输出过长挤占上下文，或压缩之后丢失关键细节。
 
-这让支持原生 Tool Calling 的模型走最短链路，同时让普通模型通过 BAML 获得同等的工具执行语义。工具协议、上下文策略、证据投影和工具描述都由声明式合同生成。
+每次工具执行后，senera 把输入参数、原始输出、摘要、前端投影与文件变更打包成一个独立的 **Artifact** 落盘。结合 [@agent-context/sift](https://github.com/agents-sdk/sift) 与 `gpt-tokenizer`，写回模型的内容只包含精简摘要与 Artifact URI。上下文长度保持稳定，追查细节时沿 URI 就能取回当时的原始输出。
 
-### 分层保存上下文
+### 4. 检索与记忆全部本地完成
 
-Pi Session JSONL 保存标准消息结构和工具生命周期，Conversation SQLite 保存用户原话与最终回复。供应商协议差异只存在于 Senera 的模型 transport 边界，不会污染 Pi session 或产品对话数据。
+多数 Agent 框架需要分别配置 Embedding 与 Rerank 端点。senera 两类都不配，检索与记忆都在本机跑：
 
-大结果不会在多个存储层复制：Pi tool result 持有模型所需 observation 和 `details.senera` 引用；Artifact 持有完整内容与校验 receipt；Memory 持有 URI 索引。Pi 原生 compaction 会删除旧消息，但在当前分支留下隐藏 Artifact 索引；每次请求只在真实剩余 token 预算内注入最近且尚未可见的 URI，旧引用可通过 Memory 定位后再读取。
+- **向量编码**：内置 [ternlight-mini-cn](https://github.com/soycaporal/ternlight) 句子编码器，随程序分发，在本机 CPU 上运行，向量计算不产生外部请求。
+- **混合召回与路由学习**：由 [node-rs jieba](https://github.com/napi-rs/node-rs) 分词、[MiniSearch](https://github.com/lucaong/minisearch) 词法检索、[sqlite-vec](https://github.com/asg017/sqlite-vec) 向量索引与本地打分重排组成，再叠加历史路由反馈。工具数量较多时，每个回合仍只注入与当前任务相关的工具。
+- **跨会话长期记忆**：基于 [MemOS SDK](https://github.com/Markgatcha/memos)，记忆的提取、存储与向量召回同样走本地链路，仅需一个对话模型即可启用全部能力。
 
-### 上下文策略
+### 5. 数据本地留存
 
-senera 不把历史工具原文无限塞回模型。新一轮任务会优先使用：
+配置、会话树、Artifact 证据、长期记忆、自定义 Skills 与运行日志统一存放在指定工作区的 `.senera/` 目录，不强制同步到云端。API Key 落盘前经 `AES-256-GCM` 加密。服务默认只监听本机回环地址 `127.0.0.1`。
 
-- 当前轮的完整用户输入和新工具结果。
-- 历史轮次的最终回复和必要工具摘要。
-- artifact / evidence 的结构化摘要、事实、URI。
-- 动态召回的项目记忆和相关文件片段。
+## 功能范围
 
-早期大段输出会沉淀成证据投影，真正需要原文时再通过 artifact 工具取回。这样上下文不会被旧日志、旧搜索结果、旧文件内容拖爆。
+Web 端与 Windows 桌面端共用同一个运行时内核，能做的事包括：
 
-### 扩展写法
-
-Senera 内部控制面使用 `System/Extensions/<domain>/<extension>/extension.json` 包；`domain.json` 是扩展的稳定分类和展示来源，manifest 再声明自己的 `domain` 与 settings surface，三者必须一致。独立业务能力保持标准 MCP package。第一方包位于 `McpServers/<package>/`，工作区包位于 `.senera/mcp/<package>/`，可使用 MCPB `manifest.json`、Registry `server.json` 或兼容 `.mcp.json`。MCP Server 通过 `tools/list` 声明工具 schema；Senera 只适配连接、类型化输入、沙箱、热重载和诊断，不要求纯 MCP 包增加私有 manifest。
-
-Agent 只创建标准 Skill，目录位于 `.senera/skills/<name>/`。Skill 可通过 `metadata.senera.recommended-tools` 绑定已经注册的 System/MCP 工具；绑定只提升动态加载优先级，不授予权限。`SkillManage` 负责创建、更新、校验和移除，并在发布前验证工具引用；复杂 Toolkit Skill 的资源树由一次 `WorkspaceApplyPatch` 原子创建，并在写入前预检完整候选目录。成功修改会在同一会话下一条消息热加载，无需重启或新建对话。
-
----
-
-## 能做什么
-
-- 搜索资料、查询天气、读取图片和文档。
-- 理解项目结构，搜索代码，读取和修改工作区文件。
-- 执行受控 shell 命令，并把 stdout/stderr、退出码和工作目录整理成证据。
-- 在需要高风险操作时先请求用户审批。
-- 把工具结果、文件 diff、摘要、证据 URI 和最终回答串成完整链路。
-- 用 System Tool、Skill 或 MCP 扩展能力，不用修改 Agent 主循环。
-
----
+- **代码工程与工作区调查**：梳理目录结构、跨文件检索代码、按补丁修改文件、运行测试与构建、检查前端页面，还能浏览文件树和实时预览 Markdown。
+- **受控终端与长任务**：执行受控 Shell 命令，`stdout`/`stderr`、退出码与工作目录整理成可回查证据。需要长跑或交互时用显式的后台执行资源（可列举、可查询、可写入、可发送信号），也可以在内置的 [xterm.js](https://github.com/xtermjs/xterm.js) 终端面板中接管输入。
+- **联网研究与多模态理解**：搜索与抓取网页、通过 [agent-browser](https://github.com/vercel-labs/agent-browser) 驱动浏览器交互、读取图片与文档、查询天气、生成图片。
+- **桌面控制与子代理编排**：在图形会话环境下支持桌面级控制（内置 [computer-use-mcp](https://github.com/zavora-ai/computer-use-mcp) 的截图与键鼠操作）；支持派发子代理（Orchestration）、管理持久化任务与定时触发（[pi-task-scheduler](https://github.com/TGYD-helige/pi)）。
 
 ## 快速开始
 
-本地运行要求 Node.js 24。真实密钥放在 `senera.config.json`，这个文件已被 git 忽略。
+模型与 API Key 在界面里配置，不用手工编辑配置文件：进入“**模型 → 供应商**”，添加供应商并填写接口地址与 Key，检测通过后设为默认，保存后立即生效。配置文件已被 Git 忽略，Key 落盘加密。
 
-### Nano 轻量开发分支
+### 方式一：Windows 桌面端
 
-只需要本机源码开发时，可以直接克隆自动生成的 `nano` 分支：
+1. 从 [Releases](https://github.com/yuanplussfive/senera/releases/latest) 下载最新 `.exe` 安装包并运行。
+2. 首次启动时选择工作区目录（比如 `E:\SeneraWorkspace`），后续配置、会话、Artifact 与日志均写入该目录下的 `.senera/`，不占用系统盘。
+3. 升级在“**设置 → 关于**”中检查更新。差分包下载完成后，由使用者决定重启安装的时机。桌面端只监听本机回环，不需要管理员登录。
+
+### 方式二：Docker 自托管
+
+仓库的 `compose.yaml` 带一个默认管理员账号（登录名 `senera`，密码 `114514`），本机验证可以直接用。部署到局域网或公网前，先把管理员登录名、显示名与密码三项改掉，然后执行：
+
+```bash
+docker compose pull
+docker compose up -d --pull always
+```
+
+启动后访问 `http://localhost:8787`。
+
+> **部署说明**：镜像本身不含 TLS 终止，本机回环可以直接走 HTTP，对外暴露需置于 HTTPS 反向代理之后。默认编排以 `root` 运行主进程并挂载宿主机 Docker Engine socket，用于调度工具沙箱容器，适用于内网单机与开发验证。生产环境、多租户或不可信网络请先阅读 [部署与运维手册](docs/Operations.md)（暂时只有中文）。
+
+### 方式三：源码运行（推荐 `nano` 分支）
+
+如果只需在本机以源码运行，不希望引入构建与打包依赖，直接克隆自动生成的 `nano` 分支。该分支移除了 Compose、Electron、安装包、测试与发布脚手架：
 
 ```bash
 git clone --depth 1 --branch nano --single-branch https://github.com/yuanplussfive/senera.git senera
@@ -103,164 +120,85 @@ npm ci
 npm run dev
 ```
 
-`nano` 只保留开发服务器、前端、核心源码、MCP packages、Skills 和对应依赖，不包含 Compose 部署、Electron、安装包、测试、覆盖率和发布工具。它在 `main` 完整验证通过后自动重建，不接收直接提交或 Pull Request。Nano 和桌面端一样使用受治理的本机执行；只有 Compose 镜像部署会启用独立的 Docker Worker 沙箱。
+环境要求 **Node.js 24**。首次执行 `npm run dev` 会按模板生成含占位符的 `senera.config.json`。打开 `http://127.0.0.1:5173`，在设置页填写模型与 API Key 即可。
 
-### Docker
+> `nano` 分支在 `main` 通过完整验证后自动重建，不接受直接提交。修改代码或提交 PR 请克隆默认分支，差异说明见 [开发手册：获取源码](docs/Development/README.md#获取源码)。
 
-在首次启动前，直接编辑 `compose.yaml` 中已经写明的管理员资料。浏览器同源访问会根据请求 Host 自动放行；只有跨域前端才需要在 `Server.AccessControl.AllowedOrigins` 中额外声明：
+## 模型协议与能力扩展
 
-```yaml
-SENERA_ADMIN_LOGIN_NAME: "admin"
-SENERA_ADMIN_DISPLAY_NAME: "Your Name"
-SENERA_ADMIN_PASSWORD: "replace-with-a-strong-password"
-```
+### 支持的协议
 
-镜像不内置 TLS。回环地址的本地 HTTP 会自动工作，非回环地址默认要求 HTTPS；公网暴露请前置 HTTPS 反向代理，并在 `Server.AccessControl.TrustedProxyAddresses` 中只声明实际代理地址。
+以下四类上游协议由运行时直接适配，可以在设置页按模型逐一指定：
 
-Docker 部署不要求向 Senera 主容器传入 `/dev/kvm` 或 `NET_ADMIN`。`compose.yaml` 是单服务编排：一个容器同时运行 Senera 与嵌入的沙箱 Worker，管理字段只有端口、管理员资料、数据卷和 Docker Engine socket。Worker 在容器内启动，只接受版本化 Worker 协议允许的镜像、挂载和资源策略；启动时读取一次 Docker Engine 能力：已注册 `runsc` 时锁定 gVisor，否则锁定受限 Docker Engine 容器，一次服务生命周期内不会再次切换。主进程以 root 运行并直挂 Docker Engine socket（`SENERA_CONTAINER_RUNTIME_USER: root` 显式门控），受控浏览器会自动为 Chromium 附加 `--no-sandbox`。然后启动部署：
+- **OpenAI Responses**
+- **OpenAI Chat Completions**（含各类兼容接口）
+- **Anthropic Claude Messages**
+- **Google GenerateContent**
 
-```bash
-# 生产环境应使用 GHCR 页面或发布信息中显示的完整 digest。
-export SENERA_IMAGE=ghcr.io/yuanplussfive/senera@sha256:<application-digest>
-docker compose pull
-docker compose up -d --pull always
-```
+`native` 与 `baml` 共用同一套执行与观测回填合同，只有规划提示词不同。端点和模型分两层配置、供应商重命名时的模型 ID 迁移与别名规则，见 [部署与运维：首次配置](docs/Operations.md#首次配置)。扩展新协议见 [新增模型端点开发手册](docs/Development/AddModelEndpoint.md)。
 
-未设置镜像变量时，`compose.yaml` 使用已验证的 `ghcr.io/yuanplussfive/senera:latest`；沙箱运行时默认解析为内置分发契约对应的版本化 `sandbox-runtime-*` 镜像，需要固定 digest 时在 `environment` 中设置 `SENERA_DOCKER_SANDBOX_IMAGE`。需要可复现升级、回退或生产变更窗口时，用同一发布对应的 digest 覆盖相应变量。
+### 三层扩展体系（不修改主循环）
 
-该编排适合内网单机或开发验证；主进程以 root 运行并直挂 Docker Engine socket，安全边界弱于多容器拆分方案，生产、多租户或不可信网络请前置 HTTPS 反向代理并加固宿主。
+新增能力不用修改运行时内核，按类型放入对应目录即可，改动不用重启就能生效：
 
-不要使用 `docker run` 单独启动应用镜像。镜像需要 Compose 提供数据卷与 Docker Engine socket，并在容器内拉起嵌入 Worker；缺少任一前提都会在启动阶段明确失败。
+| 扩展层          | 存放位置                                  | 需要编写的内容                                                   | 适用场景                                                            |
+| --------------- | ----------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------- |
+| **System Tool** | `System/Extensions/<domain>/<extension>/` | 声明式 `domain.json` + `extension.json` + `*.tool.json`          | 需要强类型凭据、明确沙箱边界与细粒度策略控制的系统级工具            |
+| **Skill**       | `System/Skills/`、`.senera/skills/`       | 标准 `SKILL.md`（可关联并推荐已注册工具）                        | 沉淀领域排查套路、作业规范与复合工作流（工作台内置 Skill 创建助手） |
+| **MCP Package** | `McpServers/`、`.senera/mcp/`             | MCPB `manifest.json`、Registry `server.json`（兼容 `.mcp.json`） | 复用社区或自研的标准 MCP 服务                                       |
 
-容器会在每次启动时同步 Compose 声明的管理员资料：未变化时不重写，用户名、显示名或密码变化时更新账户；磁盘只保存 `scrypt` 密码哈希。服务通过 `8787:8787` 发布，随后可打开 `http://localhost:8787` 或实际访问地址；运行数据默认保存在 Docker volume 里。部署、日志、root 运行边界和沙箱说明见 [部署与运维](docs/Operations.md)，版本变化见 [更新记录](CHANGELOG.md)。
+工具检索与召回细节见 [ToolSearch 模块文档](Source/AgentSystem/ToolSearch/README.md)；扩展合同、类型化凭据、沙箱边界与热重载规则见 [Skills、System Extensions 与 MCP 开发指南](docs/Development/ManagedExtensions.md)。
 
-`docker compose pull` 使用标准 Registry 协议获取应用镜像，支持分层缓存、断点续传和平台校验；沙箱运行时由容器内嵌入 Worker 按拉取策略获取，缺失时明确失败，不会导入或猜测镜像身份。正式发布的应用与沙箱镜像都附带 SBOM，发布验证和生产部署使用 `name@sha256:...` 引用。gVisor 与受限 Docker Engine provider 共用只读根文件系统、非 root 用户、能力全移除、`no-new-privileges`、资源限制和统一网络策略。默认允许正常联网，只有工具显式声明 `Network: Deny` 时才断网。完整前提见 [部署与运维](docs/Operations.md#docker-启动)。
+## 深入阅读
 
-### 更新
+实现细节与二次开发按问题查对应文档（以下文档暂时只有中文）：
 
-桌面端的“设置 → 关于”支持检查更新、下载更新和重启安装。安装包使用 `electron-updater` 的 `latest.yml` 与 blockmap，已有文件会走差分下载；更新下载完成后由用户确认重启，不会在后台静默替换正在运行的程序。发布流水线会同时发布安装包、blockmap、`latest.yml` 和 `senera-update.json`，缺少任一产物会在发布前失败。
-
-桌面端首次安装时会让用户选择或新建工作区，例如 `E:\SeneraWorkspace`。工作区是唯一的可写项目根：配置、会话、artifact、Skills、MCP 包、日志、升级记录和桌面运行缓存都位于其中的 `.senera/`。安装包的 `resources` 目录只保存前端、官方扩展和运行时代码，不能作为可写数据目录。系统的应用数据目录只保留一个用于启动时定位工作区的轻量 `installation.json` 指针，不承载运行数据。
-
-网页端和 Docker 端只检查版本并打开发布说明，不会让正在运行的服务自行替换程序。Docker 更新仍由部署主机执行 `docker compose pull` 和 `docker compose up -d --pull always`；需要可回退的生产部署时固定应用镜像和沙箱镜像的 digest。自建发布源可通过 `SENERA_UPDATE_MANIFEST_URL` 覆盖默认的 GitHub 更新清单地址。
-
-### 本地开发
-
-```bash
-npm ci
-copy senera.config.example.json senera.config.json
-npm run dev
-```
-
-macOS / Linux 创建配置文件：
-
-```bash
-cp senera.config.example.json senera.config.json
-```
-
-然后编辑 `senera.config.json`，填好模型服务的 `BaseUrl`、`ApiKey` 和 `Model`。首次读取后，`ApiKey` 和敏感请求头会以 AES-256-GCM 密文写回 JSON/SQLite；未设置 `SENERA_CONFIG_SECRET_KEY` 时，本地密钥保存在工作区 `.senera/data/config/config-secrets.key`。不要提交或丢失这个文件，生产环境建议改用独立注入的环境密钥。运行期间通过设置界面提交的配置由配置服务直接生效，并同步写回 JSON 镜像，不会触发开发服务器重启；直接编辑磁盘配置后需要显式重启开发服务。本地工具使用受治理的宿主机 Node/进程边界，不要求安装或启动 Docker。启动后打开 `http://127.0.0.1:5173`。
-
-仓库使用 npm workspaces，只需要在根目录执行一次 `npm ci`。依赖版本由根目录 `package-lock.json` 锁定；只有主动增删依赖时才使用 `npm install <package>`，并同时提交 `package.json` 和 `package-lock.json`。
-
----
-
-## 模型与协议
-
-一个模型提供方通常由两部分组成：
-
-- `ModelProviderEndpoints[]`：端点、BaseUrl、ApiKey。
-- `ModelProviders[]`：具体模型、协议类型、输出上限和前端展示信息。
-
-供应商重命名会同步迁移遵循 `providerId/model` 约定的模型 ID、默认模型、分组和运行时客户端引用；旧模型 ID 会保留为兼容别名，以便历史会话继续解析。
-
-支持的上游协议：
-
-- OpenAI Responses
-- OpenAI Chat Completions
-- Anthropic Claude Messages
-- Google GenerateContent
-- OpenAI-compatible Chat Completions 服务
-
-模型可以选择 `native` 或 `baml`。`native` 要求模型能力和 Endpoint adapter 都支持 Tool Calling；`baml` 为不支持原生调用或需要结构化规划的模型生成可校验动作。两种模式共享执行和回填合同，但不会共享规划提示词。
-
----
-
-## 工具、Skills 与 MCP
-
-运行时能力分为三层：
-
-- System Tool：Senera 常驻的可信宿主控制面，由 `System/Extensions/<domain>/<extension>` 包将工具合同映射到预注册 capability。领域、扩展和 Tool 合同共同声明 UI 展示信息，前端不按工具名或 capability 推断语义。
-- Skill：标准 `SKILL.md` 工作流，可自动触发，并可通过 namespaced metadata 推荐已注册工具；工作区 Skill 位于 `.senera/skills/<name>/`，官方 Skill 位于 `System/Skills/<name>/`。
-- MCP package：可移植 MCP Server 包；第一方包位于 `McpServers/<package>/`，工作区包位于 `.senera/mcp/<package>/`，支持 MCPB、Registry 和兼容 `.mcp.json`。
-
-系统基础能力包括：
-
-- `ToolSearch`：动态工具发现。
-- `ArtifactReadTool`：读取可追溯 artifact 资源，JSON 使用预计算结构 sidecar、独立 index/query cursor 和可续传 typed query；`MemoryRecallTool`、`MemoryWriteTool`：长期记忆。
-- `AskUserTool`：缺少必要信息时向用户提问。
-- `ShellCommandTool` 和 Execution Resource 工具：受控命令会按初始等待窗口自动转为可恢复后台资源；交互式任务使用终端资源。
-- `ShellCommandTool`：受控读取、搜索、测试、构建和诊断；`WorkspaceApplyPatch`：原子修改工作区。
-- `WorkspaceApplyPatch`：原子应用结构化文件 patch，并对 `.senera/skills` 候选执行提交前预检。
-- `System/Skills`：代码执行、工作区调查、前端检查、文档/图片理解、联网研究、天气和 Skill 创建工作流。
-- `SkillManage`：创建、更新、校验和移除工作区 Skill；每轮常驻，不参与 ToolSearch 检索加载。
-- `LearningManage`：查看 Tool/Skill 路由学习状态、最近 episode、失败或跳过原因，以及绑定 Skill revision 的触发词；只读且每轮常驻。
-
-以下官方业务能力由 `McpServers` 提供：
-
-- `web-research/search`：联网搜索。
-- `weather/forecast`：天气查询。
-- `zavora-computer-use`：桌面控制。它声明 `interactive-desktop` 宿主能力；桌面端、Linux 图形会话和 WSLg 可用时才会启动，无头 Docker 会在 discovery 前标记为不可用，不会伪装成可用工具。
-
-以下可信宿主能力由 System Tool 提供：
-
-- `DocumentExtract`：文档解析。
-- `ImageAnalyze`：图像理解。
-
-天气与 Tavily 的 MCPB `user_config` 将 API key 明确声明为 Secret，并将 API host、语言和单位声明为普通配置。运行时仅授权宿主支持的执行后端交集；权限、网络、进程生命周期和热重载始终由宿主决定。
-
----
-
-## 证据与记忆
-
-senera 会把工具调用结果整理成 artifact pack，包括输入、原始结果、摘要、证据、投影和变更信息。模型上下文默认不直接塞大段 raw output，而是优先使用结构化摘要和证据 URI——上下文更短，不容易被历史工具结果拖爆；需要追查时可以回到原始 artifact；长期记忆也能基于新鲜证据沉淀，而不是反复学习旧历史。
-
-学习分成三个边界：连续性账本从完成的会话 episode 提取有来源、作用域和时间窗口的事实/信号/规则；Tool 路由学习改进工具检索；Skill 路由学习从可归因的成功执行中积累触发词。三者不共享一个大模型输出。连续性提取只由模型提出结构化事实，程序负责来源校验、去重、生命周期和条件触发；Tool/Skill 路由会先写 observable episode，再标记 learned、skipped 或 failed；Skill 经验绑定发布 revision，内容更新后旧经验自动失效。可直接让 Agent“查看学习状态”调用 `LearningManage` 诊断。
-
----
+| 问题                                                               | 文档                                                                                                                          |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| 一次请求如何穿过规划、策略、审批、执行与回填？状态为何分四层存储？ | [核心链路导览](docs/Architecture/CoreFlow.md)                                                                                 |
+| 工具如何在宿主或沙箱中执行？大输出如何压缩为 Artifact？            | [工具执行运行时](docs/Architecture/ToolExecutionRuntime.md) · [工具反馈压缩](docs/Architecture/ToolObservationCompression.md) |
+| 右栏的实时执行树如何生成？前后端事件如何同步？                     | [事件观测架构](docs/Architecture/EventObservability.md) · [WebSocket 协议参考](docs/API/WebSocketProtocol.md)                 |
+| 长期记忆与工具路由学习的职责边界如何划分？                         | [场景记忆链路边界](docs/Development/Learning.md)                                                                              |
+| 子代理如何派发？持久化任务与后台作业如何调度？                     | [Orchestration 模块说明](Source/AgentSystem/Orchestration/README.md)                                                          |
+| 标题生成、摘要压缩等辅助模型请求如何控制上下文预算？               | [辅助模型请求](docs/Architecture/AuxiliaryModelRequests.md)                                                                   |
+| 生产部署、版本升级、故障回滚、日志排查与沙箱状态监控去哪里看？     | [部署与运维](docs/Operations.md) · [更新记录](CHANGELOG.md)                                                                   |
+| 新增工具、观测事件或模型端点从哪里开始？                           | [开发手册](docs/Development/README.md) · [术语表](docs/Glossary.md)                                                           |
 
 ## 项目结构
 
 ```text
 senera/
-├─ Apps/                    Server 和 Desktop 入口
-├─ Build/                   构建与沙箱运行时准备
-├─ Source/AgentSystem/      Agent 运行时核心
-├─ System/Extensions/       按 domain 组织的常驻 System extension 包与 Tool 合同
-├─ System/Skills/           官方标准 Skills
-├─ McpServers/              自动发现的 MCP packages
-├─ .senera/skills/          工作区标准 Skills
-├─ .senera/mcp/             工作区标准 MCP packages
-├─ .senera/context/PROJECT.md  注入 Pi system prompt 的受控项目上下文（每轮检测并热重载）
-├─ .senera/data/            按 config、sessions、memory、tool-search 分流的运行时数据
-├─ .senera/desktop/         桌面日志、升级记录和本机运行缓存
-├─ Packages/                内部运行时包
-├─ baml_src/                BAML 定义
-├─ Scripts/                 维护脚本
-├─ Frontend/                React + Vite 工作台
-└─ senera.config.example.json
+├─ Apps/                    Server、Desktop (Electron)、CLI 入口
+├─ Source/AgentSystem/      Agent 运行时核心（各子模块附独立 README）
+├─ System/Extensions/       常驻 System Extension 包与声明式 Tool 合同
+├─ System/Skills/           内置官方 Skills
+├─ McpServers/              第一方 MCP Packages
+├─ Frontend/                React + Vite + Tailwind CSS 工作台前端
+├─ Packages/                内部共享运行时包
+├─ baml_src/                BAML 结构化规划与辅助函数定义
+├─ Build/ Scripts/          构建、代码生成与工程治理脚本
+├─ docs/                    架构设计、部署运维与二次开发手册
+└─ .senera/                 工作区目录：运行时数据与代码仓库隔离，仅保留受控模板
+   ├─ context/PROJECT.md    注入 System Prompt 的受控项目上下文
+   ├─ skills/ mcp/          工作区级自定义 Skills 与 MCP 包（仓库内附带两个示例）
+   ├─ data/                 运行时落盘数据，按 config、credentials、sessions、memory、
+   │                        orchestration、channels、memos、artifacts、workspace-observer 九个领域隔离存放
+   └─ desktop/              桌面端运行日志、差分升级记录与本机缓存
 ```
 
-更多开发细节可以看：
+## 鸣谢
 
-- [核心链路导览](docs/Architecture/CoreFlow.md)
-- [事件观测架构](docs/Architecture/EventObservability.md)
-- [WebSocket 协议参考](docs/API/WebSocketProtocol.md)
-- [开发手册](docs/Development/README.md)
-- [Skills 与外部工具](docs/Development/ManagedExtensions.md)
-- [术语表](docs/Glossary.md)
+senera 的核心链路建立在这些开源项目上：
 
----
+| 上游项目                                                                                                                          | 承担的职责                                                                | 开源许可   |
+| --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ---------- |
+| [Pi Coding Agent](https://github.com/earendil-works/pi)                                                                           | 会话树、多步工具循环与上下文压缩的执行内核，以依赖形式引入，未重新实现    | MIT        |
+| [BAML](https://github.com/BoundaryML/baml)                                                                                        | 为不支持原生 Tool Calling 的模型提供类型化提示函数与代码生成              | MIT        |
+| [ternlight](https://github.com/soycaporal/ternlight)                                                                              | 内置本地句子编码器，在 CPU 上计算检索与记忆向量，无需外部 Embedding 服务  | MIT        |
+| [Open Policy Agent](https://github.com/open-policy-agent/opa) / [opa-wasm SDK](https://github.com/open-policy-agent/npm-opa-wasm) | 工具审批与资源读写判定；`.rego` 编译为 `.wasm` 随包分发，策略在进程内执行 | Apache-2.0 |
+| [@agent-context/sift](https://github.com/agents-sdk/sift)                                                                         | 压缩工具大输出，同时保留可还原的原始内容                                  | Apache-2.0 |
+| [MemOS SDK](https://github.com/Markgatcha/memos)                                                                                  | 跨会话长期记忆的提取、存储与召回                                          | MIT        |
 
 ## License
 
-本项目基于 [Apache License 2.0](./LICENSE) 开源。
+本项目基于 Apache License 2.0 开源，详见 [LICENSE](./LICENSE)。

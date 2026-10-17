@@ -31,8 +31,6 @@ export default class TypeBuilder {
     
     ActionRunState: ClassViewer<'ActionRunState', "currentStep" | "loadedTools" | "progress" | "warnings" | "calls">;
     
-    AskUserDecision: ClassViewer<'AskUserDecision', "kind" | "question">;
-    
     AuxiliaryImageAnalysis: ClassViewer<'AuxiliaryImageAnalysis', "analysis">;
     
     AuxiliarySummary: ClassViewer<'AuxiliarySummary', "summary">;
@@ -98,8 +96,6 @@ export default class TypeBuilder {
     ToolRiskAudit: ClassViewer<'ToolRiskAudit', "decision" | "riskLevel" | "confidence" | "tripwire" | "reason" | "matchedConcerns" | "safeAlternative">;
     
     
-    AskUserDecisionKind: EnumViewer<'AskUserDecisionKind', "AskUser">;
-    
     DirectDecisionKind: EnumViewer<'DirectDecisionKind', "Direct">;
     
     ExecuteDecisionKind: EnumViewer<'ExecuteDecisionKind', "Execute">;
@@ -116,10 +112,10 @@ export default class TypeBuilder {
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "ActionPlanInput","ActionRunState","AskUserDecision","AuxiliaryImageAnalysis","AuxiliarySummary","ChannelCodePart","ChannelDelivery","ChannelResourcePart","ChannelTextPart","DirectDecision","EvidenceSlot","ExecuteDecision","MemOSFragment","PiToolArgumentsDraft","PlanFragment","PlannedToolCall","PlannerActiveSkill","PlannerCurrentUserTurn","PlannerEvidenceMemoryItem","PlannerEvidenceRequirement","PlannerEvidenceStateItem","PlannerJournalItem","PlannerTimelineTurn","PlannerToolCallStateItem","ProgressSignals","RepeatedCallWarning","ResidentSpeechProjection","StateCardRewrite","ToolCapabilityFacets","ToolCapabilityItem","ToolCapabilityRisk","ToolCatalogItem","ToolCatalogSummaryItem","ToolEvidenceCapabilityItem","ToolRiskAudit",
+            "ActionPlanInput","ActionRunState","AuxiliaryImageAnalysis","AuxiliarySummary","ChannelCodePart","ChannelDelivery","ChannelResourcePart","ChannelTextPart","DirectDecision","EvidenceSlot","ExecuteDecision","MemOSFragment","PiToolArgumentsDraft","PlanFragment","PlannedToolCall","PlannerActiveSkill","PlannerCurrentUserTurn","PlannerEvidenceMemoryItem","PlannerEvidenceRequirement","PlannerEvidenceStateItem","PlannerJournalItem","PlannerTimelineTurn","PlannerToolCallStateItem","ProgressSignals","RepeatedCallWarning","ResidentSpeechProjection","StateCardRewrite","ToolCapabilityFacets","ToolCapabilityItem","ToolCapabilityRisk","ToolCatalogItem","ToolCatalogSummaryItem","ToolEvidenceCapabilityItem","ToolRiskAudit",
           ]),
           enums: new Set([
-            "AskUserDecisionKind","DirectDecisionKind","ExecuteDecisionKind","ExecutionDeltaOp","ToolCallStatus","ToolRiskAuditDecision","ToolRiskLevel",
+            "DirectDecisionKind","ExecuteDecisionKind","ExecutionDeltaOp","ToolCallStatus","ToolRiskAuditDecision","ToolRiskLevel",
           ]),
           runtime: DO_NOT_USE_DIRECTLY_UNLESS_YOU_KNOW_WHAT_YOURE_DOING_RUNTIME
         });
@@ -130,10 +126,6 @@ export default class TypeBuilder {
         
         this.ActionRunState = this.tb.classViewer("ActionRunState", [
           "currentStep","loadedTools","progress","warnings","calls",
-        ]);
-        
-        this.AskUserDecision = this.tb.classViewer("AskUserDecision", [
-          "kind","question",
         ]);
         
         this.AuxiliaryImageAnalysis = this.tb.classViewer("AuxiliaryImageAnalysis", [
@@ -264,10 +256,6 @@ export default class TypeBuilder {
           "decision","riskLevel","confidence","tripwire","reason","matchedConcerns","safeAlternative",
         ]);
         
-        
-        this.AskUserDecisionKind = this.tb.enumViewer("AskUserDecisionKind", [
-          "AskUser",
-        ]);
         
         this.DirectDecisionKind = this.tb.enumViewer("DirectDecisionKind", [
           "Direct",

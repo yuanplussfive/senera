@@ -31,6 +31,8 @@ Use the controlled browser only when an interactive browser session is needed.
 6. Use `BrowserDownload` when a visible page control starts a file download. The downloaded file is returned as an Artifact-backed resource; do not request or invent a local filesystem path.
 7. Close the controlled session when the work is complete or no further interactive state is useful.
 
+Browser tools are Dynamic capabilities. When one is not already visible, discover it with ToolSearch, confirm the selected contract with ToolDescribe, then follow the active planning protocol: Native invokes the discovered contract through ToolCall, while BAML loads the tool before direct invocation.
+
 Do not request or attempt browser profiles, cookies, local storage, CDP access, arbitrary page scripts, authentication-state export, or startup arguments. Navigation, downloads, and external interactions remain subject to Senera approval.
 
 For a read-only request about a URL, use `BrowserOpen`, `BrowserRead`, or `BrowserSnapshot`; do not click controls unless it is necessary to reach the requested content.

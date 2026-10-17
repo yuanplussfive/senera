@@ -569,46 +569,6 @@ describe("Pi tool execution bridge behavior", () => {
     expect(text).not.toContain('"content":"{\\"type\\"');
   });
 
-  test("terminates Pi turn when a tool asks for user input", async () => {
-    const bridge = new AgentPiToolExecutionBridge({
-      executeToolCall: async () => ({
-        kind: "AskUser",
-        value: {
-          question: "哪个文件？",
-          reason_code: "missing_path",
-        },
-      }),
-      recordToolArtifacts: vi.fn(),
-    });
-
-    const result = await bridge.execute({
-      tool: registeredTool("ReadFile"),
-      params: {},
-      toolCallId: "call-ask",
-      context: createToolContext("ReadFile", "call-ask"),
-    });
-
-    expect(result.terminate).toBe(true);
-    expect(textContent(result.content[0])).toContain("哪个文件");
-    expect(parseObservation(result)).toMatchObject({
-      status: "waiting",
-      detail: {
-        result: {
-          question: "哪个文件？",
-          reason_code: "missing_path",
-        },
-      },
-    });
-    expect(parseObservation(result).observation_view).toBeUndefined();
-    expect(parseObservation(result)).not.toHaveProperty("control");
-    expect(result.details.senera).toEqual({
-      toolName: "ReadFile",
-      status: AgentPiToolResultStatuses.Success,
-      executionStatus: "completed",
-      outputAvailability: "complete",
-    });
-  });
-
   test("returns structured tool failures so Pi can preserve diagnostics and mark execution failed", async () => {
     const error = {
       code: AgentExecutionErrorCodes.ToolExecutionError,

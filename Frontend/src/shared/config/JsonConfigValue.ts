@@ -48,6 +48,21 @@ export function readValueAtPath(source: unknown, pathParts: readonly string[]): 
   return current;
 }
 
+export function isJsonConfigFieldVisible(
+  field: ConfigFormFieldData,
+  value: JsonConfigObject,
+  allFields: readonly ConfigFormFieldData[] = [],
+): boolean {
+  const condition = field.visibleWhen;
+  if (!condition) return true;
+  const configured = readValueAtPath(value, condition.path);
+  const dependency =
+    configured === undefined ? allFields.find((candidate) => sameJsonPath(candidate.path, condition.path)) : undefined;
+  const current = configured === undefined && dependency ? readDraftOrEffectiveValue(value, dependency) : configured;
+  if (condition.equals !== undefined) return sameOptionValue(current, condition.equals);
+  return condition.in?.some((candidate) => sameOptionValue(current, candidate)) ?? false;
+}
+
 export function readRelativeItemPath(parentPath: readonly string[], childPath: readonly string[]): string[] {
   return childPath.slice(parentPath.length);
 }
@@ -82,6 +97,10 @@ export function optionLabel(field: ConfigFormFieldData, option: ConfigFormFieldO
 
 export function sameOptionValue(left: unknown, right: ConfigFormFieldOptionValue): boolean {
   return String(left) === String(right);
+}
+
+function sameJsonPath(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((part, index) => part === right[index]);
 }
 
 export function sameJsonValue(left: unknown, right: unknown): boolean {

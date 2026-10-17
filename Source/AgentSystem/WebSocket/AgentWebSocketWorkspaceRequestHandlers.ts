@@ -8,7 +8,7 @@ import type { AgentWebSocketEventSender, AgentWebSocketRequestContext } from "./
 
 export class AgentWebSocketWorkspaceRequestHandlers {
   constructor(
-    private readonly context: Pick<AgentWebSocketRequestContext, "workspaceInfo" | "workspaceSwitchRequest">,
+    private readonly context: Pick<AgentWebSocketRequestContext, "workspaceInfo" | "workspaceSwitchRequest" | "logger">,
   ) {}
 
   async get(_request: AgentWebSocketRequestOf<"workspace.get">, sendEvent: AgentWebSocketEventSender): Promise<void> {
@@ -32,13 +32,9 @@ export class AgentWebSocketWorkspaceRequestHandlers {
       context: {},
       data: { requestId: request.requestId, workspaceRoot: target },
     });
+    let result: Awaited<ReturnType<typeof switcher>>;
     try {
-      const snapshot = await switcher(target);
-      await sendEvent({
-        kind: AgentEventKinds.WorkspaceSwitched,
-        context: {},
-        data: { ...snapshot, requestId: request.requestId },
-      });
+      result = await switcher(target);
     } catch (error) {
       await sendEvent({
         kind: AgentEventKinds.WorkspaceSwitchFailed,
@@ -53,6 +49,32 @@ export class AgentWebSocketWorkspaceRequestHandlers {
           },
         },
       });
+      return;
+    }
+    const snapshot = "snapshot" in result ? result.snapshot : result;
+    const finalize = "snapshot" in result ? result.finalize : undefined;
+    try {
+      await sendEvent({
+        kind: AgentEventKinds.WorkspaceSwitched,
+        context: {},
+        data: { ...snapshot, requestId: request.requestId },
+      });
+    } catch (error) {
+      this.context.logger?.warn("工作区切换确认发送失败，将继续回收旧运行时", {
+        workspaceRoot: target,
+        error: errorMessage(error),
+      });
+    } finally {
+      if (finalize) {
+        try {
+          await finalize();
+        } catch (error) {
+          this.context.logger?.error("工作区切换后的旧运行时回收失败", {
+            workspaceRoot: target,
+            error: errorMessage(error),
+          });
+        }
+      }
     }
   }
 }

@@ -113,6 +113,7 @@ export const AgentEventKinds = {
   ConfigReloaded: "config.reloaded",
   ConfigFailed: "config.failed",
   ConfigSnapshot: "config.snapshot",
+  RuntimeDependencySnapshot: "runtime_dependency.snapshot",
   ModelListSnapshot: "model.list.snapshot",
   ProviderModelsSnapshot: "provider.models.snapshot",
   ProviderModelsFailed: "provider.models.failed",
@@ -494,6 +495,10 @@ export const AgentEventSpecTable: {
   },
   [AgentEventKinds.ConfigSnapshot]: {
     layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Config,
+  },
+  [AgentEventKinds.RuntimeDependencySnapshot]: {
+    layer: AgentEventLayers.Progress,
     phase: AgentEventPhases.Config,
   },
   [AgentEventKinds.ModelListSnapshot]: {

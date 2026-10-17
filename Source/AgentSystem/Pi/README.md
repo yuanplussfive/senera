@@ -1,17 +1,18 @@
 # Pi 模块
 
-Pi 负责会话树、流式文本、工具调用、多步循环、compaction 和标准 Skill 资源加载。生产执行内核是 `@earendil-works/pi-coding-agent` 的 `AgentSession`、`SessionManager` 与 `DefaultResourceLoader`；Senera 负责工具规划策略选择、BAML 规划、Skill 语义激活、提示模板选择、工具授权与执行、Artifact 和领域事件。Native 模式直接使用 Pi 的供应商 Tool Calling adapter，不构造 BAML 规划或语义风险审核请求。模型切换会创建完整的 `AgentSystemRuntime`，按 provider 无限缓存这些对象会让 Electron 主进程的内存随着模型选择持续增长；Pi 的高频 `message_update` 若绕过异步订阅者的完成信号，还会积累事件队列和完整 trace payload。
+Pi 负责会话树、流式文本、工具调用、多步循环、compaction 和标准 Skill 资源加载。生产执行内核是 `@earendil-works/pi-coding-agent` 的 `AgentSession`、`SessionManager` 与 `DefaultResourceLoader`；Senera 负责工具规划策略选择、BAML 规划、Skill 语义激活、提示模板选择、工具授权与执行、Artifact 和领域事件。Native 模式直接使用 Pi 的供应商 Tool Calling adapter，不构造 BAML 规划或语义风险审核请求。模型切换会创建完整的 `AgentSystemRuntime`，按 provider 无限缓存这些对象会让 Electron 主进程的内存随着模型选择持续增长；Pi 的高频 `message_update` 绕过异步订阅者的完成信号时，还会积累事件队列和完整 trace payload。
 
 ## 关键签名
 
-- Senera 是 Pi session system prompt 的唯一 owner。`AgentPiCodingAgentSessionFactory` 通过受管的 `PiSessionBaseSystemPrompt.liquid` 创建 `DefaultResourceLoader.systemPrompt`，使 Pi 将它作为 `customPrompt` 使用；Pi 自带的身份、内置工具目录和 Pi 文档导航不会进入模型上下文。稳定 Skill 目录由 runtime extension 注入一次；每轮的活动 Skill 索引、受控项目上下文和选中的 prompt templates 则随 durable `senera.turn-context/v1` 进入当前普通 user message。
+- Senera 是 Pi session system prompt 的唯一 owner。`AgentPiCodingAgentSessionFactory` 通过受管的 `PiSessionBaseSystemPrompt.liquid` 创建 `DefaultResourceLoader.systemPrompt`，让 Pi 把它作为 `customPrompt` 使用；Pi 自带的身份、内置工具目录和 Pi 文档导航不会进入模型上下文。稳定 Skill 目录由 runtime extension 注入一次；每轮的活动 Skill 索引、受控项目上下文和选中的 prompt templates 则随 durable `senera.turn-context/v1` 进入当前普通 user message。
 - `AgentSystemRuntimeCache.acquire(modelProviderId?)` 返回 `{ runtime, release() }`，不再暴露无生命周期的 `get()`。
-- `AgentPiSessionMutationServiceOptions.acquireRuntime(modelProviderId?)` 仅为已有 Pi 会话的 rewind、reset、fork、compact、status 与 export 获取运行时租约；创建空会话不会构建 Pi runtime。
+- `AgentPiSessionMutationServiceOptions.acquireRuntime(modelProviderId?)` 只为已有 Pi 会话的 rewind、reset、fork、compact、status 与 export 获取运行时租约；创建空会话不会构建 Pi runtime。
 - Pi JSONL 与 Coding Agent session 只在首个实际 turn 的 `leaseTurn()` 中惰性建立，`PiTurnLeaseTimeoutSeconds` 约束该租约阶段，而不是 `session.create`。
 - `RunSettlementTimeoutSeconds` 约束 destructive branch transition 等待旧 run、审批、工具和 Coding Agent 进入空闲状态的时间；超时只拒绝新操作，不绕过分支隔离屏障。
 - `AgentPiModelRuntimeOwner.get()` 合并并发初始化；失败的 Promise 会从 owner 中移除，后续租约可以重试，不会把一次启动故障永久缓存。
 - `AgentPiBackgroundShutdownTracker` 跟踪 LRU 淘汰后的异步关闭，立即发出受限诊断，并只保留有界的最近失败；pool `close()` 会 drain 后统一报告。
 - `AgentPiCodingAgentSessionPool` 只编排 lease、rewind、fork、reset 和管理操作；`AgentPiCodingAgentSessionFactory` 独占 resource loader、settings、模型 runtime、工具物化和 session 重配置，`AgentPiCodingAgentSessionLifecycle` 独占 operation drain、LRU 淘汰、后台关闭和幂等 close。公共类型集中在 pool contracts，旧 pool import 路径继续导出它们。
+- 租约阶段 deadline 只结束当前 turn 的等待，不丢弃仍在收尾的底层 Pi 操作；deadline 会通过独立 signal 传入 lease path，并由 `session.lease.phase.*` 诊断记录 queue、open/create、runtime rebuild、configure 与 context refresh 的耗时。这样重试不会伪装成新的独立初始化，运维可以区分同会话排队、文件/资源初始化和 runtime 重建。
 - Coding Agent 原生 `subscribe` 是同步通知 API，不等待 listener Promise；`AgentPiCodingAgentSession` 必须把完整 `AgentSessionEvent` 放入有序交付队列，并在 `prompt()` 收口前 drain。collector 通过明确 event type guard 选择 message/tool 事件，不把 session lifecycle 强转成 core event。
 - Pi JSONL 是会话上下文的唯一来源。Senera 不会从产品对话、工具事件或缓存重新导入历史；每个新 turn 只由 Pi 追加当前用户消息及其原生执行事件。
 - `AgentPiTurnExecutor` 把 `collector.collect(event)` 作为异步 session listener；不能在调用侧用 `void` 提前丢弃其完成状态。
@@ -29,7 +30,7 @@ Pi 负责会话树、流式文本、工具调用、多步循环、compaction 和
 两条路径共享规范化会话事实，但使用不同的 prompt/wire projection：
 
 - Native 的 system prompt 只包含稳定行为、人设表达和执行环境。RootCommand、用户任务副本、文本工具目录、JSON/XML 工具调用说明和输出哨兵都不会进入 prompt；Pi API adapter 把 `Context.tools`、assistant `toolCall` 与 `toolResult` 映射到供应商原生协议。
-- BAML 的 system prompt 只包含语义行为、人设表达和执行环境。`AgentPiPlanningCompiler` 将 RootCommand 放在 `seneraRuntime.rootCommand`，将历史放在 `planningContext.messages`，将曝光工具放在 `routingCards`；`EvolveTurn` 看不到完整参数 Schema，只有选定工具后的 `FillPiToolArguments` 收到该工具的权威合同。
+- BAML 的 system prompt 只包含语义行为、人设表达和执行环境。`AgentPiPlanningCompiler` 把 RootCommand 放在 `seneraRuntime.rootCommand`，把历史放在 `planningContext.messages`，把曝光工具放在 `routingCards`；`EvolveTurn` 看不到完整参数 Schema，只有选定工具后的 `FillPiToolArguments` 收到该工具的权威合同。
 
 ## 提示缓存
 
@@ -84,13 +85,13 @@ try {
 
 ## 流事件与内存边界
 
-`message_update` 只投影为 `model.delta`，不额外创建 Pi trace。其他 Pi trace 的字符串、数组、对象属性和递归深度必须受限，再发送到 WebSocket 或写入 run history。属性上限必须在读取属性值前生效——`Object.entries(payload).slice(...)` 会先遍历并分配整个宽对象，不满足内存边界。
+`message_update` 只投影为 `model.delta`，不额外创建 Pi trace。其他 Pi trace 的字符串、数组、对象属性和递归深度必须受限，再发送到 WebSocket 或写入 run history。属性上限必须在读取属性值前生效，因为 `Object.entries(payload).slice(...)` 会先遍历并分配整个宽对象，不满足内存边界。
 
 工具 observation 在执行桥中只编译一次：完整原始结果进入 Artifact，严格 Observation v3 进入 Pi JSONL。后续规划只验证协议并选择完整回合，不再维护 batch digest cache，也不根据 `result`、`content` 或任意 payload 字段重新猜测或二次裁剪。批次中的每个 call 都先获得显式 token reservation；执行成功、执行失败和 Pi 在执行前产生的校验/预检失败都会幂等结算。Pi 自身生成的纯文本失败在写入历史前编译为同一 v3 协议，不会留下占用预算但无法被规划器读取的终态。
 
 ## 会话复用
 
-同一 runtime 内的 Coding Agent session 以会话 ID 为键复用，但仅保留最近的空闲 session。淘汰时释放 hooks 并 abort 旧 session；下一次访问通过持久 JSONL 重建上下文，active session 始终保留到 lease release。
+同一 runtime 内的 Coding Agent session 以会话 ID 为键复用，但只保留最近的空闲 session。淘汰时释放 hooks 并 abort 旧 session；下一次访问通过持久 JSONL 重建上下文，active session 始终保留到 lease release。
 
 新建空 Senera 会话不构造 runtime，也不建立 Pi JSONL。首个实际 `session.message` 通过 `create_if_missing` 原子建立 Senera 会话，Pi 只在 `leaseTurn()` 中 `open_or_create`。同一会话后续回合优先复用 persistent `AgentSession`，避免每轮重新读取和解析整棵 session tree。
 
@@ -100,7 +101,7 @@ try {
 
 ## 项目上下文
 
-`.senera/context/PROJECT.md` 是进入 Pi system prompt 的唯一工作区项目上下文文件。`DefaultResourceLoader` 禁用通用 context-file 扫描，通过 `agentsFilesOverride` 只注入该文件，避免意外读取仓库中的其他约定文件。文件使用 regular-file snapshot 读取并按存在性与内容生成 SHA-256 fingerprint；每轮 lease 都检测变化，变化后等待会话空闲并调用完整 `session.reload()`，因此下一轮立即生效，无需重启服务或创建新对话。
+`.senera/context/PROJECT.md` 是进入 Pi system prompt 的唯一工作区项目上下文文件。`DefaultResourceLoader` 禁用通用 context-file 扫描，通过 `agentsFilesOverride` 只注入该文件，避免意外读取仓库中的其他约定文件。文件使用 regular-file snapshot 读取并按存在性与内容生成 SHA-256 fingerprint；每轮 lease 都检测变化，变化后等待会话空闲并调用完整 `session.reload()`，所以下一轮立即生效，不用重启服务或创建新对话。
 
 项目上下文属于 runtime-owned host state，普通 workspace 写入工具不能修改；它应由部署、用户或专门的受控管理入口维护。文件不存在表示没有项目级补充指令，不触发兼容回退或目录猜测。
 
@@ -120,9 +121,9 @@ Pi Session JSONL 是 assistant message、tool call、tool result、分支和 com
 
 Pi 工具定义使用 `executionMode: "parallel"`，让同一批次的独立调用进入执行桥。安全串行化不由 Pi 的静态 per-tool 开关承担：Pi Core 只要在一个批次里看到任意 `sequential` 工具，就会把整个批次全部串行，无法表达“同资源冲突、不同资源并发”。
 
-每回合的不可变 `toolAccessGrant` 包含明确授权的工具名，并可在 Registered 策略下包含 MCP 服务 ID 与包修订。同轮首次发现的真实工具按服务身份检查授权，不依赖发现前的工具名快照；显式名称上限不会扩大为服务授权。Native 保持 Bootstrap 加固定 ToolCall 的稳定 schema，ToolDescribe 确认可用工具契约后通过桥执行。BAML 的 ToolLoad 使用 Pi 公共扩展 API 注册本轮新发现的真实 schema，再更新 `AgentToolExposureState`；下一次规划收到新契约与 exposure generation，无需重建会话。不可用工具不能确认、加载或自动复用。请求级 `tool_choice` 只能收窄曝光集合；provider、permission hook、执行桥和最终执行器共享同一授权边界。
+每回合的不可变 `toolAccessGrant` 包含明确授权的工具名，并可在 Registered 策略下包含 MCP 服务 ID 与包修订。同轮首次发现的真实工具按服务身份检查授权，不依赖发现前的工具名快照；显式名称上限不会扩大为服务授权。Native 保持 Bootstrap 加固定 ToolCall 的稳定 schema，ToolDescribe 确认可用工具契约后通过桥执行。BAML 的 ToolLoad 使用 Pi 公共扩展 API 注册本轮新发现的真实 schema，再更新 `AgentToolExposureState`；下一次规划收到新契约与 exposure generation，不用重建会话。不可用工具不能确认、加载或自动复用。请求级 `tool_choice` 只能收窄曝光集合；provider、permission hook、执行桥和最终执行器共享同一授权边界。
 
-工具定义绑定 contract digest。MCP `tools/list_changed` 更新 registry 后，旧 Pi 回合若尝试调用同名但契约已变化的工具，会在执行器分派前失败；新目录只在后续回合以新的工具指纹和 Schema 进入 Coding Agent。
+工具定义绑定 contract digest。MCP `tools/list_changed` 更新 registry 后，旧 Pi 回合尝试调用同名但契约已变化的工具时，会在执行器分派前失败；新目录只在后续回合以新的工具指纹和 Schema 进入 Coding Agent。
 
 真实并发由 ToolRuntime 的执行调度器决定。普通调用默认并行，但每次运行受 `ToolExecution.MaxConcurrentCallsPerRun` 的有界容量控制；插件还可以通过 `Runtime.MaxConcurrency` 声明更低的工具级上限。`ResourceClaims` 工具根据声明的资源参数生成 shared/exclusive claim，重叠资源中任意一方为 exclusive 时等待，不重叠资源可以并发；`SelfManaged` 工具由所属运行时自行调度。MCP 工具未声明策略时不添加 server 级别的隐式租约，直接走普通并行；只有 MCP 工具显式声明 `ResourceClaims` 才按资源互斥。空资源声明不会再变成隐式全局独占租约，资源契约或投影无效会显式失败。权限检查、参数校验和实际工具执行仍是权威边界，模型的 `dependsOn` 不能绕过资源租约。
 

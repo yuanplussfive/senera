@@ -58,6 +58,10 @@ import {
 import { AgentPiNativeToolBridgeName, projectAgentPiNativeToolCallDisplay } from "./AgentPiNativeToolBridge.js";
 import { exposeAgentPiContextProvider, type AgentPiContextProvider } from "./AgentPiProviderCompatibility.js";
 import { restrictAgentPiNativeTools } from "./AgentPiNativeToolContext.js";
+import {
+  createAgentStreamIdleWatchdog,
+  isAgentStreamActivityEvent,
+} from "../ModelEndpoints/AgentModelRequestTimeout.js";
 
 type NativeModel = Model<AgentNativeToolApi>;
 type NativeStreamOptions = Omit<SimpleStreamOptions, "toolChoice"> & {
@@ -136,16 +140,28 @@ export class AgentPiNativeToolProvider {
     }
     const firstTokenController = new AbortController();
     const maxRequestController = new AbortController();
-    const signal = combineSignals(options?.signal, firstTokenController.signal, maxRequestController.signal);
+    const streamIdleController = new AbortController();
+    const signal = combineSignals(
+      options?.signal,
+      firstTokenController.signal,
+      maxRequestController.signal,
+      streamIdleController.signal,
+    );
     const firstTokenTimer = startTimeout(
       firstTokenController,
       this.options.modelProvider.FirstTokenTimeoutMs,
       "first_token",
     );
     const maxRequestTimer = startTimeout(maxRequestController, this.options.modelProvider.MaxRequestMs, "max_request");
+    const streamIdleWatchdog = createAgentStreamIdleWatchdog(
+      streamIdleController,
+      this.options.modelProvider.MaxRequestMs,
+      this.options.modelProvider.FirstTokenTimeoutMs,
+    );
     const deadlineFailure = (): ModelRequestTimeoutError | undefined =>
       findModelRequestTimeoutError(firstTokenController.signal.reason) ??
       findModelRequestTimeoutError(maxRequestController.signal.reason) ??
+      findModelRequestTimeoutError(streamIdleController.signal.reason) ??
       findModelRequestTimeoutError(signal.reason);
     const callerAborted = (): boolean => signal.aborted && deadlineFailure() === undefined;
     let started = false;
@@ -192,8 +208,9 @@ export class AgentPiNativeToolProvider {
         cacheStrategy,
         options?.cacheRetention ?? cache.retention,
       );
+      // Google’s Pi adapter intentionally rejects a replaced fetch; observe
+      // the provider payload through Pi instead of intercepting transport.
       const wireCapture = createAgentPromptWireCapture({
-        fetch: options?.fetch,
         onPayload: options?.onPayload,
       });
       const requestOptions: NativeStreamOptions = {
@@ -201,7 +218,6 @@ export class AgentPiNativeToolProvider {
         signal,
         sessionId: cache.scope,
         cacheRetention,
-        fetch: wireCapture.fetch,
         onPayload: wireCapture.onPayload,
         temperature: this.options.modelProvider.Temperature,
         timeoutMs: this.options.modelProvider.TimeoutMs,
@@ -211,12 +227,14 @@ export class AgentPiNativeToolProvider {
       const source = this.delegate(model, request, requestOptions, simple);
       for await (const event of source) {
         if (isFirstTokenEvent(event)) firstTokenTimer?.clear();
+        if (isAgentStreamActivityEvent(event)) streamIdleWatchdog.reset();
         if (event.type === "start") started = true;
         if (event.type === "done") {
           this.recordUsage(turnState, event.message.usage);
           turnState.context.tokenBudget.recordProviderUsage(event.message.usage, event.message);
           firstTokenTimer?.clear();
           maxRequestTimer?.clear();
+          streamIdleWatchdog.clear();
           const message = await this.projectResidentSpeech(
             request,
             event.message,
@@ -277,6 +295,7 @@ export class AgentPiNativeToolProvider {
     } finally {
       firstTokenTimer?.clear();
       maxRequestTimer?.clear();
+      streamIdleWatchdog.clear();
     }
   }
 
@@ -343,14 +362,12 @@ export class AgentPiNativeToolProvider {
     const sidecarStrategy = resolveAgentPromptCacheStrategy(model.api);
     const sidecarRetention = projectAgentPromptCacheRetention(sidecarStrategy, sidecarCache.retention);
     const sidecarWireCapture = createAgentPromptWireCapture({
-      fetch: sourceOptions?.fetch,
       onPayload: sourceOptions?.onPayload,
     });
     const sidecarRequestOptions: NativeStreamOptions = {
       ...requestOptions,
       sessionId: sidecarCache.scope,
       cacheRetention: sidecarRetention,
-      fetch: sidecarWireCapture.fetch,
       onPayload: sidecarWireCapture.onPayload,
     };
     const sidecarUsage = turnState.context.usageLedger.fork();
@@ -396,7 +413,6 @@ export class AgentPiNativeToolProvider {
             name: "model_timing",
             details: timing,
           }),
-        inputBudget: turnState.context.tokenBudget,
       });
     } finally {
       const usage = sidecarUsage.aggregate();

@@ -14,7 +14,14 @@ export class AgentWorkspaceNotFoundError extends Error {
   }
 }
 
-/** Application-owned identities; registering a folder never copies its configuration or data. */
+export class AgentWorkspaceInUseError extends Error {
+  constructor(readonly workspaceId: string) {
+    super(`Workspace is in use and cannot be forgotten: ${workspaceId}`);
+    this.name = "AgentWorkspaceInUseError";
+  }
+}
+
+/** Application-owned identities; state migration is explicit and never part of registration itself. */
 export class AgentWorkspaceCatalog {
   private readonly filePath: string;
   private readonly roots: readonly string[];
@@ -68,6 +75,20 @@ export class AgentWorkspaceCatalog {
       this.records.unshift(record);
     }
     return record;
+  }
+
+  /**
+   * Removes only the application registration. The workspace directory and all
+   * workspace-owned state remain untouched and can be registered again later.
+   */
+  forget(id: string): AgentWorkspaceDescriptor {
+    const index = this.records.findIndex((workspace) => workspace.id === id);
+    if (index < 0) throw new AgentWorkspaceNotFoundError(id);
+    const record = this.records[index]!;
+    const next = this.records.filter((_, candidateIndex) => candidateIndex !== index);
+    this.persist(next);
+    this.records.splice(index, 1);
+    return { ...record };
   }
 
   private persist(next: readonly AgentWorkspaceDescriptor[]): void {

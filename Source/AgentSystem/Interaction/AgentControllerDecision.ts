@@ -18,7 +18,6 @@ const PlannedToolCallSchema = z
 
 export const ControllerDecisionSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("Direct"), response: NonEmptyStringSchema }).strict(),
-  z.object({ kind: z.literal("AskUser"), question: NonEmptyStringSchema }).strict(),
   z
     .object({
       kind: z.literal("Execute"),

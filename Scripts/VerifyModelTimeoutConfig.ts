@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { AgentSystemConfigSchema } from "../Source/AgentSystem/Schemas/AgentSystemConfigSchema.js";
 import {
+  AgentDefaults,
   resolveActionPlannerConfig,
   resolveAgentLoopConfig,
   resolveAgentDefaults,
@@ -34,15 +35,7 @@ function parseConfig(config: AgentSystemConfig): AgentSystemConfig {
 }
 
 const parsedBase = parseConfig(baseConfig);
-assert.deepEqual(resolvePersistenceConfig(parsedBase), {
-  Kind: "sqlite",
-  EventWriter: {
-    RestartDelayMs: 250,
-    CloseTimeoutMs: 5_000,
-    DrainBatchSize: 256,
-    CommittedRetentionMs: 7 * 24 * 60 * 60 * 1_000,
-  },
-});
+assert.deepEqual(resolvePersistenceConfig(parsedBase), AgentDefaults.Persistence);
 assert.equal(resolveToolExecutionConfig(parsedBase).TimeoutMs, 120000);
 assert.equal(resolveAgentLoopConfig(parsedBase).PiTurnLeaseTimeoutMs, 120000);
 assert.equal(resolveAgentDefaults(parsedBase).Server.Port, 8787);

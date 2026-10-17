@@ -17,6 +17,8 @@ import type { AgentApprovalRuntime } from "../Approvals/AgentApprovalRuntime.js"
 
 export interface AgentSystemToolsRuntimeOptions {
   readonly browserRuntime?: AgentBrowserRuntime;
+  readonly model?: string;
+  readonly resolveModel?: (configuredModelId: string) => string;
   readonly platform?: AgentSystemExtensionPlatform;
   readonly selfService?: AgentSelfServicePort;
   readonly approvalRuntime?: AgentApprovalRuntime;
@@ -35,7 +37,11 @@ export function createAgentSystemTools(
     ResourcePathSystemTool,
     ...PiWorkspaceSystemTools,
     ...AgentGitSystemTools,
-    ...createWebSystemTools(config.Extensions?.["web-tools"]?.Configuration),
+    ...createWebSystemTools(config.Extensions?.["web-tools"]?.Configuration, {
+      browserRuntime: options.browserRuntime,
+      model: options.model,
+      resolveModel: options.resolveModel,
+    }),
     ...createAgentBrowserSystemTools(config.Extensions?.["agent-browser"]?.Configuration, options.browserRuntime),
     ...createSeneraSelfSystemTools(options.selfService, options.approvalRuntime),
   ];

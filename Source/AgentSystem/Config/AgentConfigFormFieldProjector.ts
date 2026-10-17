@@ -62,6 +62,7 @@ export function projectConfigFormField<TText>(options: {
     keyPlaceholder: options.field.keyPlaceholder,
     valuePlaceholder: options.field.valuePlaceholder,
     modelSelection: options.field.modelSelection,
+    visibleWhen: options.field.visibleWhen,
   };
 }
 

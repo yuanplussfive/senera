@@ -60,6 +60,7 @@ describe("config secret redaction", () => {
           Configuration: {
             search: {
               exaApiKey: "exa-live-secret",
+              codexApiKey: "codex-live-secret",
               tavilyApiKey: "tavily-live-secret",
               endpoint: "https://search.example",
             },
@@ -74,6 +75,7 @@ describe("config secret redaction", () => {
     expect(configuration).toMatchObject({
       search: {
         exaApiKey: Placeholder,
+        codexApiKey: Placeholder,
         tavilyApiKey: Placeholder,
         endpoint: "https://search.example",
       },

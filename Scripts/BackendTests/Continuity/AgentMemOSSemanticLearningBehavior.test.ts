@@ -334,7 +334,7 @@ describe("MemOS semantic learning with real storage", () => {
     const initial = f.createLearner(1, 50);
     initial.start();
     await expect(initial.flush({ surfaceFailures: false })).resolves.toBeUndefined();
-    expect(f.ledger.list({ stage: "day_digest_batch", status: "failed" })).not.toHaveLength(0);
+    expect(f.ledger.list({ stage: "day_digest_batch", status: "exhausted" })).not.toHaveLength(0);
 
     const recovered = f.createLearner(1, 85);
     recovered.start();

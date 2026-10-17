@@ -243,8 +243,7 @@ describe("turn prompt projection", () => {
             promptPersona: () => ({
               enabled: true,
               card: {
-                corePersona: "一位可靠的代码审阅搭档。",
-                languageStyle: "直接、简洁，并先说明结论。",
+                markdown: "# 一位可靠的代码审阅搭档\n\n直接、简洁，并先说明结论。",
               },
             }),
             liveContinuityMemory: async () => EmptyAgentContinuityMemoryPromptContext,
@@ -281,9 +280,9 @@ describe("turn prompt projection", () => {
 
       expect(rendered.text).toContain("<persona>");
       expect(rendered.text).toContain("<resident_role>");
-      expect(rendered.text).toContain("一位可靠的代码审阅搭档。");
-      expect(rendered.text).toContain("<language_style>");
-      expect(rendered.text.indexOf("<language_style>")).toBeGreaterThan(
+      expect(rendered.text).toContain("# 一位可靠的代码审阅搭档");
+      expect(rendered.text).toContain("<markdown>");
+      expect(rendered.text.indexOf("<markdown>")).toBeGreaterThan(
         rendered.text.indexOf(mode === "native" ? "<native_tool_calling>" : "<planning_guidance>"),
       );
     },

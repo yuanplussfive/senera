@@ -1,9 +1,7 @@
-import { forwardRef, lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { buildStyles, CircularProgressbar } from "react-circular-progressbar";
 import type { UploadAttachmentData } from "../../api/eventTypes";
 import type {
-  AgentActivationCatalogEntry,
-  AgentActivationKind,
   AgentActivationCatalogSnapshot,
   ExplicitActivationReference,
   ExplicitActivationSet,
@@ -15,10 +13,8 @@ import { cn, formatFileSize } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { frontendChatMessage } from "../../i18n/frontendChatMessageCatalog";
 import { useFrontendLocale } from "../../i18n/useFrontendLocale";
-import { resolveFrontendLocalizedText, type FrontendLocale } from "../../i18n/frontendLocaleModel";
 import { useResponsiveMode } from "../../shared/responsive";
 import { MotionButton, MotionList, MotionListItem } from "../../shared/motion";
-import { resolveAgentToolPresentationAppIcon } from "../../shared/workspace/agentToolPresentationIcons";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,20 +23,27 @@ import {
   DropdownMenuTrigger,
   ConversationFrame,
   IconButton,
-  isAppIconName,
   Spinner,
   Tooltip,
   AppIcon,
 } from "../../shared/ui";
-import type { AppIconName } from "../../shared/ui";
 import { FilePreviewIcon } from "./FilePreviewIcon";
-import { PersonaControl } from "./PersonaControl";
+import { FilePreviewDialog } from "../../shared/media/FilePreviewDialog";
+import { isImageFilePreview } from "../../lib/filePreview";
 import { ChatModelSelector } from "./ChatModelSelector";
 import type { MessageQueueMode } from "../../app/useChatCommands";
-import type { ChatApprovalConfig, ChatModelConfig, ChatPersonaConfig } from "./ChatPanelContracts";
+import type { ChatApprovalConfig, ChatModelConfig } from "./ChatPanelContracts";
 import type { SettingsSectionId } from "../settings/settingsSectionContract";
 import { useComposerAttachments, type PendingAttachment } from "./useComposerAttachments";
 import type { RuntimeContextUsage, RuntimeUsageSnapshot } from "../observability/runtimeDiagnosticProjection";
+import {
+  ActivationPalette,
+  ActivationTextOverlay,
+  rankActivationCandidates,
+  readActivationQuery,
+  readActivationTokens,
+  stepActivationIndex,
+} from "./ChatActivationPalette";
 
 const ApprovalModeControl = lazy(() => import("./ApprovalModeControl"));
 
@@ -76,7 +79,6 @@ export interface ChatComposerProps {
   onValueChange?: (value: string) => void;
   modelConfig: ChatModelConfig;
   approvalConfig: ChatApprovalConfig;
-  personaConfig: ChatPersonaConfig;
   runtime: {
     draftKey?: string;
     socketStatus: string;
@@ -105,7 +107,6 @@ export function ChatComposer({
   modelConfig,
   runtimeUsage,
   approvalConfig,
-  personaConfig,
   runtime,
   onSend,
   onCancel,
@@ -119,10 +120,8 @@ export function ChatComposer({
   const taRef = useRef<HTMLTextAreaElement>(null);
   const textOverlayRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const openPersonaAfterToolkitCloseRef = useRef(false);
   const pendingSettingsSectionRef = useRef<SettingsSectionId | null>(null);
   const [toolkitOpen, setToolkitOpen] = useState(false);
-  const [personaOpen, setPersonaOpen] = useState(false);
   const [activationSelection, setActivationSelection] = useState<ExplicitActivationReference[]>([]);
   const [activationQuery, setActivationQuery] = useState<string | null>(null);
   const [activationIndex, setActivationIndex] = useState(0);
@@ -142,6 +141,7 @@ export function ChatComposer({
   }, [disabled, cancelling, registerReferenceHandler]);
   const { prefersCompactControls } = useResponsiveMode();
   const textareaMaxHeight = prefersCompactControls ? TOUCH_TEXTAREA_MAX_HEIGHT : DESKTOP_TEXTAREA_MAX_HEIGHT;
+  const showActivationOverlay = /(?:^|\s)@[^\s@]*/u.test(value);
 
   const hint = useMemo(() => {
     if (cancelling) return frontendMessage("chat.composer.hintCancelling", {}, locale);
@@ -188,6 +188,12 @@ export function ChatComposer({
   }, [textareaMaxHeight, value]);
 
   useEffect(() => {
+    if (!showActivationOverlay || !taRef.current || !textOverlayRef.current) return;
+    textOverlayRef.current.scrollTop = taRef.current.scrollTop;
+    textOverlayRef.current.scrollLeft = taRef.current.scrollLeft;
+  }, [showActivationOverlay]);
+
+  useEffect(() => {
     if (controlledValue === undefined || !controlledValue || document.activeElement === taRef.current) return;
     taRef.current?.focus();
     taRef.current?.setSelectionRange(controlledValue.length, controlledValue.length);
@@ -195,11 +201,6 @@ export function ChatComposer({
 
   useEffect(() => {
     if (toolkitOpen) return;
-    if (openPersonaAfterToolkitCloseRef.current) {
-      openPersonaAfterToolkitCloseRef.current = false;
-      setPersonaOpen(true);
-      return;
-    }
     const pendingSection = pendingSettingsSectionRef.current;
     if (!pendingSection || !onOpenSettings) return;
     pendingSettingsSectionRef.current = null;
@@ -239,12 +240,6 @@ export function ChatComposer({
       return firstSelectable >= 0 ? firstSelectable : 0;
     });
   }, [activationCandidates]);
-
-  const readActivationQuery = (nextValue: string, caret: number): string | null => {
-    const beforeCaret = nextValue.slice(0, caret);
-    const match = beforeCaret.match(/(?:^|\s)@([^\s@]*)$/u);
-    return match ? match[1] : null;
-  };
 
   const selectActivation = (index: number): void => {
     const candidate = activationCandidates[index];
@@ -389,7 +384,7 @@ export function ChatComposer({
           />
 
           <div className="relative min-h-9">
-            <ActivationTextOverlay ref={textOverlayRef} value={value} />
+            {showActivationOverlay ? <ActivationTextOverlay ref={textOverlayRef} value={value} /> : null}
             <textarea
               ref={taRef}
               aria-label={frontendMessage("chat.composer.inputMessage")}
@@ -406,7 +401,10 @@ export function ChatComposer({
               placeholder={hint}
               disabled={disabled}
               style={{ maxHeight: textareaMaxHeight }}
-              className="scrollbar-thin relative z-[1] min-h-9 w-full resize-none bg-transparent px-1 py-1.5 text-[14px] leading-5 text-transparent caret-content-primary selection:bg-accent-surface selection:text-content-primary placeholder:text-content-disabled focus:outline-none disabled:opacity-60 sm:min-h-9"
+              className={cn(
+                "scrollbar-thin relative z-[1] min-h-9 w-full resize-none bg-transparent px-1 py-1.5 font-sans text-[14px] leading-5 caret-accent-content selection:bg-accent-surface selection:text-content-primary placeholder:text-content-disabled focus:outline-none disabled:opacity-60 sm:min-h-9",
+                showActivationOverlay ? "text-transparent" : "text-content-primary",
+              )}
             />
           </div>
           {activationQuery !== null && activationCanSelect ? (
@@ -451,10 +449,10 @@ export function ChatComposer({
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
-                    icon={<AppIcon icon="book-user" size={16} />}
-                    disabled={disabled || running || cancelling}
+                    icon={<AppIcon icon="file-text" size={16} />}
+                    disabled={disabled || running || cancelling || !onOpenSettings}
                     onSelect={() => {
-                      openPersonaAfterToolkitCloseRef.current = true;
+                      pendingSettingsSectionRef.current = "prompt";
                     }}
                   >
                     {frontendChatMessage("chat.composer.toolkit.persona")}
@@ -489,16 +487,6 @@ export function ChatComposer({
                   ) : null}
                 </DropdownMenuContent>
               </DropdownMenu>
-              <PersonaControl
-                open={personaOpen}
-                onOpenChange={setPersonaOpen}
-                showTrigger={false}
-                disabled={disabled || running || cancelling}
-                corePersona={personaConfig.corePersona}
-                languageStyle={personaConfig.languageStyle}
-                operation={personaConfig.operation}
-                onSave={personaConfig.onSave}
-              />
               <Suspense
                 fallback={
                   <span
@@ -613,314 +601,6 @@ export function ChatComposer({
   );
 }
 
-const activationKindPresentation: Record<
-  AgentActivationKind,
-  {
-    readonly icon: AppIconName;
-    readonly label:
-      | "chat.composer.activation.skill"
-      | "chat.composer.activation.plugin"
-      | "chat.composer.activation.mcp"
-      | "chat.composer.activation.system";
-  }
-> = {
-  skill: { icon: "book-open", label: "chat.composer.activation.skill" },
-  system: { icon: "tools", label: "chat.composer.activation.system" },
-  plugin: { icon: "package", label: "chat.composer.activation.plugin" },
-  mcp: { icon: "server", label: "chat.composer.activation.mcp" },
-};
-
-const activationKindOrder: readonly AgentActivationKind[] = ["skill", "system", "plugin", "mcp"];
-
-function rankActivationCandidates(
-  entries: readonly AgentActivationCatalogEntry[],
-  query: string,
-  locale: FrontendLocale,
-): AgentActivationCatalogEntry[] {
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  return entries
-    .filter((entry) => {
-      if (!normalizedQuery) return true;
-      return [
-        entry.id,
-        entry.title,
-        entry.description,
-        entry.localizedTitle?.["zh-CN"],
-        entry.localizedTitle?.["en-US"],
-        entry.localizedDescription?.["zh-CN"],
-        entry.localizedDescription?.["en-US"],
-        entry.source,
-      ]
-        .filter((value): value is string => Boolean(value))
-        .some((value) => value.toLocaleLowerCase().includes(normalizedQuery));
-    })
-    .sort((left, right) => compareActivationCandidates(left, right, normalizedQuery, locale));
-}
-
-function compareActivationCandidates(
-  left: AgentActivationCatalogEntry,
-  right: AgentActivationCatalogEntry,
-  query: string,
-  locale: FrontendLocale,
-): number {
-  const kindOrder = activationKindOrder.indexOf(left.kind) - activationKindOrder.indexOf(right.kind);
-  if (kindOrder !== 0) return kindOrder;
-  if (left.selectable !== right.selectable) return left.selectable ? -1 : 1;
-  if (left.enabled !== right.enabled) return left.enabled ? -1 : 1;
-  const leftScore = activationMatchScore(left, query);
-  const rightScore = activationMatchScore(right, query);
-  if (leftScore !== rightScore) return rightScore - leftScore;
-  const leftTitle = resolveActivationText(left, locale).title;
-  const rightTitle = resolveActivationText(right, locale).title;
-  return leftTitle.localeCompare(rightTitle) || left.id.localeCompare(right.id) || left.kind.localeCompare(right.kind);
-}
-
-function stepActivationIndex(
-  candidates: readonly AgentActivationCatalogEntry[],
-  current: number,
-  direction: 1 | -1,
-): number {
-  if (candidates.length === 0) return current;
-  for (let offset = 1; offset <= candidates.length; offset += 1) {
-    const index = (current + direction * offset + candidates.length * 2) % candidates.length;
-    if (candidates[index]?.selectable) return index;
-  }
-  return current;
-}
-
-function activationMatchScore(entry: AgentActivationCatalogEntry, query: string): number {
-  if (!query) return 0;
-  const values = [entry.id, entry.title, entry.localizedTitle?.["zh-CN"], entry.localizedTitle?.["en-US"]]
-    .filter((value): value is string => Boolean(value))
-    .map((value) => value.toLocaleLowerCase());
-  if (values.some((value) => value === query)) return 3;
-  if (values.some((value) => value.startsWith(query))) return 2;
-  return 1;
-}
-
-function readActivationTokens(value: string): string[] {
-  return [...value.matchAll(/(?:^|\s)@([^\s@]+)/gu)].map((match) => match[1]);
-}
-
-const ActivationTextOverlay = forwardRef<HTMLDivElement, { value: string }>(function ActivationTextOverlay(
-  { value },
-  ref,
-) {
-  return (
-    <div
-      ref={ref}
-      aria-hidden="true"
-      className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-1 py-1.5 text-[14px] leading-5 text-content-primary"
-    >
-      {value.split(/(@[^\s@]+)/gu).map((part, index) =>
-        part.startsWith("@") ? (
-          <span key={`${part}-${index}`} className="font-medium text-accent-content">
-            {part}
-          </span>
-        ) : (
-          <span key={`${part}-${index}`}>{part}</span>
-        ),
-      )}
-    </div>
-  );
-});
-
-function compactActivationText(value: string, locale?: string): string {
-  const normalized = value.replace(/\s+/gu, " ").trim();
-  if (!normalized || !locale) return normalized;
-  const segments = normalized.split(/(?<=[.!?。！？])\s*/u).filter(Boolean);
-  if (segments.length < 2) return normalized;
-  const hasCjk = /[\u3400-\u9fff]/u.test(normalized);
-  const hasLatin = /[A-Za-z]/u.test(normalized);
-  if (!hasCjk || !hasLatin) return normalized;
-  const preferCjk = locale.toLocaleLowerCase().startsWith("zh");
-  const preferred = segments.filter((segment) =>
-    preferCjk ? /[\u3400-\u9fff]/u.test(segment) : /[A-Za-z]/u.test(segment) && !/[\u3400-\u9fff]/u.test(segment),
-  );
-  return preferred.length > 0 ? preferred.join(" ") : normalized;
-}
-
-function ActivationPalette({
-  catalog,
-  query,
-  candidates,
-  activeIndex,
-  selected,
-  locale,
-  onSelect,
-}: {
-  catalog: AgentActivationCatalogSnapshot | null | undefined;
-  query: string;
-  candidates: readonly AgentActivationCatalogEntry[];
-  activeIndex: number;
-  selected: readonly ExplicitActivationReference[];
-  locale: FrontendLocale;
-  onSelect: (index: number) => void;
-}): JSX.Element {
-  const selectableCount = catalog?.entries.filter((entry) => entry.selectable).length ?? 0;
-  const statusMessage = !catalog
-    ? frontendChatMessage("chat.composer.activation.syncing", {}, locale)
-    : candidates.length === 0
-      ? selectableCount === 0
-        ? frontendChatMessage("chat.composer.activation.empty", {}, locale)
-        : frontendChatMessage("chat.composer.activation.noMatch", {}, locale)
-      : undefined;
-
-  return (
-    <div
-      className="absolute bottom-full left-3 z-20 mb-2 flex w-80 max-w-[90vw] flex-col overflow-hidden rounded-[13px] border border-line-subtle bg-surface-panel/95 shadow-[0_18px_42px_-24px_rgb(43_40_32_/_0.42)] backdrop-blur-md"
-      role="listbox"
-      aria-label={frontendChatMessage("chat.composer.activation.ariaLabel", {}, locale)}
-      aria-activedescendant={candidates[activeIndex] ? activationOptionId(candidates[activeIndex]) : undefined}
-    >
-      <div className="flex items-center justify-between gap-3 border-b border-line-subtle px-3.5 py-2.5">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-[8px] bg-accent-surface font-mono text-[13px] text-accent-content">
-            @
-          </span>
-          <span className="min-w-0 truncate text-[12px] font-medium text-accent-content">@{query}</span>
-        </div>
-        {catalog ? (
-          <span className="shrink-0 text-[10px] tabular-nums text-content-muted">{selectableCount}</span>
-        ) : null}
-      </div>
-
-      {statusMessage ? (
-        <div className="px-3.5 py-5 text-center text-[12px] text-content-muted" role="status" aria-live="polite">
-          {statusMessage}
-        </div>
-      ) : (
-        <MotionList className="scrollbar-thin max-h-72 overflow-y-auto p-1.5" presence="animated">
-          {groupActivationCandidates(candidates).map((group, groupIndex) => {
-            const presentation = activationKindPresentation[group.kind];
-            return (
-              <div key={group.kind} role="group" aria-label={frontendChatMessage(presentation.label, {}, locale)}>
-                <div
-                  className={cn(
-                    "flex items-center gap-2 px-2.5 pb-1 text-[10px] font-medium text-content-muted",
-                    groupIndex === 0 ? "pt-1" : "border-t border-line-subtle pt-2.5",
-                  )}
-                >
-                  <AppIcon icon={presentation.icon} size={12} aria-hidden="true" />
-                  <span>{frontendChatMessage(presentation.label, {}, locale)}</span>
-                  <span className="h-px min-w-3 flex-1 bg-line-subtle" aria-hidden="true" />
-                  <span className="tabular-nums text-content-disabled">{group.entries.length}</span>
-                </div>
-                {group.entries.map(({ entry, index }) => {
-                  const text = resolveActivationText(entry, locale);
-                  const icon = resolveActivationIcon(entry.icon, presentation.icon);
-                  const isSelected = selected.some(
-                    (selection) =>
-                      selection.kind === entry.kind &&
-                      selection.id === entry.id &&
-                      selection.revision === entry.revision,
-                  );
-                  return (
-                    <MotionListItem key={`${entry.kind}:${entry.id}`} layout="position" initial={false}>
-                      <button
-                        id={activationOptionId(entry)}
-                        type="button"
-                        role="option"
-                        disabled={!entry.selectable}
-                        aria-selected={index === activeIndex}
-                        aria-disabled={!entry.selectable}
-                        aria-label={`${text.title} @${entry.id}`}
-                        className={cn(
-                          "group flex w-full items-start gap-2.5 rounded-[11px] px-2.5 py-2 text-left outline-none transition-[background-color,color] duration-150",
-                          !entry.selectable
-                            ? "cursor-not-allowed opacity-55"
-                            : index === activeIndex
-                              ? "bg-surface-hover/70"
-                              : "hover:bg-surface-hover/45",
-                        )}
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => onSelect(index)}
-                      >
-                        <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-[7px] bg-surface-muted text-content-secondary transition-colors group-hover:text-content-primary">
-                          <AppIcon icon={icon} size={14} aria-hidden="true" />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="flex min-w-0 items-center gap-2">
-                            <span className="min-w-0 truncate text-[12.5px] font-medium text-content-primary">
-                              {text.title}
-                            </span>
-                            <span className="shrink-0 text-[10px] text-content-muted">
-                              {entry.selectable
-                                ? frontendChatMessage(presentation.label, {}, locale)
-                                : entry.enabled
-                                  ? frontendChatMessage("chat.composer.activation.needsSetup", {}, locale)
-                                  : frontendChatMessage("chat.composer.activation.unavailable", {}, locale)}
-                            </span>
-                          </span>
-                          <span className="mt-0.5 block truncate text-[11px] font-medium text-accent-content">
-                            @{entry.id}
-                          </span>
-                          {text.description ? (
-                            <span className="mt-0.5 block truncate text-[10.5px] leading-4 text-content-secondary">
-                              {compactActivationText(text.description, locale)}
-                            </span>
-                          ) : null}
-                        </span>
-                        {isSelected ? (
-                          <AppIcon icon="checkmark" size={14} className="mt-1 text-accent-content" />
-                        ) : null}
-                      </button>
-                    </MotionListItem>
-                  );
-                })}
-              </div>
-            );
-          })}
-        </MotionList>
-      )}
-      <div className="border-t border-line-subtle px-3.5 py-2 text-[10px] text-content-muted">
-        {frontendChatMessage("chat.composer.activation.hint", {}, locale)}
-      </div>
-    </div>
-  );
-}
-
-function resolveActivationText(
-  entry: AgentActivationCatalogEntry,
-  locale: FrontendLocale,
-): { readonly title: string; readonly description: string } {
-  return {
-    title: entry.localizedTitle ? resolveFrontendLocalizedText(entry.localizedTitle, locale) : entry.title,
-    description: entry.localizedDescription
-      ? resolveFrontendLocalizedText(entry.localizedDescription, locale)
-      : entry.description,
-  };
-}
-
-interface ActivationCandidateGroup {
-  readonly kind: AgentActivationKind;
-  readonly entries: readonly { readonly entry: AgentActivationCatalogEntry; readonly index: number }[];
-}
-
-function groupActivationCandidates(candidates: readonly AgentActivationCatalogEntry[]): ActivationCandidateGroup[] {
-  const entriesByKind = new Map<AgentActivationKind, { entry: AgentActivationCatalogEntry; index: number }[]>();
-  candidates.forEach((entry, index) => {
-    const entries = entriesByKind.get(entry.kind) ?? [];
-    entries.push({ entry, index });
-    entriesByKind.set(entry.kind, entries);
-  });
-  return activationKindOrder.flatMap((kind) => {
-    const entries = entriesByKind.get(kind);
-    return entries?.length ? [{ kind, entries }] : [];
-  });
-}
-
-function activationOptionId(entry: AgentActivationCatalogEntry): string {
-  return `activation-option-${entry.kind}-${entry.id}`;
-}
-
-function resolveActivationIcon(value: string | undefined, kindIcon: AppIconName): AppIconName {
-  if (isAppIconName(value)) return value;
-  // Metadata is optional; the category icon is the declared presentation default,
-  // never an ID- or capability-specific guess.
-  return resolveAgentToolPresentationAppIcon(value) ?? kindIcon;
-}
-
 function ContextUsageIndicator({ usage }: { usage?: RuntimeContextUsage }): JSX.Element | null {
   const hasTokens = typeof usage?.tokens === "number" && Number.isFinite(usage.tokens);
   const hasContextWindow = typeof usage?.contextWindow === "number" && Number.isFinite(usage.contextWindow);
@@ -1013,122 +693,191 @@ function AttachmentTray({
   onRetry: (id: string) => void;
   onPreviewUnavailable: (id: string) => void;
 }): JSX.Element {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = attachments.find((entry) => entry.id === selectedId);
+  const previewable = (entry: PendingAttachment): boolean =>
+    Boolean(entry.file || entry.previewUrl) && entry.status !== "error";
+  const activatePreview = (entry: PendingAttachment): void => {
+    if (previewable(entry)) setSelectedId(entry.id);
+  };
+
   return (
-    <MotionList className={cn("flex flex-wrap gap-1.5 px-0.5 pb-1", attachments.length === 0 && "hidden")}>
-      {attachments.map((entry) => (
-        <MotionListItem key={entry.id} layout="position" initial={false} className={cn(entry.previewUrl && "shrink-0")}>
-          {entry.previewUrl ? (
-            <div
-              className={cn(
-                "relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border bg-surface-muted",
-                entry.status === "error" ? "border-brick-500" : "border-line-subtle",
-              )}
-            >
-              <img
-                src={entry.previewUrl}
-                alt={entry.fileName}
-                className="h-full w-full object-contain"
-                onError={() => onPreviewUnavailable(entry.id)}
-              />
-              {entry.status === "uploading" ? (
-                <span className="absolute inset-x-0 bottom-0 flex items-center gap-1 bg-ink-950/70 px-1 py-1">
-                  <UploadProgressBar progress={entry.progress} className="min-w-0 flex-1 bg-paper-50/25" />
-                  <span className="font-mono text-[9px] text-paper-50">{formatUploadProgress(entry.progress)}</span>
-                </span>
-              ) : null}
-              {entry.status === "error" ? (
-                <Tooltip content={entry.error ?? frontendMessage("ui.retry")} side="top">
-                  <button
-                    type="button"
-                    onClick={() => onRetry(entry.id)}
-                    aria-label={frontendMessage("ui.retry")}
-                    className="absolute bottom-1 left-1 grid h-5 w-5 place-items-center rounded-full bg-brick-50 text-brick-600 transition hover:bg-brick-100"
-                  >
-                    <AppIcon icon="refresh" size={12} />
-                  </button>
-                </Tooltip>
-              ) : null}
-              <IconButton
-                label={frontendMessage("chat.attachment.remove")}
-                tooltip={entry.error ?? frontendMessage("chat.attachment.removeTooltip")}
-                tooltipSide="top"
-                size="sm"
-                className="absolute right-0.5 top-0.5 bg-ink-950/70 text-paper-50 hover:bg-ink-900"
-                onClick={() => onRemove(entry.id)}
+    <>
+      <MotionList className={cn("flex flex-wrap gap-1.5 px-0.5 pb-1", attachments.length === 0 && "hidden")}>
+        {attachments.map((entry) => (
+          <MotionListItem
+            key={entry.id}
+            layout="position"
+            initial={false}
+            className={cn(
+              entry.previewUrl && isImageFilePreview({ name: entry.fileName, mime: entry.mime }) && "shrink-0",
+            )}
+          >
+            {entry.previewUrl && isImageFilePreview({ name: entry.fileName, mime: entry.mime }) ? (
+              <div
+                className={cn(
+                  "relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border bg-surface-muted",
+                  entry.status === "error" ? "border-brick-500" : "border-line-subtle",
+                )}
+                role={previewable(entry) ? "button" : undefined}
+                tabIndex={previewable(entry) ? 0 : undefined}
+                aria-label={
+                  previewable(entry)
+                    ? frontendMessage("chat.attachment.filePreview", { name: entry.fileName })
+                    : undefined
+                }
+                onClick={() => activatePreview(entry)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    activatePreview(entry);
+                  }
+                }}
               >
-                <AppIcon icon="close" size={12} />
-              </IconButton>
-            </div>
-          ) : (
-            <div
-              className={cn(
-                "inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px]",
-                entry.status === "uploading" && "min-w-[210px]",
-                entry.status === "error"
-                  ? "border-brick-200 bg-brick-50 text-brick-700"
-                  : "border-line-subtle bg-surface-raised text-content-secondary",
-              )}
-            >
-              <span className="relative shrink-0">
-                <FilePreviewIcon name={entry.fileName} mime={entry.mime ?? entry.attachment?.mime} />
+                <img
+                  src={entry.previewUrl}
+                  alt={entry.fileName}
+                  className="h-full w-full object-contain"
+                  onError={() => onPreviewUnavailable(entry.id)}
+                />
                 {entry.status === "uploading" ? (
-                  <span className="absolute -bottom-0.5 -right-0.5 grid h-3.5 w-3.5 place-items-center rounded-full border border-surface-raised bg-surface-raised">
-                    <Spinner size="xs" className="h-2.5 w-2.5 text-accent-content" />
+                  <span className="absolute inset-x-0 bottom-0 flex items-center gap-1 bg-ink-950/70 px-1 py-1">
+                    <UploadProgressBar progress={entry.progress} className="min-w-0 flex-1 bg-paper-50/25" />
+                    <span className="font-mono text-[9px] text-paper-50">{formatUploadProgress(entry.progress)}</span>
                   </span>
                 ) : null}
                 {entry.status === "error" ? (
-                  <span className="absolute -bottom-0.5 -right-0.5 grid h-3.5 w-3.5 place-items-center rounded-full border border-paper-50 bg-brick-50">
-                    <AppIcon icon="alert-circle" size={10} className="text-brick-500" />
-                  </span>
+                  <Tooltip content={entry.error ?? frontendMessage("ui.retry")} side="top">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onRetry(entry.id);
+                      }}
+                      aria-label={frontendMessage("ui.retry")}
+                      className="absolute bottom-1 left-1 grid h-5 w-5 place-items-center rounded-full bg-brick-50 text-brick-600 transition hover:bg-brick-100"
+                    >
+                      <AppIcon icon="refresh" size={12} />
+                    </button>
+                  </Tooltip>
                 ) : null}
-              </span>
-              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <span className="min-w-0 truncate">{entry.fileName}</span>
-                  <span className="shrink-0 font-mono text-[10px] text-content-muted">
-                    {formatFileSize(entry.size)}
-                  </span>
+                <IconButton
+                  label={frontendMessage("chat.attachment.remove")}
+                  tooltip={entry.error ?? frontendMessage("chat.attachment.removeTooltip")}
+                  tooltipSide="top"
+                  size="sm"
+                  className="absolute right-0.5 top-0.5 bg-ink-950/70 text-paper-50 hover:bg-ink-900"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onRemove(entry.id);
+                  }}
+                >
+                  <AppIcon icon="close" size={12} />
+                </IconButton>
+              </div>
+            ) : (
+              <div
+                className={cn(
+                  "inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px]",
+                  entry.status === "uploading" && "min-w-[210px]",
+                  entry.status === "error"
+                    ? "border-brick-200 bg-brick-50 text-brick-700"
+                    : "border-line-subtle bg-surface-raised text-content-secondary",
+                )}
+                role={previewable(entry) ? "button" : undefined}
+                tabIndex={previewable(entry) ? 0 : undefined}
+                aria-label={
+                  previewable(entry)
+                    ? frontendMessage("chat.attachment.filePreview", { name: entry.fileName })
+                    : undefined
+                }
+                onClick={() => activatePreview(entry)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    activatePreview(entry);
+                  }
+                }}
+              >
+                <span className="relative shrink-0">
+                  <FilePreviewIcon name={entry.fileName} mime={entry.mime ?? entry.attachment?.mime} />
                   {entry.status === "uploading" ? (
-                    <span className="shrink-0 font-mono text-[10px] text-accent-content">
-                      {formatUploadProgress(entry.progress)}
+                    <span className="absolute -bottom-0.5 -right-0.5 grid h-3.5 w-3.5 place-items-center rounded-full border border-surface-raised bg-surface-raised">
+                      <Spinner size="xs" className="h-2.5 w-2.5 text-accent-content" />
+                    </span>
+                  ) : null}
+                  {entry.status === "error" ? (
+                    <span className="absolute -bottom-0.5 -right-0.5 grid h-3.5 w-3.5 place-items-center rounded-full border border-paper-50 bg-brick-50">
+                      <AppIcon icon="alert-circle" size={10} className="text-brick-500" />
                     </span>
                   ) : null}
                 </span>
-                {entry.previewUnavailable ? (
-                  <span className="text-[10px] text-content-muted">
-                    {frontendMessage("chat.attachment.previewUnavailable")}
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="min-w-0 truncate">{entry.fileName}</span>
+                    <span className="shrink-0 font-mono text-[10px] text-content-muted">
+                      {formatFileSize(entry.size)}
+                    </span>
+                    {entry.status === "uploading" ? (
+                      <span className="shrink-0 font-mono text-[10px] text-accent-content">
+                        {formatUploadProgress(entry.progress)}
+                      </span>
+                    ) : null}
                   </span>
-                ) : null}
-                {entry.status === "error" ? (
-                  <span className="flex min-w-0 items-center gap-1.5 text-[10px] text-brick-600">
-                    <Tooltip content={entry.error ?? frontendMessage("upload.fileFailed")} side="top">
-                      <span className="min-w-0 truncate">{entry.error ?? frontendMessage("upload.fileFailed")}</span>
-                    </Tooltip>
-                    <button
-                      type="button"
-                      onClick={() => onRetry(entry.id)}
-                      className="shrink-0 font-medium underline underline-offset-2 hover:text-brick-700"
-                    >
-                      {frontendMessage("ui.retry")}
-                    </button>
-                  </span>
-                ) : null}
-                {entry.status === "uploading" ? <UploadProgressBar progress={entry.progress} /> : null}
-              </span>
-              <IconButton
-                label={frontendMessage("chat.attachment.remove")}
-                tooltip={entry.error ?? frontendMessage("chat.attachment.removeTooltip")}
-                tooltipSide="top"
-                size="sm"
-                onClick={() => onRemove(entry.id)}
-              >
-                <AppIcon icon="close" size={12} />
-              </IconButton>
-            </div>
-          )}
-        </MotionListItem>
-      ))}
-    </MotionList>
+                  {entry.previewUnavailable ? (
+                    <span className="text-[10px] text-content-muted">
+                      {frontendMessage("chat.attachment.previewUnavailable")}
+                    </span>
+                  ) : null}
+                  {entry.status === "error" ? (
+                    <span className="flex min-w-0 items-center gap-1.5 text-[10px] text-brick-600">
+                      <Tooltip content={entry.error ?? frontendMessage("upload.fileFailed")} side="top">
+                        <span className="min-w-0 truncate">{entry.error ?? frontendMessage("upload.fileFailed")}</span>
+                      </Tooltip>
+                      <button
+                        type="button"
+                        onClick={() => onRetry(entry.id)}
+                        className="shrink-0 font-medium underline underline-offset-2 hover:text-brick-700"
+                      >
+                        {frontendMessage("ui.retry")}
+                      </button>
+                    </span>
+                  ) : null}
+                  {entry.status === "uploading" ? <UploadProgressBar progress={entry.progress} /> : null}
+                </span>
+                <IconButton
+                  label={frontendMessage("chat.attachment.remove")}
+                  tooltip={entry.error ?? frontendMessage("chat.attachment.removeTooltip")}
+                  tooltipSide="top"
+                  size="sm"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onRemove(entry.id);
+                  }}
+                >
+                  <AppIcon icon="close" size={12} />
+                </IconButton>
+              </div>
+            )}
+          </MotionListItem>
+        ))}
+      </MotionList>
+      {selected ? (
+        <FilePreviewDialog
+          file={selected.file}
+          mime={selected.mime ?? selected.attachment?.mime}
+          name={selected.fileName}
+          size={selected.size}
+          source={selected.previewUrl}
+          open
+          onOpenChange={(open) => {
+            if (!open) {
+              setSelectedId(null);
+            }
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 

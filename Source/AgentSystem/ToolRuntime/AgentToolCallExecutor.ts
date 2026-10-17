@@ -25,7 +25,6 @@ import type { AgentXmlProtocolSpec } from "../Xml/AgentXmlPolicy.js";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
 import type { AgentExecutionResourceBroker } from "../ExecutionResources/AgentExecutionResourceBroker.js";
 import { SeneraLocalExecutionEnv } from "../Execution/SeneraLocalExecutionEnv.js";
-import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import { projectAgentToolResultPresentation } from "./AgentToolResultPresentation.js";
 import { projectAgentToolInteraction } from "./AgentToolInteractionProjector.js";
@@ -40,7 +39,6 @@ import type {
   AgentToolCallExecutionContext,
   AgentToolCallExecutionRequest,
   AgentToolCallExecutionResult,
-  AskUserControlResult,
   SuspendChildRunControlResult,
 } from "./AgentToolCallExecutionTypes.js";
 import { projectAgentToolEventOrigin } from "./AgentToolEventOrigin.js";
@@ -170,23 +168,17 @@ export class AgentToolCallExecutor {
   ): Promise<AgentToolCallExecutionResult> {
     const tool = this.resolveTool(request, context.toolAccessGrant, context.interaction);
     const result = await this.runToolCall(tool, request, context);
-    const control = readAskUserControl(result.result);
     const suspension = readSuspendChildRunControl(result.result);
 
-    return control
+    return suspension
       ? {
-          kind: "AskUser",
-          value: control,
+          kind: "SuspendChildRun",
+          value: suspension,
         }
-      : suspension
-        ? {
-            kind: "SuspendChildRun",
-            value: suspension,
-          }
-        : {
-            kind: "ToolResults",
-            value: [result],
-          };
+      : {
+          kind: "ToolResults",
+          value: [result],
+        };
   }
 
   private resolveTool(
@@ -484,23 +476,6 @@ function readToolLifecycleIdentity(context: AgentToolCallExecutionContext): Agen
   return context.requestId && context.step !== undefined
     ? { requestId: context.requestId, step: context.step }
     : undefined;
-}
-
-function readAskUserControl(value: unknown): AskUserControlResult | undefined {
-  const control = readRecord(value)?.control;
-  const record = readRecord(control);
-  if (record?.kind !== "AskUser") {
-    return undefined;
-  }
-
-  const question = readRequiredText(record, "question", agentErrorMessage("tool.askUserControlMissingQuestion"));
-  const reason = readOptionalText(record, "reason_code");
-  return reason
-    ? {
-        question,
-        reason_code: reason,
-      }
-    : { question };
 }
 
 function readSuspendChildRunControl(value: unknown): SuspendChildRunControlResult | undefined {

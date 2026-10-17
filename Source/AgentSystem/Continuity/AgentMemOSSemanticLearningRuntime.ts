@@ -3,10 +3,11 @@ import type { MemOS, MemoryNode } from "@mem-os/sdk";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import { AgentCancellationError } from "../Core/AgentCancellation.js";
-import type {
-  AgentBackgroundLearningRequestLedger,
-  AgentBackgroundLearningRequestFinish,
-  AgentBackgroundLearningRequestStart,
+import {
+  AgentBackgroundLearningExhaustedError,
+  type AgentBackgroundLearningRequestLedger,
+  type AgentBackgroundLearningRequestFinish,
+  type AgentBackgroundLearningRequestStart,
 } from "../Memory/AgentBackgroundLearningRequestLedger.js";
 import type {
   AgentMemoryEpisodeRecord,
@@ -130,7 +131,7 @@ export class AgentMemOSSemanticLearningRuntime {
       for (const record of deletionRequests)
         if (!latestDeletes.has(record.operationKey)) latestDeletes.set(record.operationKey, record);
       for (const record of latestDeletes.values()) {
-        if (record.status === "completed") continue;
+        if (!this.options.learningRequests.isRecoverable(record, this.options.policy())) continue;
         const references = AgentMemOSDeleteRequestSchema.parse(record.metadata);
         await this.deleteSources(references.episodeUris, references.sourceUris);
       }
@@ -273,7 +274,7 @@ export class AgentMemOSSemanticLearningRuntime {
     if (!stateCard) return;
     const model = this.options.modelProvider();
     const config = this.options.config();
-    const extractionRecordSchema = createAgentMemOSExtractionRecordSchema(model.Model, config.digestSummaryTokenLimit);
+    const extractionRecordSchema = createAgentMemOSExtractionRecordSchema(config.digestSummaryTokenLimit);
     await this.withLearningSlot(async () => {
       await this.runWithRetry(
         {
@@ -321,7 +322,7 @@ export class AgentMemOSSemanticLearningRuntime {
             config.digestSummaryTokenLimit,
           );
           const result: AgentMemOSSemanticFragment = cachedExtraction
-            ? cachedExtraction.fragment
+            ? client.normalizeFragment(cachedExtraction.fragment)
             : await this.options.learningRequests.run(
                 {
                   operationKey,
@@ -562,6 +563,7 @@ export class AgentMemOSSemanticLearningRuntime {
       .map(projectDigestEntry)
       .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt));
     const sourceRevision = digestSourceRevision(entries, {
+      inputTokenBudget: config.digestInputTokenBudget,
       summaryTokenLimit: config.digestSummaryTokenLimit,
       providerId: model.Id,
       model: model.Model,
@@ -615,6 +617,7 @@ export class AgentMemOSSemanticLearningRuntime {
       .map(projectDigestEntry)
       .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt));
     const sourceRevision = digestSourceRevision(entries, {
+      inputTokenBudget: config.digestInputTokenBudget,
       summaryTokenLimit: config.digestSummaryTokenLimit,
       providerId: model.Id,
       model: model.Model,
@@ -670,6 +673,7 @@ export class AgentMemOSSemanticLearningRuntime {
                 stage: `${period}_digest_batch`,
                 entityUri: `senera://memos/${period}/${periodKey}/batch/${offset + index}`,
                 sourceRevision: digestSourceRevision(chunk, {
+                  inputTokenBudget: config.digestInputTokenBudget,
                   summaryTokenLimit: config.digestSummaryTokenLimit,
                   providerId: model.Id,
                   model: model.Model,
@@ -708,6 +712,7 @@ export class AgentMemOSSemanticLearningRuntime {
           stage: `${period}_digest_final`,
           entityUri: `senera://memos/${period}/${periodKey}`,
           sourceRevision: digestSourceRevision(summaries, {
+            inputTokenBudget: config.digestInputTokenBudget,
             summaryTokenLimit: config.digestSummaryTokenLimit,
             providerId: model.Id,
             model: model.Model,
@@ -811,6 +816,10 @@ export class AgentMemOSSemanticLearningRuntime {
     void tracked.then(
       () => this.failures.delete(key),
       (error) => {
+        if (error instanceof AgentBackgroundLearningExhaustedError) {
+          this.failures.delete(key);
+          return;
+        }
         if (this.stopped && error === this.shutdown.signal.reason) return;
         this.failures.set(key, error);
         this.options.logger?.warn("memory.memos.semantic_learning.failed", { message: errorMessage(error) });

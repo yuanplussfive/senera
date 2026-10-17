@@ -67,6 +67,9 @@
 | `provider.model.delete` | 删除一个模型，并按请求处理默认模型。 |
 | `provider.model.upsert` | 创建或更新一个模型服务中的模型。 |
 | `provider.models.fetch` | 从指定模型端点刷新可用模型列表。 |
+| `runtimeDependency.check` | 对指定运行时依赖执行一次显式健康检查。 |
+| `runtimeDependency.install` | 使用依赖自身的官方安装流程安装指定运行时依赖。 |
+| `runtimeDependency.list` | 读取当前运行时依赖的路径、版本和缓存状态，不启动浏览器。 |
 | `sandbox.status` | 获取当前沙箱运行时状态和降级信息。 |
 | `session.cancel` | 取消会话当前正在执行的请求。 |
 | `session.close` | 关闭并从服务端删除会话。 |
@@ -80,12 +83,12 @@
 | `session.message` | 向会话提交用户输入，并声明该运行的执行批准模式；可附带上传附件或队列模式。 |
 | `session.regenerate` | 从指定请求起截断旧分支，并按声明的执行批准模式提交替代输入。 |
 | `session.rename` | 更新会话显示标题。 |
-| `session.retry` | 恢复一个已失败或取消的运行；无有效进展时重试原上下文，有进展时提交关联的继续请求。 |
+| `session.retry` | 恢复一个已失败或取消的运行；retry 重放原始用户输入，continue 复用当前 Pi transcript 继续执行，不创建新的用户消息。 |
 | `session.runtime_status` | 获取指定 Pi 会话的上下文占用、消息、工具调用和 token 统计。 |
 | `session.truncate_from` | 从指定请求起截断会话历史。 |
 | `systemTool.list` | 获取常驻系统工具目录。 |
 | `workspace.get` | 获取当前工作区标识，包括工作区根目录、配置路径和 WebSocket 地址。 |
-| `workspace.switch` | 热切换到指定工作区根目录；活动会话和后台任务会被强制取消，客户端需重连后重新获取状态。 |
+| `workspace.switch` | 热切换到指定工作区根目录；目标运行时准备完成并发送确认后，没有其它客户端连接的旧运行时按配置驱动的停止链路结束；若仍有其它客户端，待其全部断开后再回收，客户端随后重连并重新获取状态。 |
 
 ### 请求示例
 
@@ -255,6 +258,7 @@
 | `config.reloaded` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
 | `config.failed` | `error` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
 | `config.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
+| `runtime_dependency.snapshot` | `progress` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
 | `model.list.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
 | `provider.models.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
 | `provider.models.failed` | `error` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |

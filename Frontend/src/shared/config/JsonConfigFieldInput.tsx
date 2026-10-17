@@ -8,6 +8,7 @@ import { jsonConfigInputClassName } from "./JsonConfigControlStyles";
 import { JsonConfigRecordField } from "./JsonConfigRecordField";
 import {
   isJsonConfigObject,
+  isRedactedConfigSecretValue,
   optionLabel,
   readNumberDraftBlurValue,
   readNumberDraftCommitValue,
@@ -19,6 +20,7 @@ export function renderJsonConfigFieldInput(
   value: unknown,
   disabled: boolean,
   onChange: (value: unknown) => void,
+  readSecret?: (field: ConfigFormFieldData) => Promise<string>,
 ): JSX.Element {
   if (field.type === "boolean") {
     return (
@@ -61,11 +63,11 @@ export function renderJsonConfigFieldInput(
   if (field.type === "string") {
     if (field.secret) {
       return (
-        <SecretInput
-          value={typeof value === "string" ? value : ""}
-          placeholder={field.placeholder}
+        <JsonConfigSecretField
+          field={field}
+          value={value}
           disabled={disabled}
-          ariaLabel={field.label}
+          readSecret={readSecret}
           onChange={onChange}
         />
       );
@@ -95,6 +97,75 @@ export function renderJsonConfigFieldInput(
     <pre className="scrollbar-thin max-h-32 overflow-auto border border-ink-200 bg-paper-50 p-2 font-mono text-[11px] leading-5 text-ink-600">
       {JSON.stringify(value, null, 2)}
     </pre>
+  );
+}
+
+function JsonConfigSecretField({
+  field,
+  value,
+  disabled,
+  readSecret,
+  onChange,
+}: {
+  field: ConfigFormFieldData;
+  value: unknown;
+  disabled: boolean;
+  readSecret?: (field: ConfigFormFieldData) => Promise<string>;
+  onChange: (value: unknown) => void;
+}): JSX.Element {
+  const fieldKey = field.path.join("\u001f");
+  const dirtyRef = useRef(false);
+  const [secret, setSecret] = useState(() =>
+    typeof value === "string" && !isRedactedConfigSecretValue(value) ? value : "",
+  );
+
+  useEffect(() => {
+    dirtyRef.current = false;
+  }, [fieldKey]);
+
+  useEffect(() => {
+    if (dirtyRef.current) return;
+    let active = true;
+    const missingFromSnapshot = typeof value !== "string" || value.length === 0;
+    const needsProtectedRead = isRedactedConfigSecretValue(value) || missingFromSnapshot;
+    if (!needsProtectedRead) {
+      setSecret(typeof value === "string" ? value : "");
+      return () => {
+        active = false;
+      };
+    }
+    if (!readSecret) {
+      setSecret("");
+      return () => {
+        active = false;
+      };
+    }
+    void readSecret(field).then(
+      (next) => {
+        if (active && !dirtyRef.current) setSecret(next);
+      },
+      () => {
+        if (active && !dirtyRef.current) setSecret("");
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [field, fieldKey, readSecret, value]);
+
+  return (
+    <SecretInput
+      value={secret}
+      placeholder={isRedactedConfigSecretValue(value) ? undefined : field.placeholder}
+      hideRevealWhenEmpty
+      disabled={disabled}
+      ariaLabel={field.label}
+      onChange={(next) => {
+        dirtyRef.current = true;
+        setSecret(next);
+        onChange(next);
+      }}
+    />
   );
 }
 

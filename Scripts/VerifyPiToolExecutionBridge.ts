@@ -48,7 +48,6 @@ const toolAccessGrant = createAgentToolAccessGrant({
 async function main(): Promise<void> {
   await verifyToolResultProjection();
   await verifyLargeToolResultRemainsCanonical();
-  await verifyAskUserProjection();
   await verifyStructuredToolErrorProjection();
 
   console.log("Pi tool execution bridge verified.");
@@ -160,54 +159,6 @@ async function verifyLargeToolResultRemainsCanonical(): Promise<void> {
   });
   assert.equal(text.includes(hugeText), false);
   assert.equal(JSON.stringify(result.details).includes("workspace-result"), false);
-}
-
-async function verifyAskUserProjection(): Promise<void> {
-  const bridge = new AgentPiToolExecutionBridge({
-    model: "test-model",
-    observationTokenBudget,
-    observationCompressor,
-    executeToolCall: async () => ({
-      kind: "AskUser",
-      value: {
-        question: "需要哪个目录？",
-        reason_code: "missing_target",
-      },
-    }),
-    recordToolArtifacts: async () => {
-      throw new Error("AskUser should not record artifacts.");
-    },
-  });
-
-  const result = await bridge.execute({
-    tool,
-    toolCallId: "call_ask",
-    params: {},
-    context: createToolContext("call_ask", "verify-pi-ask"),
-  });
-
-  assert.equal(result.terminate, true);
-  const observation = JSON.parse(result.content[0]?.type === "text" ? result.content[0].text : "null") as {
-    type?: string;
-    status?: string;
-    observation_view?: { type?: string; complete?: boolean; artifact_uri?: string };
-    detail?: { arguments?: unknown; result?: unknown };
-    summary?: unknown;
-    control?: unknown;
-  };
-  assert.equal(observation.type, AgentPiToolObservationProtocol.type);
-  assert.equal(observation.status, "waiting");
-  // A complete control observation has no omission view.
-  assert.equal(observation.observation_view, undefined);
-  // Arguments remain in Pi's assistant tool call; the observation carries
-  // only the tool's waiting result to avoid serializing the same payload twice.
-  assert.equal(observation.detail?.arguments, undefined);
-  assert.deepEqual(observation.detail?.result, {
-    question: "需要哪个目录？",
-    reason_code: "missing_target",
-  });
-  assert.equal(observation.summary, undefined);
-  assert.equal(observation.control, undefined);
 }
 
 async function verifyStructuredToolErrorProjection(): Promise<void> {

@@ -1,6 +1,6 @@
 # ActionPlanner 模块导览
 
-`ActionPlanner` 是共享的结构化模型调用边界，不是 AgentLoop 前置状态机。模型选择 `ToolPlanningMode=baml` 时，`AgentPiBamlToolProvider` 把当前 Pi context 和会话局部 turn state 交给 PlanningCompiler；它调用 `EvolveTurn`，在选定工具后调用 `FillPiToolArguments`，结构无效时进入对应 repair。`native` 模式的工具规划不会经过 ActionPlanner；Pi compaction 由 Pi 原生 session 独占，ActionPlanner 只处理工具规划和安全审计。
+`ActionPlanner` 是共享的结构化模型调用边界，不是 AgentLoop 前置状态机。模型选择 `ToolPlanningMode=baml` 时，`AgentPiBamlToolProvider` 把当前 Pi context 和会话局部 turn state 交给 PlanningCompiler；它调用 `EvolveTurn`，在选定工具后调用 `FillPiToolArguments`，结构无效时进入对应 repair。`native` 模式的工具规划不会经过 ActionPlanner。Pi 负责自动压缩的触发、压缩边界和 JSONL 提交，但 `baml` 模式下的摘要文本仍由本边界生成。
 
 ## 真实调用关系
 
@@ -8,20 +8,24 @@
 Pi Coding Agent provider call
   -> AgentPiBamlToolProvider
   -> AgentPiPlanningCompiler
-  -> AgentPiPlanningContextCompiler
-  -> AgentPiPlanningModelAdapter
-  -> AgentActionPlannerModelClient
-     -> AgentActionPlannerCoreModelCalls
-     -> AgentActionPlannerStructuredCaller
-     -> AgentActionPlannerBamlPromptFactory
-     -> BAML request builder
-     -> AgentActionPlannerPromptProjector
-     -> AgentActionPlannerModelTransport
-        -> Pi declared API adapter
-        -> configured model provider
+     ├─ 工具规划分支
+     │  -> AgentPiPlanningContextCompiler（同一次 compile() 内构造并调用）
+     │  -> AgentActionPlannerModelClient
+     └─ compaction 分支（Pi 以 cacheRetention=none 请求摘要）
+        -> AgentActionPlannerModelClient.compactPiContext
+  -> AgentActionPlannerCoreModelCalls
+  -> AgentActionPlannerStructuredCaller
+  -> AgentActionPlannerBamlPromptFactory
+  -> BAML request builder
+  -> AgentActionPlannerPromptProjector
+  -> AgentActionPlannerModelTransport
+     -> Pi declared API adapter
+     -> configured model provider
 ```
 
-当前核心 BAML 函数是 `EvolveTurn`、`RepairControllerDecision`、`FillPiToolArguments`、`RepairPiToolArguments` 和工具风险审计。Pi compaction 完全由 Pi 原生 session 负责，不经过 ActionPlanner 或另一条摘要模型链。
+`AgentPiPlanningModelAdapter`（位于 `Runtime/`）提供 `AgentActionPlannerModelClient`，`AgentPiPlanningCompiler` 同时持有该 client 与 `AgentPiPlanningContextCompiler`。
+
+当前核心 BAML 函数是 `EvolveTurn`、`RepairControllerDecision`、`FillPiToolArguments`、`RepairPiToolArguments` 和工具风险审计（`AuditToolRisk`、`RepairToolRiskAudit`），声明在 `baml_src/action_planner.baml`。Pi compaction 的触发、边界与 JSONL 提交由 Pi 原生 session 负责，但 `baml` 模式下的摘要文本经 `compactPiContext` 调用 `baml_src/auxiliary.baml` 的 `SummarizePiContext`；上下文由 `projectPiCompactionMessage` 投影为文本消息，`toolResult` 缺少配对的 summary prompt 时明确失败，不静默丢弃。`native` 模式的压缩不经过本边界。
 
 ## 规划边界
 

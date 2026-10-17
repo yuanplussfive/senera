@@ -33,7 +33,7 @@
 
 ## Durable mutation journals
 
-Conversation SQLite、Pi Session JSONL、Artifact 文件和 Memory SQLite 不能组成一个数据库事务。Session 因此使用 SQLite journal 把不可恢复的“先做外部副作用、后提交产品状态”改造成可重放 saga：
+Conversation SQLite、Pi Session JSONL、Artifact 文件和 Memory SQLite 不能组成一个数据库事务。Session 用 SQLite journal 把不可恢复的“先做外部副作用、后提交产品状态”改造成可重放 saga：
 
 - `session_history_mutations`：记录 truncate/regenerate 的 request boundary、Pi `none/reset/rewind` 动作和可选 branch entry。journal 落盘后才允许修改 Pi、Artifact owner 和 Memory；最终 Conversation truncate 与 journal 删除在同一 SQLite transaction 中提交。
 - `session_fork_mutations`：记录 source/target、through-request boundary、Pi `none/fork` 动作和 branch entry。目标会话快照不提前发布；Pi fork 与 Artifact owner retain 完成后，目标 snapshot 和 journal 删除在同一 transaction 中提交。

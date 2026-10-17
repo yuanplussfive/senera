@@ -148,6 +148,8 @@ Missing required inputs place only that MCP server in `needs_input`; other Syste
 
 A Skill uses standard YAML frontmatter and may declare exact registered tool recommendations through `metadata.senera.recommended-tools`. Recommendations affect dynamic loading; they do not define tools or grant permission.
 
+`SkillManage` is the resident entry point for creating, updating, validating and removing workspace Skills, and it verifies tool references before publication. It stays in every turn's tool set instead of being discovered through ToolSearch. A successful change takes effect on the next message of the same session, with no restart and no new conversation.
+
 Host-mediated workspace operations cannot directly mutate `.senera/data`, `.senera/skills`, or `.senera/mcp`. `WorkspaceApplyPatch` stages each changed Skill or MCP package, validates the complete candidate graph, and commits only after preflight succeeds. Rejected candidates leave the active tree unchanged.
 
 ## Verification

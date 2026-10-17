@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import { projectDesktopRuntimeConfig } from "../Apps/Desktop/DesktopRuntimeConfig.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
@@ -20,23 +21,15 @@ const sourceConfig: AgentSystemConfig = {
   ],
 };
 
-const projected = projectDesktopRuntimeConfig(
-  {
-    sandboxRuntimeRoot: "C:/Users/test/AppData/Roaming/Senera/runtime/SandboxRuntime",
-  },
-  sourceConfig,
-);
+const projected = projectDesktopRuntimeConfig(sourceConfig, "C:/Users/test/workspace");
 
 assert.deepEqual(projected.SandboxRuntime, {
   Provider: "auto",
-  BaseDir: "C:/Users/test/AppData/Roaming/Senera/runtime/SandboxRuntime",
+  BaseDir: path.join("C:/Users/test/workspace", ".senera", "desktop"),
 });
 assert.equal(projected.ModelProviders[0].Model, "model-a");
 
 const explicitDocker = projectDesktopRuntimeConfig(
-  {
-    sandboxRuntimeRoot: "sandbox",
-  },
   {
     ...sourceConfig,
     SandboxRuntime: {
@@ -48,10 +41,11 @@ const explicitDocker = projectDesktopRuntimeConfig(
       },
     },
   },
+  "C:/Users/test/workspace",
 );
 assert.deepEqual(explicitDocker.SandboxRuntime, {
   Provider: "auto",
-  BaseDir: "sandbox",
+  BaseDir: path.join("C:/Users/test/workspace", ".senera", "desktop"),
   Docker: {
     EngineEndpoint: "npipe:////./pipe/docker_engine",
     Image: "registry.example/runtime:verified",

@@ -22,6 +22,7 @@ import {
 import { detectAgentUploadMime } from "./AgentUploadMime.js";
 import { parseJsonText } from "../Core/AgentJsonParsing.js";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
+import { removeAgentPathWithRetry } from "../Core/AgentFs.js";
 import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import {
   type AgentUploadAttachment,
@@ -252,7 +253,7 @@ export class AgentUploadStore implements AgentResourcePublisher {
       });
       return { attachment: manifestToAttachment(manifest), filePath };
     } catch (error) {
-      await fsp.rm(uploadDir, { recursive: true, force: true }).catch(() => undefined);
+      await removeAgentPathWithRetry(uploadDir, { recursive: true }).catch(() => undefined);
       if (capacityReserved) {
         await this.withRootLock(state, () => {
           state.reservedBytes = Math.max(0, state.reservedBytes - config.MaxFileBytes);
@@ -358,8 +359,7 @@ export class AgentUploadStore implements AgentResourcePublisher {
     return this.withRootLock(state, async () => {
       const uploadDir = resolveAgentUploadDir(uploadRoot, resourceId);
       const storedBytes = await directorySize(uploadDir).catch(() => 0);
-      const removed = await fsp
-        .rm(uploadDir, { recursive: true, force: true })
+      const removed = await removeAgentPathWithRetry(uploadDir, { recursive: true })
         .then(() => storedBytes > 0)
         .catch(() => false);
       if (removed && state.usageBytes !== undefined) {
@@ -501,7 +501,7 @@ async function scanUploadRoot(options: ScanUploadRootOptions): Promise<AgentUplo
     const createdAt = manifest ? Date.parse(manifest.createdAt) : await directoryModifiedAt(uploadDir);
     const retentionMs = manifest ? options.retentionMs : INCOMPLETE_UPLOAD_GRACE_MS;
     if (Number.isFinite(createdAt) && options.now - createdAt >= retentionMs) {
-      await fsp.rm(uploadDir, { recursive: true, force: true });
+      await removeAgentPathWithRetry(uploadDir, { recursive: true });
       result.removedBytes += storedBytes;
       result.removedUploads += 1;
       continue;

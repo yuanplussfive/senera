@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { AgentToolSemanticAuditModes } from "../Types/AgentRuntimeConfigTypes.js";
+import { AgentLogPolicyLimits } from "../Types/AgentLogPolicyLimits.js";
 
 const AgentPiCompactionSchema = z
   .object({
@@ -209,6 +210,18 @@ export const PersistenceSchema = z
       })
       .strict()
       .optional(),
+    Logs: z
+      .object({
+        Enabled: z.boolean().optional(),
+        DetailMaxBytes: z.number().int().min(AgentLogPolicyLimits.minimumDetailMaxBytes).optional(),
+        ProjectionMaxBytes: z.number().int().positive().optional(),
+        RetentionHours: z.number().int().positive().optional(),
+        QueryPageSize: z.number().int().positive().max(AgentLogPolicyLimits.maximumQueryPageSize).optional(),
+        TailLineCount: z.number().int().positive().max(AgentLogPolicyLimits.maximumTailLineCount).optional(),
+        CaptureHiddenEvents: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -217,11 +230,12 @@ export const PromptSchema = z
     /** Wrap the user message in an attribution XML envelope at request time. */
     UserMessageEnvelope: z.boolean().optional(),
     /** Default request-local timezone; renders as <time> inside the envelope. */
-    TimeZone: z.string().min(1).optional(),
-    /** The only user-authored persona content included in the model prompt. */
-    CorePersona: z.string().optional(),
-    /** The only user-authored voice/style guidance included in the model prompt. */
-    LanguageStyle: z.string().optional(),
+    TimeZone: z
+      .string()
+      .trim()
+      .min(1)
+      .refine(isSupportedIanaTimeZone, "TimeZone must be a supported IANA time zone.")
+      .optional(),
     /** Rewrite the model-authored preface independently from persona text. */
     PrefaceRewrite: z.boolean().optional(),
     /** Rewrite the settled final answer independently from persona text (polish tier when no card). */
@@ -230,3 +244,12 @@ export const PromptSchema = z
     BamlToolAttribution: z.boolean().optional(),
   })
   .strict();
+
+function isSupportedIanaTimeZone(value: string): boolean {
+  try {
+    const resolved = new Intl.DateTimeFormat("en-US", { timeZone: value }).resolvedOptions().timeZone;
+    return resolved.length > 0;
+  } catch {
+    return false;
+  }
+}

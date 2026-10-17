@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { errorMessage } from "../Core/AgentErrors.js";
-import { writeFileAtomicSync } from "../Core/AgentFs.js";
+import { copyAgentPathSync, removeAgentPathSync, writeFileAtomicSync } from "../Core/AgentFs.js";
 import { assertAgentExtensionName } from "../Extensions/AgentExtensionIdentity.js";
 import { AgentSkillScanner } from "../Skills/AgentSkillScanner.js";
 import type { AgentSkillResourceDescriptor } from "../Skills/AgentSkillScanner.js";
@@ -29,8 +29,11 @@ const SkillHistoryDirectoryName = ".skill-history";
 const SkillHistoryMetadataFileName = ".senera-skill-history.json";
 const SkillDocumentFileName = "SKILL.md";
 const MaxSkillDocumentBytes = 1_024 * 1_024;
-const DefaultSkillSearchLimit = 8;
-const MaxSkillSearchLimit = 12;
+
+export const AgentSelfSkillSearchLimits = {
+  default: 8,
+  maximum: 12,
+} as const;
 
 /**
  * Skill inventory and workspace mutation adapter for the self-service surface.
@@ -66,7 +69,7 @@ function searchSkills(
   sources: readonly AgentSelfSkillSource[],
   scanner: AgentSkillScanner,
   query: string,
-  limit = DefaultSkillSearchLimit,
+  limit?: number,
 ): AgentSelfSkillSearchMatch[] {
   const normalizedQuery = query.trim();
   if (!normalizedQuery) return [];
@@ -121,9 +124,12 @@ function searchSkills(
   });
 }
 
-function normalizeSkillSearchLimit(limit: number): number {
-  if (!Number.isSafeInteger(limit) || limit <= 0) return DefaultSkillSearchLimit;
-  return Math.min(limit, MaxSkillSearchLimit);
+function normalizeSkillSearchLimit(limit: number | undefined): number {
+  if (limit === undefined) return AgentSelfSkillSearchLimits.default;
+  if (!Number.isSafeInteger(limit) || limit <= 0) {
+    throw new RangeError("Skill 检索 limit 必须是正整数。");
+  }
+  return Math.min(limit, AgentSelfSkillSearchLimits.maximum);
 }
 
 interface SkillSourceSnapshot {
@@ -386,7 +392,6 @@ function projectSkillConflicts(skills: readonly AgentSelfSkillSummary[]): AgentS
 }
 
 type WorkspaceSkillMutation = "create" | "update";
-
 interface WorkspaceSkillContext {
   readonly source: AgentSelfSkillSource;
   readonly root: string;
@@ -567,8 +572,8 @@ function restoreWorkspaceSkill(
   if (!fs.existsSync(snapshotPath)) return { status: "missing", name };
   const stagingPath = path.join(context.root, `.${name}.restore-${randomUUID()}`);
   try {
-    fs.cpSync(snapshotPath, stagingPath, { recursive: true, force: false });
-    fs.rmSync(path.join(stagingPath, SkillHistoryMetadataFileName), { force: true });
+    copyAgentPathSync(snapshotPath, stagingPath, { recursive: true, force: false });
+    removeAgentPathSync(path.join(stagingPath, SkillHistoryMetadataFileName), { force: true });
     readSkillDirectorySummary(context.source, scanner, stagingPath, name);
     fs.renameSync(stagingPath, activePath);
     const committed = readSkillDirectorySummary(context.source, scanner, activePath, name);
@@ -732,7 +737,7 @@ function writeHistorySnapshot(
   if (fs.existsSync(finalPath)) return finalPath;
   const stagingPath = path.join(parent, `.${revision}.${randomUUID()}.pending`);
   try {
-    fs.cpSync(skillPath, stagingPath, { recursive: true, force: false });
+    copyAgentPathSync(skillPath, stagingPath, { recursive: true, force: false });
     writeHistoryMetadata(stagingPath, {
       revision,
       action,
@@ -770,7 +775,7 @@ function readHistoryMetadata(snapshotPath: string): AgentSelfSkillHistoryEntry {
 
 function removeHistorySnapshot(snapshotPath: string): void {
   try {
-    fs.rmSync(snapshotPath, { recursive: true, force: true });
+    removeAgentPathSync(snapshotPath, { recursive: true, force: true });
   } catch {
     // A failed cleanup is intentionally not allowed to replace the original
     // mutation error; the next history read reports the malformed entry.
@@ -786,7 +791,7 @@ function projectMutationError(name: string, error: unknown): AgentSelfSkillMutat
 
 function removeStagingPath(stagingPath: string): void {
   try {
-    fs.rmSync(stagingPath, { recursive: true, force: true });
+    removeAgentPathSync(stagingPath, { recursive: true, force: true });
   } catch {
     // Staging names are outside the active Skill namespace and can be cleaned
     // by the next doctor run if the host is interrupted while a file is locked.

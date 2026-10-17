@@ -1,47 +1,57 @@
-import { describe, expect, test, vi } from "vitest";
-import type { AgentEventEnvelope } from "../../../Source/AgentSystem/Events/AgentEventBase.js";
-import { AgentEventKinds } from "../../../Source/AgentSystem/Events/AgentEvent.js";
+import { describe, expect, test } from "vitest";
+import { AgentLogger, type AgentLoggerRecord } from "../../../Source/AgentSystem/Diagnostics/AgentLogger.js";
 import { AgentServerEventLogger } from "../../../Source/AgentSystem/Diagnostics/AgentServerEventLogger.js";
-import type { AgentLogger } from "../../../Source/AgentSystem/Diagnostics/AgentLogger.js";
+import {
+  AgentEventChannels,
+  AgentEventKinds,
+  AgentEventLayers,
+  AgentEventPhases,
+} from "../../../Source/AgentSystem/Events/AgentEvent.js";
 
-describe("server event logger", () => {
-  test("does not print MCP settings snapshots as runtime event logs", () => {
-    const event = vi.fn();
-    const tree = vi.fn();
-    const logger = { event, tree } as unknown as AgentLogger;
-    const envelope = {
-      channel: "agent.event",
+describe("agent server event logger", () => {
+  test("persists compact-hidden events without printing them", () => {
+    const records: AgentLoggerRecord[] = [];
+    const logger = new AgentLogger({
+      output: process.stdout,
+      sink: { append: (record) => records.push(record) },
+    });
+    const eventLogger = new AgentServerEventLogger({ logger, detail: "compact", persistHiddenEvents: true });
+
+    eventLogger.event({
+      eventId: "event_hidden",
+      channel: AgentEventChannels.AgentEvent,
       kind: AgentEventKinds.McpServerSnapshot,
-      layer: "snapshot",
-      phase: "settings",
+      layer: AgentEventLayers.Snapshot,
+      phase: AgentEventPhases.Tool,
       sequence: 1,
-      timestamp: new Date().toISOString(),
-      data: { servers: [], activation: { entries: [] } },
-    } as unknown as AgentEventEnvelope;
+      timestamp: "2026-10-16T00:00:00.000Z",
+      data: { server: "browser", apiKey: "secret" },
+    });
 
-    new AgentServerEventLogger({ logger, detail: "verbose" }).event(envelope);
-
-    expect(event).not.toHaveBeenCalled();
-    expect(tree).not.toHaveBeenCalled();
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      recordId: "event_hidden",
+      kind: AgentEventKinds.McpServerSnapshot,
+      details: { server: "browser", apiKey: "secret" },
+    });
   });
 
-  test("still prints operational failures", () => {
-    const event = vi.fn();
-    const tree = vi.fn();
-    const logger = { event, tree } as unknown as AgentLogger;
-    const envelope = {
-      channel: "agent.event",
-      kind: AgentEventKinds.RequestInvalid,
-      layer: "error",
-      phase: "request",
+  test("does not persist high-frequency hidden events unless enabled", () => {
+    const records: AgentLoggerRecord[] = [];
+    const logger = new AgentLogger({ sink: { append: (record) => records.push(record) } });
+    const eventLogger = new AgentServerEventLogger({ logger, detail: "compact" });
+
+    eventLogger.event({
+      eventId: "event_delta",
+      channel: AgentEventChannels.AgentEvent,
+      kind: AgentEventKinds.ModelDelta,
+      layer: AgentEventLayers.Progress,
+      phase: AgentEventPhases.Model,
       sequence: 1,
-      timestamp: new Date().toISOString(),
-      data: { message: "invalid request" },
-    } as unknown as AgentEventEnvelope;
+      timestamp: "2026-10-16T00:00:00.000Z",
+      data: { delta: "token" },
+    });
 
-    new AgentServerEventLogger({ logger, detail: "verbose" }).event(envelope);
-
-    expect(event).toHaveBeenCalledWith(envelope);
-    expect(tree).toHaveBeenCalledWith("request.invalid payload", envelope.data);
+    expect(records).toEqual([]);
   });
 });

@@ -2,6 +2,7 @@ import type { AgentToolArtifactPayload } from "../Types/ToolRuntimeTypes.js";
 
 export const AgentBrowserOperationNames = [
   "open",
+  "render_html",
   "read",
   "snapshot",
   "click",

@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { isMissingFileError } from "../Core/AgentFs.js";
 import {
   AgentPluginManifestFileName,
   AgentPluginManifestSchema,
@@ -33,8 +34,17 @@ export function discoverAgentPlugins(sources: readonly AgentPluginDiscoverySourc
   const plugins: AgentPluginDescriptor[] = [];
   const errors: AgentPluginDiscoveryError[] = [];
   const seenIds = new Set<string>();
+  const seenDirectories = new Set<string>();
 
   for (const source of sources) {
+    const canonical = canonicalDirectory(source.directory);
+    if (!canonical.ok) {
+      errors.push({ source: source.source, directory: source.directory, message: canonical.error });
+      continue;
+    }
+    const directoryKey = canonical.key;
+    if (seenDirectories.has(directoryKey)) continue;
+    seenDirectories.add(directoryKey);
     if (!fs.existsSync(source.directory)) continue;
     let entries: fs.Dirent[];
     try {
@@ -81,6 +91,28 @@ export function discoverAgentPlugins(sources: readonly AgentPluginDiscoverySourc
   }
 
   return { plugins, errors };
+}
+
+function canonicalDirectory(
+  directory: string,
+): { readonly ok: true; readonly key: string } | { readonly ok: false; readonly error: string } {
+  const absolute = path.resolve(directory);
+  try {
+    fs.lstatSync(absolute);
+  } catch (error) {
+    if (isMissingFileError(error)) return { ok: true, key: normalizeDirectoryKey(absolute) };
+    return { ok: false, error: `Cannot inspect plugin directory: ${errorMessage(error)}` };
+  }
+  try {
+    return { ok: true, key: normalizeDirectoryKey(fs.realpathSync.native(absolute)) };
+  } catch (error) {
+    return { ok: false, error: `Cannot resolve plugin directory: ${errorMessage(error)}` };
+  }
+}
+
+function normalizeDirectoryKey(directory: string): string {
+  const normalized = path.normalize(directory);
+  return process.platform === "win32" ? normalized.toLocaleLowerCase() : normalized;
 }
 
 function readAgentPluginManifest(

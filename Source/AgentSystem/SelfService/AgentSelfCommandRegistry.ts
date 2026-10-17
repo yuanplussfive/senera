@@ -6,6 +6,8 @@
  * the two surfaces, so this is not a second validation implementation.
  */
 import type { AgentPluginCommandHandler } from "../Plugins/AgentPluginContext.js";
+import { AgentLogPolicyLimits } from "../Types/AgentLogPolicyLimits.js";
+import { AgentSelfSkillSearchLimits } from "./AgentSelfSkills.js";
 
 export interface AgentSelfCommandArgSpec {
   /** Runtime field written to the structured command object. */
@@ -187,7 +189,127 @@ export const AgentSelfCommandRegistry: readonly AgentSelfCommandSpec[] = [
     command: "logs",
     action: "list",
     usage: "senera logs list",
-    description: "列出日志文件。",
+    description: "列出当前工作区的结构化日志投影和详情文件。",
+    args: [],
+  },
+  {
+    command: "logs",
+    action: "latest",
+    usage: "senera logs latest [STREAM] [LEVEL] [KIND] [SCOPE] [LIMIT]",
+    description: "读取当前工作区最新的结构化日志。",
+    args: [
+      { key: "stream", name: "STREAM", kind: "optional-string", description: "日志流，例如 background/memos" },
+      { key: "level", name: "LEVEL", kind: "optional-string", description: "日志级别" },
+      { key: "kind", name: "KIND", kind: "optional-string", description: "事件类型" },
+      { key: "scope", name: "SCOPE", kind: "optional-string", description: "运行域" },
+      {
+        key: "limit",
+        name: "LIMIT",
+        kind: "optional-number",
+        description: "返回条数",
+        minimum: 1,
+        maximum: AgentLogPolicyLimits.maximumQueryPageSize,
+      },
+    ],
+  },
+  {
+    command: "logs",
+    action: "range",
+    usage: "senera logs range FROM TO [STREAM] [LEVEL] [KIND] [SCOPE] [LIMIT]",
+    description: "按带时区的 RFC3339 时间范围读取结构化日志。",
+    args: [
+      { key: "from", name: "FROM", kind: "string", description: "开始时间，例如 2026-10-16T20:00:00+08:00" },
+      { key: "to", name: "TO", kind: "string", description: "结束时间，例如 2026-10-16T21:00:00+08:00" },
+      { key: "stream", name: "STREAM", kind: "optional-string", description: "日志流，例如 background/memos" },
+      { key: "level", name: "LEVEL", kind: "optional-string", description: "日志级别" },
+      { key: "kind", name: "KIND", kind: "optional-string", description: "事件类型" },
+      { key: "scope", name: "SCOPE", kind: "optional-string", description: "运行域" },
+      {
+        key: "limit",
+        name: "LIMIT",
+        kind: "optional-number",
+        description: "返回条数",
+        minimum: 1,
+        maximum: AgentLogPolicyLimits.maximumQueryPageSize,
+      },
+    ],
+  },
+  {
+    command: "logs",
+    action: "session",
+    usage: "senera logs session SESSION_ID [LIMIT]",
+    description: "按会话 ID读取按时间排序的日志。",
+    args: [
+      { key: "sessionId", name: "SESSION_ID", kind: "string", description: "会话 ID" },
+      {
+        key: "limit",
+        name: "LIMIT",
+        kind: "optional-number",
+        description: "返回条数",
+        minimum: 1,
+        maximum: AgentLogPolicyLimits.maximumQueryPageSize,
+      },
+    ],
+  },
+  {
+    command: "logs",
+    action: "next",
+    usage: "senera logs next CURSOR [LIMIT]",
+    description: "使用上一次结果中的不透明游标读取下一页。",
+    args: [
+      {
+        key: "cursor",
+        name: "CURSOR",
+        kind: "string",
+        description: "上一次返回的 nextCursor",
+        maximum: AgentLogPolicyLimits.maximumQueryCursorLength,
+      },
+      {
+        key: "limit",
+        name: "LIMIT",
+        kind: "optional-number",
+        description: "返回条数",
+        minimum: 1,
+        maximum: AgentLogPolicyLimits.maximumQueryPageSize,
+      },
+    ],
+  },
+  {
+    command: "logs",
+    action: "detail",
+    usage: "senera logs detail DETAIL_ID",
+    description: "读取一条脱敏的日志详情。",
+    args: [{ key: "detailId", name: "DETAIL_ID", kind: "string", description: "详情 ID" }],
+  },
+  {
+    command: "logs",
+    action: "trace",
+    usage: "senera logs trace REQUEST_ID [LIMIT]",
+    description: "按请求 ID读取完整的因果日志链。",
+    args: [
+      { key: "requestId", name: "REQUEST_ID", kind: "string", description: "请求 ID" },
+      {
+        key: "limit",
+        name: "LIMIT",
+        kind: "optional-number",
+        description: "返回条数",
+        minimum: 1,
+        maximum: AgentLogPolicyLimits.maximumQueryPageSize,
+      },
+    ],
+  },
+  {
+    command: "logs",
+    action: "health",
+    usage: "senera logs health",
+    description: "检查工作区日志目录、投影和详情存储状态。",
+    args: [],
+  },
+  {
+    command: "logs",
+    action: "streams",
+    usage: "senera logs streams",
+    description: "列出当前工作区已经出现的日志流及其文件。",
     args: [],
   },
   {
@@ -207,9 +329,9 @@ export const AgentSelfCommandRegistry: readonly AgentSelfCommandSpec[] = [
         key: "lines",
         name: "LINES",
         kind: "optional-number",
-        description: "行数（默认 200）",
+        description: "行数；未指定时使用 Persistence.Logs.TailLineCount",
         minimum: 1,
-        maximum: 2000,
+        maximum: AgentLogPolicyLimits.maximumTailLineCount,
         invalidMessage: "Invalid log line count",
       },
     ],
@@ -268,9 +390,9 @@ export const AgentSelfCommandRegistry: readonly AgentSelfCommandSpec[] = [
         key: "limit",
         name: "LIMIT",
         kind: "optional-number",
-        description: "最多返回的候选数量（默认 8，最大 12）",
+        description: `最多返回的候选数量（默认 ${AgentSelfSkillSearchLimits.default}，最大 ${AgentSelfSkillSearchLimits.maximum}）`,
         minimum: 1,
-        maximum: 12,
+        maximum: AgentSelfSkillSearchLimits.maximum,
       },
     ],
   },

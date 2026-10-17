@@ -339,14 +339,15 @@ test("chat composer preserves a failed draft and leaves Escape to active interac
   expect(onCancel).not.toHaveBeenCalled();
 });
 
-test("chat composer opens the persona dialog only after the tools menu releases interaction ownership", async () => {
+test("chat composer opens prompt settings only after the tools menu releases interaction ownership", async () => {
   const onOutsideClick = vi.fn();
+  const onOpenSettings = vi.fn();
   const user = userEvent.setup();
   renderWithFrontendProviders(
     React.createElement(
       React.Fragment,
       null,
-      withUploadPreviewProvider(React.createElement(ChatComposer, createComposerProps())),
+      withUploadPreviewProvider(React.createElement(ChatComposer, createComposerProps({ onOpenSettings }))),
       React.createElement("button", { type: "button", onClick: onOutsideClick }, "外部操作"),
     ),
   );
@@ -354,9 +355,8 @@ test("chat composer opens the persona dialog only after the tools menu releases 
   await user.click(screen.getByRole("button", { name: frontendChatMessage("chat.composer.toolkit.tooltip") }));
   await user.click(screen.getByRole("menuitem", { name: frontendChatMessage("chat.composer.toolkit.persona") }));
 
-  expect(await screen.findByRole("dialog", { name: frontendMessage("persona.ui.title") })).toBeInTheDocument();
+  await waitFor(() => expect(onOpenSettings).toHaveBeenCalledWith("prompt"));
   expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: frontendMessage("ui.close") }));
 
   await waitFor(() => expect(document.body.style.pointerEvents).toBe(""));
   await user.click(screen.getByRole("button", { name: "外部操作" }));

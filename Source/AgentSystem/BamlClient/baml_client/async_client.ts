@@ -24,7 +24,7 @@ import { toBamlError, BamlStream, BamlAbortError, Collector, ClientRegistry } fr
 import type { Checked, Check, RecursivePartialNull as MovedRecursivePartialNull } from "./types.js"
 import type { partial_types } from "./partial_types.js"
 import type * as types from "./types.js"
-import type {ActionPlanInput, ActionRunState, AskUserDecision, AskUserDecisionKind, AuxiliaryImageAnalysis, AuxiliarySummary, ChannelCodePart, ChannelDelivery, ChannelResourcePart, ChannelTextPart, DirectDecision, DirectDecisionKind, EvidenceSlot, ExecuteDecision, ExecuteDecisionKind, ExecutionDeltaOp, MemOSFragment, PiToolArgumentsDraft, PlanFragment, PlannedToolCall, PlannerActiveSkill, PlannerCurrentUserTurn, PlannerEvidenceMemoryItem, PlannerEvidenceRequirement, PlannerEvidenceStateItem, PlannerJournalItem, PlannerTimelineTurn, PlannerToolCallStateItem, ProgressSignals, RepeatedCallWarning, ResidentSpeechProjection, StateCardRewrite, ToolCallArgumentValue, ToolCallStatus, ToolCapabilityFacets, ToolCapabilityItem, ToolCapabilityRisk, ToolCatalogItem, ToolCatalogSummaryItem, ToolEvidenceCapabilityItem, ToolRiskAudit, ToolRiskAuditDecision, ToolRiskLevel} from "./types.js"
+import type {ActionPlanInput, ActionRunState, AuxiliaryImageAnalysis, AuxiliarySummary, ChannelCodePart, ChannelDelivery, ChannelResourcePart, ChannelTextPart, DirectDecision, DirectDecisionKind, EvidenceSlot, ExecuteDecision, ExecuteDecisionKind, ExecutionDeltaOp, MemOSFragment, PiToolArgumentsDraft, PlanFragment, PlannedToolCall, PlannerActiveSkill, PlannerCurrentUserTurn, PlannerEvidenceMemoryItem, PlannerEvidenceRequirement, PlannerEvidenceStateItem, PlannerJournalItem, PlannerTimelineTurn, PlannerToolCallStateItem, ProgressSignals, RepeatedCallWarning, ResidentSpeechProjection, StateCardRewrite, ToolCallArgumentValue, ToolCallStatus, ToolCapabilityFacets, ToolCapabilityItem, ToolCapabilityRisk, ToolCatalogItem, ToolCatalogSummaryItem, ToolEvidenceCapabilityItem, ToolRiskAudit, ToolRiskAuditDecision, ToolRiskLevel} from "./types.js"
 import type TypeBuilder from "./type_builder.js"
 import { AsyncHttpRequest, AsyncHttpStreamRequest } from "./async_request.js"
 import { LlmResponseParser, LlmStreamParser } from "./parser.js"
@@ -324,7 +324,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
         async EvolveTurn(
         promptJson: string,
         __baml_options__?: BamlCallOptions<never>
-        ): Promise<types.DirectDecision | types.AskUserDecision | types.ExecuteDecision> {
+        ): Promise<types.DirectDecision | types.ExecuteDecision> {
           try {
           const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
           const __signal__ = __options__.signal;
@@ -371,7 +371,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             __signal__,
             __options__.watchers,
             )
-            return __raw__.parsed(false) as types.DirectDecision | types.AskUserDecision | types.ExecuteDecision
+            return __raw__.parsed(false) as types.DirectDecision | types.ExecuteDecision
             } catch (error) {
             throw toBamlError(error);
             }
@@ -548,7 +548,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
         async RepairControllerDecision(
         promptJson: string,
         __baml_options__?: BamlCallOptions<never>
-        ): Promise<types.DirectDecision | types.AskUserDecision | types.ExecuteDecision> {
+        ): Promise<types.DirectDecision | types.ExecuteDecision> {
           try {
           const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
           const __signal__ = __options__.signal;
@@ -595,7 +595,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             __signal__,
             __options__.watchers,
             )
-            return __raw__.parsed(false) as types.DirectDecision | types.AskUserDecision | types.ExecuteDecision
+            return __raw__.parsed(false) as types.DirectDecision | types.ExecuteDecision
             } catch (error) {
             throw toBamlError(error);
             }
@@ -1194,7 +1194,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             EvolveTurn(
             promptJson: string,
             __baml_options__?: BamlCallOptions<never>
-            ): BamlStream<partial_types.DirectDecision | partial_types.AskUserDecision | partial_types.ExecuteDecision, types.DirectDecision | types.AskUserDecision | types.ExecuteDecision>
+            ): BamlStream<partial_types.DirectDecision | partial_types.ExecuteDecision, types.DirectDecision | types.ExecuteDecision>
               {
               try {
               const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
@@ -1253,10 +1253,10 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
                 __signal__,
                 __onTickWrapper__,
                 )
-                return new BamlStream<partial_types.DirectDecision | partial_types.AskUserDecision | partial_types.ExecuteDecision, types.DirectDecision | types.AskUserDecision | types.ExecuteDecision>(
+                return new BamlStream<partial_types.DirectDecision | partial_types.ExecuteDecision, types.DirectDecision | types.ExecuteDecision>(
                   __raw__,
-                  (a): partial_types.DirectDecision | partial_types.AskUserDecision | partial_types.ExecuteDecision => a,
-                  (a): types.DirectDecision | types.AskUserDecision | types.ExecuteDecision => a,
+                  (a): partial_types.DirectDecision | partial_types.ExecuteDecision => a,
+                  (a): types.DirectDecision | types.ExecuteDecision => a,
                   this.ctxManager.cloneContext(),
                   __options__.signal,
                   )
@@ -1490,7 +1490,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             RepairControllerDecision(
             promptJson: string,
             __baml_options__?: BamlCallOptions<never>
-            ): BamlStream<partial_types.DirectDecision | partial_types.AskUserDecision | partial_types.ExecuteDecision, types.DirectDecision | types.AskUserDecision | types.ExecuteDecision>
+            ): BamlStream<partial_types.DirectDecision | partial_types.ExecuteDecision, types.DirectDecision | types.ExecuteDecision>
               {
               try {
               const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
@@ -1549,10 +1549,10 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
                 __signal__,
                 __onTickWrapper__,
                 )
-                return new BamlStream<partial_types.DirectDecision | partial_types.AskUserDecision | partial_types.ExecuteDecision, types.DirectDecision | types.AskUserDecision | types.ExecuteDecision>(
+                return new BamlStream<partial_types.DirectDecision | partial_types.ExecuteDecision, types.DirectDecision | types.ExecuteDecision>(
                   __raw__,
-                  (a): partial_types.DirectDecision | partial_types.AskUserDecision | partial_types.ExecuteDecision => a,
-                  (a): types.DirectDecision | types.AskUserDecision | types.ExecuteDecision => a,
+                  (a): partial_types.DirectDecision | partial_types.ExecuteDecision => a,
+                  (a): types.DirectDecision | types.ExecuteDecision => a,
                   this.ctxManager.cloneContext(),
                   __options__.signal,
                   )

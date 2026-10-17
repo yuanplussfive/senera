@@ -61,6 +61,21 @@ describe("channel final response rewriter", () => {
               },
             ],
           },
+          platformTruth: {
+            kind: "qq",
+            chatType: "direct",
+            capabilities: {
+              splitsLongMessages: true,
+              maxMessageLength: 4000,
+              supportsEdit: true,
+              supportsDraft: false,
+              markdown: "markdown",
+              commandPrefix: "/",
+              supportsMedia: true,
+              supportsKeyboard: true,
+              supportsInteractions: true,
+            },
+          },
           history: [
             {
               id: "history-1",
@@ -95,6 +110,8 @@ describe("channel final response rewriter", () => {
         },
       ],
     });
+    expect((requestCapture.request as { systemPrompt: string }).systemPrompt).toContain("<platform_truth>");
+    expect((requestCapture.request as { systemPrompt: string }).systemPrompt).toContain('"maxMessageLength":4000');
     expect((requestCapture.request as { messages: [{ content: string }] }).messages[0].content).toContain(
       '"id":"history-1"',
     );
@@ -203,6 +220,60 @@ describe("channel final response rewriter", () => {
         mime: "image/svg+xml",
       },
     ]);
+  });
+
+  test("deduplicates resolved Markdown aliases while keeping every source addressable", async () => {
+    const manifest = await collectAgentChannelMarkdownResourceManifest(
+      ["![主文件](result.png)", "![相对别名](./result.png)", "![大小写别名](RESULT.PNG)"].join("\n"),
+      {
+        resourceResolver: {
+          resolve: async () => undefined,
+          resolveWorkspacePath: async () => ({
+            filePath: "E:/senera/.tmp/result.png",
+            name: "result.png",
+            mime: "image/png",
+            size: 128,
+            sha256: "d".repeat(64),
+          }),
+        },
+      },
+    );
+
+    expect(manifest.references).toEqual([
+      {
+        source: "result.png",
+        kind: "workspace",
+        absolutePath: "E:/senera/.tmp/result.png",
+        name: "result.png",
+        mime: "image/png",
+        aliases: ["./result.png", "RESULT.PNG"],
+      },
+    ]);
+
+    const projection = await projectOutboundFinalParts(
+      [
+        {
+          kind: "text",
+          text: "![主文件](result.png)\n![相对别名](./result.png)\n![大小写别名](RESULT.PNG)",
+        },
+      ],
+      {
+        resourceManifest: manifest,
+        resourceResolver: {
+          resolve: async () => undefined,
+          resolveWorkspacePath: async () => ({
+            filePath: "E:/senera/.tmp/result.png",
+            name: "result.png",
+            mime: "image/png",
+            size: 128,
+            sha256: "d".repeat(64),
+          }),
+        },
+      },
+    );
+
+    expect(projection.media).toHaveLength(1);
+    expect(projection.segments.filter((segment) => segment.kind === "media")).toHaveLength(1);
   });
 
   test("does not guess unresolved paths or inspect ordinary Markdown links", async () => {

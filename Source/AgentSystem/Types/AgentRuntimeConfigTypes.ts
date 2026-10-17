@@ -11,6 +11,29 @@ export interface AgentEventWriterConfig {
   CommittedRetentionMs?: number;
 }
 
+/** Workspace-local structured log projection policy. The sessions database
+ * remains the authoritative foreground event index; this policy controls the
+ * human/model-facing log projections and externalized details. */
+export interface AgentLogsConfig {
+  Enabled?: boolean;
+  DetailMaxBytes?: number;
+  ProjectionMaxBytes?: number;
+  RetentionHours?: number;
+  QueryPageSize?: number;
+  TailLineCount?: number;
+  CaptureHiddenEvents?: boolean;
+}
+
+export interface ResolvedAgentLogsConfig {
+  Enabled: boolean;
+  DetailMaxBytes: number;
+  ProjectionMaxBytes: number;
+  RetentionHours: number;
+  QueryPageSize: number;
+  TailLineCount: number;
+  CaptureHiddenEvents: boolean;
+}
+
 export interface ResolvedAgentEventWriterConfig {
   RestartDelayMs: number;
   CloseTimeoutMs: number;
@@ -245,10 +268,6 @@ export interface AgentPromptConfig {
   UserMessageEnvelope?: boolean;
   /** Request-local timezone rendered inside the envelope. */
   TimeZone?: string;
-  /** The only user-authored persona content included in the model prompt. */
-  CorePersona?: string;
-  /** The only user-authored voice/style guidance included in the model prompt. */
-  LanguageStyle?: string;
   /** Rewrite the short preface shown before tool execution; independent of persona text. */
   PrefaceRewrite?: boolean;
   /** Rewrite the settled final answer independently of persona text (polish tier when no card). */
@@ -260,8 +279,6 @@ export interface AgentPromptConfig {
 export interface ResolvedAgentPromptConfig {
   UserMessageEnvelope: boolean;
   TimeZone: string;
-  CorePersona?: string;
-  LanguageStyle?: string;
   /** Optional for backwards-compatible embedders; resolver always supplies false/true. */
   PrefaceRewrite?: boolean;
   /** Optional for backwards-compatible embedders; resolver always supplies false/true. */
@@ -297,6 +314,7 @@ export interface ResolvedAgentInferenceBudgetConfig {
 export interface ResolvedAgentPersistenceConfig {
   Kind: "sqlite" | "memory";
   EventWriter: ResolvedAgentEventWriterConfig;
+  Logs: ResolvedAgentLogsConfig;
 }
 
 export interface ResolvedAgentConfigStoreConfig {

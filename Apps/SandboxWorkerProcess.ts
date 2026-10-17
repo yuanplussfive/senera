@@ -4,6 +4,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { resolveSandboxRuntimeConfig } from "../Source/AgentSystem/AgentDefaults.js";
 import { loadConfigFile } from "../Source/AgentSystem/Config/AgentConfigService.js";
+import { AgentConfigSecretCodec } from "../Source/AgentSystem/Config/AgentConfigSecretProtection.js";
 import { errorMessage } from "../Source/AgentSystem/Core/AgentErrors.js";
 import { sleep } from "../Source/AgentSystem/Core/AgentTiming.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
@@ -142,7 +143,8 @@ function resolveWorkerConfig(options: SeneraSandboxWorkerProcessOptions): AgentS
     throw new Error("Sandbox Worker process accepts either config or configPath, not both.");
   }
   if (options.config) return options.config;
-  if (options.configPath) return loadConfigFile(options.configPath);
+  if (options.configPath)
+    return loadConfigFile(options.configPath, new AgentConfigSecretCodec({ workspaceRoot: options.workspaceRoot }));
   throw new Error("Sandbox Worker process requires config or configPath.");
 }
 

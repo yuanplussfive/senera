@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { parseJsonText } from "../Core/AgentJsonParsing.js";
+import { removeAgentPathSync } from "../Core/AgentFs.js";
 
 const UpgradeLockFileName = ".upgrade.lock";
 
@@ -29,7 +30,7 @@ export function acquireAgentUpgradeLock(upgradeRoot: string, now = (): Date => n
         if (released) return;
         released = true;
         const current = readLockRecord(lockPath);
-        if (current?.pid === process.pid) fs.rmSync(lockPath, { force: true });
+        if (current?.pid === process.pid) removeAgentPathSync(lockPath, { force: true });
       };
     } catch (error) {
       if (!isAlreadyExistsError(error)) throw error;
@@ -37,7 +38,7 @@ export function acquireAgentUpgradeLock(upgradeRoot: string, now = (): Date => n
       if (current && isProcessRunning(current.pid)) {
         throw new Error(`Another Senera upgrade operation is active (pid=${current.pid}).`, { cause: error });
       }
-      fs.rmSync(lockPath, { force: true });
+      removeAgentPathSync(lockPath, { force: true });
     }
   }
   throw new Error("Unable to acquire the Senera upgrade lock.");

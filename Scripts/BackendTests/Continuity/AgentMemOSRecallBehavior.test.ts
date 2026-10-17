@@ -4,6 +4,7 @@ import { z } from "zod";
 import { MemOS } from "@mem-os/sdk";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { AgentContinuityMemOSRuntime } from "../../../Source/AgentSystem/Continuity/AgentContinuityMemOSRuntime.js";
+import { AgentMemOSEmbeddingRuntime } from "../../../Source/AgentSystem/Continuity/AgentMemOSEmbeddingRuntime.js";
 import { AgentMemOSSemanticLearningRuntime } from "../../../Source/AgentSystem/Continuity/AgentMemOSSemanticLearningRuntime.js";
 import { AgentContinuityMemoryService } from "../../../Source/AgentSystem/Continuity/AgentContinuityMemoryService.js";
 import { AgentContinuitySqliteStore } from "../../../Source/AgentSystem/Continuity/AgentContinuitySqliteStore.js";
@@ -125,6 +126,63 @@ describe("native MemOS recall", () => {
     }
   });
 
+  test("keeps MemOS initialization failures detached unless the boundary explicitly surfaces them", async () => {
+    const f = await fixture();
+    const runtime = f.createRuntime();
+    const failure = Promise.reject(new Error("MemOS initialization failed"));
+    void failure.catch(() => {});
+    (runtime as unknown as { ready: Promise<void> }).ready = failure;
+
+    await expect(runtime.flush()).resolves.toBeUndefined();
+    await expect(runtime.search("unavailable memory")).resolves.toEqual([]);
+    await expect(runtime.flush({ surfaceFailures: true })).rejects.toThrow("MemOS initialization failed");
+  });
+
+  test("keeps detached embedding flush failures out of the foreground boundary", async () => {
+    const f = await fixture();
+    const runtime = f.createRuntime();
+    await runtime.flush();
+    const flushEmbeddings = vi
+      .spyOn(AgentMemOSEmbeddingRuntime.prototype, "flushEmbeddings")
+      .mockRejectedValue(new Error("embedding queue unavailable"));
+    try {
+      await expect(runtime.flush()).resolves.toBeUndefined();
+      await expect(runtime.flush({ surfaceFailures: true })).rejects.toThrow("embedding queue unavailable");
+    } finally {
+      flushEmbeddings.mockRestore();
+    }
+  });
+
+  test("keeps detached embedding failures out of foreground recall", async () => {
+    const f = await fixture();
+    f.embed.mockImplementation(async (request) => {
+      if (request.role === "document") throw new Error("detached document embedding failed");
+      return {
+        model: "test-encoder",
+        vectors: request.input.map(() => [0, 0, 0, 1]),
+      };
+    });
+    const runtime = f.createRuntime();
+
+    await expect(runtime.search("beef")).resolves.toEqual(expect.any(Array));
+    await expect(runtime.flush({ surfaceFailures: true })).rejects.toThrow("MemOS embedding queue has failed nodes");
+  });
+
+  test("degrades prompt continuity when derived recall fails", async () => {
+    const f = await fixture();
+    const runtime = f.createRuntime();
+    vi.spyOn(runtime, "search").mockRejectedValueOnce(new Error("derived recall index unavailable"));
+
+    await expect(
+      f.createService(runtime).liveContext({
+        sessionId: "session",
+        requestId: "request",
+        userInput: "继续上一个任务",
+        historicalTokenBudget: { maxTokens: 1024, estimateTokens: (text) => text.length },
+      }),
+    ).resolves.toMatchObject({ enabled: true, query: "继续上一个任务", eventCandidates: [], periodDigests: [] });
+  });
+
   test("publishes reference constraints and decodes references at the tool boundary", () => {
     const validate = new Ajv({ strict: false }).compile(
       z.toJSONSchema(ContinuityRecallArgumentsSchema, { target: "draft-7", io: "input" }),
@@ -143,6 +201,7 @@ describe("native MemOS recall", () => {
     const args = ContinuityRecallArgumentsSchema.parse({ refs: ["memos:" + f.old.id, "memos:" + f.foreign.id] });
     const results = await recallContinuity(args, { memos: runtime, tokenBudget });
     expect(results.records.item.map((record) => record.uri)).toEqual(["memos:" + f.old.id]);
+    expect(results.records.item[0]?.summary).toMatch(/^\[2026-08-01 08:00\] /);
   });
 
   test("filters the complete time range before budgeting and uses calendar overlap for digests", async () => {

@@ -13,15 +13,25 @@ const treePath = (entry: WorkspaceTreeEntry): string => (entry.kind === "directo
 export function WorkspaceFileTree({
   httpBaseUrl,
   activePath,
+  entryFilter,
+  emptyMessage,
   onSelect,
   onDirectorySelect,
+  initialExpansion = "closed",
   revision = 0,
+  searchPlaceholder,
+  filesLabel,
 }: {
   httpBaseUrl: string;
   activePath?: string;
+  entryFilter?: (entry: WorkspaceTreeEntry) => boolean;
+  emptyMessage?: string;
   onSelect: (path: string) => void;
   onDirectorySelect?: (path: string) => void;
+  initialExpansion?: "closed" | "open";
   revision?: number;
+  searchPlaceholder?: string;
+  filesLabel?: string;
 }): JSX.Element {
   const { resolvedTheme } = useAppearance();
   const callbacks = useRef({ onSelect, onDirectorySelect });
@@ -42,7 +52,7 @@ export function WorkspaceFileTree({
     paths: [],
     density: "compact",
     icons: { set: "complete", colored: true },
-    initialExpansion: "closed",
+    initialExpansion,
     flattenEmptyDirectories: false,
     onSelectionChange: (paths) => {
       if (syncingSelection.current) return;
@@ -85,7 +95,9 @@ export function WorkspaceFileTree({
       setLoading(true);
       const completion = (async () => {
         try {
-          const next = await listWorkspaceEntries(httpBaseUrl, path, { signal: controller.signal });
+          const next = (await listWorkspaceEntries(httpBaseUrl, path, { signal: controller.signal })).filter(
+            (entry) => !entryFilter || entryFilter(entry),
+          );
           if (controller.signal.aborted) return;
           const previous = directories.current.get(path) ?? [];
           const nextPaths = new Set(next.map(treePath));
@@ -123,7 +135,7 @@ export function WorkspaceFileTree({
       completions.current.set(path, completion);
       return completion;
     },
-    [httpBaseUrl, model],
+    [entryFilter, httpBaseUrl, model],
   );
 
   useEffect(() => {
@@ -193,8 +205,9 @@ export function WorkspaceFileTree({
     void listWorkspaceEntries(httpBaseUrl, ".", { query: query.trim(), signal: controller.signal }).then(
       (entries) => {
         if (controller.signal.aborted) return;
-        searchModel.resetPaths(entries.map(treePath));
-        setResultCount(entries.length);
+        const filtered = entries.filter((entry) => !entryFilter || entryFilter(entry));
+        searchModel.resetPaths(filtered.map(treePath));
+        setResultCount(filtered.length);
         setError(undefined);
         setSearching(false);
       },
@@ -205,7 +218,7 @@ export function WorkspaceFileTree({
       },
     );
     return () => controller.abort();
-  }, [httpBaseUrl, query, searchModel, searchRevision]);
+  }, [entryFilter, httpBaseUrl, query, searchModel, searchRevision]);
 
   const style = {
     height: "100%",
@@ -230,8 +243,8 @@ export function WorkspaceFileTree({
         <Input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder={frontendMessage("workspace.searchFiles")}
-          aria-label={frontendMessage("workspace.searchFiles")}
+          placeholder={searchPlaceholder ?? frontendMessage("workspace.searchFiles")}
+          aria-label={searchPlaceholder ?? frontendMessage("workspace.searchFiles")}
           className="h-8 pl-8 pr-7 text-xs"
         />
         {loading || searching ? <Spinner size="sm" className="absolute right-2 top-2" /> : null}
@@ -255,18 +268,24 @@ export function WorkspaceFileTree({
         <p className="p-3 text-xs text-content-muted">{frontendMessage("resource.noFiles")}</p>
       ) : null}
       <div className="min-h-0 flex-1 overflow-hidden" hidden={Boolean(query.trim())}>
-        <FileTree
-          model={model}
-          style={style}
-          aria-label={frontendMessage("workspace.files")}
-          onClick={activateCurrentFile}
-        />
+        {!loading && !error && model.getVisibleCount() === 0 ? (
+          <p className="px-3 py-4 text-xs leading-5 text-content-muted">
+            {emptyMessage ?? frontendMessage("resource.noFiles")}
+          </p>
+        ) : (
+          <FileTree
+            model={model}
+            style={style}
+            aria-label={filesLabel ?? frontendMessage("workspace.files")}
+            onClick={activateCurrentFile}
+          />
+        )}
       </div>
       <div className="min-h-0 flex-1 overflow-hidden" hidden={!query.trim() || searching}>
         <FileTree
           model={searchModel}
           style={style}
-          aria-label={frontendMessage("workspace.searchFiles")}
+          aria-label={searchPlaceholder ?? frontendMessage("workspace.searchFiles")}
           onClick={activateCurrentFile}
         />
       </div>

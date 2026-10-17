@@ -11,7 +11,6 @@ import { AgentToolHostCapabilityRegistry } from "./ToolRuntime/AgentToolHostCapa
 import type { AgentToolSearchRuntime } from "./ToolSearch/AgentToolSearchRuntime.js";
 import type { AgentExecutionResourceBroker } from "./ExecutionResources/AgentExecutionResourceBroker.js";
 import { createAgentExecutionResourceHostHandlers } from "./ToolRuntime/AgentExecutionResourceRuntime.js";
-import { askUserHostTool } from "./Conversation/AgentAskUserRuntime.js";
 import {
   createAgentOrchestrationHostHandlers,
   type AgentOrchestrationHostRuntime,
@@ -38,7 +37,6 @@ export const AgentHostCapabilityNames = {
   MemoryWrite: "memory.write",
   WorkspaceApplyPatch: "workspace.apply_patch",
   WorkspaceRestoreCheckpoint: "workspace.restore_checkpoint",
-  AskUser: "conversation.ask_user",
   SkillManage: "extensions.skill.manage",
   AgentSpawn: "orchestration.agent.spawn",
   AgentList: "orchestration.agent.list",
@@ -72,8 +70,6 @@ export function createDefaultHostCapabilityRegistry(
     .register(AgentHostCapabilityNames.MemoryWrite, writeContinuityHostTool)
     .register(AgentHostCapabilityNames.WorkspaceApplyPatch, applyWorkspacePatchHostTool)
     .register(AgentHostCapabilityNames.WorkspaceRestoreCheckpoint, restoreWorkspaceCheckpointHostTool);
-  registry.register(AgentHostCapabilityNames.AskUser, askUserHostTool);
-
   if (options.executionResources) {
     const resources = createAgentExecutionResourceHostHandlers(options.executionResources);
     registry

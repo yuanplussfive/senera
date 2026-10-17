@@ -25,7 +25,7 @@ import {
 
 export interface AgentPiPlanningContextCompilerOptions {
   modelProvider: Pick<ResolvedAgentModelProviderConfig, "ContextWindowTokens" | "Model">;
-  /** Effective input capacity from the shared Pi context policy. */
+  /** Effective input capacity from the shared Pi window policy. */
   inputCapacityTokens?: number;
 }
 

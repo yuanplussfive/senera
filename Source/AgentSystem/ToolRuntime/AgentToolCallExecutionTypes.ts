@@ -18,20 +18,11 @@ export type AgentToolCallExecutionResult =
       value: ExecutedToolCallResult[];
     }
   | {
-      kind: "AskUser";
-      value: AskUserControlResult;
-    }
-  | {
       kind: "SuspendChildRun";
       value: SuspendChildRunControlResult;
     };
 
 export type AgentExecutionResult = AgentToolCallExecutionResult;
-
-export interface AskUserControlResult {
-  question: string;
-  reason_code?: string;
-}
 
 export interface SuspendChildRunControlResult {
   readonly childRunId: string;

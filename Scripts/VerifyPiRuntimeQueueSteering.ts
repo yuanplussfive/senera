@@ -169,6 +169,10 @@ class QueueAwareFakePiSession implements AgentPiSession {
 
   async prompt(): Promise<void> {}
 
+  prepareContinuation(): void {}
+
+  async continue(): Promise<void> {}
+
   async steer(text: string): Promise<void> {
     this.steers.push(text);
   }

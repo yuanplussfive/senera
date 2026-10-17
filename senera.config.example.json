@@ -251,6 +251,7 @@
       "Enabled": true,
       "Configuration": {
         "enabled": true,
+        "finalResponseRewrite": false,
         "qq": {
           "enabled": false,
           "appId": "your-qq-bot-app-id",

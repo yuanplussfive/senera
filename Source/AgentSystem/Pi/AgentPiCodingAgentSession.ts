@@ -63,6 +63,46 @@ export class AgentPiCodingAgentSession implements AgentPiSession {
     throwIfAssistantFailed(lastAssistantMessage(this.session.messages));
   }
 
+  prepareContinuation(sourceRequestId?: string): void {
+    this.session.refreshContext();
+    if (this.session.agent.hasQueuedMessages()) return;
+
+    const branch = this.sessionManager.getBranch();
+    const sourceEntryId = sourceRequestId ? readContinuableEntryIdForRequest(branch, sourceRequestId) : undefined;
+    if (sourceEntryId) {
+      this.sessionManager.branch(sourceEntryId);
+      this.session.agent.state.messages = this.sessionManager.buildSessionContext().messages;
+      return;
+    }
+
+    const lastMessage = this.session.agent.state.messages.at(-1);
+    if (lastMessage?.role === "user" || lastMessage?.role === "toolResult") return;
+
+    const branchEntryId = readLatestContinuableEntryId(branch);
+    if (!branchEntryId) {
+      throw new Error("Pi transcript has no user or tool-result message to continue from.");
+    }
+    this.sessionManager.branch(branchEntryId);
+    this.session.agent.state.messages = this.sessionManager.buildSessionContext().messages;
+  }
+
+  async continue(): Promise<void> {
+    let failure: Error | undefined;
+    try {
+      await this.session.agent.continue();
+      await this.session.waitForIdle();
+    } catch (error) {
+      failure = toError(error);
+    }
+    try {
+      await this.drainEvents();
+    } catch (error) {
+      failure ??= toError(error);
+    }
+    if (failure) throw failure;
+    throwIfAssistantFailed(lastAssistantMessage(this.session.messages));
+  }
+
   steer(text: string, images?: readonly ImageContent[]): Promise<void> {
     return this.session.steer(text, images ? [...images] : undefined);
   }
@@ -156,4 +196,50 @@ function throwIfAssistantFailed(message: AssistantMessage | undefined): void {
   if (message.stopReason === "error") {
     throw new Error(message.errorMessage ?? "Pi provider returned an error.");
   }
+}
+
+type AgentPiSessionEntry = ReturnType<SessionManager["getBranch"]>[number];
+type AgentPiCustomEntry = Extract<AgentPiSessionEntry, { type: "custom" }>;
+
+function readContinuableEntryIdForRequest(
+  entries: readonly AgentPiSessionEntry[],
+  sourceRequestId: string,
+): string | undefined {
+  for (let boundaryIndex = entries.length - 1; boundaryIndex >= 0; boundaryIndex -= 1) {
+    const boundary = entries[boundaryIndex];
+    if (!isTurnBoundaryForRequest(boundary, sourceRequestId)) continue;
+    let continuableEntryId: string | undefined;
+    for (let index = boundaryIndex + 1; index < entries.length; index += 1) {
+      const entry = entries[index];
+      if (isTurnBoundaryEntry(entry)) break;
+      if (entry?.type !== "message") continue;
+      if (entry.message.role === "user" || entry.message.role === "toolResult") continuableEntryId = entry.id;
+    }
+    return continuableEntryId;
+  }
+  return undefined;
+}
+
+function isTurnBoundaryForRequest(entry: AgentPiSessionEntry | undefined, requestId: string): boolean {
+  return isTurnBoundaryEntry(entry) && readCustomEntryRequestId(entry) === requestId;
+}
+
+function isTurnBoundaryEntry(entry: AgentPiSessionEntry | undefined): entry is AgentPiCustomEntry {
+  return entry?.type === "custom" && entry.customType === AgentPiSessionCustomEntryTypes.TurnBoundary;
+}
+
+function readCustomEntryRequestId(entry: AgentPiCustomEntry): string | undefined {
+  const data = entry.data;
+  if (!data || typeof data !== "object" || Array.isArray(data)) return undefined;
+  const requestId = (data as { requestId?: unknown }).requestId;
+  return typeof requestId === "string" && requestId.length > 0 ? requestId : undefined;
+}
+
+function readLatestContinuableEntryId(entries: readonly AgentPiSessionEntry[]): string | undefined {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (entry?.type !== "message") continue;
+    if (entry.message.role === "user" || entry.message.role === "toolResult") return entry.id;
+  }
+  return undefined;
 }

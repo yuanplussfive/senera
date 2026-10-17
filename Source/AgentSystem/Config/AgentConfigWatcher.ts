@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { AgentConfigLoader } from "./AgentConfigLoader.js";
+import { AgentConfigSecretCodec } from "./AgentConfigSecretProtection.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { AgentEventKinds, type AgentEventSink } from "../Events/AgentEvent.js";
 import { emitAgentEvent } from "../Events/AgentEvent.js";
@@ -13,6 +14,7 @@ export interface AgentConfigSnapshot {
 }
 
 export interface AgentConfigWatcherOptions {
+  workspaceRoot: string;
   configPath: string;
   enabled: boolean;
   onEvent?: AgentEventSink;
@@ -26,7 +28,10 @@ export class AgentConfigWatcher {
     this.snapshotValue = {
       path: options.configPath,
       version: 1,
-      value: AgentConfigLoader.load(options.configPath),
+      value: AgentConfigLoader.load(
+        options.configPath,
+        new AgentConfigSecretCodec({ workspaceRoot: options.workspaceRoot }),
+      ),
     };
   }
 
@@ -59,7 +64,10 @@ export class AgentConfigWatcher {
       this.snapshotValue = {
         path: this.options.configPath,
         version: this.snapshotValue.version + 1,
-        value: AgentConfigLoader.load(this.options.configPath),
+        value: AgentConfigLoader.load(
+          this.options.configPath,
+          new AgentConfigSecretCodec({ workspaceRoot: this.options.workspaceRoot }),
+        ),
       };
 
       await emitAgentEvent(this.options.onEvent, {

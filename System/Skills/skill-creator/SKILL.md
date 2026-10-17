@@ -52,6 +52,21 @@ Then create the package:
 7. Call `SkillManage` with `validate` after the package and execution tests pass. Repair source diagnostics when necessary.
 8. Report the result accurately as a Workflow Skill or Toolkit Skill, including the files created and tests run. It becomes visible on the next user message in the same conversation without a restart.
 
+## Evidence and logs
+
+Skill creation or revision is a state change, not proof that the Skill was
+activated in a later run. After a mutation, re-read the returned revision and
+run `skills check NAME`. When the Skill is exercised, use `logs health` and
+`logs latest`, `logs range`, or `logs trace REQUEST_ID` to verify activation,
+tool calls, and failures. Use `logs detail DETAIL_ID` only for a detail ID
+returned by the log result; details are redacted diagnostics, not a source for rewriting the
+Skill. Keep `background/memos` and `background/learning` separate from the
+foreground request when checking memory or learning side effects.
+
+If the log store is unavailable or disabled, report that verification boundary
+instead of scanning `.senera/logs` directly or treating a successful file
+mutation as runtime proof.
+
 Do not create MCP server packages, host tool contracts, runtime servers, or fictional tool names for a Skill.
 
 <!-- SKILL_CREATOR_SKILL_EOF: This is the complete Skill Creator skill. Do not request additional lines. -->

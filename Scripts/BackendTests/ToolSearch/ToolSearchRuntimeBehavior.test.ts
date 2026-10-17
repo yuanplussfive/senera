@@ -18,6 +18,55 @@ import { AgentToolSuccessOutcome } from "../../../Source/AgentSystem/ToolRuntime
 import { createRegistry, createTool, createToolSearchConfig } from "./ToolSearchTestFixtures.js";
 
 describe("ToolSearch runtime behavior", () => {
+  test("continues catalog discovery when scenario recall is unavailable", async () => {
+    const runtime = new AgentToolSearchRuntime(
+      createRegistry([
+        createTool({
+          name: AgentToolMetaToolNames.Search,
+          title: "Tool search",
+          summary: "Find tools",
+          tags: ["search"],
+          actions: ["search"],
+          targets: ["tools"],
+          priority: 100,
+          rootKind: "System",
+          loading: "Bootstrap",
+        }),
+        createTool({
+          name: "WeatherTool",
+          title: "Weather",
+          summary: "Fetch a weather forecast",
+          tags: ["weather", "forecast"],
+          actions: ["forecast"],
+          targets: ["city"],
+          priority: 50,
+          rootKind: "User",
+          loading: "Dynamic",
+        }),
+      ]) as unknown as AgentExtensionRegistry,
+      createToolSearchConfig(),
+      "E:/workspace",
+      createModelProvider(),
+      {
+        scenarioSource: {
+          search: async () => {
+            throw new Error("scenario store unavailable");
+          },
+          record: () => undefined,
+        },
+        availableExecutionTargets: () => ["Local"],
+      },
+    );
+
+    try {
+      await expect(runtime.search({ query: "weather forecast" })).resolves.toEqual(
+        expect.arrayContaining([expect.objectContaining({ toolName: "WeatherTool" })]),
+      );
+    } finally {
+      await runtime.close();
+    }
+  });
+
   test("loads bootstrap System Tools and discovers explicitly dynamic System Tools", async () => {
     const runtime = new AgentToolSearchRuntime(
       createRegistry([

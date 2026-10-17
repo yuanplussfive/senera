@@ -3,7 +3,7 @@ import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import { AgentSelfCommandRegistry, agentSelfCommandId } from "./AgentSelfCommandRegistry.js";
 import { AgentSelfCommandSchema } from "./AgentSelfCommandSchema.js";
 
-export const AgentSelfCommandContractVersion = 1 as const;
+export const AgentSelfCommandContractVersion = 2 as const;
 
 export interface AgentSelfCommandContractSnapshot {
   readonly version: typeof AgentSelfCommandContractVersion;
