@@ -3,10 +3,13 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type Token from "markdown-it/lib/token.mjs";
-import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
 import type { AgentResourceResolverLike, AgentResolvedResource } from "../Resources/AgentResourceResolver.js";
 import { normalizeAgentResourceUri } from "../Resources/AgentResourceUri.js";
 import type { AgentChannelMedia } from "./AgentChannelTypes.js";
+import {
+  agentChannelMarkdownResourceIdentity,
+  appendAgentChannelMarkdownResourceAlias,
+} from "./AgentChannelMarkdownResourceIdentity.js";
 
 /** Bounded policy for media projected from model and tool output. */
 export const AgentChannelOutboundMediaDefaults = Object.freeze({
@@ -147,7 +150,7 @@ export async function collectAgentChannelMarkdownResourceManifest(
     const identity = agentChannelMarkdownResourceIdentity(reference);
     const existing = references.get(identity);
     if (existing) {
-      references.set(identity, appendMarkdownResourceAlias(existing, source));
+      references.set(identity, appendAgentChannelMarkdownResourceAlias(existing, source));
       continue;
     }
     if (references.size >= maxEntries) continue;
@@ -155,50 +158,6 @@ export async function collectAgentChannelMarkdownResourceManifest(
   }
 
   return { references: [...references.values()] };
-}
-
-function appendMarkdownResourceAlias(
-  reference: AgentChannelMarkdownResourceReference,
-  alias: string,
-): AgentChannelMarkdownResourceReference {
-  if (alias === reference.source || reference.aliases?.includes(alias)) return reference;
-  return { ...reference, aliases: [...(reference.aliases ?? []), alias] };
-}
-
-function agentChannelMarkdownResourceIdentity(reference: AgentChannelMarkdownResourceReference): string {
-  let identity: Record<string, string>;
-  switch (reference.kind) {
-    case "senera":
-      identity = { kind: reference.kind, resourceUri: reference.resourceUri };
-      break;
-    case "http":
-      identity = { kind: reference.kind, url: normalizeHttpResourceIdentity(reference.url) };
-      break;
-    case "workspace":
-      identity = { kind: reference.kind, absolutePath: normalizeWorkspaceResourceIdentity(reference.absolutePath) };
-      break;
-    case "unresolved":
-      identity = { kind: reference.kind, source: normalizeUnresolvedResourceIdentity(reference.source) };
-      break;
-  }
-  return stringifyAgentCanonicalJson(identity);
-}
-
-function normalizeHttpResourceIdentity(value: string): string {
-  try {
-    return new URL(value).href;
-  } catch {
-    return value.trim();
-  }
-}
-
-function normalizeWorkspaceResourceIdentity(value: string): string {
-  const normalized = value.replace(/\\/gu, "/").replace(/\/+/gu, "/");
-  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
-}
-
-function normalizeUnresolvedResourceIdentity(value: string): string {
-  return value.replace(/\\/gu, "/").replace(/\/+/gu, "/").toLowerCase();
 }
 
 async function describeMarkdownResourceReference(

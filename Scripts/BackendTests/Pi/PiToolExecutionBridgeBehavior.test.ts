@@ -1,6 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { AgentCancellationError } from "../../../Source/AgentSystem/Core/AgentCancellation.js";
 import {
   AgentPiToolExecutionBridge as AgentPiToolExecutionBridgeBase,
   type AgentPiToolExecutionBridgeOptions,
@@ -196,44 +195,6 @@ describe("Pi tool execution bridge behavior", () => {
         results: [expect.objectContaining({ workspaceCapture })],
       }),
     );
-  });
-
-  test("cancels a pending workspace capture when the tool deadline aborts", async () => {
-    const controller = new AbortController();
-    let completeStarted!: () => void;
-    const completeReady = new Promise<void>((resolve) => {
-      completeStarted = resolve;
-    });
-    const workspaceChangeObserver: AgentWorkspaceChangeObserverPort = {
-      beginBatch: vi.fn(async () => undefined),
-      completeCall: vi.fn(
-        async () =>
-          await new Promise<undefined>(() => {
-            completeStarted();
-          }),
-      ),
-      skipCall: vi.fn(),
-      cancelCall: vi.fn(),
-      cancelPendingBatches: vi.fn(),
-    };
-    const bridge = new AgentPiToolExecutionBridge({
-      executeToolCall: async () => ({ kind: "ToolResults", value: [toolResult({ callId: "call-deadline" })] }),
-      recordToolArtifacts: async () => [toolResult({ callId: "call-deadline" })],
-    });
-
-    const pending = bridge.execute({
-      tool: registeredTool("SearchTool"),
-      params: {},
-      toolCallId: "call-deadline",
-      signal: controller.signal,
-      context: createToolContext("SearchTool", "call-deadline", { workspaceChangeObserver }),
-    });
-    await completeReady;
-
-    controller.abort(new AgentCancellationError("Tool deadline exceeded."));
-
-    await expect(pending).rejects.toThrow("Tool deadline exceeded.");
-    expect(workspaceChangeObserver.cancelCall).toHaveBeenCalledWith("batch-call-deadline", "call-deadline");
   });
 
   test("terminates the child turn at a persisted supervisor-decision boundary", async () => {

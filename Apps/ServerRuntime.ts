@@ -103,6 +103,7 @@ import { createSeneraServerRuntimeStop } from "./ServerRuntimeShutdown.js";
 import { bindSeneraServerRuntimeConfigurationSynchronization } from "./ServerRuntimeConfigurationSynchronization.js";
 import { startSeneraServerRuntimeConfigWatcher } from "./ServerRuntimeConfigWatcher.js";
 import { createSeneraServerInferenceBudget } from "./ServerInferenceBudget.js";
+import { createSeneraWorkspaceLogPolicy } from "./ServerRuntimeLogPolicy.js";
 import { ingestAgentChannelAttachment } from "../Source/AgentSystem/Channels/AgentChannelAttachmentIngestor.js";
 import { parseAgentQqApprovalInteraction } from "../Source/AgentSystem/Channels/AgentQqApprovalInteraction.js";
 import { AgentChannelSessionMappingStore } from "../Source/AgentSystem/Channels/AgentChannelSessionMappingStore.js";
@@ -452,20 +453,9 @@ async function startSeneraServerRuntime(
   const initialConfig = projectRuntimeConfig(initialSnapshot.value);
   const configSnapshot = (): AgentSystemConfig => projectRuntimeConfig(configService.snapshot().value);
   const persistence = resolvePersistenceConfig(initialConfig);
-  const logPolicy = () => {
-    const logs = resolvePersistenceConfig(configSnapshot()).Logs;
-    return {
-      enabled: logs.Enabled,
-      detailMaxBytes: logs.DetailMaxBytes,
-      projectionMaxBytes: logs.ProjectionMaxBytes,
-      retentionHours: logs.RetentionHours,
-      queryPageSize: logs.QueryPageSize,
-      tailLineCount: logs.TailLineCount,
-    };
-  };
   const logStore = new AgentWorkspaceLogStore({
     root: workspaceLayout.logsRoot,
-    policy: logPolicy,
+    policy: createSeneraWorkspaceLogPolicy(configSnapshot),
   });
   const logger = new AgentLogger({
     verbose: eventLogDetail === "verbose",
