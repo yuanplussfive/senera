@@ -371,7 +371,7 @@ export function useChatCommands({
       lastSendRef.current = {
         sessionId: activeSessionId,
         requestId,
-        input: failedRun.input,
+        input: recoveryMode === "continue" ? "continue" : failedRun.input,
         modelProviderId: readConfiguredChatModelProviderId(state.modelProviders, state.selectedModelProviderId),
         thinkingLevel: state.selectedThinkingLevel ?? undefined,
         approvalMode,
