@@ -432,6 +432,7 @@ function WorkspaceMenuPanel({ onClose }: { onClose: () => void }): JSX.Element |
             <Button
               variant="ghost"
               className="w-full justify-start"
+              data-workspace-folder-action
               disabled={locked || (!chooseWorkspaceFolder && !snapshot?.capabilities.browseDirectories)}
               onClick={() => {
                 void openFolder();
