@@ -2,6 +2,13 @@
 
 这里记录 Senera 每个正式版本中的新增功能、问题修复和兼容性变化。
 
+## [1.18.0](https://github.com/yuanplussfive/senera/compare/v1.17.1...v1.18.0) (2026-10-17)
+
+
+### 新增功能
+
+* **runtime:** harden workspace-scoped execution flows ([#148](https://github.com/yuanplussfive/senera/issues/148)) ([e6a5146](https://github.com/yuanplussfive/senera/commit/e6a514612e7aa03e98833cce41ff32142add9f99))
+
 ## [1.17.1](https://github.com/yuanplussfive/senera/compare/v1.17.0...v1.17.1) (2026-10-14)
 
 
