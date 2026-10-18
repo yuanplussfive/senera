@@ -26,6 +26,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { rgPath } from "@vscode/ripgrep";
 import { resolveAsarUnpackedExecutablePath } from "../Core/AgentExecutablePath.js";
+import { listAgentWorkspaceNonContentRoots } from "../Core/AgentWorkspaceLayout.js";
 export { resolveAsarUnpackedExecutablePath } from "../Core/AgentExecutablePath.js";
 import { minimatch } from "minimatch";
 import { z } from "zod";
@@ -179,7 +180,7 @@ export const WorkspaceGrepSystemTool = defineSystemTool({
     const tool = createGrepTool(context.workspaceRoot, {
       operations: createGrepOperations(context),
     });
-    return tool.execute(toolCallId(context), canonicalInput, context.signal);
+    return tool.execute(toolCallId(context), withWorkspaceSearchGlob(canonicalInput, context), context.signal);
   },
 });
 
@@ -315,7 +316,7 @@ function createFindOperations(context: AgentHostToolContext): FindOperations {
       return enumerateWorkspaceFiles({
         pattern,
         cwd,
-        ignore: options.ignore,
+        ignore: mergeWorkspaceFindIgnores(options.ignore, context.workspaceRoot, cwd),
         limit: options.limit,
         signal: context.signal,
       });
@@ -349,6 +350,39 @@ interface WorkspaceFileEnumerationRequest {
   readonly ignore: readonly string[];
   readonly limit: number;
   readonly signal?: AbortSignal;
+}
+
+function withWorkspaceSearchGlob<TInput extends { path: string; glob?: string }>(
+  input: TInput,
+  context: AgentHostToolContext,
+): TInput {
+  const exclusions = workspaceNonContentGlobs(context.workspaceRoot, input.path);
+  if (exclusions.length === 0) return input;
+
+  const include = input.glob?.trim() || "**/*";
+  return {
+    ...input,
+    glob: `{${include},${exclusions.map((glob) => `!${glob}`).join(",")}}`,
+  };
+}
+
+function mergeWorkspaceFindIgnores(ignores: readonly string[], workspaceRoot: string, searchRoot: string): string[] {
+  return [...new Set([...ignores, ...workspaceNonContentGlobs(workspaceRoot, searchRoot)])];
+}
+
+function workspaceNonContentGlobs(workspaceRoot: string, searchRoot: string): string[] {
+  const resolvedSearchRoot = path.resolve(searchRoot);
+  return [
+    ...new Set(
+      listAgentWorkspaceNonContentRoots(workspaceRoot).flatMap((protectedRoot) => {
+        const relative = path.relative(resolvedSearchRoot, path.resolve(protectedRoot));
+        if (relative === "" || path.isAbsolute(relative) || relative === ".." || relative.startsWith(`..${path.sep}`)) {
+          return [];
+        }
+        return [`${relative.split(path.sep).join("/")}/**`];
+      }),
+    ),
+  ];
 }
 
 function enumerateWorkspaceFiles(request: WorkspaceFileEnumerationRequest): Promise<string[]> {
