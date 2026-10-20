@@ -2,6 +2,13 @@
 
 这里记录 Senera 每个正式版本中的新增功能、问题修复和兼容性变化。
 
+## [1.19.0](https://github.com/yuanplussfive/senera/compare/v1.18.0...v1.19.0) (2026-10-20)
+
+
+### 新增功能
+
+* **desktop:** unify workspace runtime and interaction surfaces ([#150](https://github.com/yuanplussfive/senera/issues/150)) ([4a83dae](https://github.com/yuanplussfive/senera/commit/4a83dae18cf7c450c40e375a14c0dbcbf9abeb6c))
+
 ## [1.18.0](https://github.com/yuanplussfive/senera/compare/v1.17.1...v1.18.0) (2026-10-17)
 
 
