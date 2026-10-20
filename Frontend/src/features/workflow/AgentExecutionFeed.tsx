@@ -28,7 +28,7 @@ import { hasVisibleRunFeedback, runActivityPresentationPriority } from "./runAct
 import { ToolActionIcon } from "./ToolActionIcon";
 import { ToolActivityGroup } from "./ToolActivityGroup";
 import { ToolActivityLabel } from "./ToolActivityLabel";
-import { projectToolBatchActivity, ToolBatchActivity } from "./ToolBatchActivity";
+import { projectToolBatchActivities, ToolBatchActivityList } from "./ToolBatchActivity";
 import { ChildRunActivity } from "./ChildRunCard";
 import { LiveActivityStatus } from "./LiveActivityStatus";
 
@@ -122,9 +122,9 @@ export function AgentExecutionStageFeed({
   const model = useMemo(() => deriveFeedModel(run), [run]);
   const split = useMemo(() => splitStageChildRuns(run.steps), [run.steps]);
   const presentation = useMemo(() => projectToolStagePresentation({ steps: split.rootToolSteps }), [split]);
-  const toolBatchActivity = useMemo(
-    () => (split.rootToolSteps.length > 0 ? projectToolBatchActivity({ steps: split.rootToolSteps }) : undefined),
-    [split],
+  const toolBatchActivities = useMemo(
+    () => projectToolBatchActivities({ steps: split.rootToolSteps }),
+    [split.rootToolSteps],
   );
   const activityOwner = liveActivity ?? (run.status === "running" || run.status === "cancelling");
   const liveRun = isLiveRun(run);
@@ -140,7 +140,10 @@ export function AgentExecutionStageFeed({
       </div>
     ) : null;
   }
-  if (presentation && shouldShowWaitingHeadline(run, presentation.status, Boolean(toolBatchActivity) || hasChildRuns)) {
+  if (
+    presentation &&
+    shouldShowWaitingHeadline(run, presentation.status, toolBatchActivities.length > 0 || hasChildRuns)
+  ) {
     const headline = projectWaitingHeadline(run, model.headline);
     if (!showWaitingActivity && isGenericWaitingHeadline(headline)) {
       return liveRun ? <LiveActivityStatus dataFallback /> : null;
@@ -154,22 +157,21 @@ export function AgentExecutionStageFeed({
 
   const childRunActivities = hasChildRuns ? <ChildRunActivityList entries={split.childRuns} /> : null;
 
-  if (toolBatchActivity) {
+  if (toolBatchActivities.length > 0) {
     return (
       <>
         {childRunActivities}
         <div
           className="relative w-full min-w-0"
           role="status"
-          aria-label={toolBatchActivity.label}
+          aria-label={toolBatchActivities[0]?.label ?? presentation?.accessibleTitle}
           data-execution-stage-feed
           data-tool-stage-category={presentation?.category}
           data-tool-stage-mode={presentation?.mode}
           data-tool-stage-status={presentation?.status}
         >
-          <ToolBatchActivity
-            activity={toolBatchActivity}
-            defaultOpen={false}
+          <ToolBatchActivityList
+            activities={toolBatchActivities}
             keepOpenWhileRunActive={keepOpenWhileRunActive}
             animateActivity={activityOwner}
           />
@@ -226,9 +228,9 @@ export function AgentExecutionStageFold({
   const [open, setOpen] = useState(false);
   const split = useMemo(() => splitStageChildRuns(run.steps), [run.steps]);
   const presentation = useMemo(() => projectToolStagePresentation({ steps: split.rootToolSteps }), [split]);
-  const toolBatchActivity = useMemo(
-    () => (split.rootToolSteps.length > 0 ? projectToolBatchActivity({ steps: split.rootToolSteps }) : undefined),
-    [split],
+  const toolBatchActivities = useMemo(
+    () => projectToolBatchActivities({ steps: split.rootToolSteps }),
+    [split.rootToolSteps],
   );
   const hasExecutionContent = split.rootToolSteps.length > 0 || split.childRuns.length > 0;
 
@@ -238,7 +240,7 @@ export function AgentExecutionStageFold({
 
   const childRunActivities = <ChildRunActivityList entries={split.childRuns} />;
 
-  if (toolBatchActivity) {
+  if (toolBatchActivities.length > 0) {
     return (
       <div
         className="tool-batch-activity-stage flex min-w-0 flex-col gap-1"
@@ -247,7 +249,7 @@ export function AgentExecutionStageFold({
         data-tool-stage-status={presentation.status}
       >
         {childRunActivities}
-        <ToolBatchActivity activity={toolBatchActivity} defaultOpen={false} />
+        <ToolBatchActivityList activities={toolBatchActivities} />
       </div>
     );
   }
@@ -295,10 +297,9 @@ export function AgentExecutionStageFold({
 export function ThinkingToolChain({ run, steps }: { run?: RunRecord; steps?: readonly TimelineStep[] }): JSX.Element {
   const sourceSteps = steps ?? run?.steps ?? [];
   const split = splitStageChildRuns(sourceSteps);
-  const toolBatchActivity =
-    split.rootToolSteps.length > 0 ? projectToolBatchActivity({ steps: split.rootToolSteps }) : undefined;
+  const toolBatchActivities = projectToolBatchActivities({ steps: split.rootToolSteps });
 
-  if (!toolBatchActivity && split.childRuns.length === 0) {
+  if (toolBatchActivities.length === 0 && split.childRuns.length === 0) {
     return (
       <div className="relative min-w-0 pl-5 text-[12.5px] leading-5 text-content-primary" data-thinking-tool-chain>
         <span className="text-content-muted">{frontendMessage("workflow.summary.noToolCalls")}</span>
@@ -308,14 +309,14 @@ export function ThinkingToolChain({ run, steps }: { run?: RunRecord; steps?: rea
 
   // Preserve the legacy single-batch DOM when no child runs participate, so hosts
   // that style around [data-tool-batch-activity] keep their structure.
-  if (split.childRuns.length === 0 && toolBatchActivity) {
-    return <ToolBatchActivity activity={toolBatchActivity} defaultOpen={false} />;
+  if (split.childRuns.length === 0 && toolBatchActivities.length > 0) {
+    return <ToolBatchActivityList activities={toolBatchActivities} />;
   }
 
   return (
     <div className="flex min-w-0 flex-col gap-1" data-thinking-tool-chain>
       <ChildRunActivityList entries={split.childRuns} />
-      {toolBatchActivity ? <ToolBatchActivity activity={toolBatchActivity} defaultOpen={false} /> : null}
+      {toolBatchActivities.length > 0 ? <ToolBatchActivityList activities={toolBatchActivities} /> : null}
     </div>
   );
 }

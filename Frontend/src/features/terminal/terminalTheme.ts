@@ -11,6 +11,4 @@ export const TerminalSurfaceStyle = {
   "--terminal-subtle": "#737373",
   "--terminal-accent": "#4cc2ff",
   "--terminal-hover": "rgb(255 255 255 / 0.07)",
-  "--terminal-scrollbar-thumb": "#545454",
-  "--terminal-scrollbar-thumb-hover": "#737373",
 } as CSSProperties;

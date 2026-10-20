@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { WsRequest } from "../../api/eventTypes";
 import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
-import { AppIcon, type AppIconName } from "../../shared/ui";
+import { AppIcon, Tabs, TabsContent, TabsList, TabsTrigger, type AppIconName } from "../../shared/ui";
 import { useStore, type RunRecord } from "../../store/sessionStore";
 import { ContinuityOverviewView } from "./ContinuityOverviewView";
 import { ContinuityRecallView } from "./ContinuityRecallView";
@@ -38,7 +38,9 @@ export function ContinuityPanel(_props: ContinuityPanelProps): JSX.Element {
   const selectedTab = availableTabs.find((tab) => tab.id === requestedTab) ?? availableTabs[0];
 
   return (
-    <section
+    <Tabs
+      value={selectedTab.id}
+      onValueChange={(value) => setRequestedTab(value as ContinuityPanelTab)}
       className="flex h-full min-h-0 flex-col bg-surface-panel"
       data-continuity-panel
       data-testid="continuity-panel"
@@ -66,58 +68,36 @@ export function ContinuityPanel(_props: ContinuityPanelProps): JSX.Element {
             {frontendMessage("continuity.currentTurn")}
           </span>
         </div>
-        <nav
-          role="tablist"
+        <TabsList
+          variant="underline"
           aria-label={frontendMessage("continuity.title")}
-          className="grid min-h-12 w-full min-w-0 grid-cols-2 border-t border-line-subtle px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          onKeyDown={(event) => {
-            const currentIndex = availableTabs.findIndex((tab) => tab.id === selectedTab.id);
-            const nextIndex = resolveTabNavigationIndex(event.key, currentIndex, availableTabs.length);
-            if (nextIndex === undefined) return;
-            event.preventDefault();
-            setRequestedTab(availableTabs[nextIndex].id);
-          }}
+          className="grid min-h-12 w-full min-w-0 grid-cols-2 border-t border-line-subtle px-2"
         >
           {availableTabs.map((tab) => {
-            const active = selectedTab.id === tab.id;
             return (
-              <button
+              <TabsTrigger
                 key={tab.id}
-                id={`continuity-tab-${tab.id}`}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                aria-controls={`continuity-panel-${tab.id}`}
-                tabIndex={active ? 0 : -1}
-                onClick={() => setRequestedTab(tab.id)}
+                value={tab.id}
                 className={cn(
-                  "relative flex min-w-0 min-h-12 items-center justify-center gap-2 px-1 text-[12px] font-medium transition-colors",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-focus",
-                  active ? "text-accent-content" : "text-content-muted hover:text-content-primary",
+                  "h-auto min-h-12 min-w-0 gap-2 rounded-none px-1 text-[12px]",
+                  "data-[state=active]:text-accent-content",
                 )}
               >
                 <AppIcon icon={tab.icon} size={16} aria-hidden="true" />
                 <span className="truncate">{frontendMessage(tab.label)}</span>
-                {active ? (
-                  <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-t bg-accent-solid" aria-hidden="true" />
-                ) : null}
-              </button>
+              </TabsTrigger>
             );
           })}
-        </nav>
+        </TabsList>
       </header>
 
-      <div
-        id={`continuity-panel-${selectedTab.id}`}
-        className="scrollbar-thin min-h-0 flex-1 overflow-y-auto"
-        role="tabpanel"
-        aria-labelledby={`continuity-tab-${selectedTab.id}`}
-        data-continuity-tab={selectedTab.id}
-      >
-        {selectedTab.id === "overview" && run?.continuity ? <ContinuityOverviewView run={run} /> : null}
-        {selectedTab.id === "knowledge" && run?.continuity ? <ContinuityRecallView run={run} /> : null}
-      </div>
-    </section>
+      <TabsContent value="overview" className="min-h-0 flex-1 overflow-y-auto" data-continuity-tab="overview">
+        <ContinuityOverviewView run={run} />
+      </TabsContent>
+      <TabsContent value="knowledge" className="min-h-0 flex-1 overflow-y-auto" data-continuity-tab="knowledge">
+        <ContinuityRecallView run={run} />
+      </TabsContent>
+    </Tabs>
   );
 }
 
@@ -127,15 +107,6 @@ function selectRun(runs: readonly RunRecord[], viewedRunId: string | undefined):
     if (viewedRun) return viewedRun;
   }
   return runs.at(-1);
-}
-
-function resolveTabNavigationIndex(key: string, currentIndex: number, tabCount: number): number | undefined {
-  if (tabCount === 0) return undefined;
-  if (key === "Home") return 0;
-  if (key === "End") return tabCount - 1;
-  if (key === "ArrowRight") return (currentIndex + 1) % tabCount;
-  if (key === "ArrowLeft") return (currentIndex - 1 + tabCount) % tabCount;
-  return undefined;
 }
 
 function ContinuityEmpty({ hasHistory }: { hasHistory: boolean }): JSX.Element {

@@ -130,7 +130,7 @@ assert.throws(
 
 const disabledProviderConfig: AgentSystemConfig = {
   ...config,
-  DefaultModelProviderId: "disabled-model",
+  DefaultModelProviderId: "enabled-model",
   ModelProviderEndpoints: [
     {
       Id: "disabled-provider",
@@ -169,6 +169,14 @@ assert.deepEqual(
   ["enabled-model"],
 );
 assert.throws(() => activeCatalog.resolve("disabled-model"), /模型配置不存在/);
+assert.throws(
+  () =>
+    resolveModelProviderCatalog({
+      ...disabledProviderConfig,
+      DefaultModelProviderId: "disabled-model",
+    }),
+  /默认模型当前不可用：DefaultModelProviderId=disabled-model/,
+);
 
 const allDisabledProviderConfig: AgentSystemConfig = {
   ...disabledProviderConfig,

@@ -11,6 +11,7 @@ import type {
 } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { AgentSessionSnapshot } from "../Session/AgentSession.js";
 import type { AgentSkillResourceDescriptor, AgentSkillResourceRead } from "../Skills/AgentSkillScanner.js";
+import type { AgentChannelsConfig } from "../Channels/AgentChannelTypes.js";
 
 export interface AgentSelfSkillSource {
   readonly id: string;
@@ -132,6 +133,47 @@ export type AgentSelfSkillMutationResult =
   | { readonly status: "failed"; readonly name: string; readonly error: string }
   | { readonly status: "unavailable"; readonly reason: string };
 
+export interface AgentSelfPromptPresetEntry {
+  readonly path: string;
+  readonly sizeBytes: number;
+  readonly updatedAt: string;
+  readonly active: boolean;
+  readonly enabled: boolean;
+}
+
+export interface AgentSelfPromptPresetStatus {
+  readonly root: string;
+  readonly valid: boolean;
+  readonly enabled: boolean;
+  readonly activePath?: string;
+  readonly presets: readonly AgentSelfPromptPresetEntry[];
+  readonly errors?: readonly string[];
+  readonly error?: string;
+}
+
+export type AgentSelfPromptPresetReadResult =
+  | {
+      readonly status: "found";
+      readonly path: string;
+      readonly content: string;
+      readonly sizeBytes: number;
+      readonly updatedAt: string;
+    }
+  | { readonly status: "missing" | "rejected" | "invalid" | "failed"; readonly error: string };
+
+export type AgentSelfPromptPresetMutationResult =
+  | {
+      readonly status: "enabled";
+      readonly enabled: boolean;
+      readonly activePath: string;
+    }
+  | {
+      readonly status: "disabled";
+      readonly enabled: boolean;
+      readonly activePath: string;
+    }
+  | { readonly status: "missing" | "rejected" | "invalid" | "failed"; readonly error: string };
+
 /**
  * Host services the senera self-service commands need. The same command
  * vocabulary powers the model-facing `SeneraCommand` host tool and the
@@ -216,6 +258,20 @@ export interface AgentSelfServicePort {
     /** Lists retained workspace revisions for one Skill, newest first. */
     history(name: string): readonly AgentSelfSkillHistoryEntry[];
   };
+  readonly promptPresets?: {
+    /** Lists workspace Markdown presets and the host-owned activation pointer. */
+    status(): Promise<AgentSelfPromptPresetStatus>;
+    /** Reads one path after validating it against the fixed prompts/ contract. */
+    read(path: string): Promise<AgentSelfPromptPresetReadResult>;
+    /** Enables one existing Markdown preset through an atomic host-owned write. */
+    enable(path: string): Promise<AgentSelfPromptPresetMutationResult>;
+    /** Disables the active preset without removing user content. */
+    disable(): Promise<AgentSelfPromptPresetMutationResult>;
+  };
+  readonly channels?: {
+    /** Resolved channel configuration; command projection applies redaction. */
+    snapshot(): AgentChannelsConfig;
+  };
   readonly slice?: {
     readonly layout: AgentWorkspaceLayout;
     readonly deployedModes: readonly { readonly name: string; readonly kind: string }[];
@@ -253,6 +309,19 @@ export type AgentSelfCommand =
       readonly sessionId?: string;
     }
   | { readonly command: "plugins"; readonly action: "list" }
+  | { readonly command: "preset"; readonly action: "list" | "status" }
+  | { readonly command: "preset"; readonly action: "read"; readonly path: string }
+  | { readonly command: "preset"; readonly action: "enable"; readonly path: string }
+  | { readonly command: "preset"; readonly action: "disable" }
+  | { readonly command: "channels"; readonly action: "list" }
+  | { readonly command: "channels"; readonly action: "get"; readonly channel: "telegram" | "qq" | "discord" }
+  | {
+      readonly command: "channels";
+      readonly action: "update";
+      readonly channel: "telegram" | "qq" | "discord";
+      readonly path: string;
+      readonly value: unknown;
+    }
   | { readonly command: "skills"; readonly action: "list" }
   | { readonly command: "skills"; readonly action: "search"; readonly query: string; readonly limit?: number }
   | { readonly command: "skills"; readonly action: "inspect"; readonly name: string }

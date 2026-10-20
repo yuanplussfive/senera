@@ -50,6 +50,11 @@ describe("standard MCP package discovery", () => {
     expect(packages.find((package_) => package_.name === "zavora-computer-use")?.requirements).toEqual({
       hostCapabilities: ["interactive-desktop"],
     });
+    expect(packages.map((package_) => ({ name: package_.name, presentation: package_.presentation }))).toEqual([
+      { name: "imagen", presentation: { icon: "image" } },
+      { name: "weather", presentation: { icon: "cloud-sun" } },
+      { name: "zavora-computer-use", presentation: { icon: "computer-desktop" } },
+    ]);
     expect(packages.find((package_) => package_.name === "weather")?.servers[0]?.inputs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: "QWEATHER_API_KEY", secret: true, provenance: "mcpb" }),
@@ -100,6 +105,26 @@ describe("standard MCP package discovery", () => {
     expect(packages[0]?.revision).toMatch(/^[a-f0-9]{64}$/u);
     expect(packages[0]?.execution).toEqual(localExecution());
     expect(agentMcpPackageToolName("csv-toolkit", "select-columns")).toBe("mcp__csv_toolkit__select_columns");
+  });
+
+  test("projects only declared MCP identity metadata and rejects unbounded presentation fields", () => {
+    const root = fixtureRoot();
+    writeMcpPackage(root, "with-identity", {
+      presentation: { icon: "database" },
+      mcpServers: { "with-identity": { type: "stdio", command: "node" } },
+    });
+    expect(() => new AgentMcpPackageScanner().scanRoot(root, AgentMcpPackageSourceKinds.Workspace)).toThrow(
+      /supported semantic icon/u,
+    );
+
+    fs.rmSync(path.join(root, "with-identity"), { recursive: true });
+    writeMcpPackage(root, "with-identity", {
+      presentation: { icon: "server" },
+      mcpServers: { "with-identity": { type: "stdio", command: "node" } },
+    });
+    expect(new AgentMcpPackageScanner().scanRoot(root, AgentMcpPackageSourceKinds.Workspace)[0]?.presentation).toEqual({
+      icon: "server",
+    });
   });
 
   test("reports invalid standard configuration with a source-aware diagnostic", () => {

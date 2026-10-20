@@ -87,7 +87,7 @@ function verifyLegacyJsonMigration(): void {
 
 function assertProtectedApiKey(text: string): void {
   assert.equal(text.includes('"ApiKey": "test"'), false);
-  assert.equal(text.includes('"ApiKey": "senera:secret:v1:'), true);
+  assert.equal(text.includes('"ApiKey": "senera:secret:v2:'), true);
 }
 
 function verifyUnknownFieldsRemainErrors(): void {

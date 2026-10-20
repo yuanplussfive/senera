@@ -89,9 +89,9 @@ export function App({
   const selectedModelProviderId = useStore((s) => s.selectedModelProviderId);
   const defaultModelProviderId = useStore((s) => s.defaultModelProviderId);
   const selectModelProvider = useStore((s) => s.selectModelProvider);
+  const applyDefaultModelToActiveSession = useStore((s) => s.applyDefaultModelToActiveSession);
   const selectedThinkingLevel = useStore((s) => s.selectedThinkingLevel);
   const selectThinkingLevel = useStore((s) => s.selectThinkingLevel);
-  const applyDefaultModelToActiveSession = useStore((s) => s.applyDefaultModelToActiveSession);
   const userProfile = useStore((s) => s.userProfile);
   const markUserProfileSynced = useStore((s) => s.markUserProfileSynced);
   const defaultSidebarCollapsed = useStore((s) => s.defaultSidebarCollapsed);
@@ -344,7 +344,6 @@ export function App({
     renameSession: handleRenameSession,
     updateUserProfile: handleUpdateUserProfile,
   } = useSessionCommands({
-    defaultModelProviderId,
     send,
     serverKnownSessionIdsRef,
     status,
@@ -452,6 +451,8 @@ export function App({
     onUpdateUserProfile: handleUpdateUserProfile,
     onLogout,
     socketStatus: status,
+    httpBaseUrl: scopedHttpBaseUrl,
+    uploadCsrfToken,
     onSettingsIntent: () => {
       void prepareSettingsOverlay().catch(() => undefined);
     },

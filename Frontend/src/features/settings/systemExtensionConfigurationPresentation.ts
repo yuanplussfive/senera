@@ -19,6 +19,13 @@ import {
 } from "../chat/modelConfigData";
 import { namespaceRuntimeModelAssignmentSections } from "./sections/runtimeModelAssignments";
 
+export interface SystemExtensionRuntimeModelAssignmentSection {
+  readonly extensionId: string;
+  readonly extensionLabel: string;
+  readonly extensionIcon: SystemExtensionSettingsItem["presentation"]["icon"];
+  readonly section: ConfigFormSectionData;
+}
+
 interface ModelOption {
   readonly value: string;
   readonly label: string;
@@ -42,7 +49,7 @@ export function projectSystemExtensionRuntimeModelAssignmentSections(options: {
   extensions: readonly SystemExtensionSettingsItem[];
   locale: FrontendLocale;
   configSnapshot: ConfigSnapshotData | null;
-}): ConfigFormSectionData[] {
+}): SystemExtensionRuntimeModelAssignmentSection[] {
   return options.extensions.flatMap((extension) => {
     if (!extension.enabled || !extension.configuration) return [];
     const displayName = resolveFrontendLocalizedText(extension.displayName, options.locale);
@@ -54,8 +61,12 @@ export function projectSystemExtensionRuntimeModelAssignmentSections(options: {
     return namespaceRuntimeModelAssignmentSections(localized, {
       namespace: `extension:${extension.id}`,
       pathPrefix: ["Extensions", extension.id, "Configuration"],
-      labelPrefix: displayName,
-    });
+    }).map((section) => ({
+      extensionId: extension.id,
+      extensionLabel: displayName,
+      extensionIcon: extension.presentation.icon,
+      section,
+    }));
   });
 }
 

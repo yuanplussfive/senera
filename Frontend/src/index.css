@@ -659,63 +659,6 @@ html:is([data-motion-level="reduced"], [data-motion-level="none"]) .motion-discl
   }
 }
 
-.model-thinking-preview .markdown-renderer {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: inherit;
-  line-height: inherit;
-}
-
-.model-thinking-preview .markdown-renderer > * {
-  display: inline;
-  margin: 0;
-}
-
-.model-thinking-preview .markdown-renderer > :not(:first-child) {
-  display: none;
-}
-
-.model-thinking-preview .markdown-renderer p {
-  font-size: inherit;
-  line-height: inherit;
-}
-
-.model-thinking-flow {
-  position: relative;
-}
-
-/* The brain is the origin node of the expanded thinking rail. Only the
- * bridge into the first streamed block bends; the transcript itself remains
- * a calm, straight spine. */
-[data-thinking-steps][data-thinking-steps-rail="organic"] .model-thinking-flow__brain {
-  position: relative;
-  z-index: 1;
-}
-
-.model-thinking-flow__rail {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-  pointer-events: none;
-}
-
-.model-thinking-flow__rail path {
-  fill: none;
-  stroke: color-mix(in srgb, var(--content-primary) 44%, var(--line-strong));
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  vector-effect: non-scaling-stroke;
-}
-
-.model-thinking-flow__rail-terminal {
-  fill: var(--content-secondary);
-}
-
 .live-activity-markdown.markdown-renderer:is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6),
 .live-activity-markdown.markdown-renderer > :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6) {
   @apply animate-text-shimmer;
@@ -942,9 +885,10 @@ html:is([data-motion-level="reduced"], [data-motion-level="none"]) .motion-discl
   --theme-mono-font-family:
     "JetBrains Mono", "Cascadia Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, var(--theme-emoji-font-family),
     "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", monospace;
-  --scrollbar-size: 8px;
+  --scrollbar-size: 10px;
   --scrollbar-thumb: rgb(43 40 32 / 0.15);
   --scrollbar-thumb-hover: rgb(43 40 32 / 0.25);
+  --scrollbar-thumb-active: rgb(43 40 32 / 0.34);
   --scrollbar-track: transparent;
   --code-source-max-height: 500px;
   --icon-swap-dur: 200ms;
@@ -1127,46 +1071,6 @@ body {
   font-size: calc(20px * var(--theme-font-scale-safe));
 }
 
-/* The appearance slider draws its own spring marker; keep the native thumb
-   transparent while retaining the input's keyboard and pointer semantics. */
-.appearance-font-range {
-  appearance: none;
-  -webkit-appearance: none;
-  display: block;
-  margin: 0;
-  background: transparent;
-}
-
-.appearance-font-range::-webkit-slider-thumb {
-  width: 0;
-  height: 0;
-  -webkit-appearance: none;
-  appearance: none;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.appearance-font-range::-webkit-slider-runnable-track {
-  height: 4px;
-  background: transparent;
-  border: 0;
-}
-
-.appearance-font-range::-moz-range-thumb {
-  width: 0;
-  height: 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.appearance-font-range::-moz-range-track {
-  height: 4px;
-  background: transparent;
-  border: 0;
-}
-
 .theme-tooltip {
   border: 1px solid var(--theme-tooltip-border);
   background: var(--theme-tooltip-bg);
@@ -1214,67 +1118,6 @@ body {
   user-select: text;
 }
 
-/* Terminal rails stay visually quiet until the user moves into the viewport. */
-.terminal-tablist {
-  scrollbar-color: var(--terminal-scrollbar-thumb) transparent;
-  scrollbar-width: thin;
-}
-
-.terminal-tablist::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
-
-.terminal-tablist::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: var(--terminal-scrollbar-thumb);
-}
-
-.terminal-tablist::-webkit-scrollbar-thumb:hover {
-  background: var(--terminal-scrollbar-thumb-hover);
-}
-
-.terminal-tablist::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-[data-terminal-viewport] .xterm-viewport {
-  scrollbar-color: transparent transparent;
-  scrollbar-gutter: auto;
-  scrollbar-width: thin;
-}
-
-[data-terminal-viewport]:hover .xterm-viewport {
-  scrollbar-color: var(--terminal-scrollbar-thumb) transparent;
-}
-
-[data-terminal-viewport] .xterm-viewport::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-[data-terminal-viewport] .xterm-viewport::-webkit-scrollbar-thumb {
-  min-height: 28px;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  background: transparent;
-  background-clip: padding-box;
-}
-
-[data-terminal-viewport]:hover .xterm-viewport::-webkit-scrollbar-thumb {
-  background: var(--terminal-scrollbar-thumb);
-  background-clip: padding-box;
-}
-
-[data-terminal-viewport] .xterm-viewport::-webkit-scrollbar-thumb:hover {
-  background: var(--terminal-scrollbar-thumb-hover);
-  background-clip: padding-box;
-}
-
-[data-terminal-viewport] .xterm-viewport::-webkit-scrollbar-track,
-[data-terminal-viewport] .xterm-viewport::-webkit-scrollbar-corner {
-  background: transparent;
-}
 .workspace-main {
   container-name: workspace-main;
   container-type: inline-size;
@@ -1615,68 +1458,9 @@ html[data-motion-level="none"] .senera-state-enter {
   white-space: pre-wrap;
 }
 
-[data-workflow-dock-graph] {
-  --vinyasa-primary: var(--accent-content);
-  --vinyasa-secondary: var(--surface-subtle);
-  --vinyasa-surface: var(--surface-raised);
-  --vinyasa-text-default: var(--content-primary);
-  --vinyasa-text-muted: var(--content-muted);
-  --vinyasa-border-color-default: var(--line-subtle);
-  --vinyasa-focus: var(--accent-focus);
-  min-width: 0;
-  max-width: 100%;
-  overflow-x: hidden;
-}
-
-[data-workflow-tool-call-card] {
-  min-width: 0;
-  max-width: 100%;
-  --vinyasa-font-size-sm: 12px;
-  --vinyasa-font-size-xs: 10.5px;
-}
-
-[data-workflow-tool-call-card] > div {
-  min-width: 0;
-  max-width: 100%;
-  overflow: visible;
-  border: 0;
-  background: transparent;
-}
-
-[data-workflow-tool-call-card] button {
-  min-width: 0;
-  max-width: 100%;
-  padding: 4px 7px;
-  gap: 6px;
-  font-size: 12px;
-  line-height: 18px;
-}
-
-/* The dock supplies the prototype's semantic marker. Keep Vinyasa's card
-   disclosure, but remove its second generic status circle and match the
-   compact graph typography. */
-[data-workflow-tool-call-card] button > span:first-child {
-  display: none;
-}
-
-[data-workflow-tool-call-card] button > span:nth-child(2) {
-  min-width: 0;
-  font-size: 12px !important;
-  line-height: 18px !important;
-}
-
-/* The dock owns a pointer-following hover layer and a provider-owned card
-   subtree. Keep actual disclosure controls above those visual layers so a
-   settled run remains keyboard- and mouse-interactive after the provider
-   swaps its contents. */
-[data-workflow-dock-graph] button,
-[data-workflow-dock-graph] [role="button"] {
-  pointer-events: auto;
-}
-
 /* Conversation-side disclosures keep their own hit target when a stable
    activity slot is crossfading between provider states. */
-[data-completed-turn-toggle],
+[data-settled-turn-toggle],
 [data-execution-stage-fold-trigger],
 [data-model-thinking-toggle-row],
 [data-tool-batch-activity-trigger],
@@ -1754,70 +1538,6 @@ html[data-motion-level="none"] .senera-state-enter {
   font-weight: 500;
 }
 
-[data-workflow-tool-call-card] code {
-  max-width: 100%;
-  overflow-x: hidden;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-
-.workflow-tool-call-row {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: auto minmax(0, 1fr) 4.75rem;
-  align-items: start;
-  column-gap: 8px;
-}
-
-.workflow-tool-call-duration,
-.workflow-dock-duration {
-  display: block;
-  min-width: 4.75rem;
-  padding-top: 5px;
-  color: var(--content-muted);
-  font-size: 10.5px;
-  line-height: 1.25;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-  white-space: nowrap;
-}
-
-.workflow-dock-batch-segments {
-  display: inline-flex;
-  flex: 0 1 4.75rem;
-  min-width: 2.75rem;
-  max-width: 4.75rem;
-  height: 5px;
-  align-items: stretch;
-  gap: 2px;
-  overflow: hidden;
-}
-
-.workflow-dock-batch-segment {
-  display: block;
-  min-width: 3px;
-  height: 100%;
-  border-radius: 999px;
-  background: var(--content-muted);
-  opacity: 0.72;
-}
-
-.workflow-dock-batch-segment--done {
-  background: rgb(var(--color-moss-400));
-}
-
-.workflow-dock-batch-segment--failed {
-  background: rgb(var(--color-brick-500));
-}
-
-.workflow-dock-batch-segment--running {
-  background: var(--accent-solid);
-}
-
-.workflow-dock-batch-segment--pending {
-  background: var(--line-strong);
-}
-
 .workflow-run-execution-segments {
   display: inline-flex;
   min-width: 0;
@@ -1853,76 +1573,6 @@ html[data-motion-level="none"] .senera-state-enter {
 
 .workflow-run-execution-segment--pending {
   background: var(--line-strong);
-}
-
-.workflow-dock-step-summary {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(0, 1fr) 4.75rem;
-  align-items: baseline;
-  column-gap: 10px;
-}
-
-.workflow-dock-step-summary .workflow-dock-duration {
-  padding-top: 0;
-}
-
-.workflow-tool-call-payload {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 4px;
-  color: var(--content-secondary);
-  font-size: 11px;
-  line-height: 1.45;
-}
-
-.workflow-tool-call-payload [data-data-view] {
-  min-width: 0;
-  max-width: 100%;
-  overflow-x: hidden;
-}
-
-.workflow-tool-call-preview {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 2px;
-  padding: 4px 12px 2px 36px;
-  color: var(--content-muted);
-  font-size: 10.5px;
-  line-height: 1.45;
-}
-
-.workflow-tool-call-preview__row {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.workflow-tool-call-preview__title,
-.workflow-tool-call-preview__description {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.workflow-tool-call-preview__title {
-  color: var(--content-primary);
-}
-
-.workflow-tool-call-preview__meta,
-.workflow-tool-call-preview__more {
-  color: var(--content-muted);
-  white-space: nowrap;
-}
-
-.workflow-tool-call-preview__more {
-  align-self: flex-start;
-  border-bottom: 1px solid var(--line-subtle);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2731,105 +2381,6 @@ html:is([data-motion-level="reduced"], [data-motion-level="none"])
   }
   100% {
     background-position: 200% 0;
-  }
-}
-
-/* ----- 菜单动效 ----- */
-.menu-surface {
-  opacity: 0;
-  transform: translateY(-6px) scale(0.965);
-  visibility: hidden;
-  pointer-events: none;
-  transition:
-    opacity var(--menu-close-dur) var(--menu-close-ease),
-    transform var(--menu-open-dur) var(--menu-open-ease),
-    visibility 0s linear var(--menu-open-dur);
-  will-change: transform, opacity;
-}
-
-.menu-surface[data-state="open"] {
-  opacity: 1;
-  transform: none;
-  visibility: visible;
-  pointer-events: auto;
-  transition-delay: 0s;
-  animation: menu-surface-presence-in var(--menu-open-dur) linear both;
-}
-
-.menu-surface[data-state="closed"] {
-  pointer-events: none !important;
-  animation: menu-surface-presence-out var(--menu-close-dur) linear both;
-}
-
-@starting-style {
-  .menu-surface[data-state="open"] {
-    opacity: 0;
-    transform: translateY(-6px) scale(0.965);
-  }
-}
-
-.menu-check {
-  opacity: 0;
-  transform: scale(0.5);
-  transition:
-    opacity var(--menu-check-opacity-dur) var(--menu-item-ease),
-    transform var(--menu-check-dur) var(--menu-check-ease);
-}
-
-[data-state="checked"] .menu-check,
-[data-state="indeterminate"] .menu-check {
-  opacity: 1;
-  transform: scale(1);
-}
-
-html[data-motion-level="reduced"] .menu-surface,
-html[data-motion-level="none"] .menu-surface {
-  transition: none;
-}
-
-html[data-motion-level="reduced"] .menu-surface[data-state="open"] {
-  animation-duration: var(--menu-reduced-open-dur);
-}
-
-html[data-motion-level="reduced"] .menu-surface[data-state="closed"] {
-  animation-duration: var(--menu-close-dur);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .menu-surface[data-state="open"] {
-    animation-duration: var(--menu-reduced-open-dur);
-  }
-
-  .menu-surface[data-state="closed"] {
-    animation-duration: var(--menu-close-dur);
-  }
-}
-
-html[data-motion-level="none"] .menu-surface[data-state] {
-  animation-duration: 0.001ms !important;
-}
-
-html[data-motion-level="reduced"] .menu-check,
-html[data-motion-level="none"] .menu-check {
-  transition: none;
-}
-
-/* Radix Presence waits for animationend; this no-op track keeps transition exits mounted. */
-@keyframes menu-surface-presence-in {
-  from {
-    outline-color: transparent;
-  }
-  to {
-    outline-color: transparent;
-  }
-}
-
-@keyframes menu-surface-presence-out {
-  from {
-    outline-color: transparent;
-  }
-  to {
-    outline-color: transparent;
   }
 }
 

@@ -21,10 +21,12 @@ describe("self-service redaction", () => {
   test("redacts structured secret values without exposing fragments", () => {
     const projected = projectAgentSelfRedacted({
       envelope: "senera:secret:v1:abcdef123456",
+      truncated: "senera:secret:v2:",
       authorization: "Bearer live-token",
     }) as Record<string, unknown>;
 
     expect(projected.envelope).toBe(AgentSelfRedactedMarker);
+    expect(projected.truncated).toBe(AgentSelfRedactedMarker);
     expect(projected.authorization).toBe(AgentSelfRedactedMarker);
     expect(JSON.stringify(projected)).not.toContain("abcdef123456");
     expect(JSON.stringify(projected)).not.toContain("live-token");

@@ -1,13 +1,18 @@
 import type { ConfigFormSectionData } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { isSettingsSectionId, type SettingsSectionDefinition, type SettingsSectionId } from "./types";
+import {
+  isSettingsSectionId,
+  type CanonicalSettingsSectionId,
+  type SettingsSectionDefinition,
+  type SettingsSectionId,
+} from "./types";
 
 export type SettingsSectionGroupId = "model" | "capabilities" | "tools" | "personal" | "system";
 
 export interface SettingsSectionGroupDefinition {
   id: SettingsSectionGroupId;
   label: string;
-  sectionIds: readonly SettingsSectionId[];
+  sectionIds: readonly CanonicalSettingsSectionId[];
 }
 
 export interface SettingsSectionSearchDetail {
@@ -35,27 +40,22 @@ export interface GroupedSettingsSectionSearchResult {
 }
 
 export const settingsSectionGroups = [
-  defineSettingsSectionGroup("model", "settings.group.model", ["model-service", "default-model"]),
+  defineSettingsSectionGroup("model", "settings.group.model", ["model-service", "model-roles"]),
   defineSettingsSectionGroup("capabilities", "settings.group.capabilities", [
     "runtime",
     "prompt",
     "planning",
     "retrieval",
   ]),
-  defineSettingsSectionGroup("tools", "settings.group.tools", [
-    "system-tools",
-    "dependencies",
-    "mcp-servers",
-    "channels",
-  ]),
+  defineSettingsSectionGroup("tools", "settings.group.tools", ["system-tools", "dependencies", "channels"]),
   defineSettingsSectionGroup("personal", "settings.group.personal", ["general", "appearance"]),
-  defineSettingsSectionGroup("system", "settings.group.system", ["storage", "workspace", "about"]),
+  defineSettingsSectionGroup("system", "settings.group.system", ["storage", "about"]),
 ] as const satisfies readonly SettingsSectionGroupDefinition[];
 
 function defineSettingsSectionGroup(
   id: SettingsSectionGroupId,
   labelKey: Parameters<typeof frontendMessage>[0],
-  sectionIds: readonly SettingsSectionId[],
+  sectionIds: readonly CanonicalSettingsSectionId[],
 ): SettingsSectionGroupDefinition {
   return {
     id,
@@ -141,10 +141,16 @@ export function createSettingsSearchEntries(
   const entries: SettingsSearchEntry[] = [];
 
   for (const section of configSections) {
-    const sectionId =
-      section.name === "models" ? "model-service" : isSettingsSectionId(section.name) ? section.name : null;
-    if (!sectionId) continue;
     for (const field of section.fields) {
+      const sectionId =
+        field.modelSelection && field.modelSelection.presentation !== "inline"
+          ? "model-roles"
+          : section.name === "models"
+            ? "model-service"
+            : isSettingsSectionId(section.name)
+              ? section.name
+              : null;
+      if (!sectionId) continue;
       entries.push({
         sectionId,
         kind: "field",

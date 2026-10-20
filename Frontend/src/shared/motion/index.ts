@@ -10,6 +10,8 @@ export { MotionDialogContent, MotionDialogOverlay, MotionSheetContent } from "./
 export { MotionList, MotionListItem } from "./MotionList";
 export { MotionPanel } from "./MotionPanel";
 export { FluidHoverHighlight } from "./FluidHoverHighlight";
+export { OrganicTimelineRail } from "./OrganicTimelineRail";
+export type { OrganicTimelineRailPath, OrganicTimelineRailProps } from "./OrganicTimelineRail";
 export {
   pickNearest,
   useFluidHover,

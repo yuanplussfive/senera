@@ -94,7 +94,7 @@ export function renderJsonConfigFieldInput(
     );
   }
   return (
-    <pre className="scrollbar-thin max-h-32 overflow-auto border border-ink-200 bg-paper-50 p-2 font-mono text-[11px] leading-5 text-ink-600">
+    <pre className="max-h-32 overflow-auto border border-ink-200 bg-paper-50 p-2 font-mono text-[11px] leading-5 text-ink-600">
       {JSON.stringify(value, null, 2)}
     </pre>
   );

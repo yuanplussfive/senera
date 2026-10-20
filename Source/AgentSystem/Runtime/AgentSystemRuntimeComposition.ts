@@ -119,6 +119,8 @@ export interface AgentSystemRuntimeCompositionOptions {
   interactionInput?: AgentInteractionInputRuntime;
   piSessionRegistry?: AgentPiActiveSessionRegistry;
   resourcesPath?: string;
+  /** Application-level location for Senera-managed browser profiles. */
+  browserProfilesRoot?: string;
   executionResources?: AgentExecutionResourceBroker;
   sandboxRuntimeReady?: () => boolean;
   sandboxAvailable?: boolean;
@@ -150,6 +152,8 @@ export interface AgentSystemRuntimeCompositionOptions {
   resourceCoordinator?: AgentToolResourceLeaseCoordinator;
   /** Shared durable ledger for temporal-memory and state-card model work. */
   learningRequests?: AgentBackgroundLearningRequestLedger;
+  /** Logger for derived-context work; kept out of the foreground conversation stream. */
+  learningLogger?: AgentLogger;
   /** Host callback for query-driven publication of deferred capabilities. */
   beforeToolSearch?: (query: string, signal?: AbortSignal, serviceIds?: readonly string[]) => void | Promise<void>;
   /** Host capabilities used to preflight MCP packages before launch. */
@@ -202,6 +206,7 @@ export function createAgentRuntimeInfrastructure(options: AgentSystemRuntimeComp
           error: error instanceof Error ? error.message : String(error),
         });
       },
+      onLifecycleEvent: (event) => options.logger?.info("mcp.connection.lifecycle", { ...event }),
     });
   const uploadStore =
     options.workspaceRuntime?.uploadStore ??
@@ -236,6 +241,7 @@ export function createAgentRuntimeInfrastructure(options: AgentSystemRuntimeComp
   const browserRuntime = new AgentBrowserRuntime({
     workspaceRoot: options.workspaceRoot,
     resourcesPath: options.resourcesPath,
+    browserProfilesRoot: options.browserProfilesRoot,
     configuration: AgentBrowserConfigurationSchema.parse(
       options.config.Extensions?.["agent-browser"]?.Configuration ?? {},
     ),
@@ -344,6 +350,7 @@ export function createAgentRuntimeAgentServices(
     {
       maxRepairAttempts: infrastructure.actionPlannerConfig.MaxRepairAttempts,
       learningRequests: options.learningRequests,
+      logger: options.learningLogger,
       historyTurns: semanticBudgets.FragmentHistoryTurns,
       assistantPreviewTokens: semanticBudgets.AssistantPreviewTokens,
       ...(options.continuityMemOS

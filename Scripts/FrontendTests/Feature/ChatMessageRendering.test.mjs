@@ -589,7 +589,7 @@ test("a visible legacy message does not add a live empty-thinking summary", () =
   expect(screen.queryByText("Senera 正在思考…")).not.toBeInTheDocument();
 });
 
-test("thinking preview keeps its brain icon without adding a Thinking label", async () => {
+test("live thinking exposes an expanded readable transcript with a concise status line", async () => {
   renderWithFrontendProviders(
     React.createElement(RunThinkingPresentation, {
       blocks: [
@@ -610,9 +610,64 @@ test("thinking preview keeps its brain icon without adding a Thinking label", as
     expect(document.querySelector("[data-model-thinking-first-preview]")).toHaveTextContent("我先检查用户的问题。"),
   );
   expect(
-    document.querySelector("[data-model-thinking-disclosure] [data-thinking-status-icon] [data-thinking-indicator]"),
+    document.querySelector("[data-model-thinking-disclosure] [data-thinking-status-icon][data-live-activity-icon] svg"),
   ).toBeInTheDocument();
-  expect(screen.queryByText("正在思考…")).not.toBeInTheDocument();
+  expect(
+    document.querySelector("[data-thinking-preview-connector] [data-thinking-preview-paperclip]"),
+  ).toBeInTheDocument();
+  expect(screen.getByText("正在思考")).toBeInTheDocument();
+  expect(document.querySelector("[data-model-thinking-toggle-row]")).toHaveAttribute("aria-expanded", "true");
+  expect(document.querySelector("[data-model-thinking-transcript]")).toHaveTextContent("我先检查用户的问题。");
+});
+
+test("thinking follows the latest reasoning line and collapses after the model response completes", async () => {
+  const blocks = [
+    {
+      id: "earlier-model-request",
+      step: 0,
+      messageIndex: 0,
+      contentIndex: 0,
+      content: "先读取现有配置。",
+      status: "complete",
+    },
+    {
+      id: "latest-model-request",
+      step: 1,
+      messageIndex: 0,
+      contentIndex: 0,
+      content: "正在整理最新结论。\n这行不应该进入紧凑摘要。",
+      status: "streaming",
+    },
+  ];
+  const view = renderWithFrontendProviders(
+    React.createElement(RunThinkingPresentation, {
+      blocks,
+      current: true,
+    }),
+  );
+
+  const readDisclosure = () => document.querySelector("[data-model-thinking-disclosure]");
+  const disclosure = readDisclosure();
+  expect(disclosure.querySelector("[data-model-thinking-preview]")).toHaveTextContent("正在整理最新结论。");
+  expect(disclosure.querySelector("[data-model-thinking-toggle-row]")).toHaveAttribute("aria-expanded", "true");
+  expect(disclosure.querySelectorAll("[data-model-thinking-entry]")).toHaveLength(2);
+  expect(disclosure.querySelectorAll(".model-thinking-disclosure__break")).toHaveLength(1);
+
+  view.rerender(
+    React.createElement(RunThinkingPresentation, {
+      blocks: blocks.map((block) => ({ ...block, status: "complete" })),
+      current: false,
+    }),
+  );
+
+  await waitFor(() =>
+    expect(readDisclosure().querySelector("[data-model-thinking-toggle-row]")).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    ),
+  );
+  expect(readDisclosure().querySelector("[data-model-thinking-transcript]")).toBeNull();
+  expect(readDisclosure()).toHaveTextContent("已完成思考");
 });
 
 test("live tool preface follows its execution status inside one assistant turn", async () => {

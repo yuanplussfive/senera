@@ -13,7 +13,7 @@
   "priority": 2,
   "presentation": {
     "category": "skill",
-    "icon": "blocks",
+    "icon": "puzzle",
     "group": { "id": "skill", "title": { "zh-CN": "技能库", "en-US": "Skills" } },
     "activity": { "action": { "zh-CN": "管理 Skill", "en-US": "Manage Skill" } }
   },

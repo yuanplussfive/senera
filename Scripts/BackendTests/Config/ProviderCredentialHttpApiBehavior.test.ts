@@ -44,6 +44,21 @@ describe("provider credential HTTP API", () => {
     expect(payload).toMatchObject({ ok: false, error: { code: "provider_not_found" } });
     expect(JSON.stringify(payload)).not.toContain("sk-live-secret");
   });
+
+  test("refuses a key this host could not decrypt instead of handing out its envelope", async () => {
+    const baseUrl = await createHarness();
+    const url = new URL(AgentProviderCredentialHttpRoute, baseUrl);
+
+    for (const providerId of ["unreadable", "corrupt"]) {
+      url.searchParams.set("providerId", providerId);
+      const response = await fetch(url);
+      const payload = await response.json();
+
+      expect(response.status).toBe(409);
+      expect(payload).toMatchObject({ ok: false, error: { code: "secret_unresolved" } });
+      expect(JSON.stringify(payload)).not.toContain("senera:secret:");
+    }
+  });
 });
 
 async function createHarness(): Promise<string> {
@@ -52,6 +67,12 @@ async function createHarness(): Promise<string> {
       ModelProviderEndpoints: [
         { Id: "openai", BaseUrl: "https://example.invalid/v1", ApiKey: "sk-live-secret" },
         { Id: "other", BaseUrl: "https://other.invalid/v1", ApiKey: "sk-other-secret" },
+        {
+          Id: "unreadable",
+          BaseUrl: "https://unreadable.invalid/v1",
+          ApiKey: "senera:secret:v2:a1b2c3d4.bm9uY2V2YWx1ZXRlc3Q.dGFnMTIzNDU2Nzg5MDEy.dGV4dHRoYXRsb29rc2xpa2VhY2lwaGVy",
+        },
+        { Id: "corrupt", BaseUrl: "https://corrupt.invalid/v1", ApiKey: "senera:secret:v2:" },
       ],
       ModelProviders: [],
     }),

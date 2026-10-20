@@ -1,4 +1,3 @@
-import kill from "tree-kill";
 import { sleep, withDeadline } from "../Core/AgentTiming.js";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
 
@@ -36,7 +35,12 @@ export interface TerminateSeneraProcessTreeOptions {
   readonly graceMs: number;
   readonly hasRootExited: () => boolean;
   readonly waitForRootExit: (timeoutMs: number) => Promise<boolean>;
-  readonly terminateProcessTree?: SeneraProcessTreeTerminator;
+  /**
+   * Supplied by the process owner. Windows-owned processes use their Job
+   * Object; POSIX owners use their process group. A generic PID killer is not
+   * a valid ownership model because it can create a visible command shell.
+   */
+  readonly terminateProcessTree: SeneraProcessTreeTerminator;
 }
 
 interface SeneraProcessTreeTerminationAttempt {
@@ -48,7 +52,6 @@ interface SeneraProcessTreeTerminationAttempt {
 export async function terminateSeneraProcessTreeWithEscalation(
   options: TerminateSeneraProcessTreeOptions,
 ): Promise<void> {
-  const terminateProcessTree = options.terminateProcessTree ?? terminateSeneraProcessTree;
   const failures: unknown[] = [];
   const initialState = readTerminationState(options.pid, options.hasRootExited);
   if (isTerminationConfirmed(initialState, true)) return;
@@ -58,7 +61,12 @@ export async function terminateSeneraProcessTreeWithEscalation(
   let finalState = initialState;
 
   for (const signal of seneraProcessTreeTerminationSignals()) {
-    const attempt = await requestProcessTreeTermination(terminateProcessTree, options.pid, signal, options.graceMs);
+    const attempt = await requestProcessTreeTermination(
+      options.terminateProcessTree,
+      options.pid,
+      signal,
+      options.graceMs,
+    );
     if (attempt.error !== undefined) failures.push(attempt.error);
     if (signal === "SIGTERM") gracefulAcknowledged = attempt.acknowledged;
     if (signal === "SIGKILL") forceAcknowledged = attempt.acknowledged;
@@ -78,24 +86,6 @@ export async function terminateSeneraProcessTreeWithEscalation(
     },
     failures,
   );
-}
-
-export function terminateSeneraProcessTree(pid: number, signal: NodeJS.Signals): Promise<void> {
-  if (process.platform !== "win32") {
-    try {
-      process.kill(-pid, signal);
-      return Promise.resolve();
-    } catch (error) {
-      return Promise.reject(error);
-    }
-  }
-
-  return new Promise((resolve, reject) => {
-    kill(pid, signal, (error) => {
-      if (error) reject(error);
-      else resolve();
-    });
-  });
 }
 
 export function isSeneraProcessTreeAlive(pid: number): boolean | undefined {

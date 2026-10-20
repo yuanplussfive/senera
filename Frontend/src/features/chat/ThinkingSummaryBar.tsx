@@ -104,7 +104,7 @@ export function ThinkingSummaryBar({
           className="thinking-tool-popover w-[min(32rem,calc(100vw-2rem))] overflow-hidden p-0"
           data-thinking-tool-popover
         >
-          <div className="thinking-tool-popover__body max-h-[min(19rem,calc(100dvh-10rem))] overflow-y-auto px-3 py-2.5 scrollbar-thin">
+          <div className="thinking-tool-popover__body max-h-[min(19rem,calc(100dvh-10rem))] overflow-y-auto px-3 py-2.5 ">
             <Suspense
               fallback={
                 <div className="h-20">

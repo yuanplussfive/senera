@@ -29,6 +29,8 @@ export interface SeneraDesktopBridge {
   getWindowState?: () => Promise<DesktopWindowState | undefined>;
   onWindowStateChanged?: (listener: (state: DesktopWindowState) => void) => () => void;
   setSettingsDirty?: (dirty: boolean) => Promise<void>;
+  notifySettingsSurfaceReady?: () => Promise<void>;
+  onSettingsNavigationRequested?: (listener: (section: SettingsSectionId) => void) => () => void;
   onSettingsCloseRequested?: (listener: () => void) => () => void;
   confirmSettingsClose?: () => Promise<void>;
   cancelSettingsClose?: () => Promise<void>;

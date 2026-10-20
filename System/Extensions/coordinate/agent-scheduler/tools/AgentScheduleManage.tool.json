@@ -8,7 +8,8 @@
       "action": { "zh-CN": "管理", "en-US": "Manage" },
       "argumentPath": "/action",
       "detailPaths": ["/name", "/taskId"]
-    }
+    },
+    "preview": {}
   },
   "description": "创建、更新、列出、检查、立即运行或删除当前会话拥有的持久化定时代理任务。",
   "inputSchema": {

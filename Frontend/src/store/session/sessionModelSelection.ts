@@ -15,7 +15,6 @@ export function applyModelListSnapshotSelection(state: StoreState, data: ModelLi
   const defaultModelId =
     chatModels.find((model) => model.id === data.defaultModelProviderId)?.id ??
     chatModels.find((model) => model.isDefault)?.id ??
-    chatModels[0]?.id ??
     null;
 
   state.defaultModelProviderId = defaultModelId;

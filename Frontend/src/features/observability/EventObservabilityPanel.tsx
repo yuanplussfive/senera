@@ -16,17 +16,11 @@ export function EventObservabilityPanel(): JSX.Element {
       data-observability-workbench
     >
       <div className="shrink-0 border-b border-line-subtle bg-surface-panel px-3">
-        <TabsList className="h-9 w-full justify-start gap-4 rounded-none border-0 bg-transparent p-0">
-          <TabsTrigger
-            value="diagnostic"
-            className="h-9 flex-none rounded-none border-b border-transparent px-0 text-[11px] data-[state=active]:border-content-primary data-[state=active]:bg-transparent data-[state=active]:text-content-primary data-[state=active]:shadow-none"
-          >
+        <TabsList variant="underline" className="h-9 w-full justify-start">
+          <TabsTrigger value="diagnostic" className="h-9 flex-none rounded-none px-0 text-[11px]">
             {frontendMessage("observability.view.diagnostic")}
           </TabsTrigger>
-          <TabsTrigger
-            value="events"
-            className="h-9 flex-none rounded-none border-b border-transparent px-0 text-[11px] data-[state=active]:border-content-primary data-[state=active]:bg-transparent data-[state=active]:text-content-primary data-[state=active]:shadow-none"
-          >
+          <TabsTrigger value="events" className="h-9 flex-none rounded-none px-0 text-[11px]">
             {frontendMessage("observability.view.events")}
           </TabsTrigger>
         </TabsList>

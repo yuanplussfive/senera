@@ -114,10 +114,22 @@ describe("Pi workspace System Tools", () => {
   test("searches with bundled ripgrep while respecting hidden files and git ignores", async () => {
     const workspaceRoot = createWorkspace();
     fs.mkdirSync(path.join(workspaceRoot, ".git"));
+    fs.mkdirSync(path.join(workspaceRoot, ".senera", "artifacts"), { recursive: true });
+    fs.mkdirSync(path.join(workspaceRoot, "node_modules"));
     fs.writeFileSync(path.join(workspaceRoot, ".gitignore"), "ignored.ts\n", "utf8");
     fs.writeFileSync(path.join(workspaceRoot, "visible.ts"), "const marker = 'needle';\n", "utf8");
     fs.writeFileSync(path.join(workspaceRoot, ".hidden.ts"), "const hidden = 'needle';\n", "utf8");
     fs.writeFileSync(path.join(workspaceRoot, "ignored.ts"), "const ignored = 'needle';\n", "utf8");
+    fs.writeFileSync(
+      path.join(workspaceRoot, ".senera", "artifacts", "evidence.ts"),
+      "const evidence = 'needle';\n",
+      "utf8",
+    );
+    fs.writeFileSync(
+      path.join(workspaceRoot, "node_modules", "dependency.ts"),
+      "const dependency = 'needle';\n",
+      "utf8",
+    );
 
     const result = await WorkspaceGrepSystemTool.execute(
       { pattern: "needle", path: ".", literal: true },
@@ -128,6 +140,17 @@ describe("Pi workspace System Tools", () => {
     expect(output).toContain("visible.ts:1:");
     expect(output).toContain(".hidden.ts:1:");
     expect(output).not.toContain("ignored.ts");
+    expect(output).not.toContain(".senera/artifacts/evidence.ts");
+    expect(output).not.toContain("node_modules/dependency.ts");
+
+    const globbed = await WorkspaceGrepSystemTool.execute(
+      { pattern: "needle", path: ".", glob: "*.ts", literal: true },
+      hostContext(WorkspaceGrepSystemTool, workspaceRoot),
+    );
+    const globbedOutput = textContent(globbed);
+    expect(globbedOutput).toContain("visible.ts:1:");
+    expect(globbedOutput).not.toContain(".senera/artifacts/evidence.ts");
+    expect(globbedOutput).not.toContain("node_modules/dependency.ts");
   });
 
   test("finds files with nested ignore semantics and preserves Pi's result-limit metadata", async () => {

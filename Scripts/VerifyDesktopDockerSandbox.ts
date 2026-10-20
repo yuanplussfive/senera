@@ -6,17 +6,25 @@ const projectRoot = process.cwd();
 const read = (relativePath: string): string => fs.readFileSync(path.join(projectRoot, relativePath), "utf8");
 const desktopRuntime = read("Apps/Desktop/DesktopRuntime.ts");
 const desktopMain = read("Apps/Desktop/Main.ts");
+const desktopServerHost = read("Apps/Desktop/DesktopServerHost.ts");
+const desktopServerProcess = read("Apps/Desktop/DesktopServerProcess.ts");
 assert.ok(
   !desktopRuntime.includes("TerminalSidecarRuntime") && !desktopRuntime.includes("syncRuntimeDirectory"),
   "Desktop startup must not copy a host-prepared Linux Terminal Sidecar runtime.",
 );
 assert.ok(
-  desktopMain.includes("SeneraServerDeployments.Local") &&
-    desktopMain.includes("deployment: SeneraServerDeployments.Local") &&
-    !desktopMain.includes("startSeneraSandboxWorkerProcess") &&
-    !desktopMain.includes("dockerEngineWorker") &&
-    !desktopMain.includes("sandboxRuntimeAvailability"),
-  "Desktop startup must use the local execution boundary without a Docker Worker.",
+  desktopMain.includes("DesktopServerHost.start") &&
+    desktopServerHost.includes("utilityProcess.fork") &&
+    desktopServerHost.includes("DesktopServerProcess.js") &&
+    desktopServerProcess.includes("SeneraServerDeployments.Local") &&
+    desktopServerProcess.includes("deployment: SeneraServerDeployments.Local") &&
+    ![desktopMain, desktopServerHost, desktopServerProcess].some(
+      (source) =>
+        source.includes("startSeneraSandboxWorkerProcess") ||
+        source.includes("dockerEngineWorker") ||
+        source.includes("sandboxRuntimeAvailability"),
+    ),
+  "Desktop startup must keep the local execution boundary in its controlled server process without a Docker Worker.",
 );
 assert.ok(
   !desktopRuntime.includes("sandboxWorkerEntrypoint"),

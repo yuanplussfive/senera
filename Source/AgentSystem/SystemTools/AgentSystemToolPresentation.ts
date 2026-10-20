@@ -4,10 +4,20 @@ import { AgentExtensionNameSchema } from "../Extensions/AgentExtensionIdentity.j
 import { AgentExtensionLocalizedTextSchema } from "../Extensions/AgentExtensionLocalization.js";
 import {
   AgentToolPresentationIconNames,
+  AgentPluginBrandIconNames,
   type AgentToolPresentation,
   type AgentToolPresentationActivityV2,
+  type AgentToolPresentationMeasure,
   type AgentToolPresentationOverride,
 } from "../Types/AgentToolPresentationTypes.js";
+import {
+  isAgentJsonSchemaNumber,
+  isAgentJsonSchemaScalar,
+  resolveAgentJsonSchemaCollectionField,
+  resolveAgentJsonSchemaPointer,
+  resolveAgentJsonSchemaRelativePointer,
+  type AgentJsonSchema,
+} from "../ToolContracts/AgentJsonSchemaPointer.js";
 
 const JsonPointerPatternSchema = z.string().refine(isAgentJsonPointer, "Expected an RFC 6901 JSON Pointer pattern.");
 
@@ -18,11 +28,83 @@ const AgentToolPresentationGroupSchema = z
   })
   .strict();
 
-const MeasureSources = ["argument", "result", "env"] as const;
+const MeasureSources = ["argument", "result", "presentation", "env"] as const;
 const MeasureAggregates = ["first", "count", "sum", "max", "join"] as const;
 const MeasureValueTypes = ["text", "path", "number", "boolean", "enum", "delta"] as const;
 const NumericAggregates = new Set<string>(["sum", "max"]);
 const NumericValueTypes = new Set<string>(["number", "delta"]);
+
+/**
+ * The `presentation` measure source is a closed runtime protocol, not a
+ * second ad-hoc result shape. Keep its schema next to the presentation
+ * contract so package declarations can be checked at registration time.
+ */
+const ToolResultPresentationSchema: AgentJsonSchema = {
+  type: "object",
+  properties: {
+    type: { type: "string" },
+    version: { type: "number" },
+    status: { type: "string" },
+    headline: { type: "string" },
+    summary: { type: "string" },
+    artifactUri: { type: "string" },
+    facts: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          value: { type: "string" },
+          kind: { type: "string" },
+          evidenceUri: { type: "string" },
+          confidence: { type: "number" },
+        },
+      },
+    },
+    evidence: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          evidenceUri: { type: "string" },
+          kind: { type: "string" },
+          display: { type: "string" },
+          label: { type: "string" },
+          source: { type: "string" },
+          locator: { type: "string" },
+          confidence: { type: "number" },
+        },
+      },
+    },
+    changes: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          kind: { type: "string" },
+          status: { type: "string" },
+          key: { type: "string" },
+          summary: { type: "string" },
+          addedLines: { type: "number" },
+          removedLines: { type: "number" },
+        },
+      },
+    },
+    resources: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          uri: { type: "string" },
+          name: { type: "string" },
+          mime: { type: "string" },
+          origin: { type: "string" },
+          size: { type: "number" },
+        },
+      },
+    },
+  },
+};
 
 /**
  * `env` exposes a closed key set. A contract may surface host facts such as
@@ -83,6 +165,7 @@ const AgentToolPresentationVariantSchema = z
     action: AgentExtensionLocalizedTextSchema.optional(),
     invocationName: AgentExtensionLocalizedTextSchema.optional(),
     argumentPath: JsonPointerPatternSchema.optional(),
+    subjectPath: JsonPointerPatternSchema.optional(),
     detailPaths: z.array(JsonPointerPatternSchema).max(16).optional(),
     /** A variant template takes precedence over `v2.title`. */
     title: z.string().trim().min(1).optional(),
@@ -106,6 +189,7 @@ const AgentToolPresentationActivitySchema = z
     action: AgentExtensionLocalizedTextSchema,
     invocationName: AgentExtensionLocalizedTextSchema.optional(),
     argumentPath: JsonPointerPatternSchema.optional(),
+    subjectPath: JsonPointerPatternSchema.optional(),
     detailPaths: z.array(JsonPointerPatternSchema).max(16).optional(),
     v2: AgentToolPresentationActivityV2Schema.optional(),
   })
@@ -117,6 +201,7 @@ const AgentToolPresentationPreviewRowSchema = z
     titlePath: JsonPointerPatternSchema,
     descriptionPath: JsonPointerPatternSchema.optional(),
     metaPath: JsonPointerPatternSchema.optional(),
+    hrefPath: JsonPointerPatternSchema.optional(),
   })
   .strict();
 
@@ -150,6 +235,13 @@ const AgentToolPresentationPreviewSchema = z
       .max(16)
       .optional(),
     result: AgentToolPresentationPreviewResultSchema.optional(),
+    body: z
+      .object({
+        pointer: JsonPointerPatternSchema,
+        from: z.enum(["result", "presentation"]).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -157,6 +249,7 @@ export const AgentSystemToolPresentationSchema = z
   .object({
     category: AgentExtensionNameSchema,
     icon: z.enum(AgentToolPresentationIconNames),
+    brandIcon: z.enum(AgentPluginBrandIconNames).optional(),
     group: AgentToolPresentationGroupSchema,
     activity: AgentToolPresentationActivitySchema,
     preview: AgentToolPresentationPreviewSchema.optional(),
@@ -167,6 +260,7 @@ export const AgentSystemToolPresentationOverrideSchema = z
   .object({
     category: AgentExtensionNameSchema.optional(),
     icon: z.enum(AgentToolPresentationIconNames).optional(),
+    brandIcon: z.enum(AgentPluginBrandIconNames).optional(),
     group: AgentToolPresentationGroupSchema.partial().optional(),
     activity: AgentToolPresentationActivitySchema.partial().optional(),
     preview: AgentToolPresentationPreviewSchema.optional(),
@@ -193,12 +287,184 @@ export function resolveAgentSystemToolPresentation(
     return {
       category: override.category ?? current.category,
       icon: override.icon ?? current.icon,
+      ...((override.brandIcon ?? current.brandIcon) ? { brandIcon: override.brandIcon ?? current.brandIcon } : {}),
       group: { ...current.group, ...override.group },
       activity: { ...current.activity, ...override.activity },
       ...((override.preview ?? current.preview) ? { preview: override.preview ?? current.preview } : {}),
     };
   }, domain);
   return AgentSystemToolPresentationSchema.parse(merged) as AgentToolPresentation;
+}
+
+export interface AgentToolPresentationSchemaBinding {
+  readonly inputSchema: AgentJsonSchema;
+  readonly outputSchema?: AgentJsonSchema;
+  readonly presentation: AgentToolPresentation;
+}
+
+/**
+ * Verifies every presentation pointer against the contract that owns the
+ * value. A renderer can therefore remain entirely declarative: it never
+ * infers output fields from a tool name or silently probes arbitrary JSON.
+ */
+export function inspectAgentToolPresentationSchemaBindings(
+  binding: AgentToolPresentationSchemaBinding,
+): readonly string[] {
+  const failures: string[] = [];
+  const { activity, preview } = binding.presentation;
+  const argumentPointers = [
+    activity.argumentPath,
+    activity.subjectPath,
+    ...(activity.detailPaths ?? []),
+    ...(activity.v2?.variants ?? []).flatMap((variant) => [
+      variant.argumentPath,
+      variant.subjectPath,
+      ...(variant.detailPaths ?? []),
+    ]),
+  ].filter((pointer): pointer is string => pointer !== undefined);
+  for (const pointer of argumentPointers) {
+    assertScalarPointer(failures, binding.inputSchema, pointer, `activity argument ${pointer}`);
+  }
+
+  for (const measure of activity.v2?.measures ?? []) {
+    const source = readMeasureSourceSchema(binding, measure);
+    if (!source) {
+      failures.push(`measure "${measure.id}" reads result data but the Tool declares no outputSchema`);
+      continue;
+    }
+    const targets = assertPointer(failures, source, measure.pointer, `measure "${measure.id}"`);
+    if (measure.field !== undefined) {
+      const fields = resolveAgentJsonSchemaCollectionField(targets, measure.field);
+      if (fields.length === 0) {
+        failures.push(`measure "${measure.id}" field "${measure.field}" does not resolve from ${measure.pointer}`);
+      } else if (
+        (measure.aggregate === "sum" || measure.aggregate === "max") &&
+        !fields.some(isAgentJsonSchemaNumber)
+      ) {
+        failures.push(`measure "${measure.id}" uses ${measure.aggregate} but field "${measure.field}" is not numeric`);
+      }
+    }
+    if (measure.where !== undefined) {
+      const fields = resolveAgentJsonSchemaCollectionField(targets, measure.where.field);
+      if (fields.length === 0) {
+        failures.push(
+          `measure "${measure.id}" filter field "${measure.where.field}" does not resolve from ${measure.pointer}`,
+        );
+      }
+    }
+  }
+
+  for (const parameter of preview?.parameters ?? []) {
+    assertScalarPointer(failures, binding.inputSchema, parameter.pointer, `preview parameter ${parameter.pointer}`);
+  }
+
+  if (preview?.result) {
+    if (!binding.outputSchema) {
+      failures.push("preview.result requires an outputSchema");
+    } else {
+      for (const row of preview.result.rows) {
+        const entries = assertPointer(failures, binding.outputSchema, row.pointer, `preview row ${row.pointer}`);
+        assertRelativeScalarPointer(
+          failures,
+          entries,
+          row.titlePath,
+          `preview row title ${row.pointer}${row.titlePath}`,
+        );
+        if (row.descriptionPath) {
+          assertRelativeScalarPointer(
+            failures,
+            entries,
+            row.descriptionPath,
+            `preview row description ${row.pointer}${row.descriptionPath}`,
+          );
+        }
+        if (row.metaPath) {
+          assertRelativeScalarPointer(
+            failures,
+            entries,
+            row.metaPath,
+            `preview row meta ${row.pointer}${row.metaPath}`,
+          );
+        }
+        if (row.hrefPath) {
+          assertRelativeScalarPointer(
+            failures,
+            entries,
+            row.hrefPath,
+            `preview row href ${row.pointer}${row.hrefPath}`,
+          );
+        }
+      }
+      if (preview.result.more) {
+        const entries = assertPointer(
+          failures,
+          binding.outputSchema,
+          preview.result.more.pointer,
+          `preview more ${preview.result.more.pointer}`,
+        );
+        if (preview.result.more.countPath) {
+          const counts = resolveAgentJsonSchemaRelativePointer(entries, preview.result.more.countPath);
+          if (counts.length === 0 || !counts.some(isAgentJsonSchemaNumber)) {
+            failures.push(
+              `preview more count ${preview.result.more.pointer}${preview.result.more.countPath} is not numeric`,
+            );
+          }
+        }
+      }
+    }
+  }
+
+  if (preview?.body) {
+    const source = preview.body.from === "presentation" ? ToolResultPresentationSchema : binding.outputSchema;
+    if (!source) {
+      failures.push("preview.body from result requires an outputSchema");
+    } else {
+      assertPointer(failures, source, preview.body.pointer, `preview body ${preview.body.pointer}`);
+    }
+  }
+  return failures;
+}
+
+function readMeasureSourceSchema(
+  binding: AgentToolPresentationSchemaBinding,
+  measure: AgentToolPresentationMeasure,
+): AgentJsonSchema | undefined {
+  if (measure.from === "argument") return binding.inputSchema;
+  if (measure.from === "presentation") return ToolResultPresentationSchema;
+  if (measure.from === "result") return binding.outputSchema;
+  return undefined;
+}
+
+function assertPointer(
+  failures: string[],
+  schema: AgentJsonSchema,
+  pointer: string,
+  label: string,
+): readonly AgentJsonSchema[] {
+  const targets = resolveAgentJsonSchemaPointer(schema, pointer);
+  if (targets.length === 0) failures.push(`${label} does not resolve against its schema`);
+  return targets;
+}
+
+function assertScalarPointer(failures: string[], schema: AgentJsonSchema, pointer: string, label: string): void {
+  const targets = assertPointer(failures, schema, pointer, label);
+  if (targets.length > 0 && !targets.some(isAgentJsonSchemaScalar)) {
+    failures.push(`${label} does not resolve to a scalar value`);
+  }
+}
+
+function assertRelativeScalarPointer(
+  failures: string[],
+  parents: readonly AgentJsonSchema[],
+  pointer: string,
+  label: string,
+): void {
+  const targets = resolveAgentJsonSchemaRelativePointer(parents, pointer);
+  if (targets.length === 0) {
+    failures.push(`${label} does not resolve against the row schema`);
+  } else if (!targets.some(isAgentJsonSchemaScalar)) {
+    failures.push(`${label} does not resolve to a scalar value`);
+  }
 }
 
 /**
@@ -217,6 +483,24 @@ export function collectAgentToolPresentationArgumentPointers(
     ...(activity?.v2?.measures ?? [])
       .filter((measure) => measure.from === "argument")
       .flatMap((measure) => measureArgumentPointers(measure)),
+  ].filter((pointer): pointer is string => typeof pointer === "string" && pointer.length > 0);
+  return [...new Set(pointers)];
+}
+
+/**
+ * Collects result-side paths rendered by the compact execution views. Tool
+ * observations are intentionally bounded before they become durable traces;
+ * retaining these declared paths keeps every preview valid after a session is
+ * replayed without retaining an opaque full tool payload.
+ */
+export function collectAgentToolPresentationResultPointers(
+  presentation: AgentToolPresentation | undefined,
+): readonly string[] {
+  const preview = presentation?.preview;
+  const pointers = [
+    ...(preview?.result?.rows.map((row) => row.pointer) ?? []),
+    preview?.result?.more?.pointer,
+    preview?.body?.from === "presentation" ? undefined : preview?.body?.pointer,
   ].filter((pointer): pointer is string => typeof pointer === "string" && pointer.length > 0);
   return [...new Set(pointers)];
 }
@@ -241,7 +525,7 @@ function measureArgumentPointers(measure: {
 }
 
 /**
- * A `result` measure that reads `/facts` can only address facts the same
+ * A `presentation` measure that reads `/facts` can only address facts the same
  * contract declares in its Evidence slots. Shared by contract validation and
  * the coverage gate so both report the identical message.
  */
@@ -251,7 +535,7 @@ export function inspectAgentToolPresentationFactReferences(
 ): readonly string[] {
   const facts = new Set(declaredFacts);
   return (activity?.measures ?? [])
-    .filter((measure) => measure.from === "result" && measure.pointer === "/facts" && measure.where !== undefined)
+    .filter((measure) => measure.from === "presentation" && measure.pointer === "/facts" && measure.where !== undefined)
     .filter((measure) => !facts.has(String(measure.where!.equals)))
     .map(
       (measure) =>

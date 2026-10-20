@@ -18,6 +18,8 @@ The MCP client module adapts SDK transports and capabilities to Senera tool exec
 - Output/progress token registration is scoped to one call and must be removed in `finally`, including URL-elicitation retries.
 - Elicitation-enabled calls require an explicit interaction owner and run under the elicitation lease. No controller may infer an owner from payload fields or ambient Session state.
 - Task cancellation and connection failure precedence remain request-policy concerns; callers receive stable typed errors rather than SDK-specific first-match handling.
+- Workspace-owned client pools publish `opening`, `ready`, `reused`, `retiring`, and `closed` lifecycle diagnostics with only the server identifier, transport, lease count, and retirement reason. Launch arguments, environment values, and credentials are not diagnostic data.
+- The host owns an MCP server's stdio process, not desktop applications the server may automate. A server that creates a COM or GUI application must retain one application instance for its own lifetime and release it on stdin EOF and process termination. The host never kills processes by application name, because that could terminate a document the user opened independently.
 
 ## Result handling
 

@@ -30,6 +30,7 @@ test("real workspace opening isolates configuration, keeps the listener and surv
         Server: { Host: "127.0.0.1", Port: address.port, HotReload: false },
         ModelProviderEndpoints: [{ Id: "local-test", BaseUrl: "http://127.0.0.1:1/v1" }],
         ModelProviders: [{ Id: "test", ProviderId: "local-test", Endpoint: "ChatCompletions", Model: "test" }],
+        DefaultModelProviderId: "test",
         ContinuityLearning: { Enabled: false },
         Extensions: { "workspace-tools": { Enabled: true } },
       }),
@@ -65,6 +66,16 @@ test("real workspace opening isolates configuration, keeps the listener and surv
         (workspace: { projectBytes?: number }) => typeof workspace.projectBytes === "number",
       ),
     ).toBe(true);
+    const selectedWorkspaceId = new URL(next.websocketUrl).searchParams.get("workspaceId")!;
+    const selectedProjectStorage = await (
+      await fetch(new URL(`/api/application-storage?scope=project&workspaceId=${selectedWorkspaceId}`, app.healthUrl))
+    ).json();
+    expect(selectedProjectStorage.projectScanWorkspaceId).toBe(selectedWorkspaceId);
+    expect(
+      selectedProjectStorage.workspaces.filter(
+        (workspace: { projectBytes?: number }) => workspace.projectBytes !== undefined,
+      ),
+    ).toHaveLength(1);
     for (const handle of [app, next]) {
       const workspaceId = new URL(handle.websocketUrl).searchParams.get("workspaceId")!;
       const stateRoot = path.join(handle.workspaceRoot, ".senera");
@@ -184,6 +195,7 @@ test("keeps nested JSON configuration inside workspace roots with spaces and Uni
         Server: { Host: "127.0.0.1", Port: address.port, HotReload: false },
         ModelProviderEndpoints: [{ Id: "local-test", BaseUrl: "http://127.0.0.1:1/v1" }],
         ModelProviders: [{ Id: "test", ProviderId: "local-test", Endpoint: "ChatCompletions", Model: "test" }],
+        DefaultModelProviderId: "test",
         ContinuityLearning: { Enabled: false },
       }),
     );

@@ -50,6 +50,11 @@
           "path": ["Extensions"],
           "recursive": true,
           "reason": "系统扩展配置由扩展自身的 JSON Schema 与 UI Schema 驱动；不在此表单编辑。"
+        },
+        {
+          "path": ["McpServers"],
+          "recursive": true,
+          "reason": "MCP 服务启停由插件目录管理；输入配置使用服务自身的受控凭据与输入界面。"
         }
       ]
     },

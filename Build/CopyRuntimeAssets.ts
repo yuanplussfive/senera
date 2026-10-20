@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { buildSync } from "esbuild";
 import {
   readAgentToolApprovalPolicyArtifact,
   resolveAgentToolApprovalPolicyArtifactDirectory,
@@ -9,12 +10,8 @@ import { walkFiles } from "../Scripts/Support/FileWalk.js";
 const workspaceRoot = process.cwd();
 const sourceRoot = path.join(workspaceRoot, "Source");
 const distSourceRoot = path.join(workspaceRoot, "Dist", "Source");
-const extraRuntimeAssets = [
-  {
-    source: path.join(workspaceRoot, "Apps", "Desktop", "Preload.cjs"),
-    target: path.join(workspaceRoot, "Dist", "Apps", "Desktop", "Preload.cjs"),
-  },
-];
+const desktopPreloadSource = path.join(workspaceRoot, "Apps", "Desktop", "Preload.ts");
+const desktopPreloadTarget = path.join(workspaceRoot, "Dist", "Apps", "Desktop", "Preload.cjs");
 
 readAgentToolApprovalPolicyArtifact(resolveAgentToolApprovalPolicyArtifactDirectory(sourceRoot));
 const runtimeAssets = discoverRuntimeAssets(sourceRoot);
@@ -25,13 +22,25 @@ for (const sourcePath of runtimeAssets) {
   copyFile(sourcePath, targetPath);
 }
 
-for (const asset of extraRuntimeAssets) {
-  copyFile(asset.source, asset.target);
-}
+buildDesktopPreload(desktopPreloadSource, desktopPreloadTarget);
 
 readAgentToolApprovalPolicyArtifact(resolveAgentToolApprovalPolicyArtifactDirectory(distSourceRoot));
 
-process.stdout.write(`Runtime assets copied: ${runtimeAssets.length + extraRuntimeAssets.length}\n`);
+process.stdout.write(`Runtime assets prepared: ${runtimeAssets.length + 1}\n`);
+
+function buildDesktopPreload(sourcePath: string, targetPath: string): void {
+  fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+  buildSync({
+    entryPoints: [sourcePath],
+    outfile: targetPath,
+    bundle: true,
+    external: ["electron"],
+    format: "cjs",
+    platform: "node",
+    target: "node24",
+    logLevel: "silent",
+  });
+}
 
 function discoverRuntimeAssets(root: string): string[] {
   const copiedExtensions = new Set([".cjs", ".json", ".rego", ".sql", ".wasm"]);

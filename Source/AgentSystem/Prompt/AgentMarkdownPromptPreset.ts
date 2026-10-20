@@ -4,6 +4,7 @@ import { relativePathWithin } from "../Core/AgentPath.js";
 import { readRegularFileSync } from "../Core/AgentFs.js";
 import {
   AgentPromptPresetFileExtension,
+  normalizeAgentPromptPresetPath,
   parseAgentPromptPresetManifest,
   type AgentPromptPresetManifest,
 } from "../Core/AgentPromptPresetContract.js";
@@ -39,14 +40,16 @@ export function readAgentMarkdownPromptPreset(
       readRegularFileSync(layout.promptPresetStateFile, "Prompt preset state", { maxBytes }).toString("utf8"),
     );
     const normalized = parseAgentPromptPresetManifest(parsed);
-    if (!normalized) return { context: EmptyAgentPersonaContext, error: "Prompt preset state is invalid." };
+    if (!normalized) {
+      return { context: EmptyAgentPersonaContext, error: describeInvalidPresetState(parsed) };
+    }
     manifest = normalized;
   } catch (error) {
     if (isMissingFileError(error)) return { context: EmptyAgentPersonaContext };
     return { context: EmptyAgentPersonaContext, error: errorMessage(error) };
   }
 
-  const activePath = normalizeWorkspacePath(manifest.activePath);
+  const activePath = normalizeAgentPromptPresetPath(manifest.activePath);
   if (!activePath || path.extname(activePath).toLocaleLowerCase() !== AgentPromptPresetFileExtension) {
     return { context: EmptyAgentPersonaContext, error: "The active prompt preset must be a Markdown file." };
   }
@@ -85,18 +88,27 @@ export function readAgentMarkdownPromptPreset(
   }
 }
 
-function normalizeWorkspacePath(value: string): string | undefined {
-  const portable = value.trim().replace(/\\/gu, "/");
-  if (!portable || portable.startsWith("/") || /^[a-z]:/iu.test(portable)) return undefined;
-  const normalized = path.posix.normalize(portable);
-  if (normalized === "." || normalized.startsWith("../") || normalized.includes("/../")) return undefined;
-  return normalized;
-}
-
 function isMissingFileError(error: unknown): boolean {
   return Boolean(
     error && typeof error === "object" && "code" in error && (error as { code?: unknown }).code === "ENOENT",
   );
+}
+
+function describeInvalidPresetState(value: unknown): string {
+  const activePath =
+    value && typeof value === "object" && typeof (value as { activePath?: unknown }).activePath === "string"
+      ? (value as { activePath: string }).activePath.trim().replace(/\\/gu, "/")
+      : undefined;
+  if (!activePath) return "Prompt preset state is invalid.";
+  if (
+    !activePath.toLocaleLowerCase().endsWith(AgentPromptPresetFileExtension) ||
+    activePath.startsWith("/") ||
+    /^[a-z]:/iu.test(activePath) ||
+    activePath.split("/").some((segment) => segment === "..")
+  ) {
+    return "The active prompt preset must be a workspace-relative Markdown file.";
+  }
+  return "The active prompt preset is outside the prompt preset directory.";
 }
 
 function errorMessage(error: unknown): string {

@@ -14,6 +14,7 @@ import { AgentSkillScanner } from "../Skills/AgentSkillScanner.js";
 import type { RegisteredSkill } from "../Skills/AgentSkillTypes.js";
 import { AgentJsonSchemaPromptContractProjector } from "../ToolContracts/AgentJsonSchemaPromptContractProjector.js";
 import { ensureObjectRootJsonSchema } from "../ToolContracts/AgentJsonSchemaObjectRoot.js";
+import type { AgentJsonSchema } from "../ToolContracts/AgentJsonSchemaPointer.js";
 import type { RegisteredSidecarTool, RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
 import type { AgentToolPresentation } from "../Types/AgentToolPresentationTypes.js";
 import {
@@ -43,7 +44,10 @@ import {
   discoverAgentSystemExtensionPackages,
   type AgentSystemExtensionPackageSource,
 } from "./AgentSystemExtensionDiscovery.js";
-import { resolveAgentSystemToolPresentation } from "./AgentSystemToolPresentation.js";
+import {
+  inspectAgentToolPresentationSchemaBindings,
+  resolveAgentSystemToolPresentation,
+} from "./AgentSystemToolPresentation.js";
 import { validateAgentToolResourceManifests } from "../ToolRuntime/AgentToolResourceManifestValidation.js";
 
 export type { AgentSystemExtensionConfigurationSettings } from "./AgentSystemExtensionConfiguration.js";
@@ -215,6 +219,7 @@ export class AgentSystemExtensionCatalog {
       const contractPath = resolveSystemExtensionPackageFile(packageRoot, contribution.contract, "host Tool contract");
       const contract = this.readContract(contractPath);
       const presentation = resolveAgentSystemToolPresentation(extensionPresentation, contract.presentation);
+      this.assertPresentationBindings(contract.name, presentation, contract.inputSchema, contract.outputSchema);
       for (const skill of enabled ? contribution.recommendedForSkills : []) {
         const toolNames = this.bindings.get(skill) ?? new Set<string>();
         toolNames.add(contract.name);
@@ -237,15 +242,14 @@ export class AgentSystemExtensionCatalog {
         projectedTools.map((tool) => tool.registered),
       );
     }
-    const sidecarTools = sidecarToolContributions.map((contribution) =>
-      this.projectSidecarTool(
-        owner,
-        this.readSidecarContract(
-          resolveSystemExtensionPackageFile(packageRoot, contribution.contract, "sidecar Tool contract"),
-        ),
-        contribution.capability,
-      ),
-    );
+    const sidecarTools = sidecarToolContributions.map((contribution) => {
+      const contract = this.readSidecarContract(
+        resolveSystemExtensionPackageFile(packageRoot, contribution.contract, "sidecar Tool contract"),
+      );
+      const presentation = resolveAgentSystemToolPresentation(extensionPresentation, contract.presentation);
+      this.assertPresentationBindings(contract.name, presentation, contract.inputSchema, contract.outputSchema);
+      return this.projectSidecarTool(owner, contract, contribution.capability, presentation);
+    });
     if (enabled && sidecarTools.length > 0) registry.registerSidecarToolExtension(owner, sidecarTools);
 
     const skills = contributions
@@ -321,7 +325,7 @@ export class AgentSystemExtensionCatalog {
       inputSchema: ensureObjectRootJsonSchema(loaded.inputSchema, `System Tool ${loaded.name} input`),
     });
     this.ajv.compile(source.inputSchema);
-    if (source.outputSchema) this.ajv.compile(source.outputSchema);
+    this.ajv.compile(source.outputSchema);
     assertArtifactPolicyTemplates(source.artifacts, {
       argumentsSchema: source.inputSchema,
       resultSchema: source.outputSchema,
@@ -334,7 +338,19 @@ export class AgentSystemExtensionCatalog {
       this.json.load(filePath, AgentSystemSidecarToolContractSchema) as AgentSystemSidecarToolContract,
     );
     this.ajv.compile(source.inputSchema);
+    this.ajv.compile(source.outputSchema);
     return source;
+  }
+
+  private assertPresentationBindings(
+    toolName: string,
+    presentation: AgentToolPresentation,
+    inputSchema: AgentJsonSchema,
+    outputSchema: AgentJsonSchema,
+  ): void {
+    const failures = inspectAgentToolPresentationSchemaBindings({ inputSchema, outputSchema, presentation });
+    if (failures.length === 0) return;
+    throw new Error(`System Tool ${toolName} has invalid presentation bindings:\n- ${failures.join("\n- ")}`);
   }
 
   private project(
@@ -383,6 +399,7 @@ export class AgentSystemExtensionCatalog {
     owner: RegisteredTool["owner"],
     source: AgentSystemSidecarToolContract,
     capability: string,
+    presentation: AgentToolPresentation,
   ): RegisteredSidecarTool {
     return {
       owner,
@@ -391,6 +408,8 @@ export class AgentSystemExtensionCatalog {
       description: source.description,
       instructions: source.instructions,
       inputSchema: ensureObjectRootJsonSchema(source.inputSchema, `System sidecar tool ${source.name} input`),
+      outputSchema: source.outputSchema,
+      presentation: deepFreeze(presentation),
     };
   }
 }

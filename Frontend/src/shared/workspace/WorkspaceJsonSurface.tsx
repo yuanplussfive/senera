@@ -30,7 +30,7 @@ export function WorkspaceJsonSurface({ content }: { content: string }): JSX.Elem
   if (value.data === null || typeof value.data !== "object")
     return <StateView status="error" description={frontendMessage("resource.jsonStructureRequired")} />;
   return (
-    <div className="workspace-json-surface scrollbar-thin min-h-0 flex-1 overflow-auto p-4 font-mono text-[13px]">
+    <div className="workspace-json-surface min-h-0 flex-1 overflow-auto p-4 font-mono text-[13px]">
       <JsonView
         data={value.data}
         style={{

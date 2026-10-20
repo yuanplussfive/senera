@@ -1,9 +1,13 @@
-import { fork, type ChildProcess } from "node:child_process";
+import { fork, type ChildProcess, type ForkOptions } from "node:child_process";
 import { createRequire } from "node:module";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const resolveLocalModule = createRequire(import.meta.url);
+
+export interface AgentWorkspaceObserverWorkerForkOptions extends ForkOptions {
+  readonly windowsHide: true;
+}
 
 export interface AgentWorkspaceObserverWorkerLaunchOptions {
   readonly parentModuleUrl: string | URL;
@@ -12,13 +16,25 @@ export interface AgentWorkspaceObserverWorkerLaunchOptions {
 
 export function launchAgentWorkspaceObserverWorker(options: AgentWorkspaceObserverWorkerLaunchOptions): ChildProcess {
   const workerUrl = resolveAgentWorkspaceObserverWorkerUrl(options.parentModuleUrl);
-  return fork(fileURLToPath(workerUrl), [], {
+  return fork(fileURLToPath(workerUrl), [], createAgentWorkspaceObserverWorkerForkOptions(options, workerUrl));
+}
+
+/**
+ * The observer is a host-managed background worker, never an interactive
+ * terminal. Its process contract therefore forbids a Windows console window.
+ */
+export function createAgentWorkspaceObserverWorkerForkOptions(
+  options: AgentWorkspaceObserverWorkerLaunchOptions,
+  workerUrl: URL,
+): AgentWorkspaceObserverWorkerForkOptions {
+  return {
     cwd: options.cwd,
     env: resolveWorkerEnvironment(),
     execArgv: resolveAgentWorkspaceObserverWorkerExecArgv(workerUrl.pathname.endsWith(".ts")),
     stdio: ["ignore", "ignore", "pipe", "ipc"],
     serialization: "advanced",
-  });
+    windowsHide: true,
+  };
 }
 
 export function resolveAgentWorkspaceObserverWorkerUrl(parentModuleUrl: string | URL): URL {

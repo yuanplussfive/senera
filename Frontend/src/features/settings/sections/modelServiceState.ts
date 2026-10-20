@@ -1,5 +1,7 @@
 import type {
+  ConfigDiagnosticData,
   ConfigFormSectionData,
+  ConfigUnresolvedSecretData,
   ProviderModelsFailedData,
   ProviderModelsSnapshotData,
 } from "../../../api/eventTypes";
@@ -97,10 +99,13 @@ export interface ModelServiceState {
   enabledProviders: number;
   providerCount: number;
   providerIssues: Array<{ severity: "error" | "warning"; message: string }>;
+  /** Providers whose saved API key stays encrypted on this host, so the field reads as empty. */
+  unresolvedApiKeyProviderIds: string[];
 }
 
 export interface ReadModelServiceStateInput {
   catalogs: Record<string, ProviderModelsSnapshotData>;
+  configDiagnostics: readonly ConfigDiagnosticData[];
   draft: JsonConfigObject;
   errors: Record<string, ProviderModelsFailedData & { updatedAt?: string }>;
   loadingIds: Record<string, boolean>;
@@ -110,7 +115,6 @@ export interface ReadModelServiceStateInput {
 
 export interface ReadProviderModelListStateInput {
   catalogs: Record<string, ProviderModelsSnapshotData>;
-  defaultModelId: string;
   errors: Record<string, ProviderModelsFailedData & { updatedAt?: string }>;
   loadingIds: Record<string, boolean>;
   modelGroups: ReturnType<typeof readModelGroups>;
@@ -160,6 +164,7 @@ export const modelServiceDiagnosticGroupDefinitions = [
 
 export function readModelServiceState({
   catalogs,
+  configDiagnostics,
   draft,
   errors,
   loadingIds,
@@ -169,17 +174,11 @@ export function readModelServiceState({
   const providers = readProviderEndpoints(readDraftOrEffectiveValue(draft, section, "ModelProviderEndpoints"));
   const models = readModelProviders(readDraftOrEffectiveValue(draft, section, "ModelProviders"));
   const modelGroups = readModelGroups(readDraftOrEffectiveValue(draft, section, "ModelGroups"));
-  // Mirror the backend's implicit-default rule (AgentProviderModelConfigCommands
-  // readCurrentDefaultModelId): without an explicit DefaultModelProviderId the
-  // first configured model is the effective default, and deleting it requires a
-  // replacement. Deriving the same value here keeps the removal dialogs honest.
-  const defaultModelId =
-    readString(readDraftOrEffectiveValue(draft, section, "DefaultModelProviderId")) ?? models[0]?.Id ?? "";
+  const defaultModelId = readString(readDraftOrEffectiveValue(draft, section, "DefaultModelProviderId")) ?? null;
   const selectedProvider = readSelectedProvider(providers, selectedProviderId);
   const selectedProviderModelList = selectedProvider
     ? readProviderModelListState({
         catalogs,
-        defaultModelId,
         errors,
         loadingIds,
         modelGroups,
@@ -199,11 +198,13 @@ export function readModelServiceState({
         provider: defaultAssistantSlot.provider ?? undefined,
       }
     : null;
+  const unresolvedSecrets = readUnresolvedConfigSecrets(configDiagnostics);
   const diagnostics = readModelServiceDiagnostics({
     defaultSlots,
     errors,
     loadingIds,
     providers,
+    unresolvedSecrets,
   });
   const providerIssues = diagnostics
     .filter((item) => item.group === "connection" || item.group === "model_list")
@@ -227,12 +228,14 @@ export function readModelServiceState({
     enabledProviders: providers.filter((provider) => providerEnabled(provider)).length,
     providerCount: providers.length,
     providerIssues,
+    unresolvedApiKeyProviderIds: unresolvedSecrets
+      .filter((secret) => secret.kind === "provider_api_key")
+      .map((secret) => secret.providerId),
   };
 }
 
 export function readProviderModelListState({
   catalogs,
-  defaultModelId,
   errors,
   loadingIds,
   modelGroups,
@@ -251,7 +254,6 @@ export function readProviderModelListState({
     }),
     models,
     providerId: provider.Id,
-    defaultModelId,
   });
 
   return {
@@ -271,7 +273,7 @@ export function readDefaultModelSlotStates({
   models,
   providers,
 }: {
-  defaultModelId: string;
+  defaultModelId: string | null;
   models: readonly ModelProviderDraft[];
   providers: readonly ProviderEndpointDraft[];
 }): DefaultModelSlotState[] {
@@ -332,14 +334,16 @@ export function readModelServiceDiagnostics({
   errors,
   loadingIds,
   providers,
+  unresolvedSecrets,
 }: {
   defaultSlots: readonly DefaultModelSlotState[];
   errors: Record<string, ProviderModelsFailedData & { updatedAt?: string }>;
   loadingIds: Record<string, boolean>;
   providers: readonly ProviderEndpointDraft[];
+  unresolvedSecrets: readonly ConfigUnresolvedSecretData[];
 }): ModelServiceDiagnosticItem[] {
   return [
-    ...providers.flatMap((provider) => readProviderDiagnosticItems(provider, errors, loadingIds)),
+    ...providers.flatMap((provider) => readProviderDiagnosticItems(provider, errors, loadingIds, unresolvedSecrets)),
     ...defaultSlots.flatMap(readDefaultSlotDiagnosticItems),
     {
       id: "runtime-placeholder",
@@ -481,6 +485,7 @@ function readProviderDiagnosticItems(
   provider: ProviderEndpointDraft,
   errors: Record<string, ProviderModelsFailedData & { updatedAt?: string }>,
   loadingIds: Record<string, boolean>,
+  unresolvedSecrets: readonly ConfigUnresolvedSecretData[],
 ): ModelServiceDiagnosticItem[] {
   if (!provider.Id) {
     return [
@@ -508,6 +513,8 @@ function readProviderDiagnosticItems(
     });
   }
 
+  items.push(...readUnresolvedSecretDiagnosticItems(provider, unresolvedSecrets));
+
   const error = errors[provider.Id];
   if (error) {
     items.push({
@@ -525,6 +532,74 @@ function readProviderDiagnosticItems(
   }
 
   return items;
+}
+
+/**
+ * A saved secret this host cannot decrypt reads as an empty field, so the report names the slot and
+ * sends the user to the editor where they can fill it again.
+ */
+function readUnresolvedSecretDiagnosticItems(
+  provider: ProviderEndpointDraft,
+  unresolvedSecrets: readonly ConfigUnresolvedSecretData[],
+): ModelServiceDiagnosticItem[] {
+  const affectedProvider = providerIdLabel(provider);
+  return unresolvedSecrets
+    .filter(isProviderSecretIdentity)
+    .filter((secret) => secret.providerId === provider.Id)
+    .map((secret): ModelServiceDiagnosticItem =>
+      secret.kind === "provider_api_key"
+        ? {
+            id: `unresolved-api-key:${provider.Id}`,
+            group: "connection",
+            severity: "error",
+            title: frontendMessage("settings.diagnostics.unresolvedApiKeyTitle"),
+            detail: frontendMessage("settings.diagnostics.unresolvedApiKeyDetail", { provider: affectedProvider }),
+            affectedProviderId: provider.Id,
+            action: "open_connection",
+          }
+        : {
+            id: `unresolved-header:${provider.Id}:${secret.headerName}`,
+            group: "connection",
+            severity: "error",
+            title: frontendMessage("settings.diagnostics.unresolvedHeaderTitle"),
+            detail: frontendMessage("settings.diagnostics.unresolvedHeaderDetail", {
+              provider: affectedProvider,
+              header: secret.headerName,
+            }),
+            affectedProviderId: provider.Id,
+            action: "open_connection",
+          },
+    );
+}
+
+function isProviderSecretIdentity(
+  secret: ConfigUnresolvedSecretData,
+): secret is Extract<ConfigUnresolvedSecretData, { providerId: string }> {
+  return secret.kind !== "extension_secret";
+}
+
+/** Unresolved secrets come from the snapshot diagnostics, addressed by code rather than by text. */
+function readUnresolvedConfigSecrets(diagnostics: readonly ConfigDiagnosticData[]): ConfigUnresolvedSecretData[] {
+  return diagnostics.flatMap((diagnostic) =>
+    diagnostic.code === "config.secretUnresolved" && isConfigUnresolvedSecretData(diagnostic.details)
+      ? [diagnostic.details]
+      : [],
+  );
+}
+
+function isConfigUnresolvedSecretData(value: unknown): value is ConfigUnresolvedSecretData {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Record<string, unknown>;
+  switch (record.kind) {
+    case "provider_api_key":
+      return typeof record.providerId === "string";
+    case "provider_header":
+      return typeof record.providerId === "string" && typeof record.headerName === "string";
+    case "extension_secret":
+      return typeof record.extensionId === "string";
+    default:
+      return false;
+  }
 }
 
 function readDefaultSlotDiagnosticItems(slot: DefaultModelSlotState): ModelServiceDiagnosticItem[] {

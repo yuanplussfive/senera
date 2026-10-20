@@ -215,6 +215,7 @@ test("useSocketPostIngestEffects runs config reload requests and profile sync", 
     "model.list",
     "sandbox.status",
     "systemTool.list",
+    "mcpServer.list",
     "runtimeDependency.list",
   ]);
 

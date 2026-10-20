@@ -4,7 +4,7 @@ import "../../styles/markdown.css";
 import { buildResourceContentUrl } from "../../api/uploadClient";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { downloadUrl } from "../../lib/download";
-import { resolveFilePreview } from "../../lib/filePreview";
+import { resolveFilePreview, type FilePreviewRenderKind } from "../../lib/filePreview";
 import { cn, formatFileSize } from "../../lib/util";
 import { ImagePreviewDialog } from "../../shared/media/ImagePreviewDialog";
 import { useWorkspaceResourceController } from "../../shared/workspace/WorkspaceResourceProvider";
@@ -14,7 +14,7 @@ import { FilePreviewIcon } from "../chat/FilePreviewIcon";
 import { PierreFilePreview, PierrePatchPreview } from "../../shared/code/PierreCodeView";
 import type { ToolResource } from "./toolResourceProjection";
 
-type ResourceKind = "image" | "audio" | "video" | "pdf" | "diff" | "text" | "file";
+type ResourceKind = FilePreviewRenderKind;
 
 const TextPreviewLimitBytes = 128 * 1024;
 const TextPreviewLimitCharacters = 16_000;
@@ -329,8 +329,16 @@ function TextResourceBody({
   return <UnavailableResourceBody message={state.status === "too-large" ? "too-large" : undefined} />;
 }
 
-export function DiffPreview({ fileName, text }: { readonly fileName?: string; readonly text: string }): JSX.Element {
-  return <PierrePatchPreview patch={text} fileName={fileName} />;
+export function DiffPreview({
+  fileName,
+  prerenderedHTML,
+  text,
+}: {
+  readonly fileName?: string;
+  readonly prerenderedHTML?: string;
+  readonly text: string;
+}): JSX.Element {
+  return <PierrePatchPreview patch={text} fileName={fileName} prerenderedHTML={prerenderedHTML} />;
 }
 
 function UnavailableResourceBody({ message }: { readonly message?: "too-large" }): JSX.Element {
@@ -362,24 +370,5 @@ function isBrowserOpenableKind(kind: ResourceKind): boolean {
 }
 
 function resolveResourceKind(resource: ToolResource): ResourceKind {
-  const mime = resource.mime.trim().toLowerCase().split(";", 1)[0] ?? "";
-  if (mime.startsWith("image/")) return "image";
-  if (mime.startsWith("audio/")) return "audio";
-  if (mime.startsWith("video/")) return "video";
-  if (mime === "application/pdf") return "pdf";
-  if (mime === "text/x-diff" || mime === "text/x-patch") return "diff";
-  if (isTextMime(mime) || resolveFilePreview({ name: resource.name, mime }).id === "text") return "text";
-  return "file";
-}
-
-function isTextMime(mime: string): boolean {
-  return (
-    mime.startsWith("text/") ||
-    mime === "application/json" ||
-    mime === "application/ld+json" ||
-    mime === "application/xml" ||
-    mime === "application/javascript" ||
-    mime === "application/x-javascript" ||
-    mime === "application/x-ndjson"
-  );
+  return resolveFilePreview({ name: resource.name, mime: resource.mime }).renderKind;
 }

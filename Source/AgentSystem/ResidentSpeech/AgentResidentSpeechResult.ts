@@ -7,14 +7,11 @@ import {
   formatAgentToolContractValidationIssue,
   validateToolContractValue,
 } from "../ToolRuntime/AgentToolSignatureArgumentValidator.js";
+import { projectAgentSidecarToolResultBody } from "../ToolRuntime/AgentSidecarToolResultProjection.js";
 import type { RegisteredSidecarTool } from "../Types/AgentToolRuntimeTypes.js";
 import { AgentPiNativeToolBridgeName } from "../Pi/AgentPiNativeToolBridge.js";
 
-const AgentResidentSpeechResultSchema = z
-  .object({
-    utterance: z.string().trim().min(1),
-  })
-  .strict();
+const AgentResidentSpeechVisibleTextSchema = z.string().trim().min(1);
 
 const AgentResidentSpeechNativeInvocationSchema = z
   .object({
@@ -23,10 +20,23 @@ const AgentResidentSpeechNativeInvocationSchema = z
   })
   .strict();
 
-export function parseAgentResidentSpeechResult(value: unknown, toolName: string): { utterance: string } {
-  const parsed = AgentResidentSpeechResultSchema.safeParse(value);
-  if (!parsed.success) throw new AgentInvalidModelToolArgumentsError(toolName);
-  return parsed.data;
+export function parseAgentResidentSpeechResult(value: unknown, contract: RegisteredSidecarTool): { utterance: string } {
+  let body: unknown;
+  try {
+    body = projectAgentSidecarToolResultBody(contract, value);
+  } catch (error) {
+    throw new AgentInvalidModelToolArgumentsError(contract.name, [
+      error instanceof Error ? error.message : String(error),
+    ]);
+  }
+  const parsed = AgentResidentSpeechVisibleTextSchema.safeParse(body);
+  if (!parsed.success) {
+    throw new AgentInvalidModelToolArgumentsError(
+      contract.name,
+      parsed.error.issues.map((issue) => `${issue.path.join(".") || "result"}: ${issue.message}`),
+    );
+  }
+  return { utterance: parsed.data };
 }
 
 export function parseAgentResidentSpeechNativeResult(
@@ -50,16 +60,5 @@ export function parseAgentResidentSpeechNativeResult(
       issues.map((issue) => formatAgentToolContractValidationIssue(issue, "arguments")),
     );
   }
-  return parseAgentResidentSpeechResult(invocation.data.arguments, contract.name);
-}
-
-export function assertAgentResidentSpeechContract(contract: RegisteredSidecarTool): void {
-  const properties = contract.inputSchema.properties;
-  const utterance =
-    properties && typeof properties === "object" && !Array.isArray(properties)
-      ? (properties as Record<string, unknown>).utterance
-      : undefined;
-  if (!utterance || typeof utterance !== "object" || Array.isArray(utterance)) {
-    throw new Error(`Resident speech sidecar ${contract.name} must declare the utterance input property.`);
-  }
+  return parseAgentResidentSpeechResult(invocation.data.arguments, contract);
 }

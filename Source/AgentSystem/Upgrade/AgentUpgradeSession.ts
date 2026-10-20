@@ -17,6 +17,7 @@ import {
   type AgentSqliteStoreReconciliation,
 } from "../Database/AgentSqliteMigrationRunner.js";
 import type { AgentSqliteStoreContract } from "../Database/AgentSqliteStoreContract.js";
+import { listAgentSqliteDatabaseFamilyPaths } from "../Database/AgentSqliteDatabaseLifecycle.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { removeAgentPathSync } from "../Core/AgentFs.js";
 import { resolveAgentWorkspaceLayout } from "../Core/AgentWorkspaceLayout.js";
@@ -463,7 +464,7 @@ function restoreFileSnapshot(input: {
   fs.mkdirSync(failedRoot, { recursive: true, mode: 0o700 });
   const currentFiles =
     input.participant.kind === AgentUpgradeParticipantKinds.Sqlite
-      ? [input.sourcePath, `${input.sourcePath}-wal`, `${input.sourcePath}-shm`]
+      ? listAgentSqliteDatabaseFamilyPaths(input.sourcePath)
       : [input.sourcePath];
   for (const currentPath of currentFiles) {
     if (!fs.existsSync(currentPath)) continue;
@@ -505,7 +506,7 @@ function assertSqliteHealth(database: Database.Database, id: string): void {
 }
 
 function removeSqliteFiles(databasePath: string): void {
-  for (const filePath of [databasePath, `${databasePath}-wal`, `${databasePath}-shm`]) {
+  for (const filePath of listAgentSqliteDatabaseFamilyPaths(databasePath)) {
     removeAgentPathSync(filePath, { force: true });
   }
 }

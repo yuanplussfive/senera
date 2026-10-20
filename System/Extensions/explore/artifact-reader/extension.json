@@ -6,7 +6,7 @@
   "settingsSurface": "system-tools",
   "presentation": {
     "category": "artifact",
-    "icon": "file-text",
+    "icon": "file-search",
     "group": {
       "id": "artifact",
       "title": { "zh-CN": "读取证据", "en-US": "Read artifacts" }

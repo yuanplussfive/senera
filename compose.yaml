@@ -20,8 +20,9 @@ services:
       SENERA_ADMIN_LOGIN_NAME: "senera"
       SENERA_ADMIN_DISPLAY_NAME: "Senera Administrator"
       SENERA_ADMIN_PASSWORD: "114514"
-      # 建议固定密钥；留空则在工作区/.senera 持久化本地 key
+      # 宿主全局密钥，本机所有工作区共用；留空则在 /var/lib/senera/.senera/keys 下生成并复用
       SENERA_CONFIG_SECRET_KEY: "${SENERA_CONFIG_SECRET_KEY:-}"
+      SENERA_CREDENTIAL_SECRET_KEY: "${SENERA_CREDENTIAL_SECRET_KEY:-}"
       # 可选：覆盖沙箱运行时镜像与拉取策略；留空则使用内置分发契约版本
       SENERA_DOCKER_SANDBOX_IMAGE: "${SENERA_DOCKER_SANDBOX_IMAGE:-}"
       SENERA_DOCKER_SANDBOX_PULL_POLICY: "${SENERA_DOCKER_SANDBOX_PULL_POLICY:-}"

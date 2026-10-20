@@ -1,7 +1,6 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import AdjustmentsHorizontalIcon from "@heroicons/react/24/outline/AdjustmentsHorizontalIcon";
 import type { ProviderModelsFailedData, ProviderModelsSnapshotData } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
 import { FluidHoverHighlight, MotionIconSwap, motionTimings, useFluidHover, useMotionLevel } from "../../shared/motion";
@@ -16,6 +15,7 @@ import {
   IconButton,
   ScrollArea,
   Spinner,
+  StatusToken,
   Tooltip,
 } from "../../shared/ui";
 import { inferModelProviderEndpointIcon, inferModelProviderIcon, ModelProviderIcon } from "./ModelProviderIcon";
@@ -83,7 +83,7 @@ export function ProviderModelList({
   groups: ProviderModelGroup[];
   models: ModelProviderDraft[];
   modelTemplate: Record<string, unknown>;
-  defaultModelId: string;
+  defaultModelId: string | null;
   pendingModelIds?: ReadonlyMap<string, string>;
   search: string;
   disabled: boolean;
@@ -344,7 +344,7 @@ function ProviderModelRows({
   groups: ProviderModelGroup[];
   models: ModelProviderDraft[];
   modelTemplate: Record<string, unknown>;
-  defaultModelId: string;
+  defaultModelId: string | null;
   pendingModelIds: ReadonlyMap<string, string>;
   disabled: boolean;
   onConfigureModel: (model: ProviderModelInfo) => void;
@@ -469,7 +469,7 @@ function ProviderModelRow({
   model: ProviderModelInfo;
   providerId: string;
   configured?: ModelProviderDraft;
-  defaultModelId: string;
+  defaultModelId: string | null;
   /** Operation kind pending for this model (upsert/delete/default-set), if any. */
   pendingKind?: string;
   modelTemplate: Record<string, unknown>;
@@ -498,8 +498,10 @@ function ProviderModelRow({
         groupedCards
           ? "grid-cols-[20px_minmax(0,1fr)_minmax(56px,auto)] gap-2.5 rounded-md py-1.5 pl-2.5 pr-2"
           : "grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 px-3 py-2.5",
+        isDefault && "bg-accent-surface/45",
         !groupedCards && (fluidHoverEnabled ? "hover:bg-transparent" : "hover:bg-surface-hover/80"),
       )}
+      data-model-default={isDefault}
     >
       <span className="grid h-5 w-[20px] shrink-0 place-items-center">
         <ModelProviderIcon
@@ -514,11 +516,13 @@ function ProviderModelRow({
         />
       </span>
       <span className={cn("min-w-0", groupedCards && "flex flex-col items-start")}>
-        <span className="flex min-w-0 items-center gap-1.5">
+        <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
           <Tooltip content={model.id} side="top">
-            <span className="block truncate text-[13.5px] font-medium leading-5 text-content-primary">{model.id}</span>
+            <span className="block min-w-0 truncate text-[13.5px] font-medium leading-5 text-content-primary">
+              {model.id}
+            </span>
           </Tooltip>
-          {groupedCards ? <ConfiguredModelBadge isDefault={isDefault} compact /> : null}
+          {isDefault ? <DefaultModelBadge /> : null}
         </span>
         {groupedCards ? (
           <span className="mt-1 flex min-w-0 items-center gap-1">
@@ -534,7 +538,6 @@ function ProviderModelRow({
         )}
       </span>
       <span className={cn("flex justify-end gap-0.5", groupedCards ? "h-5 w-14 items-center" : "items-start")}>
-        {groupedCards ? null : <ConfiguredModelBadge isDefault={isDefault} />}
         {pendingKind ? (
           <span className="inline-flex items-center gap-1.5 text-[10.5px] font-medium text-ink-600">
             <Spinner size="xs" className="text-accent-content" /> {pendingModelOperationLabel(pendingKind)}
@@ -549,11 +552,7 @@ function ProviderModelRow({
                 aria-label={frontendMessage("chat.model.configure")}
                 onClick={() => onConfigureModel(model)}
               >
-                {groupedCards ? (
-                  <AppIcon icon="settings" size={14} />
-                ) : (
-                  <AdjustmentsHorizontalIcon className="h-3.5 w-3.5" />
-                )}
+                {groupedCards ? <AppIcon icon="settings" size={14} /> : <AppIcon icon="sliders" size={14} />}
               </button>
             </Tooltip>
             {onRemoveModel || (!isDefault && onSetDefaultModel) ? (
@@ -569,15 +568,16 @@ function ProviderModelRow({
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-44 bg-paper-50">
-                  {!isDefault && onSetDefaultModel ? (
+                  {onSetDefaultModel ? (
                     <DropdownMenuItem
+                      disabled={isDefault}
                       icon={<AppIcon icon="star" size={14} />}
                       onSelect={() => onSetDefaultModel(configured)}
                     >
-                      {frontendMessage("chat.model.setDefault")}
+                      {frontendMessage(isDefault ? "chat.model.currentDefault" : "chat.model.setDefault")}
                     </DropdownMenuItem>
                   ) : null}
-                  {!isDefault && onSetDefaultModel && onRemoveModel ? <DropdownMenuSeparator /> : null}
+                  {onSetDefaultModel && onRemoveModel ? <DropdownMenuSeparator /> : null}
                   {onRemoveModel ? (
                     <DropdownMenuItem
                       icon={<AppIcon icon="trash" size={14} />}
@@ -600,11 +600,7 @@ function ProviderModelRow({
               aria-label={frontendMessage("chat.model.configure")}
               onClick={() => onConfigureModel(model)}
             >
-              {groupedCards ? (
-                <AppIcon icon="settings" size={14} />
-              ) : (
-                <AdjustmentsHorizontalIcon className="h-3.5 w-3.5" />
-              )}
+              {groupedCards ? <AppIcon icon="settings" size={14} /> : <AppIcon icon="sliders" size={14} />}
             </button>
           </Tooltip>
         )}
@@ -613,31 +609,18 @@ function ProviderModelRow({
   );
 }
 
-function ConfiguredModelBadge({
-  isDefault,
-  compact = false,
-}: {
-  isDefault: boolean;
-  compact?: boolean;
-}): JSX.Element | null {
-  if (isDefault) {
-    return (
-      <Tooltip content={frontendMessage("config.model.default")} side="top">
-        <span
-          aria-label={frontendMessage("config.model.default")}
-          className={cn(
-            "shrink-0 text-[10px] font-medium leading-none",
-            compact
-              ? "inline-flex h-[18px] items-center rounded-[5px] bg-moss-50 px-1.5 text-[10.5px] text-moss-600"
-              : "rounded-full border border-accent-border bg-accent-surface px-1.5 py-1 text-accent-content",
-          )}
-        >
-          {frontendMessage("config.model.default")}
-        </span>
-      </Tooltip>
-    );
-  }
-  return null;
+function DefaultModelBadge(): JSX.Element {
+  return (
+    <StatusToken
+      size="compact"
+      className="gap-1 border border-accent-border bg-accent-surface text-accent-content"
+      data-model-default-badge
+      aria-label={frontendMessage("chat.model.currentDefault")}
+    >
+      <AppIcon icon="star" size={10} strokeWidth={2} aria-hidden="true" />
+      {frontendMessage("config.model.defaultBadge")}
+    </StatusToken>
+  );
 }
 
 function ModelGroupSummary({

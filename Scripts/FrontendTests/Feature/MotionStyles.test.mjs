@@ -19,8 +19,8 @@ const contextMenuSource = readFileSync(
 
 describe("shared motion styles", () => {
   test("keeps Radix transform origins and shared timing tokens", () => {
-    expect(transitionsCss).toContain("var(--radix-dropdown-menu-content-transform-origin)");
-    expect(transitionsCss).toContain("var(--radix-context-menu-content-transform-origin)");
+    expect(transitionsCss).toMatch(/var\(\s*--radix-dropdown-menu-content-transform-origin/);
+    expect(transitionsCss).toMatch(/var\(\s*--radix-context-menu-content-transform-origin/);
     expect(transitionsCss).toContain("var(--menu-open-dur)");
     expect(transitionsCss).toContain("var(--menu-close-dur)");
   });
@@ -50,13 +50,11 @@ describe("shared motion styles", () => {
   });
 
   test("ports the menu surface transition and origin motion", () => {
-    expect(indexCss).toMatch(
-      /\.menu-surface\s*\{[\s\S]*?transform: translateY\(-6px\) scale\(0\.965\);[\s\S]*?visibility: hidden;/,
+    expect(transitionsCss).toMatch(
+      /\.menu-surface\s*\{[\s\S]*?transform-origin:[\s\S]*?--radix-dropdown-menu-content-transform-origin[\s\S]*?--radix-context-menu-content-transform-origin/,
     );
-    expect(indexCss).toContain("@starting-style");
-    expect(indexCss).toContain("var(--menu-check-opacity-dur)");
-    expect(indexCss).toMatch(/\.menu-surface\[data-state="closed"\][\s\S]*?pointer-events: none !important;/);
-    expect(indexCss).toContain("menu-surface-presence-out");
+    expect(transitionsCss).toContain("var(--menu-check-opacity-dur)");
+    expect(transitionsCss).toContain("menu-surface-presence-out");
     expect(transitionsCss).toContain("translateY(-6px) scale(0.965)");
     expect(transitionsCss).toContain("translateY(-3px) scale(0.985)");
   });

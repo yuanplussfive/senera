@@ -254,7 +254,8 @@ test("cold source render is highlighted and large files keep a bounded interacti
       }),
     )
     .toBeGreaterThan(1);
-  const scroller = preview.locator("[data-workspace-code] .scrollbar-thin");
+  const scroller = preview.locator("[data-workspace-code] .workspace-source-viewport");
+  await expect(scroller).toBeVisible();
   expect(await scroller.evaluate((node) => getComputedStyle(node).scrollbarWidth)).toBe("thin");
   expect(
     await code.evaluate((host) => {
@@ -306,7 +307,10 @@ test("file selection aborts stale loads and invalid JSON reports its structure e
   await expect(preview.locator("diffs-container")).toContainText("broken");
   release();
   await preview.getByRole("button", { name: "预览: 源码", exact: true }).click();
-  await page.getByRole("menuitemradio", { name: "结构", exact: true }).click();
+  const structureView = page.getByRole("menuitemradio", { name: "结构", exact: true });
+  await expect(structureView).toBeVisible();
+  await structureView.focus();
+  await page.keyboard.press("Enter");
   await expect(preview.locator("[data-workspace-text-surface]")).toContainText("JSON");
   await expect(preview.locator(".resource-header")).toContainText("invalid.json");
 });
@@ -370,7 +374,10 @@ test("renders Markdown and offers expandable JSON without entering edit mode", a
   const json = await openFile(page, "data.json");
   await expect(json.locator("diffs-container")).toContainText("Senera");
   await json.getByRole("button", { name: "预览: 源码", exact: true }).click();
-  await page.getByRole("menuitemradio", { name: "结构", exact: true }).click();
+  const structureView = page.getByRole("menuitemradio", { name: "结构", exact: true });
+  await expect(structureView).toBeVisible();
+  await structureView.focus();
+  await page.keyboard.press("Enter");
   await expect(json.locator(".workspace-json-tree")).toContainText("Senera");
   await expect(json.locator("[data-workspace-text-surface]")).toHaveAttribute("data-editing", "false");
   await expect(json.locator(".resource-header").getByRole("button", { name: "预览: 结构", exact: true })).toBeVisible();
@@ -397,7 +404,7 @@ test("resource workbench scrolls its explorer and Markdown surface with the whee
   await page.mouse.wheel(0, 420);
   await expect.poll(() => explorerScroller.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
 
-  const markdownScroller = preview.locator("[data-workspace-text-surface] > .scrollbar-thin");
+  const markdownScroller = preview.locator("[data-workspace-preview-scroll]");
   await expect(markdownScroller).toBeVisible();
   await expect
     .poll(() => markdownScroller.evaluate((node) => node.scrollHeight - node.clientHeight))

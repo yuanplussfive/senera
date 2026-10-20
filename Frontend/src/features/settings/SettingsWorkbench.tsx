@@ -84,7 +84,7 @@ export function SettingsWorkbench({
 
   const navigation = (
     <SettingsNavigation
-      activeSectionId={section}
+      activeSectionId={activeSection.id}
       activeNavItemRef={activeNavItemRef}
       groupedResults={groupedResults}
       search={sectionSearch}

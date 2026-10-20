@@ -66,15 +66,25 @@ test("file search covers unopened directories and nested ignore rules", async ()
   expect(await index.search("secret")).toEqual([]);
 });
 
-test("search reconciles additions, deletions and changed ignore rules across concurrent queries", async () => {
+test("search applies structural changes and reconciles when discovery rules change", async () => {
   const { a } = await fixture();
   const index = new AgentWorkspacePathIndex(a);
   await fs.writeFile(path.join(a, "old.txt"), "old");
   expect(await index.search("old")).toEqual(["old.txt"]);
   await Promise.all([fs.rm(path.join(a, "old.txt")), fs.writeFile(path.join(a, "new.txt"), "new")]);
-  index.invalidate(["old.txt", "new.txt"]);
+  await index.apply([
+    { type: "delete", path: "old.txt" },
+    { type: "create", path: "new.txt" },
+  ]);
   expect(await Promise.all([index.search("old"), index.search("new")])).toEqual([[], ["new.txt"]]);
+  await fs.mkdir(path.join(a, "generated", "nested"), { recursive: true });
+  await fs.writeFile(path.join(a, "generated", "nested", "fresh.ts"), "export {};");
+  await index.apply([{ type: "create", path: "generated" }]);
+  expect(await index.search("fresh")).toEqual(["generated/nested/fresh.ts"]);
+  await fs.rm(path.join(a, "generated"), { recursive: true });
+  await index.apply([{ type: "delete", path: "generated" }]);
+  expect(await index.search("fresh")).toEqual([]);
   await fs.writeFile(path.join(a, ".gitignore"), "new.txt\n");
-  index.invalidate([".gitignore"]);
+  await index.apply([{ type: "update", path: ".gitignore" }]);
   expect(await index.search("new")).toEqual([]);
 });

@@ -132,6 +132,8 @@ Docker 不会把 Sandbox 请求改为本机执行。`runsc` 未注册时，启�
 
 `.senera/data/tool-search/embeddings.json` 只是工具检索的向量缓存，删除后可重建，不是权威存储。升级时旧数据库文件族会整体迁移，WAL、SHM 和 recovery 文件不会被拆散；当新旧库同时存在时，旧库保存在对应领域的 `legacy/` 目录，不覆盖当前库。
 
+打开工作区时，运行时发现 `.senera/.gitignore` 不存在就写一份，已存在就不再覆盖，也不改写。内容默认忽略 `.senera` 下的全部条目，只放行适合随项目共享的 `skills/`、`mcp/`、`context/`、`plugins/` 和 `agents/`，其余数据库、日志、缓存和导出都不进仓库。要换口径直接编辑那份文件；已经被提交过的文件不受忽略规则影响，需要自己 `git rm --cached`。
+
 如果服务器上 `8787` 已被占用，在启动前指定另一个主机端口：
 
 ```yaml
@@ -212,15 +214,17 @@ docker compose restart senera
 
 运行期间通过设置界面提交的配置由配置服务直接生效，并同步写回 JSON 镜像，不会触发开发服务器重启；绕过设置页直接编辑磁盘上的配置文件时，需要显式重启开发服务才会重新读取。
 
-密钥优先从 `SENERA_CONFIG_SECRET_KEY` 读取，值必须是 32 字节随机数据的 base64url 编码。可以用 Node.js 生成：
+配置密钥和 MCP 凭据密钥各自独立，优先从环境变量读取：`SENERA_CONFIG_SECRET_KEY` 保护配置里的供应商 Key 与扩展密钥，`SENERA_CREDENTIAL_SECRET_KEY` 保护 MCP 环境变量凭据。值必须是 32 字节随机数据的 base64url 编码，可以用 Node.js 生成：
 
 ```bash
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
 ```
 
-密钥只能生成一次并持久保存，不要在每次启动时重新生成。Compose 已把宿主机变量映射进主服务；本地部署可以把 `SENERA_CONFIG_SECRET_KEY=<生成值>` 写入仓库已忽略的 `.env`，正式部署应改用平台提供的独立 secret。
+密钥只能生成一次并持久保存，不要在每次启动时重新生成。Compose 已把两个宿主机变量映射进主服务；本地部署可以把 `SENERA_CONFIG_SECRET_KEY=<生成值>` 写入仓库已忽略的 `.env`，正式部署应改用平台提供的独立 secret。
 
-未设置该变量时，运行时会生成 `.senera/data/config/config-secrets.key`（Docker 数据目录下为 `/data/.senera/data/config/config-secrets.key`）。这个本地 key 能防止配置 JSON 或数据库被单独复制后直接读出 API key，但不能抵御同时取得数据目录和 key 文件的主机级攻击。备份时必须保留密钥，丢失或直接更换密钥会导致已有凭据无法解密。
+未设置环境变量时，运行时在数据根目录的 `.senera/keys/config/secret.key` 和 `.senera/keys/credentials/secret.key` 各生成一把宿主密钥并复用（容器内即 `/var/lib/senera/.senera/keys/`，位于 `senera-host-data` 卷，重建容器不会丢失）。它们对本机所有工作区生效，切换或新增工作区不再改变密钥。1.18 及更早版本写在工作区里的 `config-secrets.key`（含更早期直接放在 `.senera` 根下的那份）和 `credentials.key` 会被搬进宿主密钥目录：运行时读出文件内容算出密钥 ID，在同一域目录下以 `<ID>.key` 落一份，确认写完才删除工作区原件，此后它只作为退役候选密钥参与解密。搬家只动密钥文件，不碰任何密文；每次打开工作区都会检查，即使该工作区一条旧密文也没有，密钥也不会继续留在项目目录里。ID 是密钥字节的 SHA-256 前 8 位十六进制，同一把密钥在任何主机上都是同一个名字。搬迁结果写进配置快照诊断，`config check` 会列出 `config.secretKeyRelocated` 条目并说明原件来自哪个路径；目标位置写不进去时（目录不可用、磁盘只读等）原件留在原处且照旧能解密，诊断会带上操作系统给出的失败原因，需要用户自己移走。MCP 凭据域没有诊断通道，搬迁成功记 `credential.secretKeyRelocated`，失败记 `credential.secretKeyRelocationFailed`，两条都带源路径和密钥 ID。配置 JSON 镜像、数据库历史 revision 和 MCP 凭据库三处读到旧格式或旧密钥时都会立即改用宿主密钥重新封装，只改封装不改明文，时间戳和 revision 都不变，所以旧密钥只要还能用一次就够了。反过来，同一份工作区数据被不同主机轮流读取时，先打开的那台会把旧密文换成自己的宿主密钥，后面的主机就可能解不开。每个运行中的 Senera 宿主必须拥有独立的应用状态根和工作区状态根；同一个状态根不是 active-active 存储，也不能被多个桌面端、容器或主机同时打开。共享卷只能用于全部宿主停止后的备份、转移、迁移或恢复。若要在不同宿主间移动状态，应同时迁移对应的 `keys/`，或为每个宿主配置同一个环境变量密钥；否则在目标宿主的设置页重新填写该项。解不开的密文按字节保留，不影响同一份配置里其他能解开的密钥。这把 key 能防止配置 JSON 或数据库被单独复制后直接读出 API key，但不能抵御同时取得数据目录和 key 文件的主机级攻击。备份时必须保留 keys 目录，丢失或更换密钥只会让对应凭据解不开，重新填写即可，不会丢配置本身。
+
+某一项密钥解不开时服务照常启动：配置仍然加载，该项按未填写处理，设置页会在对应供应商的 API Key 输入框下方提示重新填写，`config check` 会列出这些诊断，按需读取凭据的接口只返回 409 而不交出密文，重新保存该项即可恢复；MCP 凭据在设置页标成本机解密失败并提示重新填写，已保存的凭据解不开时不会退回同名的宿主环境变量，原密文按字节保留。整个过程不会在启动阶段崩溃退出。
 
 ## 上传容量与回收
 

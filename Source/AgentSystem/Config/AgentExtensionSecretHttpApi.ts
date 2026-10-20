@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { applyCredentialedCors, writeCorsPreflight } from "../Auth/AgentCredentialedCors.js";
 import type { AgentSystemExtensionSettingsItem } from "../SystemTools/AgentSystemToolSource.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
+import { carriesAgentSecretScheme } from "../Security/AgentSecretEnvelopeCodec.js";
 
 export const AgentExtensionSecretHttpRoute = "/api/extension-secrets";
 
@@ -69,7 +70,7 @@ export class AgentExtensionSecretHttpApi {
       ok: true,
       extensionId,
       path,
-      value: typeof value === "string" ? value : "",
+      value: typeof value === "string" && !carriesAgentSecretScheme(value) ? value : "",
     });
   }
 

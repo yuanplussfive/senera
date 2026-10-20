@@ -29,10 +29,10 @@ import { isProtectedProvider } from "./ProviderConnectionIdentity";
 
 export function ProviderConnectionEditor({
   acceptedProvider,
+  apiKeyUnresolved,
   dirty,
   draftProvider,
   disabled,
-  isDefaultProvider,
   localError,
   operation,
   providerIndex,
@@ -42,12 +42,14 @@ export function ProviderConnectionEditor({
   onLocalDraftChange,
   onEdit,
   onDelete,
+  providerDisableReason,
 }: {
   acceptedProvider: ProviderEndpointDraft | null;
+  /** The saved key exists but this host cannot decrypt it, so the field reads as empty. */
+  apiKeyUnresolved: boolean;
   dirty: boolean;
   draftProvider: ProviderEndpointDraft | null;
   disabled: boolean;
-  isDefaultProvider: boolean;
   localError: string | null;
   operation?: SettingsConfigCommands["providerEndpointOperations"][string];
   providerIndex: number;
@@ -57,6 +59,7 @@ export function ProviderConnectionEditor({
   onLocalDraftChange?: (dirty: boolean) => void;
   onEdit?: () => void;
   onDelete?: () => void;
+  providerDisableReason?: (provider: ProviderEndpointDraft) => string | null;
 }): JSX.Element {
   const provider = draftProvider;
   const providerId = provider?.Id;
@@ -141,20 +144,17 @@ export function ProviderConnectionEditor({
   const pending = operation?.status === "pending";
   const operationError = operation?.status === "error" ? operation.message : null;
   const errorMessage = localError ?? operationError;
-  const defaultProviderCannotDisable = isDefaultProvider && provider.Enabled !== false;
-  const connectionToggleDisabled = disabled || pending || defaultProviderCannotDisable;
+  const connectionToggleDisabled = disabled || pending;
+  const disableReason = !connectionToggleDisabled ? providerDisableReason?.(provider) : null;
   const connectionToggle = (
     <Switch
       checked={provider.Enabled !== false}
       size="sm"
-      disabled={connectionToggleDisabled}
-      ariaLabel={frontendMessage(
-        isDefaultProvider ? "settings.provider.defaultConnectionToggle" : "settings.provider.connectionToggle",
-      )}
-      onCheckedChange={(next) => {
-        if (isDefaultProvider && !next) return;
-        onConfirm({ Enabled: next });
-      }}
+      disabled={connectionToggleDisabled || Boolean(disableReason)}
+      disabledReason={disableReason ?? undefined}
+      ariaLabel={frontendMessage("settings.provider.connectionToggle", { provider: providerIdLabel(provider) })}
+      onDisabledClick={disableReason ? () => onConfirm({ Enabled: false }) : undefined}
+      onCheckedChange={(next) => onConfirm({ Enabled: next })}
     />
   );
   const ghostIconActionClassName =
@@ -184,13 +184,7 @@ export function ProviderConnectionEditor({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
-            {defaultProviderCannotDisable ? (
-              <Tooltip content={frontendMessage("settings.provider.defaultConnectionCannotDisable")} side="top">
-                <span className="inline-flex">{connectionToggle}</span>
-              </Tooltip>
-            ) : (
-              connectionToggle
-            )}
+            {connectionToggle}
             {errorMessage && dirty ? (
               <Button size="sm" variant="outline" disabled={disabled || pending} onClick={() => onConfirm()}>
                 <AppIcon icon="refresh" size={14} />
@@ -261,56 +255,63 @@ export function ProviderConnectionEditor({
             hint={frontendMessage("settings.provider.apiKeyHint")}
             inline
           >
-            <SecretInput
-              key={providerId ?? "empty"}
-              size="md"
-              value={displayedApiKey}
-              disabled={disabled}
-              placeholder="sk-..."
-              ariaLabel={frontendMessage("settings.provider.apiKey")}
-              showLabel={frontendMessage("config.provider.showApiKey")}
-              hideLabel={frontendMessage("config.provider.hideApiKey")}
-              hideRevealWhenEmpty
-              className="font-mono text-[12px] placeholder:font-sans"
-              onChange={(value) => {
-                apiKeyDraftRef.current = value;
-                setApiKeyDraft(value);
-                setLocalFieldDirty("apiKey", true);
-              }}
-              onBlur={() => {
-                if (apiKeyDirtyRef.current && apiKeyDraftRef.current !== null) {
-                  onConfirm({ ApiKey: apiKeyDraftRef.current });
-                }
-                setLocalFieldDirty("apiKey", false);
-              }}
-              trailing={
-                <Tooltip content={frontendMessage("clipboard.pasteFromClipboard")} side="top">
-                  <button
-                    type="button"
-                    disabled={disabled}
-                    className="grid h-8 w-7 shrink-0 place-items-center rounded text-content-muted transition hover:bg-surface-hover hover:text-content-primary disabled:pointer-events-none disabled:opacity-30 active:scale-[0.95]"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={async () => {
-                      try {
-                        const clipText = await navigator.clipboard.readText();
-                        if (clipText) {
-                          apiKeyDraftRef.current = clipText;
-                          setApiKeyDraft(clipText);
-                          setLocalFieldDirty("apiKey", true);
-                          onConfirm({ ApiKey: clipText });
-                          setLocalFieldDirty("apiKey", false);
+            <div className="min-w-0">
+              <SecretInput
+                key={providerId ?? "empty"}
+                size="md"
+                value={displayedApiKey}
+                disabled={disabled}
+                placeholder="sk-..."
+                ariaLabel={frontendMessage("settings.provider.apiKey")}
+                showLabel={frontendMessage("config.provider.showApiKey")}
+                hideLabel={frontendMessage("config.provider.hideApiKey")}
+                hideRevealWhenEmpty
+                className="font-mono text-[12px] placeholder:font-sans"
+                onChange={(value) => {
+                  apiKeyDraftRef.current = value;
+                  setApiKeyDraft(value);
+                  setLocalFieldDirty("apiKey", true);
+                }}
+                onBlur={() => {
+                  if (apiKeyDirtyRef.current && apiKeyDraftRef.current !== null) {
+                    onConfirm({ ApiKey: apiKeyDraftRef.current });
+                  }
+                  setLocalFieldDirty("apiKey", false);
+                }}
+                trailing={
+                  <Tooltip content={frontendMessage("clipboard.pasteFromClipboard")} side="top">
+                    <button
+                      type="button"
+                      disabled={disabled}
+                      className="grid h-8 w-7 shrink-0 place-items-center rounded text-content-muted transition hover:bg-surface-hover hover:text-content-primary disabled:pointer-events-none disabled:opacity-30 active:scale-[0.95]"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={async () => {
+                        try {
+                          const clipText = await navigator.clipboard.readText();
+                          if (clipText) {
+                            apiKeyDraftRef.current = clipText;
+                            setApiKeyDraft(clipText);
+                            setLocalFieldDirty("apiKey", true);
+                            onConfirm({ ApiKey: clipText });
+                            setLocalFieldDirty("apiKey", false);
+                          }
+                        } catch {
+                          // ignore if clipboard permission denied
                         }
-                      } catch {
-                        // ignore if clipboard permission denied
-                      }
-                    }}
-                    aria-label={frontendMessage("clipboard.pasteFromClipboard")}
-                  >
-                    <AppIcon icon="copy" size={13} />
-                  </button>
-                </Tooltip>
-              }
-            />
+                      }}
+                      aria-label={frontendMessage("clipboard.pasteFromClipboard")}
+                    >
+                      <AppIcon icon="copy" size={13} />
+                    </button>
+                  </Tooltip>
+                }
+              />
+              {apiKeyUnresolved ? (
+                <FormHint className="mt-1.5 text-[11.5px] leading-snug text-brick-600">
+                  {frontendMessage("settings.provider.apiKeyUnresolved")}
+                </FormHint>
+              ) : null}
+            </div>
           </ConnectionField>
         </div>
 
@@ -422,7 +423,7 @@ function ProviderAvatarPicker({
         <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.12em] text-content-muted">
           {frontendMessage("settings.group.model")}
         </div>
-        <div className="scrollbar-thin mb-3 grid max-h-[190px] grid-cols-5 gap-1.5 overflow-y-auto p-0.5">
+        <div className="mb-3 grid max-h-[190px] grid-cols-5 gap-1.5 overflow-y-auto p-0.5">
           {ModelProviderIconNames.map((name) => {
             const isSelected = builtInLogo === name;
             return (

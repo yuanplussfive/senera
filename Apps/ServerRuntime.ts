@@ -25,6 +25,7 @@ import {
 } from "../Source/AgentSystem/AgentDefaults.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { AgentUserProfileManager } from "../Source/AgentSystem/Session/AgentUserProfile.js";
+import { AgentProfileAvatarStore } from "../Source/AgentSystem/Session/AgentProfileAvatarStore.js";
 import { createAgentContinuityRuntime } from "../Source/AgentSystem/Continuity/AgentContinuityRuntime.js";
 import type { AgentConfigSourceOptions } from "../Source/AgentSystem/Config/AgentConfigService.js";
 import { AgentEventKinds } from "../Source/AgentSystem/Events/AgentEvent.js";
@@ -38,6 +39,7 @@ import { AgentServerEventLogger } from "../Source/AgentSystem/Diagnostics/AgentS
 import { AgentApprovalRuntime } from "../Source/AgentSystem/Approvals/AgentApprovalRuntime.js";
 import { AgentPiActiveSessionRegistry } from "../Source/AgentSystem/Pi/AgentPiActiveSessionRegistry.js";
 import { AgentPiSessionMutationService } from "../Source/AgentSystem/Pi/AgentPiSessionMutationService.js";
+import { AgentPiSessionCleanupService } from "../Source/AgentSystem/Pi/AgentPiSessionCleanupService.js";
 import { createAgentPiDiagnosticLoggerForDetail } from "../Source/AgentSystem/Diagnostics/AgentPiDiagnostics.js";
 import { AgentSystemRuntimeCache } from "../Source/AgentSystem/Runtime/AgentSystemRuntimeCache.js";
 import { AgentSessionApprovalLeaseStore } from "../Source/AgentSystem/Safety/AgentSessionApprovalLeaseStore.js";
@@ -59,14 +61,15 @@ import {
   createSeneraWorkspaceConfigService,
   createSeneraWorkspaceRuntimeDependencies,
   createSeneraWorkspaceRuntimeSnapshot,
-  resolveSeneraHostedWorkspaceRuntime,
   resolveSeneraInitialWorkspaceRuntime,
   projectSeneraSandboxWorkspace,
   projectSeneraWorkspaceRuntimeConfig,
+  type SeneraWorkspaceRuntimePreparation,
 } from "./ServerWorkspaceRuntime.js";
 import { createSeneraWorkspaceHost, type SeneraWorkspaceHost } from "./ServerWorkspaceHost.js";
 import { AgentMcpInputService } from "../Source/AgentSystem/Credentials/AgentMcpInputService.js";
 import { AgentMcpManagementService } from "../Source/AgentSystem/McpPackages/AgentMcpManagementService.js";
+import { createAgentSystemToolHistoryPresentationResolver } from "../Source/AgentSystem/SystemTools/AgentSystemToolHistoryPresentation.js";
 import { detectAgentMcpHostCapabilities } from "../Source/AgentSystem/McpPackages/AgentMcpHostRequirements.js";
 import { AgentWorkspaceRuntime } from "../Source/AgentSystem/Runtime/AgentWorkspaceRuntime.js";
 import { AgentRunDispatchGateway } from "../Source/AgentSystem/Orchestration/AgentRunDispatchPort.js";
@@ -136,6 +139,7 @@ export interface SeneraServerOptions {
   workspaceRoot?: string;
   applicationStateRoot?: string;
   workspaceRoots?: readonly string[];
+  /** Called after the initial workspace and every subsequently opened workspace is ready. */
   onWorkspaceOpened?: (root: string, workspaceId: string) => void;
   configPath?: string;
   staticFrontendRoot?: string;
@@ -250,7 +254,12 @@ async function startSeneraServerHost(
   upgradeSession.recoverInterruptedUpgrade();
   let handle: SeneraServerHandle | undefined;
   try {
-    const configService = createSeneraWorkspaceConfigService({ workspaceRoot, configSource, upgradeSession });
+    const configService = createSeneraWorkspaceConfigService({
+      workspaceRoot,
+      configSource,
+      upgradeSession,
+      applicationPaths: paths,
+    });
     cleanup.defer(() => configService.close());
     const transportConfig = (): AgentSystemConfig => {
       const config = configService.snapshot().value;
@@ -368,8 +377,18 @@ async function startSeneraServerHost(
       startRuntime: startSeneraServerRuntime,
     });
 
-    const runtime = await startSeneraServerRuntime(options, workspaceRoot, upgradeSession, cleanup, product, host);
+    const runtime = await startSeneraServerRuntime(
+      options,
+      workspaceRoot,
+      preparedWorkspace,
+      upgradeSession,
+      cleanup,
+      product,
+      host,
+    );
     runtimes.set(catalog.register(workspaceRoot).id, runtime);
+    catalog.recordOpened(workspaceRoot);
+    options.onWorkspaceOpened?.(workspaceRoot, defaultWorkspaceId);
     await transport.start();
     stopConfigWatch = startSeneraServerRuntimeConfigWatcher({
       enabled: configSource.kind === "json" && resolveServerConfig(configService.snapshot().value).HotReload,
@@ -407,6 +426,7 @@ async function startSeneraServerHost(
 async function startSeneraServerRuntime(
   options: SeneraServerOptions,
   workspaceRoot: string,
+  workspacePreparation: SeneraWorkspaceRuntimePreparation,
   upgradeSession: AgentUpgradeSession,
   startupCleanup: SeneraStartupCleanup,
   product: ReturnType<typeof readAgentProductMetadata>,
@@ -415,15 +435,7 @@ async function startSeneraServerRuntime(
   const resourceRoot = host.resourcesRoot;
   const workspaceId = host.catalog.register(workspaceRoot).id;
   const usesHostConfig = workspaceRoot === host.initialWorkspaceRoot;
-  const configSource = usesHostConfig ? host.configSource : host.resolveConfigSource(workspaceRoot);
-  const workspacePaths = resolveSeneraHostedWorkspaceRuntime({
-    paths: host.paths,
-    workspaceRoot,
-    workspaceId,
-    resourcesRoot: resourceRoot,
-    configSource,
-  });
-  const { workspaceLayout, configPath } = workspacePaths;
+  const { workspaceLayout, configPath, configSource } = workspacePreparation;
   const startupResourceCleanups: Array<() => void> = [];
   const deferResourceCleanup = (callback: () => void | Promise<void>): (() => void) => {
     const cancel = startupCleanup.defer(callback);
@@ -433,7 +445,12 @@ async function startSeneraServerRuntime(
   const eventLogDetail = resolveServerEventLogDetail(process.env.SENERA_LOG_EVENTS);
   const configService = usesHostConfig
     ? host.configService
-    : createSeneraWorkspaceConfigService({ workspaceRoot, configSource, upgradeSession });
+    : createSeneraWorkspaceConfigService({
+        workspaceRoot,
+        configSource,
+        upgradeSession,
+        applicationPaths: host.paths,
+      });
   if (!usesHostConfig) startupCleanup.defer(() => configService.close());
   const approvalRuntime = new AgentApprovalRuntime();
   const interactionInput = new AgentInteractionInputRuntime();
@@ -481,7 +498,16 @@ async function startSeneraServerRuntime(
   // MCP credentials and typed inputs belong to the selected workspace. Each
   // workspace runtime owns its repository so switching workspaces cannot
   // reuse or overwrite another workspace's vault.
-  const mcpInputs = AgentMcpInputService.open(workspaceRoot);
+  const mcpInputs = AgentMcpInputService.open(workspaceRoot, process.env, undefined, host.paths);
+  // The credential vault has no diagnostic channel of its own, so a key file that left the workspace,
+  // or could not, is only visible here.
+  for (const relocation of mcpInputs.relocatedLegacyKeys()) {
+    if (relocation.relocated) {
+      logger.info("credential.secretKeyRelocated", { ...relocation });
+    } else {
+      logger.warn("credential.secretKeyRelocationFailed", { ...relocation });
+    }
+  }
   deferResourceCleanup(() => mcpInputs.close());
   const mcpHostCapabilities = detectAgentMcpHostCapabilities();
   const mcpManagement = new AgentMcpManagementService({
@@ -621,10 +647,10 @@ async function startSeneraServerRuntime(
     workspaceLayout.databases.sessions,
   );
   deferResourceCleanup(() => repository.close());
-  const identityDisplayValues = (): AgentIdentityDisplayValues => ({
-    user: repository.loadUserProfile().name,
-    resident: "Senera",
-  });
+  const identityDisplayValues = (): AgentIdentityDisplayValues => {
+    const profile = repository.loadUserProfile();
+    return { user: profile.name, assistant: profile.assistant.name };
+  };
   const sessionStore = new AgentSessionStore({ repository });
   const sessionApprovals = new AgentSessionApprovalLeaseStore();
   const todoConfig = resolveAgentTodosConfig(initialConfig);
@@ -680,6 +706,7 @@ async function startSeneraServerRuntime(
     interactionInput,
     piSessionRegistry,
     resourcesPath: resourceRoot,
+    browserProfilesRoot: host.paths.browserProfilesRoot,
     executionResources,
     sandboxRuntimeReady: () => sandboxRuntimeService.snapshot().state === "ready",
     sandboxAvailable: sandboxRuntimeService.sandboxBackendAvailable(),
@@ -699,6 +726,7 @@ async function startSeneraServerRuntime(
     todos,
     inferenceBudget,
     learningRequests: continuityRuntime.learningRequests,
+    learningLogger,
     selfService,
     pluginHost,
     resourceCoordinator,
@@ -759,6 +787,10 @@ async function startSeneraServerRuntime(
     acquireRuntime: (modelProviderId) => runtimeCache.acquire(modelProviderId),
     diagnostics: piDiagnostics,
   });
+  const piSessionCleanup = new AgentPiSessionCleanupService({
+    workspaceRoot,
+    sessionsRoot: workspaceLayout.piSessionsRoot,
+  });
   const interactiveTerminals = new AgentInteractiveTerminalRuntime({
     workspaceRoot,
     broker: executionResources,
@@ -776,6 +808,8 @@ async function startSeneraServerRuntime(
   const sessionManager = new AgentSessionManager({
     loopFactory,
     store: sessionStore,
+    createHistoryPresentationResolver: () =>
+      createAgentSystemToolHistoryPresentationResolver(mcpManagement.systemSettingsSnapshot()),
     managedSessionIds: new Set(childRuns.listAll().map((run) => run.childSessionId)),
     memoryService,
     logger,
@@ -802,6 +836,7 @@ async function startSeneraServerRuntime(
     uploadStore: workspaceRuntime.uploadStore,
     piSessionMutations,
     piSessionManagement: piSessionMutations,
+    piSessionCleanup,
     runControl: {
       get settlementTimeoutMs() {
         return resolveAgentLoopConfig(configSnapshot()).RunSettlementTimeoutMs;
@@ -928,7 +963,8 @@ async function startSeneraServerRuntime(
         })
       : new AgentCallbackRunEventWriter((events) => sessionManager.recordRunEvents(events));
   const cancelEventWriterCleanup = deferResourceCleanup(() => eventWriter.close());
-  const userProfileManager = new AgentUserProfileManager(repository);
+  const profileAvatarStore = new AgentProfileAvatarStore(workspaceRoot);
+  const userProfileManager = new AgentUserProfileManager(repository, profileAvatarStore);
   const listener = host.transport.listener;
   const server = new AgentWebSocketServer({
     artifactManifestIndex: workspaceRuntime.artifactManifestIndex,
@@ -951,6 +987,7 @@ async function startSeneraServerRuntime(
     configSnapshot,
     sessionManager,
     userProfileManager,
+    profileAvatarStore,
     approvalRuntime,
     interactionInput,
     sandboxRuntimeService,

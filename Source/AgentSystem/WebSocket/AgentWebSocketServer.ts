@@ -33,6 +33,8 @@ import { AgentRuntimeUpdateHttpApi } from "../Runtime/AgentRuntimeUpdateHttpApi.
 import { AgentResourceResolver } from "../Resources/AgentResourceResolver.js";
 import { AgentModelsDevCatalog } from "../ModelEndpoints/AgentModelsDevCatalog.js";
 import { AgentArtifactMemoryHttpApi } from "../Memory/AgentArtifactMemoryHttpApi.js";
+import { AgentProfileAvatarHttpApi } from "../Session/AgentProfileAvatarHttpApi.js";
+import { AgentProfileAvatarStore } from "../Session/AgentProfileAvatarStore.js";
 
 export type { AgentWebSocketServerOptions } from "./AgentWebSocketTypes.js";
 
@@ -53,6 +55,7 @@ export class AgentWebSocketServer {
   private readonly providerCredentialApi: AgentProviderCredentialHttpApi;
   private readonly extensionSecretApi: AgentExtensionSecretHttpApi;
   private readonly workspaceResourceApi: AgentWorkspaceResourceHttpApi;
+  private readonly profileAvatarApi: AgentProfileAvatarHttpApi;
   private readonly messageRouter: AgentWebSocketMessageRouter;
   private readonly accessGuard: AgentServerAccessGuard;
   private readonly channelControl?: AgentChannelServiceControl;
@@ -138,6 +141,12 @@ export class AgentWebSocketServer {
       maxTextBytes: this.serverConfig.RequestMaxBytes,
       isOriginAllowed: (origin, corsRequest) => this.accessGuard.allowsOrigin(origin, corsRequest),
     });
+    const profileAvatarStore =
+      options.profileAvatarStore ?? new AgentProfileAvatarStore(options.workspaceRoot ?? process.cwd());
+    this.profileAvatarApi = new AgentProfileAvatarHttpApi({
+      store: profileAvatarStore,
+      isOriginAllowed: (origin, corsRequest) => this.accessGuard.allowsOrigin(origin, corsRequest),
+    });
     const artifactMemoryApi = new AgentArtifactMemoryHttpApi({
       artifactManifestIndex: options.artifactManifestIndex,
       workspaceRoot: options.workspaceRoot ?? process.cwd(),
@@ -150,6 +159,7 @@ export class AgentWebSocketServer {
       providerCredentialApi: this.providerCredentialApi,
       extensionSecretApi: this.extensionSecretApi,
       workspaceResourceApi: this.workspaceResourceApi,
+      profileAvatarApi: this.profileAvatarApi,
       artifactMemoryApi,
       staticFrontendApi: options.staticFrontendRoot
         ? new AgentStaticFrontendHttpApi({ rootDir: options.staticFrontendRoot })

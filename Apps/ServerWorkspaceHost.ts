@@ -9,7 +9,10 @@ import {
 } from "../Source/AgentSystem/WorkspaceResources/AgentWorkspaceCatalog.js";
 import type { AgentWorkspaceCatalogSnapshot } from "../Source/AgentSystem/WorkspaceResources/AgentWorkspaceCatalogContract.js";
 import { scopeAgentWorkspaceUrl } from "../Source/AgentSystem/WorkspaceResources/AgentWorkspaceTransportScope.js";
-import { resolveSeneraHostedWorkspaceRuntime } from "./ServerWorkspaceRuntime.js";
+import {
+  resolveSeneraHostedWorkspaceRuntime,
+  type SeneraWorkspaceRuntimePreparation,
+} from "./ServerWorkspaceRuntime.js";
 import { resolveServerRuntimeConfigPath, resolveWorkspaceServerConfigSource } from "./ServerRuntimeConfig.js";
 import { SeneraStartupCleanup } from "./ServerRuntimeSupport.js";
 import type { SeneraServerHandle, SeneraServerOptions, SeneraWorkspaceHandle } from "./ServerRuntime.js";
@@ -70,6 +73,7 @@ interface SeneraWorkspaceHostInput {
   readonly startRuntime: (
     options: SeneraServerOptions,
     workspaceRoot: string,
+    workspaceRuntime: SeneraWorkspaceRuntimePreparation,
     upgradeSession: AgentUpgradeSession,
     startupCleanup: SeneraStartupCleanup,
     product: AgentProductMetadata,
@@ -78,6 +82,10 @@ interface SeneraWorkspaceHostInput {
 }
 
 export function createSeneraWorkspaceHost(input: SeneraWorkspaceHostInput): SeneraWorkspaceHost {
+  // Initial startup already prepared the default workspace before this host exists. Hosted workspaces
+  // receive one compatibility preparation attempt per host lifetime; the durable marker remains the
+  // authority across restarts.
+  const preparedWorkspaceState = new Set<string>([input.defaultWorkspaceId]);
   const host: SeneraWorkspaceHost = {
     catalog: input.catalog,
     resourcesRoot: input.resourcesRoot,
@@ -196,6 +204,7 @@ export function createSeneraWorkspaceHost(input: SeneraWorkspaceHostInput): Sene
         if (running) return running;
         const operation = (async () => {
           const workspaceCleanup = new SeneraStartupCleanup();
+          const prepareLegacyState = !preparedWorkspaceState.has(descriptor.id);
           const workspaceRuntime = resolveSeneraHostedWorkspaceRuntime({
             paths: input.paths,
             workspaceRoot: descriptor.root,
@@ -206,8 +215,9 @@ export function createSeneraWorkspaceHost(input: SeneraWorkspaceHostInput): Sene
               input.configSource,
               input.initialWorkspaceRoot,
             ),
-            migrateLegacyState: true,
+            migrateLegacyState: prepareLegacyState,
           });
+          preparedWorkspaceState.add(descriptor.id);
           const session = new AgentUpgradeSession({
             workspaceRoot: descriptor.root,
             stateRoot: workspaceRuntime.workspaceLayout.stateRoot,
@@ -219,6 +229,7 @@ export function createSeneraWorkspaceHost(input: SeneraWorkspaceHostInput): Sene
             const runtime = await input.startRuntime(
               input.options,
               descriptor.root,
+              workspaceRuntime,
               session,
               workspaceCleanup,
               input.product,

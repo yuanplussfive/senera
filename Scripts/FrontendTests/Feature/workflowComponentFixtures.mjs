@@ -58,6 +58,7 @@ export function createSystemToolOrigin({
   invocationName,
   argumentPath,
   detailPaths,
+  preview,
 }) {
   return {
     kind: "system",
@@ -72,6 +73,7 @@ export function createSystemToolOrigin({
         ...(argumentPath ? { argumentPath } : {}),
         ...(detailPaths ? { detailPaths } : {}),
       },
+      ...(preview ? { preview } : {}),
     },
   };
 }

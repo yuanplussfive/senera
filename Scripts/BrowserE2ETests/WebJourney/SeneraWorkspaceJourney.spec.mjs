@@ -140,7 +140,7 @@ test.describe("workspace resilience and error boundary", () => {
     await trigger.press("Enter");
     const menu = page.getByRole("menu");
     await expect(menu).toBeVisible();
-    const userSettings = menu.getByRole("menuitem", { name: "用户设置" });
+    const userSettings = menu.getByRole("menuitem", { name: "个人资料" });
     await expectPortaledOutsideSessionSidebar(menu);
     await expect(userSettings).toBeFocused();
 

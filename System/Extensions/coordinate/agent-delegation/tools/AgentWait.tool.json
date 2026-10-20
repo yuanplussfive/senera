@@ -4,7 +4,8 @@
   "presentation": {
     "category": "agent-wait",
     "icon": "clock",
-    "activity": { "action": { "zh-CN": "等待", "en-US": "Wait" }, "detailPaths": ["/targets/*"] }
+    "activity": { "action": { "zh-CN": "等待", "en-US": "Wait" }, "detailPaths": ["/targets/*"] },
+    "preview": { "body": { "pointer": "/runs", "from": "result" } }
   },
   "description": "观察一个或多个子代理的生命周期；默认等待任一目标结束，使用 mode=all 等待全部目标结束。超时只结束本次等待，子代理继续运行。",
   "inputSchema": {

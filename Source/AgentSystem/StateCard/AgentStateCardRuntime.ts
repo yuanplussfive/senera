@@ -2,6 +2,9 @@ import type { ResolvedAgentModelProviderConfig, ResolvedAgentStateCardConfig } f
 import type { AgentLanguageModelCacheOptions } from "../ModelEndpoints/AgentLanguageModel.js";
 import { AgentStructuredModelClient } from "../ModelEndpoints/AgentStructuredModelClient.js";
 import { resolvePlannerProvider } from "../ActionPlanner/AgentActionPlannerProviderResolver.js";
+import { AgentCancellationError, throwAbortReason } from "../Core/AgentCancellation.js";
+import { errorMessage } from "../Core/AgentErrors.js";
+import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import {
   createAgentPiLogicalCacheScope,
   createAgentPiPromptCacheOptions,
@@ -43,9 +46,11 @@ export interface AgentStateCardRuntimeOptions {
   assistantPreviewTokens: number;
   readHistory?: (sessionId: string) => readonly AgentStateCardHistoryTurn[];
   learningRequests?: AgentBackgroundLearningRequestLedger;
+  /** Derived-context failures stay in the background diagnostics stream. */
+  logger?: AgentLogger;
 }
 
-/** Structural projection is local; follow-up resolution uses the configured structured model synchronously. */
+/** Structural projection is local; model rewriting is best-effort derived context. */
 export class AgentStateCardRuntime {
   private readonly client: AgentStructuredModelClient;
   private readonly provider: ResolvedAgentModelProviderConfig;
@@ -101,21 +106,36 @@ export class AgentStateCardRuntime {
         signal: request.signal,
         cache: this.cacheOptions(request),
       });
-    const rewrite = this.options.learningRequests
-      ? await this.options.learningRequests.run(
-          {
-            operationKey: `state_card:${key}`,
-            board: "state_card",
-            stage: "rewrite",
-            entityUri: request.sessionId,
-            attempt: 1,
-            providerId: this.provider.Id,
-            model: this.provider.Model,
-          },
-          execute,
-          (result) => ({ outputCharacters: result.standaloneRequest.length }),
-        )
-      : await execute();
+    let rewrite: Pick<AgentStateCard, "topicRelation" | "standaloneRequest">;
+    try {
+      rewrite = this.options.learningRequests
+        ? await this.options.learningRequests.run(
+            {
+              operationKey: `state_card:${key}`,
+              board: "state_card",
+              stage: "rewrite",
+              entityUri: request.sessionId,
+              attempt: 1,
+              providerId: this.provider.Id,
+              model: this.provider.Model,
+            },
+            execute,
+            (result) => ({ outputCharacters: result.standaloneRequest.length }),
+          )
+        : await execute();
+    } catch (error) {
+      if (error instanceof AgentCancellationError) throw error;
+      throwAbortReason(request.signal);
+      this.options.logger?.warn("memory.state_card.rewrite_skipped", {
+        requestId: request.requestId,
+        sessionId: request.sessionId,
+        providerId: this.provider.Id,
+        model: this.provider.Model,
+        message: errorMessage(error),
+      });
+      this.currentCard = { key, card: structural };
+      return structural;
+    }
     const resolved = { ...structural, ...rewrite };
     this.currentCard = { key, card: resolved };
     return resolved;

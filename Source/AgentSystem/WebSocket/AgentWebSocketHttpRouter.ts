@@ -12,6 +12,7 @@ import type { AgentRuntimeUpdateHttpApi } from "../Runtime/AgentRuntimeUpdateHtt
 import type { AgentChannelWebhookApi } from "../Channels/AgentChannelWebhookApi.js";
 import type { AgentSelfHttpApi } from "../SelfService/AgentSelfHttpApi.js";
 import type { AgentArtifactMemoryHttpApi } from "../Memory/AgentArtifactMemoryHttpApi.js";
+import type { AgentProfileAvatarHttpApi } from "../Session/AgentProfileAvatarHttpApi.js";
 
 export class AgentWebSocketHttpRouter {
   constructor(
@@ -20,6 +21,7 @@ export class AgentWebSocketHttpRouter {
       providerCredentialApi?: AgentProviderCredentialHttpApi;
       extensionSecretApi?: AgentExtensionSecretHttpApi;
       workspaceResourceApi?: AgentWorkspaceResourceHttpApi;
+      profileAvatarApi?: AgentProfileAvatarHttpApi;
       staticFrontendApi?: AgentStaticFrontendHttpApi;
       authenticationApi?: AgentAuthenticationHttpApi;
       healthApi?: AgentHealthHttpApi;
@@ -85,6 +87,14 @@ export class AgentWebSocketHttpRouter {
         return;
       }
       await this.options.workspaceResourceApi.handle(request, response);
+      return;
+    }
+
+    if (this.options.profileAvatarApi?.canHandle(request)) {
+      if (request.method !== "OPTIONS" && !this.authorize(request, response)) {
+        return;
+      }
+      await this.options.profileAvatarApi.handle(request, response);
       return;
     }
 

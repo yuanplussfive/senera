@@ -29,7 +29,6 @@ interface AgentWorkspaceStateMigrationMarker {
   readonly targetStateRoot: string;
   readonly completedAt: string;
   readonly backups: readonly string[];
-  readonly decision?: "imported" | "merged" | "workspace-native";
 }
 
 export type AgentWorkspaceStateMigrationResult =
@@ -67,7 +66,6 @@ export function migrateAgentWorkspaceState(
   const additionalEntries = (input.additionalEntries ?? [])
     .map((entry) => ({ source: path.resolve(entry.source), target: path.resolve(entry.target) }))
     .filter((entry) => fs.existsSync(entry.source));
-  const targetHadState = hasWorkspaceState(input.target, targetConfigPath);
   const shouldPreserveTargetConfig = Boolean(targetConfigPath && fs.existsSync(targetConfigPath));
   const migrationEntries = [
     { source: input.source.dataRoot, target: input.target.dataRoot, preserve: shouldPreserveTargetConfig },
@@ -77,16 +75,7 @@ export function migrateAgentWorkspaceState(
   const shouldCopyConfig = Boolean(
     legacyConfigPath && targetConfigPath && !shouldPreserveTargetConfig && fs.existsSync(legacyConfigPath),
   );
-  const secretKeyEntries = [
-    { source: input.source.configSecretKey, target: input.target.configSecretKey },
-    { source: input.source.credentialSecretKey, target: input.target.credentialSecretKey },
-  ].filter((entry) => fs.existsSync(entry.source) && !fs.existsSync(entry.target));
-  if (
-    migrationEntries.length === 0 &&
-    !shouldCopyConfig &&
-    secretKeyEntries.length === 0 &&
-    additionalEntries.length === 0
-  ) {
+  if (migrationEntries.length === 0 && !shouldCopyConfig && additionalEntries.length === 0) {
     if (markerMatchesMigration && marker) {
       writeFileAtomicSync(
         markerPath,
@@ -100,29 +89,23 @@ export function migrateAgentWorkspaceState(
 
   const copiedTargets: string[] = [];
   let copiedConfig = false;
-  let copiedEntries = 0;
   try {
     fs.mkdirSync(targetStateRoot, { recursive: true });
     if (shouldCopyConfig) {
       fs.mkdirSync(path.dirname(targetConfigPath!), { recursive: true });
       copyAgentPathSync(legacyConfigPath!, targetConfigPath!);
       copiedConfig = true;
-      copiedEntries += 1;
-    }
-    for (const entry of secretKeyEntries) {
-      copiedEntries += copyMissingManagedPath(entry.source, entry.target, copiedTargets);
     }
     for (const entry of migrationEntries) {
-      const shouldSkipConfigDomain = entry.preserve;
-      if (shouldSkipConfigDomain && path.resolve(entry.target) === path.resolve(input.target.dataRoot)) {
-        copiedEntries += copyDataDomainsWithoutConfig(entry.source, entry.target, copiedTargets);
+      if (entry.preserve && path.resolve(entry.target) === path.resolve(input.target.dataRoot)) {
+        copyDataDomainsWithoutConfig(entry.source, entry.target, copiedTargets);
         continue;
       }
-      copiedEntries += copyMissingManagedPath(entry.source, entry.target, copiedTargets);
+      copyMissingManagedPath(entry.source, entry.target, copiedTargets);
     }
     for (const entry of additionalEntries) {
       if (shouldPreserveTargetConfig && targetConfigPath && path.resolve(entry.target) === targetConfigPath) continue;
-      copiedEntries += copyMissingManagedPath(entry.source, entry.target, copiedTargets);
+      copyMissingManagedPath(entry.source, entry.target, copiedTargets);
     }
 
     const marker: AgentWorkspaceStateMigrationMarker = {
@@ -132,7 +115,6 @@ export function migrateAgentWorkspaceState(
       targetStateRoot,
       completedAt: new Date().toISOString(),
       backups: [],
-      decision: copiedEntries > 0 ? (targetHadState ? "merged" : "imported") : "workspace-native",
     };
     writeFileAtomicSync(markerPath, `${JSON.stringify(marker, null, 2)}\n`, { fsync: true });
     return { status: "migrated", markerPath };
@@ -145,56 +127,28 @@ export function migrateAgentWorkspaceState(
   }
 }
 
-function copyDataDomainsWithoutConfig(sourceRoot: string, targetRoot: string, copiedTargets: string[]): number {
-  if (!fs.existsSync(sourceRoot)) return 0;
-  let copiedEntries = 0;
+function copyDataDomainsWithoutConfig(sourceRoot: string, targetRoot: string, copiedTargets: string[]): void {
+  if (!fs.existsSync(sourceRoot)) return;
   for (const entry of fs.readdirSync(sourceRoot, { withFileTypes: true })) {
     if (entry.name === "config") continue;
-    const source = path.join(sourceRoot, entry.name);
-    const target = path.join(targetRoot, entry.name);
-    copiedEntries += copyMissingManagedPath(source, target, copiedTargets);
+    copyMissingManagedPath(path.join(sourceRoot, entry.name), path.join(targetRoot, entry.name), copiedTargets);
   }
-  return copiedEntries;
 }
 
-function copyMissingManagedPath(source: string, target: string, copiedTargets: string[]): number {
-  if (!fs.existsSync(source)) return 0;
+function copyMissingManagedPath(source: string, target: string, copiedTargets: string[]): void {
+  if (!fs.existsSync(source)) return;
   const sourceStats = fs.lstatSync(source);
   const targetStats = fs.existsSync(target) ? fs.lstatSync(target) : undefined;
   if (targetStats) {
-    if (!sourceStats.isDirectory() || !targetStats.isDirectory() || targetStats.isSymbolicLink()) return 0;
-    let copiedEntries = 0;
+    if (!sourceStats.isDirectory() || !targetStats.isDirectory() || targetStats.isSymbolicLink()) return;
     for (const entry of fs.readdirSync(source, { withFileTypes: true })) {
-      copiedEntries += copyMissingManagedPath(
-        path.join(source, entry.name),
-        path.join(target, entry.name),
-        copiedTargets,
-      );
+      copyMissingManagedPath(path.join(source, entry.name), path.join(target, entry.name), copiedTargets);
     }
-    return copiedEntries;
+    return;
   }
   fs.mkdirSync(path.dirname(target), { recursive: true });
   copyAgentPathSync(source, target, { recursive: sourceStats.isDirectory(), force: false, errorOnExist: true });
   copiedTargets.push(target);
-  return 1;
-}
-
-function hasWorkspaceState(target: AgentWorkspaceLayout, targetConfigPath?: string): boolean {
-  const candidates = [
-    ...(targetConfigPath ? [targetConfigPath] : []),
-    target.dataRoot,
-    target.piSessionsRoot,
-    target.configSecretKey,
-    target.credentialSecretKey,
-  ];
-  return candidates.some((candidate) => hasPathContent(candidate));
-}
-
-function hasPathContent(candidate: string): boolean {
-  if (!fs.existsSync(candidate)) return false;
-  const stats = fs.lstatSync(candidate);
-  if (!stats.isDirectory() || stats.isSymbolicLink()) return true;
-  return fs.readdirSync(candidate).some((entry) => hasPathContent(path.join(candidate, entry)));
 }
 
 function readMigrationMarker(filePath: string): AgentWorkspaceStateMigrationMarker | undefined {

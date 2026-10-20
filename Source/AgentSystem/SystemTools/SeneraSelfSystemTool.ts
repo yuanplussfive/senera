@@ -57,8 +57,8 @@ const SelfCommandOutputSchema = z
   .strict();
 
 /**
- * Host-owned `senera` command surface: config inspection and controlled
- * updates, workspace metadata, and local health checks.
+ * Host-owned `senera` command surface: configuration, Markdown presets,
+ * message channels, workspace metadata, and local health checks.
  * The tool introduces no shell indirection — every subcommand executes the
  * same implementation the human-facing CLI uses, through the live host
  * services, so config changes are revision-guarded, mirrored, and broadcast.
@@ -115,21 +115,25 @@ export function createSeneraSelfSystemTools(
           "en-US": "Senera Self-Service",
         },
         description: {
-          "zh-CN": "受控的命令面：查看和更新配置、管理 Skill、检查工作区与系统状态。",
+          "zh-CN": "受控的命令面：查看和更新配置、预设与消息渠道，管理 Skill，并检查工作区与系统状态。",
           "en-US":
-            "Controlled command surface: inspect and update configuration, manage Skills, and check workspace and system health.",
+            "Controlled command surface: inspect and update configuration, Markdown presets, and message channels; manage Skills; and check workspace and system health.",
         },
         priority: 2,
         skills: ["senera-workbench"],
       },
       metadata: {
         description:
-          "Executes the live Senera self-service command surface. The input schema is authoritative for command/action and parameter shapes; call capabilities for the live registry and governance workflow. Config and workspace Skill mutations are revision-guarded, validated, broadcast live where applicable, and adjudicated per the session approval mode. Skill reads are source-bounded; Skill writes can only target the unique workspace Skill source and retain restorable revisions. The human senera CLI and this tool share one executor.",
+          "Executes the live Senera self-service command surface for configuration, Markdown presets, message channels, Skills, logs, and workspace diagnostics. The input schema is authoritative for command/action and parameter shapes; call capabilities for the live registry and governance workflow. Config, channel, and workspace Skill mutations are revision-guarded, validated, broadcast live where applicable, and adjudicated per the session approval mode. Preset files remain workspace Markdown while activation state is host-owned. Skill reads are source-bounded; Skill writes can only target the unique workspace Skill source and retain restorable revisions. The human senera CLI and this tool share one executor.",
         permissions: [
           "config:read",
           "config:update",
           "skills:read",
           "skills:manage",
+          "preset:read",
+          "preset:update",
+          "channels:read",
+          "channels:update",
           "workspace:inspect",
           "diagnostics:read",
         ],
@@ -149,10 +153,10 @@ export function createSeneraSelfSystemTools(
               Id: "senera.self",
               Title: "Senera self-service",
               Description:
-                "Inspect or update the runtime configuration, manage Skills, and read workspace/health metadata through the host command surface.",
+                "Inspect or update runtime configuration, Markdown presets, message channels, Skills, and workspace/health metadata through the host command surface.",
               Facets: {
                 Actions: [...commandActions],
-                Targets: ["configuration", "skill", "workspace", "runtime", "session", "log"],
+                Targets: ["configuration", "preset", "channel", "skill", "workspace", "runtime", "session", "log"],
                 Inputs: [
                   "command",
                   "path",
@@ -163,6 +167,7 @@ export function createSeneraSelfSystemTools(
                   "operation",
                   "modelProviderId",
                   "sessionId",
+                  "channel",
                 ],
                 Outputs: [
                   "config-snapshot",
@@ -174,6 +179,8 @@ export function createSeneraSelfSystemTools(
                   "skill-diagnostics",
                   "doctor-report",
                   "capability-report",
+                  "preset-status",
+                  "channel-config",
                 ],
                 Effects: ["runtime-refresh", "config-change"],
               },
@@ -182,7 +189,7 @@ export function createSeneraSelfSystemTools(
             },
           ],
           UseCases: [
-            "用户要求查看或切换当前配置、模型端点，查看、校验或受控维护 Skill，或检查系统与工作区状态。",
+            "用户要求查看或切换当前配置、模型端点，创建或启用 Markdown 预设，查看或修改消息渠道，查看、校验或受控维护 Skill，或检查系统与工作区状态。",
             "任务需要了解运行环境（工作区根目录、数据库、沙箱状态）时。",
           ],
           Examples: [
@@ -192,10 +199,13 @@ export function createSeneraSelfSystemTools(
             "帮我检查一下系统状态",
             "列出当前可用的 Skill 并检查是否有效",
             "把这次确认过的工作规则保存成工作区 Skill",
+            "启用 prompts/ 下的一个 Markdown 预设",
+            "查看 QQ 渠道的有效配置或修改一个渠道字段",
           ],
           Avoid: [
             "不要用它直接读取用户文档或代码文件；用工作区工具。",
             "不要在工具中执行任意 shell 命令。",
+            "不要直接编辑 .senera 状态、渠道扩展 JSON 或凭证文件。",
             "不要用 skills inspect 绕过来源和校验读取任意路径。",
             "不要修改系统 Skill；系统来源只读。",
             "不要在没有用户确认的情况下把临时猜测写成长期 Skill。",

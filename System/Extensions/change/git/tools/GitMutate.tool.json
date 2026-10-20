@@ -4,12 +4,13 @@
   "description": "执行明确列举的本地 Git 变更；不提供 fetch、push 或 remote 操作。",
   "presentation": {
     "category": "git-change",
-    "icon": "git-branch",
+    "icon": "split",
     "activity": {
       "action": { "zh-CN": "操作", "en-US": "Change" },
       "argumentPath": "/operation",
       "detailPaths": ["/repository", "/paths/*"]
-    }
+    },
+    "preview": { "body": { "pointer": "/output", "from": "result" } }
   },
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

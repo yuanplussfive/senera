@@ -1,5 +1,5 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { isTextFilePreview } from "../../lib/filePreview";
+import { resolveFilePreview } from "../../lib/filePreview";
 import type { ToolResultPresentationChange } from "../../api/eventTypes";
 
 export type WorkspaceChangeStatus = NonNullable<ToolResultPresentationChange["workspaceStatus"]>;
@@ -44,9 +44,17 @@ export function isWorkspaceDirectoryChange(change: ToolResultPresentationChange)
   );
 }
 
-/** Only text-like workspace files have meaningful line-level hover previews. */
+/** The shared file profile determines whether a workspace change is text-like. */
 export function isWorkspaceTextChange(change: ToolResultPresentationChange): boolean {
-  return isWorkspaceFileChange(change) && isTextFilePreview({ name: change.key });
+  return resolveWorkspaceChangePreview(change)?.contentKind === "text";
+}
+
+/**
+ * Workspace changes use the same file-profile registry as resources and the
+ * editor, preventing file-type dispatch from drifting between surfaces.
+ */
+export function resolveWorkspaceChangePreview(change: ToolResultPresentationChange) {
+  return isWorkspaceFileChange(change) ? resolveFilePreview({ name: change.key }) : undefined;
 }
 
 const WorkspaceStatusMessageKeys = {

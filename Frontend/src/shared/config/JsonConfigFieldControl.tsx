@@ -40,21 +40,31 @@ export function JsonConfigFieldControl({
     );
   }
   return (
-    <div
-      className={cn(
-        "grid min-h-[64px] min-w-0 gap-3 px-4 py-3 sm:px-5 md:grid-cols-[minmax(220px,1fr)_minmax(260px,380px)]",
-        field.type === "array" || field.type === "record" ? "md:items-start" : "md:items-center",
-        wide && "md:grid-cols-1 md:gap-3 md:px-5 md:py-4",
+    <div data-json-config-field={field.path.join(".")}>
+      {wide ? (
+        <div className="grid min-w-0 gap-3 px-4 py-3 sm:px-5 md:gap-3 md:px-5 md:py-4">
+          <div className="min-w-0">
+            {label}
+            {field.description ? (
+              <p className="mt-0.5 text-[11.5px] leading-5 text-ink-500">{field.description}</p>
+            ) : null}
+          </div>
+          <div className="min-w-0 w-full">
+            {renderJsonConfigFieldInput(field, value ?? field.defaultValue, disabled, onChange, readSecret)}
+          </div>
+        </div>
+      ) : (
+        <SettingsControlRow
+          label={label}
+          description={field.description}
+          control={renderJsonConfigFieldInput(field, value ?? field.defaultValue, disabled, onChange, readSecret)}
+          controlClassName={cn(
+            "md:max-w-[320px]",
+            field.type === "array" || field.type === "record" ? "md:items-start" : undefined,
+          )}
+          className="min-h-[64px] px-4 py-3 sm:px-5"
+        />
       )}
-      data-json-config-field={field.path.join(".")}
-    >
-      <div className={cn("min-w-0 pr-2", wide && "pr-0")}>
-        {label}
-        {field.description ? <p className="mt-0.5 text-[11.5px] leading-5 text-ink-500">{field.description}</p> : null}
-      </div>
-      <div className={cn("min-w-0 w-full md:justify-self-stretch", wide && "md:w-full")}>
-        {renderJsonConfigFieldInput(field, value ?? field.defaultValue, disabled, onChange, readSecret)}
-      </div>
     </div>
   );
 }

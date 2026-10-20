@@ -6,7 +6,7 @@
   "settingsSurface": "system-tools",
   "presentation": {
     "category": "tool-discovery",
-    "icon": "search",
+    "icon": "scan-search",
     "group": {
       "id": "tool-discovery",
       "title": { "zh-CN": "查找工具", "en-US": "Find tools" }

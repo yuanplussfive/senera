@@ -4,8 +4,9 @@
   "description": "Add one or more pending tasks to the current session. The tool assigns stable IDs; use TodoUpdate to change their status or description.",
   "presentation": {
     "category": "todo-add",
-    "icon": "list-checks",
-    "activity": { "action": { "zh-CN": "新增", "en-US": "Add tasks" }, "detailPaths": ["/tasks/*/content"] }
+    "icon": "plus",
+    "activity": { "action": { "zh-CN": "新增", "en-US": "Add tasks" }, "detailPaths": ["/tasks/*/content"] },
+    "preview": { "body": { "pointer": "/created", "from": "result" } }
   },
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

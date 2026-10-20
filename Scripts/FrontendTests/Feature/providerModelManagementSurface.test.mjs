@@ -250,6 +250,42 @@ test("embedded model search exposes its disclosure state and clears a hidden que
   expect(screen.getByRole("textbox", { name: frontendMessage("config.model.searchPlaceholder") })).toHaveValue("");
 });
 
+test("model rows clearly identify the configured default model", () => {
+  const defaultModel = {
+    Id: "openai/gpt-4.1",
+    ProviderId: "openai",
+    Model: "gpt-4.1",
+    Endpoint: "chat",
+    Capabilities: { Chat: true },
+  };
+  const otherModel = {
+    Id: "openai/gpt-4.1-mini",
+    ProviderId: "openai",
+    Model: "gpt-4.1-mini",
+    Endpoint: "chat",
+    Capabilities: { Chat: true },
+  };
+  const props = createProps({ model: defaultModel, onUpsertProviderModel: vi.fn() });
+  props.state.models = [defaultModel, otherModel];
+  props.state.defaultModel = { model: defaultModel };
+  props.catalogs.openai.models = [
+    { id: defaultModel.Model, ownedBy: "openai" },
+    { id: otherModel.Model, ownedBy: "openai" },
+  ];
+
+  renderWithFrontendProviders(React.createElement(ProviderModelManagementSurface, props));
+
+  const defaultRows = document.querySelectorAll('[data-model-default="true"]');
+  const regularRows = document.querySelectorAll('[data-model-default="false"]');
+  expect(defaultRows).toHaveLength(1);
+  expect(regularRows).toHaveLength(1);
+  expect(defaultRows[0]).toHaveTextContent(defaultModel.Model);
+  expect(defaultRows[0]).toHaveTextContent(frontendMessage("config.model.defaultBadge"));
+  expect(defaultRows[0].querySelector("[data-model-default-badge]")).not.toBeNull();
+  expect(regularRows[0]).toHaveTextContent(otherModel.Model);
+  expect(regularRows[0].querySelector("[data-model-default-badge]")).toBeNull();
+});
+
 test("manual model add uses the compact form without groups and keeps advanced content scrollable", async () => {
   const user = userEvent.setup();
   const onUpsertProviderModel = vi.fn(() => "manual-save");

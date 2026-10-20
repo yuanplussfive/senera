@@ -1,4 +1,5 @@
 import type { ChatMessage, ModelThinkingBlock, RunRecord, TimelineStep } from "../../store/sessionStore";
+import { timelineToolExecutionKey } from "../../store/session/timelineProjection";
 import type { AssistantTurnListItem } from "./assistantTurnProjection";
 
 export interface AssistantTurnStage {
@@ -366,7 +367,7 @@ function projectResponseExecutionItems(
   const toolBatches = new Map<string, TimelineStep[]>();
   for (const step of parentSteps) {
     if (step.kind !== "tool" || !step.callId || !step.toolName) continue;
-    const identity = step.toolBatch?.id ? `batch:${step.toolBatch.id}` : `call:${step.callId}`;
+    const identity = timelineToolExecutionKey(step);
     const group = toolBatches.get(identity) ?? [];
     group.push(step);
     toolBatches.set(identity, group);

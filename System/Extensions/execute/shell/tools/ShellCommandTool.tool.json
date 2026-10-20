@@ -4,7 +4,8 @@
   "presentation": {
     "category": "shell-command",
     "icon": "terminal",
-    "activity": { "action": { "zh-CN": "执行", "en-US": "Run" }, "argumentPath": "/script" }
+    "activity": { "action": { "zh-CN": "执行", "en-US": "Run" }, "argumentPath": "/script" },
+    "preview": { "body": { "pointer": "/updates", "from": "result" } }
   },
   "description": "在工作区执行 Shell 命令并保留可查询输出。mode、dialect、script、cwd、timeoutMs 和 workspaceEffect 均为顶层参数；服务以前台方式运行，timeoutMs=0 表示持续跟踪进程树，直到退出或显式停止。",
   "inputSchema": {
@@ -108,7 +109,7 @@
           "Locator": "{{ cwd }}",
           "Display": "shell exit {{ exitCode }}: {{ command }}",
           "Label": "{{ command }}",
-          "Source": "{% if stderr != blank %}{{ stderr }}{% else %}{{ stdout }}{% endif %}"
+          "Source": "{% if stderr %}{{ stderr }}{% elsif stdout %}{{ stdout }}{% else %}{{ command }}{% endif %}"
         },
         "Confidence": 0.74,
         "Metadata": { "cwd": "$.cwd", "exitCode": "$.exitCode", "signal": "$.signal" },
@@ -127,5 +128,38 @@
       "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
       "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}{% if workspace %}{% for change in workspace.changes %}- {{ change.status }} {{ change.path }}\n{% endfor %}{% endif %}"
     }
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "command": { "type": "string" },
+      "shellDialect": { "type": "string", "enum": ["posix-sh", "powershell"] },
+      "cwd": { "type": "string" },
+      "resourceId": { "type": "string" },
+      "kind": { "type": "string", "const": "process" },
+      "state": { "type": "string" },
+      "fromCursor": { "type": "number" },
+      "cursor": { "type": "number" },
+      "oldestCursor": { "type": "number" },
+      "historyTruncated": { "type": "boolean" },
+      "updates": { "type": "array", "items": { "type": "object" } },
+      "exitCode": { "anyOf": [{ "type": "number" }, { "type": "null" }] },
+      "signal": { "anyOf": [{ "type": "string" }, { "type": "number" }, { "type": "null" }] },
+      "error": { "type": "string" }
+    },
+    "required": [
+      "command",
+      "shellDialect",
+      "cwd",
+      "resourceId",
+      "kind",
+      "state",
+      "fromCursor",
+      "cursor",
+      "oldestCursor",
+      "updates"
+    ],
+    "additionalProperties": false
   }
 }

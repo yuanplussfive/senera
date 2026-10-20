@@ -1,7 +1,7 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { ModelsDevModelMetadata } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
-import { AppIcon, Button, Dialog, DialogContent, InlineError, MenuSelect, ScrollArea, Tooltip } from "../../shared/ui";
+import { AppIcon, Button, Dialog, DialogContent, InlineError, MenuSelect, ScrollArea } from "../../shared/ui";
 import { ModelProviderIconNames } from "./ModelProviderIcon";
 import { ModelThinkingControls } from "./ModelThinkingControls";
 import {
@@ -27,16 +27,13 @@ export function ModelOptionsDialog({
   model,
   modelIndex,
   modelTemplate,
-  defaultModelId,
   endpointOptions,
   disabled,
   onOpenChange,
   onChange,
   onCommit,
   onCommitDraft,
-  onSetDefault,
   onRemove,
-  removeDisabledReason,
   errorMessage,
   discardAction,
   catalogMetadata,
@@ -48,16 +45,13 @@ export function ModelOptionsDialog({
   model: ModelProviderDraft | null;
   modelIndex: number | null;
   modelTemplate: Record<string, unknown>;
-  defaultModelId: string;
   endpointOptions: Array<{ value: string; label: string }>;
   disabled: boolean;
   onOpenChange: (open: boolean) => void;
   onChange: (patch: Partial<ModelProviderDraft>) => void;
   onCommit: () => void;
   onCommitDraft?: () => void;
-  onSetDefault?: (modelId: string) => void;
   onRemove: (index: number) => void;
-  removeDisabledReason?: string;
   /** Last save failure for this model, shown above the footer actions. */
   errorMessage?: string | null;
   /** Escape hatch when the save-on-close cycle cannot complete. */
@@ -74,7 +68,6 @@ export function ModelOptionsDialog({
   const capabilities = readModelCapabilities(model, modelTemplate);
   const toolPlanningMode = readModelToolPlanningMode(model, modelTemplate);
   const iconOptions = ModelProviderIconNames.map((icon) => ({ value: icon, label: icon }));
-  const isDefault = model.Id === defaultModelId;
   const isSaved = modelIndex !== null;
   const temperature = readNumberWithTemplate(model.Temperature, modelTemplate, "Temperature");
   const maxOutputTokens = readNumberWithTemplate(model.MaxOutputTokens, modelTemplate, "MaxOutputTokens");
@@ -146,7 +139,7 @@ export function ModelOptionsDialog({
   const removeButton = (
     <button
       type="button"
-      disabled={disabled || !isSaved || Boolean(removeDisabledReason)}
+      disabled={disabled || !isSaved}
       className={cn(
         "inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[12px] transition disabled:pointer-events-none disabled:opacity-50",
         isSaved
@@ -158,11 +151,7 @@ export function ModelOptionsDialog({
       }}
     >
       <AppIcon icon="trash" size={14} />
-      {removeDisabledReason
-        ? frontendMessage("config.model.changeDefaultFirst")
-        : isSaved
-          ? frontendMessage("config.model.remove")
-          : frontendMessage("config.model.unsaved")}
+      {isSaved ? frontendMessage("config.model.remove") : frontendMessage("config.model.unsaved")}
     </button>
   );
 
@@ -413,34 +402,12 @@ export function ModelOptionsDialog({
         <div className="shrink-0 border-t border-ink-200/70 bg-paper-100 px-5 py-3">
           {errorMessage ? <InlineError className="mb-2">{errorMessage}</InlineError> : null}
           <div className="flex items-center justify-between">
-            {removeDisabledReason ? (
-              <Tooltip content={removeDisabledReason} side="top">
-                <span className="inline-flex">{removeButton}</span>
-              </Tooltip>
-            ) : (
-              removeButton
-            )}
+            {removeButton}
             <div className="flex items-center gap-2">
               {discardAction ? (
                 <Button size="sm" variant="outline" onClick={discardAction.onDiscard}>
                   {discardAction.label}
                 </Button>
-              ) : null}
-              {onSetDefault ? (
-                <button
-                  type="button"
-                  disabled={disabled || !isSaved || !model.Id || isDefault}
-                  className={cn(
-                    "inline-flex h-8 items-center rounded-md border px-3 text-[12px] transition",
-                    isDefault
-                      ? "border-accent-border bg-accent-surface text-accent-content"
-                      : "border-ink-200 bg-paper-50 text-ink-650 hover:border-accent-border-strong hover:text-accent-content-hover",
-                    "disabled:pointer-events-none disabled:opacity-50",
-                  )}
-                  onClick={() => onSetDefault(model.Id)}
-                >
-                  {isDefault ? frontendMessage("config.model.default") : frontendMessage("config.model.setDefault")}
-                </button>
               ) : null}
               <Button size="sm" disabled={disabled} onClick={onCommit}>
                 {isSaved ? commitLabels.existing : commitLabels.new}

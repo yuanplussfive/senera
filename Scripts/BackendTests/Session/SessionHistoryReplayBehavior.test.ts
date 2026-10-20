@@ -17,6 +17,19 @@ import { AgentSessionEventFactory } from "../../../Source/AgentSystem/Session/Ag
 import { AgentSessionHistoryReplay } from "../../../Source/AgentSystem/Session/AgentSessionHistoryReplay.js";
 import { AgentSessionStore } from "../../../Source/AgentSystem/Session/AgentSessionStore.js";
 import type { AgentHistoryStepRun } from "../../../Source/AgentSystem/Session/AgentSessionEventTypes.js";
+import type { AgentToolPresentation } from "../../../Source/AgentSystem/Types/AgentToolPresentationTypes.js";
+
+const HistoricalWebPresentation: AgentToolPresentation = {
+  category: "web-search",
+  icon: "search",
+  group: { id: "web", title: { "en-US": "Web", "zh-CN": "网页" } },
+  activity: { action: { "en-US": "Search", "zh-CN": "搜索" } },
+};
+
+const PreviousWebPresentation: AgentToolPresentation = {
+  ...HistoricalWebPresentation,
+  category: "legacy-web-search",
+};
 
 describe("Session history replay behavior", () => {
   test("projects recovery actions from stored run status for historical failures", async () => {
@@ -58,6 +71,67 @@ describe("Session history replay behavior", () => {
         data: expect.objectContaining({ operation: "session.history" }),
       }),
     ]);
+  });
+
+  test("updates only the replay presentation for a trace confirmed by the current tool catalog", async () => {
+    const fixture = createReplayFixture({
+      createPresentationResolver: (trace) =>
+        trace.toolName === "WebSearch" &&
+        trace.toolOrigin?.kind === "system" &&
+        trace.toolOrigin.capability === "web.search"
+          ? HistoricalWebPresentation
+          : undefined,
+    });
+    const sessionId = "presentation-reconciliation";
+    fixture.store.open(sessionId);
+    fixture.store.persistTurnArtifacts(
+      sessionId,
+      "request-1",
+      [],
+      [
+        {
+          step: 1,
+          seq: 1,
+          kind: "tool",
+          status: "done",
+          toolName: "WebSearch",
+          toolOrigin: {
+            kind: "system",
+            name: "Web",
+            capability: "web.search",
+            presentation: PreviousWebPresentation,
+          },
+        },
+        {
+          step: 2,
+          seq: 2,
+          kind: "tool",
+          status: "done",
+          toolName: "Unknown",
+          toolOrigin: {
+            kind: "system",
+            name: "Unknown",
+            capability: "unknown.tool",
+            presentation: PreviousWebPresentation,
+          },
+        },
+      ],
+    );
+
+    const events: AgentDomainEvent[] = [];
+    await fixture.replay.replay({
+      sessionId,
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    const traces = events
+      .flatMap((event) => (event.kind === AgentEventKinds.SessionHistorySteps ? event.data.runs : []))
+      .flatMap((run) => run.traces);
+
+    expect(traces[0]?.toolOrigin?.presentation).toEqual(HistoricalWebPresentation);
+    expect(traces[0]?.toolOrigin?.name).toBe("Web");
+    expect(traces[1]?.toolOrigin?.presentation).toEqual(PreviousWebPresentation);
   });
 
   test("streams entries and run events in bounded chunks with ordered lifecycle events", async () => {
@@ -511,12 +585,15 @@ function createReplayFixture(
     stepRunPageSize?: number;
     runEventPageSize?: number;
     maxRunEventChunkBytes?: number;
+    createPresentationResolver?: import("../../../Source/AgentSystem/Session/AgentSessionHistoryReplay.js").AgentSessionHistoryPresentationResolver;
   } = {},
 ) {
   const store = new AgentSessionStore({ repository: options.repository ?? new InMemorySessionRepository() });
+  const presentationResolver = options.createPresentationResolver;
   const replay = new AgentSessionHistoryReplay({
     store,
     eventFactory: new AgentSessionEventFactory(),
+    createPresentationResolver: presentationResolver ? () => presentationResolver : undefined,
     paging: {
       entryPageSize: options.entryPageSize,
       stepRunPageSize: options.stepRunPageSize,

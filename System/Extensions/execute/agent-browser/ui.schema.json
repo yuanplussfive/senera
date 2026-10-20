@@ -6,10 +6,26 @@
         "id": "runtime",
         "label": { "zh-CN": "浏览器运行时", "en-US": "Browser runtime" },
         "description": {
-          "zh-CN": "Senera 启动独立的受控浏览器会话；模型不能读取或修改浏览器启动参数、用户资料或认证状态。",
-          "en-US": "Senera launches isolated controlled browser sessions. Models cannot read or change browser launch arguments, profiles, or authentication state."
+          "zh-CN": "Senera 管理受控浏览器会话；模型不能读取或修改浏览器启动参数、用户资料或认证状态。",
+          "en-US": "Senera manages controlled browser sessions. Models cannot read or change browser launch arguments, profiles, or authentication state."
         },
         "fields": [
+          {
+            "path": ["runtime", "context"],
+            "label": { "zh-CN": "浏览器状态", "en-US": "Browser state" },
+            "description": {
+              "zh-CN": "记住登录会使用 Senera 专属浏览器保存网站登录与站点数据；临时浏览器会在会话结束后清除这些状态。",
+              "en-US": "Remember sign-ins uses a Senera-only browser that keeps website sign-ins and site data. A temporary browser clears that state when the session ends."
+            },
+            "type": "string",
+            "options": ["persistent", "temporary"],
+            "optionLabels": {
+              "persistent": { "zh-CN": "记住登录（推荐）", "en-US": "Remember sign-ins (recommended)" },
+              "temporary": { "zh-CN": "临时浏览器", "en-US": "Temporary browser" }
+            },
+            "required": true,
+            "essential": true
+          },
           {
             "path": ["runtime", "headed"],
             "label": { "zh-CN": "显示浏览器窗口", "en-US": "Show browser window" },
@@ -51,7 +67,7 @@
             "max": 3600000,
             "step": 1000,
             "required": true,
-            "essential": true
+            "essential": false
           },
           {
             "path": ["runtime", "maxOperationTimeoutMs"],
@@ -65,7 +81,7 @@
             "max": 3600000,
             "step": 1000,
             "required": true,
-            "essential": true
+            "essential": false
           },
           {
             "path": ["runtime", "idleTimeoutMs"],
@@ -85,7 +101,7 @@
             "max": 2000000,
             "step": 1024,
             "required": true,
-            "essential": true
+            "essential": false
           },
           {
             "path": ["runtime", "maxUrlLength"],

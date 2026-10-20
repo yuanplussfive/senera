@@ -13,6 +13,7 @@ import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import { projectAgentErrorMessage } from "../I18n/AgentMessageProjection.js";
 import type { AgentWebSocketRequestOf } from "./AgentWebSocketProtocol.js";
 import type { AgentWebSocketEventSender, AgentWebSocketRequestContext } from "./AgentWebSocketTypes.js";
+import { sendAgentMcpSettingsSnapshot } from "./AgentWebSocketSettingsRequestHandlers.js";
 
 export class AgentWebSocketConfigRequestHandlers {
   constructor(
@@ -126,6 +127,9 @@ export class AgentWebSocketConfigRequestHandlers {
         operation: { commandId: request.commandId, kind: "config_update" },
       },
     });
+    if (this.context.mcpManagement && this.context.pluginHost) {
+      await sendAgentMcpSettingsSnapshot(this.context, sendEvent);
+    }
     await this.broadcastConfigReloaded(snapshot);
   }
 

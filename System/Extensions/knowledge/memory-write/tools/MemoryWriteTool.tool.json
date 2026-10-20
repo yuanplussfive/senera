@@ -4,7 +4,8 @@
   "presentation": {
     "category": "memory-write",
     "icon": "brain",
-    "activity": { "action": { "zh-CN": "保存", "en-US": "Save" }, "argumentPath": "/summary" }
+    "activity": { "action": { "zh-CN": "保存", "en-US": "Save" }, "argumentPath": "/summary" },
+    "preview": { "body": { "pointer": "/records/item", "from": "result" } }
   },
   "description": "接收用户明确要求记住的信息，在本轮正常完成后交给 MemOS 学习。",
   "inputSchema": {
@@ -89,5 +90,30 @@
       "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
       "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}"
     }
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "status": { "type": "string", "const": "accepted_for_learning" },
+      "records": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": { "summary": { "type": "string" } },
+              "required": ["summary"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["item"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["status", "records"],
+    "additionalProperties": false
   }
 }

@@ -143,7 +143,6 @@ export function ProviderModelManagementSurface({
   const selectedList = selectedProvider
     ? readProviderModelListState({
         catalogs,
-        defaultModelId: state.defaultModel?.model.Id ?? "",
         errors,
         loadingIds: loadingProviderIds,
         modelGroups,
@@ -324,7 +323,7 @@ export function ProviderModelManagementSurface({
           groups={visibleGroups}
           models={state.models}
           modelTemplate={modelTemplate}
-          defaultModelId={state.defaultModel?.model.Id ?? ""}
+          defaultModelId={state.defaultModel?.model.Id ?? null}
           pendingModelIds={pendingModelIds}
           search={search}
           disabled={disabled}
@@ -347,7 +346,6 @@ export function ProviderModelManagementSurface({
         model={editingModel}
         modelIndex={editingExisting ? 0 : null}
         modelTemplate={modelTemplate}
-        defaultModelId={state.defaultModel?.model.Id ?? ""}
         endpointOptions={endpointChoices}
         // The save queue keeps a newer local draft while a request is pending.
         // Disabling the whole dialog on every auto-save made the form visibly

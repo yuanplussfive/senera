@@ -2,6 +2,26 @@ import type { EventEnvelope, StepTraceDto } from "../../api/eventTypes";
 import type { TimelineStep } from "./types";
 
 /**
+ * Returns the semantic identity used when tool records are projected into
+ * response items. A provider batch is authoritative; otherwise the response
+ * boundary is the only stable grouping signal. Old records without either
+ * signal remain one legacy stage instead of inventing a boundary from a call
+ * id, which is unique per invocation rather than per response.
+ */
+export function timelineToolExecutionKey(
+  step: Pick<TimelineStep, "toolBatch" | "agentStep" | "modelMessageIndex" | "scope">,
+): string {
+  const batchId = step.toolBatch?.id?.trim();
+  if (batchId) return `batch:${batchId}`;
+  const agentStep = step.agentStep ?? step.scope?.parentAgentStep;
+  const modelMessageIndex = step.modelMessageIndex ?? step.scope?.parentModelMessageIndex;
+  if (agentStep !== undefined || modelMessageIndex !== undefined) {
+    return `response:${agentStep ?? "unknown"}:${modelMessageIndex ?? "unknown"}`;
+  }
+  return "legacy:stage";
+}
+
+/**
  * Terminal assistant messages can arrive both as a live event step and as a
  * durable answer trace. The two records have different storage ids, so the
  * semantic key is used when reconciling those projections.
@@ -44,20 +64,20 @@ export function toolBatchFromEvent(
 ): NonNullable<TimelineStep["toolBatch"]> {
   const eventData = readRecord(env.data);
   const batchId = typeof eventData.batchId === "string" && eventData.batchId.trim() ? eventData.batchId : undefined;
-  const callId = typeof eventData.callId === "string" && eventData.callId.trim() ? eventData.callId : undefined;
   const executionMode =
     eventData.executionMode === "parallel" || eventData.executionMode === "sequential"
       ? eventData.executionMode
       : undefined;
   return {
-    id: batchId ?? fallbackToolBatchId(env, callId),
+    id: batchId ?? fallbackToolBatchId(env, eventData),
     index: data?.index,
     size,
     executionMode,
   };
 }
 
-function fallbackToolBatchId(env: EventEnvelope, callId: string | undefined): string {
+function fallbackToolBatchId(env: EventEnvelope, eventData: Record<string, unknown>): string {
+  const modelMessageIndex = readFiniteNumber(eventData.modelMessageIndex) ?? env.scope?.parentModelMessageIndex;
   return [
     env.scope?.parentSessionId,
     env.scope?.parentRequestId,
@@ -66,8 +86,8 @@ function fallbackToolBatchId(env: EventEnvelope, callId: string | undefined): st
     env.scope?.jobId,
     env.scope?.childRunId,
     env.requestId,
-    env.step ?? 0,
-    callId ? `call:${callId}` : `event:${env.sequence}`,
+    env.step,
+    modelMessageIndex === undefined ? undefined : `message:${modelMessageIndex}`,
   ]
     .filter((value) => value !== undefined && value !== "")
     .join(":");
@@ -75,9 +95,13 @@ function fallbackToolBatchId(env: EventEnvelope, callId: string | undefined): st
 
 export function toolBatchForTrace(requestId: string, trace: StepTraceDto): NonNullable<TimelineStep["toolBatch"]> {
   return {
-    id: trace.batchId ?? [requestId, trace.step, trace.callId ? `call:${trace.callId}` : trace.seq].join(":"),
+    id: trace.batchId ?? [requestId, trace.step].join(":"),
     index: trace.seq,
   };
+}
+
+function readFiniteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 import { unknownRecordOrEmpty as readRecord } from "../../lib/unknownValue";

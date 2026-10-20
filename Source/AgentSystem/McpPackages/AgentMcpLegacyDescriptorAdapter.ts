@@ -5,7 +5,7 @@ import {
   parseAgentMcpEnvironmentTemplate,
   type AgentMcpEnvironmentReference,
 } from "./AgentMcpEnvironmentTemplate.js";
-import type { AgentMcpDescriptorAdapter } from "./AgentMcpDescriptorAdapter.js";
+import { readMcpPluginIdentityPresentation, type AgentMcpDescriptorAdapter } from "./AgentMcpDescriptorAdapter.js";
 import type { AgentMcpInputDefinition } from "./AgentMcpInputDefinition.js";
 import {
   AgentMcpConfigurationDocumentSchema,
@@ -19,9 +19,13 @@ export const AgentMcpLegacyDescriptorAdapter: AgentMcpDescriptorAdapter = {
   recognizes: () => true,
   project(context, document) {
     const configuration = AgentMcpConfigurationDocumentSchema.parse(document);
+    const presentation = readMcpPluginIdentityPresentation(configuration.presentation, "MCP presentation", [
+      "presentation",
+    ]);
     return {
       name: context.directoryName,
       descriptorKind: "legacy",
+      ...(presentation ? { presentation } : {}),
       execution: configuration.execution ?? createAgentMcpDefaultLocalExecution(),
       ...(configuration.requirements ? { requirements: configuration.requirements } : {}),
       servers: Object.entries(configuration.mcpServers).map(([name, server]) => {

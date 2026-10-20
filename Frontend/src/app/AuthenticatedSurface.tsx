@@ -26,7 +26,11 @@ export function AuthenticatedSurface({
 
   return surface === "settings" ? (
     <Suspense fallback={<SettingsSurfaceLoading presentation="desktop" />}>
-      <LazyDesktopSettingsSurface initialSection={settingsSection} socketReconnectPolicy={socketReconnectPolicy} />
+      <LazyDesktopSettingsSurface
+        initialSection={settingsSection}
+        socketReconnectPolicy={socketReconnectPolicy}
+        csrfToken={authentication.state === "authenticated" ? authentication.csrfToken : undefined}
+      />
     </Suspense>
   ) : (
     <Suspense fallback={<ApplicationSurfaceLoading />}>

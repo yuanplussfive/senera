@@ -103,7 +103,7 @@ export function RunSelector({
           />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="scrollbar-thin max-h-[60vh] w-[420px] overflow-y-auto">
+      <DropdownMenuContent align="end" className="max-h-[60vh] w-[420px] overflow-y-auto">
         <DropdownMenuLabel>{frontendMessage("workflow.run.allRuns", { count: runs.length })}</DropdownMenuLabel>
         {reversed.map((run, index) => {
           const isCurrent = run.requestId === current.requestId;

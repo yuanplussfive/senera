@@ -96,7 +96,7 @@ export function MenuSelect({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="start"
-        className={cn("scrollbar-thin max-h-[320px] min-w-[240px] overflow-y-auto", contentClassName)}
+        className={cn("max-h-[320px] min-w-[240px] overflow-y-auto", contentClassName)}
       >
         {options.length > 0 ? (
           <DropdownMenuRadioGroup value={value} onValueChange={(next) => next !== value && onChange(next)}>

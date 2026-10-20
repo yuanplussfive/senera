@@ -7,13 +7,13 @@
   "version": "1.0.0",
   "displayName": { "zh-CN": "Senera 自服务", "en-US": "Senera Self-Service" },
   "description": {
-    "zh-CN": "受控的命令面：查看和更新配置、管理 Skill、检查工作区与系统状态。",
-    "en-US": "Controlled command surface: inspect and update configuration, manage Skills, and check workspace and system health."
+    "zh-CN": "受控的命令面：查看和更新配置、预设与消息渠道，管理 Skill，并检查工作区与系统状态。",
+    "en-US": "Controlled command surface: inspect and update configuration, Markdown presets, and message channels; manage Skills; and check workspace and system health."
   },
   "priority": 2,
   "presentation": {
     "category": "self-service",
-    "icon": "tools",
+    "icon": "settings",
     "group": { "id": "self-service", "title": { "zh-CN": "管理 Senera", "en-US": "Manage Senera" } },
     "activity": { "action": { "zh-CN": "管理 Senera", "en-US": "Manage Senera" } }
   },

@@ -52,7 +52,7 @@ test("the complete UI sends a message and restores the server-owned conversation
       }),
     ).toBe("ready");
   }, integrationWaitOptions);
-  const composer = await screen.findByPlaceholderText("跟 senera 说点什么");
+  const composer = await screen.findByPlaceholderText("跟 senera 说点什么", {}, integrationWaitOptions);
   const user = userEvent.setup();
 
   await user.type(composer, "验证完整界面链路{enter}");
@@ -103,7 +103,7 @@ test("switching recovered sessions keeps each server-owned conversation isolated
     expect(useStore.getState().sessionOrder).toEqual(expect.arrayContaining(["session_alpha", "session_beta"]));
   });
   await user.click(screen.getByRole("button", { name: frontendMessage("session.headerExpand") }));
-  await user.click(await screen.findByRole("button", { name: "打开会话：alpha only" }));
+  await user.click(await screen.findByRole("button", { name: "打开会话：alpha only" }, integrationWaitOptions));
   await waitFor(() => {
     expectVisibleText("E2E response: alpha only");
   });
@@ -113,7 +113,7 @@ test("switching recovered sessions keeps each server-owned conversation isolated
   });
 
   await user.click(screen.getByRole("button", { name: frontendMessage("session.headerExpand") }));
-  await user.click(await screen.findByRole("button", { name: "打开会话：beta only" }));
+  await user.click(await screen.findByRole("button", { name: "打开会话：beta only" }, integrationWaitOptions));
   await waitFor(() => {
     expectVisibleText("E2E response: beta only");
   });

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useAgentSocket, type AgentSocketReconnectPolicy, type SocketStatus } from "../api/useAgentSocket";
 import type { WsRequest } from "../api/eventTypes";
 import { buildSettingsSurfaceSyncRequests } from "./settingsSurfaceSync";
@@ -10,10 +10,12 @@ import { SettingsSurfaceLoading } from "./SurfaceLoading";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import { AppMotionProvider } from "../shared/motion/MotionProvider";
 import { AppAppearanceProvider } from "../shared/theme/useAppearance";
-import { SeneraToaster, TooltipProvider } from "../shared/ui";
+import { SeneraToaster, StateView, TooltipProvider } from "../shared/ui";
 import { useStore } from "../store/sessionStore";
 import { resolveRuntimeHttpBaseUrl, resolveRuntimeWebSocketUrl } from "../config/runtimeConfig";
+import { resolveWorkspaceScopedHttpBaseUrl } from "../config/workspaceRuntimeConfig";
 import { useRuntimeUpdate } from "./runtimeUpdate";
+import { WorkspaceResourceProvider } from "../shared/workspace/WorkspaceResourceProvider";
 
 const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
 const HTTP_BASE_URL = resolveRuntimeHttpBaseUrl(WS_URL);
@@ -24,9 +26,11 @@ const LazySettingsWorkbench = lazy(() =>
 export function DesktopSettingsRuntimeSurface({
   initialSection,
   socketReconnectPolicy,
+  csrfToken,
 }: {
   initialSection: SettingsSectionId;
   socketReconnectPolicy: AgentSocketReconnectPolicy;
+  csrfToken?: string;
 }): JSX.Element {
   const [section, setSection] = useState(initialSection);
   const [pendingChanges, setPendingChanges] = useState(false);
@@ -52,6 +56,8 @@ export function DesktopSettingsRuntimeSurface({
   sendRef.current = send;
   statusRef.current = status;
   const runtime = useSettingsRuntime({ httpBaseUrl: HTTP_BASE_URL, sendRef, statusRef, status });
+  const workspaceId = runtime.workspace.snapshot?.workspaceId;
+  const scopedHttpBaseUrl = resolveWorkspaceScopedHttpBaseUrl(HTTP_BASE_URL, workspaceId);
   settingsEventHandlerRef.current = runtime.ingestSettingsEvent;
   const bridge = readDesktopBridge();
   const runtimeUpdate = useRuntimeUpdate({
@@ -59,12 +65,13 @@ export function DesktopSettingsRuntimeSurface({
     currentVersion: __SENERA_APP_VERSION__,
     surface: "desktop",
   });
-  const settingsReady = Boolean(runtime.systemConfig.configSnapshot);
+  const workspaceReady = runtime.workspace.snapshot !== null;
+  const settingsReady = workspaceReady && Boolean(runtime.systemConfig.configSnapshot);
 
   useEffect(() => {
     if (status !== "open") return;
-    for (const request of buildSettingsSurfaceSyncRequests()) send(request);
-  }, [send, status]);
+    for (const request of buildSettingsSurfaceSyncRequests(section)) send(request);
+  }, [section, send, status]);
 
   useEffect(() => {
     void bridge?.setSettingsDirty?.(pendingChanges);
@@ -74,44 +81,60 @@ export function DesktopSettingsRuntimeSurface({
     return bridge?.onSettingsCloseRequested?.(() => setCloseConfirmationOpen(true));
   }, [bridge]);
 
-  const changeSection = (nextSection: SettingsSectionId): void => {
+  const changeSection = useCallback((nextSection: SettingsSectionId): void => {
     const search = new URLSearchParams(window.location.search);
     search.set("surface", "settings");
     search.set("section", nextSection);
     window.history.replaceState(window.history.state, "", `${window.location.pathname}?${search.toString()}`);
     setSection(nextSection);
-  };
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = bridge?.onSettingsNavigationRequested?.(changeSection);
+    void bridge?.notifySettingsSurfaceReady?.();
+    return unsubscribe;
+  }, [bridge, changeSection]);
+
+  const settingsContent = runtime.workspace.unavailable ? (
+    <StateView status="error" description={runtime.workspace.unavailable} onRetry={runtime.workspace.refresh} />
+  ) : settingsReady ? (
+    <Suspense fallback={<SettingsSurfaceLoading presentation="desktop" />}>
+      <LazySettingsWorkbench
+        section={section}
+        onSectionChange={changeSection}
+        onPendingChangesChange={setPendingChanges}
+        environment={{
+          appVersion: __SENERA_APP_VERSION__,
+          frontendVersion: __SENERA_FRONTEND_VERSION__,
+          mode: import.meta.env.MODE,
+          surface: "desktop",
+          runtimeUpdate,
+        }}
+        values={{ defaultSidebarCollapsed, defaultRightPanelCollapsed }}
+        motionLevel={motionLevel}
+        onValueChange={(id, value) => {
+          if (id === "defaultSidebarCollapsed") setDefaultSidebarCollapsed(value);
+          if (id === "defaultRightPanelCollapsed") setDefaultRightPanelCollapsed(value);
+        }}
+        onMotionLevelChange={setMotionLevel}
+        systemConfig={runtime.systemConfig}
+        workspace={runtime.workspace}
+      />
+    </Suspense>
+  ) : (
+    <SettingsSurfaceLoading presentation="desktop" />
+  );
 
   return (
     <AppMotionProvider level={motionLevel}>
       <AppAppearanceProvider motionLevel={motionLevel}>
         <TooltipProvider delayDuration={300}>
-          {settingsReady ? (
-            <Suspense fallback={<SettingsSurfaceLoading presentation="desktop" />}>
-              <LazySettingsWorkbench
-                section={section}
-                onSectionChange={changeSection}
-                onPendingChangesChange={setPendingChanges}
-                environment={{
-                  appVersion: __SENERA_APP_VERSION__,
-                  frontendVersion: __SENERA_FRONTEND_VERSION__,
-                  mode: import.meta.env.MODE,
-                  surface: "desktop",
-                  runtimeUpdate,
-                }}
-                values={{ defaultSidebarCollapsed, defaultRightPanelCollapsed }}
-                motionLevel={motionLevel}
-                onValueChange={(id, value) => {
-                  if (id === "defaultSidebarCollapsed") setDefaultSidebarCollapsed(value);
-                  if (id === "defaultRightPanelCollapsed") setDefaultRightPanelCollapsed(value);
-                }}
-                onMotionLevelChange={setMotionLevel}
-                systemConfig={runtime.systemConfig}
-                workspace={runtime.workspace}
-              />
-            </Suspense>
+          {workspaceReady ? (
+            <WorkspaceResourceProvider key={workspaceId} httpBaseUrl={scopedHttpBaseUrl} csrfToken={csrfToken}>
+              {settingsContent}
+            </WorkspaceResourceProvider>
           ) : (
-            <SettingsSurfaceLoading presentation="desktop" />
+            settingsContent
           )}
           <DiscardDraftDialog
             open={closeConfirmationOpen}

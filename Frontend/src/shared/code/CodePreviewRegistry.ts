@@ -18,6 +18,7 @@ export interface CodePreviewThemeVariables {
 
 interface CodePreviewContext {
   language: string;
+  fileName?: string;
   code: string;
 }
 
@@ -25,6 +26,7 @@ interface CodePreviewProvider {
   id: string;
   label: string;
   languages: readonly string[];
+  fileExtensions?: readonly string[];
   detect: (context: CodePreviewContext) => boolean;
   build: (context: CodePreviewContext) => CodePreview;
 }
@@ -34,6 +36,7 @@ const previewProviders: readonly CodePreviewProvider[] = [
     id: "html-document",
     label: frontendMessage("code.preview"),
     languages: ["html", "htm"],
+    fileExtensions: [".html", ".htm"],
     detect: ({ code }) => parseHtmlSource(code).hasRenderableContent,
     build: ({ code }) => ({
       id: "html-document",
@@ -46,6 +49,7 @@ const previewProviders: readonly CodePreviewProvider[] = [
     id: "svg-document",
     label: frontendMessage("code.preview"),
     languages: ["svg"],
+    fileExtensions: [".svg"],
     detect: ({ code }) => parseHtmlSource(code).hasElement("svg"),
     build: ({ code }) => ({
       id: "svg-document",
@@ -64,10 +68,22 @@ const defaultCodePreviewThemeVariables: CodePreviewThemeVariables = {
 };
 
 export function resolveCodePreview(language: string, code: string): CodePreview | null {
-  const normalizedLanguage = normalizeLanguage(language);
-  const context = { language: normalizedLanguage, code };
+  return resolvePreview({ language: normalizeLanguage(language), code });
+}
+
+/**
+ * Resolves a preview from the registered source capabilities rather than from
+ * the syntax highlighter's language alone. Some valid document formats, such
+ * as SVG, are intentionally treated as generic text by a highlighter but are
+ * still safely renderable in the isolated preview frame.
+ */
+export function resolveCodePreviewForFile(fileName: string, code: string, language = "text"): CodePreview | null {
+  return resolvePreview({ language: normalizeLanguage(language), fileName: normalizeFileName(fileName), code });
+}
+
+function resolvePreview(context: CodePreviewContext): CodePreview | null {
   const provider = previewProviders.find(
-    (candidate) => candidate.languages.includes(normalizedLanguage) && candidate.detect(context),
+    (candidate) => matchesPreviewProvider(candidate, context) && candidate.detect(context),
   );
   return provider ? provider.build(context) : null;
 }
@@ -85,6 +101,16 @@ export function readDownloadMime(language: string): string {
 
 export function normalizeLanguage(language: string): string {
   return language.trim().toLowerCase();
+}
+
+function matchesPreviewProvider(provider: CodePreviewProvider, context: CodePreviewContext): boolean {
+  if (provider.languages.includes(context.language)) return true;
+  const fileName = context.fileName;
+  return fileName !== undefined && Boolean(provider.fileExtensions?.some((extension) => fileName.endsWith(extension)));
+}
+
+function normalizeFileName(fileName: string): string {
+  return fileName.trim().replace(/\\/gu, "/").toLowerCase();
 }
 
 export function createCodePreviewThemeVariables(cssVariables: Record<string, string>): CodePreviewThemeVariables {

@@ -2,10 +2,8 @@ import type {
   AgentSelfCommand,
   AgentSelfCommandOutput,
   AgentSelfServicePort,
-  AgentSelfSkillCheckReport,
-  AgentSelfSkillMutationResult,
-  AgentSelfSkillSearchMatch,
-  AgentSelfSkillSummary,
+  AgentSelfPromptPresetStatus,
+  AgentSelfPromptPresetMutationResult,
 } from "./AgentSelfServiceTypes.js";
 import type { AgentSelfApprovalVerdict, AgentSelfCommandExecutionOptions } from "./AgentSelfApprovalTypes.js";
 import type { AgentSelfConfigAdjudication } from "./AgentSelfApprovalTypes.js";
@@ -42,9 +40,13 @@ import type { AgentSelfInvocation } from "./AgentSelfServiceTypes.js";
 import { describeAgentSelfCapabilities, projectAgentSelfCapabilities } from "./AgentSelfCapabilities.js";
 import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
 import { projectInvalidAgentSelfInvocation, readAgentSelfCommandRoot } from "./AgentSelfCommandValidation.js";
+import { AgentChannelsConfigPathPrefix } from "../Channels/AgentChannelsConfig.js";
+import {
+  executeAgentSelfSkills,
+  executeSkillMutationDirect,
+  isSkillMutationCommand,
+} from "./AgentSelfSkillCommands.js";
 export { projectAgentSelfInvocationValidationFailure } from "./AgentSelfCommandValidation.js";
-
-const SkillMutationApprovalReason = "Skill 会改变后续模型行为，需要确认工作区指令资产的变更。";
 
 /** Single entry point for every `senera ...` self-service command. */
 export async function executeAgentSelfCommand(
@@ -70,8 +72,12 @@ export async function executeAgentSelfCommand(
         return await executeAgentSelfSessionModel(invocation, port);
       case "plugins":
         return describeAgentSelfPlugins(port);
+      case "preset":
+        return await executePromptPreset(invocation, port);
+      case "channels":
+        return await executeChannels(invocation, port, options);
       case "skills":
-        return await executeSkills(invocation, port, options);
+        return await executeAgentSelfSkills(invocation, port, options, projectDeferredApproval);
       case "capabilities": {
         const report = projectAgentSelfCapabilities();
         return { ok: true, text: describeAgentSelfCapabilities(report), data: report };
@@ -213,6 +219,117 @@ async function executeConfig(
       return executeAgentSelfConfigUpdate(port, invocation.path, invocation.value);
     }
   }
+}
+
+async function executePromptPreset(
+  invocation: Extract<AgentSelfCommand, { command: "preset" }>,
+  port: AgentSelfServicePort,
+): Promise<AgentSelfCommandOutput> {
+  if (!port.promptPresets) {
+    return { ok: false, text: "提示词预设服务不可用（当前主机未绑定工作区预设）。", error: "preset_unavailable" };
+  }
+  switch (invocation.action) {
+    case "list":
+    case "status": {
+      const status = await port.promptPresets.status();
+      const text = describePromptPresetStatus(status, invocation.action === "list");
+      return { ok: status.valid, text, data: status };
+    }
+    case "read": {
+      const result = await port.promptPresets.read(invocation.path);
+      return {
+        ok: result.status === "found",
+        text: result.status === "found" ? result.content : result.error,
+        data: result,
+        ...(result.status !== "found" ? { error: result.status } : {}),
+      };
+    }
+    case "enable": {
+      const result = await port.promptPresets.enable(invocation.path);
+      return {
+        ok: result.status === "enabled",
+        text:
+          result.status === "enabled"
+            ? `已启用提示词预设: ${result.activePath}`
+            : describePromptPresetMutationFailure(result),
+        data: result,
+        ...(result.status !== "enabled" ? { error: result.status } : {}),
+      };
+    }
+    case "disable": {
+      const result = await port.promptPresets.disable();
+      return {
+        ok: result.status === "disabled",
+        text:
+          result.status === "disabled"
+            ? "已停用提示词预设，文件内容未删除。"
+            : describePromptPresetMutationFailure(result),
+        data: result,
+        ...(result.status !== "disabled" ? { error: result.status } : {}),
+      };
+    }
+  }
+}
+
+async function executeChannels(
+  invocation: Extract<AgentSelfCommand, { command: "channels" }>,
+  port: AgentSelfServicePort,
+  options: AgentSelfCommandExecutionOptions,
+): Promise<AgentSelfCommandOutput> {
+  if (!port.channels) {
+    return { ok: false, text: "消息渠道服务不可用（当前主机未绑定渠道配置）。", error: "channels_unavailable" };
+  }
+  if (invocation.action === "update") {
+    const channelPath = invocation.path.trim();
+    const configPath = `${AgentChannelsConfigPathPrefix}.${invocation.channel}.${channelPath}`;
+    return executeConfig(
+      { command: "config", action: "update", path: configPath, value: invocation.value },
+      port,
+      options,
+    );
+  }
+  const snapshot = port.channels.snapshot();
+  const data = projectAgentSelfChannels(snapshot);
+  if (invocation.action === "get") {
+    const channel = (data as { channels?: Record<string, unknown> }).channels?.[invocation.channel];
+    if (channel === undefined)
+      return { ok: false, text: `未知消息渠道: ${invocation.channel}`, error: "channel_not_found" };
+    return {
+      ok: true,
+      text: stringifyAgentCanonicalJson(channel),
+      data: { channel: invocation.channel, config: channel },
+    };
+  }
+  return { ok: true, text: stringifyAgentCanonicalJson(data), data };
+}
+
+function projectAgentSelfChannels(
+  snapshot: ReturnType<NonNullable<AgentSelfServicePort["channels"]>["snapshot"]>,
+): unknown {
+  return projectAgentSelfRedacted({
+    enabled: snapshot.enabled,
+    defaultApprovalMode: snapshot.defaultApprovalMode,
+    finalResponseRewrite: snapshot.finalResponseRewrite,
+    channels: snapshot.channels,
+    profileRoutes: snapshot.profileRoutes?.list(),
+  });
+}
+
+function describePromptPresetStatus(status: AgentSelfPromptPresetStatus, listOnly: boolean): string {
+  const entries = status.presets
+    .map((preset) => `${preset.active && preset.enabled ? "*" : "-"} ${preset.path} (${preset.sizeBytes} bytes)`)
+    .join("\n");
+  if (listOnly) return entries || "prompts/ 下没有 Markdown 预设。";
+  return [
+    `预设状态: ${status.enabled ? "已启用" : "未启用"}`,
+    `当前文件: ${status.activePath ?? "未选择"}`,
+    ...(status.error ? [`状态错误: ${status.error}`] : []),
+    entries ? `文件:\n${entries}` : "文件: prompts/ 下没有 Markdown 预设。",
+  ].join("\n");
+}
+
+function describePromptPresetMutationFailure(result: AgentSelfPromptPresetMutationResult): string {
+  return "error" in result ? result.error : `预设操作未完成: ${result.status}`;
 }
 
 /**
@@ -421,16 +538,6 @@ async function executeApprovalResolve(
   return { ok: false, text: "审批关联的命令不支持重放。", error: "approval_replay_unsupported" };
 }
 
-function isSkillMutationCommand(command: AgentSelfCommand): command is AgentSelfSkillMutationCommand {
-  return (
-    command.command === "skills" &&
-    (command.action === "create" ||
-      command.action === "update" ||
-      command.action === "archive" ||
-      command.action === "restore")
-  );
-}
-
 function projectApprovedReplay(approvalId: string, executed: AgentSelfCommandOutput): AgentSelfCommandOutput {
   return {
     ...executed,
@@ -488,288 +595,4 @@ function describeAgentSelfPlugins(port: AgentSelfServicePort): AgentSelfCommandO
       ? "未发现任何插件。"
       : [...lines, ...discoveryWarnings].join("\n");
   return { ok: discoveryWarnings.length === 0, text, data: { plugins: entries } };
-}
-
-async function executeSkills(
-  invocation: Extract<AgentSelfCommand, { readonly command: "skills" }>,
-  port: AgentSelfServicePort,
-  options: AgentSelfCommandExecutionOptions,
-): Promise<AgentSelfCommandOutput> {
-  void options;
-  if (!port.skills) {
-    return { ok: false, text: "Skill 主机不可用（当前服务未绑定 Skill 来源）。", error: "skills_unavailable" };
-  }
-  switch (invocation.action) {
-    case "list": {
-      const skills = port.skills.list();
-      return {
-        ok: skills.every((skill) => skill.valid),
-        text: describeSkills(skills),
-        data: { skills },
-      };
-    }
-    case "search": {
-      if (!port.skills.search) {
-        return {
-          ok: false,
-          text: "Skill 检索主机不可用（当前服务未绑定 Skill 搜索实现）。",
-          error: "skills_search_unavailable",
-        };
-      }
-      const matches = port.skills.search(invocation.query, invocation.limit);
-      return {
-        ok: true,
-        text: describeSkillSearch(matches),
-        data: { query: invocation.query, results: matches },
-      };
-    }
-    case "inspect": {
-      const result = port.skills.inspect(invocation.name);
-      if (result.status === "missing" || result.status === "ambiguous") {
-        return {
-          ok: false,
-          text: result.error,
-          error: projectSkillReadError(result.status),
-          data: result,
-        };
-      }
-      return {
-        ok: result.skill.valid,
-        text: result.content,
-        ...(result.skill.valid ? {} : { error: "skill_invalid" }),
-        data: result,
-      };
-    }
-    case "resources": {
-      const result = port.skills.resources(invocation.name);
-      if (result.status !== "found") {
-        return {
-          ok: false,
-          text: result.error,
-          error: projectSkillReadError(result.status),
-          data: result,
-        };
-      }
-      return {
-        ok: true,
-        text: describeSkillResources(result.resources),
-        data: result,
-      };
-    }
-    case "read": {
-      const result = port.skills.readResource(invocation.name, invocation.path, invocation.revision);
-      if (result.status === "stale") {
-        return {
-          ok: false,
-          text: `Skill revision 已变化（期望 ${result.expectedRevision}，实际 ${result.actualRevision}），请重新读取资源清单。`,
-          error: "skill_revision_conflict",
-          data: result,
-        };
-      }
-      if (result.status !== "found") {
-        return {
-          ok: false,
-          text: result.error,
-          error: result.status === "missing" ? "skill_not_found" : "skill_ambiguous",
-          data: result,
-        };
-      }
-      return {
-        ok: true,
-        text:
-          result.resource.encoding === "utf8" ? result.resource.content : stringifyAgentCanonicalJson(result.resource),
-        data: result,
-      };
-    }
-    case "diff": {
-      const result = port.skills.diff(invocation.name, invocation.revision);
-      if (result.status !== "found") {
-        return {
-          ok: false,
-          text: result.error,
-          error: result.status === "missing" ? "skill_revision_not_found" : projectSkillReadError(result.status),
-          data: result,
-        };
-      }
-      return {
-        ok: true,
-        text: describeSkillDiff(result.entries),
-        data: result,
-      };
-    }
-    case "check": {
-      const report = port.skills.check(invocation.name);
-      return {
-        ok: report.valid,
-        text: describeSkillCheck(report),
-        data: report,
-        ...(report.valid ? {} : { error: "skill_check_failed" }),
-      };
-    }
-    case "history": {
-      const history = port.skills.history(invocation.name);
-      return {
-        ok: true,
-        text:
-          history.length === 0
-            ? `Skill ${invocation.name} 没有可恢复的历史修订。`
-            : history.map((entry) => `${entry.revision} · ${entry.action} · ${entry.createdAt}`).join("\n"),
-        data: { name: invocation.name, history },
-      };
-    }
-    case "create":
-      return executeSkillMutation(invocation, port, options);
-    case "update":
-    case "archive":
-    case "restore":
-      return executeSkillMutation(invocation, port, options);
-  }
-}
-
-type AgentSelfSkillMutationCommand = Extract<
-  AgentSelfCommand,
-  { readonly command: "skills"; readonly action: "create" | "update" | "archive" | "restore" }
->;
-
-async function executeSkillMutation(
-  invocation: AgentSelfSkillMutationCommand,
-  port: AgentSelfServicePort,
-  options: AgentSelfCommandExecutionOptions,
-): Promise<AgentSelfCommandOutput> {
-  const channel = options.approvals;
-  if (!channel) {
-    return {
-      ok: false,
-      text: "Skill 变更需要审批，但当前执行环境没有可用的审批通道。",
-      error: "approval_denied",
-    };
-  }
-  const verdict = await channel.request({
-    kind: "skill",
-    command: invocation,
-    skillName: invocation.name,
-    operation: invocation.action,
-    reason: SkillMutationApprovalReason,
-    mode: options.approvalMode,
-  });
-  if (verdict.status === "denied") return { ok: false, text: verdict.message, error: "approval_denied" };
-  if (verdict.status === "deferred") {
-    return projectDeferredApproval(invocation, verdict.approvalId, SkillMutationApprovalReason, verdict.deadlineAt);
-  }
-  return executeSkillMutationDirect(invocation, port);
-}
-
-function executeSkillMutationDirect(
-  invocation: AgentSelfSkillMutationCommand,
-  port: AgentSelfServicePort,
-): AgentSelfCommandOutput {
-  if (!port.skills) {
-    return { ok: false, text: "Skill 主机不可用（当前服务未绑定 Skill 来源）。", error: "skills_unavailable" };
-  }
-  switch (invocation.action) {
-    case "create":
-      return projectSkillMutation(port.skills.create(invocation.name, invocation.content), invocation.name);
-    case "update":
-      return projectSkillMutation(
-        port.skills.update(invocation.name, invocation.content, invocation.expectedRevision),
-        invocation.name,
-      );
-    case "archive":
-      return projectSkillMutation(port.skills.archive(invocation.name, invocation.expectedRevision), invocation.name);
-    case "restore":
-      return projectSkillMutation(port.skills.restore(invocation.name, invocation.revision), invocation.name);
-  }
-}
-
-function projectSkillMutation(result: AgentSelfSkillMutationResult, name: string): AgentSelfCommandOutput {
-  switch (result.status) {
-    case "created":
-      return { ok: true, text: `已创建 Skill ${name}（revision ${result.revision}）。`, data: result };
-    case "updated":
-      return { ok: true, text: `已更新 Skill ${name}（revision ${result.revision}）。`, data: result };
-    case "restored":
-      return { ok: true, text: `已恢复 Skill ${name}（revision ${result.revision}）。`, data: result };
-    case "archived":
-      return { ok: true, text: `已归档 Skill ${name}（revision ${result.revision}）。`, data: result };
-    case "exists":
-      return { ok: false, text: `Skill 已存在: ${name}`, error: "skill_exists", data: result };
-    case "missing":
-      return { ok: false, text: `Skill 不存在: ${name}`, error: "skill_not_found", data: result };
-    case "conflict":
-      return {
-        ok: false,
-        text: `Skill ${name} 的 revision 已变化（期望 ${result.expectedRevision}，实际 ${result.actualRevision ?? "unknown"}）。请重新读取后再写入。`,
-        error: "skill_revision_conflict",
-        data: result,
-      };
-    case "invalid":
-      return {
-        ok: false,
-        text: `Skill ${name} 无法写入:\n${result.issues.join("\n")}`,
-        error: "skill_invalid",
-        data: result,
-      };
-    case "failed":
-      return {
-        ok: false,
-        text: `Skill ${name} 变更失败: ${result.error}`,
-        error: "skill_mutation_failed",
-        data: result,
-      };
-    case "unavailable":
-      return { ok: false, text: result.reason, error: "skills_unavailable", data: result };
-  }
-}
-
-function describeSkills(skills: readonly AgentSelfSkillSummary[]): string {
-  if (skills.length === 0) return "未发现 Skill。";
-  return skills
-    .map((skill) => {
-      const status = skill.valid ? "有效" : `无效: ${skill.issues.join("；")}`;
-      const invocation = skill.disableModelInvocation ? " · 仅显式调用" : "";
-      return `${skill.name} · ${skill.source.displayName} · revision ${skill.revision ?? "unknown"}${invocation} · ${status}`;
-    })
-    .join("\n");
-}
-
-function describeSkillSearch(matches: readonly AgentSelfSkillSearchMatch[]): string {
-  if (matches.length === 0) return "没有找到匹配的有效 Skill；请先使用 senera skills list/check 检查来源。";
-  return matches
-    .map((match) => {
-      const terms = match.matchedTerms.length > 0 ? ` · 命中 ${match.matchedTerms.join(", ")}` : "";
-      const mode = match.skill.disableModelInvocation ? " · 仅显式调用" : "";
-      return `${match.skill.name} · ${match.skill.source.displayName} · score ${match.score.toFixed(3)}${mode}${terms}`;
-    })
-    .join("\n");
-}
-
-function describeSkillCheck(report: AgentSelfSkillCheckReport): string {
-  const header = `Skill 校验 ${report.valid ? "通过" : "失败"} · ${report.skills.length} 个 · ${report.checkedAt}`;
-  return report.issues.length > 0 ? [header, ...report.issues.map((issue) => `- ${issue}`)].join("\n") : header;
-}
-
-function describeSkillResources(
-  resources: readonly {
-    readonly relativePath: string;
-    readonly kind: string;
-    readonly bytes: number;
-    readonly digest: string;
-  }[],
-): string {
-  if (resources.length === 0) return "Skill 没有可读取资源。";
-  return resources
-    .map(
-      (resource) =>
-        `${resource.relativePath} · ${resource.kind} · ${resource.bytes} bytes · ${resource.digest.slice(0, 12)}`,
-    )
-    .join("\n");
-}
-
-function describeSkillDiff(entries: readonly { readonly path: string; readonly kind: string }[]): string {
-  if (entries.length === 0) return "Skill 包没有资源差异。";
-  return entries.map((entry) => `${entry.kind.padEnd(9)} ${entry.path}`).join("\n");
-}
-
-function projectSkillReadError(status: "missing" | "ambiguous" | "invalid"): string {
-  return { missing: "skill_not_found", ambiguous: "skill_ambiguous", invalid: "skill_invalid" }[status];
 }

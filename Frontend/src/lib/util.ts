@@ -120,7 +120,9 @@ export function formatFileSize(bytes: number): string {
   const kb = bytes / 1024;
   if (kb < 1024) return `${kb.toFixed(kb < 10 ? 1 : 0)}KB`;
   const mb = kb / 1024;
-  return `${mb.toFixed(mb < 10 ? 1 : 0)}MB`;
+  if (mb < 1024) return `${mb.toFixed(mb < 10 ? 1 : 0)}MB`;
+  const gb = mb / 1024;
+  return `${gb.toFixed(gb < 10 ? 1 : 0)}GB`;
 }
 
 export function formatInteger(value: number): string {

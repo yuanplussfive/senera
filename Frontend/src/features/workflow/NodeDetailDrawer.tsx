@@ -1,5 +1,4 @@
 import { memo, useCallback, useEffect, useId, useState } from "react";
-import { X, Copy, Check, ChevronDown } from "lucide-react";
 import type { TimelineChildRunMessage, TimelineStep } from "../../store/sessionStore";
 import { friendlyDecisionKind } from "../../store/sessionStore";
 import { cn, formatTime, formatDurationMs } from "../../lib/util";
@@ -7,7 +6,16 @@ import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
 import { MotionIconSwap } from "../../shared/motion";
 import { MarkdownRenderer } from "../../shared/code/MarkdownRenderer";
-import { MetaLabel, Sheet, SheetContent, Skeleton, Tooltip, InlineError, useClipboardCopy } from "../../shared/ui";
+import {
+  AppIcon,
+  MetaLabel,
+  Sheet,
+  SheetContent,
+  Skeleton,
+  Tooltip,
+  InlineError,
+  useClipboardCopy,
+} from "../../shared/ui";
 import { readStepKindLabel, readStepStatusLabel } from "./stepPresentation";
 import { DataView } from "./DataView";
 import { ChildRunOverview } from "./ChildRunOverview";
@@ -49,7 +57,7 @@ export function NodeDetailDrawer({ step, onClose }: NodeDetailDrawerProps): JSX.
         {step ? (
           <>
             <Header step={step} onClose={onClose} />
-            <div className="scrollbar-thin flex-1 overflow-y-auto px-5 pb-8 pt-3">
+            <div className="flex-1 overflow-y-auto px-5 pb-8 pt-3">
               {contentReady ? (
                 step.kind === "tool" && step.toolName ? (
                   <ToolStepInspector step={step} showHeader={false} />
@@ -96,7 +104,7 @@ function Header({ step, onClose }: { step: TimelineStep; onClose: () => void }):
         className="ml-auto grid h-8 w-8 place-items-center rounded-md text-ink-500 transition hover:bg-ink-900/[0.05] hover:text-ink-800"
         aria-label={frontendMessage("ui.close")}
       >
-        <X className="h-4 w-4" />
+        <AppIcon icon="close" size={16} />
       </button>
     </div>
   );
@@ -245,7 +253,7 @@ function ToolOutputBlock({ stream, text }: { stream: "stdout" | "stderr"; text: 
       <div className="border-b border-[var(--theme-code-output-border)] px-3 py-1 font-mono text-[10px] uppercase text-[var(--theme-code-output-muted)]">
         {stream}
       </div>
-      <pre className="scrollbar-thin max-h-72 overflow-auto whitespace-pre-wrap break-words px-3 py-2 font-mono text-[11px] leading-relaxed">
+      <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words px-3 py-2 font-mono text-[11px] leading-relaxed">
         {text}
       </pre>
     </div>
@@ -284,8 +292,10 @@ function TechnicalDetails({ step }: { step: TimelineStep }): JSX.Element {
         onClick={() => setExpanded((current) => !current)}
       >
         <span className="flex-1">{frontendFeatureMessage("workflow.node.technicalDetails")}</span>
-        <ChevronDown
-          className={cn("h-3.5 w-3.5 text-content-muted transition-transform", expanded && "rotate-180")}
+        <AppIcon
+          icon="chevron-down"
+          size={14}
+          className={cn("text-content-muted transition-transform", expanded && "rotate-180")}
           aria-hidden="true"
         />
       </button>
@@ -501,7 +511,11 @@ function CopyButton({ value }: { value: unknown }): JSX.Element {
         aria-label="copy"
       >
         <MotionIconSwap stateKey={copied ? "copied" : "copy"}>
-          {copied ? <Check className="h-3 w-3 text-moss-500" /> : <Copy className="h-3 w-3" />}
+          {copied ? (
+            <AppIcon icon="checkmark" size={12} className="text-moss-500" />
+          ) : (
+            <AppIcon icon="copy" size={12} />
+          )}
         </MotionIconSwap>
       </button>
     </Tooltip>

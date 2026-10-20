@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { applyCredentialedCors, writeCorsPreflight } from "../Auth/AgentCredentialedCors.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
+import { carriesAgentSecretScheme } from "../Security/AgentSecretEnvelopeCodec.js";
 
 export const AgentProviderCredentialHttpRoute = "/api/provider-credentials";
 
@@ -12,7 +13,9 @@ export interface AgentProviderCredentialHttpApiOptions {
 /**
  * Reveals one provider credential only while the authenticated settings UI is
  * editing that provider. General config snapshots remain redacted, so secrets
- * do not enter the event journal or runtime diagnostics.
+ * do not enter the event journal or runtime diagnostics. A credential this host could not decrypt
+ * still holds its envelope in the snapshot, and handing that to the editor would save the
+ * ciphertext back as a literal key, so it is refused instead.
  */
 export class AgentProviderCredentialHttpApi {
   constructor(private readonly options: AgentProviderCredentialHttpApiOptions) {}
@@ -57,10 +60,21 @@ export class AgentProviderCredentialHttpApi {
       return;
     }
 
+    const apiKey = endpoint.ApiKey ?? "";
+    if (carriesAgentSecretScheme(apiKey)) {
+      this.sendError(
+        response,
+        409,
+        "secret_unresolved",
+        "This host cannot decrypt the saved API key, so it cannot be revealed. Enter it again.",
+      );
+      return;
+    }
+
     this.sendJson(response, 200, {
       ok: true,
       providerId,
-      apiKey: endpoint.ApiKey ?? "",
+      apiKey,
     });
   }
 

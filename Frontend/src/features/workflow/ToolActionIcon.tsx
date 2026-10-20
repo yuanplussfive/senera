@@ -1,8 +1,7 @@
 import type { TimelineStepStatus } from "../../store/sessionStore";
 import { cn } from "../../lib/util";
 import { MotionIconSwap } from "../../shared/motion";
-import { AppIcon } from "../../shared/ui/AppIcon";
-import { ToolStageIconCatalog } from "./feedPresentation";
+import { AgentToolPresentationIcon } from "../../shared/workspace/AgentToolPresentationIcon";
 import type { ToolStageIconName } from "./toolStageIconContract";
 
 export function ToolActionIcon({
@@ -18,7 +17,6 @@ export function ToolActionIcon({
   showLiveIndicator?: boolean;
   className?: string;
 }): JSX.Element {
-  const visual = ToolStageIconCatalog[icon];
   const live = status === "running" || status === "cancelling";
   return (
     <span
@@ -33,8 +31,8 @@ export function ToolActionIcon({
       data-status-glyph-motion="quiet"
       aria-hidden="true"
     >
-      <MotionIconSwap stateKey={`${visual}:${status}`} className={size === "xs" ? "h-3 w-3" : "h-4 w-4"}>
-        <AppIcon icon={visual} size="100%" strokeWidth={1.8} />
+      <MotionIconSwap stateKey={`${icon}:${status}`} className={size === "xs" ? "h-3 w-3" : "h-4 w-4"}>
+        <AgentToolPresentationIcon icon={icon} size="100%" strokeWidth={1.8} />
       </MotionIconSwap>
       {live && showLiveIndicator ? (
         <span

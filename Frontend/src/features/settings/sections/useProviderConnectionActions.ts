@@ -2,11 +2,17 @@ import { useEffect, useRef, useState } from "react";
 import type { SettingsConfigCommands } from "../SettingsContracts";
 import type { SocketStatus } from "../../../api/useAgentSocket";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
-import { normalizeProviderEndpointDraft, sortProviderRows } from "../../chat/modelConfigData";
+import {
+  normalizeProviderEndpointDraft,
+  providerEnabled,
+  providerIdLabel,
+  sortProviderRows,
+} from "../../chat/modelConfigData";
 import type { ProviderEndpointDraft } from "../../chat/modelConfigTypes";
 import type { ModelServiceState } from "./modelServiceState";
 import { buildProviderEndpointMutationInput, sameProviderEndpoint } from "./providerConnectionState";
 import { useProviderConnectionDraftQueue } from "./useProviderConnectionDraftQueue";
+import { notifyError } from "../../../shared/ui/notifyError";
 
 interface PendingProviderRename {
   providerId: string;
@@ -63,6 +69,8 @@ export interface ProviderConnectionActions {
   commitAndSelectProvider: (provider: ProviderEndpointDraft) => boolean;
   discardAndSelectProvider: (provider: ProviderEndpointDraft) => void;
   updateDraftProvider: (patch: Partial<ProviderEndpointDraft>) => void;
+  getProviderDisableReason: (provider: ProviderEndpointDraft) => string | null;
+  setProviderEnabled: (provider: ProviderEndpointDraft, enabled: boolean) => void;
   resetDraft: () => void;
   confirmDraft: (patch?: Partial<ProviderEndpointDraft>) => void;
   addProvider: (provider: ProviderEndpointDraft) => void;
@@ -299,6 +307,31 @@ export function useProviderConnectionActions({
     draftQueue.update(acceptedProvider, connectionDraft, patch);
   };
 
+  const defaultModelProviderDisableMessage = (provider: ProviderEndpointDraft, enabled: boolean): string | null => {
+    if (enabled || state.defaultModel?.provider?.Id !== provider.Id) return null;
+    const model = state.defaultModel.model;
+    return frontendMessage("settings.provider.defaultModelProviderCannotDisable", {
+      model: model.Model || model.Id,
+      provider: providerIdLabel(provider),
+    });
+  };
+
+  const setProviderEnabled = (provider: ProviderEndpointDraft, enabled: boolean): void => {
+    const entry = draftQueue.read(provider);
+    const error = defaultModelProviderDisableMessage(provider, enabled);
+    if (error) {
+      notifyError({
+        title: frontendMessage("settings.provider.defaultModelProviderDisableBlocked"),
+        description: error,
+      });
+      return;
+    }
+    draftQueue.confirm(provider, entry.draft, { Enabled: enabled });
+  };
+
+  const getProviderDisableReason = (provider: ProviderEndpointDraft): string | null =>
+    providerEnabled(provider) ? defaultModelProviderDisableMessage(provider, false) : null;
+
   const resetDraft = (): void => {
     if (!acceptedProvider) return;
     draftQueue.reset(acceptedProvider);
@@ -307,6 +340,17 @@ export function useProviderConnectionActions({
   };
 
   const confirmDraft = (patch?: Partial<ProviderEndpointDraft>): void => {
+    if (acceptedProvider) {
+      const nextEnabled = patch?.Enabled ?? connectionDraft?.Enabled;
+      const error = defaultModelProviderDisableMessage(acceptedProvider, nextEnabled ?? true);
+      if (error) {
+        notifyError({
+          title: frontendMessage("settings.provider.defaultModelProviderDisableBlocked"),
+          description: error,
+        });
+        return;
+      }
+    }
     draftQueue.confirm(acceptedProvider, connectionDraft, patch);
   };
 
@@ -427,6 +471,8 @@ export function useProviderConnectionActions({
     commitAndSelectProvider,
     discardAndSelectProvider,
     updateDraftProvider,
+    getProviderDisableReason,
+    setProviderEnabled,
     resetDraft,
     confirmDraft,
     addProvider,

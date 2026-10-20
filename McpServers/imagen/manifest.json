@@ -48,6 +48,9 @@
     }
   },
   "_meta": {
+    "ai.senera/presentation": {
+      "icon": "image"
+    },
     "ai.senera/execution": {
       "targets": ["local", "sandbox"],
       "preferred": "local"

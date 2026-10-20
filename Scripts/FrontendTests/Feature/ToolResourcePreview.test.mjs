@@ -24,6 +24,7 @@ const resourceIds = [
   "res_22222222222222222222222222222222",
   "res_33333333333333333333333333333333",
   "res_44444444444444444444444444444444",
+  "res_55555555555555555555555555555555",
 ];
 
 afterEach(() => {
@@ -222,6 +223,18 @@ test("keeps workspace changes separate from media resources and deduplicates rep
   expect(view.container.querySelectorAll("[data-workspace-change]")).toHaveLength(2);
   expect(view.container.textContent).toContain("new.txt");
   expect(view.container.textContent).toContain("old.txt");
+  expect(view.container.querySelector("[data-workspace-change-status='added']")).toHaveClass(
+    "inline-flex",
+    "items-center",
+    "justify-center",
+  );
+  expect(view.container.querySelector("[data-workspace-change-status='added']")).toHaveStyle({ lineHeight: "1" });
+  expect(view.container.querySelector("[data-workspace-change-status='deleted']")).toHaveClass(
+    "inline-flex",
+    "items-center",
+    "justify-center",
+  );
+  expect(view.container.querySelector("[data-workspace-change-status='deleted']")).toHaveStyle({ lineHeight: "1" });
   expect(view.container.querySelector('[data-workspace-change="old.txt"] button')?.hasAttribute("disabled")).toBe(true);
 });
 
@@ -616,7 +629,7 @@ test("right-side output rows keep open and download actions without hover previe
   expect(view.getByRole("button", { name: frontendMessage("workflow.workspace.open") })).toBeInTheDocument();
 });
 
-test("does not open line previews or empty-content placeholders for binary workspace changes", async () => {
+test("keeps non-visual binary workspace changes out of hover previews", async () => {
   const view = renderWithFrontendProviders(
     React.createElement(
       WorkspaceResourceProvider,
@@ -625,10 +638,10 @@ test("does not open line previews or empty-content placeholders for binary works
         changes: [
           {
             kind: "workspace",
-            key: ".tmp/assets/senera-workbench.png",
+            key: ".tmp/assets/senera-workbench.bin",
             status: "changed",
             workspaceStatus: "modified",
-            summary: "modified: .tmp/assets/senera-workbench.png",
+            summary: "modified: .tmp/assets/senera-workbench.bin",
           },
         ],
       }),
@@ -641,8 +654,65 @@ test("does not open line previews or empty-content placeholders for binary works
   expect(document.body.querySelector("[data-workspace-change-preview]")).toBeNull();
   expect(view.container.textContent).not.toContain("没有可用的文件内容或行级变更");
   expect(view.container.querySelector("[data-workspace-change-trigger]")?.textContent).toContain(
-    "senera-workbench.png",
+    "senera-workbench.bin",
   );
+});
+
+test("prioritizes the patch for SVG workspace changes", async () => {
+  const patchResource = {
+    ...resource("workspace.patch", "text/x-diff", undefined, resourceIds[6]),
+    origin: "artifact",
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () =>
+        'diff --git a/assets/diagram.svg b/assets/diagram.svg\n--- a/assets/diagram.svg\n+++ b/assets/diagram.svg\n@@ -1 +1 @@\n-<svg viewBox="0 0 10 10" />\n+<svg viewBox="0 0 20 20" />\n',
+    }),
+  );
+  const view = renderWithFrontendProviders(
+    React.createElement(
+      WorkspaceResourceProvider,
+      { httpBaseUrl: "http://localhost:4310" },
+      React.createElement(ToolWorkspaceChangePreview, {
+        changes: [
+          {
+            kind: "workspace",
+            key: "assets/diagram.svg",
+            status: "changed",
+            workspaceStatus: "modified",
+            summary: "modified: assets/diagram.svg",
+          },
+        ],
+        patchResources: [patchResource],
+        showHeader: false,
+      }),
+    ),
+  );
+
+  fireEvent.mouseEnter(view.container.querySelector("[data-workspace-change-trigger]"));
+  await waitFor(() => expect(document.body.querySelector('[data-workspace-preview-kind="diff"]')).not.toBeNull());
+  const diffHost = document.body.querySelector("[data-workspace-change-preview] [data-resource-diff] diffs-container");
+  await waitFor(() => expect(diffHost?.shadowRoot?.textContent).toContain("20 20"));
+  expect(document.body.querySelector("[data-workspace-image-preview]")).toBeNull();
+});
+
+test("treats SVG result resources as source files rather than image media", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () => '<svg viewBox="0 0 20 20"></svg>',
+    }),
+  );
+  const view = renderResources([resource("diagram.svg", "image/svg+xml")]);
+
+  expect(view.container.querySelector('[data-resource-kind="text"]')).not.toBeNull();
+  expect(view.queryByRole("button", { name: "查看图片：diagram.svg" })).toBeNull();
+  fireEvent.pointerEnter(view.container.querySelector("[data-tool-resource]"));
+  await waitFor(() => expect(document.body.querySelector('[data-resource-preview-content="text"]')).not.toBeNull());
+  expect(document.body.querySelector("[data-image-preview-dialog]")).toBeNull();
 });
 
 test("keeps workspace capture warnings in the execution surface instead of the conversation output", () => {

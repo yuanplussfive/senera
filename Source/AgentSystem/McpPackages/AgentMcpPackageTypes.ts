@@ -6,6 +6,7 @@ import type { AgentExtensionValueExpression } from "../Extensions/AgentExtension
 import type { AgentMcpInputDefinition } from "./AgentMcpInputDefinition.js";
 import type { AgentExtensionLocalizedText } from "../Extensions/AgentExtensionLocalization.js";
 import type { AgentToolAvailability } from "../ToolRuntime/AgentToolAvailability.js";
+import type { AgentPluginIdentityPresentation } from "../Types/AgentToolPresentationTypes.js";
 
 export const AgentMcpPackageSourceKinds = {
   Bundled: "bundled",
@@ -29,6 +30,8 @@ export interface AgentMcpPackage {
   readonly description?: AgentExtensionLocalizedText;
   readonly source: AgentMcpPackageSourceKind;
   readonly descriptorKind: "mcpb" | "registry" | "legacy" | "connection";
+  /** Optional package-owned visual identity for settings and activation views. */
+  readonly presentation?: AgentPluginIdentityPresentation;
   readonly execution?: AgentMcpExecution;
   readonly requirements?: AgentMcpHostRequirements;
   readonly servers: readonly AgentMcpPackageServer[];

@@ -4,18 +4,14 @@
     "sections": [
       {
         "id": "model-pool",
-        "label": { "zh-CN": "子代理模型池", "en-US": "Child model pool" },
-        "description": {
-          "zh-CN": "按顺序声明子代理可使用的模型来源；默认继承发起委派的当前模型。",
-          "en-US": "Declare the ordered model sources available to child agents. By default, they inherit the delegating run's current model."
-        },
+        "label": { "zh-CN": "模型池", "en-US": "Model pool" },
         "fields": [
           {
             "path": ["modelPool", "inheritParent"],
-            "label": { "zh-CN": "继承父运行模型", "en-US": "Inherit parent model" },
+            "label": { "zh-CN": "继承发起模型", "en-US": "Inherit delegating model" },
             "description": {
-              "zh-CN": "把发起委派的当前模型作为首选来源；父运行没有显式模型时使用系统默认模型。",
-              "en-US": "Use the delegating run's current model as the first source, falling back to the system default when the parent has no explicit model."
+              "zh-CN": "优先使用发起委派所用的模型。",
+              "en-US": "Prefer the model used by the delegating run."
             },
             "type": "boolean",
             "defaultValue": true,
@@ -24,10 +20,10 @@
           },
           {
             "path": ["modelPool", "modelProviderIds"],
-            "label": { "zh-CN": "候选子代理模型", "en-US": "Child model candidates" },
+            "label": { "zh-CN": "候选模型", "en-US": "Candidate models" },
             "description": {
-              "zh-CN": "仅列出已启用且支持对话的模型。顺序用于角色未固定模型时的候选优先级。",
-              "en-US": "Only enabled chat-capable models are available. Their order defines candidate priority when a role does not pin a model."
+              "zh-CN": "仅显示已启用的对话模型，按顺序使用。",
+              "en-US": "Only enabled chat-capable models are shown and used in order."
             },
             "placeholder": { "zh-CN": "添加候选模型", "en-US": "Add a candidate model" },
             "type": "array",

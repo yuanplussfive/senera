@@ -1,15 +1,3 @@
-import {
-  ChevronDown,
-  ChevronUp,
-  CircleStop,
-  Ellipsis,
-  Info,
-  Plus,
-  Search,
-  Square,
-  SquareTerminal,
-  X,
-} from "lucide-react";
 import { useRef, type KeyboardEvent } from "react";
 import type { ExecutionResourceSnapshotData } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
@@ -23,10 +11,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   AppIcon,
+  FluidSegmentedLayers,
   IconButton,
   Tooltip,
+  useFluidSegmentedSurface,
 } from "../../shared/ui";
-import { FluidHoverHighlight, useFluidHover, useMotionLevel } from "../../shared/motion";
+import { useMotionLevel } from "../../shared/motion";
 import {
   isTerminalState,
   supportsTerminalCapability,
@@ -54,11 +44,8 @@ export interface TerminalTitlebarProps {
 
 export function TerminalTitlebar(props: TerminalTitlebarProps): JSX.Element {
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const tabListRef = useRef<HTMLDivElement>(null);
   const { disableMotion } = useMotionLevel();
-  const tabHover = useFluidHover(tabListRef, { axis: "x", gapClick: false });
-  // The selected tab paints its own canvas background; the hover layer yields.
-  const selectedTabIndex = props.resources.findIndex((resource) => resource.resourceId === props.selected?.resourceId);
+  const tabSurface = useFluidSegmentedSurface(props.selected?.resourceId);
   const selectedIsActive = Boolean(props.selected && !isTerminalState(props.selected.state));
   const canSignal = Boolean(props.selected && supportsTerminalCapability(props.selected, "signals"));
 
@@ -84,36 +71,37 @@ export function TerminalTitlebar(props: TerminalTitlebarProps): JSX.Element {
           className="grid w-7 shrink-0 place-items-center text-[var(--terminal-subtle)]"
           aria-label={frontendMessage("terminal.panel.title")}
         >
-          <SquareTerminal className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
+          <AppIcon icon="terminal" size={14} strokeWidth={1.5} aria-hidden="true" />
         </div>
         {props.resources.length > 0 ? (
           <div
-            ref={tabListRef}
+            ref={tabSurface.containerRef}
             role="tablist"
             aria-label={frontendMessage("terminal.resource.select")}
-            className="terminal-tablist relative flex min-w-0 flex-1 items-stretch overflow-x-auto"
+            className="relative flex min-w-0 flex-1 items-stretch overflow-x-auto"
             data-terminal-tablist
-            {...tabHover.handlers}
+            onPointerLeave={tabSurface.onItemPointerLeave}
           >
-            <FluidHoverHighlight
-              hover={tabHover}
-              hidden={disableMotion || tabHover.activeIndex === selectedTabIndex}
-              surfaceClassName="bg-[var(--terminal-hover)]"
+            <FluidSegmentedLayers
+              surface={tabSurface}
+              selectionClassName="rounded-none border-0 bg-[var(--terminal-canvas)] shadow-none after:absolute after:inset-x-2 after:bottom-0 after:h-px after:bg-[var(--terminal-accent)]"
+              hoverClassName="rounded-none bg-[var(--terminal-hover)]"
+              hideHover={disableMotion}
             />
             {props.resources.map((resource, index) => {
               const selected = resource.resourceId === props.selected?.resourceId;
               const label = terminalTabLabel(resource);
               return (
                 <div
-                  ref={tabHover.getItemRef(index)}
+                  ref={(element) => tabSurface.registerItem(resource.resourceId, element)}
                   key={resource.resourceId}
                   role="presentation"
                   className={cn(
                     "group relative z-10 flex h-full min-w-0 items-center",
                     props.resources.length === 1 ? "flex-1" : "w-[148px] shrink-0",
-                    selected &&
-                      "bg-[var(--terminal-canvas)] after:absolute after:inset-x-2 after:bottom-0 after:h-px after:bg-[var(--terminal-accent)]",
                   )}
+                  onPointerEnter={(event) => tabSurface.onItemPointerEnter(resource.resourceId, event)}
+                  onPointerLeave={tabSurface.onItemPointerLeave}
                 >
                   <Tooltip content={resource.command} side="bottom">
                     <button
@@ -163,7 +151,7 @@ export function TerminalTitlebar(props: TerminalTitlebarProps): JSX.Element {
                       props.onClose(resource.resourceId);
                     }}
                   >
-                    <X className="h-3 w-3" />
+                    <AppIcon icon="close" size={12} />
                   </IconButton>
                 </div>
               );
@@ -184,7 +172,7 @@ export function TerminalTitlebar(props: TerminalTitlebarProps): JSX.Element {
           onClick={() => props.onStartTerminal()}
           className={terminalToolbarButtonClassName(false)}
         >
-          <Plus className="h-3.5 w-3.5" />
+          <AppIcon icon="plus" size={14} />
         </IconButton>
         <IconButton
           label={frontendMessage("terminal.search.open")}
@@ -195,7 +183,7 @@ export function TerminalTitlebar(props: TerminalTitlebarProps): JSX.Element {
           disabled={!props.selected}
           className={terminalToolbarButtonClassName(props.searchOpen)}
         >
-          <Search className="h-3.5 w-3.5" />
+          <AppIcon icon="search" size={14} />
         </IconButton>
         <IconButton
           label={frontendMessage("terminal.resource.interrupt")}
@@ -205,7 +193,7 @@ export function TerminalTitlebar(props: TerminalTitlebarProps): JSX.Element {
           disabled={!props.selected || !selectedIsActive || !canSignal}
           className={cn(terminalToolbarButtonClassName(false), "hidden sm:grid")}
         >
-          <Square className="h-3 w-3" />
+          <AppIcon icon="square" size={12} />
         </IconButton>
         <TerminalActionsMenu {...props} selectedIsActive={selectedIsActive} canSignal={canSignal} />
       </div>
@@ -228,7 +216,7 @@ function TerminalActionsMenu(
           size="sm"
           className={terminalToolbarButtonClassName(false)}
         >
-          <Ellipsis className="h-4 w-4" />
+          <AppIcon icon="more" size={16} />
         </IconButton>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -245,7 +233,7 @@ function TerminalActionsMenu(
           {frontendMessage("terminal.resource.refresh")}
         </DropdownMenuItem>
         <DropdownMenuItem
-          icon={<Search className="h-3.5 w-3.5" />}
+          icon={<AppIcon icon="search" size={14} />}
           onSelect={() => props.onSearchOpenChange(true)}
           disabled={!selected}
           shortcut="Ctrl F"
@@ -255,7 +243,7 @@ function TerminalActionsMenu(
         </DropdownMenuItem>
         <DropdownMenuSeparator className="bg-[var(--terminal-separator)]" />
         <DropdownMenuItem
-          icon={<Square className="h-3 w-3" />}
+          icon={<AppIcon icon="square" size={12} />}
           onSelect={() => selected && props.onSignal(selected.resourceId, "interrupt")}
           disabled={!selected || !props.selectedIsActive || !props.canSignal}
           className={terminalMenuItemClassName}
@@ -263,7 +251,7 @@ function TerminalActionsMenu(
           {frontendMessage("terminal.resource.interrupt")}
         </DropdownMenuItem>
         <DropdownMenuItem
-          icon={<CircleStop className="h-3.5 w-3.5" />}
+          icon={<AppIcon icon="stop-circle" size={14} />}
           onSelect={() => selected && props.onSignal(selected.resourceId, "terminate")}
           disabled={!selected || !props.selectedIsActive || !props.canSignal}
           destructive
@@ -272,7 +260,7 @@ function TerminalActionsMenu(
           {frontendMessage("terminal.resource.stop")}
         </DropdownMenuItem>
         <DropdownMenuItem
-          icon={<CircleStop className="h-3.5 w-3.5" />}
+          icon={<AppIcon icon="stop-circle" size={14} />}
           onSelect={props.onStopAll}
           disabled={runningResources.length === 0}
           destructive
@@ -284,7 +272,7 @@ function TerminalActionsMenu(
           <>
             <DropdownMenuSeparator className="bg-[var(--terminal-separator)]" />
             <DropdownMenuLabel className="flex items-center gap-2 px-2.5 pb-1 pt-1.5 text-[10px] text-[var(--terminal-muted)]">
-              <Info className="h-3 w-3" aria-hidden="true" />
+              <AppIcon icon="info" size={12} aria-hidden="true" />
               {frontendMessage("terminal.info.title")}
             </DropdownMenuLabel>
             <TerminalDetails resource={selected} />
@@ -331,7 +319,7 @@ export function TerminalSearchOverlay(props: {
       role="search"
       className="absolute right-2 top-2 z-20 flex h-9 w-[min(320px,calc(100%-16px))] items-center gap-1 rounded border border-[var(--terminal-border)] bg-[var(--terminal-elevated)] px-2 shadow-soft"
     >
-      <Search className="h-3.5 w-3.5 shrink-0 text-[var(--terminal-subtle)]" aria-hidden="true" />
+      <AppIcon icon="search" size={14} className="shrink-0 text-[var(--terminal-subtle)]" aria-hidden="true" />
       <input
         value={props.query}
         onChange={(event) => props.onQueryChange(event.target.value)}
@@ -356,7 +344,7 @@ export function TerminalSearchOverlay(props: {
         disabled={!props.query.trim()}
         className={terminalToolbarButtonClassName(false)}
       >
-        <ChevronUp className="h-3.5 w-3.5" />
+        <AppIcon icon="chevron-up" size={14} />
       </IconButton>
       <IconButton
         label={frontendMessage("terminal.search.next")}
@@ -366,7 +354,7 @@ export function TerminalSearchOverlay(props: {
         disabled={!props.query.trim()}
         className={terminalToolbarButtonClassName(false)}
       >
-        <ChevronDown className="h-3.5 w-3.5" />
+        <AppIcon icon="chevron-down" size={14} />
       </IconButton>
       <IconButton
         label={frontendMessage("terminal.search.close")}
@@ -375,7 +363,7 @@ export function TerminalSearchOverlay(props: {
         onClick={props.onClose}
         className={terminalToolbarButtonClassName(false)}
       >
-        <X className="h-3.5 w-3.5" />
+        <AppIcon icon="close" size={14} />
       </IconButton>
     </div>
   );

@@ -65,6 +65,14 @@ function systemToolGroupTitle(toolName) {
   return systemToolText(toolName, (presentation) => presentation.group.title[WorkflowLocale]);
 }
 
+function systemToolIcon(toolName) {
+  return systemToolOrigin(toolName).presentation.icon;
+}
+
+function systemToolIcons(toolNames) {
+  return [...new Set(toolNames.map(systemToolIcon))].slice(0, 3);
+}
+
 function discoverSystemToolOrigins() {
   const workspaceRoot = resolveWorkspaceRoot();
   const origins = new Map();
@@ -450,7 +458,7 @@ test("conversation tool batches use one semantic batch activity without duplicat
     title: systemToolGroupTitle("WorkspaceRead"),
     accessibleTitle: `${systemToolGroupTitle("WorkspaceRead")} · ${systemToolAction("WorkspaceRead")} · ${systemToolAction("WorkspaceGrep")} · ${systemToolAction("WorkspaceList")}`,
     summary: `${systemToolAction("WorkspaceRead")} · ${systemToolAction("WorkspaceGrep")} · ${systemToolAction("WorkspaceList")}`,
-    icons: ["file-text", "search"],
+    icons: systemToolIcons(["WorkspaceRead", "WorkspaceGrep", "WorkspaceList"]),
   });
 
   renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run }));
@@ -469,7 +477,7 @@ test("conversation tool stage mappings classify semantic and mixed tool batches"
   toolSearch.steps.find((step) => step.toolName).status = "running";
   expect(projectToolStagePresentation(toolSearch)).toMatchObject({
     category: "tool-search",
-    icon: "search",
+    icon: systemToolIcon("ToolSearch"),
     mode: "single-tool",
     status: "running",
     title: systemToolAction("ToolSearch"),
@@ -477,23 +485,23 @@ test("conversation tool stage mappings classify semantic and mixed tool batches"
 
   expect(projectToolStagePresentation(createToolBatchRun(["ToolDescribe"]))).toMatchObject({
     category: "tool-describe",
-    icon: "search",
+    icon: systemToolIcon("ToolDescribe"),
     mode: "single-tool",
     title: systemToolAction("ToolDescribe"),
   });
 
   expect(projectToolStagePresentation(createToolBatchRun(["WorkspaceFind", "WorkspaceGrep"]))).toMatchObject({
     category: "workspace",
-    icon: "search",
-    icons: ["search"],
+    icon: systemToolIcon("WorkspaceFind"),
+    icons: systemToolIcons(["WorkspaceFind", "WorkspaceGrep"]),
     mode: "semantic-batch",
     status: "done",
     title: systemToolGroupTitle("WorkspaceFind"),
   });
   expect(projectToolStagePresentation(createToolBatchRun(["WorkspaceGrep", "ShellCommandTool"]))).toMatchObject({
     category: "tools",
-    icon: "search",
-    icons: ["search", "terminal"],
+    icon: systemToolIcon("WorkspaceGrep"),
+    icons: systemToolIcons(["WorkspaceGrep", "ShellCommandTool"]),
     mode: "semantic-batch",
     status: "done",
     // The batch spans two presentation groups, so it names the first Tool rather
@@ -516,7 +524,7 @@ test("conversation tool stage mappings classify semantic and mixed tool batches"
     status: "done",
     title: systemToolGroupTitle("WorkspaceGrep"),
     summary: `${systemToolAction("WorkspaceGrep")} · ${systemToolAction("WorkspaceFind")} · ${systemToolAction("WorkspaceRead")}`,
-    icons: ["search", "file-text"],
+    icons: systemToolIcons(["WorkspaceGrep", "WorkspaceFind", "WorkspaceRead"]),
     counts: { total: 3, settled: 3, completed: 2, failed: 1 },
   });
 
@@ -615,8 +623,16 @@ test("browser tools use the shared batch activity with semantic action labels", 
   });
   expect(projectToolStagePresentation(run)).toMatchObject({
     category: "browser",
-    icon: "globe",
-    icons: ["globe", "file-text", "clock"],
+    icon: systemToolIcon("BrowserOpen"),
+    icons: systemToolIcons([
+      "BrowserOpen",
+      "BrowserSnapshot",
+      "BrowserClick",
+      "BrowserWaitForLoad",
+      "BrowserScreenshot",
+      "BrowserTabClose",
+      "BrowserClose",
+    ]),
     mode: "semantic-batch",
     title: systemToolGroupTitle("BrowserOpen"),
     summary: `${systemToolAction("BrowserOpen")} · ${systemToolAction("BrowserSnapshot")} · ${systemToolAction("BrowserClick")} · ${systemToolAction("BrowserWaitForLoad")} · ${systemToolAction("BrowserScreenshot")} · ${systemToolAction("BrowserTabClose")} · ${systemToolAction("BrowserClose")}`,
@@ -685,7 +701,14 @@ test("large mixed tool batches use one compact semantic batch activity", () => {
     ),
   ).toMatchObject({
     title: systemToolAction("WorkspaceRead"),
-    icons: ["file-text", "search", "git-branch"],
+    icons: systemToolIcons([
+      "WorkspaceRead",
+      "WorkspaceGrep",
+      "WorkspaceFind",
+      "GitInspect",
+      "ShellCommandTool",
+      "AgentSpawn",
+    ]),
   });
 
   renderWithFrontendProviders(
@@ -721,7 +744,11 @@ test("conversation single-tool stages use one non-duplicated activity row", () =
   const summary = screen.getByRole("status", { name: systemToolAction("WorkspaceGrep") });
   expect(stage).toHaveAttribute("data-tool-stage-mode", "single-tool");
   expect(stage).toHaveClass("w-full");
-  expect(summary.querySelector("[data-tool-action-icon='search'][data-tool-action-status='done']")).toBeInTheDocument();
+  expect(
+    summary.querySelector(
+      `[data-tool-action-icon='${systemToolIcon("WorkspaceGrep")}'][data-tool-action-status='done']`,
+    ),
+  ).toBeInTheDocument();
   expect(summary.querySelector("[data-tool-batch-activity-trigger]")).not.toHaveAttribute("aria-expanded");
   expect(summary.querySelector(".lucide-check, .lucide-x")).not.toBeInTheDocument();
   expect(document.querySelector("[data-tool-batch-activity-items]")).not.toBeInTheDocument();

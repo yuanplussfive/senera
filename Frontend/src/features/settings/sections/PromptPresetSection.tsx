@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { toast } from "sonner";
 import {
   createWorkspaceEntry,
@@ -9,7 +9,17 @@ import {
   type WorkspaceTreeEntry,
 } from "../../../api/workspaceResourceClient";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
-import { AppIcon, Button, IconButton, Input, Spinner, Switch } from "../../../shared/ui";
+import {
+  AppIcon,
+  Button,
+  IconButton,
+  Input,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  Spinner,
+  Switch,
+} from "../../../shared/ui";
 import {
   useWorkspaceResourceController,
   type WorkspaceResourceController,
@@ -32,6 +42,16 @@ type PromptLoadState =
   | { readonly status: "error"; readonly message: string }
   | { readonly status: "ready"; readonly resource: WorkspaceResourceData };
 
+const promptPresetSurfaceStyle = {
+  "--surface-subtle": "var(--theme-config-stage-bg)",
+  "--surface-muted": "var(--theme-config-header-bg)",
+} as CSSProperties;
+
+const promptPresetListSurfaceStyle = {
+  "--surface-panel": "var(--theme-config-list-bg)",
+  "--surface-selected": "var(--accent-surface)",
+} as CSSProperties;
+
 export function PromptPresetSection(): JSX.Element {
   const resources = useWorkspaceResourceController();
   if (!resources) {
@@ -41,11 +61,7 @@ export function PromptPresetSection(): JSX.Element {
       </div>
     );
   }
-  return (
-    <WorkspaceSourceRuntime>
-      <PromptPresetEditor resources={resources} />
-    </WorkspaceSourceRuntime>
-  );
+  return <PromptPresetEditor resources={resources} />;
 }
 
 function PromptPresetEditor({ resources }: { resources: WorkspaceResourceController }): JSX.Element {
@@ -63,6 +79,7 @@ function PromptPresetEditor({ resources }: { resources: WorkspaceResourceControl
   const [newFileName, setNewFileName] = useState("");
   const [creatingFile, setCreatingFile] = useState(false);
   const [createError, setCreateError] = useState<string>();
+  const [showFileBrowser, setShowFileBrowser] = useState(false);
 
   const dirty = resource?.content !== undefined && draft !== resource.content;
   const busy = saving || creatingFile || loadState.status === "loading";
@@ -70,8 +87,6 @@ function PromptPresetEditor({ resources }: { resources: WorkspaceResourceControl
   dirtyRef.current = dirty;
 
   const entryFilter = useCallback((entry: WorkspaceTreeEntry): boolean => {
-    const promptDirectoryPrefix = `${AgentPromptPresetDirectoryPath}/`;
-    if (entry.path !== AgentPromptPresetDirectoryPath && !entry.path.startsWith(promptDirectoryPrefix)) return false;
     if (entry.kind === "directory") return !entry.name.startsWith(".");
     return entry.path.toLocaleLowerCase().endsWith(AgentPromptPresetFileExtension);
   }, []);
@@ -126,6 +141,7 @@ function PromptPresetEditor({ resources }: { resources: WorkspaceResourceControl
         setDraft(next.content ?? "");
         setEditorRevision((value) => value + 1);
         setLoadState({ status: "ready", resource: next });
+        setShowFileBrowser(false);
         setPendingPath(undefined);
         toast.success(frontendMessage("settings.prompt.saved"));
       } catch (reason) {
@@ -150,6 +166,7 @@ function PromptPresetEditor({ resources }: { resources: WorkspaceResourceControl
         setPresetEnabled(false);
         setResource(undefined);
         setLoadState({ status: "empty" });
+        setShowFileBrowser(true);
       } else {
         setLoadState({ status: "error", message: reason instanceof Error ? reason.message : String(reason) });
       }
@@ -161,6 +178,7 @@ function PromptPresetEditor({ resources }: { resources: WorkspaceResourceControl
       setPresetEnabled(false);
       setResource(undefined);
       setLoadState({ status: "error", message: frontendMessage("settings.prompt.invalidState") });
+      setShowFileBrowser(true);
       return;
     }
     try {
@@ -171,6 +189,7 @@ function PromptPresetEditor({ resources }: { resources: WorkspaceResourceControl
       setDraft(next.content ?? "");
       setEditorRevision((value) => value + 1);
       setLoadState({ status: "ready", resource: next });
+      setShowFileBrowser(false);
     } catch (reason) {
       setActivePath(manifest.activePath);
       setPresetEnabled(manifest.enabled);
@@ -184,6 +203,7 @@ function PromptPresetEditor({ resources }: { resources: WorkspaceResourceControl
               ? reason.message
               : String(reason),
       });
+      setShowFileBrowser(true);
     }
   }, [readPreset, resources.httpBaseUrl]);
 
@@ -210,7 +230,10 @@ function PromptPresetEditor({ resources }: { resources: WorkspaceResourceControl
 
   const selectPreset = useCallback(
     (path: string): void => {
-      if (path === activePath) return;
+      if (path === activePath) {
+        setShowFileBrowser(false);
+        return;
+      }
       if (dirty) {
         setPendingPath(path);
         return;
@@ -292,20 +315,171 @@ function PromptPresetEditor({ resources }: { resources: WorkspaceResourceControl
     [applyPreset, creatingFile, dirty, newFileName, resources.csrfToken, resources.httpBaseUrl],
   );
 
-  return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden bg-surface-canvas" data-prompt-preset>
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4 sm:px-5">
-        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-accent-content/[0.08] text-accent-content">
-          <AppIcon icon="file-text" size={16} aria-hidden="true" />
+  const fileBrowser = (
+    <div className="flex min-h-0 flex-1 flex-col bg-[var(--theme-config-stage-bg)]" data-prompt-file-browser>
+      <div className="flex h-10 shrink-0 items-center justify-between border-b border-line-subtle bg-[var(--theme-config-toolbar-bg)] px-4">
+        <span className="text-[11px] font-medium text-content-secondary">
+          {frontendMessage("settings.prompt.files")}
         </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-2">
-            <h1 className="truncate text-[13px] font-semibold text-content-primary">
-              {frontendMessage("settings.prompt.title")}
-            </h1>
-            <code className="truncate text-[10px] text-content-muted">{AgentPromptPresetDirectoryPath}/</code>
-          </div>
+        <div className="flex items-center gap-1">
+          {busy ? <Spinner size="sm" className="text-content-muted" /> : null}
+          <IconButton
+            label={frontendMessage("settings.prompt.create")}
+            tooltip={frontendMessage("settings.prompt.create")}
+            size="sm"
+            tone="primary"
+            disabled={busy || dirty}
+            onClick={() => {
+              setCreating(true);
+              setCreateError(undefined);
+            }}
+          >
+            <AppIcon icon="plus" size={15} aria-hidden="true" />
+          </IconButton>
         </div>
+      </div>
+      {creating ? (
+        <form
+          className="border-b border-line-subtle bg-[var(--theme-config-toolbar-bg)] p-2"
+          onSubmit={(event) => void createPreset(event)}
+        >
+          <div className="mx-auto flex max-w-2xl items-center gap-1.5">
+            <Input
+              autoFocus
+              size="sm"
+              value={newFileName}
+              disabled={creatingFile}
+              onChange={(event) => {
+                setNewFileName(event.target.value);
+                setCreateError(undefined);
+              }}
+              placeholder={frontendMessage("settings.prompt.createPlaceholder")}
+              aria-label={frontendMessage("settings.prompt.createPlaceholder")}
+            />
+            <IconButton
+              label={frontendMessage("settings.prompt.createConfirm")}
+              tooltip={frontendMessage("settings.prompt.createConfirm")}
+              size="sm"
+              tone="primary"
+              disabled={creatingFile || !newFileName.trim()}
+              type="submit"
+            >
+              <AppIcon icon="checkmark" size={14} aria-hidden="true" />
+            </IconButton>
+            <IconButton
+              label={frontendMessage("settings.prompt.createCancel")}
+              tooltip={frontendMessage("settings.prompt.createCancel")}
+              size="sm"
+              tone="muted"
+              disabled={creatingFile}
+              onClick={() => {
+                setCreating(false);
+                setNewFileName("");
+                setCreateError(undefined);
+              }}
+            >
+              <AppIcon icon="close" size={14} aria-hidden="true" />
+            </IconButton>
+          </div>
+          {createError ? (
+            <p className="mx-auto mt-1.5 max-w-2xl px-1 text-[11px] leading-4 text-danger">{createError}</p>
+          ) : null}
+        </form>
+      ) : null}
+      <div
+        className="min-h-0 flex-1 overflow-hidden bg-[var(--theme-config-list-bg)]"
+        style={promptPresetListSurfaceStyle}
+      >
+        <WorkspaceFileTree
+          httpBaseUrl={resources.httpBaseUrl}
+          rootPath={AgentPromptPresetDirectoryPath}
+          missingRootBehavior="empty"
+          activePath={activePath}
+          entryFilter={entryFilter}
+          emptyMessage={frontendMessage("settings.prompt.noFiles")}
+          searchPlaceholder={frontendMessage("settings.prompt.search")}
+          filesLabel={frontendMessage("settings.prompt.files")}
+          initialExpansion="open"
+          revision={revision}
+          onSelect={selectPreset}
+        />
+      </div>
+    </div>
+  );
+
+  return (
+    <section
+      className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--theme-config-stage-bg)] text-content-primary"
+      data-prompt-preset
+      style={promptPresetSurfaceStyle}
+    >
+      <header
+        className="flex h-10 shrink-0 items-center justify-end gap-2 border-b border-line bg-[var(--theme-config-header-bg)] px-4 sm:px-5"
+        role="toolbar"
+        aria-label={frontendMessage("settings.prompt.title")}
+      >
+        <Popover>
+          <PopoverTrigger asChild>
+            <IconButton
+              label={frontendMessage("settings.prompt.rules")}
+              tooltip={frontendMessage("settings.prompt.rules")}
+              size="sm"
+              tone="muted"
+            >
+              <AppIcon icon="info" size={15} aria-hidden="true" />
+            </IconButton>
+          </PopoverTrigger>
+          <PopoverContent
+            align="end"
+            className="w-[min(24rem,calc(100vw-2rem))] space-y-3 text-xs leading-5"
+            aria-label={frontendMessage("settings.prompt.rules")}
+          >
+            <div>
+              <p className="font-medium text-content-primary">{frontendMessage("settings.prompt.identityVariables")}</p>
+              <p className="mt-1 text-content-secondary">
+                {frontendMessage("settings.prompt.identityVariablesDescription")}
+              </p>
+            </div>
+            <dl className="space-y-2 text-content-secondary">
+              <div>
+                <dt className="font-mono text-content-primary">{"{{user}}"}</dt>
+                <dd>{frontendMessage("settings.prompt.userIdentity")}</dd>
+              </div>
+              <div>
+                <dt className="font-mono text-content-primary">{"{{assistant}}"}</dt>
+                <dd>{frontendMessage("settings.prompt.assistantIdentity")}</dd>
+              </div>
+            </dl>
+            <p className="border-t border-line-subtle pt-2 text-content-muted">
+              {frontendMessage("settings.prompt.identityBoundaries")}
+            </p>
+          </PopoverContent>
+        </Popover>
+        {showFileBrowser ? (
+          resource ? (
+            <IconButton
+              label={frontendMessage("settings.prompt.backToEditor")}
+              tooltip={frontendMessage("settings.prompt.backToEditor")}
+              size="sm"
+              tone="muted"
+              disabled={busy}
+              onClick={() => setShowFileBrowser(false)}
+            >
+              <AppIcon icon="arrow-left" size={15} aria-hidden="true" />
+            </IconButton>
+          ) : null
+        ) : (
+          <IconButton
+            label={frontendMessage("settings.prompt.browse")}
+            tooltip={frontendMessage("settings.prompt.browse")}
+            size="sm"
+            tone="muted"
+            disabled={busy || dirty}
+            onClick={() => setShowFileBrowser(true)}
+          >
+            <AppIcon icon="folder" size={15} aria-hidden="true" />
+          </IconButton>
+        )}
         <div className="flex shrink-0 items-center gap-2" data-prompt-preset-toggle>
           <Switch
             checked={presetEnabled}
@@ -343,93 +517,11 @@ function PromptPresetEditor({ resources }: { resources: WorkspaceResourceControl
         </IconButton>
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-rows-[minmax(12rem,38%)_minmax(0,1fr)] md:grid-cols-[minmax(210px,280px)_minmax(0,1fr)] md:grid-rows-1">
-        <aside
-          className="min-h-0 overflow-hidden border-b border-line md:border-b-0 md:border-r"
-          aria-label={frontendMessage("settings.prompt.files")}
-        >
-          <div className="flex h-10 items-center justify-between border-b border-line-subtle px-3">
-            <span className="text-[11px] font-medium text-content-secondary">
-              {frontendMessage("settings.prompt.files")}
-            </span>
-            <div className="flex items-center gap-1">
-              {busy ? <Spinner size="sm" className="text-content-muted" /> : null}
-              <IconButton
-                label={frontendMessage("settings.prompt.create")}
-                tooltip={frontendMessage("settings.prompt.create")}
-                size="sm"
-                tone="primary"
-                disabled={busy || dirty}
-                onClick={() => {
-                  setCreating(true);
-                  setCreateError(undefined);
-                }}
-              >
-                <AppIcon icon="plus" size={15} aria-hidden="true" />
-              </IconButton>
-            </div>
-          </div>
-          {creating ? (
-            <form
-              className="border-b border-line-subtle bg-surface-subtle/50 p-2"
-              onSubmit={(event) => void createPreset(event)}
-            >
-              <div className="flex items-center gap-1.5">
-                <Input
-                  autoFocus
-                  size="sm"
-                  value={newFileName}
-                  disabled={creatingFile}
-                  onChange={(event) => {
-                    setNewFileName(event.target.value);
-                    setCreateError(undefined);
-                  }}
-                  placeholder={frontendMessage("settings.prompt.createPlaceholder")}
-                  aria-label={frontendMessage("settings.prompt.createPlaceholder")}
-                />
-                <IconButton
-                  label={frontendMessage("settings.prompt.createConfirm")}
-                  tooltip={frontendMessage("settings.prompt.createConfirm")}
-                  size="sm"
-                  tone="primary"
-                  disabled={creatingFile || !newFileName.trim()}
-                  type="submit"
-                >
-                  <AppIcon icon="checkmark" size={14} aria-hidden="true" />
-                </IconButton>
-                <IconButton
-                  label={frontendMessage("settings.prompt.createCancel")}
-                  tooltip={frontendMessage("settings.prompt.createCancel")}
-                  size="sm"
-                  tone="muted"
-                  disabled={creatingFile}
-                  onClick={() => {
-                    setCreating(false);
-                    setNewFileName("");
-                    setCreateError(undefined);
-                  }}
-                >
-                  <AppIcon icon="close" size={14} aria-hidden="true" />
-                </IconButton>
-              </div>
-              {createError ? <p className="mt-1.5 px-1 text-[11px] leading-4 text-danger">{createError}</p> : null}
-            </form>
-          ) : null}
-          <WorkspaceFileTree
-            httpBaseUrl={resources.httpBaseUrl}
-            activePath={activePath}
-            entryFilter={entryFilter}
-            emptyMessage={frontendMessage("settings.prompt.noFiles")}
-            searchPlaceholder={frontendMessage("settings.prompt.search")}
-            filesLabel={frontendMessage("settings.prompt.files")}
-            initialExpansion="open"
-            revision={revision}
-            onSelect={selectPreset}
-          />
-        </aside>
-
-        <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--theme-code-editor-bg)]">
-          <div className="flex h-10 shrink-0 items-center gap-2 border-b border-line-subtle px-4">
+      {showFileBrowser ? (
+        fileBrowser
+      ) : (
+        <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--theme-config-stage-bg)]">
+          <div className="flex h-10 shrink-0 items-center gap-2 border-b border-line-subtle bg-[var(--theme-config-toolbar-bg)] px-4">
             <AppIcon icon="file-code" size={15} className="text-content-muted" aria-hidden="true" />
             <span className="min-w-0 flex-1 truncate text-[11px] text-content-secondary" title={activePath}>
               {activePath ?? frontendMessage("settings.prompt.empty")}
@@ -443,25 +535,26 @@ function PromptPresetEditor({ resources }: { resources: WorkspaceResourceControl
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">
             {loadState.status === "ready" && resource?.content !== undefined ? (
-              <WorkspaceTextSurface
+              <PromptPresetSourceSurface
                 key={`${resource.path}:${resource.etag}:${editorRevision}`}
                 name={resource.name}
                 cacheKey={`${resource.path}:${resource.etag}`}
-                editing
-                view="source"
                 content={resource.content}
                 onChange={setDraft}
               />
             ) : loadState.status === "loading" ? (
-              <div className="grid h-full place-items-center text-xs text-content-muted">
+              <div className="grid h-full place-items-center bg-[var(--theme-config-stage-bg)] text-xs text-content-muted">
                 <Spinner size="md" />
               </div>
             ) : loadState.status === "error" ? (
-              <div role="alert" className="grid h-full place-items-center px-6 text-center text-xs text-danger">
+              <div
+                role="alert"
+                className="grid h-full place-items-center bg-[var(--theme-config-stage-bg)] px-6 text-center text-xs text-danger"
+              >
                 {loadState.message}
               </div>
             ) : (
-              <div className="grid h-full place-items-center px-6 text-center">
+              <div className="grid h-full place-items-center bg-[var(--theme-config-stage-bg)] px-6 text-center">
                 <div className="max-w-sm">
                   <AppIcon icon="file-code" size={26} className="mx-auto text-content-muted" aria-hidden="true" />
                   <p className="mt-3 text-xs leading-5 text-content-muted">
@@ -472,7 +565,7 @@ function PromptPresetEditor({ resources }: { resources: WorkspaceResourceControl
             )}
           </div>
           {pendingPath ? (
-            <div className="flex shrink-0 flex-wrap items-center gap-3 border-t border-line bg-surface-panel px-4 py-2.5">
+            <div className="flex shrink-0 flex-wrap items-center gap-3 border-t border-line bg-[var(--theme-config-panel-bg)] px-4 py-2.5">
               <div className="min-w-0 flex-1">
                 <p className="text-[12px] font-medium text-content-strong">
                   {frontendMessage("resource.unsavedTitle")}
@@ -488,8 +581,33 @@ function PromptPresetEditor({ resources }: { resources: WorkspaceResourceControl
             </div>
           ) : null}
         </main>
-      </div>
+      )}
     </section>
+  );
+}
+
+function PromptPresetSourceSurface({
+  name,
+  cacheKey,
+  content,
+  onChange,
+}: {
+  readonly name: string;
+  readonly cacheKey: string;
+  readonly content: string;
+  readonly onChange: (value: string) => void;
+}): JSX.Element {
+  return (
+    <WorkspaceSourceRuntime>
+      <WorkspaceTextSurface
+        name={name}
+        cacheKey={cacheKey}
+        editing
+        view="source"
+        content={content}
+        onChange={onChange}
+      />
+    </WorkspaceSourceRuntime>
   );
 }
 

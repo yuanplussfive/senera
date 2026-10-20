@@ -352,8 +352,8 @@ describe("SettingsWorkbench", () => {
     expect(await screen.findAllByText("命令执行")).toHaveLength(1);
     expect(await screen.findByText("在受控执行环境中运行命令。")).toBeInTheDocument();
     expect(screen.getByText("ShellCommandTool")).toBeInTheDocument();
-    expect(screen.queryByText(/v1\.0\.0/)).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "返回系统扩展" }));
+    expect(screen.getByText("v1.0.0")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "返回插件目录" }));
     fireEvent.click(screen.getByRole("switch", { name: "启用或停用 命令执行" }));
     expect(screen.queryByRole("button", { name: "保存更改" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "放弃更改" })).not.toBeInTheDocument();
@@ -641,7 +641,9 @@ describe("SettingsWorkbench", () => {
       }),
     );
 
-    await userEvent.setup().click(await screen.findByText("命令执行"));
+    const user = userEvent.setup();
+    await user.click(await screen.findByText("命令执行"));
+    await user.click(screen.getByRole("radio", { name: "配置" }));
     const field = (await screen.findByText("默认命令")).closest(".grid");
     const input = field?.querySelector("input");
     expect(input).toBeInTheDocument();

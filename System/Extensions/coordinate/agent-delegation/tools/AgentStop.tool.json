@@ -3,8 +3,9 @@
   "loading": "Bootstrap",
   "presentation": {
     "category": "agent-stop",
-    "icon": "users",
-    "activity": { "action": { "zh-CN": "停止", "en-US": "Stop" }, "argumentPath": "/target" }
+    "icon": "cancel",
+    "activity": { "action": { "zh-CN": "停止", "en-US": "Stop" }, "argumentPath": "/target" },
+    "preview": { "body": { "pointer": "/accepted", "from": "result" } }
   },
   "description": "请求停止不再需要的子代理及其活动后代。返回停止请求是否受理和当前真实状态；受理不等于已经停止。",
   "inputSchema": {

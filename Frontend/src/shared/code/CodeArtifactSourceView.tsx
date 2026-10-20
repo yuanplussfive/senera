@@ -37,11 +37,7 @@ export function CodeArtifactSourceView({
 
   return (
     <div
-      className={cn(
-        "code-artifact-viewer__source scrollbar-thin",
-        bounded && "code-artifact-viewer__source--bounded",
-        className,
-      )}
+      className={cn("code-artifact-viewer__source ", bounded && "code-artifact-viewer__source--bounded", className)}
       style={sourceStyle}
       tabIndex={bounded ? 0 : undefined}
       onWheel={stopNestedScroll}

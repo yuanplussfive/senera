@@ -310,6 +310,39 @@ test("provider connection sends the newest draft after an in-flight save complet
   expect(onUpsertProviderEndpoint).toHaveBeenLastCalledWith(expect.objectContaining({ Id: "alpha", ApiKey: "latest" }));
 });
 
+test("provider connection blocks disabling the provider used by the default model", async () => {
+  const handleRef = { current: null };
+  const onUpsertProviderEndpoint = vi.fn(() => "disable-request");
+  const state = {
+    ...createState("alpha"),
+    models: [{ Id: "alpha/chat", ProviderId: "alpha", Endpoint: "chat", Model: "chat" }],
+    defaultModel: {
+      model: { Id: "alpha/chat", ProviderId: "alpha", Endpoint: "chat", Model: "chat" },
+      provider: { Id: "alpha", Enabled: true },
+    },
+  };
+
+  render(
+    React.createElement(ActionsHarness, {
+      handleRef,
+      onUpsertProviderEndpoint,
+      state,
+    }),
+  );
+
+  await act(async () => {
+    handleRef.current.actions.setProviderEnabled(state.providers[0], false);
+  });
+
+  expect(onUpsertProviderEndpoint).not.toHaveBeenCalled();
+  expect(handleRef.current.actions.localError).toBeNull();
+
+  await act(async () => {
+    handleRef.current.actions.confirmDraft({ Enabled: false });
+  });
+  expect(onUpsertProviderEndpoint).not.toHaveBeenCalled();
+});
+
 test("provider connection keeps a newer draft when the active save fails", async () => {
   const handleRef = { current: null };
   const onUpsertProviderEndpoint = vi.fn().mockReturnValueOnce("first-save").mockReturnValueOnce("retry-save");

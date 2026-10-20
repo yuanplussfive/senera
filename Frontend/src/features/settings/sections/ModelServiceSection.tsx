@@ -60,6 +60,7 @@ export function ModelServiceSection({
     systemConfig && snapshot && modelSection
       ? readModelServiceState({
           catalogs: systemConfig.providerModelCatalogs,
+          configDiagnostics: snapshot.diagnostics,
           draft: EMPTY_DRAFT,
           errors: systemConfig.providerModelErrors,
           loadingIds: systemConfig.providerModelLoadingIds,
@@ -96,6 +97,7 @@ export function ModelServiceSection({
       enabledProviders: 0,
       providerCount: 0,
       providerIssues: [],
+      unresolvedApiKeyProviderIds: [],
     }),
     [],
   );
@@ -164,6 +166,8 @@ export function ModelServiceSection({
 
   const firstProvider = sortProviderRows([...state.providers])[0]?.provider ?? null;
   const selectedProvider = state.providers.find((provider) => provider.Id === selectedProviderId) ?? firstProvider;
+  const acceptedProviderId = actions.acceptedProvider?.Id;
+  const apiKeyUnresolved = acceptedProviderId ? state.unresolvedApiKeyProviderIds.includes(acceptedProviderId) : false;
   const endpointOptions = readFieldOptions(findItemField(modelField, "Endpoint"));
   const modelSurface = (
     <ProviderModelManagementSurface
@@ -197,10 +201,13 @@ export function ModelServiceSection({
         catalogs={systemConfig.providerModelCatalogs}
         errors={systemConfig.providerModelErrors}
         loadingProviderIds={systemConfig.providerModelLoadingIds}
+        operations={systemConfig.providerEndpointOperations}
         selectedProviderId={actions.acceptedProvider?.Id ?? null}
         compact={layout === "compact"}
         disabled={false}
         onRequestAdd={() => actions.setShowAddDialog(true)}
+        onEnabledChange={actions.setProviderEnabled}
+        providerDisableReason={actions.getProviderDisableReason}
         onSelect={(provider) => {
           if (provider.Id !== actions.acceptedProvider?.Id && editorLocalDirtyRef.current) {
             setPendingProviderSelection(provider);
@@ -222,17 +229,18 @@ export function ModelServiceSection({
         <div className="mx-auto w-full max-w-[800px] px-6 sm:px-8">
           <ProviderConnectionEditor
             acceptedProvider={actions.acceptedProvider}
+            apiKeyUnresolved={apiKeyUnresolved}
             dirty={actions.dirty}
             draftProvider={actions.connectionDraft}
             localError={actions.localError}
             operation={actions.providerOperation}
             providerIndex={actions.selectedProviderIndex}
             disabled={false}
-            isDefaultProvider={selectedProvider?.Id === state.defaultModel?.provider?.Id}
             onReadApiKey={systemConfig.readProviderApiKey}
             onChange={actions.updateDraftProvider}
             onConfirm={actions.confirmDraft}
             onLocalDraftChange={handleEditorLocalDirtyChange}
+            providerDisableReason={actions.getProviderDisableReason}
             onEdit={() => setProviderConfigOpen(true)}
             onDelete={actions.acceptedProvider ? () => setProviderPendingRemoval(actions.acceptedProvider!) : undefined}
           />
@@ -287,6 +295,7 @@ export function ModelServiceSection({
       />
       <EditProviderDialog
         open={providerConfigOpen}
+        apiKeyUnresolved={apiKeyUnresolved}
         provider={actions.connectionDraft}
         pending={actions.saving}
         error={actions.localError}

@@ -8,6 +8,21 @@ export const AgentPromptPresetDirectoryPath = AgentPromptPresetDirectoryName;
 export const AgentPromptPresetFileExtension = ".md";
 export const AgentPromptPresetManifestVersion = 1;
 
+/**
+ * Normalizes a workspace-relative prompt preset path at the contract
+ * boundary. Preset state never accepts an absolute path or a traversal path.
+ */
+export function normalizeAgentPromptPresetPath(value: string): string | undefined {
+  const portable = value.trim().replace(/\\/gu, "/");
+  if (!portable || portable.startsWith("/") || /^[a-z]:/iu.test(portable)) return undefined;
+  const segments = portable.split("/");
+  if (segments.some((segment) => segment === "" || segment === "." || segment === "..")) return undefined;
+  const normalized = segments.join("/");
+  if (!normalized.startsWith(`${AgentPromptPresetDirectoryPath}/`)) return undefined;
+  if (!normalized.toLocaleLowerCase().endsWith(AgentPromptPresetFileExtension)) return undefined;
+  return normalized;
+}
+
 export interface AgentPromptPresetManifest {
   readonly version: typeof AgentPromptPresetManifestVersion;
   readonly activePath: string;
@@ -26,11 +41,13 @@ export function parseAgentPromptPresetManifest(value: unknown): AgentPromptPrese
   if (!value || typeof value !== "object") return undefined;
   const record = value as Record<string, unknown>;
   if (record.version !== AgentPromptPresetManifestVersion || typeof record.activePath !== "string") return undefined;
+  const activePath = normalizeAgentPromptPresetPath(record.activePath);
+  if (!activePath) return undefined;
   const enabled = record.enabled === undefined ? true : record.enabled;
   if (typeof enabled !== "boolean") return undefined;
   return {
     version: AgentPromptPresetManifestVersion,
-    activePath: record.activePath,
+    activePath,
     enabled,
   };
 }

@@ -38,6 +38,7 @@ export async function createWorkspaceHostHarness() {
         Server: { Host: "127.0.0.1", Port: address.port, HotReload: false },
         ModelProviderEndpoints: [{ Id: "local-test", BaseUrl: "http://127.0.0.1:1/v1" }],
         ModelProviders: [{ Id: "test", ProviderId: "local-test", Endpoint: "ChatCompletions", Model: "test" }],
+        DefaultModelProviderId: "test",
         ContinuityLearning: { Enabled: false },
         Extensions: { "workspace-tools": { Enabled: true } },
       }),

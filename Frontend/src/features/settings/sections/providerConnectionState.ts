@@ -1,4 +1,5 @@
 import type {
+  ConfigDiagnosticData,
   ConfigFormSectionData,
   ProviderModelsFailedData,
   ProviderModelsSnapshotData,
@@ -19,6 +20,7 @@ import { readModelServiceState, type ModelServiceState } from "./modelServiceSta
 
 export interface ProviderConnectionStateInput {
   catalogs: Record<string, ProviderModelsSnapshotData>;
+  configDiagnostics: readonly ConfigDiagnosticData[];
   errors: Record<string, ProviderModelsFailedData & { updatedAt?: string }>;
   loadingIds: Record<string, boolean>;
   section: ConfigFormSectionData;
@@ -63,6 +65,7 @@ export type ProviderEndpointMutationInput<
 
 export function readProviderConnectionState({
   catalogs,
+  configDiagnostics,
   errors,
   loadingIds,
   section,
@@ -71,6 +74,7 @@ export function readProviderConnectionState({
 }: ProviderConnectionStateInput): ModelServiceState {
   return readModelServiceState({
     catalogs,
+    configDiagnostics,
     draft: readProviderConnectionConfigValue(snapshotValue, section),
     errors,
     loadingIds,

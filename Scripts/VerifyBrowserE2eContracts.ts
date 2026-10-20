@@ -26,7 +26,7 @@ assert.ok(
   "Browser E2E harness must expose disabled and required authentication modes.",
 );
 assert.ok(
-  desktopHarnessSource.includes('Apps", "Desktop", "Preload.cjs"'),
+  desktopHarnessSource.includes('"Dist", "Apps", "Desktop", "Preload.cjs"'),
   "Desktop Browser E2E must load the production Electron preload bridge.",
 );
 assert.ok(

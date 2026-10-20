@@ -10,7 +10,7 @@ export {
 } from "./settingsSectionContract";
 
 export interface SettingsSectionDefinition {
-  id: SettingsSectionId;
+  id: CanonicalSettingsSectionId;
   label: string;
   icon: AppIconName;
   description: string;
@@ -18,6 +18,15 @@ export interface SettingsSectionDefinition {
 }
 
 export type SettingsSectionHeaderMode = "global" | "local" | "none";
+
+const retiredSectionTargets = {
+  "mcp-servers": "system-tools",
+  workspace: "storage",
+} as const;
+
+type RetiredSettingsSectionId = keyof typeof retiredSectionTargets;
+
+export type CanonicalSettingsSectionId = Exclude<SettingsSectionId, RetiredSettingsSectionId>;
 
 export const settingsSections = [
   defineSettingsSection(
@@ -28,11 +37,10 @@ export const settingsSections = [
     "local",
   ),
   defineSettingsSection(
-    "default-model",
+    "model-roles",
     "target",
-    "settings.section.defaultModel.label",
-    "settings.section.defaultModel.description",
-    "local",
+    "settings.section.modelRoles.label",
+    "settings.section.modelRoles.description",
   ),
   defineSettingsSection(
     "runtime",
@@ -65,45 +73,42 @@ export const settingsSections = [
     "package",
     "settings.section.systemTools.label",
     "settings.section.systemTools.description",
-  ),
-  defineSettingsSection(
-    "dependencies",
-    "download",
-    "settings.section.dependencies.label",
-    "settings.section.dependencies.description",
     "none",
   ),
   defineSettingsSection(
-    "mcp-servers",
+    "dependencies",
     "server",
-    "settings.section.mcpServers.label",
-    "settings.section.mcpServers.description",
+    "settings.section.dependencies.label",
+    "settings.section.dependencies.description",
+    "none",
   ),
   defineSettingsSection(
     "channels",
     "message",
     "settings.section.channels.label",
     "settings.section.channels.description",
+    "local",
   ),
-  defineSettingsSection("general", "tools", "settings.section.general.label", "settings.section.general.description"),
+  defineSettingsSection(
+    "general",
+    "sliders",
+    "settings.section.general.label",
+    "settings.section.general.description",
+    "none",
+  ),
   defineSettingsSection(
     "appearance",
     "palette",
     "settings.section.appearance.label",
     "settings.section.appearance.description",
+    "none",
   ),
   defineSettingsSection("storage", "folder", "settings.section.storage.label", "settings.section.storage.description"),
-  defineSettingsSection(
-    "workspace",
-    "folder",
-    "settings.section.workspace.label",
-    "settings.section.workspace.description",
-  ),
-  defineSettingsSection("about", "info", "settings.section.about.label", "settings.section.about.description"),
+  defineSettingsSection("about", "info", "settings.section.about.label", "settings.section.about.description", "none"),
 ] as const satisfies readonly SettingsSectionDefinition[];
 
 function defineSettingsSection(
-  id: SettingsSectionId,
+  id: CanonicalSettingsSectionId,
   icon: AppIconName,
   labelKey: FrontendMessageKey,
   descriptionKey: FrontendMessageKey,
@@ -121,6 +126,12 @@ function defineSettingsSection(
     headerMode,
   };
 }
+
+function isRetiredSettingsSectionId(value: SettingsSectionId): value is RetiredSettingsSectionId {
+  return value in retiredSectionTargets;
+}
+
 export function readSettingsSection(sectionId: SettingsSectionId): SettingsSectionDefinition {
-  return settingsSections.find((section) => section.id === sectionId) ?? settingsSections[0];
+  const canonicalId = isRetiredSettingsSectionId(sectionId) ? retiredSectionTargets[sectionId] : sectionId;
+  return settingsSections.find((section) => section.id === canonicalId) ?? settingsSections[0];
 }

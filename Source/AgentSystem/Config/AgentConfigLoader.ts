@@ -8,12 +8,14 @@ import {
   type AgentConfigMigrationResult,
 } from "./AgentConfigMigration.js";
 import { CurrentAgentConfigVersion } from "./AgentConfigVersion.js";
-import { AgentConfigSecretCodec } from "./AgentConfigSecretProtection.js";
+import { AgentConfigSecretCodec, type AgentConfigUnresolvedSecret } from "./AgentConfigSecretProtection.js";
 
 export interface AgentConfigLoadResult {
   config: AgentSystemConfig;
   migration?: AgentConfigMigrationResult;
   secretsNeedPersistence: boolean;
+  /** Secrets stored in this file that this host could not open. */
+  unresolvedSecrets: readonly AgentConfigUnresolvedSecret[];
 }
 
 export interface AgentConfigLoadOptions {
@@ -35,9 +37,11 @@ export class AgentConfigLoader {
     const codec = options.secretCodec;
     let migration: AgentConfigMigrationResult | undefined;
     let secretsNeedPersistence = false;
+    let unresolvedSecrets: readonly AgentConfigUnresolvedSecret[] = [];
     const config = new AgentJsonFileLoader().load(absolutePath, AgentSystemConfigSchema, (payload) => {
       const revealed = codec.revealPayload(payload);
-      secretsNeedPersistence = revealed.plaintextSecretsFound;
+      secretsNeedPersistence = revealed.plaintextSecretsFound || revealed.secretsNeedRewrap;
+      unresolvedSecrets = revealed.unresolvedSecrets;
       const sourceVersion = readAgentConfigVersion(revealed.value);
       if (sourceVersion !== CurrentAgentConfigVersion) {
         options.onMigrationDetected?.({
@@ -55,6 +59,6 @@ export class AgentConfigLoader {
       migration = migrateAgentConfigPayload(revealed.value);
       return migration?.config ?? revealed.value;
     });
-    return { config, migration, secretsNeedPersistence };
+    return { config, migration, secretsNeedPersistence, unresolvedSecrets };
   }
 }

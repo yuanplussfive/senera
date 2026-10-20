@@ -25,6 +25,7 @@ export type SocketPostIngestEffectPlan =
               | "model.list"
               | "sandbox.status"
               | "systemTool.list"
+              | "mcpServer.list"
               | "runtimeDependency.list"
               | "workspace.get";
           }
@@ -70,6 +71,7 @@ export function resolveSocketPostIngestEffect(env: EventEnvelope): SocketPostIng
         { type: "model.list" },
         { type: "sandbox.status" },
         { type: "systemTool.list" },
+        { type: "mcpServer.list" },
         { type: "runtimeDependency.list" },
       ],
     };

@@ -1,5 +1,6 @@
 import type { FrontendLocalizedText } from "../i18n/frontendLocaleModel";
 import type { AgentActivationCatalogSnapshot } from "../../../Source/AgentSystem/Activation/AgentActivationTypes";
+import type { AgentPluginIdentityPresentation } from "../../../Source/AgentSystem/Types/AgentToolPresentationTypes";
 
 export type McpInputValue = string | number | boolean | string[] | number[] | boolean[];
 
@@ -13,7 +14,7 @@ export interface McpInputStatus {
   multiple: boolean;
   configured: boolean;
   stored: boolean;
-  source: "vault" | "configuration" | "environment" | "oauth" | "default" | "missing";
+  source: "vault" | "configuration" | "environment" | "oauth" | "default" | "unresolved" | "missing";
   provenance: "mcpb" | "registry" | "legacy" | "connection";
   value?: McpInputValue;
   defaultValue?: McpInputValue;
@@ -31,8 +32,11 @@ export interface McpServerSettingsItem {
   description: FrontendLocalizedText;
   source: "bundled" | "workspace";
   descriptorKind: "mcpb" | "registry" | "legacy" | "connection";
+  presentation?: AgentPluginIdentityPresentation;
   transport: "stdio" | "http";
   status: "configured" | "needs_input" | "unavailable";
+  /** Effective activation state after configuration readiness is evaluated. */
+  enabled: boolean;
   unavailableCapabilityDetails?: { id: string; reason?: string }[];
   inputs: McpInputStatus[];
 }

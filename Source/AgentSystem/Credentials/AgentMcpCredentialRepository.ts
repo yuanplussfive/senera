@@ -1,16 +1,22 @@
 import type Database from "better-sqlite3";
 import { AgentSqliteDatabaseKernel } from "../Database/AgentSqliteDatabaseKernel.js";
-import { AgentSecretEnvelopeCodec } from "../Security/AgentSecretEnvelopeCodec.js";
+import {
+  AgentSecretUndecryptableError,
+  type AgentSecretOpenFailure,
+  type AgentSecretOpenResult,
+} from "../Security/AgentSecretEnvelopeCodec.js";
+import { createAgentSecretDomain, type AgentSecretDomainHandle } from "../Security/AgentSecretDomains.js";
+import type { AgentLegacySecretKeyRelocation } from "../Security/AgentSecretKeyRing.js";
 import { AgentMcpCredentialDatabaseContract } from "./AgentMcpCredentialSqlSchema.js";
 import {
   prepareAgentMcpCredentialSqlStatements,
   type AgentMcpCredentialMetadataRow,
+  type AgentMcpCredentialRow,
   type AgentMcpCredentialSqlStatements,
   type AgentMcpInputValueMetadataRow,
 } from "./AgentMcpCredentialSqlStatements.js";
 import { AgentExtensionInputValueSchema, type AgentExtensionInputValue } from "../Extensions/AgentExtensionInput.js";
-
-const CredentialSecretKeyEnvironmentVariable = "SENERA_CREDENTIAL_SECRET_KEY";
+import type { AgentApplicationPaths } from "../Core/AgentApplicationPaths.js";
 
 export interface AgentMcpStoredCredentialMetadata {
   readonly serverId: string;
@@ -26,8 +32,21 @@ export interface AgentMcpStoredInputMetadata {
   readonly updatedAt: string;
 }
 
+export type AgentMcpCredentialResolution =
+  | { readonly status: "missing" }
+  | { readonly status: "resolved"; readonly value: string }
+  | { readonly status: "unresolved"; readonly reason: AgentSecretOpenFailure };
+
 export interface AgentMcpCredentialRepositoryOptions {
-  readonly secretKeyPath: string;
+  /** Locates the key written by releases that kept one credential key per workspace. */
+  readonly workspaceRoot: string;
+  /**
+   * Host key directory for this deployment. Callers that resolved their own application state root pass
+   * it here so the master key stays inside that root; omitting it resolves the root from the environment.
+   */
+  readonly secretKeysRoot?: string;
+  /** Host state for the deployment that owns `secretKeysRoot`. */
+  readonly applicationPaths?: AgentApplicationPaths;
   readonly key?: Buffer;
   readonly environment?: NodeJS.ProcessEnv;
 }
@@ -42,7 +61,7 @@ export class AgentMcpCredentialRepository {
   private readonly kernel: AgentSqliteDatabaseKernel;
   private readonly database: Database.Database;
   private readonly statements: AgentMcpCredentialSqlStatements;
-  private readonly secrets: AgentSecretEnvelopeCodec;
+  private readonly secretDomain: AgentSecretDomainHandle;
   private readonly writeCredential: (serverId: string, name: string, value: string, updatedAt: string) => void;
   private readonly removeCredential: (serverId: string, name: string) => boolean;
   private readonly writeInputValue: (
@@ -66,19 +85,19 @@ export class AgentMcpCredentialRepository {
     this.database = this.kernel.connection;
     this.database.pragma("secure_delete = ON");
     this.statements = prepareAgentMcpCredentialSqlStatements(this.database);
-    this.secrets = new AgentSecretEnvelopeCodec({
-      keyPath: options.secretKeyPath,
-      keyEnvironmentVariable: CredentialSecretKeyEnvironmentVariable,
+    this.secretDomain = createAgentSecretDomain("credentials", {
+      workspaceRoot: options.workspaceRoot,
+      keysRoot: options.secretKeysRoot,
+      applicationPaths: options.applicationPaths,
       key: options.key,
       environment: options.environment,
-      keyLabel: "Credential secret key",
     });
     this.writeCredential = this.database.transaction((serverId, name, value, updatedAt) => {
       const current = this.statements.selectCredential.get(serverId, name);
       this.statements.upsertCredential.run({
         server_id: serverId,
         name,
-        value_envelope: this.secrets.seal(value, credentialContext(serverId, name)),
+        value_envelope: this.secretDomain.codec.seal(value),
         created_at: current?.created_at ?? updatedAt,
         updated_at: updatedAt,
       });
@@ -114,7 +133,7 @@ export class AgentMcpCredentialRepository {
           this.statements.upsertCredential.run({
             server_id: serverId,
             name: mutation.inputId,
-            value_envelope: this.secrets.seal(mutation.value, credentialContext(serverId, mutation.inputId)),
+            value_envelope: this.secretDomain.codec.seal(mutation.value),
             created_at: current?.created_at ?? updatedAt,
             updated_at: updatedAt,
           });
@@ -144,13 +163,73 @@ export class AgentMcpCredentialRepository {
       if (credentialsChanged) this.statements.incrementRevision.run();
       if (inputValuesChanged) this.statements.incrementInputRevision.run();
     });
+    this.protectStoredCredentials();
   }
 
-  resolve(serverId: string, name: string): string | undefined {
+  /**
+   * Envelopes sealed before this host had a keyring are re-sealed with the active key as the vault
+   * opens, the same way the config store converges. Only the storage representation changes, so the
+   * timestamps and the credential revision stay put and no consumer is told to refetch.
+   */
+  private protectStoredCredentials(): void {
+    const rewrites = this.statements.selectAllCredentials.all().flatMap((row) => {
+      try {
+        const opened = this.openStored(row);
+        return opened.needsRewrap ? [{ row, value: opened.value }] : [];
+      } catch (error) {
+        // A credential this host cannot open keeps the exact bytes it was saved with.
+        if (error instanceof AgentSecretUndecryptableError) return [];
+        throw error;
+      }
+    });
+    if (rewrites.length === 0) return;
+
+    this.database
+      .transaction(() => {
+        for (const item of rewrites) {
+          this.statements.upsertCredential.run({
+            server_id: item.row.server_id,
+            name: item.row.name,
+            value_envelope: this.secretDomain.codec.seal(item.value),
+            created_at: item.row.created_at,
+            updated_at: item.row.updated_at,
+          });
+        }
+      })
+      .immediate();
+    this.kernel.checkpoint();
+  }
+
+  /**
+   * Key files this vault found outside the keyring while it opened, and whether each one left the
+   * directory it was found in. The credential store has no diagnostic channel of its own, so the host
+   * logs these; a failed move means key material is still sitting where a user may version it.
+   */
+  relocatedLegacyKeys(): readonly AgentLegacySecretKeyRelocation[] {
+    return this.secretDomain.keyRing.relocatedLegacyKeys();
+  }
+
+  private openStored(row: AgentMcpCredentialRow): AgentSecretOpenResult {
+    return this.secretDomain.codec.open(
+      row.value_envelope,
+      credentialLabel(row.server_id, row.name),
+      legacyCredentialContext(row.server_id, row.name),
+    );
+  }
+
+  /**
+   * A credential this host cannot open reports as unresolved rather than absent: the server starts
+   * without that value, and the settings surface can say the saved one needs to be entered again.
+   */
+  resolve(serverId: string, name: string): AgentMcpCredentialResolution {
     const row = this.statements.selectCredential.get(serverId, name);
-    return row
-      ? this.secrets.open(row.value_envelope, credentialContext(serverId, name), `MCP credential ${serverId}/${name}`)
-      : undefined;
+    if (!row) return { status: "missing" };
+    try {
+      return { status: "resolved", value: this.openStored(row).value };
+    } catch (error) {
+      if (!(error instanceof AgentSecretUndecryptableError)) throw error;
+      return { status: "unresolved", reason: error.failure };
+    }
   }
 
   upsert(serverId: string, name: string, value: string, updatedAt = new Date().toISOString()): void {
@@ -231,8 +310,13 @@ function projectInputMetadata(row: AgentMcpInputValueMetadataRow): AgentMcpStore
   };
 }
 
-function credentialContext(serverId: string, name: string): string {
+/** Authenticated data used by releases before the domain-wide credential context. */
+function legacyCredentialContext(serverId: string, name: string): string {
   return `senera/mcp/${encodeURIComponent(serverId)}/environment/${encodeURIComponent(name)}`;
+}
+
+function credentialLabel(serverId: string, name: string): string {
+  return `MCP credential ${serverId}/${name}`;
 }
 
 function projectMetadata(row: AgentMcpCredentialMetadataRow): AgentMcpStoredCredentialMetadata {

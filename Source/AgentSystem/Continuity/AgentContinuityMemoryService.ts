@@ -21,6 +21,8 @@ import {
 import { agentMemOSReference } from "./AgentMemOSReference.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import { errorMessage } from "../Core/AgentErrors.js";
+import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
+import { projectAgentMemOSSemanticIdentityText } from "./AgentMemOSSemanticIdentity.js";
 
 interface RecallInput {
   readonly userInput: string;
@@ -36,6 +38,8 @@ export interface AgentContinuityMemoryServiceOptions {
   readonly store: AgentContinuitySqliteStore;
   readonly recallConfig: () => AgentContinuityLearningRecallConfig;
   readonly memos: Pick<AgentContinuityMemOSRuntime, "search" | "searchRecent">;
+  /** Profile display values are projected at delivery time, not stored as memory. */
+  readonly identityDisplayValues?: () => AgentIdentityDisplayValues;
   /** Prompt continuity is enrichment; its derived-memory failures are observable but non-fatal. */
   readonly logger?: AgentLogger;
 }
@@ -62,10 +66,11 @@ export class AgentContinuityMemoryService {
         ? await this.options.memos.search(input.userInput, { excludedKeys: input.excludedMemoryKeys })
         : await this.options.memos.searchRecent({ excludedKeys: input.excludedMemoryKeys });
       throwAbortReason(input.signal);
+      const identity = this.options.identityDisplayValues?.();
       const budgeted = applyAgentContinuityPromptBudget(
         {
-          digests: results.flatMap(projectMemOSPeriodDigest),
-          events: results.flatMap(projectMemOSEvent),
+          digests: results.flatMap((result) => projectMemOSPeriodDigest(result, identity)),
+          events: results.flatMap((result) => projectMemOSEvent(result, identity)),
           historicalTokenBudget: input.historicalTokenBudget,
         },
         recall.PromptBudget,
@@ -148,10 +153,11 @@ export class AgentContinuityMemoryService {
 
 function projectMemOSEvent(
   result: AgentContinuityMemOSSearchResult,
+  identity: AgentIdentityDisplayValues | undefined,
 ): AgentContinuityMemoryPromptContext["eventCandidates"][number][] {
   const node = result.memory.node;
   if (!node.tags.includes(AgentMemOSTags.knowledge)) return [];
-  const summary = AgentMemOSSummarySchema.parse(node.summary);
+  const summary = projectAgentMemOSSemanticIdentityText(AgentMemOSSummarySchema.parse(node.summary), identity);
   return [
     {
       id: node.id,
@@ -170,11 +176,12 @@ function projectMemOSEvent(
 
 function projectMemOSPeriodDigest(
   result: AgentContinuityMemOSSearchResult,
+  identity: AgentIdentityDisplayValues | undefined,
 ): AgentContinuityMemoryPromptContext["periodDigests"][number][] {
   const node = result.memory.node;
   const period = projectAgentMemOSPeriod(node.tags);
   if (!period) return [];
-  const summary = AgentMemOSSummarySchema.parse(node.summary);
+  const summary = projectAgentMemOSSemanticIdentityText(AgentMemOSSummarySchema.parse(node.summary), identity);
   return [
     {
       id: node.id,

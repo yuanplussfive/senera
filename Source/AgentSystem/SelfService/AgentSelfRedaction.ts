@@ -2,8 +2,8 @@
  * must never echo ApiKey/AppSecret/token values back into the conversation. */
 
 import { isAgentConfigSensitiveFieldName } from "../Config/AgentConfigSecretContract.js";
+import { containsAgentSecretEnvelope } from "../Security/AgentSecretEnvelopeCodec.js";
 
-const SecretEnvelopePrefix = "senera:secret:v1:";
 const ProtocolSecretKeyNames = new Set(["authorization", "privatekey"]);
 
 const Redacted = "***";
@@ -23,16 +23,12 @@ export function projectAgentSelfRedacted(value: unknown, maxDepth = 12, depth = 
       continue;
     }
     if (typeof entry === "string" && isAgentSelfSecretValue(entry)) {
-      output[key] = maskSecretString();
+      output[key] = Redacted;
       continue;
     }
     output[key] = projectAgentSelfRedacted(entry, maxDepth, depth + 1);
   }
   return output;
-}
-
-function maskSecretString(): string {
-  return Redacted;
 }
 
 export function isAgentSelfSensitiveKey(key: string): boolean {
@@ -42,12 +38,7 @@ export function isAgentSelfSensitiveKey(key: string): boolean {
 
 function isAgentSelfSecretValue(value: string): boolean {
   const normalized = value.trim();
-  return isSecretEnvelope(normalized) || isBearerCredential(normalized);
-}
-
-function isSecretEnvelope(value: string): boolean {
-  const marker = value.indexOf(SecretEnvelopePrefix);
-  return marker >= 0 && value.length > marker + SecretEnvelopePrefix.length;
+  return containsAgentSecretEnvelope(normalized) || isBearerCredential(normalized);
 }
 
 function isBearerCredential(value: string): boolean {

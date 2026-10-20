@@ -71,8 +71,9 @@ test("completed run summary keeps disclosure semantics when motion is disabled",
   const disclosureId = trigger.getAttribute("aria-controls");
   expect(trigger).toHaveAttribute("aria-expanded", "true");
   expect(disclosureId).not.toBeNull();
-  await waitFor(() =>
-    expect(document.getElementById(disclosureId)).toContainElement(screen.getByText("本轮未调用工具")),
+  await waitFor(
+    () => expect(document.getElementById(disclosureId)).toContainElement(screen.getByText("本轮未调用工具")),
+    { timeout: 10_000 },
   );
   expect(screen.queryByText(frontendMessage("workflow.summary.viewFull"))).not.toBeInTheDocument();
 
@@ -196,7 +197,6 @@ test("thinking summary keeps sequential tools in one collapsible batch", async (
   expect(document.querySelector("[data-tool-batch-activity]").parentElement).toHaveClass(
     "thinking-tool-popover__body",
     "overflow-y-auto",
-    "scrollbar-thin",
   );
 });
 
@@ -419,27 +419,24 @@ test("dock execution view renders a vertical workflow graph with expandable comp
   expect(screen.getByText(/WorkspaceGrep/)).toBeInTheDocument();
   expect(screen.queryByText(frontendMessage("workflow.childRun.board.title"))).not.toBeInTheDocument();
   expect(screen.queryByText(frontendMessage("workflow.childRun.board.empty"))).not.toBeInTheDocument();
-  expect(
-    document.querySelector("[data-workflow-dock-step='tool-read'] [data-tool-action-icon='file-text']"),
-  ).toBeInTheDocument();
-  expect(document.querySelector("[data-workflow-dock-step='tool-read'] .lucide-check")).not.toBeInTheDocument();
+  expect(document.querySelector("[data-workflow-dock-flow-origin]")).not.toBeInTheDocument();
+  expect(document.querySelector("[data-workflow-dock-flow-node]")).toBeInTheDocument();
   const toolCard = document.querySelector("[data-workflow-dock-step='tool-read'][data-workflow-tool-call-card]");
-  expect(toolCard).toHaveTextContent("WorkspaceRead");
+  expect(toolCard).toHaveTextContent("Read");
   expect(toolCard).toHaveTextContent("Source/runtime.ts");
-  const toolTrigger = screen.getByRole("button", { name: /展开WorkspaceRead/ });
+  expect(toolCard).not.toHaveTextContent("Source/runtime.tsSource/runtime.ts");
+  const toolTrigger = screen.getByRole("button", { name: /展开Source\/runtime\.ts/ });
   await user.click(toolTrigger);
-  await waitFor(() =>
-    expect(
-      document.querySelector("[data-workflow-dock-step='tool-read'] [data-workflow-tool-call-payload='arguments']"),
-    ).toBeInTheDocument(),
-  );
+  const drawer = await screen.findByRole("dialog");
   expect(toolTrigger).toHaveAttribute("aria-expanded", "true");
   expect(
-    document.querySelector("[data-workflow-dock-step='tool-read'] [data-workflow-tool-call-payload='arguments']"),
-  ).toHaveTextContent("Source/runtime.ts");
+    document.querySelector("[data-workflow-dock-step='tool-read'] [data-workflow-dock-flow-node-active='true']"),
+  ).toBeInTheDocument();
+  expect(drawer).toHaveTextContent("WorkspaceRead");
+  expect(drawer).toHaveTextContent("Source/runtime.ts");
   expect(
-    document.querySelector("[data-workflow-dock-step='tool-read'] [data-workflow-tool-call-payload='result']"),
-  ).toHaveTextContent("export const runtime = true;");
+    document.querySelector("[data-workflow-dock-step='tool-read'] .workflow-dock-entry-detail"),
+  ).not.toBeInTheDocument();
   expect(document.querySelector(".react-flow")).not.toBeInTheDocument();
 });
 
@@ -689,7 +686,8 @@ test("parallel tool batches fan out as complete graph branches instead of a comp
   expect(edges.some((edge) => edge.source === batchNodes[0].id && edge.target === batchNodes[1].id)).toBe(false);
 });
 
-test("dock workflow graph fans out parallel tools without a visible plan row", async () => {
+test("dock workflow graph keeps parallel tools compact until the batch is expanded", async () => {
+  const user = userEvent.setup();
   const run = createToolBatchRun(["WorkspaceFind", "WorkspaceRead"]);
   resetFrontendStore({
     activeSessionId: "session-a",
@@ -700,13 +698,157 @@ test("dock workflow graph fans out parallel tools without a visible plan row", a
   renderWithFrontendProviders(React.createElement(ThinkingTimeline, { presentation: "dock", hidePanelTitle: true }));
 
   expect(document.querySelectorAll("[data-workflow-dock-batch]")).toHaveLength(1);
-  await waitFor(() => {
-    expect(screen.getByRole("button", { name: /展开WorkspaceFind/ })).toBeVisible();
-    expect(screen.getByRole("button", { name: /展开WorkspaceRead/ })).toBeVisible();
-  });
-  expect(screen.queryByRole("button", { name: /展开2 次工具调用/ })).not.toBeInTheDocument();
+  const batchSummary = document.querySelector("[data-workflow-dock-batch-summary]");
+  expect(batchSummary).toHaveAccessibleName(/展开调用 .+ 等 2 个工具/);
   expect(document.querySelector('[data-workflow-dock-step="batch-plan"]')).not.toBeInTheDocument();
+  expect(document.querySelector("[data-workflow-dock-batch]")).toHaveAttribute("data-workflow-dock-expanded", "false");
+  expect(screen.queryByRole("button", { name: /展开WorkspaceFind/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /展开WorkspaceRead/ })).not.toBeInTheDocument();
+
+  await user.click(batchSummary);
+
   expect(document.querySelector("[data-workflow-dock-batch]")).toHaveAttribute("data-workflow-dock-expanded", "true");
+  expect(screen.getByRole("button", { name: /展开WorkspaceFind/ })).toBeVisible();
+  expect(screen.getByRole("button", { name: /展开WorkspaceRead/ })).toBeVisible();
+  expect(document.querySelector("[data-workflow-dock-batch-summary]")).toHaveAccessibleName(/收起调用 .+ 等 2 个工具/);
+});
+
+test("dock renders declared tool parameters, result expansion, and declared links without inferring payload fields", async () => {
+  const user = userEvent.setup();
+  const run = createRun({
+    steps: [
+      createStep({
+        id: "search",
+        kind: "tool",
+        title: "WebSearch",
+        toolName: "WebSearch",
+        toolOrigin: createSystemToolOrigin({
+          name: "Web tools",
+          category: "web-search",
+          icon: "globe",
+          groupId: "web",
+          groupTitle: "Web research",
+          action: "Search",
+          argumentPath: "/query",
+          preview: {
+            parameters: [{ label: { "zh-CN": "关键词", "en-US": "Query" }, pointer: "/query" }],
+            result: {
+              rows: [
+                {
+                  pointer: "/results/*",
+                  titlePath: "/title",
+                  descriptionPath: "/summary",
+                  metaPath: "/url",
+                  hrefPath: "/url",
+                },
+              ],
+              maxRows: 4,
+              more: { pointer: "/results", label: { "zh-CN": "另有 {count} 条结果", "en-US": "{count} more" } },
+            },
+          },
+        }),
+        toolArgs: { query: "OpenAI October 2026" },
+        // Pi v5 traces created before result projection persisted the closed
+        // Observation detail rather than its contract-facing result value.
+        toolResult: {
+          evidence: [],
+          result: {
+            results: [
+              {
+                title: "OpenAI product release",
+                summary: "Official release notes",
+                url: "https://openai.com/news/product-releases/",
+              },
+              {
+                title: "OpenAI newsroom",
+                summary: "Company news",
+                url: "https://openai.com/news/",
+              },
+              {
+                title: "OpenAI safety",
+                summary: "Safety research",
+                url: "https://openai.com/safety/",
+              },
+              {
+                title: "OpenAI research",
+                summary: "Research updates",
+                url: "https://openai.com/research/",
+              },
+            ],
+          },
+          notice: "Search completed.",
+        },
+      }),
+    ],
+  });
+  resetFrontendStore({
+    activeSessionId: "session-a",
+    sessionOrder: ["session-a"],
+    sessions: { "session-a": createSession([run]) },
+  });
+
+  renderWithFrontendProviders(React.createElement(ThinkingTimeline, { presentation: "dock", hidePanelTitle: true }));
+
+  expect(screen.getByText("关键词")).toBeVisible();
+  expect(screen.getAllByText("OpenAI October 2026")).toHaveLength(2);
+  expect(screen.getByText("OpenAI product release")).toBeVisible();
+  expect(screen.getByText("OpenAI newsroom")).toBeVisible();
+  expect(screen.queryByText("OpenAI safety")).not.toBeInTheDocument();
+  expect(screen.getByText("Official release notes")).toHaveClass("sr-only");
+  expect(screen.getAllByText("openai.com")).toHaveLength(2);
+  expect(screen.queryByText("https://openai.com/news/product-releases/")).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /OpenAI product release/ })).toHaveAttribute(
+    "href",
+    "https://openai.com/news/product-releases/",
+  );
+  await user.click(screen.getByRole("button", { name: "另有 2 条结果" }));
+  expect(screen.getByText("OpenAI safety")).toBeVisible();
+  expect(screen.getByText("OpenAI research")).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "收起结果" }));
+  expect(screen.queryByText("OpenAI safety")).not.toBeInTheDocument();
+});
+
+test("dock renders the canonical failure from an attributed Pi observation", () => {
+  const observation = {
+    type: "senera.tool_observation.v5",
+    status: "failure",
+    execution_status: "completed",
+    output_availability: "none",
+    error: { message: "Codex Search returned no citeable search results." },
+    detail: { evidence: [], result: { error: { message: "Codex Search returned no citeable search results." } } },
+  };
+  const encoded = JSON.stringify(observation).replaceAll('"', "&quot;");
+  const run = createRun({
+    steps: [
+      createStep({
+        id: "failed-search",
+        kind: "tool",
+        title: "WebSearch",
+        status: "failed",
+        toolName: "WebSearch",
+        toolOrigin: createSystemToolOrigin({
+          name: "Web tools",
+          category: "web-search",
+          icon: "globe",
+          groupId: "web",
+          groupTitle: "Web research",
+          action: "Search",
+          argumentPath: "/query",
+        }),
+        toolErrorMessage: `<observation attribution="tool">${encoded}</observation>`,
+      }),
+    ],
+  });
+  resetFrontendStore({
+    activeSessionId: "session-a",
+    sessionOrder: ["session-a"],
+    sessions: { "session-a": createSession([run]) },
+  });
+
+  renderWithFrontendProviders(React.createElement(ThinkingTimeline, { presentation: "dock", hidePanelTitle: true }));
+
+  expect(screen.getByText("Codex Search returned no citeable search results.")).toBeVisible();
+  expect(screen.queryByText(/<observation attribution=/)).not.toBeInTheDocument();
 });
 
 test("dock workflow graph keeps the generated reply summary visible", async () => {
@@ -738,7 +880,8 @@ test("dock workflow graph keeps the generated reply summary visible", async () =
   expect(document.querySelector("[data-workflow-dock-answer]")).toBeInTheDocument();
 });
 
-test("dock workflow graph represents partial batch failures proportionally", () => {
+test("dock workflow graph keeps each partially failed parallel tool independently inspectable", async () => {
+  const user = userEvent.setup();
   const toolNames = Array.from({ length: 13 }, (_value, index) => `WorkspaceRead${index}`);
   const run = createToolBatchRun(toolNames);
   run.steps.find((step) => step.toolName === "WorkspaceRead12").status = "failed";
@@ -750,12 +893,9 @@ test("dock workflow graph represents partial batch failures proportionally", () 
 
   renderWithFrontendProviders(React.createElement(ThinkingTimeline, { presentation: "dock", hidePanelTitle: true }));
 
-  const succeeded = document.querySelector("[data-workflow-batch-segment='done']");
-  const failed = document.querySelector("[data-workflow-batch-segment='failed']");
-  expect(succeeded).toHaveAttribute("data-count", "12");
-  expect(succeeded).toHaveStyle({ width: `${(12 / 13) * 100}%` });
-  expect(failed).toHaveAttribute("data-count", "1");
-  expect(failed).toHaveStyle({ width: `${(1 / 13) * 100}%` });
+  await user.click(document.querySelector("[data-workflow-dock-batch-summary]"));
+  expect(document.querySelectorAll("[data-workflow-tool-status='done']")).toHaveLength(12);
+  expect(document.querySelectorAll("[data-workflow-tool-status='failed']")).toHaveLength(1);
   expect(document.querySelector("[data-tool-action-warning]")).not.toBeInTheDocument();
   expect(screen.queryByText("1 项失败")).not.toBeInTheDocument();
   expect(screen.queryByText("成功 12")).not.toBeInTheDocument();

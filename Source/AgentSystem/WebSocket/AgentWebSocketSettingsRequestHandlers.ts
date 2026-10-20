@@ -3,6 +3,29 @@ import type { AgentWebSocketEventSender, AgentWebSocketRequestContext } from "./
 import { AgentEventKinds } from "../Events/AgentEvent.js";
 import { findAgentRuntimeDependency } from "../Runtime/AgentRuntimeDependencyCatalog.js";
 
+/** Emits the one canonical MCP settings and activation projection. */
+export function sendAgentMcpSettingsSnapshot(
+  context: AgentWebSocketRequestContext,
+  sendEvent: AgentWebSocketEventSender,
+  requestId?: string,
+): Promise<void> {
+  const management = context.mcpManagement;
+  const pluginHost = context.pluginHost;
+  if (!management || !pluginHost) throw new Error("MCP management is unavailable in this runtime.");
+  const snapshot = management.mcpSettingsSnapshot();
+  return Promise.resolve(
+    sendEvent({
+      kind: AgentEventKinds.McpServerSnapshot,
+      context: {},
+      data: {
+        servers: snapshot.servers,
+        activation: management.activationCatalog(pluginHost.list()),
+        ...(requestId ? { operation: { requestId, kind: "mcp_input_update" as const } } : {}),
+      },
+    }),
+  );
+}
+
 export class AgentWebSocketToolSettingsRequestHandlers {
   constructor(private readonly context: AgentWebSocketRequestContext) {}
 
@@ -123,21 +146,7 @@ export class AgentWebSocketToolSettingsRequestHandlers {
   }
 
   private sendMcpSnapshot(sendEvent: AgentWebSocketEventSender, requestId?: string): Promise<void> {
-    const management = this.requireManagement();
-    const plugins = this.requirePluginHost().list();
-    const snapshot = management.mcpSettingsSnapshot();
-    const activation = management.activationCatalog(plugins);
-    return Promise.resolve(
-      sendEvent({
-        kind: AgentEventKinds.McpServerSnapshot,
-        context: {},
-        data: {
-          servers: snapshot.servers,
-          activation,
-          ...(requestId ? { operation: { requestId, kind: "mcp_input_update" as const } } : {}),
-        },
-      }),
-    );
+    return sendAgentMcpSettingsSnapshot(this.context, sendEvent, requestId);
   }
 
   private requireManagement() {

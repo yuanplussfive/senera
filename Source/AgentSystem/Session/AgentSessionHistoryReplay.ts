@@ -3,6 +3,7 @@ import { AgentConversationEntryKinds, type AgentConversationEntry } from "../Con
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { StepTrace } from "../Core/AgentStepTrace.js";
 import type { AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
+import type { AgentToolPresentation } from "../Types/AgentToolPresentationTypes.js";
 import type {
   AgentSessionCursorPage,
   AgentSessionHistoryView,
@@ -28,9 +29,17 @@ const DefaultRunEventChunkMaxBytes = 256 * 1024;
 export interface AgentSessionHistoryReplayOptions {
   store: AgentSessionHistoryReplayStore;
   eventFactory: AgentSessionEventFactory;
+  /**
+   * Captures the current declared tool presentation once for a replay. Durable
+   * step traces keep their execution-era origin; this only lets a compatible
+   * UI contract evolve without rewriting historical execution facts.
+   */
+  createPresentationResolver?: () => AgentSessionHistoryPresentationResolver;
   paging?: Partial<AgentSessionHistoryReplayPaging>;
   maxRunEventChunkBytes?: number;
 }
+
+export type AgentSessionHistoryPresentationResolver = (trace: Readonly<StepTrace>) => AgentToolPresentation | undefined;
 
 export interface AgentSessionHistoryReplayStore {
   captureHistorySnapshot(sessionId: string): AgentSessionHistoryView | undefined;
@@ -80,11 +89,12 @@ export class AgentSessionHistoryReplay {
   }): Promise<void> {
     const snapshot = await this.captureHistorySnapshot(request);
     if (!snapshot) return;
+    const presentationResolver = this.options.createPresentationResolver?.();
 
     await this.emitHistoryStarted(request, snapshot);
     if (request.initialWindow) await this.emitRecentPreview(request, snapshot);
     await this.emitEntryPages(request, snapshot);
-    await this.emitStepRunPages(request, snapshot);
+    await this.emitStepRunPages(request, snapshot, presentationResolver);
     await this.emitRunEventPages(request, snapshot);
     await this.emitHistoryCompleted(request);
   }
@@ -93,6 +103,7 @@ export class AgentSessionHistoryReplay {
     entryIndex: AgentSessionHistoryEntryIndex,
     traceRuns: readonly StoredStepTraceRun[],
     snapshots: readonly StoredRunSnapshot[],
+    presentationResolver: AgentSessionHistoryPresentationResolver | undefined,
   ): AgentHistoryStepRun[] {
     const runsByRequest = new Map<string, AgentHistoryStepRun>();
 
@@ -106,7 +117,7 @@ export class AgentSessionHistoryReplay {
         endedAt: assistantEntry?.timestamp,
         status: inferTraceRunStatus(run.traces),
         modelProvider: assistantEntry?.modelProvider ?? userEntry?.modelProvider,
-        traces: run.traces,
+        traces: run.traces.map((trace) => this.resolveTracePresentation(trace, presentationResolver)),
       });
     }
 
@@ -218,6 +229,7 @@ export class AgentSessionHistoryReplay {
   private async emitStepRunPages(
     request: { sessionId: string; onEvent?: AgentEventSink },
     historySnapshot: AgentSessionHistoryView,
+    presentationResolver: AgentSessionHistoryPresentationResolver | undefined,
   ): Promise<void> {
     if (historySnapshot.stepTraceHighWaterMark !== undefined) {
       let cursor: AgentStepTraceCursor | undefined;
@@ -245,7 +257,10 @@ export class AgentSessionHistoryReplay {
                 requestIds,
                 historySnapshot.runSnapshotHighWaterMark,
               );
-        await this.emitStepRuns(request, this.buildStepRunsFromSources(entryIndex, page.items, pageSnapshots));
+        await this.emitStepRuns(
+          request,
+          this.buildStepRunsFromSources(entryIndex, page.items, pageSnapshots, presentationResolver),
+        );
         if (!page.nextCursor) break;
         assertStepTraceCursorAdvanced(cursor, page.nextCursor);
         cursor = page.nextCursor;
@@ -276,6 +291,7 @@ export class AgentSessionHistoryReplay {
           new AgentSessionHistoryEntryIndex(),
           [],
           page.items.filter((snapshot) => !tracedRequestIds.has(snapshot.requestId)),
+          presentationResolver,
         ),
       );
       if (page.nextCursor === undefined) break;
@@ -294,6 +310,22 @@ export class AgentSessionHistoryReplay {
       context: { sessionId: request.sessionId },
       data: { sessionId: request.sessionId, runs: [...runs] },
     });
+  }
+
+  private resolveTracePresentation(
+    trace: StepTrace,
+    resolver: AgentSessionHistoryPresentationResolver | undefined,
+  ): StepTrace {
+    if (!resolver || !trace.toolOrigin) return trace;
+    const presentation = resolver(trace);
+    if (!presentation) return trace;
+    return {
+      ...trace,
+      toolOrigin: {
+        ...trace.toolOrigin,
+        presentation,
+      },
+    };
   }
 
   private async emitRunEventPages(

@@ -1,8 +1,9 @@
-import { User } from "lucide-react";
-import type { UserProfile } from "../../store/sessionStore";
+import type { ConversationIdentity, UserProfile } from "../../store/sessionStore";
+import { DEFAULT_ASSISTANT_PROFILE } from "../../store/session/userProfile";
 import { cn, formatTime } from "../../lib/util";
-import { LogoMark } from "../../shared/ui";
+import { AppIcon, LogoMark } from "../../shared/ui";
 import { ModelProviderIcon } from "./ModelProviderIcon";
+import { useProfileAvatar } from "../session/ProfileAvatar";
 
 export interface MessageMetaProps {
   title?: string;
@@ -34,10 +35,23 @@ export function MessageMeta({
   );
 }
 
-export function AssistantMessageAvatar(): JSX.Element {
+export function AssistantMessageAvatar({
+  profile = DEFAULT_ASSISTANT_PROFILE,
+}: {
+  profile?: ConversationIdentity;
+}): JSX.Element {
+  const { source: avatarSource, onError } = useProfileAvatar(profile);
   return (
-    <span className="grid h-8 w-8 shrink-0 place-items-center" aria-label="Senera" data-message-avatar="assistant">
-      <LogoMark size={30} />
+    <span
+      className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full"
+      aria-label={profile.name}
+      data-message-avatar="assistant"
+    >
+      {avatarSource ? (
+        <img src={avatarSource} alt={profile.name} className="h-full w-full object-cover" onError={onError} />
+      ) : (
+        <LogoMark size={30} />
+      )}
     </span>
   );
 }
@@ -49,6 +63,7 @@ export interface MessageAvatarProps {
 }
 
 export function MessageAvatar({ role, icon, profile }: MessageAvatarProps): JSX.Element {
+  const avatar = useProfileAvatar(profile ?? { name: "", avatarDataUrl: null });
   if (role === "user") {
     const fallback = readUserInitial(profile?.name);
     return (
@@ -56,12 +71,17 @@ export function MessageAvatar({ role, icon, profile }: MessageAvatarProps): JSX.
         className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full bg-surface-muted text-[12px] font-semibold text-content-secondary"
         data-message-avatar="user"
       >
-        {profile?.avatarDataUrl ? (
-          <img src={profile.avatarDataUrl} alt={profile.name} className="h-full w-full object-cover" />
+        {avatar.source ? (
+          <img
+            src={avatar.source}
+            alt={profile?.name ?? ""}
+            className="h-full w-full object-cover"
+            onError={avatar.onError}
+          />
         ) : fallback ? (
           fallback
         ) : (
-          <User className="h-4 w-4" />
+          <AppIcon icon="user" className="h-4 w-4" />
         )}
       </div>
     );

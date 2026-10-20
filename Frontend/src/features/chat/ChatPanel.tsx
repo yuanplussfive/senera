@@ -107,6 +107,7 @@ export function ChatPanel({
                   runs={runs}
                   currentRun={isActive ? currentRun : undefined}
                   userProfile={userProfile}
+                  assistantProfile={userProfile.assistant}
                   onForkFromMessage={messageActions.onForkFromMessage}
                   onRegenerate={messageActions.onRegenerate}
                   onRetryRun={messageActions.onRetryRun}
@@ -129,6 +130,7 @@ export function ChatPanel({
         />
         <ChatComposer
           disabled={composerDisabled}
+          cancelDisabled={isCancelling}
           running={!!isRunning}
           settling={!!isSettling}
           cancelling={!!isCancelling}

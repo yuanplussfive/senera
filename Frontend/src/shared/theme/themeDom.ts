@@ -40,6 +40,14 @@ export function applyAppearanceSnapshotToDocument(
   }
 }
 
+/** Updates only the typography variable used by an in-progress scale preview. */
+export function applyFontScalePreviewToDocument(
+  fontScale: number,
+  documentRef: Pick<Document, "documentElement"> | undefined = readBrowserDocument(),
+): void {
+  documentRef?.documentElement.style.setProperty("--theme-font-scale", String(fontScale));
+}
+
 export function runAppearanceTransition(
   apply: () => void,
   options: AppearanceTransitionOptions = {},

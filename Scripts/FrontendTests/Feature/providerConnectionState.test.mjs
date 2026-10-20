@@ -14,6 +14,7 @@ describe("providerConnectionState", () => {
   it("reads effective provider endpoints so built-in providers remain visible", () => {
     const state = readProviderConnectionState({
       catalogs: {},
+      configDiagnostics: [],
       errors: {},
       loadingIds: {},
       section: createModelsSection({

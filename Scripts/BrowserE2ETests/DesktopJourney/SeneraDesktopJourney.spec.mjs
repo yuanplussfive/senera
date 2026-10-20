@@ -12,7 +12,7 @@ let userDataRoot;
 test.describe.configure({ mode: "serial" });
 
 test.beforeAll(async () => {
-  harness = await createBrowserE2eHarness({ authenticationMode: "disabled" });
+  harness = await createBrowserE2eHarness({ authenticationMode: "disabled", workspaceMode: "single-workspace" });
   userDataRoot = mkdtempSync(path.join(os.tmpdir(), "senera-desktop-browser-e2e-"));
   desktopApplication = await electron.launch({
     chromiumSandbox: true,
@@ -43,7 +43,7 @@ test("loads the desktop settings surface through the real Electron preload bridg
   });
 
   await expect(desktopPage.locator("[data-settings-workbench]")).toBeVisible();
-  await expect(desktopPage.getByRole("heading", { level: 2, name: "外观" })).toBeVisible();
+  await expect(desktopPage.getByRole("heading", { level: 3, name: "界面风格" })).toBeVisible();
   expect(
     await desktopPage.evaluate(() => ({
       desktopSurface: document.documentElement.dataset.seneraDesktopSurface,

@@ -13,20 +13,17 @@ import {
 import {
   createFindTool,
   createFindToolDefinition,
-  createGrepTool,
   createGrepToolDefinition,
   createLsTool,
   createLsToolDefinition,
   type FindOperations,
   type FindToolInput,
-  type GrepOperations,
   type GrepToolInput,
   type LsOperations,
   type LsToolInput,
 } from "@earendil-works/pi-coding-agent";
 import { rgPath } from "@vscode/ripgrep";
 import { resolveAsarUnpackedExecutablePath } from "../Core/AgentExecutablePath.js";
-import { listAgentWorkspaceNonContentRoots } from "../Core/AgentWorkspaceLayout.js";
 export { resolveAsarUnpackedExecutablePath } from "../Core/AgentExecutablePath.js";
 import { minimatch } from "minimatch";
 import { z } from "zod";
@@ -38,6 +35,8 @@ import {
   type ToolSearchManifest,
 } from "../Types/AgentToolContractTypes.js";
 import type { AgentHostToolContext } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
+import { searchWorkspaceContent } from "../WorkspaceResources/AgentWorkspaceContentSearch.js";
+import { workspaceContentExclusionGlobs } from "../WorkspaceResources/AgentWorkspaceFileDiscovery.js";
 import { defineSystemTool, type AgentSystemToolMetadata } from "./AgentSystemToolDefinition.js";
 
 const bundledRipgrepPath = resolveAsarUnpackedExecutablePath(rgPath);
@@ -175,12 +174,25 @@ export const WorkspaceGrepSystemTool = defineSystemTool({
   input: WorkspaceGrepInput,
   output: PiToolResult,
   async execute(input, context) {
-    exposeBundledRipgrepToPi();
+    assertBundledRipgrepAvailable();
     const canonicalInput = await canonicalizeOptionalPath(input, context);
-    const tool = createGrepTool(context.workspaceRoot, {
-      operations: createGrepOperations(context),
+    return searchWorkspaceContent({
+      workspaceRoot: context.workspaceRoot,
+      ripgrepPath: bundledRipgrepPath,
+      request: { ...canonicalInput, searchPath: canonicalInput.path, signal: context.signal },
+      operations: {
+        async isDirectory(absolutePath) {
+          const result = await context.executionEnv.fileInfo(absolutePath);
+          if (!result.ok) throw result.error;
+          return result.value.kind === "directory";
+        },
+        async readFile(absolutePath) {
+          const result = await context.executionEnv.readTextFile(absolutePath, context.signal);
+          if (!result.ok) throw result.error;
+          return result.value;
+        },
+      },
     });
-    return tool.execute(toolCallId(context), withWorkspaceSearchGlob(canonicalInput, context), context.signal);
   },
 });
 
@@ -290,21 +302,6 @@ async function canonicalizeOptionalPath<TInput extends { path?: string }>(
   return { ...input, path: resolved.value };
 }
 
-function createGrepOperations(context: AgentHostToolContext): GrepOperations {
-  return {
-    async isDirectory(absolutePath) {
-      const result = await context.executionEnv.fileInfo(absolutePath);
-      if (!result.ok) throw result.error;
-      return result.value.kind === "directory";
-    },
-    async readFile(absolutePath) {
-      const result = await context.executionEnv.readTextFile(absolutePath, context.signal);
-      if (!result.ok) throw result.error;
-      return result.value;
-    },
-  };
-}
-
 function createFindOperations(context: AgentHostToolContext): FindOperations {
   return {
     async exists(absolutePath) {
@@ -352,37 +349,8 @@ interface WorkspaceFileEnumerationRequest {
   readonly signal?: AbortSignal;
 }
 
-function withWorkspaceSearchGlob<TInput extends { path: string; glob?: string }>(
-  input: TInput,
-  context: AgentHostToolContext,
-): TInput {
-  const exclusions = workspaceNonContentGlobs(context.workspaceRoot, input.path);
-  if (exclusions.length === 0) return input;
-
-  const include = input.glob?.trim() || "**/*";
-  return {
-    ...input,
-    glob: `{${include},${exclusions.map((glob) => `!${glob}`).join(",")}}`,
-  };
-}
-
 function mergeWorkspaceFindIgnores(ignores: readonly string[], workspaceRoot: string, searchRoot: string): string[] {
-  return [...new Set([...ignores, ...workspaceNonContentGlobs(workspaceRoot, searchRoot)])];
-}
-
-function workspaceNonContentGlobs(workspaceRoot: string, searchRoot: string): string[] {
-  const resolvedSearchRoot = path.resolve(searchRoot);
-  return [
-    ...new Set(
-      listAgentWorkspaceNonContentRoots(workspaceRoot).flatMap((protectedRoot) => {
-        const relative = path.relative(resolvedSearchRoot, path.resolve(protectedRoot));
-        if (relative === "" || path.isAbsolute(relative) || relative === ".." || relative.startsWith(`..${path.sep}`)) {
-          return [];
-        }
-        return [`${relative.split(path.sep).join("/")}/**`];
-      }),
-    ),
-  ];
+  return [...new Set([...ignores, ...workspaceContentExclusionGlobs(workspaceRoot, searchRoot)])];
 }
 
 function enumerateWorkspaceFiles(request: WorkspaceFileEnumerationRequest): Promise<string[]> {
@@ -458,7 +426,6 @@ function matchesPiFindPattern(candidate: string, pattern: string): boolean {
 }
 
 let bundledRipgrepVerified = false;
-let bundledRipgrepExposed = false;
 
 function assertBundledRipgrepAvailable(): void {
   if (bundledRipgrepVerified) return;
@@ -470,26 +437,6 @@ function assertBundledRipgrepAvailable(): void {
     throw new Error(`Bundled ripgrep cannot start: ${probe.error?.message ?? `exit ${String(probe.status)}`}`);
   }
   bundledRipgrepVerified = true;
-}
-
-function exposeBundledRipgrepToPi(): void {
-  if (bundledRipgrepExposed) return;
-  assertBundledRipgrepAvailable();
-  const executableDirectory = path.dirname(bundledRipgrepPath);
-  const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
-  const currentPath = process.env[pathKey] ?? "";
-  const normalizedDirectory = normalizePathEntry(executableDirectory);
-  const alreadyExposed = currentPath
-    .split(path.delimiter)
-    .filter(Boolean)
-    .some((entry) => normalizePathEntry(entry) === normalizedDirectory);
-  if (!alreadyExposed) process.env[pathKey] = `${executableDirectory}${path.delimiter}${currentPath}`;
-  bundledRipgrepExposed = true;
-}
-
-function normalizePathEntry(value: string): string {
-  const normalized = path.resolve(value);
-  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }
 
 function toolCallId(context: AgentHostToolContext): string {

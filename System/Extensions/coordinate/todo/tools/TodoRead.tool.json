@@ -4,8 +4,9 @@
   "description": "Read all tasks and their current statuses for the active session.",
   "presentation": {
     "category": "todo-read",
-    "icon": "list-checks",
-    "activity": { "action": { "zh-CN": "读取 Todo 待办", "en-US": "Read task list" } }
+    "icon": "list",
+    "activity": { "action": { "zh-CN": "读取 Todo 待办", "en-US": "Read task list" } },
+    "preview": { "body": { "pointer": "/items", "from": "result" } }
   },
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

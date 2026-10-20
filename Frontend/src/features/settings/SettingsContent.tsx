@@ -13,15 +13,11 @@ import type { SettingsSectionDefinition, SettingsSectionId } from "./types";
 import { AboutSettings } from "./sections/AboutSettings";
 import { AppearanceSettings } from "./sections/AppearanceSettings";
 import type { ConfigSettingsDraftState } from "./sections/configSettingsDraftState";
+import { DefaultModelSection } from "./sections/DefaultModelSection";
 import { GeneralSettings } from "./sections/GeneralSettings";
 import { projectSectionConfigFields } from "./sections/runtimeModelAssignments";
 import { StorageSettings } from "./sections/StorageSettings";
 import { RuntimeDependenciesSection } from "./sections/RuntimeDependenciesSection";
-import { PromptPresetSection } from "./sections/PromptPresetSection";
-
-const WorkspaceSettings = lazy(() =>
-  import("./sections/WorkspaceSettings").then((module) => ({ default: module.WorkspaceSettings })),
-);
 
 const SettingsExtensionSection = lazy(() =>
   import("./sections/SettingsExtensionSection").then((module) => ({ default: module.SettingsExtensionSection })),
@@ -29,6 +25,10 @@ const SettingsExtensionSection = lazy(() =>
 
 const ChannelsSection = lazy(() =>
   import("./sections/ChannelsSection").then((module) => ({ default: module.ChannelsSection })),
+);
+
+const PromptPresetSection = lazy(() =>
+  import("./sections/PromptPresetSection").then((module) => ({ default: module.PromptPresetSection })),
 );
 
 export function SettingsContent({
@@ -137,12 +137,6 @@ function renderSettingsContent({
   switch (activeSection.id) {
     case "appearance":
       return <AppearanceSettings />;
-    case "workspace":
-      return workspace ? (
-        <WorkspaceSettings workspace={workspace} environment={environment} />
-      ) : (
-        <SettingsSectionLoading />
-      );
     case "general":
       return (
         <GeneralSettings
@@ -164,27 +158,19 @@ function renderSettingsContent({
       );
     case "prompt":
       return <PromptPresetSection />;
+    case "model-roles":
+      return <DefaultModelSection draftState={configDraftState} systemConfig={systemConfig} />;
     case "storage":
       return (
-        <>
-          <StorageSettings />
-          <ConfigFormSectionSettings draftState={configDraftState} sectionId="storage" systemConfig={systemConfig} />
-        </>
-      );
-    case "default-model":
-      return (
-        <DraftBackedSection draftState={configDraftState} ready={Boolean(systemConfig?.configSnapshot)}>
-          <SettingsExtensionSection
-            sectionId={activeSection.id}
-            draftState={configDraftState}
-            systemConfig={systemConfig}
-            onEntityDraftChange={onEntityDraftChange}
-          />
-        </DraftBackedSection>
+        <StorageSettings
+          workspace={workspace}
+          configuration={
+            <ConfigFormSectionSettings draftState={configDraftState} sectionId="storage" systemConfig={systemConfig} />
+          }
+        />
       );
     case "model-service":
     case "system-tools":
-    case "mcp-servers":
       return (
         <SettingsExtensionSection
           sectionId={activeSection.id}
@@ -353,9 +339,7 @@ function isFullHeightWorkspace(sectionId: SettingsSectionId): boolean {
 function sectionWidthClassName(sectionId: SettingsSectionId): string {
   if (sectionId === "appearance") return "mx-auto w-full max-w-[1120px]";
   if (sectionId === "general") return "mx-auto w-full max-w-[1120px]";
-  if (sectionId === "workspace") return "mx-auto w-full max-w-[980px]";
   if (sectionId === "about") return "mx-auto w-full max-w-[980px]";
-  if (sectionId === "default-model") return "mx-auto w-full max-w-[960px]";
   if (sectionId === "runtime" || sectionId === "planning" || sectionId === "retrieval" || sectionId === "storage") {
     return "mx-auto w-full max-w-[980px]";
   }
@@ -363,13 +347,7 @@ function sectionWidthClassName(sectionId: SettingsSectionId): string {
 }
 
 function settingsViewportClassName(sectionId: SettingsSectionId): string {
-  if (
-    sectionId === "default-model" ||
-    sectionId === "runtime" ||
-    sectionId === "planning" ||
-    sectionId === "retrieval" ||
-    sectionId === "storage"
-  ) {
+  if (sectionId === "runtime" || sectionId === "planning" || sectionId === "retrieval" || sectionId === "storage") {
     return "";
   }
   return "bg-surface-canvas px-5 py-5 sm:px-8 sm:py-6";

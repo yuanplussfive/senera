@@ -92,6 +92,26 @@ describe("workspace resource HTTP API", () => {
     expect(Buffer.from(await response.arrayBuffer())).toEqual(png);
   });
 
+  test("exposes SVG workspace files as editable source", async () => {
+    const harness = await createHarness();
+    const source = '<svg viewBox="0 0 20 20"></svg>\n';
+    await fs.writeFile(path.join(harness.root, "diagram.svg"), source, "utf8");
+
+    const response = await fetch(resourceUrl(harness.baseUrl, "diagram.svg"));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      resource: {
+        name: "diagram.svg",
+        mime: "image/svg+xml",
+        kind: "text",
+        editable: true,
+        content: source,
+      },
+    });
+  });
+
   test("downloads workspace files as their original file with the original name and media type", async () => {
     const harness = await createHarness();
     const source = "export const answer = 42;\n";

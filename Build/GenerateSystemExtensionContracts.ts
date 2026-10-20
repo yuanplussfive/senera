@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { format, resolveConfig } from "prettier";
 import { z } from "zod";
+import { Ajv } from "ajv";
 import { synchronizeGeneratedFile } from "./GeneratedTextFile.js";
 import { createAgentSystemTools } from "../Source/AgentSystem/SystemTools/AgentSystemTools.js";
 import { systemToolCapability } from "../Source/AgentSystem/SystemTools/AgentSystemToolCatalog.js";
@@ -12,7 +13,10 @@ import {
   ToolSchedulingModes,
 } from "../Source/AgentSystem/Types/AgentToolContractTypes.js";
 import { AgentJsonFileLoader } from "../Source/AgentSystem/Config/AgentJsonFileLoader.js";
-import { AgentSystemToolContractSchema } from "../Source/AgentSystem/SystemTools/AgentSystemExtensionManifest.js";
+import {
+  AgentSystemSidecarToolContractSchema,
+  AgentSystemToolContractSchema,
+} from "../Source/AgentSystem/SystemTools/AgentSystemExtensionManifest.js";
 import { resolveSystemExtensionPackageFile } from "../Source/AgentSystem/SystemTools/AgentSystemExtensionPackagePath.js";
 import { validateAgentToolResourceManifests } from "../Source/AgentSystem/ToolRuntime/AgentToolResourceManifestValidation.js";
 import { AgentBundledHostToolInputContracts } from "../Source/AgentSystem/SystemTools/AgentBundledHostToolInputContracts.js";
@@ -35,6 +39,7 @@ assertAgentSelfCommandContract();
 for (const group of groupByExtension(definitions)) await synchronizeExtension(group);
 await synchronizeBundledHostToolInputContracts();
 await synchronizeBundledExtensionConfigurationContracts();
+validateBundledExtensionToolSchemas();
 
 console.log(`Generated System extension contracts ${check ? "verified" : "synchronized"}.`);
 
@@ -70,7 +75,7 @@ async function synchronizeExtension(definitions: readonly AgentSystemToolDefinit
   if (configuration) {
     await synchronize(
       path.join(extensionRoot, "config.schema.json"),
-      z.toJSONSchema(configuration.schema, { target: "draft-7", io: "input" }),
+      draftSevenJsonSchema(configuration.schema, "input"),
     );
     await synchronize(path.join(extensionRoot, "ui.schema.json"), configuration.ui);
   }
@@ -88,10 +93,10 @@ async function synchronizeExtension(definitions: readonly AgentSystemToolDefinit
       description: metadata.description,
       ...(existingContract.presentation ? { presentation: existingContract.presentation } : {}),
       inputSchema: ensureObjectRootJsonSchema(
-        z.toJSONSchema(definition.input, { target: "draft-7", io: "input" }),
+        draftSevenJsonSchema(definition.input, "input"),
         `System Tool ${definition.name} input`,
       ),
-      outputSchema: z.toJSONSchema(definition.output, { target: "draft-7", io: "output" }),
+      outputSchema: draftSevenJsonSchema(definition.output, "output"),
       ...(metadata.perception ? { perception: metadata.perception } : {}),
       permissions: [...(metadata.permissions ?? [])],
       execution: metadata.execution ?? { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
@@ -135,7 +140,7 @@ function readExtensionConfiguration(definitions: readonly AgentSystemToolDefinit
 
 function configurationSignature(configuration: NonNullable<AgentSystemToolDefinition["extension"]["configuration"]>) {
   return JSON.stringify({
-    schema: z.toJSONSchema(configuration.schema, { target: "draft-7", io: "input" }),
+    schema: draftSevenJsonSchema(configuration.schema, "input"),
     ui: configuration.ui,
   });
 }
@@ -170,8 +175,28 @@ function requirePackageSource(extensionId: string): AgentSystemExtensionPackageS
 }
 
 async function synchronizeBundledHostToolInputContracts(): Promise<void> {
-  const contributions = new Map<string, { readonly packageRoot: string; readonly contractPath: string }>();
+  const contributions = bundledHostToolContributions();
 
+  for (const definition of AgentBundledHostToolInputContracts) {
+    const contribution = contributions.get(definition.capability);
+    if (!contribution) {
+      throw new Error(`Runtime Host Tool capability ${definition.capability} has no bundled extension contribution.`);
+    }
+    const contractSource = JSON.parse(fs.readFileSync(contribution.contractPath, "utf8")) as unknown;
+    const contract = AgentSystemToolContractSchema.parse(contractSource);
+    validateAgentToolResourceManifests(contract.resources);
+    await synchronize(contribution.contractPath, {
+      ...(contractSource as Record<string, unknown>),
+      inputSchema: ensureObjectRootJsonSchema(
+        draftSevenJsonSchema(definition.input, "input"),
+        `Bundled Host Tool ${definition.capability} input`,
+      ),
+    });
+  }
+}
+
+function bundledHostToolContributions(): Map<string, { readonly packageRoot: string; readonly contractPath: string }> {
+  const contributions = new Map<string, { readonly packageRoot: string; readonly contractPath: string }>();
   for (const source of packageSources) {
     const { packageRoot, manifest } = source;
     for (const contribution of manifest.contributions ?? []) {
@@ -185,22 +210,27 @@ async function synchronizeBundledHostToolInputContracts(): Promise<void> {
       });
     }
   }
+  return contributions;
+}
 
-  for (const definition of AgentBundledHostToolInputContracts) {
-    const contribution = contributions.get(definition.capability);
-    if (!contribution) {
-      throw new Error(`Runtime Host Tool capability ${definition.capability} has no bundled extension contribution.`);
+function validateBundledExtensionToolSchemas(): void {
+  const json = new AgentJsonFileLoader();
+  const compiler = new Ajv({ allErrors: true, strict: true, validateFormats: false });
+  for (const source of packageSources) {
+    for (const contribution of source.manifest.contributions ?? []) {
+      if (contribution.kind !== "hostTool" && contribution.kind !== "sidecarTool") continue;
+      const contractPath = resolveSystemExtensionPackageFile(
+        source.packageRoot,
+        contribution.contract,
+        contribution.kind === "hostTool" ? "host Tool contract" : "sidecar Tool contract",
+      );
+      const contract =
+        contribution.kind === "hostTool"
+          ? json.load(contractPath, AgentSystemToolContractSchema)
+          : json.load(contractPath, AgentSystemSidecarToolContractSchema);
+      compiler.compile(contract.inputSchema);
+      compiler.compile(contract.outputSchema);
     }
-    const contractSource = JSON.parse(fs.readFileSync(contribution.contractPath, "utf8")) as unknown;
-    const contract = AgentSystemToolContractSchema.parse(contractSource);
-    validateAgentToolResourceManifests(contract.resources);
-    await synchronize(contribution.contractPath, {
-      ...(contractSource as Record<string, unknown>),
-      inputSchema: ensureObjectRootJsonSchema(
-        z.toJSONSchema(definition.input, { target: "draft-7", io: "input" }),
-        `Bundled Host Tool ${definition.capability} input`,
-      ),
-    });
   }
 }
 
@@ -215,6 +245,35 @@ async function synchronizeBundledExtensionConfigurationContracts(): Promise<void
       manifest.configuration.schema,
       "extension configuration schema",
     );
-    await synchronize(schemaPath, z.toJSONSchema(definition.schema, { target: "draft-7", io: "input" }));
+    await synchronize(schemaPath, draftSevenJsonSchema(definition.schema, "input"));
   }
+}
+
+/**
+ * Zod's draft-07 emitter represents tuples with an `items` array, but does
+ * not currently emit the tuple-closing keyword required by strict draft-07
+ * validators. Complete the standard representation for every generated
+ * schema, independent of the tool that introduced the tuple.
+ */
+function draftSevenJsonSchema(schema: z.ZodType, io: "input" | "output"): Readonly<Record<string, unknown>> {
+  const normalized = normalizeDraftSevenTuples(z.toJSONSchema(schema, { target: "draft-7", io }));
+  if (!normalized || typeof normalized !== "object" || Array.isArray(normalized)) {
+    throw new Error("Zod must emit a JSON Schema object for a bundled extension contract.");
+  }
+  return normalized as Readonly<Record<string, unknown>>;
+}
+
+function normalizeDraftSevenTuples(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(normalizeDraftSevenTuples);
+  if (!value || typeof value !== "object") return value;
+
+  const normalized = Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, normalizeDraftSevenTuples(entry)]),
+  );
+  if (Array.isArray(normalized.items)) {
+    normalized.additionalItems ??= false;
+    normalized.minItems ??= normalized.items.length;
+    normalized.maxItems ??= normalized.items.length;
+  }
+  return normalized;
 }

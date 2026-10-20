@@ -156,8 +156,43 @@ export function assertModelIdExists(
   });
 }
 
+/**
+ * Validates the legacy explicit model-selection command without coupling
+ * ordinary endpoint mutations to the persisted selection metadata.
+ */
+export function assertModelProviderCanBeSelected(config: AgentSystemConfig, modelId: string): void {
+  const model = assertModelIdExists(config.ModelProviders, modelId, "default_model_missing");
+  if (!model.Model.trim()) {
+    throw new AgentProviderModelConfigCommandError("config.defaultModelNameEmpty", "default_model_name_empty", {
+      modelId: model.Id,
+      providerId: model.ProviderId,
+    });
+  }
+  const endpoint = resolveModelProviderEndpointConfigs(config).find((candidate) => candidate.Id === model.ProviderId);
+  if (!endpoint) {
+    throw new AgentProviderModelConfigCommandError("config.providerEndpointMissing", "provider_endpoint_missing", {
+      modelId: model.Id,
+      providerId: model.ProviderId,
+    });
+  }
+  if (!endpoint.Enabled) {
+    throw new AgentProviderModelConfigCommandError(
+      "config.defaultModelProviderDisabled",
+      "default_model_provider_disabled",
+      { modelId: model.Id, providerId: endpoint.Id },
+    );
+  }
+  if (!endpoint.BaseUrl.trim()) {
+    throw new AgentProviderModelConfigCommandError(
+      "config.defaultModelProviderBaseUrlEmpty",
+      "default_model_provider_base_url_empty",
+      { modelId: model.Id, providerId: endpoint.Id },
+    );
+  }
+}
+
 export function readCurrentDefaultModelId(config: AgentSystemConfig): string | undefined {
-  return config.DefaultModelProviderId ?? config.ModelProviders[0]?.Id;
+  return config.DefaultModelProviderId;
 }
 
 export function readValidReplacementDefault(
@@ -272,33 +307,7 @@ function assertDefaultModelProviderIdValid(config: AgentSystemConfig): void {
   if (config.ModelProviders.length === 0) {
     throw new AgentProviderModelConfigCommandError("config.providerModelEmpty", "provider_model_empty");
   }
-  if (config.DefaultModelProviderId === undefined) return;
-  const model = assertModelIdExists(config.ModelProviders, config.DefaultModelProviderId, "default_model_missing");
-  if (!model.Model.trim()) {
-    throw new AgentProviderModelConfigCommandError("config.defaultModelNameEmpty", "default_model_name_empty", {
-      modelId: model.Id,
-      providerId: model.ProviderId,
-    });
-  }
-  const endpoint = resolveModelProviderEndpointConfigs(config).find((candidate) => candidate.Id === model.ProviderId);
-  if (!endpoint) {
-    throw new AgentProviderModelConfigCommandError("config.providerEndpointMissing", "provider_endpoint_missing", {
-      modelId: model.Id,
-      providerId: model.ProviderId,
-    });
-  }
-  if (!endpoint.Enabled) {
-    throw new AgentProviderModelConfigCommandError(
-      "config.defaultModelProviderDisabled",
-      "default_model_provider_disabled",
-      { modelId: model.Id, providerId: endpoint.Id },
-    );
-  }
-  if (!endpoint.BaseUrl.trim()) {
-    throw new AgentProviderModelConfigCommandError(
-      "config.defaultModelProviderBaseUrlEmpty",
-      "default_model_provider_base_url_empty",
-      { modelId: model.Id, providerId: endpoint.Id },
-    );
+  if (config.DefaultModelProviderId !== undefined) {
+    assertModelProviderCanBeSelected(config, config.DefaultModelProviderId);
   }
 }

@@ -14,11 +14,7 @@ import {
 import { AgentResidentSpeechSessionLedger } from "./AgentResidentSpeechSessionLedger.js";
 import { AgentResidentSpeechBamlClient } from "./AgentResidentSpeechBamlClient.js";
 import { AgentResidentSpeechNativeClient } from "./AgentResidentSpeechNativeClient.js";
-import {
-  assertAgentResidentSpeechContract,
-  parseAgentResidentSpeechNativeResult,
-  parseAgentResidentSpeechResult,
-} from "./AgentResidentSpeechResult.js";
+import { parseAgentResidentSpeechNativeResult, parseAgentResidentSpeechResult } from "./AgentResidentSpeechResult.js";
 import {
   AgentResidentActionSpeechCapability,
   AgentResidentFinalSpeechCapability,
@@ -95,7 +91,7 @@ export class AgentResidentSpeechRuntime implements AgentResidentSpeechSessionRun
           usageSink: input.usageSink,
           timingSink: input.timingSink,
         });
-        const result = parseAgentResidentSpeechResult(raw, contract.name);
+        const result = parseAgentResidentSpeechResult(raw, contract);
         return {
           value: replaceAgentResidentSpeechDraft(input.message, result.utterance),
           utterance: result.utterance,
@@ -154,7 +150,6 @@ export class AgentResidentSpeechRuntime implements AgentResidentSpeechSessionRun
 function requireResidentSpeechContract(registry: AgentExtensionRegistry, capability: string) {
   const contract = registry.getSidecarTool(capability);
   if (!contract) throw new Error(`Required sidecar capability is not registered: ${capability}.`);
-  assertAgentResidentSpeechContract(contract);
   return contract;
 }
 

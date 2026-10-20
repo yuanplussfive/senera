@@ -3,14 +3,18 @@ import { toast } from "sonner";
 import type { WsRequest } from "../api/eventTypes";
 import type { SocketStatus } from "../api/useAgentSocket";
 import { generateId } from "../lib/util";
-import { DEFAULT_SESSION_TITLE, useStore, type StoreState, type UserProfile } from "../store/sessionStore";
+import {
+  DEFAULT_SESSION_TITLE,
+  useStore,
+  type ConversationProfileUpdate,
+  type StoreState,
+} from "../store/sessionStore";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 
 export interface UseSessionCommandsOptions {
   send: (request: WsRequest) => boolean;
   serverKnownSessionIdsRef: MutableRefObject<Set<string>>;
   status: SocketStatus;
-  defaultModelProviderId: string | null;
 }
 
 export interface SessionCommandsHandle {
@@ -21,7 +25,7 @@ export interface SessionCommandsHandle {
   };
   createSession: () => void;
   renameSession: (sessionId: string, title: string) => boolean;
-  updateUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
+  updateUserProfile: (profile: ConversationProfileUpdate) => void;
 }
 
 export function normalizeSessionTitle(title: string): string | null {
@@ -68,7 +72,6 @@ export function useSessionCommands({
   send,
   serverKnownSessionIdsRef,
   status,
-  defaultModelProviderId,
 }: UseSessionCommandsOptions): SessionCommandsHandle {
   const registerSession = useStore((state) => state.registerCreatingSession);
   const requestSessionDeletions = useStore((state) => state.requestSessionDeletions);
@@ -98,9 +101,9 @@ export function useSessionCommands({
       return;
     }
 
-    registerSession(sessionId, undefined, defaultModelProviderId);
+    registerSession(sessionId);
     serverKnownSessionIdsRef.current.add(sessionId);
-  }, [defaultModelProviderId, registerSession, selectSession, send, serverKnownSessionIdsRef, status]);
+  }, [registerSession, selectSession, send, serverKnownSessionIdsRef, status]);
 
   const closeSessions = useCallback(
     (sessionIds: readonly string[]) => {
@@ -145,7 +148,7 @@ export function useSessionCommands({
   );
 
   const updateUserProfile = useCallback(
-    (profile: Pick<UserProfile, "name" | "avatarDataUrl">): void => {
+    (profile: ConversationProfileUpdate): void => {
       setUserProfile(profile);
       if (status === "open") {
         send({ type: "profile.update", profile });

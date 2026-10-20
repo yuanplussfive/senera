@@ -98,6 +98,7 @@ export class AgentSessionManager {
     const historyReplay = new AgentSessionHistoryReplay({
       store: this.store,
       eventFactory: this.eventFactory,
+      createPresentationResolver: options.createHistoryPresentationResolver,
     });
     const historyMutations = new AgentSessionHistoryMutationCoordinator({
       store: this.store,
@@ -146,7 +147,7 @@ export class AgentSessionManager {
       store: this.store,
       runs: this.runCoordinator,
       memory: this.memory,
-      piSessions: options.piSessionMutations,
+      piSessionCleanup: options.piSessionCleanup,
       resources: options.sessionResources,
       artifacts: options.artifactSessionCleanup,
       logger: options.logger,

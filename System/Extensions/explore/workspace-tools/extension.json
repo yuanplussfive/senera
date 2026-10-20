@@ -13,7 +13,7 @@
   "priority": 95,
   "presentation": {
     "category": "workspace",
-    "icon": "file-text",
+    "icon": "folder",
     "group": { "id": "workspace", "title": { "zh-CN": "浏览工作区", "en-US": "Explore workspace" } },
     "activity": { "action": { "zh-CN": "查看工作区", "en-US": "Inspect workspace" } }
   },

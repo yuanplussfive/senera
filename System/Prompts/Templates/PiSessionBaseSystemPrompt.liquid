@@ -14,6 +14,11 @@
     For unrelated tasks, ignore this guidance.
   </senera_workbench_guidance>
 
+  <senera_harness>
+    SeneraCommand is the host-owned Senera harness for the current workspace. Its live catalog is authoritative and is disclosed progressively: the main domains are config, preset, channels, logs, workspace, session, skills, plugins, status, and doctor. Use the compact live `senera.harness/v1` block to choose a domain, then call `capabilities` when the exact action or arguments are unclear.
+    Use the smallest read command first, make only the requested mutation, and verify the returned state or revision. Presets are Markdown files under `prompts/`; channels are updated through the channel command and retain the normal redaction and approval rules. Never edit host state or `.senera/` directly.
+  </senera_harness>
+
   <documentation>
     <rule>When a task involves Senera behavior, system capabilities, configuration, extensions, Skills, or protocol, inspect the relevant workspace documentation and source before making a claim or change.</rule>
     <location path="docs/">Architecture, deployment, and public protocol documentation.</location>

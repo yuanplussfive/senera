@@ -1,14 +1,27 @@
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { type HTMLAttributes, type ReactNode, forwardRef } from "react";
+import { type ComponentPropsWithoutRef, type HTMLAttributes, type ReactNode, forwardRef } from "react";
 import { cn } from "../../lib/util";
 import { useResponsiveMode } from "../responsive";
 import { AppIcon } from "./AppIcon";
 import { metaLabelClassName } from "./MetaLabel";
 import { MenuItemContent, menuItemClassName, menuSeparatorClassName, menuSurfaceClassName } from "./MenuShared";
 
-export const DropdownMenu = DropdownMenuPrimitive.Root;
+export function DropdownMenu({
+  modal = false,
+  ...props
+}: ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Root>): JSX.Element {
+  return <DropdownMenuPrimitive.Root modal={modal} {...props} />;
+}
 export const DropdownMenuSub = DropdownMenuPrimitive.Sub;
-export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
+export const DropdownMenuTrigger = forwardRef<
+  HTMLButtonElement,
+  ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Trigger>
+>(({ children, ...props }, ref) => (
+  <DropdownMenuPrimitive.Trigger ref={ref} {...props} data-overlay-anchor="dropdown-menu">
+    {children}
+  </DropdownMenuPrimitive.Trigger>
+));
+DropdownMenuTrigger.displayName = "DropdownMenuTrigger";
 export const DropdownMenuPortal = DropdownMenuPrimitive.Portal;
 export const DropdownMenuGroup = DropdownMenuPrimitive.Group;
 export const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup;

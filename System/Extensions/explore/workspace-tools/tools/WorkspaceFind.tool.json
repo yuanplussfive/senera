@@ -4,8 +4,9 @@
   "description": "Search for files by glob pattern. Returns matching file paths relative to the search directory. Respects .gitignore. Output is truncated to 1000 results or 50KB (whichever is hit first).",
   "presentation": {
     "category": "workspace-find",
-    "icon": "search",
-    "activity": { "action": { "zh-CN": "查找文件", "en-US": "Find files" }, "argumentPath": "/pattern" }
+    "icon": "folder",
+    "activity": { "action": { "zh-CN": "查找文件", "en-US": "Find files" }, "argumentPath": "/pattern" },
+    "preview": { "body": { "pointer": "/content", "from": "result" } }
   },
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

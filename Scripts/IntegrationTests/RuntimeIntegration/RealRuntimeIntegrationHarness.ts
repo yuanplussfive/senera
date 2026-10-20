@@ -25,6 +25,7 @@ import { readAgentUnknownRecord } from "../../../Source/AgentSystem/Core/AgentUn
 import { decodeAgentPromptInputWire } from "../../../Source/AgentSystem/Prompt/AgentPromptContextWireRenderer.js";
 import { resolveWorkspaceRoot } from "../../WorkspaceRoot.js";
 import { VerificationScenarioSource } from "../../VerificationScenarioSource.js";
+import { AgentWorkspaceCatalog } from "../../../Source/AgentSystem/WorkspaceResources/AgentWorkspaceCatalog.js";
 
 export const RealRuntimeIntegrationValues = {
   DirectFinalAnswer: "真实运行时已直接完成回答。",
@@ -71,6 +72,8 @@ export interface RealRuntimeIntegrationHarnessOptions {
   readonly authenticationMode?: "disabled" | "required";
   readonly authentication?: Partial<typeof RealRuntimeIntegrationAdmin>;
   readonly staticFrontendRoot?: string;
+  /** Adds the workspace identity that a desktop settings surface receives from a hosted runtime. */
+  readonly workspaceMode?: "standalone" | "single-workspace";
 }
 
 export async function createRealRuntimeIntegrationHarness(
@@ -137,6 +140,11 @@ export async function createRealRuntimeIntegrationHarness(
     });
     const sandboxRuntimeService = new AgentSandboxRuntimeService({ workspaceRoot, configSnapshot });
     sandboxRuntimeService.markUnavailable(new Error("Runtime integration uses deterministic host capabilities."));
+    const websocketUrl = `ws://127.0.0.1:${config.Defaults!.Server!.Port}`;
+    const workspaceTransport =
+      options.workspaceMode === "single-workspace"
+        ? createSingleWorkspaceTransportState({ workspaceRoot, configPath, websocketUrl })
+        : undefined;
     const server = new AgentWebSocketServer({
       config,
       configService,
@@ -149,9 +157,9 @@ export async function createRealRuntimeIntegrationHarness(
       sandboxRuntimeService,
       staticFrontendRoot: options.staticFrontendRoot,
       logger: new AgentLogger(),
+      ...workspaceTransport,
     });
     await server.start();
-    const websocketUrl = `ws://127.0.0.1:${config.Defaults!.Server!.Port}`;
     const client = authentication
       ? await AgentProtocolIntegrationClient.connectAuthenticated({
           websocketUrl,
@@ -182,6 +190,36 @@ export async function createRealRuntimeIntegrationHarness(
     removeTemporaryWorkspace(workspaceRoot);
     throw error;
   }
+}
+
+function createSingleWorkspaceTransportState({
+  workspaceRoot,
+  configPath,
+  websocketUrl,
+}: {
+  workspaceRoot: string;
+  configPath: string;
+  websocketUrl: string;
+}) {
+  const catalog = new AgentWorkspaceCatalog({
+    stateRoot: path.join(workspaceRoot, ".senera", "state"),
+    allowedRoots: [workspaceRoot],
+  });
+  const workspace = catalog.register(workspaceRoot);
+  const snapshot = {
+    workspaceId: workspace.id,
+    defaultWorkspaceId: workspace.id,
+    workspaceRoot: workspace.root,
+    configPath,
+    websocketUrl,
+    workspaces: [workspace],
+    capabilities: { browseDirectories: true },
+  };
+  return {
+    workspaceId: workspace.id,
+    workspaceCatalog: catalog,
+    workspaceInfo: () => snapshot,
+  };
 }
 
 export class FakeControllerModelServer {

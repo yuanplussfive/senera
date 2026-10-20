@@ -28,6 +28,7 @@ import type { AgentWorkspaceCatalog } from "../WorkspaceResources/AgentWorkspace
 import type { AgentArtifactManifestIndexCache } from "../Memory/AgentArtifactManifestIndexCache.js";
 import type { AgentPluginHost } from "../Plugins/AgentPluginHost.js";
 import type { AgentRuntimeDependencyService } from "../Runtime/AgentRuntimeDependencyTypes.js";
+import type { AgentProfileAvatarStore } from "../Session/AgentProfileAvatarStore.js";
 
 export type AgentPluginCatalogSource = Pick<AgentPluginHost, "list">;
 
@@ -73,6 +74,7 @@ export interface AgentWebSocketServerOptions {
   configService?: AgentConfigService;
   sessionManager: AgentSessionManager;
   userProfileManager: AgentUserProfileManager;
+  profileAvatarStore?: AgentProfileAvatarStore;
   logger?: AgentLogger;
   eventLogger?: AgentServerEventLogger;
   piDiagnostics?: AgentPiDiagnosticSink;

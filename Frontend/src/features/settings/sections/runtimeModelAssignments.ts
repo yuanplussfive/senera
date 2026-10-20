@@ -133,9 +133,7 @@ export function readRuntimeModelPoolAssignmentSelection({
 }): RuntimeModelPoolAssignmentSelection {
   assertModelPoolAssignment(field);
   const inheritancePath = field.modelSelection.inheritance?.path;
-  const inheritanceField = inheritancePath
-    ? allFields.find((candidate) => pathKey(candidate.path) === pathKey(inheritancePath))
-    : undefined;
+  const inheritanceField = readRuntimeModelPoolInheritanceField(field, allFields);
   const inheritanceValue = inheritancePath
     ? (readPathValue(draft, inheritancePath) ?? inheritanceField?.effectiveValue)
     : false;
@@ -143,6 +141,17 @@ export function readRuntimeModelPoolAssignmentSelection({
     inheritanceEnabled: inheritanceValue === true,
     modelIds: readModelIds(readFieldValue(field, draft)),
   };
+}
+
+/** Returns the owner-declared control that governs a model pool's inheritance. */
+export function readRuntimeModelPoolInheritanceField(
+  field: RuntimeModelAssignmentField,
+  allFields: readonly ConfigFormFieldData[],
+): ConfigFormFieldData | undefined {
+  const inheritancePath = field.modelSelection.inheritance?.path;
+  return inheritancePath
+    ? allFields.find((candidate) => pathKey(candidate.path) === pathKey(inheritancePath))
+    : undefined;
 }
 
 export function writeRuntimeModelAssignment(

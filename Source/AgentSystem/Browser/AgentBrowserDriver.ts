@@ -1,10 +1,13 @@
 import type { AgentBrowserOperation } from "./AgentBrowserTypes.js";
+import type { AgentBrowserContext } from "./AgentBrowserConfiguration.js";
 
 export type AgentBrowserNetworkRequestKind = "navigation" | "subresource";
 
 export interface AgentBrowserDriverSessionOptions {
   /** Stable host-owned identity used by the agent-browser daemon. */
   readonly sessionId: string;
+  /** The host-selected browser state boundary. This is never model-controlled. */
+  readonly context?: AgentBrowserContext;
   readonly requestTimeoutMs: number;
   readonly maxDownloadBytes: number;
   readonly assertRequestPermitted: (
@@ -29,7 +32,10 @@ export interface AgentBrowserDriverScreenshot {
 export interface AgentBrowserDriverDownload {
   readonly data: Uint8Array;
   readonly fileName: string;
-  readonly url: string;
+  /** Media type identified from the downloaded bytes when the driver can determine it. */
+  readonly mediaType?: string;
+  /** A directly discoverable target, if the page exposed one before activation. */
+  readonly url?: string;
 }
 
 export interface AgentBrowserDriverOperationResult {

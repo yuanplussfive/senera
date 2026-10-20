@@ -1,4 +1,5 @@
 import { z, type ZodType } from "zod";
+import { AgentChannelsConfigPathPrefix } from "../Channels/AgentChannelsConfig.js";
 
 /**
  * Declarative sensitivity rules for `senera config update` paths.
@@ -47,6 +48,11 @@ export const AgentSelfConfigPathRules: readonly AgentSelfConfigPathRule[] = [
     pattern: "DefaultModelProviderId",
     level: "human",
     reason: "修改默认模型会影响所有新会话。",
+  },
+  {
+    pattern: `${AgentChannelsConfigPathPrefix}.*`,
+    level: "human",
+    reason: "修改消息渠道配置可能改变外部暴露面或凭证，需要人工确认。",
   },
   {
     pattern: "ModelProviders.*.Temperature",

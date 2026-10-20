@@ -73,11 +73,15 @@ async function fixture() {
     search,
     searchRecent: (options?: { readonly excludedKeys?: ReadonlySet<string> }) => search(undefined, options),
   };
-  const createService = (memos = port) =>
+  const createService = (
+    memos = port,
+    identityDisplayValues: (() => { readonly user: string; readonly assistant: string }) | undefined = undefined,
+  ) =>
     new AgentContinuityMemoryService({
       store,
       recallConfig: () => ({ PromptBudget: { MaxTokens: 16384 } }),
       memos,
+      identityDisplayValues,
     });
   return {
     sdk,
@@ -99,6 +103,13 @@ const input = {
 };
 
 describe("native non-destructive near-duplicate recall", () => {
+  test("projects active profile display names out of recalled knowledge", async () => {
+    const f = await fixture();
+    await f.add("Ada asked Nova to keep updates concise.", [1, 0, 0]);
+    const memory = await f.createService(f.port, () => ({ user: "Ada", assistant: "Nova" })).liveContext(input);
+    expect(memory.eventCandidates.map((entry) => entry.summary)).toEqual(["用户 asked 我 to keep updates concise."]);
+  });
+
   test("drains queued embeddings before deleting a node", async () => {
     const root = createTemporaryDirectory("senera-native-delete-embedding");
     let release!: () => void;

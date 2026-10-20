@@ -1,6 +1,8 @@
+import { z } from "zod";
 import { AgentToolDiscoveryProtocol } from "./AgentToolMetaToolProtocol.js";
 import type { AgentToolSearchDiscovery, AgentToolSearchResult, AgentToolSearchSource } from "./AgentToolSearchTypes.js";
 import { AgentModelTokenEstimator } from "../Text/AgentTextBudget.js";
+import { AgentToolAvailabilitySchema } from "../ToolRuntime/AgentToolAvailability.js";
 import type { AgentToolAvailability } from "../ToolRuntime/AgentToolAvailability.js";
 
 /**
@@ -12,6 +14,65 @@ import type { AgentToolAvailability } from "../ToolRuntime/AgentToolAvailability
  * maybe: [toolName, description]
  * more:  [sourceId, sourceName, omittedToolCount]
  */
+const AgentToolSearchNameTupleSchema = z.tuple([z.string(), z.string()]);
+const AgentToolSearchStateTupleSchema = z.union([
+  z.tuple([z.enum(["visible", "discoverable"]), z.enum(["confirmed", "unconfirmed"]), z.enum(["arguments", "none"])]),
+  z.tuple([
+    z.enum(["visible", "discoverable"]),
+    z.enum(["confirmed", "unconfirmed"]),
+    z.literal("arguments"),
+    z.record(z.string(), z.unknown()),
+  ]),
+]);
+const AgentToolSearchMatchTupleSchema = z.union([
+  AgentToolSearchNameTupleSchema,
+  z.tuple([z.string(), z.string(), AgentToolSearchStateTupleSchema]),
+]);
+const AgentToolSearchSourceTupleSchema = z.tuple([z.string(), z.string(), z.number()]);
+
+/**
+ * The emitted wire contract is also generated into the bundled ToolSearch
+ * extension. Optional tuple suffixes use explicit alternatives so draft-07
+ * remains valid under strict JSON Schema compilers.
+ */
+export const AgentToolSearchOutputSchema = z
+  .object({
+    type: z.literal(AgentToolDiscoveryProtocol.type),
+    availability: z.record(z.string(), AgentToolAvailabilitySchema).optional(),
+    services: z
+      .array(
+        z
+          .object({
+            id: z.string(),
+            title: z.string(),
+            description: z.string(),
+            availability: AgentToolAvailabilitySchema,
+          })
+          .strict(),
+      )
+      .optional(),
+    status: z.enum(["empty", "stale"]).optional(),
+    reason: z.string().optional(),
+    diagnostics: z.array(z.string()).optional(),
+    catalogRevision: z.string().optional(),
+    match: z.array(AgentToolSearchMatchTupleSchema).optional(),
+    maybe: z.array(AgentToolSearchNameTupleSchema).optional(),
+    more: z.array(AgentToolSearchSourceTupleSchema).optional(),
+  })
+  .strict();
+
+/**
+ * Builds the complete ToolSearch wire response at the projection boundary.
+ * The same schema generates the extension contract, so a producer change
+ * cannot silently drift from the result exposed to the model.
+ */
+export function createAgentToolSearchOutput(projection: AgentToolSearchResultProjection) {
+  return AgentToolSearchOutputSchema.parse({
+    ...projection,
+    type: AgentToolDiscoveryProtocol.type,
+  });
+}
+
 export interface AgentToolSearchResultProjection {
   readonly availability?: Readonly<Record<string, AgentToolAvailability>>;
   readonly services?: readonly {
@@ -36,22 +97,12 @@ export interface AgentToolSearchResultProjectionOptions {
   readonly tokenBudget: number;
 }
 
-export type AgentToolSearchNameTuple = readonly [toolName: string, description: string];
-
-export type AgentToolSearchStateTuple = readonly [
-  exposure: "visible" | "discoverable",
-  contract: "confirmed" | "unconfirmed",
-  reuse: "arguments" | "none",
-  reusableArguments?: Record<string, unknown>,
-];
-
-export type AgentToolSearchMatchTuple = readonly [
-  toolName: string,
-  description: string,
-  state?: AgentToolSearchStateTuple,
-];
-
-export type AgentToolSearchSourceTuple = readonly [sourceId: string, sourceName: string, count: number];
+export type AgentToolSearchNameTuple = readonly [string, string];
+export type AgentToolSearchStateTuple =
+  | readonly ["visible" | "discoverable", "confirmed" | "unconfirmed", "arguments" | "none"]
+  | readonly ["visible" | "discoverable", "confirmed" | "unconfirmed", "arguments", Record<string, unknown>];
+export type AgentToolSearchMatchTuple = AgentToolSearchNameTuple | readonly [string, string, AgentToolSearchStateTuple];
+export type AgentToolSearchSourceTuple = readonly [string, string, number];
 
 /**
  * Projects all high-confidence matches, then jointly budgets uncertain names

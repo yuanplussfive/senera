@@ -9,7 +9,8 @@
       "action": { "zh-CN": "提取", "en-US": "Extract" },
       "argumentPath": "/source/path",
       "detailPaths": ["/source/uri", "/source/url", "/mode"]
-    }
+    },
+    "preview": { "body": { "pointer": "/document", "from": "result" } }
   },
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

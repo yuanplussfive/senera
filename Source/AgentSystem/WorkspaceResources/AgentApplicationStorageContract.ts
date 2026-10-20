@@ -11,10 +11,21 @@ export const AgentApplicationStorageScopes = {
 export type AgentApplicationStorageScope =
   (typeof AgentApplicationStorageScopes)[keyof typeof AgentApplicationStorageScopes];
 
+export const AgentApplicationStorageCoverageStates = {
+  Complete: "complete",
+  Partial: "partial",
+} as const;
+
+export const AgentApplicationStorageUsageSchema = z.object({
+  bytes: z.number().int().nonnegative(),
+  coverage: z.enum([AgentApplicationStorageCoverageStates.Complete, AgentApplicationStorageCoverageStates.Partial]),
+  unavailableEntryCount: z.number().int().nonnegative(),
+});
+
 export const AgentApplicationStorageSnapshotSchema = z.object({
   root: z.string().min(1),
   scope: z.literal("application-state"),
-  bytes: z.number().int().nonnegative(),
+  ...AgentApplicationStorageUsageSchema.shape,
   workspaces: z.array(
     z.object({
       id: z.string().uuid(),
@@ -22,11 +33,16 @@ export const AgentApplicationStorageSnapshotSchema = z.object({
       root: z.string().min(1),
       stateRoot: z.string().min(1),
       scope: z.literal("workspace-state"),
-      bytes: z.number().int().nonnegative(),
+      ...AgentApplicationStorageUsageSchema.shape,
       projectBytes: z.number().int().nonnegative().optional(),
+      projectCoverage: z
+        .enum([AgentApplicationStorageCoverageStates.Complete, AgentApplicationStorageCoverageStates.Partial])
+        .optional(),
+      projectUnavailableEntryCount: z.number().int().nonnegative().optional(),
     }),
   ),
   projectScanIncluded: z.boolean(),
+  projectScanWorkspaceId: z.string().uuid().optional(),
 });
 
 export type AgentApplicationStorageSnapshot = z.infer<typeof AgentApplicationStorageSnapshotSchema>;

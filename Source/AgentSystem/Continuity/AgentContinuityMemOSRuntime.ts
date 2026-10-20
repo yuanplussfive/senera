@@ -16,6 +16,7 @@ import type { AgentMemoryDeletionImpact, AgentMemoryRecordedTurn } from "../Memo
 import type { AgentMemorySourceRepository } from "../Memory/AgentMemorySourceRepository.js";
 import type { AgentBackgroundLearningRequestLedger } from "../Memory/AgentBackgroundLearningRequestLedger.js";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
+import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
 import type { AgentToolSearchEpisode } from "../ToolSearch/AgentToolSearchMemoryTypes.js";
 import {
   AgentMemOSSemanticLearningRuntime,
@@ -60,6 +61,7 @@ export interface AgentContinuityMemOSRuntimeOptions {
   };
   readonly semanticConfig: () => AgentMemOSSemanticLearningConfig;
   readonly semanticScopeKey: string;
+  readonly identityDisplayValues?: () => AgentIdentityDisplayValues;
   readonly logger?: AgentLogger;
   /** Dedicated stream for semantic-learning queue, extraction and promotion. */
   readonly learningLogger?: AgentLogger;
@@ -114,6 +116,7 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
       policy: options.semanticPolicy,
       config: options.semanticConfig,
       cacheScopeKey: options.semanticScopeKey,
+      identityDisplayValues: options.identityDisplayValues,
       logger: options.learningLogger,
     });
     this.ready = this.memos

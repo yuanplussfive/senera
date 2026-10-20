@@ -1,21 +1,20 @@
-import { Check, Monitor, Moon, Palette, Sun } from "lucide-react";
-import { motion } from "framer-motion";
+import { useEffect, useRef, useState } from "react";
 import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
 import { useFrontendLocale } from "../../i18n/useFrontendLocale";
 import { cn } from "../../lib/util";
-import { SettingsControlRow } from "../ui/SettingsControlRow";
 import { MenuSelect } from "../ui/MenuSelect";
-import { motionSprings, useMotionLevel } from "../motion";
+import { AppIcon, type AppIconName } from "../ui/AppIcon";
+import { SettingsControlRow } from "../ui/SettingsControlRow";
+import { Slider } from "../ui/Slider";
 import {
   appearanceFontFamilies,
   appearanceFontFamilyStacks,
   fontScaleRange,
+  fontScales,
   fontScaleValues,
-  readFontScaleAnchor,
   readFontScaleValue,
   type AppearanceFontFamily,
   type ColorScheme,
-  type FontScale,
   type ThemeMode,
 } from "./themeModel";
 import {
@@ -31,13 +30,13 @@ import {
   themeModeLabels,
 } from "./appearancePresentation";
 import { colorSchemeGroups } from "./themeData";
-import { useAppearance, useSetAppearancePreference } from "./useAppearance";
+import { useAppearance, useFontScalePreview, useSetAppearancePreference } from "./useAppearance";
 
 const themeModeValues = [
-  { value: "system", Icon: Monitor },
-  { value: "light", Icon: Sun },
-  { value: "dark", Icon: Moon },
-] as const satisfies readonly { value: ThemeMode; Icon: typeof Monitor }[];
+  { value: "system", icon: "monitor" },
+  { value: "light", icon: "sun" },
+  { value: "dark", icon: "moon" },
+] as const satisfies readonly { value: ThemeMode; icon: AppIconName }[];
 
 // Keep the appearance controls aligned with the compact selector used for theme mode.
 const appearanceControlWidthClass = "w-full sm:max-w-[320px]";
@@ -46,15 +45,14 @@ export function AppearancePreferenceControl({ className }: { className?: string 
   useFrontendLocale();
   const { preference } = useAppearance();
   const setPreference = useSetAppearancePreference();
-  const { reduceMotion, disableMotion } = useMotionLevel();
-  const animateSelection = !reduceMotion && !disableMotion;
+  const { previewFontScale, commitFontScale } = useFontScalePreview();
 
   return (
     <div className={cn("min-w-0", className)}>
       <SettingsControlRow
         label={
           <ControlLabel
-            icon={<Palette className="h-3.5 w-3.5" />}
+            icon={<AppIcon icon="palette" size={14} />}
             label={frontendMessage("appearance.control.theme")}
           />
         }
@@ -113,24 +111,11 @@ export function AppearancePreferenceControl({ className }: { className?: string 
           </p>
         </div>
         <FontFamilyPicker value={preference.fontFamily} onChange={(fontFamily) => setPreference({ fontFamily })} />
-        <div className="mt-5">
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <span className="text-[13px] font-medium text-content-primary">
-              {frontendMessage("appearance.control.fontScale")}
-            </span>
-            <span className="text-[11.5px] font-medium text-content-secondary">
-              {formatFontScaleValue(readFontScaleValue(preference))}
-            </span>
-          </div>
-          <FontScalePicker
-            value={preference.fontScale}
-            scaleValue={readFontScaleValue(preference)}
-            animateSelection={animateSelection}
-            onChange={(scaleValue) =>
-              setPreference({ fontScaleValue: scaleValue, fontScale: readFontScaleAnchor(scaleValue) })
-            }
-          />
-        </div>
+        <FontScaleControl
+          value={readFontScaleValue(preference)}
+          onPreview={previewFontScale}
+          onCommit={commitFontScale}
+        />
       </section>
     </div>
   );
@@ -155,7 +140,7 @@ function ThemeModePicker({ value, onChange }: { value: ThemeMode; onChange: (val
         appearanceControlWidthClass,
       )}
     >
-      {themeModeValues.map(({ value: option, Icon }) => {
+      {themeModeValues.map(({ value: option, icon }) => {
         const selected = value === option;
         return (
           <button
@@ -171,7 +156,7 @@ function ThemeModePicker({ value, onChange }: { value: ThemeMode; onChange: (val
             )}
             onClick={() => onChange(option)}
           >
-            <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <AppIcon icon={icon} size={14} className="shrink-0" aria-hidden="true" />
             <span className="truncate">{themeModeLabels[option]}</span>
           </button>
         );
@@ -212,7 +197,7 @@ function ColorSchemeOption({
             style={{ background: readAccentSwatch(recommendedAccent) }}
             aria-hidden="true"
           />
-          {selected ? <Check className="h-3.5 w-3.5 text-accent-content" aria-hidden="true" /> : null}
+          {selected ? <AppIcon icon="checkmark" size={14} className="text-accent-content" aria-hidden="true" /> : null}
         </span>
       </span>
       <span className="flex h-4 w-full overflow-hidden rounded-[4px] border border-line-subtle" aria-hidden="true">
@@ -327,55 +312,51 @@ function FontFamilyPicker({
   );
 }
 
-function FontScalePicker({
+function FontScaleControl({
   value,
-  scaleValue,
-  animateSelection,
-  onChange,
+  onPreview,
+  onCommit,
 }: {
-  value: FontScale;
-  scaleValue: number;
-  animateSelection: boolean;
-  onChange: (value: number) => void;
+  value: number;
+  onPreview: (value: number) => void;
+  onCommit: (value: number) => void;
 }): JSX.Element {
-  const scalePercent = ((scaleValue - fontScaleRange.min) / (fontScaleRange.max - fontScaleRange.min)) * 100;
+  const [draftValue, setDraftValue] = useState(value);
+  const committedValueRef = useRef(value);
+
+  useEffect(() => {
+    setDraftValue(value);
+    committedValueRef.current = value;
+  }, [value]);
+
+  const marks = fontScales.map((scale) => ({ value: fontScaleValues[scale], label: fontScaleLabels[scale] }));
   return (
-    <div
-      aria-label={frontendMessage("appearance.control.fontScale")}
-      className={cn("relative min-w-0 border-y border-line-subtle px-1 py-3", appearanceControlWidthClass)}
-    >
-      <div
-        className="pointer-events-none absolute inset-x-5 top-[19px] h-1 rounded-full bg-line-strong/70"
-        aria-hidden="true"
-      >
-        <motion.span
-          className="absolute inset-y-0 left-0 rounded-full bg-accent-solid"
-          animate={{ width: `${scalePercent}%` }}
-          transition={animateSelection ? motionSprings.signal : { duration: 0 }}
-        />
-        <motion.span
-          className="absolute -top-[6px] h-4 w-4 -translate-x-1/2 rounded-full border-2 border-accent-solid bg-surface-panel shadow-soft"
-          animate={{ left: `${scalePercent}%` }}
-          transition={animateSelection ? motionSprings.signal : { duration: 0 }}
-        />
+    <div className="mt-5">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <span className="text-[13px] font-medium text-content-primary">
+          {frontendMessage("appearance.control.fontScale")}
+        </span>
+        <span className="text-[11.5px] font-medium text-content-secondary">{formatFontScaleValue(draftValue)}</span>
       </div>
-      <input
-        type="range"
+      <Slider
+        ariaLabel={frontendMessage("appearance.control.fontScale")}
+        className={appearanceControlWidthClass}
+        value={draftValue}
         min={fontScaleRange.min}
         max={fontScaleRange.max}
         step={fontScaleRange.step}
-        value={scaleValue}
-        aria-label={frontendMessage("appearance.control.fontScale")}
-        className="appearance-font-range relative z-[1] h-8 w-full cursor-pointer bg-transparent opacity-100"
-        onInput={(event) => onChange(Number(event.currentTarget.value))}
+        marks={marks}
+        formatValue={formatFontScaleValue}
+        onValueChange={(nextValue) => {
+          setDraftValue(nextValue);
+          onPreview(nextValue);
+        }}
+        onValueCommit={(nextValue) => {
+          if (committedValueRef.current === nextValue) return;
+          committedValueRef.current = nextValue;
+          onCommit(nextValue);
+        }}
       />
-      <div className="mt-1 grid grid-cols-4 text-[11px] text-content-muted">
-        {Object.entries(fontScaleValues).map(([scale]) => (
-          <span key={scale} className={cn("text-center", value === scale && "font-medium text-accent-content")}>
-            {fontScaleLabels[scale as FontScale]}
-          </span>
-        ))}
-      </div>
     </div>
   );
 }

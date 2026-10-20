@@ -1,5 +1,5 @@
 import { DEFAULT_SESSION_TITLE } from "./defaults";
-import { normalizeUserProfile } from "./userProfile";
+import { normalizeUserProfile, UserProfileSyncStates } from "./userProfile";
 import {
   EventKinds,
   type EventEnvelope,
@@ -184,7 +184,7 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
     }
 
     case EventKinds.ProfileSnapshot: {
-      if (state.userProfile.syncState === "pending") return;
+      if (state.userProfile.syncState === UserProfileSyncStates.Pending) return;
       state.userProfile = normalizeUserProfile(env.data as UserProfileData);
       return;
     }

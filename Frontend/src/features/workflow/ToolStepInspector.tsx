@@ -1,5 +1,4 @@
 import { useId, useState, type ReactNode } from "react";
-import { ChevronDown } from "lucide-react";
 import { cn, formatDurationMs } from "../../lib/util";
 import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
@@ -10,6 +9,7 @@ import { readStepStatusLabel } from "./stepPresentation";
 import { readToolResultValue } from "./toolResultProjection";
 import { readWorkflowStepDurationMs } from "./workflowPresentationProjection";
 import { ToolActionIcon } from "./ToolActionIcon";
+import { AppIcon } from "../../shared/ui";
 
 export function ToolStepInspector({
   step,
@@ -97,7 +97,12 @@ function ToolTechnicalDetails({ step }: { step: TimelineStep }): JSX.Element {
         onClick={() => setExpanded((value) => !value)}
       >
         <span className="flex-1">{frontendFeatureMessage("workflow.node.technicalDetails")}</span>
-        <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", expanded && "rotate-180")} aria-hidden="true" />
+        <AppIcon
+          icon="chevron-down"
+          size={14}
+          className={cn("transition-transform", expanded && "rotate-180")}
+          aria-hidden="true"
+        />
       </button>
       {expanded ? (
         <div id={contentId} className="space-y-4 border-l border-line-subtle pb-2 pl-3 pt-2.5">
@@ -145,7 +150,7 @@ function OutputBlock({ stream, value }: { stream: "stdout" | "stderr"; value: st
   return (
     <div>
       <div className="mb-1.5 font-mono text-[10px] uppercase text-content-muted">{stream}</div>
-      <pre className="scrollbar-thin max-h-56 overflow-auto rounded-md border border-line-subtle bg-surface-subtle px-3 py-2 font-mono text-[11px] leading-5 text-content-secondary">
+      <pre className="max-h-56 overflow-auto rounded-md border border-line-subtle bg-surface-subtle px-3 py-2 font-mono text-[11px] leading-5 text-content-secondary">
         {value}
       </pre>
     </div>

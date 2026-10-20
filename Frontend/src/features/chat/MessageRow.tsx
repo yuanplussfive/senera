@@ -1,4 +1,5 @@
-import type { ChatMessage, RunRecord, UserProfile } from "../../store/sessionStore";
+import type { ChatMessage, ConversationIdentity, RunRecord, UserProfile } from "../../store/sessionStore";
+import { DEFAULT_ASSISTANT_PROFILE } from "../../store/session/userProfile";
 import { ConversationFrame } from "../../shared/ui";
 import { AssistantMessageAvatar, MessageMeta } from "./MessageChrome";
 import { MessageActions } from "./MessageActions";
@@ -20,6 +21,7 @@ interface MessageRowProps {
   onCancelEdit?: () => void;
   onSubmitEdit?: () => void;
   userProfile: UserProfile;
+  assistantProfile?: ConversationIdentity;
   showInlineActions: boolean;
   onFork: () => void;
   onRegenerate: () => void;
@@ -42,6 +44,7 @@ export function MessageRow({
   onCancelEdit,
   onSubmitEdit,
   userProfile,
+  assistantProfile = DEFAULT_ASSISTANT_PROFILE,
   showInlineActions,
   onFork,
   onRegenerate,
@@ -97,9 +100,9 @@ export function MessageRow({
   return (
     <ConversationFrame mode="wide" className="group/msg" data-message-hover-surface>
       <div className="flex min-w-0 items-start gap-3" data-assistant-message>
-        <AssistantMessageAvatar />
+        <AssistantMessageAvatar profile={assistantProfile} />
         <div className="assistant-turn-content min-w-0 flex-1">
-          <MessageMeta title="Senera" timestamp={message.createdAt} />
+          <MessageMeta title={assistantProfile.name} timestamp={message.createdAt} />
           {message.kind !== "AssistantToolPreface" ? (
             <RunThinkingPresentation
               run={run}

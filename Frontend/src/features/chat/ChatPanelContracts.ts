@@ -23,12 +23,12 @@ import type { ExecutionApprovalMode } from "../../api/executionApprovalMode";
 export interface ChatModelConfig {
   modelProviders: ModelProviderListItem[];
   selectedModelProviderId: string | null;
-  /** Server-configured default used for new conversations. */
+  /** Server-configured default used for new conversations and inherited selections. */
   defaultModelProviderId?: string | null;
   onSelectModelProvider: (id: string) => void;
   selectedThinkingLevel: ModelThinkingLevel | null;
   onSelectThinkingLevel: (level: ModelThinkingLevel) => void;
-  /** Restores the active conversation to the current default model. */
+  /** Restores the active conversation to the current configured default model. */
   onApplyDefaultModel?: () => void;
   /** Opens provider settings so another model can be configured. */
   onAddModel?: () => void;

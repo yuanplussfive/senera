@@ -4,6 +4,7 @@ import { prefixAgentContinuityMemorySummary } from "../Continuity/AgentContinuit
 import { DefaultAgentTimeZone } from "../Time/AgentTime.js";
 import { AgentExecutionStepStatuses } from "../Goals/AgentExecutionLedgerTypes.js";
 import type { AgentWorkflowPromptContext } from "./AgentWorkflowPromptContext.js";
+import type { AgentSelfHarnessDisclosure } from "../SelfService/AgentSelfHarness.js";
 import { AgentTodoStatuses } from "../Todos/AgentTodoTypes.js";
 import {
   AgentPromptWireEncodings,
@@ -65,21 +66,32 @@ export function renderAgentLiveStateWire(
   input: {
     readonly continuity: AgentContinuityMemoryPromptContext;
     readonly workflow: AgentWorkflowPromptContext;
+    readonly harness?: AgentSelfHarnessDisclosure;
   },
   options: AgentPromptWireRendererOptions,
 ): AgentPromptWireRenderResult {
   const memory = renderContinuityWire(input.continuity, options);
-  const workflow = renderNamedWire("live_state", buildLiveWorkflowBlocks(input.workflow), options, [
+  const liveBlocks = buildLiveWorkflowBlocks(input.workflow);
+  if (input.harness) {
+    liveBlocks.push({
+      id: "harness",
+      value: input.harness,
+      allowedEncodings: [AgentPromptWireEncodings.Toon, AgentPromptWireEncodings.CompactJson],
+    });
+  }
+  const workflow = renderNamedWire("live_state", liveBlocks, options, [
     "rule=latest-user-task-and-verified-tool-results-are-authoritative",
     "rule=missing-fields-are-unknown;do-not-infer",
     "rule=use-the-workflow-only-to-coordinate-in-flight-work;read-durable-detail-through-its-tool-or-uri",
+    "rule=senera-command-contract-is-runtime-authority;call-capabilities-for-arguments",
+    "rule=use-domain-read-before-smallest-mutation-and-verify-the-result",
   ]);
   const text = [memory.text, workflow.text].filter(Boolean).join("\n\n");
   return {
     text,
     blocks: [...memory.blocks, ...workflow.blocks],
     tokenCount: options.estimateTokens(text),
-    sourceRevision: sha256HexOfCanonicalJson([memory.sourceRevision, workflow.sourceRevision]),
+    sourceRevision: sha256HexOfCanonicalJson([memory.sourceRevision, workflow.sourceRevision, input.harness ?? null]),
     complete: true,
   };
 }

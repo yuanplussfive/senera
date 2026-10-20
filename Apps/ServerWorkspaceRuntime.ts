@@ -2,11 +2,15 @@ import path from "node:path";
 import { AgentConfigService, type AgentConfigSourceOptions } from "../Source/AgentSystem/Config/AgentConfigService.js";
 import { AgentConfigSecretCodec } from "../Source/AgentSystem/Config/AgentConfigSecretProtection.js";
 import type { AgentUpgradeSession } from "../Source/AgentSystem/Upgrade/AgentUpgradeSession.js";
-import { resolveAgentApplicationPaths } from "../Source/AgentSystem/Core/AgentApplicationPaths.js";
+import {
+  resolveAgentApplicationPaths,
+  type AgentApplicationPaths,
+} from "../Source/AgentSystem/Core/AgentApplicationPaths.js";
 import {
   resolveAgentWorkspaceLayout,
   type AgentWorkspaceLayout,
 } from "../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
+import { ensureAgentWorkspaceStateDirectoryIgnored } from "../Source/AgentSystem/Core/AgentWorkspaceStateIgnore.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { AgentRuntimeDependencyManager } from "../Source/AgentSystem/Runtime/AgentRuntimeDependencyService.js";
 import { DefaultAgentRuntimeDependencyHealthPolicy } from "../Source/AgentSystem/Runtime/AgentRuntimeDependencyTypes.js";
@@ -144,7 +148,8 @@ export function resolveSeneraWorkspaceRuntime(input: {
     });
   }
   const configPath = resolveServerRuntimeConfigPath(input.workspaceRoot, configSource);
-  seedRuntimeConfigForSource(configSource, input.resourcesRoot, input.workspaceRoot);
+  seedRuntimeConfigForSource(configSource, input.resourcesRoot, input.workspaceRoot, input.paths);
+  ensureAgentWorkspaceStateDirectoryIgnored(input.workspaceRoot);
   return { workspaceLayout, configSource, configPath };
 }
 
@@ -171,7 +176,6 @@ export function resolveSeneraInitialWorkspaceRuntime(input: {
     migrateLegacyState: true,
     legacyConfigPath: input.legacyConfigPath,
     additionalEntries: [
-      { source: applicationLayout.configSecretKey, target: workspaceLayout.configSecretKey },
       ...(configSource.kind === "sqlite"
         ? [{ source: applicationLayout.databases.config, target: configSource.databasePath }]
         : []),
@@ -188,10 +192,8 @@ export function resolveSeneraHostedWorkspaceRuntime(input: {
   readonly configSource: AgentConfigSourceOptions;
   readonly migrateLegacyState?: boolean;
 }): SeneraWorkspaceRuntimePreparation {
-  const workspaceLayout = input.paths.workspaceLayout(input.workspaceRoot, input.workspaceId);
   return resolveSeneraWorkspaceRuntime({
     ...input,
-    additionalEntries: resolveLegacySharedUserPluginMigrationEntries(input.paths, workspaceLayout),
     migrateLegacyState: input.migrateLegacyState ?? false,
   });
 }
@@ -200,6 +202,8 @@ export function createSeneraWorkspaceConfigService(input: {
   readonly workspaceRoot: string;
   readonly configSource: AgentConfigSourceOptions;
   readonly upgradeSession: AgentUpgradeSession;
+  /** Complete host state for the deployment that owns this workspace. */
+  readonly applicationPaths: AgentApplicationPaths;
 }): AgentConfigService {
   return new AgentConfigService({
     workspaceRoot: input.workspaceRoot,
@@ -207,6 +211,7 @@ export function createSeneraWorkspaceConfigService(input: {
     upgradeSession: input.upgradeSession,
     secretCodec: new AgentConfigSecretCodec({
       workspaceRoot: input.workspaceRoot,
+      applicationPaths: input.applicationPaths,
     }),
   });
 }

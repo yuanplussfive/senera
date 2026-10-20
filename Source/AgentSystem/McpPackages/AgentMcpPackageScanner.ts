@@ -128,6 +128,7 @@ export class AgentMcpPackageScanner {
       ...(projection.description ? { description: projection.description } : {}),
       source,
       descriptorKind: projection.descriptorKind,
+      ...(projection.presentation ? { presentation: projection.presentation } : {}),
       execution: projection.execution,
       ...(projection.requirements ? { requirements: projection.requirements } : {}),
       servers: projection.servers,

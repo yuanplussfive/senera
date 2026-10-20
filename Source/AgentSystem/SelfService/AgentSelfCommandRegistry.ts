@@ -8,6 +8,7 @@
 import type { AgentPluginCommandHandler } from "../Plugins/AgentPluginContext.js";
 import { AgentLogPolicyLimits } from "../Types/AgentLogPolicyLimits.js";
 import { AgentSelfSkillSearchLimits } from "./AgentSelfSkills.js";
+import { AgentChannelKinds } from "../Channels/AgentChannelTypes.js";
 
 export interface AgentSelfCommandArgSpec {
   /** Runtime field written to the structured command object. */
@@ -138,6 +139,81 @@ export const AgentSelfCommandRegistry: readonly AgentSelfCommandSpec[] = [
         description: "JSON 值（非 JSON 视为字符串）",
         missingMessage: "senera config update requires a value.",
       },
+    ],
+    sensitive: true,
+  },
+  {
+    command: "preset",
+    action: "list",
+    usage: "senera preset list",
+    description: "列出当前工作区 prompts/ 下的 Markdown 预设。",
+    args: [],
+  },
+  {
+    command: "preset",
+    action: "status",
+    usage: "senera preset status",
+    description: "读取预设文件清单和当前启用状态。",
+    args: [],
+  },
+  {
+    command: "preset",
+    action: "read",
+    usage: "senera preset read PATH",
+    description: "读取一个工作区 Markdown 预设。",
+    args: [{ key: "path", name: "PATH", kind: "string", description: "prompts/ 下的 Markdown 路径" }],
+  },
+  {
+    command: "preset",
+    action: "enable",
+    usage: "senera preset enable PATH",
+    description: "启用一个工作区 Markdown 预设。",
+    args: [{ key: "path", name: "PATH", kind: "string", description: "prompts/ 下的 Markdown 路径" }],
+  },
+  {
+    command: "preset",
+    action: "disable",
+    usage: "senera preset disable",
+    description: "停用当前提示词预设，不删除文件。",
+    args: [],
+  },
+  {
+    command: "channels",
+    action: "list",
+    usage: "senera channels list",
+    description: "列出消息渠道的有效配置（凭证自动脱敏）。",
+    args: [],
+  },
+  {
+    command: "channels",
+    action: "get",
+    usage: "senera channels get CHANNEL",
+    description: "读取一个消息渠道的有效配置（凭证自动脱敏）。",
+    args: [
+      {
+        key: "channel",
+        name: "CHANNEL",
+        kind: "string",
+        description: "渠道类型",
+        choices: Object.values(AgentChannelKinds),
+      },
+    ],
+  },
+  {
+    command: "channels",
+    action: "update",
+    usage: "senera channels update CHANNEL PATH VALUE",
+    description: "更新一个渠道配置字段；凭证和暴露面变更需要审批。",
+    args: [
+      {
+        key: "channel",
+        name: "CHANNEL",
+        kind: "string",
+        description: "渠道类型",
+        choices: Object.values(AgentChannelKinds),
+      },
+      { key: "path", name: "PATH", kind: "string", description: "渠道内字段路径，例如 token 或 enabled" },
+      { key: "value", name: "VALUE", kind: "json", description: "JSON 值（非 JSON 视为字符串）" },
     ],
     sensitive: true,
   },

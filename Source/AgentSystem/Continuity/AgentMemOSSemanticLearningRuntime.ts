@@ -16,6 +16,7 @@ import type {
 } from "../Memory/AgentMemorySourceRepository.js";
 import { DefaultAgentTimeZone, projectAgentTime } from "../Time/AgentTime.js";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
+import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
 import {
   AgentMemOSSemanticModelClient,
   createAgentMemOSExtractionRecordSchema,
@@ -24,8 +25,14 @@ import type {
   AgentMemOSDigestEntry,
   AgentMemOSFragmentHistoryEntry,
   AgentMemOSSemanticCandidate,
+  AgentMemOSSemanticDecision,
   AgentMemOSSemanticFragment,
 } from "./AgentMemOSSemanticTypes.js";
+import {
+  projectAgentMemOSSemanticIdentityDecision,
+  projectAgentMemOSSemanticIdentityText,
+  projectAgentMemOSSemanticIdentityValue,
+} from "./AgentMemOSSemanticIdentity.js";
 import {
   AgentMemOSTags,
   agentMemOSDayTag,
@@ -87,6 +94,8 @@ export interface AgentMemOSSemanticLearningRuntimeOptions {
   readonly policy: () => AgentMemOSSemanticLearningPolicy;
   readonly config: () => AgentMemOSSemanticLearningConfig;
   readonly cacheScopeKey: string;
+  /** Current host profile values are presentation-only, never semantic facts. */
+  readonly identityDisplayValues?: () => AgentIdentityDisplayValues;
   readonly logger?: AgentLogger;
 }
 
@@ -263,15 +272,16 @@ export class AgentMemOSSemanticLearningRuntime {
         limit: 1,
       })[0];
       if (completed) {
-        const nodes = await Promise.all(
-          AgentMemOSFragmentCommitSchema.parse(completed.metadata).nodeIds.map((id) => this.options.memos.retrieve(id)),
-        );
+        const commit = AgentMemOSFragmentCommitSchema.parse(completed.metadata);
+        if (commit.nodeIds.length === 0) return;
+        const nodes = await Promise.all(commit.nodeIds.map((id) => this.options.memos.retrieve(id)));
         if (nodes.length > 0 && nodes.every(Boolean)) return;
         force = true;
       }
     }
     const stateCard = projectStateCard(recordedTurn.episode.metadata.stateCard);
     if (!stateCard) return;
+    const identity = this.options.identityDisplayValues?.();
     const model = this.options.modelProvider();
     const config = this.options.config();
     const extractionRecordSchema = createAgentMemOSExtractionRecordSchema(config.digestSummaryTokenLimit);
@@ -321,8 +331,10 @@ export class AgentMemOSSemanticLearningRuntime {
             this.options.cacheScopeKey,
             config.digestSummaryTokenLimit,
           );
-          const result: AgentMemOSSemanticFragment = cachedExtraction
-            ? client.normalizeFragment(cachedExtraction.fragment)
+          const result: AgentMemOSSemanticDecision = cachedExtraction
+            ? cachedExtraction.fragment.action === "skip"
+              ? cachedExtraction.fragment
+              : client.normalizeFragment(cachedExtraction.fragment)
             : await this.options.learningRequests.run(
                 {
                   operationKey,
@@ -335,33 +347,46 @@ export class AgentMemOSSemanticLearningRuntime {
                   attempt,
                 },
                 () =>
-                  client.extractFragment(
-                    {
-                      user: recordedTurn.episode.rawUserText,
-                      assistant: previewForModel(
-                        recordedTurn.episode.assistantText,
-                        model.Model,
-                        config.assistantPreviewTokens,
-                      ),
-                      stateCard,
-                      memoryIntents: projectMemoryIntents(recordedTurn),
-                      history: this.projectHistory(recordedTurn.episode, model.Model),
-                      candidates: candidates.map(({ ref, summary, type }) => ({ ref, summary, type })),
-                    },
-                    operationKey,
-                    this.shutdown.signal,
-                  ),
+                  client
+                    .extractFragment(
+                      {
+                        user: projectAgentMemOSSemanticIdentityText(recordedTurn.episode.rawUserText, identity),
+                        assistant: projectAgentMemOSSemanticIdentityText(
+                          previewForModel(
+                            recordedTurn.episode.assistantText,
+                            model.Model,
+                            config.assistantPreviewTokens,
+                          ),
+                          identity,
+                        ),
+                        stateCard: projectAgentMemOSSemanticIdentityValue(stateCard, identity),
+                        memoryIntents: projectAgentMemOSSemanticIdentityValue(
+                          projectMemoryIntents(recordedTurn),
+                          identity,
+                        ),
+                        history: this.projectHistory(recordedTurn.episode, model.Model, identity),
+                        candidates: candidates.map(({ ref, summary, type }) => ({
+                          ref,
+                          summary: projectAgentMemOSSemanticIdentityText(summary, identity),
+                          type,
+                        })),
+                      },
+                      operationKey,
+                      this.shutdown.signal,
+                    )
+                    .then((decision) => projectAgentMemOSSemanticIdentityDecision(decision, identity)),
                 (fragment) => ({
                   metadata: extractionRecordSchema.parse({
                     fragment,
-                    ...(fragment.candidate === undefined
+                    ...(fragment.action === "skip" || fragment.candidate === undefined
                       ? {}
                       : { candidateId: candidates[fragment.candidate]?.nodeId }),
                   }),
                 }),
               );
-          let resolvedResult = result;
-          if (cachedExtraction && result.candidate !== undefined) {
+          let resolvedResult = projectAgentMemOSSemanticIdentityDecision(result, identity);
+          if (resolvedResult.action === "skip") return [];
+          if (cachedExtraction && resolvedResult.candidate !== undefined) {
             if (!cachedExtraction.candidateId) throw new Error("Persisted MemOS reconciliation is missing its target.");
             const target = await this.options.memos.retrieve(cachedExtraction.candidateId);
             if (!target) {
@@ -373,7 +398,7 @@ export class AgentMemOSSemanticLearningRuntime {
               summary: AgentMemOSSummarySchema.parse(target.summary),
               type: target.type,
             });
-            resolvedResult = { ...result, candidate: 0 };
+            resolvedResult = { ...resolvedResult, candidate: 0 };
           }
           if (this.deletedReferences.has(recordedTurn.episode.uri)) return [];
           if (!this.isCurrentEpisode(recordedTurn.episode, sourceRevision)) return [];
@@ -384,7 +409,11 @@ export class AgentMemOSSemanticLearningRuntime {
     });
   }
 
-  private projectHistory(current: AgentMemoryEpisodeRecord, model: string): AgentMemOSFragmentHistoryEntry[] {
+  private projectHistory(
+    current: AgentMemoryEpisodeRecord,
+    model: string,
+    identity: AgentIdentityDisplayValues | undefined,
+  ): AgentMemOSFragmentHistoryEntry[] {
     const history = this.options.sourceRepository
       .listEpisodes(current.sessionId)
       .filter((episode) => episode.uri !== current.uri && episode.completedAtMs <= current.startedAtMs)
@@ -396,9 +425,12 @@ export class AgentMemOSSemanticLearningRuntime {
       const stateCard = projectStateCard(episode.metadata.stateCard);
       if (!stateCard) return [];
       return {
-        user: episode.rawUserText,
-        assistant: previewForModel(episode.assistantText, model, this.options.config().assistantPreviewTokens),
-        stateCard,
+        user: projectAgentMemOSSemanticIdentityText(episode.rawUserText, identity),
+        assistant: projectAgentMemOSSemanticIdentityText(
+          previewForModel(episode.assistantText, model, this.options.config().assistantPreviewTokens),
+          identity,
+        ),
+        stateCard: projectAgentMemOSSemanticIdentityValue(stateCard, identity),
       };
     });
   }
@@ -659,7 +691,12 @@ export class AgentMemOSSemanticLearningRuntime {
     config: AgentMemOSSemanticLearningConfig = this.options.config(),
     model: ResolvedAgentModelProviderConfig = this.options.modelProvider(),
   ): Promise<string> {
-    const chunks = splitByTokenBudget(entries, config.digestInputTokenBudget, model.Model);
+    const identity = this.options.identityDisplayValues?.();
+    const projectedEntries = entries.map((entry) => ({
+      ...entry,
+      summary: projectAgentMemOSSemanticIdentityText(entry.summary, identity),
+    }));
+    const chunks = splitByTokenBudget(projectedEntries, config.digestInputTokenBudget, model.Model);
     const summaries: AgentMemOSDigestEntry[] = [];
     for (let offset = 0; offset < chunks.length; offset += this.options.policy().maxJobsPerDrain) {
       const batch = chunks.slice(offset, offset + this.options.policy().maxJobsPerDrain);
@@ -697,7 +734,7 @@ export class AgentMemOSSemanticLearningRuntime {
       );
       summaries.push(
         ...results.map((result, index) => ({
-          summary: result.summary,
+          summary: projectAgentMemOSSemanticIdentityText(result.summary, identity),
           type: "context" as const,
           occurredAt: firstEntry(batch, index).occurredAt,
         })),
@@ -732,7 +769,7 @@ export class AgentMemOSSemanticLearningRuntime {
           ),
       ),
     );
-    return consolidated.summary;
+    return projectAgentMemOSSemanticIdentityText(consolidated.summary, identity);
   }
 
   private async listSemanticNodes(tags: readonly string[]): Promise<MemoryNode[]> {

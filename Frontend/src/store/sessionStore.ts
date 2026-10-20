@@ -25,13 +25,14 @@ import {
   selectThinkingLevelForActiveSession,
   syncActiveSessionThinkingSelection,
 } from "./session/sessionThinkingSelection";
-import { DEFAULT_USER_PROFILE, normalizeUserProfile } from "./session/userProfile";
+import { DEFAULT_USER_PROFILE, normalizeUserProfile, UserProfileSyncStates } from "./session/userProfile";
 import { ExecutionApprovalModes } from "../api/executionApprovalMode";
 import type { SessionRecord, StoreState } from "./session/types";
 import { rejectRunRecovery } from "./session/runRecoveryProjection";
 
 export { DEFAULT_SESSION_TITLE } from "./session/defaults";
-export { DEFAULT_USER_PROFILE, normalizeUserProfile } from "./session/userProfile";
+export { DEFAULT_USER_PROFILE, normalizeUserProfile, UserProfileSyncStates } from "./session/userProfile";
+export type { ConversationIdentity, ConversationProfileUpdate, UserProfileSyncState } from "./session/userProfile";
 export { applyEvent, advanceHistoryHydration, friendlyDecisionKind } from "./session/sessionProjector";
 export { readActiveRun } from "./session/sessionProjectorCore";
 export type {
@@ -406,7 +407,7 @@ export const useStore = create<StoreState>()(
           state.userProfile = normalizeUserProfile({
             ...profile,
             updatedAt: new Date().toISOString(),
-            syncState: "pending",
+            syncState: UserProfileSyncStates.Pending,
           });
         }),
 
@@ -414,13 +415,16 @@ export const useStore = create<StoreState>()(
         set((state) => {
           const snapshot = normalizeUserProfile(profile ?? state.userProfile);
           const current = normalizeUserProfile(state.userProfile);
-          const isCurrentPending = current.syncState === "pending";
+          const isCurrentPending = current.syncState === UserProfileSyncStates.Pending;
           const snapshotMatchesCurrent =
-            snapshot.name === current.name && snapshot.avatarDataUrl === current.avatarDataUrl;
+            snapshot.name === current.name &&
+            snapshot.avatarDataUrl === current.avatarDataUrl &&
+            snapshot.assistant.name === current.assistant.name &&
+            snapshot.assistant.avatarDataUrl === current.assistant.avatarDataUrl;
           if (isCurrentPending && !snapshotMatchesCurrent) return;
           state.userProfile = {
             ...snapshot,
-            syncState: "synced",
+            syncState: UserProfileSyncStates.Synced,
           };
         }),
 

@@ -93,29 +93,48 @@ Prompt presets are workspace content, not Skills, provider configuration, or a
 second persona configuration. The supported shape is one user-authored
 Markdown document under the fixed workspace-local `prompts/` directory.
 
-- Inspect existing presets with `WorkspaceList` and `WorkspaceRead`, keeping the
-  path relative to the current workspace. Do not search another workspace or
-  invent a configurable preset root.
+- Use `preset list` or `preset status` to discover the fixed workspace-local
+  `prompts/` directory and the host-owned active pointer. Use `preset read PATH`
+  for one document; the command validates the path and size before returning it.
 - The model may create, complete, or revise a preset with
   `WorkspaceApplyPatch` after reading the current file. Preserve useful user
   material, make the requested change explicit, and keep the result as plain
   Markdown. Do not wrap it in JSON/XML metadata and do not create a parallel
   `CorePersona`/`LanguageStyle` file.
-- Only `prompts/*.md` documents are eligible. Never edit
-  `.senera/prompt-preset.json` directly; that file is host-owned state. Select
-  the document and change its enabled state from the Prompt preset settings
-  surface, which writes the guarded pointer and enabled flag atomically.
+- Only Markdown documents under `prompts/` are eligible. Never edit
+  `.senera/prompt-preset.json` directly; use `preset enable PATH` or
+  `preset disable`, which writes the guarded pointer atomically. The same
+  command is used by the settings UI and the model-facing harness.
+  - Preset identity syntax has exactly two names, `{{user}}` and
+    `{{assistant}}`, matched without regard to ASCII letter case. The host
+    resolves those references when the preset is projected into a turn;
+    `{{user}}` is the configured workspace profile name, not proof of an
+    external channel sender. Do not invent aliases or additional template
+    syntax. Unknown `{{...}}` text remains literal Markdown.
+  - Profile identity is runtime fact. A preset can shape voice, narrative, and
+    presentation, but cannot rename either identity, grant access, alter
+    runtime truth, or create capabilities. Use `{{assistant}}` instead of
+    hardcoding a Bot name when the name should track the profile.
 - After a write, read the same path again and report the observed content. A
-  successful file edit does not imply that the preset is enabled; verify the
-  settings state separately when activation matters.
+  successful file edit does not imply that the preset is enabled; verify with
+  `preset status` when activation matters.
 
 When a user asks the model to “写好/完善预设”, the expected workflow is:
 read the current Markdown (or create a new file in `prompts/`), improve its
 instruction hierarchy and examples without changing the requested intent,
-write it through the workspace patch contract, then leave activation to the
-explicit UI switch. If the workspace edit capability is unavailable, report
-that boundary instead of writing `.senera` state or falling back to shell file
-editing.
+write it through the workspace patch contract, then use `preset enable PATH`
+only when the user explicitly asks for activation. If the workspace edit
+capability is unavailable, report that boundary instead of writing `.senera`
+state or falling back to shell file editing.
+
+## Message channels
+
+Use `channels list` to inspect effective channel settings and `channels get
+CHANNEL` for one platform. Update only the smallest field with
+`channels update CHANNEL PATH VALUE`; the host maps it to the canonical config
+service, redacts credentials in reads, and requests approval for external
+exposure or credential changes. Verify with `channels get CHANNEL` and
+`config check`. Do not edit the extension JSON or environment files directly.
 
 ## Command Surface
 
@@ -134,6 +153,8 @@ verb, and positional values become named fields. For example:
 {"command":"doctor","action":"status"}
 ```
 
+`preset` and `channels` are first-class domains in the same command surface;
+their live argument contracts come from `capabilities`, not from this document.
 `session` model operations use `action: "model"` plus `operation: "get"` or
 `"set"`; the host binds the active `sessionId` for model calls. Omit optional
 fields rather than sending empty placeholders. Never infer a new command or
@@ -144,6 +165,8 @@ field from this example list.
 - **Never use shell tools to read or write Senera's own configuration, Skills, or `.senera` data.** Use `SeneraCommand`.
 - The `senera` CLI is the human-facing twin of `SeneraCommand` with the identical vocabulary; it calls the running service over HTTP and fails loudly when the service is offline. Suggest it when the user wants to run a command themselves.
 - Configuration paths use dot notation (`ModelProviderEndpoints.0.BaseUrl`). Secrets are redacted in every read projection.
+- Prompt preset documents are Markdown content under `prompts/`; activation state is host-owned and is changed only by `preset enable/disable`.
+- Channel configuration is resolved through the canonical channel service; model reads are redacted and mutations retain config revision and approval checks.
 - The command surface is controlled by design: config and workspace Skill mutations always go through host services (approval, revision guard, schema validation, atomic activation, and verification).
 - `capabilities` is the runtime source of truth for built-in and plugin command definitions; do not invent an unavailable command from memory.
 - Skill names and sources are runtime facts. Use `skills list` or `capabilities` before relying on a remembered Skill; duplicate names are an explicit conflict, not a silent precedence fallback.

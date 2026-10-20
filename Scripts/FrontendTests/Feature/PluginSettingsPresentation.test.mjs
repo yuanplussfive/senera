@@ -1,8 +1,9 @@
 import React from "react";
-import { cleanup, screen } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { McpServersSection } from "../../../Frontend/src/features/settings/sections/McpServersSection.tsx";
+import { PluginsSection } from "../../../Frontend/src/features/settings/sections/PluginsSection.tsx";
 import { SystemToolsSection } from "../../../Frontend/src/features/settings/sections/SystemToolsSection.tsx";
 import { TooltipProvider } from "../../../Frontend/src/shared/ui/Tooltip.tsx";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
@@ -45,6 +46,7 @@ function createImagenMcpServer() {
     descriptorKind: "mcpb",
     transport: "http",
     status: "configured",
+    enabled: true,
     inputs: [
       {
         id: "IMAGEN_API_KEY",
@@ -78,6 +80,122 @@ function createMcpSectionSystemConfig(overrides = {}) {
 }
 
 describe("plugin settings presentation", () => {
+  it("uses declared package identity marks and a stable default without inferring MCP transport icons", async () => {
+    const user = userEvent.setup();
+    const updateDraft = vi.fn();
+    const { container } = renderWithFrontendProviders(
+      React.createElement(PluginsSection, {
+        draftState: {
+          draft: {},
+          saving: false,
+          localError: null,
+          flushSave: vi.fn(),
+          updateDraft,
+        },
+        systemConfig: {
+          socketStatus: "open",
+          configSnapshot: null,
+          systemExtensions: [
+            {
+              id: "git",
+              settingsSurface: "system-tools",
+              domain: ExecuteDomain,
+              version: "1.0.0",
+              displayName: { "zh-CN": "Git 版本控制", "en-US": "Git Version Control" },
+              description: { "zh-CN": "管理当前仓库。", "en-US": "Manage the current repository." },
+              presentation: {
+                category: "version-control",
+                icon: "git-branch",
+                brandIcon: "git",
+                group: { id: "version-control", title: { "zh-CN": "版本控制", "en-US": "Version control" } },
+                activity: { action: { "zh-CN": "使用 Git", "en-US": "Use Git" } },
+              },
+              enabled: true,
+              configured: false,
+              tools: [],
+              skillCount: 0,
+              mcpServerCount: 0,
+            },
+          ],
+          mcpServers: [createImagenMcpServer()],
+          toolSettingsSynced: { systemTools: true, mcpServers: true },
+          mcpInputOperation: null,
+          refreshConfig: vi.fn(),
+          refreshToolSettings: vi.fn(),
+          restartMcpServer: vi.fn(() => true),
+          updateMcpInputs: vi.fn(),
+        },
+      }),
+    );
+
+    expect(container.querySelector('[data-plugin-brand-icon="git"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-fallback-icon="server"]')).toBeInTheDocument();
+    expect(container.querySelectorAll("[data-plugin-directory-item]")).toHaveLength(2);
+    expect(screen.getByRole("radio", { name: "全部 2" })).toBeVisible();
+    await user.click(screen.getByRole("switch", { name: "启用或停用 Imagen" }));
+    expect(updateDraft).toHaveBeenCalledWith({ McpServers: { imagen: { Enabled: false } } }, "immediate");
+    await user.click(screen.getByText("Imagen"));
+    expect(container.querySelector("[data-plugin-detail-page]")).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "启用或停用 Imagen" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "返回插件目录" }));
+    await user.click(screen.getByRole("switch", { name: "启用或停用 Git 版本控制" }));
+    expect(updateDraft).toHaveBeenCalledWith({ Extensions: { git: { Enabled: false } } }, "immediate");
+    expect(container.querySelector("[data-plugin-detail-page]")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("radio", { name: "系统扩展 1" }));
+    expect(container.querySelectorAll("[data-plugin-directory-item]")).toHaveLength(1);
+    await user.click(screen.getByText("Git 版本控制"));
+    expect(container.querySelector("[data-plugin-detail-page]")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "返回插件目录" }));
+    expect(container.querySelector("[data-plugins-directory]")).toBeInTheDocument();
+  });
+
+  it("locks an MCP activation switch until its required configuration is complete", () => {
+    const server = {
+      ...createImagenMcpServer(),
+      id: "weather",
+      status: "needs_input",
+      enabled: false,
+      inputs: [
+        {
+          ...createImagenMcpServer().inputs[0],
+          id: "WEATHER_API_KEY",
+          configured: false,
+          stored: false,
+          source: "missing",
+        },
+      ],
+    };
+    renderWithFrontendProviders(
+      React.createElement(PluginsSection, {
+        draftState: {
+          // A stored activation preference must not make an incomplete MCP
+          // appear usable. Its input state is the authoritative readiness gate.
+          draft: { McpServers: { weather: { Enabled: true } } },
+          saving: false,
+          localError: null,
+          flushSave: vi.fn(),
+          updateDraft: vi.fn(),
+        },
+        systemConfig: {
+          socketStatus: "open",
+          configSnapshot: null,
+          systemExtensions: [],
+          mcpServers: [server],
+          toolSettingsSynced: { systemTools: true, mcpServers: true },
+          mcpInputOperation: null,
+          refreshConfig: vi.fn(),
+          refreshToolSettings: vi.fn(),
+          restartMcpServer: vi.fn(() => true),
+          updateMcpInputs: vi.fn(),
+        },
+      }),
+    );
+
+    const activationSwitch = screen.getByRole("switch", { name: "启用或停用 Imagen" });
+    expect(activationSwitch).toBeDisabled();
+    expect(activationSwitch).not.toBeChecked();
+  });
+
   it("keeps system extension internals out of the default tool directory", async () => {
     const user = userEvent.setup();
     const { container } = renderWithFrontendProviders(
@@ -150,22 +268,34 @@ describe("plugin settings presentation", () => {
     expect(screen.getAllByText("工作区工具")).toHaveLength(1);
     expect(container.querySelector("[data-system-extension-directory]")).toBeInTheDocument();
     expect(
-      [...container.querySelectorAll("[data-system-extension-domain]")].map(
-        (element) => element.dataset.systemExtensionDomain,
+      [...container.querySelectorAll("[data-settings-entity-group]")].map(
+        (element) => element.dataset.settingsEntityGroup,
       ),
     ).toEqual(["execute", "explore"]);
-    expect(container.querySelector("[data-system-extension-domain='explore']")).toHaveTextContent("探索与检索");
+    expect(container.querySelector("[data-settings-entity-group='explore']")).toHaveTextContent("探索与检索");
     expect(container.querySelector("[data-system-extension-tools]")).not.toBeInTheDocument();
+    expect(container.querySelector("[data-extension-preview]")).toHaveTextContent("无需配置");
+    expect(container.querySelector("[data-settings-state='on']")).toHaveTextContent("ON");
+    await user.click(screen.getByRole("button", { name: "管理扩展开关" }));
+    const extensionManager = screen.getByRole("dialog", { name: "管理扩展开关" });
+    expect(extensionManager).toHaveAttribute("data-extension-bulk-manager");
+    expect(extensionManager.querySelector("[data-extension-bulk-scroll-region]")).toHaveClass("min-h-0", "flex-1");
+    await user.keyboard("{Escape}");
     await user.click(screen.getByText("工作区工具"));
-    expect(container.querySelector("[data-system-extension-tools]")).toBeInTheDocument();
+    await waitFor(() => expect(container.querySelector("[data-system-extension-tools]")).toBeInTheDocument());
     expect(screen.getByText("WorkspaceRead")).toBeVisible();
+    expect(container.querySelector('[data-system-extension-tool-icon="file-text"]')).toBeInTheDocument();
+    expect(screen.getByTestId("extension-metrics")).toHaveTextContent("工具");
+    await user.click(screen.getByRole("radio", { name: "配置" }));
+    expect(screen.getByText("无需配置")).toBeVisible();
+    expect(screen.getByText("该扩展没有公开配置字段。")).toBeVisible();
     expect(screen.queryByText("workspace-tools")).not.toBeInTheDocument();
     expect(screen.queryByText("system.tool.workspace-tools.WorkspaceRead")).not.toBeInTheDocument();
   });
 
   it("keeps MCP configuration focused on user-editable inputs", async () => {
     const user = userEvent.setup();
-    renderWithFrontendProviders(
+    const { container } = renderWithFrontendProviders(
       React.createElement(McpServersSection, {
         systemConfig: {
           socketStatus: "open",
@@ -207,12 +337,16 @@ describe("plugin settings presentation", () => {
     );
 
     expect(screen.getAllByText("Imagen")).toHaveLength(1);
+    expect(container.querySelector("[data-settings-entity-group='bundled']")).toHaveTextContent("内置");
+    expect(container.querySelector("[data-mcp-preview]")).toHaveTextContent("配置 1 项");
+    expect(container.querySelector("[data-mcp-status='configured']")).toHaveTextContent("可用");
     expect(screen.queryByText("Imagen API Key")).not.toBeInTheDocument();
     await user.click(screen.getByText("Imagen"));
     expect(
       screen.getAllByText("Imagen API Key").find((element) => !element.classList.contains("sr-only")),
     ).toBeVisible();
     expect(screen.getByText("已保存在 Secret Vault")).toBeVisible();
+    expect(screen.getByTestId("mcp-metrics")).toHaveTextContent("来源");
     expect(screen.queryByText("@senera/imagen-mcp")).not.toBeInTheDocument();
     expect(screen.queryByText("IMAGEN_API_KEY")).not.toBeInTheDocument();
     expect(screen.queryByText("2026")).not.toBeInTheDocument();

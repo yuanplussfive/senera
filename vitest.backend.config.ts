@@ -1,3 +1,4 @@
+import path from "node:path";
 import { availableParallelism } from "node:os";
 import { defineConfig } from "vitest/config";
 import { BackendTestCoveragePolicy } from "./Scripts/TestCoveragePolicy.js";
@@ -15,6 +16,7 @@ export default defineConfig({
     testTimeout: 15_000,
     hookTimeout: 15_000,
     include: [...BackendTestCoveragePolicy.testInclude],
+    setupFiles: (BackendTestCoveragePolicy.setupFiles ?? []).map((setupFile) => path.resolve(workspaceRoot, setupFile)),
     coverage: {
       provider: "v8",
       reporter: ["text", "html", "json-summary"],

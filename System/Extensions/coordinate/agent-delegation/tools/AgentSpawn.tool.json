@@ -4,7 +4,8 @@
   "presentation": {
     "category": "agent-spawn",
     "icon": "users",
-    "activity": { "action": { "zh-CN": "启动", "en-US": "Start" }, "argumentPath": "/task", "detailPaths": ["/agent"] }
+    "activity": { "action": { "zh-CN": "启动", "en-US": "Start" }, "argumentPath": "/task", "detailPaths": ["/agent"] },
+    "preview": { "body": { "pointer": "/disposition", "from": "result" } }
   },
   "description": "后台启动一个由 Senera 宿主策略管理的子代理；立即返回 run ID，父代理可继续非重复工作。",
   "inputSchema": {

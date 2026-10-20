@@ -59,6 +59,26 @@ describe("application and workspace persistence", () => {
     });
   });
 
+  it("retains a pending profile update across persistence and rehydration", () => {
+    const pendingProfile = {
+      ...DEFAULT_USER_PROFILE,
+      name: "Offline user",
+      updatedAt: "2026-10-20T00:00:00.000Z",
+      syncState: "pending",
+    };
+
+    const persisted = sessionPersistOptions.migrate({ userProfile: pendingProfile }, 12);
+    expect(persisted.userProfile).toEqual(pendingProfile);
+    expect(sessionPersistOptions.partialize({ userProfile: pendingProfile })).toEqual({
+      userProfile: pendingProfile,
+    });
+
+    const restored = sessionPersistOptions.merge(persisted, {
+      userProfile: DEFAULT_USER_PROFILE,
+    });
+    expect(restored.userProfile).toEqual(pendingProfile);
+  });
+
   it("cross-window application preferences exclude session order and model selections", () => {
     expect(
       readPersistedSessionPreferences(

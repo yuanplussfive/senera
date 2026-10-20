@@ -414,12 +414,10 @@ export function sortProviderModelRows({
   rows,
   models,
   providerId,
-  defaultModelId,
 }: {
   rows: ProviderModelInfo[];
   models: ModelProviderDraft[];
   providerId: string;
-  defaultModelId: string;
 }): ProviderModelInfo[] {
   const configuredByName = new Map(
     models.filter((model) => model.ProviderId === providerId).map((model) => [model.Model, model]),
@@ -431,11 +429,6 @@ export function sortProviderModelRows({
       configured: configuredByName.get(row.id),
     }))
     .sort((left, right) => {
-      const leftDefault = left.configured?.Id === defaultModelId;
-      const rightDefault = right.configured?.Id === defaultModelId;
-      if (leftDefault !== rightDefault) {
-        return leftDefault ? -1 : 1;
-      }
       if (Boolean(left.configured) !== Boolean(right.configured)) {
         return left.configured ? -1 : 1;
       }

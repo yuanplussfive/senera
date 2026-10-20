@@ -68,6 +68,8 @@ export const AgentMcpConfigurationDocumentSchema = z
   .object({
     execution: AgentMcpExecutionSchema.optional(),
     requirements: AgentMcpHostRequirementsSchema.optional(),
+    /** Package-owned settings identity, validated by the descriptor adapter. */
+    presentation: z.unknown().optional(),
     mcpServers: z.record(AgentExtensionNameSchema, AgentMcpLegacyServerConfigurationSchema),
   })
   .strict()

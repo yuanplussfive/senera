@@ -299,7 +299,7 @@ function transformMarkdownUrl(value: string): string {
 
 function MarkdownTable({ children, className, ...props }: TableHTMLAttributes<HTMLTableElement>): JSX.Element {
   return (
-    <div className="markdown-renderer__table-wrap scrollbar-thin">
+    <div className="markdown-renderer__table-wrap ">
       <table className={cn("markdown-renderer__table", className)} {...props}>
         {children}
       </table>

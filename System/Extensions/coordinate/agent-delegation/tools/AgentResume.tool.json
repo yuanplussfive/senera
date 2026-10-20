@@ -3,12 +3,13 @@
   "loading": "Bootstrap",
   "presentation": {
     "category": "agent-resume",
-    "icon": "users",
+    "icon": "play-circle",
     "activity": {
       "action": { "zh-CN": "继续", "en-US": "Resume" },
       "argumentPath": "/task",
       "detailPaths": ["/target"]
-    }
+    },
+    "preview": { "body": { "pointer": "/accepted", "from": "result" } }
   },
   "description": "在持久化子会话上下文中恢复一个已停止或已完成的子代理，并后台执行新的明确任务。",
   "inputSchema": {

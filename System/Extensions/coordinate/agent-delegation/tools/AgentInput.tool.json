@@ -3,12 +3,13 @@
   "loading": "Bootstrap",
   "presentation": {
     "category": "agent-input",
-    "icon": "users",
+    "icon": "input",
     "activity": {
       "action": { "zh-CN": "发送", "en-US": "Message" },
       "argumentPath": "/message",
       "detailPaths": ["/target"]
-    }
+    },
+    "preview": { "body": { "pointer": "/accepted", "from": "result" } }
   },
   "description": "向活动子代理排队后续输入，或立即引导其改变当前方向；也用于回答子代理的决策请求。",
   "inputSchema": {

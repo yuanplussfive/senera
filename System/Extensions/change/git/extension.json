@@ -14,6 +14,7 @@
   "presentation": {
     "category": "version-control",
     "icon": "git-branch",
+    "brandIcon": "git",
     "group": { "id": "version-control", "title": { "zh-CN": "版本控制", "en-US": "Version control" } },
     "activity": { "action": { "zh-CN": "使用 Git", "en-US": "Use Git" } }
   },

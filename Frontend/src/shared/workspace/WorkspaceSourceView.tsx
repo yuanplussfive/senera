@@ -64,9 +64,17 @@ export function WorkspaceSourceRuntime({ children }: { children: ReactNode }): J
   const [revision, setRevision] = useState(0);
   useEffect(() => {
     let active = true;
+    let pool: WorkerPoolManager;
     setState({ status: "loading" });
     // Create resources only after React commits the preview, including suspended file-tree assets.
-    const pool = new WorkerPoolManager(poolOptions, highlighterOptions);
+    try {
+      pool = new WorkerPoolManager(poolOptions, highlighterOptions);
+    } catch (error: unknown) {
+      if (active) setState({ status: "error", error: error instanceof Error ? error.message : String(error) });
+      return () => {
+        active = false;
+      };
+    }
     void pool.initialize().then(
       () => {
         if (active) setState({ status: "ready", pool });
@@ -141,7 +149,7 @@ function PreparedSource(props: WorkspaceSourceProps & { onRetry: () => void }): 
 
   return (
     <Virtualizer
-      className="workspace-source-viewport scrollbar-thin min-h-0 min-w-0 flex-1 overflow-auto"
+      className="workspace-source-viewport min-h-0 min-w-0 flex-1 overflow-auto"
       contentClassName="min-w-full py-3"
     >
       <EditProvider createEditor={createEditor}>

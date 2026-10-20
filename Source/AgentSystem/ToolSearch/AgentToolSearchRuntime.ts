@@ -13,7 +13,7 @@ import {
 } from "./AgentToolSearchRuntimeTypes.js";
 import type { ToolExecutionTarget } from "../Types/AgentToolContractTypes.js";
 import {
-  createAgentToolDiscoveryResult,
+  createAgentToolCatalogMutationResult,
   createAgentToolDescriptionResult,
   AgentToolCatalogStatuses,
   invalidToolMetaArgumentsResult,
@@ -24,7 +24,11 @@ import {
   ToolUnloadArgumentsSchema,
   type ResolvedToolSearchArguments,
 } from "./AgentToolMetaToolProtocol.js";
-import { buildToolSearchResultProjection, readToolNamesFromSearchResult } from "./AgentToolSearchResultProjector.js";
+import {
+  buildToolSearchResultProjection,
+  createAgentToolSearchOutput,
+  readToolNamesFromSearchResult,
+} from "./AgentToolSearchResultProjector.js";
 import { AgentToolSearchUsageMemory, type AgentToolSearchObservation } from "./AgentToolSearchUsageMemory.js";
 import { AgentCancellationError, throwIfAborted } from "../Core/AgentCancellation.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
@@ -239,7 +243,7 @@ export class AgentToolSearchRuntime {
       for (const tool of requested.tools.filter(isAgentToolExecutable))
         context.toolExposure?.confirmContract(tool.name, tool.contract?.digest);
       return okToolMetaResult(
-        createAgentToolDiscoveryResult({
+        createAgentToolCatalogMutationResult({
           catalogStatus: AgentToolCatalogStatuses.Current,
           catalogRevision,
           generation: delta?.snapshot.generation ?? context.toolExposure?.snapshot().generation ?? 0,
@@ -289,7 +293,7 @@ export class AgentToolSearchRuntime {
         },
       );
       return okToolMetaResult(
-        createAgentToolDiscoveryResult({
+        createAgentToolCatalogMutationResult({
           catalogStatus: AgentToolCatalogStatuses.Current,
           catalogRevision,
           generation: delta?.snapshot.generation ?? context.toolExposure?.snapshot().generation ?? 0,
@@ -315,7 +319,7 @@ export class AgentToolSearchRuntime {
     context: AgentHostToolContext,
   ): AgentToolProcessRunResult {
     return okToolMetaResult(
-      createAgentToolDiscoveryResult({
+      createAgentToolCatalogMutationResult({
         catalogStatus: AgentToolCatalogStatuses.Stale,
         catalogRevision,
         reason: AgentToolSearchEmptyReasons.CatalogChanged,
@@ -806,7 +810,7 @@ export class AgentToolSearchRuntime {
     } satisfies AgentToolSearchDiscovery;
 
     return {
-      result: createAgentToolDiscoveryResult(
+      result: createAgentToolSearchOutput(
         buildToolSearchResultProjection(withStateDiscovery, {
           model: this.model.Model,
           tokenBudget: this.config.Disclosure.TokenBudget,

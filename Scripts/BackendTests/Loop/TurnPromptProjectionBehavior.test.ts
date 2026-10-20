@@ -380,4 +380,87 @@ describe("turn prompt projection", () => {
     expect(rendered.text).not.toContain("senera.profile");
     expect(rendered.text).not.toContain("memory_selection");
   });
+
+  test("projects host profile identity separately from persona expression and refreshes it per turn", async () => {
+    const rootCommand = toolRootCommand(["ShellCommandTool"]);
+    let identity = { user: "Ada", assistant: "Nova" };
+    const runtime = {
+      workspaceRoot: process.cwd(),
+      registry: {
+        getTemplate: (templateName: string) => ({
+          name: templateName,
+          path: path.resolve(process.cwd(), "System", "Prompts", "Templates", `${templateName}.liquid`),
+          exposeToPi: false,
+        }),
+      },
+      config: {},
+      identityDisplayValues: () => identity,
+      services: {
+        promptContext: {
+          promptPersona: () => ({
+            enabled: true,
+            card: { markdown: "{{user}} works beside {{assistant}}. {{resident}} and {{char}} stay literal." },
+          }),
+          liveContinuityMemory: async () => EmptyAgentContinuityMemoryPromptContext,
+          promptWorkflow: () => EmptyAgentWorkflowPromptContext,
+          buildBaseContext: ({ persona }: { persona: { readonly card: { readonly markdown: string } } }) => ({
+            ExecutionEnvironment: buildAgentExecutionEnvironmentContext(process.cwd()),
+            ToolCards: [],
+            ToolDiscoveryToolName: null,
+            RootCommand: rootCommand,
+            Persona: persona,
+            ContinuityMemory: EmptyAgentContinuityMemoryPromptContext,
+            Workflow: EmptyAgentWorkflowPromptContext,
+            ContextRevisions: {
+              stable: persona.card.markdown,
+              context: "context",
+              volatile: "volatile",
+            },
+          }),
+        },
+      },
+      promptRenderer: new AgentPromptRenderer(),
+      promptTierRenderCache: new AgentPromptTierRenderCache(),
+      tokenEstimator: { estimate: (text: string) => ({ tokenCount: text.length }) },
+      promptConfig: {
+        UserMessageEnvelope: true,
+        TimeZone: "Asia/Shanghai",
+        BamlToolAttribution: true,
+      },
+    } as unknown as AgentSystemRuntime;
+
+    const renderer = new AgentTurnPromptRenderer(runtime);
+    const consoleTurn = await renderer.render({
+      userInput: "hello",
+      requestId: "identity-console",
+      interaction: { surface: "console" },
+      loadedToolNames: ["ShellCommandTool"],
+      reusableCapabilities: [],
+      rootCommand,
+      toolPlanningMode: "native",
+    });
+
+    expect(consoleTurn.systemPrompt).toContain("Ada works beside Nova. {{resident}} and {{char}} stay literal.");
+    expect(consoleTurn.turnContext).toContain("senera.identity=v1");
+    expect(consoleTurn.turnContext).toContain("rule=continuity-references-to-user-and-i-resolve-through-this-profile");
+    expect(consoleTurn.turnContext).toContain('"assistant":{"name":"Nova"}');
+    expect(consoleTurn.turnContext).toContain('"counterpart":{"name":"Ada","relationship":"workspace_owner"}');
+
+    identity = { user: "Bea <profile>", assistant: "Orbit {{user}}" };
+    const channelTurn = await renderer.render({
+      userInput: "hello",
+      requestId: "identity-channel",
+      interaction: { surface: "channel", platform: "qq", chatType: "group" },
+      loadedToolNames: ["ShellCommandTool"],
+      reusableCapabilities: [],
+      rootCommand,
+      toolPlanningMode: "native",
+    });
+
+    expect(channelTurn.systemPrompt).toContain("Bea &lt;profile&gt; works beside Orbit {{user}}.");
+    expect(channelTurn.systemPrompt).not.toContain("Bea <profile>");
+    expect(channelTurn.turnContext).toContain('"assistant":{"name":"Orbit {{user}}"}');
+    expect(channelTurn.turnContext).not.toContain('"counterpart"');
+    expect(channelTurn.harness.sections.volatile.revision).not.toBe(consoleTurn.harness.sections.volatile.revision);
+  });
 });

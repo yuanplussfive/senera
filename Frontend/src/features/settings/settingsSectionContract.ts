@@ -1,25 +1,15 @@
-export const settingsSectionIds = [
-  "model-service",
-  "default-model",
-  "runtime",
-  "prompt",
-  "planning",
-  "retrieval",
-  "system-tools",
-  "dependencies",
-  "mcp-servers",
-  "channels",
-  "general",
-  "appearance",
-  "storage",
-  "workspace",
-  "about",
-] as const;
+import {
+  AgentSettingsSectionIds,
+  isAgentSettingsSectionId,
+  type AgentSettingsSectionId,
+} from "../../../../Source/AgentSystem/Settings/AgentSettingsSectionContract";
 
-export type SettingsSectionId = (typeof settingsSectionIds)[number];
+export const settingsSectionIds = AgentSettingsSectionIds;
+
+export type SettingsSectionId = AgentSettingsSectionId;
 
 export const defaultSettingsSectionId: SettingsSectionId = settingsSectionIds[0];
 
 export function isSettingsSectionId(value: string | null | undefined): value is SettingsSectionId {
-  return settingsSectionIds.some((sectionId) => sectionId === value);
+  return isAgentSettingsSectionId(value);
 }

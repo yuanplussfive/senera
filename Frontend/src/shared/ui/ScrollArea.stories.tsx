@@ -19,7 +19,10 @@ export const VerticalScroll: Story = () => (
 
 export const HorizontalScroll: Story = () => (
   <div className="flex min-h-[400px] items-center justify-center p-8">
-    <ScrollArea className="w-full max-w-[600px] whitespace-nowrap rounded-lg border border-ink-200 bg-paper-50 p-4">
+    <ScrollArea
+      orientation="horizontal"
+      className="h-[180px] w-full max-w-[600px] whitespace-nowrap rounded-lg border border-ink-200 bg-paper-50 p-4"
+    >
       <div className="flex gap-4">
         {Array.from({ length: 15 }).map((_, i) => (
           <div

@@ -22,7 +22,11 @@ const iconVendorPackages = [
   "@iconify/react",
   "@radix-ui/react-icons",
 ];
-const iconAdapterPath = "Frontend/src/shared/ui/AppIcon.tsx";
+const iconAdapterPaths = new Set([
+  "Frontend/src/shared/ui/AppIcon.tsx",
+  "Frontend/src/shared/workspace/AgentToolPresentationIcon.tsx",
+  "Frontend/src/features/settings/sections/PluginIdentityIcon.tsx",
+]);
 
 test(
   "source tree has no retired root components bridge or imports",
@@ -65,7 +69,7 @@ test(
 );
 
 test(
-  "new production icon imports stay behind the shared AppIcon adapter",
+  "new production icon imports stay behind their declared adapter boundary",
   () => {
     const baseline = resolveIconImportBaseline();
     if (!baseline.repositoryAvailable) {
@@ -79,7 +83,7 @@ test(
       changedFiles.map((file) => relativePath(file)),
     );
     const violations = changedFiles.flatMap((file) => {
-      if (relativePath(file) === iconAdapterPath) return [];
+      if (iconAdapterPaths.has(relativePath(file))) return [];
 
       const currentImports = iconImportRecords(readFileSync(file, "utf8"), file);
       if (currentImports.length === 0) return [];
@@ -89,7 +93,7 @@ test(
       return currentImports
         .filter((current) => !baselineImports.some((previous) => importRecordCovers(previous, current)))
         .map((current) =>
-          formatViolation(file, "adds a direct icon vendor import; use shared/ui/AppIcon", current.target),
+          formatViolation(file, "adds a direct icon vendor import outside an approved adapter", current.target),
         );
     });
 

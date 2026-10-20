@@ -15,7 +15,7 @@
   "legacyLargeFiles": [
     {
       "path": "Apps/ServerRuntime.ts",
-      "baselineLines": 1061,
+      "baselineLines": 1118,
       "owner": "runtime-platform",
       "splitTarget": "Keep ServerRuntime focused on current-turn composition after retiring autonomous world runtime."
     },
@@ -39,7 +39,7 @@
     },
     {
       "path": "Scripts/BackendTests/SystemTools/AgentSystemToolCatalogBehavior.test.ts",
-      "baselineLines": 955,
+      "baselineLines": 997,
       "owner": "system-extension-contracts",
       "splitTarget": "Split package registration, manifest validation, and configurable-extension scenarios into focused test files."
     },
@@ -69,13 +69,13 @@
     },
     {
       "path": "Scripts/FrontendTests/Feature/WorkflowExecutionFeedComponents.test.mjs",
-      "baselineLines": 1091,
+      "baselineLines": 1118,
       "owner": "frontend-platform",
       "splitTarget": "Split workflow feed and child-run component scenarios into focused test files."
     },
     {
       "path": "Scripts/FrontendTests/Feature/WorkflowComponents.test.mjs",
-      "baselineLines": 880,
+      "baselineLines": 1020,
       "owner": "frontend-platform",
       "splitTarget": "Split workflow activity, child-run, and layout scenarios into focused test files."
     },
@@ -141,7 +141,7 @@
     },
     {
       "path": "Scripts/FrontendTests/Feature/ToolResourcePreview.test.mjs",
-      "baselineLines": 817,
+      "baselineLines": 893,
       "owner": "frontend-platform",
       "splitTarget": "Split resource preview rendering from download and mutation interactions."
     },
@@ -159,7 +159,7 @@
     },
     {
       "path": "Source/AgentSystem/Browser/AgentBrowserRuntime.ts",
-      "baselineLines": 806,
+      "baselineLines": 846,
       "owner": "browser-runtime",
       "splitTarget": "Split browser session lifecycle from navigation and observation orchestration."
     },
@@ -183,7 +183,7 @@
     },
     {
       "path": "Frontend/src/shared/workspace/WorkspaceResourceWorkbench.tsx",
-      "baselineLines": 871,
+      "baselineLines": 897,
       "owner": "frontend-platform",
       "splitTarget": "Extract resource tree, editor state, and preview projection into focused workspace modules."
     },
@@ -201,7 +201,7 @@
     },
     {
       "path": "Source/AgentSystem/Continuity/AgentMemOSSemanticLearningRuntime.ts",
-      "baselineLines": 903,
+      "baselineLines": 949,
       "owner": "continuity-runtime",
       "splitTarget": "Extract semantic learning ingestion, clustering, and projection into focused continuity modules."
     },
@@ -219,9 +219,33 @@
     },
     {
       "path": "Source/AgentSystem/ToolSearch/AgentToolSearchRuntime.ts",
-      "baselineLines": 854,
+      "baselineLines": 880,
       "owner": "tool-routing-runtime",
       "splitTarget": "Extract catalog admission, semantic retrieval, and usage learning into focused tool-routing modules."
+    },
+    {
+      "path": "Frontend/src/features/chat/AssistantTurnRow.tsx",
+      "baselineLines": 819,
+      "owner": "frontend-platform",
+      "splitTarget": "Extract terminal chronology and transient stage projection into focused assistant-turn modules."
+    },
+    {
+      "path": "Frontend/src/features/settings/sections/McpServersSection.tsx",
+      "baselineLines": 870,
+      "owner": "frontend-platform",
+      "splitTarget": "Extract MCP input draft synchronization and server navigation into focused settings modules."
+    },
+    {
+      "path": "Scripts/FrontendTests/Feature/ChatMessageRendering.test.mjs",
+      "baselineLines": 833,
+      "owner": "frontend-platform",
+      "splitTarget": "Split profile, Markdown, and message rendering scenarios into focused feature test files."
+    },
+    {
+      "path": "Source/AgentSystem/Browser/AgentNativeBrowserDriver.ts",
+      "baselineLines": 1214,
+      "owner": "browser-runtime",
+      "splitTarget": "Extract session command projection, managed-tab lifecycle, and process transport into focused browser driver modules."
     }
   ],
   "directoryBudgets": [

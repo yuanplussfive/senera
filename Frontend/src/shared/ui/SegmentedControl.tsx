@@ -1,5 +1,8 @@
 import { useRef, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../../lib/util";
+import { FluidSegmentedLayers, useFluidSegmentedSurface } from "./FluidSegmentedSurface";
+
+const segmentedNavigationKeys = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"]);
 
 export interface SegmentedControlOption<TValue extends string> {
   value: TValue;
@@ -17,6 +20,26 @@ export interface SegmentedControlProps<TValue extends string> {
   onChange: (value: TValue) => void;
 }
 
+function resolveRelativeOption<TValue extends string>(
+  options: readonly SegmentedControlOption<TValue>[],
+  index: number,
+  key: string,
+): number | null {
+  if (key === "Home") return options.findIndex((option) => !option.disabled);
+  if (key === "End") {
+    for (let candidate = options.length - 1; candidate >= 0; candidate -= 1) {
+      if (!options[candidate].disabled) return candidate;
+    }
+    return null;
+  }
+  const direction = key === "ArrowLeft" || key === "ArrowUp" ? -1 : 1;
+  for (let offset = 1; offset <= options.length; offset += 1) {
+    const candidate = (index + direction * offset + options.length) % options.length;
+    if (!options[candidate].disabled) return candidate;
+  }
+  return null;
+}
+
 export function SegmentedControl<TValue extends string>({
   ariaLabel,
   options,
@@ -26,34 +49,29 @@ export function SegmentedControl<TValue extends string>({
   onChange,
 }: SegmentedControlProps<TValue>): JSX.Element {
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const surface = useFluidSegmentedSurface(value || undefined);
 
   const selectRelativeOption = (event: KeyboardEvent<HTMLButtonElement>, index: number): void => {
-    const direction = event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 1;
-    let nextIndex = event.key === "Home" ? 0 : event.key === "End" ? options.length - 1 : index + direction;
-    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
-
+    if (!segmentedNavigationKeys.has(event.key)) return;
     event.preventDefault();
-    for (let attempts = 0; attempts < options.length; attempts += 1) {
-      nextIndex = (nextIndex + options.length) % options.length;
-      const option = options[nextIndex];
-      if (!option.disabled) {
-        onChange(option.value);
-        itemRefs.current[nextIndex]?.focus();
-        return;
-      }
-      nextIndex += direction;
-    }
+    const nextIndex = resolveRelativeOption(options, index, event.key);
+    if (nextIndex === null || nextIndex < 0) return;
+    const next = options[nextIndex];
+    onChange(next.value);
+    itemRefs.current[nextIndex]?.focus();
   };
 
   return (
     <div
+      ref={surface.containerRef}
       role="radiogroup"
       aria-label={ariaLabel}
       className={cn(
-        "inline-grid min-h-9 min-w-0 grid-flow-col auto-cols-fr items-center gap-0.5 rounded-lg bg-surface-subtle p-1 ring-1 ring-inset ring-line-subtle",
+        "relative inline-grid min-h-9 min-w-0 grid-flow-col auto-cols-fr items-center gap-0.5 rounded-lg bg-surface-subtle p-1 ring-1 ring-inset ring-line-subtle",
         className,
       )}
     >
+      <FluidSegmentedLayers surface={surface} />
       {options.map((option, index) => {
         const selected = value === option.value;
         return (
@@ -61,6 +79,7 @@ export function SegmentedControl<TValue extends string>({
             key={option.value}
             ref={(element) => {
               itemRefs.current[index] = element;
+              surface.registerItem(option.value, element);
             }}
             type="button"
             role="radio"
@@ -68,16 +87,16 @@ export function SegmentedControl<TValue extends string>({
             disabled={disabled || option.disabled}
             tabIndex={selected || (!value && index === 0) ? 0 : -1}
             className={cn(
-              "inline-flex h-7 min-w-0 items-center justify-center gap-1.5 rounded-md px-3 text-[12px] font-medium outline-none",
-              "transition-[background-color,color,box-shadow] duration-150 ease-out",
-              "focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-accent-focus",
+              "relative z-10 inline-flex h-7 min-w-0 items-center justify-center gap-1.5 rounded-md px-3 text-[12px] font-medium outline-none",
+              "transition-[color,font-weight] duration-150 ease-out",
+              "focus-visible:ring-2 focus-visible:ring-accent-focus",
               "disabled:pointer-events-none disabled:opacity-45",
-              selected
-                ? "bg-surface-raised text-content-primary shadow-sm ring-1 ring-inset ring-line-subtle"
-                : "text-content-secondary hover:bg-surface-hover hover:text-content-primary",
+              selected ? "text-content-primary" : "text-content-secondary hover:text-content-primary",
             )}
             onClick={() => onChange(option.value)}
             onKeyDown={(event) => selectRelativeOption(event, index)}
+            onPointerEnter={(event) => surface.onItemPointerEnter(option.value, event)}
+            onPointerLeave={surface.onItemPointerLeave}
           >
             {option.icon}
             <span className="truncate">{option.label}</span>
