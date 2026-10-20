@@ -69,7 +69,7 @@ export function WorkspaceFileTree({
       const row = event.nativeEvent
         .composedPath()
         .find((node) => node instanceof HTMLElement && node.hasAttribute("data-item-path"));
-      if (row instanceof HTMLElement && activePath) {
+      if (row instanceof HTMLElement) {
         const selectedPath = workspacePathFromTreePath(resourceRoot, row.dataset.itemPath ?? "");
         if (selectedPath === activePath) callbacks.current.onSelect(activePath);
       }

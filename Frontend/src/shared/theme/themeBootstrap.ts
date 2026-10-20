@@ -15,6 +15,15 @@ import { recommendedAccentColors } from "./themeData";
 
 export const appearanceBootstrapScriptPlaceholder = "__SENERA_APPEARANCE_BOOTSTRAP_SCRIPT__";
 
+/** Serializes data for an inline script without permitting it to terminate the enclosing script element. */
+export function serializeInlineScriptData(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</gu, "\\u003C")
+    .replace(/>/gu, "\\u003E")
+    .replace(/\u2028/gu, "\\u2028")
+    .replace(/\u2029/gu, "\\u2029");
+}
+
 export interface AppearanceBootstrapConfig {
   storageKey: string;
   defaultPreference: AppearancePreference;
@@ -130,5 +139,5 @@ export function createAppearanceBootstrapScript(): string {
       resolveTokenIndexes(colorScheme, "dark"),
     ]),
   ];
-  return `(()=>{const[e,t,a,n,l,o,r,c]=${JSON.stringify(serializedConfig)},s=document.documentElement,f=i=>{let d={};try{d=i?JSON.parse(i):{}}catch{}const p=Object.fromEntries(a.map((v,h)=>[v,n[h].includes(d[v])?d[v]:t[v]])),h=a.indexOf("colorScheme");return p.accentColor=l[n[h].indexOf(p.colorScheme)]??t.accentColor,p};let u=t;try{u=f(window.localStorage.getItem(e))}catch{}const g=window.matchMedia?.("(prefers-color-scheme: dark)").matches?"dark":"light",y=u.themeMode==="system"?g:u.themeMode,m=c[n[a.indexOf("colorScheme")].indexOf(u.colorScheme)]?.[y==="dark"?1:0]??[];o.forEach((v,h)=>{const b=r[m[h]];b&&s.style.setProperty(v,b)}),s.dataset.theme=y,s.dataset.themePreference=u.themeMode,s.dataset.colorScheme=u.colorScheme,s.dataset.accentColor=u.accentColor,s.dataset.fontFamily=u.fontFamily,s.dataset.fontScale=u.fontScale,s.style.colorScheme=y})();`;
+  return `(()=>{const[e,t,a,n,l,o,r,c]=${serializeInlineScriptData(serializedConfig)},s=document.documentElement,f=i=>{let d={};try{d=i?JSON.parse(i):{}}catch{}const p=Object.fromEntries(a.map((v,h)=>[v,n[h].includes(d[v])?d[v]:t[v]])),h=a.indexOf("colorScheme");return p.accentColor=l[n[h].indexOf(p.colorScheme)]??t.accentColor,p};let u=t;try{u=f(window.localStorage.getItem(e))}catch{}const g=window.matchMedia?.("(prefers-color-scheme: dark)").matches?"dark":"light",y=u.themeMode==="system"?g:u.themeMode,m=c[n[a.indexOf("colorScheme")].indexOf(u.colorScheme)]?.[y==="dark"?1:0]??[];o.forEach((v,h)=>{const b=r[m[h]];b&&s.style.setProperty(v,b)}),s.dataset.theme=y,s.dataset.themePreference=u.themeMode,s.dataset.colorScheme=u.colorScheme,s.dataset.accentColor=u.accentColor,s.dataset.fontFamily=u.fontFamily,s.dataset.fontScale=u.fontScale,s.style.colorScheme=y})();`;
 }

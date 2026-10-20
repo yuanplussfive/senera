@@ -12,6 +12,7 @@ import {
 import {
   createAppearanceBootstrapConfig,
   createAppearanceBootstrapScript,
+  serializeInlineScriptData,
 } from "../../../Frontend/src/shared/theme/themeBootstrap.ts";
 import { recommendedAccentColors } from "../../../Frontend/src/shared/theme/themeData.ts";
 
@@ -33,13 +34,19 @@ describe("themeBootstrap", () => {
     expect(config.firstPaintTokens.classic.dark["--theme-skeleton-a"]).toBe("rgb(239 235 223 / 0.045)");
   });
 
-  it("serializes a self-contained early bootstrap script", () => {
+  it("serializes configuration as script-safe data inside a self-contained early bootstrap script", () => {
     const script = createAppearanceBootstrapScript();
+
+    expect(script).not.toContain("</script>");
     expect(script).toContain(appearancePreferenceStorageKey);
     expect(script).toContain("document.documentElement");
     expect(script).toContain('"colorScheme":"classic"');
     expect(script).toContain("--theme-skeleton-a");
     expect(script).toContain("style.setProperty");
+  });
+
+  it("escapes values that could terminate an inline script", () => {
+    expect(serializeInlineScriptData("</script>\u2028\u2029")).toBe('"\\u003C/script\\u003E\\u2028\\u2029"');
   });
 
   it("applies dark first-paint tokens before the application bundle runs", () => {

@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { isFileExistsError } from "./AgentFs.js";
 import { listAgentWorkspaceShareableStateDirectories, resolveAgentWorkspaceLayout } from "./AgentWorkspaceLayout.js";
 
 const StateIgnoreFileName = ".gitignore";
@@ -30,11 +31,11 @@ function renderStateIgnoreContents(): string {
 export function ensureAgentWorkspaceStateDirectoryIgnored(workspaceRoot: string): void {
   const layout = resolveAgentWorkspaceLayout(workspaceRoot);
   const ignorePath = path.join(layout.projectStateRoot, StateIgnoreFileName);
-  if (fs.existsSync(ignorePath)) return;
   try {
     fs.mkdirSync(layout.projectStateRoot, { recursive: true });
     fs.writeFileSync(ignorePath, renderStateIgnoreContents(), { encoding: "utf8", flag: "wx" });
-  } catch {
+  } catch (error) {
+    if (isFileExistsError(error)) return;
     // A volume that refuses the write cannot be fixed from here, and a missing ignore file must not
     // stop the workspace from opening. The next open tries again, and the file's absence is visible.
   }

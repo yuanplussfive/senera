@@ -376,7 +376,7 @@
       "better-sqlite3": "$better-sqlite3"
     },
     "@hono/node-server": "2.0.11",
-    "hono": "4.13.7",
+    "hono": "4.13.13",
     "@xmldom/xmldom": "^0.9.12",
     "browserslist": "^4.28.9",
     "brace-expansion": "5.0.12",

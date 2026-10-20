@@ -1041,11 +1041,16 @@ function resolveDownloadFileName(declaredFileName: string | undefined, detectedE
 }
 
 async function readBrowserDownload(output: string, maxBytes: number): Promise<Uint8Array> {
-  const details = await fs.stat(output);
-  if (details.size > maxBytes) {
-    throw new Error(`Browser download exceeds the configured ${maxBytes} byte limit.`);
+  const file = await fs.open(output, "r");
+  try {
+    const details = await file.stat();
+    if (details.size > maxBytes) {
+      throw new Error(`Browser download exceeds the configured ${maxBytes} byte limit.`);
+    }
+    return await file.readFile();
+  } finally {
+    await file.close();
   }
-  return fs.readFile(output);
 }
 
 function snapshotArguments(input: Readonly<Record<string, unknown>>): string[] {
