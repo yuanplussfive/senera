@@ -196,3 +196,87 @@ test("file tree loads folders on expansion and searches unopened directories", a
   await user.click(await findTreeItem("deep/weather.ts", true));
   expect(select).toHaveBeenCalledWith("deep/weather.ts");
 });
+
+test("file tree clears expanded-directory cache when its workspace endpoint changes", async () => {
+  class EventSourceFake {
+    close() {}
+  }
+  vi.stubGlobal("EventSource", EventSourceFake);
+  const fetchMock = vi.fn(async (value) => {
+    const url = new URL(value);
+    const workspace = url.searchParams.get("workspaceId");
+    const resourcePath = url.searchParams.get("path") ?? ".";
+    const entries =
+      resourcePath === "."
+        ? [{ name: "src", path: "src", kind: "directory" }]
+        : [
+            {
+              name: workspace === "next" ? "new.ts" : "old.ts",
+              path: `src/${workspace === "next" ? "new" : "old"}.ts`,
+              kind: "file",
+            },
+          ];
+    return new Response(JSON.stringify({ ok: true, path: resourcePath, entries }), {
+      headers: { "content-type": "application/json" },
+    });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  const { container, rerender } = render(
+    React.createElement(WorkspaceFileTree, { httpBaseUrl: "http://server/?workspaceId=current", onSelect: vi.fn() }),
+  );
+  const user = (await import("@testing-library/user-event")).default.setup();
+  const findTreeItem = async (path) => {
+    let item;
+    await waitFor(() => {
+      const root = container.querySelector("file-tree-container").shadowRoot;
+      item = root?.querySelector(`[role="treeitem"][data-item-path="${path}"]`);
+      expect(item).toBeTruthy();
+    });
+    return item;
+  };
+  await user.click(await findTreeItem("src/"));
+  await findTreeItem("src/old.ts");
+
+  rerender(
+    React.createElement(WorkspaceFileTree, { httpBaseUrl: "http://server/?workspaceId=next", onSelect: vi.fn() }),
+  );
+  await findTreeItem("src/");
+  await waitFor(() =>
+    expect(
+      fetchMock.mock.calls
+        .map(([value]) => new URL(value))
+        .filter((url) => url.searchParams.get("workspaceId") === "next")
+        .map((url) => url.searchParams.get("path") ?? "."),
+    ).toEqual(["."]),
+  );
+});
+
+test("a creatable scoped tree treats an absent root as its empty state", async () => {
+  class EventSourceFake {
+    close() {}
+  }
+  vi.stubGlobal("EventSource", EventSourceFake);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify({ ok: false, error: { code: "resource_not_found", message: "Not found" } }), {
+          status: 404,
+          statusText: "Not Found",
+        }),
+    ),
+  );
+
+  const view = render(
+    React.createElement(WorkspaceFileTree, {
+      httpBaseUrl: "http://server/?workspaceId=b",
+      rootPath: "prompts",
+      missingRootBehavior: "empty",
+      emptyMessage: "No presets",
+      onSelect: vi.fn(),
+    }),
+  );
+
+  await waitFor(() => expect(view.getByText("No presets")).toBeTruthy());
+  expect(view.queryByRole("alert")).toBeNull();
+});

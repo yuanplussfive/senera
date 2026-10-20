@@ -66,6 +66,7 @@ export class AgentWorkspaceRuntime implements AgentWorkspaceRuntimeServices {
             error: error instanceof Error ? error.message : String(error),
           });
         },
+        onLifecycleEvent: (event) => options.logger?.info("mcp.connection.lifecycle", { ...event }),
       });
     this.uploadStore =
       options.uploadStore ?? new AgentUploadStore({ workspaceRoot: options.workspaceRoot, config: options.uploads });

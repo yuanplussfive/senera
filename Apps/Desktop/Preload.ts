@@ -15,6 +15,12 @@ contextBridge.exposeInMainWorld("seneraDesktop", {
     return () => ipcRenderer.removeListener("senera:window.state-changed", handler);
   },
   setSettingsDirty: (dirty: boolean) => ipcRenderer.invoke("senera:settings.dirty", dirty),
+  notifySettingsSurfaceReady: () => ipcRenderer.invoke("senera:settings.surface-ready"),
+  onSettingsNavigationRequested: (listener: (section: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, section: string): void => listener(section);
+    ipcRenderer.on("senera:settings.navigate", handler);
+    return () => ipcRenderer.removeListener("senera:settings.navigate", handler);
+  },
   onSettingsCloseRequested: (listener: () => void) => {
     const handler = (): void => listener();
     ipcRenderer.on("senera:settings.request-close", handler);

@@ -300,21 +300,12 @@ function SettingsNavItem({
 function SettingsSectionHeader({ section }: { section: SettingsSectionDefinition }): JSX.Element {
   return (
     <header
-      className="shrink-0 border-b border-line-subtle bg-surface-canvas px-5 py-4 sm:px-8 sm:py-5"
+      className="shrink-0 border-b border-line-subtle bg-surface-canvas px-5 py-4 sm:px-8"
       data-window-drag-region
       data-window-controls-inset
     >
-      <div className="flex min-w-0 items-start gap-3">
-        <div className="min-w-0">
-          <div className="flex min-w-0 items-center gap-2">
-            <AppIcon icon={section.icon} size={16} className="text-accent-content" aria-hidden="true" />
-            <h2 className="truncate text-[18px] font-semibold leading-6 tracking-[-0.01em] text-content-strong">
-              {section.label}
-            </h2>
-          </div>
-          <p className="mt-1 max-w-[760px] text-[12px] leading-5 text-content-secondary">{section.description}</p>
-        </div>
-      </div>
+      <h2 className="truncate text-[13px] font-semibold text-content-primary">{section.label}</h2>
+      <p className="mt-1 max-w-[640px] text-[11px] leading-5 text-content-muted">{section.description}</p>
     </header>
   );
 }

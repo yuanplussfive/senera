@@ -2,11 +2,11 @@ import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { MotionIconSwap } from "../motion";
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "../../lib/util";
-import { useAppearance } from "../theme/useAppearance";
 import { AppIcon, Dialog, DialogContent, Tooltip, useClipboardCopy } from "../ui";
 import { CodeArtifactSourceView } from "./CodeArtifactSourceView";
 import { type CodeArtifact } from "./CodeArtifactModel";
-import { applyCodePreviewTheme, createCodePreviewThemeVariables, readDownloadMime } from "./CodePreviewRegistry";
+import { CodePreviewFrame } from "./CodePreviewFrame";
+import { readDownloadMime } from "./CodePreviewRegistry";
 
 interface CodeArtifactViewerProps {
   artifact: CodeArtifact;
@@ -27,14 +27,6 @@ export function CodeArtifactViewer({
   const [view, setView] = useState<ArtifactView>(initialView ?? defaultView);
   const [wrapped, setWrapped] = useState(false);
   const { copied, copyText } = useClipboardCopy({ successMessage: frontendMessage("code.copied") });
-  const { tokens } = useAppearance();
-  const previewSource = useMemo(
-    () =>
-      artifact.preview
-        ? applyCodePreviewTheme(artifact.preview.source, createCodePreviewThemeVariables(tokens.cssVariables))
-        : null,
-    [artifact.preview, tokens.cssVariables],
-  );
 
   useEffect(() => {
     if (!open) return;
@@ -129,12 +121,7 @@ export function CodeArtifactViewer({
 
           <div className="code-artifact-viewer__stage">
             {view === "preview" && artifact.preview ? (
-              <iframe
-                className="code-artifact-viewer__preview"
-                title={`${artifact.filename} preview`}
-                sandbox={artifact.preview.sandbox}
-                srcDoc={previewSource ?? artifact.preview.source}
-              />
+              <CodePreviewFrame preview={artifact.preview} title={`${artifact.filename} preview`} />
             ) : (
               <CodeArtifactSourceView code={artifact.code} language={artifact.language} wrapped={wrapped} />
             )}

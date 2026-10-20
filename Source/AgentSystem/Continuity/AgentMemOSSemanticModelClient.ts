@@ -9,6 +9,7 @@ import {
   AgentMemOSSemanticMemoryTypes,
   type AgentMemOSDigestPromptInput,
   type AgentMemOSFragmentPromptInput,
+  type AgentMemOSSemanticDecision,
   type AgentMemOSSemanticFragment,
   type AgentMemOSSemanticCandidate,
   AgentMemOSSummarySchema,
@@ -32,12 +33,16 @@ function fragmentFields(summaryTokenLimit: number) {
 
 function createFragmentSchema(summaryTokenLimit: number) {
   const fields = fragmentFields(summaryTokenLimit);
+  const skip = z.object({ action: z.literal("skip") }).strict();
   const newFragment = z.object({ ...fields, action: z.literal("new") }).strict();
   const candidate = z.number().int().nonnegative();
-  return z.discriminatedUnion("action", [
-    newFragment,
-    z.object({ ...fields, action: z.literal("update"), candidate }).strict(),
-    z.object({ ...fields, action: z.literal("supersede"), candidate }).strict(),
+  return z.union([
+    skip,
+    z.discriminatedUnion("action", [
+      newFragment,
+      z.object({ ...fields, action: z.literal("update"), candidate }).strict(),
+      z.object({ ...fields, action: z.literal("supersede"), candidate }).strict(),
+    ]),
   ]);
 }
 
@@ -50,18 +55,23 @@ function createFragmentExtractionSchema(summaryTokenLimit: number, candidates: r
       actions.set(`${action}:${candidate.ref}`, { action, candidate: candidate.ref });
     }
   }
-  return z
-    .object({
-      ...fragmentFields(summaryTokenLimit),
-      action: z.enum([...actions.keys()]),
-    })
-    .strict()
-    .transform(({ action, ...fragment }) => ({ ...fragment, ...actions.get(action)! }));
+  return z.union([
+    z.object({ action: z.literal("skip") }).strict(),
+    z
+      .object({
+        ...fragmentFields(summaryTokenLimit),
+        action: z.enum([...actions.keys()]),
+      })
+      .strict()
+      .transform(({ action, ...fragment }) => ({ ...fragment, ...actions.get(action)! })),
+  ]);
 }
 
 export function createAgentMemOSExtractionRecordSchema(summaryTokenLimit: number) {
-  const [newFragment, updateFragment, supersedeFragment] = createFragmentSchema(summaryTokenLimit).options;
+  const [skip, writable] = createFragmentSchema(summaryTokenLimit).options;
+  const [newFragment, updateFragment, supersedeFragment] = writable.options;
   return z.union([
+    z.object({ fragment: skip, candidateId: z.never().optional() }).strict(),
     z.object({ fragment: newFragment, candidateId: z.never().optional() }).strict(),
     z.object({ fragment: z.union([updateFragment, supersedeFragment]), candidateId: z.string().min(1) }).strict(),
   ]);
@@ -73,9 +83,11 @@ function createDigestSchema(summaryTokenLimit: number) {
 
 function createFragmentSystemPrompt(summaryTokenLimit: number): string {
   return [
-    "Extract one memory from the completed turn, including explicit memoryIntents. Use history only to resolve context.",
-    `Return a concrete topic, an evidence-based summary of at most ${summaryTokenLimit} model tokens, and a native memory type. Routine requests are context; never invent facts or preferences.`,
-    "Choose one allowed action: new for distinct knowledge; update:<ref> to confirm or refine a candidate; supersede:<ref> to replace contradictory knowledge. Preserve relevant existing information when updating.",
+    "Decide whether this completed turn contains one durable, dynamic memory. Use history only to resolve context.",
+    "The assistant field is your own prior response, not independent evidence. Do not derive memories from its wording, roleplay, self-description, promises, or relationships.",
+    "Do not retain profile names, assistant names, roleplay character names, persona settings, or fictional relationships. Use 用户 for the current person and 我 for yourself when either reference is essential to a real durable fact.",
+    `If there is no evidence-backed preference, decision, task state, tool-confirmed result, external fact, or explicit memoryIntent worth retaining, return skip. Otherwise return a concrete topic, an evidence-based summary of at most ${summaryTokenLimit} model tokens, and a native memory type. Routine requests are context; never invent facts or preferences.`,
+    "Choose new for distinct knowledge; update:<ref> to confirm or refine a candidate; supersede:<ref> to replace contradictory knowledge. Preserve relevant existing information when updating.",
     "Return only the structured result; no prose or chain-of-thought.",
   ].join("\n");
 }
@@ -84,6 +96,7 @@ function createDigestSystemPrompt(summaryTokenLimit: number): string {
   return [
     "Compress the supplied semantic memory fragments into one period summary.",
     "Return only the requested structured result; never return prose or chain-of-thought.",
+    "Keep the stable references 用户 and 我 exactly as supplied; do not expand them into display names or roleplay identities.",
     "Preserve concrete people, places, dates, preferences, decisions, and unresolved items.",
     "Merge repeated information instead of listing it. Do not invent anything.",
     `The summary must be no longer than ${summaryTokenLimit} model tokens according to the local model tokenizer.`,
@@ -116,9 +129,10 @@ export class AgentMemOSSemanticModelClient {
     input: AgentMemOSFragmentPromptInput,
     requestId: string,
     signal?: AbortSignal,
-  ): Promise<AgentMemOSSemanticFragment> {
+  ): Promise<AgentMemOSSemanticDecision> {
     const schema = createFragmentExtractionSchema(this.summaryTokenLimit, input.candidates);
     const actions = [
+      "skip",
       "new",
       ...input.candidates.flatMap((candidate) => [`update:${candidate.ref}`, `supersede:${candidate.ref}`]),
     ];
@@ -158,7 +172,7 @@ export class AgentMemOSSemanticModelClient {
       managedRetries: true,
       cache: this.cache("fragment", systemPrompt, z.toJSONSchema(schema, { io: "input", target: "draft-7" })),
     });
-    return this.normalizeFragment(result);
+    return result.action === "skip" ? result : this.normalizeFragment(result);
   }
   async summarizePeriod(
     input: AgentMemOSDigestPromptInput,

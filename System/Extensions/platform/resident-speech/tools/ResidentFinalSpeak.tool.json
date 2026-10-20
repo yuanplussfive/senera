@@ -13,5 +13,27 @@
     },
     "required": ["utterance"],
     "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "utterance": {
+        "type": "string",
+        "minLength": 1,
+        "description": "The only final text visible to the other person after the turn's actions complete."
+      }
+    },
+    "required": ["utterance"],
+    "additionalProperties": false
+  },
+  "presentation": {
+    "icon": "answer",
+    "preview": {
+      "body": {
+        "pointer": "/utterance",
+        "from": "result"
+      }
+    }
   }
 }

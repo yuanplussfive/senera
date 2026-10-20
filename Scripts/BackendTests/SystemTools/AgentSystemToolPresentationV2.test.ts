@@ -358,7 +358,7 @@ describe("Tool presentation contract v2 fact references", () => {
           measures: [
             {
               id: "exitCode",
-              from: "result",
+              from: "presentation",
               pointer: "/facts",
               field: "value",
               where: { field: "name", equals: "exitCode" },
@@ -387,7 +387,7 @@ describe("Tool presentation contract v2 fact references", () => {
           measures: [
             {
               id: "exitCode",
-              from: "result",
+              from: "presentation",
               pointer: "/facts",
               field: "value",
               where: { field: "name", equals: "exitCode" },
@@ -425,14 +425,14 @@ describe("Tool presentation contract v2 fact references", () => {
         measures: [
           {
             id: "exitCode",
-            from: "result",
+            from: "presentation",
             pointer: "/facts",
             field: "value",
             where: { field: "name", equals: "exitCode" },
           },
           {
             id: "signal",
-            from: "result",
+            from: "presentation",
             pointer: "/facts",
             field: "value",
             where: { field: "name", equals: "signal" },
@@ -463,6 +463,7 @@ function minimalContract(name: string): Record<string, unknown> {
     loading: "Dynamic",
     description: `${name} test contract.`,
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    outputSchema: { type: "object", properties: {}, additionalProperties: false },
     permissions: [],
     execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
     runtime: {
@@ -550,10 +551,10 @@ describe("shipped WorkspaceApplyPatch v2 declaration", () => {
   });
 
   test("scopes every result measure to workspace changes so evidence never counts as a file", () => {
-    const resultMeasures = readShippedV2().measures.filter((entry) => entry.from === "result");
-    expect(resultMeasures.length).toBeGreaterThan(0);
-    expect(resultMeasures.map((entry) => [entry.pointer, entry.where?.field, entry.where?.equals])).toEqual(
-      resultMeasures.map(() => ["/changes", "kind", "workspace"]),
+    const presentationMeasures = readShippedV2().measures.filter((entry) => entry.from === "presentation");
+    expect(presentationMeasures.length).toBeGreaterThan(0);
+    expect(presentationMeasures.map((entry) => [entry.pointer, entry.where?.field, entry.where?.equals])).toEqual(
+      presentationMeasures.map(() => ["/changes", "kind", "workspace"]),
     );
   });
 });

@@ -10,7 +10,11 @@ import { resolveFrontendLocalizedText, type FrontendLocale } from "../../i18n/fr
 import { cn } from "../../lib/util";
 import { MotionList, MotionListItem } from "../../shared/motion";
 import { AppIcon, isAppIconName, type AppIconName } from "../../shared/ui";
-import { resolveAgentToolPresentationAppIcon } from "../../shared/workspace/agentToolPresentationIcons";
+import {
+  AgentToolPresentationIcon,
+  isAgentToolPresentationIcon,
+} from "../../shared/workspace/AgentToolPresentationIcon";
+import type { AgentToolPresentationIcon as AgentToolPresentationIconName } from "../../../../Source/AgentSystem/Types/AgentToolPresentationTypes";
 
 const activationKindPresentation: Record<
   AgentActivationKind,
@@ -195,7 +199,7 @@ export function ActivationPalette({
           {statusMessage}
         </div>
       ) : (
-        <MotionList className="scrollbar-thin max-h-72 overflow-y-auto p-1.5" presence="animated">
+        <MotionList className="max-h-72 overflow-y-auto p-1.5" presence="animated">
           {groupActivationCandidates(candidates).map((group, groupIndex) => {
             const presentation = activationKindPresentation[group.kind];
             return (
@@ -242,7 +246,11 @@ export function ActivationPalette({
                         onClick={() => onSelect(index)}
                       >
                         <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-[7px] bg-surface-muted text-content-secondary transition-colors group-hover:text-content-primary">
-                          <AppIcon icon={icon} size={14} aria-hidden="true" />
+                          {isAgentToolPresentationIcon(icon) ? (
+                            <AgentToolPresentationIcon icon={icon} size={14} aria-hidden="true" />
+                          ) : (
+                            <AppIcon icon={icon} size={14} aria-hidden="true" />
+                          )}
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="flex min-w-0 items-center gap-2">
@@ -319,7 +327,11 @@ function activationOptionId(entry: AgentActivationCatalogEntry): string {
   return `activation-option-${entry.kind}-${entry.id}`;
 }
 
-function resolveActivationIcon(value: string | undefined, kindIcon: AppIconName): AppIconName {
+function resolveActivationIcon(
+  value: string | undefined,
+  kindIcon: AppIconName,
+): AppIconName | AgentToolPresentationIconName {
+  if (isAgentToolPresentationIcon(value)) return value;
   if (isAppIconName(value)) return value;
-  return resolveAgentToolPresentationAppIcon(value) ?? kindIcon;
+  return kindIcon;
 }

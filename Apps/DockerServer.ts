@@ -34,7 +34,8 @@ import {
 
 const AppRoot = resolveAppRoot();
 const WorkspaceRoot = path.resolve(process.env.SENERA_WORKSPACE_ROOT?.trim() || "/data");
-const ApplicationRoot = resolveAgentApplicationPaths().root;
+const applicationPaths = resolveAgentApplicationPaths();
+const ApplicationRoot = applicationPaths.root;
 const ConfigPath = resolveAgentWorkspaceConfigPath(
   WorkspaceRoot,
   process.env.AGENT_CONFIG_PATH?.trim() || AgentWorkspaceConfigFileName,
@@ -61,9 +62,17 @@ await main();
 async function main(): Promise<void> {
   fs.mkdirSync(WorkspaceRoot, { recursive: true });
   ensureFrontendBundleExists();
-  ensureRuntimeConfigFile({ workspaceRoot: WorkspaceRoot, configPath: ConfigPath, templatePath: ExampleConfigPath });
+  ensureRuntimeConfigFile({
+    workspaceRoot: WorkspaceRoot,
+    configPath: ConfigPath,
+    templatePath: ExampleConfigPath,
+    applicationPaths,
+  });
 
-  const config = loadConfigFile(ConfigPath, new AgentConfigSecretCodec({ workspaceRoot: WorkspaceRoot }));
+  const config = loadConfigFile(
+    ConfigPath,
+    new AgentConfigSecretCodec({ workspaceRoot: WorkspaceRoot, applicationPaths }),
+  );
   const workerBootstrap = await resolveDockerSandboxWorkerBootstrap(config);
   const worker = workerBootstrap.client;
   const sandboxProvider = await resolveDockerSandboxProvider(config, worker);

@@ -1,8 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { projectEffectiveConfig } from "../../../Source/AgentSystem/Config/AgentConfigEffectiveProjector.js";
-import { upsertProviderEndpoint } from "../../../Source/AgentSystem/Config/AgentProviderEndpointConfigCommands.js";
+import {
+  deleteProviderEndpoint,
+  upsertProviderEndpoint,
+} from "../../../Source/AgentSystem/Config/AgentProviderEndpointConfigCommands.js";
 import {
   AgentProviderModelConfigCommandError,
+  deleteProviderModel,
   setDefaultProviderModel,
 } from "../../../Source/AgentSystem/Config/AgentProviderModelConfigCommands.js";
 import { AgentProviderModelDiscovery } from "../../../Source/AgentSystem/Config/AgentProviderModelDiscovery.js";
@@ -130,6 +134,23 @@ describe("model provider endpoint defaults", () => {
     }).resolve("anthropic");
     expect(explicit.BaseUrl).toBe("");
     expect(explicit.Headers).toEqual({});
+  });
+
+  it("drops stored secret material instead of sending an envelope as a credential", () => {
+    const endpoint = resolveModelProviderEndpointCatalog({
+      ...deepSeekConfig(),
+      ModelProviderEndpoints: [
+        {
+          Id: "deepseek",
+          Enabled: true,
+          ApiKey: "senera:secret:v2:a1b2c3d4.bm9uY2V2YWx1ZXRlc3Q.dGFnMTIzNDU2Nzg5MDEy.dGV4dHRoYXRsb29rc2xpa2VhY2lwaGVy",
+          Headers: { "X-API-Key": "senera:secret:v2:" },
+        },
+      ],
+    }).resolve("deepseek");
+
+    expect(endpoint.ApiKey).toBe("");
+    expect(endpoint.Headers?.["X-API-Key"]).toBeUndefined();
   });
 
   it("discovers models through the effective persisted endpoint", async () => {
@@ -373,6 +394,70 @@ describe("model provider endpoint defaults", () => {
 
     expect(catalog.providers.map((provider) => provider.Id)).toEqual(["active-model"]);
     expect(() => catalog.resolve("disabled-model")).toThrow(/模型配置不存在/);
+  });
+
+  it("rejects a configured default whose endpoint pool is disabled", () => {
+    const config: AgentSystemConfig = {
+      DefaultModelProviderId: "disabled-model",
+      ModelProviderEndpoints: [
+        { Id: "disabled", ProviderId: "disabled-pool", Enabled: false },
+        { Id: "active", ProviderId: "active-pool", Enabled: true, BaseUrl: "https://active.example/v1" },
+      ],
+      ModelProviders: [
+        { Id: "disabled-model", ProviderId: "disabled-pool", Endpoint: "ChatCompletions", Model: "disabled" },
+        { Id: "active-model", ProviderId: "active-pool", Endpoint: "ChatCompletions", Model: "active" },
+      ],
+    };
+
+    expect(() => resolveModelProviderCatalog(config)).toThrow(
+      /默认模型当前不可用：DefaultModelProviderId=disabled-model/,
+    );
+  });
+
+  it("requires an explicit available default instead of promoting the first model", () => {
+    const config: AgentSystemConfig = {
+      ModelProviderEndpoints: [{ Id: "custom", Enabled: true, BaseUrl: "https://models.example.test/v1" }],
+      ModelProviders: [
+        { Id: "custom/first", ProviderId: "custom", Endpoint: "ChatCompletions", Model: "first" },
+        { Id: "custom/second", ProviderId: "custom", Endpoint: "ChatCompletions", Model: "second" },
+      ],
+    };
+
+    expect(() => resolveModelProviderConfig(config)).toThrow(/默认模型未配置/);
+  });
+
+  it("requires an atomic replacement when removing the configured default", () => {
+    const config: AgentSystemConfig = {
+      DefaultModelProviderId: "primary/chat",
+      ModelProviderEndpoints: [
+        { Id: "primary", Enabled: true, BaseUrl: "https://primary.example.test/v1" },
+        { Id: "secondary", Enabled: true, BaseUrl: "https://secondary.example.test/v1" },
+      ],
+      ModelProviders: [
+        { Id: "primary/chat", ProviderId: "primary", Endpoint: "ChatCompletions", Model: "primary" },
+        { Id: "secondary/chat", ProviderId: "secondary", Endpoint: "ChatCompletions", Model: "secondary" },
+      ],
+    };
+
+    expect(() => deleteProviderModel(config, { commandId: "delete-default", modelId: "primary/chat" })).toThrowError(
+      expect.objectContaining<Partial<AgentProviderModelConfigCommandError>>({ code: "replacement_default_required" }),
+    );
+    expect(
+      deleteProviderModel(config, {
+        commandId: "replace-default",
+        modelId: "primary/chat",
+        replacementDefaultModelId: "secondary/chat",
+      }).DefaultModelProviderId,
+    ).toBe("secondary/chat");
+    expect(() =>
+      deleteProviderEndpoint(config, {
+        commandId: "delete-default-provider",
+        providerId: "primary",
+        cascadeModels: true,
+      }),
+    ).toThrowError(
+      expect.objectContaining<Partial<AgentProviderModelConfigCommandError>>({ code: "replacement_default_required" }),
+    );
   });
 
   it("projects the ordered endpoint pool into the resolved provider config", () => {

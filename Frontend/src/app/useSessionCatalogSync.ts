@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from "react";
 import type { WsRequest } from "../api/eventTypes";
 import type { SocketStatus } from "../api/useAgentSocket";
-import { useStore, type UserProfile } from "../store/sessionStore";
+import { useStore, UserProfileSyncStates, type UserProfile } from "../store/sessionStore";
 
 export interface UseSessionCatalogSyncOptions {
   status: SocketStatus;
@@ -25,9 +25,9 @@ export function buildConnectionOpenSyncRequests(userProfile: UserProfile): WsReq
     { type: "runtimeDependency.list" },
   ];
 
-  if (userProfile.syncState === "pending") {
-    const { name, avatarDataUrl } = userProfile;
-    requests.push({ type: "profile.update", profile: { name, avatarDataUrl } });
+  if (userProfile.syncState === UserProfileSyncStates.Pending) {
+    const { name, avatarDataUrl, avatarPath, assistant } = userProfile;
+    requests.push({ type: "profile.update", profile: { name, avatarDataUrl, avatarPath, assistant } });
   } else {
     requests.push({ type: "profile.get" });
   }

@@ -362,6 +362,13 @@ function createRegistry(): AgentExtensionRegistry {
         required: ["utterance"],
         additionalProperties: false,
       },
+      outputSchema: {
+        type: "object",
+        properties: { utterance: { type: "string", minLength: 1 } },
+        required: ["utterance"],
+        additionalProperties: false,
+      },
+      presentation: residentSpeechPresentation(),
     },
     {
       owner,
@@ -375,9 +382,26 @@ function createRegistry(): AgentExtensionRegistry {
         required: ["utterance"],
         additionalProperties: false,
       },
+      outputSchema: {
+        type: "object",
+        properties: { utterance: { type: "string", minLength: 1 } },
+        required: ["utterance"],
+        additionalProperties: false,
+      },
+      presentation: residentSpeechPresentation(),
     },
   ]);
   return registry;
+}
+
+function residentSpeechPresentation() {
+  return {
+    category: "resident-speech",
+    icon: "message-question" as const,
+    group: { id: "resident-speech", title: { "zh-CN": "角色表达", "en-US": "Resident expression" } },
+    activity: { action: { "zh-CN": "生成角色发言", "en-US": "Project resident speech" } },
+    preview: { body: { pointer: "/utterance", from: "result" as const } },
+  };
 }
 
 function conversationContext(): Context {

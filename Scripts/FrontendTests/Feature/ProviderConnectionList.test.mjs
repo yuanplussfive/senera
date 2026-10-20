@@ -35,6 +35,58 @@ test("compact provider navigation combines accurate search and add controls in o
   expect(
     screen.getByRole("textbox", { name: frontendMessage("settings.provider.searchPlaceholder") }),
   ).toBeInTheDocument();
+  expect(
+    screen.getByRole("switch", { name: frontendMessage("settings.provider.connectionToggle", { provider: "openai" }) }),
+  ).toBeChecked();
+  expect(document.querySelector("[data-settings-state]")).toBeNull();
+});
+
+test("provider availability uses the shared switch and does not select the row", async () => {
+  const user = userEvent.setup();
+  const onEnabledChange = vi.fn();
+  const onSelect = vi.fn();
+  const provider = { Id: "openai", Enabled: true };
+  renderWithFrontendProviders(
+    React.createElement(
+      TooltipProvider,
+      { delayDuration: 0 },
+      React.createElement(ProviderConnectionList, createProps({ providers: [provider], onEnabledChange, onSelect })),
+    ),
+  );
+
+  await user.click(
+    screen.getByRole("switch", { name: frontendMessage("settings.provider.connectionToggle", { provider: "openai" }) }),
+  );
+
+  expect(onEnabledChange).toHaveBeenCalledWith(provider, false);
+  expect(onSelect).not.toHaveBeenCalled();
+  expect(screen.queryByText("ON")).not.toBeInTheDocument();
+  expect(screen.queryByText("OFF")).not.toBeInTheDocument();
+});
+
+test("provider availability remains immutable while its endpoint update is pending", async () => {
+  const user = userEvent.setup();
+  const onEnabledChange = vi.fn();
+  renderWithFrontendProviders(
+    React.createElement(
+      TooltipProvider,
+      { delayDuration: 0 },
+      React.createElement(
+        ProviderConnectionList,
+        createProps({
+          onEnabledChange,
+          operations: { openai: { status: "pending" } },
+        }),
+      ),
+    ),
+  );
+
+  const toggle = screen.getByRole("switch", {
+    name: frontendMessage("settings.provider.connectionToggle", { provider: "openai" }),
+  });
+  expect(toggle).toBeDisabled();
+  await user.click(toggle);
+  expect(onEnabledChange).not.toHaveBeenCalled();
 });
 
 test("provider search keeps an explicit empty state when no provider matches", async () => {
@@ -58,9 +110,11 @@ function createProps(overrides = {}) {
     catalogs: {},
     errors: {},
     loadingProviderIds: {},
+    operations: {},
     selectedProviderId: "openai",
     disabled: false,
     onRequestAdd: vi.fn(),
+    onEnabledChange: vi.fn(),
     onSelect: vi.fn(),
     onRename: vi.fn(),
     onDelete: vi.fn(),

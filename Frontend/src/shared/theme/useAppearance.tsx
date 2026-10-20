@@ -18,6 +18,16 @@ export function useSetAppearancePreference(): (preference: AppearancePreferenceU
   return appearanceStore.setPreference;
 }
 
+export function useFontScalePreview(): {
+  previewFontScale: (value: number) => void;
+  commitFontScale: (value: number) => void;
+} {
+  return {
+    previewFontScale: appearanceStore.previewFontScale,
+    commitFontScale: appearanceStore.commitFontScale,
+  };
+}
+
 export function AppAppearanceProvider({
   children,
   motionLevel,

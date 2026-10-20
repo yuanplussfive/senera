@@ -70,7 +70,7 @@ export function ToolActivityGroup({
       )}
       <MotionDisclosure id={contentId} open={expandable && open} className="tool-activity-group__content">
         <div
-          className="tool-activity-viewport scrollbar-thin ml-6 flex min-w-0 flex-wrap gap-x-4 gap-y-1 pb-2 pr-1 pt-0.5 text-[11.5px] leading-5 text-content-muted"
+          className="tool-activity-viewport ml-6 flex min-w-0 flex-wrap gap-x-4 gap-y-1 pb-2 pr-1 pt-0.5 text-[11.5px] leading-5 text-content-muted"
           data-tool-activity-viewport
         >
           {activity.actions.map((action) => (

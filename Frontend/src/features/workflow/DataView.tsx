@@ -1,10 +1,10 @@
 import { memo, useMemo, useState } from "react";
-import { ChevronRight, ExternalLink, FileText, Maximize2 } from "lucide-react";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { readNonBlankString as readString } from "../../lib/unknownValue";
 import { MarkdownRenderer } from "../../shared/code/MarkdownRenderer";
 import { Popover, PopoverContent, PopoverTrigger } from "../../shared/ui/Popover";
+import { AppIcon } from "../../shared/ui/AppIcon";
 
 const LONG_VALUE_PREVIEW_LENGTH = 128;
 
@@ -139,7 +139,11 @@ function Row({
         onClick={() => setOpen((v) => !v)}
         className="-ml-3 flex items-center gap-1 rounded-md px-1 text-left transition hover:bg-surface-hover"
       >
-        <ChevronRight className={cn("h-3 w-3 shrink-0 text-content-muted transition", open && "rotate-90")} />
+        <AppIcon
+          icon="chevron-right"
+          size={12}
+          className={cn("shrink-0 text-content-muted transition", open && "rotate-90")}
+        />
         <KeyText name={keyName} indexLike={indexLike} />
         <CountHint value={value} />
       </button>
@@ -193,13 +197,13 @@ function SourceFrameBlock({ frame, depth }: { frame: SourceFrame; depth: number 
     <div className="space-y-2 py-1">
       <div className="overflow-hidden rounded-md border border-line-subtle bg-surface-subtle">
         <div className="flex min-w-0 items-center gap-2 border-b border-line-subtle px-3 py-2">
-          <FileText className="h-3.5 w-3.5 shrink-0 text-content-muted" />
+          <AppIcon icon="file-text" size={14} className="shrink-0 text-content-muted" />
           <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-content-secondary">
             {frame.path ?? frontendMessage("workflow.data.sourceFallback")}
           </span>
           <span className="shrink-0 font-mono text-[10.5px] text-content-muted">{formatLineRange(frame)}</span>
         </div>
-        <pre className="scrollbar-thin max-h-[360px] overflow-auto bg-surface-canvas px-0 py-2 font-mono text-[12px] leading-5 text-content-primary">
+        <pre className="max-h-[360px] overflow-auto bg-surface-canvas px-0 py-2 font-mono text-[12px] leading-5 text-content-primary">
           <code>
             {frame.code.split(/\r?\n/).map((line, index) => {
               const parsed = parseNumberedLine(line);
@@ -312,7 +316,7 @@ function FormattedString({ value, unit }: { value: string; unit?: string }): JSX
         <span className="min-w-0 truncate" title={value}>
           {value}
         </span>
-        <ExternalLink className="h-3 w-3 shrink-0" />
+        <AppIcon icon="external-link" size={12} className="shrink-0" />
       </a>
     );
   }
@@ -349,8 +353,10 @@ function LongValue({
         >
           <span className="min-w-0 flex-1 truncate">{preview}</span>
           {unit ? <span className="shrink-0 text-content-secondary">{unit}</span> : null}
-          <Maximize2
-            className="h-3 w-3 shrink-0 text-content-muted opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+          <AppIcon
+            icon="maximize"
+            size={12}
+            className="shrink-0 text-content-muted opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
             aria-hidden="true"
           />
         </button>
@@ -361,7 +367,7 @@ function LongValue({
         className="data-value-popover w-[min(40rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] border-line bg-surface-raised p-0"
         data-data-value-full
       >
-        <div className="scrollbar-thin max-h-[min(28rem,calc(100dvh-8rem))] overflow-auto p-3">
+        <div className="max-h-[min(28rem,calc(100dvh-8rem))] overflow-auto p-3">
           {isUrl ? (
             <a
               href={value}
@@ -370,14 +376,14 @@ function LongValue({
               className="flex min-w-0 items-start gap-1.5 break-all text-[12.5px] leading-5 text-accent-content underline decoration-accent-border underline-offset-2 hover:text-accent-content-hover"
             >
               <span className="min-w-0">{value}</span>
-              <ExternalLink className="mt-1 h-3 w-3 shrink-0" />
+              <AppIcon icon="external-link" size={12} className="mt-1 shrink-0" />
             </a>
           ) : markdown ? (
             <MarkdownRenderer contentClassName="text-[13px] leading-relaxed" compact lightweightCode>
               {value}
             </MarkdownRenderer>
           ) : (
-            <pre className="scrollbar-thin max-h-[min(26rem,calc(100dvh-10rem))] overflow-auto whitespace-pre-wrap break-words font-mono text-[12px] leading-5 text-content-primary">
+            <pre className="max-h-[min(26rem,calc(100dvh-10rem))] overflow-auto whitespace-pre-wrap break-words font-mono text-[12px] leading-5 text-content-primary">
               {value}
             </pre>
           )}

@@ -17,6 +17,7 @@ import type {
 } from "./AgentPiCodingAgentSessionPoolContracts.js";
 import { resolveAgentPiSessionCacheCapacity } from "./AgentPiSessionCachePolicy.js";
 import { AgentPiSessionCustomEntryTypes } from "./AgentPiSessionEntries.js";
+import { findAgentPiSessionFile, resolveAgentPiSessionsRoot } from "./AgentPiSessionStorage.js";
 import {
   hasIncompatibleAgentPiToolObservationHistory,
   isAgentPiSessionRuntimeContractCurrent,
@@ -506,13 +507,12 @@ export class AgentPiCodingAgentSessionPool {
     return info ? SessionManager.open(info.path, this.sessionsRoot(), this.options.workspaceRoot) : undefined;
   }
 
-  private async findSession(sessionId: string) {
-    const sessions = await SessionManager.list(this.options.workspaceRoot, this.sessionsRoot());
-    return sessions.find((session) => session.id === sessionId);
+  private findSession(sessionId: string) {
+    return findAgentPiSessionFile(this.options.workspaceRoot, this.options.sessionsRoot, sessionId);
   }
 
   private sessionsRoot(): string {
-    return path.resolve(this.options.workspaceRoot, this.options.sessionsRoot);
+    return resolveAgentPiSessionsRoot(this.options.workspaceRoot, this.options.sessionsRoot);
   }
 }
 

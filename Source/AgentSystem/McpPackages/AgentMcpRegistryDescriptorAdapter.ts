@@ -5,7 +5,11 @@ import {
   type AgentExtensionInputValue,
 } from "../Extensions/AgentExtensionInput.js";
 import type { AgentExtensionValueExpression } from "../Extensions/AgentExtensionValueExpression.js";
-import type { AgentMcpDescriptorAdapter, AgentMcpDescriptorContext } from "./AgentMcpDescriptorAdapter.js";
+import {
+  readMcpPluginIdentityPresentation,
+  type AgentMcpDescriptorAdapter,
+  type AgentMcpDescriptorContext,
+} from "./AgentMcpDescriptorAdapter.js";
 import {
   AgentMcpDescriptorError,
   optionalMcpString,
@@ -39,9 +43,17 @@ export const AgentMcpRegistryDescriptorAdapter: AgentMcpDescriptorAdapter = {
       );
     }
     const route = routes[0]!;
+    const metadata =
+      descriptor._meta === undefined ? undefined : requireMcpRecord(descriptor._meta, "MCP Registry _meta", ["_meta"]);
+    const presentation = readMcpPluginIdentityPresentation(
+      metadata?.["ai.senera/presentation"],
+      "ai.senera/presentation",
+      ["_meta", "ai.senera/presentation"],
+    );
     return {
       name: context.directoryName,
       descriptorKind: "registry",
+      ...(presentation ? { presentation } : {}),
       execution: route.execution,
       servers: [route.server],
     };

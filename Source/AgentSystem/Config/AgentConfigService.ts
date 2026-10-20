@@ -1,6 +1,6 @@
 import { AgentConfigLoader } from "../Config/AgentConfigLoader.js";
 import { resolveConfigStoreConfig } from "../AgentDefaults.js";
-import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { agentErrorMessage, type AgentErrorMessageKey, type AgentMessageParams } from "../I18n/AgentMessageCatalog.js";
 import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import { AgentSystemConfigSchema } from "../Schemas/AgentSystemConfigSchema.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
@@ -45,7 +45,8 @@ import type { AgentUpgradeSession } from "../Upgrade/AgentUpgradeSession.js";
 import { migrateAgentConfigPayload, type AgentConfigMigrationResult } from "./AgentConfigMigration.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
-import { AgentConfigSecretCodec } from "./AgentConfigSecretProtection.js";
+import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
+import { AgentConfigSecretCodec, type AgentConfigUnresolvedSecret } from "./AgentConfigSecretProtection.js";
 
 export type AgentConfigSnapshotSource = "sqlite" | "json";
 
@@ -70,8 +71,12 @@ export type AgentConfigRevisionReadResult =
   | { readonly status: "unavailable" }
   | { readonly status: "missing" };
 
+/** Problems a surface reacts to by identity rather than by message text. */
+export type AgentConfigDiagnosticCode = "config.secretUnresolved" | "config.secretKeyRelocated";
+
 export interface AgentConfigDiagnostic {
   severity: "warning" | "error";
+  code?: AgentConfigDiagnosticCode;
   message: string;
   details?: unknown;
 }
@@ -315,7 +320,7 @@ export class AgentConfigService {
         version,
         value: jsonConfig,
         source: "json",
-        diagnostics: migrationDiagnostics,
+        diagnostics: [...migrationDiagnostics, ...this.secretDiagnostics(loadedJson.unresolvedSecrets)],
         form: projectAgentConfigForm(jsonConfig),
       };
     }
@@ -416,7 +421,7 @@ export class AgentConfigService {
     transform: (current: Pick<AgentConfigSnapshot, "value" | "version" | "revision">) => AgentSystemConfig,
     source: AgentConfigRevisionRecord["source"],
   ): AgentConfigSnapshot {
-    const payloadHash = this.secretCodec.digestCanonicalJson({ operationKind, payload }, "config-command-payload");
+    const payloadHash = sha256HexOfCanonicalJson({ kind: "config-command-payload", operationKind, payload });
     const commandTimestamp = new Date().toISOString();
     if (!this.usesSqliteStore()) {
       if (this.options.source.kind !== "json") {
@@ -437,7 +442,7 @@ export class AgentConfigService {
         version: this.snapshotValue.version + 1,
         value: config,
         source: "json",
-        diagnostics: [],
+        diagnostics: this.secretDiagnostics(this.secretCodec.revealConfig(config).unresolvedSecrets),
         form: projectAgentConfigForm(config),
       };
       this.jsonCommandReceipts.set(input.commandId, { operationKind, payloadHash, createdAt: commandTimestamp });
@@ -576,7 +581,7 @@ export class AgentConfigService {
       value: config,
       source: "sqlite",
       revision: revision.revision,
-      diagnostics: options.diagnostics,
+      diagnostics: [...options.diagnostics, ...this.secretDiagnostics(revision.unresolvedSecrets)],
       form: projectAgentConfigForm(config),
     };
   }
@@ -611,6 +616,40 @@ export class AgentConfigService {
     for (const [commandId] of expired) this.jsonCommandReceipts.delete(commandId);
   }
 
+  /**
+   * A secret this host cannot open keeps its stored envelope and is reported here, so one
+   * unreadable provider degrades to a missing value instead of blocking the whole configuration.
+   */
+  private secretDiagnostics(secrets: readonly AgentConfigUnresolvedSecret[]): AgentConfigDiagnostic[] {
+    return [
+      ...secrets.map((secret): AgentConfigDiagnostic => ({
+        severity: "warning",
+        code: "config.secretUnresolved",
+        message: agentErrorMessage(SecretUnresolvedMessageKeys[secret.kind], secretUnresolvedParams(secret)),
+        details: secret,
+      })),
+      ...this.keyRelocationDiagnostics(),
+    ];
+  }
+
+  /**
+   * Releases before the keyring kept a master key inside the workspace itself, which is a directory
+   * users commit and sync. Moving it is worth saying out loud because the copy leaving that directory
+   * is the whole point, and a move that failed is reported every time: the key still opens old
+   * secrets, but the file is still where it was.
+   */
+  private keyRelocationDiagnostics(): AgentConfigDiagnostic[] {
+    return this.secretCodec.relocatedLegacyKeys().map((relocation): AgentConfigDiagnostic => ({
+      severity: "warning",
+      code: "config.secretKeyRelocated",
+      message: agentErrorMessage(
+        relocation.relocated ? "config.secretKeyRelocated.moved" : "config.secretKeyRelocated.stuck",
+        { keyFile: relocation.sourcePath, ...(relocation.failure ? { failure: relocation.failure } : {}) },
+      ),
+      details: relocation,
+    }));
+  }
+
   private assertSecretPersistenceRoundTrip(config: AgentSystemConfig): void {
     const protectedConfig = this.secretCodec.protectConfig(config);
     const revealedConfig = AgentSystemConfigSchema.parse(this.secretCodec.revealConfig(protectedConfig).value);
@@ -634,6 +673,24 @@ export class AgentConfigService {
 
 export function loadConfigFile(filePath: string, secretCodec: AgentConfigSecretCodec): AgentSystemConfig {
   return AgentConfigLoader.load(filePath, secretCodec);
+}
+
+/** One message per kind of secret slot, so the text names the field the user has to fill again. */
+const SecretUnresolvedMessageKeys = {
+  provider_api_key: "config.secretUnresolved.providerApiKey",
+  provider_header: "config.secretUnresolved.providerHeader",
+  extension_secret: "config.secretUnresolved.extensionSecret",
+} as const satisfies Record<AgentConfigUnresolvedSecret["kind"], AgentErrorMessageKey>;
+
+function secretUnresolvedParams(secret: AgentConfigUnresolvedSecret): AgentMessageParams {
+  switch (secret.kind) {
+    case "provider_api_key":
+      return { provider: secret.providerId };
+    case "provider_header":
+      return { provider: secret.providerId, header: secret.headerName };
+    case "extension_secret":
+      return { extension: secret.extensionId, field: secret.fieldPath.join(".") };
+  }
 }
 
 function diagnosticsForRepair(repair: AgentConfigRepairResult): AgentConfigDiagnostic[] {

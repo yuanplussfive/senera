@@ -4,6 +4,7 @@ import type {
   ProviderModelEndpointInput,
   UploadAttachmentData,
   UserProfileData,
+  ConversationIdentityData,
   ExplicitActivationSet,
 } from "./eventTypes";
 import type { ProviderModelConfigRequest } from "./providerModelCommandTypes";
@@ -96,7 +97,12 @@ export type WsRequest =
     }
   | ProviderModelConfigRequest
   | { type: "profile.get" }
-  | { type: "profile.update"; profile: Pick<UserProfileData, "name" | "avatarDataUrl"> }
+  | {
+      type: "profile.update";
+      profile: Pick<UserProfileData, "name" | "avatarDataUrl" | "avatarPath"> & {
+        assistant?: ConversationIdentityData;
+      };
+    }
   | { type: "approval.resolve"; approvalId: string; decision: ApprovalDecision; message?: string }
   | {
       type: "approval.resolve_batch";

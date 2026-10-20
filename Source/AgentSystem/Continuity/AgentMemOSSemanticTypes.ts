@@ -115,6 +115,13 @@ export interface AgentMemOSSemanticFragment {
   readonly candidate?: number;
 }
 
+/** A completed turn may have no durable, dynamic knowledge to retain. */
+export interface AgentMemOSSemanticSkip {
+  readonly action: "skip";
+}
+
+export type AgentMemOSSemanticDecision = AgentMemOSSemanticFragment | AgentMemOSSemanticSkip;
+
 export const AgentMemOSSemanticFragmentActions = ["new", "update", "supersede"] as const;
 export type AgentMemOSSemanticFragmentAction = (typeof AgentMemOSSemanticFragmentActions)[number];
 

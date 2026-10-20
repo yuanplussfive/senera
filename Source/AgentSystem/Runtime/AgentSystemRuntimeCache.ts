@@ -53,6 +53,7 @@ export interface AgentSystemRuntimeCacheRuntimeFactoryInput {
   interactionInput?: AgentInteractionInputRuntime;
   piSessionRegistry?: AgentPiActiveSessionRegistry;
   resourcesPath?: string;
+  browserProfilesRoot?: string;
   executionResources?: AgentExecutionResourceBroker;
   sandboxRuntimeReady?: () => boolean;
   sandboxAvailable?: boolean;
@@ -78,6 +79,8 @@ export interface AgentSystemRuntimeCacheRuntimeFactoryInput {
   pluginHost?: AgentPluginHost;
   resourceCoordinator?: AgentToolResourceLeaseCoordinator;
   learningRequests?: AgentBackgroundLearningRequestLedger;
+  /** Logger for derived-context work; kept out of the foreground conversation stream. */
+  learningLogger?: AgentLogger;
   /** Shared capability snapshot used by MCP discovery and management projections. */
   mcpHostCapabilities?: AgentMcpHostCapabilitySnapshot;
   /** Shared management projection so composer and execution validate one catalog. */

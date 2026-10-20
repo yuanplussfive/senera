@@ -6,7 +6,9 @@ import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes
 import type { AgentResidentSpeechBamlPromptInput } from "./AgentResidentSpeechPromptProjector.js";
 import { createAgentPiPromptCacheOptions, projectAgentPiPromptCacheModel } from "../Pi/AgentPiPromptCache.js";
 
-const SpeechSchema = z.object({ utterance: z.string() }).strict();
+// BAML owns the wire decoder for ProjectResidentSpeech. The sidecar manifest
+// remains the authoritative validation contract for the decoded value.
+const ResidentSpeechBamlEnvelopeSchema = z.unknown();
 
 export class AgentResidentSpeechBamlClient {
   constructor(private readonly configuration: ResolvedAgentModelProviderConfig) {}
@@ -27,7 +29,7 @@ export class AgentResidentSpeechBamlClient {
       contract: {
         name: "ProjectResidentSpeech",
         description: "Project the resident utterance for the current conversation.",
-        schema: SpeechSchema,
+        schema: ResidentSpeechBamlEnvelopeSchema,
         bamlFunction: "ProjectResidentSpeech",
       },
       systemPrompt: input.prompt.systemPrompt,

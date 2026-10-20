@@ -15,7 +15,7 @@ import type {
 import { AgentProviderModelConfigCommandError } from "./AgentProviderModelConfigCommandTypes.js";
 import {
   assertConfiguredModelIdsUnique,
-  assertModelIdExists,
+  assertModelProviderCanBeSelected,
   assertProviderEndpointExists,
   readCurrentDefaultModelId,
   readValidReplacementDefault,
@@ -110,7 +110,7 @@ export function setDefaultProviderModel(
   input: AgentDefaultModelSetInput,
 ): AgentSystemConfig {
   assertConfiguredModelIdsUnique(config);
-  assertModelIdExists(config.ModelProviders, input.modelId, "default_model_missing");
+  assertModelProviderCanBeSelected(config, input.modelId);
   return validateProviderModelInvariants({
     ...config,
     DefaultModelProviderId: input.modelId,

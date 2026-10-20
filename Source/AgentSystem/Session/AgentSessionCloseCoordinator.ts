@@ -3,8 +3,7 @@ import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { releaseAgentLifecycleResources } from "../Core/AgentLifecycleResource.js";
 import type { AgentMemoryService } from "../Memory/AgentMemoryService.js";
-import { resolveAgentPiSessionLifecycle } from "../Pi/AgentPiSessionLifecycleMetadata.js";
-import type { AgentPiSessionMutationPort } from "../Pi/AgentPiSessionMutationService.js";
+import type { AgentPiSessionCleanupPort } from "../Pi/AgentPiSessionCleanupService.js";
 import type { AgentSession } from "./AgentSession.js";
 import type { AgentSessionArtifactLifecycle } from "./AgentSessionArtifactLifecycle.js";
 import {
@@ -21,7 +20,7 @@ export interface AgentSessionCloseCoordinatorOptions {
   readonly store: AgentSessionStore;
   readonly runs: Pick<AgentSessionRunCoordinator, "discardActiveRun">;
   readonly memory: Pick<AgentMemoryService, "deleteSession">;
-  readonly piSessions?: Pick<AgentPiSessionMutationPort, "reset">;
+  readonly piSessionCleanup?: AgentPiSessionCleanupPort;
   readonly resources?: readonly AgentSessionResource[];
   readonly artifacts?: Pick<AgentSessionArtifactLifecycle, "removeSessionArtifacts">;
   readonly logger?: AgentLogger;
@@ -71,15 +70,9 @@ export class AgentSessionCloseCoordinator {
   }
 
   private async releaseResources(session: AgentSession): Promise<void> {
-    const piSession = resolveAgentPiSessionLifecycle(session.metadata);
-    const piReset = piSession.initialized
-      ? this.options.piSessions?.reset({
-          sessionId: session.id,
-          modelProviderId: piSession.modelProviderId,
-        })
-      : undefined;
+    const piCleanup = this.options.piSessionCleanup?.removeSession({ sessionId: session.id });
     const [piOutcome, resourceFailures] = await Promise.all([
-      piReset ? Promise.allSettled([piReset]) : Promise.resolve([]),
+      piCleanup ? Promise.allSettled([piCleanup]) : Promise.resolve([]),
       releaseAgentLifecycleResources(this.options.resources ?? [], { sessionId: session.id }),
     ]);
     const failures: unknown[] = [];

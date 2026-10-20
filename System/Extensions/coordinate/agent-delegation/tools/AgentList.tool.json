@@ -3,8 +3,9 @@
   "loading": "Bootstrap",
   "presentation": {
     "category": "agent-list",
-    "icon": "users",
-    "activity": { "action": { "zh-CN": "查看", "en-US": "List" } }
+    "icon": "list-tree",
+    "activity": { "action": { "zh-CN": "查看", "en-US": "List" } },
+    "preview": { "body": { "pointer": "/runs", "from": "result" } }
   },
   "description": "列出当前会话创建的后台子代理任务及其最新状态、进度和结果。可在新的跟进回合中恢复任务上下文。",
   "inputSchema": {

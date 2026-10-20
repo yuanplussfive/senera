@@ -1,72 +1,155 @@
-import path from "node:path";
-import { spawn } from "node:child_process";
-import { rgPath } from "@vscode/ripgrep";
 import fuzzysort from "fuzzysort";
-import { resolveAsarUnpackedExecutablePath } from "../Core/AgentExecutablePath.js";
-import { listAgentWorkspaceNonContentRoots } from "../Core/AgentWorkspaceLayout.js";
+import { AgentWorkspaceFileDiscovery, normalizeWorkspacePath } from "./AgentWorkspaceFileDiscovery.js";
+import type { AgentWorkspaceFileChange } from "./AgentWorkspaceFileChanges.js";
 
-/** Names-only index. Ripgrep owns nested ignore rules; notifications invalidate its snapshot. */
+type WorkspacePathIndexState = "cold" | "ready" | "unverified" | "closed";
+
+/**
+ * A live, in-memory index of visible workspace files. Its only authority is the shared ripgrep
+ * discovery contract; watcher events apply structural deltas without reinterpreting ignore files.
+ */
 export class AgentWorkspacePathIndex {
-  private files?: readonly string[];
-  private building?: Promise<readonly string[]>;
-  private generation = 0;
-  private indexedGeneration = -1;
-  constructor(private readonly root: string) {}
-  invalidate(_paths: readonly string[]): void {
-    this.generation += 1;
+  private readonly discovery: AgentWorkspaceFileDiscovery;
+  private paths: readonly string[] = [];
+  private state: WorkspacePathIndexState = "cold";
+  private observedRevision = 0;
+  private appliedRevision = 0;
+  private transition: Promise<void> = Promise.resolve();
+
+  constructor(workspaceRoot: string, discovery = new AgentWorkspaceFileDiscovery(workspaceRoot)) {
+    this.discovery = discovery;
   }
-  async search(query: string): Promise<readonly string[]> {
-    while (!this.files || this.indexedGeneration !== this.generation) {
-      if (!this.building) {
-        const generation = this.generation;
-        this.building = this.scan()
-          .then((files) => {
-            this.files = files;
-            this.indexedGeneration = generation;
-            return files;
-          })
-          .finally(() => {
-            this.building = undefined;
-          });
+
+  async apply(changes: readonly AgentWorkspaceFileChange[]): Promise<void> {
+    if (!changes.length || this.state === "closed") return;
+    const revision = ++this.observedRevision;
+    await this.serialize(async () => {
+      if (this.state === "closed") return;
+      if (changes.some((change) => change.type === "watch-error" || this.isRuleChange(change))) {
+        this.state = "unverified";
+        this.appliedRevision = revision;
+        return;
       }
-      await this.building;
-    }
-    return fuzzysort.go(query, this.files).map((result) => result.target);
-  }
-  private scan(): Promise<readonly string[]> {
-    const excludes = listAgentWorkspaceNonContentRoots(this.root).flatMap((root) => [
-      "--glob",
-      `!${path.relative(this.root, root).split(path.sep).join("/")}/**`,
-    ]);
-    return new Promise((resolve, reject) => {
-      const process = spawn(
-        resolveAsarUnpackedExecutablePath(rgPath),
-        ["--files", "--hidden", "--null", "--no-require-git", ...excludes],
-        { cwd: this.root, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] },
-      );
-      const files: string[] = [];
-      let tail = Buffer.alloc(0);
-      let diagnostic = "";
-      process.stdout.on("data", (chunk: Buffer) => {
-        const data = Buffer.concat([tail, chunk]);
-        let start = 0;
-        for (let index = data.indexOf(0); index >= 0; index = data.indexOf(0, start)) {
-          files.push(data.subarray(start, index).toString("utf8").split(path.sep).join("/"));
-          start = index + 1;
+      if (this.state !== "ready") {
+        this.appliedRevision = revision;
+        return;
+      }
+      let next = this.paths;
+      for (const change of changes) {
+        if (change.type === "delete") {
+          next = removePathTree(next, change.path);
+          continue;
         }
-        tail = data.subarray(start);
-      });
-      process.stderr.setEncoding("utf8").on("data", (chunk: string) => {
-        diagnostic += chunk;
-      });
-      process.once("error", reject);
-      process.once("close", (code) => {
-        if (code !== 0 && code !== 1) reject(new Error(diagnostic || `Workspace indexing exited with code ${code}.`));
-        else {
-          if (tail.length > 0) files.push(tail.toString("utf8").split(path.sep).join("/"));
-          resolve(files);
+        if (change.type === "create") {
+          try {
+            next = mergeWorkspacePaths(next, await this.discovery.discoverAt(change.path));
+          } catch {
+            this.state = "unverified";
+            this.appliedRevision = revision;
+            return;
+          }
         }
-      });
+      }
+      this.paths = next;
+      this.appliedRevision = revision;
     });
   }
+
+  async search(query: string): Promise<readonly string[]> {
+    const paths = await this.resolveSnapshot();
+    return fuzzysort.go(query, paths).map((result) => result.target);
+  }
+
+  async close(): Promise<void> {
+    this.state = "closed";
+    this.observedRevision += 1;
+    await this.transition;
+    this.paths = [];
+  }
+
+  private async resolveSnapshot(): Promise<readonly string[]> {
+    while (this.state !== "closed") {
+      const snapshot = await this.serialize(async () => {
+        if (this.state === "ready" && this.appliedRevision === this.observedRevision) return this.paths;
+        const revision = this.observedRevision;
+        const discovered = await this.discovery.discoverAll();
+        if (revision !== this.observedRevision) return undefined;
+        this.paths = normalizeAndSortPaths(discovered);
+        this.state = "ready";
+        this.appliedRevision = revision;
+        return this.paths;
+      });
+      if (snapshot && this.state === "ready" && this.appliedRevision === this.observedRevision) return snapshot;
+      await this.transition;
+    }
+    throw new Error("Workspace path index is closed.");
+  }
+
+  private isRuleChange(change: AgentWorkspaceFileChange): boolean {
+    return change.type !== "watch-error" && this.discovery.isDiscoveryRulePath(change.path);
+  }
+
+  private serialize<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.transition.then(operation);
+    this.transition = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+}
+
+function mergeWorkspacePaths(current: readonly string[], discovered: readonly string[]): readonly string[] {
+  const additions = normalizeAndSortPaths(discovered);
+  if (!additions.length) return current;
+  const merged: string[] = [];
+  let currentIndex = 0;
+  let additionIndex = 0;
+  while (currentIndex < current.length || additionIndex < additions.length) {
+    const currentPath = current[currentIndex];
+    const addition = additions[additionIndex];
+    if (addition === undefined || (currentPath !== undefined && compareWorkspacePaths(currentPath, addition) < 0)) {
+      merged.push(currentPath);
+      currentIndex += 1;
+      continue;
+    }
+    if (currentPath === undefined || compareWorkspacePaths(addition, currentPath) < 0) {
+      merged.push(addition);
+      additionIndex += 1;
+      continue;
+    }
+    merged.push(currentPath);
+    currentIndex += 1;
+    additionIndex += 1;
+  }
+  return merged;
+}
+
+function removePathTree(paths: readonly string[], workspacePath: string): readonly string[] {
+  const normalized = normalizeWorkspacePath(workspacePath);
+  if (normalized === ".") return [];
+  const start = lowerBound(paths, normalized);
+  const descendants = `${normalized}/`;
+  let end = start;
+  while (end < paths.length && (paths[end] === normalized || paths[end]?.startsWith(descendants))) end += 1;
+  return start === end ? paths : [...paths.slice(0, start), ...paths.slice(end)];
+}
+
+function normalizeAndSortPaths(paths: readonly string[]): readonly string[] {
+  return [...new Set(paths.map(normalizeWorkspacePath).filter((path) => path !== "."))].sort(compareWorkspacePaths);
+}
+
+function lowerBound(paths: readonly string[], target: string): number {
+  let lower = 0;
+  let upper = paths.length;
+  while (lower < upper) {
+    const middle = lower + Math.floor((upper - lower) / 2);
+    if (compareWorkspacePaths(paths[middle]!, target) < 0) lower = middle + 1;
+    else upper = middle;
+  }
+  return lower;
+}
+
+function compareWorkspacePaths(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }

@@ -12,7 +12,6 @@ import type {
   SeneraPersistentProcessSpawner,
 } from "../../../Source/AgentSystem/Execution/SeneraPersistentProcessTypes.js";
 import { createSeneraLocalPersistentProcessSpawner } from "../../../Source/AgentSystem/Execution/SeneraPersistentProcessSpawner.js";
-import { terminateSeneraProcessTree } from "../../../Source/AgentSystem/Execution/SeneraProcessTreeTermination.js";
 
 const FixtureReadyMethod = "senera/fixture-ready";
 const ProcessExitPollIntervalMs = 25;
@@ -243,13 +242,11 @@ async function waitForProcessExit(pid: number, timeoutMs: number): Promise<void>
 
 async function forceTerminateFixtureProcess(pid: number | undefined): Promise<void> {
   if (pid === undefined || !isProcessRunning(pid)) return;
-  await terminateSeneraProcessTree(pid, "SIGKILL").catch(() => {
-    try {
-      process.kill(pid, "SIGKILL");
-    } catch {
-      // The process exited between the liveness check and the cleanup signal.
-    }
-  });
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    // The process exited between the liveness check and the cleanup signal.
+  }
 }
 
 function isProcessRunning(pid: number): boolean {

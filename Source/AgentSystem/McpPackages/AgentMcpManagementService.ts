@@ -26,6 +26,7 @@ import {
   missingAgentMcpHostCapabilities,
   type AgentMcpHostCapabilitySnapshot,
 } from "./AgentMcpHostRequirements.js";
+import { isAgentMcpServerEnabled } from "./AgentMcpServerEnablement.js";
 
 export type { AgentSystemSettingsSnapshot, AgentSystemToolSettingsItem } from "./AgentMcpManagementCatalog.js";
 
@@ -37,7 +38,10 @@ export interface AgentMcpServerSettingsItem {
   readonly source: AgentMcpPackage["source"];
   readonly transport: "stdio" | "http";
   readonly descriptorKind: AgentMcpPackage["descriptorKind"];
+  readonly presentation?: AgentMcpPackage["presentation"];
   readonly status: "configured" | "needs_input" | "unavailable";
+  /** Effective activation state: configured and enabled by workspace policy. */
+  readonly enabled: boolean;
   readonly unavailableCapabilityDetails?: readonly { readonly id: string; readonly reason?: string }[];
   readonly inputs: readonly AgentMcpInputStatus[];
 }
@@ -148,7 +152,7 @@ export class AgentMcpManagementService {
           if (!settings) throw new Error(`MCP server settings are missing: ${server.name}`);
           const title = resolveAgentExtensionLocalizedText(settings.displayName);
           const description = resolveAgentExtensionLocalizedText(settings.description);
-          const enabled = settings.status !== "unavailable";
+          const enabled = settings.enabled;
           return {
             id: server.name,
             revision: package_.revision,
@@ -156,8 +160,9 @@ export class AgentMcpManagementService {
             description,
             localizedTitle: settings.displayName,
             localizedDescription: settings.description,
+            ...(settings.presentation?.icon ? { icon: settings.presentation.icon } : {}),
             enabled,
-            selectable: settings.status === "configured",
+            selectable: enabled,
             source: `${package_.source}:${package_.name}`,
           } satisfies AgentMcpActivationCatalogEntry;
         }),
@@ -213,6 +218,12 @@ export class AgentMcpManagementService {
       const reason = this.hostCapabilities.diagnostics.get(id);
       return reason ? { id, reason } : { id };
     });
+    const status =
+      missingCapabilities.length > 0
+        ? "unavailable"
+        : inputs.some((input) => input.required && !input.configured)
+          ? "needs_input"
+          : "configured";
     return {
       id: server.name,
       packageName: package_.name,
@@ -220,13 +231,10 @@ export class AgentMcpManagementService {
       description: package_.description ?? createAgentExtensionLocalizedText(package_.name),
       source: package_.source,
       descriptorKind: package_.descriptorKind,
+      ...(package_.presentation ? { presentation: package_.presentation } : {}),
       transport: server.configuration.type,
-      status:
-        missingCapabilities.length > 0
-          ? "unavailable"
-          : inputs.some((input) => input.required && !input.configured)
-            ? "needs_input"
-            : "configured",
+      status,
+      enabled: status === "configured" && isAgentMcpServerEnabled(this.options.config(), server.name),
       ...(unavailableCapabilityDetails.length > 0 ? { unavailableCapabilityDetails } : {}),
       inputs,
     };

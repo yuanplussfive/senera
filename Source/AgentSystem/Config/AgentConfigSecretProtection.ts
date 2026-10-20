@@ -1,37 +1,68 @@
-import path from "node:path";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
-import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
-import { findAgentWorkspaceRoot, resolveAgentWorkspaceLayout } from "../Core/AgentWorkspaceLayout.js";
-import { AgentSecretEnvelopeCodec, isAgentSecretEnvelope } from "../Security/AgentSecretEnvelopeCodec.js";
+import {
+  AgentSecretUndecryptableError,
+  carriesAgentSecretScheme,
+  type AgentSecretEnvelopeCodec,
+  type AgentSecretOpenFailure,
+} from "../Security/AgentSecretEnvelopeCodec.js";
+import {
+  createAgentSecretDomain,
+  type AgentSecretDomainHandle,
+  type AgentSecretDomainOptions,
+} from "../Security/AgentSecretDomains.js";
+import type { AgentLegacySecretKeyRelocation } from "../Security/AgentSecretKeyRing.js";
 import { isAgentConfigSensitiveFieldName, isAgentConfigSensitiveHeaderName } from "./AgentConfigSecretContract.js";
 
-const SecretKeyEnvironmentVariable = "SENERA_CONFIG_SECRET_KEY";
+/**
+ * A secret this host could not open, identified by the configuration field that holds it so
+ * surfaces can point at that field instead of matching on display text.
+ */
+export type AgentConfigUnresolvedSecret =
+  | { readonly kind: "provider_api_key"; readonly providerId: string; readonly reason: AgentSecretOpenFailure }
+  | {
+      readonly kind: "provider_header";
+      readonly providerId: string;
+      readonly headerName: string;
+      readonly reason: AgentSecretOpenFailure;
+    }
+  | {
+      readonly kind: "extension_secret";
+      readonly extensionId: string;
+      readonly fieldPath: readonly string[];
+      readonly reason: AgentSecretOpenFailure;
+    };
+
+/** Omit that keeps every member of a union instead of reducing it to the keys they share. */
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+
+/** One secret slot addressed by its place in the configuration; the failure it produced is added on top. */
+type SecretSlotIdentity = DistributiveOmit<AgentConfigUnresolvedSecret, "reason">;
 
 export interface AgentConfigSecretDecodeResult<T> {
   value: T;
   plaintextSecretsFound: boolean;
   protectedSecretsFound: boolean;
-}
-
-export interface AgentConfigSecretCodecOptions {
-  workspaceRoot: string;
-  key?: Buffer;
-  environment?: NodeJS.ProcessEnv;
+  /** Secrets opened with pre-keyring key material or an older envelope, so they should be re-sealed. */
+  secretsNeedRewrap: boolean;
+  /** Secrets this reveal could not open, reported for the payload it produced and no longer. */
+  unresolvedSecrets: readonly AgentConfigUnresolvedSecret[];
 }
 
 export class AgentConfigSecretCodec {
+  private readonly domain: AgentSecretDomainHandle;
   private readonly secrets: AgentSecretEnvelopeCodec;
-  readonly keyPath: string;
 
-  constructor(options: AgentConfigSecretCodecOptions) {
-    this.keyPath = resolveAgentWorkspaceLayout(options.workspaceRoot).configSecretKey;
-    this.secrets = new AgentSecretEnvelopeCodec({
-      keyPath: this.keyPath,
-      keyEnvironmentVariable: SecretKeyEnvironmentVariable,
-      key: options.key,
-      environment: options.environment,
-      keyLabel: "Configuration secret key",
-    });
+  constructor(options: AgentSecretDomainOptions) {
+    this.domain = createAgentSecretDomain("config", options);
+    this.secrets = this.domain.codec;
+  }
+
+  /**
+   * Key files this host found outside the keyring while opening its secrets, and whether each one left
+   * the directory it was found in. Reporting them is the only way a user learns the key moved.
+   */
+  relocatedLegacyKeys(): readonly AgentLegacySecretKeyRelocation[] {
+    return this.domain.keyRing.relocatedLegacyKeys();
   }
 
   protectConfig(config: AgentSystemConfig): AgentSystemConfig {
@@ -40,267 +71,269 @@ export class AgentConfigSecretCodec {
 
   protectPayload(payload: unknown): unknown {
     if (!isJsonObject(payload)) return payload;
-
-    let changed = false;
-    const endpoints = Array.isArray(payload.ModelProviderEndpoints)
-      ? payload.ModelProviderEndpoints.map((candidate) => {
-          if (!isJsonObject(candidate)) return candidate;
-          const providerId = readProviderId(candidate);
-          let endpointChanged = false;
-          const protectedEndpoint = { ...candidate };
-
-          if (typeof candidate.ApiKey === "string" && candidate.ApiKey && !isProtectedSecret(candidate.ApiKey)) {
-            protectedEndpoint.ApiKey = this.encrypt(candidate.ApiKey, providerSecretContext(providerId, "ApiKey"));
-            endpointChanged = true;
-          }
-
-          if (isJsonObject(candidate.Headers)) {
-            const protectedHeaders = { ...candidate.Headers };
-            for (const [name, value] of Object.entries(candidate.Headers)) {
-              if (
-                typeof value === "string" &&
-                value &&
-                isAgentConfigSensitiveHeaderName(name) &&
-                !isProtectedSecret(value)
-              ) {
-                protectedHeaders[name] = this.encrypt(
-                  value,
-                  providerSecretContext(providerId, `Headers/${encodeURIComponent(name.toLowerCase())}`),
-                );
-                endpointChanged = true;
-              }
-            }
-            if (endpointChanged) protectedEndpoint.Headers = protectedHeaders;
-          }
-
-          changed ||= endpointChanged;
-          return endpointChanged ? protectedEndpoint : candidate;
-        })
-      : undefined;
-    const extensions = this.protectExtensionConfigurationSecrets(payload.Extensions);
-    changed ||= extensions.changed;
-
-    return changed
-      ? {
-          ...payload,
-          ...(endpoints ? { ModelProviderEndpoints: endpoints } : {}),
-          ...(extensions.changed ? { Extensions: extensions.value } : {}),
-        }
-      : payload;
+    const endpoints = this.protectEndpoints(payload.ModelProviderEndpoints);
+    const extensions = this.transformExtensions(payload.Extensions, (value) =>
+      isProtectedSecret(value) ? slotUnchanged(value) : slotSealed(this.secrets.seal(value)),
+    );
+    if (!endpoints.changed && !extensions.changed) return payload;
+    return {
+      ...payload,
+      ...(endpoints.changed ? { ModelProviderEndpoints: endpoints.value } : {}),
+      ...(extensions.changed ? { Extensions: extensions.value } : {}),
+    };
   }
 
   revealConfig(config: AgentSystemConfig): AgentConfigSecretDecodeResult<AgentSystemConfig> {
     return this.revealPayload(config) as AgentConfigSecretDecodeResult<AgentSystemConfig>;
   }
 
-  digestCanonicalJson(value: unknown, context: string): string {
-    return this.secrets.digest(stringifyAgentCanonicalJson(value), `senera/config/${context}`);
-  }
-
   revealPayload<T>(payload: T): AgentConfigSecretDecodeResult<T> {
-    if (!isJsonObject(payload)) return { value: payload, plaintextSecretsFound: false, protectedSecretsFound: false };
-
-    let changed = false;
-    let plaintextSecretsFound = false;
-    let protectedSecretsFound = false;
-    const endpoints = Array.isArray(payload.ModelProviderEndpoints)
-      ? payload.ModelProviderEndpoints.map((candidate) => {
-          if (!isJsonObject(candidate)) return candidate;
-          const providerId = readProviderId(candidate);
-          let endpointChanged = false;
-          const revealedEndpoint = { ...candidate };
-
-          if (typeof candidate.ApiKey === "string" && candidate.ApiKey) {
-            if (isProtectedSecret(candidate.ApiKey)) {
-              protectedSecretsFound = true;
-              revealedEndpoint.ApiKey = this.decrypt(
-                candidate.ApiKey,
-                providerSecretContext(providerId, "ApiKey"),
-                `API key for provider ${providerId}`,
-              );
-              endpointChanged = true;
-            } else {
-              plaintextSecretsFound = true;
-            }
-          }
-
-          if (isJsonObject(candidate.Headers)) {
-            const revealedHeaders = { ...candidate.Headers };
-            for (const [name, value] of Object.entries(candidate.Headers)) {
-              if (typeof value !== "string" || !value || !isAgentConfigSensitiveHeaderName(name)) continue;
-              if (isProtectedSecret(value)) {
-                protectedSecretsFound = true;
-                revealedHeaders[name] = this.decrypt(
-                  value,
-                  providerSecretContext(providerId, `Headers/${encodeURIComponent(name.toLowerCase())}`),
-                  `header ${name} for provider ${providerId}`,
-                );
-                endpointChanged = true;
-              } else {
-                plaintextSecretsFound = true;
-              }
-            }
-            if (endpointChanged) revealedEndpoint.Headers = revealedHeaders;
-          }
-
-          changed ||= endpointChanged;
-          return endpointChanged ? revealedEndpoint : candidate;
-        })
-      : undefined;
-    const extensions = this.revealExtensionConfigurationSecrets(payload.Extensions);
-    changed ||= extensions.changed;
-    plaintextSecretsFound ||= extensions.plaintextSecretsFound;
-    protectedSecretsFound ||= extensions.protectedSecretsFound;
-
+    if (!isJsonObject(payload)) return emptyDecodeResult(payload);
+    const endpoints = this.revealEndpoints(payload.ModelProviderEndpoints);
+    const extensions = this.transformExtensions(payload.Extensions, (value, slot) => this.revealSlot(value, slot));
+    const slots = [...endpoints.slots, ...extensions.slots];
     return {
-      value: (changed
+      value: (endpoints.changed || extensions.changed
         ? {
             ...payload,
-            ...(endpoints ? { ModelProviderEndpoints: endpoints } : {}),
+            ...(endpoints.changed ? { ModelProviderEndpoints: endpoints.value } : {}),
             ...(extensions.changed ? { Extensions: extensions.value } : {}),
           }
         : payload) as T,
-      plaintextSecretsFound,
-      protectedSecretsFound,
+      plaintextSecretsFound: slots.some((slot) => slot.plaintext),
+      protectedSecretsFound: slots.some((slot) => slot.protected),
+      secretsNeedRewrap: slots.some((slot) => slot.needsRewrap),
+      unresolvedSecrets: slots.flatMap((slot) => (slot.unresolved ? [slot.unresolved] : [])),
     };
   }
 
-  private protectExtensionConfigurationSecrets(value: unknown): ExtensionSecretTransformResult {
-    return transformExtensionConfigurationSecrets(value, (secret, extensionId, path) => {
-      if (isProtectedSecret(secret)) return { value: secret, changed: false, plaintext: false, protected: true };
-      return {
-        value: this.encrypt(secret, extensionSecretContext(extensionId, path)),
-        changed: true,
-        plaintext: true,
-        protected: false,
-      };
+  private protectEndpoints(value: unknown): SecretTransform {
+    if (!Array.isArray(value)) return { changed: false, value, slots: [] };
+    let changed = false;
+    const slots: SecretSlot[] = [];
+    const endpoints = value.map((candidate) => {
+      if (!isJsonObject(candidate)) return candidate;
+      const endpoint = { ...candidate };
+
+      if (typeof candidate.ApiKey === "string" && candidate.ApiKey && !isProtectedSecret(candidate.ApiKey)) {
+        const sealed = this.secrets.seal(candidate.ApiKey);
+        endpoint.ApiKey = sealed;
+        slots.push(slotSealed(sealed));
+        changed = true;
+      }
+
+      if (isJsonObject(candidate.Headers)) {
+        const headers = { ...candidate.Headers };
+        for (const [name, entry] of Object.entries(candidate.Headers)) {
+          if (typeof entry !== "string" || !entry || !isAgentConfigSensitiveHeaderName(name)) continue;
+          if (isProtectedSecret(entry)) {
+            slots.push(slotUnchanged(entry));
+            continue;
+          }
+          const sealed = this.secrets.seal(entry);
+          headers[name] = sealed;
+          slots.push(slotSealed(sealed));
+          changed = true;
+        }
+        endpoint.Headers = headers;
+      }
+      return endpoint;
     });
+    return { changed, value: endpoints, slots };
   }
 
-  private revealExtensionConfigurationSecrets(value: unknown): ExtensionSecretTransformResult {
-    return transformExtensionConfigurationSecrets(value, (secret, extensionId, path) => {
-      if (!isProtectedSecret(secret)) return { value: secret, changed: false, plaintext: true, protected: false };
-      return {
-        value: this.decrypt(
-          secret,
-          extensionSecretContext(extensionId, path),
-          `secret for extension ${extensionId} configuration ${path.join(".")}`,
-        ),
-        changed: true,
-        plaintext: false,
-        protected: true,
-      };
+  private revealEndpoints(value: unknown): SecretTransform {
+    if (!Array.isArray(value)) return { changed: false, value, slots: [] };
+    let changed = false;
+    const slots: SecretSlot[] = [];
+    const endpoints = value.map((candidate) => {
+      if (!isJsonObject(candidate)) return candidate;
+      const providerId = readProviderId(candidate);
+      const endpoint = { ...candidate };
+
+      if (typeof candidate.ApiKey === "string" && candidate.ApiKey) {
+        const revealed = this.revealSlot(candidate.ApiKey, { kind: "provider_api_key", providerId });
+        slots.push(revealed);
+        if (revealed.changed) {
+          endpoint.ApiKey = revealed.value;
+          changed = true;
+        }
+      }
+
+      if (isJsonObject(candidate.Headers)) {
+        const headers = { ...candidate.Headers };
+        for (const [name, entry] of Object.entries(candidate.Headers)) {
+          if (typeof entry !== "string" || !entry || !isAgentConfigSensitiveHeaderName(name)) continue;
+          const revealed = this.revealSlot(entry, { kind: "provider_header", providerId, headerName: name });
+          slots.push(revealed);
+          if (revealed.changed) {
+            headers[name] = revealed.value;
+            changed = true;
+          }
+        }
+        endpoint.Headers = headers;
+      }
+      return endpoint;
     });
+    return { changed, value: endpoints, slots };
   }
 
-  private encrypt(value: string, context: string): string {
-    return this.secrets.seal(value, context);
+  /**
+   * A secret this release cannot open is left exactly as stored and reported, so one unreadable
+   * provider degrades to missing data instead of making the whole configuration unusable.
+   */
+  private revealSlot(value: string, identity: SecretSlotIdentity): SecretSlot {
+    if (!isProtectedSecret(value)) return slotPlaintext(value);
+    try {
+      const { value: revealed, needsRewrap } = this.secrets.open(
+        value,
+        describeSecretSlot(identity),
+        legacySecretContext(identity),
+      );
+      return slotRevealed(revealed, needsRewrap);
+    } catch (error) {
+      if (!(error instanceof AgentSecretUndecryptableError)) throw error;
+      return slotUnresolved(value, { ...identity, reason: error.failure });
+    }
   }
 
-  private decrypt(envelope: string, context: string, label: string): string {
-    return this.secrets.open(envelope, context, label);
+  private transformExtensions(
+    extensions: unknown,
+    transform: (value: string, slot: SecretSlotIdentity) => SecretSlot,
+  ): SecretTransform {
+    if (!isJsonObject(extensions)) return { changed: false, value: extensions, slots: [] };
+    const slots: SecretSlot[] = [];
+    let changed = false;
+    const value = Object.fromEntries(
+      Object.entries(extensions).map(([extensionId, extension]) => {
+        if (!isJsonObject(extension) || !isJsonObject(extension.Configuration)) return [extensionId, extension];
+        const configuration = transformExtensionValue(extension.Configuration, [], (raw, fieldPath) =>
+          transform(raw, { kind: "extension_secret", extensionId, fieldPath }),
+        );
+        slots.push(...configuration.slots);
+        changed ||= configuration.changed;
+        return [extensionId, configuration.changed ? { ...extension, Configuration: configuration.value } : extension];
+      }),
+    );
+    return { changed, value, slots };
   }
 }
 
-export function resolveAgentConfigSecretWorkspaceRoot(databasePath: string): string {
-  const directory = path.dirname(path.resolve(databasePath));
-  return findAgentWorkspaceRoot(directory) ?? directory;
-}
-
-function providerSecretContext(providerId: string, fieldPath: string): string {
-  return `senera/config/ModelProviderEndpoints/${providerId}/${fieldPath}`;
-}
-
-interface ExtensionSecretTransformResult {
-  readonly value: unknown;
-  readonly changed: boolean;
-  readonly plaintextSecretsFound: boolean;
-  readonly protectedSecretsFound: boolean;
-}
-
-interface ExtensionSecretValueTransformResult {
+interface SecretSlot {
   readonly value: string;
   readonly changed: boolean;
   readonly plaintext: boolean;
   readonly protected: boolean;
+  readonly needsRewrap: boolean;
+  readonly unresolved?: AgentConfigUnresolvedSecret;
 }
 
-function transformExtensionConfigurationSecrets(
-  extensions: unknown,
-  transform: (value: string, extensionId: string, path: readonly string[]) => ExtensionSecretValueTransformResult,
-): ExtensionSecretTransformResult {
-  if (!isJsonObject(extensions)) {
-    return { value: extensions, changed: false, plaintextSecretsFound: false, protectedSecretsFound: false };
-  }
-  let changed = false;
-  let plaintextSecretsFound = false;
-  let protectedSecretsFound = false;
-  const result = Object.fromEntries(
-    Object.entries(extensions).map(([extensionId, extension]) => {
-      if (!isJsonObject(extension) || !isJsonObject(extension.Configuration)) return [extensionId, extension];
-      const configuration = transformExtensionConfigurationValue(extension.Configuration, extensionId, [], transform);
-      changed ||= configuration.changed;
-      plaintextSecretsFound ||= configuration.plaintextSecretsFound;
-      protectedSecretsFound ||= configuration.protectedSecretsFound;
-      return [extensionId, configuration.changed ? { ...extension, Configuration: configuration.value } : extension];
-    }),
-  );
+interface SecretTransform {
+  readonly changed: boolean;
+  readonly value: unknown;
+  readonly slots: readonly SecretSlot[];
+}
+
+function slotSealed(value: string): SecretSlot {
+  return { value, changed: true, plaintext: true, protected: false, needsRewrap: false };
+}
+
+function slotUnchanged(value: string): SecretSlot {
+  return { value, changed: false, plaintext: false, protected: true, needsRewrap: false };
+}
+
+function slotPlaintext(value: string): SecretSlot {
+  return { value, changed: false, plaintext: true, protected: false, needsRewrap: false };
+}
+
+function slotRevealed(value: string, needsRewrap: boolean): SecretSlot {
+  return { value, changed: true, plaintext: false, protected: true, needsRewrap };
+}
+
+function slotUnresolved(value: string, unresolved: AgentConfigUnresolvedSecret): SecretSlot {
+  return { value, changed: false, plaintext: false, protected: true, needsRewrap: false, unresolved };
+}
+
+function emptyDecodeResult<T>(value: T): AgentConfigSecretDecodeResult<T> {
   return {
-    value: changed ? result : extensions,
-    changed,
-    plaintextSecretsFound,
-    protectedSecretsFound,
+    value,
+    plaintextSecretsFound: false,
+    protectedSecretsFound: false,
+    secretsNeedRewrap: false,
+    unresolvedSecrets: [],
   };
 }
 
-function transformExtensionConfigurationValue(
+function transformExtensionValue(
   value: unknown,
-  extensionId: string,
   path: readonly string[],
-  transform: (value: string, extensionId: string, path: readonly string[]) => ExtensionSecretValueTransformResult,
-): ExtensionSecretTransformResult {
+  transform: (value: string, path: readonly string[]) => SecretSlot,
+): SecretTransform {
   if (Array.isArray(value)) {
+    const slots: SecretSlot[] = [];
     let changed = false;
-    let plaintextSecretsFound = false;
-    let protectedSecretsFound = false;
     const mapped = value.map((item, index) => {
-      const next = transformExtensionConfigurationValue(item, extensionId, [...path, String(index)], transform);
-      changed ||= next.changed;
-      plaintextSecretsFound ||= next.plaintextSecretsFound;
-      protectedSecretsFound ||= next.protectedSecretsFound;
-      return next.value;
+      const result = transformExtensionValue(item, [...path, String(index)], transform);
+      slots.push(...result.slots);
+      changed ||= result.changed;
+      return result.value;
     });
-    return { value: changed ? mapped : value, changed, plaintextSecretsFound, protectedSecretsFound };
+    return { changed, value: mapped, slots };
   }
-  if (!isJsonObject(value)) {
-    return { value, changed: false, plaintextSecretsFound: false, protectedSecretsFound: false };
-  }
+  if (!isJsonObject(value)) return { changed: false, value, slots: [] };
 
+  const slots: SecretSlot[] = [];
   let changed = false;
-  let plaintextSecretsFound = false;
-  let protectedSecretsFound = false;
   const mapped = Object.fromEntries(
     Object.entries(value).map(([name, item]) => {
+      const fieldPath = [...path, name];
       if (typeof item === "string" && item && isAgentConfigSensitiveFieldName(name)) {
-        const next = transform(item, extensionId, [...path, name]);
-        changed ||= next.changed;
-        plaintextSecretsFound ||= next.plaintext;
-        protectedSecretsFound ||= next.protected;
-        return [name, next.value];
+        const result = transform(item, fieldPath);
+        slots.push(result);
+        changed ||= result.changed;
+        return [name, result.value];
       }
-      const next = transformExtensionConfigurationValue(item, extensionId, [...path, name], transform);
-      changed ||= next.changed;
-      plaintextSecretsFound ||= next.plaintextSecretsFound;
-      protectedSecretsFound ||= next.protectedSecretsFound;
-      return [name, next.value];
+      const result = transformExtensionValue(item, fieldPath, transform);
+      slots.push(...result.slots);
+      changed ||= result.changed;
+      return [name, result.value];
     }),
   );
-  return {
-    value: changed ? mapped : value,
-    changed,
-    plaintextSecretsFound,
-    protectedSecretsFound,
-  };
+  return { changed, value: mapped, slots };
+}
+
+/** Names the slot in decrypt failures and logs, where no locale has been chosen yet. */
+function describeSecretSlot(identity: SecretSlotIdentity): string {
+  switch (identity.kind) {
+    case "provider_api_key":
+      return `API key for provider ${identity.providerId}`;
+    case "provider_header":
+      return `header ${identity.headerName} for provider ${identity.providerId}`;
+    case "extension_secret":
+      return `secret for extension ${identity.extensionId} configuration ${identity.fieldPath.join(".")}`;
+  }
+}
+
+/**
+ * Authenticated data written by releases before the keyring, which bound each envelope to the
+ * identity of the slot holding it. Renaming a provider or moving a field strands these.
+ */
+function legacySecretContext(identity: SecretSlotIdentity): string {
+  switch (identity.kind) {
+    case "provider_api_key":
+      return providerSecretContext(identity.providerId, "ApiKey");
+    case "provider_header":
+      return providerSecretContext(
+        identity.providerId,
+        `Headers/${encodeURIComponent(identity.headerName.toLowerCase())}`,
+      );
+    case "extension_secret":
+      return extensionSecretContext(identity.extensionId, identity.fieldPath);
+  }
+}
+
+function providerSecretContext(providerId: string, fieldPath: string): string {
+  return `senera/config/ModelProviderEndpoints/${providerId}/${fieldPath}`;
 }
 
 function extensionSecretContext(extensionId: string, path: readonly string[]): string {
@@ -315,8 +348,12 @@ function readProviderId(endpoint: Record<string, unknown>): string {
   return endpoint.Id;
 }
 
+/**
+ * Stored secret material is recognised by its scheme, not by whether this release can parse it, so a
+ * truncated or future-versioned envelope is reported instead of being re-sealed as a typed key.
+ */
 function isProtectedSecret(value: string): boolean {
-  return isAgentSecretEnvelope(value);
+  return carriesAgentSecretScheme(value);
 }
 
 function isJsonObject(value: unknown): value is Record<string, unknown> {

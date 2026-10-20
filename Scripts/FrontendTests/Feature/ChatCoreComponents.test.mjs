@@ -17,6 +17,7 @@ const { ScrollToBottomButton } = await import("../../../Frontend/src/features/ch
 const { MessageActions, readMessageActionIntents } =
   await import("../../../Frontend/src/features/chat/MessageActions.tsx");
 const { AssistantTurnRow } = await import("../../../Frontend/src/features/chat/AssistantTurnRow.tsx");
+const { preloadMarkdownRenderer } = await import("../../../Frontend/src/shared/code/LazyMarkdownRenderer.tsx");
 const { MessageMetrics } = await import("../../../Frontend/src/features/chat/MessageMetrics.tsx");
 const { TooltipProvider } = await import("../../../Frontend/src/shared/ui/Tooltip.tsx");
 const { MessageList, readMessageListItemKey } = await import("../../../Frontend/src/features/chat/MessageList.tsx");
@@ -424,7 +425,7 @@ test("chat model selector keeps the current conversation choice and exposes the 
   await user.click(screen.getByRole("button", { name: "选择模型" }));
   expect(screen.getByText("当前对话模型")).toBeInTheDocument();
   expect(screen.getByText("默认模型：claude-sonnet")).toBeInTheDocument();
-  expect(screen.getByRole("group")).toHaveClass("overflow-y-auto", "scrollbar-thin");
+  expect(screen.getByRole("group")).toHaveClass("overflow-y-auto");
   await user.click(screen.getByRole("menuitem", { name: "恢复为默认" }));
   expect(onApplyDefaultModel).toHaveBeenCalledTimes(1);
 
@@ -538,11 +539,18 @@ test("chat panel fills the composer from an empty-state suggestion without sendi
   expect(screen.getByRole("textbox", { name: "输入消息" })).toHaveValue("整理日志");
 });
 
-test("a cancelled run remains renderable when the local message list is empty", () => {
+test("a cancelled run with execution events folds its settled process", async () => {
+  const user = userEvent.setup();
   const cancelledRun = createRun({
     requestId: "request-cancelled-empty-chat",
     status: "cancelled",
-    steps: [stageTool("cancelled-empty-tool", "WorkspaceRead", "2026-01-01T00:00:00.000Z")],
+    steps: [
+      {
+        ...stageTool("cancelled-empty-tool", "WorkspaceRead", "2026-01-01T00:00:00.000Z"),
+        agentStep: 0,
+        modelMessageIndex: 0,
+      },
+    ],
   });
 
   expect(hasRenderableConversationContent([], [cancelledRun])).toBe(true);
@@ -568,10 +576,20 @@ test("a cancelled run remains renderable when the local message list is empty", 
   renderWithFrontendProviders(React.createElement(ChatPanel, createChatPanelProps()));
 
   expect(screen.queryByRole("button", { name: "整理日志" })).not.toBeInTheDocument();
-  expect(document.querySelector("[data-message-list-loading]")).not.toBeNull();
-  const loadingStatus = screen.getByRole("status");
-  expect(loadingStatus).toHaveAttribute("aria-busy", "true");
-  expect(loadingStatus).toHaveTextContent(frontendMessage("ui.loading"));
+  expect(document.querySelector("[data-assistant-turn='request-cancelled-empty-chat']")).toBeInTheDocument();
+  const processToggle = await waitFor(() => {
+    const element = document.querySelector("[data-settled-turn-toggle]");
+    expect(element).toBeInstanceOf(HTMLButtonElement);
+    return element;
+  });
+  expect(processToggle).toHaveAttribute("aria-expanded", "false");
+  expect(document.querySelector("[data-settled-turn-status='cancelled']")).toHaveTextContent("已取消");
+  expect(document.querySelector("[data-settled-turn-process]")).not.toBeInTheDocument();
+
+  await user.click(processToggle);
+  await waitFor(() => expect(processToggle).toHaveAttribute("aria-expanded", "true"));
+  expect(document.querySelector("[data-settled-turn-process]")).toBeInTheDocument();
+  await waitFor(() => expect(document.querySelector("[data-execution-stage-fold]")).toBeInTheDocument());
 });
 
 test("chat panel shows the conversation skeleton before history loading is marked", () => {
@@ -768,6 +786,7 @@ test("a live assistant turn forks from its request boundary before a final reply
 test("model thinking stays grouped within each response and keeps response order", async () => {
   const user = userEvent.setup();
   const requestId = "request-inline-thinking";
+  await preloadMarkdownRenderer();
   const makeTurn = (latestContent, latestStatus = "streaming") => ({
     __assistantTurn: true,
     key: `assistant-turn:${requestId}:0`,
@@ -837,28 +856,18 @@ test("model thinking stays grouped within each response and keeps response order
   );
   const disclosure = readDisclosure();
   expect(disclosure.closest("[data-assistant-turn-stage]")).not.toBeNull();
-  expect(disclosure.querySelector("[data-activity-feed-row]")).toHaveClass("activity-feed-row");
-  expect(document.querySelectorAll("[data-model-thinking-block]")).toHaveLength(0);
-  expect(document.querySelectorAll("[data-model-thinking-brain]")).toHaveLength(0);
-  expect(disclosures[0]?.querySelector("[data-model-thinking-preview]")).not.toHaveClass(
-    "motion-safe:animate-text-shimmer",
-  );
-  expect(disclosure.querySelector("[data-model-thinking-preview]")).toHaveClass(
-    "model-thinking-preview--streaming",
-    "motion-safe:animate-text-shimmer",
-  );
-  expect(screen.queryByText("思考过程")).not.toBeInTheDocument();
   const toggle = disclosure.querySelector("[data-model-thinking-toggle-row]");
-  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  expect(toggle).toHaveAttribute("aria-expanded", "true");
+  expect(disclosure.querySelector("[data-model-thinking-rail]")).toBeNull();
+  expect(disclosure.querySelector("[data-thinking-step]")).toBeNull();
+  expect(disclosure.querySelector("[data-model-thinking-preview]")).toHaveTextContent(
+    "Checking bitmap generation capability",
+  );
   await waitFor(() =>
     expect(disclosure.querySelector("[data-model-thinking-preview] strong")).toHaveTextContent(
       "Checking bitmap generation capability",
     ),
   );
-  expect(disclosure.querySelector("[data-model-thinking-transcript]")).toBeNull();
-
-  await user.click(disclosure.querySelector("[data-model-thinking-toggle-row]"));
-  expect(toggle).toHaveAttribute("aria-expanded", "true");
   const transcript = await waitFor(() => {
     const element = disclosure.querySelector("[data-model-thinking-transcript]");
     expect(element).not.toBeNull();
@@ -866,8 +875,8 @@ test("model thinking stays grouped within each response and keeps response order
   });
   expect(transcript.querySelector("code")).toHaveTextContent("ImageGenerate");
   expect(transcript.querySelector("strong")).toHaveTextContent("Checking bitmap generation capability");
-  expect(transcript.querySelectorAll("[data-thinking-step]")).not.toHaveLength(0);
-  expect(transcript.querySelectorAll("[data-thinking-step-marker] svg")).toHaveLength(0);
+  expect(transcript.querySelectorAll("[data-model-thinking-entry]")).toHaveLength(2);
+  expect(transcript.querySelectorAll(".model-thinking-disclosure__break")).toHaveLength(0);
   const transcriptText = transcript.textContent;
   expect(transcriptText.indexOf("ImageGenerate")).toBeLessThan(
     transcriptText.indexOf("Checking bitmap generation capability"),
@@ -884,18 +893,33 @@ test("model thinking stays grouped within each response and keeps response order
   expect(readDisclosure().querySelector("[data-model-thinking-transcript] strong")).toHaveTextContent(
     "Generating the preview now",
   );
-  await user.click(screen.getByRole("button", { name: "收起完整记录" }));
-  expect(readDisclosure().querySelector("[data-model-thinking-transcript]")).toBeNull();
+  await user.click(readDisclosure().querySelector("[data-model-thinking-toggle-row]"));
+  await waitFor(() => expect(readDisclosure().querySelector("[data-model-thinking-transcript]")).toBeNull());
+
+  view.rerender(
+    React.createElement(
+      TooltipProvider,
+      { delayDuration: 0 },
+      renderTurn(makeTurn("**Still generating the preview**")),
+    ),
+  );
+  await waitFor(() =>
+    expect(readDisclosure().querySelector("[data-model-thinking-preview]")).toHaveTextContent(
+      "Still generating the preview",
+    ),
+  );
+  expect(readDisclosure().querySelector("[data-model-thinking-toggle-row]")).toHaveAttribute("aria-expanded", "false");
 
   view.rerender(
     React.createElement(TooltipProvider, { delayDuration: 0 }, renderTurn(makeTurn("Final thought", "complete"))),
   );
   await waitFor(() =>
-    expect(readDisclosure().querySelector("[data-model-thinking-preview]")).not.toHaveClass(
-      "model-thinking-preview--streaming",
+    expect(readDisclosure().querySelector("[data-model-thinking-toggle-row]")).toHaveAttribute(
+      "aria-expanded",
+      "false",
     ),
   );
-  expect(readDisclosure().querySelector("[data-model-thinking-brain]")).toBeNull();
+  expect(readDisclosure()).toHaveTextContent("已完成思考");
 });
 
 test("the latest feedback and unfinished work in an earlier response animate together", async () => {
@@ -1150,7 +1174,7 @@ test("assistant turn renders a tool preface before its matching execution activi
   );
 
   const processToggle = await waitFor(() => {
-    const element = document.querySelector("[data-completed-turn-toggle]");
+    const element = document.querySelector("[data-settled-turn-toggle]");
     expect(element).toBeInstanceOf(HTMLButtonElement);
     return element;
   });
@@ -1158,12 +1182,12 @@ test("assistant turn renders a tool preface before its matching execution activi
   expect(processToggle).toHaveAttribute("aria-expanded", "false");
   expect(screen.getByText("页面读取完成。")).toBeInTheDocument();
   expect(screen.queryByText("我先读取页面。")).not.toBeInTheDocument();
-  expect(document.querySelector("[data-completed-turn-process]")).not.toBeInTheDocument();
+  expect(document.querySelector("[data-settled-turn-process]")).not.toBeInTheDocument();
 
   await userEvent.click(processToggle);
   await waitFor(() => expect(processToggle).toHaveAttribute("aria-expanded", "true"));
   expect(screen.getByText("我先读取页面。")).toBeInTheDocument();
-  expect(document.querySelector("[data-completed-turn-process]")).toBeInTheDocument();
+  expect(document.querySelector("[data-settled-turn-process]")).toBeInTheDocument();
   await waitFor(() => expect(document.querySelector("[data-execution-stage-fold]")).toBeInTheDocument());
 });
 

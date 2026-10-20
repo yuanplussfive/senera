@@ -4,7 +4,7 @@ import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { SettingsConfigCommands } from "../SettingsContracts";
 import { cn } from "../../../lib/util";
 import { FluidHoverHighlight, motionTimings, useFluidHover, useMotionLevel } from "../../../shared/motion";
-import { AppIcon, IconButton, ScrollArea, Tooltip } from "../../../shared/ui";
+import { AppIcon, IconButton, ScrollArea, Switch } from "../../../shared/ui";
 import { inferModelProviderEndpointIcon, ProviderMark } from "../../chat/ModelProviderIcon";
 import { EmptyList, ProviderStatusIcon, SearchInput } from "../../chat/ModelConfigPrimitives";
 import { providerEnabled, providerIdLabel, sortProviderRows } from "../../chat/modelConfigData";
@@ -15,21 +15,27 @@ export function ProviderConnectionList({
   catalogs,
   errors,
   loadingProviderIds,
+  operations,
   selectedProviderId,
   compact = false,
   disabled,
   onRequestAdd,
   onSelect,
+  onEnabledChange,
+  providerDisableReason,
 }: {
   providers: ProviderEndpointDraft[];
   catalogs: SettingsConfigCommands["providerModelCatalogs"];
   errors: SettingsConfigCommands["providerModelErrors"];
   loadingProviderIds: SettingsConfigCommands["providerModelLoadingIds"];
+  operations: SettingsConfigCommands["providerEndpointOperations"];
   selectedProviderId: string | null;
   compact?: boolean;
   disabled: boolean;
   onRequestAdd: () => void;
   onSelect: (provider: ProviderEndpointDraft) => void;
+  onEnabledChange: (provider: ProviderEndpointDraft, enabled: boolean) => void;
+  providerDisableReason?: (provider: ProviderEndpointDraft) => string | null;
 }): JSX.Element {
   const [providerSearch, setProviderSearch] = useState("");
   const { reduceMotion, disableMotion } = useMotionLevel();
@@ -66,6 +72,8 @@ export function ProviderConnectionList({
             const error = provider.Id ? errors[provider.Id] : undefined;
             const loading = provider.Id ? loadingProviderIds[provider.Id] : false;
             const enabled = providerEnabled(provider);
+            const saving = provider.Id ? operations[provider.Id]?.status === "pending" : false;
+            const disableReason = !disabled && !saving ? providerDisableReason?.(provider) : null;
             const modelCount = catalog?.models.length ?? 0;
             const statusText = loading
               ? frontendMessage("settings.modelManagement.fetching")
@@ -138,18 +146,17 @@ export function ProviderConnectionList({
                     ) : null}
                   </span>
                 </button>
-                <Tooltip
-                  content={frontendMessage(enabled ? "settings.provider.statusReady" : "settings.provider.disabled")}
-                  side="top"
-                >
-                  <span
-                    className={cn(
-                      "relative z-[1] h-1.5 w-1.5 shrink-0 cursor-help rounded-full transition-colors",
-                      enabled ? "bg-moss-500" : "bg-ink-350 opacity-40",
-                    )}
-                    aria-label={frontendMessage(enabled ? "settings.provider.statusOn" : "settings.provider.statusOff")}
-                  />
-                </Tooltip>
+                <Switch
+                  checked={enabled}
+                  size="sm"
+                  disabled={disabled || saving || Boolean(disableReason)}
+                  disabledReason={disableReason ?? undefined}
+                  ariaLabel={frontendMessage("settings.provider.connectionToggle", {
+                    provider: providerIdLabel(provider),
+                  })}
+                  onDisabledClick={disableReason ? () => onEnabledChange(provider, false) : undefined}
+                  onCheckedChange={(nextEnabled) => onEnabledChange(provider, nextEnabled)}
+                />
               </div>
             );
           })}

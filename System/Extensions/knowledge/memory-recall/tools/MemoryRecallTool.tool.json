@@ -8,7 +8,8 @@
       "action": { "zh-CN": "回忆", "en-US": "Recall" },
       "argumentPath": "/query",
       "detailPaths": ["/refs/*"]
-    }
+    },
+    "preview": { "body": { "pointer": "/records/item", "from": "result" } }
   },
   "description": "按语义、MemOS 节点引用或 Asia/Shanghai 时间范围检索知识和日/月摘要。",
   "inputSchema": {
@@ -121,5 +122,66 @@
       "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
       "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}"
     }
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "query": { "type": "string" },
+      "range": {
+        "type": "object",
+        "properties": { "from": { "type": "string" }, "to": { "type": "string" }, "timeZone": { "type": "string" } },
+        "required": ["from", "to", "timeZone"],
+        "additionalProperties": false
+      },
+      "budget": {
+        "type": "object",
+        "properties": {
+          "maxTokens": { "type": "number" },
+          "matchedRecords": { "type": "number" },
+          "returnedRecords": { "type": "number" }
+        },
+        "required": ["maxTokens", "matchedRecords", "returnedRecords"],
+        "additionalProperties": false
+      },
+      "records": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": { "type": "string" },
+                "revision": { "type": "string" },
+                "type": { "type": "string" },
+                "content": { "type": "string" },
+                "summary": { "type": "string" },
+                "occurredAt": { "type": "string" },
+                "score": { "type": "number" },
+                "matchedBy": { "type": "array", "items": { "type": "string" } },
+                "scores": { "type": "object" },
+                "period": {
+                  "type": "object",
+                  "properties": {
+                    "granularity": { "type": "string", "enum": ["day", "month"] },
+                    "start": { "type": "string" },
+                    "end": { "type": "string" }
+                  },
+                  "required": ["granularity", "start", "end"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["uri", "revision", "type", "content", "summary", "occurredAt", "score", "matchedBy"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["item"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["budget", "records"],
+    "additionalProperties": false
   }
 }

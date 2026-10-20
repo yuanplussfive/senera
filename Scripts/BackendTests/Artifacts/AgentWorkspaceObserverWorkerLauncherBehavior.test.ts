@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  createAgentWorkspaceObserverWorkerForkOptions,
   resolveAgentWorkspaceObserverWorkerExecArgv,
   resolveAgentWorkspaceObserverWorkerUrl,
 } from "../../../Source/AgentSystem/Artifacts/AgentWorkspaceObserverWorkerLauncher.js";
@@ -38,5 +39,18 @@ describe("AgentWorkspaceObserverWorkerLauncher", () => {
 
   test("does not add TypeScript loader arguments to compiled workers", () => {
     expect(resolveAgentWorkspaceObserverWorkerExecArgv(false, ["--eval", "console.log('parent')"])).toEqual([]);
+  });
+
+  test("declares the observer as a windowless background worker", () => {
+    const options = createAgentWorkspaceObserverWorkerForkOptions(
+      {
+        parentModuleUrl: "file:///E:/senera/Source/AgentSystem/Artifacts/AgentWorkspaceChangeObserverProcess.ts",
+        cwd: "E:/workspace",
+      },
+      new URL("file:///E:/senera/Source/AgentSystem/Artifacts/AgentWorkspaceObserverWorker.ts"),
+    );
+
+    expect(options.windowsHide).toBe(true);
+    expect(options.stdio).toEqual(["ignore", "ignore", "pipe", "ipc"]);
   });
 });

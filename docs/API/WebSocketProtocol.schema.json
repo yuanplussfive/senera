@@ -3945,6 +3945,22 @@
               },
               "additionalProperties": false
             },
+            "McpServers": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "minLength": 1
+              },
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "Enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
             "Extensions": {
               "type": "object",
               "propertyNames": {
@@ -4830,6 +4846,56 @@
                   "type": "null"
                 }
               ]
+            },
+            "avatarPath": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "assistant": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 48
+                },
+                "avatarDataUrl": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 524288,
+                      "pattern": "^data:image\\/(?:png|jpe?g|webp|gif);base64,[a-z0-9+/=\\s]+$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "avatarPath": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "additionalProperties": false
             }
           },
           "required": [

@@ -295,5 +295,8 @@
   "terminal.kind.interactiveShell": "交互终端",
   "terminal.kind.powershell": "PowerShell",
   "terminal.kind.shell": "Shell",
-  "terminal.info.purpose": "用途"
+  "terminal.info.purpose": "用途",
+  "settings.storage.appDataScope": "会话、记忆与供应商凭据等应用级数据，由所有工作区共享。",
+  "settings.storage.workspaceScope": "逐个工作区的 .senera 运行数据，当前工作区同时显示状态目录与配置文件。",
+  "settings.storage.connectionUnavailable": "工作区连接尚未就绪，暂时无法读取存储占用"
 }

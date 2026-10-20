@@ -13,7 +13,7 @@ export function ToolRunOutputSummary({ run }: { readonly run: RunRecord }): JSX.
 
   return (
     <div className="mt-4 min-w-0 border-t border-line-subtle/70 pt-3" data-tool-run-output-summary>
-      <ToolArtifactPreview resources={resources} changes={fileChanges} enableHoverPreview={false} />
+      <ToolArtifactPreview resources={resources} changes={fileChanges} />
     </div>
   );
 }

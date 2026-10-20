@@ -517,10 +517,12 @@ describe("Session manager behavior", () => {
     });
   });
 
-  test("marks Pi initialized at the first turn boundary and resets it on close", async () => {
+  test("marks Pi initialized at the first turn boundary and removes its persisted session on close", async () => {
     const reset = vi.fn(async () => true);
+    const removeSession = vi.fn(async () => true);
     const fixture = createManagerFixture({
       piSessionMutations: { rewind: vi.fn(async () => false), reset },
+      piSessionCleanup: { removeSession },
       loopFactory: () => ({
         run: async (request) => {
           await request.onPiBranchBoundary?.("boundary-first-turn");
@@ -552,9 +554,8 @@ describe("Session manager behavior", () => {
     );
 
     await fixture.manager.closeSession({ sessionId: "session-lazy-pi" });
-    expect(reset).toHaveBeenCalledWith(
-      expect.objectContaining({ sessionId: "session-lazy-pi", modelProviderId: "provider-lazy" }),
-    );
+    expect(removeSession).toHaveBeenCalledWith({ sessionId: "session-lazy-pi" });
+    expect(reset).not.toHaveBeenCalled();
   });
 
   test("renames sessions, emits session list snapshots, and preserves persisted title", async () => {

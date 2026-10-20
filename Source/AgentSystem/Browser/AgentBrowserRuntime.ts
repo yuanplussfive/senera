@@ -20,7 +20,12 @@ import {
   type AgentBrowserTargetInspection,
   type AgentBrowserTargetAuthorization,
 } from "./AgentBrowserUrlPolicy.js";
-import { matchesAgentBrowserDomain, type AgentBrowserConfiguration } from "./AgentBrowserConfiguration.js";
+import {
+  matchesAgentBrowserDomain,
+  type AgentBrowserConfiguration,
+  type AgentBrowserContext,
+} from "./AgentBrowserConfiguration.js";
+import { resolveAgentApplicationPaths } from "../Core/AgentApplicationPaths.js";
 import type {
   AgentBrowserDriver,
   AgentBrowserDriverDownload,
@@ -107,6 +112,7 @@ const OperationSummary = {
 
 interface AgentBrowserSessionState {
   readonly key: string;
+  readonly context: AgentBrowserContext;
   lastActivityAt: number;
   readonly approvedTargets: Set<string>;
   readonly approvedLocalResourceRoots: Map<string, string>;
@@ -124,6 +130,8 @@ export interface AgentBrowserRuntimeOptions {
   readonly resolveExecutable?: () => string;
   readonly resolveController?: () => string;
   readonly resourcesPath?: string;
+  /** Host-owned browser profile root; never derived from a project workspace. */
+  readonly browserProfilesRoot?: string;
 }
 
 export class AgentBrowserRuntimeError extends AgentBaseError {
@@ -158,6 +166,7 @@ export class AgentBrowserRuntime {
       options.driver ??
       new AgentNativeBrowserDriver({
         workspaceRoot: this.workspaceRoot,
+        browserProfilesRoot: options.browserProfilesRoot ?? resolveAgentApplicationPaths().browserProfilesRoot,
         configuration: this.configuration,
         resolveExecutable: options.resolveExecutable,
         resolveController: options.resolveController,
@@ -174,7 +183,7 @@ export class AgentBrowserRuntime {
     const signal = composeBrowserSignals(context.signal, this.shutdownController.signal);
     assertNotAborted(signal);
     const executionContext = context.signal === signal ? context : { ...context, signal };
-    const state = this.sessionFor(executionContext);
+    const state = this.sessionFor(executionContext, browserContextForOperation(operation, this.configuration));
     await this.reclaimIdleSessions(state.key);
 
     return this.runInSession(state.key, signal, async () => {
@@ -246,7 +255,7 @@ export class AgentBrowserRuntime {
     if (failures.length > 1) throw new AggregateError(failures, "Controlled browser runtime cleanup failed.");
   }
 
-  private sessionFor(context: AgentHostToolContext): AgentBrowserSessionState {
+  private sessionFor(context: AgentHostToolContext, browserContext: AgentBrowserContext): AgentBrowserSessionState {
     const sessionId = context.sessionId?.trim();
     if (!sessionId) {
       throw new AgentBrowserRuntimeError(
@@ -254,11 +263,14 @@ export class AgentBrowserRuntime {
         AgentExecutionErrorCodes.ToolProcessConfigurationInvalid,
       );
     }
-    const key = sha256Hex(`senera-browser-session-v2\u0000${this.workspaceRoot}\u0000${sessionId}`);
+    const key = sha256Hex(
+      `senera-browser-session-v3\u0000${browserContext}\u0000${this.workspaceRoot}\u0000${sessionId}`,
+    );
     const current = this.sessions.get(key);
     if (current) return current;
     const state: AgentBrowserSessionState = {
       key,
+      context: browserContext,
       lastActivityAt: Date.now(),
       approvedTargets: new Set(),
       approvedLocalResourceRoots: new Map(),
@@ -427,6 +439,7 @@ export class AgentBrowserRuntime {
       state.opening ??
       this.driver.createSession({
         sessionId: state.key,
+        context: state.context,
         requestTimeoutMs: this.configuration.runtime.requestTimeoutMs,
         maxDownloadBytes: this.configuration.capture.maxDownloadBytes,
         assertRequestPermitted: (url, kind, sourceUrl) => this.assertRequestPermitted(url, kind, sourceUrl, state),
@@ -545,7 +558,7 @@ export class AgentBrowserRuntime {
       asset: {
         id,
         fileName,
-        mediaType: lookupDownloadMimeType(fileName),
+        mediaType: download.mediaType ?? lookupDownloadMimeType(fileName),
         dataBase64: Buffer.from(download.data).toString("base64"),
       },
       sourceUrl: download.url,
@@ -579,7 +592,7 @@ export class AgentBrowserRuntime {
                 assetId: download.asset.id,
                 fileName: download.asset.fileName,
                 mediaType: download.asset.mediaType,
-                url: download.sourceUrl,
+                ...(download.sourceUrl ? { url: download.sourceUrl } : {}),
               },
             }
           : {}),
@@ -629,7 +642,7 @@ export class AgentBrowserRuntime {
                 metadata: {
                   trust: BrowserContentTrust,
                   mediaType: download.asset.mediaType,
-                  sourceUrl: download.sourceUrl,
+                  ...(download.sourceUrl ? { sourceUrl: download.sourceUrl } : {}),
                   backend: this.driver.backend,
                 },
               },
@@ -668,7 +681,16 @@ interface BrowserOperationProjection {
 
 interface BrowserDownloadProjection {
   readonly asset: AgentToolArtifactAsset;
-  readonly sourceUrl: string;
+  readonly sourceUrl?: string;
+}
+
+function browserContextForOperation(
+  operation: AgentBrowserOperation,
+  configuration: AgentBrowserConfiguration,
+): AgentBrowserContext {
+  // Rendered fetches are host-internal, read-only work. Keeping them temporary
+  // preserves the user's interactive browser state boundary and allows headless rendering.
+  return operation === "render_html" ? "temporary" : configuration.runtime.context;
 }
 
 interface PreparedBrowserArguments {

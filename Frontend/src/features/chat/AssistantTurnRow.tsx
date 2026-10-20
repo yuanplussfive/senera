@@ -2,10 +2,12 @@ import { lazy, memo, Suspense, useEffect, useId, useState } from "react";
 import type { InteractionInputAction, InteractionInputContent } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
-import type { ChatMessage } from "../../store/sessionStore";
-import { ActivityLoader, AppIcon, ConversationFrame } from "../../shared/ui";
+import type { ChatMessage, ConversationIdentity } from "../../store/sessionStore";
+import { DEFAULT_ASSISTANT_PROFILE } from "../../store/session/userProfile";
+import { ActivityLoader, ActivityStatusIcon, AppIcon, ConversationFrame, ExecutionStatusTones } from "../../shared/ui";
 import { activeRunActivityLabel, runActivityPresentationPriority } from "../workflow/runActivityPresentation";
 import { isChildRunActive } from "../workflow/ChildRunOverview";
+import { readRunStatusLabel } from "../workflow/stepPresentation";
 import { AssistantMessageBody } from "./AssistantMessageBody";
 import { InteractionInputStrip } from "./InteractionInputStrip";
 import { MessageActions } from "./MessageActions";
@@ -23,6 +25,7 @@ import { preloadMarkdownRenderer } from "../../shared/code/LazyMarkdownRenderer"
 import { scheduleIdleTask } from "../../shared/scheduling/scheduleIdleTask";
 import { readAssistantDisplayContent } from "./messagePresentation";
 import { projectAssistantTurnStages, type AssistantTurnStage } from "./assistantTurnStageProjection";
+import { isRunTerminal } from "../../store/session/sessionRunProjection";
 import {
   readAssistantTurnActionMessage,
   readAssistantTurnAnchorId,
@@ -44,6 +47,7 @@ const ToolRunOutputSummary = lazy(() =>
 export interface AssistantTurnRowProps {
   sessionId: string;
   turn: AssistantTurnListItem;
+  assistantProfile?: ConversationIdentity;
   showInlineActions: boolean;
   onForkFromMessage: (message: Pick<ChatMessage, "requestId">) => void;
   onRegenerate: (message: ChatMessage) => void;
@@ -58,6 +62,7 @@ export interface AssistantTurnRowProps {
 
 export const AssistantTurnRow = memo(function AssistantTurnRow({
   turn,
+  assistantProfile = DEFAULT_ASSISTANT_PROFILE,
   showInlineActions,
   onForkFromMessage,
   onRegenerate,
@@ -137,17 +142,17 @@ export const AssistantTurnRow = memo(function AssistantTurnRow({
   const thinkingProjectionStageId = hasResponseOrderedThinking
     ? undefined
     : (currentStageId ?? renderedStages.at(-1)?.id);
-  const completedFinalStage = readCompletedFinalStage(renderedStages, run);
-  const completedProcessStages = completedFinalStage
-    ? projectCompletedProcessStages(renderedStages, completedFinalStage.id)
-    : [];
-  const showCompletedDisclosure = completedFinalStage !== undefined && completedProcessStages.length > 0;
-  const [completedProcessOpen, setCompletedProcessOpen] = useState(false);
-  const completedProcessId = useId();
+  const terminalFinalStage = readTerminalFinalStage(renderedStages, run);
+  const terminalProcessStages = projectTerminalProcessStages(renderedStages, terminalFinalStage?.id);
+  const hasTerminalExecution = terminalProcessStages.some(hasExecutionStageContent);
+  const showTerminalPresentation = terminalFinalStage !== undefined || (isTerminalRun(run) && hasTerminalExecution);
+  const showTerminalDisclosure = showTerminalPresentation && terminalProcessStages.length > 0;
+  const [terminalProcessOpen, setTerminalProcessOpen] = useState(false);
+  const terminalProcessId = useId();
 
   useEffect(() => {
-    if (!showCompletedDisclosure) setCompletedProcessOpen(false);
-  }, [showCompletedDisclosure]);
+    if (!showTerminalDisclosure) setTerminalProcessOpen(false);
+  }, [showTerminalDisclosure]);
 
   return (
     <ConversationFrame
@@ -157,17 +162,17 @@ export const AssistantTurnRow = memo(function AssistantTurnRow({
       data-assistant-turn={turn.requestId ?? turn.key}
     >
       <div className="flex min-w-0 items-start gap-3" data-assistant-message>
-        <AssistantMessageAvatar />
+        <AssistantMessageAvatar profile={assistantProfile} />
         <div className="assistant-turn-content min-w-0 flex-1">
-          <MessageMeta title="Senera" timestamp={turn.createdAt} />
-          {completedFinalStage ? (
-            <CompletedTurnPresentation
-              finalStage={completedFinalStage}
-              processStages={completedProcessStages}
-              processOpen={showCompletedDisclosure && completedProcessOpen}
-              processId={completedProcessId}
+          <MessageMeta title={assistantProfile.name} timestamp={turn.createdAt} />
+          {showTerminalPresentation ? (
+            <TerminalTurnPresentation
+              finalStage={terminalFinalStage}
+              processStages={terminalProcessStages}
+              processOpen={showTerminalDisclosure && terminalProcessOpen}
+              processId={terminalProcessId}
               run={run}
-              onProcessOpenChange={setCompletedProcessOpen}
+              onProcessOpenChange={setTerminalProcessOpen}
             />
           ) : (
             <div className="assistant-turn-flow" data-assistant-turn-stage-list>
@@ -225,7 +230,7 @@ export const AssistantTurnRow = memo(function AssistantTurnRow({
   );
 }, areAssistantTurnRowPropsEqual);
 
-function CompletedTurnPresentation({
+function TerminalTurnPresentation({
   finalStage,
   processStages,
   processOpen,
@@ -233,7 +238,7 @@ function CompletedTurnPresentation({
   run,
   onProcessOpenChange,
 }: {
-  finalStage: RenderedAssistantStage;
+  finalStage?: RenderedAssistantStage;
   processStages: readonly RenderedAssistantStage[];
   processOpen: boolean;
   processId: string;
@@ -253,9 +258,9 @@ function CompletedTurnPresentation({
           onClick={() => {
             onProcessOpenChange(!processOpen);
           }}
-          data-completed-turn-toggle
+          data-settled-turn-toggle
         >
-          <RunElapsedText run={run} fallback={frontendMessage("chat.metrics.process")} />
+          <SettledRunSummary run={run} fallback={frontendMessage("chat.metrics.process")} />
           <AppIcon
             icon="chevron-right"
             size="1em"
@@ -269,14 +274,14 @@ function CompletedTurnPresentation({
       )}
       {hasProcess ? (
         <MotionDisclosure id={processId} open={processOpen} className="assistant-turn-process-disclosure">
-          <div className="assistant-turn-process-list flex min-w-0 flex-col" data-completed-turn-process>
+          <div className="assistant-turn-process-list flex min-w-0 flex-col" data-settled-turn-process>
             {processStages.map((stage) => (
               <AssistantStage key={stage.id} stage={stage} displayMode="process" showExecution={false} />
             ))}
           </div>
         </MotionDisclosure>
       ) : null}
-      <AssistantStage key={finalStage.id} stage={finalStage} displayMode="final" showExecution={false} />
+      {finalStage ? <AssistantStage stage={finalStage} displayMode="final" showExecution={false} /> : null}
     </div>
   );
 }
@@ -284,6 +289,8 @@ function CompletedTurnPresentation({
 function areAssistantTurnRowPropsEqual(previous: AssistantTurnRowProps, next: AssistantTurnRowProps): boolean {
   if (
     previous.sessionId !== next.sessionId ||
+    previous.assistantProfile?.name !== next.assistantProfile?.name ||
+    previous.assistantProfile?.avatarDataUrl !== next.assistantProfile?.avatarDataUrl ||
     previous.showInlineActions !== next.showInlineActions ||
     previous.onForkFromMessage !== next.onForkFromMessage ||
     previous.onRegenerate !== next.onRegenerate ||
@@ -312,11 +319,11 @@ function areAssistantTurnRowPropsEqual(previous: AssistantTurnRowProps, next: As
 
 type RenderedAssistantStage = AssistantTurnStage;
 
-function readCompletedFinalStage(
+function readTerminalFinalStage(
   stages: readonly RenderedAssistantStage[],
   run?: AssistantTurnListItem["run"],
 ): RenderedAssistantStage | undefined {
-  if (run?.status !== "completed") return undefined;
+  if (!isTerminalRun(run)) return undefined;
   return [...stages]
     .reverse()
     .find(
@@ -328,9 +335,9 @@ function readCompletedFinalStage(
     );
 }
 
-function projectCompletedProcessStages(
+function projectTerminalProcessStages(
   stages: readonly RenderedAssistantStage[],
-  finalStageId: string,
+  finalStageId?: string,
 ): RenderedAssistantStage[] {
   return stages.flatMap((stage) => {
     const isFinalStage = stage.id === finalStageId;
@@ -358,6 +365,14 @@ function projectCompletedProcessStages(
   });
 }
 
+function isTerminalRun(run?: AssistantTurnListItem["run"]): boolean {
+  return run !== undefined && isRunTerminal(run);
+}
+
+function hasExecutionStageContent(stage: RenderedAssistantStage): boolean {
+  return Boolean(stage.run?.steps.length) || Boolean(stage.responseItems?.some((item) => item.kind === "execution"));
+}
+
 function RunElapsedRow({ run }: { run?: AssistantTurnListItem["run"] }): JSX.Element {
   return (
     <div
@@ -366,6 +381,21 @@ function RunElapsedRow({ run }: { run?: AssistantTurnListItem["run"] }): JSX.Ele
     >
       <RunElapsedText run={run} />
     </div>
+  );
+}
+
+function SettledRunSummary({ run, fallback }: { run?: AssistantTurnListItem["run"]; fallback: string }): JSX.Element {
+  if (!run || run.status === "completed") return <RunElapsedText run={run} fallback={fallback} />;
+
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1.5" data-settled-turn-status={run.status}>
+      <ActivityStatusIcon status={run.status} size={14} motion="none" />
+      <span className={cn("font-medium", ExecutionStatusTones[run.status].text)}>{readRunStatusLabel(run.status)}</span>
+      <span className="text-content-muted" aria-hidden="true">
+        ·
+      </span>
+      <RunElapsedText run={run} fallback={fallback} />
+    </span>
   );
 }
 

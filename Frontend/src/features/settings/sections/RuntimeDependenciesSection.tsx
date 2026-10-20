@@ -4,6 +4,7 @@ import { formatFrontendList, frontendMessage, type FrontendMessageKey } from "..
 import { resolveFrontendLocalizedText, type FrontendLocale } from "../../../i18n/frontendLocaleModel";
 import { useFrontendLocale } from "../../../i18n/useFrontendLocale";
 import { cn } from "../../../lib/util";
+import { AgentToolPresentationIcon } from "../../../shared/workspace/AgentToolPresentationIcon";
 import {
   AppIcon,
   Button,
@@ -13,8 +14,10 @@ import {
   Spinner,
   StateView,
   useClipboardCopy,
+  type AppIconName,
 } from "../../../shared/ui";
 import type { SettingsSystemConfigHandle } from "../SettingsContracts";
+import { SettingsBinaryStateToken, type SettingsBinaryState } from "./SettingsBinaryStateToken";
 
 const statusMessageKeys: Record<AgentRuntimeDependencySnapshot["status"], FrontendMessageKey> = {
   checking: "settings.dependencies.status.checking",
@@ -35,6 +38,14 @@ const phaseMessageKeys: Record<string, FrontendMessageKey> = {
 const kindMessageKeys: Record<AgentRuntimeDependencySnapshot["kind"], FrontendMessageKey> = {
   controller: "settings.dependencies.kind.controller",
   browser: "settings.dependencies.kind.browser",
+};
+
+const dependencyAvailabilityStates: Record<AgentRuntimeDependencySnapshot["status"], SettingsBinaryState> = {
+  checking: "off",
+  installing: "off",
+  ready: "on",
+  unavailable: "off",
+  failed: "off",
 };
 
 export function RuntimeDependenciesSection({
@@ -75,7 +86,7 @@ export function RuntimeDependenciesSection({
     return (
       <StateView
         status="empty"
-        icon={<AppIcon icon="package" size={20} aria-hidden="true" />}
+        icon={<AppIcon icon="server" size={20} aria-hidden="true" />}
         title={frontendMessage("settings.dependencies.empty")}
         action={
           <Button
@@ -95,34 +106,6 @@ export function RuntimeDependenciesSection({
 
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden bg-surface-canvas" data-runtime-dependencies>
-      <header className="mx-auto flex w-full max-w-[1120px] shrink-0 items-center justify-between gap-4 border-b border-line px-6 py-4 lg:px-8">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-md bg-accent-content/[0.08] text-accent-content">
-            <AppIcon icon="package" size={16} aria-hidden="true" />
-          </span>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-              <h1 className="text-[14px] font-semibold text-content-primary">
-                {frontendMessage("settings.dependencies.title")}
-              </h1>
-            </div>
-            <p className="mt-1 max-w-[700px] text-[11px] leading-4 text-content-muted">
-              {frontendMessage("settings.dependencies.directoryDescription")}
-            </p>
-          </div>
-        </div>
-        <IconButton
-          label={frontendMessage("settings.dependencies.refresh")}
-          tooltip={frontendMessage("settings.dependencies.refresh")}
-          size="sm"
-          tone="muted"
-          disabled={!connected}
-          onClick={() => systemConfig.refreshRuntimeDependencies()}
-        >
-          <AppIcon icon="refresh" size={16} aria-hidden="true" />
-        </IconButton>
-      </header>
-
       <div className="mx-auto grid min-h-0 w-full max-w-[1120px] flex-1 md:grid-cols-[minmax(220px,300px)_minmax(0,1fr)]">
         <ScrollArea className="min-h-0 border-b border-line md:border-b-0 md:border-r" viewportClassName="h-full">
           <div
@@ -174,7 +157,7 @@ function DependencyListItem({
       )}
     >
       <span className={cn("grid h-8 w-8 shrink-0 place-items-center rounded-md", statusTone(dependency.status).icon)}>
-        <AppIcon icon={dependency.kind === "browser" ? "globe" : "terminal"} size={16} aria-hidden="true" />
+        <AppIcon icon={runtimeDependencyIcon(dependency.kind)} size={16} aria-hidden="true" />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[12.5px] font-medium text-content-primary">
@@ -187,7 +170,10 @@ function DependencyListItem({
           </span>
         </span>
       </span>
-      <span className={cn("h-2 w-2 shrink-0 rounded-full", statusTone(dependency.status).dot)} aria-hidden="true" />
+      <SettingsBinaryStateToken
+        state={dependencyAvailabilityStates[dependency.status]}
+        ariaLabel={frontendMessage(statusMessageKeys[dependency.status])}
+      />
     </button>
   );
 }
@@ -229,7 +215,7 @@ function DependencyDetail({
       <div className="flex flex-col gap-5 border-b border-line pb-6 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-start gap-4">
           <span className={cn("grid h-11 w-11 shrink-0 place-items-center rounded-lg", tone.icon)}>
-            <AppIcon icon={dependency.kind === "browser" ? "globe" : "terminal"} size={23} aria-hidden="true" />
+            <AppIcon icon={runtimeDependencyIcon(dependency.kind)} size={23} aria-hidden="true" />
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -254,21 +240,23 @@ function DependencyDetail({
             disabled={busy || systemConfig.socketStatus !== "open"}
             onClick={() => systemConfig.checkRuntimeDependency(dependency.id)}
           >
-            <AppIcon icon="refresh" size={15} aria-hidden="true" />
+            <AgentToolPresentationIcon icon="scan-search" size={15} aria-hidden="true" />
           </IconButton>
           {dependency.installable ? (
-            <Button
+            <IconButton
+              label={frontendMessage(
+                dependency.status === "ready" ? "settings.dependencies.reinstall" : "settings.dependencies.install",
+              )}
+              tooltip={frontendMessage(
+                dependency.status === "ready" ? "settings.dependencies.reinstall" : "settings.dependencies.install",
+              )}
               size="sm"
-              variant={dependency.status === "ready" ? "outline" : "default"}
               loading={busy}
               disabled={!canInstall}
               onClick={() => systemConfig.installRuntimeDependency(dependency.id)}
             >
-              <AppIcon icon="download" size={14} aria-hidden="true" />
-              {dependency.status === "ready"
-                ? frontendMessage("settings.dependencies.reinstall")
-                : frontendMessage("settings.dependencies.install")}
-            </Button>
+              <AppIcon icon="download" size={15} aria-hidden="true" />
+            </IconButton>
           ) : null}
         </div>
       </div>
@@ -389,36 +377,35 @@ function formatDependencyPhase(phase: string | undefined): string | null {
   return messageKey ? frontendMessage(messageKey) : phase;
 }
 
+function runtimeDependencyIcon(kind: AgentRuntimeDependencySnapshot["kind"]): AppIconName {
+  return kind === "browser" ? "globe" : "server";
+}
+
 function statusTone(status: AgentRuntimeDependencySnapshot["status"]): {
   readonly text: string;
   readonly icon: string;
-  readonly dot: string;
 } {
   switch (status) {
     case "ready":
       return {
         text: "text-emerald-600 dark:text-emerald-400",
         icon: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-        dot: "bg-emerald-500",
       };
     case "installing":
     case "checking":
       return {
         text: "text-accent-content",
         icon: "bg-accent-content/10 text-accent-content",
-        dot: "bg-accent-content",
       };
     case "failed":
       return {
         text: "text-brick-600 dark:text-brick-400",
         icon: "bg-brick-500/10 text-brick-600 dark:text-brick-400",
-        dot: "bg-brick-500",
       };
     default:
       return {
         text: "text-content-muted",
         icon: "bg-ink-200/60 text-content-muted",
-        dot: "bg-ink-400",
       };
   }
 }

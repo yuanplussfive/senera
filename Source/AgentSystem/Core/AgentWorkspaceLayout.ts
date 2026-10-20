@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import path from "node:path";
 import { relativePathWithin } from "./AgentPath.js";
 import {
@@ -19,6 +18,7 @@ const WorkspaceLayout = {
   skillsDirectory: "skills",
   mcpDirectory: "mcp",
   contextDirectory: "context",
+  agentRolesDirectory: "agents",
   projectContextFile: "PROJECT.md",
   exportsDirectory: "exports",
   sessionExportsDirectory: "sessions",
@@ -45,17 +45,10 @@ const WorkspaceLayout = {
   continuityIdentity: "continuity-identity.json",
 } as const;
 
-const LegacyWorkspaceLayout = {
-  skillsDirectory: ".skills",
-  databases: [
-    { domain: "config", fileName: "Config.sqlite" },
-    { domain: "sessions", fileName: "senera.db" },
-    { domain: "memory", fileName: "Memory.sqlite" },
-  ],
-  configSecretKey: "config-secrets.key",
-} as const;
+const LegacyWorkspaceConfigSecretKeyFileName = "config-secrets.key";
 
 const RepositoryMetadataDirectories = [".git", ".agents", ".codex"] as const;
+const WorkspaceDependencyDirectories = ["node_modules"] as const;
 
 export const AgentWorkspaceResourceDomains = {
   WorkspaceContent: "workspace-content",
@@ -78,6 +71,8 @@ export interface AgentWorkspaceResourceClassification {
 export interface AgentWorkspaceLayout {
   readonly root: string;
   readonly stateRoot: string;
+  /** The state directory inside the project itself, even when runtime state was redirected elsewhere. */
+  readonly projectStateRoot: string;
   /** Workspace-local structured observability root. */
   readonly logsRoot: string;
   readonly configFile: string;
@@ -85,6 +80,8 @@ export interface AgentWorkspaceLayout {
   readonly promptPresetRoot: string;
   /** Workspace-local pointer to the active Markdown prompt preset. */
   readonly promptPresetStateFile: string;
+  /** Durable user and assistant profile media owned by this workspace. */
+  readonly profileAvatarRoot: string;
   /** Pi session history owned by this workspace. */
   readonly piSessionsRoot: string;
   readonly sandboxRuntimeRoot: string;
@@ -126,8 +123,11 @@ export interface AgentWorkspaceLayout {
     /** Content-addressed text retained for changed-file before/after materialization. */
     readonly workspaceObserverContents: string;
   };
+  /** Key files written by releases that kept one key per workspace; the host keyring reads, never writes. */
   readonly configSecretKey: string;
   readonly credentialSecretKey: string;
+  /** Config key file from releases that kept secrets directly under the state directory. */
+  readonly legacyConfigSecretKey: string;
   /** Stable logical identities used by continuity; never a filesystem path. */
   readonly continuityIdentity: string;
 }
@@ -144,16 +144,18 @@ export function resolveAgentWorkspaceLayout(
   return {
     root,
     stateRoot,
+    projectStateRoot,
     logsRoot: path.join(stateRoot, "logs"),
     configFile: path.join(root, AgentWorkspaceConfigFileName),
     promptPresetRoot: path.join(root, AgentPromptPresetDirectoryName),
     promptPresetStateFile: path.join(projectStateRoot, AgentWorkspacePromptPresetStateFileName),
+    profileAvatarRoot: path.join(projectStateRoot, "profile", "avatars"),
     piSessionsRoot: path.join(stateRoot, "pi-sessions"),
     sandboxRuntimeRoot: path.join(stateRoot, AgentWorkspaceSandboxRuntimeDirectoryName),
     desktopRuntimeRoot: path.join(stateRoot, "desktop"),
     skillRoot: path.join(projectStateRoot, WorkspaceLayout.skillsDirectory),
     mcpRoot: path.join(projectStateRoot, WorkspaceLayout.mcpDirectory),
-    agentRolesRoot: path.join(projectStateRoot, "agents"),
+    agentRolesRoot: path.join(projectStateRoot, WorkspaceLayout.agentRolesDirectory),
     userPluginsRoot: path.resolve(userPluginsRoot ?? path.join(stateRoot, AgentWorkspaceUserPluginsDirectoryName)),
     projectPluginsRoot: path.join(projectStateRoot, AgentWorkspaceProjectPluginsDirectoryName),
     contextRoot: path.join(projectStateRoot, WorkspaceLayout.contextDirectory),
@@ -177,6 +179,7 @@ export function resolveAgentWorkspaceLayout(
     ) as AgentWorkspaceLayout["caches"],
     configSecretKey: path.join(dataRoot, ...WorkspaceLayout.configSecretKey),
     credentialSecretKey: path.join(dataRoot, ...WorkspaceLayout.credentialSecretKey),
+    legacyConfigSecretKey: path.join(stateRoot, LegacyWorkspaceConfigSecretKeyFileName),
     continuityIdentity: path.join(dataRoot, WorkspaceLayout.continuityIdentity),
   };
 }
@@ -190,7 +193,26 @@ export function resolveAgentWorkspaceConfigPath(
 
 export function listAgentWorkspaceNonContentRoots(workspaceRoot: string): string[] {
   const layout = resolveAgentWorkspaceLayout(workspaceRoot);
-  return [layout.stateRoot, ...RepositoryMetadataDirectories.map((directory) => path.join(layout.root, directory))];
+  return [
+    layout.stateRoot,
+    ...RepositoryMetadataDirectories.map((directory) => path.join(layout.root, directory)),
+    ...WorkspaceDependencyDirectories.map((directory) => path.join(layout.root, directory)),
+  ];
+}
+
+/**
+ * State subdirectories a project commits on purpose: authored skills, MCP packages, context notes,
+ * project plugins and agent roles. Everything else the state directory holds is this host's runtime
+ * data, and a project has no reason to carry it.
+ */
+export function listAgentWorkspaceShareableStateDirectories(): readonly string[] {
+  return [
+    WorkspaceLayout.skillsDirectory,
+    WorkspaceLayout.mcpDirectory,
+    WorkspaceLayout.contextDirectory,
+    AgentWorkspaceProjectPluginsDirectoryName,
+    WorkspaceLayout.agentRolesDirectory,
+  ];
 }
 
 export function classifyAgentWorkspaceResource(
@@ -237,59 +259,6 @@ export function findAgentWorkspaceRoot(statePath: string): string | undefined {
     const parent = path.dirname(current);
     if (parent === current) return undefined;
     current = parent;
-  }
-}
-
-export function migrateLegacyAgentDatabaseFileFamily(sourcePath: string, targetPath: string): void {
-  const destinationPath = fs.existsSync(targetPath)
-    ? path.join(path.dirname(targetPath), "legacy", path.basename(sourcePath))
-    : targetPath;
-  migrateFileFamily(path.dirname(sourcePath), path.basename(sourcePath), destinationPath);
-}
-
-export function migrateLegacyAgentWorkspaceLayout(workspaceRoot: string): void {
-  const layout = resolveAgentWorkspaceLayout(workspaceRoot);
-  migrateDirectory(path.join(layout.root, LegacyWorkspaceLayout.skillsDirectory), layout.skillRoot);
-
-  for (const { domain, fileName } of LegacyWorkspaceLayout.databases) {
-    migrateLegacyAgentDatabaseFileFamily(path.join(layout.stateRoot, fileName), layout.databases[domain]);
-  }
-  migrateFile(path.join(layout.stateRoot, LegacyWorkspaceLayout.configSecretKey), layout.configSecretKey);
-}
-
-function migrateDirectory(source: string, target: string): void {
-  if (!fs.existsSync(source)) return;
-  assertMigrationTargetAvailable(source, target);
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  fs.renameSync(source, target);
-}
-
-function migrateFileFamily(sourceDirectory: string, sourceName: string, targetPath: string): void {
-  if (!fs.existsSync(sourceDirectory)) return;
-  const members = fs
-    .readdirSync(sourceDirectory)
-    .filter((name) => name === sourceName || name.startsWith(`${sourceName}-`) || name.startsWith(`${sourceName}.`));
-  if (members.length === 0) return;
-
-  const migrations = members.map((name) => ({
-    source: path.join(sourceDirectory, name),
-    target: `${targetPath}${name.slice(sourceName.length)}`,
-  }));
-  for (const migration of migrations) assertMigrationTargetAvailable(migration.source, migration.target);
-  fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-  for (const migration of migrations) fs.renameSync(migration.source, migration.target);
-}
-
-function migrateFile(source: string, target: string): void {
-  if (!fs.existsSync(source)) return;
-  assertMigrationTargetAvailable(source, target);
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  fs.renameSync(source, target);
-}
-
-function assertMigrationTargetAvailable(source: string, target: string): void {
-  if (fs.existsSync(target)) {
-    throw new Error(`Workspace layout migration cannot replace ${target}; legacy source remains at ${source}.`);
   }
 }
 

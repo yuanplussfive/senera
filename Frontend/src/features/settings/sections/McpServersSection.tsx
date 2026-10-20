@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { McpInputStatus, McpInputValue, McpServerSettingsItem } from "../../../api/eventTypes";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import { resolveFrontendLocalizedText } from "../../../i18n/frontendLocaleModel";
 import { useFrontendLocale } from "../../../i18n/useFrontendLocale";
 import { cn } from "../../../lib/util";
-import { FluidHoverHighlight, useFluidHover, useMotionLevel } from "../../../shared/motion";
+import { classifySettingsContentLayout, useObservedLayout } from "../../../shared/responsive";
 import {
   Button,
   AppIcon,
@@ -20,14 +20,19 @@ import {
   SecretInput,
   Spinner,
   StateView,
+  StatusToken,
   Switch,
 } from "../../../shared/ui";
 import type { AppIconName } from "../../../shared/ui";
 import type { SettingsSystemConfigHandle } from "../SettingsContracts";
+import { SettingsEntityNavigator } from "./SettingsEntityNavigator";
+import { SettingsEntityMetrics } from "./SettingsEntityMetrics";
+import { PluginIdentityFrame, PluginIdentityIcon } from "./PluginIdentityIcon";
 
 const EmptyMcpServers: readonly McpServerSettingsItem[] = [];
 const McpInputSyncDebounceMs = 350;
 type McpInputDraft = McpInputValue | "";
+type McpStatusFilter = "all" | McpServerSettingsItem["status"];
 
 interface McpSyncRequest {
   requestId: string;
@@ -39,26 +44,40 @@ interface McpSyncRequest {
 export function McpServersSection({
   systemConfig,
   onDirtyChange,
+  detailServerId,
+  activationControl,
 }: {
   systemConfig?: SettingsSystemConfigHandle;
   onDirtyChange?: (dirty: boolean) => void;
+  /** Renders one server inside a parent-owned settings detail view. */
+  detailServerId?: string;
+  /** Parent-owned config draft control for the unified plugin directory. */
+  activationControl?: {
+    readonly enabled: boolean;
+    readonly disabled: boolean;
+    readonly onEnabledChange: (enabled: boolean) => void;
+  };
 }): JSX.Element {
-  const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
+  const [selectedServerId, setSelectedServerId] = useState<string | null>(() => detailServerId ?? null);
   const [drafts, setDrafts] = useState<Record<string, McpInputDraft>>({});
   // Secrets stay write-only end to end; this only echoes what the user saved in
   // the current view so the field does not blank itself right after saving.
   const [savedSecrets, setSavedSecrets] = useState<Record<string, string>>({});
   const [activeRequests, setActiveRequests] = useState<readonly McpSyncRequest[]>([]);
   const [operationError, setOperationError] = useState<string | null>(null);
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<McpStatusFilter>("all");
   const locale = useFrontendLocale();
-  const { disableMotion } = useMotionLevel();
-  const serverListRef = useRef<HTMLDivElement>(null);
-  const serverHover = useFluidHover(serverListRef, {
-    axis: "y",
-    isItemDisabled: (element) => element.hasAttribute("disabled"),
-  });
+  const { ref: layoutRef, layout } = useObservedLayout<HTMLDivElement, "compact" | "standard" | "wide">(
+    classifySettingsContentLayout,
+    "standard",
+  );
   const servers = systemConfig?.mcpServers ?? EmptyMcpServers;
-  const selectedServer = selectedServerId ? (servers.find((server) => server.id === selectedServerId) ?? null) : null;
+  const effectiveSelectedServerId = detailServerId ?? selectedServerId;
+  const selectedServer = effectiveSelectedServerId
+    ? (servers.find((server) => server.id === effectiveSelectedServerId) ?? null)
+    : null;
   const selectedDisplayName = selectedServer ? resolveFrontendLocalizedText(selectedServer.displayName, locale) : "";
   const selectedDescription = selectedServer ? resolveFrontendLocalizedText(selectedServer.description, locale) : "";
   const unavailableCapabilityDetails = selectedServer?.unavailableCapabilityDetails ?? [];
@@ -69,6 +88,21 @@ export function McpServersSection({
   const workspaceId = systemConfig?.workspaceId ?? null;
   const workspaceIdRef = useRef(workspaceId);
   const reconnecting = !connected && syncing;
+  const visibleServers = useMemo(() => {
+    const normalizedSearch = search.trim().toLocaleLowerCase(locale);
+    return servers.filter((server) => {
+      if (statusFilter !== "all" && server.status !== statusFilter) return false;
+      if (!normalizedSearch) return true;
+      return [
+        resolveFrontendLocalizedText(server.displayName, locale),
+        resolveFrontendLocalizedText(server.description, locale),
+      ]
+        .join(" ")
+        .toLocaleLowerCase(locale)
+        .includes(normalizedSearch);
+    });
+  }, [locale, search, servers, statusFilter]);
+  const sourceGroups = useMemo(() => projectMcpServerSourceGroups(visibleServers, locale), [locale, visibleServers]);
 
   useEffect(() => {
     if (workspaceIdRef.current === workspaceId) return;
@@ -78,6 +112,7 @@ export function McpServersSection({
     setSavedSecrets({});
     setActiveRequests([]);
     setOperationError(null);
+    setMobileDetailOpen(false);
   }, [workspaceId]);
 
   useEffect(() => {
@@ -88,7 +123,7 @@ export function McpServersSection({
   }, [onDirtyChange]);
 
   useEffect(() => {
-    if (servers.length === 0) {
+    if (detailServerId !== undefined || servers.length === 0) {
       setSelectedServerId(null);
       setDrafts({});
       setSavedSecrets({});
@@ -101,8 +136,19 @@ export function McpServersSection({
       setSavedSecrets({});
       setActiveRequests([]);
       setOperationError(null);
+      setMobileDetailOpen(false);
     }
-  }, [selectedServerId, servers]);
+  }, [detailServerId, selectedServerId, servers]);
+
+  useEffect(() => {
+    if (detailServerId !== undefined || servers.length === 0) return;
+    if (selectedServerId && servers.some((server) => server.id === selectedServerId)) return;
+    if (layout !== "compact") setSelectedServerId(servers[0].id);
+  }, [detailServerId, layout, selectedServerId, servers]);
+
+  useEffect(() => {
+    if (layout === "compact") setMobileDetailOpen(false);
+  }, [layout]);
 
   const sendMcpMutation = useCallback(
     (serverId: string, values: Record<string, McpInputValue>, deletes: readonly string[]): boolean => {
@@ -205,13 +251,13 @@ export function McpServersSection({
   };
   const leaveServerDetail = (): void => {
     if (!sendDrafts()) return;
-    setSelectedServerId(null);
-    resetServerView();
+    setMobileDetailOpen(false);
   };
   const selectServer = (serverId: string): void => {
     if (!sendDrafts()) return;
     setSelectedServerId(serverId);
     resetServerView();
+    if (layout === "compact") setMobileDetailOpen(true);
   };
   const clearSecret = (input: McpInputStatus): void => {
     if (!selectedServer) return;
@@ -254,106 +300,120 @@ export function McpServersSection({
     </IconButton>
   );
 
-  if (!selectedServer) {
-    return (
-      <section className="flex h-full min-h-0 flex-col overflow-hidden bg-surface-canvas" data-mcp-directory>
-        <div className="mx-auto flex w-full max-w-[980px] shrink-0 items-center justify-between gap-4 border-b border-line px-6 py-4 lg:px-8">
-          <div>
-            <div className="text-[13px] font-semibold text-content-primary">
-              {frontendMessage("settings.mcp.count", { count: servers.length })}
+  const filterOptions = [
+    { value: "all", label: frontendMessage("settings.entityNavigator.all") },
+    ...(["configured", "needs_input", "unavailable"] as const).map((status) => ({
+      value: status,
+      label: frontendMessage(`settings.mcp.status.${status}`),
+    })),
+  ];
+  const navigator = (
+    <SettingsEntityNavigator
+      title={frontendMessage("settings.mcp.count", { count: servers.length })}
+      summary={frontendMessage("settings.mcp.navigatorSummary", {
+        configured: servers.filter((server) => server.status === "configured").length,
+      })}
+      groups={sourceGroups}
+      search={search}
+      searchPlaceholder={frontendMessage("settings.mcp.search")}
+      clearSearchLabel={frontendMessage("settings.entityNavigator.clearSearch")}
+      filterLabel={frontendMessage("settings.entityNavigator.filter")}
+      filterValue={statusFilter}
+      filterOptions={filterOptions}
+      emptyMessage={
+        servers.length === 0
+          ? frontendMessage("settings.mcp.empty")
+          : frontendMessage("settings.entityNavigator.noMatches")
+      }
+      refreshAction={refreshButton}
+      getItemKey={(server) => server.id}
+      selectedItemKey={selectedServer?.id}
+      renderItem={(server, { fluidHoverEnabled }) => (
+        <McpNavigatorRow
+          server={server}
+          locale={locale}
+          selected={selectedServer?.id === server.id}
+          fluidHoverEnabled={fluidHoverEnabled}
+          disabled={!connected}
+          onSelect={() => selectServer(server.id)}
+        />
+      )}
+      onSearchChange={setSearch}
+      onFilterChange={(value) => setStatusFilter(value as McpStatusFilter)}
+    />
+  );
+  const detail = selectedServer ? (
+    <section className="flex h-full min-h-0 flex-col overflow-hidden bg-surface-canvas">
+      <header className="shrink-0 border-b border-line-subtle/70 px-6 py-5 sm:px-8">
+        <div className="mx-auto flex w-full max-w-[860px] flex-wrap items-start justify-between gap-4">
+          <div className="flex min-w-0 items-start gap-3">
+            <PluginIdentityFrame className="mt-0.5">
+              <PluginIdentityIcon
+                brandIcon={selectedServer.presentation?.brandIcon}
+                icon={selectedServer.presentation?.icon}
+                size={22}
+              />
+            </PluginIdentityFrame>
+            <div className="min-w-0">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                <h3 className="truncate text-[17px] font-semibold text-content-primary">{selectedDisplayName}</h3>
+                <McpStatus status={selectedServer.status} />
+              </div>
+              <p className="mt-1 max-w-[620px] text-[12px] leading-5 text-content-secondary">{selectedDescription}</p>
             </div>
-            <p className="mt-1 text-[11px] text-content-muted">
-              {frontendMessage("settings.mcp.directoryDescription")}
-            </p>
           </div>
-          {refreshButton}
-        </div>
-        {servers.length === 0 ? (
-          <StateView
-            status="empty"
-            icon={<AppIcon icon="server" size={16} className="text-ink-400" />}
-            title={frontendMessage("settings.mcp.empty")}
-          />
-        ) : (
-          <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full">
-            <div
-              ref={serverListRef}
-              className="relative mx-auto w-full max-w-[980px] px-6 lg:px-8"
-              {...serverHover.handlers}
+          <div className="flex shrink-0 items-center gap-2">
+            {syncing ? (
+              <span className="inline-flex items-center gap-1.5 text-[11px] text-content-muted" aria-live="polite">
+                <Spinner size="xs" className="text-accent-content" />
+                {frontendMessage(reconnecting ? "settings.mcp.unsaved" : "settings.mcp.saving")}
+              </span>
+            ) : null}
+            {activationControl ? (
+              <Switch
+                checked={activationControl.enabled}
+                size="sm"
+                disabled={activationControl.disabled}
+                ariaLabel={frontendMessage("settings.mcp.enableServer", { name: selectedDisplayName })}
+                onCheckedChange={activationControl.onEnabledChange}
+              />
+            ) : null}
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!connected || syncing || selectedServer.status === "unavailable"}
+              onClick={restartServer}
             >
-              <FluidHoverHighlight hover={serverHover} hidden={disableMotion} className="rounded-md" />
-              {servers.map((server, index) => (
-                <McpServerRow
-                  key={server.id}
-                  itemRef={serverHover.getItemRef(index)}
-                  fluidHoverEnabled={!disableMotion}
-                  server={server}
-                  locale={locale}
-                  directory
-                  selected={false}
-                  disabled={!connected}
-                  onSelect={() => selectServer(server.id)}
-                />
-              ))}
-            </div>
-          </ScrollArea>
-        )}
-      </section>
-    );
-  }
-
-  return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden bg-surface-canvas" data-mcp-detail>
-      <div className="mx-auto flex w-full max-w-[980px] shrink-0 flex-wrap items-start justify-between gap-4 border-b border-line px-6 py-4 lg:px-8">
-        <div className="flex min-w-0 items-start gap-3">
-          <button
-            type="button"
-            className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-md text-content-muted transition hover:bg-surface-hover hover:text-content-primary"
-            aria-label={frontendMessage("settings.mcp.backToServers")}
-            onClick={leaveServerDetail}
-          >
-            <AppIcon icon="arrow-left" size={16} />
-          </button>
-          <AppIcon icon="server" size={24} className="mt-1 shrink-0 text-accent-content" aria-hidden="true" />
-          <div className="min-w-0">
-            <div className="flex min-w-0 flex-wrap items-center gap-2.5">
-              <h3 className="truncate text-[17px] font-semibold tracking-[-0.01em] text-content-primary">
-                {selectedDisplayName}
-              </h3>
-              <McpStatus status={selectedServer.status} />
-            </div>
-            <p className="mt-1 text-[12px] leading-5 text-content-secondary">{selectedDescription}</p>
-            <p className="mt-2 text-[10.5px] text-content-muted">
-              {frontendMessage(`settings.mcp.source.${selectedServer.source}`)} ·{" "}
-              {selectedServer.transport.toUpperCase()}
-            </p>
+              <AppIcon icon="refresh" size={14} />
+              {frontendMessage("settings.mcp.restart")}
+            </Button>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {syncing ? (
-            <span className="inline-flex items-center gap-1.5 text-[11px] text-ink-500" aria-live="polite">
-              <Spinner size="xs" className="text-accent-content" />
-              {frontendMessage(reconnecting ? "settings.mcp.unsaved" : "settings.mcp.saving")}
-            </span>
-          ) : null}
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!connected || syncing || selectedServer.status === "unavailable"}
-            onClick={restartServer}
-          >
-            <AppIcon icon="refresh" size={14} />
-            {frontendMessage("settings.mcp.restart")}
-          </Button>
-        </div>
-      </div>
+      </header>
       <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full">
         {operationError ? (
-          <InlineError className="mx-auto mt-4 max-w-[980px] px-6 lg:px-8">{operationError}</InlineError>
+          <InlineError className="mx-auto mt-4 max-w-[860px] px-6 sm:px-8">{operationError}</InlineError>
         ) : null}
-        <div className="mx-auto w-full max-w-[900px] px-6 py-6 lg:px-8">
+        <div className="mx-auto w-full max-w-[860px] px-6 py-6 sm:px-8">
+          <SettingsEntityMetrics
+            dataTestId="mcp-metrics"
+            items={[
+              {
+                label: frontendMessage("settings.entitySummary.source"),
+                value: frontendMessage(`settings.mcp.source.${selectedServer.source}`),
+              },
+              {
+                label: frontendMessage("settings.entitySummary.transport"),
+                value: selectedServer.transport.toUpperCase(),
+              },
+              { label: frontendMessage("settings.entitySummary.descriptor"), value: selectedServer.descriptorKind },
+            ]}
+          />
           {selectedServer.status === "unavailable" ? (
-            <div className="mb-5 border-y border-line py-3 text-[12px] leading-5 text-content-secondary" role="status">
+            <div
+              className="mb-5 mt-7 border-y border-line py-3 text-[12px] leading-5 text-content-secondary"
+              role="status"
+            >
               <p>{frontendMessage("settings.mcp.unavailableDescription")}</p>
               {unavailableCapabilityDetails.length ? (
                 <div className="mt-2">
@@ -372,14 +432,14 @@ export function McpServersSection({
               ) : null}
             </div>
           ) : null}
-          <div className="mb-3 flex items-baseline justify-between gap-3">
+          <div className="mb-3 mt-7 flex items-baseline justify-between gap-3">
             <div className="text-[13px] font-semibold text-content-primary">
               {frontendMessage("settings.mcp.inputs")}
             </div>
-            <span className="text-[11px] text-content-muted">{selectedServer.inputs.length}</span>
+            <span className="text-[11px] tabular-nums text-content-muted">{selectedServer.inputs.length}</span>
           </div>
           {selectedServer.inputs.length === 0 ? (
-            <div className="border-y border-ink-200/70 py-8 text-center text-[12px] text-ink-500">
+            <div className="border-y border-line py-8 text-center text-[12px] text-content-muted">
               {frontendMessage("settings.mcp.noInputs")}
             </div>
           ) : (
@@ -394,7 +454,7 @@ export function McpServersSection({
                   >
                     <div className="min-w-0">
                       <div className="flex min-w-0 items-center gap-2">
-                        <span className="truncate text-[12px] font-semibold text-ink-800">{input.title}</span>
+                        <span className="truncate text-[12px] font-semibold text-content-primary">{input.title}</span>
                         {input.required ? (
                           <span className="text-[10.5px] text-brick-600">
                             {frontendMessage("settings.mcp.required")}
@@ -402,7 +462,12 @@ export function McpServersSection({
                         ) : null}
                       </div>
                       {shouldShowInputSource(input.source) ? (
-                        <div className="mt-1 text-[11px] leading-4 text-ink-500">
+                        <div
+                          className={cn(
+                            "mt-1 text-[11px] leading-4",
+                            input.source === "unresolved" ? "text-brick-600" : "text-content-muted",
+                          )}
+                        >
                           {frontendMessage(`settings.mcp.inputSource.${input.source}`)}
                         </div>
                       ) : null}
@@ -429,6 +494,54 @@ export function McpServersSection({
         </div>
       </ScrollArea>
     </section>
+  ) : (
+    <StateView
+      status="empty"
+      className="min-h-[220px] bg-surface-canvas"
+      icon={<AppIcon icon="server" size={18} className="text-content-muted" />}
+      title={frontendMessage("settings.mcp.selectServer")}
+    />
+  );
+
+  if (detailServerId !== undefined) {
+    return (
+      <div className="h-full min-h-0 overflow-hidden" data-mcp-detail>
+        {detail}
+      </div>
+    );
+  }
+
+  return (
+    <div ref={layoutRef} className="h-full min-h-0 overflow-hidden" data-mcp-layout={layout}>
+      {layout === "compact" ? (
+        mobileDetailOpen && selectedServer ? (
+          <div className="flex h-full min-h-0 flex-col overflow-hidden bg-surface-canvas" data-mcp-detail>
+            <button
+              type="button"
+              className="flex h-11 shrink-0 items-center gap-1.5 border-b border-line-subtle/70 px-3 text-left text-[12.5px] font-medium text-content-secondary transition hover:bg-surface-hover hover:text-content-primary"
+              onClick={leaveServerDetail}
+            >
+              <AppIcon icon="chevron-right" size={16} className="rotate-180" aria-hidden="true" />
+              {frontendMessage("settings.mcp.backToServers")}
+            </button>
+            <div className="min-h-0 flex-1 overflow-hidden">{detail}</div>
+          </div>
+        ) : (
+          <div className="h-full min-h-0" data-mcp-directory>
+            {navigator}
+          </div>
+        )
+      ) : (
+        <div className="grid h-full min-h-0 grid-cols-[260px_minmax(0,1fr)] overflow-hidden bg-surface-sidebar">
+          <div className="h-full min-h-0 overflow-hidden" data-mcp-directory>
+            {navigator}
+          </div>
+          <div className="h-full min-h-0 min-w-0 overflow-hidden" data-mcp-detail>
+            {detail}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -658,36 +771,29 @@ function sameDraft(left: McpInputDraft, right: McpInputDraft): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-function McpServerRow({
-  itemRef,
-  fluidHoverEnabled,
+function McpNavigatorRow({
   server,
   locale,
-  directory = false,
   selected,
+  fluidHoverEnabled,
   disabled,
   onSelect,
 }: {
-  itemRef?: (element: HTMLElement | null) => void;
-  fluidHoverEnabled?: boolean;
   server: McpServerSettingsItem;
   locale: import("../../../i18n/frontendLocaleModel").FrontendLocale;
-  directory?: boolean;
   selected: boolean;
+  fluidHoverEnabled: boolean;
   disabled: boolean;
   onSelect: () => void;
 }): JSX.Element {
   return (
     <button
       type="button"
-      ref={itemRef}
       disabled={disabled}
       className={cn(
-        directory
-          ? "flex min-h-[68px] w-full min-w-0 items-center gap-3 border-b border-line px-1 py-3 text-left transition-colors"
-          : "flex min-h-11 w-full min-w-0 items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors",
-        !directory && selected
-          ? "bg-accent-surface text-accent-content"
+        "flex min-h-11 w-full min-w-0 items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors",
+        selected
+          ? "text-accent-content"
           : cn(
               "text-content-secondary hover:text-content-primary",
               fluidHoverEnabled ? "hover:bg-transparent" : "hover:bg-surface-hover",
@@ -697,70 +803,67 @@ function McpServerRow({
       aria-pressed={selected}
       onClick={onSelect}
     >
-      <AppIcon icon="server" size={20} className="shrink-0 text-content-secondary" aria-hidden="true" />
+      <PluginIdentityFrame>
+        <PluginIdentityIcon brandIcon={server.presentation?.brandIcon} icon={server.presentation?.icon} size={18} />
+      </PluginIdentityFrame>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[12.5px] font-semibold">
+        <span className="block truncate text-[12px] font-medium">
           {resolveFrontendLocalizedText(server.displayName, locale)}
         </span>
-        {directory ? (
-          <span className="mt-0.5 block truncate text-[10.5px] text-content-muted">
-            {shortenMcpDescription(resolveFrontendLocalizedText(server.description, locale))}
-          </span>
-        ) : null}
+        <StatusToken
+          size="compact"
+          className="mt-1 border border-line bg-surface-panel text-[9.5px] text-content-muted"
+          data-mcp-preview
+        >
+          {server.inputs.length === 0
+            ? frontendMessage("settings.entityPreview.noConfiguration")
+            : frontendMessage("settings.entityPreview.configurationCount", { count: server.inputs.length })}
+        </StatusToken>
       </span>
-      <span
-        className={cn(
-          "inline-flex shrink-0 items-center gap-1.5 text-[10.5px]",
-          server.status === "configured" ? "text-accent-content" : "text-umber-600",
-        )}
-      >
-        <span
-          aria-hidden="true"
-          className={cn(
-            "h-1.5 w-1.5 rounded-full",
-            server.status === "configured" ? "bg-accent-solid" : "bg-umber-500",
-          )}
-        />
-        {frontendMessage(`settings.mcp.status.${server.status}`)}
-      </span>
-      {server.status === "needs_input" && !directory ? (
-        <AppIcon
-          icon="clock"
-          size={16}
-          className="shrink-0 text-umber-600"
-          aria-label={frontendMessage(`settings.mcp.status.${server.status}`)}
-        />
-      ) : null}
+      <McpStatusToken status={server.status} />
     </button>
   );
 }
 
-function shortenMcpDescription(value: string): string {
-  const text = value.trim().replace(/[.!?。！？]+$/u, "");
-  if (!text) return "";
-  if (text.length <= 88) return text;
-  return `${text.slice(0, 88).trimEnd()}…`;
+const McpStatusTokenClassNames: Record<McpServerSettingsItem["status"], string> = {
+  configured: "border-emerald-500/50 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300",
+  needs_input: "border-umber-500/50 bg-umber-500/5 text-umber-700 dark:text-umber-300",
+  unavailable: "border-brick-500/50 bg-brick-500/5 text-brick-700 dark:text-brick-300",
+};
+
+function projectMcpServerSourceGroups(
+  servers: readonly McpServerSettingsItem[],
+  locale: import("../../../i18n/frontendLocaleModel").FrontendLocale,
+): readonly { id: string; label: string; items: readonly McpServerSettingsItem[] }[] {
+  const groups = new Map<McpServerSettingsItem["source"], McpServerSettingsItem[]>();
+  for (const server of servers) {
+    const group = groups.get(server.source);
+    if (group) group.push(server);
+    else groups.set(server.source, [server]);
+  }
+  return [...groups]
+    .map(([source, items]) => ({
+      id: source,
+      label: frontendMessage(`settings.mcp.source.${source}`),
+      items,
+    }))
+    .sort((left, right) => left.label.localeCompare(right.label, locale));
 }
 
 function McpStatus({ status }: { status: McpServerSettingsItem["status"] }): JSX.Element {
+  return <McpStatusToken status={status} />;
+}
+
+export function McpStatusToken({ status }: { status: McpServerSettingsItem["status"] }): JSX.Element {
   return (
-    <span
-      className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 text-[11px]",
-        status === "configured" ? "text-accent-content" : "text-brick-600",
-      )}
-    >
-      <span
-        aria-hidden="true"
-        className={cn("h-1.5 w-1.5 rounded-full", status === "configured" ? "bg-accent-solid" : "bg-brick-500")}
-      />
+    <StatusToken className={cn("border", McpStatusTokenClassNames[status])} data-mcp-status={status}>
       {frontendMessage(`settings.mcp.status.${status}`)}
-    </span>
+    </StatusToken>
   );
 }
 
 class InputValidationError extends Error {}
 
 function shouldShowInputSource(source: McpInputStatus["source"]): boolean {
-  return source === "vault" || source === "environment" || source === "oauth";
+  return source === "vault" || source === "environment" || source === "oauth" || source === "unresolved";
 }

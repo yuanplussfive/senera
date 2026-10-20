@@ -72,6 +72,9 @@ export function readComposerAction({
 
 export interface ChatComposerProps {
   disabled: boolean;
+  /** Cancellation is queued across a transient socket reconnect, so it has a
+   * separate disabled state from ordinary message submission. */
+  cancelDisabled: boolean;
   running: boolean;
   settling?: boolean;
   cancelling?: boolean;
@@ -99,6 +102,7 @@ export interface ChatComposerProps {
 
 export function ChatComposer({
   disabled,
+  cancelDisabled,
   running,
   settling = false,
   cancelling = false,
@@ -136,9 +140,8 @@ export function ChatComposer({
   attachmentHandler.current = attachments.enqueueFiles;
   const registerReferenceHandler = workspaceResources?.registerReferenceHandler;
   useEffect(() => {
-    if (disabled || cancelling) return;
     return registerReferenceHandler?.((file) => attachmentHandler.current([file]));
-  }, [disabled, cancelling, registerReferenceHandler]);
+  }, [registerReferenceHandler]);
   const { prefersCompactControls } = useResponsiveMode();
   const textareaMaxHeight = prefersCompactControls ? TOUCH_TEXTAREA_MAX_HEIGHT : DESKTOP_TEXTAREA_MAX_HEIGHT;
   const showActivationOverlay = /(?:^|\s)@[^\s@]*/u.test(value);
@@ -402,7 +405,7 @@ export function ChatComposer({
               disabled={disabled}
               style={{ maxHeight: textareaMaxHeight }}
               className={cn(
-                "scrollbar-thin relative z-[1] min-h-9 w-full resize-none bg-transparent px-1 py-1.5 font-sans text-[14px] leading-5 caret-accent-content selection:bg-accent-surface selection:text-content-primary placeholder:text-content-disabled focus:outline-none disabled:opacity-60 sm:min-h-9",
+                "relative z-[1] min-h-9 w-full resize-none bg-transparent px-1 py-1.5 font-sans text-[14px] leading-5 caret-accent-content selection:bg-accent-surface selection:text-content-primary placeholder:text-content-disabled focus:outline-none disabled:opacity-60 sm:min-h-9",
                 showActivationOverlay ? "text-transparent" : "text-content-primary",
               )}
             />
@@ -547,7 +550,7 @@ export function ChatComposer({
                 >
                   <MotionButton
                     onClick={handleComposerAction}
-                    disabled={disabled}
+                    disabled={cancelDisabled}
                     className={cn(
                       "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-brick-200 bg-surface-raised text-brick-600 transition-colors duration-150 hover:bg-brick-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brick-200 disabled:pointer-events-none disabled:opacity-50",
                       prefersCompactControls && "min-h-11 min-w-11",

@@ -8,6 +8,7 @@ import type { AgentExtensionValueExpression } from "../Extensions/AgentExtension
 import { AgentExtensionNameSchema } from "../Extensions/AgentExtensionIdentity.js";
 import {
   readMcpLocalizedText,
+  readMcpPluginIdentityPresentation,
   type AgentMcpDescriptorAdapter,
   type AgentMcpDescriptorContext,
 } from "./AgentMcpDescriptorAdapter.js";
@@ -28,6 +29,7 @@ import { AgentMcpServerRuntimes, type AgentMcpPackageToolLocalization } from "./
 import { AgentMcpToolLocalizationMetadataKey } from "./AgentMcpToolLocalization.js";
 
 const SeneraExecutionMetadataKey = "ai.senera/execution";
+const SeneraPresentationMetadataKey = "ai.senera/presentation";
 
 export const AgentMcpBundleDescriptorAdapter: AgentMcpDescriptorAdapter = {
   kind: "mcpb",
@@ -44,6 +46,7 @@ export const AgentMcpBundleDescriptorAdapter: AgentMcpDescriptorAdapter = {
     const metadata =
       manifest._meta === undefined ? undefined : requireMcpRecord(manifest._meta, "MCPB _meta", ["_meta"]);
     const toolLocalization = projectToolLocalization(metadata);
+    const presentation = projectPresentation(metadata);
     const userConfig = projectUserConfig(manifest.user_config);
     const definitions = new Map(userConfig.map((input) => [input.id, input]));
     const mcpConfig =
@@ -65,6 +68,7 @@ export const AgentMcpBundleDescriptorAdapter: AgentMcpDescriptorAdapter = {
       displayName: readMcpLocalizedText(manifest.display_name, "MCPB display_name", ["display_name"]),
       description: readMcpLocalizedText(manifest.description, "MCPB description", ["description"]),
       descriptorKind: "mcpb",
+      ...(presentation ? { presentation } : {}),
       execution: projectExecution(metadata),
       ...(requirements ? { requirements } : {}),
       servers: [
@@ -115,6 +119,13 @@ function projectUserConfig(value: unknown): AgentMcpInputDefinition[] {
         provenance: "mcpb",
       };
     });
+}
+
+function projectPresentation(metadata: Record<string, unknown> | undefined) {
+  return readMcpPluginIdentityPresentation(metadata?.[SeneraPresentationMetadataKey], SeneraPresentationMetadataKey, [
+    "_meta",
+    SeneraPresentationMetadataKey,
+  ]);
 }
 
 function projectMcpBundleInputType(

@@ -6,7 +6,7 @@ import { AppIcon } from "../../shared/ui/AppIcon";
 import { MotionDisclosure } from "../../shared/motion";
 import { LazyMarkdownRenderer } from "../../shared/code/LazyMarkdownRenderer";
 import { ChildRunStatusPresentation, isChildRunActive } from "./ChildRunOverview";
-import { projectToolBatchActivity, ToolBatchActivity } from "./ToolBatchActivity";
+import { projectToolBatchActivities, ToolBatchActivityList } from "./ToolBatchActivity";
 import { RunThinkingPresentation } from "../chat/ModelThinkingDisclosure";
 import { TextShimmer, textShimmerStyle } from "../../shared/motion";
 
@@ -278,10 +278,10 @@ function ChildRunToolTrace({
   steps: readonly TimelineStep[];
   animateActivity: boolean;
 }): JSX.Element | null {
-  const activity = projectToolBatchActivity({ steps });
-  return activity ? (
+  const activities = projectToolBatchActivities({ steps });
+  return activities.length > 0 ? (
     <div data-child-run-trace-item="tools">
-      <ToolBatchActivity activity={activity} defaultOpen={false} animateActivity={animateActivity} />
+      <ToolBatchActivityList activities={activities} animateActivity={animateActivity} />
     </div>
   ) : null;
 }

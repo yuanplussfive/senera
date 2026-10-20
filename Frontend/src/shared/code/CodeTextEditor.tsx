@@ -41,22 +41,6 @@ const editorTheme = EditorView.theme({
   ".cm-scroller": {
     fontFamily: "var(--theme-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace)",
     lineHeight: "1.65",
-    scrollbarColor: "var(--scrollbar-thumb) var(--scrollbar-track)",
-    scrollbarGutter: "stable",
-  },
-  ".cm-scroller::-webkit-scrollbar": {
-    height: "8px",
-    width: "8px",
-  },
-  ".cm-scroller::-webkit-scrollbar-thumb": {
-    background: "var(--scrollbar-thumb)",
-    backgroundClip: "padding-box",
-    border: "2px solid transparent",
-    borderRadius: "999px",
-  },
-  ".cm-scroller::-webkit-scrollbar-thumb:hover": {
-    background: "var(--scrollbar-thumb-hover)",
-    backgroundClip: "padding-box",
   },
   ".cm-content": {
     caretColor: "var(--theme-code-editor-caret)",

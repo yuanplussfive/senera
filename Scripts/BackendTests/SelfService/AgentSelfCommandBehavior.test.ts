@@ -13,6 +13,7 @@ import type { AgentSelfServicePort } from "../../../Source/AgentSystem/SelfServi
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { createAgentSelfTestConfigPort, createAgentTestSnapshot } from "./AgentSelfTestHarness.js";
 import { AgentSessionStore } from "../../../Source/AgentSystem/Session/AgentSessionStore.js";
+import { createAgentSelfPromptPresetsPort } from "../../../Source/AgentSystem/SelfService/AgentSelfPromptPresets.js";
 
 const temporaryRoots: string[] = [];
 
@@ -202,6 +203,39 @@ describe("senera self-service workspace and doctor", () => {
     const output = await executeAgentSelfCommand({ command: "doctor", action: "status" }, workspacePort(root));
     expect(output.ok).toBe(false);
     expect(output.text).toContain("✗");
+  });
+});
+
+describe("senera self-service prompt presets", () => {
+  test("lists, reads, enables, and disables workspace Markdown presets asynchronously", async () => {
+    const root = temporaryWorkspace();
+    fs.mkdirSync(path.join(root, "prompts", "nested"), { recursive: true });
+    fs.writeFileSync(path.join(root, "prompts", "review.md"), "# Review\n");
+    fs.writeFileSync(path.join(root, "prompts", "nested", "brief.md"), "# Brief\n");
+    const port: AgentSelfServicePort = {
+      ...workspacePort(root),
+      promptPresets: createAgentSelfPromptPresetsPort(root, 1_024),
+    };
+
+    const listed = await executeAgentSelfCommand({ command: "preset", action: "list" }, port);
+    expect(listed).toMatchObject({ ok: true, data: { enabled: false } });
+    expect(listed.text).toContain("prompts/nested/brief.md");
+    expect(listed.text).toContain("prompts/review.md");
+
+    const enabled = await executeAgentSelfCommand(
+      { command: "preset", action: "enable", path: "prompts/nested/brief.md" },
+      port,
+    );
+    expect(enabled).toMatchObject({ ok: true, data: { status: "enabled", activePath: "prompts/nested/brief.md" } });
+
+    const read = await executeAgentSelfCommand(
+      { command: "preset", action: "read", path: "prompts/nested/brief.md" },
+      port,
+    );
+    expect(read).toMatchObject({ ok: true, text: "# Brief\n", data: { status: "found" } });
+
+    const disabled = await executeAgentSelfCommand({ command: "preset", action: "disable" }, port);
+    expect(disabled).toMatchObject({ ok: true, data: { status: "disabled", enabled: false } });
   });
 });
 

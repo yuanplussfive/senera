@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "../../lib/util";
 import { type TimelineStep } from "../../store/sessionStore";
+import { timelineToolExecutionKey } from "../../store/session/timelineProjection";
 import { ActivityStatusIcon, AppIcon, ThinkingSteps, ThinkingStepsContent, ThinkingStepsHeader } from "../../shared/ui";
 import {
   projectToolActivityInspection,
@@ -27,6 +28,30 @@ export interface ToolBatchActivityModel {
   live: boolean;
   items: readonly ToolBatchActivityItem[];
   workspaceSummary?: WorkspaceFileActivitySummary;
+}
+
+export function ToolBatchActivityList({
+  activities,
+  keepOpenWhileRunActive = false,
+  animateActivity = false,
+}: {
+  readonly activities: readonly ToolBatchActivityModel[];
+  readonly keepOpenWhileRunActive?: boolean;
+  readonly animateActivity?: boolean;
+}): JSX.Element {
+  return (
+    <>
+      {activities.map((activity) => (
+        <ToolBatchActivity
+          key={activity.id}
+          activity={activity}
+          defaultOpen={false}
+          keepOpenWhileRunActive={keepOpenWhileRunActive}
+          animateActivity={animateActivity}
+        />
+      ))}
+    </>
+  );
 }
 
 interface ToolBatchActivityItem {
@@ -110,7 +135,7 @@ export function ToolBatchActivity({
           </ThinkingStepsHeader>
           <ThinkingStepsContent className="tool-batch-activity__disclosure">
             <div
-              className="tool-activity-viewport scrollbar-thin flex min-w-0 gap-2 pr-1"
+              className="tool-activity-viewport flex min-w-0 gap-2 pr-1"
               data-tool-batch-activity-items
               data-tool-batch-activity-viewport
             >
@@ -274,12 +299,34 @@ function ToolBatchActivityStatus({
 export function projectToolBatchActivity(run: {
   readonly steps: readonly TimelineStep[];
 }): ToolBatchActivityModel | undefined {
-  const toolSteps = run.steps.filter(
-    (step): step is TimelineStep & { toolName: string } => step.kind === "tool" && Boolean(step.toolName?.trim()),
-  );
+  return projectToolBatchActivityFromSteps(readToolSteps(run.steps));
+}
+
+/**
+ * Projects each provider-declared tool batch as its own disclosure. A stage can
+ * contain several model responses and approval pauses, so its steps must not be
+ * rendered as one synthetic batch merely because they share a visual stage.
+ */
+export function projectToolBatchActivities(run: { readonly steps: readonly TimelineStep[] }): ToolBatchActivityModel[] {
+  const groups = new Map<string, Array<TimelineStep & { toolName: string }>>();
+  for (const step of readToolSteps(run.steps)) {
+    const identity = timelineToolExecutionKey(step);
+    const group = groups.get(identity) ?? [];
+    group.push(step);
+    groups.set(identity, group);
+  }
+  return [...groups.values()].flatMap((steps) => {
+    const activity = projectToolBatchActivityFromSteps(steps);
+    return activity ? [activity] : [];
+  });
+}
+
+function projectToolBatchActivityFromSteps(
+  toolSteps: readonly (TimelineStep & { toolName: string })[],
+): ToolBatchActivityModel | undefined {
   if (toolSteps.length === 0) return undefined;
 
-  const presentation = projectToolStagePresentation(run);
+  const presentation = projectToolStagePresentation({ steps: toolSteps });
   if (!presentation) return undefined;
 
   const items = toolSteps.map((step) => {
@@ -317,6 +364,12 @@ export function projectToolBatchActivity(run: {
     items,
     ...(batchWorkspaceSummary ? { workspaceSummary: batchWorkspaceSummary } : {}),
   };
+}
+
+function readToolSteps(steps: readonly TimelineStep[]): Array<TimelineStep & { toolName: string }> {
+  return steps.filter(
+    (step): step is TimelineStep & { toolName: string } => step.kind === "tool" && Boolean(step.toolName?.trim()),
+  );
 }
 
 function readToolActivityStatus(status: TimelineStep["status"]): "active" | "completed" | "failed" | "cancelled" {

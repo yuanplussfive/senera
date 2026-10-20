@@ -50,24 +50,29 @@ describe("system extension configuration presentation", () => {
 
     expect(sections).toHaveLength(1);
     expect(sections[0]).toMatchObject({
-      name: "extension:agent-delegation:model-pool",
-      label: "Subagents · Child model pool",
-      fields: [
-        expect.objectContaining({
-          path: ["Extensions", "agent-delegation", "Configuration", "modelPool", "inheritParent"],
-        }),
-        expect.objectContaining({
-          path: ["Extensions", "agent-delegation", "Configuration", "modelPool", "modelProviderIds"],
-          options: ["chat-model", "vision-model"],
-          modelSelection: expect.objectContaining({
-            cardinality: "many",
-            inheritance: {
-              source: "parent-model",
-              path: ["Extensions", "agent-delegation", "Configuration", "modelPool", "inheritParent"],
-            },
+      extensionId: "agent-delegation",
+      extensionLabel: "Subagents",
+      extensionIcon: "users",
+      section: {
+        name: "extension:agent-delegation:model-pool",
+        label: "Child model pool",
+        fields: [
+          expect.objectContaining({
+            path: ["Extensions", "agent-delegation", "Configuration", "modelPool", "inheritParent"],
           }),
-        }),
-      ],
+          expect.objectContaining({
+            path: ["Extensions", "agent-delegation", "Configuration", "modelPool", "modelProviderIds"],
+            options: ["chat-model", "vision-model"],
+            modelSelection: expect.objectContaining({
+              cardinality: "many",
+              inheritance: {
+                source: "parent-model",
+                path: ["Extensions", "agent-delegation", "Configuration", "modelPool", "inheritParent"],
+              },
+            }),
+          }),
+        ],
+      },
     });
   });
 });
@@ -78,6 +83,7 @@ function systemExtension(id, enabled) {
     version: "1.0.0",
     displayName: { "zh-CN": "子代理", "en-US": "Subagents" },
     description: { "zh-CN": "委派子任务。", "en-US": "Delegate child tasks." },
+    presentation: { icon: "users" },
     enabled,
     configured: false,
     tools: [],

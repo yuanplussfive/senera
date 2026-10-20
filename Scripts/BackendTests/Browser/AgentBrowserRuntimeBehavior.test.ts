@@ -119,6 +119,18 @@ describe("controlled browser runtime", () => {
     });
   });
 
+  test("keeps WebFetch rendering separate from remembered interactive browser state", async () => {
+    await withBrowserRuntime(
+      async ({ runtime, driver, root }) => {
+        await runtime.execute("open", { url: "https://example.com" }, browserContext(root));
+        await runtime.execute("render_html", { url: "https://example.com/docs" }, browserContext(root));
+
+        expect(driver.sessions.map((session) => session.options.context)).toEqual(["persistent", "temporary"]);
+      },
+      { configuration: { runtime: { context: "persistent" } } },
+    );
+  });
+
   test("blocks only explicitly blacklisted hosts and supports wildcard subdomain entries", async () => {
     await withBrowserRuntime(
       async ({ runtime, driver, root }) => {

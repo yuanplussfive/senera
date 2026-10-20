@@ -8,12 +8,13 @@ import { createRealRuntimeIntegrationHarness } from "../../Dist/Scripts/Integrat
  * Starts the production frontend and real runtime in one of the two supported
  * deployment authentication modes.
  *
- * @param {{ authenticationMode: AuthenticationMode }} options
+ * @param {{ authenticationMode: AuthenticationMode, workspaceMode?: "standalone" | "single-workspace" }} options
  */
-export function createBrowserE2eHarness({ authenticationMode }) {
+export function createBrowserE2eHarness({ authenticationMode, workspaceMode = "standalone" }) {
   return createRealRuntimeIntegrationHarness({
     authenticationMode,
     staticFrontendRoot: path.resolve(process.cwd(), "Frontend", "dist"),
+    workspaceMode,
   });
 }
 

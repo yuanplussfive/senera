@@ -13,6 +13,7 @@ import {
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 const baseConfig = {
+  DefaultModelProviderId: "test",
   ModelProviderEndpoints: [
     {
       Id: "test-endpoint",
@@ -137,6 +138,7 @@ assert.equal(configured.RetryAfterMaxDelayMs, 45000);
 const splitPlanner = resolveActionPlannerConfig(
   parseConfig({
     ...baseConfig,
+    DefaultModelProviderId: "gpt-planner",
     ModelProviders: [
       {
         Id: "gpt-planner",

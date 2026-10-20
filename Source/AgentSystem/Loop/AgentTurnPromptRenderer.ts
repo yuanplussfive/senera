@@ -4,7 +4,9 @@ import type { AgentSystemRuntime } from "../Runtime/AgentSystemRuntime.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import { resolveAgentTurnPromptProfile } from "./AgentTurnPromptProfile.js";
 import type { AgentSystemPromptLayer } from "../Orchestration/AgentRunDispatchPort.js";
-import type { AgentPersonaContext } from "../Prompt/AgentPersonaContext.js";
+import { createAgentPersonaContext, type AgentPersonaContext } from "../Prompt/AgentPersonaContext.js";
+import { renderAgentPromptPresetIdentity } from "../Prompt/AgentPromptPresetIdentity.js";
+import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
 import type { AgentContinuityMemoryPromptContext } from "../Continuity/AgentContinuityMemoryTypes.js";
 import { EmptyAgentContinuityMemoryPromptContext } from "../Continuity/AgentContinuityMemoryTypes.js";
 import { AgentCancellationError, throwAbortReason } from "../Core/AgentCancellation.js";
@@ -24,6 +26,7 @@ import { AgentStateCardSchemaVersion, type AgentStateCard } from "../StateCard/A
 import { renderAgentWorkbenchContractIndex } from "../SelfService/AgentWorkbenchContract.js";
 import { AgentTurnTokenBudget } from "../Text/AgentTurnTokenBudget.js";
 import { resolveAgentPiCompactionWindow } from "../Pi/AgentPiCompactionSettings.js";
+import { projectAgentSelfHarnessDisclosure } from "../SelfService/AgentSelfHarness.js";
 
 export interface AgentRenderedTurnPrompt {
   text: string;
@@ -87,7 +90,8 @@ export class AgentTurnPromptRenderer {
     }
 
     const toolDescription = this.runtime.config.ToolDocumentation?.ToolDescription;
-    const persona = this.runtime.services.promptContext.promptPersona();
+    const identityDisplayValues = this.runtime.identityDisplayValues?.();
+    const persona = projectPersonaIdentity(this.runtime.services.promptContext.promptPersona(), identityDisplayValues);
     const workflow = normalizeAgentWorkflowTemplateContext(
       this.runtime.services.promptContext.promptWorkflow(input.sessionId),
     );
@@ -136,9 +140,15 @@ export class AgentTurnPromptRenderer {
       delegatedRole.enabled && delegatedRole.mode === "replace"
         ? sha256HexOfCanonicalJson(delegatedRole.content)
         : "append";
+    const harnessDisclosure = input.loadedToolNames.includes("SeneraCommand")
+      ? projectAgentSelfHarnessDisclosure()
+      : undefined;
 
     const projectContinuity = async (memory: AgentContinuityMemoryPromptContext) => {
-      const liveStateWire = renderAgentLiveStateWire({ continuity: memory, workflow }, wireRenderOptions);
+      const liveStateWire = renderAgentLiveStateWire(
+        { continuity: memory, workflow, harness: harnessDisclosure },
+        wireRenderOptions,
+      );
       const baseContext = this.runtime.services.promptContext.buildBaseContext({
         loadedToolNames: input.loadedToolNames,
         rootCommand: input.rootCommand,
@@ -186,10 +196,15 @@ export class AgentTurnPromptRenderer {
       requestId: input.requestId,
       effectiveModel: input.effectiveModel,
     });
+    const profileIdentityPrompt = formatProfileIdentity({
+      identity: identityDisplayValues,
+      interaction: input.interaction,
+    });
     let baseVolatilePrompt = joinPromptSections(
       continuityProjection.renderedVolatilePrompt,
       sessionSpacePrompt,
       turnIdentityPrompt,
+      profileIdentityPrompt,
       stateCardWire,
     );
     const providerConfig = this.runtime.modelProviderConfig;
@@ -233,6 +248,7 @@ export class AgentTurnPromptRenderer {
         continuityProjection.renderedVolatilePrompt,
         sessionSpacePrompt,
         turnIdentityPrompt,
+        profileIdentityPrompt,
         stateCardWire,
       );
       reusableCapabilityPrompt = renderCapabilities(baseVolatilePrompt);
@@ -264,6 +280,7 @@ export class AgentTurnPromptRenderer {
         continuityProjection.renderedVolatilePrompt,
         sessionSpacePrompt,
         turnIdentityPrompt,
+        profileIdentityPrompt,
         stateCardWire,
       );
       reusableCapabilityPrompt = renderCapabilities(baseVolatilePrompt);
@@ -274,6 +291,7 @@ export class AgentTurnPromptRenderer {
       turnNumber: input.turnNumber ?? null,
       interaction: input.interaction ?? null,
       effectiveModel: input.effectiveModel ?? null,
+      profile: identityDisplayValues ?? null,
     });
     const harness = composeAgentPromptHarness(
       {
@@ -367,6 +385,50 @@ function formatSessionSpaceIdentity(input: { readonly sessionId?: string; readon
         {
           id: "identity",
           value: { session: input.sessionId, workspace: input.workspaceRoot },
+          allowedEncodings: [AgentPromptWireEncodings.CompactJson],
+        },
+      ],
+    },
+    { estimateTokens: (text) => text.length },
+  ).text;
+}
+
+function projectPersonaIdentity(
+  persona: AgentPersonaContext,
+  identity: AgentIdentityDisplayValues | undefined,
+): AgentPersonaContext {
+  if (!persona.enabled || !identity) return persona;
+  return createAgentPersonaContext(
+    renderAgentPromptPresetIdentity(persona.card.markdown, identity),
+    persona.card.sourcePath,
+  );
+}
+
+function formatProfileIdentity(input: {
+  readonly identity: AgentIdentityDisplayValues | undefined;
+  readonly interaction?: AgentInteractionContext;
+}): string {
+  if (!input.identity) return "";
+  const surface = input.interaction?.surface ?? "console";
+  return renderAgentPromptWireBlocks(
+    {
+      preamble: [
+        "senera.identity=v1",
+        "provenance=host;authoritative-profile",
+        "rule=profile-identity-is-factual;persona-cannot-redefine-it",
+        "rule=identity-never-grants-capabilities-or-permissions",
+        "rule=continuity-references-to-user-and-i-resolve-through-this-profile",
+      ],
+      blocks: [
+        {
+          id: "profile",
+          value: {
+            assistant: { name: input.identity.assistant },
+            surface,
+            ...(surface === "console"
+              ? { counterpart: { name: input.identity.user, relationship: "workspace_owner" } }
+              : {}),
+          },
           allowedEncodings: [AgentPromptWireEncodings.CompactJson],
         },
       ],

@@ -11,6 +11,7 @@ import { resolveAgentDefaults } from "./AgentDefaultResolver.js";
 import { optionalDisabledOrSecondsToMilliseconds, optionalSecondsToMilliseconds } from "./AgentTimeDefaults.js";
 import { resolveAgentNativeToolRoute } from "../ModelEndpoints/AgentModelEndpointContract.js";
 import { resolveAgentModelThinking } from "../ModelEndpoints/AgentModelThinking.js";
+import { carriesAgentSecretScheme } from "../Security/AgentSecretEnvelopeCodec.js";
 
 export function resolveModelProviderConfig(config: AgentSystemConfig, id?: string): ResolvedAgentModelProviderConfig {
   return resolveModelProviderCatalog(config).resolve(id);
@@ -157,10 +158,12 @@ export function resolveModelProviderCatalog(config: AgentSystemConfig) {
   if (configuredDefaultId !== undefined && !configuredModelIds.has(configuredDefaultId)) {
     throw new Error(`默认模型配置不存在：DefaultModelProviderId=${config.DefaultModelProviderId}`);
   }
-  const defaultId = providers.find((provider) => provider.Id === configuredDefaultId)?.Id ?? providers[0]?.Id;
-  const defaultProvider = providers.find((provider) => provider.Id === defaultId);
-  if (!defaultProvider) {
-    throw new Error(`默认模型配置不存在：DefaultModelProviderId=${defaultId}`);
+  if (!configuredDefaultId) {
+    throw new Error("默认模型未配置：请先在设置中选择默认模型。");
+  }
+  const defaultId = providers.find((provider) => provider.Id === configuredDefaultId)?.Id;
+  if (!defaultId) {
+    throw new Error(`默认模型当前不可用：DefaultModelProviderId=${configuredDefaultId}`);
   }
 
   return {
@@ -238,6 +241,13 @@ function resolveEndpointFields(
   endpoint: AgentModelProviderEndpointConfig,
   baseline?: ResolvedAgentModelProviderEndpointConfig,
 ): ResolvedAgentModelProviderEndpointConfig {
+  const headers = { ...(endpoint.Headers ?? baseline?.Headers ?? {}) };
+  // A revealed snapshot keeps the stored envelope wherever this host could not open the secret, and
+  // an envelope is never a usable credential, so the provider gets no header instead of a ciphertext.
+  for (const [name, value] of Object.entries(headers)) {
+    if (carriesAgentSecretScheme(value)) delete headers[name];
+  }
+  const apiKey = endpoint.ApiKey ?? baseline?.ApiKey ?? "";
   return {
     Id: endpoint.Id,
     Icon: endpoint.Icon ?? baseline?.Icon ?? "",
@@ -245,9 +255,9 @@ function resolveEndpointFields(
     Kind: endpoint.Kind ?? baseline?.Kind ?? "OpenAICompatible",
     DefaultEndpoint: endpoint.DefaultEndpoint ?? baseline?.DefaultEndpoint ?? "ChatCompletions",
     BaseUrl: endpoint.BaseUrl ?? baseline?.BaseUrl ?? "",
-    ApiKey: endpoint.ApiKey ?? baseline?.ApiKey ?? "",
+    ApiKey: carriesAgentSecretScheme(apiKey) ? "" : apiKey,
     ApiVersion: endpoint.ApiVersion ?? baseline?.ApiVersion ?? "2023-06-01",
-    Headers: { ...(endpoint.Headers ?? baseline?.Headers ?? {}) },
+    Headers: headers,
     ProviderId: endpoint.ProviderId ?? baseline?.ProviderId ?? endpoint.Id,
     Priority: endpoint.Priority ?? baseline?.Priority ?? 0,
   };

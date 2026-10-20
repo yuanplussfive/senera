@@ -54,6 +54,7 @@ export interface RuntimeDiagnosticSpan {
   readonly toolOrigin?: ToolEventOrigin;
   readonly toolArguments?: unknown;
   readonly toolResult?: unknown;
+  readonly toolPresentation?: import("../../api/eventTypes").ToolResultPresentation;
   readonly toolPreview?: string;
   readonly toolErrorMessage?: string;
   readonly callId?: string;
@@ -476,6 +477,7 @@ function spanFromTimelineStep(run: RunRecord, step: TimelineStep): RuntimeDiagno
           toolOrigin: step.toolOrigin,
           toolArguments: step.toolArgs,
           toolResult: step.toolResult,
+          toolPresentation: step.toolPresentation,
           toolPreview: step.toolPreview,
           toolErrorMessage: step.toolErrorMessage,
           callId: step.callId,

@@ -22,8 +22,10 @@ export interface ToolActivityInput {
   readonly toolName: string;
   readonly origin?: ToolEventOrigin;
   readonly arguments?: unknown;
-  /** Result presentation object; absent contracts keep the v1 label pipeline. */
+  /** Shared result-presentation object used by `presentation` measures. */
   readonly result?: ToolResultPresentation;
+  /** Tool output used by `result` measures and output-side preview contracts. */
+  readonly rawResult?: unknown;
   /** Host duration fact addressable by an `env` measure. */
   readonly durationMs?: number;
   readonly status: ToolActivityStatus;
@@ -104,6 +106,8 @@ export function projectToolActivityInspection(input: ToolActivityInput): ToolAct
 
   // A variant may refine the argument pointers, so resolve them after selection.
   const command = readStringAtPointer(input.arguments, variant?.argumentPath ?? activity?.argumentPath);
+  const subjectPointer = variant?.subjectPath ?? activity?.subjectPath;
+  const subject = subjectPointer ? readStringAtPointer(input.arguments, subjectPointer) : undefined;
   const subjects = uniqueStrings(
     (variant?.detailPaths ?? activity?.detailPaths ?? []).flatMap((pointer) =>
       readStringsAtPointer(input.arguments, pointer),
@@ -143,6 +147,7 @@ export function projectToolActivityInspection(input: ToolActivityInput): ToolAct
       (title ? compactPreview(title) : appendArgumentPreview(fallbackLabel, argumentPreview)),
     category: presentation?.category ?? (input.origin?.kind === "mcp" ? GenericMcpCategory : GenericSystemCategory),
     ...(title ? {} : { action: resolvedAction, ...(identity ? { identity } : {}) }),
+    ...(subject ? { identity: subject } : {}),
     subjects,
     argumentPreview,
     argumentPreviewParts,
@@ -295,7 +300,8 @@ function readMeasureValues(
 
 function readMeasureSource(measure: AgentToolPresentationMeasure, input: ToolActivityInput): unknown {
   if (measure.from === "argument") return input.arguments;
-  if (measure.from === "result") return input.result;
+  if (measure.from === "result") return input.rawResult;
+  if (measure.from === "presentation") return input.result;
   return { status: input.status, durationMs: input.durationMs, toolName: input.toolName };
 }
 

@@ -9,7 +9,10 @@ import {
   readAgentWorkspaceStateMigrationInventory,
   removeAgentWorkspaceStateMigrationBackup,
 } from "../../../Source/AgentSystem/WorkspaceResources/AgentWorkspaceStateMigrationMaintenance.js";
-import { resolveSeneraHostedWorkspaceRuntime } from "../../../Apps/ServerWorkspaceRuntime.js";
+import {
+  resolveSeneraHostedWorkspaceRuntime,
+  resolveSeneraInitialWorkspaceRuntime,
+} from "../../../Apps/ServerWorkspaceRuntime.js";
 
 describe("workspace-owned state migration", () => {
   test("uses workspace-local state while retaining an explicit legacy layout", () => {
@@ -99,22 +102,22 @@ describe("workspace-owned state migration", () => {
     expect(repeated.status).toBe("already-complete");
   });
 
-  test("imports the former application-level plugin directory into each workspace user scope", () => {
+  test("imports the former application-level plugin directory into the initial workspace only", () => {
     const applicationRoot = fs.mkdtempSync(path.join(os.tmpdir(), "senera-shared-plugin-application-"));
     const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "senera-shared-plugin-workspace-"));
+    const laterWorkspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "senera-shared-plugin-later-workspace-"));
     const paths = resolveAgentApplicationPaths(applicationRoot);
     const configPath = path.join(workspaceRoot, "senera.config.json");
     fs.mkdirSync(paths.legacySharedUserPluginsRoot, { recursive: true });
     fs.writeFileSync(path.join(paths.legacySharedUserPluginsRoot, "shared-plugin.txt"), "shared-user-plugin");
     fs.writeFileSync(configPath, "{}\n");
 
-    const preparation = resolveSeneraHostedWorkspaceRuntime({
+    const preparation = resolveSeneraInitialWorkspaceRuntime({
       paths,
       workspaceRoot,
       workspaceId: "workspace-id",
       resourcesRoot: applicationRoot,
-      configSource: { kind: "json", configPath },
-      migrateLegacyState: true,
+      options: { configSource: { kind: "json", configPath } },
     });
 
     expect(preparation.workspaceLayout.userPluginsRoot).toBe(path.join(workspaceRoot, ".senera", "user-plugins"));
@@ -124,6 +127,17 @@ describe("workspace-owned state migration", () => {
     expect(fs.readFileSync(path.join(paths.legacySharedUserPluginsRoot, "shared-plugin.txt"), "utf8")).toBe(
       "shared-user-plugin",
     );
+
+    fs.writeFileSync(path.join(laterWorkspaceRoot, "senera.config.json"), "{}\n");
+    resolveSeneraHostedWorkspaceRuntime({
+      paths,
+      workspaceRoot: laterWorkspaceRoot,
+      workspaceId: "later-workspace-id",
+      resourcesRoot: applicationRoot,
+      configSource: { kind: "json", configPath: path.join(laterWorkspaceRoot, "senera.config.json") },
+      migrateLegacyState: true,
+    });
+    expect(fs.existsSync(path.join(laterWorkspaceRoot, ".senera", "user-plugins", "shared-plugin.txt"))).toBe(false);
   });
 
   test("does not create a migration backup for a new workspace without legacy state", () => {

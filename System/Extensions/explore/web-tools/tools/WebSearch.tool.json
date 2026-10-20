@@ -12,10 +12,19 @@
     },
     "preview": {
       "result": {
-        "rows": [{ "pointer": "/results/*", "titlePath": "/title", "descriptionPath": "/summary", "metaPath": "/url" }],
+        "rows": [
+          {
+            "pointer": "/results/*",
+            "titlePath": "/title",
+            "descriptionPath": "/summary",
+            "metaPath": "/url",
+            "hrefPath": "/url"
+          }
+        ],
         "maxRows": 4,
         "more": { "pointer": "/results", "label": { "zh-CN": "另有 {count} 条结果", "en-US": "{count} more results" } }
-      }
+      },
+      "body": { "pointer": "/results", "from": "result" }
     }
   },
   "inputSchema": {

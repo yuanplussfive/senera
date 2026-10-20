@@ -37,7 +37,7 @@ test.describe("authenticationMode=disabled", () => {
     await page.goto(`${disabledHarness.httpOrigin}/settings/appearance`);
 
     await expect(page.locator("[data-settings-workbench]")).toBeVisible();
-    await expect(page.getByRole("dialog").getByRole("heading", { level: 2, name: "外观" })).toBeVisible();
+    await expect(page.getByRole("dialog").getByRole("heading", { level: 3, name: "界面风格" })).toBeVisible();
     await expect(page).toHaveURL(`${disabledHarness.httpOrigin}/settings/appearance`);
   });
 
@@ -137,7 +137,7 @@ test.describe("authenticationMode=disabled", () => {
     await trigger.press("Enter");
 
     const menu = page.getByRole("menu");
-    const userSettings = menu.getByRole("menuitem", { name: "用户设置" });
+    const userSettings = menu.getByRole("menuitem", { name: "个人资料" });
     await expectPortaledOutsideSessionSidebar(menu);
     await expect(userSettings).toBeFocused();
 
@@ -148,7 +148,7 @@ test.describe("authenticationMode=disabled", () => {
     await trigger.press("Enter");
     await userSettings.press("Enter");
 
-    const dialog = page.getByRole("dialog", { name: "用户设置" });
+    const dialog = page.getByRole("dialog", { name: "个人资料" });
     const displayName = dialog.getByLabel("显示名称");
     await expectPortaledOutsideSessionSidebar(dialog);
     await expect(displayName).toBeFocused();
@@ -398,7 +398,7 @@ test.describe("authenticationMode=required", () => {
     await login(page);
 
     await openProfileMenu(page);
-    await page.getByRole("menuitem", { name: "用户设置" }).click();
+    await page.getByRole("menuitem", { name: "个人资料" }).click();
     await page.getByRole("button", { name: "退出登录" }).click();
 
     await expect(page.getByRole("heading", { name: "管理员登录" })).toBeVisible();

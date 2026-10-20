@@ -3,20 +3,15 @@
   "loading": "Bootstrap",
   "presentation": {
     "category": "tool-describe",
-    "icon": "search",
-    "activity": {
-      "action": { "zh-CN": "查看工具", "en-US": "Inspect tools" },
-      "detailPaths": ["/tools/*"]
-    },
+    "icon": "info",
+    "activity": { "action": { "zh-CN": "查看工具", "en-US": "Inspect tools" }, "detailPaths": ["/tools/*"] },
     "preview": {
       "result": {
         "rows": [{ "pointer": "/tools/*", "titlePath": "/0", "descriptionPath": "/1" }],
         "maxRows": 4,
-        "more": {
-          "pointer": "/tools",
-          "label": { "zh-CN": "另有 {count} 个工具", "en-US": "{count} more tools" }
-        }
-      }
+        "more": { "pointer": "/tools", "label": { "zh-CN": "另有 {count} 个工具", "en-US": "{count} more tools" } }
+      },
+      "body": { "pointer": "/tools", "from": "result" }
     }
   },
   "description": "查看 Dynamic 候选工具的参数、输出、权限和执行边界；常驻 Bootstrap 工具会以 direct 返回，表示应直接调用而不是通过 ToolCall 转发。不会加载或调用工具。",
@@ -35,6 +30,66 @@
     "required": ["tools"],
     "additionalProperties": false,
     "definitions": {}
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "type": { "type": "string", "const": "senera.tool_description.v2" },
+      "tools": {
+        "type": "array",
+        "items": {
+          "type": "array",
+          "items": [{ "type": "string" }, { "type": "string" }, { "type": "string" }],
+          "additionalItems": false,
+          "minItems": 3,
+          "maxItems": 3
+        }
+      },
+      "availability": {
+        "type": "object",
+        "propertyNames": { "type": "string" },
+        "additionalProperties": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": { "status": { "type": "string", "const": "ready" } },
+              "required": ["status"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": { "status": { "type": "string", "const": "unverified" } },
+              "required": ["status"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": { "type": "string", "const": "needs_input" },
+                "inputIds": { "type": "array", "items": { "type": "string" } }
+              },
+              "required": ["status", "inputIds"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": { "type": "string", "const": "unavailable" },
+                "reason": { "type": "string" },
+                "message": { "type": "string" }
+              },
+              "required": ["status", "reason"],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "direct": { "type": "array", "items": { "type": "string" } },
+      "rejected": { "type": "array", "items": { "type": "string" } }
+    },
+    "required": ["type", "tools"],
+    "additionalProperties": false
   },
   "permissions": [],
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },

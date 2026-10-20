@@ -13,5 +13,27 @@
     },
     "required": ["utterance"],
     "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "utterance": {
+        "type": "string",
+        "minLength": 1,
+        "description": "The only text visible to the other person before the pending action starts."
+      }
+    },
+    "required": ["utterance"],
+    "additionalProperties": false
+  },
+  "presentation": {
+    "icon": "file-audio",
+    "preview": {
+      "body": {
+        "pointer": "/utterance",
+        "from": "result"
+      }
+    }
   }
 }

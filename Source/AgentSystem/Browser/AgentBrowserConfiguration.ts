@@ -6,12 +6,16 @@ import type { AgentExtensionLocalizedText } from "../Extensions/AgentExtensionLo
 export const AgentBrowserScreenshotFormatValues = ["png", "jpeg"] as const;
 export type AgentBrowserScreenshotFormat = (typeof AgentBrowserScreenshotFormatValues)[number];
 
+export const AgentBrowserContextValues = ["persistent", "temporary"] as const;
+export type AgentBrowserContext = (typeof AgentBrowserContextValues)[number];
+
 export const AgentBrowserLoadStateValues = ["domcontentloaded", "load", "networkidle"] as const;
 export type AgentBrowserLoadState = (typeof AgentBrowserLoadStateValues)[number];
 export const AgentBrowserMaximumUrlLength = 65_536;
 
 export const DefaultAgentBrowserConfiguration = {
   runtime: {
+    context: "persistent" as const,
     headed: false,
     requestTimeoutMs: 180_000,
     maxOperationTimeoutMs: 900_000,
@@ -55,6 +59,7 @@ export const AgentBrowserConfigurationSchema = z
   .object({
     runtime: z
       .object({
+        context: z.enum(AgentBrowserContextValues).default(DefaultAgentBrowserConfiguration.runtime.context),
         headed: z.boolean().default(DefaultAgentBrowserConfiguration.runtime.headed),
         executablePath: z.string().trim().min(1).max(32_768).optional(),
         controllerPath: z.string().trim().min(1).max(32_768).optional(),
@@ -152,11 +157,28 @@ export const AgentBrowserConfigurationUi = {
         id: "runtime",
         label: { "zh-CN": "浏览器运行时", "en-US": "Browser runtime" },
         description: {
-          "zh-CN": "Senera 启动独立的受控浏览器会话；模型不能读取或修改浏览器启动参数、用户资料或认证状态。",
+          "zh-CN": "Senera 管理受控浏览器会话；模型不能读取或修改浏览器启动参数、用户资料或认证状态。",
           "en-US":
-            "Senera launches isolated controlled browser sessions. Models cannot read or change browser launch arguments, profiles, or authentication state.",
+            "Senera manages controlled browser sessions. Models cannot read or change browser launch arguments, profiles, or authentication state.",
         },
         fields: [
+          {
+            path: ["runtime", "context"],
+            label: { "zh-CN": "浏览器状态", "en-US": "Browser state" },
+            description: {
+              "zh-CN": "记住登录会使用 Senera 专属浏览器保存网站登录与站点数据；临时浏览器会在会话结束后清除这些状态。",
+              "en-US":
+                "Remember sign-ins uses a Senera-only browser that keeps website sign-ins and site data. A temporary browser clears that state when the session ends.",
+            },
+            type: "string",
+            options: [...AgentBrowserContextValues],
+            optionLabels: {
+              persistent: { "zh-CN": "记住登录（推荐）", "en-US": "Remember sign-ins (recommended)" },
+              temporary: { "zh-CN": "临时浏览器", "en-US": "Temporary browser" },
+            },
+            required: true,
+            essential: true,
+          },
           {
             path: ["runtime", "headed"],
             label: { "zh-CN": "显示浏览器窗口", "en-US": "Show browser window" },
@@ -200,7 +222,7 @@ export const AgentBrowserConfigurationUi = {
             max: 3_600_000,
             step: 1_000,
             required: true,
-            essential: true,
+            essential: false,
           },
           {
             path: ["runtime", "maxOperationTimeoutMs"],
@@ -214,7 +236,7 @@ export const AgentBrowserConfigurationUi = {
             max: 3_600_000,
             step: 1_000,
             required: true,
-            essential: true,
+            essential: false,
           },
           {
             path: ["runtime", "idleTimeoutMs"],
@@ -234,7 +256,7 @@ export const AgentBrowserConfigurationUi = {
             max: 2_000_000,
             step: 1_024,
             required: true,
-            essential: true,
+            essential: false,
           },
           {
             path: ["runtime", "maxUrlLength"],

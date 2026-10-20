@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { AgentLogPolicyLimits } from "../Types/AgentLogPolicyLimits.js";
 import { AgentSelfSkillSearchLimits } from "./AgentSelfSkills.js";
+import { AgentChannelKinds } from "../Channels/AgentChannelTypes.js";
 
 /**
  * Single source of truth for the `senera` self-service command vocabulary.
@@ -225,11 +226,55 @@ const SkillsCommandSchema = z.discriminatedUnion("action", [
     .strict(),
 ]);
 
+const PromptPresetCommandSchema = z.discriminatedUnion("action", [
+  z.object({ command: z.literal("preset"), action: z.literal("list") }).strict(),
+  z.object({ command: z.literal("preset"), action: z.literal("status") }).strict(),
+  z
+    .object({
+      command: z.literal("preset"),
+      action: z.literal("read"),
+      path: z.string().trim().min(1).max(512),
+    })
+    .strict(),
+  z
+    .object({
+      command: z.literal("preset"),
+      action: z.literal("enable"),
+      path: z.string().trim().min(1).max(512),
+    })
+    .strict(),
+  z.object({ command: z.literal("preset"), action: z.literal("disable") }).strict(),
+]);
+
+const ChannelKindSchema = z.enum([AgentChannelKinds.Telegram, AgentChannelKinds.Qq, AgentChannelKinds.Discord]);
+
+const ChannelsCommandSchema = z.discriminatedUnion("action", [
+  z.object({ command: z.literal("channels"), action: z.literal("list") }).strict(),
+  z
+    .object({
+      command: z.literal("channels"),
+      action: z.literal("get"),
+      channel: ChannelKindSchema,
+    })
+    .strict(),
+  z
+    .object({
+      command: z.literal("channels"),
+      action: z.literal("update"),
+      channel: ChannelKindSchema,
+      path: z.string().trim().min(1).max(256),
+      value: z.unknown(),
+    })
+    .strict(),
+]);
+
 export const AgentSelfCommandSchema = z.discriminatedUnion("command", [
   ConfigCommandSchema,
   LogsCommandSchema,
   SessionCommandSchema,
   SkillsCommandSchema,
+  PromptPresetCommandSchema,
+  ChannelsCommandSchema,
   z.object({ command: z.literal("workspace"), action: z.literal("info") }).strict(),
   z.object({ command: z.literal("sessions"), action: z.literal("list") }).strict(),
   z.object({ command: z.literal("plugins"), action: z.literal("list") }).strict(),

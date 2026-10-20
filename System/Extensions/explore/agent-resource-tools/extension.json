@@ -13,7 +13,7 @@
   "priority": 8,
   "presentation": {
     "category": "resource",
-    "icon": "file-text",
+    "icon": "route",
     "group": { "id": "resource", "title": { "zh-CN": "资源访问", "en-US": "Resource access" } },
     "activity": { "action": { "zh-CN": "解析路径", "en-US": "Resolve path" }, "argumentPath": "/resourceUri" }
   },

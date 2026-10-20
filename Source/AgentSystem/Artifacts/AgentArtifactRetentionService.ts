@@ -5,7 +5,7 @@ import { SeneraOutputSpoolMarkerFileName, type SeneraOutputSpoolState } from "..
 import { AgentArtifactFileNames, assertInsideRoot } from "./AgentArtifactLocator.js";
 import { SeneraWorkspaceBoundary } from "../Execution/SeneraWorkspaceBoundary.js";
 import { AgentResourceAccessIntents } from "../Safety/AgentResourceAccessPolicy.js";
-import { isMissingFileError, removeAgentPathWithRetry } from "../Core/AgentFs.js";
+import { isMissingFileError, removeAgentPathWithRetry, runWithConcurrency } from "../Core/AgentFs.js";
 import { isPathWithin } from "../Core/AgentPath.js";
 import { parseJsonText } from "../Core/AgentJsonParsing.js";
 import { AgentArtifactFileWriter } from "./AgentArtifactFileWriter.js";
@@ -498,31 +498,6 @@ async function measureDirectoryBytes(directory: string, concurrency: number): Pr
       .catch(() => 0);
   });
   return sizes.reduce((total, size) => total + size, 0);
-}
-
-async function runWithConcurrency<TValue, TResult>(
-  values: readonly TValue[],
-  concurrency: number,
-  worker: (value: TValue) => Promise<TResult>,
-): Promise<TResult[]> {
-  if (values.length === 0) return [];
-  if (!Number.isSafeInteger(concurrency) || concurrency < 1) {
-    throw new RangeError("Artifact maintenance concurrency must be a positive safe integer.");
-  }
-  const limit = concurrency;
-  const results = new Array<TResult>(values.length);
-  let nextIndex = 0;
-  const runWorker = async (): Promise<void> => {
-    for (;;) {
-      const index = nextIndex++;
-      if (index >= values.length) return;
-      const value = values.at(index);
-      if (value === undefined) return;
-      results[index] = await worker(value);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, values.length) }, () => runWorker()));
-  return results;
 }
 
 function readSpoolState(value: unknown): SeneraOutputSpoolState {

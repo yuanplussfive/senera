@@ -3,8 +3,19 @@
   "loading": "Bootstrap",
   "presentation": {
     "category": "execution-list",
-    "icon": "activity",
-    "activity": { "action": { "zh-CN": "列出", "en-US": "List" } }
+    "icon": "stack",
+    "activity": {
+      "action": {
+        "zh-CN": "列出",
+        "en-US": "List"
+      }
+    },
+    "preview": {
+      "body": {
+        "pointer": "/resources",
+        "from": "result"
+      }
+    }
   },
   "description": "列出当前会话拥有的后台终端和进程资源。",
   "inputSchema": {
@@ -59,5 +70,94 @@
       "Template": "{{ toolName }} returned {{ result.resources | size }} execution resources",
       "ArtifactTemplate": "{% for resource in result.resources %}- resourceId: {{ resource.resourceId }}\n  kind: {{ resource.kind }}\n  state: {{ resource.state }}\n  command: {{ resource.command }}\n  cwd: {{ resource.cwd }}\n  cursor: {{ resource.cursor }}\n{% endfor %}"
     }
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "resources": {
+        "type": "array",
+        "items": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "resourceId": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "enum": ["process", "terminal"]
+            },
+            "state": {
+              "type": "string"
+            },
+            "fromCursor": {
+              "type": "number"
+            },
+            "cursor": {
+              "type": "number"
+            },
+            "oldestCursor": {
+              "type": "number"
+            },
+            "historyTruncated": {
+              "type": "boolean"
+            },
+            "updates": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "exitCode": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "signal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "error": {
+              "type": "string"
+            },
+            "command": {
+              "type": "string"
+            },
+            "cwd": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "resourceId",
+            "kind",
+            "state",
+            "fromCursor",
+            "cursor",
+            "oldestCursor",
+            "updates",
+            "command",
+            "cwd"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": ["resources"],
+    "additionalProperties": false
   }
 }

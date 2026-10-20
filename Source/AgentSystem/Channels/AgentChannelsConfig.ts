@@ -13,6 +13,7 @@ import {
 } from "./AgentChannelTypes.js";
 
 export const AgentChannelsExtensionId = "agent-channels";
+export const AgentChannelsConfigPathPrefix = `Extensions.${AgentChannelsExtensionId}.Configuration`;
 
 export const AgentChannelConfigDefaults: Readonly<Record<AgentChannelKind, AgentChannelConfig>> = {
   telegram: {

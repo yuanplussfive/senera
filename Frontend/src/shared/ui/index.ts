@@ -58,8 +58,14 @@ export { MenuMultiSelect } from "./MenuMultiSelect";
 export type { MenuMultiSelectProps } from "./MenuMultiSelect";
 export { Switch, SwitchTrack } from "./Switch";
 export type { SwitchProps, SwitchSize, SwitchTrackProps } from "./Switch";
+export { Slider } from "./Slider";
+export type { SliderMark, SliderProps, SliderSize, SliderVariant } from "./Slider";
 export { Tabs, TabsContent, TabsList, TabsTrigger } from "./Tabs";
+export type { TabsListProps } from "./Tabs";
+export { FluidSegmentedLayers, useFluidSegmentedSurface } from "./FluidSegmentedSurface";
+export type { FluidSegmentedSurface, FluidSegmentedVariant } from "./FluidSegmentedSurface";
 export { ScrollArea, ScrollBar } from "./ScrollArea";
+export type { ScrollAreaOrientation, ScrollAreaProps } from "./ScrollArea";
 export { SegmentedControl } from "./SegmentedControl";
 export type { SegmentedControlOption, SegmentedControlProps } from "./SegmentedControl";
 export { PillExpandNavbar } from "./PillExpandNavbar";
@@ -81,6 +87,8 @@ export { ExecutionStatusTones, executionStatusTone, isLiveActivityStatus } from 
 export type { ExecutionStatusTone } from "./executionStatusTone";
 export { Spinner } from "./Spinner";
 export type { SpinnerSize } from "./Spinner";
+export { StatusToken } from "./StatusToken";
+export type { StatusTokenProps, StatusTokenSize } from "./StatusToken";
 export { ThinkingIndicator } from "./ThinkingIndicator";
 export type { ThinkingIndicatorProps, ThinkingIndicatorSize } from "./ThinkingIndicator";
 export {

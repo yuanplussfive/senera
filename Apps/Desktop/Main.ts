@@ -1,7 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell, Tray, type IpcMainInvokeEvent } from "electron";
-import { startSeneraServer, type SeneraServerHandle } from "../ServerRuntime.js";
 import {
   appendDesktopLog,
   chooseDesktopWorkspace,
@@ -14,7 +13,7 @@ import {
   loadDesktopFrontend,
   type DesktopFrontendSource,
 } from "./DesktopFrontendSource.js";
-import { projectDesktopRuntimeConfig } from "./DesktopRuntimeConfig.js";
+import { DesktopServerHost, type DesktopServerHandle } from "./DesktopServerHost.js";
 import { isTrustedDesktopNavigation } from "./DesktopNavigationPolicy.js";
 import { DesktopClosePolicy, type DesktopCloseIntent } from "./DesktopClosePolicy.js";
 import { hideDesktopWindows, showDesktopWindows } from "./DesktopWindowVisibility.js";
@@ -23,15 +22,21 @@ import {
   DesktopExternalUrlPolicy,
   resolveAgentExternalUrl,
 } from "../../Source/AgentSystem/Interaction/AgentExternalUrlPolicy.js";
-import { SeneraServerDeployments } from "../ServerRuntime.js";
 import { DesktopUpdateService } from "./DesktopUpdateService.js";
 import type { DesktopUpdateSnapshot } from "./DesktopUpdateProtocol.js";
 import { readAgentProductMetadata } from "../../Source/AgentSystem/Core/AgentProductMetadata.js";
 import { resolveAgentWorkspaceConfigPath } from "../../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
+import {
+  isAgentSettingsSectionId,
+  type AgentSettingsSectionId,
+} from "../../Source/AgentSystem/Settings/AgentSettingsSectionContract.js";
 
-let serverHandle: SeneraServerHandle | undefined;
+let serverHandle: DesktopServerHandle | undefined;
 let mainWindow: BrowserWindow | undefined;
 let settingsWindow: BrowserWindow | undefined;
+let settingsWindowReady = false;
+let settingsSurfaceReady = false;
+let pendingSettingsSection: AgentSettingsSectionId | undefined;
 let desktopTray: Tray | undefined;
 let forceSettingsWindowClose = false;
 let desktopQuitting = false;
@@ -44,21 +49,6 @@ let desktopStartupReady = false;
 let pendingDesktopActivation = false;
 const desktopModuleDir = path.dirname(fileURLToPath(import.meta.url));
 const remoteDebuggingPort = process.env.SENERA_DESKTOP_REMOTE_DEBUGGING_PORT?.trim();
-
-const settingsSectionIds = new Set([
-  "model-service",
-  "default-model",
-  "system",
-  "runtime",
-  "planning",
-  "retrieval",
-  "storage",
-  "workspace",
-  "general",
-  "appearance",
-  "skills",
-  "about",
-]);
 
 app.setName("Senera");
 if (remoteDebuggingPort) {
@@ -104,13 +94,20 @@ if (!ownsDesktopInstance) {
         publishLog: (message) => appendDesktopLog(paths.logPath, message),
         onStateChanged: publishDesktopUpdateState,
       });
-      const configSource = {
-        kind: "json" as const,
-        configPath: paths.configPath,
-      };
-      serverHandle = await startSeneraServer({
-        workspaceRoot: paths.workspaceRoot,
-        applicationStateRoot: paths.dataRoot,
+      mainWindow = createMainWindow({ navigationSource: false });
+      await loadDesktopStartupSurface(mainWindow);
+      mainWindow.show();
+      const desktopServer = await DesktopServerHost.start({
+        bootstrap: {
+          workspaceRoot: paths.workspaceRoot,
+          applicationStateRoot: paths.dataRoot,
+          applicationRoot: paths.appRoot,
+          resourcesRoot: paths.resourceRoot,
+          upgradeStateRoot: paths.upgradeStateRoot,
+          upgradeDataRoots: [paths.desktopDataRoot],
+          configPath: paths.configPath,
+          legacyConfigPath: resolveAgentWorkspaceConfigPath(paths.dataRoot),
+        },
         onWorkspaceOpened: (root, workspaceId) => {
           persistDesktopWorkspace(paths, root);
           if (runtimePaths) runtimePaths = { ...runtimePaths, workspaceRoot: root };
@@ -120,17 +117,9 @@ if (!ownsDesktopInstance) {
             serverHandle = { ...serverHandle, workspaceRoot: root, websocketUrl: url.toString() };
           }
         },
-        applicationRoot: paths.appRoot,
-        resourcesPath: paths.resourceRoot,
-        upgradeStateRoot: paths.upgradeStateRoot,
-        upgradeDataRoots: [paths.desktopDataRoot],
-        configSource,
-        legacyConfigPath: resolveAgentWorkspaceConfigPath(paths.dataRoot),
-        deployment: SeneraServerDeployments.Local,
-        runtimeConfigProjection: (config, workspaceRoot) => projectDesktopRuntimeConfig(config, workspaceRoot),
-        automaticLoopbackHttp: true,
       });
-      mainWindow = createMainWindow();
+      serverHandle = desktopServer.currentHandle();
+      registerNavigationPolicy(mainWindow, frontendSource);
       await loadDesktopFrontend(mainWindow, frontendSource, desktopFrontendQuery());
       desktopStartupReady = true;
       void desktopUpdateService.start();
@@ -179,6 +168,11 @@ function registerDesktopIpc(): void {
     if (settingsWindow && event.sender === settingsWindow.webContents) {
       settingsClosePolicy.setDirty(Boolean(dirty));
     }
+  });
+  ipcMain.handle("senera:settings.surface-ready", (event) => {
+    if (!settingsWindow || event.sender !== settingsWindow.webContents) return;
+    settingsSurfaceReady = true;
+    flushSettingsSectionNavigation();
   });
   ipcMain.handle("senera:settings.confirm-close", (event) => {
     if (!settingsWindow || event.sender !== settingsWindow.webContents) return;
@@ -251,9 +245,8 @@ function requestDesktopUpdateInstall(): DesktopUpdateSnapshot | undefined {
   return service.installUpdate();
 }
 
-function resolveSettingsSection(section: string | undefined): string {
-  if (!settingsSectionIds.has(section ?? "")) return "model-service";
-  return section as string;
+function resolveSettingsSection(section: string | undefined): AgentSettingsSectionId {
+  return isAgentSettingsSectionId(section) ? section : "model-service";
 }
 
 function createDesktopTray(iconPath: string, onSelectWorkspace: () => void): Tray {
@@ -294,10 +287,10 @@ function showAllDesktopWindows(): void {
     mainWindow = createMainWindow();
     startDesktopFrontendLoad(mainWindow);
   }
-  showDesktopWindows([mainWindow, settingsWindow]);
+  showDesktopWindows([mainWindow, settingsWindow], mainWindow);
 }
 
-function createMainWindow(): BrowserWindow {
+function createMainWindow({ navigationSource = true }: { navigationSource?: boolean } = {}): BrowserWindow {
   const window = new BrowserWindow({
     width: 1360,
     height: 880,
@@ -306,6 +299,7 @@ function createMainWindow(): BrowserWindow {
     backgroundColor: "#0f172a",
     title: "Senera",
     icon: runtimePaths?.windowIconPath,
+    show: false,
     autoHideMenuBar: true,
     ...readWindowFrameOptions(),
     webPreferences: {
@@ -319,7 +313,7 @@ function createMainWindow(): BrowserWindow {
     event.preventDefault();
     window.setTitle("Senera");
   });
-  registerNavigationPolicy(window, readFrontendSource());
+  if (navigationSource) registerNavigationPolicy(window, readFrontendSource());
   registerWindowStateEvents(window);
   window.on("close", (event) => {
     if (desktopQuitting) return;
@@ -345,14 +339,8 @@ function openSettingsWindow(options?: { section?: string }): void {
   }
   const section = resolveSettingsSection(options?.section);
   if (settingsWindow && !settingsWindow.isDestroyed()) {
-    if (settingsWindow.isMinimized()) settingsWindow.restore();
-    settingsWindow.focus();
-    if (!settingsClosePolicy.dirty) {
-      startDesktopFrontendLoad(settingsWindow, {
-        surface: "settings",
-        section,
-      });
-    }
+    if (settingsWindowReady) presentSettingsWindow({ focus: false });
+    if (!settingsClosePolicy.dirty) requestSettingsSectionNavigation(section);
     return;
   }
 
@@ -377,12 +365,19 @@ function openSettingsWindow(options?: { section?: string }): void {
 
   settingsClosePolicy.reset();
   forceSettingsWindowClose = false;
+  settingsWindowReady = false;
+  settingsSurfaceReady = false;
+  pendingSettingsSection = section;
   settingsWindow.once("ready-to-show", () => {
-    settingsWindow?.show();
+    settingsWindowReady = true;
+    presentSettingsWindow({ focus: true });
   });
   settingsWindow.on("page-title-updated", (event) => {
     event.preventDefault();
     settingsWindow?.setTitle(desktopMessage("settings.title", {}, app.getLocale()));
+  });
+  settingsWindow.webContents.on("did-start-loading", () => {
+    settingsSurfaceReady = false;
   });
   registerWindowStateEvents(settingsWindow);
   registerNavigationPolicy(settingsWindow, source);
@@ -393,6 +388,9 @@ function openSettingsWindow(options?: { section?: string }): void {
   });
   settingsWindow.on("closed", () => {
     settingsWindow = undefined;
+    settingsWindowReady = false;
+    settingsSurfaceReady = false;
+    pendingSettingsSection = undefined;
     settingsClosePolicy.reset();
     forceSettingsWindowClose = false;
   });
@@ -401,6 +399,32 @@ function openSettingsWindow(options?: { section?: string }): void {
     surface: "settings",
     section,
   });
+}
+
+function requestSettingsSectionNavigation(section: AgentSettingsSectionId): void {
+  pendingSettingsSection = section;
+  flushSettingsSectionNavigation();
+}
+
+function flushSettingsSectionNavigation(): void {
+  const window = settingsWindow;
+  const section = pendingSettingsSection;
+  if (!window || window.isDestroyed() || window.webContents.isDestroyed() || !settingsSurfaceReady || !section) return;
+  pendingSettingsSection = undefined;
+  window.webContents.send("senera:settings.navigate", section);
+}
+
+function presentSettingsWindow({ focus }: { focus: boolean }): void {
+  const window = settingsWindow;
+  if (!window || window.isDestroyed()) return;
+  if (window.isMinimized()) window.restore();
+  if (focus) {
+    window.show();
+    window.moveTop();
+    window.focus();
+  } else if (!window.isVisible()) {
+    window.showInactive();
+  }
 }
 
 function readWindowFrameOptions(): { frame: false } | { titleBarStyle: "hiddenInset" } {
@@ -427,9 +451,7 @@ function registerWindowStateEvents(window: BrowserWindow): void {
 
 function requestDirtySettingsConfirmation(intent: DesktopCloseIntent): boolean {
   if (!settingsWindow || settingsWindow.isDestroyed() || !settingsClosePolicy.request(intent)) return false;
-  if (settingsWindow.isMinimized()) settingsWindow.restore();
-  settingsWindow.show();
-  settingsWindow.focus();
+  presentSettingsWindow({ focus: true });
   settingsWindow.webContents.send("senera:settings.request-close");
   return true;
 }
@@ -483,6 +505,14 @@ function startDesktopFrontendLoad(window: BrowserWindow, query: Record<string, s
       appendDesktopLog(runtimePaths.logPath, `frontend load failed ${message}`);
     }
   });
+}
+
+async function loadDesktopStartupSurface(window: BrowserWindow): Promise<void> {
+  const document = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Senera</title>
+<style>html,body{height:100%;margin:0;background:#0f172a;color:#e2e8f0;font:14px system-ui,sans-serif}main{height:100%;display:grid;place-items:center;letter-spacing:0}span{opacity:.76}</style>
+</head><body><main><span>Senera</span></main></body></html>`;
+  await window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(document)}`);
 }
 
 function publishDesktopUpdateState(snapshot: DesktopUpdateSnapshot): void {

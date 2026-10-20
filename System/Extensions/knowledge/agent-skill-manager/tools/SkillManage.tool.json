@@ -9,7 +9,8 @@
       "action": { "zh-CN": "管理", "en-US": "Manage" },
       "argumentPath": "/action",
       "detailPaths": ["/name"]
-    }
+    },
+    "preview": { "body": { "pointer": "/status", "from": "result" } }
   },
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

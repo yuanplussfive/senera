@@ -108,7 +108,7 @@ export function RuntimeDiagnosticPanel(): JSX.Element {
       data-runtime-diagnostic
     >
       <div
-        className="scrollbar-thin min-h-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]"
+        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]"
         data-runtime-diagnostic-scroll
       >
         <RunHistoryStrip
@@ -179,7 +179,7 @@ function RunHistoryStrip({
       </div>
       <div
         ref={historyListRef}
-        className="scrollbar-thin relative max-h-[144px] min-w-0 overflow-y-auto"
+        className="relative max-h-[144px] min-w-0 overflow-y-auto"
         role="list"
         {...historyHover.handlers}
       >
@@ -580,6 +580,7 @@ function toolCallInspection(span: RuntimeDiagnosticSpan) {
     toolName: span.toolName ?? toolOriginLabel(span),
     origin: span.toolOrigin,
     arguments: span.toolArguments,
+    result: span.toolPresentation,
     status:
       span.status === "running"
         ? "active"

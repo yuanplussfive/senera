@@ -20,7 +20,6 @@ describe("DefaultModelSection", () => {
       }),
     );
 
-    expect(screen.getByText("模型职责")).toBeVisible();
     expect(screen.getAllByText("必填")).toHaveLength(2);
     expect(container.querySelectorAll("[data-model-assignment-group]")).toHaveLength(2);
     expect(container.querySelectorAll("[data-model-assignment-row]")).toHaveLength(2);
@@ -53,11 +52,12 @@ describe("DefaultModelSection", () => {
       }),
     );
 
-    // 分组入场动画从 opacity 0 起播，等待动画完成后再断言可见性。
-    await waitFor(() => {
-      expect(screen.getByText("子代理编排 · 子代理模型池")).toBeVisible();
-      expect(screen.getByText("父运行当前模型")).toBeVisible();
-    });
+    const extensionToggle = screen.getByRole("button", { name: "子代理编排" });
+    expect(extensionToggle).toHaveAttribute("aria-expanded", "false");
+    await user.click(extensionToggle);
+    expect(extensionToggle).toHaveAttribute("aria-expanded", "true");
+    await waitFor(() => expect(screen.getByText("模型池")).toBeVisible());
+    expect(screen.getByText("继承发起模型")).toBeVisible();
     const modelPool = container.querySelector("[data-model-pool-assignment]");
     expect(modelPool).toBeInTheDocument();
     await waitFor(() => {
@@ -65,7 +65,7 @@ describe("DefaultModelSection", () => {
       expect(within(modelPool).getByText("provider-b")).toBeVisible();
     });
 
-    await user.click(screen.getByRole("switch", { name: "继承发起委派的模型" }));
+    await user.click(screen.getByRole("switch", { name: "继承发起模型" }));
     expect(updateDraft).toHaveBeenCalledWith(
       expect.objectContaining({
         Extensions: {
@@ -181,6 +181,7 @@ function createChildModelPoolExtension() {
     version: "1.0.0",
     displayName: { "zh-CN": "子代理编排", "en-US": "Subagent orchestration" },
     description: { "zh-CN": "子代理", "en-US": "Subagents" },
+    presentation: { icon: "users" },
     enabled: true,
     configured: false,
     tools: [],
@@ -194,15 +195,15 @@ function createChildModelPoolExtension() {
       sections: [
         {
           name: "model-pool",
-          label: { "zh-CN": "子代理模型池", "en-US": "Child model pool" },
+          label: { "zh-CN": "模型池", "en-US": "Model pool" },
           keyCount: 2,
           fields: [
             {
               ...createField(
                 ["modelPool", "inheritParent"],
                 {
-                  "zh-CN": "继承父运行模型",
-                  "en-US": "Inherit parent model",
+                  "zh-CN": "继承发起模型",
+                  "en-US": "Inherit delegating model",
                 },
                 undefined,
                 true,
@@ -213,7 +214,7 @@ function createChildModelPoolExtension() {
             {
               ...createField(
                 ["modelPool", "modelProviderIds"],
-                { "zh-CN": "候选子代理模型", "en-US": "Child model candidates" },
+                { "zh-CN": "候选模型", "en-US": "Candidate models" },
                 {
                   id: "agent-delegation-model-pool",
                   capability: "Chat",

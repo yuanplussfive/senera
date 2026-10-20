@@ -12,15 +12,18 @@ const LazyDesktopSettingsRuntimeSurface = lazy(() =>
 export function DesktopSettingsSurface({
   initialSection,
   socketReconnectPolicy,
+  csrfToken,
 }: {
   initialSection: SettingsSectionId;
   socketReconnectPolicy: AgentSocketReconnectPolicy;
+  csrfToken?: string;
 }): JSX.Element {
   return (
     <Suspense fallback={<SettingsSurfaceLoading presentation="desktop" />}>
       <LazyDesktopSettingsRuntimeSurface
         initialSection={initialSection}
         socketReconnectPolicy={socketReconnectPolicy}
+        csrfToken={csrfToken}
       />
     </Suspense>
   );

@@ -49,7 +49,7 @@ export function WorkflowTaskProgress({ run }: { run: RunRecord }): JSX.Element |
       >
         <span style={{ width: `${completionRatio * 100}%` }} />
       </div>
-      <div className="workflow-task-progress__list scrollbar-thin" data-workflow-task-progress-list>
+      <div className="workflow-task-progress__list " data-workflow-task-progress-list>
         {groups.map((group) => (
           <div key={group.id} className="workflow-task-progress__group" data-workflow-task-group={group.id}>
             {group.owner ? <div className="workflow-task-progress__owner">{group.owner}</div> : null}

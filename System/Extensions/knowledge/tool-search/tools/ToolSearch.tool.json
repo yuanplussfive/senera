@@ -4,10 +4,7 @@
   "presentation": {
     "category": "tool-search",
     "icon": "search",
-    "activity": {
-      "action": { "zh-CN": "查找工具", "en-US": "Search tools" },
-      "argumentPath": "/query"
-    },
+    "activity": { "action": { "zh-CN": "查找工具", "en-US": "Search tools" }, "argumentPath": "/query" },
     "preview": {
       "result": {
         "rows": [
@@ -17,10 +14,11 @@
         "maxRows": 4,
         "more": {
           "pointer": "/more",
-          "countPath": "/2",
+          "countPath": "/*/2",
           "label": { "zh-CN": "另有 {count} 个结果", "en-US": "{count} more results" }
         }
-      }
+      },
+      "body": { "pointer": "/match", "from": "result" }
     }
   },
   "description": "搜索当前授权范围内可发现的动态工具，不会自动加载或调用。结果中 match 有直接声明证据，maybe 需要先用 ToolDescribe 判断；more 是按实际候选来源折叠的覆盖提示，格式为 [sourceId,sourceName,omittedToolCount]，表示该来源仍有多少个候选未在本次结果展开。more 中的 sourceName 不是可调用工具，需再次搜索获取具体工具名。保持任务的原始表达和专有名词，检索器会根据实际能力元数据自动融合词法、别名和语义证据。",
@@ -37,20 +35,185 @@
     "additionalProperties": false,
     "definitions": {}
   },
-  "permissions": [],
-  "execution": {
-    "Targets": ["Local"],
-    "Network": "Deny",
-    "Workspace": "ReadOnly"
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "type": { "type": "string", "const": "senera.tool_discovery.v5" },
+      "availability": {
+        "type": "object",
+        "propertyNames": { "type": "string" },
+        "additionalProperties": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": { "status": { "type": "string", "const": "ready" } },
+              "required": ["status"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": { "status": { "type": "string", "const": "unverified" } },
+              "required": ["status"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": { "type": "string", "const": "needs_input" },
+                "inputIds": { "type": "array", "items": { "type": "string" } }
+              },
+              "required": ["status", "inputIds"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": { "type": "string", "const": "unavailable" },
+                "reason": { "type": "string" },
+                "message": { "type": "string" }
+              },
+              "required": ["status", "reason"],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "services": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "title": { "type": "string" },
+            "description": { "type": "string" },
+            "availability": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": { "status": { "type": "string", "const": "ready" } },
+                  "required": ["status"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": { "status": { "type": "string", "const": "unverified" } },
+                  "required": ["status"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "const": "needs_input" },
+                    "inputIds": { "type": "array", "items": { "type": "string" } }
+                  },
+                  "required": ["status", "inputIds"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "const": "unavailable" },
+                    "reason": { "type": "string" },
+                    "message": { "type": "string" }
+                  },
+                  "required": ["status", "reason"],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "required": ["id", "title", "description", "availability"],
+          "additionalProperties": false
+        }
+      },
+      "status": { "type": "string", "enum": ["empty", "stale"] },
+      "reason": { "type": "string" },
+      "diagnostics": { "type": "array", "items": { "type": "string" } },
+      "catalogRevision": { "type": "string" },
+      "match": {
+        "type": "array",
+        "items": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": [{ "type": "string" }, { "type": "string" }],
+              "additionalItems": false,
+              "minItems": 2,
+              "maxItems": 2
+            },
+            {
+              "type": "array",
+              "items": [
+                { "type": "string" },
+                { "type": "string" },
+                {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": [
+                        { "type": "string", "enum": ["visible", "discoverable"] },
+                        { "type": "string", "enum": ["confirmed", "unconfirmed"] },
+                        { "type": "string", "enum": ["arguments", "none"] }
+                      ],
+                      "additionalItems": false,
+                      "minItems": 3,
+                      "maxItems": 3
+                    },
+                    {
+                      "type": "array",
+                      "items": [
+                        { "type": "string", "enum": ["visible", "discoverable"] },
+                        { "type": "string", "enum": ["confirmed", "unconfirmed"] },
+                        { "type": "string", "const": "arguments" },
+                        { "type": "object", "propertyNames": { "type": "string" }, "additionalProperties": {} }
+                      ],
+                      "additionalItems": false,
+                      "minItems": 4,
+                      "maxItems": 4
+                    }
+                  ]
+                }
+              ],
+              "additionalItems": false,
+              "minItems": 3,
+              "maxItems": 3
+            }
+          ]
+        }
+      },
+      "maybe": {
+        "type": "array",
+        "items": {
+          "type": "array",
+          "items": [{ "type": "string" }, { "type": "string" }],
+          "additionalItems": false,
+          "minItems": 2,
+          "maxItems": 2
+        }
+      },
+      "more": {
+        "type": "array",
+        "items": {
+          "type": "array",
+          "items": [{ "type": "string" }, { "type": "string" }, { "type": "number" }],
+          "additionalItems": false,
+          "minItems": 3,
+          "maxItems": 3
+        }
+      }
+    },
+    "required": ["type"],
+    "additionalProperties": false
   },
+  "permissions": [],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
   "runtime": {
     "Lifecycle": "Immediate",
     "ProtocolVersion": 2,
     "ResultAssessment": "ProcessExit",
     "Scheduling": "Parallel",
-    "Capabilities": {
-      "Cancellation": true
-    }
+    "Capabilities": { "Cancellation": true }
   },
   "resources": [],
   "sources": [

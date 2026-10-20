@@ -23,7 +23,7 @@ app
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
-        preload: path.resolve(__dirname, "..", "..", "..", "Apps", "Desktop", "Preload.cjs"),
+        preload: path.resolve(__dirname, "..", "..", "..", "Dist", "Apps", "Desktop", "Preload.cjs"),
         sandbox: true,
       },
     });
@@ -42,6 +42,7 @@ app.on("window-all-closed", () => app.quit());
 function registerDesktopIpc() {
   ipcMain.handle("senera:settings.open", () => undefined);
   ipcMain.handle("senera:settings.dirty", () => undefined);
+  ipcMain.handle("senera:settings.surface-ready", () => undefined);
   ipcMain.handle("senera:settings.confirm-close", (event) => BrowserWindow.fromWebContents(event.sender)?.close());
   ipcMain.handle("senera:settings.cancel-close", () => undefined);
   ipcMain.handle("senera:window.minimize", (event) => BrowserWindow.fromWebContents(event.sender)?.minimize());
@@ -58,6 +59,7 @@ function registerDesktopIpc() {
     return window ? { isMaximized: window.isMaximized() } : undefined;
   });
   ipcMain.handle("senera:external-url.open", () => undefined);
+  ipcMain.handle("senera:workspace.choose-folder", () => null);
   ipcMain.handle("senera:update.get-state", () => unsupportedUpdateState);
   ipcMain.handle("senera:update.check", () => unsupportedUpdateState);
   ipcMain.handle("senera:update.download", () => unsupportedUpdateState);

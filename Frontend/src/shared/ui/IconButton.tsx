@@ -21,6 +21,7 @@ export interface IconButtonProps extends Omit<HTMLMotionProps<"button">, "aria-l
   tooltipSide?: TooltipSide;
   tooltipShortcut?: string;
   touchSafe?: boolean;
+  "data-overlay-anchor"?: string;
 }
 
 const sizeClasses: Record<IconButtonSize, string> = {
@@ -51,6 +52,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
       tooltipShortcut,
       touchSafe = false,
       disabled = false,
+      "data-overlay-anchor": overlayAnchor,
       ...props
     },
     ref,
@@ -62,11 +64,15 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
       <MotionButton
         ref={ref}
         {...props}
+        data-overlay-anchor={overlayAnchor}
         aria-label={label}
         aria-busy={loading || undefined}
         disabled={disabled || loading}
         className={cn(
-          "grid shrink-0 cursor-pointer place-items-center transition-[background-color,border-color,box-shadow,color,transform] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus disabled:pointer-events-none disabled:opacity-50",
+          "grid shrink-0 cursor-pointer place-items-center duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus disabled:pointer-events-none disabled:opacity-50",
+          overlayAnchor
+            ? "transition-[background-color,border-color,box-shadow,color]"
+            : "transition-[background-color,border-color,box-shadow,color,transform]",
           sizeClasses[size],
           touchSafeClassName,
           toneClasses[tone],

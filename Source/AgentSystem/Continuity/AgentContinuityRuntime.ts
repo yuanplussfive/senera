@@ -103,6 +103,7 @@ export function createAgentContinuityRuntime(input: {
         };
       },
       semanticScopeKey: baseIdentity.workspaceId,
+      identityDisplayValues: input.identityDisplayValues,
       logger: input.logger,
       learningLogger: input.learningLogger,
     });
@@ -121,6 +122,7 @@ export function createAgentContinuityRuntime(input: {
       store,
       recallConfig: () => resolveContinuityLearningConfig(input.configSnapshot()).Recall,
       memos,
+      identityDisplayValues: input.identityDisplayValues,
       logger: input.logger,
     });
     const memory = new AgentMemoryService({

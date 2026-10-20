@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { useStore, type SessionRecord, type UserProfile } from "../../store/sessionStore";
+import {
+  useStore,
+  type ConversationProfileUpdate,
+  type SessionRecord,
+  type UserProfile,
+} from "../../store/sessionStore";
 import { cn } from "../../lib/util";
 import { ConfirmationDialog, RenameDialog } from "./SessionDialogs";
 import { UserFooter } from "./ProfileFooter";
@@ -20,11 +25,13 @@ interface Props {
   };
   onRenameSession: (id: string, title: string) => boolean;
   userProfile: UserProfile;
-  onUpdateUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
+  onUpdateUserProfile: (profile: ConversationProfileUpdate) => void;
   onLogout?: () => Promise<void>;
   socketStatus: string;
   onSettingsIntent?: () => void;
   onOpenSettings: (section?: SettingsSectionId, returnFocus?: HTMLElement | null) => void;
+  httpBaseUrl?: string;
+  uploadCsrfToken?: string;
   presentation?: "auto" | "panel";
   onSessionSelected?: () => void;
   onClosePanel?: () => void;
@@ -48,6 +55,8 @@ export function SessionList({
   socketStatus,
   onSettingsIntent,
   onOpenSettings,
+  httpBaseUrl,
+  uploadCsrfToken,
   presentation = "auto",
   onSessionSelected,
   onClosePanel,
@@ -257,6 +266,8 @@ export function SessionList({
         onOpenSettings={onOpenSettings}
         onUpdateProfile={onUpdateUserProfile}
         onLogout={onLogout}
+        httpBaseUrl={httpBaseUrl}
+        uploadCsrfToken={uploadCsrfToken}
       />
     </aside>
   );

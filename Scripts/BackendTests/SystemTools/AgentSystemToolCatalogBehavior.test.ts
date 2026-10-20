@@ -68,6 +68,8 @@ describe("System Tool catalog", () => {
         .map((tool) => tool.name)
         .sort(),
     ).toEqual(extensions.flatMap((extension) => extension.tools.map((tool) => tool.name)).sort());
+    expect(registry.listTools().every((tool) => tool.contract?.outputSchema !== undefined)).toBe(true);
+    expect(registry.listSidecarTools().every((tool) => tool.outputSchema !== undefined)).toBe(true);
     expect(registry.getTool("WorkspaceApplyPatch")).toMatchObject({
       owner: {
         kind: "system",
@@ -89,7 +91,12 @@ describe("System Tool catalog", () => {
         ],
       },
       runtime: { Scheduling: "ResourceClaims" },
-      contract: { outputSchema: undefined },
+      contract: {
+        outputSchema: expect.objectContaining({
+          type: "object",
+          additionalProperties: false,
+        }),
+      },
     });
     expect(registry.getTool("WorkspaceInspectTool")).toBeUndefined();
     expect(registry.getTool("ShellCommandTool")).not.toHaveProperty("contentPolicy");
@@ -100,6 +107,8 @@ describe("System Tool catalog", () => {
       name: "ResidentActionSpeak",
       capability: AgentResidentActionSpeechCapability,
       owner: { kind: "system", name: "resident-speech" },
+      outputSchema: expect.objectContaining({ type: "object", additionalProperties: false }),
+      presentation: expect.objectContaining({ preview: expect.objectContaining({ body: expect.any(Object) }) }),
     });
     expect(registry.getSidecarTool(AgentResidentFinalSpeechCapability)).toMatchObject({
       name: "ResidentFinalSpeak",
@@ -210,6 +219,20 @@ describe("System Tool catalog", () => {
     expect(omissions).toEqual([]);
   });
 
+  test("assigns each operation in an extension a distinct presentation icon", () => {
+    const registry = new AgentExtensionRegistry();
+    const definitions = createAgentSystemTools(testConfig());
+    const catalog = new AgentSystemExtensionCatalog();
+    catalog.registerRoot(registry, path.resolve("System", "Extensions"), {
+      capabilities: new Set([...listDefaultAgentHostCapabilityNames(), ...definitions.map(systemToolCapability)]),
+    });
+
+    for (const extension of catalog.listExtensions()) {
+      const icons = extension.tools.map((tool) => tool.presentation.icon);
+      expect(new Set(icons).size, `${extension.id} must not reuse a tool icon`).toBe(icons.length);
+    }
+  });
+
   test("projects domain presentation into registered tools and their lifecycle origins", () => {
     const registry = new AgentExtensionRegistry();
     const definitions = createAgentSystemTools(testConfig());
@@ -229,7 +252,7 @@ describe("System Tool catalog", () => {
     });
     expect(tool?.presentation).toMatchObject({
       category: "workspace-read",
-      icon: "file-text",
+      icon: "eye",
       group: { id: "workspace", title: { "zh-CN": "浏览工作区", "en-US": "Explore workspace" } },
       activity: { action: { "zh-CN": "读取文件", "en-US": "Read" }, argumentPath: "/path" },
     });
@@ -247,6 +270,15 @@ describe("System Tool catalog", () => {
       fs.mkdirSync(path.join(packageRoot, "tools"), { recursive: true });
       writeJson(path.join(packageRoot, "tools", "PresentationTool.tool.json"), {
         ...minimalContract("PresentationTool"),
+        inputSchema: {
+          type: "object",
+          properties: {
+            command: { type: "string" },
+            target: { type: "string" },
+          },
+          required: ["command", "target"],
+          additionalProperties: false,
+        },
         presentation: {
           category: "tool-category",
           group: { title: localizedTestText("Tool group") },
@@ -413,6 +445,15 @@ describe("System Tool catalog", () => {
         }),
       ]),
     );
+  });
+
+  test("requires every system host tool to publish a result contract", () => {
+    const { outputSchema: _outputSchema, ...contract } = minimalContract("TestTool");
+
+    const parsed = AgentSystemToolContractSchema.safeParse(contract);
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    expect(parsed.error.issues).toEqual(expect.arrayContaining([expect.objectContaining({ path: ["outputSchema"] })]));
   });
 
   test("projects image analysis configuration with localized form metadata", () => {
@@ -860,6 +901,7 @@ function minimalContract(name: string) {
     loading: "Dynamic",
     description: `${name} test contract.`,
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    outputSchema: { type: "object", properties: {}, additionalProperties: false },
     permissions: [],
     execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
     runtime: {

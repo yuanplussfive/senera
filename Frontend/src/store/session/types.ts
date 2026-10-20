@@ -38,11 +38,11 @@ import type {
 } from "../../api/eventTypes";
 import type { ExecutionApprovalMode } from "../../api/executionApprovalMode";
 import type { MotionLevel } from "../../shared/motion/types";
-import type { UserProfile } from "./userProfile";
+import type { ConversationProfileUpdate, UserProfile } from "./userProfile";
 
 export { DEFAULT_SESSION_TITLE } from "./defaults";
 export { DEFAULT_USER_PROFILE } from "./userProfile";
-export type { UserProfile };
+export type { ConversationIdentity, ConversationProfileUpdate, UserProfile } from "./userProfile";
 
 export type MessageRole = "user" | "assistant" | "system";
 
@@ -588,7 +588,7 @@ export interface StoreState {
   applyDefaultModelToActiveSession: () => void;
   selectThinkingLevel: (level: ModelThinkingLevel) => void;
   setExecutionApprovalMode: (mode: ExecutionApprovalMode) => void;
-  setUserProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
+  setUserProfile: (profile: ConversationProfileUpdate) => void;
   markUserProfileSynced: (profile?: UserProfileData) => void;
   replaceWithDevMockData: (sessions: SessionRecord[], activeSessionId?: string) => void;
 }

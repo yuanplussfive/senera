@@ -39,6 +39,24 @@ describe("extension secret HTTP API", () => {
     });
   });
 
+  test("returns an empty value for a stored secret this host cannot open", async () => {
+    const baseUrl = await createHarness("senera:secret:v2:");
+    const url = new URL(AgentExtensionSecretHttpRoute, baseUrl);
+    url.searchParams.set("extensionId", "web-tools");
+    url.searchParams.append("path", "search");
+    url.searchParams.append("path", "codexApiKey");
+
+    const response = await fetch(url);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      extensionId: "web-tools",
+      path: ["search", "codexApiKey"],
+      value: "",
+    });
+  });
+
   test("rejects undeclared and non-secret fields", async () => {
     const baseUrl = await createHarness();
     const url = new URL(AgentExtensionSecretHttpRoute, baseUrl);
@@ -55,12 +73,12 @@ describe("extension secret HTTP API", () => {
   });
 });
 
-async function createHarness(): Promise<string> {
+async function createHarness(storedCodexApiKey = "sk-codex-secret"): Promise<string> {
   const api = new AgentExtensionSecretHttpApi({
     configSnapshot: () => ({
       ModelProviders: [],
       Extensions: {
-        "web-tools": { Configuration: { search: { provider: "codex", codexApiKey: "sk-codex-secret" } } },
+        "web-tools": { Configuration: { search: { provider: "codex", codexApiKey: storedCodexApiKey } } },
       },
     }),
     systemExtensions: () =>

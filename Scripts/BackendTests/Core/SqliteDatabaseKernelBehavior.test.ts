@@ -11,6 +11,7 @@ import {
   snapshotAgentSqliteSchema,
 } from "../../../Source/AgentSystem/Database/AgentSqliteDatabaseSchema.js";
 import { AgentSqliteDatabaseKernel } from "../../../Source/AgentSystem/Database/AgentSqliteDatabaseKernel.js";
+import { listAgentSqliteDatabaseFamilyPaths } from "../../../Source/AgentSystem/Database/AgentSqliteDatabaseLifecycle.js";
 import type { AgentSqliteStoreContract } from "../../../Source/AgentSystem/Database/AgentSqliteStoreContract.js";
 import { AgentMemoryDatabaseContract } from "../../../Source/AgentSystem/Memory/AgentMemorySqlSchema.js";
 import { AgentSessionDatabaseContract } from "../../../Source/AgentSystem/SessionPersistence/AgentSessionSqlSchema.js";
@@ -25,6 +26,21 @@ afterEach(() => {
 });
 
 describe("SQLite database kernel", () => {
+  test("retains the active lifecycle marker while identifying the complete database family", () => {
+    const databasePath = temporaryDatabasePath("lifecycle-family.sqlite");
+    const kernel = new AgentSqliteDatabaseKernel({ databasePath, contract: AgentConfigDatabaseContract });
+    try {
+      const completeFamily = listAgentSqliteDatabaseFamilyPaths(databasePath);
+      const activeMarker = completeFamily.find((filePath) => filePath.includes(".senera-sqlite-open-"));
+      expect(activeMarker).toBeDefined();
+      expect(listAgentSqliteDatabaseFamilyPaths(databasePath, { excludeCurrentProcessMarkers: true })).not.toContain(
+        activeMarker,
+      );
+    } finally {
+      kernel.close();
+    }
+  });
+
   test("records the Shanghai business-time policy without changing the store contract schema", () => {
     const databasePath = temporaryDatabasePath("time-policy.sqlite");
     const initial = new AgentSqliteDatabaseKernel({ databasePath, contract: AgentConfigDatabaseContract });

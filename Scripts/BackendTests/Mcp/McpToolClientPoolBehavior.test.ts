@@ -1,9 +1,11 @@
 import { describe, expect, test, vi } from "vitest";
 import {
+  AgentMcpConnectionLifecycleEventKinds,
   AgentMcpToolClientPool,
   AgentMcpToolClientUnavailableError,
   createAgentMcpToolClientPoolKey,
 } from "../../../Source/AgentSystem/Mcp/AgentMcpToolClientPool.js";
+import type { AgentMcpConnectionLifecycleEvent } from "../../../Source/AgentSystem/Mcp/AgentMcpToolClientPool.js";
 import type {
   AgentMcpToolClient,
   AgentMcpToolClientOptions,
@@ -83,6 +85,26 @@ describe("MCP tool client pool", () => {
     expect(live.close).toHaveBeenCalledOnce();
   });
 
+  test("reports when a later lease reuses an established connection", async () => {
+    const events: AgentMcpConnectionLifecycleEvent[] = [];
+    const live = fakeClient(false);
+    const pool = new AgentMcpToolClientPool(
+      vi.fn(async () => live.client),
+      {
+        onLifecycleEvent: (event) => events.push(event),
+      },
+    );
+    const sharedConnection = connection();
+
+    await pool.withClient(sharedConnection, async () => "first");
+    await pool.withClient(sharedConnection, async () => "second");
+
+    expect(events).toContainEqual(
+      expect.objectContaining({ kind: AgentMcpConnectionLifecycleEventKinds.Reused, serverId: "pool-fixture" }),
+    );
+    await pool.close();
+  });
+
   test("evicts idle clients and opens the same endpoint on the next lease", async () => {
     vi.useFakeTimers();
     try {
@@ -104,6 +126,38 @@ describe("MCP tool client pool", () => {
       expect(open).toHaveBeenCalledTimes(2);
       await pool.close();
       expect(second.close).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("reports connection ownership transitions without publishing launch inputs", async () => {
+    vi.useFakeTimers();
+    try {
+      let now = 0;
+      const events: AgentMcpConnectionLifecycleEvent[] = [];
+      const client = fakeClient(false);
+      const pool = new AgentMcpToolClientPool(
+        vi.fn(async () => client.client),
+        {
+          policy: { idleTtlMs: 100, sweepIntervalMs: 50 },
+          clock: () => now,
+          onLifecycleEvent: (event) => events.push(event),
+        },
+      );
+
+      await pool.withClient(connection(), async () => "ready");
+      now = 100;
+      await vi.advanceTimersByTimeAsync(100);
+
+      expect(events).toEqual([
+        expect.objectContaining({ kind: AgentMcpConnectionLifecycleEventKinds.Opening, serverId: "pool-fixture" }),
+        expect.objectContaining({ kind: AgentMcpConnectionLifecycleEventKinds.Ready, activeLeases: 1 }),
+        expect.objectContaining({ kind: AgentMcpConnectionLifecycleEventKinds.Retiring, reason: "idle" }),
+        expect.objectContaining({ kind: AgentMcpConnectionLifecycleEventKinds.Closed, reason: "idle" }),
+      ]);
+      expect(JSON.stringify(events)).not.toContain("server.js");
+      await pool.close();
     } finally {
       vi.useRealTimers();
     }

@@ -6,7 +6,7 @@
   "settingsSurface": "channels",
   "presentation": {
     "category": "channels",
-    "icon": "globe",
+    "icon": "message",
     "group": {
       "id": "channels",
       "title": { "zh-CN": "渠道连接", "en-US": "Channels" }

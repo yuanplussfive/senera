@@ -10,6 +10,9 @@ export function inspectVerifyPipeline(workflow: string, setupNodeAction: string)
 function inspectSetupNodeAction(action: string): string[] {
   return inspectTextIncludes(action, SetupNodeActionPath, [
     "install-electron:",
+    "windows-python-version:",
+    "actions/setup-python@v6",
+    "npm_config_python: ${{ steps.windows-python.outputs.python-path }}",
     "runner.os == 'Windows' && inputs.install-electron == 'true'",
     "~/AppData/Local/electron/Cache",
     "npm ci --no-audit --no-fund --prefer-offline",

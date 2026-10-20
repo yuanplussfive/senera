@@ -1,13 +1,15 @@
-import { forwardRef, type ButtonHTMLAttributes } from "react";
+import type { HTMLMotionProps } from "framer-motion";
+import { forwardRef, type ReactNode } from "react";
 import { cn } from "../../lib/util";
-import { MotionIconSwap } from "../motion";
+import { MotionButton, MotionIconSwap } from "../motion";
 import { AppIcon } from "./AppIcon";
 import { Spinner } from "./Spinner";
 
 type ButtonVariant = "default" | "ghost" | "outline" | "destructive";
 type ButtonSize = "default" | "icon" | "sm";
 
-export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+export interface ButtonProps extends Omit<HTMLMotionProps<"button">, "children"> {
+  children: ReactNode;
   variant?: ButtonVariant;
   size?: ButtonSize;
   /** Keeps the action's geometry stable while work is in flight. */
@@ -47,7 +49,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     },
     ref,
   ) => (
-    <button
+    <MotionButton
       ref={ref}
       type={type}
       {...props}
@@ -60,7 +62,6 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         "inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-[8px] text-[13px] font-medium",
         "transition-[background-color,border-color,box-shadow,color,transform] duration-150 ease-out",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
-        "active:translate-y-px",
         "disabled:pointer-events-none disabled:opacity-50",
         variantClasses[variant],
         sizeClasses[size],
@@ -77,7 +78,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           </MotionIconSwap>
         ) : null}
       </span>
-    </button>
+    </MotionButton>
   ),
 );
 Button.displayName = "Button";

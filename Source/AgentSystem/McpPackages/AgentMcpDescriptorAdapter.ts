@@ -6,6 +6,11 @@ import {
   createAgentExtensionLocalizedText,
   type AgentExtensionLocalizedText,
 } from "../Extensions/AgentExtensionLocalization.js";
+import {
+  AgentPluginBrandIconNames,
+  AgentToolPresentationIconNames,
+  type AgentPluginIdentityPresentation,
+} from "../Types/AgentToolPresentationTypes.js";
 
 export interface AgentMcpDescriptorContext {
   readonly packageRoot: string;
@@ -19,6 +24,7 @@ export interface AgentMcpDescriptorProjection {
   readonly displayName?: AgentExtensionLocalizedText;
   readonly description?: AgentExtensionLocalizedText;
   readonly descriptorKind: "mcpb" | "registry" | "legacy" | "connection";
+  readonly presentation?: AgentPluginIdentityPresentation;
   readonly execution?: AgentMcpExecution;
   readonly requirements?: AgentMcpHostRequirements;
   readonly servers: readonly AgentMcpPackageServer[];
@@ -78,4 +84,46 @@ export function optionalMcpString(
   path: readonly PropertyKey[] = [],
 ): string | undefined {
   return value === undefined ? undefined : requireMcpString(value, label, path);
+}
+
+/**
+ * Reads the small, portable Senera identity declaration used by descriptor
+ * adapters. It deliberately accepts no display labels or arbitrary SVG/URL
+ * payloads: presentation stays local, reviewed, and independent of runtime
+ * connectivity.
+ */
+export function readMcpPluginIdentityPresentation(
+  value: unknown,
+  label: string,
+  path: readonly PropertyKey[] = [],
+): AgentPluginIdentityPresentation | undefined {
+  if (value === undefined) return undefined;
+  const presentation = requireMcpRecord(value, label, path);
+  const allowedKeys = new Set(["icon", "brandIcon"]);
+  for (const key of Object.keys(presentation)) {
+    if (!allowedKeys.has(key)) {
+      throw new AgentMcpDescriptorError(`${label} has an unrecognized key: ${key}.`, [...path, key]);
+    }
+  }
+  const icon = presentation.icon;
+  const brandIcon = presentation.brandIcon;
+  if (icon !== undefined && (typeof icon !== "string" || !AgentToolPresentationIconNames.includes(icon as never))) {
+    throw new AgentMcpDescriptorError(`${label}.icon must be a supported semantic icon.`, [...path, "icon"]);
+  }
+  if (
+    brandIcon !== undefined &&
+    (typeof brandIcon !== "string" || !AgentPluginBrandIconNames.includes(brandIcon as never))
+  ) {
+    throw new AgentMcpDescriptorError(`${label}.brandIcon must be a supported local brand icon.`, [
+      ...path,
+      "brandIcon",
+    ]);
+  }
+  if (icon === undefined && brandIcon === undefined) {
+    throw new AgentMcpDescriptorError(`${label} must declare icon or brandIcon.`, path);
+  }
+  return {
+    ...(typeof icon === "string" ? { icon: icon as AgentPluginIdentityPresentation["icon"] } : {}),
+    ...(typeof brandIcon === "string" ? { brandIcon: brandIcon as AgentPluginIdentityPresentation["brandIcon"] } : {}),
+  };
 }

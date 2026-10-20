@@ -75,7 +75,6 @@ export function useProviderModelMutations({ commandQueue }: ProviderModelMutatio
       }),
     [startModelMutation],
   );
-
   return useMemo(
     () => ({
       deleteProviderModel,

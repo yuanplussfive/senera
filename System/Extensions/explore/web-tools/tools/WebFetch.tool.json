@@ -4,8 +4,9 @@
   "description": "打开公开网页并提取正文、链接和可追溯引用，适合继续核对搜索到的资料。",
   "presentation": {
     "category": "web-fetch",
-    "icon": "globe",
-    "activity": { "action": { "zh-CN": "读取网页", "en-US": "Fetch" }, "argumentPath": "/url" }
+    "icon": "download",
+    "activity": { "action": { "zh-CN": "读取网页", "en-US": "Fetch" }, "argumentPath": "/url" },
+    "preview": { "body": { "pointer": "/content", "from": "result" } }
   },
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

@@ -15,17 +15,100 @@ export const AgentToolPresentationIconNames = [
   "terminal",
   "clock",
   "activity",
+  "audio-lines",
   "git-branch",
   "users",
   "brain",
   "book-open",
   "calendar-clock",
+  "cloud-sun",
+  "computer-desktop",
   "image",
   "message-question",
   "globe",
+  "alert",
+  "answer",
+  "archive",
+  "arrow-down",
+  "arrow-left",
+  "arrow-right",
+  "ban",
+  "camera",
+  "cancel",
+  "check",
+  "circle-dot",
+  "close",
+  "code",
+  "cpu-chip",
+  "delegation",
+  "download",
+  "external-link",
+  "eye",
+  "file-audio",
+  "file-code",
+  "file-json",
+  "file-search",
+  "flag",
+  "folder",
+  "gauge",
+  "history",
+  "info",
+  "input",
+  "key",
+  "lightbulb",
+  "link",
+  "list",
+  "list-tree",
+  "loading",
+  "maximize",
+  "message",
+  "minus",
+  "new-session",
+  "output",
+  "panel-right-close",
+  "play-circle",
+  "plus",
+  "progress",
+  "puzzle",
+  "refresh",
+  "restore",
+  "route",
+  "save",
+  "scan-search",
+  "server",
+  "settings",
+  "shield",
+  "split",
+  "square",
+  "stack",
+  "tag",
+  "target",
+  "trash",
+  "undo",
+  "warning",
 ] as const;
 
 export type AgentToolPresentationIcon = (typeof AgentToolPresentationIconNames)[number];
+
+/**
+ * Product identities are intentionally separate from the semantic icon
+ * vocabulary. Packages opt into a reviewed, locally bundled brand mark; the
+ * frontend never infers a logo from an extension id, name, or package name.
+ */
+export const AgentPluginBrandIconNames = ["git"] as const;
+
+export type AgentPluginBrandIcon = (typeof AgentPluginBrandIconNames)[number];
+
+/**
+ * Package identity is intentionally smaller than a Tool presentation. It is
+ * shared by System extensions and MCP packages so the settings directory can
+ * render an author-declared mark without deriving one from a package name,
+ * transport, or implementation detail.
+ */
+export interface AgentPluginIdentityPresentation {
+  readonly icon?: AgentToolPresentationIcon;
+  readonly brandIcon?: AgentPluginBrandIcon;
+}
 
 /**
  * A result row is declared by the tool that owns the result contract. `pointer`
@@ -38,6 +121,8 @@ export interface AgentToolPresentationPreviewRow {
   readonly titlePath: string;
   readonly descriptionPath?: string;
   readonly metaPath?: string;
+  /** Optional destination for an interactive result row. */
+  readonly hrefPath?: string;
 }
 
 export interface AgentToolPresentationPreviewMore {
@@ -60,9 +145,14 @@ export interface AgentToolPresentationPreview {
     readonly pointer: string;
   }[];
   readonly result?: AgentToolPresentationPreviewResult;
+  /** One result-side value used as the owning sidecar's visible output. */
+  readonly body?: {
+    readonly pointer: string;
+    readonly from?: "result" | "presentation";
+  };
 }
 
-export type AgentToolPresentationMeasureSource = "argument" | "result" | "env";
+export type AgentToolPresentationMeasureSource = "argument" | "result" | "presentation" | "env";
 export type AgentToolPresentationMeasureAggregate = "first" | "count" | "sum" | "max" | "join";
 export type AgentToolPresentationMeasureValueType = "text" | "path" | "number" | "boolean" | "enum" | "delta";
 /**
@@ -81,8 +171,8 @@ export interface AgentToolPresentationWhere {
 
 /**
  * A named value read from the tool call. `argument` reads the call arguments,
- * `result` reads the projected result presentation object (not the raw tool
- * return value), and `env` reads a closed set of host facts.
+ * `result` reads the Tool's declared raw output, `presentation` reads the
+ * shared result-presentation protocol, and `env` reads closed host facts.
  */
 export interface AgentToolPresentationMeasure {
   readonly id: string;
@@ -114,6 +204,7 @@ export interface AgentToolPresentationVariant {
   readonly action?: AgentExtensionLocalizedText;
   readonly invocationName?: AgentExtensionLocalizedText;
   readonly argumentPath?: string;
+  readonly subjectPath?: string;
   readonly detailPaths?: readonly string[];
   readonly title?: string;
 }
@@ -133,7 +224,7 @@ export interface AgentToolPresentationActivityV2 {
  * It deliberately has no bearing on authorization, scheduling, or provider
  * schema exposure.
  */
-export interface AgentToolPresentation {
+export interface AgentToolPresentation extends AgentPluginIdentityPresentation {
   readonly category: string;
   readonly icon: AgentToolPresentationIcon;
   readonly group: {
@@ -145,6 +236,8 @@ export interface AgentToolPresentation {
     readonly invocationName?: AgentExtensionLocalizedText;
     /** RFC 6901 pointer pattern for the most useful argument preview. */
     readonly argumentPath?: string;
+    /** RFC 6901 pointer pattern for the subject identity preview. */
+    readonly subjectPath?: string;
     /** RFC 6901 pointer patterns for supplementary argument previews. */
     readonly detailPaths?: readonly string[];
     /** Declarative label derivation; absent contracts keep the v1 behaviour. */
@@ -157,6 +250,7 @@ export interface AgentToolPresentation {
 export interface AgentToolPresentationOverride {
   readonly category?: string;
   readonly icon?: AgentToolPresentationIcon;
+  readonly brandIcon?: AgentPluginBrandIcon;
   readonly group?: Partial<AgentToolPresentation["group"]>;
   readonly activity?: Partial<AgentToolPresentation["activity"]>;
   readonly preview?: AgentToolPresentationPreview;

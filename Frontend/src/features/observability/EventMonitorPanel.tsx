@@ -1,17 +1,4 @@
 import { useMemo, useState } from "react";
-import {
-  Check,
-  CirclePause,
-  CirclePlay,
-  CircleAlert,
-  CircleCheck,
-  Copy,
-  Pause,
-  Play,
-  Search,
-  Trash2,
-  X,
-} from "lucide-react";
 import { JsonView, defaultStyles } from "react-json-view-lite";
 import "react-json-view-lite/dist/index.css";
 import { Virtuoso } from "react-virtuoso";
@@ -19,7 +6,7 @@ import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
 import { useFrontendLocale } from "../../i18n/useFrontendLocale";
 import { cn, formatTime } from "../../lib/util";
-import { IconButton, MenuSelect, Sheet, SheetContent, Switch, useClipboardCopy } from "../../shared/ui";
+import { AppIcon, IconButton, MenuSelect, Sheet, SheetContent, Switch, useClipboardCopy } from "../../shared/ui";
 import { EventPhases } from "../../api/generatedEventCatalog";
 import type { EventSourceChannel } from "../../api/eventTypes";
 import { useEventJournalStore, type EventJournalRecord } from "./eventJournalStore";
@@ -96,7 +83,7 @@ export function EventMonitorPanel(): JSX.Element {
               tone={recording ? "primary" : "muted"}
               onClick={() => setRecording(!recording)}
             >
-              {recording ? <CirclePause className="h-3.5 w-3.5" /> : <CirclePlay className="h-3.5 w-3.5" />}
+              <AppIcon icon={recording ? "pause-circle" : "play-circle"} size={14} />
             </IconButton>
             <IconButton
               label={frontendMessage(
@@ -109,7 +96,7 @@ export function EventMonitorPanel(): JSX.Element {
               tone={viewPausedAt === undefined ? "muted" : "primary"}
               onClick={() => setViewPaused(viewPausedAt === undefined)}
             >
-              {viewPausedAt === undefined ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+              <AppIcon icon={viewPausedAt === undefined ? "pause-circle" : "play-circle"} size={14} />
             </IconButton>
             <IconButton
               label={frontendMessage("observability.clear")}
@@ -119,7 +106,7 @@ export function EventMonitorPanel(): JSX.Element {
               disabled={records.length === 0}
               onClick={clear}
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <AppIcon icon="trash" size={14} />
             </IconButton>
           </div>
         </div>
@@ -127,7 +114,11 @@ export function EventMonitorPanel(): JSX.Element {
         <div className="mt-1.5 flex min-w-0 items-center gap-1.5">
           <label className="relative min-w-0 flex-1">
             <span className="sr-only">{frontendMessage("observability.search")}</span>
-            <Search className="pointer-events-none absolute left-0 top-1/2 h-3 w-3 -translate-y-1/2 text-content-disabled" />
+            <AppIcon
+              icon="search"
+              size={12}
+              className="pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 text-content-disabled"
+            />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -261,7 +252,7 @@ function EventRow({
           className={cn("mt-0.5 shrink-0", tone === "error" ? "text-brick-600" : "text-moss-600")}
           aria-hidden="true"
         >
-          {tone === "error" ? <CircleAlert className="h-3 w-3" /> : <CircleCheck className="h-3 w-3" />}
+          <AppIcon icon={tone === "error" ? "alert-circle" : "check"} size={12} />
         </span>
       ) : null}
     </button>
@@ -300,7 +291,7 @@ function EventDetail({ record, onClose }: { record: EventJournalRecord; onClose:
           tone={copied ? "primary" : "muted"}
           onClick={() => void copyText(JSON.stringify(detail, null, 2))}
         >
-          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          <AppIcon icon={copied ? "checkmark" : "copy"} size={14} />
         </IconButton>
         <IconButton
           label={frontendMessage("observability.closeDetail")}
@@ -309,10 +300,10 @@ function EventDetail({ record, onClose }: { record: EventJournalRecord; onClose:
           tone="muted"
           onClick={onClose}
         >
-          <X className="h-3.5 w-3.5" />
+          <AppIcon icon="close" size={14} />
         </IconButton>
       </div>
-      <div className="scrollbar-thin min-h-0 flex-1 overflow-auto px-3 py-3 text-[10px] leading-5">
+      <div className="min-h-0 flex-1 overflow-auto px-3 py-3 text-[10px] leading-5">
         <JsonView
           data={detail}
           shouldExpandNode={(level) => level < 3}

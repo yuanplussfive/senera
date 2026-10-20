@@ -41,7 +41,7 @@ export function WorkspaceConnectionRecovery({
             onRetry={() => setAttempt((value) => value + 1)}
           />
         ) : (
-          <div className="scrollbar-thin mt-5 max-h-[60dvh] space-y-1 overflow-y-auto overflow-x-hidden">
+          <div className="mt-5 max-h-[60dvh] space-y-1 overflow-y-auto overflow-x-hidden">
             {catalog.workspaces.map((workspace) => (
               <Button
                 key={workspace.id}

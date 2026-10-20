@@ -12,5 +12,6 @@ export const SeneraResourceHttpRoutes = {
   WorkspaceContent: "/api/resources/content",
   WorkspaceTree: "/api/resources/tree",
   WorkspaceChanges: "/api/resources/changes",
+  ProfileAvatar: "/api/profile/avatar",
   ArtifactRead: "/api/artifacts/read",
 } as const;

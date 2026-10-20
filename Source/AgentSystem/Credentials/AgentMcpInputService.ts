@@ -1,4 +1,5 @@
 import { resolveAgentWorkspaceLayout } from "../Core/AgentWorkspaceLayout.js";
+import type { AgentApplicationPaths } from "../Core/AgentApplicationPaths.js";
 import { parseAgentExtensionInputValue, type AgentExtensionInputValue } from "../Extensions/AgentExtensionInput.js";
 import type {
   AgentExtensionValueBinding,
@@ -7,7 +8,8 @@ import type {
 } from "../Extensions/AgentExtensionValueExpression.js";
 import type { AgentMcpInputDefinition } from "../McpPackages/AgentMcpInputDefinition.js";
 import { AgentMcpCredentialRepository } from "./AgentMcpCredentialRepository.js";
-import type { AgentMcpInputStorageMutation } from "./AgentMcpCredentialRepository.js";
+import type { AgentMcpCredentialResolution, AgentMcpInputStorageMutation } from "./AgentMcpCredentialRepository.js";
+import type { AgentLegacySecretKeyRelocation } from "../Security/AgentSecretKeyRing.js";
 
 export interface AgentMcpInputStatus {
   readonly id: string;
@@ -19,7 +21,7 @@ export interface AgentMcpInputStatus {
   readonly multiple: boolean;
   readonly configured: boolean;
   readonly stored: boolean;
-  readonly source: "vault" | "configuration" | "environment" | "oauth" | "default" | "missing";
+  readonly source: "vault" | "configuration" | "environment" | "oauth" | "default" | "unresolved" | "missing";
   readonly provenance: AgentMcpInputDefinition["provenance"];
   readonly value?: AgentExtensionInputValue;
   readonly defaultValue?: AgentExtensionInputValue;
@@ -35,6 +37,16 @@ export interface AgentMcpInputBatchUpdate {
   readonly deletes?: readonly string[];
 }
 
+type BindingProjection =
+  | { readonly status: "value"; readonly resolution: AgentExtensionValueResolution }
+  | { readonly status: "unresolved" }
+  | { readonly status: "absent" };
+
+function projectStoredCredential(stored: AgentMcpCredentialResolution): BindingProjection {
+  if (stored.status === "resolved") return { status: "value", resolution: { value: stored.value, source: "vault" } };
+  return stored.status === "unresolved" ? { status: "unresolved" } : { status: "absent" };
+}
+
 export class AgentMcpInputService implements AgentExtensionValueResolver {
   private readonly restartGenerations = new Map<string, number>();
 
@@ -43,42 +55,65 @@ export class AgentMcpInputService implements AgentExtensionValueResolver {
     protected readonly environment: NodeJS.ProcessEnv = process.env,
   ) {}
 
-  static open(workspaceRoot: string, environment: NodeJS.ProcessEnv = process.env): AgentMcpInputService {
+  static open(
+    workspaceRoot: string,
+    environment: NodeJS.ProcessEnv = process.env,
+    secretKeysRoot?: string,
+    applicationPaths?: AgentApplicationPaths,
+  ): AgentMcpInputService {
     const layout = resolveAgentWorkspaceLayout(workspaceRoot);
     return new AgentMcpInputService(
       new AgentMcpCredentialRepository(layout.databases.credentials, {
-        secretKeyPath: layout.credentialSecretKey,
+        workspaceRoot,
+        secretKeysRoot,
+        applicationPaths,
         environment,
       }),
       environment,
     );
   }
 
+  /** Key files this host moved out of the workspace while opening the vault, plus any it could not move. */
+  relocatedLegacyKeys(): readonly AgentLegacySecretKeyRelocation[] {
+    return this.repository.relocatedLegacyKeys();
+  }
+
   resolve(serverId: string, binding: AgentExtensionValueBinding): AgentExtensionValueResolution | undefined {
+    const projected = this.projectBinding(serverId, binding);
+    return projected.status === "value" ? projected.resolution : undefined;
+  }
+
+  /** One lookup per binding: a stored secret this host cannot open is a state of its own, not absence. */
+  private projectBinding(serverId: string, binding: AgentExtensionValueBinding): BindingProjection {
     switch (binding.source) {
-      case "secret": {
-        const value = this.repository.resolve(serverId, binding.inputId);
-        return value === undefined ? undefined : { value, source: "vault" };
-      }
+      case "secret":
+        return projectStoredCredential(this.repository.resolve(serverId, binding.inputId));
       case "config": {
         const value = this.repository.resolveInput(serverId, binding.inputId);
-        return value === undefined ? undefined : { value, source: "configuration" };
+        return value === undefined
+          ? { status: "absent" }
+          : { status: "value", resolution: { value, source: "configuration" } };
       }
       case "oauth":
-        return undefined;
+        return { status: "absent" };
       case "hostEnvironment": {
         const value = this.environment[binding.name];
-        return value === undefined ? undefined : { value, source: "environment" };
+        return value === undefined
+          ? { status: "absent" }
+          : { status: "value", resolution: { value, source: "environment" } };
       }
       case "legacyEnvironment": {
-        const inputId = binding.inputId ?? binding.name;
-        const stored = this.repository.resolve(serverId, inputId);
-        if (stored !== undefined) return { value: stored, source: "vault" };
+        const stored = this.repository.resolve(serverId, binding.inputId ?? binding.name);
+        // An unreadable stored credential keeps its slot: substituting a host variable the user never
+        // chose would launch the server with a different secret than the one shown as saved.
+        if (stored.status !== "missing") return projectStoredCredential(stored);
         const inherited = this.environment[binding.name];
-        return inherited === undefined ? undefined : { value: inherited, source: "environment" };
+        return inherited === undefined
+          ? { status: "absent" }
+          : { status: "value", resolution: { value: inherited, source: "environment" } };
       }
       case "runtime":
-        return undefined;
+        return { status: "absent" };
     }
   }
 
@@ -86,12 +121,19 @@ export class AgentMcpInputService implements AgentExtensionValueResolver {
     const secretMetadata = new Map(this.repository.list(serverId).map((entry) => [entry.name, entry]));
     const configMetadata = new Map(this.repository.listInputs(serverId).map((entry) => [entry.inputId, entry]));
     return definitions.map((definition) => {
-      const resolved = this.resolve(serverId, definition.binding);
+      const projected = this.projectBinding(serverId, definition.binding);
+      const resolved = projected.status === "value" ? projected.resolution : undefined;
       const effectiveValue = resolved?.value ?? definition.defaultValue;
       const secretStored = secretMetadata.get(definition.id);
       const configStored = configMetadata.get(definition.id);
       const metadata = secretStored ?? configStored;
-      const source = resolved?.source ?? (definition.defaultValue !== undefined ? "default" : "missing");
+      const source =
+        resolved?.source ??
+        (projected.status === "unresolved"
+          ? "unresolved"
+          : definition.defaultValue !== undefined
+            ? "default"
+            : "missing");
       return {
         id: definition.id,
         title: definition.title,

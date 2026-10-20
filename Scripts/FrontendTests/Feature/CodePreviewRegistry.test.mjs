@@ -3,6 +3,7 @@ import {
   applyCodePreviewTheme,
   createCodePreviewThemeVariables,
   resolveCodePreview,
+  resolveCodePreviewForFile,
 } from "../../../Frontend/src/shared/code/CodePreviewRegistry.ts";
 describe("CodePreviewRegistry", () => {
   it("uses preview-local CSS variables for injected iframe scrollbars", () => {
@@ -23,6 +24,10 @@ describe("CodePreviewRegistry", () => {
     expect(source).toContain("--senera-preview-scrollbar-thumb: rgb(1 2 3 / 0.4)");
     expect(source).toContain("--senera-preview-scrollbar-thumb-hover: rgb(4 5 6 / 0.5)");
     expect(source).toContain("--senera-preview-scrollbar-size: 10px");
+  });
+  it("uses a registered filename capability when the syntax highlighter reports generic text", () => {
+    const preview = resolveCodePreviewForFile("assets/handgun-animation.svg", '<svg viewBox="0 0 10 10"></svg>');
+    expect(preview?.id).toBe("svg-document");
   });
   it("derives preview theme values from the appearance CSS variable map", () => {
     expect(

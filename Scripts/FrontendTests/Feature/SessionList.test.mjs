@@ -252,7 +252,7 @@ test("switches profile preferences and keeps settings last", async () => {
   await waitFor(() => expect(screen.getByRole("menuitem", { name: "English" })).toBeVisible());
   fireEvent.click(screen.getByRole("menuitem", { name: "English" }));
 
-  expect(frontendMessage("profile.menu.userSettings")).toBe("User settings");
+  expect(frontendMessage("profile.menu.userSettings")).toBe("Profile");
   await user.click(screen.getByRole("button", { name: new RegExp(DEFAULT_USER_PROFILE.name) }));
   expect(screen.getByRole("menuitem", { name: "Settings" })).toBeVisible();
   expect(

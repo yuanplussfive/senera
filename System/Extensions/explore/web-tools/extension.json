@@ -13,7 +13,7 @@
   "priority": 90,
   "presentation": {
     "category": "web",
-    "icon": "globe",
+    "icon": "search",
     "group": { "id": "web", "title": { "zh-CN": "网页研究", "en-US": "Web research" } },
     "activity": { "action": { "zh-CN": "访问网页", "en-US": "Browse web" } }
   },

@@ -79,7 +79,7 @@ describe("Pi run collector tool lifecycle", () => {
     ]);
   });
 
-  test("projects the bounded Pi observation detail into the visible result event and trace", async () => {
+  test("projects the declared Pi tool result into the visible result event and trace", async () => {
     const events: AgentDomainEvent[] = [];
     const turnState = createTurnState();
     const collector = createCollector(turnState, events);
@@ -101,14 +101,46 @@ describe("Pi run collector tool lifecycle", () => {
     const detail = events.find((event) => event.kind === AgentEventKinds.ToolCallResultDetail);
     expect(detail?.data).toMatchObject({
       value: {
-        result: { path: "README.md", content: "Senera project documentation" },
-        evidence: [],
+        path: "README.md",
+        content: "Senera project documentation",
       },
     });
     expect(JSON.stringify(detail?.data)).not.toContain(AgentPiToolObservationProtocol.type);
     expect(collector.snapshot().traces[0]?.toolResult).toMatchObject({
-      result: { path: "README.md", content: "Senera project documentation" },
+      path: "README.md",
+      content: "Senera project documentation",
     });
+  });
+
+  test("projects the canonical Pi failure message instead of its observation envelope", async () => {
+    const events: AgentDomainEvent[] = [];
+    const collector = createCollector(createTurnState(), events);
+    const failure = {
+      type: AgentPiToolObservationProtocol.type,
+      status: "failure",
+      execution_status: "completed",
+      output_availability: "none",
+      error: {
+        code: "ToolExecutionError",
+        kind: "execution",
+        source: "host",
+        retryable: false,
+        message: "Codex Search returned no citeable search results.",
+      },
+      detail: {
+        evidence: [],
+        result: { error: { message: "Codex Search returned no citeable search results." } },
+      },
+    };
+    const attributed = `<observation attribution="tool">${JSON.stringify(failure).replaceAll('"', "&quot;")}</observation>`;
+
+    await collector.collect(toolStarted());
+    await collector.collect(toolEnded(true, attributed));
+
+    const lifecycle = events.find((event) => event.kind === AgentEventKinds.ToolCallFailed);
+    expect(lifecycle?.data).toMatchObject({ message: "Codex Search returned no citeable search results." });
+    expect(JSON.stringify(lifecycle?.data)).not.toContain("<observation attribution=");
+    expect(collector.snapshot().traces[0]?.toolErrorMessage).toBe("Codex Search returned no citeable search results.");
   });
 });
 

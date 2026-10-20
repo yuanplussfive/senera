@@ -2,6 +2,7 @@ import { z } from "zod";
 import { defineSeneraProtocol } from "../Core/AgentProtocolIdentity.js";
 import type { AgentToolProcessRunResult } from "../ToolRuntime/AgentToolProcessTypes.js";
 import { toolProcessFailureResult, toolProcessSuccessResult } from "../ToolRuntime/AgentToolProcessEnvelope.js";
+import { AgentToolAvailabilitySchema } from "../ToolRuntime/AgentToolAvailability.js";
 import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 import type { AgentToolMetaToolName } from "./AgentToolSearchRuntimeTypes.js";
 
@@ -14,18 +15,6 @@ export const AgentToolCatalogStatuses = {
 } as const;
 
 export type AgentToolCatalogStatus = (typeof AgentToolCatalogStatuses)[keyof typeof AgentToolCatalogStatuses];
-
-export function createAgentToolDiscoveryResult<T extends object>(
-  fields: T,
-): T & { type: typeof AgentToolDiscoveryProtocol.type } {
-  return { ...fields, type: AgentToolDiscoveryProtocol.type };
-}
-
-export function createAgentToolDescriptionResult<T extends object>(
-  fields: T,
-): T & { type: typeof AgentToolDescriptionProtocol.type } {
-  return { ...fields, type: AgentToolDescriptionProtocol.type };
-}
 
 export const ToolSearchArgumentsSchema = z
   .object({
@@ -55,6 +44,56 @@ export const ToolUnloadArgumentsSchema = ToolMutationArgumentsSchema;
 export type ToolDescribeArguments = z.infer<typeof ToolDescribeArgumentsSchema>;
 export type ToolLoadArguments = z.infer<typeof ToolLoadArgumentsSchema>;
 export type ToolUnloadArguments = z.infer<typeof ToolUnloadArgumentsSchema>;
+
+const AgentToolDescriptionTupleSchema = z.tuple([z.string(), z.string(), z.string()]);
+const AgentToolNameCollectionSchema = z.object({ item: z.array(z.string()) }).strict();
+
+/**
+ * Wire contract returned by ToolDescribe. The extension manifest is generated
+ * from this schema so its versioned protocol identity cannot diverge from the
+ * host handler that constructs the result.
+ */
+export const AgentToolDescriptionOutputSchema = z
+  .object({
+    type: z.literal(AgentToolDescriptionProtocol.type),
+    tools: z.array(AgentToolDescriptionTupleSchema),
+    availability: z.record(z.string(), AgentToolAvailabilitySchema).optional(),
+    direct: z.array(z.string()).optional(),
+    rejected: z.array(z.string()).optional(),
+  })
+  .strict();
+
+/**
+ * Shared wire contract for ToolLoad and ToolUnload, including their stale
+ * catalog response. A mutation may include only the collections relevant to
+ * the requested operation, while every response retains the catalog identity
+ * and current session exposure.
+ */
+export const AgentToolCatalogMutationOutputSchema = z
+  .object({
+    type: z.literal(AgentToolDiscoveryProtocol.type),
+    catalogStatus: z.enum([AgentToolCatalogStatuses.Current, AgentToolCatalogStatuses.Stale]),
+    catalogRevision: z.string(),
+    generation: z.number(),
+    loaded: AgentToolNameCollectionSchema,
+    availability: z.record(z.string(), AgentToolAvailabilitySchema).optional(),
+    added: AgentToolNameCollectionSchema.optional(),
+    removed: AgentToolNameCollectionSchema.optional(),
+    protected: AgentToolNameCollectionSchema.optional(),
+    rejected: AgentToolNameCollectionSchema.optional(),
+    requested: AgentToolNameCollectionSchema.optional(),
+    requestedCatalogRevision: z.string().optional(),
+    reason: z.string().optional(),
+  })
+  .strict();
+
+export function createAgentToolDescriptionResult(fields: Record<string, unknown>) {
+  return AgentToolDescriptionOutputSchema.parse({ ...fields, type: AgentToolDescriptionProtocol.type });
+}
+
+export function createAgentToolCatalogMutationResult(fields: Record<string, unknown>) {
+  return AgentToolCatalogMutationOutputSchema.parse({ ...fields, type: AgentToolDiscoveryProtocol.type });
+}
 
 export function invalidToolMetaArgumentsResult(
   toolName: AgentToolMetaToolName,

@@ -17,7 +17,7 @@ test.describe("settings navigation and section management", () => {
     await page.goto(`${harness.httpOrigin}/settings/appearance`);
 
     await expect(page.locator("[data-settings-workbench]")).toBeVisible();
-    await expect(page.getByRole("dialog").getByRole("heading", { level: 2, name: "外观" })).toBeVisible();
+    await expect(page.getByRole("dialog").getByRole("heading", { level: 3, name: "界面风格" })).toBeVisible();
     await expect(page).toHaveURL(`${harness.httpOrigin}/settings/appearance`);
   });
 
@@ -36,7 +36,7 @@ test.describe("settings navigation and section management", () => {
     const appearanceButton = sectionsNav.getByRole("button", { name: /外观/ });
     await appearanceButton.click();
     await expect(page).toHaveURL(/\/settings\/appearance$/);
-    await expect(page.getByRole("heading", { level: 2, name: "外观" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 3, name: "界面风格" })).toBeVisible();
   });
 
   test("opens settings from the workspace profile menu and returns on close", async ({ page }) => {

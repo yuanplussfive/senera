@@ -50,6 +50,9 @@
     }
   },
   "_meta": {
+    "ai.senera/presentation": {
+      "icon": "cloud-sun"
+    },
     "ai.senera/execution": {
       "targets": ["local", "sandbox"],
       "preferred": "local"

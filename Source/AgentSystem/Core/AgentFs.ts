@@ -16,6 +16,40 @@ export function isFileExistsError(error: unknown): boolean {
   return nodeErrorCode(error) === "EEXIST";
 }
 
+/** Entry names of an optional directory; empty when it has not been created yet. */
+export function listDirectoryNamesSync(directory: string): string[] {
+  try {
+    return fs.readdirSync(directory);
+  } catch (error) {
+    if (isMissingFileError(error)) return [];
+    throw error;
+  }
+}
+
+export async function runWithConcurrency<TValue, TResult>(
+  values: readonly TValue[],
+  concurrency: number,
+  worker: (value: TValue) => Promise<TResult>,
+): Promise<TResult[]> {
+  if (values.length === 0) return [];
+  if (!Number.isSafeInteger(concurrency) || concurrency < 1) {
+    throw new RangeError("Concurrency must be a positive safe integer.");
+  }
+  const results = new Array<TResult>(values.length);
+  let nextIndex = 0;
+  const runWorker = async (): Promise<void> => {
+    for (;;) {
+      const index = nextIndex++;
+      if (index >= values.length) return;
+      const value = values[index];
+      if (value === undefined) return;
+      results[index] = await worker(value);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, () => runWorker()));
+  return results;
+}
+
 export const AgentPathRemovalDefaults = Object.freeze({
   maxAttempts: 6,
   retryDelayMs: 100,

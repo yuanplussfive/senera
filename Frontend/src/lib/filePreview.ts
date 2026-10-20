@@ -10,10 +10,13 @@ export interface FilePreviewDescriptor {
   id: string;
   label: string;
   contentKind: "text" | "media" | "binary";
+  renderKind: FilePreviewRenderKind;
   icon: AppIconName;
   iconClassName: string;
   badgeClassName: string;
 }
+
+export type FilePreviewRenderKind = "text" | "diff" | "image" | "audio" | "video" | "pdf" | "file";
 
 interface FilePreviewProfile extends FilePreviewDescriptor {
   names?: readonly string[];
@@ -26,6 +29,7 @@ const DefaultFilePreview: FilePreviewDescriptor = {
   id: "file",
   label: frontendMessage("file.type.file"),
   contentKind: "binary",
+  renderKind: "file",
   icon: "file-text",
   iconClassName: "text-ink-500",
   badgeClassName: "border-ink-200 bg-paper-100 text-ink-500",
@@ -36,6 +40,7 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
     id: "pdf",
     label: "PDF",
     contentKind: "binary",
+    renderKind: "pdf",
     icon: "file-text",
     iconClassName: "text-ink-600",
     badgeClassName: "border-ink-200 bg-paper-100 text-ink-650",
@@ -46,6 +51,7 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
     id: "word",
     label: frontendMessage("file.type.document"),
     contentKind: "binary",
+    renderKind: "file",
     icon: "file-text",
     iconClassName: "text-ink-600",
     badgeClassName: "border-ink-200 bg-paper-100 text-ink-650",
@@ -63,6 +69,7 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
     id: "spreadsheet",
     label: frontendMessage("file.type.spreadsheet"),
     contentKind: "binary",
+    renderKind: "file",
     icon: "file-text",
     iconClassName: "text-ink-600",
     badgeClassName: "border-ink-200 bg-paper-100 text-ink-650",
@@ -79,6 +86,7 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
     id: "presentation",
     label: frontendMessage("file.type.presentation"),
     contentKind: "binary",
+    renderKind: "file",
     icon: "file-text",
     iconClassName: "text-ink-600",
     badgeClassName: "border-ink-200 bg-paper-100 text-ink-650",
@@ -94,16 +102,18 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
     id: "json",
     label: "JSON",
     contentKind: "text",
+    renderKind: "text",
     icon: "file-json",
     iconClassName: "text-ink-600",
     badgeClassName: "border-ink-200 bg-paper-100 text-ink-650",
     extensions: [".json", ".jsonl", ".ipynb"],
-    mimes: ["application/json", "application/x-ndjson"],
+    mimes: ["application/json", "application/ld+json", "application/x-ndjson"],
   },
   {
     id: "code",
     label: frontendMessage("file.type.code"),
     contentKind: "text",
+    renderKind: "text",
     icon: "file-code",
     iconClassName: "text-ink-600",
     badgeClassName: "border-ink-200 bg-paper-100 text-ink-650",
@@ -135,6 +145,7 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
       ".scss",
       ".sh",
       ".sql",
+      ".svg",
       ".svelte",
       ".swift",
       ".toml",
@@ -150,6 +161,9 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
       "application/javascript",
       "application/typescript",
       "application/x-sh",
+      "application/x-javascript",
+      "application/xml",
+      "image/svg+xml",
       "text/css",
       "text/html",
       "text/javascript",
@@ -160,9 +174,21 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
     ],
   },
   {
+    id: "diff",
+    label: "Diff",
+    contentKind: "text",
+    renderKind: "diff",
+    icon: "file-code",
+    iconClassName: "text-ink-600",
+    badgeClassName: "border-ink-200 bg-paper-100 text-ink-650",
+    extensions: [".diff", ".patch"],
+    mimes: ["text/x-diff", "text/x-patch"],
+  },
+  {
     id: "text",
     label: frontendMessage("file.type.text"),
     contentKind: "text",
+    renderKind: "text",
     icon: "file-text",
     iconClassName: "text-ink-600",
     badgeClassName: "border-ink-200 bg-paper-50 text-ink-650",
@@ -173,16 +199,18 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
     id: "image",
     label: frontendMessage("file.type.image"),
     contentKind: "media",
+    renderKind: "image",
     icon: "image",
     iconClassName: "text-ink-600",
     badgeClassName: "border-ink-200 bg-paper-100 text-ink-650",
-    extensions: [".avif", ".gif", ".heic", ".jpeg", ".jpg", ".png", ".svg", ".webp"],
+    extensions: [".avif", ".gif", ".heic", ".jpeg", ".jpg", ".png", ".webp"],
     mimePrefixes: ["image/"],
   },
   {
     id: "audio",
     label: frontendMessage("file.type.audio"),
     contentKind: "media",
+    renderKind: "audio",
     icon: "file-audio",
     iconClassName: "text-ink-600",
     badgeClassName: "border-ink-200 bg-paper-100 text-ink-650",
@@ -193,6 +221,7 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
     id: "video",
     label: frontendMessage("file.type.video"),
     contentKind: "media",
+    renderKind: "video",
     icon: "file-video",
     iconClassName: "text-ink-600",
     badgeClassName: "border-ink-200 bg-paper-100 text-ink-650",
@@ -203,6 +232,7 @@ const FilePreviewProfiles: readonly FilePreviewProfile[] = [
     id: "archive",
     label: frontendMessage("file.type.archive"),
     contentKind: "binary",
+    renderKind: "file",
     icon: "archive",
     iconClassName: "text-ink-600",
     badgeClassName: "border-ink-200 bg-paper-100 text-ink-650",
@@ -230,16 +260,16 @@ export function resolveFilePreview(input: FilePreviewInput): FilePreviewDescript
   return (
     (name ? ProfilesByName.get(name) : undefined) ??
     (mime ? ProfilesByMime.get(mime) : undefined) ??
+    (extension ? ProfilesByExtension.get(extension) : undefined) ??
     (mime
       ? FilePreviewProfiles.find((profile) => profile.mimePrefixes?.some((prefix) => mime.startsWith(prefix)))
       : undefined) ??
-    (extension ? ProfilesByExtension.get(extension) : undefined) ??
     DefaultFilePreview
   );
 }
 
 export function isImageFilePreview(input: FilePreviewInput): boolean {
-  return resolveFilePreview(input).id === "image";
+  return resolveFilePreview(input).renderKind === "image";
 }
 
 /**

@@ -8,7 +8,7 @@ export default defineConfig({
     ...frontendConfig.test,
     environment: "node",
     include: [...IntegrationTestPolicy.testInclude],
-    setupFiles: [],
+    setupFiles: ["Scripts/BackendTests/setup.ts"],
     testTimeout: 15_000,
     hookTimeout: 15_000,
     pool: "forks",

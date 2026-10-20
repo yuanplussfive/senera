@@ -4,8 +4,9 @@
   "description": "Update existing tasks by stable ID. Send only the fields to change; omitted content or status stays unchanged. Use TodoAdd for new tasks and TodoRead to inspect IDs. Keep at most one task in_progress; zero is valid when all work is terminal. Mark completed only after verification.",
   "presentation": {
     "category": "todo-update",
-    "icon": "list-checks",
-    "activity": { "action": { "zh-CN": "更新", "en-US": "Update tasks" }, "detailPaths": ["/updates/*/id"] }
+    "icon": "pencil",
+    "activity": { "action": { "zh-CN": "更新", "en-US": "Update tasks" }, "detailPaths": ["/updates/*/id"] },
+    "preview": { "body": { "pointer": "/updated", "from": "result" } }
   },
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

@@ -128,6 +128,7 @@ export const BackendTestCoveragePolicy = {
   vitestConfig: "vitest.backend.config.ts",
   verifyEntrypoint: "Scripts/VerifyBackendTestCoverage.ts",
   testInclude: ["Scripts/BackendTests/**/*.test.ts"],
+  setupFiles: ["Scripts/BackendTests/setup.ts"],
   coverageDirectory: "coverage/backend",
   coverageInclude: ["Source/AgentSystem/**/*.ts"],
   coverageExclude: ["Source/AgentSystem/BamlClient/**", "Source/AgentSystem/**/*.d.ts"],

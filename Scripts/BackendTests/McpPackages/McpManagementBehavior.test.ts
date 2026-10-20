@@ -117,7 +117,7 @@ describe("MCP management", () => {
           kind: "mcp",
           id: "credential-test",
           title: "credential-test",
-          enabled: true,
+          enabled: false,
           selectable: false,
         }),
         expect.objectContaining({
@@ -125,7 +125,7 @@ describe("MCP management", () => {
           id: "weather",
           title: "天气",
           localizedTitle: { "zh-CN": "天气", "en-US": "Weather" },
-          enabled: true,
+          enabled: false,
           selectable: false,
         }),
       ]),
@@ -133,6 +133,32 @@ describe("MCP management", () => {
     expect(entries.map((entry) => entry.id)).toContain("imagen");
 
     management.setInput("credential-test", "TEST_SECRET", "configured-for-activation");
+    expect(
+      management.activationCatalog([]).entries.find((entry) => entry.kind === "mcp" && entry.id === "credential-test"),
+    ).toMatchObject({ enabled: true, selectable: true });
+  });
+
+  test("combines declared MCP enablement with readiness in settings and activation projections", () => {
+    let config: AgentSystemConfig = {
+      ModelProviders: [],
+      McpServers: { "credential-test": { Enabled: false } },
+    };
+    const { management } = createManagement(() => config);
+
+    management.setInput("credential-test", "TEST_SECRET", "configured-for-enable-test");
+    expect(management.listMcpServers().find((server) => server.id === "credential-test")).toMatchObject({
+      status: "configured",
+      enabled: false,
+    });
+    expect(
+      management.activationCatalog([]).entries.find((entry) => entry.kind === "mcp" && entry.id === "credential-test"),
+    ).toMatchObject({ enabled: false, selectable: false });
+
+    config = { ...config, McpServers: { "credential-test": { Enabled: true } } };
+    expect(management.listMcpServers().find((server) => server.id === "credential-test")).toMatchObject({
+      status: "configured",
+      enabled: true,
+    });
     expect(
       management.activationCatalog([]).entries.find((entry) => entry.kind === "mcp" && entry.id === "credential-test"),
     ).toMatchObject({ enabled: true, selectable: true });

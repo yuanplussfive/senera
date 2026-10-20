@@ -363,7 +363,7 @@ export function readFontScaleAnchor(value: number): FontScale {
   return nearest[0];
 }
 
-function normalizeFontScaleValue(value: unknown): number | undefined {
+export function normalizeFontScaleValue(value: unknown): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
   const clamped = Math.min(fontScaleRange.max, Math.max(fontScaleRange.min, value));
   return Number((Math.round(clamped / fontScaleRange.step) * fontScaleRange.step).toFixed(3));

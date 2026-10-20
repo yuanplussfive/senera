@@ -133,6 +133,30 @@ describe("createAppearanceStore", () => {
     expect(subscriber).toHaveBeenCalled();
     unsubscribe();
   });
+  it("previews font scale without notifying subscribers or persisting until commit", () => {
+    const storage = createStorageMock();
+    const { matchMedia } = createMatchMediaMock(false);
+    const store = createAppearanceStore({
+      readMatchMedia: () => matchMedia,
+      readStorage: () => storage,
+      readWindow: () => undefined,
+    });
+    const subscriber = vi.fn();
+    const unsubscribe = store.subscribe(subscriber);
+
+    store.previewFontScale(1.06);
+
+    expect(store.getSnapshot().preference.fontScaleValue).toBeUndefined();
+    expect(storage.setItem).not.toHaveBeenCalled();
+    expect(subscriber).not.toHaveBeenCalled();
+
+    store.commitFontScale(1.06);
+
+    expect(store.getSnapshot().preference).toMatchObject({ fontScale: "comfortable", fontScaleValue: 1.06 });
+    expect(storage.setItem).toHaveBeenCalledTimes(1);
+    expect(subscriber).toHaveBeenCalledTimes(1);
+    unsubscribe();
+  });
   it("updates a system theme preference when prefers-color-scheme changes", () => {
     const storage = createStorageMock({ themeMode: "system" });
     const { getMedia, matchMedia } = createMatchMediaMock(false);

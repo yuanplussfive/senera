@@ -10,6 +10,7 @@ import {
   DialogActions,
   DialogContent,
   FormField,
+  FormHint,
   FormLabel,
   Input,
   MenuSelect,
@@ -83,6 +84,7 @@ export function AddProviderDialog({
 
 export function EditProviderDialog({
   open,
+  apiKeyUnresolved,
   provider,
   pending = false,
   error = null,
@@ -91,6 +93,8 @@ export function EditProviderDialog({
   onOpenChange,
 }: {
   open: boolean;
+  /** The saved key exists but this host cannot decrypt it, so the field starts empty. */
+  apiKeyUnresolved: boolean;
   provider: ProviderEndpointDraft | null;
   pending?: boolean;
   error?: string | null;
@@ -102,6 +106,7 @@ export function EditProviderDialog({
     <ProviderConfigDialog
       mode="edit"
       open={open}
+      apiKeyUnresolved={apiKeyUnresolved}
       provider={provider}
       pending={pending}
       error={error}
@@ -115,6 +120,7 @@ export function EditProviderDialog({
 function ProviderConfigDialog({
   mode,
   open,
+  apiKeyUnresolved = false,
   provider,
   providers = [],
   pending = false,
@@ -126,6 +132,7 @@ function ProviderConfigDialog({
 }: {
   mode: "add" | "edit";
   open: boolean;
+  apiKeyUnresolved?: boolean;
   provider?: ProviderEndpointDraft | null;
   providers?: readonly ProviderEndpointDraft[];
   pending?: boolean;
@@ -239,7 +246,7 @@ function ProviderConfigDialog({
       <DialogContent
         title={frontendMessage(editing ? "settings.provider.editTitle" : "settings.provider.addCustomTitle")}
         className="w-[min(520px,calc(100vw_-_32px))]"
-        bodyClassName="scrollbar-thin flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-5 pt-5"
+        bodyClassName="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-5 pt-5"
         footer={
           <DialogActions>
             <DialogActionButton disabled={pending} onClick={() => handleOpenChange(false)}>
@@ -395,6 +402,9 @@ function ProviderConfigDialog({
                 setApiKey(value);
               }}
             />
+            {apiKeyUnresolved ? (
+              <FormHint className="text-brick-600">{frontendMessage("settings.provider.apiKeyUnresolved")}</FormHint>
+            ) : null}
           </FormField>
 
           <div className="pt-1">

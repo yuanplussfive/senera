@@ -6,7 +6,7 @@
   "settingsSurface": "system-tools",
   "presentation": {
     "category": "resident-speech",
-    "icon": "message-question",
+    "icon": "audio-lines",
     "group": {
       "id": "resident-speech",
       "title": { "zh-CN": "角色表达", "en-US": "Resident expression" }

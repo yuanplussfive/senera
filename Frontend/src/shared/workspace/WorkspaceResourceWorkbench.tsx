@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useWorkspaceFileChanges } from "./useWorkspaceFileChanges";
 import { toast } from "sonner";
 import {
@@ -197,6 +197,7 @@ function WorkspaceResourceWorkbenchContent({
         setCloseConfirmationOpen(true);
         return;
       }
+      setExplorerAction(undefined);
       setRenameName("");
       setDeleteConfirmationOpen(false);
       setActivePath(path);
@@ -235,6 +236,9 @@ function WorkspaceResourceWorkbenchContent({
   ]);
 
   const beginExplorerAction = useCallback((action: WorkspaceExplorerAction, parentPath: string): void => {
+    setCloseConfirmationOpen(false);
+    setDeleteConfirmationOpen(false);
+    setRenameName("");
     setExplorerAction(action);
     setExplorerParentPath(parentPath || ".");
     setExplorerName("");
@@ -248,6 +252,7 @@ function WorkspaceResourceWorkbenchContent({
       : joinWorkspacePath(parentWorkspacePath(activePath), nextName);
     try {
       const entry = await renameWorkspaceEntry(controller.httpBaseUrl, activePath, destination, controller.csrfToken);
+      setExplorerAction(undefined);
       setRenameName("");
       refreshExplorer();
       setActivePath(entry.path);
@@ -261,6 +266,8 @@ function WorkspaceResourceWorkbenchContent({
     if (!activePath || activePath === ".") return;
     try {
       await removeWorkspaceEntry(controller.httpBaseUrl, activePath, false, controller.csrfToken);
+      setExplorerAction(undefined);
+      setRenameName("");
       setDeleteConfirmationOpen(false);
       setActivePath("");
       setLoadState({ status: "empty" });
@@ -286,6 +293,55 @@ function WorkspaceResourceWorkbenchContent({
     const timer = window.setTimeout(() => setSaveState("idle"), motionDurations.saveStatusMs);
     return () => window.clearTimeout(timer);
   }, [saveState]);
+
+  const interactionSurface = closeConfirmationOpen ? (
+    <UnsavedChangesBar
+      onDiscard={() => {
+        if (pendingExitEdit) {
+          setDraft(resource?.content ?? "");
+          setEditing(false);
+          setPendingExitEdit(false);
+          setCloseConfirmationOpen(false);
+          setLoadRevision((value) => value + 1);
+          return;
+        }
+        const nextPath = pendingSelection;
+        setPendingSelection(undefined);
+        setCloseConfirmationOpen(false);
+        if (nextPath) {
+          setExplorerAction(undefined);
+          setRenameName("");
+          setDeleteConfirmationOpen(false);
+          setActivePath(nextPath);
+          return;
+        }
+        onOpenChange(false);
+      }}
+      onKeepEditing={() => {
+        setPendingSelection(undefined);
+        setCloseConfirmationOpen(false);
+      }}
+    />
+  ) : deleteConfirmationOpen ? (
+    <DeleteResourceBar onCancel={() => setDeleteConfirmationOpen(false)} onDelete={() => void removeActiveResource()} />
+  ) : renameName ? (
+    <ExplorerInputBar
+      action="file"
+      value={renameName}
+      rename
+      onCancel={() => setRenameName("")}
+      onChange={setRenameName}
+      onSubmit={() => void submitRename()}
+    />
+  ) : explorerAction ? (
+    <ExplorerInputBar
+      action={explorerAction}
+      value={explorerName}
+      onCancel={() => setExplorerAction(undefined)}
+      onChange={setExplorerName}
+      onSubmit={() => void submitExplorerAction()}
+    />
+  ) : undefined;
 
   return (
     <Dialog
@@ -333,12 +389,22 @@ function WorkspaceResourceWorkbenchContent({
           }}
           canMutate={Boolean(activePath && activePath !== ".")}
           onClose={requestClose}
-          onDelete={() => setDeleteConfirmationOpen(true)}
+          onDelete={() => {
+            setExplorerAction(undefined);
+            setRenameName("");
+            setCloseConfirmationOpen(false);
+            setDeleteConfirmationOpen(true);
+          }}
           onDownload={() => void downloadWorkspaceResource(controller.httpBaseUrl, activePath, resource?.name)}
           onReload={() => {
             if (!dirty) setLoadRevision((value) => value + 1);
           }}
-          onRename={() => setRenameName(resource?.name ?? "")}
+          onRename={() => {
+            setExplorerAction(undefined);
+            setDeleteConfirmationOpen(false);
+            setCloseConfirmationOpen(false);
+            setRenameName(resource?.name ?? "");
+          }}
           onSave={() => void save()}
           onReference={() =>
             void controller.referenceResource(activePath).then(
@@ -392,65 +458,14 @@ function WorkspaceResourceWorkbenchContent({
                 locator={activeLocator}
                 resource={resource}
                 editing={editing}
+                presentation={presentation}
                 view={view}
                 onDraftChange={setDraft}
               />
             ) : null}
           </main>
+          {interactionSurface ? <WorkspaceInteractionOverlay>{interactionSurface}</WorkspaceInteractionOverlay> : null}
         </div>
-        {explorerAction ? (
-          <ExplorerInputBar
-            action={explorerAction}
-            value={explorerName}
-            onCancel={() => setExplorerAction(undefined)}
-            onChange={setExplorerName}
-            onSubmit={() => void submitExplorerAction()}
-          />
-        ) : null}
-        {renameName ? (
-          <ExplorerInputBar
-            action="file"
-            value={renameName}
-            rename
-            onCancel={() => setRenameName("")}
-            onChange={setRenameName}
-            onSubmit={() => void submitRename()}
-          />
-        ) : null}
-        {closeConfirmationOpen ? (
-          <UnsavedChangesBar
-            onDiscard={() => {
-              if (pendingExitEdit) {
-                setDraft(resource?.content ?? "");
-                setEditing(false);
-                setPendingExitEdit(false);
-                setCloseConfirmationOpen(false);
-                setLoadRevision((value) => value + 1);
-                return;
-              }
-              const nextPath = pendingSelection;
-              setPendingSelection(undefined);
-              setCloseConfirmationOpen(false);
-              if (nextPath) {
-                setRenameName("");
-                setDeleteConfirmationOpen(false);
-                setActivePath(nextPath);
-                return;
-              }
-              onOpenChange(false);
-            }}
-            onKeepEditing={() => {
-              setPendingSelection(undefined);
-              setCloseConfirmationOpen(false);
-            }}
-          />
-        ) : null}
-        {deleteConfirmationOpen ? (
-          <DeleteResourceBar
-            onCancel={() => setDeleteConfirmationOpen(false)}
-            onDelete={() => void removeActiveResource()}
-          />
-        ) : null}
       </DialogContent>
     </Dialog>
   );
@@ -648,7 +663,7 @@ function ExplorerInputBar({
 }): JSX.Element {
   return (
     <form
-      className="flex shrink-0 items-center gap-2 border-t border-line bg-surface-panel px-3 py-2"
+      className="flex items-center gap-2 rounded-lg border border-line bg-surface-panel px-3 py-2 shadow-soft"
       onSubmit={(event) => {
         event.preventDefault();
         onSubmit();
@@ -678,6 +693,14 @@ function ExplorerInputBar({
   );
 }
 
+function WorkspaceInteractionOverlay({ children }: { readonly children: ReactNode }): JSX.Element {
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-3 pb-3 sm:px-4">
+      <div className="pointer-events-auto">{children}</div>
+    </div>
+  );
+}
+
 function DeleteResourceBar({
   onCancel,
   onDelete,
@@ -686,7 +709,7 @@ function DeleteResourceBar({
   readonly onDelete: () => void;
 }): JSX.Element {
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-3 border-t border-danger/30 bg-danger/5 px-4 py-3">
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 shadow-soft">
       <span className="min-w-0 flex-1 text-[12px] text-content-secondary">
         {frontendMessage("resource.confirmDelete")}
       </span>
@@ -713,6 +736,7 @@ function EmptyResourceSelection(): JSX.Element {
 
 function ResourceBody({
   editing,
+  presentation,
   view,
   httpBaseUrl,
   locator,
@@ -720,6 +744,7 @@ function ResourceBody({
   resource,
 }: {
   readonly editing: boolean;
+  readonly presentation: WorkspaceTextPresentation;
   readonly view: WorkspaceTextView;
   readonly httpBaseUrl: string;
   readonly locator: WorkspaceResourceLocator;
@@ -736,6 +761,7 @@ function ResourceBody({
         name={resource.name}
         cacheKey={`${resource.path}:${resource.etag}`}
         editing={editing}
+        presentation={presentation}
         view={view}
         column={locator.column}
         line={locator.line}
@@ -840,7 +866,7 @@ function UnsavedChangesBar({
   readonly onKeepEditing: () => void;
 }): JSX.Element {
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-3 border-t border-line bg-surface-panel px-4 py-3">
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-surface-panel px-4 py-3 shadow-soft">
       <div className="min-w-0 flex-1">
         <p className="text-[12px] font-medium text-content-strong">{frontendMessage("resource.unsavedTitle")}</p>
         <p className="text-[11px] text-content-muted">{frontendMessage("resource.unsavedDescription")}</p>

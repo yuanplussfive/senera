@@ -578,8 +578,19 @@ export interface ConfigOperationResult {
   kind: ConfigOperationKind;
 }
 
+/** Why the host could not open a stored secret; mirrors the backend AgentSecretOpenFailure values. */
+export type SecretOpenFailureData = "missing_key" | "unknown_key" | "authentication_failed" | "unsupported_format";
+
+/** A configuration secret this host cannot decrypt, addressed by the field holding it. */
+export type ConfigUnresolvedSecretData =
+  | { kind: "provider_api_key"; providerId: string; reason: SecretOpenFailureData }
+  | { kind: "provider_header"; providerId: string; headerName: string; reason: SecretOpenFailureData }
+  | { kind: "extension_secret"; extensionId: string; fieldPath: string[]; reason: SecretOpenFailureData };
+
 export interface ConfigDiagnosticData {
   severity: "warning" | "error";
+  /** Set when a surface should react to the problem by identity instead of matching message text. */
+  code?: "config.secretUnresolved" | "config.secretKeyRelocated";
   message: string;
   details?: unknown;
 }
@@ -606,9 +617,16 @@ export interface ConfigMutationState {
   updatedAt: string;
 }
 
-export interface UserProfileData {
+export interface ConversationIdentityData {
   name: string;
   avatarDataUrl: string | null;
+  /** Workspace-relative path under the profile avatar resource root. */
+  avatarPath?: string | null;
+}
+
+export interface UserProfileData extends ConversationIdentityData {
+  /** Optional on the wire so an updated frontend can still read an older host snapshot. */
+  assistant?: ConversationIdentityData;
   updatedAt: string;
 }
 

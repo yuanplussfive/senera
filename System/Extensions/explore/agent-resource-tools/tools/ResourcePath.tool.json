@@ -2,6 +2,7 @@
   "name": "ResourcePath",
   "loading": "Bootstrap",
   "description": "Resolve a canonical Senera resource URI to its existing workspace-relative local path and verified media metadata. This does not copy or modify the resource.",
+  "presentation": { "icon": "route", "preview": { "body": { "pointer": "/source/path", "from": "result" } } },
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",

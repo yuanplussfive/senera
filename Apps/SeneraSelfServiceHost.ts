@@ -11,6 +11,9 @@ import { createAgentSelfSkillsPort } from "../Source/AgentSystem/SelfService/Age
 import { readAgentRuntimeManifest } from "../Source/AgentSystem/Runtime/AgentRuntimeManifest.js";
 import type { AgentPluginHost } from "../Source/AgentSystem/Plugins/AgentPluginHost.js";
 import { resolveAgentSessionModelProviderId } from "../Source/AgentSystem/ModelEndpoints/AgentModelMetadata.js";
+import { resolveServerConfig } from "../Source/AgentSystem/AgentDefaults.js";
+import { resolveAgentChannelsConfig } from "../Source/AgentSystem/Channels/AgentChannelsConfig.js";
+import { createAgentSelfPromptPresetsPort } from "../Source/AgentSystem/SelfService/AgentSelfPromptPresets.js";
 
 export interface SeneraSelfServicePortInput {
   readonly workspaceRoot: string;
@@ -47,6 +50,13 @@ export function createSeneraSelfServicePort(input: SeneraSelfServicePortInput): 
     logs: input.logStore ? createLogsPort(input.logStore) : undefined,
     plugins: input.pluginHost ? createPluginsPort(input.pluginHost) : undefined,
     skills: input.skillSources ? createAgentSelfSkillsPort(input.skillSources) : undefined,
+    promptPresets: createAgentSelfPromptPresetsPort(
+      input.workspaceRoot,
+      resolveServerConfig(input.configSnapshot()).RequestMaxBytes,
+    ),
+    channels: {
+      snapshot: () => resolveAgentChannelsConfig(input.configSnapshot()),
+    },
   };
 }
 

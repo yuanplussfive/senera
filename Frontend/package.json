@@ -37,6 +37,8 @@
     "@fontsource-variable/nunito-sans": "^5.3.0",
     "@formkit/auto-animate": "^0.10.0",
     "@heroicons/react": "^2.2.0",
+    "@iconify-icons/logos": "^2.0.4",
+    "@iconify/react": "^6.0.3",
     "@lezer/highlight": "^1.2.3",
     "@lobehub/webfont-harmony-sans-sc-mini": "1.0.0",
     "@panzoom/panzoom": "^4.6.2",

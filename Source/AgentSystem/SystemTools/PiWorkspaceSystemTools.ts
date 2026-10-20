@@ -13,13 +13,11 @@ import {
 import {
   createFindTool,
   createFindToolDefinition,
-  createGrepTool,
   createGrepToolDefinition,
   createLsTool,
   createLsToolDefinition,
   type FindOperations,
   type FindToolInput,
-  type GrepOperations,
   type GrepToolInput,
   type LsOperations,
   type LsToolInput,
@@ -37,6 +35,8 @@ import {
   type ToolSearchManifest,
 } from "../Types/AgentToolContractTypes.js";
 import type { AgentHostToolContext } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
+import { searchWorkspaceContent } from "../WorkspaceResources/AgentWorkspaceContentSearch.js";
+import { workspaceContentExclusionGlobs } from "../WorkspaceResources/AgentWorkspaceFileDiscovery.js";
 import { defineSystemTool, type AgentSystemToolMetadata } from "./AgentSystemToolDefinition.js";
 
 const bundledRipgrepPath = resolveAsarUnpackedExecutablePath(rgPath);
@@ -174,12 +174,25 @@ export const WorkspaceGrepSystemTool = defineSystemTool({
   input: WorkspaceGrepInput,
   output: PiToolResult,
   async execute(input, context) {
-    exposeBundledRipgrepToPi();
+    assertBundledRipgrepAvailable();
     const canonicalInput = await canonicalizeOptionalPath(input, context);
-    const tool = createGrepTool(context.workspaceRoot, {
-      operations: createGrepOperations(context),
+    return searchWorkspaceContent({
+      workspaceRoot: context.workspaceRoot,
+      ripgrepPath: bundledRipgrepPath,
+      request: { ...canonicalInput, searchPath: canonicalInput.path, signal: context.signal },
+      operations: {
+        async isDirectory(absolutePath) {
+          const result = await context.executionEnv.fileInfo(absolutePath);
+          if (!result.ok) throw result.error;
+          return result.value.kind === "directory";
+        },
+        async readFile(absolutePath) {
+          const result = await context.executionEnv.readTextFile(absolutePath, context.signal);
+          if (!result.ok) throw result.error;
+          return result.value;
+        },
+      },
     });
-    return tool.execute(toolCallId(context), canonicalInput, context.signal);
   },
 });
 
@@ -289,21 +302,6 @@ async function canonicalizeOptionalPath<TInput extends { path?: string }>(
   return { ...input, path: resolved.value };
 }
 
-function createGrepOperations(context: AgentHostToolContext): GrepOperations {
-  return {
-    async isDirectory(absolutePath) {
-      const result = await context.executionEnv.fileInfo(absolutePath);
-      if (!result.ok) throw result.error;
-      return result.value.kind === "directory";
-    },
-    async readFile(absolutePath) {
-      const result = await context.executionEnv.readTextFile(absolutePath, context.signal);
-      if (!result.ok) throw result.error;
-      return result.value;
-    },
-  };
-}
-
 function createFindOperations(context: AgentHostToolContext): FindOperations {
   return {
     async exists(absolutePath) {
@@ -315,7 +313,7 @@ function createFindOperations(context: AgentHostToolContext): FindOperations {
       return enumerateWorkspaceFiles({
         pattern,
         cwd,
-        ignore: options.ignore,
+        ignore: mergeWorkspaceFindIgnores(options.ignore, context.workspaceRoot, cwd),
         limit: options.limit,
         signal: context.signal,
       });
@@ -349,6 +347,10 @@ interface WorkspaceFileEnumerationRequest {
   readonly ignore: readonly string[];
   readonly limit: number;
   readonly signal?: AbortSignal;
+}
+
+function mergeWorkspaceFindIgnores(ignores: readonly string[], workspaceRoot: string, searchRoot: string): string[] {
+  return [...new Set([...ignores, ...workspaceContentExclusionGlobs(workspaceRoot, searchRoot)])];
 }
 
 function enumerateWorkspaceFiles(request: WorkspaceFileEnumerationRequest): Promise<string[]> {
@@ -424,7 +426,6 @@ function matchesPiFindPattern(candidate: string, pattern: string): boolean {
 }
 
 let bundledRipgrepVerified = false;
-let bundledRipgrepExposed = false;
 
 function assertBundledRipgrepAvailable(): void {
   if (bundledRipgrepVerified) return;
@@ -436,26 +437,6 @@ function assertBundledRipgrepAvailable(): void {
     throw new Error(`Bundled ripgrep cannot start: ${probe.error?.message ?? `exit ${String(probe.status)}`}`);
   }
   bundledRipgrepVerified = true;
-}
-
-function exposeBundledRipgrepToPi(): void {
-  if (bundledRipgrepExposed) return;
-  assertBundledRipgrepAvailable();
-  const executableDirectory = path.dirname(bundledRipgrepPath);
-  const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
-  const currentPath = process.env[pathKey] ?? "";
-  const normalizedDirectory = normalizePathEntry(executableDirectory);
-  const alreadyExposed = currentPath
-    .split(path.delimiter)
-    .filter(Boolean)
-    .some((entry) => normalizePathEntry(entry) === normalizedDirectory);
-  if (!alreadyExposed) process.env[pathKey] = `${executableDirectory}${path.delimiter}${currentPath}`;
-  bundledRipgrepExposed = true;
-}
-
-function normalizePathEntry(value: string): string {
-  const normalized = path.resolve(value);
-  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }
 
 function toolCallId(context: AgentHostToolContext): string {

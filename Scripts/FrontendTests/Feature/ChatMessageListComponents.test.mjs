@@ -189,10 +189,11 @@ test("streaming model thinking is rendered with the thinking indicator in the co
     ),
   );
 
-  expect(await screen.findByText("我先核对上下文。")).toBeInTheDocument();
+  expect(await screen.findAllByText("我先核对上下文。")).toHaveLength(2);
   expect(
-    document.querySelector("[data-model-thinking-disclosure] [data-thinking-status-icon] [data-thinking-indicator]"),
+    document.querySelector("[data-model-thinking-disclosure] [data-thinking-status-icon][data-live-activity-icon] svg"),
   ).toBeInTheDocument();
+  expect(document.querySelector("[data-model-thinking-toggle-row]")).toHaveAttribute("aria-expanded", "true");
   expect(document.querySelector("[data-initial-thinking]")).not.toBeInTheDocument();
 });
 

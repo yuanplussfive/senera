@@ -49,7 +49,10 @@ export const AgentSystemToolContractSchema = z
     /** Optional refinement of the owning extension domain's UI metadata. */
     presentation: AgentSystemToolPresentationOverrideSchema.optional(),
     inputSchema: JsonObjectSchema,
-    outputSchema: AgentSystemExtensionJsonSchema.optional(),
+    // Every bundled host capability publishes the result shape consumed by the
+    // generic runner. A missing schema would create a tool-specific blind spot
+    // in result validation, so it is a package contract requirement.
+    outputSchema: AgentSystemExtensionJsonSchema,
     perception: z
       .object({
         kind: z.enum(AgentToolPerceptionKinds),
@@ -254,8 +257,28 @@ export const AgentSystemSidecarToolContractSchema = z
     description: z.string().trim().min(1),
     instructions: z.string().trim().min(1),
     inputSchema: JsonObjectSchema,
+    outputSchema: AgentSystemExtensionJsonSchema,
+    presentation: AgentSystemToolPresentationOverrideSchema,
   })
-  .strict();
+  .strict()
+  .superRefine((tool, context) => {
+    const body = tool.presentation.preview?.body;
+    if (!body) {
+      context.addIssue({
+        code: "custom",
+        path: ["presentation", "preview", "body"],
+        message: "Sidecar Tools must declare presentation.preview.body for their committed result.",
+      });
+      return;
+    }
+    if (body.from !== undefined && body.from !== "result") {
+      context.addIssue({
+        code: "custom",
+        path: ["presentation", "preview", "body", "from"],
+        message: "Sidecar Tool result bodies must project from their output result.",
+      });
+    }
+  });
 export type AgentSystemSidecarToolContract = z.infer<typeof AgentSystemSidecarToolContractSchema>;
 export type AgentSystemExtensionManifest = z.infer<typeof AgentSystemExtensionManifestSchema>;
 export type { AgentSystemExtensionPlatform } from "./AgentSystemExtensionPlatform.js";

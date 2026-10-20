@@ -5,11 +5,17 @@ import { AgentEventKinds, emitAgentEvent, type AgentDomainEvent, type AgentEvent
 import { AgentLoopEventFactory } from "../Loop/AgentLoopEventFactory.js";
 import { DefaultAgentToolArgumentProjection, projectAgentToolArguments } from "../Core/AgentToolArgumentProjection.js";
 import type { StepTrace } from "../Core/AgentStepTrace.js";
-import { collectAgentToolPresentationArgumentPointers } from "../SystemTools/AgentSystemToolPresentation.js";
+import {
+  collectAgentToolPresentationArgumentPointers,
+  collectAgentToolPresentationResultPointers,
+} from "../SystemTools/AgentSystemToolPresentation.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import { projectAgentToolResultPresentation } from "../ToolRuntime/AgentToolResultPresentation.js";
 import type { AgentPiTurnState } from "./AgentPiTurnState.js";
-import { projectAgentPiToolResultContentForDisplay } from "./AgentPiToolObservation.js";
+import {
+  projectAgentPiToolResultContentForDisplay,
+  readAgentPiToolObservationFailureMessage,
+} from "./AgentPiToolObservation.js";
 import { AgentRunActivities } from "../Events/AgentRunEventTypes.js";
 import {
   AgentRunActivityReporter,
@@ -451,7 +457,7 @@ export class AgentPiRunCollector {
       toolPreview: executed?.presentation?.headline,
       toolPresentation: executed?.presentation,
       toolResult: projectAgentToolArguments(resultValue, {
-        keepPointers: [],
+        keepPointers: collectAgentToolPresentationResultPointers(presentation),
         ...DefaultAgentToolArgumentProjection,
       }).value,
       toolErrorMessage: event.isError ? readToolErrorMessage(event.result) : undefined,
@@ -468,7 +474,8 @@ export class AgentPiRunCollector {
 }
 
 function readToolErrorMessage(value: unknown): string {
-  return readFirstTextContent(value) ?? "Pi 工具执行失败。";
+  const content = readFirstTextContent(value);
+  return readAgentPiToolObservationFailureMessage(content ?? "") ?? content ?? "Pi 工具执行失败。";
 }
 
 function readFirstTextContent(value: unknown): string | undefined {

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { createJSONStorage, type PersistOptions } from "zustand/middleware";
 import type { SessionRuntimeSnapshot, StoreState } from "./types";
-import { normalizeUserProfile } from "./userProfile";
+import { normalizeUserProfile, USER_PROFILE_SYNC_STATES } from "./userProfile";
 import { clampWorkflowDockWidth } from "../../shared/responsive/workflowDock";
 import { ExecutionApprovalModes } from "../../api/executionApprovalMode";
 import { ModelThinkingLevels } from "../../features/chat/modelThinking";
@@ -16,7 +16,16 @@ const GlobalPreferencesSchema = z.object({
     .object({
       name: z.string(),
       avatarDataUrl: z.string().nullable(),
+      avatarPath: z.string().nullable().optional(),
+      assistant: z
+        .object({
+          name: z.string(),
+          avatarDataUrl: z.string().nullable(),
+          avatarPath: z.string().nullable().optional(),
+        })
+        .optional(),
       updatedAt: z.string(),
+      syncState: z.enum(USER_PROFILE_SYNC_STATES).optional(),
     })
     .optional(),
   workflowDockWidth: z
@@ -58,7 +67,7 @@ export function readWorkspacePreferences(raw: string | null): Partial<WorkspaceP
 
 export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionState> = {
   name: PERSIST_KEY,
-  version: 11,
+  version: 13,
   storage: createJSONStorage(() => localStorage),
   partialize: (state) => GlobalPreferencesSchema.parse(state),
   migrate: (persisted) => GlobalPreferencesSchema.parse(persisted),
@@ -66,9 +75,13 @@ export const sessionPersistOptions: PersistOptions<StoreState, PersistedSessionS
     const preferences = GlobalPreferencesSchema.parse(persisted ?? {});
     return {
       ...current,
-      ...preferences,
       sidebarCollapsed: preferences.defaultSidebarCollapsed ?? current.defaultSidebarCollapsed,
       rightPanelCollapsed: preferences.defaultRightPanelCollapsed ?? current.defaultRightPanelCollapsed,
+      defaultSidebarCollapsed: preferences.defaultSidebarCollapsed ?? current.defaultSidebarCollapsed,
+      defaultRightPanelCollapsed: preferences.defaultRightPanelCollapsed ?? current.defaultRightPanelCollapsed,
+      motionLevel: preferences.motionLevel ?? current.motionLevel,
+      executionApprovalMode: preferences.executionApprovalMode ?? current.executionApprovalMode,
+      workflowDockWidth: preferences.workflowDockWidth ?? current.workflowDockWidth,
       userProfile: normalizeUserProfile(preferences.userProfile ?? current.userProfile),
     };
   },

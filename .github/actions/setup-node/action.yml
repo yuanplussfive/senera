@@ -10,6 +10,10 @@ inputs:
     description: Download Electron during npm installation for jobs that execute or package the desktop application.
     required: false
     default: "false"
+  windows-python-version:
+    description: Python version used by node-gyp on Windows runners.
+    required: false
+    default: "3.12"
 
 runs:
   using: composite
@@ -19,6 +23,11 @@ runs:
         node-version: ${{ inputs.node-version }}
         cache: npm
         cache-dependency-path: package-lock.json
+    - id: windows-python
+      if: runner.os == 'Windows'
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ inputs.windows-python-version }}
     - name: Restore Windows Electron downloads
       if: runner.os == 'Windows' && inputs.install-electron == 'true'
       uses: actions/cache@v5
@@ -31,9 +40,12 @@ runs:
       if: inputs.install-electron == 'true'
       run: npm ci --no-audit --no-fund --prefer-offline
       shell: bash
+      env:
+        npm_config_python: ${{ steps.windows-python.outputs.python-path }}
     - name: Install locked dependencies without Electron
       if: inputs.install-electron != 'true'
       run: npm ci --no-audit --no-fund --prefer-offline
       shell: bash
       env:
         ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        npm_config_python: ${{ steps.windows-python.outputs.python-path }}

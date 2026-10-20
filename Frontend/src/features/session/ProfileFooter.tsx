@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { toast } from "sonner";
-import type { UserProfile } from "../../store/sessionStore";
+import type { ConversationIdentity, ConversationProfileUpdate, UserProfile } from "../../store/sessionStore";
 import type { SettingsSectionId } from "../settings/types";
 import { cn } from "../../lib/util";
 import {
@@ -22,6 +22,8 @@ import {
   FormHint,
   FormLabel,
   Input,
+  SegmentedControl,
+  Slider,
   type FileDropZoneAccept,
 } from "../../shared/ui";
 import {
@@ -34,6 +36,8 @@ import {
   type AvatarCropState,
   type LoadedAvatarImage,
 } from "./useAvatarCrop";
+import { ProfileIdentityAvatar, type ProfileIdentityKind } from "./ProfileAvatar";
+import { saveProfileAvatar } from "../../api/profileAvatarClient";
 import { FrontendLocalePreferences, FrontendLocales, frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { useFrontendLocalePreference, useSetFrontendLocalePreference } from "../../i18n/useFrontendLocale";
 import { themeModeLabels } from "../../shared/theme/appearancePresentation";
@@ -61,15 +65,19 @@ export function UserFooter({
   onLogout,
   onSettingsIntent,
   onOpenSettings,
+  httpBaseUrl,
+  uploadCsrfToken,
 }: {
   collapsed?: boolean;
   compactFrame?: boolean;
   profile: UserProfile;
   socketStatus: string;
-  onUpdateProfile: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
+  onUpdateProfile: (profile: ConversationProfileUpdate) => void;
   onLogout?: () => Promise<void>;
   onSettingsIntent?: () => void;
   onOpenSettings: (section?: SettingsSectionId, returnFocus?: HTMLElement | null) => void;
+  httpBaseUrl?: string;
+  uploadCsrfToken?: string;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -234,31 +242,20 @@ export function UserFooter({
               }
             : undefined
         }
+        uploadAvatar={
+          httpBaseUrl
+            ? async (file, identity) => {
+                return saveProfileAvatar(httpBaseUrl, identity, file, uploadCsrfToken);
+              }
+            : undefined
+        }
       />
     </>
   );
 }
 
 function UserAvatar({ profile, size = "normal" }: { profile: UserProfile; size?: "normal" | "hero" }): JSX.Element {
-  const className = size === "hero" ? "h-20 w-20 rounded-full text-[24px]" : "h-8 w-8 rounded-full text-[12px]";
-  const initial = profile.name.trim().slice(0, 1).toUpperCase();
-
-  return (
-    <div
-      className={cn(
-        "grid shrink-0 place-items-center overflow-hidden bg-content-strong font-semibold text-content-inverse ring-1 ring-line-subtle",
-        className,
-      )}
-    >
-      {profile.avatarDataUrl ? (
-        <img src={profile.avatarDataUrl} alt={profile.name} className="h-full w-full object-cover" />
-      ) : initial ? (
-        initial
-      ) : (
-        <AppIcon icon="user" className={size === "hero" ? "h-6 w-6" : "h-3.5 w-3.5"} />
-      )}
-    </div>
-  );
+  return <ProfileIdentityAvatar identity={profile} kind="user" size={size} />;
 }
 
 function ProfileDialog({
@@ -268,26 +265,32 @@ function ProfileDialog({
   onOpenChange,
   onSubmit,
   onLogout,
+  uploadAvatar,
 }: {
   open: boolean;
   profile: UserProfile;
   returnFocus: HTMLElement | null;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (profile: Pick<UserProfile, "name" | "avatarDataUrl">) => void;
+  onSubmit: (profile: ConversationProfileUpdate) => void;
   onLogout?: () => Promise<void>;
+  uploadAvatar?: (file: File, identity: ProfileIdentityKind) => Promise<string>;
 }): JSX.Element {
-  const [draftName, setDraftName] = useState(profile.name);
-  const [draftAvatar, setDraftAvatar] = useState<string | null>(profile.avatarDataUrl);
-  const [crop, setCrop] = useState<AvatarCropState | null>(null);
+  const [profileIdentity, setProfileIdentity] = useState<ProfileIdentityKind>("user");
+  const [draftUser, setDraftUser] = useState<ConversationIdentity>(() => readProfileIdentity(profile));
+  const [draftAssistant, setDraftAssistant] = useState<ConversationIdentity>(() => profile.assistant);
+  const [crop, setCrop] = useState<(AvatarCropState & { identity: ProfileIdentityKind }) | null>(null);
+  const [saving, setSaving] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const avatarButtonRef = useRef<HTMLButtonElement>(null);
   const cropWasActiveRef = useRef(false);
   const cropImage = useLoadedAvatarImage(crop?.source ?? null);
-  const nameMissing = draftName.trim().length === 0;
+  const activeIdentity = profileIdentity === "user" ? draftUser : draftAssistant;
+  const activeIdentityName = activeIdentity.name.trim();
+  const namesMissing = draftUser.name.trim().length === 0 || draftAssistant.name.trim().length === 0;
 
   useEffect(() => {
     if (open) nameInputRef.current?.focus({ preventScroll: true });
-  }, [open]);
+  }, [open, profileIdentity]);
 
   useEffect(() => {
     if (crop) {
@@ -300,9 +303,19 @@ function ProfileDialog({
   }, [crop, open]);
 
   const resetDraft = (): void => {
-    setDraftName(profile.name);
-    setDraftAvatar(profile.avatarDataUrl);
+    setProfileIdentity("user");
+    setDraftUser(readProfileIdentity(profile));
+    setDraftAssistant(profile.assistant);
     setCrop(null);
+    setSaving(false);
+  };
+
+  const updateActiveIdentity = (patch: Partial<ConversationIdentity>): void => {
+    if (profileIdentity === "user") {
+      setDraftUser((current) => ({ ...current, ...patch }));
+      return;
+    }
+    setDraftAssistant((current) => ({ ...current, ...patch }));
   };
 
   const readAvatarFile = (file: File): void => {
@@ -323,6 +336,7 @@ function ProfileDialog({
           scale: 1,
           offsetX: 0,
           offsetY: 0,
+          identity: profileIdentity,
         });
       }
     };
@@ -332,8 +346,50 @@ function ProfileDialog({
 
   const applyCrop = (): void => {
     if (!crop || !cropImage) return;
-    setDraftAvatar(renderAvatarCrop(cropImage, crop));
+    const avatarDataUrl = renderAvatarCrop(cropImage, crop);
+    if (crop.identity === "user") {
+      setDraftUser((current) => ({ ...current, avatarDataUrl, avatarPath: null }));
+    } else {
+      setDraftAssistant((current) => ({ ...current, avatarDataUrl, avatarPath: null }));
+    }
     setCrop(null);
+  };
+
+  const updateCrop = useCallback<Dispatch<SetStateAction<AvatarCropState | null>>>((update) => {
+    setCrop((current) => {
+      if (!current) return null;
+      const next = typeof update === "function" ? update(current) : update;
+      if (!next) return null;
+      const normalized = { ...next, identity: current.identity };
+      return normalized.source === current.source &&
+        normalized.scale === current.scale &&
+        normalized.offsetX === current.offsetX &&
+        normalized.offsetY === current.offsetY
+        ? current
+        : normalized;
+    });
+  }, []);
+
+  const submitProfile = async (): Promise<void> => {
+    const user = normalizeProfileIdentity(draftUser);
+    const assistant = normalizeProfileIdentity(draftAssistant);
+    if (!user || !assistant) {
+      toast.error(frontendMessage("profile.nameRequired"));
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const [storedUser, storedAssistant] = await Promise.all([
+        persistAvatarResource(user, uploadAvatar, "user"),
+        persistAvatarResource(assistant, uploadAvatar, "assistant"),
+      ]);
+      onSubmit({ ...storedUser, assistant: storedAssistant });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : frontendMessage("upload.failed"));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -348,7 +404,7 @@ function ProfileDialog({
         title={crop ? frontendMessage("profile.cropTitle") : frontendMessage("profile.title")}
         description={crop ? frontendMessage("profile.cropDescription") : undefined}
         className="w-[min(440px,calc(100vw-28px))]"
-        bodyClassName="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-6 pb-6"
+        bodyClassName="min-h-0 flex-1 overflow-y-auto px-6 pb-6"
         footerClassName="border-t border-line-subtle bg-surface-subtle/35"
         footer={
           crop ? (
@@ -373,7 +429,12 @@ function ProfileDialog({
                 </Button>
               ) : null}
               <DialogActionButton close>{frontendMessage("ui.cancel")}</DialogActionButton>
-              <DialogActionButton type="submit" form="profile-editor-form" variant="primary" disabled={nameMissing}>
+              <DialogActionButton
+                type="submit"
+                form="profile-editor-form"
+                variant="primary"
+                disabled={namesMissing || saving}
+              >
                 {frontendMessage("profile.save")}
               </DialogActionButton>
             </DialogActions>
@@ -405,7 +466,7 @@ function ProfileDialog({
               applyCrop();
             }}
           >
-            <AvatarCropper crop={crop} image={cropImage} onCropChange={setCrop} />
+            <AvatarCropper crop={crop} image={cropImage} onCropChange={updateCrop} />
           </form>
         ) : (
           <form
@@ -413,14 +474,18 @@ function ProfileDialog({
             className="grid gap-6"
             onSubmit={(event) => {
               event.preventDefault();
-              const name = draftName.trim();
-              if (!name) {
-                toast.error(frontendMessage("profile.nameRequired"));
-                return;
-              }
-              onSubmit({ name, avatarDataUrl: draftAvatar });
+              void submitProfile();
             }}
           >
+            <SegmentedControl
+              ariaLabel={frontendMessage("profile.identitySelector")}
+              options={[
+                { value: "user", label: frontendMessage("profile.identity.user") },
+                { value: "assistant", label: frontendMessage("profile.identity.assistant") },
+              ]}
+              value={profileIdentity}
+              onChange={(next) => setProfileIdentity(next as ProfileIdentityKind)}
+            />
             <FileDropZone
               accept={avatarImageAccept}
               multiple={false}
@@ -454,14 +519,7 @@ function ProfileDialog({
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
                     )}
                   >
-                    <UserAvatar
-                      profile={{
-                        name: draftName.trim() || profile.name,
-                        avatarDataUrl: draftAvatar,
-                        updatedAt: profile.updatedAt,
-                      }}
-                      size="hero"
-                    />
+                    <ProfileIdentityAvatar identity={activeIdentity} kind={profileIdentity} size="hero" />
                     <span
                       className={cn(
                         "pointer-events-none absolute inset-0 grid place-items-center rounded-full bg-ink-950/55 text-paper-50",
@@ -485,8 +543,12 @@ function ProfileDialog({
                       <AppIcon icon="camera" className="h-3.5 w-3.5" aria-hidden="true" />
                       {frontendMessage("profile.selectImage")}
                     </Button>
-                    {draftAvatar ? (
-                      <Button size="sm" variant="ghost" onClick={() => setDraftAvatar(null)}>
+                    {activeIdentity.avatarDataUrl || activeIdentity.avatarPath ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => updateActiveIdentity({ avatarDataUrl: null, avatarPath: null })}
+                      >
                         <AppIcon icon="trash" className="h-3.5 w-3.5" aria-hidden="true" />
                         {frontendMessage("profile.removeAvatar")}
                       </Button>
@@ -499,29 +561,31 @@ function ProfileDialog({
             <FormField className="border-t border-line-subtle pt-5">
               <div className="flex items-center justify-between gap-3">
                 <FormLabel>{frontendMessage("profile.displayName")}</FormLabel>
-                {draftName.length >= DISPLAY_NAME_COUNTER_THRESHOLD ? (
+                {activeIdentity.name.length >= DISPLAY_NAME_COUNTER_THRESHOLD ? (
                   <span
                     className={cn(
                       "text-[11.5px] tabular-nums text-content-muted",
-                      draftName.length >= MAX_DISPLAY_NAME_LENGTH && "text-brick-600",
+                      activeIdentity.name.length >= MAX_DISPLAY_NAME_LENGTH && "text-brick-600",
                     )}
                   >
-                    {draftName.length}/{MAX_DISPLAY_NAME_LENGTH}
+                    {activeIdentity.name.length}/{MAX_DISPLAY_NAME_LENGTH}
                   </span>
                 ) : null}
               </div>
               <Input
                 ref={nameInputRef}
                 aria-label={frontendMessage("profile.displayName")}
-                aria-invalid={nameMissing}
-                aria-describedby={nameMissing ? "profile-name-error" : undefined}
-                value={draftName}
+                aria-invalid={!activeIdentityName}
+                aria-describedby={!activeIdentityName ? "profile-name-error" : undefined}
+                value={activeIdentity.name}
                 maxLength={MAX_DISPLAY_NAME_LENGTH}
-                placeholder={frontendMessage("profile.namePlaceholder")}
+                placeholder={frontendMessage(
+                  profileIdentity === "user" ? "profile.namePlaceholder" : "profile.assistantNamePlaceholder",
+                )}
                 className="h-10 text-[13px]"
-                onChange={(event) => setDraftName(event.target.value)}
+                onChange={(event) => updateActiveIdentity({ name: event.target.value })}
               />
-              {nameMissing ? (
+              {!activeIdentityName ? (
                 <FormHint className="text-brick-600">
                   <span id="profile-name-error">{frontendMessage("profile.nameRequired")}</span>
                 </FormHint>
@@ -534,6 +598,41 @@ function ProfileDialog({
   );
 }
 
+function readProfileIdentity(profile: UserProfile): ConversationIdentity {
+  return {
+    name: profile.name,
+    avatarDataUrl: profile.avatarDataUrl,
+    avatarPath: profile.avatarPath,
+  };
+}
+
+function normalizeProfileIdentity(identity: ConversationIdentity): ConversationIdentity | null {
+  const name = identity.name.trim();
+  return name ? { ...identity, name } : null;
+}
+
+async function persistAvatarResource(
+  identity: ConversationIdentity,
+  uploadAvatar: ((file: File, identity: ProfileIdentityKind) => Promise<string>) | undefined,
+  avatarIdentity: ProfileIdentityKind,
+): Promise<ConversationIdentity> {
+  if (!identity.avatarDataUrl?.startsWith("data:image/")) return identity;
+  if (!uploadAvatar) return identity;
+  const resourcePath = await uploadAvatar(
+    dataUrlToFile(identity.avatarDataUrl, `profile-${avatarIdentity}`),
+    avatarIdentity,
+  );
+  return { ...identity, avatarDataUrl: null, avatarPath: resourcePath };
+}
+
+function dataUrlToFile(dataUrl: string, fileName: string): File {
+  const [header, encoded] = dataUrl.split(",", 2);
+  if (!header || !encoded) throw new Error(frontendMessage("upload.failed"));
+  const mime = /^data:([^;]+);base64$/i.exec(header)?.[1] ?? "image/jpeg";
+  const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
+  return new File([bytes], fileName, { type: mime });
+}
+
 function AvatarCropper({
   crop,
   image,
@@ -544,7 +643,6 @@ function AvatarCropper({
   onCropChange: Dispatch<SetStateAction<AvatarCropState | null>>;
 }): JSX.Element {
   const frameRef = useRef<HTMLDivElement>(null);
-  const sliderRef = useRef<HTMLInputElement>(null);
   const frameFocusPendingRef = useRef(true);
   const dragRef = useRef<{ pointerId: number; x: number; y: number; offsetX: number; offsetY: number } | null>(null);
   const geometry = useMemo(
@@ -661,27 +759,26 @@ function AvatarCropper({
         <div className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-paper-50/65" />
       </div>
 
-      <label className="mt-4 w-full">
+      <div className="mt-4 w-full">
         <div className="mb-2 flex items-center justify-between text-[12px] text-ink-500">
           <span>{frontendMessage("profile.zoom")}</span>
           <span className="tabular-nums">{Math.round(crop.scale * 100)}%</span>
         </div>
-        <input
-          ref={sliderRef}
-          type="range"
-          min="1"
-          max="3"
-          step="0.01"
+        <Slider
+          ariaLabel={frontendMessage("profile.zoom")}
+          size="compact"
+          variant="scrubber"
+          min={1}
+          max={3}
+          step={0.01}
           value={crop.scale}
           disabled={!image}
-          onChange={(event) => {
-            const scale = Number(event.target.value);
+          onValueChange={(scale) => {
             if (!image) return;
             onCropChange((current) => (current ? normalizeAvatarCrop({ ...current, scale }, image) : current));
           }}
-          className="h-1.5 w-full cursor-pointer rounded-full accent-ink-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
         />
-      </label>
+      </div>
     </div>
   );
 }

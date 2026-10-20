@@ -2,7 +2,11 @@ import type Database from "better-sqlite3";
 import { AgentSqliteDatabaseKernel } from "../Database/AgentSqliteDatabaseKernel.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { AgentConfigDatabaseContract } from "./AgentConfigSqlSchema.js";
-import { AgentConfigSecretCodec, resolveAgentConfigSecretWorkspaceRoot } from "./AgentConfigSecretProtection.js";
+import {
+  AgentConfigSecretCodec,
+  type AgentConfigSecretDecodeResult,
+  type AgentConfigUnresolvedSecret,
+} from "./AgentConfigSecretProtection.js";
 import {
   prepareAgentConfigSqlStatements,
   type AgentConfigRevisionRow,
@@ -23,6 +27,8 @@ export interface AgentConfigRevisionRecord {
   config: AgentSystemConfig;
   source: "seed" | "json_import" | "ui_update" | "api_update" | "migration";
   createdAt: string;
+  /** Envelopes this revision stores that this host cannot open, reported for this revision only. */
+  unresolvedSecrets: readonly AgentConfigUnresolvedSecret[];
 }
 
 export interface AgentConfigWriteInput {
@@ -84,9 +90,7 @@ export class AgentConfigSqliteRepository {
   private readonly secretCodec: AgentConfigSecretCodec;
 
   constructor(databasePath: string, options: AgentConfigSqliteRepositoryOptions = {}) {
-    this.secretCodec =
-      options.secretCodec ??
-      new AgentConfigSecretCodec({ workspaceRoot: resolveAgentConfigSecretWorkspaceRoot(databasePath) });
+    this.secretCodec = options.secretCodec ?? new AgentConfigSecretCodec({});
     this.kernel = new AgentSqliteDatabaseKernel({
       databasePath,
       contract: AgentConfigDatabaseContract,
@@ -134,12 +138,13 @@ export class AgentConfigSqliteRepository {
     });
 
     const revision = insert.immediate();
-    return {
-      revision,
-      config: input.config,
-      source: input.source,
-      createdAt,
-    };
+    return this.readWrittenRevision(revision);
+  }
+
+  private readWrittenRevision(revision: number): AgentConfigRevisionRecord {
+    const row = this.statements.selectRevision.get(revision);
+    if (!row) throw new Error(`Configuration revision ${revision} is missing after it was written.`);
+    return this.rowToRevision(row);
   }
 
   executeCommand(
@@ -186,12 +191,7 @@ export class AgentConfigSqliteRepository {
       });
       this.pruneHistoryRows(createdAt, retention);
       return {
-        revision: {
-          revision,
-          config,
-          source: input.source,
-          createdAt,
-        },
+        revision: this.readWrittenRevision(revision),
         replayed: false,
         appliedRevision: revision,
       };
@@ -220,11 +220,13 @@ export class AgentConfigSqliteRepository {
 
   private rowToRevision(row: AgentConfigRevisionRow): AgentConfigRevisionRecord {
     const parsed = parseJsonText(row.config_json, "Agent config revision") as AgentSystemConfig;
+    const revealed = this.secretCodec.revealConfig(parsed);
     return {
       revision: row.revision,
-      config: this.secretCodec.revealConfig(parsed).value,
+      config: revealed.value,
       source: row.source,
       createdAt: row.created_at,
+      unresolvedSecrets: revealed.unresolvedSecrets,
     };
   }
 
@@ -238,7 +240,7 @@ export class AgentConfigSqliteRepository {
 
   private protectLegacyRevisionSecrets(databasePath: string, upgradeSession?: AgentUpgradeSession): void {
     const inspection = inspectRevisionSecretStorage(this.db, this.secretCodec);
-    if (!inspection.plaintextSecretsFound) {
+    if (!inspection.needsProtection) {
       if (inspection.protectedSecretsFound) this.kernel.checkpoint();
       return;
     }
@@ -268,16 +270,24 @@ function configReceiptCutoff(now: string, retentionHours: number): string {
 function inspectRevisionSecretStorage(
   database: Database.Database,
   secretCodec: AgentConfigSecretCodec,
-): { plaintextSecretsFound: boolean; protectedSecretsFound: boolean } {
-  let plaintextSecretsFound = false;
+): { needsProtection: boolean; protectedSecretsFound: boolean } {
+  let needsProtection = false;
   let protectedSecretsFound = false;
   const statements = prepareAgentConfigSqlStatements(database);
   for (const row of statements.selectAllRevisions.all()) {
     const revealed = secretCodec.revealPayload(parseJsonText(row.config_json, "Agent config revision") as unknown);
-    plaintextSecretsFound ||= revealed.plaintextSecretsFound;
+    needsProtection ||= revisionNeedsSecretProtection(revealed);
     protectedSecretsFound ||= revealed.protectedSecretsFound;
   }
-  return { plaintextSecretsFound, protectedSecretsFound };
+  return { needsProtection, protectedSecretsFound };
+}
+
+/**
+ * Plaintext must not stay on disk, and a secret opened with older key material converges on the host
+ * key just as the JSON mirror does. A foreign envelope reports neither flag, so it stays untouched.
+ */
+function revisionNeedsSecretProtection(revealed: AgentConfigSecretDecodeResult<unknown>): boolean {
+  return revealed.plaintextSecretsFound || revealed.secretsNeedRewrap;
 }
 
 function protectRevisionSecretStorage(database: Database.Database, secretCodec: AgentConfigSecretCodec): void {
@@ -285,7 +295,7 @@ function protectRevisionSecretStorage(database: Database.Database, secretCodec: 
   const statements = prepareAgentConfigSqlStatements(database);
   const rewrites = statements.selectAllRevisions.all().flatMap((row) => {
     const revealed = secretCodec.revealPayload(parseJsonText(row.config_json, "Agent config revision") as unknown);
-    return revealed.plaintextSecretsFound
+    return revisionNeedsSecretProtection(revealed)
       ? [
           {
             revision: row.revision,

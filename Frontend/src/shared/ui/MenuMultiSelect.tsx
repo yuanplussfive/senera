@@ -72,7 +72,7 @@ export function MenuMultiSelect({
           <AppIcon icon="chevron-down" size={14} className="text-content-muted" aria-hidden="true" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="scrollbar-thin max-h-[320px] min-w-[240px] overflow-y-auto">
+      <DropdownMenuContent align="start" className="max-h-[320px] min-w-[240px] overflow-y-auto">
         {options.length > 0 ? (
           options.map((option, index) => (
             <DropdownMenuCheckboxItem

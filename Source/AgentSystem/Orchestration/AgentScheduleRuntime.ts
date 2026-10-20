@@ -6,6 +6,7 @@ import {
   type ScheduledTaskUpdate,
 } from "@amaster.ai/pi-task-scheduler";
 import { createOpaqueId, createRequestId } from "../Core/AgentIds.js";
+import { resolveModelProviderConfig } from "../Defaults/AgentModelProviderDefaults.js";
 import { AgentEventKinds, withEventContext, type AgentDomainEvent } from "../Events/AgentEvent.js";
 import { AgentExecutionApprovalModes } from "../Safety/AgentExecutionApprovalMode.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
@@ -646,10 +647,7 @@ interface ActiveScheduledRun {
 }
 
 function resolveConfiguredModel(config: AgentSystemConfig, modelProviderId: string | undefined) {
-  const effectiveId = modelProviderId ?? config.DefaultModelProviderId ?? config.ModelProviders[0]?.Id;
-  const model = config.ModelProviders.find((candidate) => candidate.Id === effectiveId);
-  if (!model) throw new Error(`Scheduled task model does not exist: ${effectiveId ?? "<default>"}`);
-  return model;
+  return resolveModelProviderConfig(config, modelProviderId);
 }
 
 function resolveToolCeiling(requested: readonly string[] | undefined, context: AgentScheduleToolContext): string[] {

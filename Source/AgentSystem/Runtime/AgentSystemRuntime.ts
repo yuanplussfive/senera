@@ -23,6 +23,7 @@ import {
 import { AgentMcpPackageSourceKinds } from "../McpPackages/AgentMcpPackageTypes.js";
 import { isAgentMcpPackageToolNameForServer } from "../McpPackages/AgentMcpPackageIdentity.js";
 import { AgentMcpPackageCatalog } from "../McpPackages/AgentMcpPackageCatalog.js";
+import { filterEnabledAgentMcpPackageServers } from "../McpPackages/AgentMcpServerEnablement.js";
 import { AgentMcpPackageSchemaCache } from "../McpPackages/AgentMcpPackageSchemaCache.js";
 import type { AgentMcpToolsChanged } from "../Mcp/AgentMcpToolCatalogChange.js";
 import type { AgentExtensionValueResolver } from "../Extensions/AgentExtensionValueExpression.js";
@@ -89,6 +90,8 @@ export interface AgentSystemRuntimeSharedOptions {
   /** Loaded plugin host; its tools/skills are applied per runtime composition. */
   pluginHost?: AgentPluginHost;
   resourceCoordinator?: AgentToolResourceLeaseCoordinator;
+  /** Logger for derived-context work; kept out of the foreground conversation stream. */
+  learningLogger?: AgentLogger;
   mcpHostCapabilities?: AgentMcpHostCapabilitySnapshot;
   /** Shared management projection so composer and execution validate one catalog. */
   mcpActivationEntries?: () => readonly AgentMcpActivationCatalogEntry[];
@@ -120,6 +123,7 @@ export class AgentSystemRuntime {
   readonly logger: AgentLogger | undefined;
   readonly piDiagnostics: AgentPiDiagnosticSink | undefined;
   readonly resourcesPath: string | undefined;
+  readonly identityDisplayValues: (() => AgentIdentityDisplayValues) | undefined;
   private readonly composition: AgentSystemRuntimeComposition;
   private readonly mcpPackageCatalog: AgentMcpPackageCatalog;
   private readonly mcpSchemaCache: AgentMcpPackageSchemaCache;
@@ -141,6 +145,7 @@ export class AgentSystemRuntime {
     this.logger = options.logger;
     this.piDiagnostics = options.piDiagnostics;
     this.resourcesPath = options.resourcesPath;
+    this.identityDisplayValues = options.identityDisplayValues;
     this.mcpHostCapabilities = options.mcpHostCapabilities;
     this.pluginHost = options.pluginHost;
     this.mcpActivationEntries = options.mcpActivationEntries;
@@ -370,7 +375,7 @@ export class AgentSystemRuntime {
     const resourcesRoot = path.resolve(this.resourcesPath ?? this.workspaceRoot);
     const workspaceLayout = resolveAgentWorkspaceLayout(this.workspaceRoot);
     const scanner = new AgentMcpPackageScanner();
-    const packages = [
+    const declaredPackages = [
       ...scanner.scanRoot(path.join(resourcesRoot, "McpServers"), AgentMcpPackageSourceKinds.Bundled),
       ...this.composition.infrastructure.systemMcpContributions.map((contribution) =>
         scanner.readPackage(
@@ -381,6 +386,7 @@ export class AgentSystemRuntime {
       ),
       ...scanner.scanRoot(workspaceLayout.mcpRoot, AgentMcpPackageSourceKinds.Workspace),
     ];
+    const packages = filterEnabledAgentMcpPackageServers(this.config, declaredPackages);
     assertUniqueAgentMcpServerNames(packages);
     this.mcpPackageCatalog.registerPackages(packages);
     const packageDiscovery = new AgentMcpPackageDiscovery(this.config, this.executionEnv, {

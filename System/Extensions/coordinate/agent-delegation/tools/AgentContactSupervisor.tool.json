@@ -8,7 +8,8 @@
       "action": { "zh-CN": "协调", "en-US": "Coordinate" },
       "argumentPath": "/message",
       "detailPaths": ["/reason"]
-    }
+    },
+    "preview": {}
   },
   "description": "让受控子代理向其所属父运行发送进度或决策请求；仅对子运行内部开放。",
   "inputSchema": {

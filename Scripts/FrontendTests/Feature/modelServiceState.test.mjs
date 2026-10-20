@@ -18,6 +18,7 @@ describe("modelServiceState", () => {
           { id: "gpt-4.1-mini", ownedBy: "openai" },
         ]),
       },
+      configDiagnostics: [],
       draft: {
         ModelProviderEndpoints: [
           { Id: "openai", Enabled: true },
@@ -54,10 +55,27 @@ describe("modelServiceState", () => {
       })),
     ).toEqual([{ id: "assistant", configKey: "DefaultModelProviderId" }]);
   });
+  it("leaves the default slot unset when no default model is configured", () => {
+    const state = readModelServiceState({
+      catalogs: {},
+      configDiagnostics: [],
+      draft: {
+        ModelProviderEndpoints: [{ Id: "openai", Enabled: true }],
+        ModelProviders: [{ Id: "openai/gpt", ProviderId: "openai", Endpoint: "chat", Model: "gpt" }],
+      },
+      errors: {},
+      loadingIds: {},
+      section: createModelsSection(),
+    });
+
+    expect(state.defaultModel).toBeNull();
+    expect(state.defaultSlots[0]).toMatchObject({ status: "unset", selectedModelId: null });
+  });
   it("reports disabled providers and missing default model references as diagnostics", () => {
     const section = createModelsSection();
     const state = readModelServiceState({
       catalogs: {},
+      configDiagnostics: [],
       draft: {
         ModelProviderEndpoints: [{ Id: "disabled", Enabled: false }],
         ModelProviders: [{ Id: "disabled/model-a", ProviderId: "disabled", Endpoint: "chat", Model: "model-a" }],
@@ -96,6 +114,7 @@ describe("modelServiceState", () => {
     const section = createModelsSection();
     const state = readModelServiceState({
       catalogs: {},
+      configDiagnostics: [],
       draft: {
         ModelProviderEndpoints: [{ Id: "openai", Enabled: true }],
         ModelProviders: [{ Id: "openai/local-only", ProviderId: "openai", Endpoint: "chat", Model: "local-only" }],
@@ -120,6 +139,62 @@ describe("modelServiceState", () => {
           affectedProviderId: "openai",
           action: "fetch_models",
         }),
+      ]),
+    );
+  });
+  it("marks saved secrets this host cannot decrypt as connection errors", () => {
+    const state = readModelServiceState({
+      catalogs: {},
+      configDiagnostics: [
+        unresolvedSecretDiagnostic({ kind: "provider_api_key", providerId: "main", reason: "unknown_key" }),
+        unresolvedSecretDiagnostic({
+          kind: "provider_header",
+          providerId: "main",
+          headerName: "X-Project",
+          reason: "authentication_failed",
+        }),
+        unresolvedSecretDiagnostic({
+          kind: "extension_secret",
+          extensionId: "search",
+          fieldPath: ["apiKey"],
+          reason: "missing_key",
+        }),
+        { severity: "warning", message: "unrelated diagnostic" },
+      ],
+      draft: {
+        ModelProviderEndpoints: [
+          { Id: "main", Enabled: true },
+          { Id: "other", Enabled: true },
+        ],
+        ModelProviders: [],
+      },
+      errors: {},
+      loadingIds: {},
+      section: createModelsSection(),
+    });
+    expect(state.unresolvedApiKeyProviderIds).toEqual(["main"]);
+    const connectionItems = state.diagnostics.filter((item) => item.group === "connection");
+    expect(connectionItems.map((item) => item.id)).toEqual([
+      "unresolved-api-key:main",
+      "unresolved-header:main:X-Project",
+    ]);
+    expect(connectionItems[0]).toMatchObject({
+      severity: "error",
+      title: "无法解密已保存的 API Key",
+      detail: "main 的 API Key 在本机解密失败，重新填写并保存即可恢复。",
+      affectedProviderId: "main",
+      action: "open_connection",
+    });
+    expect(connectionItems[1]).toMatchObject({
+      severity: "error",
+      title: "无法解密已保存的请求头",
+      detail: "main 的请求头 X-Project 在本机解密失败，重新填写并保存即可恢复。",
+      affectedProviderId: "main",
+      action: "open_connection",
+    });
+    expect(state.providerIssues).toEqual(
+      expect.arrayContaining([
+        { severity: "error", message: "main 的 API Key 在本机解密失败，重新填写并保存即可恢复。" },
       ]),
     );
   });
@@ -191,6 +266,7 @@ describe("modelServiceState", () => {
   it("groups diagnostics and formats a copyable report", () => {
     const state = readModelServiceState({
       catalogs: {},
+      configDiagnostics: [],
       draft: {
         ModelProviderEndpoints: [{ Id: "disabled", Enabled: false }],
         ModelProviders: [{ Id: "disabled/model-a", ProviderId: "disabled", Endpoint: "chat", Model: "model-a" }],
@@ -222,6 +298,14 @@ describe("modelServiceState", () => {
     expect(formatModelServiceDiagnosticReport(state.diagnostics)).toContain("model=missing/model");
   });
 });
+function unresolvedSecretDiagnostic(details) {
+  return {
+    severity: "warning",
+    code: "config.secretUnresolved",
+    message: "backend copy",
+    details,
+  };
+}
 function createModelsSection() {
   return {
     name: "models",

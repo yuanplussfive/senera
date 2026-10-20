@@ -17,6 +17,11 @@ import { AgentBaseError } from "../Core/AgentBaseError.js";
 import { currentAgentTimeIso, DefaultAgentTimeZone, resolveAgentTimeZone } from "../Time/AgentTime.js";
 import { AgentSqliteTimeMetadataTable } from "./AgentSqliteDatabaseSchema.js";
 import { AgentSqliteVecExtension } from "./AgentSqliteVecExtension.js";
+import {
+  acquireAgentSqliteDatabaseLifecycle,
+  listAgentSqliteDatabaseFamilyPaths,
+  type AgentSqliteDatabaseLifecycleLease,
+} from "./AgentSqliteDatabaseLifecycle.js";
 
 export const AgentSqliteJournalModes = {
   Wal: "WAL",
@@ -84,10 +89,11 @@ interface OpenedAgentSqliteDatabase {
 
 export class AgentSqliteDatabaseKernel {
   readonly databasePath: string;
-  readonly connection: Database.Database;
+  readonly connection!: Database.Database;
   readonly recovery?: AgentSqliteDatabaseRecovery;
-  readonly timeZone: string;
+  readonly timeZone!: string;
   private readonly checkpointOnClose: boolean;
+  private readonly lifecycle!: AgentSqliteDatabaseLifecycleLease;
   private closed = false;
 
   constructor(options: AgentSqliteDatabaseOptions) {
@@ -95,19 +101,26 @@ export class AgentSqliteDatabaseKernel {
     this.databasePath = path.resolve(options.databasePath);
     this.checkpointOnClose = profile.checkpointOnClose;
     fs.mkdirSync(path.dirname(this.databasePath), { recursive: true });
-    const opened = openDatabase(
-      this.databasePath,
-      profile,
-      options.contract,
-      options.upgradeSession,
-      options.extensions ?? [AgentSqliteVecExtension],
-    );
-    this.connection = opened.connection;
-    this.recovery = opened.recovery;
+    const lifecycle = acquireAgentSqliteDatabaseLifecycle(this.databasePath);
+    let connection: Database.Database | undefined;
     try {
+      this.lifecycle = lifecycle;
+      const opened = openDatabase(
+        this.databasePath,
+        profile,
+        options.contract,
+        options.upgradeSession,
+        options.extensions ?? [AgentSqliteVecExtension],
+        lifecycle.requiresIntegrityCheck,
+      );
+      connection = opened.connection;
+      this.connection = opened.connection;
+      this.recovery = opened.recovery;
       this.timeZone = ensureDatabaseTimeMetadata(this.connection, options.timeZone ?? DefaultAgentTimeZone);
+      lifecycle.confirmIntegrity();
     } catch (error) {
-      this.connection.close();
+      lifecycle.abandon();
+      connection?.close();
       throw error;
     }
   }
@@ -131,9 +144,15 @@ export class AgentSqliteDatabaseKernel {
     if (this.closed) return;
     this.closed = true;
     try {
-      if (this.checkpointOnClose) this.connection.pragma("wal_checkpoint(TRUNCATE)");
-    } finally {
-      this.connection.close();
+      try {
+        if (this.checkpointOnClose) this.connection.pragma("wal_checkpoint(TRUNCATE)");
+      } finally {
+        this.connection.close();
+      }
+      this.lifecycle.closeCleanly();
+    } catch (error) {
+      this.lifecycle.abandon();
+      throw error;
     }
   }
 
@@ -148,12 +167,20 @@ function openDatabase(
   contract: AgentSqliteStoreContract,
   upgradeSession?: AgentUpgradeSession,
   extensions: readonly AgentSqliteDatabaseExtension[] = [],
+  requiresIntegrityCheck = true,
 ): OpenedAgentSqliteDatabase {
   if (contract.dataClass === AgentSqliteStoreDataClasses.Authoritative) {
-    return openAuthoritativeDatabase(databasePath, profile, contract, upgradeSession, extensions);
+    return openAuthoritativeDatabase(
+      databasePath,
+      profile,
+      contract,
+      upgradeSession,
+      extensions,
+      requiresIntegrityCheck,
+    );
   }
   if (contract.dataClass === AgentSqliteStoreDataClasses.Derived) {
-    return openDerivedDatabase(databasePath, profile, contract, upgradeSession, extensions);
+    return openDerivedDatabase(databasePath, profile, contract, upgradeSession, extensions, requiresIntegrityCheck);
   }
   throw new TypeError("Unsupported SQLite store data class.");
 }
@@ -164,6 +191,7 @@ function openAuthoritativeDatabase(
   contract: AgentSqliteStoreContract,
   upgradeSession?: AgentUpgradeSession,
   extensions: readonly AgentSqliteDatabaseExtension[] = [],
+  requiresIntegrityCheck = true,
 ): OpenedAgentSqliteDatabase {
   let database: Database.Database | undefined;
   let plan: AgentSqliteStoreReconciliation;
@@ -171,7 +199,7 @@ function openAuthoritativeDatabase(
     database = new Database(databasePath);
     configureConnection(database, profile);
     loadDatabaseExtensions(database, extensions);
-    assertDatabaseIntegrity(database, contract.id);
+    if (requiresIntegrityCheck) assertDatabaseIntegrity(database, contract.id);
     plan = reconcileStore(database, contract);
   } catch (error) {
     if (!isRecoverablePreflightError(error)) {
@@ -191,6 +219,7 @@ function openAuthoritativeDatabase(
   }
 
   try {
+    if (!requiresIntegrityCheck && plan.kind !== "current") assertDatabaseIntegrity(database, contract.id);
     if (upgradeSession) {
       upgradeSession.migrateSqlite({ database, databasePath, contract, plan });
     } else {
@@ -209,6 +238,7 @@ function openDerivedDatabase(
   contract: AgentSqliteStoreContract,
   upgradeSession?: AgentUpgradeSession,
   extensions: readonly AgentSqliteDatabaseExtension[] = [],
+  requiresIntegrityCheck = true,
 ): OpenedAgentSqliteDatabase {
   let database: Database.Database | undefined;
   let plan: AgentSqliteStoreReconciliation;
@@ -216,7 +246,7 @@ function openDerivedDatabase(
     database = new Database(databasePath);
     configureConnection(database, profile);
     loadDatabaseExtensions(database, extensions);
-    assertDatabaseIntegrity(database, contract.id);
+    if (requiresIntegrityCheck) assertDatabaseIntegrity(database, contract.id);
     plan = reconcileStore(database, contract);
   } catch (error) {
     if (!isRecoverablePreflightError(error)) {
@@ -236,6 +266,7 @@ function openDerivedDatabase(
   }
 
   try {
+    if (!requiresIntegrityCheck && plan.kind !== "current") assertDatabaseIntegrity(database, contract.id);
     if (plan.kind === "current") return { connection: database };
     if (plan.kind === "initialize") {
       migrateAgentSqliteStore(database, contract);
@@ -394,8 +425,8 @@ function openRebuiltStoreDatabase(
 
 function restoreStoreDatabaseFromBackup(databasePath: string, backupPath: string): void {
   removeDatabaseFiles(databasePath);
-  const sourceFiles = databaseFilePaths(backupPath);
-  const targetFiles = databaseFilePaths(databasePath);
+  const sourceFiles = databaseDataFilePaths(backupPath);
+  const targetFiles = databaseDataFilePaths(databasePath);
   for (const [index, sourcePath] of sourceFiles.entries()) {
     const targetPath = targetFiles[index];
     if (!targetPath) continue;
@@ -425,9 +456,9 @@ function replaceStoreDatabase(
   const movedFiles: string[] = [];
   let committed = false;
   try {
-    for (const filePath of databaseFilePaths(databasePath)) {
+    for (const filePath of databaseFamilyPaths(databasePath)) {
       if (!fs.existsSync(filePath)) continue;
-      const movedPath = filePath.replace(databasePath, previousPath);
+      const movedPath = replaceDatabasePathPrefix(filePath, databasePath, previousPath);
       fs.renameSync(filePath, movedPath);
       movedFiles.push(movedPath);
     }
@@ -439,7 +470,7 @@ function replaceStoreDatabase(
     } else if (!committed) {
       removeDatabaseFiles(stagingPath);
       for (const movedPath of movedFiles.reverse()) {
-        const originalPath = movedPath.replace(previousPath, databasePath);
+        const originalPath = replaceDatabasePathPrefix(movedPath, previousPath, databasePath);
         fs.renameSync(movedPath, originalPath);
       }
       removeDatabaseFiles(previousPath);
@@ -448,13 +479,24 @@ function replaceStoreDatabase(
 }
 
 function removeDatabaseFiles(databasePath: string): void {
-  for (const filePath of databaseFilePaths(databasePath)) {
+  for (const filePath of databaseFamilyPaths(databasePath)) {
     removeAgentPathSync(filePath, { force: true });
   }
 }
 
-function databaseFilePaths(databasePath: string): string[] {
+function databaseDataFilePaths(databasePath: string): string[] {
   return [databasePath, `${databasePath}-wal`, `${databasePath}-shm`];
+}
+
+function databaseFamilyPaths(databasePath: string): readonly string[] {
+  return listAgentSqliteDatabaseFamilyPaths(databasePath, { excludeCurrentProcessMarkers: true });
+}
+
+function replaceDatabasePathPrefix(filePath: string, fromDatabasePath: string, toDatabasePath: string): string {
+  if (!filePath.startsWith(fromDatabasePath)) {
+    throw new Error(`Database family member is not rooted at ${fromDatabasePath}: ${filePath}`);
+  }
+  return `${toDatabasePath}${filePath.slice(fromDatabasePath.length)}`;
 }
 
 function assertDatabaseIntegrity(database: Database.Database, storeId: string): void {

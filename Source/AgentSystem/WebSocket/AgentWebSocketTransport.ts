@@ -461,10 +461,24 @@ export class AgentWebSocketTransport {
         response.end(JSON.stringify({ ok: false, error: { code: "storage_scope_invalid" } }));
         return;
       }
+      const projectWorkspaceId =
+        requestedScope === AgentApplicationStorageScopes.Project ? url.searchParams.get("workspaceId") : undefined;
+      if (projectWorkspaceId) {
+        const parsedWorkspaceId = AgentWorkspaceIdSchema.safeParse(projectWorkspaceId);
+        if (!parsedWorkspaceId.success) {
+          response.writeHead(400, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+          response.end(JSON.stringify({ ok: false, error: { code: "storage_workspace_id_invalid" } }));
+          return;
+        }
+        this.options.catalog?.get(parsedWorkspaceId.data);
+      }
       const data = await readAgentApplicationStorage(
         resolveAgentApplicationPaths(this.options.applicationRoot),
         this.options.catalog,
-        { includeProject: requestedScope === AgentApplicationStorageScopes.Project },
+        {
+          includeProject: requestedScope === AgentApplicationStorageScopes.Project,
+          ...(projectWorkspaceId ? { projectWorkspaceId } : {}),
+        },
       );
       response.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
       response.end(JSON.stringify(data));

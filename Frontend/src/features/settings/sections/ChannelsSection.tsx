@@ -1,10 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
-import AdjustmentsHorizontalIcon from "@heroicons/react/24/outline/AdjustmentsHorizontalIcon";
-import ArrowLeftIcon from "@heroicons/react/24/outline/ArrowLeftIcon";
-import CubeTransparentIcon from "@heroicons/react/24/outline/CubeTransparentIcon";
-import PaperAirplaneIcon from "@heroicons/react/24/outline/PaperAirplaneIcon";
-import ServerStackIcon from "@heroicons/react/24/outline/ServerStackIcon";
-import UsersIcon from "@heroicons/react/24/outline/UsersIcon";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import { useFrontendLocale } from "../../../i18n/useFrontendLocale";
 import { cn } from "../../../lib/util";
@@ -39,16 +33,16 @@ const ChannelStatusPresentation = {
   degraded: { label: "settings.channels.degraded", text: "text-brick-600", dot: "bg-brick-500" },
 } as const;
 
-function channelEntryIcon(entryId: ChannelEntryId): typeof CubeTransparentIcon {
+function channelEntryIcon(entryId: ChannelEntryId): "sliders" | "send" | "users" | "server" {
   switch (entryId) {
     case "general":
-      return AdjustmentsHorizontalIcon;
+      return "sliders";
     case "telegram":
-      return PaperAirplaneIcon;
+      return "send";
     case "qq":
-      return UsersIcon;
+      return "users";
     case "discord":
-      return ServerStackIcon;
+      return "server";
   }
 }
 
@@ -175,7 +169,7 @@ export function ChannelsSection({
         <StateView
           status="empty"
           className="min-h-64"
-          icon={<CubeTransparentIcon className="h-4 w-4 text-ink-400" />}
+          icon={<AppIcon icon="package" size={16} className="text-ink-400" />}
           title={frontendMessage("settings.channels.notPublished")}
         />
       </section>
@@ -305,7 +299,7 @@ export function ChannelsSection({
             tone="muted"
             onClick={() => setSelectedId(null)}
           >
-            <ArrowLeftIcon className="h-4 w-4" />
+            <AppIcon icon="arrow-left" size={16} />
           </IconButton>
           <div className="min-w-0">
             <h3 className="flex items-center gap-2 truncate text-[17px] font-semibold tracking-[-0.01em] text-content-primary">
@@ -382,9 +376,9 @@ function ChannelsHeader({ refreshButton }: { refreshButton: JSX.Element }): JSX.
   return (
     <div className="mx-auto flex w-full max-w-[980px] shrink-0 items-center justify-between gap-4 border-b border-line px-6 py-4 lg:px-8">
       <div>
-        <div className="text-[13px] font-semibold text-content-primary">
+        <h2 className="text-[13px] font-semibold text-content-primary">
           {frontendMessage("settings.section.channels.label")}
-        </div>
+        </h2>
         <p className="mt-1 max-w-[640px] text-[11px] leading-5 text-content-muted">
           {frontendMessage("settings.section.channels.description")}
         </p>
@@ -417,7 +411,7 @@ function ChannelRow({
   onToggle: (next: boolean) => void;
   onSelect: () => void;
 }): JSX.Element {
-  const Icon = channelEntryIcon(entryId);
+  const icon = channelEntryIcon(entryId);
   return (
     <div
       ref={itemRef}
@@ -429,7 +423,7 @@ function ChannelRow({
     >
       <button type="button" onClick={onSelect} className="flex w-0 min-w-0 flex-1 items-center gap-3 text-left">
         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-surface-subtle text-content-secondary">
-          <Icon className="h-5 w-5" aria-hidden="true" />
+          <AppIcon icon={icon} size={20} aria-hidden="true" />
         </span>
         <span className="min-w-0">
           <span className="block truncate text-[12.5px] font-semibold text-content-primary">{mark}</span>

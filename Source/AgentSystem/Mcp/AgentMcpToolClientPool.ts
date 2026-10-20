@@ -8,6 +8,7 @@ import {
   type AgentMcpToolClientOptions,
   openAgentMcpToolClient,
 } from "./AgentMcpToolClient.js";
+import type { AgentMcpRuntimeEndpoint } from "../McpPackages/AgentMcpPackageTypes.js";
 
 type PooledClientOptions = Omit<AgentMcpToolClientOptions, "signal">;
 type OpenClient = (options: AgentMcpToolClientOptions) => Promise<AgentMcpToolClient>;
@@ -25,9 +26,30 @@ export interface AgentMcpToolClientPoolOptions {
   readonly policy?: AgentMcpToolClientPoolPolicyProvider;
   readonly clock?: () => number;
   readonly onCloseError?: (error: unknown, options: PooledClientOptions) => void;
+  /** Emits connection ownership transitions without exposing command arguments or credentials. */
+  readonly onLifecycleEvent?: (event: AgentMcpConnectionLifecycleEvent) => void;
 }
 
 type ClientPoolEntryState = "opening" | "ready" | "retiring" | "closed";
+type AgentMcpConnectionRetirementReason = "connection_closed" | "idle" | "pool_closed";
+type AgentMcpConnectionTransport = Exclude<AgentMcpRuntimeEndpoint["transport"], undefined>;
+
+export const AgentMcpConnectionLifecycleEventKinds = {
+  Opening: "opening",
+  Ready: "ready",
+  Reused: "reused",
+  OpenFailed: "open_failed",
+  Retiring: "retiring",
+  Closed: "closed",
+} as const;
+
+export interface AgentMcpConnectionLifecycleEvent {
+  readonly kind: (typeof AgentMcpConnectionLifecycleEventKinds)[keyof typeof AgentMcpConnectionLifecycleEventKinds];
+  readonly serverId: string;
+  readonly transport: AgentMcpConnectionTransport;
+  readonly activeLeases: number;
+  readonly reason?: AgentMcpConnectionRetirementReason;
+}
 
 interface AgentMcpToolClientPoolEntry {
   readonly key: string;
@@ -38,8 +60,14 @@ interface AgentMcpToolClientPoolEntry {
   leases: number;
   lastUsedAt: number;
   state: ClientPoolEntryState;
+  retirementReason?: AgentMcpConnectionRetirementReason;
   client?: AgentMcpToolClient;
   closing?: Promise<void>;
+}
+
+interface AcquiredAgentMcpToolClientPoolEntry {
+  readonly entry: AgentMcpToolClientPoolEntry;
+  readonly reused: boolean;
 }
 
 const MaxStaleClientReplacements = 1;
@@ -71,6 +99,7 @@ export class AgentMcpToolClientPool {
   private readonly policy: AgentMcpToolClientPoolPolicyProvider;
   private readonly clock: () => number;
   private readonly onCloseError?: AgentMcpToolClientPoolOptions["onCloseError"];
+  private readonly onLifecycleEvent?: AgentMcpToolClientPoolOptions["onLifecycleEvent"];
   private sweepTimer: ReturnType<typeof setTimeout> | undefined;
   private closed = false;
   private closePromise: Promise<void> | undefined;
@@ -86,12 +115,14 @@ export class AgentMcpToolClientPool {
       this.policy = options.policy ?? NoIdleEvictionPolicy;
       this.clock = options.clock ?? Date.now;
       this.onCloseError = options.onCloseError;
+      this.onLifecycleEvent = options.onLifecycleEvent;
       return;
     }
     this.openClient = openAgentMcpToolClient;
     this.policy = openClientOrOptions.policy ?? NoIdleEvictionPolicy;
     this.clock = openClientOrOptions.clock ?? Date.now;
     this.onCloseError = openClientOrOptions.onCloseError;
+    this.onLifecycleEvent = openClientOrOptions.onLifecycleEvent;
   }
 
   async withClient<TValue>(
@@ -101,12 +132,14 @@ export class AgentMcpToolClientPool {
     const { signal, ...connectionOptions } = options;
     for (let replacements = 0; ; replacements += 1) {
       throwAbortReason(signal);
-      const entry = this.acquire(connectionOptions);
+      const acquired = this.acquire(connectionOptions);
+      const entry = acquired.entry;
       this.retain(entry);
+      if (acquired.reused) this.reportLifecycle(AgentMcpConnectionLifecycleEventKinds.Reused, entry);
       try {
         const client = await awaitWithAbortSignal(entry.opening, signal);
         if (client.closed) {
-          this.retire(entry);
+          this.retire(entry, "connection_closed");
           if (replacements >= MaxStaleClientReplacements) {
             throw new AgentMcpToolClientUnavailableError(options.server.id, replacements);
           }
@@ -116,7 +149,7 @@ export class AgentMcpToolClientPool {
         try {
           return await operation(client);
         } catch (error) {
-          if (client.closed) this.retire(entry);
+          if (client.closed) this.retire(entry, "connection_closed");
           throw error;
         }
       } finally {
@@ -156,18 +189,20 @@ export class AgentMcpToolClientPool {
     this.closed = true;
     this.clearSweepTimer();
     const entries = new Set([...this.entries.values(), ...this.retiring]);
-    for (const entry of entries) this.retire(entry);
+    for (const entry of entries) this.retire(entry, "pool_closed");
     const results = await Promise.allSettled([...entries].map((entry) => this.closeWhenIdle(entry)));
     const failures = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []));
     if (failures.length === 1) throw failures[0];
     if (failures.length > 1) throw new AggregateError(failures, "MCP client pool cleanup failed.");
   }
 
-  private acquire(options: PooledClientOptions): AgentMcpToolClientPoolEntry {
+  private acquire(options: PooledClientOptions): AcquiredAgentMcpToolClientPoolEntry {
     if (this.closed) throw new Error("MCP tool client pool is closed.");
     const key = createAgentMcpToolClientPoolKey(options);
     const current = this.entries.get(key);
-    if (current && current.state !== "retiring" && current.state !== "closed") return current;
+    if (current && current.state !== "retiring" && current.state !== "closed") {
+      return { entry: current, reused: true };
+    }
 
     const controller = new AbortController();
     const entry: AgentMcpToolClientPoolEntry = {
@@ -181,20 +216,25 @@ export class AgentMcpToolClientPool {
       state: "opening",
     };
     this.entries.set(key, entry);
+    this.reportLifecycle(AgentMcpConnectionLifecycleEventKinds.Opening, entry);
     void entry.opening
       .then((client) => {
         entry.client = client;
-        if (entry.state === "opening") entry.state = "ready";
+        if (entry.state === "opening") {
+          entry.state = "ready";
+          this.reportLifecycle(AgentMcpConnectionLifecycleEventKinds.Ready, entry);
+        }
         this.scheduleSweep();
       })
       .catch(() => {
+        this.reportLifecycle(AgentMcpConnectionLifecycleEventKinds.OpenFailed, entry);
         entry.state = "closed";
         if (this.entries.get(entry.key) === entry) this.entries.delete(entry.key);
         this.retiring.delete(entry);
         this.resolveIdleWaiters(entry);
       });
     this.scheduleSweep();
-    return entry;
+    return { entry, reused: false };
   }
 
   private retain(entry: AgentMcpToolClientPoolEntry): void {
@@ -214,11 +254,13 @@ export class AgentMcpToolClientPool {
     this.scheduleSweep();
   }
 
-  private retire(entry: AgentMcpToolClientPoolEntry): void {
+  private retire(entry: AgentMcpToolClientPoolEntry, reason: AgentMcpConnectionRetirementReason): void {
     if (entry.state === "retiring" || entry.state === "closed") return;
     if (this.entries.get(entry.key) === entry) this.entries.delete(entry.key);
     entry.state = "retiring";
+    entry.retirementReason = reason;
     this.retiring.add(entry);
+    this.reportLifecycle(AgentMcpConnectionLifecycleEventKinds.Retiring, entry);
     entry.controller.abort();
     if (entry.leases === 0) {
       void this.closeWhenIdle(entry).catch((error) => this.reportCloseError(error, entry));
@@ -253,6 +295,7 @@ export class AgentMcpToolClientPool {
     this.retiring.delete(entry);
     if (this.entries.get(entry.key) === entry) this.entries.delete(entry.key);
     this.resolveIdleWaiters(entry);
+    this.reportLifecycle(AgentMcpConnectionLifecycleEventKinds.Closed, entry);
   }
 
   private async openingClient(entry: AgentMcpToolClientPoolEntry): Promise<AgentMcpToolClient | undefined> {
@@ -294,7 +337,7 @@ export class AgentMcpToolClientPool {
     if (idleTtlMs > 0) {
       for (const entry of this.entries.values()) {
         if (entry.leases === 0 && entry.state === "ready" && now - entry.lastUsedAt >= idleTtlMs) {
-          this.retire(entry);
+          this.retire(entry, "idle");
         }
       }
     }
@@ -321,6 +364,20 @@ export class AgentMcpToolClientPool {
   private reportCloseError(error: unknown, entry: AgentMcpToolClientPoolEntry): void {
     this.onCloseError?.(error, entry.options);
   }
+
+  private reportLifecycle(kind: AgentMcpConnectionLifecycleEvent["kind"], entry: AgentMcpToolClientPoolEntry): void {
+    this.onLifecycleEvent?.({
+      kind,
+      serverId: entry.options.server.id,
+      transport: connectionTransport(entry.options.server),
+      activeLeases: entry.leases,
+      ...(entry.retirementReason === undefined ? {} : { reason: entry.retirementReason }),
+    });
+  }
+}
+
+function connectionTransport(server: AgentMcpRuntimeEndpoint): AgentMcpConnectionTransport {
+  return server.transport ?? "stdio";
 }
 
 export function createAgentMcpToolClientPoolKey(options: PooledClientOptions): string {

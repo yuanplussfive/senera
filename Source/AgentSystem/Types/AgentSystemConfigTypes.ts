@@ -32,6 +32,11 @@ export interface AgentSystemExtensionConfig {
   Configuration?: Record<string, unknown>;
 }
 
+/** Per-server activation intent for portable MCP packages. */
+export interface AgentMcpServerConfig {
+  Enabled?: boolean;
+}
+
 /** Plugin loading policy. `Enabled` is the opt-in whitelist: bundled plugins
  * ship with the runtime and load by default; user/project/pip plugins load
  * only when their id appears here. `Directories` appends pip-style discovery
@@ -115,6 +120,7 @@ export interface AgentSystemConfig {
   Prompt?: AgentPromptConfig;
   InferenceBudget?: AgentInferenceBudgetConfig;
   McpConnections?: AgentMcpConnectionsConfig;
+  McpServers?: Record<string, AgentMcpServerConfig>;
   Extensions?: Record<string, AgentSystemExtensionConfig>;
   Plugins?: AgentPluginsConfig;
 }

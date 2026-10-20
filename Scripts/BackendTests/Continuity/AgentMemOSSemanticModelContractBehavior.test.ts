@@ -62,6 +62,15 @@ function publishedTool(request: Context): Tool {
 }
 
 describe("MemOS semantic model source contract", () => {
+  test("permits an explicit no-learning decision without fragment fields", async () => {
+    const f = nativeClient([{ action: "skip" }]);
+    expect(await f.client.extractFragment(current, "extract-skip")).toEqual({ action: "skip" });
+    const validate = publishedSchema(f.requests);
+    expect(validate({ action: "skip" })).toBe(true);
+    expect(validate({ action: "skip", summary: "not allowed" })).toBe(false);
+    expect(validate({ ...baseFragment, action: "skip" })).toBe(false);
+  });
+
   test("offers only new when no memory candidates exist, without a candidate field", async () => {
     const f = nativeClient([{ ...baseFragment, action: "new" }]);
     expect(await f.client.extractFragment(current, "extract-empty")).toEqual({ ...baseFragment, action: "new" });
@@ -126,6 +135,8 @@ describe("MemOS semantic model source contract", () => {
     while (estimator.estimate(oversized).tokenCount <= 50) oversized += " detail";
     const f = nativeClient([{ ...baseFragment, action: "new", summary: oversized }]);
     const result = await f.client.extractFragment(current, "extract-token-limit");
+    expect(result.action).not.toBe("skip");
+    if (result.action === "skip") throw new Error("Expected a fragment decision.");
     expect(estimator.estimate(result.summary).tokenCount).toBeLessThanOrEqual(50);
     expect(result.summary).not.toBe(oversized);
     expect(f.stream).toHaveBeenCalledOnce();
@@ -172,6 +183,8 @@ describe("MemOS semantic model source contract", () => {
     while (estimator.estimate(oversized).tokenCount <= 50) oversized += " detail";
     complete.mockResolvedValueOnce(JSON.stringify({ ...baseFragment, action: "update:3", summary: oversized }));
     const projected = await client.extractFragment(input, "extract-text-token-limit");
+    expect(projected.action).not.toBe("skip");
+    if (projected.action === "skip") throw new Error("Expected a fragment decision.");
     expect(estimator.estimate(projected.summary).tokenCount).toBeLessThanOrEqual(50);
   });
 

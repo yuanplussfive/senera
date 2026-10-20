@@ -84,7 +84,6 @@ class AgentWorkspaceResourceHttpError extends Error {
 
 const BinaryMimeType = "application/octet-stream";
 const SampleBytes = 8 * 1024;
-const SvgMimeType = "image/svg+xml";
 const BrowserImageMimeTypes = new Set([
   "image/avif",
   "image/gif",
@@ -92,7 +91,6 @@ const BrowserImageMimeTypes = new Set([
   "image/png",
   "image/tiff",
   "image/webp",
-  SvgMimeType,
 ]);
 
 export class AgentWorkspaceResourceHttpApi {
@@ -103,7 +101,7 @@ export class AgentWorkspaceResourceHttpApi {
 
   constructor(private readonly options: AgentWorkspaceResourceHttpApiOptions) {
     this.pathIndex = new AgentWorkspacePathIndex(options.workspaceRoot);
-    this.changes = new AgentWorkspaceFileChanges(options.workspaceRoot, (paths) => this.pathIndex.invalidate(paths));
+    this.changes = new AgentWorkspaceFileChanges(options.workspaceRoot, (changes) => this.pathIndex.apply(changes));
     this.boundary = new SeneraWorkspaceBoundary({
       workspaceRoot: options.workspaceRoot,
       linkPolicy: "deny",
@@ -140,7 +138,9 @@ export class AgentWorkspaceResourceHttpApi {
     try {
       if (route === "changes") {
         if (request.method !== "GET") throw new AgentWorkspaceResourceHttpError(405, "method_not_allowed", "Use GET.");
-        await this.changes.subscribe(response);
+        const resourcePath = this.readResourcePath(request, true);
+        await this.assertDirectory(resourcePath);
+        await this.changes.subscribe(response, resourcePath);
       } else if (route === "tree") {
         await this.handleTree(request, response);
       } else {
@@ -207,7 +207,7 @@ export class AgentWorkspaceResourceHttpApi {
     if (request.method === "GET") {
       const resourcePath = this.readResourcePath(request, true);
       const query = new URL(request.url ?? "/", "http://senera.local").searchParams.get("query");
-      const entries = query ? await this.searchPaths(query) : await this.readDirectory(resourcePath);
+      const entries = query ? await this.searchPaths(resourcePath, query) : await this.readDirectory(resourcePath);
       const body: WorkspaceTreeResponse = { ok: true, path: resourcePath === "." ? "" : resourcePath, entries };
       this.sendJson(response, 200, body);
       return;
@@ -327,6 +327,7 @@ export class AgentWorkspaceResourceHttpApi {
 
       const stat = await fs.promises.stat(target.absolutePath);
       await writeFileAtomic(target.absolutePath, content, { mode: stat.mode });
+      await this.changes.publish([{ type: "update", path: current.relativePath }]);
       return this.readSnapshot(resourcePath);
     });
   }
@@ -359,31 +360,22 @@ export class AgentWorkspaceResourceHttpApi {
           .filter((entry) => !entry.isSymbolicLink())
           .sort((left, right) => left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: "base" }))
           .map((entry) =>
-            this.readTreeEntry(path.posix.join(resourcePath === "." ? "" : resourcePath, entry.name), entry),
+            projectTreeEntry(path.posix.join(resourcePath === "." ? "" : resourcePath, entry.name), entry),
           ),
       )
     ).filter((entry): entry is WorkspaceTreeEntry => entry !== undefined);
   }
 
-  private async readTreeEntry(
-    resourcePath: string,
-    entry: Pick<import("node:fs").Dirent, "isDirectory" | "isFile">,
-  ): Promise<WorkspaceTreeEntry | undefined> {
-    const normalizedPath = resourcePath;
-    if (entry.isDirectory()) {
-      return { path: normalizedPath, name: path.posix.basename(normalizedPath), kind: "directory" };
+  private async assertDirectory(resourcePath: string): Promise<void> {
+    const target = await this.boundary.resolve(resourcePath, AgentResourceAccessIntents.Read);
+    const stat = await fs.promises.stat(target.absolutePath);
+    if (!stat.isDirectory()) {
+      throw new AgentWorkspaceResourceHttpError(
+        415,
+        "resource_not_directory",
+        "The workspace resource is not a directory.",
+      );
     }
-    if (!entry.isFile()) return undefined;
-    const snapshot = await this.readFileInspection(normalizedPath, false);
-    return {
-      path: snapshot.relativePath,
-      name: snapshot.name,
-      kind: snapshot.kind,
-      mime: snapshot.mime,
-      size: snapshot.size,
-      editable: snapshot.editable,
-      etag: snapshot.etag,
-    };
   }
 
   private async createEntry(payload: unknown): Promise<WorkspaceTreeEntry> {
@@ -393,9 +385,11 @@ export class AgentWorkspaceResourceHttpApi {
     await fs.promises.mkdir(path.dirname(target.absolutePath), { recursive: true });
     if (input.operation === "directory") {
       await fs.promises.mkdir(target.absolutePath);
+      await this.changes.publish([{ type: "create", path: normalizeWorkspacePath(input.path) }]);
       return { path: normalizeWorkspacePath(input.path), name: path.basename(target.absolutePath), kind: "directory" };
     }
     await fs.promises.writeFile(target.absolutePath, input.content ?? "", { encoding: "utf8", flag: "wx" });
+    await this.changes.publish([{ type: "create", path: normalizeWorkspacePath(input.path) }]);
     const snapshot = await this.readSnapshot(normalizeWorkspacePath(input.path));
     return {
       path: snapshot.relativePath,
@@ -416,6 +410,10 @@ export class AgentWorkspaceResourceHttpApi {
     await assertMissingTarget(destination.absolutePath);
     await fs.promises.mkdir(path.dirname(destination.absolutePath), { recursive: true });
     await fs.promises.rename(source.absolutePath, destination.absolutePath);
+    await this.changes.publish([
+      { type: "delete", path: normalizeWorkspacePath(input.source) },
+      { type: "create", path: normalizeWorkspacePath(input.destination) },
+    ]);
     if (sourceStat.isDirectory()) {
       return {
         path: normalizeWorkspacePath(input.destination),
@@ -453,6 +451,7 @@ export class AgentWorkspaceResourceHttpApi {
       );
     }
     await removeAgentPathWithRetry(target.absolutePath, { recursive });
+    await this.changes.publish([{ type: "delete", path: normalizeWorkspacePath(resourcePath) }]);
   }
 
   private readResourcePath(request: IncomingMessage, allowDefault = false): string {
@@ -502,14 +501,33 @@ export class AgentWorkspaceResourceHttpApi {
   }
 
   close(): Promise<void> {
-    return this.changes.close();
+    return Promise.all([this.changes.close(), this.pathIndex.close()]).then(() => undefined);
   }
 
-  private async searchPaths(query: string): Promise<readonly WorkspaceTreeEntry[]> {
+  private async searchPaths(resourcePath: string, query: string): Promise<readonly WorkspaceTreeEntry[]> {
+    await this.changes.start();
     const files = await this.pathIndex.search(query);
     // Searching names does not read every matching file. Content inspection belongs to opening a resource.
-    return files.map((file) => ({ path: file, name: path.posix.basename(file), kind: "file" }));
+    return files
+      .filter((file) => isWorkspacePathWithin(resourcePath, file))
+      .map((file) => ({ path: file, name: path.posix.basename(file), kind: "file" }));
   }
+}
+
+function projectTreeEntry(
+  resourcePath: string,
+  entry: Pick<import("node:fs").Dirent, "isDirectory" | "isFile">,
+): WorkspaceTreeEntry | undefined {
+  if (entry.isDirectory()) return { path: resourcePath, name: path.posix.basename(resourcePath), kind: "directory" };
+  // Directory traversal is structural. MIME detection, sampling, and editability inspection occur only
+  // when the user opens a file, so a directory with many files stays an inexpensive operation.
+  return entry.isFile() ? { path: resourcePath, name: path.posix.basename(resourcePath), kind: "file" } : undefined;
+}
+
+function isWorkspacePathWithin(root: string, target: string): boolean {
+  if (root === ".") return true;
+  const relative = path.posix.relative(root, target);
+  return relative !== ".." && !relative.startsWith("../") && !path.posix.isAbsolute(relative);
 }
 
 async function readSample(opened: SeneraOpenedWorkspaceFile, size: number): Promise<Buffer> {

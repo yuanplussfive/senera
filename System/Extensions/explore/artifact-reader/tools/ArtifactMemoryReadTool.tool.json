@@ -4,7 +4,8 @@
   "presentation": {
     "category": "artifact-read",
     "icon": "file-text",
-    "activity": { "action": { "zh-CN": "读取", "en-US": "Read" }, "detailPaths": ["/artifactUris/*", "/view"] }
+    "activity": { "action": { "zh-CN": "读取", "en-US": "Read" }, "detailPaths": ["/artifactUris/*", "/view"] },
+    "preview": { "body": { "pointer": "/artifacts/item", "from": "result" } }
   },
   "description": "按 Artifact URI 读取结果。compact 优先返回先前生成的 LLM 摘要，否则返回确定性摘要并标记压缩方式；full 返回经过完整性校验的原始结果。",
   "inputSchema": {
@@ -124,5 +125,39 @@
         }
       }
     ]
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "artifacts": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "artifactUri": { "type": "string" },
+                "artifactId": { "type": "string" },
+                "status": { "type": "string", "enum": ["found", "not_found", "invalid", "failed"] },
+                "view": { "type": "string", "enum": ["compact", "full"] },
+                "message": { "type": "string" },
+                "artifactRefs": { "type": "array", "items": { "type": "string" } },
+                "compressionMethod": { "type": "string", "enum": ["mechanical", "llm"] },
+                "sourceSha256": { "type": "string" },
+                "content": {}
+              },
+              "required": ["artifactUri", "artifactId", "status", "view", "message"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["item"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["artifacts"],
+    "additionalProperties": false
   }
 }

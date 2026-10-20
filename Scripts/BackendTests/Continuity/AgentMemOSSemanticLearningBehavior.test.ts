@@ -41,6 +41,7 @@ async function fixture(maxAttempts = 2) {
   await memos.init();
   const previewSummary = (text: string): string =>
     new AgentModelTextPreviewer({ model: "test-model", tokenLimit: 50 }).preview(text).text;
+  const identity = { user: "用户", assistant: "助手" };
   const learners: AgentMemOSSemanticLearningRuntime[] = [];
   const createLearner = (attemptBudget = maxAttempts, digestSummaryTokenLimit = 50) => {
     const learner = new AgentMemOSSemanticLearningRuntime({
@@ -64,6 +65,7 @@ async function fixture(maxAttempts = 2) {
         digestInputTokenBudget: 8192,
         digestSummaryTokenLimit,
       }),
+      identityDisplayValues: () => identity,
     });
     learners.push(learner);
     return learner;
@@ -107,13 +109,14 @@ async function fixture(maxAttempts = 2) {
     summary = "likes beef",
     sessionId = "session",
     startedAt = date,
+    user = "beef",
   ): AgentMemoryRecordedTurn =>
     repository.recordCompletedTurn({
       sessionId,
       requestId: id,
       startedAt,
       completedAt: date,
-      userEntry: { kind: "user.message", id: id + "-user", requestId: id, timestamp: startedAt, content: "beef" },
+      userEntry: { kind: "user.message", id: id + "-user", requestId: id, timestamp: startedAt, content: user },
       assistantEntry: {
         kind: "assistant.decision",
         id: id + "-assistant",
@@ -133,7 +136,7 @@ async function fixture(maxAttempts = 2) {
       },
       stateCard: card(),
     });
-  return { memos, ledger, repository, createLearner, extract, summarize, nodes, record };
+  return { memos, ledger, repository, createLearner, extract, summarize, nodes, record, identity };
 }
 
 function card(): AgentStateCard {
@@ -154,6 +157,53 @@ function card(): AgentStateCard {
 }
 
 describe("MemOS semantic learning with real storage", () => {
+  test("finishes a no-learning decision without creating semantic nodes or retrying after restart", async () => {
+    const f = await fixture();
+    f.extract.mockResolvedValueOnce({ action: "skip" });
+    const first = f.createLearner();
+    first.start();
+    await first.flush();
+    first.recordCompletedTurn(f.record("skip", "2026-10-01T01:00:00Z"));
+    await first.flush();
+    expect(await f.nodes()).toEqual([]);
+    await first.stop();
+
+    const restarted = f.createLearner();
+    restarted.start();
+    await restarted.flush();
+    expect(f.extract).toHaveBeenCalledTimes(1);
+  });
+
+  test("projects profile names out of learning input and persisted semantic summaries", async () => {
+    const f = await fixture();
+    f.identity.user = "Ada";
+    f.identity.assistant = "Nova";
+    const learner = f.createLearner();
+    learner.start();
+    await learner.flush();
+    learner.recordCompletedTurn(
+      f.record(
+        "identity",
+        "2026-10-01T01:00:00Z",
+        "Nova confirmed Ada prefers concise updates.",
+        "session",
+        "2026-10-01T00:59:00Z",
+        "Ada prefers concise updates.",
+      ),
+    );
+    await learner.flush();
+
+    const input = f.extract.mock.calls[0]![0];
+    expect(input.user).toBe("用户 prefers concise updates.");
+    expect(input.assistant).toBe("我 confirmed 用户 prefers concise updates.");
+    const summaries = (await f.nodes(AgentMemOSTags.knowledge)).map((node) => node.summary);
+    expect(summaries).toEqual(["我 confirmed 用户 prefers concise updates."]);
+    expect(summaries.join(" ")).not.toMatch(/Ada|Nova/u);
+    expect(
+      f.summarize.mock.calls.flatMap(([input]) => input.entries.map((entry) => entry.summary)).join(" "),
+    ).not.toMatch(/Ada|Nova/u);
+  });
+
   test("retains physical text and applies the configured assistant token budget to current and past turns", async () => {
     const f = await fixture();
     const text = "Detailed answer. ".repeat(600);

@@ -6,7 +6,10 @@ import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { AgentExtensionPatchPreflightError } from "../ManagedExtensions/AgentExtensionPatchCandidate.js";
 import { AgentExtensionPatchPreflight } from "../ManagedExtensions/AgentExtensionPatchPreflight.js";
 import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
-import { WorkspaceApplyPatchArgumentsSchema } from "./AgentWorkspaceApplyPatchContract.js";
+import {
+  WorkspaceApplyPatchArgumentsSchema,
+  WorkspaceApplyPatchOutputSchema,
+} from "./AgentWorkspaceApplyPatchContract.js";
 import { WorkspaceApplyPatchError, type WorkspacePatchFailureInput } from "./AgentWorkspacePatchError.js";
 import { buildWorkspacePatchPlan, collectWorkspacePatchChangedPaths } from "./AgentWorkspacePatchPlanBuilder.js";
 import {
@@ -93,19 +96,17 @@ export const applyWorkspacePatchHostTool: AgentHostToolHandler = async (args, co
       unit: "stage",
     });
 
-    return toolProcessSuccessResult(
-      {
-        text: `Workspace patch applied ${plan.operations.length} operation(s) over ${appliedChangedPaths.length} path(s).`,
-        applied: true,
-        operationCount: plan.operations.length,
-        changedPaths: appliedChangedPaths,
-        operations: plan.operations,
-        extensions: extensionValidations,
-      },
-      {
-        workspaceMutationReceipt,
-      },
-    );
+    const result = WorkspaceApplyPatchOutputSchema.parse({
+      text: `Workspace patch applied ${plan.operations.length} operation(s) over ${appliedChangedPaths.length} path(s).`,
+      applied: true,
+      operationCount: plan.operations.length,
+      changedPaths: appliedChangedPaths,
+      operations: plan.operations,
+      extensions: extensionValidations,
+    });
+    return toolProcessSuccessResult(result, {
+      workspaceMutationReceipt,
+    });
   } catch (error) {
     if (error instanceof AgentExtensionPatchPreflightError) {
       return workspacePatchFailure({

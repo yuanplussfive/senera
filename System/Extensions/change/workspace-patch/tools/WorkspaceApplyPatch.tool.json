@@ -3,7 +3,7 @@
   "loading": "Bootstrap",
   "presentation": {
     "category": "workspace-patch",
-    "icon": "pencil",
+    "icon": "file-code",
     "activity": {
       "action": { "zh-CN": "修改", "en-US": "Edit" },
       "detailPaths": ["/operations/*/path", "/operations/*/source", "/operations/*/destination"],
@@ -57,7 +57,7 @@
           },
           {
             "id": "changedFiles",
-            "from": "result",
+            "from": "presentation",
             "pointer": "/changes",
             "field": "key",
             "where": { "field": "kind", "equals": "workspace" },
@@ -66,7 +66,7 @@
           },
           {
             "id": "addedLines",
-            "from": "result",
+            "from": "presentation",
             "pointer": "/changes",
             "field": "addedLines",
             "where": { "field": "kind", "equals": "workspace" },
@@ -76,7 +76,7 @@
           },
           {
             "id": "removedLines",
-            "from": "result",
+            "from": "presentation",
             "pointer": "/changes",
             "field": "removedLines",
             "where": { "field": "kind", "equals": "workspace" },
@@ -103,7 +103,8 @@
         ],
         "title": "修改 · {{operationCount}} 项操作"
       }
-    }
+    },
+    "preview": { "body": { "pointer": "/operations", "from": "result" } }
   },
   "description": "以 add、update、write、delete、move 操作原子修改工作区文件；Skill/MCP 候选通过完整预检后才提交。",
   "inputSchema": {
@@ -286,5 +287,117 @@
       "CaptureContent": "text",
       "PatchContextLines": 3
     }
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "text": { "type": "string", "minLength": 1 },
+      "applied": { "type": "boolean", "const": true },
+      "operationCount": { "type": "integer", "minimum": 1, "maximum": 64 },
+      "changedPaths": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+      "operations": {
+        "minItems": 1,
+        "maxItems": 64,
+        "type": "array",
+        "items": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "const": "add" },
+                "path": { "type": "string", "minLength": 1 },
+                "changedPaths": {
+                  "minItems": 1,
+                  "maxItems": 1,
+                  "type": "array",
+                  "items": { "type": "string", "minLength": 1 }
+                }
+              },
+              "required": ["kind", "path", "changedPaths"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "const": "update" },
+                "path": { "type": "string", "minLength": 1 },
+                "matches": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                "changedPaths": {
+                  "minItems": 1,
+                  "maxItems": 1,
+                  "type": "array",
+                  "items": { "type": "string", "minLength": 1 }
+                }
+              },
+              "required": ["kind", "path", "changedPaths"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "const": "write" },
+                "path": { "type": "string", "minLength": 1 },
+                "changedPaths": {
+                  "minItems": 1,
+                  "maxItems": 1,
+                  "type": "array",
+                  "items": { "type": "string", "minLength": 1 }
+                }
+              },
+              "required": ["kind", "path", "changedPaths"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "const": "delete" },
+                "path": { "type": "string", "minLength": 1 },
+                "changedPaths": {
+                  "minItems": 1,
+                  "maxItems": 1,
+                  "type": "array",
+                  "items": { "type": "string", "minLength": 1 }
+                }
+              },
+              "required": ["kind", "path", "changedPaths"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "const": "move" },
+                "source": { "type": "string", "minLength": 1 },
+                "destination": { "type": "string", "minLength": 1 },
+                "changedPaths": {
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "type": "array",
+                  "items": { "type": "string", "minLength": 1 }
+                }
+              },
+              "required": ["kind", "source", "destination", "changedPaths"],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "extensions": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "kind": { "type": "string", "enum": ["Skill", "MCP"] },
+            "name": { "type": "string", "minLength": 1 },
+            "path": { "type": "string", "minLength": 1 },
+            "status": { "type": "string", "const": "validated" }
+          },
+          "required": ["kind", "name", "path", "status"],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": ["text", "applied", "operationCount", "changedPaths", "operations", "extensions"],
+    "additionalProperties": false
   }
 }

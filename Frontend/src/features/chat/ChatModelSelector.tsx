@@ -91,7 +91,7 @@ export function ChatModelSelector({
           <DropdownMenuLabel>{frontendMessage("chat.model.currentConversation")}</DropdownMenuLabel>
           <DropdownMenuSeparator />
           {chatModels.length > 0 ? (
-            <DropdownMenuGroup className="max-h-[min(360px,calc(100dvh-200px))] overflow-y-auto pr-1 scrollbar-thin">
+            <DropdownMenuGroup className="max-h-[min(360px,calc(100dvh-200px))] overflow-y-auto pr-1 ">
               {chatModels.map((model) => {
                 const active = model.id === selected?.id;
                 return (
@@ -155,7 +155,7 @@ export function ChatModelSelector({
           <div className="min-w-0 border-l border-line pl-1 max-sm:border-l-0 max-sm:border-t max-sm:pt-1">
             <DropdownMenuLabel>{frontendMessage("chat.thinking.label")}</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuGroup className="max-h-[min(360px,calc(100dvh-200px))] overflow-y-auto pr-1 scrollbar-thin">
+            <DropdownMenuGroup className="max-h-[min(360px,calc(100dvh-200px))] overflow-y-auto pr-1 ">
               {thinkingLevels.map((level) => {
                 const profile = selected?.thinkingProfiles?.find((item) => item.level === level);
                 const label = profile?.label || level;

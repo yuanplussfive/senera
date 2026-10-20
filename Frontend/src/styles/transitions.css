@@ -86,27 +86,22 @@ html[data-motion-level="none"] .dialog-presence[data-state="closed"] {
 }
 
 .menu-surface {
-  transform-origin: var(--menu-surface-transform-origin, center);
-  will-change: transform, opacity;
-}
-
-.dropdown-menu-surface {
-  --menu-surface-transform-origin: var(--radix-dropdown-menu-content-transform-origin);
-}
-
-.context-menu-surface {
-  --menu-surface-transform-origin: var(--radix-context-menu-content-transform-origin);
+  transform-origin: var(
+    --radix-dropdown-menu-content-transform-origin,
+    var(--radix-context-menu-content-transform-origin, center)
+  );
+  will-change: opacity, transform;
 }
 
 .menu-surface[data-state="open"] {
   animation:
-    menu-surface-in var(--menu-open-dur) var(--menu-open-ease) both,
+    menu-surface-fade-in var(--menu-open-dur) var(--menu-open-ease) both,
     menu-surface-presence-in var(--menu-open-dur) linear both;
 }
 
 .menu-surface[data-state="closed"] {
   animation:
-    menu-surface-out var(--menu-close-dur) var(--menu-close-ease) both,
+    menu-surface-fade-out var(--menu-close-dur) var(--menu-close-ease) both,
     menu-surface-presence-out var(--menu-close-dur) linear both;
 }
 
@@ -170,21 +165,21 @@ html[data-motion-level="none"] .menu-check {
   transition: none;
 }
 
-@keyframes menu-surface-in {
+@keyframes menu-surface-fade-in {
   from {
     opacity: 0;
     transform: translateY(-6px) scale(0.965);
   }
   to {
     opacity: 1;
-    transform: none;
+    transform: translateY(0) scale(1);
   }
 }
 
-@keyframes menu-surface-out {
+@keyframes menu-surface-fade-out {
   from {
     opacity: 1;
-    transform: none;
+    transform: translateY(0) scale(1);
   }
   to {
     opacity: 0;
@@ -192,20 +187,21 @@ html[data-motion-level="none"] .menu-check {
   }
 }
 
-@keyframes menu-surface-fade-in {
+/* Radix Presence uses animation completion to retain exit content. */
+@keyframes menu-surface-presence-in {
   from {
-    opacity: 0;
+    outline-color: transparent;
   }
   to {
-    opacity: 1;
+    outline-color: transparent;
   }
 }
 
-@keyframes menu-surface-fade-out {
+@keyframes menu-surface-presence-out {
   from {
-    opacity: 1;
+    outline-color: transparent;
   }
   to {
-    opacity: 0;
+    outline-color: transparent;
   }
 }

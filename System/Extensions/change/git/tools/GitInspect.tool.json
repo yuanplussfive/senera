@@ -9,7 +9,8 @@
       "action": { "zh-CN": "查看", "en-US": "Inspect" },
       "argumentPath": "/operation",
       "detailPaths": ["/repository", "/paths/*"]
-    }
+    },
+    "preview": { "body": { "pointer": "/output", "from": "result" } }
   },
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",

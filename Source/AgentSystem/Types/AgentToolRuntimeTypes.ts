@@ -77,6 +77,13 @@ export interface RegisteredSidecarTool {
   readonly description: string;
   readonly instructions: string;
   readonly inputSchema: Readonly<Record<string, unknown>>;
+  /** Validates the value committed by the internal sidecar invocation. */
+  readonly outputSchema: Readonly<Record<string, unknown>>;
+  /**
+   * Resolved package presentation. Sidecars remain invisible to the ordinary
+   * tool feed, but their output body is projected through this contract.
+   */
+  readonly presentation: AgentToolPresentation;
 }
 
 export interface RegisteredTemplate {

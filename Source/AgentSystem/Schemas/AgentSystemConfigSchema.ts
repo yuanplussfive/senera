@@ -26,6 +26,12 @@ const AgentSystemExtensionConfigSchema = z
   })
   .strict();
 
+const AgentMcpServerConfigSchema = z
+  .object({
+    Enabled: z.boolean().optional(),
+  })
+  .strict();
+
 const AgentPluginsConfigSchema = z
   .object({
     Enabled: z.array(z.string().trim().min(1)).optional(),
@@ -113,6 +119,7 @@ export const AgentSystemConfigSchema = z
     Prompt: PromptSchema.optional(),
     InferenceBudget: InferenceBudgetSchema.optional(),
     ConfigStore: ConfigStoreSchema.optional(),
+    McpServers: z.record(z.string().trim().min(1), AgentMcpServerConfigSchema).optional(),
     Extensions: z.record(z.string().trim().min(1), AgentSystemExtensionConfigSchema).optional(),
     Plugins: AgentPluginsConfigSchema.optional(),
   })

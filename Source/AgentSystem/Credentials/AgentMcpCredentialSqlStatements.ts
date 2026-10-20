@@ -33,6 +33,7 @@ export interface AgentMcpInputValueMetadataRow {
 
 export interface AgentMcpCredentialSqlStatements {
   readonly selectCredential: Database.Statement<[string, string], AgentMcpCredentialRow>;
+  readonly selectAllCredentials: Database.Statement<[], AgentMcpCredentialRow>;
   readonly listCredentials: Database.Statement<[], AgentMcpCredentialMetadataRow>;
   readonly listServerCredentials: Database.Statement<[string], AgentMcpCredentialMetadataRow>;
   readonly upsertCredential: Database.Statement;
@@ -54,6 +55,11 @@ export function prepareAgentMcpCredentialSqlStatements(database: Database.Databa
       agentSql`SELECT server_id, name, value_envelope, created_at, updated_at
                FROM mcp_credentials
                WHERE server_id = ? AND name = ?`,
+    ),
+    selectAllCredentials: database.prepare(
+      agentSql`SELECT server_id, name, value_envelope, created_at, updated_at
+               FROM mcp_credentials
+               ORDER BY server_id, name`,
     ),
     listCredentials: database.prepare(
       agentSql`SELECT server_id, name, created_at, updated_at

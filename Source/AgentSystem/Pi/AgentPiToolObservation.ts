@@ -28,7 +28,12 @@ export function readAgentPiMessageTextContent(message: Extract<AgentMessage, { r
   );
 }
 
-/** Removes the Pi observation envelope from the result shown in the workflow UI. */
+/**
+ * Reads the Tool's declared output from Pi's observation envelope. The
+ * envelope's surrounding detail contains transport feedback (process,
+ * evidence, continuation), while `detail.result` is the value against which
+ * every `.tool.json` output pointer is validated.
+ */
 export function projectAgentPiToolResultContentForDisplay(
   content: Extract<AgentMessage, { role: "toolResult" }>["content"],
 ): unknown {
@@ -36,8 +41,17 @@ export function projectAgentPiToolResultContentForDisplay(
     content.flatMap((entry) => (entry.type === "text" ? [entry.text] : [])).join(""),
   );
   const observation = readAgentPiToolObservation(text);
-  if (observation) return projectAgentPiToolObservationDetail(observation);
+  if (observation) return projectAgentPiToolObservationDetail(observation).result;
   return text || undefined;
+}
+
+/**
+ * Returns Pi's canonical execution failure without exposing the observation
+ * envelope itself to product surfaces. Callers may preserve non-Pi text as
+ * their own error path when this strict protocol decoder returns undefined.
+ */
+export function readAgentPiToolObservationFailureMessage(content: string): string | undefined {
+  return readAgentPiToolObservation(unwrapAttributedToolObservation(content))?.error?.message;
 }
 
 /**

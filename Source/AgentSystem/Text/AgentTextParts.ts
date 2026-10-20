@@ -4,12 +4,12 @@
  * Identity is represented as data instead of an interpolated string. This
  * keeps summaries safe when they contain prompt syntax, JSON, or user text.
  */
-export const AgentIdentityRoles = ["user", "resident"] as const;
+export const AgentIdentityRoles = ["user", "assistant"] as const;
 export type AgentIdentityRole = (typeof AgentIdentityRoles)[number];
 
 export interface AgentIdentityDisplayValues {
   readonly user: string;
-  readonly resident: string;
+  readonly assistant: string;
 }
 
 export type AgentTextPart =
@@ -19,7 +19,7 @@ export type AgentTextParts = readonly AgentTextPart[];
 
 const DefaultIdentityDisplayValues: AgentIdentityDisplayValues = Object.freeze({
   user: "user",
-  resident: "resident",
+  assistant: "assistant",
 });
 
 /** Creates a compact immutable part list and joins adjacent prose parts. */
@@ -56,7 +56,7 @@ export function renderAgentTextParts(
 ): string {
   const displayValues = {
     user: requireDisplayValue(values.user, "user"),
-    resident: requireDisplayValue(values.resident, "resident"),
+    assistant: requireDisplayValue(values.assistant, "assistant"),
   } satisfies AgentIdentityDisplayValues;
   return parts.map((part) => (part.kind === "text" ? part.text : displayValues[part.role])).join("");
 }
@@ -83,12 +83,13 @@ export function parseAgentTextParts(value: unknown, label: string): AgentTextPar
 
 /**
  * Reads pre-protocol text without treating any syntax as executable. Only the
- * two historical identity references are projected; every other character is
- * preserved literally so old records cannot crash materialization.
+ * two declared identity references are projected; every other character is
+ * preserved literally. This remains data projection rather than template
+ * evaluation.
  */
-export function projectLegacyIdentityText(value: string): AgentTextParts {
+export function projectAgentIdentityText(value: string): AgentTextParts {
   const parts: AgentTextPart[] = [];
-  const referencePattern = /\{\{\s*(user|resident)\s*\}\}/gu;
+  const referencePattern = /\{\{\s*(user|assistant)\s*\}\}/gu;
   let cursor = 0;
   for (const match of value.matchAll(referencePattern)) {
     const index = match.index ?? cursor;
@@ -104,7 +105,7 @@ export function normalizeAgentTextValue(value: unknown, label: string): AgentTex
   if (typeof value === "string") {
     const text = value.trim();
     if (!text) throw new Error(`${label} must not be empty.`);
-    return projectLegacyIdentityText(text);
+    return projectAgentIdentityText(text);
   }
   const parts = parseAgentTextParts(value, label);
   if (parts.length === 0) throw new Error(`${label} must not be empty.`);

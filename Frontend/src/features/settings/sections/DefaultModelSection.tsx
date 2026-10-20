@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
-import type { ConfigFormFieldData } from "../../../api/eventTypes";
-import { MotionListItem } from "../../../shared/motion";
+import type { ConfigFormFieldData, ConfigFormSectionData } from "../../../api/eventTypes";
+import { MotionDisclosure } from "../../../shared/motion";
 import { AppIcon, type AppIconName, IconButton, MenuSelect, Spinner, StateView, Switch } from "../../../shared/ui";
+import { AgentToolPresentationIcon } from "../../../shared/workspace/AgentToolPresentationIcon";
 import { findTopField } from "../../chat/modelConfigData";
 import {
   inferModelProviderEndpointIcon,
@@ -14,7 +15,10 @@ import { cn } from "../../../lib/util";
 import { useFrontendLocale } from "../../../i18n/useFrontendLocale";
 
 import type { SettingsSystemConfigHandle } from "../SettingsContracts";
-import { projectSystemExtensionRuntimeModelAssignmentSections } from "../systemExtensionConfigurationPresentation";
+import {
+  projectSystemExtensionRuntimeModelAssignmentSections,
+  type SystemExtensionRuntimeModelAssignmentSection,
+} from "../systemExtensionConfigurationPresentation";
 import type { ConfigSettingsDraftState } from "./configSettingsDraftState";
 import { readModelServiceState } from "./modelServiceState";
 import {
@@ -23,6 +27,7 @@ import {
   readRuntimeModelAssignmentCandidates,
   readRuntimeModelAssignmentFields,
   readRuntimeModelAssignmentSelection,
+  readRuntimeModelPoolInheritanceField,
   readRuntimeModelPoolAssignmentSelection,
   writeRuntimeModelAssignment,
   writeRuntimeModelAssignmentInheritance,
@@ -31,6 +36,30 @@ import {
   type RuntimeModelAssignmentField,
   type RuntimeModelPoolAssignmentSelection,
 } from "./runtimeModelAssignments";
+
+interface ModelAssignmentSection {
+  readonly id: string;
+  readonly label: string;
+  readonly description?: string;
+  readonly fields: readonly RuntimeModelAssignmentField[];
+}
+
+interface CoreModelAssignmentGroup {
+  readonly kind: "core";
+  readonly id: string;
+  readonly label: string;
+  readonly sections: readonly [ModelAssignmentSection];
+}
+
+interface ExtensionModelAssignmentGroup {
+  readonly kind: "extension";
+  readonly id: string;
+  readonly label: string;
+  readonly icon: SystemExtensionRuntimeModelAssignmentSection["extensionIcon"];
+  readonly sections: readonly ModelAssignmentSection[];
+}
+
+type ModelAssignmentGroup = CoreModelAssignmentGroup | ExtensionModelAssignmentGroup;
 
 export function DefaultModelSection({
   draftState,
@@ -47,6 +76,7 @@ export function DefaultModelSection({
     systemConfig && snapshot && modelSection
       ? readModelServiceState({
           catalogs: systemConfig.providerModelCatalogs,
+          configDiagnostics: snapshot.diagnostics,
           draft: draftState.draft,
           errors: systemConfig.providerModelErrors,
           loadingIds: systemConfig.providerModelLoadingIds,
@@ -57,24 +87,31 @@ export function DefaultModelSection({
     () => findTopField(modelSection ?? undefined, "ModelProviders")?.defaultItem ?? {},
     [modelSection],
   );
-  const assignmentSections = useMemo(() => {
-    if (!snapshot) return [];
-    return [
-      ...snapshot.form.sections,
-      ...projectSystemExtensionRuntimeModelAssignmentSections({
-        extensions: systemConfig?.systemExtensions ?? [],
-        locale,
-        configSnapshot: snapshot,
-      }),
-    ];
-  }, [locale, snapshot, systemConfig?.systemExtensions]);
+  const extensionAssignmentSections = useMemo(
+    () =>
+      snapshot
+        ? projectSystemExtensionRuntimeModelAssignmentSections({
+            extensions: systemConfig?.systemExtensions ?? [],
+            locale,
+            configSnapshot: snapshot,
+          })
+        : [],
+    [locale, snapshot, systemConfig?.systemExtensions],
+  );
+  const assignmentSections = useMemo(
+    () =>
+      snapshot
+        ? [...snapshot.form.sections, ...extensionAssignmentSections.map((assignment) => assignment.section)]
+        : [],
+    [extensionAssignmentSections, snapshot],
+  );
   const assignmentGroups = useMemo(() => {
-    const fields = readRuntimeModelAssignmentFields(assignmentSections);
-    return assignmentSections.flatMap((section) => {
-      const assignments = fields.filter((field) => field.section === section.name);
-      return assignments.length > 0 ? [{ id: section.name, label: section.label, fields: assignments }] : [];
+    if (!snapshot) return [];
+    return projectModelAssignmentGroups({
+      coreSections: snapshot.form.sections,
+      extensionSections: extensionAssignmentSections,
     });
-  }, [assignmentSections]);
+  }, [extensionAssignmentSections, snapshot]);
   const allFields = useMemo(() => assignmentSections.flatMap((section) => section.fields), [assignmentSections]);
   const defaultModelId = state?.defaultModel?.model.Id ?? "";
 
@@ -98,52 +135,173 @@ export function DefaultModelSection({
   }
 
   return (
-    <div className="bg-transparent px-0 py-3 sm:py-4">
-      <section className="mx-auto w-full max-w-[720px]">
-        <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-line-subtle pb-4">
-          <div className="min-w-0">
-            <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-content-strong">
-              {frontendMessage("settings.model.assignmentsTitle")}
-            </h2>
-            <p className="mt-1 max-w-[720px] text-[12px] leading-5 text-content-secondary">
-              {frontendMessage("settings.model.assignmentsDescription")}
-            </p>
-          </div>
-        </header>
-
-        <div className="mt-4 space-y-4">
+    <div className="px-0 py-1 sm:py-2">
+      <section className="mx-auto w-full max-w-[880px]">
+        <div className="space-y-6">
           {assignmentGroups.map((group) => (
-            <MotionListItem key={group.id}>
-              <section
-                data-model-assignment-group
-                className="overflow-hidden rounded-xl border border-line-subtle bg-surface-panel shadow-[0_1px_2px_rgba(43,40,32,0.02)]"
-              >
-                <div className="flex items-center border-b border-line-subtle/80 bg-surface-subtle px-4 py-2.5">
-                  <h3 className="text-[12.5px] font-semibold text-content-primary">{group.label}</h3>
-                </div>
-                <div className="divide-y divide-line-subtle/60 px-4">
-                  {group.fields.map((field) => (
-                    <ModelAssignmentRow
-                      key={field.modelSelection.id}
-                      allFields={allFields}
-                      defaultModelId={defaultModelId}
-                      draftState={draftState}
-                      field={field}
-                      modelTemplate={modelTemplate}
-                      pendingModelId={pendingModelId}
-                      state={state}
-                      systemConfig={systemConfig}
-                      onDefaultModelPending={setPendingModelId}
-                    />
-                  ))}
-                </div>
-              </section>
-            </MotionListItem>
+            <ModelAssignmentGroupSection
+              key={group.id}
+              allFields={allFields}
+              defaultModelId={defaultModelId}
+              draftState={draftState}
+              group={group}
+              modelTemplate={modelTemplate}
+              pendingModelId={pendingModelId}
+              state={state}
+              systemConfig={systemConfig}
+              onDefaultModelPending={setPendingModelId}
+            />
           ))}
         </div>
       </section>
     </div>
   );
+}
+
+interface ModelAssignmentEditorProps {
+  readonly allFields: readonly ConfigFormFieldData[];
+  readonly defaultModelId: string;
+  readonly draftState: ConfigSettingsDraftState;
+  readonly modelTemplate: Record<string, unknown>;
+  readonly pendingModelId: string | null;
+  readonly state: ReturnType<typeof readModelServiceState>;
+  readonly systemConfig: SettingsSystemConfigHandle;
+  readonly onDefaultModelPending: (modelId: string) => void;
+}
+
+function ModelAssignmentGroupSection({
+  group,
+  ...editorProps
+}: ModelAssignmentEditorProps & { group: ModelAssignmentGroup }): JSX.Element {
+  if (group.kind === "extension") {
+    return <ExtensionModelAssignmentGroupSection group={group} {...editorProps} />;
+  }
+
+  const section = group.sections[0];
+  return (
+    <section data-model-assignment-group className="border-t border-line-subtle">
+      <h2 className="px-0 pb-2 pt-3 text-[12.5px] font-semibold text-content-secondary">{group.label}</h2>
+      <ModelAssignmentRows section={section} {...editorProps} />
+    </section>
+  );
+}
+
+function ExtensionModelAssignmentGroupSection({
+  group,
+  ...editorProps
+}: ModelAssignmentEditorProps & { group: ExtensionModelAssignmentGroup }): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const contentId = useId();
+
+  return (
+    <section data-model-assignment-group data-model-assignment-extension className="border-t border-line-subtle">
+      <button
+        type="button"
+        className="group flex w-full min-w-0 items-center gap-2.5 py-3 text-left outline-none transition-colors hover:text-content-primary focus-visible:ring-2 focus-visible:ring-accent-focus"
+        aria-controls={contentId}
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <AgentToolPresentationIcon
+          icon={group.icon}
+          size={16}
+          className="shrink-0 text-content-secondary"
+          aria-hidden="true"
+        />
+        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-content-primary">{group.label}</span>
+        <AppIcon
+          icon="chevron-right"
+          size={15}
+          className={cn("shrink-0 text-content-muted transition-transform duration-200", open && "rotate-90")}
+          aria-hidden="true"
+        />
+      </button>
+      <MotionDisclosure id={contentId} open={open} className="border-t border-line-subtle">
+        <div className="pb-1 pt-0.5">
+          {group.sections.map((section) => (
+            <section key={section.id} className="border-b border-line-subtle/70 last:border-b-0">
+              <header className="pb-1 pt-3">
+                <h3 className="text-[12.5px] font-medium text-content-primary">{section.label}</h3>
+                {section.description ? (
+                  <p className="mt-0.5 max-w-[680px] text-[11.5px] leading-5 text-content-muted">
+                    {section.description}
+                  </p>
+                ) : null}
+              </header>
+              <ModelAssignmentRows section={section} {...editorProps} />
+            </section>
+          ))}
+        </div>
+      </MotionDisclosure>
+    </section>
+  );
+}
+
+function ModelAssignmentRows({
+  section,
+  ...editorProps
+}: ModelAssignmentEditorProps & { section: ModelAssignmentSection }): JSX.Element {
+  return (
+    <div className="divide-y divide-line-subtle/70">
+      {section.fields.map((field) => (
+        <ModelAssignmentRow key={field.modelSelection.id} field={field} {...editorProps} />
+      ))}
+    </div>
+  );
+}
+
+function projectModelAssignmentGroups({
+  coreSections,
+  extensionSections,
+}: {
+  coreSections: readonly ConfigFormSectionData[];
+  extensionSections: readonly SystemExtensionRuntimeModelAssignmentSection[];
+}): readonly ModelAssignmentGroup[] {
+  const coreGroups = coreSections.flatMap((section) => {
+    const assignment = projectModelAssignmentSection(section);
+    return assignment
+      ? [
+          {
+            kind: "core" as const,
+            id: `core:${section.name}`,
+            label: section.label,
+            sections: [assignment] as const,
+          },
+        ]
+      : [];
+  });
+  const extensions = new Map<string, ExtensionModelAssignmentGroup>();
+
+  for (const assignment of extensionSections) {
+    const section = projectModelAssignmentSection(assignment.section);
+    if (!section) continue;
+    const current = extensions.get(assignment.extensionId);
+    if (current) {
+      extensions.set(assignment.extensionId, { ...current, sections: [...current.sections, section] });
+      continue;
+    }
+    extensions.set(assignment.extensionId, {
+      kind: "extension",
+      id: `extension:${assignment.extensionId}`,
+      label: assignment.extensionLabel,
+      icon: assignment.extensionIcon,
+      sections: [section],
+    });
+  }
+
+  return [...coreGroups, ...extensions.values()];
+}
+
+function projectModelAssignmentSection(section: ConfigFormSectionData): ModelAssignmentSection | undefined {
+  const fields = readRuntimeModelAssignmentFields([section]);
+  return fields.length > 0
+    ? {
+        id: section.name,
+        label: section.label,
+        description: section.description,
+        fields,
+      }
+    : undefined;
 }
 
 function ModelAssignmentRow({
@@ -157,7 +315,7 @@ function ModelAssignmentRow({
   systemConfig,
   onDefaultModelPending,
 }: {
-  allFields: ConfigFormFieldData[];
+  allFields: readonly ConfigFormFieldData[];
   defaultModelId: string;
   draftState: ConfigSettingsDraftState;
   field: RuntimeModelAssignmentField;
@@ -230,7 +388,7 @@ function ModelAssignmentRow({
 
   return (
     <div
-      className="grid min-h-[58px] min-w-0 gap-3 py-2.5 md:grid-cols-[minmax(0,1fr)_minmax(220px,320px)] md:items-center"
+      className="grid min-h-[62px] min-w-0 gap-3 py-3 md:grid-cols-[minmax(0,1fr)_minmax(240px,340px)] md:items-center"
       data-model-assignment-row
     >
       <AssignmentLabel field={field} />
@@ -302,8 +460,8 @@ function ModelPoolAssignmentRow({
   const candidatesById = new Map(candidates.map((candidate) => [candidate.model.Id, candidate]));
   const selectedIds = new Set(selection.modelIds);
   const availableCandidates = candidates.filter((candidate) => !selectedIds.has(candidate.model.Id));
-  const hasInheritance = Boolean(field.modelSelection.inheritance);
-  const sourceCount = selection.modelIds.length + Number(hasInheritance && selection.inheritanceEnabled);
+  const inheritanceField = readRuntimeModelPoolInheritanceField(field, allFields);
+  const sourceCount = selection.modelIds.length + Number(selection.inheritanceEnabled);
 
   const update = (next: RuntimeModelPoolAssignmentSelection): void => {
     draftState.updateDraft(writeRuntimeModelPoolAssignment(draftState.draft, field, next), "immediate");
@@ -326,26 +484,27 @@ function ModelPoolAssignmentRow({
 
   return (
     <div className="min-w-0" data-model-pool-assignment>
-      <div className="py-3">
-        <AssignmentLabel field={field} />
-      </div>
-      <div className="divide-y divide-line-subtle border-t border-line-subtle">
-        {hasInheritance ? (
+      <div className="divide-y divide-line-subtle">
+        {inheritanceField ? (
           <div className="flex min-h-[58px] min-w-0 items-center gap-4 py-2.5">
             <div className="min-w-0 flex-1">
-              <div className="text-[12.5px] font-medium text-ink-850">{inheritanceSourceLabel(field)}</div>
-              <div className="mt-0.5 text-[11.5px] leading-5 text-ink-500">
-                {frontendMessage("settings.model.poolRuntimeResolved")}
-              </div>
+              <div className="text-[12.5px] font-medium text-ink-850">{inheritanceField.label}</div>
+              {inheritanceField.description ? (
+                <div className="mt-0.5 text-[11.5px] leading-5 text-ink-500">{inheritanceField.description}</div>
+              ) : null}
             </div>
             <Switch
               checked={selection.inheritanceEnabled}
               disabled={selection.inheritanceEnabled && selection.modelIds.length === 0}
-              ariaLabel={frontendMessage("settings.model.poolToggleInheritance")}
+              ariaLabel={inheritanceField.label}
               onCheckedChange={(inheritanceEnabled) => update({ ...selection, inheritanceEnabled })}
             />
           </div>
         ) : null}
+
+        <div className="py-3">
+          <AssignmentLabel field={field} />
+        </div>
 
         {selection.modelIds.map((modelId, index) => {
           const candidate = candidatesById.get(modelId);
@@ -448,7 +607,7 @@ function PoolCandidateLabel({
 function AssignmentLabel({ field }: { field: RuntimeModelAssignmentField }): JSX.Element {
   return (
     <div className="flex min-w-0 items-start gap-2.5">
-      <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-line-subtle bg-surface-subtle text-content-secondary">
+      <span className="mt-1 shrink-0 text-content-secondary">
         <AssignmentRoleIcon field={field} />
       </span>
       <div className="min-w-0 flex-1 pt-0.5">
@@ -461,14 +620,6 @@ function AssignmentLabel({ field }: { field: RuntimeModelAssignmentField }): JSX
         ) : null}
       </div>
     </div>
-  );
-}
-
-function inheritanceSourceLabel(field: RuntimeModelAssignmentField): string {
-  return frontendMessage(
-    field.modelSelection.inheritance?.source === "default-model"
-      ? "settings.model.poolDefaultModelSource"
-      : "settings.model.poolParentModelSource",
   );
 }
 
@@ -504,7 +655,7 @@ function readCandidateIcon(candidate?: RuntimeModelAssignmentCandidate): string 
 }
 
 const assignmentRoleIcons: Readonly<Record<string, AppIconName>> = {
-  assistant: "cpu-chip",
+  assistant: "target",
   planner: "list-tree",
   "planner-base": "list-tree",
   "action-planner": "delegation",
@@ -517,6 +668,6 @@ function AssignmentRoleIcon({ field }: { field: RuntimeModelAssignmentField }): 
   const selection = field.modelSelection;
   const icon =
     assignmentRoleIcons[selection.id] ??
-    (isRuntimeModelPoolAssignment(field) ? "list-tree" : selection.capability === "Vision" ? "eye" : "cpu-chip");
-  return <AppIcon icon={icon} className="h-3.5 w-3.5" data-model-assignment-icon={selection.id} />;
+    (isRuntimeModelPoolAssignment(field) ? "list-tree" : selection.capability === "Vision" ? "eye" : "target");
+  return <AppIcon icon={icon} className="h-4 w-4" data-model-assignment-icon={selection.id} />;
 }

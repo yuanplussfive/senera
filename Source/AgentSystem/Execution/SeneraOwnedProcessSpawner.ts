@@ -6,7 +6,6 @@ import { isAgentUnknownRecord as isRecord } from "../Core/AgentUnknownValue.js";
 import { toError } from "../Core/AgentErrors.js";
 import { withDeadline } from "../Core/AgentTiming.js";
 import {
-  terminateSeneraProcessTree,
   terminateSeneraProcessTreeWithEscalation,
   type SeneraProcessTreeTerminator,
 } from "./SeneraProcessTreeTermination.js";
@@ -89,14 +88,32 @@ async function spawnSeneraProcess(
     return spawnWindowsJobProcess(command, args, spawnOptions, stdio);
   }
 
+  const ownership = resolveDirectProcessOwnership(options.terminateProcessTree);
   return spawnDirectProcess(
     command,
     args,
     spawnOptions,
     stdio,
-    options.terminateProcessTree ?? terminateSeneraProcessTree,
-    options.terminateProcessTree ? "custom" : "posix-process-group",
+    ownership.terminateProcessTree,
+    ownership.terminationBackend,
   );
+}
+
+function resolveDirectProcessOwnership(terminator: SeneraProcessTreeTerminator | undefined): {
+  readonly terminateProcessTree: SeneraProcessTreeTerminator;
+  readonly terminationBackend: "posix-process-group" | "custom";
+} {
+  if (terminator) return { terminateProcessTree: terminator, terminationBackend: "custom" };
+  if (process.platform === "win32") {
+    throw new Error("Windows process ownership requires a Job Object or an explicit tree terminator.");
+  }
+  return {
+    terminateProcessTree: (pid, signal) => {
+      process.kill(-pid, signal);
+      return Promise.resolve();
+    },
+    terminationBackend: "posix-process-group",
+  };
 }
 
 async function spawnWindowsJobProcess(
