@@ -1,0 +1,170 @@
+{
+  "name": "ToolLoad",
+  "loading": "Bootstrap",
+  "planningModes": ["baml"],
+  "presentation": {
+    "category": "tool-load",
+    "icon": "archive",
+    "activity": { "action": { "zh-CN": "加载工具", "en-US": "Load tools" }, "detailPaths": ["/tools/*"] },
+    "preview": {
+      "result": {
+        "rows": [
+          { "pointer": "/added/item/*", "titlePath": "" },
+          { "pointer": "/rejected/item/*", "titlePath": "" }
+        ],
+        "maxRows": 6
+      },
+      "body": { "pointer": "/added/item", "from": "result" }
+    }
+  },
+  "description": "在 BAML 工具规划模式中将已注册工具加载到当前会话，供后续规划直接调用。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "tools": {
+        "type": "array",
+        "items": { "type": "string" },
+        "minItems": 1,
+        "maxItems": 12,
+        "description": "需要加载的准确工具名。"
+      },
+      "catalogRevision": {
+        "type": "string",
+        "minLength": 1,
+        "description": "来自 ToolSearch 的目录 revision；不匹配时不会改变当前会话。"
+      }
+    },
+    "required": ["tools"],
+    "additionalProperties": false,
+    "definitions": {}
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "type": { "type": "string", "const": "senera.tool_discovery.v5" },
+      "catalogStatus": { "type": "string", "enum": ["current", "stale"] },
+      "catalogRevision": { "type": "string" },
+      "generation": { "type": "number" },
+      "loaded": {
+        "type": "object",
+        "properties": { "item": { "type": "array", "items": { "type": "string" } } },
+        "required": ["item"],
+        "additionalProperties": false
+      },
+      "availability": {
+        "type": "object",
+        "propertyNames": { "type": "string" },
+        "additionalProperties": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": { "status": { "type": "string", "const": "ready" } },
+              "required": ["status"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": { "status": { "type": "string", "const": "unverified" } },
+              "required": ["status"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": { "type": "string", "const": "needs_input" },
+                "inputIds": { "type": "array", "items": { "type": "string" } }
+              },
+              "required": ["status", "inputIds"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": { "type": "string", "const": "unavailable" },
+                "reason": { "type": "string" },
+                "message": { "type": "string" }
+              },
+              "required": ["status", "reason"],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "added": {
+        "type": "object",
+        "properties": { "item": { "type": "array", "items": { "type": "string" } } },
+        "required": ["item"],
+        "additionalProperties": false
+      },
+      "removed": {
+        "type": "object",
+        "properties": { "item": { "type": "array", "items": { "type": "string" } } },
+        "required": ["item"],
+        "additionalProperties": false
+      },
+      "protected": {
+        "type": "object",
+        "properties": { "item": { "type": "array", "items": { "type": "string" } } },
+        "required": ["item"],
+        "additionalProperties": false
+      },
+      "rejected": {
+        "type": "object",
+        "properties": { "item": { "type": "array", "items": { "type": "string" } } },
+        "required": ["item"],
+        "additionalProperties": false
+      },
+      "requested": {
+        "type": "object",
+        "properties": { "item": { "type": "array", "items": { "type": "string" } } },
+        "required": ["item"],
+        "additionalProperties": false
+      },
+      "requestedCatalogRevision": { "type": "string" },
+      "reason": { "type": "string" }
+    },
+    "required": ["type", "catalogStatus", "catalogRevision", "generation", "loaded"],
+    "additionalProperties": false
+  },
+  "permissions": [],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "Parallel",
+    "Capabilities": { "Cancellation": true }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "tools",
+      "Title": "Tools",
+      "Description": "Capabilities contributed by the currently loaded extension catalog."
+    }
+  ],
+  "search": {
+    "Summary": "在需要显式加载的规划协议中，将选定工具加入当前会话的可调用集合。",
+    "Capabilities": [
+      {
+        "Id": "tool.catalog-load",
+        "Title": "Tool session load",
+        "Description": "Load registered tools into the current session without invoking them.",
+        "Facets": {
+          "Actions": ["load", "enable"],
+          "Targets": ["tool-catalog", "session-tools"],
+          "Inputs": ["tool-name"],
+          "Outputs": ["loaded-tool"],
+          "Effects": ["context-load"]
+        },
+        "Aliases": ["加载工具", "enable tool", "load tool"],
+        "Risk": { "SideEffect": "context-load", "Permission": "none" }
+      }
+    ],
+    "UseCases": ["当前规划协议要求显式加载，且已经通过 ToolDescribe 确认工具契约时。"],
+    "Tags": ["工具加载", "会话工具", "按需加载"]
+  },
+  "evidenceCapabilities": []
+}

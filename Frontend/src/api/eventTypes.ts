@@ -1,0 +1,788 @@
+// 协议类型。事件枚举从后端 AgentEventCatalog 生成，其他 DTO 保持前端消费视角。
+import { EventChannels, EventKinds, EventLayers, EventPhases } from "./generatedEventCatalog";
+import type {
+  EventChannel,
+  EventKind,
+  EventLayer,
+  EventPhase,
+  RunActivity,
+  RunActivityState,
+} from "./generatedEventCatalog";
+import type { ProviderModelConfigOperationKind } from "./providerModelCommandTypes";
+import type { BackendLocalizedMessage } from "../i18n/backendMessage";
+import type { AgentRuntimeDependencySnapshot } from "../../../Source/AgentSystem/Runtime/AgentRuntimeDependencyTypes";
+import type { ModelThinkingLevel, ModelThinkingProfile } from "./modelThinkingTypes";
+import type { ConfigFormSnapshotData } from "./configFormEventTypes";
+import type {
+  AgentExplicitActivationReference,
+  AgentExplicitActivationSet,
+} from "../../../Source/AgentSystem/Activation/AgentActivationTypes";
+
+export type { ModelThinkingLevel, ModelThinkingProfile, ModelThinkingProfileConfig } from "./modelThinkingTypes";
+export type {
+  ConfigFormFieldData,
+  ConfigFormFieldOptionValue,
+  ConfigFormFieldType,
+  ConfigFormModelCapability,
+  ConfigFormModelSelectionData,
+  ConfigFormSectionData,
+  ConfigFormSnapshotData,
+  ConfigFormValueSource,
+} from "./configFormEventTypes";
+export type {
+  AgentActivationCatalogEntry,
+  AgentActivationCatalogSnapshot,
+  AgentActivationKind,
+  SystemExtensionConfigurationSettings,
+  SystemExtensionSettingsItem,
+  SystemExtensionToolSettingsItem,
+  SystemToolSettingsItem,
+  SystemToolSnapshotData,
+} from "./systemExtensionEventTypes";
+
+export type ExplicitActivationReference = AgentExplicitActivationReference;
+/** Mutable at the frontend state boundary so Immer can draft queued metadata. */
+export interface ExplicitActivationSet {
+  catalogRevision: AgentExplicitActivationSet["catalogRevision"];
+  explicit: AgentExplicitActivationReference[];
+}
+export type {
+  WorkspaceSnapshotData,
+  WorkspaceSwitchFailedData,
+  WorkspaceSwitchStartedData,
+} from "./workspaceEventTypes";
+
+export type {
+  ConfigCommandRequestInput,
+  ConfigRevisionGuardRequestInput,
+  ProviderModelBulkImportGroupAssignmentInput,
+  ProviderModelConfigInput,
+  ProviderModelConfigCommandDraft,
+  ProviderModelConfigOperationKind,
+  ProviderModelConfigRequest,
+  ProviderModelEndpointInput,
+  ProviderModelEndpointPatchInput,
+  ProviderModelEndpointKind,
+  ProviderModelGroupAssignmentInput,
+} from "./providerModelCommandTypes";
+
+export type {
+  InteractionInputAction,
+  InteractionInputContent,
+  InteractionInputProperty,
+  InteractionInputRequestedData,
+  InteractionInputResolvedData,
+  InteractionInputSchema,
+  InteractionInputValue,
+} from "./interactionInputEventTypes";
+
+export type { RequestInvalidData, RunCancellationProgressData } from "./runControlEventTypes";
+
+export type {
+  ContinuitySelectionCountData,
+  ContinuitySnapshotData,
+  PromptHarnessComposedData,
+  ContinuityRecallQueryData,
+  ContinuityRecallSettledData,
+  ContinuityRecallLocalMatchData,
+  ContinuityRecallLocalPlanData,
+  ContinuityRecallLocalRelationData,
+  ExecutionData,
+  ExecutionEventData,
+  ExecutionSnapshotData,
+  ExecutionStepData,
+  TodoCountsData,
+  TodoData,
+  TodoSnapshotData,
+} from "./continuityExecutionEventTypes";
+
+export type {
+  AssistantMessageCreatedData,
+  ToolCallCompletedData,
+  ToolCallFailedData,
+  ToolCallOutputData,
+  ToolCallProgressData,
+  ToolCallResultDetailData,
+  ToolCallStartedData,
+  ToolCallsPlannedData,
+  ToolEventOrigin,
+  ToolResultPresentation,
+  ToolResultPresentationChange,
+  ToolResultPresentationEvidence,
+  ToolResultPresentationFact,
+} from "./toolEventTypes";
+
+import type { ToolEventOrigin, ToolResultPresentation } from "./toolEventTypes";
+
+export type {
+  ChildRunCancellingData,
+  ChildRunDeadlineExtendedData,
+  ChildRunEventIdentityData,
+  ChildRunLifecycleData,
+  ChildRunMessageCreatedData,
+  ChildRunMessageDirection,
+  ChildRunMessageKind,
+  ChildRunSnapshotData,
+  ChildRunStatus,
+  ChildRunWrappingUpData,
+} from "./childRunEventTypes";
+
+export type {
+  McpInputMutationState,
+  McpInputStatus,
+  McpInputValue,
+  McpServerSettingsItem,
+  McpServerSnapshotData,
+} from "./mcpSettingsEventTypes";
+
+export interface RuntimeDependencySnapshotData {
+  dependencies: AgentRuntimeDependencySnapshot[];
+  complete?: boolean;
+}
+
+export type { AgentRuntimeDependencySnapshot };
+
+export { EventChannels, EventKinds, EventLayers, EventPhases };
+export type {
+  EventChannel,
+  EventKind,
+  EventLayer,
+  EventPhase,
+  RunActivity,
+  RunActivityCategory,
+  RunActivityState,
+} from "./generatedEventCatalog";
+
+export interface EventEnvelope<TKind extends string = EventKind, TData = unknown> {
+  eventId?: string;
+  channel: EventChannel;
+  kind: TKind;
+  layer: EventLayer;
+  phase: EventPhase;
+  sequence: number;
+  timestamp: string;
+  sessionId?: string;
+  requestId?: string;
+  step?: number;
+  scope?: EventScope;
+  detailId?: string;
+  data: TData;
+}
+
+export type EventSourceChannel = "console" | "qq" | "telegram" | "discord";
+
+export interface EventScope {
+  channel?: EventSourceChannel;
+  parentSessionId?: string;
+  parentRequestId?: string;
+  parentAgentStep?: number;
+  parentModelMessageIndex?: number;
+  parentModelContentIndex?: number;
+  parentToolCallId?: string;
+  workflowName?: string;
+  jobId?: string;
+  childRunId?: string;
+  agentName?: string;
+  role?: "childAgent" | "merge";
+}
+
+export interface SessionChannelMetadata {
+  platform: Exclude<EventSourceChannel, "console">;
+  chatType?: "direct" | "group" | "channel" | "thread";
+  chatId?: string;
+  userId?: string;
+  messageId?: string;
+}
+
+export type ChannelStatusItem = {
+  kind: "telegram" | "qq" | "discord";
+  enabled: boolean;
+  connected: boolean;
+  state: "stopped" | "connecting" | "connected" | "reconnecting" | "degraded";
+  mode?: string;
+  error?: string;
+};
+
+export interface ChannelStatusSnapshotData {
+  statuses: ChannelStatusItem[];
+}
+
+// --- 各 kind 的 data 形状（只列前端会读的字段） ---
+
+export interface SessionSnapshotData {
+  sessionId: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  entryCount: number;
+  messageCount: number;
+  turnCount: number;
+  activeRequestId?: string;
+  channel?: SessionChannelMetadata;
+  modelProviderId?: string;
+  effectiveModel?: {
+    sessionId: string;
+    requestId: string;
+    providerId: string;
+    model: string;
+    endpoint: string;
+    baseUrl: string;
+    source: "request" | "session_preference" | "default" | "channel";
+    effectiveAt: string;
+    logicalCacheScope?: string;
+    physicalPiSessionId?: string;
+  };
+  modelPreference?: {
+    modelProviderId: string;
+    revision: number;
+    updatedAt: string;
+    source: "user" | "agent" | "channel";
+  };
+}
+
+export interface SessionListItem {
+  sessionId: string;
+  title: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  entryCount: number;
+  messageCount: number;
+  activeRequestId?: string;
+  channel?: SessionChannelMetadata;
+  modelProviderId?: string;
+  effectiveModel?: SessionSnapshotData["effectiveModel"];
+  modelPreference?: SessionSnapshotData["modelPreference"];
+}
+
+export interface SessionListSnapshotData {
+  sessions: SessionListItem[];
+}
+
+export interface SessionNotFoundData {
+  sessionId: string;
+  operation:
+    | "session.message"
+    | "session.close"
+    | "session.history"
+    | "session.fork"
+    | "session.compact"
+    | "session.runtime_status"
+    | "session.export";
+  message: string;
+  localizedMessage?: BackendLocalizedMessage;
+}
+
+export interface SessionForkedData {
+  sessionId: string;
+  sourceSessionId: string;
+  throughRequestId: string;
+  title: string;
+  createdAt: string;
+}
+
+export interface SessionCompactedData {
+  sessionId: string;
+  tokensBefore: number;
+  estimatedTokensAfter?: number;
+}
+
+export interface SessionRuntimeStatusData {
+  sessionId: string;
+  available: boolean;
+  runtime?: {
+    sessionId: string;
+    cached: boolean;
+    stats: {
+      userMessages: number;
+      assistantMessages: number;
+      toolCalls: number;
+      toolResults: number;
+      totalMessages: number;
+      tokens: {
+        input: number;
+        output: number;
+        cacheRead: number;
+        cacheWrite: number;
+        total: number;
+      };
+      cost: number;
+      contextUsage?: SessionContextUsage;
+    };
+    contextUsage?: SessionContextUsage;
+  };
+}
+
+export interface SessionContextUsage {
+  tokens: number | null;
+  contextWindow: number;
+  percent: number | null;
+}
+
+export interface SessionExportedData {
+  sessionId: string;
+  format: "jsonl" | "html";
+  path: string;
+}
+
+export interface SessionBusyData {
+  sessionId: string;
+  activeRequestId: string;
+  rejectedRequestId?: string;
+  operation: "session.message" | "session.close";
+  message: string;
+  localizedMessage?: BackendLocalizedMessage;
+}
+
+export type ConversationEntryDto =
+  | {
+      id: string;
+      requestId: string;
+      timestamp: string;
+      kind: "user.message";
+      content: string;
+      attachments?: UploadAttachmentData[];
+      metadata?: ConversationEntryMetadata;
+    }
+  | {
+      id: string;
+      requestId: string;
+      timestamp: string;
+      kind: "assistant.decision";
+      xml: string;
+      metadata?: ConversationEntryMetadata;
+    }
+  | {
+      id: string;
+      requestId: string;
+      timestamp: string;
+      kind: "context.tool_results";
+      xml: string;
+      metadata?: ConversationEntryMetadata;
+    };
+
+export interface SessionHistoryStartedData {
+  sessionId: string;
+  totalEntries: number;
+  messageCount: number;
+  refresh?: boolean;
+}
+
+export interface SessionHistoryChunkData {
+  sessionId: string;
+  /** 最近窗口的轻量首屏预览；完整回放仍会随后发送。 */
+  preview?: boolean;
+  entries: Array<{
+    entry: ConversationEntryDto;
+    visible?: { kind: string; text: string };
+  }>;
+}
+
+export interface SessionRunHistoryChunkData {
+  sessionId: string;
+  events: EventEnvelope[];
+}
+
+export interface SessionHistoryCompletedData {
+  sessionId: string;
+  refresh?: boolean;
+}
+
+/** One row dropped from a persisted `toolArgs` value, addressed by RFC 6901 pointer. */
+export interface ToolTraceOmission {
+  path: string;
+  reason: "token_limit" | "branch_limit" | "cycle" | "unsupported_value";
+  remaining?: number;
+}
+
+/** 精简档执行步骤轨迹（与后端 StepTrace 对齐）；回放时重建 run.steps */
+export interface StepTraceDto {
+  step: number;
+  seq: number;
+  kind: "decision" | "tool" | "retry" | "answer";
+  decisionKind?: string;
+  toolName?: string;
+  toolOrigin?: ToolEventOrigin;
+  callId?: string;
+  batchId?: string;
+  purpose?: string;
+  status: "done" | "failed";
+  startedAt?: string;
+  endedAt?: string;
+  title?: string;
+  toolArgs?: unknown;
+  /** Rows dropped from `toolArgs` to fit the byte ceiling, addressed by RFC 6901 pointer. */
+  toolArgsOmissions?: readonly ToolTraceOmission[];
+  toolPreview?: string;
+  toolPresentation?: ToolResultPresentation;
+  toolResult?: unknown;
+  toolErrorMessage?: string;
+  errorMessage?: string;
+  retryCode?: string;
+}
+
+export interface SessionHistoryStepsData {
+  sessionId: string;
+  runs: Array<{
+    requestId: string;
+    input: string;
+    startedAt: string;
+    endedAt?: string;
+    status: "running" | "completed" | "failed" | "cancelled";
+    recoveryModes?: Array<"retry" | "continue">;
+    modelProvider?: ModelProviderMetadata;
+    traces: StepTraceDto[];
+  }>;
+}
+
+export interface ModelProviderMetadata {
+  id: string;
+  /** Configured supplier identity; `id` identifies the model configuration. */
+  providerId?: string;
+  kind: string;
+  endpoint: string;
+  baseUrl: string;
+  model: string;
+}
+
+export interface ModelProviderListItem {
+  id: string;
+  providerId?: string;
+  icon?: string;
+  capabilities: ModelCapabilitiesData;
+  kind: string;
+  endpoint: string;
+  baseUrl: string;
+  model: string;
+  isDefault: boolean;
+  modelsDev?: ModelsDevModelMetadata;
+  thinkingLevels?: ModelThinkingLevel[];
+  thinkingProfiles?: ModelThinkingProfile[];
+  defaultThinkingLevel?: ModelThinkingLevel;
+}
+
+export type ModelToolPlanningMode = "native" | "baml";
+
+export interface ModelCapabilitiesData {
+  Chat?: boolean;
+  Vision?: boolean;
+  ImageOutput?: boolean;
+  Reasoning?: boolean;
+  ToolCalling?: boolean;
+  DeveloperRole?: boolean;
+  StreamingUsage?: boolean;
+}
+
+export interface ModelListSnapshotData {
+  models: ModelProviderListItem[];
+  modelsDev?: ModelsDevCatalogStatus;
+  defaultModelProviderId: string;
+}
+
+export interface ProviderModelInfo {
+  id: string;
+  ownedBy?: string;
+  modelsDev?: ModelsDevModelMetadata;
+}
+
+export interface ModelsDevPricing {
+  input?: number;
+  output?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+}
+
+export interface ModelsDevLink {
+  label: string;
+  url: string;
+  type?: string;
+}
+
+export interface ModelsDevModelMetadata {
+  id: string;
+  sourceModelId: string;
+  providerId?: string;
+  name?: string;
+  description?: string;
+  family?: string;
+  knowledge?: string;
+  releaseDate?: string;
+  lastUpdated?: string;
+  attachment?: boolean;
+  reasoning?: boolean;
+  toolCall?: boolean;
+  structuredOutput?: boolean;
+  temperature?: boolean;
+  contextLimit?: number;
+  inputLimit?: number;
+  outputLimit?: number;
+  inputModalities: string[];
+  outputModalities: string[];
+  openWeights?: boolean;
+  license?: string;
+  pricing?: ModelsDevPricing;
+  links?: ModelsDevLink[];
+}
+
+export interface ModelsDevCatalogStatus {
+  source: "models.dev";
+  state: "ready" | "stale" | "unavailable";
+  sourceKind: "cache" | "network";
+  fetchedAt?: string;
+  checkedAt?: string;
+  modelCount: number;
+  providerCount: number;
+  error?: string;
+}
+
+export interface ProviderModelsSnapshotData {
+  providerId: string;
+  baseUrl: string;
+  fetchedAt: string;
+  source: "cache" | "network";
+  modelsDev?: ModelsDevCatalogStatus;
+  models: ProviderModelInfo[];
+}
+
+export interface ProviderModelsFailedData {
+  providerId: string;
+  message: string;
+  localizedMessage?: BackendLocalizedMessage;
+  details?: unknown;
+}
+
+export type {
+  SandboxDependencySnapshotData,
+  SandboxDiagnosticData,
+  SandboxEffectiveMode,
+  SandboxPreparationProgressData,
+  SandboxPreparationStage,
+  SandboxRuntimeState,
+  SandboxStatusSnapshotData,
+} from "./sandboxRuntimeEventTypes";
+
+export interface ConfigFailedData {
+  configPath: string;
+  message: string;
+  localizedMessage?: BackendLocalizedMessage;
+  details?: unknown;
+  operation?: ConfigOperationResult;
+}
+
+export type ConfigSnapshotSource = "sqlite" | "json";
+
+export type ConfigOperationKind = "config_update" | ProviderModelConfigOperationKind;
+
+export interface ConfigOperationResult {
+  commandId: string;
+  kind: ConfigOperationKind;
+}
+
+/** Why the host could not open a stored secret; mirrors the backend AgentSecretOpenFailure values. */
+export type SecretOpenFailureData = "missing_key" | "unknown_key" | "authentication_failed" | "unsupported_format";
+
+/** A configuration secret this host cannot decrypt, addressed by the field holding it. */
+export type ConfigUnresolvedSecretData =
+  | { kind: "provider_api_key"; providerId: string; reason: SecretOpenFailureData }
+  | { kind: "provider_header"; providerId: string; headerName: string; reason: SecretOpenFailureData }
+  | { kind: "extension_secret"; extensionId: string; fieldPath: string[]; reason: SecretOpenFailureData };
+
+export interface ConfigDiagnosticData {
+  severity: "warning" | "error";
+  /** Set when a surface should react to the problem by identity instead of matching message text. */
+  code?: "config.secretUnresolved" | "config.secretKeyRelocated";
+  message: string;
+  details?: unknown;
+}
+
+export interface ConfigSnapshotData {
+  path: string;
+  version: number;
+  value: Record<string, unknown>;
+  source: ConfigSnapshotSource;
+  revision?: number;
+  diagnostics: ConfigDiagnosticData[];
+  form: ConfigFormSnapshotData;
+  operation?: ConfigOperationResult;
+}
+
+export type MutationStatus = "pending" | "success" | "error";
+
+export interface ConfigMutationState {
+  commandId: string;
+  kind: ConfigOperationKind;
+  status: MutationStatus;
+  message?: string;
+  errorCode?: string;
+  updatedAt: string;
+}
+
+export interface ConversationIdentityData {
+  name: string;
+  avatarDataUrl: string | null;
+  /** Workspace-relative path under the profile avatar resource root. */
+  avatarPath?: string | null;
+}
+
+export interface UserProfileData extends ConversationIdentityData {
+  /** Optional on the wire so an updated frontend can still read an older host snapshot. */
+  assistant?: ConversationIdentityData;
+  updatedAt: string;
+}
+
+export interface ModelUsageMetadata {
+  source: "provider_reported" | "mixed" | "local_estimate" | "unavailable";
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  reasoningTokens?: number;
+  estimatedFields?: Array<
+    "inputTokens" | "outputTokens" | "totalTokens" | "cacheReadTokens" | "cacheWriteTokens" | "reasoningTokens"
+  >;
+  calls?: Array<{
+    stage: string;
+    usage: Omit<ModelUsageMetadata, "calls">;
+  }>;
+}
+
+export interface ConversationEntryMetadata {
+  /** Durable user turn answered by an assistant entry. */
+  sourceRequestId?: string;
+  channel?: SessionChannelMetadata;
+  run?: {
+    modelProvider: ModelProviderMetadata;
+    usage?: ModelUsageMetadata;
+  };
+  scheduledTask?: {
+    taskId: string;
+    runId: string;
+  };
+  backgroundTask?: {
+    taskId: string;
+    runId: string;
+  };
+  queue?: {
+    parentRequestId: string;
+    mode: "steer" | "follow_up";
+  };
+  recovery?: {
+    mode: "retry" | "continue";
+    sourceRequestId: string;
+  };
+  activation?: ExplicitActivationSet;
+}
+
+export interface UploadAttachmentData {
+  resourceUri: string;
+  name: string;
+  mime: string;
+  size: number;
+  sha256?: string;
+  status: "uploaded";
+}
+
+export interface SessionTruncatedData {
+  sessionId: string;
+  fromRequestId: string;
+  removedEntries: number;
+  removedRequestIds?: string[];
+  replacementRequestId?: string;
+}
+
+export interface RunStartedData {
+  input: string;
+  approvalMode?: import("./executionApprovalMode").ExecutionApprovalMode;
+  attachments?: UploadAttachmentData[];
+  internal?: boolean;
+  displayInput?: string;
+  recovery?: {
+    mode: "retry" | "continue";
+    sourceRequestId: string;
+  };
+}
+
+/** Terminal aggregate for one model run. It is emitted once, after all model calls settle. */
+export interface RunCompletedData {
+  usage?: ModelUsageMetadata;
+}
+
+export interface RunActivityChangedData {
+  activityId: string;
+  parentActivityId?: string;
+  activity: RunActivity;
+  state: RunActivityState;
+  startedAt: string;
+  durationMs?: number;
+}
+
+export interface PromptSummaryData {
+  chars: number;
+  lines: number;
+  tokenCount: number;
+}
+
+export interface ModelDeltaData {
+  text: string;
+  messageIndex?: number;
+}
+
+export interface ModelThinkingDeltaData {
+  messageIndex: number;
+  contentIndex: number;
+  delta: string;
+}
+
+export interface ModelThinkingCompletedData {
+  messageIndex: number;
+  contentIndex: number;
+  content: string;
+  status: "complete" | "interrupted";
+}
+
+export interface ModelStartedData {
+  model: string;
+  provider?: ModelProviderMetadata;
+  messageIndex?: number;
+}
+
+export interface ModelCompletedData {
+  text: string;
+  provider?: ModelProviderMetadata;
+  usage?: ModelUsageMetadata;
+  messageIndex?: number;
+}
+
+export type {
+  ApprovalDecision,
+  ApprovalRequestedData,
+  ApprovalResolvedData,
+  ApprovalSubjectData,
+} from "./approvalEventTypes";
+
+export type {
+  ExecutionResourceCreatedData,
+  ExecutionResourceOutputData,
+  ExecutionResourceRemovedData,
+  ExecutionResourceResizedData,
+  ExecutionResourceSnapshotData,
+  ExecutionResourceSnapshotEventData,
+  ExecutionResourceState,
+  ExecutionResourceStateData,
+  ExecutionResourceTerminalData,
+} from "./executionResourceEventTypes";
+
+export interface RunFailedData {
+  message: string;
+  localizedMessage?: BackendLocalizedMessage;
+  code?: string;
+  details?: unknown;
+  recoveryModes?: Array<"retry" | "continue">;
+}
+
+// --- 客户端 → 服务端 请求 ---
+
+export type { WsRequest } from "./wsRequestTypes";
+export { ExecutionApprovalModes, isExecutionApprovalMode } from "./executionApprovalMode";
+export type { ExecutionApprovalMode } from "./executionApprovalMode";

@@ -1,0 +1,171 @@
+{
+  "name": "ToolUnload",
+  "loading": "Bootstrap",
+  "planningModes": ["baml"],
+  "presentation": {
+    "category": "tool-unload",
+    "icon": "trash",
+    "activity": { "action": { "zh-CN": "卸载工具", "en-US": "Unload tools" }, "argumentPath": "/tools/*" },
+    "preview": {
+      "result": {
+        "rows": [
+          { "pointer": "/removed/item/*", "titlePath": "" },
+          { "pointer": "/protected/item/*", "titlePath": "" },
+          { "pointer": "/rejected/item/*", "titlePath": "" }
+        ],
+        "maxRows": 6
+      },
+      "body": { "pointer": "/removed/item", "from": "result" }
+    }
+  },
+  "description": "在 BAML 工具规划模式中从当前会话移除已加载工具，保留核心工具管理能力。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "tools": {
+        "type": "array",
+        "items": { "type": "string" },
+        "minItems": 1,
+        "maxItems": 12,
+        "description": "需要从当前会话移除的准确工具名。"
+      },
+      "catalogRevision": {
+        "type": "string",
+        "minLength": 1,
+        "description": "来自 ToolSearch 的目录 revision；不匹配时不会改变当前会话。"
+      }
+    },
+    "required": ["tools"],
+    "additionalProperties": false,
+    "definitions": {}
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "type": { "type": "string", "const": "senera.tool_discovery.v5" },
+      "catalogStatus": { "type": "string", "enum": ["current", "stale"] },
+      "catalogRevision": { "type": "string" },
+      "generation": { "type": "number" },
+      "loaded": {
+        "type": "object",
+        "properties": { "item": { "type": "array", "items": { "type": "string" } } },
+        "required": ["item"],
+        "additionalProperties": false
+      },
+      "availability": {
+        "type": "object",
+        "propertyNames": { "type": "string" },
+        "additionalProperties": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": { "status": { "type": "string", "const": "ready" } },
+              "required": ["status"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": { "status": { "type": "string", "const": "unverified" } },
+              "required": ["status"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": { "type": "string", "const": "needs_input" },
+                "inputIds": { "type": "array", "items": { "type": "string" } }
+              },
+              "required": ["status", "inputIds"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": { "type": "string", "const": "unavailable" },
+                "reason": { "type": "string" },
+                "message": { "type": "string" }
+              },
+              "required": ["status", "reason"],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "added": {
+        "type": "object",
+        "properties": { "item": { "type": "array", "items": { "type": "string" } } },
+        "required": ["item"],
+        "additionalProperties": false
+      },
+      "removed": {
+        "type": "object",
+        "properties": { "item": { "type": "array", "items": { "type": "string" } } },
+        "required": ["item"],
+        "additionalProperties": false
+      },
+      "protected": {
+        "type": "object",
+        "properties": { "item": { "type": "array", "items": { "type": "string" } } },
+        "required": ["item"],
+        "additionalProperties": false
+      },
+      "rejected": {
+        "type": "object",
+        "properties": { "item": { "type": "array", "items": { "type": "string" } } },
+        "required": ["item"],
+        "additionalProperties": false
+      },
+      "requested": {
+        "type": "object",
+        "properties": { "item": { "type": "array", "items": { "type": "string" } } },
+        "required": ["item"],
+        "additionalProperties": false
+      },
+      "requestedCatalogRevision": { "type": "string" },
+      "reason": { "type": "string" }
+    },
+    "required": ["type", "catalogStatus", "catalogRevision", "generation", "loaded"],
+    "additionalProperties": false
+  },
+  "permissions": [],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "Parallel",
+    "Capabilities": { "Cancellation": true }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "tools",
+      "Title": "Tools",
+      "Description": "Capabilities contributed by the currently loaded extension catalog."
+    }
+  ],
+  "search": {
+    "Summary": "从当前会话移除不再需要的已加载工具。",
+    "Capabilities": [
+      {
+        "Id": "tool.catalog-unload",
+        "Title": "Tool session unload",
+        "Description": "Remove loaded tools from the current session while retaining core tool management.",
+        "Facets": {
+          "Actions": ["unload", "disable", "remove"],
+          "Targets": ["session-tools"],
+          "Inputs": ["tool-name"],
+          "Outputs": ["unloaded-tool"],
+          "Effects": ["context-load"]
+        },
+        "Aliases": ["卸载工具", "disable tool", "unload tool"],
+        "Risk": { "SideEffect": "context-load", "Permission": "none" }
+      }
+    ],
+    "UseCases": ["长会话中清理不再需要的工具上下文。"],
+    "Tags": ["工具卸载", "会话工具", "上下文管理"]
+  },
+  "evidenceCapabilities": []
+}

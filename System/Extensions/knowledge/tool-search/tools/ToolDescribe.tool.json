@@ -1,0 +1,133 @@
+{
+  "name": "ToolDescribe",
+  "loading": "Bootstrap",
+  "presentation": {
+    "category": "tool-describe",
+    "icon": "info",
+    "activity": { "action": { "zh-CN": "查看工具", "en-US": "Inspect tools" }, "detailPaths": ["/tools/*"] },
+    "preview": {
+      "result": {
+        "rows": [{ "pointer": "/tools/*", "titlePath": "/0", "descriptionPath": "/1" }],
+        "maxRows": 4,
+        "more": { "pointer": "/tools", "label": { "zh-CN": "另有 {count} 个工具", "en-US": "{count} more tools" } }
+      },
+      "body": { "pointer": "/tools", "from": "result" }
+    }
+  },
+  "description": "查看 Dynamic 候选工具的参数、输出、权限和执行边界；常驻 Bootstrap 工具会以 direct 返回，表示应直接调用而不是通过 ToolCall 转发。不会加载或调用工具。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "tools": {
+        "type": "array",
+        "items": { "type": "string" },
+        "minItems": 1,
+        "maxItems": 12,
+        "description": "需要说明的准确工具名。"
+      }
+    },
+    "required": ["tools"],
+    "additionalProperties": false,
+    "definitions": {}
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "type": { "type": "string", "const": "senera.tool_description.v2" },
+      "tools": {
+        "type": "array",
+        "items": {
+          "type": "array",
+          "items": [{ "type": "string" }, { "type": "string" }, { "type": "string" }],
+          "additionalItems": false,
+          "minItems": 3,
+          "maxItems": 3
+        }
+      },
+      "availability": {
+        "type": "object",
+        "propertyNames": { "type": "string" },
+        "additionalProperties": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": { "status": { "type": "string", "const": "ready" } },
+              "required": ["status"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": { "status": { "type": "string", "const": "unverified" } },
+              "required": ["status"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": { "type": "string", "const": "needs_input" },
+                "inputIds": { "type": "array", "items": { "type": "string" } }
+              },
+              "required": ["status", "inputIds"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": { "type": "string", "const": "unavailable" },
+                "reason": { "type": "string" },
+                "message": { "type": "string" }
+              },
+              "required": ["status", "reason"],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "direct": { "type": "array", "items": { "type": "string" } },
+      "rejected": { "type": "array", "items": { "type": "string" } }
+    },
+    "required": ["type", "tools"],
+    "additionalProperties": false
+  },
+  "permissions": [],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "Parallel",
+    "Capabilities": { "Cancellation": true }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "tools",
+      "Title": "Tools",
+      "Description": "Capabilities contributed by the currently loaded extension catalog."
+    }
+  ],
+  "search": {
+    "Summary": "查看 Dynamic 候选工具的紧凑调用契约与执行边界；常驻工具会标记为 direct。",
+    "Capabilities": [
+      {
+        "Id": "tool.catalog-describe",
+        "Title": "Tool contract description",
+        "Description": "Describe registered tool contracts without modifying the active tool set.",
+        "Facets": {
+          "Actions": ["inspect", "describe", "compare"],
+          "Targets": ["tool-catalog", "tool-contract"],
+          "Inputs": ["tool-name"],
+          "Outputs": ["tool-contract", "tool-boundary"],
+          "Effects": ["read-only"]
+        },
+        "Aliases": ["查看工具参数", "inspect tool", "describe tool"],
+        "Risk": { "SideEffect": "read-only", "Permission": "none" }
+      }
+    ],
+    "UseCases": ["候选 Dynamic 工具相近，需要确认参数或副作用时。", "需要确认某个名称是否已常驻并可直接调用时。"],
+    "Tags": ["工具说明", "契约查看", "工具选择"]
+  },
+  "evidenceCapabilities": []
+}

@@ -1,0 +1,631 @@
+import type { ConfigFormDocument } from "../Config/AgentConfigFormDocument.js";
+import type { AgentExtensionLocalizedText } from "../Extensions/AgentExtensionLocalization.js";
+
+interface AgentWebConfigurationUiInputs {
+  readonly searchProviderValues: readonly string[];
+  readonly contentModeValues: readonly string[];
+  readonly renderStrategyValues: readonly string[];
+  readonly limits: {
+    readonly userAgentLength: NumericRange;
+    readonly requestTimeoutMs: NumericRange;
+    readonly searchCacheMaxEntries: NumericRange;
+    readonly search: {
+      readonly modelNameLength: NumericRange;
+      readonly maxResults: NumericRange;
+      readonly responseMaxBytes: NumericRange;
+      readonly cacheTtlSeconds: NumericRange;
+    };
+    readonly fetch: {
+      readonly responseMaxBytes: NumericRange;
+      readonly markdownMaxChars: NumericRange;
+      readonly maxRedirects: NumericRange;
+      readonly maxUrlLength: NumericRange;
+      readonly maxLinks: NumericRange;
+      readonly maxExtractBlocks: NumericRange;
+    };
+    readonly detection: {
+      readonly minimumUsefulTextChars: NumericRange;
+      readonly minimumContentDensity: NumericRange;
+      readonly minimumContentBlocks: NumericRange;
+      readonly maximumScriptShare: NumericRange;
+      readonly score: NumericRange;
+      readonly weight: NumericRange;
+    };
+    readonly browserRender: {
+      readonly minimumRemainingTimeoutMs: NumericRange;
+      readonly settleTimeoutMs: NumericRange;
+      readonly settlePollMs: NumericRange;
+      readonly stableSamples: NumericRange;
+      readonly maxHtmlChars: NumericRange;
+      readonly minimumContentGainChars: NumericRange;
+      readonly minimumContentGainRatio: NumericRange;
+    };
+  };
+}
+
+interface NumericRange {
+  readonly min: number;
+  readonly max: number;
+}
+
+export function createAgentWebToolsConfigurationUi(input: AgentWebConfigurationUiInputs) {
+  const providerVisible = (...providers: readonly string[]) => ({
+    path: ["search", "provider"],
+    in: [...providers],
+  });
+  const codexVisible = providerVisible("codex");
+  return {
+    form: {
+      version: 1,
+      sections: [
+        {
+          id: "search",
+          label: { "zh-CN": "搜索服务", "en-US": "Search provider" },
+          description: {
+            "zh-CN": "默认通过 Exa Remote MCP 搜索，无需密钥。切换供应商后只显示该服务需要的地址、模型和密钥配置。",
+            "en-US":
+              "Exa Remote MCP is the keyless default. Switching providers shows only that service's endpoint, model, and credential settings.",
+          },
+          fields: [
+            {
+              path: ["search", "provider"],
+              label: { "zh-CN": "搜索服务", "en-US": "Provider" },
+              type: "string",
+              options: [...input.searchProviderValues],
+              optionLabels: {
+                exa: { "zh-CN": "Exa（推荐）", "en-US": "Exa (recommended)" },
+                codex: { "zh-CN": "Codex Search", "en-US": "Codex Search" },
+                tavily: { "zh-CN": "Tavily", "en-US": "Tavily" },
+                brave: { "zh-CN": "Brave Search", "en-US": "Brave Search" },
+                searxng: { "zh-CN": "SearXNG", "en-US": "SearXNG" },
+              },
+              required: true,
+              essential: true,
+            },
+            {
+              path: ["search", "endpoint"],
+              label: { "zh-CN": "服务地址", "en-US": "Endpoint" },
+              description: {
+                "zh-CN": "通常留空。SearXNG 必须填写实例地址；其他服务可填写兼容的自定义地址。",
+                "en-US":
+                  "Usually leave empty. SearXNG requires an instance URL; other providers may use a compatible custom endpoint.",
+              },
+              type: "string",
+              required: false,
+              essential: false,
+              visibleWhen: providerVisible("exa", "tavily", "brave", "searxng"),
+            },
+            {
+              path: ["search", "exaApiKey"],
+              label: { "zh-CN": "Exa 访问密钥", "en-US": "Exa access key" },
+              description: {
+                "zh-CN": "留空时使用无需密钥的 Exa Remote MCP；填写后自动使用 Exa 官方 API。",
+                "en-US": "Leave empty to use keyless Exa Remote MCP. Add a key to use the Exa API automatically.",
+              },
+              type: "string",
+              secret: true,
+              required: false,
+              essential: false,
+              level: "advanced",
+              visibleWhen: providerVisible("exa"),
+            },
+            {
+              path: ["search", "codexEndpoint"],
+              label: { "zh-CN": "Codex Search 地址", "en-US": "Codex Search endpoint" },
+              description: {
+                "zh-CN": "填写兼容 Codex Search 协议的 alpha/search 接口地址。",
+                "en-US": "Enter the alpha/search endpoint that implements the Codex Search protocol.",
+              },
+              type: "string",
+              required: true,
+              essential: true,
+              visibleWhen: codexVisible,
+            },
+            {
+              path: ["search", "codexModel"],
+              label: { "zh-CN": "Codex Search 模型", "en-US": "Codex Search model" },
+              description: {
+                "zh-CN": "从模型目录选择供应商模型；请求会发送该条目的供应商模型 ID，不包含 Senera 内部条目标识。",
+                "en-US":
+                  "Choose a provider model from the model catalog; requests use its provider model ID, without the Senera catalog identifier.",
+              },
+              type: "string",
+              maxLength: input.limits.search.modelNameLength.max,
+              modelSelection: {
+                id: "web-tools.codex-search-model",
+                capability: "Chat",
+                valueKind: "model-id",
+                mutation: "config",
+                presentation: "inline",
+                required: true,
+              },
+              required: true,
+              essential: true,
+              visibleWhen: codexVisible,
+            },
+            {
+              path: ["search", "codexApiKey"],
+              label: { "zh-CN": "Codex Search 访问密钥", "en-US": "Codex Search access key" },
+              description: {
+                "zh-CN": "用于 Codex Search 路由的访问密钥；保存时由工作区密钥保护。",
+                "en-US": "Access key for the Codex Search route; protected by the workspace secret store when saved.",
+              },
+              type: "string",
+              secret: true,
+              required: true,
+              essential: true,
+              visibleWhen: codexVisible,
+            },
+            {
+              path: ["search", "tavilyApiKey"],
+              label: { "zh-CN": "Tavily 访问密钥", "en-US": "Tavily access key" },
+              type: "string",
+              secret: true,
+              required: false,
+              essential: false,
+              level: "advanced",
+              visibleWhen: providerVisible("tavily"),
+            },
+            {
+              path: ["search", "braveApiKey"],
+              label: { "zh-CN": "Brave 访问密钥", "en-US": "Brave access key" },
+              type: "string",
+              secret: true,
+              required: false,
+              essential: false,
+              level: "advanced",
+              visibleWhen: providerVisible("brave"),
+            },
+            {
+              path: ["search", "defaultMaxResults"],
+              label: { "zh-CN": "默认结果数", "en-US": "Default result count" },
+              type: "number",
+              min: input.limits.search.maxResults.min,
+              max: input.limits.search.maxResults.max,
+              step: 1,
+              required: true,
+              essential: true,
+            },
+            {
+              path: ["search", "maxMaxResults"],
+              label: { "zh-CN": "结果数上限", "en-US": "Maximum result count" },
+              type: "number",
+              min: input.limits.search.maxResults.min,
+              max: input.limits.search.maxResults.max,
+              step: 1,
+              required: true,
+              essential: true,
+            },
+            {
+              path: ["search", "responseMaxBytes"],
+              label: { "zh-CN": "搜索响应上限", "en-US": "Search response limit" },
+              type: "number",
+              min: input.limits.search.responseMaxBytes.min,
+              max: input.limits.search.responseMaxBytes.max,
+              step: 1,
+              required: true,
+              essential: true,
+            },
+            {
+              path: ["search", "cacheTtlSeconds"],
+              label: { "zh-CN": "搜索缓存时间", "en-US": "Search cache TTL" },
+              type: "number",
+              min: input.limits.search.cacheTtlSeconds.min,
+              max: input.limits.search.cacheTtlSeconds.max,
+              step: 1,
+              required: true,
+              essential: false,
+            },
+            {
+              path: ["search", "cacheMaxEntries"],
+              label: { "zh-CN": "缓存条目上限", "en-US": "Maximum cached queries" },
+              type: "number",
+              min: input.limits.searchCacheMaxEntries.min,
+              max: input.limits.searchCacheMaxEntries.max,
+              step: 1,
+              required: true,
+              essential: false,
+            },
+            {
+              path: ["search", "requestTimeoutMs"],
+              label: { "zh-CN": "搜索请求超时（毫秒）", "en-US": "Search request timeout (ms)" },
+              type: "number",
+              min: input.limits.requestTimeoutMs.min,
+              max: input.limits.requestTimeoutMs.max,
+              step: 1_000,
+              required: true,
+              essential: true,
+            },
+            {
+              path: ["search", "maxOperationTimeoutMs"],
+              label: { "zh-CN": "模型操作超时上限（毫秒）", "en-US": "Model operation timeout limit (ms)" },
+              description: {
+                "zh-CN": "模型可通过单次 WebSearch 调用的 timeoutMs 覆盖默认值，但不能超过此上限。",
+                "en-US":
+                  "The model may override the default with timeoutMs on an individual WebSearch call, up to this limit.",
+              },
+              type: "number",
+              min: input.limits.requestTimeoutMs.min,
+              max: input.limits.requestTimeoutMs.max,
+              step: 1_000,
+              required: true,
+              essential: true,
+            },
+            {
+              path: ["search", "allowPrivateNetworks"],
+              label: { "zh-CN": "允许访问私有网络", "en-US": "Allow private network access" },
+              description: {
+                "zh-CN": "仅用于受信的内网搜索服务；默认关闭。",
+                "en-US": "Only enable for a trusted internal search service; disabled by default.",
+              },
+              type: "boolean",
+              required: true,
+              essential: false,
+            },
+            {
+              path: ["search", "allowSyntheticProxyAddresses"],
+              label: { "zh-CN": "允许代理映射地址", "en-US": "Allow proxy-mapped addresses" },
+              description: {
+                "zh-CN": "允许本机代理将公开域名映射到 198.18.0.0/15；不会放开本机或局域网地址。",
+                "en-US":
+                  "Allows public domains mapped to 198.18.0.0/15 by a local proxy without allowing localhost or private networks.",
+              },
+              type: "boolean",
+              required: true,
+              essential: false,
+            },
+          ],
+        },
+        {
+          id: "fetch",
+          label: { "zh-CN": "网页读取", "en-US": "Web fetch" },
+          description: {
+            "zh-CN": "控制网页读取、正文提取、重定向、响应大小和动态页面渲染判定。",
+            "en-US":
+              "Control web fetch, article extraction, redirects, response-size limits, and dynamic-page rendering decisions.",
+          },
+          fields: [
+            {
+              path: ["fetch", "responseMaxBytes"],
+              label: { "zh-CN": "响应字节上限", "en-US": "Response byte limit" },
+              type: "number",
+              min: input.limits.fetch.responseMaxBytes.min,
+              max: input.limits.fetch.responseMaxBytes.max,
+              step: 1,
+              required: true,
+              essential: true,
+            },
+            {
+              path: ["fetch", "markdownMaxChars"],
+              label: { "zh-CN": "Markdown 上限", "en-US": "Markdown character limit" },
+              type: "number",
+              min: input.limits.fetch.markdownMaxChars.min,
+              max: input.limits.fetch.markdownMaxChars.max,
+              step: 1,
+              required: true,
+              essential: true,
+            },
+            {
+              path: ["fetch", "maxRedirects"],
+              label: { "zh-CN": "最大重定向次数", "en-US": "Maximum redirects" },
+              type: "number",
+              min: input.limits.fetch.maxRedirects.min,
+              max: input.limits.fetch.maxRedirects.max,
+              step: 1,
+              required: true,
+              essential: true,
+            },
+            {
+              path: ["fetch", "maxUrlLength"],
+              label: { "zh-CN": "URL 长度上限", "en-US": "URL length limit" },
+              type: "number",
+              min: input.limits.fetch.maxUrlLength.min,
+              max: input.limits.fetch.maxUrlLength.max,
+              step: 1,
+              required: true,
+              essential: false,
+            },
+            {
+              path: ["fetch", "maxLinks"],
+              label: { "zh-CN": "链接数量上限", "en-US": "Maximum links" },
+              type: "number",
+              min: input.limits.fetch.maxLinks.min,
+              max: input.limits.fetch.maxLinks.max,
+              step: 1,
+              required: true,
+              essential: false,
+            },
+            {
+              path: ["fetch", "maxExtractBlocks"],
+              label: { "zh-CN": "相关段落数量", "en-US": "Relevant content blocks" },
+              type: "number",
+              min: input.limits.fetch.maxExtractBlocks.min,
+              max: input.limits.fetch.maxExtractBlocks.max,
+              step: 1,
+              required: true,
+              essential: false,
+            },
+            {
+              path: ["fetch", "defaultContentMode"],
+              label: { "zh-CN": "默认内容模式", "en-US": "Default content mode" },
+              type: "string",
+              options: [...input.contentModeValues],
+              required: true,
+              essential: false,
+            },
+            {
+              path: ["fetch", "render", "strategy"],
+              label: { "zh-CN": "动态页面渲染策略", "en-US": "Dynamic page render strategy" },
+              description: {
+                "zh-CN": "HTTP 优先；仅在静态正文不足时使用受控无头浏览器。",
+                "en-US":
+                  "Prefer HTTP and use the controlled headless browser only when static content is insufficient.",
+              },
+              type: "string",
+              options: [...input.renderStrategyValues],
+              optionLabels: {
+                http: { "zh-CN": "仅 HTTP", "en-US": "HTTP only" },
+                auto: { "zh-CN": "自动判断", "en-US": "Automatic" },
+                browser: { "zh-CN": "始终使用浏览器", "en-US": "Always use browser" },
+              },
+              required: true,
+              essential: true,
+            },
+            {
+              path: ["fetch", "render", "detection", "minimumUsefulTextChars"],
+              label: { "zh-CN": "最小有效正文字符数", "en-US": "Minimum useful text characters" },
+              type: "number",
+              min: input.limits.detection.minimumUsefulTextChars.min,
+              max: input.limits.detection.minimumUsefulTextChars.max,
+              step: 1,
+              required: true,
+              essential: false,
+              level: "advanced",
+            },
+            {
+              path: ["fetch", "render", "detection", "minimumContentDensity"],
+              label: { "zh-CN": "最小正文密度", "en-US": "Minimum content density" },
+              type: "number",
+              min: input.limits.detection.minimumContentDensity.min,
+              max: input.limits.detection.minimumContentDensity.max,
+              step: 0.01,
+              required: true,
+              essential: false,
+              level: "advanced",
+            },
+            {
+              path: ["fetch", "render", "detection", "minimumContentBlocks"],
+              label: { "zh-CN": "最小内容块数", "en-US": "Minimum content blocks" },
+              type: "number",
+              min: input.limits.detection.minimumContentBlocks.min,
+              max: input.limits.detection.minimumContentBlocks.max,
+              step: 1,
+              required: true,
+              essential: false,
+              level: "advanced",
+            },
+            {
+              path: ["fetch", "render", "detection", "maximumScriptShare"],
+              label: { "zh-CN": "脚本负载占比上限", "en-US": "Maximum script share" },
+              type: "number",
+              min: input.limits.detection.maximumScriptShare.min,
+              max: input.limits.detection.maximumScriptShare.max,
+              step: 0.01,
+              required: true,
+              essential: false,
+              level: "advanced",
+            },
+            {
+              path: ["fetch", "render", "detection", "dynamicScoreThreshold"],
+              label: { "zh-CN": "动态判断阈值", "en-US": "Dynamic detection threshold" },
+              type: "number",
+              min: input.limits.detection.score.min,
+              max: input.limits.detection.score.max,
+              step: 0.01,
+              required: true,
+              essential: false,
+              level: "advanced",
+            },
+            {
+              path: ["fetch", "render", "detection", "reasonScoreThreshold"],
+              label: { "zh-CN": "判定依据阈值", "en-US": "Detection reason threshold" },
+              description: {
+                "zh-CN": "只展示达到此分值的判定依据，避免把弱信号误报为主要原因。",
+                "en-US": "Only surface signals at or above this score as reasons for the decision.",
+              },
+              type: "number",
+              min: input.limits.detection.score.min,
+              max: input.limits.detection.score.max,
+              step: 0.01,
+              required: true,
+              essential: false,
+              level: "advanced",
+            },
+            {
+              path: ["fetch", "render", "detection", "weights", "textDeficit"],
+              label: { "zh-CN": "正文不足信号权重", "en-US": "Text deficit weight" },
+              type: "number",
+              min: input.limits.detection.weight.min,
+              max: input.limits.detection.weight.max,
+              step: 0.01,
+              required: true,
+              essential: false,
+              level: "advanced",
+            },
+            {
+              path: ["fetch", "render", "detection", "weights", "densityDeficit"],
+              label: { "zh-CN": "正文密度信号权重", "en-US": "Density deficit weight" },
+              type: "number",
+              min: input.limits.detection.weight.min,
+              max: input.limits.detection.weight.max,
+              step: 0.01,
+              required: true,
+              essential: false,
+              level: "advanced",
+            },
+            {
+              path: ["fetch", "render", "detection", "weights", "scriptPressure"],
+              label: { "zh-CN": "脚本负载信号权重", "en-US": "Script pressure weight" },
+              type: "number",
+              min: input.limits.detection.weight.min,
+              max: input.limits.detection.weight.max,
+              step: 0.01,
+              required: true,
+              essential: false,
+              level: "advanced",
+            },
+            {
+              path: ["fetch", "render", "detection", "weights", "structureDeficit"],
+              label: { "zh-CN": "语义结构信号权重", "en-US": "Structure deficit weight" },
+              type: "number",
+              min: input.limits.detection.weight.min,
+              max: input.limits.detection.weight.max,
+              step: 0.01,
+              required: true,
+              essential: false,
+              level: "advanced",
+            },
+            {
+              path: ["fetch", "render", "browser", "minimumRemainingTimeoutMs"],
+              label: { "zh-CN": "浏览器最小剩余预算（毫秒）", "en-US": "Minimum browser budget (ms)" },
+              description: {
+                "zh-CN": "HTTP 阶段结束后至少保留此预算才会启动浏览器渲染。",
+                "en-US": "Start browser rendering only when this budget remains after the HTTP phase.",
+              },
+              type: "number",
+              min: input.limits.browserRender.minimumRemainingTimeoutMs.min,
+              max: input.limits.browserRender.minimumRemainingTimeoutMs.max,
+              step: 250,
+              required: true,
+              essential: false,
+              level: "advanced",
+            },
+            {
+              path: ["fetch", "render", "browser", "settleTimeoutMs"],
+              label: { "zh-CN": "浏览器内容稳定等待上限（毫秒）", "en-US": "Browser settle timeout (ms)" },
+              type: "number",
+              min: input.limits.browserRender.settleTimeoutMs.min,
+              max: input.limits.browserRender.settleTimeoutMs.max,
+              step: 250,
+              required: true,
+              essential: false,
+              level: "advanced",
+            },
+            {
+              path: ["fetch", "render", "browser", "settlePollMs"],
+              label: { "zh-CN": "浏览器内容采样间隔（毫秒）", "en-US": "Browser settle poll interval (ms)" },
+              type: "number",
+              min: input.limits.browserRender.settlePollMs.min,
+              max: input.limits.browserRender.settlePollMs.max,
+              step: 50,
+              required: true,
+              essential: false,
+              level: "advanced",
+            },
+            {
+              path: ["fetch", "render", "browser", "stableSamples"],
+              label: { "zh-CN": "连续稳定采样次数", "en-US": "Stable samples" },
+              type: "number",
+              min: input.limits.browserRender.stableSamples.min,
+              max: input.limits.browserRender.stableSamples.max,
+              step: 1,
+              required: true,
+              essential: false,
+              level: "advanced",
+            },
+            {
+              path: ["fetch", "render", "browser", "maxHtmlChars"],
+              label: { "zh-CN": "渲染 HTML 字符上限", "en-US": "Rendered HTML character limit" },
+              type: "number",
+              min: input.limits.browserRender.maxHtmlChars.min,
+              max: input.limits.browserRender.maxHtmlChars.max,
+              step: 1_024,
+              required: true,
+              essential: false,
+              level: "advanced",
+            },
+            {
+              path: ["fetch", "render", "browser", "minimumContentGainChars"],
+              label: { "zh-CN": "最小正文增量字符数", "en-US": "Minimum content gain characters" },
+              type: "number",
+              min: input.limits.browserRender.minimumContentGainChars.min,
+              max: input.limits.browserRender.minimumContentGainChars.max,
+              step: 1,
+              required: true,
+              essential: false,
+              level: "advanced",
+            },
+            {
+              path: ["fetch", "render", "browser", "minimumContentGainRatio"],
+              label: { "zh-CN": "最小正文增量比例", "en-US": "Minimum content gain ratio" },
+              type: "number",
+              min: input.limits.browserRender.minimumContentGainRatio.min,
+              max: input.limits.browserRender.minimumContentGainRatio.max,
+              step: 0.01,
+              required: true,
+              essential: false,
+              level: "advanced",
+            },
+            {
+              path: ["fetch", "requestTimeoutMs"],
+              label: { "zh-CN": "读取请求超时（毫秒）", "en-US": "Fetch request timeout (ms)" },
+              type: "number",
+              min: input.limits.requestTimeoutMs.min,
+              max: input.limits.requestTimeoutMs.max,
+              step: 1_000,
+              required: true,
+              essential: true,
+            },
+            {
+              path: ["fetch", "maxOperationTimeoutMs"],
+              label: { "zh-CN": "模型操作超时上限（毫秒）", "en-US": "Model operation timeout limit (ms)" },
+              description: {
+                "zh-CN": "模型可通过单次 WebFetch 调用的 timeoutMs 覆盖默认值，但不能超过此上限。",
+                "en-US":
+                  "The model may override the default with timeoutMs on an individual WebFetch call, up to this limit.",
+              },
+              type: "number",
+              min: input.limits.requestTimeoutMs.min,
+              max: input.limits.requestTimeoutMs.max,
+              step: 1_000,
+              required: true,
+              essential: true,
+            },
+            {
+              path: ["fetch", "allowPrivateNetworks"],
+              label: { "zh-CN": "允许私有网络", "en-US": "Allow private networks" },
+              description: {
+                "zh-CN": "仅适用于明确受信的内网部署；默认关闭以防止 SSRF。",
+                "en-US": "Only enable for trusted internal deployments; disabled by default for SSRF protection.",
+              },
+              type: "boolean",
+              required: true,
+              essential: true,
+            },
+            {
+              path: ["fetch", "allowSyntheticProxyAddresses"],
+              label: { "zh-CN": "允许代理映射地址", "en-US": "Allow proxy-mapped addresses" },
+              description: {
+                "zh-CN": "允许本机代理将公开域名映射到 198.18.0.0/15；不会放开本机或局域网地址。",
+                "en-US":
+                  "Allows public domains mapped to 198.18.0.0/15 by a local proxy without allowing localhost or private networks.",
+              },
+              type: "boolean",
+              required: true,
+              essential: false,
+            },
+            {
+              path: ["fetch", "userAgent"],
+              label: { "zh-CN": "User-Agent", "en-US": "User-Agent" },
+              type: "string",
+              minLength: input.limits.userAgentLength.min,
+              maxLength: input.limits.userAgentLength.max,
+              required: true,
+              essential: false,
+            },
+          ],
+        },
+      ],
+    },
+  } satisfies ConfigFormDocument<AgentExtensionLocalizedText>;
+}

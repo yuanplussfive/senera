@@ -1,0 +1,403 @@
+{
+  "name": "WorkspaceApplyPatch",
+  "loading": "Bootstrap",
+  "presentation": {
+    "category": "workspace-patch",
+    "icon": "file-code",
+    "activity": {
+      "action": { "zh-CN": "修改", "en-US": "Edit" },
+      "detailPaths": ["/operations/*/path", "/operations/*/source", "/operations/*/destination"],
+      "v2": {
+        "measures": [
+          {
+            "id": "operationKind",
+            "from": "argument",
+            "pointer": "/operations",
+            "field": "kind",
+            "aggregate": "first",
+            "type": "enum",
+            "labels": {
+              "add": { "zh-CN": "新增", "en-US": "Add" },
+              "update": { "zh-CN": "编辑", "en-US": "Edit" },
+              "write": { "zh-CN": "覆写", "en-US": "Overwrite" },
+              "delete": { "zh-CN": "删除", "en-US": "Delete" },
+              "move": { "zh-CN": "移动", "en-US": "Move" }
+            }
+          },
+          {
+            "id": "operationCount",
+            "from": "argument",
+            "pointer": "/operations",
+            "aggregate": "count",
+            "type": "number"
+          },
+          {
+            "id": "primaryPath",
+            "from": "argument",
+            "pointer": "/operations",
+            "field": "path",
+            "aggregate": "first",
+            "type": "path"
+          },
+          {
+            "id": "moveSource",
+            "from": "argument",
+            "pointer": "/operations",
+            "field": "source",
+            "aggregate": "first",
+            "type": "path"
+          },
+          {
+            "id": "moveDestination",
+            "from": "argument",
+            "pointer": "/operations",
+            "field": "destination",
+            "aggregate": "first",
+            "type": "path"
+          },
+          {
+            "id": "changedFiles",
+            "from": "presentation",
+            "pointer": "/changes",
+            "field": "key",
+            "where": { "field": "kind", "equals": "workspace" },
+            "aggregate": "count",
+            "type": "number"
+          },
+          {
+            "id": "addedLines",
+            "from": "presentation",
+            "pointer": "/changes",
+            "field": "addedLines",
+            "where": { "field": "kind", "equals": "workspace" },
+            "aggregate": "sum",
+            "type": "delta",
+            "sign": "always"
+          },
+          {
+            "id": "removedLines",
+            "from": "presentation",
+            "pointer": "/changes",
+            "field": "removedLines",
+            "where": { "field": "kind", "equals": "workspace" },
+            "aggregate": "sum",
+            "type": "delta",
+            "sign": "negative-only"
+          }
+        ],
+        "variants": [
+          {
+            "id": "singleMove",
+            "when": { "measure": "operationKind", "equals": "move" },
+            "title": "移动 {{moveSource}} → {{moveDestination}}"
+          },
+          {
+            "id": "single",
+            "when": { "measure": "operationCount", "equals": 1 },
+            "title": "{{operationKind}} {{primaryPath}} · {{addedLines}} {{removedLines}}"
+          },
+          {
+            "id": "batch",
+            "title": "修改 · {{operationCount}} 项 · {{changedFiles}} 个文件 · {{addedLines}} {{removedLines}}"
+          }
+        ],
+        "title": "修改 · {{operationCount}} 项操作"
+      }
+    },
+    "preview": { "body": { "pointer": "/operations", "from": "result" } }
+  },
+  "description": "以 add、update、write、delete、move 操作原子修改工作区文件；Skill/MCP 候选通过完整预检后才提交。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "operations": {
+        "minItems": 1,
+        "maxItems": 64,
+        "type": "array",
+        "items": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "const": "add" },
+                "path": { "type": "string", "minLength": 1 },
+                "content": { "type": "string" }
+              },
+              "required": ["kind", "path", "content"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "const": "update" },
+                "path": { "type": "string", "minLength": 1 },
+                "oldStr": { "type": "string", "minLength": 1 },
+                "newStr": { "type": "string" }
+              },
+              "required": ["kind", "path", "oldStr", "newStr"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "const": "write" },
+                "path": { "type": "string", "minLength": 1 },
+                "content": { "type": "string" }
+              },
+              "required": ["kind", "path", "content"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "const": "delete" },
+                "path": { "type": "string", "minLength": 1 }
+              },
+              "required": ["kind", "path"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "const": "move" },
+                "source": { "type": "string", "minLength": 1 },
+                "destination": { "type": "string", "minLength": 1 }
+              },
+              "required": ["kind", "source", "destination"],
+              "additionalProperties": false
+            }
+          ]
+        }
+      }
+    },
+    "required": ["operations"],
+    "additionalProperties": false
+  },
+  "permissions": ["filesystem:read:workspace", "filesystem:write:workspace"],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadWrite" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "ResourceClaims",
+    "MaxConcurrency": 1,
+    "Capabilities": { "Progress": true, "Cancellation": true }
+  },
+  "resources": [
+    {
+      "Capability": "senera.workspace.path",
+      "Pointer": "/operations",
+      "Parameters": { "Intent": "replace", "PathPointers": ["/*/path", "/*/source", "/*/destination"] }
+    }
+  ],
+  "sources": [
+    {
+      "Id": "workspace",
+      "Title": "Workspace",
+      "Description": "Files, directories, and source code in the current workspace."
+    }
+  ],
+  "search": {
+    "Summary": "以原子方式应用高层工作区补丁（add/update/write/delete/move），并在提交前完整验证受影响的 Skill/MCP 候选。",
+    "Tags": ["文件编辑", "代码修改", "apply_patch", "补丁", "工作区写入", "新增文件", "删除文件", "移动文件"],
+    "Capabilities": [
+      {
+        "Id": "workspace.apply-patch",
+        "Title": "Workspace apply patch",
+        "Description": "Apply high-level workspace patch operations (add/update/write/delete/move) with precise content or oldStr/newStr replacement.",
+        "Facets": {
+          "Actions": ["patch", "edit", "add", "write", "update", "delete", "move"],
+          "Targets": ["workspace", "file", "directory", "source-code", "configuration", "documentation"],
+          "Inputs": ["operations", "content", "oldStr", "newStr"],
+          "Outputs": ["workspace-patch-result", "workspace-file-change", "workspace-diff"],
+          "Evidence": ["workspace-patch-result", "workspace-diff"],
+          "Effects": ["write-workspace"]
+        },
+        "Aliases": [
+          "edit",
+          "write",
+          "apply patch",
+          "应用补丁",
+          "修改代码",
+          "新增文件",
+          "删除文件",
+          "移动文件",
+          "替换文本"
+        ],
+        "Risk": {
+          "SideEffect": "write-workspace",
+          "Permission": "write",
+          "Notes": [
+            "Changes workspace files via atomic patch operations.",
+            "Destructive delete operations require the normal workspace write approval path."
+          ]
+        }
+      }
+    ],
+    "UseCases": [
+      "需要以 add/update/write/delete/move 直接表达代码修改时使用。",
+      "需要新增文件、删除文件、移动文件时使用。",
+      "需要一次创建或修改完整的 .senera/skills 或 .senera/mcp 包时使用。",
+      "已读取目标文件内容，能给出准确 content 或 oldStr/newStr 精确替换时使用。"
+    ],
+    "Examples": ["新增一个 TypeScript 文件", "用 oldStr/newStr 精确替换已有函数", "移动文件并同时修正导出名"],
+    "Avoid": [
+      "只读查询不要使用。",
+      "不知道已有文件内容时先用 WorkspaceRead、WorkspaceGrep 或 WorkspaceFind 获取证据，再生成补丁。",
+      "不要把 unified hunk 或 oldText 格式传给本工具，update 使用 oldStr/newStr 精确替换。",
+      "不要传 dryRun/fuzzFactor/expectedSha256，本工具不再接受这些字段。"
+    ]
+  },
+  "evidenceCapabilities": [],
+  "approval": { "Mode": "ask", "Reason": "应用工作区文件补丁。" },
+  "artifacts": {
+    "Evidence": [
+      {
+        "Kind": "workspace_patch_result",
+        "Records": "$",
+        "Slots": { "text": "$.text", "applied": "$.applied", "operationCount": "$.operationCount" },
+        "Identity": { "Parts": ["text", "operationCount"] },
+        "Presentation": {
+          "Locator": "workspace-patch",
+          "Display": "Workspace patch",
+          "Label": "Workspace patch",
+          "Source": "{{ text }}"
+        },
+        "Confidence": 0.92,
+        "Metadata": { "applied": "$.applied", "operationCount": "$.operationCount" },
+        "ModelProjection": { "Slots": ["text", "applied", "operationCount"] },
+        "PlannerMemory": {
+          "Facts": ["text", "applied", "operationCount"],
+          "ArtifactRefs": ["evidence", "projection", "workspaceDiff", "workspacePatch"]
+        },
+        "Projection": {
+          "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} workspace patch: {{ e.slots.text }}\n{% endfor %}",
+          "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} workspace patch\n  text: {{ e.slots.text }}\n  applied: {{ e.slots.applied }}\n  operationCount: {{ e.slots.operationCount }}\n{% endfor %}"
+        }
+      }
+    ],
+    "Summary": {
+      "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+      "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}{% if workspace %}{% for change in workspace.changes %}- {{ change.status }} {{ change.path }}\n{% endfor %}{% endif %}"
+    },
+    "Workspace": {
+      "Capture": "mutation-receipt",
+      "MaxFileBytes": 262144,
+      "CaptureContent": "text",
+      "PatchContextLines": 3
+    }
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "text": { "type": "string", "minLength": 1 },
+      "applied": { "type": "boolean", "const": true },
+      "operationCount": { "type": "integer", "minimum": 1, "maximum": 64 },
+      "changedPaths": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+      "operations": {
+        "minItems": 1,
+        "maxItems": 64,
+        "type": "array",
+        "items": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "const": "add" },
+                "path": { "type": "string", "minLength": 1 },
+                "changedPaths": {
+                  "minItems": 1,
+                  "maxItems": 1,
+                  "type": "array",
+                  "items": { "type": "string", "minLength": 1 }
+                }
+              },
+              "required": ["kind", "path", "changedPaths"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "const": "update" },
+                "path": { "type": "string", "minLength": 1 },
+                "matches": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                "changedPaths": {
+                  "minItems": 1,
+                  "maxItems": 1,
+                  "type": "array",
+                  "items": { "type": "string", "minLength": 1 }
+                }
+              },
+              "required": ["kind", "path", "changedPaths"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "const": "write" },
+                "path": { "type": "string", "minLength": 1 },
+                "changedPaths": {
+                  "minItems": 1,
+                  "maxItems": 1,
+                  "type": "array",
+                  "items": { "type": "string", "minLength": 1 }
+                }
+              },
+              "required": ["kind", "path", "changedPaths"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "const": "delete" },
+                "path": { "type": "string", "minLength": 1 },
+                "changedPaths": {
+                  "minItems": 1,
+                  "maxItems": 1,
+                  "type": "array",
+                  "items": { "type": "string", "minLength": 1 }
+                }
+              },
+              "required": ["kind", "path", "changedPaths"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "const": "move" },
+                "source": { "type": "string", "minLength": 1 },
+                "destination": { "type": "string", "minLength": 1 },
+                "changedPaths": {
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "type": "array",
+                  "items": { "type": "string", "minLength": 1 }
+                }
+              },
+              "required": ["kind", "source", "destination", "changedPaths"],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "extensions": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "kind": { "type": "string", "enum": ["Skill", "MCP"] },
+            "name": { "type": "string", "minLength": 1 },
+            "path": { "type": "string", "minLength": 1 },
+            "status": { "type": "string", "const": "validated" }
+          },
+          "required": ["kind", "name", "path", "status"],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": ["text", "applied", "operationCount", "changedPaths", "operations", "extensions"],
+    "additionalProperties": false
+  }
+}

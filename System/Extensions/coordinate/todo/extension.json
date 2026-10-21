@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "todo",
+  "domain": "coordinate",
+  "settingsSurface": "system-tools",
+  "version": "1.1.0",
+  "displayName": { "zh-CN": "任务清单", "en-US": "Task List" },
+  "description": { "zh-CN": "维护本轮任务清单。", "en-US": "Maintains the task list for this turn." },
+  "priority": 2,
+  "presentation": {
+    "category": "todo",
+    "icon": "list-checks",
+    "group": { "id": "todo", "title": { "zh-CN": "任务计划", "en-US": "Task plan" } },
+    "activity": { "action": { "zh-CN": "更新计划", "en-US": "Update plan" } }
+  },
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/TodoAdd.tool.json",
+      "capability": "system.tool.todo.TodoAdd",
+      "childGrant": "internal",
+      "recommendedForSkills": []
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/TodoUpdate.tool.json",
+      "capability": "system.tool.todo.TodoUpdate",
+      "childGrant": "internal",
+      "recommendedForSkills": []
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/TodoRead.tool.json",
+      "capability": "system.tool.todo.TodoRead",
+      "childGrant": "internal",
+      "recommendedForSkills": []
+    }
+  ]
+}

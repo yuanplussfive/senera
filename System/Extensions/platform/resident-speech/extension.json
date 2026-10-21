@@ -1,0 +1,39 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "resident-speech",
+  "domain": "platform",
+  "settingsSurface": "system-tools",
+  "presentation": {
+    "category": "resident-speech",
+    "icon": "audio-lines",
+    "group": {
+      "id": "resident-speech",
+      "title": { "zh-CN": "角色表达", "en-US": "Resident expression" }
+    },
+    "activity": {
+      "action": { "zh-CN": "生成角色发言", "en-US": "Project resident speech" }
+    }
+  },
+  "version": "1.0.0",
+  "displayName": {
+    "zh-CN": "角色发言投影",
+    "en-US": "Resident Speech Projection"
+  },
+  "description": {
+    "zh-CN": "在启用人设的会话中，分别投影行动前发言与工具完成后的最终发言。",
+    "en-US": "Projects action prefaces and post-action final responses through distinct resident speech contracts."
+  },
+  "contributions": [
+    {
+      "kind": "sidecarTool",
+      "contract": "tools/ResidentActionSpeak.tool.json",
+      "capability": "resident-speech.action"
+    },
+    {
+      "kind": "sidecarTool",
+      "contract": "tools/ResidentFinalSpeak.tool.json",
+      "capability": "resident-speech.final"
+    }
+  ]
+}

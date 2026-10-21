@@ -1,0 +1,85 @@
+import { useCallback, useEffect } from "react";
+import type { WsRequest } from "../api/eventTypes";
+import type { SocketStatus } from "../api/useAgentSocket";
+import { useStore, UserProfileSyncStates, type UserProfile } from "../store/sessionStore";
+
+export interface UseSessionCatalogSyncOptions {
+  status: SocketStatus;
+  send: (request: WsRequest) => boolean;
+  onServerSessionsReset: () => void;
+}
+
+export interface SessionCatalogSyncHandle {
+  refreshSessionCatalog: () => void;
+}
+
+export function buildConnectionOpenSyncRequests(userProfile: UserProfile): WsRequest[] {
+  const requests: WsRequest[] = [
+    { type: "session.list" },
+    { type: "config.get" },
+    { type: "workspace.get" },
+    { type: "model.list" },
+    { type: "sandbox.status" },
+    { type: "systemTool.list" },
+    { type: "mcpServer.list" },
+    { type: "runtimeDependency.list" },
+  ];
+
+  if (userProfile.syncState === UserProfileSyncStates.Pending) {
+    const { name, avatarDataUrl, avatarPath, assistant } = userProfile;
+    requests.push({ type: "profile.update", profile: { name, avatarDataUrl, avatarPath, assistant } });
+  } else {
+    requests.push({ type: "profile.get" });
+  }
+
+  return requests;
+}
+
+export function buildManualRefreshRequests(): WsRequest[] {
+  return [
+    { type: "session.list" },
+    { type: "config.get" },
+    { type: "workspace.get" },
+    { type: "model.list" },
+    { type: "profile.get" },
+    { type: "sandbox.status" },
+    { type: "systemTool.list" },
+    { type: "mcpServer.list" },
+    { type: "runtimeDependency.list" },
+  ];
+}
+
+export function useSessionCatalogSync({
+  status,
+  send,
+  onServerSessionsReset,
+}: UseSessionCatalogSyncOptions): SessionCatalogSyncHandle {
+  const resetCatalogSyncState = useStore((state) => state.resetCatalogSyncState);
+  const invalidateSessionHistoryCache = useStore((state) => state.invalidateSessionHistoryCache);
+
+  const refreshSessionCatalog = useCallback((): void => {
+    if (status !== "open") return;
+    resetCatalogSyncState();
+    for (const request of buildManualRefreshRequests()) {
+      send(request);
+    }
+  }, [resetCatalogSyncState, send, status]);
+
+  useEffect(() => {
+    if (status !== "open") {
+      invalidateSessionHistoryCache();
+      resetCatalogSyncState();
+      onServerSessionsReset();
+      return;
+    }
+
+    resetCatalogSyncState();
+    onServerSessionsReset();
+    const state = useStore.getState();
+    for (const request of buildConnectionOpenSyncRequests(state.userProfile)) {
+      send(request);
+    }
+  }, [invalidateSessionHistoryCache, onServerSessionsReset, resetCatalogSyncState, send, status]);
+
+  return { refreshSessionCatalog };
+}

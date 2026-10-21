@@ -1,0 +1,119 @@
+{
+  "name": "MemoryWriteTool",
+  "loading": "Bootstrap",
+  "presentation": {
+    "category": "memory-write",
+    "icon": "brain",
+    "activity": { "action": { "zh-CN": "保存", "en-US": "Save" }, "argumentPath": "/summary" },
+    "preview": { "body": { "pointer": "/records/item", "from": "result" } }
+  },
+  "description": "接收用户明确要求记住的信息，在本轮正常完成后交给 MemOS 学习。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "summary": {
+        "type": "string",
+        "minLength": 1,
+        "description": "The explicit information the user asked Senera to remember."
+      }
+    },
+    "required": ["summary"],
+    "additionalProperties": false
+  },
+  "permissions": ["memory:write"],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "Parallel",
+    "MaxConcurrency": 1,
+    "Capabilities": { "Cancellation": true }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "continuity",
+      "Title": "MemOS",
+      "Description": "Semantic knowledge, immutable turn fragments, and daily/monthly summaries."
+    }
+  ],
+  "search": {
+    "Summary": "接收用户明确要求记住的信息，由本轮正常完成后的 MemOS 学习流程统一处理。",
+    "Tags": ["连续性", "学习记录", "用户偏好", "长期上下文"],
+    "Capabilities": [
+      {
+        "Id": "memory.write",
+        "Title": "显式记忆意图",
+        "Description": "Accept an explicit learning intent for the completed-turn learner.",
+        "Facets": {
+          "Actions": ["remember", "mark"],
+          "Targets": ["learning-record", "explicit-user-fact"],
+          "Inputs": ["summary"],
+          "Outputs": ["continuity_write"],
+          "Evidence": ["continuity_write"],
+          "Effects": ["persistent-write"]
+        },
+        "Aliases": ["记住这个", "记录偏好", "以后都这样", "写入长期记忆"],
+        "Risk": { "SideEffect": "persistent-write", "Permission": "memory-write" }
+      }
+    ],
+    "UseCases": ["用户明确要求记住事实、偏好或关系。"],
+    "Examples": ["记住我喜欢无糖咖啡", "本次对话记住先给结论"],
+    "Avoid": ["没有用户明确要求时不要调用。", "不要自行生成证据索引、置信度或条件 AST。"]
+  },
+  "evidenceCapabilities": [],
+  "artifacts": {
+    "Evidence": [
+      {
+        "Kind": "continuity_write",
+        "Records": "$.records.item[*]",
+        "Slots": { "summary": "$.summary" },
+        "Identity": { "Parts": ["summary"] },
+        "Presentation": {
+          "Locator": "{{ summary }}",
+          "Display": "{{ summary }}",
+          "Label": "{{ summary }}",
+          "Source": "continuity"
+        },
+        "ModelProjection": { "Slots": ["summary"] },
+        "PlannerMemory": { "Facts": ["summary"], "ArtifactRefs": ["projection", "evidence"] },
+        "Projection": {
+          "SummaryTemplate": "{% for e in evidence %}{{ e.slots.summary }}\n{% endfor %}",
+          "ArtifactTemplate": "{% for e in evidence %}{{ e.slots.summary }}\n{% endfor %}"
+        },
+        "Confidence": 1
+      }
+    ],
+    "Summary": {
+      "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+      "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}"
+    }
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "status": { "type": "string", "const": "accepted_for_learning" },
+      "records": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": { "summary": { "type": "string" } },
+              "required": ["summary"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["item"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["status", "records"],
+    "additionalProperties": false
+  }
+}

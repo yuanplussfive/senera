@@ -1,0 +1,334 @@
+import { useCallback, useRef, type MutableRefObject, type ReactNode, type Ref } from "react";
+import { motion } from "framer-motion";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { cn } from "../../lib/util";
+import { FluidHoverHighlight, motionTimings, useFluidHover, useMotionLevel } from "../../shared/motion";
+import { AppIcon, IconButton, ScrollArea, Sheet, SheetContent } from "../../shared/ui";
+import { DiscardDraftDialog } from "./DiscardDraftDialog";
+import type { groupSettingsSectionResults } from "./settingsPresentation";
+import type { SettingsSectionDefinition, SettingsSectionId } from "./types";
+
+export interface SettingsWorkbenchLayoutProps {
+  activeSection: SettingsSectionDefinition;
+  children: ReactNode;
+  layout: "compact" | "persistent";
+  navigation: ReactNode;
+  navigationOpen: boolean;
+  onNavigationOpenChange: (open: boolean) => void;
+  overlay?: ReactNode;
+  shellActions?: ReactNode;
+  shellRef: Ref<HTMLDivElement>;
+  showSectionHeader?: boolean;
+}
+
+export function SettingsWorkbenchLayout({
+  activeSection,
+  children,
+  layout,
+  navigation,
+  navigationOpen,
+  onNavigationOpenChange,
+  overlay,
+  shellActions,
+  shellRef,
+  showSectionHeader = false,
+}: SettingsWorkbenchLayoutProps): JSX.Element {
+  return (
+    <div
+      ref={shellRef}
+      className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-surface-canvas text-content-primary outline-none"
+      data-settings-workbench
+      data-settings-section={activeSection.id}
+      data-settings-layout={layout}
+      tabIndex={-1}
+    >
+      {layout === "compact" ? (
+        <header
+          className="flex h-[var(--senera-top-chrome-height)] shrink-0 items-center gap-2 border-b border-line-subtle bg-surface-panel px-3"
+          data-window-drag-region
+          data-window-controls-inset
+        >
+          <IconButton
+            label={frontendMessage("settings.nav.open")}
+            tooltip={frontendMessage("settings.nav.open")}
+            size="sm"
+            tone="muted"
+            onClick={() => onNavigationOpenChange(true)}
+          >
+            <AppIcon icon="menu" size={16} aria-hidden="true" />
+          </IconButton>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[13px] font-semibold text-content-strong">{activeSection.label}</div>
+          </div>
+          {shellActions}
+        </header>
+      ) : null}
+
+      <div className="flex min-h-0 flex-1">
+        {layout === "persistent" ? (
+          <aside
+            className="relative z-20 flex w-[224px] shrink-0 flex-col bg-surface-sidebar"
+            data-settings-navigation-rail
+          >
+            <div
+              className="flex h-[var(--senera-top-chrome-height)] shrink-0 items-center gap-2 border-b border-line-subtle px-3"
+              data-window-drag-region
+            >
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="min-w-0 truncate pl-2.5 text-[13px] font-semibold text-content-primary">
+                  {frontendMessage("settings.header.title")}
+                </span>
+                {shellActions}
+              </div>
+            </div>
+            {navigation}
+          </aside>
+        ) : null}
+
+        <main className="flex min-w-0 flex-1 flex-col bg-surface-subtle">
+          {showSectionHeader ? <SettingsSectionHeader section={activeSection} /> : null}
+          {children}
+        </main>
+      </div>
+
+      <Sheet open={navigationOpen} onOpenChange={onNavigationOpenChange}>
+        <SheetContent
+          side="left"
+          title={frontendMessage("settings.nav.title")}
+          className="w-[min(320px,calc(100vw-24px))] p-0"
+          showHeader={false}
+          focusContentOnOpen
+        >
+          <div className="flex h-full min-h-0 flex-col bg-surface-canvas">
+            <div className="flex h-[var(--senera-top-chrome-height)] shrink-0 items-center gap-2 border-b border-line-subtle px-4">
+              <div className="min-w-0 flex-1 text-[13px] font-semibold text-content-primary">
+                {frontendMessage("settings.header.title")}
+              </div>
+              <IconButton
+                label={frontendMessage("settings.nav.close")}
+                tooltip={frontendMessage("settings.nav.close")}
+                size="sm"
+                tone="muted"
+                onClick={() => onNavigationOpenChange(false)}
+              >
+                <AppIcon icon="close" size={16} aria-hidden="true" />
+              </IconButton>
+            </div>
+            {navigation}
+          </div>
+        </SheetContent>
+      </Sheet>
+      {overlay}
+    </div>
+  );
+}
+
+export function SettingsNavigation({
+  activeSectionId,
+  activeNavItemRef,
+  groupedResults,
+  search,
+  onSearchChange,
+  onSelect,
+}: {
+  activeSectionId: SettingsSectionId;
+  activeNavItemRef: MutableRefObject<HTMLButtonElement | null>;
+  groupedResults: ReturnType<typeof groupSettingsSectionResults>;
+  search: string;
+  onSearchChange: (value: string) => void;
+  onSelect: (section: SettingsSectionId) => void;
+}): JSX.Element {
+  const { reduceMotion, disableMotion } = useMotionLevel();
+  const animateSelection = !reduceMotion && !disableMotion;
+  const navigationListRef = useRef<HTMLElement>(null);
+  const navigationHover = useFluidHover(navigationListRef, { axis: "y", gapClick: false });
+  // The selected row owns its own surface through the layoutId indicator;
+  // letting the hover layer paint underneath it doubles the wash and puts two
+  // animations on the same pixels.
+  const selectedNavigationIndex = groupedResults
+    .flatMap(({ results }) => results)
+    .findIndex(({ section }) => section.id === activeSectionId);
+  let navigationIndex = 0;
+  return (
+    <>
+      <div className="shrink-0 px-3 pb-2 pt-1.5">
+        <label className="flex h-8 items-center gap-2 rounded-md border border-transparent bg-surface-hover px-2.5 text-content-muted transition-[background-color,border-color,box-shadow] focus-within:border-accent-border focus-within:bg-surface-panel focus-within:ring-2 focus-within:ring-accent-focus">
+          <AppIcon icon="search" size={14} aria-hidden="true" />
+          <input
+            value={search}
+            onChange={(event) => onSearchChange(event.target.value)}
+            aria-label={frontendMessage("settings.nav.searchLabel")}
+            placeholder={frontendMessage("settings.nav.searchPlaceholder")}
+            className="min-w-0 flex-1 bg-transparent text-[12.5px] text-content-primary outline-none placeholder:text-content-muted"
+          />
+          {search ? (
+            <button
+              type="button"
+              aria-label={frontendMessage("settings.nav.clearSearch")}
+              onClick={() => onSearchChange("")}
+              className="grid h-5 w-5 shrink-0 place-items-center rounded text-content-muted transition hover:bg-surface-hover hover:text-content-primary"
+            >
+              <AppIcon icon="close" size={14} aria-hidden="true" />
+            </button>
+          ) : null}
+        </label>
+      </div>
+      <ScrollArea className="min-h-0 flex-1" viewportClassName="px-3 pb-4 pt-1">
+        <nav
+          ref={navigationListRef}
+          className="relative space-y-4"
+          aria-label={frontendMessage("settings.nav.sectionsLabel")}
+          {...navigationHover.handlers}
+        >
+          <FluidHoverHighlight
+            hover={navigationHover}
+            hidden={disableMotion || navigationHover.activeIndex === selectedNavigationIndex}
+            className="rounded-md"
+          />
+          {groupedResults.map(({ group, results }) => (
+            <div key={group.id}>
+              <div className="px-2.5 pb-1.5 text-[10px] font-medium tracking-[0.06em] text-content-muted">
+                {group.label}
+              </div>
+              <div className="space-y-0.5">
+                {results.map(({ section, details }) => {
+                  const index = navigationIndex;
+                  navigationIndex += 1;
+                  return (
+                    <SettingsNavItem
+                      key={section.id}
+                      itemRef={navigationHover.getItemRef(index)}
+                      fluidHoverEnabled={!disableMotion}
+                      section={section}
+                      active={section.id === activeSectionId}
+                      searchDetails={details}
+                      buttonRef={section.id === activeSectionId ? activeNavItemRef : undefined}
+                      animateSelection={animateSelection}
+                      onSelect={() => onSelect(section.id)}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          {groupedResults.length === 0 ? (
+            <div className="px-2 py-5 text-center text-[12px] leading-5 text-ink-500">
+              {frontendMessage("settings.nav.empty")}
+            </div>
+          ) : null}
+        </nav>
+      </ScrollArea>
+    </>
+  );
+}
+
+function SettingsNavItem({
+  itemRef,
+  fluidHoverEnabled,
+  section,
+  active,
+  searchDetails,
+  buttonRef,
+  animateSelection,
+  onSelect,
+}: {
+  itemRef: (element: HTMLElement | null) => void;
+  fluidHoverEnabled: boolean;
+  section: SettingsSectionDefinition;
+  active: boolean;
+  searchDetails: readonly { label: string; value: string }[];
+  buttonRef?: Ref<HTMLButtonElement>;
+  animateSelection: boolean;
+  onSelect: () => void;
+}): JSX.Element {
+  const setItemRef = useCallback(
+    (node: HTMLButtonElement | null): void => {
+      itemRef(node);
+      if (!buttonRef) return;
+      if (typeof buttonRef === "function") buttonRef(node);
+      else buttonRef.current = node;
+    },
+    [buttonRef, itemRef],
+  );
+
+  return (
+    <button
+      ref={setItemRef}
+      type="button"
+      aria-current={active ? "page" : undefined}
+      onClick={onSelect}
+      className={cn(
+        "relative grid min-h-9 w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 rounded-md px-2.5 py-2 text-left text-[12.5px] transition-colors",
+        active
+          ? "text-content-primary"
+          : cn(
+              "text-content-secondary hover:text-content-primary",
+              fluidHoverEnabled ? "hover:bg-transparent" : "hover:bg-surface-hover",
+            ),
+      )}
+    >
+      {active ? (
+        <motion.span
+          layoutId={animateSelection ? "settings-navigation-selection" : undefined}
+          className="absolute inset-0 rounded-md bg-surface-hover"
+          transition={animateSelection ? motionTimings.selection : { duration: 0 }}
+          aria-hidden="true"
+          data-settings-navigation-indicator
+        />
+      ) : null}
+      <AppIcon
+        icon={section.icon}
+        size={16}
+        className={cn("relative z-[1]", active ? "text-content-primary" : "text-content-muted")}
+        aria-hidden="true"
+      />
+      <span className="relative z-[1] min-w-0">
+        <span className="block truncate leading-5">{section.label}</span>
+        {searchDetails.map((detail) => (
+          <span
+            key={`${detail.label}:${detail.value}`}
+            className="mt-0.5 block truncate text-[10.5px] leading-4 text-content-muted"
+          >
+            {detail.label}: {detail.value}
+          </span>
+        ))}
+      </span>
+    </button>
+  );
+}
+
+function SettingsSectionHeader({ section }: { section: SettingsSectionDefinition }): JSX.Element {
+  return (
+    <header
+      className="shrink-0 border-b border-line-subtle bg-surface-canvas px-5 py-4 sm:px-8"
+      data-window-drag-region
+      data-window-controls-inset
+    >
+      <h2 className="truncate text-[13px] font-semibold text-content-primary">{section.label}</h2>
+      <p className="mt-1 max-w-[640px] text-[11px] leading-5 text-content-muted">{section.description}</p>
+    </header>
+  );
+}
+
+export function DiscardSectionDraftDialog({
+  open,
+  onOpenChange,
+  onDiscard,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onDiscard: () => void;
+}): JSX.Element {
+  return (
+    <DiscardDraftDialog
+      open={open}
+      title={frontendMessage("settings.discard.title")}
+      description={frontendMessage("settings.discard.switchDescription")}
+      consequence={frontendMessage("settings.discard.savedUnaffected")}
+      continueLabel={frontendMessage("settings.discard.continue")}
+      confirmLabel={frontendMessage("settings.discard.sectionConfirm")}
+      onOpenChange={onOpenChange}
+      onDiscard={onDiscard}
+    />
+  );
+}

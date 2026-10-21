@@ -1,0 +1,97 @@
+{
+  "name": "TodoAdd",
+  "loading": "Bootstrap",
+  "description": "Add one or more pending tasks to the current session. The tool assigns stable IDs; use TodoUpdate to change their status or description.",
+  "presentation": {
+    "category": "todo-add",
+    "icon": "plus",
+    "activity": { "action": { "zh-CN": "新增", "en-US": "Add tasks" }, "detailPaths": ["/tasks/*/content"] },
+    "preview": { "body": { "pointer": "/created", "from": "result" } }
+  },
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "tasks": {
+        "minItems": 1,
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": { "content": { "type": "string", "minLength": 1, "description": "Task description." } },
+          "required": ["content"],
+          "additionalProperties": false
+        },
+        "description": "Tasks to add. New tasks start pending; the tool assigns stable IDs and returns them."
+      }
+    },
+    "required": ["tasks"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "created": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "status": { "type": "string", "enum": ["pending", "in_progress", "completed", "cancelled"] }
+          },
+          "required": ["id", "status"],
+          "additionalProperties": false
+        }
+      },
+      "counts": {
+        "type": "object",
+        "properties": {
+          "total": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "pending": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "inProgress": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "completed": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "cancelled": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+        },
+        "required": ["total", "pending", "inProgress", "completed", "cancelled"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["created", "counts"],
+    "additionalProperties": false
+  },
+  "permissions": ["session:todo"],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "SelfManaged",
+    "Capabilities": { "Cancellation": true }
+  },
+  "resources": [],
+  "sources": [],
+  "search": {
+    "Summary": "向本轮任务清单新增步骤，并返回稳定任务 ID。",
+    "Tags": ["任务清单", "todo", "计划", "进度"],
+    "Capabilities": [
+      {
+        "Id": "todo.add",
+        "Title": "Task list management",
+        "Description": "Create tasks and receive their stable IDs.",
+        "Facets": {
+          "Actions": ["add"],
+          "Targets": ["session-task-list"],
+          "Inputs": ["tasks", "content"],
+          "Outputs": ["created-task-ids", "task-counts"],
+          "Effects": ["session-state"]
+        },
+        "Aliases": ["新增任务", "添加待办", "创建任务步骤", "add todo task"],
+        "Risk": { "SideEffect": "session-state", "Permission": "write" }
+      }
+    ],
+    "UseCases": ["为多步骤工作创建任务清单", "执行中发现新的独立工作步骤"],
+    "Examples": ["为这个实现任务建立步骤清单", "新增一个验证步骤"],
+    "Avoid": ["不要用它修改已有任务状态", "简单的一步请求无需建立清单"]
+  },
+  "evidenceCapabilities": []
+}

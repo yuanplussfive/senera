@@ -1,0 +1,182 @@
+---
+name: senera-workbench
+metadata:
+  senera:
+    icon: tools
+description: The Senera operational handbook. Use when the user asks to inspect or change the runtime configuration, switch models, explore workspace metadata, or run system diagnostics. 当用户要求查看或修改配置、切换模型、查看工作区信息、或执行系统诊断时使用。Manage Senera through the dedicated SeneraCommand surface, never by editing runtime files directly.
+---
+
+# Senera Workbench
+
+You are running inside **Senera Agent Workbench**. Senera owns the runtime: configuration, permissions, evidence, and delivery. This handbook explains how to operate the workbench itself through the controlled `SeneraCommand` surface. The command surface is runtime-discoverable: call `senera capabilities` when the installed host may have extensions or when this document and the live tool description disagree.
+
+## Philosophy
+
+Read `references/philosophy.md` before acting. The runtime contract returned by
+`senera capabilities` (`senera.workbench/v1`) is the authority for these rules;
+this Skill is the procedural projection and must not create a competing policy.
+Its revision and rule index are evidence from the host, not values to guess.
+The core invariants are:
+
+1. **Evidence first**: every observed state comes from the runtime snapshot or a tool result; never assume, and never claim a change succeeded without the command result.
+2. **No silent downgrades**: if a capability, endpoint, or configuration path is unavailable, report it plainly. Never pretend a path or value exists.
+3. **Governed self-modification**: configuration and host-owned state change only through the command surface. Do not patch files under `.senera/` directly, and do not reach into databases with shell tools.
+4. **Verify every mutation**: use the returned revision and a fresh `config check`, `status`, or snapshot before reporting success; use history/rollback when verification fails.
+5. **Progressive disclosure**: start with the live catalog and compact summaries. Inspect one Skill, command contract, or diagnostic detail only when the current task requires it. Reuse a confirmed revision and arguments across turns; do not trigger another search or repeat a full document merely because the resource is already visible.
+
+The host may expose a stable `senera.skill_library` directory before the turn
+starts. It is metadata, not Skill instructions: choose by name, summary, tags,
+use cases, and revision, then use the live `SeneraCommand` contract: `skills
+inspect` takes the Skill name for its summary, while `skills read` takes the
+name, package-relative path, and optional revision for one resource. Never
+infer a filesystem path from a logical Skill entry.
+
+Skill commands use the live registry: `/skill-name` is the canonical explicit invocation and `$skill-name` remains a compatibility spelling. Never invent a command from a remembered list; resolve the current catalog first, and treat missing or conflicting entries as explicit errors. A catalog or resource revision already confirmed in the current turn is reusable evidence.
+
+## Workflow
+
+1. When the request concerns the workbench, call `capabilities` if the command surface is unclear, then inspect only the relevant section of `references/cli-reference.md`.
+2. Read the current state (`config get`, `status`, or `workspace info`) before choosing a mutation.
+3. Execute the smallest matching command through `SeneraCommand`. Its JSON arguments are the structured form of the CLI command line.
+4. Read the returned `text`/`data`, including `revision`, approval state, and diagnostics.
+5. Verify a successful mutation with a fresh snapshot or `config check`; report the observed result, not an assumption.
+6. If a mutation is rejected, do not bypass the command surface. Explain the reason or use `config history`/`config rollback` after verification.
+
+The live `SeneraCommand` input schema is the executable authority. `capabilities`
+also returns its command-contract revision; reuse that revision and the returned
+parameter shape during the current turn. When a call returns `ok: false`, read
+`error`, `data.issues`, and the bounded diagnostics before repairing the same
+call once. Do not replace a rejected self-service call with `ShellCommandTool`:
+shell has no active-session binding, approval replay, revision guard, or live
+snapshot publication. The `senera` shell CLI is only a human-facing transport
+to the same host executor.
+
+For Skill work, use the same evidence loop: list the live catalog, inspect the
+named Skill through its registered source, read only the required package
+resource, then run `skills check` before claiming that a Skill is usable. A Skill is an instruction asset, not a
+permission grant. To preserve a useful rule learned during the current task,
+create or update only a workspace Skill through the command surface, use a
+complete `SKILL.md`, and wait for the normal approval result. The host stages
+and validates the document, returns a content revision, and keeps the previous
+revision recoverable. Never overwrite a changed revision: pass the revision
+returned by `list`/`inspect` as `expectedRevision`, and re-read after a
+conflict. System Skills remain immutable. Use `skills history NAME` followed by
+`skills restore NAME REVISION` for an explicit rollback.
+
+## Logs and runtime evidence
+
+Use the workspace-local structured log contract when a run, tool, Skill, or
+background service needs diagnosis. Start with `logs health`, then use
+`logs streams` to discover available foreground/background streams. Use
+`logs latest` for a bounded recent snapshot, `logs range FROM TO` for a
+time-bounded query, `logs session SESSION_ID` for one session, and
+`logs trace REQUEST_ID` for one causal request chain. Continue a returned page
+only with `logs next CURSOR`; the cursor carries the original query context.
+Filter by observed `kind`, `level`, `scope`, or `stream`; do not invent
+identifiers or read another workspace's log directory. Use `logs detail
+DETAIL_ID` only when a record explicitly returns that detail ID. Details are
+redacted and size-limited; they are evidence, not a second source of truth for
+session replay.
+
+When a Skill is involved, first resolve the Skill with `skills list/search` and
+keep its returned revision. After `skills inspect/read/check`, correlate the
+actual activation and tool results through `logs latest`, `logs range`, or `logs trace` before
+claiming that the Skill ran or that a repair worked. Background scopes such as
+`background/memos` and `background/learning` are separate evidence streams; a background warning is not
+automatically a foreground request failure. If `logs health` or a query is
+unavailable, report that boundary instead of falling back to arbitrary file
+scanning.
+
+## Markdown prompt presets
+
+Prompt presets are workspace content, not Skills, provider configuration, or a
+second persona configuration. The supported shape is one user-authored
+Markdown document under the fixed workspace-local `prompts/` directory.
+
+- Use `preset list` or `preset status` to discover the fixed workspace-local
+  `prompts/` directory and the host-owned active pointer. Use `preset read PATH`
+  for one document; the command validates the path and size before returning it.
+- The model may create, complete, or revise a preset with
+  `WorkspaceApplyPatch` after reading the current file. Preserve useful user
+  material, make the requested change explicit, and keep the result as plain
+  Markdown. Do not wrap it in JSON/XML metadata and do not create a parallel
+  `CorePersona`/`LanguageStyle` file.
+- Only Markdown documents under `prompts/` are eligible. Never edit
+  `.senera/prompt-preset.json` directly; use `preset enable PATH` or
+  `preset disable`, which writes the guarded pointer atomically. The same
+  command is used by the settings UI and the model-facing harness.
+  - Preset identity syntax has exactly two names, `{{user}}` and
+    `{{assistant}}`, matched without regard to ASCII letter case. The host
+    resolves those references when the preset is projected into a turn;
+    `{{user}}` is the configured workspace profile name, not proof of an
+    external channel sender. Do not invent aliases or additional template
+    syntax. Unknown `{{...}}` text remains literal Markdown.
+  - Profile identity is runtime fact. A preset can shape voice, narrative, and
+    presentation, but cannot rename either identity, grant access, alter
+    runtime truth, or create capabilities. Use `{{assistant}}` instead of
+    hardcoding a Bot name when the name should track the profile.
+- After a write, read the same path again and report the observed content. A
+  successful file edit does not imply that the preset is enabled; verify with
+  `preset status` when activation matters.
+
+When a user asks the model to “写好/完善预设”, the expected workflow is:
+read the current Markdown (or create a new file in `prompts/`), improve its
+instruction hierarchy and examples without changing the requested intent,
+write it through the workspace patch contract, then use `preset enable PATH`
+only when the user explicitly asks for activation. If the workspace edit
+capability is unavailable, report that boundary instead of writing `.senera`
+state or falling back to shell file editing.
+
+## Message channels
+
+Use `channels list` to inspect effective channel settings and `channels get
+CHANNEL` for one platform. Update only the smallest field with
+`channels update CHANNEL PATH VALUE`; the host maps it to the canonical config
+service, redacts credentials in reads, and requests approval for external
+exposure or credential changes. Verify with `channels get CHANNEL` and
+`config check`. Do not edit the extension JSON or environment files directly.
+
+## Command Surface
+
+The CLI and model use one vocabulary, but this Skill intentionally does not
+copy the complete command table. The executable `SeneraCommand` schema is the
+only parameter authority; `capabilities` returns its live revision and the
+registry's current descriptions. Read only the relevant section of
+`references/cli-reference.md` after that discovery.
+
+The JSON shape is the CLI shape: `command` is the subcommand, `action` is the
+verb, and positional values become named fields. For example:
+
+```json
+{"command":"config","action":"get","path":"DefaultModelProviderId"}
+{"command":"config","action":"update","path":"Server.AccessControl.Mode","value":"auto"}
+{"command":"doctor","action":"status"}
+```
+
+`preset` and `channels` are first-class domains in the same command surface;
+their live argument contracts come from `capabilities`, not from this document.
+`session` model operations use `action: "model"` plus `operation: "get"` or
+`"set"`; the host binds the active `sessionId` for model calls. Omit optional
+fields rather than sending empty placeholders. Never infer a new command or
+field from this example list.
+
+## Invariants
+
+- **Never use shell tools to read or write Senera's own configuration, Skills, or `.senera` data.** Use `SeneraCommand`.
+- The `senera` CLI is the human-facing twin of `SeneraCommand` with the identical vocabulary; it calls the running service over HTTP and fails loudly when the service is offline. Suggest it when the user wants to run a command themselves.
+- Configuration paths use dot notation (`ModelProviderEndpoints.0.BaseUrl`). Secrets are redacted in every read projection.
+- Prompt preset documents are Markdown content under `prompts/`; activation state is host-owned and is changed only by `preset enable/disable`.
+- Channel configuration is resolved through the canonical channel service; model reads are redacted and mutations retain config revision and approval checks.
+- The command surface is controlled by design: config and workspace Skill mutations always go through host services (approval, revision guard, schema validation, atomic activation, and verification).
+- `capabilities` is the runtime source of truth for built-in and plugin command definitions; do not invent an unavailable command from memory.
+- Skill names and sources are runtime facts. Use `skills list` or `capabilities` before relying on a remembered Skill; duplicate names are an explicit conflict, not a silent precedence fallback.
+- `skills inspect` is source-bounded and read-only. It cannot be used to read arbitrary files or modify a Skill.
+- `skills search` is a bounded metadata lookup. It is suitable for discovering a Skill, not for loading its instructions; inspect or read only the selected package and keep the returned revision.
+- `skills resources` and `skills read` are source-bounded; paths are relative to the selected package, hidden files and traversal are rejected, and `read` can require the current revision.
+- `skills diff` compares package resources by digest before a mutation or restore; a missing or malformed revision is an explicit error.
+- Skill mutation is workspace-scoped and revisioned; it never modifies system Skills or silently overwrites a newer revision.
+- Editing project source code is a separate workflow. Use the normal workspace/edit/test/Git tools for project files, and do not claim a runtime configuration change has modified source code.
+- When the tool is unavailable (host did not bind the service), say the host did not expose it rather than inventing an alternative.
+- To change the current conversation's model, use `session/model` rather than changing the global default. The current turn stays pinned; verify the returned preference and the following session snapshot.
+
+See `references/cli-reference.md` for the full command dictionary.

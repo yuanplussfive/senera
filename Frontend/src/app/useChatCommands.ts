@@ -1,0 +1,619 @@
+import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
+import { toast } from "sonner";
+import type { ExplicitActivationSet, ModelThinkingLevel, UploadAttachmentData, WsRequest } from "../api/eventTypes";
+import type { ApprovalBatchReference, ApprovalDecision } from "../api/approvalEventTypes";
+import type { InteractionInputAction, InteractionInputContent } from "../api/eventTypes";
+import type { SocketStatus } from "../api/useAgentSocket";
+import { readActiveRun, useStore, type ChatMessage, type SessionRecord } from "../store/sessionStore";
+import { blocksSessionInput, readSessionHydrationState } from "../store/session/sessionHydration";
+import { generateId } from "../lib/util";
+import { frontendMessage } from "../i18n/frontendMessageCatalog";
+import type { ExecutionApprovalMode } from "../api/executionApprovalMode";
+import { readConfiguredChatModelProviderId } from "../features/chat/modelProvider";
+
+export interface RegenerateFromRequest {
+  sessionId: string;
+  fromRequestId: string;
+  nextInput: string;
+  attachments?: UploadAttachmentData[];
+  modelProviderId?: string;
+  thinkingLevel?: ModelThinkingLevel;
+  activations?: ExplicitActivationSet;
+}
+
+export interface UseChatCommandsOptions {
+  activeSessionId: string | null;
+  appendUserMessage: (
+    sessionId: string,
+    requestId: string,
+    input: string,
+    attachments?: UploadAttachmentData[],
+    options?: { createRun?: boolean; metadata?: import("../api/eventTypes").ConversationEntryMetadata },
+  ) => void;
+  lastSendRef: MutableRefObject<LastSentMessage | null>;
+  registerSession: (sessionId: string, title?: string, modelProviderId?: string | null) => void;
+  send: (request: WsRequest) => boolean;
+  serverKnownSessionIdsRef: MutableRefObject<Set<string>>;
+  status: SocketStatus;
+}
+
+export interface ChatCommandsHandle {
+  cancelActiveSession: () => void;
+  deleteFromMessage: (message: ChatMessage) => void;
+  editUserMessage: (message: ChatMessage, nextContent: string) => void;
+  forkFromMessage: (message: Pick<ChatMessage, "requestId">) => void;
+  regenerateMessage: (message: ChatMessage) => void;
+  retryRun: (message: ChatMessage) => void;
+  continueRun: (message: ChatMessage) => void;
+  resolveApproval: (approvalId: string, decision: ApprovalDecision) => void;
+  resolveApprovalBatch: (batch: ApprovalBatchReference, decision: ApprovalDecision) => void;
+  resolveInteractionInput: (
+    interactionId: string,
+    action: InteractionInputAction,
+    content?: InteractionInputContent,
+  ) => void;
+  sendMessage: (
+    input: string,
+    attachments?: UploadAttachmentData[],
+    queueMode?: MessageQueueMode,
+    activations?: ExplicitActivationSet,
+  ) => boolean;
+}
+
+export type MessageQueueMode = Extract<WsRequest, { type: "session.message" }>["queueMode"];
+
+export interface LastSentMessage {
+  sessionId: string;
+  requestId: string;
+  input: string;
+  attachments?: UploadAttachmentData[];
+  modelProviderId?: string;
+  thinkingLevel?: ModelThinkingLevel;
+  approvalMode: ExecutionApprovalMode;
+  queueMode?: MessageQueueMode;
+  activations?: ExplicitActivationSet;
+}
+
+export type SendTargetResolution =
+  | { kind: "blocked_catalog_loading"; sessionId: string | null }
+  | { kind: "blocked_history_loading"; sessionId: string | null }
+  | { kind: "ready"; sessionId: string; shouldCreateSession: boolean };
+
+export function resolveSendTargetSession({
+  activeSessionId,
+  createSessionId,
+  catalogSynced,
+  historyFailedIds,
+  historyLoadedIds,
+  historyLoadingIds,
+  missingOnServerIds,
+  sessions,
+}: {
+  activeSessionId: string | null;
+  createSessionId: () => string;
+  historyLoadingIds: Record<string, boolean>;
+  historyLoadedIds: Record<string, boolean>;
+  historyFailedIds: Record<string, boolean>;
+  sessions: Record<string, SessionRecord>;
+  catalogSynced: boolean;
+  missingOnServerIds: Record<string, boolean>;
+}): SendTargetResolution {
+  if (!catalogSynced && !activeSessionId) {
+    return { kind: "blocked_catalog_loading", sessionId: null };
+  }
+  if (activeSessionId) {
+    const session = sessions[activeSessionId];
+    const hydrationState = readSessionHydrationState({
+      catalogSynced,
+      session: session ?? null,
+      historyLoaded: Boolean(historyLoadedIds[activeSessionId]),
+      historyLoading: Boolean(historyLoadingIds[activeSessionId]),
+      historyFailed: Boolean(historyFailedIds[activeSessionId]),
+    });
+    if (blocksSessionInput(hydrationState)) {
+      return {
+        kind: hydrationState === "catalog_loading" ? "blocked_catalog_loading" : "blocked_history_loading",
+        sessionId: activeSessionId,
+      };
+    }
+  }
+  const activeSessionMissingFromCatalog = activeSessionId && catalogSynced && !sessions[activeSessionId];
+  if (!activeSessionId || missingOnServerIds[activeSessionId] || activeSessionMissingFromCatalog) {
+    return { kind: "ready", sessionId: createSessionId(), shouldCreateSession: true };
+  }
+  return { kind: "ready", sessionId: activeSessionId, shouldCreateSession: false };
+}
+
+export function findRegenerateInput({
+  activeSessionId,
+  message,
+}: {
+  activeSessionId: string | null;
+  message: ChatMessage;
+}):
+  | {
+      attachments?: UploadAttachmentData[];
+      kind: "found";
+      input: string;
+      requestId: string;
+      activations?: ExplicitActivationSet;
+    }
+  | { kind: "missing_request" }
+  | { kind: "not_found" } {
+  if (!activeSessionId || !message.requestId) {
+    return { kind: "missing_request" };
+  }
+
+  const session = useStore.getState().sessions[activeSessionId];
+  const userMessage = resolveRegenerateSourceUser(session, message);
+  if (!userMessage) {
+    return { kind: "not_found" };
+  }
+
+  return {
+    kind: "found",
+    input: userMessage.content,
+    attachments: userMessage.attachments,
+    requestId: userMessage.requestId,
+    activations: userMessage.metadata?.activation,
+  };
+}
+
+function resolveRegenerateSourceUser(
+  session: SessionRecord | undefined,
+  message: ChatMessage,
+): (ChatMessage & { readonly requestId: string }) | undefined {
+  if (!session || !message.requestId) return undefined;
+
+  const usersByRequestId = new Map(
+    session.messages.filter(isUserMessageWithRequestId).map((candidate) => [candidate.requestId, candidate] as const),
+  );
+  const assistantSourcesByRequestId = new Map(
+    session.messages
+      .filter((candidate) => candidate.role === "assistant" && candidate.requestId)
+      .map((candidate) => [candidate.requestId!, candidate.metadata?.sourceRequestId] as const),
+  );
+  const runsByRequestId = new Map(session.runs.map((run) => [run.requestId, run] as const));
+
+  let candidateRequestId = message.metadata?.sourceRequestId ?? message.requestId;
+  const visited = new Set<string>();
+  let durableInputRun = runsByRequestId.get(message.requestId);
+  while (candidateRequestId && !visited.has(candidateRequestId)) {
+    visited.add(candidateRequestId);
+    const userMessage = usersByRequestId.get(candidateRequestId);
+    if (userMessage) return userMessage;
+
+    const run = runsByRequestId.get(candidateRequestId);
+    if (run) durableInputRun = run;
+    const nextRequestId = assistantSourcesByRequestId.get(candidateRequestId) ?? run?.recovery?.sourceRequestId;
+    if (!nextRequestId || nextRequestId === candidateRequestId) break;
+    candidateRequestId = nextRequestId;
+  }
+
+  // History can arrive in separate pages. The durable run still carries the
+  // original input, so a first assistant turn remains regenerable while its
+  // user entry is being hydrated or when an older projection omitted it.
+  if (durableInputRun && typeof durableInputRun.input === "string") {
+    return {
+      id: `${candidateRequestId ?? durableInputRun.requestId}:user`,
+      role: "user",
+      content: durableInputRun.input,
+      createdAt: durableInputRun.startedAt,
+      requestId: candidateRequestId ?? durableInputRun.requestId,
+    };
+  }
+  return undefined;
+}
+
+function isUserMessageWithRequestId(
+  candidate: ChatMessage,
+): candidate is ChatMessage & { readonly role: "user"; readonly requestId: string } {
+  return candidate.role === "user" && typeof candidate.requestId === "string" && candidate.requestId.length > 0;
+}
+
+export function normalizeEditedMessageContent(content: string): string | null {
+  const trimmed = content.trim();
+  return trimmed ? trimmed : null;
+}
+
+export function useChatCommands({
+  activeSessionId,
+  appendUserMessage,
+  lastSendRef,
+  registerSession,
+  send,
+  serverKnownSessionIdsRef,
+  status,
+}: UseChatCommandsOptions): ChatCommandsHandle {
+  const pendingCancellationRef = useRef<{ sessionId: string; requestId: string } | null>(null);
+
+  useEffect(() => {
+    if (status !== "open") return;
+    const pending = pendingCancellationRef.current;
+    if (!pending) return;
+    const activeRun = readActiveRun(useStore.getState().sessions[pending.sessionId]);
+    if (
+      !activeRun ||
+      activeRun.requestId !== pending.requestId ||
+      (activeRun.status !== "running" && activeRun.status !== "cancelling")
+    ) {
+      pendingCancellationRef.current = null;
+      return;
+    }
+    const accepted = send({
+      type: "session.cancel",
+      sessionId: pending.sessionId,
+      requestId: pending.requestId,
+    });
+    if (accepted) pendingCancellationRef.current = null;
+  }, [send, status]);
+
+  const regenerateFromRequest = useCallback(
+    (request: RegenerateFromRequest): boolean => {
+      const requestId = generateId();
+      const approvalMode = useStore.getState().executionApprovalMode;
+      const modelProviderId = readConfiguredChatModelProviderId(
+        useStore.getState().modelProviders,
+        request.modelProviderId,
+      );
+      const ok = send({
+        type: "session.regenerate",
+        sessionId: request.sessionId,
+        fromRequestId: request.fromRequestId,
+        requestId,
+        modelProviderId,
+        thinkingLevel: request.thinkingLevel,
+        input: request.nextInput,
+        approvalMode,
+        attachments: request.attachments,
+        activations: request.activations,
+      });
+      if (!ok) {
+        toast.error(frontendMessage("chat.operationDisconnected"));
+        return false;
+      }
+
+      useStore.getState().truncateFromRequest(request.sessionId, request.fromRequestId);
+      lastSendRef.current = {
+        sessionId: request.sessionId,
+        requestId,
+        input: request.nextInput,
+        attachments: request.attachments,
+        modelProviderId,
+        thinkingLevel: request.thinkingLevel,
+        approvalMode,
+        activations: request.activations,
+      };
+      appendUserMessage(request.sessionId, requestId, request.nextInput, request.attachments, {
+        metadata: request.activations ? { activation: request.activations } : undefined,
+      });
+      return true;
+    },
+    [appendUserMessage, lastSendRef, send],
+  );
+
+  const cancelActiveSession = useCallback((): void => {
+    if (!activeSessionId) return;
+    const state = useStore.getState();
+    const session = state.sessions[activeSessionId];
+    const activeRun = readActiveRun(session);
+    if (!activeRun || activeRun.status !== "running") return;
+    pendingCancellationRef.current = { sessionId: activeSessionId, requestId: activeRun.requestId };
+    useStore.getState().markRunCancelling(activeSessionId, activeRun.requestId);
+    const accepted =
+      status === "open"
+        ? send({ type: "session.cancel", sessionId: activeSessionId, requestId: activeRun.requestId })
+        : false;
+    if (accepted) pendingCancellationRef.current = null;
+    toast.message(frontendMessage("chat.cancelRequested"));
+  }, [activeSessionId, send, status]);
+
+  const regenerateMessage = useCallback(
+    (message: ChatMessage): void => {
+      if (!activeSessionId || status !== "open") return;
+
+      const result = findRegenerateInput({ activeSessionId, message });
+      if (result.kind === "missing_request") {
+        toast.error(frontendMessage("chat.regenerateMissingRequestId"));
+        return;
+      }
+      if (result.kind === "not_found") {
+        toast.error(frontendMessage("chat.regenerateSourceNotFound"));
+        return;
+      }
+
+      regenerateFromRequest({
+        sessionId: activeSessionId,
+        fromRequestId: result.requestId,
+        nextInput: result.input,
+        attachments: result.attachments,
+        modelProviderId: readConfiguredChatModelProviderId(
+          useStore.getState().modelProviders,
+          useStore.getState().selectedModelProviderId,
+        ),
+        thinkingLevel: useStore.getState().selectedThinkingLevel ?? undefined,
+        activations: result.activations,
+      });
+    },
+    [activeSessionId, regenerateFromRequest, status],
+  );
+
+  const recoverRun = useCallback(
+    (message: ChatMessage, recoveryMode: "retry" | "continue"): void => {
+      if (!activeSessionId || status !== "open" || !message.requestId) return;
+      const state = useStore.getState();
+      const failedRun = state.sessions[activeSessionId]?.runs.find((run) => run.requestId === message.requestId);
+      if (!failedRun || (failedRun.status !== "failed" && failedRun.status !== "cancelled")) return;
+      const sourceUserMessage = state.sessions[activeSessionId]?.messages.find(
+        (candidate) => candidate.role === "user" && candidate.requestId === message.requestId,
+      );
+      const activations = sourceUserMessage?.metadata?.activation;
+      const requestId = generateId();
+      const approvalMode = state.executionApprovalMode;
+      if (!failedRun.recoveryModes?.includes(recoveryMode)) return;
+      if (!state.beginRunRecovery(activeSessionId, message.requestId, requestId, recoveryMode)) return;
+      const ok = send({
+        type: "session.retry",
+        sessionId: activeSessionId,
+        failedRequestId: message.requestId,
+        requestId,
+        recoveryMode,
+        modelProviderId: readConfiguredChatModelProviderId(state.modelProviders, state.selectedModelProviderId),
+        thinkingLevel: state.selectedThinkingLevel ?? undefined,
+        approvalMode,
+        activations,
+      });
+      if (!ok) {
+        state.rejectRunRecovery(activeSessionId, requestId, frontendMessage("chat.operationDisconnected"));
+        toast.error(frontendMessage("chat.operationDisconnected"));
+        return;
+      }
+      lastSendRef.current = {
+        sessionId: activeSessionId,
+        requestId,
+        input: recoveryMode === "continue" ? "continue" : failedRun.input,
+        modelProviderId: readConfiguredChatModelProviderId(state.modelProviders, state.selectedModelProviderId),
+        thinkingLevel: state.selectedThinkingLevel ?? undefined,
+        approvalMode,
+        activations,
+      };
+    },
+    [activeSessionId, lastSendRef, send, status],
+  );
+
+  const retryRun = useCallback((message: ChatMessage): void => recoverRun(message, "retry"), [recoverRun]);
+  const continueRun = useCallback((message: ChatMessage): void => recoverRun(message, "continue"), [recoverRun]);
+
+  useEffect(() => {
+    if (status === "open") return;
+    const state = useStore.getState();
+    for (const session of Object.values(state.sessions)) {
+      for (const run of session.runs) {
+        if (run.recoveryAttempt?.status === "pending") {
+          state.rejectRunRecovery(
+            session.sessionId,
+            run.recoveryAttempt.requestId,
+            frontendMessage("chat.operationDisconnected"),
+          );
+        }
+      }
+    }
+  }, [status]);
+
+  const forkFromMessage = useCallback(
+    (message: Pick<ChatMessage, "requestId">): void => {
+      if (!activeSessionId || status !== "open") return;
+      if (!message.requestId) {
+        toast.error(frontendMessage("chat.forkMissingRequestId"));
+        return;
+      }
+
+      const ok = send({
+        type: "session.fork",
+        sourceSessionId: activeSessionId,
+        sessionId: generateId(),
+        throughRequestId: message.requestId,
+      });
+      if (!ok) {
+        toast.error(frontendMessage("chat.forkDisconnected"));
+      }
+    },
+    [activeSessionId, send, status],
+  );
+
+  const editUserMessage = useCallback(
+    (message: ChatMessage, nextContent: string): void => {
+      if (!activeSessionId || status !== "open") return;
+      if (!message.requestId) {
+        toast.error(frontendMessage("chat.editMissingRequestId"));
+        return;
+      }
+      const trimmed = normalizeEditedMessageContent(nextContent);
+      if (!trimmed) {
+        toast.error(frontendMessage("chat.contentRequired"));
+        return;
+      }
+
+      regenerateFromRequest({
+        sessionId: activeSessionId,
+        fromRequestId: message.requestId,
+        nextInput: trimmed,
+        attachments: message.attachments,
+        modelProviderId: readConfiguredChatModelProviderId(
+          useStore.getState().modelProviders,
+          useStore.getState().selectedModelProviderId,
+        ),
+        thinkingLevel: useStore.getState().selectedThinkingLevel ?? undefined,
+        activations: message.metadata?.activation,
+      });
+    },
+    [activeSessionId, regenerateFromRequest, status],
+  );
+
+  const deleteFromMessage = useCallback(
+    (message: ChatMessage): void => {
+      if (!activeSessionId || status !== "open") return;
+      if (!message.requestId) {
+        toast.error(frontendMessage("chat.deleteMissingRequestId"));
+        return;
+      }
+      const ok = send({
+        type: "session.truncate_from",
+        sessionId: activeSessionId,
+        requestId: message.requestId,
+      });
+      if (!ok) {
+        toast.error(frontendMessage("chat.deleteDisconnected"));
+        return;
+      }
+      toast.success(frontendMessage("chat.deleted"));
+    },
+    [activeSessionId, send, status],
+  );
+
+  const sendMessage = useCallback(
+    (
+      input: string,
+      attachments?: UploadAttachmentData[],
+      queueMode?: MessageQueueMode,
+      activations?: ExplicitActivationSet,
+    ): boolean => {
+      const state = useStore.getState();
+      const modelProviderId = readConfiguredChatModelProviderId(state.modelProviders, state.selectedModelProviderId);
+      const thinkingLevel = state.selectedThinkingLevel ?? undefined;
+      const approvalMode = state.executionApprovalMode;
+      const target = resolveSendTargetSession({
+        activeSessionId,
+        createSessionId: generateId,
+        catalogSynced: state.catalogSynced.sessions,
+        historyFailedIds: state.historyFailedIds,
+        historyLoadedIds: state.historyLoadedIds,
+        historyLoadingIds: state.historyLoadingIds,
+        missingOnServerIds: state.missingOnServerIds,
+        sessions: state.sessions,
+      });
+
+      if (target.kind === "blocked_catalog_loading") {
+        return false;
+      }
+      if (target.kind === "blocked_history_loading") {
+        toast.warning(frontendMessage("chat.historyRecovering"));
+        return false;
+      }
+
+      const targetSessionId = target.sessionId;
+      if (activeSessionId && target.shouldCreateSession) {
+        serverKnownSessionIdsRef.current.delete(activeSessionId);
+      }
+
+      const requestId = generateId();
+      const createIfMissing = !serverKnownSessionIdsRef.current.has(targetSessionId);
+      const ok = send({
+        type: "session.message",
+        sessionId: targetSessionId,
+        requestId,
+        modelProviderId,
+        thinkingLevel,
+        input,
+        approvalMode,
+        attachments,
+        disposition: createIfMissing ? "create_if_missing" : undefined,
+        queueMode,
+        activations,
+      });
+      if (!ok) {
+        toast.error(frontendMessage("chat.sendDisconnected"));
+        return false;
+      }
+      if (target.shouldCreateSession) {
+        registerSession(targetSessionId, undefined, modelProviderId);
+      }
+      serverKnownSessionIdsRef.current.add(targetSessionId);
+      appendUserMessage(targetSessionId, requestId, input, attachments, {
+        createRun: queueMode === undefined,
+        metadata: activations ? { activation: activations } : undefined,
+      });
+      lastSendRef.current = {
+        sessionId: targetSessionId,
+        requestId,
+        input,
+        attachments,
+        modelProviderId,
+        thinkingLevel,
+        approvalMode,
+        queueMode,
+        activations,
+      };
+      return true;
+    },
+    [activeSessionId, appendUserMessage, lastSendRef, registerSession, send, serverKnownSessionIdsRef],
+  );
+
+  const resolveApproval = useCallback(
+    (approvalId: string, decision: ApprovalDecision): void => {
+      if (status !== "open") {
+        toast.error(frontendMessage("approval.resolveOffline"));
+        return;
+      }
+      const state = useStore.getState();
+      state.markApprovalResolutionPending(approvalId, decision);
+      const ok = send({
+        type: "approval.resolve",
+        approvalId,
+        decision,
+      });
+      if (!ok) {
+        state.markApprovalResolutionPending(approvalId);
+        toast.error(frontendMessage("approval.resolveDisconnected"));
+      }
+    },
+    [send, status],
+  );
+
+  const resolveApprovalBatch = useCallback(
+    (batch: ApprovalBatchReference, decision: ApprovalDecision): void => {
+      if (status !== "open") {
+        toast.error(frontendMessage("approval.resolveOffline"));
+        return;
+      }
+      const state = useStore.getState();
+      state.markApprovalBatchResolutionPending(batch, decision);
+      const ok = send({ type: "approval.resolve_batch", ...batch, decision });
+      if (!ok) {
+        state.markApprovalBatchResolutionPending(batch);
+        toast.error(frontendMessage("approval.resolveDisconnected"));
+      }
+    },
+    [send, status],
+  );
+
+  const resolveInteractionInput = useCallback(
+    (interactionId: string, action: InteractionInputAction, content?: InteractionInputContent): void => {
+      if (status !== "open") {
+        toast.error(frontendMessage("interaction.input.resolveOffline"));
+        return;
+      }
+      useStore.getState().markInteractionInputResolutionPending(interactionId, action);
+      const ok = send({ type: "interaction.input.resolve", interactionId, action, content });
+      if (!ok) {
+        useStore.getState().markInteractionInputResolutionPending(interactionId);
+        toast.error(frontendMessage("interaction.input.resolveDisconnected"));
+      }
+    },
+    [send, status],
+  );
+
+  return {
+    cancelActiveSession,
+    deleteFromMessage,
+    editUserMessage,
+    forkFromMessage,
+    regenerateMessage,
+    retryRun,
+    continueRun,
+    resolveApproval,
+    resolveApprovalBatch,
+    resolveInteractionInput,
+    sendMessage,
+  };
+}

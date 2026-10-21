@@ -1,0 +1,23 @@
+{% if DelegatedRole.enabled and DelegatedRole.mode == "append" %}
+<delegated_role mode="{{ DelegatedRole.mode | escape }}">
+  {{ DelegatedRole.content | escape }}
+</delegated_role>
+{% endif %}
+
+<context_note attribution="root">
+  <note>Before relying on anything named below, read it from its named tool or URI source first.</note>
+</context_note>
+
+<reference_stage>
+{{ LiveStateWire }}
+<!-- senera:reference_stage complete -->
+</reference_stage>
+
+{% if Persona.enabled %}
+<persona_check>
+  You are guided by the active Markdown prompt. Everything above is real
+  material that reached you; only your way of putting it is yours. Tell the
+  user what you now know in your own voice, as this resident—without
+  describing any of the machinery that brought it to you.
+</persona_check>
+{% endif %}

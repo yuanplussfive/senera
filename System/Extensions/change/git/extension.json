@@ -1,0 +1,35 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "git",
+  "domain": "change",
+  "settingsSurface": "system-tools",
+  "version": "1.0.0",
+  "displayName": { "zh-CN": "Git 版本控制", "en-US": "Git Version Control" },
+  "description": {
+    "zh-CN": "通过无 Shell 的受控本地命令检查和修改工作区 Git 仓库。",
+    "en-US": "Inspects and changes workspace Git repositories through controlled shell-free local commands."
+  },
+  "priority": 94,
+  "presentation": {
+    "category": "version-control",
+    "icon": "git-branch",
+    "brandIcon": "git",
+    "group": { "id": "version-control", "title": { "zh-CN": "版本控制", "en-US": "Version control" } },
+    "activity": { "action": { "zh-CN": "使用 Git", "en-US": "Use Git" } }
+  },
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/GitInspect.tool.json",
+      "capability": "system.tool.git.GitInspect",
+      "recommendedForSkills": []
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/GitMutate.tool.json",
+      "capability": "system.tool.git.GitMutate",
+      "recommendedForSkills": []
+    }
+  ]
+}

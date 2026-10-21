@@ -1,0 +1,187 @@
+{
+  "name": "MemoryRecallTool",
+  "loading": "Bootstrap",
+  "presentation": {
+    "category": "memory-recall",
+    "icon": "book-open",
+    "activity": {
+      "action": { "zh-CN": "回忆", "en-US": "Recall" },
+      "argumentPath": "/query",
+      "detailPaths": ["/refs/*"]
+    },
+    "preview": { "body": { "pointer": "/records/item", "from": "result" } }
+  },
+  "description": "按语义、MemOS 节点引用或 Asia/Shanghai 时间范围检索知识和日/月摘要。",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "query": {
+        "description": "Natural-language description of the knowledge or completed scenario.",
+        "type": "string",
+        "minLength": 1
+      },
+      "refs": {
+        "description": "Exact memos:<node-id> references to read.",
+        "minItems": 1,
+        "type": "array",
+        "items": { "type": "string", "minLength": 7, "pattern": "^memos:.*" }
+      },
+      "from": {
+        "description": "Start date (YYYY-MM-DD) or RFC 3339 instant. Dates use Asia/Shanghai.",
+        "type": "string",
+        "minLength": 1
+      },
+      "to": {
+        "description": "Inclusive end date (YYYY-MM-DD), or exclusive RFC 3339 end instant.",
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "additionalProperties": false
+  },
+  "permissions": ["memory:read"],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "Parallel",
+    "Capabilities": { "Cancellation": true }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "continuity",
+      "Title": "MemOS",
+      "Description": "Semantic knowledge, immutable turn fragments, and daily/monthly summaries."
+    }
+  ],
+  "search": {
+    "Summary": "从 MemOS 召回相关知识、历史片段和日/月摘要。",
+    "Tags": ["记忆", "时间摘要", "用户偏好", "关系", "历史片段"],
+    "Capabilities": [
+      {
+        "Id": "memory.recall",
+        "Title": "分层记忆召回",
+        "Description": "Read semantic knowledge, turn fragments, or calendar summaries from MemOS by query, node reference, or time range.",
+        "Facets": {
+          "Actions": ["read", "recall", "inspect"],
+          "Targets": ["semantic-knowledge", "turn-fragment", "calendar-summary"],
+          "Inputs": ["natural-language-query", "time-range", "memos-node-reference"],
+          "Outputs": ["memos-node"],
+          "Evidence": ["continuity_recall"],
+          "Effects": ["read-only"]
+        },
+        "Aliases": ["回忆", "查找记忆", "检索偏好"],
+        "Risk": { "SideEffect": "read-only", "Permission": "memory-read" }
+      }
+    ],
+    "UseCases": ["回忆用户偏好", "查看指定日期发生的事情", "读取指定 MemOS 节点"],
+    "Examples": ["用户的饮食偏好", "昨天讨论了什么"],
+    "Avoid": []
+  },
+  "evidenceCapabilities": [],
+  "artifacts": {
+    "Evidence": [
+      {
+        "Kind": "continuity_recall",
+        "Records": "$.records.item[*]",
+        "Slots": {
+          "uri": "$.uri",
+          "type": "$.type",
+          "summary": "$.summary",
+          "content": "$.content",
+          "occurredAt": "$.occurredAt",
+          "score": "$.score",
+          "matchedBy": "$.matchedBy",
+          "scores": "$.scores"
+        },
+        "Identity": { "Parts": ["uri"] },
+        "Presentation": {
+          "Locator": "{{ uri }}",
+          "Display": "{{ summary }}",
+          "Label": "{{ summary }}",
+          "Source": "continuity"
+        },
+        "ModelProjection": {
+          "Slots": ["uri", "type", "summary", "content", "occurredAt", "score", "matchedBy", "scores"]
+        },
+        "PlannerMemory": {
+          "Facts": ["uri", "type", "summary", "occurredAt", "score", "matchedBy", "scores"],
+          "ArtifactRefs": ["projection", "evidence"]
+        },
+        "Projection": {
+          "SummaryTemplate": "{% for e in evidence %}{{ e.slots.summary }}\n{% endfor %}",
+          "ArtifactTemplate": "{% for e in evidence %}{{ e.slots.uri }}\n{{ e.slots.content }}\n{% endfor %}"
+        },
+        "Confidence": 1
+      }
+    ],
+    "Summary": {
+      "Template": "{% for block in projections %}{{ block.summary }}\n{% endfor %}",
+      "ArtifactTemplate": "{% for block in projections %}{{ block.artifact }}\n{% endfor %}"
+    }
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "query": { "type": "string" },
+      "range": {
+        "type": "object",
+        "properties": { "from": { "type": "string" }, "to": { "type": "string" }, "timeZone": { "type": "string" } },
+        "required": ["from", "to", "timeZone"],
+        "additionalProperties": false
+      },
+      "budget": {
+        "type": "object",
+        "properties": {
+          "maxTokens": { "type": "number" },
+          "matchedRecords": { "type": "number" },
+          "returnedRecords": { "type": "number" }
+        },
+        "required": ["maxTokens", "matchedRecords", "returnedRecords"],
+        "additionalProperties": false
+      },
+      "records": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": { "type": "string" },
+                "revision": { "type": "string" },
+                "type": { "type": "string" },
+                "content": { "type": "string" },
+                "summary": { "type": "string" },
+                "occurredAt": { "type": "string" },
+                "score": { "type": "number" },
+                "matchedBy": { "type": "array", "items": { "type": "string" } },
+                "scores": { "type": "object" },
+                "period": {
+                  "type": "object",
+                  "properties": {
+                    "granularity": { "type": "string", "enum": ["day", "month"] },
+                    "start": { "type": "string" },
+                    "end": { "type": "string" }
+                  },
+                  "required": ["granularity", "start", "end"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["uri", "revision", "type", "content", "summary", "occurredAt", "score", "matchedBy"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["item"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["budget", "records"],
+    "additionalProperties": false
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "agent-resource-tools",
+  "domain": "explore",
+  "settingsSurface": "system-tools",
+  "version": "1.0.0",
+  "displayName": { "zh-CN": "资源访问", "en-US": "Resource Access" },
+  "description": {
+    "zh-CN": "将 Senera 资源标识解析为当前工作区内可直接读取的本地路径。",
+    "en-US": "Resolves a Senera resource identity to a directly readable local path in the active workspace."
+  },
+  "priority": 8,
+  "presentation": {
+    "category": "resource",
+    "icon": "route",
+    "group": { "id": "resource", "title": { "zh-CN": "资源访问", "en-US": "Resource access" } },
+    "activity": { "action": { "zh-CN": "解析路径", "en-US": "Resolve path" }, "argumentPath": "/resourceUri" }
+  },
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/ResourcePath.tool.json",
+      "capability": "system.tool.agent-resource-tools.ResourcePath",
+      "recommendedForSkills": []
+    }
+  ]
+}

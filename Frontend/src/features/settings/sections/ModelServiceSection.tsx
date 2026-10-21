@@ -1,0 +1,339 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
+import type { SettingsSystemConfigHandle } from "../SettingsContracts";
+
+import { classifySettingsContentLayout, useObservedLayout } from "../../../shared/responsive";
+import { cn } from "../../../lib/util";
+import { AppIcon } from "../../../shared/ui";
+import {
+  findItemField,
+  findTopField,
+  providerIdLabel,
+  readFieldOptions,
+  sortProviderRows,
+  toProviderEndpointInput,
+} from "../../chat/modelConfigData";
+import type { ModelProviderDraft, ProviderEndpointDraft } from "../../chat/modelConfigTypes";
+import { DiscardDraftDialog } from "../DiscardDraftDialog";
+import { AddProviderDialog, EditProviderDialog, RenameProviderDialog } from "./ProviderConnectionDialogs";
+import { ProviderConnectionEditor } from "./ProviderConnectionEditor";
+import { ProviderConnectionList } from "./ProviderConnectionList";
+import { ProviderModelManagementSurface } from "./ProviderModelManagementSurface";
+import {
+  readDefaultAssistantModelCandidates,
+  readModelServiceState,
+  type ModelServiceState,
+} from "./modelServiceState";
+import { useProviderConnectionActions } from "./useProviderConnectionActions";
+import { ProviderModelLifecycleDialogs } from "./ProviderModelLifecycleDialogs";
+import { SettingsSectionLoading } from "../SettingsLoading";
+
+const EMPTY_DRAFT: Record<string, unknown> = {};
+
+/** Provider/model management. Default assignment lives in DefaultModelSection. */
+export function ModelServiceSection({
+  systemConfig,
+  onDirtyChange,
+}: {
+  systemConfig?: SettingsSystemConfigHandle;
+  onDirtyChange?: (dirty: boolean) => void;
+}): JSX.Element {
+  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  const [modelPendingRemoval, setModelPendingRemoval] = useState<ModelProviderDraft | null>(null);
+  const [providerPendingRemoval, setProviderPendingRemoval] = useState<ProviderEndpointDraft | null>(null);
+  const [pendingProviderSelection, setPendingProviderSelection] = useState<ProviderEndpointDraft | null>(null);
+  const [providerConfigOpen, setProviderConfigOpen] = useState(false);
+  const [providerConfigSaveRequested, setProviderConfigSaveRequested] = useState(false);
+  const [editorLocalDirty, setEditorLocalDirty] = useState(false);
+  const editorLocalDirtyRef = useRef(false);
+  const handleEditorLocalDirtyChange = (dirty: boolean): void => {
+    editorLocalDirtyRef.current = dirty;
+    setEditorLocalDirty(dirty);
+  };
+  const { ref: layoutRef, layout } = useObservedLayout<HTMLDivElement, "compact" | "standard" | "wide">(
+    classifySettingsContentLayout,
+    "standard",
+  );
+  const snapshot = systemConfig?.configSnapshot ?? null;
+  const modelSection = snapshot?.form.sections.find((section) => section.name === "models") ?? null;
+  const state =
+    systemConfig && snapshot && modelSection
+      ? readModelServiceState({
+          catalogs: systemConfig.providerModelCatalogs,
+          configDiagnostics: snapshot.diagnostics,
+          draft: EMPTY_DRAFT,
+          errors: systemConfig.providerModelErrors,
+          loadingIds: systemConfig.providerModelLoadingIds,
+          section: modelSection,
+          selectedProviderId,
+        })
+      : null;
+  const modelField = useMemo(() => findTopField(modelSection ?? undefined, "ModelProviders"), [modelSection]);
+  const modelTemplate = useMemo(() => modelField?.defaultItem ?? {}, [modelField]);
+  const defaultModelCandidates = useMemo(
+    () =>
+      state
+        ? readDefaultAssistantModelCandidates({
+            models: state.models,
+            providers: state.providers,
+            modelTemplate,
+          })
+        : [],
+    [modelTemplate, state],
+  );
+  const currentDefaultModelId = state?.defaultModel?.model.Id ?? null;
+  const emptyState = useMemo(
+    (): ModelServiceState => ({
+      providers: [],
+      models: [],
+      selectedProvider: null,
+      selectedProviderModelList: null,
+      defaultModel: null,
+      defaultModelStatus: frontendMessage("settings.diagnostics.unset"),
+      defaultSlots: [],
+      diagnostics: [],
+      catalogSignalCount: 0,
+      enabledModelCount: 0,
+      enabledProviders: 0,
+      providerCount: 0,
+      providerIssues: [],
+      unresolvedApiKeyProviderIds: [],
+    }),
+    [],
+  );
+  const noopCommands = useMemo(
+    () => ({
+      deleteProviderEndpoint: () => null as never,
+      fetchProviderModels: () => null as never,
+      renameProviderEndpoint: () => null as never,
+      upsertProviderEndpoint: () => null as never,
+    }),
+    [],
+  );
+  const actions = useProviderConnectionActions({
+    state: state ?? emptyState,
+    catalogs: systemConfig?.providerModelCatalogs ?? {},
+    errors: systemConfig?.providerModelErrors ?? {},
+    loadingProviderIds: systemConfig?.providerModelLoadingIds ?? {},
+    operations: systemConfig?.providerEndpointOperations ?? {},
+    selectedProviderId,
+    setSelectedProviderId,
+    onDeleteProviderEndpoint: systemConfig?.deleteProviderEndpoint ?? noopCommands.deleteProviderEndpoint,
+    onFetchProviderModels: systemConfig?.fetchProviderModels ?? noopCommands.fetchProviderModels,
+    onRenameProviderEndpoint: systemConfig?.renameProviderEndpoint ?? noopCommands.renameProviderEndpoint,
+    onUpsertProviderEndpoint: systemConfig?.upsertProviderEndpoint ?? noopCommands.upsertProviderEndpoint,
+    onRefreshConfig: systemConfig?.refreshConfig,
+    socketStatus: systemConfig?.socketStatus,
+  });
+
+  useEffect(() => {
+    if (!providerConfigSaveRequested) return;
+    if (actions.localError) {
+      setProviderConfigSaveRequested(false);
+      return;
+    }
+    if (actions.dirty || actions.saving) return;
+    setProviderConfigSaveRequested(false);
+    setProviderConfigOpen(false);
+  }, [actions.dirty, actions.localError, actions.saving, providerConfigSaveRequested]);
+
+  const handleProviderConfigOpenChange = (open: boolean): void => {
+    if (!open) setProviderConfigSaveRequested(false);
+    setProviderConfigOpen(open);
+  };
+
+  useEffect(() => {
+    onDirtyChange?.(actions.dirty || editorLocalDirty);
+    return () => onDirtyChange?.(false);
+  }, [actions.dirty, editorLocalDirty, onDirtyChange]);
+
+  if (!systemConfig) return <SettingsSectionLoading variant="split" />;
+  if (!snapshot || !modelSection || !state) return <SettingsSectionLoading variant="split" />;
+
+  const firstProvider = sortProviderRows([...state.providers])[0]?.provider ?? null;
+  const selectedProvider = state.providers.find((provider) => provider.Id === selectedProviderId) ?? firstProvider;
+  const acceptedProviderId = actions.acceptedProvider?.Id;
+  const apiKeyUnresolved = acceptedProviderId ? state.unresolvedApiKeyProviderIds.includes(acceptedProviderId) : false;
+  const endpointOptions = readFieldOptions(findItemField(modelField, "Endpoint"));
+  const modelSurface = (
+    <ProviderModelManagementSurface
+      disabled={actions.saving}
+      defaultModelEndpoint={selectedProvider?.DefaultEndpoint}
+      operations={systemConfig.providerModelOperations}
+      onFetchProviderModels={systemConfig.fetchProviderModels}
+      onRequestRemoveModel={setModelPendingRemoval}
+      onSetDefaultModel={systemConfig.setDefaultProviderModel}
+      onUpsertProviderModel={systemConfig.upsertProviderModel}
+      state={state}
+      catalogs={systemConfig.providerModelCatalogs}
+      errors={systemConfig.providerModelErrors}
+      loadingProviderIds={systemConfig.providerModelLoadingIds}
+      draft={EMPTY_DRAFT}
+      section={modelSection}
+      modelField={modelField}
+      endpointOptions={endpointOptions}
+      initialSelectedProviderId={selectedProvider?.Id}
+      initialManualAdd={false}
+      showProviderList={false}
+      showFetchAction
+      fetchEndpoint={actions.connectionDraft ? toProviderEndpointInput(actions.connectionDraft, false) : undefined}
+      embedded
+    />
+  );
+  const providerList = (
+    <section className="flex min-h-0 flex-col overflow-hidden border-r border-line-subtle/70 bg-surface-subtle">
+      <ProviderConnectionList
+        providers={state.providers}
+        catalogs={systemConfig.providerModelCatalogs}
+        errors={systemConfig.providerModelErrors}
+        loadingProviderIds={systemConfig.providerModelLoadingIds}
+        operations={systemConfig.providerEndpointOperations}
+        selectedProviderId={actions.acceptedProvider?.Id ?? null}
+        compact={layout === "compact"}
+        disabled={false}
+        onRequestAdd={() => actions.setShowAddDialog(true)}
+        onEnabledChange={actions.setProviderEnabled}
+        providerDisableReason={actions.getProviderDisableReason}
+        onSelect={(provider) => {
+          if (provider.Id !== actions.acceptedProvider?.Id && editorLocalDirtyRef.current) {
+            setPendingProviderSelection(provider);
+            return;
+          }
+          const selected = actions.commitAndSelectProvider(provider);
+          if (!selected) {
+            setPendingProviderSelection(provider);
+            return;
+          }
+          if (layout === "compact") setMobileDetailOpen(true);
+        }}
+      />
+    </section>
+  );
+  const detail = (
+    <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-surface-soft">
+      <div className="shrink-0 border-b border-line-subtle/70">
+        <div className="mx-auto w-full max-w-[800px] px-6 sm:px-8">
+          <ProviderConnectionEditor
+            acceptedProvider={actions.acceptedProvider}
+            apiKeyUnresolved={apiKeyUnresolved}
+            dirty={actions.dirty}
+            draftProvider={actions.connectionDraft}
+            localError={actions.localError}
+            operation={actions.providerOperation}
+            providerIndex={actions.selectedProviderIndex}
+            disabled={false}
+            onReadApiKey={systemConfig.readProviderApiKey}
+            onChange={actions.updateDraftProvider}
+            onConfirm={actions.confirmDraft}
+            onLocalDraftChange={handleEditorLocalDirtyChange}
+            providerDisableReason={actions.getProviderDisableReason}
+            onEdit={() => setProviderConfigOpen(true)}
+            onDelete={actions.acceptedProvider ? () => setProviderPendingRemoval(actions.acceptedProvider!) : undefined}
+          />
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <div className="mx-auto flex h-full w-full max-w-[800px] flex-col px-6 sm:px-8">
+          <div className="min-h-0 flex-1 overflow-hidden">{modelSurface}</div>
+        </div>
+      </div>
+    </section>
+  );
+
+  const content =
+    layout === "compact" ? (
+      <div className="relative h-full min-h-0 overflow-hidden bg-paper-50">
+        {mobileDetailOpen ? (
+          <div className="flex h-full min-h-0 flex-col overflow-hidden bg-paper-50">
+            <button
+              type="button"
+              className="flex h-11 shrink-0 items-center gap-1.5 border-b border-ink-200/70 px-3 text-left text-[12.5px] font-medium text-ink-600 transition hover:bg-ink-900/[0.025] hover:text-ink-900"
+              onClick={() => setMobileDetailOpen(false)}
+            >
+              <AppIcon icon="chevron-right" size={16} className="rotate-180" aria-hidden="true" />
+              {frontendMessage("settings.model.serviceBack")}
+            </button>
+            <div className="min-h-0 flex-1 overflow-hidden">{detail}</div>
+          </div>
+        ) : (
+          providerList
+        )}
+      </div>
+    ) : (
+      <div className={cn("grid h-full min-h-0 overflow-hidden bg-surface-sidebar", "grid-cols-[230px_minmax(0,1fr)]")}>
+        {providerList}
+        <div className="min-h-0 min-w-0 overflow-hidden">{detail}</div>
+      </div>
+    );
+
+  return (
+    <div ref={layoutRef} className="h-full min-h-0 overflow-hidden" data-model-service-layout={layout}>
+      {content}
+      <AddProviderDialog
+        open={actions.showAddDialog}
+        providers={state.providers}
+        pending={actions.addPending}
+        error={actions.addError}
+        onOpenChange={(open) => (open ? actions.setShowAddDialog(true) : actions.dismissAddDialog())}
+        onAdd={(provider, endpoint) => {
+          actions.addProvider({ ...provider, DefaultEndpoint: endpoint });
+        }}
+      />
+      <EditProviderDialog
+        open={providerConfigOpen}
+        apiKeyUnresolved={apiKeyUnresolved}
+        provider={actions.connectionDraft}
+        pending={actions.saving}
+        error={actions.localError}
+        onReadApiKey={systemConfig.readProviderApiKey}
+        onOpenChange={handleProviderConfigOpenChange}
+        onSave={(patch) => {
+          setProviderConfigSaveRequested(true);
+          actions.confirmDraft(patch);
+        }}
+      />
+      <RenameProviderDialog
+        provider={actions.renameTarget}
+        providers={state.providers}
+        error={actions.renameError}
+        onOpenChange={(open) => !open && actions.setRenameTarget(null)}
+        onRename={actions.renameProvider}
+      />
+      <ProviderModelLifecycleDialogs
+        candidateModels={defaultModelCandidates}
+        defaultModelId={currentDefaultModelId}
+        disabled={actions.saving}
+        modelToRemove={modelPendingRemoval}
+        models={state.models}
+        providerToRemove={providerPendingRemoval}
+        onCloseModelRemoval={() => setModelPendingRemoval(null)}
+        onCloseProviderRemoval={() => setProviderPendingRemoval(null)}
+        onConfirmModelRemoval={(input) => Boolean(systemConfig.deleteProviderModel(input))}
+        onConfirmProviderRemoval={(input) => {
+          const provider = state.providers.find((entry) => entry.Id === input.providerId);
+          return provider ? actions.deleteProvider(provider, input) : false;
+        }}
+      />
+      <DiscardDraftDialog
+        open={pendingProviderSelection !== null}
+        title={frontendMessage("settings.discard.connectionTitle")}
+        description={frontendMessage("settings.discard.connectionDescription", {
+          current: actions.acceptedProvider ? providerIdLabel(actions.acceptedProvider) : "",
+          next: pendingProviderSelection ? providerIdLabel(pendingProviderSelection) : "",
+        })}
+        consequence={frontendMessage("settings.discard.connectionConsequence")}
+        continueLabel={frontendMessage("settings.discard.continue")}
+        confirmLabel={frontendMessage("settings.discard.connectionConfirm")}
+        onOpenChange={(open) => !open && setPendingProviderSelection(null)}
+        onDiscard={() => {
+          const provider = pendingProviderSelection;
+          setPendingProviderSelection(null);
+          if (!provider) return;
+          actions.discardAndSelectProvider(provider);
+          if (layout === "compact") setMobileDetailOpen(true);
+        }}
+      />
+    </div>
+  );
+}

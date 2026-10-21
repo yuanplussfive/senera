@@ -1,0 +1,184 @@
+{
+  "name": "ImageAnalyze",
+  "loading": "Bootstrap",
+  "description": "Analyze one or more workspace-relative or absolute local paths, canonical Senera resources, or public HTTP(S) image URLs together for visible evidence, OCR, or a specific question. Prefer an attachment's local_path when present; use its resource_uri as the stable fallback.",
+  "presentation": {
+    "category": "image-analyze",
+    "icon": "image",
+    "activity": {
+      "action": { "zh-CN": "分析", "en-US": "Analyze" },
+      "argumentPath": "/task",
+      "detailPaths": ["/question"]
+    },
+    "preview": { "body": { "pointer": "/answer", "from": "result" } }
+  },
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "images": {
+        "minItems": 1,
+        "maxItems": 32,
+        "type": "array",
+        "items": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "const": "senera_resource" },
+                "uri": {
+                  "type": "string",
+                  "pattern": "^senera:\\/\\/resource\\/[A-Za-z0-9][A-Za-z0-9._~-]{0,255}$",
+                  "description": "Canonical Senera resource identity."
+                }
+              },
+              "required": ["kind", "uri"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "const": "local_path" },
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Workspace-relative or absolute local path inside the active workspace."
+                }
+              },
+              "required": ["kind", "path"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "const": "http_url" },
+                "url": {
+                  "type": "string",
+                  "pattern": "^https?:\\/\\/\\S+$",
+                  "description": "Public HTTP(S) resource URL; private hosts remain subject to runtime policy."
+                }
+              },
+              "required": ["kind", "url"],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "description": "Images to analyze together, in the supplied order."
+      },
+      "task": { "default": "describe", "type": "string", "enum": ["describe", "ocr", "question"] },
+      "question": { "type": "string", "minLength": 1 },
+      "timeoutMs": {
+        "description": "Optional per-call image download timeout in milliseconds.",
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 900000
+      }
+    },
+    "required": ["images"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "images": {
+        "minItems": 1,
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "source": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": { "type": "string", "const": "senera_resource" },
+                    "uri": {
+                      "type": "string",
+                      "pattern": "^senera:\\/\\/resource\\/[A-Za-z0-9][A-Za-z0-9._~-]{0,255}$",
+                      "description": "Canonical Senera resource identity."
+                    }
+                  },
+                  "required": ["kind", "uri"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": { "type": "string", "const": "local_path" },
+                    "path": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Workspace-relative or absolute local path inside the active workspace."
+                    }
+                  },
+                  "required": ["kind", "path"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": { "type": "string", "const": "http_url" },
+                    "url": {
+                      "type": "string",
+                      "pattern": "^https?:\\/\\/\\S+$",
+                      "description": "Public HTTP(S) resource URL; private hosts remain subject to runtime policy."
+                    }
+                  },
+                  "required": ["kind", "url"],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "name": { "type": "string" },
+            "mime": { "type": "string" },
+            "size": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+          },
+          "required": ["source", "name", "mime", "size", "sha256"],
+          "additionalProperties": false
+        }
+      },
+      "task": { "type": "string", "enum": ["describe", "ocr", "question"] },
+      "question": { "type": "string" },
+      "answer": { "type": "string" },
+      "model": { "type": "string" }
+    },
+    "required": ["images", "task", "answer", "model"],
+    "additionalProperties": false
+  },
+  "permissions": ["resources:read", "model:vision"],
+  "execution": { "Targets": ["Local"], "Network": "Allow", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ProtocolVersion": 2,
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "Parallel",
+    "DeadlinePolicy": "ModelAware"
+  },
+  "resources": [],
+  "sources": [],
+  "search": {
+    "Summary": "一起分析一张或多张图片，读取画面、文字和与当前问题有关的可见证据。",
+    "Tags": ["image", "vision", "ocr", "screenshot"],
+    "Capabilities": [
+      {
+        "Id": "vision.image-analysis",
+        "Title": "Image analysis",
+        "Description": "分析图片内容、提取图片文字，或针对图片回答具体问题。",
+        "Facets": {
+          "Actions": ["describe", "ocr", "answer"],
+          "Targets": ["workspace-image-path", "image-resource", "public-image-url"],
+          "Inputs": ["images", "task", "question"],
+          "Outputs": ["description", "ocr-text", "answer", "image-metadata"],
+          "Effects": ["none"]
+        },
+        "Aliases": ["看图", "识别图片", "分析截图", "图片文字", "image analysis"],
+        "Risk": { "SideEffect": "read-only", "Permission": "resources-read-vision" }
+      }
+    ],
+    "UseCases": ["用户提供工作区图片、Senera 图片资源或公开图片链接，并希望了解画面、文字或具体细节。"],
+    "Avoid": ["没有图片证据时不要猜测画面内容；需要修改或生成图片时使用对应的图像工具。"]
+  },
+  "evidenceCapabilities": []
+}

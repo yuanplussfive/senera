@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schemas.senera.ai/extension-domain/v1.json",
+  "schemaVersion": 1,
+  "id": "execute",
+  "displayName": {
+    "zh-CN": "执行与交互",
+    "en-US": "Execute and Interact"
+  },
+  "description": {
+    "zh-CN": "运行受控命令、管理执行资源并操作隔离浏览器。",
+    "en-US": "Runs governed commands, manages execution resources, and operates isolated browsers."
+  },
+  "presentation": {
+    "category": "execute",
+    "icon": "terminal",
+    "group": {
+      "id": "execute",
+      "title": {
+        "zh-CN": "执行任务",
+        "en-US": "Run tasks"
+      }
+    },
+    "activity": {
+      "action": {
+        "zh-CN": "执行",
+        "en-US": "Run"
+      }
+    }
+  }
+}

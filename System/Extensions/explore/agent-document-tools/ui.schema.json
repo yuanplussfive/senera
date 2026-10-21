@@ -1,0 +1,187 @@
+{
+  "form": {
+    "version": 1,
+    "sections": [
+      {
+        "id": "probe",
+        "label": { "zh-CN": "文档探测", "en-US": "Document probing" },
+        "description": {
+          "zh-CN": "控制容器探测的读取预算和安全边界。",
+          "en-US": "Control read budgets and safety boundaries for container probing."
+        },
+        "fields": [
+          {
+            "path": ["probe", "sampleBytes"],
+            "label": { "zh-CN": "探测采样字节", "en-US": "Probe sample bytes" },
+            "type": "number",
+            "min": 4096,
+            "max": 4194304,
+            "step": 1,
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["probe", "containerMaxEntries"],
+            "label": { "zh-CN": "容器最大条目数", "en-US": "Maximum container entries" },
+            "type": "number",
+            "min": 1,
+            "max": 10000,
+            "step": 1,
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["probe", "containerMaxEntryBytes"],
+            "label": { "zh-CN": "单条目最大字节", "en-US": "Maximum bytes per container entry" },
+            "type": "number",
+            "min": 1024,
+            "max": 16777216,
+            "step": 1,
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["probe", "contentTypesEntryName"],
+            "label": { "zh-CN": "内容类型清单文件", "en-US": "Content types manifest file" },
+            "type": "string",
+            "required": false,
+            "essential": true
+          }
+        ]
+      },
+      {
+        "id": "parse",
+        "label": { "zh-CN": "解析策略", "en-US": "Parsing policy" },
+        "description": {
+          "zh-CN": "控制正文、批注、附件和版式内容的解析方式。",
+          "en-US": "Control how body text, comments, attachments, and layout content are parsed."
+        },
+        "fields": [
+          {
+            "path": ["parse", "ocr"],
+            "label": { "zh-CN": "启用 OCR", "en-US": "Enable OCR" },
+            "type": "boolean",
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["parse", "extractAttachments"],
+            "label": { "zh-CN": "提取附件", "en-US": "Extract attachments" },
+            "type": "boolean",
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["parse", "includeRawContent"],
+            "label": { "zh-CN": "保留原始内容", "en-US": "Include raw content" },
+            "type": "boolean",
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["parse", "ignoreNotes"],
+            "label": { "zh-CN": "忽略备注", "en-US": "Ignore notes" },
+            "type": "boolean",
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["parse", "ignoreComments"],
+            "label": { "zh-CN": "忽略批注", "en-US": "Ignore comments" },
+            "type": "boolean",
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["parse", "ignoreHeadersAndFooters"],
+            "label": { "zh-CN": "忽略页眉页脚", "en-US": "Ignore headers and footers" },
+            "type": "boolean",
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["parse", "ignoreSlideMasters"],
+            "label": { "zh-CN": "忽略幻灯片母版", "en-US": "Ignore slide masters" },
+            "type": "boolean",
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["parse", "ignoreInternalLinks"],
+            "label": { "zh-CN": "忽略内部链接", "en-US": "Ignore internal links" },
+            "type": "boolean",
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["parse", "newlineDelimiter"],
+            "label": { "zh-CN": "换行分隔符", "en-US": "Newline delimiter" },
+            "type": "string",
+            "required": false,
+            "essential": true
+          }
+        ]
+      },
+      {
+        "id": "output",
+        "label": { "zh-CN": "输出预算", "en-US": "Output budgets" },
+        "description": {
+          "zh-CN": "限制单次提取的文件大小、文本长度和分块数量。",
+          "en-US": "Limit file size, text length, and chunk counts for one extraction."
+        },
+        "fields": [
+          {
+            "path": ["output", "maxFileBytes"],
+            "label": { "zh-CN": "最大文件字节", "en-US": "Maximum file bytes" },
+            "type": "number",
+            "min": 1024,
+            "max": 1073741824,
+            "step": 1,
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["output", "maxTextChars"],
+            "label": { "zh-CN": "纯文本最大字符", "en-US": "Maximum plain-text characters" },
+            "type": "number",
+            "min": 0,
+            "max": 10000000,
+            "step": 1,
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["output", "maxMarkdownChars"],
+            "label": { "zh-CN": "Markdown 最大字符", "en-US": "Maximum Markdown characters" },
+            "type": "number",
+            "min": 0,
+            "max": 10000000,
+            "step": 1,
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["output", "maxChunks"],
+            "label": { "zh-CN": "最大分块数", "en-US": "Maximum chunks" },
+            "type": "number",
+            "min": 0,
+            "max": 10000,
+            "step": 1,
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["output", "maxChunkChars"],
+            "label": { "zh-CN": "单分块最大字符", "en-US": "Maximum characters per chunk" },
+            "type": "number",
+            "min": 0,
+            "max": 1000000,
+            "step": 1,
+            "required": false,
+            "essential": true
+          }
+        ]
+      }
+    ]
+  }
+}

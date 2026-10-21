@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "outDir": "Dist",
+    "rootDir": "."
+  },
+  "include": [
+    "Apps/DevServer.ts",
+    "Apps/ServerRuntime.ts",
+    "Apps/ServerRuntimeSupport.ts",
+    "Apps/ServerWatch.ts",
+    "Apps/ServerWatchPolicy.ts",
+    "Source/**/*.ts",
+    "System/**/*.ts"
+  ]
+}
