@@ -3,6 +3,10 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DesktopWindowChrome, shouldUseCustomWindowControls } from "../../../Frontend/src/app/DesktopWindowChrome.tsx";
 import {
+  applyDesktopWindowDocumentState,
+  clearDesktopWindowDocumentState,
+} from "../../../Frontend/src/app/desktopWindowDocument.ts";
+import {
   readWindowControlsInsetWidth,
   readWindowControlsOverlapWidth,
 } from "../../../Frontend/src/shared/responsive/windowControlsLayout.ts";
@@ -11,6 +15,7 @@ import { Dialog, DialogContent } from "../../../Frontend/src/shared/ui/Dialog.ts
 describe("desktop window chrome", () => {
   afterEach(() => {
     cleanup();
+    clearDesktopWindowDocumentState();
     delete window.seneraDesktop;
   });
 
@@ -55,6 +60,65 @@ describe("desktop window chrome", () => {
     expect(shouldUseCustomWindowControls(undefined)).toBe(false);
   });
 
+  it("publishes the document flags that reserve the desktop titlebar", () => {
+    window.seneraDesktop = { isDesktop: true, windowControls: "custom" };
+    applyDesktopWindowDocumentState("main");
+
+    const root = document.documentElement;
+    expect(root).toHaveAttribute("data-senera-desktop-window", "true");
+    expect(root).toHaveAttribute("data-senera-window-controls", "custom");
+    expect(root).toHaveAttribute("data-senera-desktop-surface", "main");
+
+    applyDesktopWindowDocumentState("settings");
+    expect(root).toHaveAttribute("data-senera-desktop-surface", "settings");
+
+    window.seneraDesktop = { isDesktop: true, windowControls: "native" };
+    applyDesktopWindowDocumentState("main");
+    expect(root).toHaveAttribute("data-senera-window-controls", "native");
+  });
+
+  it("leaves web documents free of desktop frame flags", () => {
+    applyDesktopWindowDocumentState("main");
+
+    const root = document.documentElement;
+    expect(root).not.toHaveAttribute("data-senera-desktop-window");
+    expect(root).not.toHaveAttribute("data-senera-window-controls");
+    expect(root).not.toHaveAttribute("data-senera-desktop-surface");
+  });
+
+  it("keeps the titlebar backdrop out of the window drag region", () => {
+    window.seneraDesktop = {
+      isDesktop: true,
+      windowControls: "custom",
+      getWindowState: vi.fn().mockResolvedValue({ isMaximized: false }),
+    };
+
+    render(React.createElement(DesktopWindowChrome, { surface: "main" }, null));
+
+    // Electron derives draggable regions from layout boxes carrying the drag
+    // attribute, even when the surface is visually transparent. Surface
+    // headers own the real drag regions, so this backdrop layer must not
+    // claim one or it swallows clicks across the whole titlebar.
+    const strip = document.querySelector("[data-desktop-window-drag-strip]");
+    expect(strip).not.toBeNull();
+    expect(strip).not.toHaveAttribute("data-window-drag-region");
+  });
+
+  it("hands the reserved settings titlebar band to the drag region", () => {
+    window.seneraDesktop = {
+      isDesktop: true,
+      windowControls: "custom",
+      getWindowState: vi.fn().mockResolvedValue({ isMaximized: false }),
+    };
+
+    render(React.createElement(DesktopWindowChrome, { surface: "settings" }, null));
+
+    // The settings surface reserves an empty 52px band above its columns and
+    // renders no header of its own there, so the backdrop must be draggable or
+    // the band cannot move the window.
+    expect(document.querySelector("[data-desktop-window-drag-strip]")).toHaveAttribute("data-window-drag-region");
+  });
+
   it("uses conventional square window-state icons", () => {
     window.seneraDesktop = {
       isDesktop: true,
@@ -81,6 +145,35 @@ describe("desktop window chrome", () => {
     const closeButton = screen.getByRole("button", { name: "关闭窗口" });
     expect(closeButton).toHaveClass("hover:bg-ink-900/[0.055]", "hover:text-content-primary");
     expect(closeButton.className).not.toContain("#c42b1c");
+  });
+
+  it("paints all three window controls at one stroke weight", () => {
+    window.seneraDesktop = {
+      isDesktop: true,
+      windowControls: "custom",
+      getWindowState: vi.fn().mockResolvedValue({ isMaximized: false }),
+    };
+
+    render(
+      React.createElement(
+        DesktopWindowChrome,
+        { surface: "main" },
+        React.createElement("div", null, "Desktop content"),
+      ),
+    );
+
+    const glyphs = [...document.querySelectorAll("[data-window-control] svg")];
+    expect(glyphs.map((glyph) => glyph.getAttribute("data-window-control-glyph"))).toEqual([
+      "minimize",
+      "maximize",
+      "close",
+    ]);
+
+    // Uneven stroke weight across these three is the defect this guards: one
+    // shared width on one shared viewBox keeps the bar reading as one family.
+    const strokes = new Set(glyphs.map((glyph) => glyph.getAttribute("stroke-width")));
+    expect(strokes).toEqual(new Set(["1.5"]));
+    expect(new Set(glyphs.map((glyph) => glyph.getAttribute("viewBox")))).toEqual(new Set(["0 0 24 24"]));
   });
 
   it("keeps custom controls below modal portal layers", () => {

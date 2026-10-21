@@ -27,6 +27,11 @@ const SessionChannelMessageKeys = {
 interface SessionHeaderProps {
   collapsed?: boolean;
   compactFrame?: boolean;
+  /**
+   * Electron computes drag regions from layout boxes, not paint or pointer-events.
+   * Hidden surfaces must drop the attribute or they keep swallowing clicks.
+   */
+  dragRegion?: boolean;
   channelFilter: SessionChannelFilter;
   onChannelFilterChange: (value: SessionChannelFilter) => void;
   onNewSession: () => void;
@@ -36,6 +41,7 @@ interface SessionHeaderProps {
 export function SessionHeader({
   collapsed = false,
   compactFrame = false,
+  dragRegion = true,
   channelFilter,
   onChannelFilterChange,
   onNewSession,
@@ -49,7 +55,7 @@ export function SessionHeader({
     return (
       <div
         className="flex shrink-0 flex-col items-center gap-1.5 px-1 pt-3"
-        data-window-drag-region
+        data-window-drag-region={dragRegion || undefined}
         data-session-rail-header
         data-session-header
       >
@@ -105,7 +111,7 @@ export function SessionHeader({
         "flex shrink-0 items-center gap-1.5 px-2.5",
         compactFrame ? "h-8 px-0" : "h-[var(--senera-top-chrome-height)]",
       )}
-      data-window-drag-region
+      data-window-drag-region={dragRegion || undefined}
       data-session-header
     >
       <DropdownMenu>
@@ -154,6 +160,7 @@ export function SessionHeader({
           tooltipShortcut="⌘B"
           onClick={onToggleSidebar}
           touchSafe={headerActionTouchSafe}
+          data-session-rail-collapse
         >
           <AppIcon icon="panel-left-close" className="h-4 w-4" />
         </IconButton>

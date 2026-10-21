@@ -87,6 +87,8 @@ export { ExecutionStatusTones, executionStatusTone, isLiveActivityStatus } from 
 export type { ExecutionStatusTone } from "./executionStatusTone";
 export { Spinner } from "./Spinner";
 export type { SpinnerSize } from "./Spinner";
+export { WindowControlGlyph } from "./WindowControlGlyph";
+export type { WindowControlGlyphName } from "./WindowControlGlyph";
 export { StatusToken } from "./StatusToken";
 export type { StatusTokenProps, StatusTokenSize } from "./StatusToken";
 export { ThinkingIndicator } from "./ThinkingIndicator";

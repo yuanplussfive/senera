@@ -4,7 +4,7 @@ import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { JsonConfigSettingsView } from "../../shared/config/JsonConfigForm";
 import { motionTimings, MotionIconSwap, useMotionLevel } from "../../shared/motion";
-import { AppIcon, Button, ScrollArea, Spinner, StateView, Tooltip } from "../../shared/ui";
+import { AppIcon, Button, ScrollArea, Spinner, Tooltip } from "../../shared/ui";
 import type { SettingsSystemConfigHandle } from "./SettingsContracts";
 import type { SettingsContentProps } from "./SettingsWorkbenchContracts";
 import { readSettingsDraftInteraction } from "./settingsInteractionModel";
@@ -18,6 +18,8 @@ import { GeneralSettings } from "./sections/GeneralSettings";
 import { projectSectionConfigFields } from "./sections/runtimeModelAssignments";
 import { StorageSettings } from "./sections/StorageSettings";
 import { RuntimeDependenciesSection } from "./sections/RuntimeDependenciesSection";
+import { PromptPresetSection } from "./sections/PromptPresetSection";
+import { SettingsSectionLoading } from "./SettingsLoading";
 
 const SettingsExtensionSection = lazy(() =>
   import("./sections/SettingsExtensionSection").then((module) => ({ default: module.SettingsExtensionSection })),
@@ -25,10 +27,6 @@ const SettingsExtensionSection = lazy(() =>
 
 const ChannelsSection = lazy(() =>
   import("./sections/ChannelsSection").then((module) => ({ default: module.ChannelsSection })),
-);
-
-const PromptPresetSection = lazy(() =>
-  import("./sections/PromptPresetSection").then((module) => ({ default: module.PromptPresetSection })),
 );
 
 export function SettingsContent({
@@ -64,7 +62,7 @@ export function SettingsContent({
     <div className="min-h-0 flex-1 overflow-hidden bg-surface-subtle" data-settings-content-frame>
       {isFullHeightWorkspace(activeSection.id) ? (
         <SettingsSectionTransition sectionId={activeSection.id} className="h-full min-h-0">
-          <Suspense fallback={<SettingsSectionLoading />}>{content}</Suspense>
+          <Suspense fallback={<SettingsSectionLoading variant="split" />}>{content}</Suspense>
         </SettingsSectionTransition>
       ) : (
         <ScrollArea className="h-full min-h-0" viewportClassName={settingsViewportClassName(activeSection.id)}>
@@ -75,10 +73,6 @@ export function SettingsContent({
       )}
     </div>
   );
-}
-
-function SettingsSectionLoading(): JSX.Element {
-  return <StateView status="loading" className="min-h-[180px]" />;
 }
 
 function SettingsSectionTransition({
@@ -202,14 +196,7 @@ function ConfigFormSectionSettings({
     .filter((section) => section.name === sectionId)
     .map((section) => projectSectionConfigFields(section, allSections))
     .filter((section) => section.fields.length > 0);
-  if (!systemConfig?.configSnapshot)
-    return (
-      <StateView
-        status="loading"
-        className="min-h-[220px] bg-surface-subtle"
-        description={frontendMessage("settings.state.loadingConfig")}
-      />
-    );
+  if (!systemConfig?.configSnapshot) return <SettingsSectionLoading />;
   return (
     <DraftBackedSection draftState={draftState} ready>
       <div className="mx-auto w-full max-w-[900px] px-5 py-5 sm:px-6 sm:py-6">

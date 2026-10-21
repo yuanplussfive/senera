@@ -17,7 +17,7 @@ export function ApplicationSurfaceLoading(): JSX.Element {
       <p className="sr-only">{frontendMessage("app.loading")}</p>
 
       <aside
-        className="app-loading-sidebar hidden w-[266px] shrink-0 flex-col border-r border-line-subtle bg-surface-sidebar min-[1024px]:flex"
+        className="app-loading-sidebar hidden shrink-0 flex-col border-r border-line-subtle bg-surface-sidebar min-[1024px]:flex"
         aria-hidden="true"
         data-application-loading-sidebar
       >
@@ -41,7 +41,7 @@ export function ApplicationSurfaceLoading(): JSX.Element {
       </aside>
 
       <section className="relative flex min-w-0 flex-1 flex-col bg-surface-canvas" data-application-loading-main>
-        <header className="flex h-[var(--senera-top-chrome-height)] shrink-0 items-center gap-3 border-b border-line-subtle px-3 sm:px-5">
+        <header className="flex h-[var(--senera-top-chrome-height)] shrink-0 items-center gap-3 border-b border-line-subtle px-4 sm:px-6">
           <Skeleton className="h-4 w-36" />
           <Skeleton className="h-4 w-20" />
           <div className="ml-auto flex items-center gap-2">
@@ -54,11 +54,11 @@ export function ApplicationSurfaceLoading(): JSX.Element {
           <div className="min-h-0 flex-1 overflow-hidden" aria-hidden="true" data-application-loading-content>
             <div className="conversation-frame conversation-frame--wide py-10 sm:py-12">
               <div className="w-full space-y-10">
-                <div className="ml-auto w-[min(78%,46rem)] space-y-2">
-                  <Skeleton className="ml-auto h-10 w-[82%] rounded-[14px]" />
+                <div className="ml-auto w-[min(78%,42rem)] space-y-2">
+                  <Skeleton className="ml-auto h-12 w-[82%] rounded-2xl" />
                   <Skeleton className="ml-auto h-3 w-28" />
                 </div>
-                <div className="w-full max-w-[58rem] space-y-3">
+                <div className="w-full max-w-[54rem] space-y-3">
                   <Skeleton className="h-4 w-44" />
                   <Skeleton className="h-3 w-[92%]" />
                   <Skeleton className="h-3 w-[76%]" />
@@ -68,16 +68,16 @@ export function ApplicationSurfaceLoading(): JSX.Element {
             </div>
           </div>
 
-          <div className="shrink-0 bg-transparent pb-4 pt-3 sm:pb-5 sm:pt-3.5" aria-hidden="true">
+          <div className="shrink-0 bg-transparent pb-6 pt-4" aria-hidden="true">
             <div className="conversation-frame conversation-frame--composer" data-application-loading-composer>
-              <div className="flex min-h-[108px] min-w-0 flex-col justify-between gap-4 rounded-[14px] border border-line-subtle bg-surface-raised px-3.5 pb-2.5 pt-[13px] shadow-soft">
+              <div className="flex min-h-[110px] min-w-0 flex-col justify-between gap-2 rounded-2xl border border-line-subtle bg-surface-raised px-4 pb-3 pt-3.5 shadow-soft">
                 <Skeleton className="h-10 w-[72%] max-w-[520px]" />
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <Skeleton className="h-8 w-8 rounded-lg" />
                     <Skeleton className="h-7 w-24 rounded-lg" />
                   </div>
-                  <Skeleton className="h-8 w-8 rounded-full" />
+                  <Skeleton className="h-9 w-9 rounded-full" />
                 </div>
               </div>
             </div>
@@ -86,7 +86,7 @@ export function ApplicationSurfaceLoading(): JSX.Element {
       </section>
 
       <aside
-        className="pointer-events-none absolute right-3 top-[calc(var(--senera-top-chrome-height)+var(--senera-top-rail-gap))] hidden w-10 flex-col gap-0.5 rounded-full border border-line-subtle bg-surface-raised p-1 shadow-[0_1px_2px_rgb(var(--color-ink-950)_/_0.05),0_6px_16px_-6px_rgb(var(--color-ink-950)_/_0.12)] min-[1024px]:flex"
+        className="pointer-events-none absolute right-4 top-[calc(var(--senera-top-chrome-height)+var(--senera-top-rail-gap))] hidden w-11 flex-col gap-1 rounded-full border border-line-subtle bg-surface-raised p-1.5 shadow-[0_1px_2px_rgb(var(--color-ink-950)_/_0.05),0_6px_16px_-6px_rgb(var(--color-ink-950)_/_0.12)] min-[1024px]:flex"
         aria-hidden="true"
         data-application-loading-workflow
         data-workflow-dock-loading
@@ -99,7 +99,11 @@ export function ApplicationSurfaceLoading(): JSX.Element {
   );
 }
 
-export function SettingsSurfaceLoading({ presentation }: { presentation: "desktop" | "overlay" }): JSX.Element {
+export function SettingsSurfaceLoading({
+  presentation,
+}: {
+  presentation: "desktop" | "overlay" | "embedded";
+}): JSX.Element {
   const overlayRef = useRef<HTMLDivElement>(null);
   useInertSiblings(overlayRef, presentation === "overlay");
 
@@ -108,6 +112,7 @@ export function SettingsSurfaceLoading({ presentation }: { presentation: "deskto
       className={cn(
         "settings-loading-shell relative flex h-full min-h-0 w-full overflow-hidden border border-line-subtle bg-surface-canvas text-content-primary",
         presentation === "overlay" && "rounded-[10px] max-sm:rounded-none max-sm:border-0",
+        presentation === "embedded" && "rounded-none border-0",
       )}
       role="status"
       aria-busy="true"
@@ -175,6 +180,10 @@ export function SettingsSurfaceLoading({ presentation }: { presentation: "deskto
       </main>
     </section>
   );
+
+  if (presentation === "embedded") {
+    return shell;
+  }
 
   if (presentation === "desktop") {
     return <div className="h-dvh min-h-[320px] w-full bg-surface-canvas">{shell}</div>;

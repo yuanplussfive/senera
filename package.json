@@ -119,7 +119,8 @@
     "desktoplive": "npm run desktop.live",
     "desktop.verify": "npm run build && npm --workspace senera-frontend run build",
     "desktopverify": "npm run desktop.verify",
-    "desktoppack": "npm run desktop.pack"
+    "desktoppack": "npm run desktop.pack",
+    "quality.icon-phase": "tsx --tsconfig Frontend/tsconfig.json Scripts/AuditAppIconStrokePhase.mjs"
   },
   "keywords": [],
   "author": "",
@@ -298,7 +299,7 @@
     "linkedom": "^0.18.13",
     "liquidjs": "^10.27.2",
     "lunar-javascript": "^1.7.7",
-    "markdown-it": "^14.3.1",
+    "markdown-it": "^14.3.3",
     "mime-types": "^3.0.2",
     "minimatch": "10.2.5",
     "minisearch": "^7.2.0",
@@ -372,6 +373,7 @@
   },
   "overrides": {
     "@modelcontextprotocol/client": "2.3.1",
+    "@modelcontextprotocol/server": "2.3.1",
     "@mem-os/sdk": {
       "better-sqlite3": "$better-sqlite3"
     },

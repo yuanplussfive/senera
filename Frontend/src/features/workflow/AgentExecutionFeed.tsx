@@ -243,7 +243,7 @@ export function AgentExecutionStageFold({
   if (toolBatchActivities.length > 0) {
     return (
       <div
-        className="tool-batch-activity-stage flex min-w-0 flex-col gap-1"
+        className="tool-batch-activity-stage flex min-w-0 flex-col gap-[var(--theme-chat-tool-micro-gap)] py-[var(--theme-chat-stage-gap)]"
         data-execution-stage-fold
         data-tool-stage-category={presentation.category}
         data-tool-stage-status={presentation.status}

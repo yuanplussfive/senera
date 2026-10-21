@@ -28,30 +28,11 @@ test("session rows expose an independent selection button without inline actions
 
   const selection = screen.getByRole("button", { name: "打开会话：Release plan" });
   expect(selection).toHaveAttribute("aria-current", "true");
-  expect(selection.closest("[data-session-row]")).toHaveClass("h-11");
   expect(document.querySelector("[data-active-session-indicator]")).not.toBeNull();
 
   await user.click(selection);
 
   expect(onClick).toHaveBeenCalledTimes(1);
-  expect(screen.queryByRole("button", { name: "more" })).not.toBeInTheDocument();
-});
-
-test("session rows keep the shared row height without inline overflow actions", () => {
-  renderWithFrontendProviders(
-    React.createElement(SessionRow, {
-      active: false,
-      sessionId: "session-2",
-      title: "Hidden actions",
-      accent: "idle",
-      onClick: vi.fn(),
-      onRename: vi.fn(),
-      onClose: vi.fn(),
-    }),
-  );
-
-  const selection = screen.getByRole("button", { name: "打开会话：Hidden actions" });
-  expect(selection.closest("[data-session-row]")).toHaveClass("grid", "items-center", "h-11");
   expect(screen.queryByText("1 message")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "more" })).not.toBeInTheDocument();
 });

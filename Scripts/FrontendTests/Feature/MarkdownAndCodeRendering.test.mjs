@@ -121,9 +121,6 @@ test("keeps markdown tables content-sized and long links line-breakable", () => 
     /\.live-activity-markdown\.markdown-renderer :not\(pre\) > code[\s\S]*-webkit-text-fill-color:\s*currentColor;/s,
   );
   expect(appCss).toMatch(
-    /\.assistant-turn-content\s*{[^}]*max-width:\s*min\(var\(--theme-conversation-reading-width,\s*58rem\),\s*100%\);/s,
-  );
-  expect(appCss).toMatch(
     /\.conversation-frame\s*{[^}]*max-width:\s*min\(var\(--theme-conversation-track-width,\s*64rem\),\s*100%\);/s,
   );
 });

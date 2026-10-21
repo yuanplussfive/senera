@@ -155,13 +155,8 @@ export const AssistantTurnRow = memo(function AssistantTurnRow({
   }, [showTerminalDisclosure]);
 
   return (
-    <ConversationFrame
-      mode="wide"
-      className="group/msg"
-      data-message-hover-surface
-      data-assistant-turn={turn.requestId ?? turn.key}
-    >
-      <div className="flex min-w-0 items-start gap-3" data-assistant-message>
+    <ConversationFrame mode="wide" className="group/msg" data-assistant-turn={turn.requestId ?? turn.key}>
+      <div className="flex min-w-0 items-start gap-4" data-assistant-message>
         <AssistantMessageAvatar profile={assistantProfile} />
         <div className="assistant-turn-content min-w-0 flex-1">
           <MessageMeta title={assistantProfile.name} timestamp={turn.createdAt} />
@@ -198,32 +193,40 @@ export const AssistantTurnRow = memo(function AssistantTurnRow({
             </Suspense>
           ) : null}
 
-          <MessageMetrics
-            role="assistant"
-            usage={run?.usage ?? actionMessage?.metadata?.run?.usage}
-            run={run}
-            modelProvider={run?.modelProvider ?? actionMessage?.metadata?.run?.modelProvider}
-          />
-
-          {forkBoundary ? (
-            <MessageActions
-              content={copyContent}
-              placement="left"
-              hasRequestId
-              hasWorkflow={!!run && !!(actionMessage ?? fallbackMessage)}
-              allowFork
-              allowMutation={!!actionMessage}
-              allowCopy={!!copyContent}
-              showInlineActions={showInlineActions}
-              onFork={() => onForkFromMessage(forkBoundary)}
-              onRegenerate={() => actionMessage && onRegenerate(actionMessage)}
-              onDelete={() => actionMessage && onDeleteFromMessage(actionMessage)}
-              onViewWorkflow={() => {
-                const workflowMessage = actionMessage ?? fallbackMessage;
-                if (workflowMessage) onViewWorkflow(workflowMessage);
-              }}
+          <div
+            className={cn(
+              "mt-3 flex min-h-6 min-w-0 items-center gap-3 overflow-hidden opacity-0 pointer-events-none transition-opacity group-hover/msg:opacity-100 group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto empty:hidden",
+              showInlineActions && "opacity-100 pointer-events-auto",
+            )}
+          >
+            <MessageMetrics
+              role="assistant"
+              usage={run?.usage ?? actionMessage?.metadata?.run?.usage}
+              run={run}
+              modelProvider={run?.modelProvider ?? actionMessage?.metadata?.run?.modelProvider}
             />
-          ) : null}
+
+            {forkBoundary ? (
+              <div className="ml-auto flex min-w-0">
+                <MessageActions
+                  content={copyContent}
+                  placement="left"
+                  hasRequestId
+                  hasWorkflow={!!run && !!(actionMessage ?? fallbackMessage)}
+                  allowFork
+                  allowMutation={!!actionMessage}
+                  allowCopy={!!copyContent}
+                  onFork={() => onForkFromMessage(forkBoundary)}
+                  onRegenerate={() => actionMessage && onRegenerate(actionMessage)}
+                  onDelete={() => actionMessage && onDeleteFromMessage(actionMessage)}
+                  onViewWorkflow={() => {
+                    const workflowMessage = actionMessage ?? fallbackMessage;
+                    if (workflowMessage) onViewWorkflow(workflowMessage);
+                  }}
+                />
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
     </ConversationFrame>
@@ -252,7 +255,7 @@ function TerminalTurnPresentation({
       {hasProcess ? (
         <button
           type="button"
-          className="group flex min-w-0 w-full items-center gap-1.5 border-b border-line-subtle py-1.5 text-left text-[length:var(--theme-chat-assistant-font-size-scaled)] leading-5 text-content-secondary transition-colors hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
+          className="group flex min-w-0 w-full items-center gap-1.5 border-b border-line-subtle py-[5px] text-left text-[length:var(--theme-chat-assistant-font-size-scaled)] leading-5 text-content-secondary transition-colors hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
           aria-controls={processId}
           aria-expanded={processOpen}
           onClick={() => {
@@ -376,7 +379,7 @@ function hasExecutionStageContent(stage: RenderedAssistantStage): boolean {
 function RunElapsedRow({ run }: { run?: AssistantTurnListItem["run"] }): JSX.Element {
   return (
     <div
-      className="flex min-w-0 items-center border-b border-line-subtle py-1.5 text-[length:var(--theme-chat-assistant-font-size-scaled)] leading-5 text-content-secondary"
+      className="flex min-w-0 items-center border-b border-line-subtle py-[5px] text-[length:var(--theme-chat-assistant-font-size-scaled)] leading-5 text-content-secondary"
       data-assistant-turn-duration
     >
       <RunElapsedText run={run} />

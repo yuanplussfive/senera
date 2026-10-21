@@ -36,6 +36,7 @@ import { readDesktopBridge } from "./app/desktopBridge";
 import { activateWorkspaceSessionProjection } from "./store/workspaceSessionProjection";
 import type { WorkspaceSnapshotData } from "./api/workspaceEventTypes";
 import { WorkspaceMenuProvider } from "./shared/workspace/WorkspaceMenu";
+import { ChatPanelLoadingSurface } from "./features/chat/ChatLoadingSurface";
 
 const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
 const HTTP_BASE_URL = resolveRuntimeHttpBaseUrl(WS_URL);
@@ -499,11 +500,7 @@ export function App({
                 }
                 chatPanel={
                   <ErrorBoundary resetKey={activeId}>
-                    <Suspense
-                      fallback={
-                        <StateView status="loading" title={frontendMessage("ui.loading")} className="h-full min-h-0" />
-                      }
-                    >
+                    <Suspense fallback={<ChatPanelLoadingSurface />}>
                       <LazyChatPanel
                         userProfile={userProfile}
                         modelConfig={{

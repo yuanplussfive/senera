@@ -1,9 +1,12 @@
 import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import { readDesktopBridge, type SeneraDesktopBridge } from "./desktopBridge";
+import {
+  applyDesktopWindowDocumentState,
+  clearDesktopWindowDocumentState,
+  type DesktopWindowSurface,
+} from "./desktopWindowDocument";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
-import { AppIcon } from "../shared/ui";
-
-export type DesktopWindowSurface = "main" | "settings";
+import { WindowControlGlyph } from "../shared/ui/WindowControlGlyph";
 
 export function DesktopWindowChrome({
   children,
@@ -17,26 +20,25 @@ export function DesktopWindowChrome({
 
   useLayoutEffect(() => {
     if (!bridge?.isDesktop) return;
-    const root = document.documentElement;
-    root.dataset.seneraDesktopWindow = "true";
-    root.dataset.seneraDesktopSurface = surface;
-    root.dataset.seneraWindowControls = customControlsBridge ? "custom" : "native";
-    return () => {
-      delete root.dataset.seneraDesktopWindow;
-      delete root.dataset.seneraDesktopSurface;
-      delete root.dataset.seneraWindowControls;
-    };
+    applyDesktopWindowDocumentState(surface);
+    return clearDesktopWindowDocumentState;
   }, [bridge?.isDesktop, customControlsBridge, surface]);
 
   return (
     <>
       {customControlsBridge ? (
+        // Backdrop for the reserved titlebar band. The main surface keeps it
+        // inert: its headers sit in the band and own their own drag regions and
+        // no-drag holes. The settings surface reserves an empty band above its
+        // columns and renders no header there, so the backdrop itself carries
+        // the drag region; the navigation rail is stacked above it and the
+        // window controls opt out.
         <div
           className={`fixed inset-x-0 top-0 z-10 h-[var(--senera-top-chrome-height)] ${
-            surface === "main" ? "bg-transparent" : "border-b border-line-subtle bg-surface-sidebar"
+            surface === "main" ? "pointer-events-none bg-transparent" : "border-b border-line-subtle"
           }`}
           data-desktop-window-drag-strip
-          data-window-drag-region
+          data-window-drag-region={surface === "settings" ? true : undefined}
         />
       ) : null}
       {children}
@@ -87,16 +89,20 @@ function DesktopWindowControls({ bridge }: { bridge: SeneraDesktopBridge }): JSX
         label={frontendMessage("desktop.window.minimize")}
         onClick={() => void bridge.minimizeWindow?.()}
       >
-        <AppIcon icon="minus" className="h-4 w-4" />
+        <WindowControlGlyph glyph="minimize" className="h-4 w-4" />
       </WindowControlButton>
       <WindowControlButton
         label={frontendMessage(isMaximized ? "desktop.window.restore" : "desktop.window.maximize")}
         onClick={toggleMaximize}
       >
-        {isMaximized ? <AppIcon icon="restore" className="h-4 w-4" /> : <AppIcon icon="maximize" className="h-4 w-4" />}
+        {isMaximized ? (
+          <WindowControlGlyph glyph="restore" className="h-4 w-4" />
+        ) : (
+          <WindowControlGlyph glyph="maximize" className="h-4 w-4" />
+        )}
       </WindowControlButton>
       <WindowControlButton label={frontendMessage("desktop.window.close")} onClick={() => void bridge.closeWindow?.()}>
-        <AppIcon icon="close" className="h-4 w-4" />
+        <WindowControlGlyph glyph="close" className="h-4 w-4" />
       </WindowControlButton>
     </div>
   );

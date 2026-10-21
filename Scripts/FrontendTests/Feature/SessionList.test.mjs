@@ -46,9 +46,7 @@ test("session panel renders store sessions and selects a row", async () => {
   expect(useStore.getState().activeSessionId).toBe("second");
   expect(onSessionSelected).toHaveBeenCalledTimes(1);
   expect(screen.queryByText("最近 · 2")).not.toBeInTheDocument();
-  const rows = Array.from(document.querySelectorAll("[data-session-row]"));
-  expect(rows).toHaveLength(2);
-  expect(new Set(rows.map((row) => (row.classList.contains("h-11") ? "h-11" : "h-9"))).size).toBe(1);
+  expect(document.querySelectorAll("[data-session-row]")).toHaveLength(2);
 });
 
 test("hides a session after the backend confirms that its history is missing", () => {
@@ -280,12 +278,21 @@ test("persistent session sidebar collapses into the prototype tool rail", async 
   );
 
   expect(screen.getByRole("searchbox", { name: frontendMessage("session.searchPlaceholder") })).toBeVisible();
+
+  // Electron derives draggable regions from layout boxes even when a surface is
+  // transparent, inert, and pointer-events-none. The hidden surface must not
+  // keep a drag region over the visible header/search area.
+  const expandedHeader = document.querySelector("[data-session-header]:not([data-session-rail-header])");
+  const collapsedHeader = document.querySelector("[data-session-rail-header]");
+  expect(expandedHeader).toHaveAttribute("data-window-drag-region");
+  expect(collapsedHeader).not.toHaveAttribute("data-window-drag-region");
+
   await user.click(screen.getByRole("button", { name: frontendMessage("session.headerCollapse") }));
 
   const sidebar = document.querySelector("[data-session-sidebar]");
   expect(sidebar).toHaveAttribute("data-collapsed", "true");
-  expect(sidebar).toHaveClass("w-[58px]");
-  expect(sidebar).toHaveClass("m-2.5", "h-[calc(100%-1.25rem)]", "rounded-[12px]");
+  expect(expandedHeader).not.toHaveAttribute("data-window-drag-region");
+  expect(collapsedHeader).toHaveAttribute("data-window-drag-region");
   expect(
     screen.queryByRole("searchbox", { name: frontendMessage("session.searchPlaceholder") }),
   ).not.toBeInTheDocument();
@@ -294,6 +301,8 @@ test("persistent session sidebar collapses into the prototype tool rail", async 
 
   await user.click(screen.getByRole("button", { name: frontendMessage("session.headerExpand") }));
   expect(sidebar).toHaveAttribute("data-collapsed", "false");
+  expect(expandedHeader).toHaveAttribute("data-window-drag-region");
+  expect(collapsedHeader).not.toHaveAttribute("data-window-drag-region");
   expect(screen.getByRole("searchbox", { name: frontendMessage("session.searchPlaceholder") })).toBeVisible();
 });
 

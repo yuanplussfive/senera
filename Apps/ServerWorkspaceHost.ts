@@ -156,8 +156,6 @@ export function createSeneraWorkspaceHost(input: SeneraWorkspaceHostInput): Sene
         if (id === input.defaultWorkspaceId) throw new AgentWorkspaceInUseError(id);
         if (input.workspaceSwitchReservations.has(id)) throw new AgentWorkspaceInUseError(id);
         input.catalog.get(id);
-        const pendingRuntime = input.pending.get(id);
-        if (pendingRuntime) await pendingRuntime;
         const runtime = input.runtimes.get(id);
         if (runtime?.server.clientCount) throw new AgentWorkspaceInUseError(id);
         input.retireWhenIdle.delete(id);
@@ -173,7 +171,7 @@ export function createSeneraWorkspaceHost(input: SeneraWorkspaceHostInput): Sene
         if (previousCount === 0) input.retireWhenIdle.delete(workspaceId);
         return;
       }
-      if (count !== 0 || input.isClosing() || !input.retireWhenIdle.has(workspaceId)) return;
+      if (input.isClosing() || !input.retireWhenIdle.has(workspaceId)) return;
       void input
         .enqueueWorkspaceLifecycle(async () => {
           const runtime = input.runtimes.get(workspaceId);
@@ -200,8 +198,6 @@ export function createSeneraWorkspaceHost(input: SeneraWorkspaceHostInput): Sene
           input.options.onWorkspaceOpened?.(descriptor.root, descriptor.id);
           return input.publicHandle(existing);
         }
-        const running = input.pending.get(descriptor.id);
-        if (running) return running;
         const operation = (async () => {
           const workspaceCleanup = new SeneraStartupCleanup();
           const prepareLegacyState = !preparedWorkspaceState.has(descriptor.id);

@@ -24,6 +24,7 @@ import type { SettingsSystemConfigHandle } from "../SettingsContracts";
 import { projectSystemExtensionConfigurationSections } from "../systemExtensionConfigurationPresentation";
 import type { ConfigSettingsDraftState, ConfigDraftSaveMode } from "./configSettingsDraftState";
 import { projectSectionConfigFields } from "./runtimeModelAssignments";
+import { SettingsSectionLoading } from "../SettingsLoading";
 import { SettingsEntityNavigator } from "./SettingsEntityNavigator";
 import { SettingsEntityMetrics } from "./SettingsEntityMetrics";
 import { SettingsBinaryStateToken } from "./SettingsBinaryStateToken";
@@ -120,7 +121,7 @@ export function SystemToolsSection({
   }, [layout]);
 
   if (!systemConfig || !systemConfig.toolSettingsSynced.systemTools) {
-    return <StateView status="loading" description={frontendMessage("settings.tools.loading")} />;
+    return <SettingsSectionLoading variant="split" />;
   }
 
   const updateExtension = (

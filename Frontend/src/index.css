@@ -807,7 +807,7 @@ html:is([data-motion-level="reduced"], [data-motion-level="none"]) .motion-discl
   --theme-code-token-punctuation: rgb(var(--color-ink-500));
   --theme-code-token-invalid: rgb(var(--color-brick-700));
   --senera-top-chrome-height: 52px;
-  --senera-top-rail-gap: 12px;
+  --senera-top-rail-gap: 16px;
   --theme-config-nav-bg: rgb(244 244 241);
   --theme-config-list-bg: rgb(248 248 246);
   --theme-config-header-bg: rgb(239 238 235);
@@ -826,11 +826,12 @@ html:is([data-motion-level="reduced"], [data-motion-level="none"]) .motion-discl
   --theme-chat-assistant-font-size-scaled: calc(var(--theme-chat-assistant-font-size) * var(--theme-font-scale));
   --theme-chat-user-metrics-font-size: calc(var(--theme-chat-user-font-size-scaled) * 0.8);
   --theme-chat-assistant-metrics-font-size: calc(var(--theme-chat-assistant-font-size-scaled) * 0.8);
-  --theme-chat-activity-row-min-height: calc(1.625rem * var(--theme-font-scale-safe));
+  --theme-chat-activity-row-min-height: calc(1.75rem * var(--theme-font-scale-safe));
   --theme-chat-activity-row-padding-block: calc(0.0625rem * var(--theme-font-scale-safe));
   --theme-chat-stage-gap: calc(0.5rem * var(--theme-font-scale-safe));
   --theme-chat-inline-gap: calc(0.1875rem * var(--theme-font-scale-safe));
-  --theme-chat-item-gap: calc(0.25rem * var(--theme-font-scale-safe));
+  --theme-chat-item-gap: calc(0.5rem * var(--theme-font-scale-safe));
+  --theme-chat-tool-micro-gap: calc(0.125rem * var(--theme-font-scale-safe));
   --theme-tool-font-size: calc(13px * var(--theme-font-scale-safe));
   --theme-tool-meta-size: calc(11.5px * var(--theme-font-scale-safe));
   --theme-tool-line-height: 1.5;
@@ -1127,6 +1128,10 @@ body {
   box-sizing: border-box;
 }
 
+.app-loading-sidebar {
+  width: clamp(264px, calc(20vw + 32px), 328px);
+}
+
 .settings-loading-shell {
   box-sizing: border-box;
   container-name: settings-loading;
@@ -1193,7 +1198,7 @@ html[data-motion-level="none"] .senera-state-enter {
   max-width: min(var(--theme-conversation-track-width, 64rem), 100%);
   min-width: 0;
   margin-inline: auto;
-  --conversation-frame-inline-padding: clamp(16px, 2.2vw, 28px);
+  --conversation-frame-inline-padding: 24px;
   padding-inline: var(--conversation-frame-inline-padding);
 }
 
@@ -1211,17 +1216,18 @@ html[data-motion-level="none"] .senera-state-enter {
 }
 
 .conversation-frame--user > div {
-  max-width: min(100%, 46rem);
+  max-width: min(100%, 42rem);
 }
 
 .assistant-turn-content {
   width: 100%;
-  max-width: min(var(--theme-conversation-reading-width, 58rem), 100%);
+  max-width: min(var(--theme-conversation-reading-width, 54rem), 100%);
 }
 
 .assistant-turn-flow {
   width: 100%;
   min-width: 0;
+  padding-top: 0.5rem;
 }
 
 .assistant-turn-flow [id^="conversation-event:"] {
@@ -1592,11 +1598,11 @@ html[data-motion-level="none"] .senera-state-enter {
 }
 
 [data-tool-batch-activity-items] {
-  gap: var(--theme-chat-item-gap);
+  gap: var(--theme-chat-tool-micro-gap);
 }
 
 [data-tool-batch-activity-items] > ul {
-  gap: var(--theme-chat-inline-gap);
+  gap: var(--theme-chat-tool-micro-gap);
   padding-block: var(--theme-chat-inline-gap);
 }
 
@@ -1631,21 +1637,6 @@ html[data-motion-level="none"] .senera-state-enter {
 
 .message-metrics {
   font-family: var(--theme-ui-font-family);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 140ms ease-out;
-}
-
-[data-message-hover-surface]:is(:hover, :focus-within) .message-metrics {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-@media (hover: none), (pointer: coarse) {
-  .message-metrics {
-    opacity: 1;
-    pointer-events: auto;
-  }
 }
 
 .message-metrics--user {
@@ -1681,6 +1672,13 @@ html[data-motion-level="none"] .senera-state-enter {
   max-height: min(20rem, 42dvh);
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+.tool-activity-stage-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--theme-chat-tool-micro-gap);
+  padding-block: var(--theme-chat-stage-gap);
 }
 
 .tool-activity-stage-list--connected::before {
@@ -2422,12 +2420,20 @@ html[data-motion-level="none"]::view-transition-new(root) {
 /* Electron desktop chrome -------------------------------------------------- */
 .chat-header-shell {
   --chat-header-inline-padding: 12px;
-  padding-inline: var(--chat-header-inline-padding);
+  padding-inline-start: max(12px, calc((100cqw - min(64rem, 100cqw)) / 2 + 24px));
+  padding-inline-end: var(--chat-header-inline-padding);
 }
 
 @media (min-width: 640px) {
   .chat-header-shell {
-    --chat-header-inline-padding: 20px;
+    --chat-header-inline-padding: 24px;
+  }
+}
+
+/* Same specificity as the base rule above; source order must stay after it. */
+@container workspace-main (max-width: 720px) {
+  .chat-header-shell {
+    padding-inline-start: 14px;
   }
 }
 

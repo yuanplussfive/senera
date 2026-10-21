@@ -22,7 +22,6 @@ export interface MessageActionsProps {
   allowFork?: boolean;
   allowMutation?: boolean;
   allowCopy?: boolean;
-  showInlineActions: boolean;
   onFork: () => void;
   onRegenerate: () => void;
   onDelete: () => void;
@@ -62,7 +61,6 @@ export function MessageActions({
   allowFork,
   allowMutation = true,
   allowCopy = true,
-  showInlineActions,
   onFork,
   onRegenerate,
   onDelete,
@@ -72,14 +70,10 @@ export function MessageActions({
   const intents = readMessageActionIntents({ hasRequestId, hasWorkflow, allowFork, allowMutation, allowCopy });
   const secondaryIntents = intents.filter((intent) => intent !== "copy");
 
+  // Visibility is owned by the message footer wrapper; this row only lays out
+  // its buttons.
   return (
-    <div
-      className={cn(
-        "mt-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover/msg:opacity-100 focus-within:opacity-100",
-        showInlineActions && "opacity-100",
-        placement === "right" ? "justify-end" : "justify-start",
-      )}
-    >
+    <div className={cn("flex items-center gap-0.5", placement === "right" ? "justify-end" : "justify-start")}>
       {intents.includes("copy") ? (
         <ActionBtn label={frontendMessage("chat.action.copy")} onClick={() => void copyText(content)}>
           <MotionIconSwap stateKey={copied ? "copied" : "copy"}>
@@ -98,7 +92,7 @@ export function MessageActions({
               size="sm"
               tone="muted"
               touchSafe
-              className="h-7 w-7 rounded-md"
+              className="h-6 w-6 rounded-md"
             >
               <MoreHorizontal className="h-3.5 w-3.5" />
             </IconButton>
@@ -179,7 +173,7 @@ function ActionBtn({
       size="sm"
       tone="muted"
       touchSafe
-      className="h-7 w-7 rounded-md"
+      className="h-6 w-6 rounded-md"
       onClick={onClick}
     >
       {children}

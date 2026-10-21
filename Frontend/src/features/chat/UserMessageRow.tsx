@@ -5,7 +5,7 @@ import { ConversationFrame } from "../../shared/ui";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { MessageActions } from "./MessageActions";
 import { MessageAttachments } from "./MessageAttachments";
-import { MessageAvatar, MessageMeta } from "./MessageChrome";
+import { MessageAvatar, MessageTime } from "./MessageChrome";
 import { InlineMessageEditor } from "./InlineMessageEditor";
 import { MessageMetrics } from "./MessageMetrics";
 import { ChatMessageMarkdown } from "./ChatMessageMarkdown";
@@ -60,9 +60,8 @@ export function UserMessageRow({
   };
 
   return (
-    <ConversationFrame mode="user" className="group/msg items-start justify-end gap-2.5" data-message-hover-surface>
+    <ConversationFrame mode="user" className="group/msg items-start justify-end gap-3">
       <div className="flex min-w-0 max-w-full flex-col items-end">
-        <MessageMeta align="right" timestamp={message.createdAt} />
         {message.attachments && message.attachments.length > 0 ? (
           <MessageAttachments attachments={message.attachments} uploadUrl={uploadUrl} />
         ) : null}
@@ -81,7 +80,7 @@ export function UserMessageRow({
               role={canEdit ? "button" : undefined}
               tabIndex={canEdit ? 0 : undefined}
               className={cn(
-                "mt-1 max-w-full min-w-0 overflow-hidden rounded-2xl rounded-tr-[5px] bg-[var(--theme-chat-user-bg)] px-4 py-2.5 text-left text-[length:var(--theme-chat-user-font-size-scaled)] leading-[var(--theme-chat-user-line-height)] text-[var(--theme-chat-user-fg)] shadow-[var(--shadow-bubble-user)] transition",
+                "max-w-full min-w-0 overflow-hidden rounded-2xl rounded-tr-[6px] bg-[var(--theme-chat-user-bg)] px-4 py-3 text-left text-[length:var(--theme-chat-user-font-size-scaled)] leading-[var(--theme-chat-user-line-height)] text-[var(--theme-chat-user-fg)] shadow-[var(--shadow-bubble-user)] transition",
                 canEdit
                   ? "cursor-pointer hover:bg-[var(--theme-chat-user-hover-bg)] focus:outline-none focus:ring-2 focus:ring-accent-focus"
                   : "cursor-default",
@@ -99,18 +98,25 @@ export function UserMessageRow({
                 externalLinkPresentation="text"
               />
             </div>
-            <MessageMetrics role="user" text={message.content} />
-            <MessageActions
-              content={message.content}
-              placement="right"
-              hasRequestId={!!message.requestId}
-              hasWorkflow={!!run}
-              showInlineActions={showInlineActions}
-              onFork={onFork}
-              onRegenerate={onRegenerate}
-              onDelete={onDelete}
-              onViewWorkflow={onViewWorkflow}
-            />
+            <div
+              className={cn(
+                "mt-3 flex min-h-6 min-w-0 items-center justify-end gap-3 overflow-hidden opacity-0 pointer-events-none transition-opacity group-hover/msg:opacity-100 group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto",
+                showInlineActions && "opacity-100 pointer-events-auto",
+              )}
+            >
+              <MessageMetrics role="user" text={message.content} />
+              <MessageTime timestamp={message.createdAt} />
+              <MessageActions
+                content={message.content}
+                placement="right"
+                hasRequestId={!!message.requestId}
+                hasWorkflow={!!run}
+                onFork={onFork}
+                onRegenerate={onRegenerate}
+                onDelete={onDelete}
+                onViewWorkflow={onViewWorkflow}
+              />
+            </div>
           </>
         )}
       </div>

@@ -301,17 +301,17 @@ test("session sidebar width follows its accessible resize handle", () => {
   );
 
   const resizeHandle = screen.getByRole("separator", { name: "调整会话栏宽度" });
-  expect(resizeHandle).toHaveAttribute("aria-valuemin", "208");
-  expect(resizeHandle).toHaveAttribute("aria-valuemax", "360");
-  expect(resizeHandle).toHaveAttribute("aria-valuenow", "266");
+  expect(resizeHandle).toHaveAttribute("aria-valuemin", "240");
+  expect(resizeHandle).toHaveAttribute("aria-valuemax", "392");
+  expect(resizeHandle).toHaveAttribute("aria-valuenow", "264");
 
   fireEvent.keyDown(resizeHandle, { key: "ArrowRight" });
-  expect(resizeHandle).toHaveAttribute("aria-valuenow", "282");
+  expect(resizeHandle).toHaveAttribute("aria-valuenow", "280");
 
   fireEvent.pointerDown(resizeHandle, { pointerId: 3, clientX: 400 });
   fireEvent.pointerMove(resizeHandle, { pointerId: 3, clientX: 350 });
   fireEvent.pointerUp(resizeHandle, { pointerId: 3, clientX: 350 });
-  expect(resizeHandle).toHaveAttribute("aria-valuenow", "232");
+  expect(resizeHandle).toHaveAttribute("aria-valuenow", "240");
 });
 
 test("desktop overlay opens from a floating capsule and switches accessible horizontal tabs", async () => {
@@ -348,7 +348,6 @@ test("desktop overlay opens from a floating capsule and switches accessible hori
   expect(document.querySelector("[data-workflow-dock-capsule]")).toHaveStyle({
     top: "calc(var(--senera-top-chrome-height) + var(--senera-top-rail-gap))",
   });
-  expect(dock).toHaveStyle({ right: "12px" });
   expect(document.querySelector("[data-workflow-dock-gutter]")).toBeInTheDocument();
   expect(dock.querySelector("[data-window-drag-region]")).not.toBeInTheDocument();
   expect(toggle).toHaveAttribute("aria-expanded", "false");
@@ -387,7 +386,7 @@ test("desktop overlay opens from a floating capsule and switches accessible hori
   expect(dock).toHaveStyle({ right: "0px" });
   expect(document.querySelector("[data-workflow-dock-capsule]")).not.toBeInTheDocument();
   expect(resizeHandle).toHaveAttribute("aria-valuemin", "302");
-  expect(resizeHandle).toHaveAttribute("aria-valuemax", "398");
+  expect(resizeHandle).toHaveAttribute("aria-valuemax", "400");
   fireEvent.keyDown(resizeHandle, { key: "Home" });
   expect(useStore.getState().workflowDockWidth).toBe(302);
   fireEvent.keyDown(resizeHandle, { key: "ArrowLeft" });
@@ -395,7 +394,7 @@ test("desktop overlay opens from a floating capsule and switches accessible hori
   fireEvent.pointerDown(resizeHandle, { pointerId: 7, clientX: 400 });
   fireEvent.pointerMove(resizeHandle, { pointerId: 7, clientX: 300 });
   fireEvent.pointerUp(resizeHandle, { pointerId: 7, clientX: 300 });
-  expect(useStore.getState().workflowDockWidth).toBe(398);
+  expect(useStore.getState().workflowDockWidth).toBe(400);
 
   act(() => collapseButton.click());
   expect(document.querySelector("[data-workflow-panel-surface]")).not.toBeInTheDocument();
@@ -405,7 +404,7 @@ test("desktop overlay opens from a floating capsule and switches accessible hori
   act(() => executionToggleAfterCollapse.click());
   expect(document.querySelector("[data-workflow-dock-capsule]")).not.toBeInTheDocument();
   expect(screen.getByRole("tab", { name: "执行" })).toHaveAttribute("aria-selected", "true");
-  expect(useStore.getState().workflowDockWidth).toBe(398);
+  expect(useStore.getState().workflowDockWidth).toBe(400);
 
   const terminalTabAfterReopen = screen.getByRole("tab", { name: "终端" });
   const collapseButtonAfterReopen = screen.getByRole("button", { name: /收起/ });

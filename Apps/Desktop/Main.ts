@@ -16,6 +16,13 @@ import {
 import { DesktopServerHost, type DesktopServerHandle } from "./DesktopServerHost.js";
 import { isTrustedDesktopNavigation } from "./DesktopNavigationPolicy.js";
 import { DesktopClosePolicy, type DesktopCloseIntent } from "./DesktopClosePolicy.js";
+import {
+  invalidateSettingsSurfaceForReload,
+  markSettingsSurfaceReady,
+  queueSettingsSection,
+  type SettingsSurfaceDeliveryOptions,
+  type SettingsSurfaceReadinessState,
+} from "./DesktopSettingsHandshake.js";
 import { hideDesktopWindows, showDesktopWindows } from "./DesktopWindowVisibility.js";
 import { desktopMessage } from "./DesktopMessageCatalog.js";
 import {
@@ -35,8 +42,7 @@ let serverHandle: DesktopServerHandle | undefined;
 let mainWindow: BrowserWindow | undefined;
 let settingsWindow: BrowserWindow | undefined;
 let settingsWindowReady = false;
-let settingsSurfaceReady = false;
-let pendingSettingsSection: AgentSettingsSectionId | undefined;
+const settingsSurfaceState: SettingsSurfaceReadinessState = { ready: false };
 let desktopTray: Tray | undefined;
 let forceSettingsWindowClose = false;
 let desktopQuitting = false;
@@ -171,8 +177,7 @@ function registerDesktopIpc(): void {
   });
   ipcMain.handle("senera:settings.surface-ready", (event) => {
     if (!settingsWindow || event.sender !== settingsWindow.webContents) return;
-    settingsSurfaceReady = true;
-    flushSettingsSectionNavigation();
+    markSettingsSurfaceReady(settingsSurfaceState, readSettingsSurfaceDeliveryOptions());
   });
   ipcMain.handle("senera:settings.confirm-close", (event) => {
     if (!settingsWindow || event.sender !== settingsWindow.webContents) return;
@@ -366,8 +371,8 @@ function openSettingsWindow(options?: { section?: string }): void {
   settingsClosePolicy.reset();
   forceSettingsWindowClose = false;
   settingsWindowReady = false;
-  settingsSurfaceReady = false;
-  pendingSettingsSection = section;
+  settingsSurfaceState.ready = false;
+  settingsSurfaceState.pendingSection = section;
   settingsWindow.once("ready-to-show", () => {
     settingsWindowReady = true;
     presentSettingsWindow({ focus: true });
@@ -377,7 +382,10 @@ function openSettingsWindow(options?: { section?: string }): void {
     settingsWindow?.setTitle(desktopMessage("settings.title", {}, app.getLocale()));
   });
   settingsWindow.webContents.on("did-start-loading", () => {
-    settingsSurfaceReady = false;
+    // The fresh document has not registered its section listener yet and the
+    // renderer that reported dirty state is gone, so neither may survive.
+    invalidateSettingsSurfaceForReload(settingsSurfaceState);
+    settingsClosePolicy.reset();
   });
   registerWindowStateEvents(settingsWindow);
   registerNavigationPolicy(settingsWindow, source);
@@ -389,8 +397,8 @@ function openSettingsWindow(options?: { section?: string }): void {
   settingsWindow.on("closed", () => {
     settingsWindow = undefined;
     settingsWindowReady = false;
-    settingsSurfaceReady = false;
-    pendingSettingsSection = undefined;
+    settingsSurfaceState.ready = false;
+    settingsSurfaceState.pendingSection = undefined;
     settingsClosePolicy.reset();
     forceSettingsWindowClose = false;
   });
@@ -402,16 +410,16 @@ function openSettingsWindow(options?: { section?: string }): void {
 }
 
 function requestSettingsSectionNavigation(section: AgentSettingsSectionId): void {
-  pendingSettingsSection = section;
-  flushSettingsSectionNavigation();
+  queueSettingsSection(settingsSurfaceState, section, readSettingsSurfaceDeliveryOptions());
 }
 
-function flushSettingsSectionNavigation(): void {
+function readSettingsSurfaceDeliveryOptions(): SettingsSurfaceDeliveryOptions {
   const window = settingsWindow;
-  const section = pendingSettingsSection;
-  if (!window || window.isDestroyed() || window.webContents.isDestroyed() || !settingsSurfaceReady || !section) return;
-  pendingSettingsSection = undefined;
-  window.webContents.send("senera:settings.navigate", section);
+  return {
+    dirty: settingsClosePolicy.dirty,
+    destroyed: !window || window.isDestroyed() || window.webContents.isDestroyed(),
+    sendSection: (section) => window?.webContents.send("senera:settings.navigate", section),
+  };
 }
 
 function presentSettingsWindow({ focus }: { focus: boolean }): void {

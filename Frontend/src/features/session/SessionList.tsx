@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   useStore,
@@ -177,98 +177,155 @@ export function SessionList({
   };
 
   const compactSidebar = presentation === "auto" && sidebarCollapsed;
-  const compactFrame = presentation === "auto" && !compactSidebar;
-  const panelWidthClass = compactSidebar ? "w-[58px]" : presentation === "auto" ? "w-[calc(100%-1.25rem)]" : "w-full";
+  const expandedPaneRef = useRef<HTMLDivElement>(null);
+  const collapsedPaneRef = useRef<HTMLDivElement>(null);
+  const previousCompactSidebarRef = useRef(compactSidebar);
+  const lastFocusedPaneRef = useRef<"expanded" | "collapsed" | null>(null);
+
+  useEffect(() => {
+    const trackFocus = (event: FocusEvent): void => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        lastFocusedPaneRef.current = null;
+        return;
+      }
+      if (expandedPaneRef.current?.contains(target)) lastFocusedPaneRef.current = "expanded";
+      else if (collapsedPaneRef.current?.contains(target)) lastFocusedPaneRef.current = "collapsed";
+      else lastFocusedPaneRef.current = null;
+    };
+    document.addEventListener("focusin", trackFocus);
+    return () => document.removeEventListener("focusin", trackFocus);
+  }, []);
+
+  useLayoutEffect(() => {
+    const previous = previousCompactSidebarRef.current;
+    previousCompactSidebarRef.current = compactSidebar;
+    if (presentation !== "auto" || previous === compactSidebar) return;
+    if (lastFocusedPaneRef.current !== (previous ? "collapsed" : "expanded")) return;
+    const target = compactSidebar
+      ? collapsedPaneRef.current?.querySelector<HTMLButtonElement>("[data-session-rail-expand]")
+      : expandedPaneRef.current?.querySelector<HTMLButtonElement>("[data-session-rail-collapse]");
+    target?.focus();
+  }, [compactSidebar, presentation]);
+
+  const sessionHeaderProps = {
+    channelFilter,
+    onChannelFilterChange: setChannelFilter,
+    onNewSession,
+    onToggleSidebar: onClosePanel ?? toggleSidebar,
+  };
+
+  const sessionBodyProps = {
+    sessions: filteredSessions,
+    totalSessionCount: sessionList.length,
+    catalogSynced: sessionCatalogSynced,
+    query: searchQuery,
+    onQueryChange: setSearchQuery,
+    activeSessionId: active,
+    historyLoadingIds,
+    onNewSession,
+    onSelectSession: (sessionId: string) => {
+      select(sessionId);
+      onSessionSelected?.();
+    },
+    onRenameSession: openRename,
+    onDeleteSession: confirmDeleteSession,
+    selectionMode,
+    selectedSessionIds,
+    selectedSessionCount,
+    onToggleSelectionMode: () => {
+      if (selectionMode) {
+        setSelectionMode(false);
+        setSelectedSessionIds(new Set());
+      } else {
+        setSelectionMode(true);
+      }
+    },
+    onToggleSessionSelection: (sessionId: string) => {
+      setSelectedSessionIds((current) => {
+        const next = new Set(current);
+        if (next.has(sessionId)) next.delete(sessionId);
+        else next.add(sessionId);
+        return next;
+      });
+    },
+    onToggleVisibleSelection: () => {
+      setSelectedSessionIds((current) => {
+        const next = new Set(current);
+        const visibleIds = filteredSessions.map((session) => session.sessionId);
+        const allSelected = visibleIds.length > 0 && visibleIds.every((sessionId) => next.has(sessionId));
+        for (const sessionId of visibleIds) {
+          if (allSelected) next.delete(sessionId);
+          else next.add(sessionId);
+        }
+        return next;
+      });
+    },
+    onDeleteSelected: confirmDeleteSelected,
+  };
+
+  const userFooterProps = {
+    profile: userProfile,
+    socketStatus,
+    onSettingsIntent,
+    onOpenSettings,
+    onUpdateProfile: onUpdateUserProfile,
+    onLogout,
+    httpBaseUrl,
+    uploadCsrfToken,
+  };
 
   const content = (
     <aside
       className={cn(
-        "flex h-full shrink-0 flex-col bg-surface-sidebar transition-[width] duration-300 ease-[cubic-bezier(.32,.72,.35,1)]",
+        "relative flex h-full shrink-0 flex-col bg-surface-sidebar",
         presentation === "auto"
-          ? compactSidebar
-            ? "m-2.5 h-[calc(100%-1.25rem)] overflow-hidden rounded-[12px] border border-line-subtle [box-shadow:var(--theme-surface-shadow)]"
-            : "m-2.5 h-[calc(100%-1.25rem)] w-[calc(100%-1.25rem)] gap-2.5 overflow-hidden rounded-[12px] border border-line-subtle p-[10px] pt-3 [box-shadow:var(--theme-surface-shadow)]"
-          : "border-r border-line-subtle",
-        panelWidthClass,
+          ? "m-4 h-[calc(100%-2rem)] w-[calc(100%-2rem)] overflow-hidden rounded-[12px] border border-line-subtle [box-shadow:var(--theme-surface-shadow)]"
+          : "w-full border-r border-line-subtle",
       )}
       data-session-sidebar
       data-session-surface={presentation}
       data-collapsed={compactSidebar}
       data-ui-chrome
     >
-      <SessionHeader
-        collapsed={compactSidebar}
-        compactFrame={compactFrame}
-        channelFilter={channelFilter}
-        onChannelFilterChange={setChannelFilter}
-        onNewSession={onNewSession}
-        onToggleSidebar={onClosePanel ?? toggleSidebar}
-      />
+      {presentation === "auto" ? (
+        <div className="relative h-full w-full">
+          <div
+            ref={expandedPaneRef}
+            data-session-pane="expanded"
+            className={cn(
+              "absolute inset-0 flex min-h-0 flex-col gap-3 p-3 transition-opacity duration-150",
+              compactSidebar ? "pointer-events-none opacity-0" : "opacity-100",
+            )}
+            aria-hidden={compactSidebar}
+            inert={compactSidebar}
+          >
+            <SessionHeader {...sessionHeaderProps} collapsed={false} compactFrame dragRegion={!compactSidebar} />
+            <SessionPanelBody {...sessionBodyProps} compactFrame />
+            <UserFooter {...userFooterProps} collapsed={false} compactFrame />
+          </div>
 
-      {compactSidebar ? null : (
-        <SessionPanelBody
-          compactFrame={compactFrame}
-          sessions={filteredSessions}
-          totalSessionCount={sessionList.length}
-          catalogSynced={sessionCatalogSynced}
-          query={searchQuery}
-          onQueryChange={setSearchQuery}
-          activeSessionId={active}
-          historyLoadingIds={historyLoadingIds}
-          onNewSession={onNewSession}
-          onSelectSession={(sessionId) => {
-            select(sessionId);
-            onSessionSelected?.();
-          }}
-          onRenameSession={openRename}
-          onDeleteSession={confirmDeleteSession}
-          selectionMode={selectionMode}
-          selectedSessionIds={selectedSessionIds}
-          selectedSessionCount={selectedSessionCount}
-          onToggleSelectionMode={() => {
-            if (selectionMode) {
-              setSelectionMode(false);
-              setSelectedSessionIds(new Set());
-            } else {
-              setSelectionMode(true);
-            }
-          }}
-          onToggleSessionSelection={(sessionId) => {
-            setSelectedSessionIds((current) => {
-              const next = new Set(current);
-              if (next.has(sessionId)) next.delete(sessionId);
-              else next.add(sessionId);
-              return next;
-            });
-          }}
-          onToggleVisibleSelection={() => {
-            setSelectedSessionIds((current) => {
-              const next = new Set(current);
-              const visibleIds = filteredSessions.map((session) => session.sessionId);
-              const allSelected = visibleIds.length > 0 && visibleIds.every((sessionId) => next.has(sessionId));
-              for (const sessionId of visibleIds) {
-                if (allSelected) next.delete(sessionId);
-                else next.add(sessionId);
-              }
-              return next;
-            });
-          }}
-          onDeleteSelected={confirmDeleteSelected}
-        />
+          <div
+            ref={collapsedPaneRef}
+            data-session-pane="collapsed"
+            className={cn(
+              "absolute inset-0 flex min-h-0 flex-col transition-opacity duration-150",
+              compactSidebar ? "opacity-100" : "pointer-events-none opacity-0",
+            )}
+            aria-hidden={!compactSidebar}
+            inert={!compactSidebar}
+          >
+            <SessionHeader {...sessionHeaderProps} collapsed compactFrame={false} dragRegion={compactSidebar} />
+            <UserFooter {...userFooterProps} collapsed compactFrame={false} />
+          </div>
+        </div>
+      ) : (
+        <>
+          <SessionHeader {...sessionHeaderProps} collapsed={false} compactFrame={false} />
+          <SessionPanelBody {...sessionBodyProps} compactFrame={false} />
+          <UserFooter {...userFooterProps} collapsed={false} compactFrame={false} />
+        </>
       )}
-
-      <UserFooter
-        collapsed={compactSidebar}
-        compactFrame={compactFrame}
-        profile={userProfile}
-        socketStatus={socketStatus}
-        onSettingsIntent={onSettingsIntent}
-        onOpenSettings={onOpenSettings}
-        onUpdateProfile={onUpdateUserProfile}
-        onLogout={onLogout}
-        httpBaseUrl={httpBaseUrl}
-        uploadCsrfToken={uploadCsrfToken}
-      />
     </aside>
   );
 

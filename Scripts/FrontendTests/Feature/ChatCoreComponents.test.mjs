@@ -576,7 +576,11 @@ test("a cancelled run with execution events folds its settled process", async ()
   renderWithFrontendProviders(React.createElement(ChatPanel, createChatPanelProps()));
 
   expect(screen.queryByRole("button", { name: "整理日志" })).not.toBeInTheDocument();
-  expect(document.querySelector("[data-assistant-turn='request-cancelled-empty-chat']")).toBeInTheDocument();
+  // The virtualizer loads lazily behind a Suspense boundary, so the settled
+  // turn only reaches the document after the chunk resolves.
+  await waitFor(() =>
+    expect(document.querySelector("[data-assistant-turn='request-cancelled-empty-chat']")).toBeInTheDocument(),
+  );
   const processToggle = await waitFor(() => {
     const element = document.querySelector("[data-settled-turn-toggle]");
     expect(element).toBeInstanceOf(HTMLButtonElement);
@@ -697,7 +701,6 @@ test("message overflow keeps workflow and mutation actions reachable", async () 
       placement: "left",
       hasRequestId: true,
       hasWorkflow: true,
-      showInlineActions: true,
       onViewWorkflow,
       onRegenerate,
       onDelete,
@@ -738,7 +741,6 @@ test("a running turn keeps its non-mutating fork boundary available", async () =
       allowFork: true,
       allowMutation: false,
       allowCopy: false,
-      showInlineActions: true,
       onFork,
       onViewWorkflow: vi.fn(),
       onRegenerate: vi.fn(),
@@ -1106,8 +1108,6 @@ test("message list renders messages and streaming run as stable assistant turns"
   expect(readMessageListItemKey(undefined, 4)).toBe("__placeholder__:4");
   expect(readMessageListItemKey(userMessage)).toBe("message-user");
   expect(readMessageListItemKey(streamingTurn)).toBe("assistant-turn:request-streaming:0");
-  expect(document.querySelector("[data-message-list-end-spacer]")).toHaveClass("h-3");
-  expect(document.querySelector("[data-message-list-end-spacer]")).not.toHaveClass("h-24");
   expect(screen.getByRole("navigation", { name: "回复事件位置" })).toBeInTheDocument();
 });
 

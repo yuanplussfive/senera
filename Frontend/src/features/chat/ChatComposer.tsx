@@ -354,7 +354,7 @@ export function ChatComposer({
   };
 
   return (
-    <div className="bg-transparent pb-4 pt-3 sm:pb-5 sm:pt-3.5">
+    <div className="bg-transparent pb-6 pt-4">
       <ConversationFrame mode="composer">
         <div
           onDragEnter={attachments.handleDragEnter}
@@ -362,7 +362,7 @@ export function ChatComposer({
           onDragLeave={attachments.handleDragLeave}
           onDrop={attachments.handleDrop}
           className={cn(
-            "relative flex min-w-0 flex-col gap-2 rounded-[14px] border border-line-subtle bg-surface-raised px-3.5 pb-2.5 pt-[13px] shadow-[0_12px_32px_-16px_rgb(43_40_32_/_0.10)] transition-[background-color,border-color,box-shadow] duration-150",
+            "relative flex min-w-0 flex-col gap-2 rounded-2xl border border-line-subtle bg-surface-raised px-4 pb-3 pt-3.5 shadow-[0_12px_32px_-16px_rgb(43_40_32_/_0.10)] transition-[background-color,border-color,box-shadow] duration-150",
             attachments.isDraggingFiles && "border-accent-border bg-accent-surface ring-2 ring-accent-focus",
           )}
           data-chat-composer
@@ -386,7 +386,7 @@ export function ChatComposer({
             onPreviewUnavailable={attachments.markPreviewUnavailable}
           />
 
-          <div className="relative min-h-9">
+          <div className="relative min-h-10">
             {showActivationOverlay ? <ActivationTextOverlay ref={textOverlayRef} value={value} /> : null}
             <textarea
               ref={taRef}
@@ -405,7 +405,7 @@ export function ChatComposer({
               disabled={disabled}
               style={{ maxHeight: textareaMaxHeight }}
               className={cn(
-                "relative z-[1] min-h-9 w-full resize-none bg-transparent px-1 py-1.5 font-sans text-[14px] leading-5 caret-accent-content selection:bg-accent-surface selection:text-content-primary placeholder:text-content-disabled focus:outline-none disabled:opacity-60 sm:min-h-9",
+                "scrollbar-thin relative z-[1] block min-h-10 w-full resize-none bg-transparent px-1 py-2 font-sans text-[14px] leading-5 caret-accent-content selection:bg-accent-surface selection:text-content-primary placeholder:text-content-disabled focus:outline-none disabled:opacity-60",
                 showActivationOverlay ? "text-transparent" : "text-content-primary",
               )}
             />
@@ -430,7 +430,6 @@ export function ChatComposer({
                     label={frontendChatMessage("chat.composer.toolkit.tooltip")}
                     tooltip={frontendChatMessage("chat.composer.toolkit.tooltip")}
                     tooltipSide="top"
-                    tone="muted"
                     touchSafe
                     className="[&[data-state=open]>svg]:rotate-45"
                   >
@@ -577,7 +576,7 @@ export function ChatComposer({
                     onClick={handleComposerAction}
                     disabled={!canSend}
                     className={cn(
-                      "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-0 transition-[background-color,border-color,color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-chat-composer-focus-bg)] disabled:pointer-events-none",
+                      "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-0 transition-[background-color,border-color,color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-chat-composer-focus-bg)] disabled:pointer-events-none",
                       prefersCompactControls && "min-h-11 min-w-11",
                       canSend
                         ? "bg-content-strong text-content-inverse hover:bg-accent-solid hover:text-accent-on-solid active:bg-accent-solid-pressed"

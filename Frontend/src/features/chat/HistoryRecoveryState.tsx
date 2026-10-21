@@ -87,9 +87,9 @@ function HistorySkeletonRow({
 
 function UserMessageSkeleton({ index }: { index: number }): JSX.Element {
   return (
-    <ConversationFrame mode="user" className="items-start justify-end gap-2.5" aria-hidden="true">
+    <ConversationFrame mode="user" className="items-start justify-end gap-3" aria-hidden="true">
       <div className={cn("flex flex-col items-end", index % 4 === 0 ? "w-[46%]" : "w-[58%]")}>
-        <Skeleton className="h-11 w-full rounded-2xl rounded-tr-[5px]" />
+        <Skeleton className="h-12 w-full rounded-2xl rounded-tr-[6px]" />
       </div>
       <Skeleton className="h-8 w-8 shrink-0 rounded-full" />
     </ConversationFrame>
@@ -99,7 +99,7 @@ function UserMessageSkeleton({ index }: { index: number }): JSX.Element {
 function AssistantMessageSkeleton({ index }: { index: number }): JSX.Element {
   return (
     <ConversationFrame mode="wide" aria-hidden="true">
-      <div className="flex min-w-0 items-start gap-3">
+      <div className="flex min-w-0 items-start gap-4">
         <Skeleton className="h-8 w-8 shrink-0 rounded-full" />
         <div className={cn("min-w-0 flex-1", index % 4 === 1 ? "max-w-[72%]" : "max-w-[82%]")}>
           <Skeleton className="h-3 w-24" />
