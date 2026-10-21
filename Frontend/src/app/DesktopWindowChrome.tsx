@@ -27,14 +27,18 @@ export function DesktopWindowChrome({
   return (
     <>
       {customControlsBridge ? (
-        // Visual backdrop only. A full-width drag region here would swallow
-        // pointer events across the titlebar; each surface header owns its
-        // own drag region and no-drag holes.
+        // Backdrop for the reserved titlebar band. The main surface keeps it
+        // inert: its headers sit in the band and own their own drag regions and
+        // no-drag holes. The settings surface reserves an empty band above its
+        // columns and renders no header there, so the backdrop itself carries
+        // the drag region; the navigation rail is stacked above it and the
+        // window controls opt out.
         <div
-          className={`pointer-events-none fixed inset-x-0 top-0 z-10 h-[var(--senera-top-chrome-height)] ${
-            surface === "main" ? "bg-transparent" : "border-b border-line-subtle"
+          className={`fixed inset-x-0 top-0 z-10 h-[var(--senera-top-chrome-height)] ${
+            surface === "main" ? "pointer-events-none bg-transparent" : "border-b border-line-subtle"
           }`}
           data-desktop-window-drag-strip
+          data-window-drag-region={surface === "settings" ? true : undefined}
         />
       ) : null}
       {children}
