@@ -2,6 +2,13 @@
 
 这里记录 Senera 每个正式版本中的新增功能、问题修复和兼容性变化。
 
+## [1.20.0](https://github.com/yuanplussfive/senera/compare/v1.19.0...v1.20.0) (2026-10-21)
+
+
+### 新增功能
+
+* **frontend:** unify chat and settings layout rhythm with lazy message virtualization ([#152](https://github.com/yuanplussfive/senera/issues/152)) ([db34914](https://github.com/yuanplussfive/senera/commit/db34914c753aefa962d34001675e2b95a1a9ba75))
+
 ## [1.19.0](https://github.com/yuanplussfive/senera/compare/v1.18.0...v1.19.0) (2026-10-20)
 
 
