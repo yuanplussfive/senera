@@ -1,7 +1,6 @@
 import net from "node:net";
 import process from "node:process";
 import { sync as spawnSync } from "cross-spawn";
-import { DesktopNativeModuleMaintenance } from "../../Build/DesktopNativeModuleMaintenance.js";
 import { isMainModule } from "../../Source/AgentSystem/Core/AgentPath.js";
 import { sleep } from "../../Source/AgentSystem/Core/AgentTiming.js";
 import { resolveAgentWorkspaceLayout } from "../../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
@@ -10,6 +9,7 @@ import {
   terminateSeneraOwnedProcessWithEscalation,
   type SeneraInheritedOwnedProcess,
 } from "../../Source/AgentSystem/Execution/SeneraOwnedProcessSpawner.js";
+import { readDesktopServerPort } from "./DesktopRuntimeConfig.js";
 import { probeDesktopLiveFrontend } from "./DesktopLiveFrontendServer.js";
 import { acquireDesktopLiveLock, createDesktopLiveCleanup, type DesktopLiveLock } from "./DesktopLiveLifecycle.js";
 
@@ -21,14 +21,11 @@ interface CommandInvocation {
 
 const DesktopChildTerminationGraceMs = 2_000;
 const DesktopElectronDevelopmentArguments = ["--disable-gpu", "--disable-gpu-compositing", "--in-process-gpu"];
-const ElectronNativeDependencyArguments = [`--platform=${process.platform}`, `--arch=${process.arch}`];
 const desktopLiveUserDataDir = resolveAgentWorkspaceLayout(process.cwd()).desktopRuntimeRoot;
 const configuredFrontendUrl = process.env.SENERA_DESKTOP_FRONTEND_URL?.trim();
 const defaultFrontendUrl = "http://127.0.0.1:5173";
 const runningChildren = new Set<SeneraInheritedOwnedProcess>();
-const nativeMaintenance = new DesktopNativeModuleMaintenance(process.cwd());
 let desktopLiveLock: DesktopLiveLock | undefined;
-let nativeDependenciesRequireRestore = false;
 let shutdownPromise: Promise<void> | undefined;
 let signalExitStarted = false;
 const cleanupDesktopLive = createDesktopLiveCleanup(cleanupDesktopLiveResources);
@@ -44,15 +41,9 @@ async function main(): Promise<void> {
   desktopLiveLock = acquireDesktopLiveLock(process.cwd());
   try {
     registerShutdownHandlers();
-    await nativeMaintenance.clearRebuildMetadata();
 
-    const setupSteps = [
-      command("npm", ["run", "build"]),
-      command("electron-builder", ["install-app-deps", ...ElectronNativeDependencyArguments]),
-    ];
-    nativeDependenciesRequireRestore = true;
-
-    for (const step of setupSteps) {
+    // shortcut: live 模式依赖已安装的预编译原生模块；依赖无兼容二进制时再恢复 Electron 重编译。
+    for (const step of [command("npm", ["run", "build"])]) {
       const result = run(step);
       if (result !== 0) {
         process.exitCode = result;
@@ -77,6 +68,14 @@ async function main(): Promise<void> {
     }
 
     await waitForFrontend(frontendUrl);
+    const configuredServerPort = readDesktopServerPort(process.env.SENERA_SERVER_PORT);
+    const serverPort = configuredServerPort ?? (await findAvailablePort("127.0.0.1", 8787, "desktop server"));
+    const configuredRemoteDebuggingPort = readPort(process.env.SENERA_DESKTOP_REMOTE_DEBUGGING_PORT);
+    const remoteDebuggingPort =
+      configuredRemoteDebuggingPort ?? (await findAvailablePort("127.0.0.1", 9333, "remote debugging"));
+    if (serverPort !== 8787) {
+      console.log(`\n> port 8787 is occupied; using desktop server port ${serverPort}`);
+    }
     const electronEnv = { ...process.env };
     delete electronEnv.ELECTRON_RUN_AS_NODE;
     const electronProcess = await start(
@@ -90,7 +89,8 @@ async function main(): Promise<void> {
         {
           ...electronEnv,
           SENERA_DESKTOP_FRONTEND_URL: frontendUrl,
-          SENERA_DESKTOP_REMOTE_DEBUGGING_PORT: "9333",
+          SENERA_SERVER_PORT: String(serverPort),
+          SENERA_DESKTOP_REMOTE_DEBUGGING_PORT: String(remoteDebuggingPort),
         },
       ),
     );
@@ -126,13 +126,26 @@ function frontendDevArguments(frontendUrl: string): string[] {
 async function findAvailableFrontendUrl(occupiedUrl: string): Promise<string> {
   const url = new URL(occupiedUrl);
   const firstPort = Number(url.port || "80") + 1;
+  url.port = String(await findAvailablePort(url.hostname, firstPort, "frontend"));
+  return url.toString().replace(/\/$/u, "");
+}
+
+async function findAvailablePort(host: string, firstPort: number, label: string): Promise<number> {
   for (let port = firstPort; port <= 65_535; port += 1) {
-    if (await isPortAvailable(url.hostname, port)) {
-      url.port = String(port);
-      return url.toString().replace(/\/$/u, "");
-    }
+    if (await isPortAvailable(host, port)) return port;
   }
-  throw new Error(`Could not find an available frontend port after ${firstPort - 1}.`);
+  throw new Error(`Could not find an available ${label} port after ${firstPort - 1}.`);
+}
+
+function readPort(value: string | undefined): number | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+
+  const port = Number(trimmed);
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new Error("SENERA_DESKTOP_REMOTE_DEBUGGING_PORT must be an integer between 1 and 65535.");
+  }
+  return port;
 }
 
 function isPortAvailable(host: string, port: number): Promise<boolean> {
@@ -232,10 +245,6 @@ function shutdownChildren(): Promise<void> {
 async function cleanupDesktopLiveResources(): Promise<void> {
   try {
     await shutdownChildren();
-    if (nativeDependenciesRequireRestore) {
-      nativeDependenciesRequireRestore = false;
-      await nativeMaintenance.restoreNodeCompatibility();
-    }
   } finally {
     desktopLiveLock?.release();
     desktopLiveLock = undefined;

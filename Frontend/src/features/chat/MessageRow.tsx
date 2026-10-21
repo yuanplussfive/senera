@@ -1,5 +1,6 @@
 import type { ChatMessage, ConversationIdentity, RunRecord, UserProfile } from "../../store/sessionStore";
 import { DEFAULT_ASSISTANT_PROFILE } from "../../store/session/userProfile";
+import { cn } from "../../lib/util";
 import { ConversationFrame } from "../../shared/ui";
 import { AssistantMessageAvatar, MessageMeta } from "./MessageChrome";
 import { MessageActions } from "./MessageActions";
@@ -99,7 +100,7 @@ export function MessageRow({
 
   return (
     <ConversationFrame mode="wide" className="group/msg" data-message-hover-surface>
-      <div className="flex min-w-0 items-start gap-3" data-assistant-message>
+      <div className="flex min-w-0 items-start gap-4" data-assistant-message>
         <AssistantMessageAvatar profile={assistantProfile} />
         <div className="assistant-turn-content min-w-0 flex-1">
           <MessageMeta title={assistantProfile.name} timestamp={message.createdAt} />
@@ -113,24 +114,32 @@ export function MessageRow({
             />
           ) : null}
           <AssistantMessageBody message={{ ...message, content: displayContent }} streaming={isStreamingPreface} />
-          <MessageMetrics
-            role="assistant"
-            usage={run?.usage ?? message.metadata?.run?.usage}
-            run={run}
-            modelProvider={run?.modelProvider ?? message.metadata?.run?.modelProvider}
-          />
-          <MessageActions
-            content={displayContent}
-            placement="left"
-            hasRequestId={!!message.requestId}
-            hasWorkflow={!!run}
-            allowMutation={message.kind !== "AssistantToolPreface"}
-            showInlineActions={showInlineActions}
-            onFork={onFork}
-            onRegenerate={onRegenerate}
-            onDelete={onDelete}
-            onViewWorkflow={onViewWorkflow}
-          />
+          <div
+            className={cn(
+              "mt-3 flex min-h-6 min-w-0 items-center gap-3 overflow-hidden opacity-0 pointer-events-none transition-opacity group-hover/msg:opacity-100 group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto",
+              showInlineActions && "opacity-100 pointer-events-auto",
+            )}
+          >
+            <MessageMetrics
+              role="assistant"
+              usage={run?.usage ?? message.metadata?.run?.usage}
+              run={run}
+              modelProvider={run?.modelProvider ?? message.metadata?.run?.modelProvider}
+            />
+            <div className="ml-auto flex min-w-0">
+              <MessageActions
+                content={displayContent}
+                placement="left"
+                hasRequestId={!!message.requestId}
+                hasWorkflow={!!run}
+                allowMutation={message.kind !== "AssistantToolPreface"}
+                onFork={onFork}
+                onRegenerate={onRegenerate}
+                onDelete={onDelete}
+                onViewWorkflow={onViewWorkflow}
+              />
+            </div>
+          </div>
         </div>
       </div>
     </ConversationFrame>

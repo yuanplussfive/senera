@@ -59,7 +59,7 @@ export function SessionPanelBody({
 
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col", compactFrame ? "px-0 pb-0" : "px-2 pb-2")}>
-      <div className="mb-2 flex min-w-0 shrink-0 items-center gap-1.5">
+      <div className="mb-3 flex min-w-0 shrink-0 items-center gap-1.5">
         <label className="group relative min-w-0 flex-1">
           <span className="sr-only">{frontendMessage("session.searchPlaceholder")}</span>
           <AppIcon
@@ -72,7 +72,7 @@ export function SessionPanelBody({
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
             placeholder={frontendMessage("session.searchPlaceholder")}
-            className="h-8 w-full rounded-[10px] border border-line-subtle bg-surface-raised pl-8 pr-8 text-[12px] text-content-primary outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-content-muted focus:border-accent-border-strong focus:ring-2 focus:ring-accent-focus"
+            className="h-9 w-full rounded-[10px] border border-line-subtle bg-surface-raised pl-8 pr-8 text-[12px] text-content-primary outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-content-muted focus:border-accent-border-strong focus:ring-2 focus:ring-accent-focus"
           />
           {query ? (
             <button
@@ -153,11 +153,11 @@ export function SessionPanelBody({
               <FluidHoverHighlight
                 hover={sessionHover}
                 hidden={disableMotion || sessionHover.activeIndex === selectedSessionIndex}
-                className="rounded-[9px]"
+                className="rounded-[10px]"
                 data-session-fluid-hover
               />
               <LayoutGroup id="session-list-selection">
-                <MotionList className="flex flex-col gap-0.5 pt-1">
+                <MotionList className="flex flex-col gap-1 pt-0">
                   {sessions.map((session, index) => {
                     const isActive = session.sessionId === activeSessionId;
                     const activeRun = readActiveRun(session);

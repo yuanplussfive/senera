@@ -14,7 +14,7 @@ export function AssistantMessageBody({
   liveActivity = false,
 }: AssistantMessageBodyProps): JSX.Element {
   return (
-    <div className="assistant-message-flow mt-1 min-w-0" data-live-activity={liveActivity || undefined}>
+    <div className="assistant-message-flow mt-3 min-w-0" data-live-activity={liveActivity || undefined}>
       {streaming ? (
         <ChatMessageMarkdown
           content={message.content}

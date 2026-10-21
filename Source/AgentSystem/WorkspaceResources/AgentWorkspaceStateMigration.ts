@@ -65,7 +65,9 @@ export function migrateAgentWorkspaceState(
   const legacyConfigPath = input.legacyConfigPath ? path.resolve(input.legacyConfigPath) : undefined;
   const additionalEntries = (input.additionalEntries ?? [])
     .map((entry) => ({ source: path.resolve(entry.source), target: path.resolve(entry.target) }))
-    .filter((entry) => fs.existsSync(entry.source));
+    // A source that already is the target has nothing to migrate; keeping it
+    // would bypass the not-needed shortcut and write a permanent marker.
+    .filter((entry) => entry.source !== entry.target && fs.existsSync(entry.source));
   const shouldPreserveTargetConfig = Boolean(targetConfigPath && fs.existsSync(targetConfigPath));
   const migrationEntries = [
     { source: input.source.dataRoot, target: input.target.dataRoot, preserve: shouldPreserveTargetConfig },

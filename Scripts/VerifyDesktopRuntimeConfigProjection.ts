@@ -29,6 +29,22 @@ assert.deepEqual(projected.SandboxRuntime, {
 });
 assert.equal(projected.ModelProviders[0].Model, "model-a");
 
+const projectedServerPort = projectDesktopRuntimeConfig(
+  {
+    ...sourceConfig,
+    Server: {
+      Host: "127.0.0.1",
+      Port: 8787,
+    },
+  },
+  "C:/Users/test/workspace",
+  8788,
+);
+assert.deepEqual(projectedServerPort.Server, {
+  Host: "127.0.0.1",
+  Port: 8788,
+});
+
 const explicitDocker = projectDesktopRuntimeConfig(
   {
     ...sourceConfig,

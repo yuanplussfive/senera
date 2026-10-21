@@ -2,6 +2,7 @@ import { lazy, StrictMode, Suspense, useCallback, useState } from "react";
 import { createRoot, type Root as ReactRoot } from "react-dom/client";
 import { resolveAppSurface, resolveSettingsSection } from "./app/appSurface";
 import { readDesktopBridge } from "./app/desktopBridge";
+import { applyDesktopWindowDocumentState } from "./app/desktopWindowDocument";
 import { useServerAuthentication } from "./app/useServerAuthentication";
 import type { AgentSocketReconnectPolicy } from "./api/useAgentSocket";
 import { AuthenticationSessionStates, WebSocketCloseCodes } from "./api/generatedEventCatalog";
@@ -52,6 +53,10 @@ installViteDynamicImportRecovery();
 const rootElement = root as HTMLElement & { __seneraReactRoot?: ReactRoot };
 const appRoot = rootElement.__seneraReactRoot ?? createRoot(rootElement);
 rootElement.__seneraReactRoot = appRoot;
+
+// The lazy desktop chrome chunk would otherwise set these flags after the
+// loading skeleton has painted, shifting it down by the titlebar height.
+applyDesktopWindowDocumentState(resolveAppSurface(window.location, Boolean(readDesktopBridge()?.isDesktop)));
 
 appRoot.render(
   <StrictMode>

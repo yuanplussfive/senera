@@ -24,14 +24,18 @@ import {
   type ResponsiveMode,
 } from "../shared/responsive";
 
-const SESSION_PANEL_WIDTH = 266;
+const SESSION_PANEL_HORIZONTAL_INSET = 32;
 const SESSION_PANEL_COLLAPSED_WIDTH = 58;
-const SESSION_PANEL_COLLAPSED_FRAME_WIDTH = SESSION_PANEL_COLLAPSED_WIDTH + 20;
-const SESSION_PANEL_MIN_WIDTH = 208;
-const SESSION_PANEL_MAX_WIDTH = 360;
+const SESSION_PANEL_COLLAPSED_FRAME_WIDTH = SESSION_PANEL_COLLAPSED_WIDTH + SESSION_PANEL_HORIZONTAL_INSET;
+const SESSION_PANEL_MIN_WIDTH = 240;
+const SESSION_PANEL_MAX_WIDTH = 392;
+const SESSION_PANEL_DEFAULT_CARD_MIN = 232;
+const SESSION_PANEL_DEFAULT_CARD_MAX = 296;
+const SESSION_PANEL_DEFAULT_VIEWPORT_RATIO = 0.2;
+const SESSION_PANEL_FALLBACK_VIEWPORT_WIDTH = 1440;
 const SESSION_PANEL_KEYBOARD_STEP = 16;
-const WORKFLOW_DOCK_CAPSULE_WIDTH = 40;
-const WORKFLOW_DOCK_GUTTER_WIDTH = 46;
+const WORKFLOW_DOCK_CAPSULE_WIDTH = 44;
+const WORKFLOW_DOCK_GUTTER_WIDTH = 64;
 const WORKFLOW_DOCK_KEYBOARD_STEP = 16;
 const SESSION_DRAWER_WIDTH = "w-[min(360px,calc(100vw-24px))]";
 const WORKFLOW_DRAWER_WIDTH = "w-[min(560px,calc(100vw-24px))]";
@@ -122,6 +126,16 @@ export interface AppShellResponsiveEntryPlan {
   rightPanelCollapsed: boolean | null;
 }
 
+function readDefaultSessionPanelWidth(viewportWidth: number): number {
+  const width =
+    Number.isFinite(viewportWidth) && viewportWidth > 0 ? viewportWidth : SESSION_PANEL_FALLBACK_VIEWPORT_WIDTH;
+  const cardWidth = Math.min(
+    SESSION_PANEL_DEFAULT_CARD_MAX,
+    Math.max(SESSION_PANEL_DEFAULT_CARD_MIN, Math.round(width * SESSION_PANEL_DEFAULT_VIEWPORT_RATIO)),
+  );
+  return clampSessionPanelWidth(cardWidth + SESSION_PANEL_HORIZONTAL_INSET);
+}
+
 export function readAppShellSurfacePlan(responsiveMode: ResponsiveMode): AppShellSurfacePlan {
   return {
     session: responsiveMode.hasPersistentSessionPanel ? "persistent" : "drawer",
@@ -186,8 +200,10 @@ export function AppShell({
   const { reduceMotion, disableMotion } = useMotionLevel();
   const viewport = useViewportSize();
   const renderPlan = readAppShellRenderPlan(responsiveMode);
-  const [sessionPanelWidth, setSessionPanelWidth] = useState(SESSION_PANEL_WIDTH);
+  const [sessionPanelWidth, setSessionPanelWidth] = useState(() => readDefaultSessionPanelWidth(viewport.width));
   const [sessionPanelResizing, setSessionPanelResizing] = useState(false);
+  const sessionPanelWidthUserSetRef = useRef(false);
+  const fluidSessionPanelWidthRef = useRef(false);
   const workflowDockWidthConstraints = readWorkflowDockWidthConstraints(
     viewport.width,
     sidebarCollapsed ? SESSION_PANEL_COLLAPSED_FRAME_WIDTH : sessionPanelWidth,
@@ -216,6 +232,19 @@ export function AppShell({
   ]);
 
   useEffect(() => {
+    fluidSessionPanelWidthRef.current = true;
+    if (sessionPanelWidthUserSetRef.current) {
+      setSessionPanelWidth((current) => clampSessionPanelWidth(current));
+    } else {
+      setSessionPanelWidth(readDefaultSessionPanelWidth(viewport.width));
+    }
+    const frame = requestAnimationFrame(() => {
+      fluidSessionPanelWidthRef.current = false;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [viewport.width]);
+
+  useEffect(() => {
     if (previousResponsiveLayoutKeyRef.current === responsiveLayoutKey) return;
     previousResponsiveLayoutKeyRef.current = responsiveLayoutKey;
     const entryPlan = readAppShellResponsiveEntryPlan(responsiveMode);
@@ -229,7 +258,7 @@ export function AppShell({
 
   const workflowPanelInline = renderPlan.workflowPanelLayout === "inline";
   const sessionPanelTransition: Transition =
-    disableMotion || reduceMotion || sessionPanelResizing
+    disableMotion || reduceMotion || sessionPanelResizing || fluidSessionPanelWidthRef.current
       ? { duration: 0 }
       : sidebarCollapsed
         ? motionTimings.panelClose
@@ -287,6 +316,7 @@ export function AppShell({
   const handleSessionPanelResizeStart = (event: PointerEvent<HTMLDivElement>): void => {
     if (sidebarCollapsed) return;
     event.preventDefault();
+    sessionPanelWidthUserSetRef.current = true;
     sessionPanelResizeRef.current = {
       pointerId: event.pointerId,
       startWidth: sessionPanelWidth,
@@ -322,6 +352,7 @@ export function AppShell({
               : null;
     if (nextWidth === null) return;
     event.preventDefault();
+    sessionPanelWidthUserSetRef.current = true;
     setSessionPanelWidth(clampSessionPanelWidth(nextWidth));
   };
 
@@ -488,7 +519,7 @@ export function AppShell({
               animate={{ width: rightPanelCollapsed ? WORKFLOW_DOCK_CAPSULE_WIDTH : workflowPanelWidth }}
               transition={workflowPanelTransition}
               className="pointer-events-none absolute inset-y-0 z-30"
-              style={{ right: rightPanelCollapsed ? 12 : 0, willChange: "width" }}
+              style={{ right: rightPanelCollapsed ? 16 : 0, willChange: "width" }}
               data-workflow-dock
               data-workflow-dock-layout={renderPlan.workflowPanelLayout}
               data-open={!rightPanelCollapsed}
@@ -538,7 +569,7 @@ export function AppShell({
                   initial={disableMotion || reduceMotion ? false : { opacity: 0, scale: 0.96 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={workflowPanelTransition}
-                  className="pointer-events-auto absolute right-0 flex flex-col items-center gap-0.5 rounded-full border border-ink-900/[0.08] bg-paper-50/85 p-1 shadow-[0_1px_2px_rgb(var(--color-ink-950)_/_0.05),0_6px_16px_-6px_rgb(var(--color-ink-950)_/_0.12)] backdrop-blur-[10px]"
+                  className="pointer-events-auto absolute right-0 flex flex-col items-center gap-1 rounded-full border border-ink-900/[0.08] bg-paper-50/85 p-1.5 shadow-[0_1px_2px_rgb(var(--color-ink-950)_/_0.05),0_6px_16px_-6px_rgb(var(--color-ink-950)_/_0.12)] backdrop-blur-[10px]"
                   style={{
                     top: "calc(var(--senera-top-chrome-height) + var(--senera-top-rail-gap))",
                     width: WORKFLOW_DOCK_CAPSULE_WIDTH,

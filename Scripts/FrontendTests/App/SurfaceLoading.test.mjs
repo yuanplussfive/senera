@@ -15,11 +15,14 @@ describe("application loading surfaces", () => {
     expect(status).toHaveClass("app-loading-shell", "h-dvh", "w-screen");
     expect(status).toHaveAttribute("data-application-loading");
     expect(status).toHaveTextContent(frontendMessage("app.loading"));
-    expect(status.querySelector("[data-application-loading-sidebar]")).toHaveClass("w-[266px]", "min-[1024px]:flex");
+    expect(status.querySelector("[data-application-loading-sidebar]")).toHaveClass(
+      "app-loading-sidebar",
+      "min-[1024px]:flex",
+    );
     expect(status.querySelector("[data-application-loading-main]")).toBeInTheDocument();
     expect(status.querySelector("[data-application-loading-content]")).toBeInTheDocument();
     expect(status.querySelector("[data-application-loading-composer]")).toBeInTheDocument();
-    expect(status.querySelector("[data-application-loading-workflow]")).toHaveClass("w-10", "min-[1024px]:flex");
+    expect(status.querySelector("[data-application-loading-workflow]")).toHaveClass("min-[1024px]:flex");
     expect(status.querySelector("[data-workflow-dock-loading]")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Senera" })).toBeInTheDocument();
   });
@@ -64,5 +67,15 @@ describe("application loading surfaces", () => {
     expect(overlay).toHaveAttribute("data-settings-loading-overlay");
     expect(document.querySelector("button")).toHaveProperty("inert", true);
     expect(document.activeElement).toBe(overlay);
+  });
+
+  it("keeps the existing dialog body geometry for embedded settings loading", () => {
+    render(React.createElement(SettingsSurfaceLoading, { presentation: "embedded" }));
+
+    const status = screen.getByRole("status", { name: frontendMessage("settings.loading") });
+    expect(status).toHaveAttribute("data-settings-loading-presentation", "embedded");
+    expect(status).toHaveClass("border-0", "rounded-none");
+    expect(status.querySelector("aside")).toHaveClass("w-[224px]");
+    expect(screen.queryByRole("dialog", { name: frontendMessage("settings.loading") })).not.toBeInTheDocument();
   });
 });

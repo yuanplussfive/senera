@@ -2,7 +2,7 @@ import { useId, useMemo, useState } from "react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { ConfigFormFieldData, ConfigFormSectionData } from "../../../api/eventTypes";
 import { MotionDisclosure } from "../../../shared/motion";
-import { AppIcon, type AppIconName, IconButton, MenuSelect, Spinner, StateView, Switch } from "../../../shared/ui";
+import { AppIcon, type AppIconName, IconButton, MenuSelect, Spinner, Switch } from "../../../shared/ui";
 import { AgentToolPresentationIcon } from "../../../shared/workspace/AgentToolPresentationIcon";
 import { findTopField } from "../../chat/modelConfigData";
 import {
@@ -13,6 +13,7 @@ import {
 import { ConfigFieldRequirementLabel } from "../../../shared/config/ConfigFieldVisibility";
 import { cn } from "../../../lib/util";
 import { useFrontendLocale } from "../../../i18n/useFrontendLocale";
+import { SettingsSectionLoading } from "../SettingsLoading";
 
 import type { SettingsSystemConfigHandle } from "../SettingsContracts";
 import {
@@ -116,22 +117,10 @@ export function DefaultModelSection({
   const defaultModelId = state?.defaultModel?.model.Id ?? "";
 
   if (!systemConfig) {
-    return (
-      <StateView
-        status="loading"
-        className="min-h-[220px] bg-paper-50"
-        description={frontendMessage("settings.state.loadingMain")}
-      />
-    );
+    return <SettingsSectionLoading />;
   }
   if (!snapshot || !modelSection || !state) {
-    return (
-      <StateView
-        status="loading"
-        className="min-h-[220px] bg-paper-50"
-        description={frontendMessage("settings.state.loadingDefaultModel")}
-      />
-    );
+    return <SettingsSectionLoading />;
   }
 
   return (

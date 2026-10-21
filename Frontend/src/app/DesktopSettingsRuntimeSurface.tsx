@@ -5,7 +5,7 @@ import { buildSettingsSurfaceSyncRequests } from "./settingsSurfaceSync";
 import { readDesktopBridge } from "./desktopBridge";
 import { useSettingsRuntime } from "./useSettingsRuntime";
 import { DiscardDraftDialog } from "../features/settings/DiscardDraftDialog";
-import type { SettingsSectionId } from "../features/settings/settingsSectionContract";
+import { isSettingsSectionId, type SettingsSectionId } from "../features/settings/settingsSectionContract";
 import { SettingsSurfaceLoading } from "./SurfaceLoading";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import { AppMotionProvider } from "../shared/motion/MotionProvider";
@@ -90,7 +90,9 @@ export function DesktopSettingsRuntimeSurface({
   }, []);
 
   useEffect(() => {
-    const unsubscribe = bridge?.onSettingsNavigationRequested?.(changeSection);
+    const unsubscribe = bridge?.onSettingsNavigationRequested?.((nextSection) => {
+      if (isSettingsSectionId(nextSection)) changeSection(nextSection);
+    });
     void bridge?.notifySettingsSurfaceReady?.();
     return unsubscribe;
   }, [bridge, changeSection]);

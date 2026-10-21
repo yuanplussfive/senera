@@ -102,7 +102,7 @@ export function SessionRow({
           ref={setItemRef}
           data-session-row={sessionId}
           className={cn(
-            "group relative isolate z-10 grid h-11 w-full items-center rounded-[9px] px-2.5 text-left transition-colors duration-150",
+            "group relative isolate z-10 grid h-10 w-full items-center rounded-[10px] px-3 text-left transition-colors duration-150",
             "data-[state=open]:bg-surface-hover",
             active
               ? "text-content-primary"
@@ -116,12 +116,12 @@ export function SessionRow({
             <motion.span
               layoutId={animateSelection ? "active-session-surface" : undefined}
               transition={animateSelection ? { layout: motionTimings.selection } : { duration: 0 }}
-              className="pointer-events-none absolute inset-0 z-0 rounded-[9px] bg-[var(--theme-session-active-bg)]"
+              className="pointer-events-none absolute inset-0 z-0 rounded-[10px] bg-[var(--theme-session-active-bg)]"
               data-active-session-indicator
             />
           ) : null}
           {selectionMode ? (
-            <label className="absolute inset-0 z-20 flex min-w-0 cursor-pointer items-center gap-2 overflow-hidden px-2.5">
+            <label className="absolute inset-0 z-20 flex min-w-0 cursor-pointer items-center gap-2 overflow-hidden px-3">
               <input
                 type="checkbox"
                 ref={(node) => {
@@ -148,7 +148,7 @@ export function SessionRow({
                 onClick={onClick}
                 onFocus={onFocus}
                 onKeyDown={handleContextMenuShortcut}
-                className="absolute inset-0 z-10 cursor-pointer rounded-[9px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-focus"
+                className="absolute inset-0 z-10 cursor-pointer rounded-[10px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-focus"
               />
               <div className="pointer-events-none relative z-20 min-w-0 overflow-hidden pr-1">
                 <SessionTitleContent accent={accent} title={title} />

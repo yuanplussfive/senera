@@ -1,0 +1,3908 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Senera · 对话工作区间距重构</title>
+    <style>
+      :root {
+        --page-bg: #efeee9;
+        --page-ink: #201e19;
+        --page-secondary: #625d50;
+        --page-muted: #8a8477;
+        --page-rule: #d8d5cc;
+        --page-rule-soft: #e4e1d9;
+        --page-accent: #9b4a32;
+        --page-accent-soft: #f3e9e3;
+        --page-green: #5a7d4c;
+        --font-ui:
+          "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", "Segoe UI Variable", "Segoe UI",
+          ui-sans-serif, system-ui, sans-serif;
+        --font-mono: "JetBrains Mono", "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        background: var(--page-bg);
+        color: var(--page-ink);
+        font-family: var(--font-ui);
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+
+      button {
+        font: inherit;
+      }
+
+      a {
+        color: inherit;
+      }
+
+      .page {
+        padding: 0 32px 88px;
+      }
+
+      .topbar {
+        display: flex;
+        width: 100%;
+        max-width: 1440px;
+        height: 72px;
+        margin: 0 auto;
+        align-items: center;
+        gap: 24px;
+        border-bottom: 1px solid var(--page-rule);
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        text-decoration: none;
+      }
+
+      .brand-mark {
+        width: 26px;
+        height: 26px;
+        flex: none;
+      }
+
+      .brand-word {
+        font-size: 15px;
+        font-weight: 650;
+        letter-spacing: -0.015em;
+      }
+
+      .brand-slash {
+        width: 1px;
+        height: 14px;
+        background: var(--page-rule);
+      }
+
+      .brand-sub {
+        color: var(--page-muted);
+        font-family: var(--font-mono);
+        font-size: 10px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .topnav {
+        display: flex;
+        align-items: center;
+        gap: 22px;
+        margin-left: 26px;
+      }
+
+      .topnav a {
+        color: var(--page-secondary);
+        font-size: 12px;
+        text-decoration: none;
+        transition: color 140ms ease;
+      }
+
+      .topnav a:hover {
+        color: var(--page-ink);
+      }
+
+      .topmeta {
+        margin-left: auto;
+        color: var(--page-muted);
+        font-family: var(--font-mono);
+        font-size: 10px;
+        letter-spacing: 0.1em;
+        white-space: nowrap;
+      }
+
+      main {
+        width: 100%;
+        max-width: 1440px;
+        margin: 0 auto;
+      }
+
+      .intro {
+        display: grid;
+        grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.75fr);
+        gap: 64px;
+        align-items: end;
+        padding: 66px 0 44px;
+      }
+
+      .eyebrow {
+        margin: 0;
+        color: var(--page-accent);
+        font-family: var(--font-mono);
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        max-width: 880px;
+        margin: 16px 0 18px;
+        font-size: clamp(36px, 4.2vw, 58px);
+        font-weight: 620;
+        letter-spacing: -0.05em;
+        line-height: 1.04;
+      }
+
+      .lede {
+        max-width: 650px;
+        margin: 0;
+        color: var(--page-secondary);
+        font-size: 14px;
+        line-height: 1.85;
+      }
+
+      .intro-facts {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        border-top: 1px solid var(--page-rule);
+      }
+
+      .intro-facts div {
+        padding: 14px 16px 0 0;
+        border-right: 1px solid var(--page-rule);
+      }
+
+      .intro-facts div:last-child {
+        border-right: 0;
+        padding-right: 0;
+        padding-left: 16px;
+      }
+
+      .intro-facts div:nth-child(2) {
+        padding-left: 16px;
+      }
+
+      .intro-facts span {
+        display: block;
+        color: var(--page-muted);
+        font-family: var(--font-mono);
+        font-size: 9px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .intro-facts b {
+        display: block;
+        margin-top: 5px;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+
+      .studio {
+        margin-top: 18px;
+        padding-top: 14px;
+        border-top: 1px solid var(--page-rule);
+      }
+
+      .studio-bar {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 0 0 14px;
+      }
+
+      .studio-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--page-secondary);
+        font-family: var(--font-mono);
+        font-size: 10px;
+        letter-spacing: 0.06em;
+      }
+
+      .live-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 999px;
+        background: var(--page-green);
+        box-shadow: 0 0 0 3px rgb(90 125 76 / 0.1);
+      }
+
+      .controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-left: auto;
+      }
+
+      .segmented {
+        display: flex;
+        padding: 3px;
+        border-radius: 999px;
+        background: #e3e1da;
+      }
+
+      .seg-btn {
+        min-width: 68px;
+        padding: 7px 14px;
+        border: 0;
+        border-radius: 999px;
+        background: transparent;
+        color: var(--page-secondary);
+        cursor: pointer;
+        font-size: 12px;
+        line-height: 18px;
+        transition:
+          background-color 150ms ease,
+          color 150ms ease,
+          box-shadow 150ms ease;
+      }
+
+      .seg-btn[aria-pressed="true"] {
+        background: #fff;
+        color: var(--page-ink);
+        box-shadow: 0 1px 2px rgb(43 40 32 / 0.08);
+      }
+
+      .tool-btn {
+        display: inline-flex;
+        height: 32px;
+        align-items: center;
+        gap: 6px;
+        padding: 0 11px;
+        border: 1px solid var(--page-rule);
+        border-radius: 999px;
+        background: transparent;
+        color: var(--page-secondary);
+        cursor: pointer;
+        font-family: var(--font-mono);
+        font-size: 10px;
+        letter-spacing: 0.02em;
+        transition:
+          background-color 150ms ease,
+          border-color 150ms ease,
+          color 150ms ease;
+      }
+
+      .tool-btn:hover {
+        border-color: #c9c4b8;
+        color: var(--page-ink);
+      }
+
+      .tool-btn[aria-pressed="true"] {
+        border-color: var(--page-ink);
+        background: var(--page-ink);
+        color: #fff;
+      }
+
+      .tool-btn .icon {
+        width: 13px;
+        height: 13px;
+      }
+
+      .stage {
+        position: relative;
+        overflow: hidden;
+        padding: 24px;
+        border: 1px solid var(--page-rule);
+        border-radius: 18px;
+        background: #e8e6df;
+      }
+
+      .stage::before {
+        position: absolute;
+        inset: 0;
+        background-image: radial-gradient(circle, rgb(43 40 32 / 0.1) 0.7px, transparent 0.8px);
+        background-size: 16px 16px;
+        content: "";
+        opacity: 0.45;
+        pointer-events: none;
+      }
+
+      .stage-viewport {
+        position: relative;
+        width: 100%;
+        min-height: 200px;
+      }
+
+      .stage-foot {
+        position: relative;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 18px;
+        margin-top: 16px;
+        padding-top: 12px;
+        border-top: 1px solid rgb(43 40 32 / 0.14);
+        color: #746e61;
+        font-family: var(--font-mono);
+        font-size: 10px;
+        letter-spacing: 0.02em;
+      }
+
+      .stage-foot b {
+        color: var(--page-ink);
+        font-weight: 500;
+      }
+
+      /* ------------------------------------------------------------------ */
+      /* Prototype app                                                        */
+      /* ------------------------------------------------------------------ */
+
+      .app {
+        position: absolute;
+        top: 0;
+        left: 0;
+        display: flex;
+        width: 1440px;
+        height: 920px;
+        overflow: hidden;
+        background: #f8f8f6;
+        color: #2b2820;
+        font-family: var(--font-ui);
+        font-size: 14px;
+        transform-origin: top left;
+        user-select: none;
+
+        --shell-gutter: 16px;
+        --sidebar-w: 272px;
+        --sidebar-pad: 12px;
+        --sidebar-gap: 12px;
+        --sidebar-radius: 14px;
+        --sidebar-frame: calc(var(--sidebar-w) + var(--shell-gutter) * 2);
+        --footer-h: 52px;
+
+        --header-h: 52px;
+        --header-pad: 24px;
+        --window-controls-w: 138px;
+
+        --track: 1024px;
+        --frame-pad: 24px;
+        --rail-reserve: 64px;
+
+        --search-h: 36px;
+        --row-h: 40px;
+        --row-gap: 4px;
+
+        --reading: 864px;
+        --user-max: 672px;
+        --user-avatar-gap: 12px;
+        --assistant-avatar-gap: 16px;
+
+        --item-pt: 4px;
+        --item-pb: 20px;
+        --frame-pt: 16px;
+        --frame-pb: 20px;
+
+        --meta-gap: 8px;
+        --elapsed-h: 30px;
+        --stage-head-h: 34px;
+        --stage-gap: 8px;
+
+        --tool-row-h: 28px;
+        --tool-gap: 2px;
+        --tool-group-pad: 8px;
+        --tool-icon-gap: 8px;
+
+        --body-top: 12px;
+        --body-line-height: 1.7;
+        --para-gap: 12px;
+        --tail-gap: 12px;
+        --tail-h: 24px;
+        --action-btn: 24px;
+
+        --composer-h: 150px;
+        --composer-pad-top: 16px;
+        --composer-pad-bottom: 24px;
+        --composer-card-pad: 14px 16px 12px;
+        --composer-input-h: 40px;
+        --composer-toolbar-h: 36px;
+        --composer-radius: 16px;
+        --send-size: 36px;
+
+        --dock-right: 16px;
+        --dock-top-gap: 16px;
+        --dock-w: 44px;
+        --dock-pad: 6px;
+        --dock-gap: 4px;
+
+        --main-x: var(--sidebar-frame);
+        --main-w: calc(100% - var(--main-x) - var(--rail-reserve));
+        --frame-x: calc(var(--main-x) + (var(--main-w) - var(--track)) / 2);
+        --frame-inner-x: calc(var(--frame-x) + var(--frame-pad));
+        --body-x: calc(var(--frame-inner-x) + 32px + var(--assistant-avatar-gap));
+        --body-right: calc(var(--body-x) + var(--reading));
+      }
+
+      .app[data-variant="current"] {
+        --shell-gutter: 10px;
+        --sidebar-w: 266px;
+        --sidebar-pad: 10px;
+        --sidebar-gap: 10px;
+        --sidebar-radius: 12px;
+        --footer-h: 48px;
+
+        --header-pad: 20px;
+        --frame-pad: 28px;
+        --rail-reserve: 48px;
+
+        --search-h: 32px;
+        --row-h: 44px;
+        --row-gap: 2px;
+
+        --reading: 928px;
+        --user-max: 736px;
+        --user-avatar-gap: 10px;
+        --assistant-avatar-gap: 12px;
+
+        --item-pb: 12px;
+        --frame-pt: 24px;
+        --frame-pb: 12px;
+
+        --meta-gap: 0px;
+        --elapsed-h: 26px;
+        --stage-head-h: 30px;
+        --stage-gap: 8px;
+
+        --tool-row-h: 26px;
+        --tool-gap: 4px;
+        --tool-group-pad: 0px;
+        --tool-icon-gap: 6px;
+
+        --body-top: 8px;
+        --body-line-height: 1.75;
+        --para-gap: 10.5px;
+        --tail-gap: 4px;
+        --tail-h: 18px;
+        --action-btn: 28px;
+
+        --composer-h: 134px;
+        --composer-pad-top: 14px;
+        --composer-pad-bottom: 20px;
+        --composer-card-pad: 13px 14px 10px;
+        --composer-input-h: 36px;
+        --composer-toolbar-h: 32px;
+        --composer-radius: 14px;
+        --send-size: 32px;
+
+        --dock-right: 12px;
+        --dock-top-gap: 12px;
+        --dock-w: 40px;
+        --dock-pad: 4px;
+        --dock-gap: 2px;
+      }
+
+      .app::after {
+        position: absolute;
+        inset: 0;
+        background-image:
+          radial-gradient(circle at 0% 0%, rgb(194 105 74 / 0.018) 0, transparent 35%),
+          radial-gradient(circle at 100% 100%, rgb(90 125 76 / 0.016) 0, transparent 35%);
+        content: "";
+        pointer-events: none;
+      }
+
+      .icon {
+        display: block;
+        width: 16px;
+        height: 16px;
+        flex: none;
+        fill: none;
+        stroke: currentColor;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 1.7;
+      }
+
+      .icon-sm {
+        width: 14px;
+        height: 14px;
+      }
+
+      .icon-xs {
+        width: 12px;
+        height: 12px;
+      }
+
+      .icon-btn {
+        display: grid;
+        width: 32px;
+        height: 32px;
+        flex: none;
+        place-items: center;
+        padding: 0;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: #6a6558;
+        cursor: pointer;
+        transition:
+          background-color 140ms ease,
+          color 140ms ease;
+      }
+
+      .icon-btn:hover {
+        background: rgb(43 40 32 / 0.055);
+        color: #2b2820;
+      }
+
+      .icon-btn:active {
+        transform: scale(0.97);
+      }
+
+      .brand-logo {
+        display: grid;
+        width: 18px;
+        height: 18px;
+        flex: none;
+        place-items: center;
+      }
+
+      .brand-logo svg {
+        width: 18px;
+        height: 18px;
+      }
+
+      /* Sidebar ---------------------------------------------------------- */
+
+      .sidebar-frame {
+        position: relative;
+        z-index: 2;
+        width: var(--sidebar-frame);
+        flex: none;
+        padding: var(--shell-gutter);
+      }
+
+      .sidebar {
+        display: flex;
+        width: var(--sidebar-w);
+        height: 100%;
+        flex-direction: column;
+        gap: var(--sidebar-gap);
+        overflow: hidden;
+        padding: var(--sidebar-pad);
+        border: 1px solid #e0dfdb;
+        border-radius: var(--sidebar-radius);
+        background: #f4f4f1;
+        box-shadow:
+          0 1px 2px rgb(43 40 32 / 0.04),
+          0 12px 24px rgb(43 40 32 / 0.06);
+      }
+
+      .sidebar-full {
+        display: flex;
+        min-height: 0;
+        flex: 1;
+        flex-direction: column;
+        gap: var(--sidebar-gap);
+      }
+
+      .sidebar-header {
+        display: flex;
+        height: 52px;
+        flex: none;
+        align-items: center;
+        gap: 4px;
+        padding: 0 2px;
+      }
+
+      .brand-trigger {
+        display: flex;
+        min-width: 0;
+        height: 32px;
+        flex: 1;
+        align-items: center;
+        gap: 8px;
+        padding: 0 6px;
+        border-radius: 9px;
+        color: #2b2820;
+        cursor: pointer;
+        transition: background-color 140ms ease;
+      }
+
+      .brand-trigger:hover {
+        background: rgb(43 40 32 / 0.05);
+      }
+
+      .brand-trigger .word {
+        overflow: hidden;
+        font-size: 13px;
+        font-weight: 650;
+        letter-spacing: -0.02em;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .brand-trigger .chev {
+        margin-left: auto;
+        color: #96917f;
+      }
+
+      .sidebar-actions {
+        display: flex;
+        flex: none;
+        align-items: center;
+        gap: 2px;
+      }
+
+      .sidebar-actions .icon-btn {
+        width: 30px;
+        height: 30px;
+      }
+
+      .search-row {
+        display: flex;
+        flex: none;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .search-box {
+        display: flex;
+        height: var(--search-h);
+        min-width: 0;
+        flex: 1;
+        align-items: center;
+        gap: 8px;
+        padding: 0 10px;
+        border: 1px solid #e3e1da;
+        border-radius: 10px;
+        background: #fff;
+        color: #96917f;
+        font-size: 12px;
+      }
+
+      .search-box .icon {
+        color: #96917f;
+      }
+
+      .search-box .placeholder {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .sessions {
+        display: flex;
+        min-height: 0;
+        flex: 1;
+        flex-direction: column;
+        padding-top: 4px;
+      }
+
+      .session-row {
+        display: flex;
+        height: var(--row-h);
+        flex: none;
+        align-items: center;
+        gap: 8px;
+        padding: 0 12px;
+        border-radius: 10px;
+        color: #625d50;
+        font-size: 13px;
+        line-height: 20px;
+        cursor: pointer;
+        transition:
+          background-color 140ms ease,
+          color 140ms ease;
+      }
+
+      .session-row + .session-row {
+        margin-top: var(--row-gap);
+      }
+
+      .session-row:hover {
+        background: rgb(43 40 32 / 0.045);
+        color: #2b2820;
+      }
+
+      .session-row.active {
+        background: #e0dfdb;
+        color: #2b2820;
+      }
+
+      .session-title {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .session-spacer {
+        flex: 1;
+      }
+
+      .run-dot {
+        width: 7px;
+        height: 7px;
+        flex: none;
+        border: 1.5px solid #b45d40;
+        border-radius: 50%;
+      }
+
+      .sidebar-footer {
+        display: flex;
+        height: var(--footer-h);
+        flex: none;
+        align-items: center;
+        gap: 10px;
+        margin-top: auto;
+        padding: 8px 4px 0;
+        border-top: 1px solid #e5e3dc;
+        color: #2b2820;
+        font-size: 13px;
+      }
+
+      .user-avatar {
+        display: grid;
+        width: 30px;
+        height: 30px;
+        flex: none;
+        place-items: center;
+        border-radius: 50%;
+        background: #2b2820;
+        color: #fff;
+        font-size: 11px;
+        font-weight: 600;
+      }
+
+      .sidebar-footer .name {
+        min-width: 0;
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .sidebar-footer .chev {
+        color: #96917f;
+      }
+
+      .sidebar-rail {
+        display: none;
+        height: 100%;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        padding-top: 4px;
+      }
+
+      .sidebar-rail .rail-logo {
+        display: grid;
+        width: 32px;
+        height: 32px;
+        place-items: center;
+        margin-bottom: 2px;
+        border-radius: 9px;
+      }
+
+      .sidebar-rail .rail-logo svg {
+        width: 20px;
+        height: 20px;
+      }
+
+      .sidebar-rail .rail-footer {
+        display: grid;
+        place-items: center;
+        margin-top: auto;
+        padding-top: 10px;
+        border-top: 1px solid #e5e3dc;
+        width: 100%;
+      }
+
+      .app.sidebar-collapsed {
+        --sidebar-w: 58px;
+        --shell-gutter: 16px;
+      }
+
+      .sidebar-collapsed .sidebar {
+        padding: 10px;
+      }
+
+      .sidebar-collapsed .sidebar-full {
+        display: none;
+      }
+
+      .sidebar-collapsed .sidebar-rail {
+        display: flex;
+      }
+
+      .sidebar-collapsed .header-inner {
+        max-width: none;
+        margin: 0;
+        padding-inline: 20px;
+      }
+
+      .sidebar-collapsed .guide-shell,
+      .sidebar-collapsed .guide-sidebar {
+        display: none;
+      }
+
+      /* Main ------------------------------------------------------------- */
+
+      .workspace {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        min-width: 0;
+        flex: 1;
+        flex-direction: column;
+        background: transparent;
+      }
+
+      .app-header {
+        position: relative;
+        display: flex;
+        height: var(--header-h);
+        flex: none;
+        align-items: center;
+        padding-right: var(--rail-reserve);
+        border-bottom: 1px solid #e5e3dc;
+      }
+
+      .header-inner {
+        display: flex;
+        width: 100%;
+        max-width: var(--track);
+        min-width: 0;
+        height: 100%;
+        align-items: center;
+        gap: 8px;
+        margin-inline: auto;
+        padding-inline: var(--frame-pad);
+      }
+
+      .app[data-variant="current"] .header-inner {
+        max-width: none;
+        margin: 0;
+        padding-inline: var(--header-pad);
+      }
+
+      .header-title {
+        min-width: 0;
+        overflow: hidden;
+        color: #2b2820;
+        font-size: 14.5px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .header-more {
+        display: grid;
+        width: 22px;
+        height: 22px;
+        place-items: center;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: #b0aa9b;
+        cursor: pointer;
+      }
+
+      .header-more:hover {
+        background: rgb(43 40 32 / 0.05);
+        color: #625d50;
+      }
+
+      .window-controls {
+        position: absolute;
+        top: 0;
+        right: 0;
+        display: flex;
+        width: var(--window-controls-w);
+        height: 100%;
+        z-index: 4;
+      }
+
+      .win-btn {
+        display: grid;
+        flex: 1;
+        place-items: center;
+        border: 0;
+        background: transparent;
+        color: #6a6558;
+        cursor: default;
+      }
+
+      .win-btn:hover {
+        background: rgb(43 40 32 / 0.055);
+      }
+
+      .win-btn.close:hover {
+        background: #c84b3a;
+        color: #fff;
+      }
+
+      .workspace-body {
+        position: relative;
+        display: flex;
+        min-height: 0;
+        flex: 1;
+        flex-direction: column;
+        padding-right: var(--rail-reserve);
+      }
+
+      .chat-scroll {
+        position: relative;
+        min-height: 0;
+        flex: 1;
+        overflow: hidden;
+      }
+
+      .conversation-frame {
+        width: 100%;
+        max-width: var(--track);
+        margin: 0 auto;
+        padding: var(--frame-pt) var(--frame-pad) var(--frame-pb);
+      }
+
+      /* Conversation ----------------------------------------------------- */
+
+      .user-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: flex-end;
+        gap: var(--user-avatar-gap);
+        padding-top: var(--item-pt);
+        padding-bottom: var(--item-pb);
+      }
+
+      .user-stack {
+        display: flex;
+        min-width: 0;
+        max-width: min(100%, var(--user-max));
+        flex-direction: column;
+        align-items: flex-end;
+      }
+
+      .user-meta {
+        display: flex;
+        height: 16px;
+        align-items: center;
+        color: #96917f;
+        font-size: 10.5px;
+        opacity: 0;
+        transition: opacity 140ms ease;
+      }
+
+      .app.guides-on .user-meta {
+        opacity: 1;
+      }
+
+      .app[data-variant="proposed"] .user-meta {
+        display: none;
+      }
+
+      .user-bubble {
+        max-width: 100%;
+        min-width: 0;
+        margin-top: 4px;
+        overflow: hidden;
+        padding: 10px 16px;
+        border-radius: 16px 6px 16px 16px;
+        background: #efeeeb;
+        box-shadow: 0 1px 1px rgb(43 40 32 / 0.04);
+        color: #2b2820;
+        font-size: 14.5px;
+        line-height: 1.55;
+        text-align: left;
+      }
+
+      .app[data-variant="proposed"] .user-bubble {
+        margin-top: 0;
+        padding-block: 12px;
+      }
+
+      .user-footer-current {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+      }
+
+      .app[data-variant="proposed"] .user-footer-current {
+        display: none;
+      }
+
+      .app[data-variant="current"] .turn-footer {
+        display: none;
+      }
+
+      .user-turn-footer {
+        width: 100%;
+        justify-content: flex-end;
+      }
+
+      .turn-footer.user-turn-footer .actions {
+        margin-left: 0;
+      }
+
+      .metrics-row {
+        display: flex;
+        height: 18px;
+        align-items: center;
+        gap: 12px;
+        margin-top: var(--tail-gap);
+        color: #96917f;
+        font-size: 12px;
+        line-height: 18px;
+      }
+
+      .metric {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        white-space: nowrap;
+      }
+
+      .metric .icon {
+        width: 12px;
+        height: 12px;
+        stroke-width: 1.7;
+      }
+
+      .actions-row {
+        display: flex;
+        height: 28px;
+        align-items: center;
+        gap: 2px;
+        margin-top: var(--tail-gap);
+      }
+
+      .action-btn {
+        display: grid;
+        width: 28px;
+        height: 28px;
+        place-items: center;
+        padding: 0;
+        border: 0;
+        border-radius: 7px;
+        background: transparent;
+        color: #8d887a;
+        cursor: pointer;
+        transition:
+          background-color 140ms ease,
+          color 140ms ease;
+      }
+
+      .action-btn:hover {
+        background: rgb(43 40 32 / 0.055);
+        color: #2b2820;
+      }
+
+      .action-btn .icon {
+        width: 14px;
+        height: 14px;
+      }
+
+      .assistant-turn {
+        display: flex;
+        min-width: 0;
+        align-items: flex-start;
+        gap: var(--assistant-avatar-gap);
+        padding-top: var(--item-pt);
+        padding-bottom: var(--item-pb);
+      }
+
+      .assistant-avatar {
+        display: grid;
+        width: 32px;
+        height: 32px;
+        flex: none;
+        place-items: center;
+        margin-top: 1px;
+      }
+
+      .assistant-avatar svg {
+        width: 30px;
+        height: 30px;
+      }
+
+      .assistant-content {
+        width: 100%;
+        max-width: var(--reading);
+        min-width: 0;
+        flex: 1;
+      }
+
+      .assistant-meta {
+        display: flex;
+        height: 20px;
+        align-items: baseline;
+        gap: 8px;
+      }
+
+      .assistant-name {
+        color: #2b2820;
+        font-size: 13.5px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+
+      .assistant-time {
+        color: #96917f;
+        font-size: 10.5px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .elapsed-row {
+        display: flex;
+        height: var(--elapsed-h);
+        align-items: center;
+        gap: 5px;
+        margin-top: var(--meta-gap);
+        border-bottom: 1px solid #e5e3dc;
+        color: #625d50;
+        font-size: 15px;
+        line-height: 24px;
+      }
+
+      .elapsed-row .chev {
+        color: #8d887a;
+        transform: translateY(1px);
+      }
+
+      .stage-head {
+        display: flex;
+        height: var(--stage-head-h);
+        align-items: center;
+        gap: 8px;
+        margin-top: var(--stage-gap);
+        color: #2b2820;
+        font-size: 13.5px;
+        font-weight: 500;
+        letter-spacing: -0.005em;
+      }
+
+      .stage-head .stage-icon {
+        color: #625d50;
+      }
+
+      .stage-head .chev {
+        margin-left: auto;
+        color: #b0aa9b;
+      }
+
+      .tool-group {
+        display: flex;
+        flex-direction: column;
+        gap: var(--tool-gap);
+        padding-block: var(--tool-group-pad);
+      }
+
+      .tool-row {
+        display: flex;
+        height: var(--tool-row-h);
+        min-width: 0;
+        align-items: center;
+        gap: var(--tool-icon-gap);
+        color: #625d50;
+        font-size: 13px;
+        line-height: 20px;
+      }
+
+      .tool-row .tool-icon {
+        color: #6a6558;
+      }
+
+      .tool-label {
+        flex: none;
+        color: #4f4a3f;
+      }
+
+      .tool-arrow {
+        flex: none;
+        color: #b0aa9b;
+        font-size: 11px;
+      }
+
+      .tool-value {
+        min-width: 0;
+        overflow: hidden;
+        color: #625d50;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .tool-value .chain-sep {
+        margin: 0 3px;
+        color: #b0aa9b;
+      }
+
+      .assistant-body {
+        margin-top: var(--body-top);
+        color: #2b2820;
+        font-size: 15px;
+        line-height: var(--body-line-height);
+        letter-spacing: 0.002em;
+      }
+
+      .assistant-body p {
+        margin: 0;
+      }
+
+      .assistant-body p + p {
+        margin-top: var(--para-gap);
+      }
+
+      .assistant-body code {
+        padding: 1px 4px;
+        border-radius: 4px;
+        background: #f0efec;
+        color: #3f3a31;
+        font-family: var(--font-mono);
+        font-size: 0.87em;
+      }
+
+      .turn-footer {
+        display: flex;
+        height: var(--tail-h);
+        align-items: center;
+        gap: 12px;
+        margin-top: var(--tail-gap);
+        color: #96917f;
+        font-size: 12px;
+        line-height: 18px;
+      }
+
+      .turn-footer .actions {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        margin-left: auto;
+      }
+
+      .app[data-variant="proposed"] .turn-footer .action-btn {
+        width: var(--action-btn);
+        height: var(--action-btn);
+        border-radius: 6px;
+      }
+
+      .app[data-variant="proposed"] .turn-footer .action-btn .icon {
+        width: 13px;
+        height: 13px;
+      }
+
+      .app[data-variant="proposed"] .turn-footer .action-btn {
+        opacity: 0.78;
+      }
+
+      .app[data-variant="proposed"] .turn-footer .action-btn:hover {
+        opacity: 1;
+      }
+
+      .scroll-bottom {
+        position: absolute;
+        bottom: 16px;
+        left: 50%;
+        display: grid;
+        width: 32px;
+        height: 32px;
+        place-items: center;
+        border: 1px solid #e5e3dc;
+        border-radius: 50%;
+        background: #fff;
+        box-shadow:
+          0 1px 2px rgb(43 40 32 / 0.06),
+          0 8px 24px -12px rgb(43 40 32 / 0.16);
+        color: #625d50;
+        cursor: pointer;
+        transform: translateX(-50%);
+      }
+
+      .scroll-bottom:hover {
+        background: #faf9f7;
+        color: #2b2820;
+      }
+
+      .scroll-bottom .icon {
+        width: 14px;
+        height: 14px;
+      }
+
+      /* Composer --------------------------------------------------------- */
+
+      .composer-wrap {
+        height: var(--composer-h);
+        flex: none;
+        padding-block: var(--composer-pad-top) var(--composer-pad-bottom);
+      }
+
+      .composer-frame {
+        width: 100%;
+        max-width: var(--track);
+        height: 100%;
+        margin: 0 auto;
+        padding-inline: var(--frame-pad);
+      }
+
+      .composer-card {
+        display: flex;
+        width: 100%;
+        height: 100%;
+        flex-direction: column;
+        gap: 8px;
+        padding: var(--composer-card-pad);
+        border: 1px solid #e7e4de;
+        border-radius: var(--composer-radius);
+        background: #fff;
+        box-shadow: 0 12px 32px -16px rgb(43 40 32 / 0.1);
+      }
+
+      .composer-input {
+        position: relative;
+        display: flex;
+        min-height: 0;
+        flex: 1;
+        align-items: flex-start;
+        padding: 8px 4px 0;
+      }
+
+      .composer-placeholder {
+        color: #a9a394;
+        font-size: 14px;
+        line-height: 20px;
+      }
+
+      .composer-caret {
+        display: inline-block;
+        width: 1px;
+        height: 17px;
+        margin-left: 1px;
+        background: #b45d40;
+        vertical-align: -3px;
+      }
+
+      .composer-toolbar {
+        display: flex;
+        height: var(--composer-toolbar-h);
+        flex: none;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .composer-tools {
+        display: flex;
+        min-width: 0;
+        flex: 1;
+        align-items: center;
+        gap: 2px;
+      }
+
+      .composer-tools .icon-btn {
+        width: 32px;
+        height: 32px;
+      }
+
+      .composer-trailing {
+        display: flex;
+        flex: none;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .context-ring {
+        width: 13px;
+        height: 13px;
+        border: 2px solid #ded9cf;
+        border-top-color: #8d887a;
+        border-radius: 50%;
+      }
+
+      .model-selector {
+        display: inline-flex;
+        height: 32px;
+        max-width: 180px;
+        align-items: center;
+        gap: 4px;
+        padding: 0 6px;
+        border-radius: 7px;
+        color: #96917f;
+        font-size: 11.5px;
+        font-weight: 500;
+        white-space: nowrap;
+      }
+
+      .model-selector .chev {
+        color: #b0aa9b;
+      }
+
+      .send-btn {
+        display: grid;
+        width: var(--send-size);
+        height: var(--send-size);
+        flex: none;
+        place-items: center;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        background: #efeeeb;
+        color: #b0aa9b;
+        cursor: default;
+      }
+
+      .send-btn .icon {
+        width: 16px;
+        height: 16px;
+        stroke-width: 1.9;
+      }
+
+      /* Dock ------------------------------------------------------------- */
+
+      .dock {
+        position: absolute;
+        top: calc(var(--header-h) + var(--dock-top-gap));
+        right: var(--dock-right);
+        z-index: 6;
+        display: flex;
+        width: var(--dock-w);
+        flex-direction: column;
+        align-items: center;
+        gap: var(--dock-gap);
+        padding: var(--dock-pad);
+        border: 1px solid rgb(43 40 32 / 0.08);
+        border-radius: 999px;
+        background: rgb(255 255 255 / 0.86);
+        box-shadow:
+          0 1px 2px rgb(33 30 24 / 0.05),
+          0 6px 16px -6px rgb(33 30 24 / 0.12);
+        backdrop-filter: blur(10px);
+      }
+
+      .dock button {
+        display: grid;
+        width: 32px;
+        height: 32px;
+        place-items: center;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        background: transparent;
+        color: #625d50;
+        cursor: pointer;
+      }
+
+      .dock button:hover {
+        background: rgb(43 40 32 / 0.06);
+        color: #2b2820;
+      }
+
+      .dock button .icon {
+        width: 16px;
+        height: 16px;
+      }
+
+      /* Guides ----------------------------------------------------------- */
+
+      .guides {
+        position: absolute;
+        inset: 0;
+        z-index: 20;
+        display: none;
+        pointer-events: none;
+      }
+
+      .app.guides-on .guides {
+        display: block;
+      }
+
+      .guide-label {
+        position: absolute;
+        display: inline-flex;
+        max-width: 230px;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 9px;
+        border: 1px solid rgb(255 255 255 / 0.12);
+        border-radius: 999px;
+        background: rgb(33 30 24 / 0.88);
+        box-shadow: 0 4px 14px rgb(33 30 24 / 0.18);
+        color: rgb(255 255 255 / 0.94);
+        font-family: var(--font-mono);
+        font-size: 9.5px;
+        letter-spacing: 0.01em;
+        line-height: 1;
+        white-space: nowrap;
+      }
+
+      .guide-label b {
+        display: grid;
+        width: 16px;
+        height: 16px;
+        flex: none;
+        place-items: center;
+        border-radius: 50%;
+        background: #b45d40;
+        color: #fff;
+        font-size: 8px;
+        font-weight: 600;
+      }
+
+      .guide-shell {
+        left: calc(var(--shell-gutter) + 10px);
+        bottom: 96px;
+      }
+
+      .guide-sidebar {
+        left: calc(var(--shell-gutter) + 10px);
+        top: 306px;
+      }
+
+      .guide-header {
+        top: 18px;
+        left: calc(var(--frame-x) + 210px);
+      }
+
+      .guide-reading,
+      .guide-process,
+      .guide-tail {
+        left: calc(var(--body-right) + 10px);
+      }
+
+      .guide-reading {
+        top: 400px;
+      }
+
+      .guide-process {
+        top: 442px;
+      }
+
+      .guide-tail {
+        top: 484px;
+      }
+
+      .guide-composer {
+        left: calc(var(--frame-x) + 18px);
+        bottom: calc(var(--composer-h) + 10px);
+      }
+
+      .guide-dock {
+        top: 268px;
+        right: calc(var(--dock-right) + var(--dock-w) + 10px);
+      }
+
+      .guide-readline {
+        position: absolute;
+        top: 92px;
+        bottom: 196px;
+        left: var(--body-right);
+        border-left: 1px dashed rgb(180 93 64 / 0.5);
+      }
+
+      .guide-composer-outline {
+        position: absolute;
+        bottom: var(--composer-pad-bottom);
+        left: var(--frame-inner-x);
+        width: calc(var(--track) - var(--frame-pad) * 2);
+        height: calc(var(--composer-h) - var(--composer-pad-top) - var(--composer-pad-bottom));
+        border: 1px dashed rgb(180 93 64 / 0.4);
+        border-radius: var(--composer-radius);
+      }
+
+      .guide-dock-outline {
+        position: absolute;
+        top: calc(var(--header-h) + var(--dock-top-gap) - var(--dock-pad) + 2px);
+        right: calc(var(--dock-right) - 2px);
+        width: calc(var(--dock-w) + 4px);
+        height: calc(32px * 4 + var(--dock-gap) * 3 + var(--dock-pad) * 2 + 4px);
+        border: 1px dashed rgb(180 93 64 / 0.4);
+        border-radius: 999px;
+      }
+
+      /* ------------------------------------------------------------------ */
+      /* Review sections                                                      */
+      /* ------------------------------------------------------------------ */
+
+      .principles {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0;
+        margin-top: 54px;
+        border-top: 1px solid var(--page-rule);
+        border-bottom: 1px solid var(--page-rule);
+      }
+
+      .principle {
+        min-height: 146px;
+        padding: 22px 24px 24px 0;
+        border-right: 1px solid var(--page-rule);
+      }
+
+      .principle + .principle {
+        padding-left: 24px;
+      }
+
+      .principle:last-child {
+        border-right: 0;
+      }
+
+      .principle .num {
+        display: block;
+        color: var(--page-accent);
+        font-family: var(--font-mono);
+        font-size: 10px;
+        letter-spacing: 0.1em;
+      }
+
+      .principle h3 {
+        margin: 16px 0 8px;
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: -0.015em;
+      }
+
+      .principle p {
+        margin: 0;
+        color: var(--page-secondary);
+        font-size: 12px;
+        line-height: 1.75;
+      }
+
+      .section-head {
+        display: grid;
+        grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+        gap: 64px;
+        align-items: end;
+        margin: 72px 0 28px;
+      }
+
+      .section-head h2 {
+        margin: 12px 0 0;
+        font-size: clamp(26px, 2.8vw, 38px);
+        font-weight: 610;
+        letter-spacing: -0.04em;
+        line-height: 1.12;
+      }
+
+      .section-head p {
+        max-width: 560px;
+        margin: 0 0 2px;
+        justify-self: end;
+        color: var(--page-secondary);
+        font-size: 13px;
+        line-height: 1.8;
+      }
+
+      .region-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        border-top: 1px solid var(--page-rule);
+        border-left: 1px solid var(--page-rule);
+      }
+
+      .region-card {
+        display: flex;
+        min-height: 360px;
+        flex-direction: column;
+        padding: 22px;
+        border-right: 1px solid var(--page-rule);
+        border-bottom: 1px solid var(--page-rule);
+        background: rgb(255 255 255 / 0.16);
+        transition: background-color 160ms ease;
+      }
+
+      .region-card:hover {
+        background: rgb(255 255 255 / 0.42);
+      }
+
+      .region-head {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+      }
+
+      .region-index {
+        display: grid;
+        width: 22px;
+        height: 22px;
+        flex: none;
+        place-items: center;
+        border: 1px solid var(--page-rule);
+        border-radius: 50%;
+        color: var(--page-muted);
+        font-family: var(--font-mono);
+        font-size: 9px;
+      }
+
+      .region-title {
+        min-width: 0;
+        flex: 1;
+      }
+
+      .region-title h3 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+
+      .region-title p {
+        margin: 3px 0 0;
+        color: var(--page-muted);
+        font-family: var(--font-mono);
+        font-size: 9px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .region-tag {
+        flex: none;
+        padding: 4px 7px;
+        border-radius: 999px;
+        background: var(--page-accent-soft);
+        color: var(--page-accent);
+        font-family: var(--font-mono);
+        font-size: 8px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .region-values {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0;
+        margin-top: 20px;
+        border-top: 1px solid var(--page-rule-soft);
+      }
+
+      .value-row {
+        display: flex;
+        min-height: 31px;
+        align-items: center;
+        gap: 8px;
+        border-bottom: 1px solid var(--page-rule-soft);
+        font-size: 11.5px;
+      }
+
+      .value-row .label {
+        min-width: 0;
+        flex: 1;
+        color: var(--page-secondary);
+      }
+
+      .value-row .old {
+        color: #a29b8d;
+        font-family: var(--font-mono);
+        font-size: 10.5px;
+        text-decoration: line-through;
+        text-decoration-thickness: 1px;
+      }
+
+      .value-row .arrow {
+        color: #b9b2a4;
+        font-family: var(--font-mono);
+        font-size: 10px;
+      }
+
+      .value-row .new {
+        color: var(--page-ink);
+        font-family: var(--font-mono);
+        font-size: 10.5px;
+        font-weight: 600;
+      }
+
+      .region-why {
+        margin: 16px 0 0;
+        color: var(--page-secondary);
+        font-size: 11.5px;
+        line-height: 1.75;
+      }
+
+      .region-visual {
+        display: flex;
+        min-height: 74px;
+        align-items: center;
+        justify-content: center;
+        margin-top: auto;
+        padding-top: 16px;
+      }
+
+      .diagram {
+        position: relative;
+        display: flex;
+        width: 100%;
+        align-items: flex-end;
+        justify-content: center;
+        gap: 18px;
+      }
+
+      .diagram-pane {
+        display: flex;
+        width: 50%;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .diagram-caption {
+        color: var(--page-muted);
+        font-family: var(--font-mono);
+        font-size: 8px;
+        letter-spacing: 0.04em;
+      }
+
+      .diagram-box {
+        position: relative;
+        display: flex;
+        width: 100%;
+        height: 50px;
+        overflow: hidden;
+        border: 1px solid #d3cfc4;
+        border-radius: 7px;
+        background: rgb(255 255 255 / 0.3);
+      }
+
+      .diagram-sidebar {
+        width: 38%;
+        height: 100%;
+        border-right: 1px solid #d3cfc4;
+        background: rgb(43 40 32 / 0.045);
+      }
+
+      .diagram-main {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        gap: 4px;
+        padding: 7px;
+      }
+
+      .diagram-bar {
+        height: 5px;
+        border-radius: 999px;
+        background: #cfcabe;
+      }
+
+      .diagram-bar.short {
+        width: 60%;
+      }
+
+      .diagram-bar.tiny {
+        width: 34%;
+      }
+
+      .diagram-gap {
+        display: flex;
+        height: 50px;
+        align-items: center;
+      }
+
+      .diagram-gap::before {
+        display: block;
+        width: 1px;
+        height: 100%;
+        background: var(--page-accent);
+        content: "";
+        opacity: 0.55;
+      }
+
+      .diagram-gap span {
+        position: absolute;
+        right: 50%;
+        bottom: calc(100% + 2px);
+        color: var(--page-accent);
+        font-family: var(--font-mono);
+        font-size: 8px;
+        transform: translateX(50%);
+      }
+
+      .diagram-stack {
+        display: flex;
+        height: 50px;
+        flex-direction: column;
+        justify-content: center;
+        gap: 5px;
+        padding: 7px;
+      }
+
+      .diagram-stack.one {
+        gap: 0;
+      }
+
+      .diagram-stack .line {
+        height: 5px;
+        border-radius: 999px;
+        background: #cfcabe;
+      }
+
+      .diagram-stack.one .line {
+        display: flex;
+        height: 16px;
+        align-items: center;
+        justify-content: space-between;
+        background: transparent;
+      }
+
+      .diagram-stack.one .line::before,
+      .diagram-stack.one .line::after {
+        display: block;
+        height: 5px;
+        border-radius: 999px;
+        background: #cfcabe;
+        content: "";
+      }
+
+      .diagram-stack.one .line::before {
+        width: 42%;
+      }
+
+      .diagram-stack.one .line::after {
+        width: 18%;
+      }
+
+      .diagram-composer {
+        display: flex;
+        width: 100%;
+        height: 50px;
+        align-items: flex-end;
+        border: 1px solid #d3cfc4;
+        border-radius: 7px;
+        padding: 7px;
+      }
+
+      .diagram-composer i {
+        display: block;
+        height: 5px;
+        flex: 1;
+        border-radius: 999px;
+        background: #cfcabe;
+      }
+
+      .diagram-composer b {
+        display: block;
+        width: 10px;
+        height: 10px;
+        margin-left: 8px;
+        border-radius: 50%;
+        background: #cfcabe;
+      }
+
+      .diagram-rows {
+        display: flex;
+        width: 100%;
+        flex-direction: column;
+        gap: 3px;
+        padding: 6px;
+      }
+
+      .diagram-rows i {
+        display: block;
+        height: 6px;
+        border-radius: 3px;
+        background: #d8d4ca;
+      }
+
+      .diagram-rows i:nth-child(2) {
+        width: 82%;
+      }
+
+      .diagram-rows i:nth-child(3) {
+        width: 66%;
+      }
+
+      .diagram-rows i:nth-child(4) {
+        width: 74%;
+      }
+
+      .diagram-track {
+        position: relative;
+        display: flex;
+        width: 100%;
+        height: 50px;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .diagram-track .rail {
+        position: relative;
+        width: 68%;
+        height: 50px;
+        border-left: 1px dashed #c7c2b6;
+        border-right: 1px dashed #c7c2b6;
+      }
+
+      .diagram-track .rail::before,
+      .diagram-track .rail::after {
+        position: absolute;
+        top: 50%;
+        width: 18%;
+        height: 1px;
+        background: #cfcabe;
+        content: "";
+      }
+
+      .diagram-track .rail::before {
+        right: 100%;
+      }
+
+      .diagram-track .rail::after {
+        left: 100%;
+      }
+
+      .diagram-track .dot {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--page-accent);
+        transform: translate(-50%, -50%);
+      }
+
+      .diagram-dock {
+        position: relative;
+        display: flex;
+        width: 100%;
+        height: 50px;
+        justify-content: flex-end;
+        padding-right: 7px;
+      }
+
+      .diagram-dock .dock-shape {
+        display: flex;
+        width: 18px;
+        height: 46px;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        border: 1px solid #c7c2b6;
+        border-radius: 999px;
+      }
+
+      .diagram-dock .dock-shape i {
+        display: block;
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: #cfcabe;
+      }
+
+      .diagram-dock .guide-line {
+        position: absolute;
+        top: 0;
+        right: 27px;
+        bottom: 0;
+        width: 1px;
+        background: rgb(155 74 50 / 0.45);
+      }
+
+      .diagram-avatar {
+        display: flex;
+        width: 100%;
+        height: 50px;
+        align-items: flex-start;
+        justify-content: flex-end;
+        gap: 4px;
+        padding: 7px;
+      }
+
+      .diagram-avatar .bubble {
+        width: 52%;
+        height: 22px;
+        border-radius: 6px 2px 6px 6px;
+        background: #d8d4ca;
+      }
+
+      .diagram-avatar .face {
+        width: 13px;
+        height: 13px;
+        flex: none;
+        border-radius: 50%;
+        background: #bdb7a9;
+      }
+
+      /* Token table ------------------------------------------------------ */
+
+      .token-section {
+        margin-top: 72px;
+      }
+
+      .token-head {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 32px;
+        margin-bottom: 18px;
+      }
+
+      .token-head h2 {
+        margin: 12px 0 0;
+        font-size: clamp(26px, 2.8vw, 38px);
+        font-weight: 610;
+        letter-spacing: -0.04em;
+        line-height: 1.12;
+      }
+
+      .token-head p {
+        max-width: 460px;
+        margin: 0;
+        color: var(--page-secondary);
+        font-size: 12px;
+        line-height: 1.7;
+        text-align: right;
+      }
+
+      .token-table {
+        width: 100%;
+        border-collapse: collapse;
+        border-top: 1px solid var(--page-rule);
+        font-size: 11.5px;
+      }
+
+      .token-table th {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--page-rule);
+        color: var(--page-muted);
+        font-family: var(--font-mono);
+        font-size: 9px;
+        font-weight: 500;
+        letter-spacing: 0.06em;
+        text-align: left;
+        text-transform: uppercase;
+      }
+
+      .token-table th:first-child,
+      .token-table td:first-child {
+        padding-left: 0;
+      }
+
+      .token-table th:last-child,
+      .token-table td:last-child {
+        padding-right: 0;
+        text-align: right;
+      }
+
+      .token-table td {
+        padding: 12px;
+        border-bottom: 1px solid var(--page-rule-soft);
+        vertical-align: top;
+      }
+
+      .token-table td:first-child {
+        width: 34%;
+      }
+
+      .token-table .token-name {
+        color: var(--page-ink);
+        font-family: var(--font-mono);
+        font-size: 10.5px;
+      }
+
+      .token-table .detail {
+        display: block;
+        margin-top: 3px;
+        color: var(--page-muted);
+        font-size: 11px;
+      }
+
+      .token-table .old {
+        color: #a29b8d;
+        font-family: var(--font-mono);
+        font-size: 10.5px;
+        text-decoration: line-through;
+      }
+
+      .token-table .new {
+        color: var(--page-ink);
+        font-family: var(--font-mono);
+        font-size: 10.5px;
+        font-weight: 600;
+      }
+
+      .token-table .why {
+        color: var(--page-secondary);
+        font-size: 11px;
+        line-height: 1.65;
+      }
+
+      .token-table .cat {
+        display: inline-block;
+        padding: 2px 6px;
+        border: 1px solid var(--page-rule);
+        border-radius: 999px;
+        color: var(--page-muted);
+        font-family: var(--font-mono);
+        font-size: 8px;
+        letter-spacing: 0.04em;
+      }
+
+      .closing {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+        gap: 64px;
+        margin-top: 64px;
+        padding-top: 24px;
+        border-top: 1px solid var(--page-rule);
+      }
+
+      .closing h2 {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 600;
+        letter-spacing: -0.03em;
+      }
+
+      .closing p {
+        margin: 10px 0 0;
+        color: var(--page-secondary);
+        font-size: 12px;
+        line-height: 1.8;
+      }
+
+      .closing-meta {
+        justify-self: end;
+        color: var(--page-muted);
+        font-family: var(--font-mono);
+        font-size: 10px;
+        line-height: 1.9;
+        text-align: right;
+      }
+
+      .footer {
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+        margin-top: 56px;
+        padding-top: 18px;
+        border-top: 1px solid var(--page-rule);
+        color: var(--page-muted);
+        font-family: var(--font-mono);
+        font-size: 9px;
+        letter-spacing: 0.04em;
+      }
+
+      @media (max-width: 1180px) {
+        .intro {
+          grid-template-columns: 1fr;
+          gap: 32px;
+        }
+
+        .intro-facts {
+          max-width: 520px;
+        }
+
+        .region-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .principles {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .principle:nth-child(2) {
+          border-right: 0;
+        }
+
+        .principle:nth-child(3) {
+          border-top: 1px solid var(--page-rule);
+        }
+
+        .principle:nth-child(4) {
+          border-top: 1px solid var(--page-rule);
+        }
+
+        .section-head {
+          grid-template-columns: 1fr;
+          gap: 18px;
+        }
+
+        .section-head p {
+          justify-self: start;
+        }
+      }
+
+      @media (max-width: 760px) {
+        .page {
+          padding: 0 16px 56px;
+        }
+
+        .topnav,
+        .topmeta {
+          display: none;
+        }
+
+        .topbar {
+          height: 60px;
+        }
+
+        .intro {
+          padding-top: 42px;
+        }
+
+        .stage {
+          padding: 10px;
+        }
+
+        .studio-bar {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .controls {
+          width: 100%;
+          flex-wrap: wrap;
+          margin-left: 0;
+        }
+
+        .region-grid,
+        .principles {
+          grid-template-columns: 1fr;
+        }
+
+        .principle,
+        .principle + .principle {
+          padding-left: 0;
+          border-right: 0;
+          border-top: 1px solid var(--page-rule);
+        }
+
+        .principle:first-child {
+          border-top: 0;
+        }
+
+        .principle:nth-child(2) {
+          border-right: 0;
+        }
+
+        .token-head,
+        .closing {
+          grid-template-columns: 1fr;
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .token-head {
+          display: grid;
+          gap: 14px;
+        }
+
+        .token-head p {
+          text-align: left;
+        }
+
+        .closing {
+          display: grid;
+          gap: 18px;
+        }
+
+        .closing-meta {
+          justify-self: start;
+          text-align: left;
+        }
+
+        .token-table td:nth-child(4),
+        .token-table th:nth-child(4) {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <svg aria-hidden="true" style="position: absolute; width: 0; height: 0; overflow: hidden">
+      <defs>
+        <symbol id="i-search" viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="6.5"></circle>
+          <path d="m16 16 4.5 4.5"></path>
+        </symbol>
+        <symbol id="i-sliders" viewBox="0 0 24 24">
+          <path d="M4 7h9M17 7h3M4 17h3M11 17h9"></path>
+          <circle cx="15" cy="7" r="2"></circle>
+          <circle cx="9" cy="17" r="2"></circle>
+        </symbol>
+        <symbol id="i-plus" viewBox="0 0 24 24">
+          <path d="M12 5v14M5 12h14"></path>
+        </symbol>
+        <symbol id="i-message-plus" viewBox="0 0 24 24">
+          <path d="M20 11.5V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h6"></path>
+          <path d="M8 20l3-3M17 14v6M14 17h6"></path>
+        </symbol>
+        <symbol id="i-panel-left-close" viewBox="0 0 24 24">
+          <rect x="3.5" y="4.5" width="17" height="15" rx="2"></rect>
+          <path d="M9 4.5v15M15 10l-2 2 2 2"></path>
+        </symbol>
+        <symbol id="i-panel-left-open" viewBox="0 0 24 24">
+          <rect x="3.5" y="4.5" width="17" height="15" rx="2"></rect>
+          <path d="M9 4.5v15M13 10l2 2-2 2"></path>
+        </symbol>
+        <symbol id="i-chevron-down" viewBox="0 0 24 24">
+          <path d="m7 10 5 5 5-5"></path>
+        </symbol>
+        <symbol id="i-chevron-right" viewBox="0 0 24 24">
+          <path d="m10 7 5 5-5 5"></path>
+        </symbol>
+        <symbol id="i-chevron-up" viewBox="0 0 24 24">
+          <path d="m7 14 5-5 5 5"></path>
+        </symbol>
+        <symbol id="i-arrow-up" viewBox="0 0 24 24">
+          <path d="M12 19V5M6 11l6-6 6 6"></path>
+        </symbol>
+        <symbol id="i-copy" viewBox="0 0 24 24">
+          <rect x="8" y="8" width="11" height="11" rx="2"></rect>
+          <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path>
+        </symbol>
+        <symbol id="i-more" viewBox="0 0 24 24">
+          <circle cx="6" cy="12" r="1.2" fill="currentColor" stroke="none"></circle>
+          <circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"></circle>
+          <circle cx="18" cy="12" r="1.2" fill="currentColor" stroke="none"></circle>
+        </symbol>
+        <symbol id="i-wrench" viewBox="0 0 24 24">
+          <path
+            d="M14.7 6.3a4.5 4.5 0 0 0-5.8 5.8L4 17v3h3l4.9-4.9a4.5 4.5 0 0 0 5.8-5.8l-2.6 2.6-2.9-.7-.7-2.9 2.2-2z"
+          ></path>
+        </symbol>
+        <symbol id="i-file-search" viewBox="0 0 24 24">
+          <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8"></path>
+          <path d="M14 3v6h5M13.5 15.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0ZM13.5 15.5 16 18"></path>
+        </symbol>
+        <symbol id="i-folder" viewBox="0 0 24 24">
+          <path d="M3.5 7.5A2 2 0 0 1 5.5 5.5h4l2 2h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"></path>
+        </symbol>
+        <symbol id="i-globe" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="8.5"></circle>
+          <path
+            d="M3.8 9h16.4M3.8 15h16.4M12 3.5c2.2 2.4 3.3 5.3 3.3 8.5S14.2 18.1 12 20.5C9.8 18.1 8.7 15.2 8.7 12S9.8 5.9 12 3.5Z"
+          ></path>
+        </symbol>
+        <symbol id="i-stack" viewBox="0 0 24 24">
+          <path d="m12 3 8 4.5-8 4.5-8-4.5L12 3Z"></path>
+          <path d="m4 12 8 4.5 8-4.5M4 16.5l8 4.5 8-4.5"></path>
+        </symbol>
+        <symbol id="i-gauge" viewBox="0 0 24 24">
+          <path d="M4 18a8 8 0 1 1 16 0"></path>
+          <path d="m12 14 4-4"></path>
+          <circle cx="12" cy="14" r="1.4"></circle>
+        </symbol>
+        <symbol id="i-activity" viewBox="0 0 24 24">
+          <path d="M3 12h4l2.5-6 4 12 2.5-6h5"></path>
+        </symbol>
+        <symbol id="i-book" viewBox="0 0 24 24">
+          <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5z"></path>
+          <path d="M4 18.5A2.5 2.5 0 0 1 6.5 16H20"></path>
+        </symbol>
+        <symbol id="i-terminal" viewBox="0 0 24 24">
+          <rect x="3.5" y="4.5" width="17" height="15" rx="2"></rect>
+          <path d="m7 9 3 3-3 3M13 15h4"></path>
+        </symbol>
+        <symbol id="i-list-tree" viewBox="0 0 24 24">
+          <path d="M6 4v16M6 8h5M6 16h5M11 8V5h8M11 16v3h8"></path>
+        </symbol>
+        <symbol id="i-lock" viewBox="0 0 24 24">
+          <rect x="5" y="10" width="14" height="10" rx="2"></rect>
+          <path d="M8 10V7a4 4 0 0 1 8 0v3"></path>
+        </symbol>
+        <symbol id="i-paperclip" viewBox="0 0 24 24">
+          <path d="m20 11.5-7.6 7.6a5 5 0 0 1-7-7L13 4.4a3.5 3.5 0 1 1 5 5l-7.7 7.7a2 2 0 1 1-2.8-2.8l7-7"></path>
+        </symbol>
+        <symbol id="i-minimize" viewBox="0 0 12 12">
+          <path d="M2.5 6.5h7"></path>
+        </symbol>
+        <symbol id="i-maximize" viewBox="0 0 12 12">
+          <rect x="2.5" y="2.5" width="7" height="7" rx="0.8"></rect>
+        </symbol>
+        <symbol id="i-close" viewBox="0 0 12 12">
+          <path d="m3 3 6 6M9 3 3 9"></path>
+        </symbol>
+        <symbol id="i-check" viewBox="0 0 24 24">
+          <path d="m5 12 4 4 10-10"></path>
+        </symbol>
+        <symbol id="i-grid" viewBox="0 0 24 24">
+          <rect x="4" y="4" width="6" height="6" rx="1"></rect>
+          <rect x="14" y="4" width="6" height="6" rx="1"></rect>
+          <rect x="4" y="14" width="6" height="6" rx="1"></rect>
+          <rect x="14" y="14" width="6" height="6" rx="1"></rect>
+        </symbol>
+      </defs>
+    </svg>
+
+    <div class="page">
+      <header class="topbar">
+        <a class="brand" href="#top" aria-label="Senera 设计研究">
+          <svg class="brand-mark" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+            <path
+              d="M5 26C9 15 14 10 19 18s7 10 11-2"
+              stroke="#7e67c2"
+              stroke-width="2.4"
+              stroke-linecap="round"
+            ></path>
+            <path d="M28 27c2.2-2.2 4.2-3 7-2.2" stroke="#f6cf52" stroke-width="2.4" stroke-linecap="round"></path>
+            <circle cx="36.2" cy="24.6" r="2.1" fill="#f6cf52"></circle>
+          </svg>
+          <span class="brand-word">Senera</span>
+          <span class="brand-slash"></span>
+          <span class="brand-sub">Interface Study</span>
+        </a>
+        <nav class="topnav" aria-label="页面导航">
+          <a href="#workspace">工作区对比</a>
+          <a href="#regions">区域规范</a>
+          <a href="#tokens">Token 对照</a>
+        </nav>
+        <span class="topmeta">SPACING / 01 · 2026.10</span>
+      </header>
+
+      <main id="top">
+        <section class="intro">
+          <div>
+            <p class="eyebrow">Conversation workspace · spacing pass</p>
+            <h1>把界面从“能排下”<br />改成“有节奏”。</h1>
+            <p class="lede">
+              同一套对话内容，按 4px
+              基线重新分配每个区域的留白。重点不是把所有间距变大，而是让分组关系明确：工具轨迹内部更紧，回合之间更松，输入区与内容轨道共用同一条锚线。
+            </p>
+          </div>
+          <div class="intro-facts" aria-label="设计摘要">
+            <div>
+              <span>Baseline</span><b>4px 主刻度<br />2px 内部微距</b>
+            </div>
+            <div>
+              <span>Scope</span><b>9 个区域<br />1 个阅读轨道</b>
+            </div>
+            <div>
+              <span>Delivery</span><b>已落生产<br />保留设计对照</b>
+            </div>
+          </div>
+        </section>
+
+        <section class="studio" id="workspace" aria-label="工作区前后对比">
+          <div class="studio-bar">
+            <div class="studio-label"><span class="live-dot"></span> workspace-01.spacing · 1440 × 920</div>
+            <div class="controls">
+              <div class="segmented" role="group" aria-label="选择方案">
+                <button class="seg-btn" type="button" data-variant="current" aria-pressed="false">当前</button>
+                <button class="seg-btn" type="button" data-variant="proposed" aria-pressed="true">优化后</button>
+              </div>
+              <button class="tool-btn" id="guideToggle" type="button" aria-pressed="false">
+                <svg class="icon" aria-hidden="true"><use href="#i-grid"></use></svg>
+                间距标注
+              </button>
+              <button class="tool-btn" id="sidebarToggle" type="button" aria-pressed="false">
+                <svg class="icon" aria-hidden="true"><use href="#i-panel-left-close"></use></svg>
+                收起侧栏
+              </button>
+            </div>
+          </div>
+
+          <div class="stage">
+            <div class="stage-viewport" id="stageViewport">
+              <div class="app" id="app" data-variant="proposed">
+                <aside class="sidebar-frame">
+                  <div class="sidebar">
+                    <div class="sidebar-full">
+                      <div class="sidebar-header">
+                        <div class="brand-trigger" role="button" tabindex="0">
+                          <span class="brand-logo">
+                            <svg viewBox="0 0 40 40" fill="none" aria-hidden="true">
+                              <path
+                                d="M5 26C9 15 14 10 19 18s7 10 11-2"
+                                stroke="#7e67c2"
+                                stroke-width="2.6"
+                                stroke-linecap="round"
+                              ></path>
+                              <path
+                                d="M28 27c2.2-2.2 4.2-3 7-2.2"
+                                stroke="#f6cf52"
+                                stroke-width="2.6"
+                                stroke-linecap="round"
+                              ></path>
+                              <circle cx="36.2" cy="24.6" r="2.1" fill="#f6cf52"></circle>
+                            </svg>
+                          </span>
+                          <span class="word">Senera</span>
+                          <svg class="icon icon-xs chev" aria-hidden="true"><use href="#i-chevron-down"></use></svg>
+                        </div>
+                        <div class="sidebar-actions">
+                          <button class="icon-btn" type="button" aria-label="新建对话" title="新建对话">
+                            <svg class="icon" aria-hidden="true"><use href="#i-message-plus"></use></svg>
+                          </button>
+                          <button
+                            class="icon-btn"
+                            type="button"
+                            id="collapseSidebar"
+                            aria-label="收起侧栏"
+                            title="收起侧栏"
+                          >
+                            <svg class="icon" aria-hidden="true"><use href="#i-panel-left-close"></use></svg>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div class="search-row">
+                        <div class="search-box" role="search">
+                          <svg class="icon icon-sm" aria-hidden="true"><use href="#i-search"></use></svg>
+                          <span class="placeholder">搜索会话</span>
+                        </div>
+                        <button class="icon-btn" type="button" aria-label="选择会话" title="选择会话">
+                          <svg class="icon icon-sm" aria-hidden="true"><use href="#i-sliders"></use></svg>
+                        </button>
+                      </div>
+
+                      <div class="sessions" role="listbox" aria-label="会话列表">
+                        <div class="session-row" role="option" aria-selected="false">
+                          <span class="session-title">新对话</span>
+                          <span class="session-spacer"></span>
+                        </div>
+                        <div class="session-row active" role="option" aria-selected="true">
+                          <span class="session-title">sascxasd</span>
+                          <span class="session-spacer"></span>
+                        </div>
+                        <div class="session-row" role="option" aria-selected="false">
+                          <span class="session-title">你好</span>
+                          <span class="session-spacer"></span>
+                          <span class="run-dot" aria-label="运行中"></span>
+                        </div>
+                      </div>
+
+                      <div class="sidebar-footer">
+                        <span class="user-avatar">用</span>
+                        <span class="name">用户</span>
+                        <svg class="icon icon-xs chev" aria-hidden="true"><use href="#i-chevron-up"></use></svg>
+                      </div>
+                    </div>
+
+                    <div class="sidebar-rail">
+                      <span class="rail-logo">
+                        <svg viewBox="0 0 40 40" fill="none" aria-hidden="true">
+                          <path
+                            d="M5 26C9 15 14 10 19 18s7 10 11-2"
+                            stroke="#7e67c2"
+                            stroke-width="2.6"
+                            stroke-linecap="round"
+                          ></path>
+                          <path
+                            d="M28 27c2.2-2.2 4.2-3 7-2.2"
+                            stroke="#f6cf52"
+                            stroke-width="2.6"
+                            stroke-linecap="round"
+                          ></path>
+                          <circle cx="36.2" cy="24.6" r="2.1" fill="#f6cf52"></circle>
+                        </svg>
+                      </span>
+                      <button class="icon-btn" type="button" aria-label="新建对话" title="新建对话">
+                        <svg class="icon" aria-hidden="true"><use href="#i-message-plus"></use></svg>
+                      </button>
+                      <button class="icon-btn" type="button" id="expandSidebar" aria-label="展开侧栏" title="展开侧栏">
+                        <svg class="icon" aria-hidden="true"><use href="#i-panel-left-open"></use></svg>
+                      </button>
+                      <div class="rail-footer">
+                        <span class="user-avatar">用</span>
+                      </div>
+                    </div>
+                  </div>
+                </aside>
+
+                <main class="workspace">
+                  <header class="app-header">
+                    <div class="header-inner">
+                      <span class="header-title">sascxasd</span>
+                      <button class="header-more" type="button" aria-label="会话操作">
+                        <svg class="icon icon-sm" aria-hidden="true"><use href="#i-more"></use></svg>
+                      </button>
+                    </div>
+                    <div class="window-controls" aria-hidden="true">
+                      <span class="win-btn"
+                        ><svg class="icon" style="width: 12px; height: 12px"><use href="#i-minimize"></use></svg
+                      ></span>
+                      <span class="win-btn"
+                        ><svg class="icon" style="width: 12px; height: 12px"><use href="#i-maximize"></use></svg
+                      ></span>
+                      <span class="win-btn close"
+                        ><svg class="icon" style="width: 12px; height: 12px"><use href="#i-close"></use></svg
+                      ></span>
+                    </div>
+                  </header>
+
+                  <div class="workspace-body">
+                    <div class="chat-scroll">
+                      <div class="conversation-frame">
+                        <article class="user-row">
+                          <div class="user-stack">
+                            <div class="user-meta">21:46:02</div>
+                            <div class="user-bubble">
+                              你检查一下这轮对话，你是不是漏了上下文？是不是 agent 继续机制有问题
+                            </div>
+                            <div class="user-footer-current">
+                              <div class="metrics-row">
+                                <span class="metric">
+                                  <svg class="icon" aria-hidden="true"><use href="#i-stack"></use></svg>
+                                  42 tokens
+                                </span>
+                              </div>
+                              <div class="actions-row">
+                                <button class="action-btn" type="button" aria-label="复制">
+                                  <svg class="icon" aria-hidden="true"><use href="#i-copy"></use></svg>
+                                </button>
+                                <button class="action-btn" type="button" aria-label="更多操作">
+                                  <svg class="icon" aria-hidden="true"><use href="#i-more"></use></svg>
+                                </button>
+                              </div>
+                            </div>
+                            <div class="turn-footer user-turn-footer">
+                              <span class="metric">
+                                <svg class="icon" aria-hidden="true"><use href="#i-stack"></use></svg>
+                                42 tokens
+                              </span>
+                              <span class="assistant-time">21:46:02</span>
+                              <span class="actions">
+                                <button class="action-btn" type="button" aria-label="复制">
+                                  <svg class="icon" aria-hidden="true"><use href="#i-copy"></use></svg>
+                                </button>
+                                <button class="action-btn" type="button" aria-label="更多操作">
+                                  <svg class="icon" aria-hidden="true"><use href="#i-more"></use></svg>
+                                </button>
+                              </span>
+                            </div>
+                          </div>
+                          <span class="user-avatar">用</span>
+                        </article>
+
+                        <article class="assistant-turn">
+                          <span class="assistant-avatar">
+                            <svg viewBox="0 0 40 40" fill="none" aria-hidden="true">
+                              <path
+                                d="M5 26C9 15 14 10 19 18s7 10 11-2"
+                                stroke="#7e67c2"
+                                stroke-width="2.4"
+                                stroke-linecap="round"
+                              ></path>
+                              <path
+                                d="M28 27c2.2-2.2 4.2-3 7-2.2"
+                                stroke="#f6cf52"
+                                stroke-width="2.4"
+                                stroke-linecap="round"
+                              ></path>
+                              <circle cx="36.2" cy="24.6" r="2.1" fill="#f6cf52"></circle>
+                            </svg>
+                          </span>
+                          <div class="assistant-content">
+                            <div class="assistant-meta">
+                              <span class="assistant-name">Senera</span>
+                              <span class="assistant-time">21:46:02</span>
+                            </div>
+
+                            <div class="elapsed-row">
+                              <span>已处理 29 秒</span>
+                              <svg class="icon icon-xs chev" aria-hidden="true"><use href="#i-chevron-down"></use></svg>
+                            </div>
+
+                            <div class="stage-head">
+                              <svg class="icon icon-sm stage-icon" aria-hidden="true"><use href="#i-globe"></use></svg>
+                              <span>Checking runtime docs</span>
+                              <svg class="icon icon-sm chev" aria-hidden="true">
+                                <use href="#i-chevron-right"></use>
+                              </svg>
+                            </div>
+
+                            <div class="tool-group">
+                              <div class="tool-row">
+                                <svg class="icon icon-sm tool-icon" aria-hidden="true">
+                                  <use href="#i-wrench"></use>
+                                </svg>
+                                <span class="tool-label">管理</span>
+                                <span class="tool-arrow">→</span>
+                                <span class="tool-value"
+                                  >skills<span class="chain-sep">›</span>read<span class="chain-sep">›</span
+                                  >workspace-investigation</span
+                                >
+                              </div>
+                              <div class="tool-row">
+                                <svg class="icon icon-sm tool-icon" aria-hidden="true">
+                                  <use href="#i-search"></use>
+                                </svg>
+                                <span class="tool-label">查找工具</span>
+                                <span class="tool-arrow">→</span>
+                                <span class="tool-value"
+                                  >检查 Senera 项目中 agent 继续/continue
+                                  机制如何构造上下文、上一轮消息与截图附件是否遗漏或未传递；查看相关...</span
+                                >
+                              </div>
+                              <div class="tool-row">
+                                <svg class="icon icon-sm tool-icon" aria-hidden="true">
+                                  <use href="#i-file-search"></use>
+                                </svg>
+                                <span class="tool-label">搜索文件</span>
+                                <span class="tool-arrow">→</span>
+                                <span class="tool-value">topicRelation|standaloneRequest|prevRequests|continuity</span>
+                              </div>
+                              <div class="tool-row">
+                                <svg class="icon icon-sm tool-icon" aria-hidden="true">
+                                  <use href="#i-folder"></use>
+                                </svg>
+                                <span class="tool-label">浏览目录</span>
+                                <span class="tool-arrow">→</span>
+                                <span class="tool-value">.</span>
+                              </div>
+                            </div>
+
+                            <div class="assistant-body">
+                              <p>
+                                是的，这轮确实发生了上下文衔接问题，但我不能据此断定底层的 agent continue 机制有 bug。
+                              </p>
+                              <p>
+                                从这段对话能确认的是：你之前已经说过“随便打开一个常用的网站进行一点”，截图里还补充说明这是要做一项对
+                                AI
+                                来说比较复杂的操作，不是简单复查。但我当时只看到“continue”，没把截图中的长句纳入理解，于是把任务缩窄成重复检查
+                                <code>example.com</code>，还追问你想检查什么。看到截图后，我才修正理解。
+                              </p>
+                              <p>
+                                所以，至少在这次交接给我的上下文里，相关文字没有被我及时利用；至于它是没传过来，还是传了但我漏看了，仅凭当前对话无法确定。也不能仅凭这次失误判断
+                                continue 机制本身出了问题。
+                              </p>
+                              <p>
+                                我尝试查看项目实现，但当前工作区里只有 <code>.senera/</code> 和
+                                <code>senera-demo/</code>，没有预期的
+                                <code>Source/</code> 目录；因此还没能核查源码来确认机制层面的原因。
+                              </p>
+                            </div>
+
+                            <div class="user-footer-current">
+                              <div class="metrics-row">
+                                <span class="metric">
+                                  <svg class="icon" aria-hidden="true"><use href="#i-stack"></use></svg>
+                                  15.44w tokens
+                                </span>
+                                <span class="metric">
+                                  <svg class="icon" aria-hidden="true"><use href="#i-gauge"></use></svg>
+                                  107.3 tok/s
+                                </span>
+                              </div>
+                              <div class="actions-row">
+                                <button class="action-btn" type="button" aria-label="复制">
+                                  <svg class="icon" aria-hidden="true"><use href="#i-copy"></use></svg>
+                                </button>
+                                <button class="action-btn" type="button" aria-label="更多操作">
+                                  <svg class="icon" aria-hidden="true"><use href="#i-more"></use></svg>
+                                </button>
+                              </div>
+                            </div>
+
+                            <div class="turn-footer">
+                              <span class="metric">
+                                <svg class="icon" aria-hidden="true"><use href="#i-stack"></use></svg>
+                                15.44w tokens
+                              </span>
+                              <span class="metric">
+                                <svg class="icon" aria-hidden="true"><use href="#i-gauge"></use></svg>
+                                107.3 tok/s
+                              </span>
+                              <span class="actions">
+                                <button class="action-btn" type="button" aria-label="复制">
+                                  <svg class="icon" aria-hidden="true"><use href="#i-copy"></use></svg>
+                                </button>
+                                <button class="action-btn" type="button" aria-label="更多操作">
+                                  <svg class="icon" aria-hidden="true"><use href="#i-more"></use></svg>
+                                </button>
+                              </span>
+                            </div>
+                          </div>
+                        </article>
+                      </div>
+
+                      <button class="scroll-bottom" type="button" aria-label="滚动到底部">
+                        <svg class="icon" aria-hidden="true"><use href="#i-chevron-down"></use></svg>
+                      </button>
+                    </div>
+
+                    <div class="composer-wrap">
+                      <div class="composer-frame">
+                        <div class="composer-card">
+                          <div class="composer-input">
+                            <span class="composer-placeholder"
+                              >跟 senera 说什么<span class="composer-caret"></span
+                            ></span>
+                          </div>
+                          <div class="composer-toolbar">
+                            <div class="composer-tools">
+                              <button class="icon-btn" type="button" aria-label="添加附件" title="添加附件">
+                                <svg class="icon" aria-hidden="true"><use href="#i-plus"></use></svg>
+                              </button>
+                              <button class="icon-btn" type="button" aria-label="审批模式" title="审批模式">
+                                <svg class="icon icon-sm" aria-hidden="true"><use href="#i-lock"></use></svg>
+                              </button>
+                            </div>
+                            <div class="composer-trailing">
+                              <span class="context-ring" aria-label="上下文使用量" role="img"></span>
+                              <span class="model-selector">
+                                gpt-6-luna
+                                <svg class="icon icon-xs chev" aria-hidden="true">
+                                  <use href="#i-chevron-down"></use>
+                                </svg>
+                              </span>
+                              <button class="send-btn" type="button" aria-label="发送" disabled>
+                                <svg class="icon" aria-hidden="true"><use href="#i-arrow-up"></use></svg>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <nav class="dock" aria-label="工作流工具">
+                    <button type="button" aria-label="执行" title="执行">
+                      <svg class="icon" aria-hidden="true"><use href="#i-list-tree"></use></svg>
+                    </button>
+                    <button type="button" aria-label="终端" title="终端">
+                      <svg class="icon" aria-hidden="true"><use href="#i-terminal"></use></svg>
+                    </button>
+                    <button type="button" aria-label="事件" title="事件">
+                      <svg class="icon" aria-hidden="true"><use href="#i-activity"></use></svg>
+                    </button>
+                    <button type="button" aria-label="状态" title="状态">
+                      <svg class="icon" aria-hidden="true"><use href="#i-book"></use></svg>
+                    </button>
+                  </nav>
+                </main>
+
+                <div class="guides" aria-hidden="true">
+                  <span
+                    class="guide-label guide-shell"
+                    data-current="01 外壳 10 · 侧栏 266 · 内距 10"
+                    data-proposed="01 外壳 16 · 侧栏 272 · 内距 12"
+                    ><b>01</b><span class="guide-text">01 外壳 16 · 侧栏 272 · 内距 12</span></span
+                  >
+                  <span
+                    class="guide-label guide-sidebar"
+                    data-current="02 行高 44 · 行距 2"
+                    data-proposed="02 行高 40 · 行距 4"
+                    ><b>02</b><span class="guide-text">02 行高 40 · 行距 4</span></span
+                  >
+                  <span
+                    class="guide-label guide-header"
+                    data-current="03 顶栏 52 · 内距 20"
+                    data-proposed="03 顶栏 52 · 内距 24"
+                    ><b>03</b><span class="guide-text">03 顶栏 52 · 内距 24</span></span
+                  >
+                  <span class="guide-label guide-reading" data-current="04 阅读 928" data-proposed="04 阅读列 864"
+                    ><b>04</b><span class="guide-text">04 阅读列 864</span></span
+                  >
+                  <span class="guide-label guide-user" data-current="05 尾部 54" data-proposed="05 尾部 24"
+                    ><b>05</b><span class="guide-text">05 尾部 24</span></span
+                  >
+                  <span class="guide-label guide-process" data-current="06 工具 26/4" data-proposed="06 工具 28 / 2"
+                    ><b>06</b><span class="guide-text">06 工具 28 / 2</span></span
+                  >
+                  <span class="guide-label guide-tail" data-current="07 尾部 54" data-proposed="07 尾部 24"
+                    ><b>07</b><span class="guide-text">07 尾部 24</span></span
+                  >
+                  <span
+                    class="guide-label guide-composer"
+                    data-current="08 输入内距 13/14/10 · 按钮 32"
+                    data-proposed="08 输入内距 14/16/12 · 按钮 36"
+                    ><b>08</b><span class="guide-text">08 输入内距 14/16/12 · 按钮 36</span></span
+                  >
+                  <span
+                    class="guide-label guide-dock"
+                    data-current="09 浮动栏 40 · 右 12"
+                    data-proposed="09 浮动栏 44 · 右 16"
+                    ><b>09</b><span class="guide-text">09 浮动栏 44 · 右 16</span></span
+                  >
+                  <span class="guide-readline"></span>
+                  <span class="guide-composer-outline"></span>
+                  <span class="guide-dock-outline"></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="stage-foot">
+              <span>方案 <b id="captionVariant">优化后</b></span>
+              <span>外壳 <b id="captionShell">16 / 272 / 12</b></span>
+              <span>消息节奏 <b id="captionRhythm">24 / 8 / 2</b></span>
+              <span>阅读列 <b id="captionReading">864</b></span>
+              <span>输入区 <b id="captionComposer">16 / 24 · 36</b></span>
+              <span>快捷键 <b>1 / 2 · G</b></span>
+            </div>
+          </div>
+        </section>
+
+        <section class="principles" aria-label="间距原则">
+          <article class="principle">
+            <span class="num">01 / SCALE</span>
+            <h3>4px 主刻度</h3>
+            <p>所有区域级留白回到 4 的倍数；2px 只用于工具轨迹内部和图标光学校正。</p>
+          </article>
+          <article class="principle">
+            <span class="num">02 / PROXIMITY</span>
+            <h3>外松内紧</h3>
+            <p>工具之间 2px，回合内部 8–12px，回合之间 24px。距离直接表达归属。</p>
+          </article>
+          <article class="principle">
+            <span class="num">03 / ANCHOR</span>
+            <h3>一条左锚线</h3>
+            <p>顶栏标题、助手头像、输入卡共用内容轨道起点，扫视时不再来回找对齐。</p>
+          </article>
+          <article class="principle">
+            <span class="num">04 / CHROME</span>
+            <h3>悬停只占一行</h3>
+            <p>时间、token、复制和更多合并为 24px 尾部行，不再为隐形操作预留两行高度。</p>
+          </article>
+        </section>
+
+        <section id="regions">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Region by region</p>
+              <h2>九个区域，逐块重排。</h2>
+            </div>
+            <p>
+              下面是数值层面的对照。所有“优化后”数值已落到生产工作区，并保留此页作为设计依据；后续调整先改这里，再同步真实组件。
+            </p>
+          </div>
+
+          <div class="region-grid">
+            <article class="region-card">
+              <div class="region-head">
+                <span class="region-index">01</span>
+                <div class="region-title">
+                  <h3>外壳与侧栏框架</h3>
+                  <p>Shell / sidebar frame</p>
+                </div>
+                <span class="region-tag">Frame</span>
+              </div>
+              <div class="region-values">
+                <div class="value-row">
+                  <span class="label">窗口外边距</span><span class="old">10</span><span class="arrow">→</span
+                  ><span class="new">16</span>
+                </div>
+                <div class="value-row">
+                  <span class="label">侧栏宽度</span><span class="old">266</span><span class="arrow">→</span
+                  ><span class="new">272</span>
+                </div>
+                <div class="value-row">
+                  <span class="label">侧栏内边距</span><span class="old">10</span><span class="arrow">→</span
+                  ><span class="new">12</span>
+                </div>
+              </div>
+              <p class="region-why">
+                16px 外边距与 8px 网格一致；侧栏默认按窗口 20% 计算并夹在 232–296px，272px 是 1360
+                窗口的取值，主列靠轨道居中吸收。
+              </p>
+              <div class="region-visual">
+                <div class="diagram">
+                  <div class="diagram-pane">
+                    <div class="diagram-box">
+                      <div class="diagram-sidebar"></div>
+                      <div class="diagram-main">
+                        <div class="diagram-bar"></div>
+                        <div class="diagram-bar short"></div>
+                      </div>
+                    </div>
+                    <span class="diagram-caption">before 10 / 266</span>
+                  </div>
+                  <div class="diagram-pane">
+                    <div class="diagram-box">
+                      <div class="diagram-sidebar"></div>
+                      <div class="diagram-main">
+                        <div class="diagram-bar"></div>
+                        <div class="diagram-bar short"></div>
+                      </div>
+                    </div>
+                    <span class="diagram-caption">after 16 / 272</span>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="region-card">
+              <div class="region-head">
+                <span class="region-index">02</span>
+                <div class="region-title">
+                  <h3>侧栏导航</h3>
+                  <p>Search / session rows</p>
+                </div>
+                <span class="region-tag">Rhythm</span>
+              </div>
+              <div class="region-values">
+                <div class="value-row">
+                  <span class="label">搜索高度</span><span class="old">32</span><span class="arrow">→</span
+                  ><span class="new">36</span>
+                </div>
+                <div class="value-row">
+                  <span class="label">搜索下距</span><span class="old">8</span><span class="arrow">→</span
+                  ><span class="new">12</span>
+                </div>
+                <div class="value-row">
+                  <span class="label">行高 / 行距</span><span class="old">44 / 2</span><span class="arrow">→</span
+                  ><span class="new">40 / 4</span>
+                </div>
+                <div class="value-row">
+                  <span class="label">账户行</span><span class="old">48</span><span class="arrow">→</span
+                  ><span class="new">52</span>
+                </div>
+              </div>
+              <p class="region-why">
+                搜索和列表之间建立 12px 分区；行高略降但行距翻倍，扫读时分组更清楚；账户区固定 52px 与顶栏呼应。
+              </p>
+              <div class="region-visual">
+                <div class="diagram">
+                  <div class="diagram-pane">
+                    <div class="diagram-box">
+                      <div class="diagram-rows"><i></i><i></i><i></i><i></i></div>
+                    </div>
+                    <span class="diagram-caption">before 44 / 2</span>
+                  </div>
+                  <div class="diagram-pane">
+                    <div class="diagram-box">
+                      <div class="diagram-rows"><i></i><i></i><i></i><i></i></div>
+                    </div>
+                    <span class="diagram-caption">after 40 / 4</span>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="region-card">
+              <div class="region-head">
+                <span class="region-index">03</span>
+                <div class="region-title">
+                  <h3>对话顶栏</h3>
+                  <p>Chat header</p>
+                </div>
+                <span class="region-tag">Anchor</span>
+              </div>
+              <div class="region-values">
+                <div class="value-row">
+                  <span class="label">顶栏高度</span><span class="old">52</span><span class="arrow">→</span
+                  ><span class="new">52</span>
+                </div>
+                <div class="value-row">
+                  <span class="label">水平内边距</span><span class="old">20</span><span class="arrow">→</span
+                  ><span class="new">24</span>
+                </div>
+                <div class="value-row">
+                  <span class="label">标题对齐</span><span class="old">主区边缘</span><span class="arrow">→</span
+                  ><span class="new">轨道起点</span>
+                </div>
+              </div>
+              <p class="region-why">
+                标题、助手头像、输入卡共享同一条左基准线；窗口控制区仍保留 138px 安全宽度，不改变桌面标题栏行为。
+              </p>
+              <div class="region-visual">
+                <div class="diagram">
+                  <div class="diagram-pane">
+                    <div class="diagram-track"><span class="rail"></span><span class="dot"></span></div>
+                    <span class="diagram-caption">before title @ main</span>
+                  </div>
+                  <div class="diagram-pane">
+                    <div class="diagram-track"><span class="rail"></span><span class="dot"></span></div>
+                    <span class="diagram-caption">after title @ track</span>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="region-card">
+              <div class="region-head">
+                <span class="region-index">04</span>
+                <div class="region-title">
+                  <h3>会话轨道与消息节奏</h3>
+                  <p>Track / message rhythm</p>
+                </div>
+                <span class="region-tag">Measure</span>
+              </div>
+              <div class="region-values">
+                <div class="value-row">
+                  <span class="label">轨道上限</span><span class="old">1024</span><span class="arrow">→</span
+                  ><span class="new">1024</span>
+                </div>
+                <div class="value-row">
+                  <span class="label">阅读列</span><span class="old">928</span><span class="arrow">→</span
+                  ><span class="new">864</span>
+                </div>
+                <div class="value-row">
+                  <span class="label">用户气泡上限</span><span class="old">736</span><span class="arrow">→</span
+                  ><span class="new">672</span>
+                </div>
+                <div class="value-row">
+                  <span class="label">消息间距</span><span class="old">16</span><span class="arrow">→</span
+                  ><span class="new">24</span>
+                </div>
+              </div>
+              <p class="region-why">
+                中文正文行长从约 62 字降到约 57 字；回合之间 24px、回合内部 8–12px，形成两级节奏，长回答不再糊成一片。
+              </p>
+              <div class="region-visual">
+                <div class="diagram">
+                  <div class="diagram-pane">
+                    <div class="diagram-track"><span class="rail"></span><span class="dot"></span></div>
+                    <span class="diagram-caption">before 928</span>
+                  </div>
+                  <div class="diagram-pane">
+                    <div class="diagram-track"><span class="rail"></span><span class="dot"></span></div>
+                    <span class="diagram-caption">after 864</span>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="region-card">
+              <div class="region-head">
+                <span class="region-index">05</span>
+                <div class="region-title">
+                  <h3>用户消息</h3>
+                  <p>User message</p>
+                </div>
+                <span class="region-tag">Hover chrome</span>
+              </div>
+              <div class="region-values">
+                <div class="value-row">
+                  <span class="label">气泡内距</span><span class="old">16 / 10</span><span class="arrow">→</span
+                  ><span class="new">16 / 12</span>
+                </div>
+                <div class="value-row">
+                  <span class="label">头像间距</span><span class="old">10</span><span class="arrow">→</span
+                  ><span class="new">12</span>
+                </div>
+                <div class="value-row">
+                  <span class="label">元信息位置</span><span class="old">气泡上方</span><span class="arrow">→</span
+                  ><span class="new">尾部单行</span>
+                </div>
+                <div class="value-row">
+                  <span class="label">尾部高度</span><span class="old">54</span><span class="arrow">→</span
+                  ><span class="new">24</span>
+                </div>
+              </div>
+              <p class="region-why">
+                去掉不可见的 meta 占位，头像与气泡顶对齐；时间、token、复制和更多合并到同一行，悬停不再产生第二层空白。
+              </p>
+              <div class="region-visual">
+                <div class="diagram">
+                  <div class="diagram-pane">
+                    <div class="diagram-avatar"><span class="bubble"></span><span class="face"></span></div>
+                    <span class="diagram-caption">before meta line</span>
+                  </div>
+                  <div class="diagram-pane">
+                    <div class="diagram-avatar"><span class="bubble"></span><span class="face"></span></div>
+                    <span class="diagram-caption">after aligned</span>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="region-card">
+              <div class="region-head">
+                <span class="region-index">06</span>
+                <div class="region-title">
+                  <h3>助手过程轨迹</h3>
+                  <p>Process / tool trace</p>
+                </div>
+                <span class="region-tag">Proximity</span>
+              </div>
+              <div class="region-values">
+                <div class="value-row">
+                  <span class="label">元信息 → 耗时行</span><span class="old">0</span><span class="arrow">→</span
+                  ><span class="new">8</span>
+                </div>
+                <div class="value-row">
+                  <span class="label">耗时行高度</span><span class="old">26</span><span class="arrow">→</span
+                  ><span class="new">30</span>
+                </div>
+                <div class="value-row">
+                  <span class="label">工具行高 / 行距</span><span class="old">26 / 4</span><span class="arrow">→</span
+                  ><span class="new">28 / 2</span>
+                </div>
+                <div class="value-row">
+                  <span class="label">工具组外距</span><span class="old">0</span><span class="arrow">→</span
+                  ><span class="new">8</span>
+                </div>
+              </div>
+              <p class="region-why">
+                过程块用“外松内紧”分组：工具之间 2px，工具组与摘要、正文之间 8–12px。四行工具不再把整轮对话撑散。
+              </p>
+              <div class="region-visual">
+                <div class="diagram">
+                  <div class="diagram-pane">
+                    <div class="diagram-box">
+                      <div class="diagram-rows"><i></i><i></i><i></i><i></i></div>
+                    </div>
+                    <span class="diagram-caption">before 4px gap</span>
+                  </div>
+                  <div class="diagram-pane">
+                    <div class="diagram-box">
+                      <div class="diagram-rows"><i></i><i></i><i></i><i></i></div>
+                    </div>
+                    <span class="diagram-caption">after 2px + padding</span>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="region-card">
+              <div class="region-head">
+                <span class="region-index">07</span>
+                <div class="region-title">
+                  <h3>助手正文与尾部</h3>
+                  <p>Reading body / turn tail</p>
+                </div>
+                <span class="region-tag">Tail</span>
+              </div>
+              <div class="region-values">
+                <div class="value-row">
+                  <span class="label">正文上距</span><span class="old">8</span><span class="arrow">→</span
+                  ><span class="new">12</span>
+                </div>
+                <div class="value-row">
+                  <span class="label">段落间距</span><span class="old">10.5</span><span class="arrow">→</span
+                  ><span class="new">12</span>
+                </div>
+                <div class="value-row">
+                  <span class="label">尾部结构</span><span class="old">metrics + actions</span
+                  ><span class="arrow">→</span><span class="new">24px 单行</span>
+                </div>
+                <div class="value-row">
+                  <span class="label">回合底距</span><span class="old">12</span><span class="arrow">→</span
+                  ><span class="new">20</span>
+                </div>
+              </div>
+              <p class="region-why">
+                把悬停才出现的两行 chrome 收成一行：token、吞吐量和操作并排。正文与尾部之间用 12px 明确断开，底部留 20px
+                收住整轮。
+              </p>
+              <div class="region-visual">
+                <div class="diagram">
+                  <div class="diagram-pane">
+                    <div class="diagram-box">
+                      <div class="diagram-stack">
+                        <span class="line"></span><span class="line short"></span><span class="line"></span
+                        ><span class="line small"></span>
+                      </div>
+                    </div>
+                    <span class="diagram-caption">before stacked</span>
+                  </div>
+                  <div class="diagram-pane">
+                    <div class="diagram-box">
+                      <div class="diagram-stack one"><span class="line"></span></div>
+                    </div>
+                    <span class="diagram-caption">after one row</span>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="region-card">
+              <div class="region-head">
+                <span class="region-index">08</span>
+                <div class="region-title">
+                  <h3>输入区</h3>
+                  <p>Composer</p>
+                </div>
+                <span class="region-tag">Workbench</span>
+              </div>
+              <div class="region-values">
+                <div class="value-row">
+                  <span class="label">外层上 / 下</span><span class="old">14 / 20</span><span class="arrow">→</span
+                  ><span class="new">16 / 24</span>
+                </div>
+                <div class="value-row">
+                  <span class="label">卡片内距</span><span class="old">13 / 14 / 10</span><span class="arrow">→</span
+                  ><span class="new">14 / 16 / 12</span>
+                </div>
+                <div class="value-row">
+                  <span class="label">输入区 / 发送键</span><span class="old">36 / 32</span><span class="arrow">→</span
+                  ><span class="new">40 / 36</span>
+                </div>
+                <div class="value-row">
+                  <span class="label">卡片圆角</span><span class="old">14</span><span class="arrow">→</span
+                  ><span class="new">16</span>
+                </div>
+              </div>
+              <p class="region-why">
+                输入卡与内容轨道同宽同起点；上下留白大于内部间距，让它成为独立工作台，而不是正文的延续。
+              </p>
+              <div class="region-visual">
+                <div class="diagram">
+                  <div class="diagram-pane">
+                    <div class="diagram-composer"><i></i><b></b></div>
+                    <span class="diagram-caption">before 36 / 32</span>
+                  </div>
+                  <div class="diagram-pane">
+                    <div class="diagram-composer"><i></i><b></b></div>
+                    <span class="diagram-caption">after 40 / 36</span>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="region-card">
+              <div class="region-head">
+                <span class="region-index">09</span>
+                <div class="region-title">
+                  <h3>右侧浮动栏</h3>
+                  <p>Workflow dock</p>
+                </div>
+                <span class="region-tag">Float</span>
+              </div>
+              <div class="region-values">
+                <div class="value-row">
+                  <span class="label">右偏移</span><span class="old">12</span><span class="arrow">→</span
+                  ><span class="new">16</span>
+                </div>
+                <div class="value-row">
+                  <span class="label">胶囊宽度</span><span class="old">40</span><span class="arrow">→</span
+                  ><span class="new">44</span>
+                </div>
+                <div class="value-row">
+                  <span class="label">内边距 / 图标间距</span><span class="old">4 / 2</span><span class="arrow">→</span
+                  ><span class="new">6 / 4</span>
+                </div>
+                <div class="value-row">
+                  <span class="label">内容避让</span><span class="old">48</span><span class="arrow">→</span
+                  ><span class="new">64</span>
+                </div>
+              </div>
+              <p class="region-why">
+                浮动栏不压内容：胶囊与窗口边缘留 16px，内容轨道右侧预留 64px，从“贴边”变成真正的悬浮层。
+              </p>
+              <div class="region-visual">
+                <div class="diagram">
+                  <div class="diagram-pane">
+                    <div class="diagram-dock">
+                      <span class="guide-line"></span><span class="dock-shape"><i></i><i></i><i></i><i></i></span>
+                    </div>
+                    <span class="diagram-caption">before 12 / 40</span>
+                  </div>
+                  <div class="diagram-pane">
+                    <div class="diagram-dock">
+                      <span class="guide-line"></span><span class="dock-shape"><i></i><i></i><i></i><i></i></span>
+                    </div>
+                    <span class="diagram-caption">after 16 / 44</span>
+                  </div>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="token-section" id="tokens">
+          <div class="token-head">
+            <div>
+              <p class="eyebrow">Implementation map</p>
+              <h2>Token 对照表</h2>
+            </div>
+            <p>
+              当前已由 AppShell、ChatPanel、MessageList、ChatComposer 消费这些数值；后续主题化时再把重复值收敛为布局
+              token。
+            </p>
+          </div>
+
+          <table class="token-table">
+            <thead>
+              <tr>
+                <th>Token / 区域</th>
+                <th>当前</th>
+                <th>优化后</th>
+                <th>理由</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="token-name">--shell-gutter</span><span class="detail">窗口外边距</span></td>
+                <td class="old">10px</td>
+                <td class="new">16px</td>
+                <td class="why">与 8px 网格和桌面外缘留白一致。</td>
+              </tr>
+              <tr>
+                <td><span class="token-name">--sidebar-width</span><span class="detail">侧栏宽度</span></td>
+                <td class="old">266px</td>
+                <td class="new">clamp(232px, 20vw, 296px)</td>
+                <td class="why">1360 窗口约 272px；上下限保证小窗可用、大窗不失控。</td>
+              </tr>
+              <tr>
+                <td><span class="token-name">--sidebar-pad</span><span class="detail">侧栏内边距</span></td>
+                <td class="old">10px</td>
+                <td class="new">12px</td>
+                <td class="why">与外壳、搜索下距保持同一模数。</td>
+              </tr>
+              <tr>
+                <td><span class="token-name">--session-row-h / gap</span><span class="detail">会话行节奏</span></td>
+                <td class="old">44 / 2px</td>
+                <td class="new">40 / 4px</td>
+                <td class="why">行距翻倍，扫读分组更清楚。</td>
+              </tr>
+              <tr>
+                <td><span class="token-name">--search-h</span><span class="detail">搜索框高度</span></td>
+                <td class="old">32px</td>
+                <td class="new">36px</td>
+                <td class="why">与 36px 工具按钮统一，点击目标更稳。</td>
+              </tr>
+              <tr>
+                <td><span class="token-name">--chat-header-pad-x</span><span class="detail">顶栏水平内距</span></td>
+                <td class="old">20px</td>
+                <td class="new">24px</td>
+                <td class="why">标题对齐内容轨道，而不是主区边缘。</td>
+              </tr>
+              <tr>
+                <td><span class="token-name">--conversation-track</span><span class="detail">会话轨道上限</span></td>
+                <td class="old">1024px</td>
+                <td class="new">1024px</td>
+                <td class="why">保持整页骨架，只收窄阅读列。</td>
+              </tr>
+              <tr>
+                <td><span class="token-name">--conversation-pad-x</span><span class="detail">轨道水平内距</span></td>
+                <td class="old">clamp(16, 2.2vw, 28)</td>
+                <td class="new">24px</td>
+                <td class="why">桌面稳定值，减少视口变化带来的漂移。</td>
+              </tr>
+              <tr>
+                <td><span class="token-name">--reading-width</span><span class="detail">助手阅读列</span></td>
+                <td class="old">928px</td>
+                <td class="new">864px</td>
+                <td class="why">中文行长约 57 字，回到舒适阅读区间。</td>
+              </tr>
+              <tr>
+                <td><span class="token-name">--user-bubble-max</span><span class="detail">用户气泡上限</span></td>
+                <td class="old">736px</td>
+                <td class="new">672px</td>
+                <td class="why">和阅读列同步收窄，避免长句横冲。</td>
+              </tr>
+              <tr>
+                <td><span class="token-name">--message-gap</span><span class="detail">消息行垂直间距</span></td>
+                <td class="old">16px</td>
+                <td class="new">24px</td>
+                <td class="why">回合之间明确断开，回合内部保持紧凑。</td>
+              </tr>
+              <tr>
+                <td><span class="token-name">--tool-row-h / gap</span><span class="detail">工具轨迹行距</span></td>
+                <td class="old">26 / 4px</td>
+                <td class="new">28 / 2px</td>
+                <td class="why">外松内紧：行高略增，行距减半。</td>
+              </tr>
+              <tr>
+                <td><span class="token-name">--tool-group-pad</span><span class="detail">工具组外距</span></td>
+                <td class="old">0</td>
+                <td class="new">8px</td>
+                <td class="why">把四行工具从摘要和正文中分离出来。</td>
+              </tr>
+              <tr>
+                <td><span class="token-name">--turn-tail-h</span><span class="detail">回合尾部</span></td>
+                <td class="old">54px（两行）</td>
+                <td class="new">24px（单行）</td>
+                <td class="why">metrics、时间、操作并排，去掉隐形预留。</td>
+              </tr>
+              <tr>
+                <td><span class="token-name">--composer-pad-y</span><span class="detail">输入区外距</span></td>
+                <td class="old">14 / 20px</td>
+                <td class="new">16 / 24px</td>
+                <td class="why">上下留白大于内部间距，形成独立工作台。</td>
+              </tr>
+              <tr>
+                <td><span class="token-name">--composer-card-pad</span><span class="detail">输入卡内距</span></td>
+                <td class="old">13 / 14 / 10px</td>
+                <td class="new">14 / 16 / 12px</td>
+                <td class="why">输入、工具栏、卡片边缘三层分离。</td>
+              </tr>
+              <tr>
+                <td><span class="token-name">--composer-action</span><span class="detail">发送键尺寸</span></td>
+                <td class="old">32px</td>
+                <td class="new">36px</td>
+                <td class="why">主操作更稳，和 36px 工具栏高度对齐。</td>
+              </tr>
+              <tr>
+                <td><span class="token-name">--dock-offset / width</span><span class="detail">浮动栏几何</span></td>
+                <td class="old">12 / 40px</td>
+                <td class="new">16 / 44px</td>
+                <td class="why">离边更远，胶囊内部也有呼吸。</td>
+              </tr>
+              <tr>
+                <td><span class="token-name">--rail-reserve</span><span class="detail">右侧内容避让</span></td>
+                <td class="old">48px</td>
+                <td class="new">64px</td>
+                <td class="why">内容、滚动条、浮动栏三层不再互相压缩。</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="closing">
+          <div>
+            <h2>已按这套节奏落到生产。</h2>
+            <p>
+              落地顺序为“外壳 → 顶栏/轨道 → 消息尾部 → 输入区 → 浮动栏”。生产构建通过，1440 与 1280
+              宽度下已复核标题、助手头像、输入卡的同一条左锚线；此页保留为后续调整的对照基线。
+            </p>
+          </div>
+          <div class="closing-meta">
+            IMPLEMENTED<br />
+            1440 × 920 / CSS scaled<br />
+            production spacing applied
+          </div>
+        </section>
+
+        <footer class="footer">
+          <span>SENERA · INTERFACE STUDY / SPACING 01</span>
+          <span>所有数值已应用到生产前端 · 保留为设计对照</span>
+        </footer>
+      </main>
+    </div>
+
+    <script>
+      (() => {
+        const app = document.getElementById("app");
+        const stageViewport = document.getElementById("stageViewport");
+        const variantButtons = Array.from(document.querySelectorAll(".seg-btn"));
+        const guideToggle = document.getElementById("guideToggle");
+        const sidebarToggle = document.getElementById("sidebarToggle");
+        const captionVariant = document.getElementById("captionVariant");
+        const captionShell = document.getElementById("captionShell");
+        const captionRhythm = document.getElementById("captionRhythm");
+        const captionReading = document.getElementById("captionReading");
+        const captionComposer = document.getElementById("captionComposer");
+
+        const captions = {
+          current: {
+            variant: "当前",
+            shell: "10 / 266 / 10",
+            rhythm: "16 / 8 / 4",
+            reading: "928",
+            composer: "14 / 20 · 32",
+          },
+          proposed: {
+            variant: "优化后",
+            shell: "16 / 272 / 12",
+            rhythm: "24 / 8 / 2",
+            reading: "864",
+            composer: "16 / 24 · 36",
+          },
+        };
+
+        const guideTexts = Array.from(document.querySelectorAll(".guide-label"));
+        const guideLabels = {
+          shell: app.querySelector(".guide-shell"),
+          sidebar: app.querySelector(".guide-sidebar"),
+          header: app.querySelector(".guide-header"),
+          reading: app.querySelector(".guide-reading"),
+          user: app.querySelector(".guide-user"),
+          process: app.querySelector(".guide-process"),
+          tail: app.querySelector(".guide-tail"),
+          composer: app.querySelector(".guide-composer"),
+          dock: app.querySelector(".guide-dock"),
+        };
+
+        function syncGuides(variant) {
+          guideTexts.forEach((node) => {
+            const text = node.getAttribute(`data-${variant}`);
+            if (!text) return;
+            const label = node.querySelector(".guide-text");
+            if (label) label.textContent = text;
+          });
+        }
+
+        function localRect(element) {
+          const appRect = app.getBoundingClientRect();
+          const scale = appRect.width / 1440 || 1;
+          const rect = element.getBoundingClientRect();
+          return {
+            left: (rect.left - appRect.left) / scale,
+            top: (rect.top - appRect.top) / scale,
+            right: (rect.right - appRect.left) / scale,
+            bottom: (rect.bottom - appRect.top) / scale,
+            width: rect.width / scale,
+            height: rect.height / scale,
+          };
+        }
+
+        function placeRight(label, target, offsetY = 0) {
+          if (!label || !target || label.offsetWidth === 0) return;
+          const rect = localRect(target);
+          const width = label.offsetWidth;
+          const height = label.offsetHeight;
+          let left = rect.right + 10;
+          if (left + width > 1440 - 8) left = 1440 - width - 8;
+          label.style.left = `${Math.max(8, left)}px`;
+          label.style.top = `${Math.max(8, Math.min(920 - height - 8, rect.top + offsetY))}px`;
+          label.style.right = "auto";
+          label.style.bottom = "auto";
+        }
+
+        function placeAbove(label, target, gap = 8) {
+          if (!label || !target || label.offsetWidth === 0) return;
+          const rect = localRect(target);
+          const width = label.offsetWidth;
+          const height = label.offsetHeight;
+          const left = Math.max(8, Math.min(1440 - width - 8, rect.left));
+          label.style.left = `${left}px`;
+          label.style.top = `${Math.max(56, rect.top - height - gap)}px`;
+          label.style.right = "auto";
+          label.style.bottom = "auto";
+        }
+
+        function readUserTail() {
+          const candidates = app.querySelectorAll(".user-stack .turn-footer, .user-stack .user-footer-current");
+          for (const element of candidates) {
+            if (element.offsetWidth > 0 && getComputedStyle(element).display !== "none") return element;
+          }
+          return null;
+        }
+
+        function placeDockGuide(label, dock) {
+          if (!label || !dock || label.offsetWidth === 0) return;
+          const rect = localRect(dock);
+          const userTail = readUserTail();
+          const width = label.offsetWidth;
+          const height = label.offsetHeight;
+          const left = rect.left - width - 10 >= 8 ? rect.left - width - 10 : 1440 - width - 8;
+          let top = rect.top + (rect.height - height) / 2;
+          if (userTail) top = Math.max(top, localRect(userTail).bottom + 6);
+          label.style.left = `${left}px`;
+          label.style.top = `${Math.min(920 - height - 8, top)}px`;
+          label.style.right = "auto";
+          label.style.bottom = "auto";
+        }
+
+        function placeHeader(label) {
+          if (!label || label.offsetWidth === 0) return;
+          const header = localRect(document.querySelector(".app-header"));
+          const title = localRect(document.querySelector(".header-title"));
+          const width = label.offsetWidth;
+          const height = label.offsetHeight;
+          const left = Math.max(8, Math.min(1440 - width - 8, title.right + 48));
+          label.style.left = `${left}px`;
+          label.style.top = `${header.top + (header.height - height) / 2}px`;
+          label.style.right = "auto";
+          label.style.bottom = "auto";
+        }
+
+        function placeUserGuide(label) {
+          if (!label || label.offsetWidth === 0) return;
+          const bubble = app.querySelector(".user-bubble");
+          if (!bubble) return;
+          const rect = localRect(bubble);
+          const width = label.offsetWidth;
+          const height = label.offsetHeight;
+          const left = Math.max(8, Math.min(1440 - width - 8, rect.left - width - 12));
+          label.style.left = `${left}px`;
+          label.style.top = `${Math.max(8, rect.top)}px`;
+          label.style.right = "auto";
+          label.style.bottom = "auto";
+        }
+
+        function placeSidebarLabels() {
+          const sidebar = localRect(document.querySelector(".sidebar"));
+          const shell = guideLabels.shell;
+          const rhythm = guideLabels.sidebar;
+          const footer = document.querySelector(".sidebar-footer");
+          const rows = document.querySelectorAll(".sessions .session-row");
+          const lastRow = rows[rows.length - 1];
+          if (shell && footer && shell.offsetWidth > 0) {
+            const footerRect = localRect(footer);
+            shell.style.left = `${sidebar.left + 12}px`;
+            shell.style.top = `${footerRect.top - shell.offsetHeight - 10}px`;
+            shell.style.right = "auto";
+            shell.style.bottom = "auto";
+          }
+          if (rhythm && lastRow && rhythm.offsetWidth > 0) {
+            const rowRect = localRect(lastRow);
+            rhythm.style.left = `${sidebar.left + 12}px`;
+            rhythm.style.top = `${rowRect.bottom + 12}px`;
+            rhythm.style.right = "auto";
+            rhythm.style.bottom = "auto";
+          }
+        }
+
+        function readAssistantTail() {
+          const candidates = app.querySelectorAll(
+            ".assistant-turn .turn-footer:not(.user-turn-footer), .assistant-turn .user-footer-current",
+          );
+          for (const element of candidates) {
+            if (element.offsetWidth > 0 && getComputedStyle(element).display !== "none") return element;
+          }
+          return null;
+        }
+
+        function positionGuides() {
+          if (!app.classList.contains("guides-on")) return;
+          const body = app.querySelector(".assistant-turn .assistant-body");
+          const process = app.querySelector(".assistant-turn .tool-group");
+          const composer = app.querySelector(".composer-card");
+          const dock = app.querySelector(".dock");
+          const readline = app.querySelector(".guide-readline");
+          placeHeader(guideLabels.header);
+          placeSidebarLabels();
+          placeRight(guideLabels.reading, body, 4);
+          placeUserGuide(guideLabels.user);
+          placeRight(guideLabels.process, process);
+          placeRight(guideLabels.tail, readAssistantTail());
+          placeAbove(guideLabels.composer, composer, 8);
+          placeDockGuide(guideLabels.dock, dock);
+          if (body && readline) {
+            const rect = localRect(body);
+            readline.style.left = `${rect.right}px`;
+            readline.style.top = `${rect.top}px`;
+            readline.style.height = `${rect.height}px`;
+            readline.style.bottom = "auto";
+          }
+        }
+
+        function scheduleGuideLayout() {
+          if (!app.classList.contains("guides-on")) return;
+          requestAnimationFrame(positionGuides);
+        }
+
+        function setVariant(variant) {
+          app.dataset.variant = variant;
+          variantButtons.forEach((button) => {
+            button.setAttribute("aria-pressed", String(button.dataset.variant === variant));
+          });
+          const caption = captions[variant];
+          captionVariant.textContent = caption.variant;
+          captionShell.textContent = caption.shell;
+          captionRhythm.textContent = caption.rhythm;
+          captionReading.textContent = caption.reading;
+          captionComposer.textContent = caption.composer;
+          syncGuides(variant);
+          scheduleGuideLayout();
+        }
+
+        variantButtons.forEach((button) => {
+          button.addEventListener("click", () => setVariant(button.dataset.variant));
+        });
+
+        guideToggle.addEventListener("click", () => {
+          const next = guideToggle.getAttribute("aria-pressed") !== "true";
+          guideToggle.setAttribute("aria-pressed", String(next));
+          app.classList.toggle("guides-on", next);
+          scheduleGuideLayout();
+        });
+
+        function setSidebarCollapsed(collapsed) {
+          app.classList.toggle("sidebar-collapsed", collapsed);
+          sidebarToggle.setAttribute("aria-pressed", String(collapsed));
+          sidebarToggle.innerHTML = collapsed
+            ? '<svg class="icon" aria-hidden="true"><use href="#i-panel-left-open"></use></svg>展开侧栏'
+            : '<svg class="icon" aria-hidden="true"><use href="#i-panel-left-close"></use></svg>收起侧栏';
+          scheduleGuideLayout();
+        }
+
+        sidebarToggle.addEventListener("click", () => {
+          setSidebarCollapsed(!app.classList.contains("sidebar-collapsed"));
+        });
+
+        document.getElementById("collapseSidebar").addEventListener("click", () => setSidebarCollapsed(true));
+        document.getElementById("expandSidebar").addEventListener("click", () => setSidebarCollapsed(false));
+
+        function fitStage() {
+          const width = stageViewport.clientWidth;
+          const scale = Math.min(1, width / 1440);
+          app.style.transform = `scale(${scale})`;
+          stageViewport.style.height = `${Math.round(920 * scale)}px`;
+          scheduleGuideLayout();
+        }
+
+        const resizeObserver = new ResizeObserver(fitStage);
+        resizeObserver.observe(stageViewport);
+        fitStage();
+
+        window.addEventListener("keydown", (event) => {
+          if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+          if (event.key === "1") setVariant("current");
+          if (event.key === "2") setVariant("proposed");
+          if (event.key.toLowerCase() === "g") guideToggle.click();
+        });
+      })();
+    </script>
+  </body>
+</html>

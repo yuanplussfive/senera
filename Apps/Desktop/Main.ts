@@ -411,6 +411,7 @@ function flushSettingsSectionNavigation(): void {
   const section = pendingSettingsSection;
   if (!window || window.isDestroyed() || window.webContents.isDestroyed() || !settingsSurfaceReady || !section) return;
   pendingSettingsSection = undefined;
+  if (settingsClosePolicy.dirty) return;
   window.webContents.send("senera:settings.navigate", section);
 }
 

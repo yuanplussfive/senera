@@ -102,6 +102,27 @@ describe("workspace-owned state migration", () => {
     expect(repeated.status).toBe("already-complete");
   });
 
+  test("skips an additional entry that already targets its own source", () => {
+    const applicationRoot = fs.mkdtempSync(path.join(os.tmpdir(), "senera-self-entry-application-"));
+    const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "senera-self-entry-workspace-"));
+    const paths = resolveAgentApplicationPaths(applicationRoot);
+    const source = paths.legacyWorkspaceLayout(workspaceRoot, "workspace-id");
+    const target = paths.workspaceLayout(workspaceRoot, "workspace-id");
+    fs.mkdirSync(path.dirname(target.configSecretKey), { recursive: true });
+    fs.writeFileSync(target.configSecretKey, "workspace-config-key");
+
+    const result = migrateAgentWorkspaceState({
+      workspaceRoot,
+      workspaceId: "workspace-id",
+      source,
+      target,
+      additionalEntries: [{ source: target.configSecretKey, target: target.configSecretKey }],
+    });
+
+    expect(result.status).toBe("not-needed");
+    expect(fs.existsSync(path.join(target.stateRoot, "migrations"))).toBe(false);
+    expect(fs.readFileSync(target.configSecretKey, "utf8")).toBe("workspace-config-key");
+  });
   test("imports the former application-level plugin directory into the initial workspace only", () => {
     const applicationRoot = fs.mkdtempSync(path.join(os.tmpdir(), "senera-shared-plugin-application-"));
     const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "senera-shared-plugin-workspace-"));

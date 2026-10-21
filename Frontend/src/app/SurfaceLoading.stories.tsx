@@ -5,6 +5,12 @@ export const Application: Story = () => <ApplicationSurfaceLoading />;
 
 export const SettingsDesktop: Story = () => <SettingsSurfaceLoading presentation="desktop" />;
 
+export const SettingsEmbedded: Story = () => (
+  <div className="h-[660px] w-full bg-surface-panel text-content-primary">
+    <SettingsSurfaceLoading presentation="embedded" />
+  </div>
+);
+
 export const SettingsOverlay: Story = () => (
   <div className="min-h-dvh bg-surface-canvas p-8 text-content-primary">
     <h2 className="text-[15px] font-semibold">设置加载覆盖层</h2>

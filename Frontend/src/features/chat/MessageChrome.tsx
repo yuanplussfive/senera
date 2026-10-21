@@ -8,29 +8,30 @@ import { useProfileAvatar } from "../session/ProfileAvatar";
 export interface MessageMetaProps {
   title?: string;
   timestamp: string;
-  align?: "left" | "right";
-  order?: "title-first" | "time-first";
 }
 
-export function MessageMeta({
-  title,
-  timestamp,
-  align = "left",
-  order = "title-first",
-}: MessageMetaProps): JSX.Element {
-  const titleNode = title ? (
-    <span className="min-w-0 truncate text-[13.5px] font-semibold text-content-primary">{title}</span>
-  ) : null;
-  const timeNode = (
-    <span className="shrink-0 text-[10.5px] tabular-nums text-content-muted opacity-0 transition-opacity group-hover/msg:opacity-100 group-focus-within/msg:opacity-100">
+/**
+ * Message timestamp. The reveal behaviour belongs to the caller: the assistant
+ * header fades it in on hover, while the user footer already owns visibility.
+ */
+export function MessageTime({ timestamp, className }: { timestamp: string; className?: string }): JSX.Element {
+  return (
+    <span className={cn("shrink-0 text-[10.5px] tabular-nums text-content-muted", className)}>
       {formatTime(timestamp)}
     </span>
   );
+}
 
+export function MessageMeta({ title, timestamp }: MessageMetaProps): JSX.Element {
   return (
-    <div className={cn("flex min-w-0 items-baseline gap-2", align === "right" && "justify-end")} data-ui-chrome>
-      {order === "time-first" ? timeNode : titleNode}
-      {order === "time-first" ? titleNode : timeNode}
+    <div className="flex min-w-0 items-baseline gap-2" data-ui-chrome>
+      {title ? (
+        <span className="min-w-0 truncate text-[13.5px] font-semibold text-content-primary">{title}</span>
+      ) : null}
+      <MessageTime
+        timestamp={timestamp}
+        className="opacity-0 transition-opacity group-hover/msg:opacity-100 group-focus-within/msg:opacity-100"
+      />
     </div>
   );
 }

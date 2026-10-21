@@ -100,8 +100,7 @@ export function UserFooter({
           className={cn(
             "mt-auto shrink-0 bg-transparent transition-colors duration-150 hover:bg-surface-hover",
             menuOpen && "bg-surface-hover",
-            compactFrame &&
-              "-mx-[10px] -mb-[10px] w-[calc(100%+20px)] border-t border-line-subtle px-[10px] pb-[10px] pt-2.5",
+            compactFrame && "-mx-3 -mb-3 w-[calc(100%+1.5rem)] border-t border-line-subtle px-3 pb-3 pt-3",
             !compactFrame && !collapsed && "border-t border-line-subtle",
           )}
         >
@@ -114,7 +113,7 @@ export function UserFooter({
               onFocus={onSettingsIntent}
               className={cn(
                 "w-full bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-focus",
-                collapsed ? "grid h-12 place-items-center px-0" : "flex h-[48px] items-center gap-2 px-3 text-left",
+                collapsed ? "grid h-[52px] place-items-center px-0" : "flex h-[52px] items-center gap-2 px-3 text-left",
               )}
             >
               <UserAvatar profile={profile} />

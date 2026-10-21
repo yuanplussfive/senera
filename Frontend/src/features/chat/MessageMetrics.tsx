@@ -84,7 +84,7 @@ export function MessageMetrics({
   return (
     <div
       className={cn(
-        "message-metrics mt-1 flex min-w-0 flex-wrap items-center gap-x-[0.8em] gap-y-[0.15em] tabular-nums leading-[1.25] text-content-muted",
+        "message-metrics flex min-w-0 flex-wrap items-center gap-x-[0.8em] gap-y-[0.15em] tabular-nums leading-[1.25] text-content-muted",
         role === "user" ? "message-metrics--user" : "message-metrics--assistant",
         align === "right" ? "justify-end" : "justify-start",
       )}
@@ -111,7 +111,7 @@ export function MessageMetrics({
             ) : null}
             {throughput !== undefined ? (
               <span className="inline-flex min-w-0 items-center gap-[0.35em]" data-message-metrics-throughput>
-                <AppIcon icon="gauge" size="1em" strokeWidth={1.65} />
+                <AppIcon icon="gauge" size="1.25em" strokeWidth={1.65} />
                 <span className="whitespace-nowrap">
                   {frontendMessage("chat.metrics.throughputCompact", { rate: formatRate(throughput) })}
                 </span>

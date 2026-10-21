@@ -4,7 +4,7 @@ import type { SettingsSystemConfigHandle } from "../SettingsContracts";
 
 import { classifySettingsContentLayout, useObservedLayout } from "../../../shared/responsive";
 import { cn } from "../../../lib/util";
-import { AppIcon, StateView } from "../../../shared/ui";
+import { AppIcon } from "../../../shared/ui";
 import {
   findItemField,
   findTopField,
@@ -26,6 +26,7 @@ import {
 } from "./modelServiceState";
 import { useProviderConnectionActions } from "./useProviderConnectionActions";
 import { ProviderModelLifecycleDialogs } from "./ProviderModelLifecycleDialogs";
+import { SettingsSectionLoading } from "../SettingsLoading";
 
 const EMPTY_DRAFT: Record<string, unknown> = {};
 
@@ -147,22 +148,8 @@ export function ModelServiceSection({
     return () => onDirtyChange?.(false);
   }, [actions.dirty, editorLocalDirty, onDirtyChange]);
 
-  if (!systemConfig)
-    return (
-      <StateView
-        status="loading"
-        className="min-h-[220px] bg-paper-50"
-        description={frontendMessage("settings.state.loadingMain")}
-      />
-    );
-  if (!snapshot || !modelSection || !state)
-    return (
-      <StateView
-        status="loading"
-        className="min-h-[220px] bg-paper-50"
-        description={frontendMessage("settings.state.loadingModelService")}
-      />
-    );
+  if (!systemConfig) return <SettingsSectionLoading variant="split" />;
+  if (!snapshot || !modelSection || !state) return <SettingsSectionLoading variant="split" />;
 
   const firstProvider = sortProviderRows([...state.providers])[0]?.provider ?? null;
   const selectedProvider = state.providers.find((provider) => provider.Id === selectedProviderId) ?? firstProvider;
