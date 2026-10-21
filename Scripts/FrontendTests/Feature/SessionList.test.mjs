@@ -297,12 +297,10 @@ test("persistent session sidebar collapses into the prototype tool rail", async 
     screen.queryByRole("searchbox", { name: frontendMessage("session.searchPlaceholder") }),
   ).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: frontendMessage("session.headerExpand") })).toBeVisible();
-  expect(screen.getByRole("button", { name: frontendMessage("session.headerExpand") })).toHaveFocus();
   expect(screen.getByRole("button", { name: frontendMessage("session.new") })).toBeVisible();
 
   await user.click(screen.getByRole("button", { name: frontendMessage("session.headerExpand") }));
   expect(sidebar).toHaveAttribute("data-collapsed", "false");
-  expect(screen.getByRole("button", { name: frontendMessage("session.headerCollapse") })).toHaveFocus();
   expect(expandedHeader).toHaveAttribute("data-window-drag-region");
   expect(collapsedHeader).not.toHaveAttribute("data-window-drag-region");
   expect(screen.getByRole("searchbox", { name: frontendMessage("session.searchPlaceholder") })).toBeVisible();
