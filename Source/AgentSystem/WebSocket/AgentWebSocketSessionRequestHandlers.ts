@@ -176,4 +176,17 @@ export class AgentWebSocketSessionRequestHandlers {
       onEvent: sendEvent,
     });
   }
+
+  async feedback(
+    request: AgentWebSocketRequestOf<"session.feedback">,
+    sendEvent: AgentWebSocketEventSender,
+  ): Promise<void> {
+    await this.context.sessionManager.recordMessageFeedback({
+      sessionId: request.sessionId,
+      requestId: request.requestId,
+      rating: request.rating,
+      ...(request.category ? { category: request.category } : {}),
+      onEvent: sendEvent,
+    });
+  }
 }

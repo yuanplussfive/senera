@@ -9,6 +9,7 @@ import type {
 } from "./eventTypes";
 import type { ProviderModelConfigRequest } from "./providerModelCommandTypes";
 import type { InteractionInputAction, InteractionInputContent } from "./interactionInputEventTypes";
+import type { FeedbackCategory, FeedbackRating } from "./feedbackEventTypes";
 import type { ExecutionApprovalMode } from "./executionApprovalMode";
 
 export type WsRequest =
@@ -60,6 +61,14 @@ export type WsRequest =
   | { type: "session.list" }
   | { type: "session.history"; sessionId: string; refresh?: boolean; initialWindow?: boolean }
   | { type: "session.rename"; sessionId: string; title: string }
+  | {
+      type: "session.feedback";
+      sessionId: string;
+      requestId: string;
+      /** `null` retracts a previously recorded rating. */
+      rating: FeedbackRating | null;
+      category?: FeedbackCategory;
+    }
   | { type: "model.list" }
   | { type: "provider.models.fetch"; providerId: string; force?: boolean; endpoint?: ProviderModelEndpointInput }
   | { type: "config.get" }

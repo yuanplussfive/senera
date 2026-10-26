@@ -5042,6 +5042,56 @@
       "properties": {
         "type": {
           "type": "string",
+          "const": "session.feedback"
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rating": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "positive",
+                "negative"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "task_result",
+            "instruction_following",
+            "product_interaction",
+            "service_stability",
+            "resource_cost",
+            "security_privacy",
+            "other"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "sessionId",
+        "requestId",
+        "rating"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
           "const": "sandbox.status"
         }
       },

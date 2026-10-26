@@ -298,5 +298,19 @@
   "terminal.info.purpose": "用途",
   "settings.storage.appDataScope": "会话、记忆与供应商凭据等应用级数据，由所有工作区共享。",
   "settings.storage.workspaceScope": "逐个工作区的 .senera 运行数据，当前工作区同时显示状态目录与配置文件。",
-  "settings.storage.connectionUnavailable": "工作区连接尚未就绪，暂时无法读取存储占用"
+  "settings.storage.connectionUnavailable": "工作区连接尚未就绪，暂时无法读取存储占用",
+  "feedback.helpful": "这条回复有帮助",
+  "feedback.notHelpful": "这条回复没帮助",
+  "feedback.dialog.title": "评价这条回复",
+  "feedback.dialog.descriptionPositive": "这条回复好在哪里？可选。",
+  "feedback.dialog.descriptionNegative": "哪里不符合预期？可选。",
+  "feedback.dialog.categoryLabel": "反馈类别",
+  "feedback.dialog.submit": "提交评价",
+  "feedback.category.task_result": "任务结果",
+  "feedback.category.instruction_following": "指令遵循",
+  "feedback.category.product_interaction": "交互体验",
+  "feedback.category.service_stability": "服务稳定性",
+  "feedback.category.resource_cost": "资源与开销",
+  "feedback.category.security_privacy": "安全与隐私",
+  "feedback.category.other": "其他"
 }

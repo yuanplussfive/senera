@@ -1,5 +1,6 @@
 import { lazy, memo, Suspense, useEffect, useId, useState } from "react";
 import type { InteractionInputAction, InteractionInputContent } from "../../api/eventTypes";
+import type { FeedbackCategory, FeedbackRating } from "../../api/feedbackEventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import type { ChatMessage, ConversationIdentity } from "../../store/sessionStore";
@@ -11,6 +12,7 @@ import { readRunStatusLabel } from "../workflow/stepPresentation";
 import { AssistantMessageBody } from "./AssistantMessageBody";
 import { InteractionInputStrip } from "./InteractionInputStrip";
 import { MessageActions } from "./MessageActions";
+import { MessageFeedbackControl } from "./MessageFeedbackControl";
 import { MessageMetrics } from "./MessageMetrics";
 import { AssistantMessageAvatar, MessageMeta } from "./MessageChrome";
 import {
@@ -58,9 +60,16 @@ export interface AssistantTurnRowProps {
     action: InteractionInputAction,
     content?: InteractionInputContent,
   ) => void;
+  onRecordMessageFeedback?: (
+    sessionId: string,
+    requestId: string,
+    rating: FeedbackRating | null,
+    category?: FeedbackCategory,
+  ) => void;
 }
 
 export const AssistantTurnRow = memo(function AssistantTurnRow({
+  sessionId,
   turn,
   assistantProfile = DEFAULT_ASSISTANT_PROFILE,
   showInlineActions,
@@ -69,6 +78,7 @@ export const AssistantTurnRow = memo(function AssistantTurnRow({
   onDeleteFromMessage,
   onViewWorkflow,
   onResolveInteractionInput,
+  onRecordMessageFeedback,
 }: AssistantTurnRowProps): JSX.Element {
   const { run } = turn;
   const runRequestId = run?.requestId;
@@ -207,7 +217,14 @@ export const AssistantTurnRow = memo(function AssistantTurnRow({
             />
 
             {forkBoundary ? (
-              <div className="ml-auto flex min-w-0">
+              <div className="ml-auto flex min-w-0 items-center gap-1">
+                {actionMessage && turn.requestId && onRecordMessageFeedback ? (
+                  <MessageFeedbackControl
+                    sessionId={sessionId}
+                    requestId={turn.requestId}
+                    onRecord={onRecordMessageFeedback}
+                  />
+                ) : null}
                 <MessageActions
                   content={copyContent}
                   placement="left"
@@ -299,7 +316,8 @@ function areAssistantTurnRowPropsEqual(previous: AssistantTurnRowProps, next: As
     previous.onRegenerate !== next.onRegenerate ||
     previous.onDeleteFromMessage !== next.onDeleteFromMessage ||
     previous.onViewWorkflow !== next.onViewWorkflow ||
-    previous.onResolveInteractionInput !== next.onResolveInteractionInput
+    previous.onResolveInteractionInput !== next.onResolveInteractionInput ||
+    previous.onRecordMessageFeedback !== next.onRecordMessageFeedback
   ) {
     return false;
   }

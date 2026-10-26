@@ -9,6 +9,50 @@ import { projectAgentRunEventForHistory } from "../../../Source/AgentSystem/Even
 import { projectAgentMessage } from "../../../Source/AgentSystem/I18n/AgentMessageProjection.js";
 
 describe("run event history policy", () => {
+  test("persists message feedback so a reload restores the user's own rating", () => {
+    const projected = projectAgentRunEventForHistory({
+      channel: AgentEventChannels.AgentEvent,
+      kind: AgentEventKinds.FeedbackRecorded,
+      layer: AgentEventLayers.Snapshot,
+      phase: AgentEventPhases.Session,
+      sequence: 2,
+      timestamp: "2026-07-17T00:00:00.000Z",
+      sessionId: "session-1",
+      requestId: "request-1",
+      data: {
+        sessionId: "session-1",
+        requestId: "request-1",
+        rating: "negative",
+        category: "task_result",
+        updatedAt: "2026-07-17T00:00:00.000Z",
+      },
+    });
+
+    expect(projected?.data).toEqual({
+      sessionId: "session-1",
+      requestId: "request-1",
+      rating: "negative",
+      category: "task_result",
+      updatedAt: "2026-07-17T00:00:00.000Z",
+    });
+  });
+
+  test("still drops transport-level session events", () => {
+    const projected = projectAgentRunEventForHistory({
+      channel: AgentEventChannels.AgentEvent,
+      kind: AgentEventKinds.SessionRuntimeStatus,
+      layer: AgentEventLayers.Snapshot,
+      phase: AgentEventPhases.Session,
+      sequence: 3,
+      timestamp: "2026-07-17T00:00:00.000Z",
+      sessionId: "session-1",
+      requestId: "request-1",
+      data: {},
+    });
+
+    expect(projected).toBeUndefined();
+  });
+
   test("does not persist transient run activity", () => {
     const projected = projectAgentRunEventForHistory({
       channel: AgentEventChannels.AgentEvent,

@@ -85,6 +85,7 @@
   "pi.toolObservationContractMissing": "The Senera Pi tool observation must satisfy the strict {sourceType} protocol.",
   "interaction.inputResolveFailed": "Failed to submit the interaction input.",
   "interaction.serviceUnavailable": "The interaction input service is unavailable.",
+  "feedback.requestMissing": "Cannot record feedback: request {requestId} does not exist.",
   "extension.referenceValidationFailed": "Extension reference validation failed:",
   "extension.skillRecommendedToolMissing": "The metadata.senera.recommended-tools field of {member} references an unregistered tool: {toolName}",
   "rootCommand.policyActionMismatch": "The RootCommand policy does not match the action: {policyAction} != {decisionAction}",
