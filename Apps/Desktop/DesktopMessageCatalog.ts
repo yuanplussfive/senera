@@ -9,20 +9,24 @@ export type DesktopMessageParams = Readonly<Record<string, string | number | boo
 
 const DesktopMessagesZhCn = {
   "startup.failedTitle": "Senera 启动失败",
+  "startup.loading": "正在启动本地服务…",
   "tray.show": "显示 Senera",
   "tray.selectWorkspace": "选择工作区",
   "tray.quit": "退出 Senera",
   "workspace.selectionFailedTitle": "工作区切换失败",
   "settings.title": "Senera 设置",
+  "product.title.development": "{title}（开发版）",
 } as const;
 
 const DesktopMessagesEnUs: Record<DesktopMessageKey, string> = {
   "startup.failedTitle": "Senera failed to start",
+  "startup.loading": "Starting the local service…",
   "tray.show": "Show Senera",
   "tray.selectWorkspace": "Select workspace",
   "tray.quit": "Quit Senera",
   "workspace.selectionFailedTitle": "Failed to switch workspace",
   "settings.title": "Senera settings",
+  "product.title.development": "{title} (dev)",
 };
 
 const DesktopMessageCatalog: Record<DesktopLocale, Record<DesktopMessageKey, string>> = {

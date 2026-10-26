@@ -414,6 +414,8 @@ jobs:
       - uses: ./.github/actions/setup-node
         with:
           install-electron: "true"
+      # `desktop.pack` also launches the packaged build (`npm run desktop.smoke`), so a
+      # packaged build that cannot start fails this job before anything is uploaded.
       - run: npm run desktop.pack
       - name: Verify differential update assets
         shell: pwsh

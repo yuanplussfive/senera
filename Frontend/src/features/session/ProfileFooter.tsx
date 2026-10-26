@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { toast } from "sonner";
+import type { SocketStatus } from "../../api/useAgentSocket";
 import type { ConversationIdentity, ConversationProfileUpdate, UserProfile } from "../../store/sessionStore";
 import type { SettingsSectionId } from "../settings/types";
 import { cn } from "../../lib/util";
+import { SocketConnectionNotice } from "./SocketConnectionNotice";
 import {
   AppIcon,
   Button,
@@ -61,6 +63,8 @@ export function UserFooter({
   collapsed = false,
   compactFrame = false,
   profile,
+  socketStatus,
+  onReconnectSocket,
   onUpdateProfile,
   onLogout,
   onSettingsIntent,
@@ -71,7 +75,8 @@ export function UserFooter({
   collapsed?: boolean;
   compactFrame?: boolean;
   profile: UserProfile;
-  socketStatus: string;
+  socketStatus: SocketStatus;
+  onReconnectSocket?: () => void;
   onUpdateProfile: (profile: ConversationProfileUpdate) => void;
   onLogout?: () => Promise<void>;
   onSettingsIntent?: () => void;
@@ -96,41 +101,46 @@ export function UserFooter({
   return (
     <>
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-        <div
-          className={cn(
-            "mt-auto shrink-0 bg-transparent transition-colors duration-150 hover:bg-surface-hover",
-            menuOpen && "bg-surface-hover",
-            compactFrame && "-mx-3 -mb-3 w-[calc(100%+1.5rem)] border-t border-line-subtle px-3 pb-3 pt-3",
-            !compactFrame && !collapsed && "border-t border-line-subtle",
-          )}
-        >
-          <DropdownMenuTrigger asChild>
-            <button
-              ref={settingsTriggerRef}
-              type="button"
-              onPointerEnter={onSettingsIntent}
-              onPointerDown={onSettingsIntent}
-              onFocus={onSettingsIntent}
-              className={cn(
-                "w-full bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-focus",
-                collapsed ? "grid h-[52px] place-items-center px-0" : "flex h-[52px] items-center gap-2 px-3 text-left",
-              )}
-            >
-              <UserAvatar profile={profile} />
-              {collapsed ? null : (
-                <>
-                  <div className="min-w-0 flex-1 truncate text-[13px] text-content-primary">{profile.name}</div>
-                  <AppIcon
-                    icon="account-menu"
-                    className={cn(
-                      "h-3.5 w-3.5 shrink-0 text-content-muted transition-transform duration-150",
-                      menuOpen && "rotate-180",
-                    )}
-                  />
-                </>
-              )}
-            </button>
-          </DropdownMenuTrigger>
+        <div className="mt-auto shrink-0">
+          <SocketConnectionNotice status={socketStatus} onReconnect={onReconnectSocket} collapsed={collapsed} />
+          <div
+            className={cn(
+              "shrink-0 bg-transparent transition-colors duration-150 hover:bg-surface-hover",
+              menuOpen && "bg-surface-hover",
+              compactFrame && "-mx-3 -mb-3 w-[calc(100%+1.5rem)] border-t border-line-subtle px-3 pb-3 pt-3",
+              !compactFrame && !collapsed && "border-t border-line-subtle",
+            )}
+          >
+            <DropdownMenuTrigger asChild>
+              <button
+                ref={settingsTriggerRef}
+                type="button"
+                onPointerEnter={onSettingsIntent}
+                onPointerDown={onSettingsIntent}
+                onFocus={onSettingsIntent}
+                className={cn(
+                  "w-full bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-focus",
+                  collapsed
+                    ? "grid h-[52px] place-items-center px-0"
+                    : "flex h-[52px] items-center gap-2 px-3 text-left",
+                )}
+              >
+                <UserAvatar profile={profile} />
+                {collapsed ? null : (
+                  <>
+                    <div className="min-w-0 flex-1 truncate text-[13px] text-content-primary">{profile.name}</div>
+                    <AppIcon
+                      icon="account-menu"
+                      className={cn(
+                        "h-3.5 w-3.5 shrink-0 text-content-muted transition-transform duration-150",
+                        menuOpen && "rotate-180",
+                      )}
+                    />
+                  </>
+                )}
+              </button>
+            </DropdownMenuTrigger>
+          </div>
         </div>
         <DropdownMenuContent
           align={collapsed ? "end" : "start"}

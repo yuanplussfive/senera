@@ -64,13 +64,13 @@ describe("settings presentation", () => {
   it("groups navigation in product-domain order", () => {
     expect(settingsSectionGroups).toEqual([
       { id: "model", label: "模型", sectionIds: ["model-service", "model-roles"] },
+      { id: "personal", label: "个人", sectionIds: ["general", "appearance"] },
       {
         id: "capabilities",
         label: "能力与运行",
         sectionIds: ["runtime", "prompt", "planning", "retrieval"],
       },
       { id: "tools", label: "工具", sectionIds: ["system-tools", "dependencies", "channels"] },
-      { id: "personal", label: "个人", sectionIds: ["general", "appearance"] },
       { id: "system", label: "系统", sectionIds: ["storage", "about"] },
     ]);
     expect(readSettingsSectionGroup("appearance").label).toBe("个人");

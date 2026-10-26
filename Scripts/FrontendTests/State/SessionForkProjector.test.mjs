@@ -38,7 +38,7 @@ test("session.forked selects the authoritative target and inherits source model 
   expect(state.selectedModelProviderId).toBe("provider-a");
 });
 
-test("session snapshots synchronize the durable next-turn model preference", () => {
+test("session snapshots adopt the durable next-turn model preference", () => {
   const state = createTestState();
   state.sessions.session_test = session("session_test", "Conversation");
   state.sessionOrder = ["session_test"];
@@ -59,6 +59,12 @@ test("session snapshots synchronize the durable next-turn model preference", () 
         messageCount: 0,
         turnCount: 0,
         modelProviderId: "provider-b",
+        modelPreference: {
+          modelProviderId: "provider-b",
+          revision: 1,
+          updatedAt: "2026-07-17T00:00:02.000Z",
+          source: "user",
+        },
       },
       { sessionId: "session_test", requestId: undefined, phase: "session" },
     ),
@@ -66,6 +72,39 @@ test("session snapshots synchronize the durable next-turn model preference", () 
 
   expect(state.selectedModelProviderIdsBySession.session_test).toBe("provider-b");
   expect(state.selectedModelProviderId).toBe("provider-b");
+});
+
+test("session snapshots keep display-only model history out of the conversation choice", () => {
+  const state = createTestState();
+  state.sessions.session_test = session("session_test", "Conversation");
+  state.sessionOrder = ["session_test"];
+  state.activeSessionId = "session_test";
+  state.modelProviders = [
+    { id: "provider-a", capabilities: { Chat: true }, isDefault: true },
+    { id: "provider-b", capabilities: { Chat: true } },
+  ];
+  state.defaultModelProviderId = "provider-a";
+
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionSnapshot,
+      {
+        sessionId: "session_test",
+        status: "idle",
+        createdAt: "2026-07-17T00:00:00.000Z",
+        updatedAt: "2026-07-17T00:00:02.000Z",
+        entryCount: 0,
+        messageCount: 0,
+        turnCount: 0,
+        modelProviderId: "provider-b",
+      },
+      { sessionId: "session_test", requestId: undefined, phase: "session" },
+    ),
+  );
+
+  expect(state.selectedModelProviderIdsBySession).toEqual({});
+  expect(state.selectedModelProviderId).toBeNull();
 });
 
 test.each(["session.fork", "session.message", "session.history"])(

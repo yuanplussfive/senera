@@ -20,7 +20,8 @@ export type RequestInvalidCode =
   | "session_fork_target_exists"
   | "session_pi_fork_failed"
   | "session_pi_unavailable"
-  | "session_close_failed";
+  | "session_close_failed"
+  | "feedback_request_missing";
 
 export interface RequestInvalidData {
   code?: RequestInvalidCode;

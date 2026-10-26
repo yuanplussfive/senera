@@ -6,7 +6,21 @@ export interface DesktopVisibilityWindow {
   restore: () => void;
   show: () => void;
   showInactive: () => void;
+  moveTop: () => void;
   focus: () => void;
+}
+
+/**
+ * Brings an existing window back to the front of the user's attention. A surface
+ * the user just asked for must be visible and active even when its window was
+ * already open but hidden, minimized, or covered by another window.
+ */
+export function revealDesktopWindow(window: DesktopVisibilityWindow | undefined): void {
+  if (!window || window.isDestroyed()) return;
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.moveTop();
+  window.focus();
 }
 
 export function hideDesktopWindows(windows: readonly (DesktopVisibilityWindow | undefined)[]): void {

@@ -298,5 +298,19 @@
   "terminal.info.purpose": "Purpose",
   "settings.storage.appDataScope": "Sessions, memories and provider credentials shared by every workspace.",
   "settings.storage.workspaceScope": "Per-workspace .senera runtime data; the current workspace also shows its state directory and config file.",
-  "settings.storage.connectionUnavailable": "The workspace connection is not ready, so storage usage is unavailable"
+  "settings.storage.connectionUnavailable": "The workspace connection is not ready, so storage usage is unavailable",
+  "feedback.helpful": "This reply was helpful",
+  "feedback.notHelpful": "This reply was not helpful",
+  "feedback.dialog.title": "Rate this reply",
+  "feedback.dialog.descriptionPositive": "What worked well? Optional.",
+  "feedback.dialog.descriptionNegative": "What fell short? Optional.",
+  "feedback.dialog.categoryLabel": "Feedback category",
+  "feedback.dialog.submit": "Submit rating",
+  "feedback.category.task_result": "Task result",
+  "feedback.category.instruction_following": "Instruction following",
+  "feedback.category.product_interaction": "Interaction",
+  "feedback.category.service_stability": "Service stability",
+  "feedback.category.resource_cost": "Resource cost",
+  "feedback.category.security_privacy": "Security and privacy",
+  "feedback.category.other": "Other"
 }

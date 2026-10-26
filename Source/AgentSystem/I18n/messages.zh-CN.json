@@ -85,6 +85,7 @@
   "pi.toolObservationContractMissing": "Senera Pi 工具观测必须符合严格的 {sourceType} 协议。",
   "interaction.inputResolveFailed": "提交交互输入失败。",
   "interaction.serviceUnavailable": "交互输入服务不可用。",
+  "feedback.requestMissing": "无法记录反馈：请求 {requestId} 不存在。",
   "extension.referenceValidationFailed": "扩展引用校验失败：",
   "extension.skillRecommendedToolMissing": "{member} 的 metadata.senera.recommended-tools 引用了未注册工具：{toolName}",
   "rootCommand.policyActionMismatch": "RootCommand policy 与行动不匹配：{policyAction} != {decisionAction}",

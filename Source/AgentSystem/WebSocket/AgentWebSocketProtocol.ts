@@ -10,6 +10,7 @@ import { AgentProviderEndpointPatchSchema } from "../Config/AgentConfigCommandSc
 import { SeneraTerminalDimensionLimits } from "../Execution/SeneraTerminalTypes.js";
 import { AgentApprovalDecisions } from "../Approvals/AgentApprovalTypes.js";
 import { AgentInteractionInputActions } from "../Interaction/AgentInteractionInputTypes.js";
+import { AgentFeedbackCategoryValues, AgentFeedbackRatings } from "../Interaction/AgentFeedbackTypes.js";
 import { AgentPiSessionExportFormats } from "../Pi/AgentPiSessionManagement.js";
 import { AgentExtensionInputValueSchema } from "../Extensions/AgentExtensionInput.js";
 import { AgentExecutionApprovalModeValues } from "../Safety/AgentExecutionApprovalMode.js";
@@ -386,6 +387,16 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
       action: z.enum(AgentInteractionInputActions),
       content: z.record(z.string(), AgentInteractionInputValueSchema).optional(),
       message: z.string().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("session.feedback"),
+      sessionId: z.string().min(1),
+      requestId: z.string().min(1),
+      /** `null` retracts a previously recorded rating. */
+      rating: z.enum(AgentFeedbackRatings).nullable(),
+      category: z.enum(AgentFeedbackCategoryValues).optional(),
     })
     .strict(),
   z

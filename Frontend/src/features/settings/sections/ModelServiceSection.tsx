@@ -153,6 +153,7 @@ export function ModelServiceSection({
 
   const firstProvider = sortProviderRows([...state.providers])[0]?.provider ?? null;
   const selectedProvider = state.providers.find((provider) => provider.Id === selectedProviderId) ?? firstProvider;
+  const defaultModelProviderId = state.defaultModel?.provider?.Id ?? null;
   const acceptedProviderId = actions.acceptedProvider?.Id;
   const apiKeyUnresolved = acceptedProviderId ? state.unresolvedApiKeyProviderIds.includes(acceptedProviderId) : false;
   const endpointOptions = readFieldOptions(findItemField(modelField, "Endpoint"));
@@ -185,15 +186,11 @@ export function ModelServiceSection({
     <section className="flex min-h-0 flex-col overflow-hidden border-r border-line-subtle/70 bg-surface-subtle">
       <ProviderConnectionList
         providers={state.providers}
-        catalogs={systemConfig.providerModelCatalogs}
-        errors={systemConfig.providerModelErrors}
-        loadingProviderIds={systemConfig.providerModelLoadingIds}
-        operations={systemConfig.providerEndpointOperations}
         selectedProviderId={actions.acceptedProvider?.Id ?? null}
+        defaultModelProviderId={defaultModelProviderId}
         compact={layout === "compact"}
         disabled={false}
         onRequestAdd={() => actions.setShowAddDialog(true)}
-        onEnabledChange={actions.setProviderEnabled}
         providerDisableReason={actions.getProviderDisableReason}
         onSelect={(provider) => {
           if (provider.Id !== actions.acceptedProvider?.Id && editorLocalDirtyRef.current) {

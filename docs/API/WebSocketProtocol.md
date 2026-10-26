@@ -77,6 +77,7 @@
 | `session.compact` | 使用 Pi 会话压缩器压缩指定会话的当前上下文分支。 |
 | `session.create` | 创建会话；可选指定会话和模型提供方。 |
 | `session.export` | 将指定 Pi 会话的当前分支导出为 JSONL 或 HTML。 |
+| `session.feedback` | 记录或撤回当前用户对某个已完成轮次的评价；rating 为 null 表示撤回。 |
 | `session.fork` | 复制指定请求及之前的完整可重放状态，创建独立会话分支。 |
 | `session.history` | 拉取指定会话的可重放历史；`refresh` 用于主动重新同步。 |
 | `session.list` | 获取服务端当前可用会话的摘要列表。 |
@@ -216,6 +217,7 @@
 | `approval.resolved` | `progress` | `approval` | [审批事件类型](../../Source/AgentSystem/Approvals/AgentApprovalEventTypes.ts) |
 | `interaction.input.requested` | `progress` | `tool` | [交互输入事件类型](../../Source/AgentSystem/Interaction/AgentInteractionInputEventTypes.ts) |
 | `interaction.input.resolved` | `progress` | `tool` | [交互输入事件类型](../../Source/AgentSystem/Interaction/AgentInteractionInputEventTypes.ts) |
+| `feedback.recorded` | `snapshot` | `session` | [反馈事件类型](../../Source/AgentSystem/Interaction/AgentFeedbackEventTypes.ts) |
 | `execution.resource.created` | `snapshot` | `tool` | [工具事件类型](../../Source/AgentSystem/ToolRuntime/AgentToolEventTypes.ts) |
 | `execution.resource.output` | `progress` | `tool` | [工具事件类型](../../Source/AgentSystem/ToolRuntime/AgentToolEventTypes.ts) |
 | `execution.resource.resized` | `snapshot` | `tool` | [工具事件类型](../../Source/AgentSystem/ToolRuntime/AgentToolEventTypes.ts) |

@@ -23,6 +23,8 @@ COPY . .
 RUN npm run build
 RUN npm --workspace senera-frontend run build
 RUN npm run desktop.prepare-mcp-runtime
+# The desktop server bundle is for the Electron utility process only.
+RUN rm -f Dist/Apps/Desktop/DesktopServerProcess.bundle.mjs
 RUN --mount=type=cache,target=/root/.npm,sharing=locked npm prune --omit=dev
 RUN chmod 755 node_modules/agent-browser/bin/agent-browser-linux-*
 RUN node Dist/Scripts/VerifyDockerNativeSqlite.js

@@ -35,6 +35,7 @@ import type {
   TodoSnapshotData,
   UploadAttachmentData,
   UserProfileData,
+  FeedbackRecordedData,
 } from "../../api/eventTypes";
 import type { ExecutionApprovalMode } from "../../api/executionApprovalMode";
 import type { MotionLevel } from "../../shared/motion/types";
@@ -453,6 +454,11 @@ export interface SessionRecord {
     sourceSessionId: string;
     throughRequestId: string;
   };
+  /**
+   * The user's own ratings of finished turns, keyed by request id. Retraction
+   * removes the entry, so an absent key means "not rated".
+   */
+  messageFeedback?: Record<string, FeedbackRecordedData>;
 }
 
 export type HistoryReplayEntry = {
@@ -517,14 +523,15 @@ export interface StoreState {
   modelProviders: ModelProviderListItem[];
   providerModelCatalogs: Record<string, ProviderModelsSnapshotData>;
   providerModelErrors: Record<string, ProviderModelsFailedData & { updatedAt: string }>;
-  /** Current active conversation's model. Kept for existing command/UI contracts. */
+  /** 当前对话显式选中的模型；为 null 表示继承默认模型，界面与请求都不再固定具体模型。 */
   selectedModelProviderId: string | null;
-  /** Authoritative default model from model.list; used when creating a new conversation. */
+  /** Authoritative default model from model.list; inherited by conversations without their own choice. */
   defaultModelProviderId: string | null;
-  /** Local per-conversation selections. The backend still receives the chosen id per request. */
+  /** 每个对话显式选择的模型；服务端上报的运行历史模型只用于展示，不写入这里。 */
   selectedModelProviderIdsBySession: Record<string, string>;
-  /** Current conversation's Pi thinking level; validated against the selected model metadata. */
+  /** 当前对话的推理等级；随所选模型解析，未显式选择时使用该模型的默认等级。 */
   selectedThinkingLevel: ModelThinkingLevel | null;
+  /** 每个对话显式选择的推理等级；未显式选择时不写入，切换模型后重新解析。 */
   selectedThinkingLevelsBySession: Record<string, ModelThinkingLevel>;
   executionApprovalMode: ExecutionApprovalMode;
   configSnapshot: ConfigSnapshotData | null;

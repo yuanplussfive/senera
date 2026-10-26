@@ -116,6 +116,7 @@ export function ChatPanel({
                   onDeleteFromMessage={messageActions.onDeleteFromMessage}
                   onViewWorkflow={messageActions.onViewWorkflow}
                   onResolveInteractionInput={messageActions.onResolveInteractionInput}
+                  onRecordMessageFeedback={messageActions.onRecordMessageFeedback}
                 />
               </ErrorBoundary>
             </ChatContentMotion>
