@@ -108,6 +108,30 @@ test.describe("settings navigation and section management", () => {
       }
     }
   });
+
+  test("opens the configured model's row actions through the real context menu", async ({ page }) => {
+    await page.goto(`${harness.httpOrigin}/settings/model-service`);
+    await expect(page.locator("[data-settings-workbench]")).toBeVisible();
+
+    const modelRow = page.locator("[data-model-default]").first();
+    await expect(modelRow).toBeVisible();
+
+    // The row itself is the context-menu trigger, so the keyboard path runs through
+    // the row's own configure button, which is what holds focus.
+    await modelRow.getByRole("button", { name: "配置" }).focus();
+    await page.keyboard.press("Shift+F10");
+    await expect(page.getByRole("menuitem", { name: "移除" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "当前默认模型" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menuitem", { name: "移除" })).toHaveCount(0);
+
+    await modelRow.click({ button: "right" });
+    await page.getByRole("menuitem", { name: "移除" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByRole("heading", { name: "移除模型？" })).toBeVisible();
+    await dialog.getByRole("button", { name: "取消" }).click();
+    await expect(page.getByRole("heading", { name: "移除模型？" })).toHaveCount(0);
+  });
 });
 
 async function openProfileMenu(page) {

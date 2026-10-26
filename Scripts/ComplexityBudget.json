@@ -129,7 +129,7 @@
     },
     {
       "path": "Scripts/FrontendTests/Feature/ChatCoreComponents.test.mjs",
-      "baselineLines": 1232,
+      "baselineLines": 1137,
       "owner": "frontend-platform",
       "splitTarget": "Split composer, panel, message list, and interaction ownership scenarios."
     },
@@ -204,6 +204,12 @@
       "baselineLines": 949,
       "owner": "continuity-runtime",
       "splitTarget": "Extract semantic learning ingestion, clustering, and projection into focused continuity modules."
+    },
+    {
+      "path": "Source/AgentSystem/Session/AgentSessionManager.ts",
+      "baselineLines": 840,
+      "owner": "session-runtime",
+      "splitTarget": "Extract session lifecycle coordination (create, close, rename, feedback) out of the facade into focused session controllers."
     },
     {
       "path": "Source/AgentSystem/Session/AgentSessionActiveRunController.ts",
