@@ -225,16 +225,27 @@ test.describe("authenticationMode=disabled", () => {
     await expect(workspaceComposer(page)).toBeVisible();
     const dock = await openWorkflowDock(page);
     const executionTab = dock.getByRole("tab", { name: "执行" });
+    const agentsTab = dock.getByRole("tab", { name: "子代理" });
     const terminalTab = dock.getByRole("tab", { name: "终端" });
 
     await executionTab.focus();
     await expect(executionTab).toBeFocused();
     await executionTab.press("ArrowRight");
+    await expect(agentsTab).toBeFocused();
+    await expect(agentsTab).toHaveAttribute("aria-selected", "true");
+    await expect(dock.locator("[data-agent-board-panel]")).toBeVisible();
+
+    await agentsTab.press("ArrowRight");
     await expect(terminalTab).toBeFocused();
     await expect(terminalTab).toHaveAttribute("aria-selected", "true");
     await expect(dock.locator('[data-terminal-dock="dock"]')).toBeVisible();
 
     await terminalTab.press("ArrowLeft");
+    await expect(agentsTab).toBeFocused();
+    await expect(agentsTab).toHaveAttribute("aria-selected", "true");
+    await expect(dock.locator("[data-agent-board-panel]")).toBeVisible();
+
+    await agentsTab.press("ArrowLeft");
     await expect(executionTab).toBeFocused();
     await expect(executionTab).toHaveAttribute("aria-selected", "true");
   });
