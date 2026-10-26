@@ -1,40 +1,32 @@
 import { useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
-import type { SettingsConfigCommands } from "../SettingsContracts";
 import { cn } from "../../../lib/util";
 import { FluidHoverHighlight, motionTimings, useFluidHover, useMotionLevel } from "../../../shared/motion";
-import { AppIcon, IconButton, ScrollArea, Switch } from "../../../shared/ui";
+import { AppIcon, IconButton, ScrollArea } from "../../../shared/ui";
 import { inferModelProviderEndpointIcon, ProviderMark } from "../../chat/ModelProviderIcon";
-import { EmptyList, ProviderStatusIcon, SearchInput } from "../../chat/ModelConfigPrimitives";
+import { EmptyList, SearchInput } from "../../chat/ModelConfigPrimitives";
 import { providerEnabled, providerIdLabel, sortProviderRows } from "../../chat/modelConfigData";
 import type { ProviderEndpointDraft } from "../../chat/modelConfigTypes";
+import { DefaultModelProviderTag } from "./ProviderConnectionFeedback";
 
 export function ProviderConnectionList({
   providers,
-  catalogs,
-  errors,
-  loadingProviderIds,
-  operations,
   selectedProviderId,
+  defaultModelProviderId = null,
   compact = false,
   disabled,
   onRequestAdd,
   onSelect,
-  onEnabledChange,
   providerDisableReason,
 }: {
   providers: ProviderEndpointDraft[];
-  catalogs: SettingsConfigCommands["providerModelCatalogs"];
-  errors: SettingsConfigCommands["providerModelErrors"];
-  loadingProviderIds: SettingsConfigCommands["providerModelLoadingIds"];
-  operations: SettingsConfigCommands["providerEndpointOperations"];
   selectedProviderId: string | null;
+  defaultModelProviderId?: string | null;
   compact?: boolean;
   disabled: boolean;
   onRequestAdd: () => void;
   onSelect: (provider: ProviderEndpointDraft) => void;
-  onEnabledChange: (provider: ProviderEndpointDraft, enabled: boolean) => void;
   providerDisableReason?: (provider: ProviderEndpointDraft) => string | null;
 }): JSX.Element {
   const [providerSearch, setProviderSearch] = useState("");
@@ -47,7 +39,14 @@ export function ProviderConnectionList({
     isItemDisabled: (element) => element.hasAttribute("disabled"),
   });
   const providerQuery = providerSearch.trim().toLowerCase();
-  const providerResults = sortProviderRows(providers).filter(({ provider }) => {
+  const sortedProviders = sortProviderRows(providers);
+  const defaultProviderRow = defaultModelProviderId
+    ? sortedProviders.find(({ provider }) => provider.Id === defaultModelProviderId)
+    : undefined;
+  const orderedProviders = defaultProviderRow
+    ? [defaultProviderRow, ...sortedProviders.filter((row) => row !== defaultProviderRow)]
+    : sortedProviders;
+  const providerResults = orderedProviders.filter(({ provider }) => {
     if (!providerQuery) return true;
     return [providerIdLabel(provider), provider.Id, provider.BaseUrl, provider.ApiVersion].some((value) =>
       String(value ?? "")
@@ -68,34 +67,23 @@ export function ProviderConnectionList({
           />
           {providerResults.map(({ provider }, index) => {
             const active = provider.Id === selectedProviderId;
-            const catalog = provider.Id ? catalogs[provider.Id] : undefined;
-            const error = provider.Id ? errors[provider.Id] : undefined;
-            const loading = provider.Id ? loadingProviderIds[provider.Id] : false;
             const enabled = providerEnabled(provider);
-            const saving = provider.Id ? operations[provider.Id]?.status === "pending" : false;
-            const disableReason = !disabled && !saving ? providerDisableReason?.(provider) : null;
-            const modelCount = catalog?.models.length ?? 0;
-            const statusText = loading
-              ? frontendMessage("settings.modelManagement.fetching")
-              : error
-                ? frontendMessage("settings.modelManagement.fetchFailed", { error: error.message })
-                : catalog
-                  ? frontendMessage("settings.provider.modelsCount", { count: modelCount })
-                  : null;
+            const disableReason = disabled ? null : providerDisableReason?.(provider);
             return (
               <div
                 ref={providerHover.getItemRef(index)}
                 key={provider.Id}
                 className={cn(
-                  "relative z-10 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-md px-2 py-1.5 transition-colors",
+                  "relative z-10 grid min-w-0 select-none grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-md px-2 py-1.5 transition-colors",
+                  disabled ? "cursor-default" : "cursor-pointer",
                   active
                     ? "text-ink-900"
                     : cn(
                         "text-ink-650 hover:text-ink-900",
                         disableMotion ? "hover:bg-surface-hover" : "hover:bg-transparent",
                       ),
-                  !enabled && "opacity-50",
                 )}
+                onClick={disabled ? undefined : () => onSelect(provider)}
               >
                 {active ? (
                   <motion.span
@@ -109,15 +97,16 @@ export function ProviderConnectionList({
                 <button
                   type="button"
                   disabled={disabled}
-                  className="relative z-[1] grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 text-left disabled:pointer-events-none disabled:opacity-60"
+                  className={cn(
+                    "relative z-[1] grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 text-left disabled:pointer-events-none disabled:opacity-60",
+                    !enabled && "opacity-50",
+                  )}
                   aria-label={frontendMessage("settings.provider.rowAria", {
                     provider: providerIdLabel(provider),
-                    models: frontendMessage("settings.provider.modelsCount", { count: modelCount }),
                     state: frontendMessage(enabled ? "settings.provider.enabled" : "settings.provider.disabled"),
                     selected: active ? frontendMessage("settings.provider.selectedSuffix") : "",
                   })}
                   aria-pressed={active}
-                  onClick={() => onSelect(provider)}
                 >
                   <span
                     className={cn(
@@ -138,25 +127,17 @@ export function ProviderConnectionList({
                     >
                       {providerIdLabel(provider)}
                     </span>
-                    {statusText ? (
-                      <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[10.5px] text-ink-500">
-                        <ProviderStatusIcon loading={loading} catalog={catalog} error={error} />
-                        <span className="truncate">{statusText}</span>
-                      </span>
-                    ) : null}
                   </span>
                 </button>
-                <Switch
-                  checked={enabled}
-                  size="sm"
-                  disabled={disabled || saving || Boolean(disableReason)}
-                  disabledReason={disableReason ?? undefined}
-                  ariaLabel={frontendMessage("settings.provider.connectionToggle", {
-                    provider: providerIdLabel(provider),
-                  })}
-                  onDisabledClick={disableReason ? () => onEnabledChange(provider, false) : undefined}
-                  onCheckedChange={(nextEnabled) => onEnabledChange(provider, nextEnabled)}
-                />
+                {disableReason ? (
+                  <DefaultModelProviderTag reason={disableReason} />
+                ) : (
+                  <span className="flex h-8 w-5 shrink-0 items-center justify-center" aria-hidden="true">
+                    <span
+                      className={cn("h-1.5 w-1.5 rounded-full", enabled ? "bg-accent-500" : "bg-content-disabled")}
+                    />
+                  </span>
+                )}
               </div>
             );
           })}

@@ -343,7 +343,7 @@ test("desktop overlay opens from a floating capsule and switches accessible hori
   expect(document.querySelector("[data-workspace-main]")).toHaveAttribute("data-window-controls-scope", "viewport");
   expect(dock).toHaveClass("z-30");
   expect(document.querySelector("[data-workflow-panel-surface]")).not.toBeInTheDocument();
-  expect(document.querySelectorAll("[data-workflow-dock-tool]")).toHaveLength(4);
+  expect(document.querySelectorAll("[data-workflow-dock-tool]")).toHaveLength(5);
   expect(document.querySelector("[data-workflow-dock-capsule]")).toBeInTheDocument();
   expect(document.querySelector("[data-workflow-dock-capsule]")).toHaveStyle({
     top: "calc(var(--senera-top-chrome-height) + var(--senera-top-rail-gap))",
@@ -469,6 +469,44 @@ test("the responsive right drawer switches from execution to the live terminal",
   expect(document.querySelector("[data-terminal-dock='drawer']")).toBeInTheDocument();
   expect(screen.getByRole("tab", { name: "终端" })).toHaveAttribute("aria-selected", "true");
   expect(screen.getByRole("heading", { name: "终端" })).toBeInTheDocument();
+});
+
+test("the agents tab swaps the execution panel for the delegated-work board", async () => {
+  function AgentsHarness() {
+    const [workflowDockTool, setWorkflowDockTool] = React.useState("execution");
+    return React.createElement(AppShell, {
+      sessionPanel: React.createElement("div", null, "Session panel"),
+      sessionDrawer: React.createElement("div", null, "Session drawer"),
+      chatPanel: React.createElement("div", null, "Chat panel"),
+      workflowPanel: React.createElement("div", { "data-execution-panel": "" }, "Execution panel"),
+      workflowDrawer: React.createElement("div", null, "Workflow drawer"),
+      terminalPanel: React.createElement("div", null, "Live terminal"),
+      eventPanel: React.createElement("div", null, "Event panel"),
+      agentsPanel: React.createElement("div", { "data-agent-board-panel": "" }, "Delegated work"),
+      workflowDockTool,
+      onWorkflowDockToolChange: setWorkflowDockTool,
+      sessionDrawerOpen: false,
+      onSessionDrawerOpenChange: vi.fn(),
+      workflowDrawerOpen: false,
+      onWorkflowDrawerOpenChange: vi.fn(),
+      responsiveMode: responsiveMode("desktop"),
+    });
+  }
+
+  renderWithFrontendProviders(React.createElement(AgentsHarness));
+  const user = userEvent.setup();
+
+  act(() => document.querySelector("[data-workflow-dock-toggle]").click());
+  expect(screen.queryByText("Delegated work")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("tab", { name: "子代理" }));
+
+  expect(screen.getByText("Delegated work")).toBeInTheDocument();
+  expect(screen.queryByText("Execution panel")).not.toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "子代理" })).toHaveAttribute("aria-selected", "true");
+
+  await user.click(screen.getByRole("tab", { name: "执行" }));
+  expect(screen.getByText("Execution panel")).toBeInTheDocument();
+  expect(screen.queryByText("Delegated work")).not.toBeInTheDocument();
 });
 
 function responsiveMode(viewport) {

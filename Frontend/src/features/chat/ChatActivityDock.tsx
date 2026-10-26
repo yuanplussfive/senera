@@ -7,8 +7,9 @@ import { Spinner } from "../../shared/ui";
 const ApprovalRequestStrip = lazy(() => import("./ApprovalRequestStrip"));
 
 /**
- * Pinned activity surface above the composer: pending approvals and the live
- * task list always visible, never covered by the scrolling message stream.
+ * Pinned activity surface above the composer: pending approvals stay visible
+ * and are never covered by the scrolling message stream. The live task list
+ * lives at the top of the execution dock instead.
  */
 export function ChatActivityDock({
   sessionId,

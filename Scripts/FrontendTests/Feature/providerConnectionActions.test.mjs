@@ -331,13 +331,6 @@ test("provider connection blocks disabling the provider used by the default mode
   );
 
   await act(async () => {
-    handleRef.current.actions.setProviderEnabled(state.providers[0], false);
-  });
-
-  expect(onUpsertProviderEndpoint).not.toHaveBeenCalled();
-  expect(handleRef.current.actions.localError).toBeNull();
-
-  await act(async () => {
     handleRef.current.actions.confirmDraft({ Enabled: false });
   });
   expect(onUpsertProviderEndpoint).not.toHaveBeenCalled();

@@ -1,22 +1,49 @@
-import type { TodoData } from "../../api/continuityExecutionEventTypes";
+import type { TodoData, TodoSnapshotData } from "../../api/continuityExecutionEventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
-import type { RunRecord, TimelineChildRunTodoItem } from "../../store/sessionStore";
+import type { RunRecord } from "../../store/sessionStore";
 import { ActivityStatusIcon, AppIcon } from "../../shared/ui";
 
-interface TaskItem {
+export interface WorkflowTaskItem {
   readonly content: string;
   readonly status: TodoData["status"];
 }
 
-interface TaskGroup {
+export interface WorkflowTaskGroup {
   readonly id: string;
+  /** Agent that owns this list; absent for the session's own list. */
   readonly owner?: string;
-  readonly items: readonly TaskItem[];
+  readonly items: readonly WorkflowTaskItem[];
 }
 
-export function WorkflowTaskProgress({ run }: { run: RunRecord }): JSX.Element | null {
-  const groups = readTaskGroups(run);
+/** The session's standing list, as one group. */
+export function readTodoTaskGroups(todos: TodoSnapshotData | undefined): WorkflowTaskGroup[] {
+  const items = todos?.items ?? [];
+  return items.length > 0 ? [{ id: "root", items }] : [];
+}
+
+/** The run's own list plus every delegated agent's list, in step order. */
+export function readRunTaskGroups(run: RunRecord): WorkflowTaskGroup[] {
+  const groups = readTodoTaskGroups(run.todos);
+  const childGroups = new Map<string, WorkflowTaskGroup>();
+
+  for (const step of run.steps) {
+    const childRun = step.childRun;
+    const items = childRun?.todo?.items;
+    if (!childRun || !items?.length || childGroups.has(childRun.id)) continue;
+    const owner = step.scope?.agentName;
+    childGroups.set(childRun.id, {
+      id: childRun.id,
+      ...(owner ? { owner } : {}),
+      items,
+    });
+  }
+
+  groups.push(...childGroups.values());
+  return groups;
+}
+
+export function WorkflowTaskProgress({ groups }: { groups: readonly WorkflowTaskGroup[] }): JSX.Element | null {
   const items = groups.flatMap((group) => group.items);
   if (items.length === 0) return null;
 
@@ -49,7 +76,7 @@ export function WorkflowTaskProgress({ run }: { run: RunRecord }): JSX.Element |
       >
         <span style={{ width: `${completionRatio * 100}%` }} />
       </div>
-      <div className="workflow-task-progress__list " data-workflow-task-progress-list>
+      <div className="workflow-task-progress__list" data-workflow-task-progress-list>
         {groups.map((group) => (
           <div key={group.id} className="workflow-task-progress__group" data-workflow-task-group={group.id}>
             {group.owner ? <div className="workflow-task-progress__owner">{group.owner}</div> : null}
@@ -65,28 +92,7 @@ export function WorkflowTaskProgress({ run }: { run: RunRecord }): JSX.Element |
   );
 }
 
-function readTaskGroups(run: RunRecord): TaskGroup[] {
-  const rootItems = run.todos?.items ?? [];
-  const groups: TaskGroup[] = rootItems.length > 0 ? [{ id: "root", items: rootItems }] : [];
-  const childGroups = new Map<string, TaskGroup>();
-
-  for (const step of run.steps) {
-    const childRun = step.childRun;
-    const items = childRun?.todo?.items;
-    if (!childRun || !items?.length || childGroups.has(childRun.id)) continue;
-    const owner = step.scope?.agentName;
-    childGroups.set(childRun.id, {
-      id: childRun.id,
-      ...(owner ? { owner } : {}),
-      items,
-    });
-  }
-
-  groups.push(...childGroups.values());
-  return groups;
-}
-
-function TaskProgressRow({ item }: { item: TaskItem | TimelineChildRunTodoItem }): JSX.Element {
+function TaskProgressRow({ item }: { item: WorkflowTaskItem }): JSX.Element {
   const active = item.status === "in_progress";
   return (
     <li

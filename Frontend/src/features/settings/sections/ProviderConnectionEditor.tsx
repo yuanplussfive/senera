@@ -24,7 +24,7 @@ import {
 import { EmptyDetail, IconAction } from "../../chat/ModelConfigPrimitives";
 import { providerIdLabel, isRedactedConfigSecret } from "../../chat/modelConfigData";
 import type { ProviderEndpointDraft } from "../../chat/modelConfigTypes";
-import { ProviderFormError } from "./ProviderConnectionFeedback";
+import { ProviderFormError, DefaultModelProviderTag } from "./ProviderConnectionFeedback";
 import { isProtectedProvider } from "./ProviderConnectionIdentity";
 
 export function ProviderConnectionEditor({
@@ -146,14 +146,14 @@ export function ProviderConnectionEditor({
   const errorMessage = localError ?? operationError;
   const connectionToggleDisabled = disabled || pending;
   const disableReason = !connectionToggleDisabled ? providerDisableReason?.(provider) : null;
-  const connectionToggle = (
+  const connectionToggle = disableReason ? (
+    <DefaultModelProviderTag reason={disableReason} />
+  ) : (
     <Switch
       checked={provider.Enabled !== false}
       size="sm"
-      disabled={connectionToggleDisabled || Boolean(disableReason)}
-      disabledReason={disableReason ?? undefined}
+      disabled={connectionToggleDisabled}
       ariaLabel={frontendMessage("settings.provider.connectionToggle", { provider: providerIdLabel(provider) })}
-      onDisabledClick={disableReason ? () => onConfirm({ Enabled: false }) : undefined}
       onCheckedChange={(next) => onConfirm({ Enabled: next })}
     />
   );
@@ -279,31 +279,33 @@ export function ProviderConnectionEditor({
                   setLocalFieldDirty("apiKey", false);
                 }}
                 trailing={
-                  <Tooltip content={frontendMessage("clipboard.pasteFromClipboard")} side="top">
-                    <button
-                      type="button"
-                      disabled={disabled}
-                      className="grid h-8 w-7 shrink-0 place-items-center rounded text-content-muted transition hover:bg-surface-hover hover:text-content-primary disabled:pointer-events-none disabled:opacity-30 active:scale-[0.95]"
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={async () => {
-                        try {
-                          const clipText = await navigator.clipboard.readText();
-                          if (clipText) {
-                            apiKeyDraftRef.current = clipText;
-                            setApiKeyDraft(clipText);
-                            setLocalFieldDirty("apiKey", true);
-                            onConfirm({ ApiKey: clipText });
-                            setLocalFieldDirty("apiKey", false);
+                  displayedApiKey ? undefined : (
+                    <Tooltip content={frontendMessage("clipboard.pasteFromClipboard")} side="top">
+                      <button
+                        type="button"
+                        disabled={disabled}
+                        className="grid h-8 w-7 shrink-0 place-items-center rounded text-content-muted transition hover:bg-surface-hover hover:text-content-primary disabled:pointer-events-none disabled:opacity-30 active:scale-[0.95]"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={async () => {
+                          try {
+                            const clipText = await navigator.clipboard.readText();
+                            if (clipText) {
+                              apiKeyDraftRef.current = clipText;
+                              setApiKeyDraft(clipText);
+                              setLocalFieldDirty("apiKey", true);
+                              onConfirm({ ApiKey: clipText });
+                              setLocalFieldDirty("apiKey", false);
+                            }
+                          } catch {
+                            // ignore if clipboard permission denied
                           }
-                        } catch {
-                          // ignore if clipboard permission denied
-                        }
-                      }}
-                      aria-label={frontendMessage("clipboard.pasteFromClipboard")}
-                    >
-                      <AppIcon icon="copy" size={13} />
-                    </button>
-                  </Tooltip>
+                        }}
+                        aria-label={frontendMessage("clipboard.pasteFromClipboard")}
+                      >
+                        <AppIcon icon="copy" size={13} />
+                      </button>
+                    </Tooltip>
+                  )
                 }
               />
               {apiKeyUnresolved ? (

@@ -4,7 +4,8 @@ import { afterEach, expect, test } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
 import { frontendMessage } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
 
-const { WorkflowTaskProgress } = await import("../../../Frontend/src/features/workflow/WorkflowTaskProgress.tsx");
+const { WorkflowTaskProgress, readRunTaskGroups, readTodoTaskGroups } =
+  await import("../../../Frontend/src/features/workflow/WorkflowTaskProgress.tsx");
 
 afterEach(() => {
   cleanup();
@@ -33,15 +34,13 @@ function runWithTasks(rootItems = [], childItems = [], status = "running") {
   };
 }
 
-test("renders root and child task groups in the workflow panel", () => {
-  renderWithFrontendProviders(
-    React.createElement(WorkflowTaskProgress, {
-      run: runWithTasks(
-        [todo("检查调用链", "in_progress"), todo("汇总方案", "pending")],
-        [todo("核验回归", "completed"), todo("提交报告", "pending")],
-      ),
-    }),
+test("renders root and child task groups with a completion summary", () => {
+  const run = runWithTasks(
+    [todo("检查调用链", "in_progress"), todo("汇总方案", "pending")],
+    [todo("核验回归", "completed"), todo("提交报告", "pending")],
   );
+
+  renderWithFrontendProviders(React.createElement(WorkflowTaskProgress, { groups: readRunTaskGroups(run) }));
 
   expect(document.querySelector("[data-workflow-task-progress]")).toBeInTheDocument();
   expect(screen.getByText("检查调用链")).toBeInTheDocument();
@@ -54,35 +53,49 @@ test("renders root and child task groups in the workflow panel", () => {
     "data-execution-status-icon",
     "running",
   );
-  expect(document.querySelector("[data-todo-item='in_progress'] .workflow-task-progress__label")).not.toHaveClass(
-    "motion-safe:animate-text-shimmer",
-  );
   expect(screen.getByText("已完成 1 / 4")).toBeInTheDocument();
+  expect(document.querySelector("[data-workflow-task-progress-bar]")).toHaveAttribute("aria-valuenow", "1");
 });
 
 test("does not invent an owner label when the child run has no declared agent name", () => {
   const run = runWithTasks([], [todo("核验输出", "pending")]);
   run.steps[0].scope = undefined;
 
-  renderWithFrontendProviders(React.createElement(WorkflowTaskProgress, { run }));
+  renderWithFrontendProviders(React.createElement(WorkflowTaskProgress, { groups: readRunTaskGroups(run) }));
 
   expect(screen.getByText("核验输出")).toBeInTheDocument();
   expect(screen.queryByText(frontendMessage("workflow.childRun.board.agentFallback"))).not.toBeInTheDocument();
-  expect(document.querySelector("[data-workflow-task-group] h3")).not.toBeInTheDocument();
+  expect(document.querySelector(".workflow-task-progress__owner")).not.toBeInTheDocument();
 });
 
-test("omits the workflow task section when root and child runs have no tasks", () => {
-  renderWithFrontendProviders(React.createElement(WorkflowTaskProgress, { run: runWithTasks() }));
+test("omits the workflow task section when no group has tasks", () => {
+  renderWithFrontendProviders(React.createElement(WorkflowTaskProgress, { groups: readRunTaskGroups(runWithTasks()) }));
 
   expect(document.querySelector("[data-workflow-task-progress]")).not.toBeInTheDocument();
 });
 
-test("keeps a settled run's task history visible in the workflow panel", () => {
+test("keeps a settled run's task history visible", () => {
   renderWithFrontendProviders(
     React.createElement(WorkflowTaskProgress, {
-      run: runWithTasks([todo("恢复中断任务", "cancelled")], [], "cancelled"),
+      groups: readRunTaskGroups(runWithTasks([todo("恢复中断任务", "cancelled")], [], "cancelled")),
     }),
   );
 
   expect(screen.getByText("恢复中断任务")).toBeInTheDocument();
+});
+
+test("presents the session's standing list as one group without an owner label", () => {
+  const groups = readTodoTaskGroups({ items: [todo("整理索引", "in_progress")] });
+
+  expect(groups).toHaveLength(1);
+  expect(groups[0].owner).toBeUndefined();
+
+  renderWithFrontendProviders(React.createElement(WorkflowTaskProgress, { groups }));
+  expect(screen.getByText("整理索引")).toBeInTheDocument();
+  expect(document.querySelector(".workflow-task-progress__owner")).not.toBeInTheDocument();
+});
+
+test("treats an absent or empty session list as no tasks", () => {
+  expect(readTodoTaskGroups(undefined)).toEqual([]);
+  expect(readTodoTaskGroups({ items: [] })).toEqual([]);
 });

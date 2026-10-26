@@ -10,12 +10,47 @@ import { NodeDetailDrawer } from "./NodeDetailDrawer";
 import { textShimmerStyle } from "../../shared/motion";
 import { AppIcon } from "../../shared/ui";
 
+/**
+ * One accent per child run. `rail` fills the dot and progress segments;
+ * `edge` colors the row's 3px left rail. They stay separate because a border
+ * utility cannot be reused as a background one.
+ */
 const CHILD_RUN_ACCENTS = [
-  { rail: "bg-accent-solid", soft: "bg-accent-surface", text: "text-accent-content", progress: "bg-accent-solid" },
-  { rail: "bg-umber-500", soft: "bg-umber-50", text: "text-umber-600", progress: "bg-umber-500" },
-  { rail: "bg-moss-500", soft: "bg-moss-50", text: "text-moss-600", progress: "bg-moss-500" },
-  { rail: "bg-brick-500", soft: "bg-brick-50", text: "text-brick-600", progress: "bg-brick-500" },
-  { rail: "bg-ink-500", soft: "bg-ink-100", text: "text-ink-700", progress: "bg-ink-500" },
+  {
+    rail: "bg-accent-solid",
+    edge: "border-l-accent-content",
+    soft: "bg-accent-surface",
+    text: "text-accent-content",
+    progress: "bg-accent-solid",
+  },
+  {
+    rail: "bg-umber-500",
+    edge: "border-l-umber-500",
+    soft: "bg-umber-50",
+    text: "text-umber-600",
+    progress: "bg-umber-500",
+  },
+  {
+    rail: "bg-moss-500",
+    edge: "border-l-moss-500",
+    soft: "bg-moss-50",
+    text: "text-moss-600",
+    progress: "bg-moss-500",
+  },
+  {
+    rail: "bg-brick-500",
+    edge: "border-l-brick-500",
+    soft: "bg-brick-50",
+    text: "text-brick-600",
+    progress: "bg-brick-500",
+  },
+  {
+    rail: "bg-ink-500",
+    edge: "border-l-ink-500",
+    soft: "bg-ink-100",
+    text: "text-ink-700",
+    progress: "bg-ink-500",
+  },
 ] as const;
 
 export function ChildRunBoard({ run }: { run: RunRecord }): JSX.Element {
@@ -202,9 +237,9 @@ function ChildRunTimelineItem({
       ref={itemRef}
       onClick={onSelect}
       className={cn(
-        "group relative z-10 w-full border-b border-line-subtle border-l-[3px] bg-transparent px-2.5 py-2 text-left transition-[border-color,background-color,box-shadow] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
+        "group relative z-10 w-full border-b border-l-[3px] border-line-subtle bg-transparent px-2.5 py-2 text-left transition-[border-color,background-color,box-shadow] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
         fluidHoverEnabled ? "hover:bg-transparent" : "hover:bg-surface-hover",
-        accent.rail,
+        accent.edge,
         (childRun.status === "failed" || childRun.status === "timed_out") && "border-brick-300",
       )}
       data-child-run-item
