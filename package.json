@@ -105,6 +105,7 @@
     "desktop.prepare-native": "tsx Build/PrepareElectronNativeModules.ts",
     "desktop.prepare-mcp-runtime": "tsx Build/PrepareDesktopMcpRuntime.ts",
     "desktop.pack": "tsx Apps/Desktop/PackageDesktop.ts",
+    "desktop.smoke": "tsx Apps/Desktop/SmokeDesktopPackage.ts",
     "verify.suite": "node Dist/Scripts/VerifySuite.js",
     "verify.suites": "node Dist/Scripts/VerifySuite.js --list",
     "verify.workspace": "npm run build && npm run verify.suite -- workspace",

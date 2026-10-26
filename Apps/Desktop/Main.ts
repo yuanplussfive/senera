@@ -1,13 +1,28 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell, Tray, type IpcMainInvokeEvent } from "electron";
+import {
+  app,
+  BrowserWindow,
+  crashReporter,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeTheme,
+  shell,
+  Tray,
+  type IpcMainInvokeEvent,
+} from "electron";
 import {
   appendDesktopLog,
+  beginDesktopSession,
   chooseDesktopWorkspace,
+  endDesktopSession,
   persistDesktopWorkspace,
   prepareDesktopRuntime,
+  readDesktopSessionCrashed,
   type DesktopRuntimePaths,
 } from "./DesktopRuntime.js";
+import { installAgentProcessFailureGuard } from "../../Source/AgentSystem/Diagnostics/AgentProcessGuard.js";
 import {
   createDesktopFrontendSource,
   loadDesktopFrontend,
@@ -23,8 +38,14 @@ import {
   type SettingsSurfaceDeliveryOptions,
   type SettingsSurfaceReadinessState,
 } from "./DesktopSettingsHandshake.js";
-import { hideDesktopWindows, showDesktopWindows } from "./DesktopWindowVisibility.js";
-import { desktopMessage } from "./DesktopMessageCatalog.js";
+import { hideDesktopWindows, revealDesktopWindow, showDesktopWindows } from "./DesktopWindowVisibility.js";
+import { parseDesktopReleaseChannel, type DesktopReleaseChannel } from "./DesktopReleaseChannel.js";
+import { desktopMessage, resolveDesktopLocale } from "./DesktopMessageCatalog.js";
+import {
+  readDesktopStartupCanvasColor,
+  resolveDesktopStartupTheme,
+  type DesktopStartupTheme,
+} from "./DesktopStartupSurface.js";
 import {
   DesktopExternalUrlPolicy,
   resolveAgentExternalUrl,
@@ -48,19 +69,51 @@ let forceSettingsWindowClose = false;
 let desktopQuitting = false;
 const settingsClosePolicy = new DesktopClosePolicy();
 let runtimePaths: DesktopRuntimePaths | undefined;
+/** Paths captured once the session reaches readiness; the shutdown marker belongs to that workspace. */
+let desktopSessionPaths: DesktopRuntimePaths | undefined;
 let frontendSource: DesktopFrontendSource | undefined;
 let desktopUpdateService: DesktopUpdateService | undefined;
 let pendingUpdateInstall = false;
 let desktopStartupReady = false;
 let pendingDesktopActivation = false;
 const desktopModuleDir = path.dirname(fileURLToPath(import.meta.url));
+const desktopProcessStartedAt = Date.now();
+/**
+ * A crashed renderer is reloaded, but a document that crashes on every load would
+ * reload forever. Past this many crashes inside the window the automatic recovery
+ * stops and the log stays the only signal.
+ */
+const DesktopRendererReloadWindowMs = 60_000;
+const DesktopRendererReloadLimit = 3;
+const rendererReloadTimestamps = new Map<number, number[]>();
 const remoteDebuggingPort = process.env.SENERA_DESKTOP_REMOTE_DEBUGGING_PORT?.trim();
+const desktopReleaseChannel: DesktopReleaseChannel = parseDesktopReleaseChannel(
+  process.env.SENERA_DESKTOP_RELEASE_CHANNEL,
+);
 
 app.setName("Senera");
 if (remoteDebuggingPort) {
   app.commandLine.appendSwitch("remote-debugging-port", remoteDebuggingPort);
 }
 Menu.setApplicationMenu(null);
+
+// Crash reports stay local: the desktop app has no upload endpoint, and a dump is
+// only useful next to the desktop.log the user can already reach.
+crashReporter.start({ productName: "Senera", uploadToServer: false, compress: true });
+
+// Desktop main has no supervisor, so an uncaught exception has to reach the log and
+// stop the workspace before the process dies.
+installAgentProcessFailureGuard({
+  logger: {
+    error: (message, details = {}) => appendDesktopGuardLog("error", message, details),
+    warn: (message, details = {}) => appendDesktopGuardLog("warn", message, details),
+  },
+  onFatalShutdown: async () => {
+    const handle = serverHandle;
+    serverHandle = undefined;
+    await handle?.stop();
+  },
+});
 
 const ownsDesktopInstance = app.requestSingleInstanceLock();
 
@@ -84,26 +137,14 @@ if (!ownsDesktopInstance) {
         `starting desktop runtime dataRoot=${runtimePaths.dataRoot} workspace=${runtimePaths.workspaceRoot} resources=${runtimePaths.resourceRoot} config=${runtimePaths.configPath}`,
       );
       const paths = runtimePaths;
-      desktopTray = createDesktopTray(paths.windowIconPath, () => {
-        requestDesktopWorkspaceSelection();
-      });
-      frontendSource = createDesktopFrontendSource({
-        devServerUrl: process.env.SENERA_DESKTOP_FRONTEND_URL,
-        frontendIndexHtml: paths.frontendIndexHtml,
-      });
-      registerDesktopIpc();
-      const product = readAgentProductMetadata(paths.appRoot);
-      desktopUpdateService = new DesktopUpdateService({
-        isPackaged: app.isPackaged,
-        currentVersion: app.getVersion(),
-        updateOrigin: product.updateOrigin,
-        publishLog: (message) => appendDesktopLog(paths.logPath, message),
-        onStateChanged: publishDesktopUpdateState,
-      });
-      mainWindow = createMainWindow({ navigationSource: false });
-      await loadDesktopStartupSurface(mainWindow);
-      mainWindow.show();
-      const desktopServer = await DesktopServerHost.start({
+      if (readDesktopSessionCrashed(paths)) {
+        appendDesktopLog(paths.logPath, "previous desktop session did not shut down cleanly");
+      }
+      appendDesktopLog(paths.logPath, `crash dumps directory: ${app.getPath("crashDumps")}`);
+      // The utility process spends most of its startup loading its module graph,
+      // so it starts before the tray and window work instead of after the startup
+      // surface is already on screen; the window still waits for it below.
+      const serverStartup = DesktopServerHost.start({
         bootstrap: {
           workspaceRoot: paths.workspaceRoot,
           applicationStateRoot: paths.dataRoot,
@@ -124,10 +165,42 @@ if (!ownsDesktopInstance) {
           }
         },
       });
+      // The failure is reported where the promise is awaited; this only keeps an
+      // early rejection from being treated as unhandled while the window is built.
+      serverStartup.catch(() => {});
+      desktopTray = createDesktopTray(paths.windowIconPath, () => {
+        requestDesktopWorkspaceSelection();
+      });
+      frontendSource = createDesktopFrontendSource({
+        devServerUrl: process.env.SENERA_DESKTOP_FRONTEND_URL,
+        documentPath: paths.frontendIndexHtml,
+      });
+      registerDesktopIpc();
+      const product = readAgentProductMetadata(paths.appRoot);
+      desktopUpdateService = new DesktopUpdateService({
+        isPackaged: app.isPackaged,
+        currentVersion: app.getVersion(),
+        updateOrigin: product.updateOrigin,
+        publishLog: (message) => appendDesktopLog(paths.logPath, message),
+        onStateChanged: publishDesktopUpdateState,
+      });
+      mainWindow = createMainWindow({ navigationSource: false });
+      await loadDesktopStartupSurface(mainWindow, paths);
+      mainWindow.show();
+      const serverStartedAt = Date.now();
+      const desktopServer = await serverStartup;
+      const serverReadyMs = Date.now() - serverStartedAt;
       serverHandle = desktopServer.currentHandle();
       registerNavigationPolicy(mainWindow, frontendSource);
+      const frontendStartedAt = Date.now();
       await loadDesktopFrontend(mainWindow, frontendSource, desktopFrontendQuery());
+      appendDesktopLog(
+        paths.logPath,
+        `desktop ready in ${Date.now() - desktopProcessStartedAt}ms server=${serverReadyMs}ms frontend=${Date.now() - frontendStartedAt}ms`,
+      );
       desktopStartupReady = true;
+      desktopSessionPaths = paths;
+      beginDesktopSession(paths);
       void desktopUpdateService.start();
 
       app.on("activate", () => {
@@ -159,11 +232,26 @@ app.on("before-quit", (event) => {
   desktopTray = undefined;
   const handle = serverHandle;
   serverHandle = undefined;
-  if (!handle) return;
+  const sessionPaths = desktopSessionPaths;
+  desktopSessionPaths = undefined;
+  if (!handle) {
+    // Removing the marker is what makes the next start treat this run as clean.
+    if (sessionPaths) endDesktopSession(sessionPaths);
+    return;
+  }
   event.preventDefault();
   void handle.stop().finally(() => {
+    if (sessionPaths) endDesktopSession(sessionPaths);
     app.quit();
   });
+});
+
+// The server runs in a utility process. If it dies the window keeps its last paint, so
+// the log is the only place that says why the workspace stopped answering.
+app.on("child-process-gone", (_event, details) => {
+  appendDesktopRecoveryLog(
+    `child process gone type=${details.type} reason=${details.reason} exitCode=${details.exitCode} service=${details.serviceName ?? ""}`,
+  );
 });
 
 function registerDesktopIpc(): void {
@@ -256,7 +344,7 @@ function resolveSettingsSection(section: string | undefined): AgentSettingsSecti
 
 function createDesktopTray(iconPath: string, onSelectWorkspace: () => void): Tray {
   const tray = new Tray(iconPath);
-  tray.setToolTip("Senera");
+  tray.setToolTip(desktopProductTitle("Senera"));
   tray.setContextMenu(
     Menu.buildFromTemplate([
       {
@@ -301,8 +389,8 @@ function createMainWindow({ navigationSource = true }: { navigationSource?: bool
     height: 880,
     minWidth: 1100,
     minHeight: 720,
-    backgroundColor: "#0f172a",
-    title: "Senera",
+    backgroundColor: readDesktopStartupCanvasColor(readDesktopStartupTheme()),
+    title: desktopProductTitle("Senera"),
     icon: runtimePaths?.windowIconPath,
     show: false,
     autoHideMenuBar: true,
@@ -316,10 +404,11 @@ function createMainWindow({ navigationSource = true }: { navigationSource?: bool
   });
   window.on("page-title-updated", (event) => {
     event.preventDefault();
-    window.setTitle("Senera");
+    window.setTitle(desktopProductTitle("Senera"));
   });
   if (navigationSource) registerNavigationPolicy(window, readFrontendSource());
   registerWindowStateEvents(window);
+  registerDesktopRendererRecovery(window, "main");
   window.on("close", (event) => {
     if (desktopQuitting) return;
     event.preventDefault();
@@ -344,7 +433,9 @@ function openSettingsWindow(options?: { section?: string }): void {
   }
   const section = resolveSettingsSection(options?.section);
   if (settingsWindow && !settingsWindow.isDestroyed()) {
-    if (settingsWindowReady) presentSettingsWindow({ focus: false });
+    // Reopening the entry point on an already open window must raise it: the
+    // request is explicit, so a visible-but-covered window still needs focus.
+    if (settingsWindowReady) revealDesktopWindow(settingsWindow);
     if (!settingsClosePolicy.dirty) requestSettingsSectionNavigation(section);
     return;
   }
@@ -354,8 +445,8 @@ function openSettingsWindow(options?: { section?: string }): void {
     height: 800,
     minWidth: 1080,
     minHeight: 620,
-    backgroundColor: "#f7f8f6",
-    title: desktopMessage("settings.title", {}, app.getLocale()),
+    backgroundColor: readDesktopStartupCanvasColor(readDesktopStartupTheme()),
+    title: desktopProductTitle(desktopMessage("settings.title", {}, app.getLocale())),
     show: false,
     autoHideMenuBar: true,
     icon: runtimePaths.windowIconPath,
@@ -375,11 +466,11 @@ function openSettingsWindow(options?: { section?: string }): void {
   settingsSurfaceState.pendingSection = section;
   settingsWindow.once("ready-to-show", () => {
     settingsWindowReady = true;
-    presentSettingsWindow({ focus: true });
+    revealDesktopWindow(settingsWindow);
   });
   settingsWindow.on("page-title-updated", (event) => {
     event.preventDefault();
-    settingsWindow?.setTitle(desktopMessage("settings.title", {}, app.getLocale()));
+    settingsWindow?.setTitle(desktopProductTitle(desktopMessage("settings.title", {}, app.getLocale())));
   });
   settingsWindow.webContents.on("did-start-loading", () => {
     // The fresh document has not registered its section listener yet and the
@@ -388,6 +479,7 @@ function openSettingsWindow(options?: { section?: string }): void {
     settingsClosePolicy.reset();
   });
   registerWindowStateEvents(settingsWindow);
+  registerDesktopRendererRecovery(settingsWindow, "settings");
   registerNavigationPolicy(settingsWindow, source);
   settingsWindow.on("close", (event) => {
     if (forceSettingsWindowClose || !settingsClosePolicy.dirty) return;
@@ -422,19 +514,6 @@ function readSettingsSurfaceDeliveryOptions(): SettingsSurfaceDeliveryOptions {
   };
 }
 
-function presentSettingsWindow({ focus }: { focus: boolean }): void {
-  const window = settingsWindow;
-  if (!window || window.isDestroyed()) return;
-  if (window.isMinimized()) window.restore();
-  if (focus) {
-    window.show();
-    window.moveTop();
-    window.focus();
-  } else if (!window.isVisible()) {
-    window.showInactive();
-  }
-}
-
 function readWindowFrameOptions(): { frame: false } | { titleBarStyle: "hiddenInset" } {
   return process.platform === "darwin" ? { titleBarStyle: "hiddenInset" } : { frame: false };
 }
@@ -459,7 +538,7 @@ function registerWindowStateEvents(window: BrowserWindow): void {
 
 function requestDirtySettingsConfirmation(intent: DesktopCloseIntent): boolean {
   if (!settingsWindow || settingsWindow.isDestroyed() || !settingsClosePolicy.request(intent)) return false;
-  presentSettingsWindow({ focus: true });
+  revealDesktopWindow(settingsWindow);
   settingsWindow.webContents.send("senera:settings.request-close");
   return true;
 }
@@ -502,8 +581,14 @@ function readFrontendSource(): DesktopFrontendSource {
 function desktopFrontendQuery(query: Record<string, string | undefined> = {}): Record<string, string | undefined> {
   return {
     webSocketUrl: serverHandle?.websocketUrl,
+    releaseChannel: desktopReleaseChannel === "development" ? "development" : undefined,
     ...query,
   };
+}
+
+function desktopProductTitle(title: string): string {
+  if (desktopReleaseChannel !== "development") return title;
+  return desktopMessage("product.title.development", { title }, app.getLocale());
 }
 
 function startDesktopFrontendLoad(window: BrowserWindow, query: Record<string, string | undefined> = {}): void {
@@ -515,12 +600,33 @@ function startDesktopFrontendLoad(window: BrowserWindow, query: Record<string, s
   });
 }
 
-async function loadDesktopStartupSurface(window: BrowserWindow): Promise<void> {
-  const document = `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>Senera</title>
-<style>html,body{height:100%;margin:0;background:#0f172a;color:#e2e8f0;font:14px system-ui,sans-serif}main{height:100%;display:grid;place-items:center;letter-spacing:0}span{opacity:.76}</style>
-</head><body><main><span>Senera</span></main></body></html>`;
-  await window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(document)}`);
+/**
+ * The startup surface is a frontend asset, so it resolves through the same
+ * source as the app itself: the dev server while it runs, the built file
+ * otherwise. A missing file must not stop the launch — the window already
+ * carries the canvas color, and the app loads right after.
+ */
+async function loadDesktopStartupSurface(window: BrowserWindow, paths: DesktopRuntimePaths): Promise<void> {
+  const locale = app.getLocale();
+  const source = createDesktopFrontendSource({
+    devServerUrl: process.env.SENERA_DESKTOP_FRONTEND_URL,
+    documentPath: paths.startupSurfaceHtml,
+    devServerPath: "/startup.html",
+  });
+  try {
+    await loadDesktopFrontend(window, source, {
+      title: desktopProductTitle("Senera"),
+      status: desktopMessage("startup.loading", {}, locale),
+      locale: resolveDesktopLocale(locale),
+    });
+  } catch (error) {
+    appendDesktopLog(paths.logPath, `startup surface failed\n${String(error)}`);
+  }
+}
+
+/** Both windows and the startup surface share the appearance the OS reports. */
+function readDesktopStartupTheme(): DesktopStartupTheme {
+  return resolveDesktopStartupTheme(nativeTheme.shouldUseDarkColors);
 }
 
 function publishDesktopUpdateState(snapshot: DesktopUpdateSnapshot): void {
@@ -528,4 +634,49 @@ function publishDesktopUpdateState(snapshot: DesktopUpdateSnapshot): void {
     if (!window || window.isDestroyed() || window.webContents.isDestroyed()) continue;
     window.webContents.send("senera:update.state-changed", snapshot);
   }
+}
+
+/**
+ * Renderer crashes are recovered in place. The document reloads from the URL it was
+ * loaded from, so the settings section and the workspace websocket URL survive. The
+ * desktop stays resident in the tray, so without this a crashed window would remain
+ * blank until the user restarted the app.
+ */
+function registerDesktopRendererRecovery(window: BrowserWindow, label: "main" | "settings"): void {
+  const contents = window.webContents;
+  contents.on("render-process-gone", (_event, details) => {
+    appendDesktopRecoveryLog(
+      `renderer process gone window=${label} reason=${details.reason} exitCode=${details.exitCode}`,
+    );
+    if (desktopQuitting || contents.isDestroyed()) return;
+    const now = Date.now();
+    const recent = (rendererReloadTimestamps.get(contents.id) ?? []).filter(
+      (at) => now - at < DesktopRendererReloadWindowMs,
+    );
+    if (recent.length >= DesktopRendererReloadLimit) {
+      rendererReloadTimestamps.set(contents.id, recent);
+      appendDesktopRecoveryLog(`renderer crash loop detected window=${label}; automatic reload stopped`);
+      return;
+    }
+    rendererReloadTimestamps.set(contents.id, [...recent, now]);
+    appendDesktopRecoveryLog(`reloading renderer window=${label}`);
+    contents.reload();
+  });
+  contents.on("unresponsive", () => {
+    appendDesktopRecoveryLog(`renderer unresponsive window=${label}`);
+  });
+  contents.on("destroyed", () => {
+    rendererReloadTimestamps.delete(contents.id);
+  });
+}
+
+function appendDesktopRecoveryLog(message: string): void {
+  if (!runtimePaths) return;
+  appendDesktopLog(runtimePaths.logPath, message);
+}
+
+/** The guard runs before the runtime paths exist, so it falls back to Electron's user data. */
+function appendDesktopGuardLog(level: "error" | "warn", message: string, details: Record<string, unknown> = {}): void {
+  const logPath = runtimePaths?.logPath ?? path.join(app.getPath("userData"), "desktop.log");
+  appendDesktopLog(logPath, `[${level}] ${message} ${JSON.stringify(details)}`);
 }

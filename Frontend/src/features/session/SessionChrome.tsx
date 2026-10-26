@@ -1,5 +1,6 @@
 import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
 import type { EventSourceChannel } from "../../api/eventTypes";
+import { DesktopReleaseChannelBadge } from "../../app/DesktopReleaseChannelBadge";
 import { cn } from "../../lib/util";
 import { useResponsiveMode } from "../../shared/responsive";
 import {
@@ -126,6 +127,7 @@ export function SessionHeader({
             <span className="inline-flex min-w-0 items-center gap-2">
               <LogoMark size={18} />
               <LogoWordmark className="truncate" />
+              <DesktopReleaseChannelBadge />
             </span>
             <AppIcon
               icon="chevron-down"

@@ -6,6 +6,7 @@ import {
   resolveAgentToolApprovalPolicyArtifactDirectory,
 } from "../Source/AgentSystem/Safety/AgentToolApprovalPolicyArtifact.js";
 import { walkFiles } from "../Scripts/Support/FileWalk.js";
+import { bundleDesktopServer } from "./BundleDesktopServer.js";
 
 const workspaceRoot = process.cwd();
 const sourceRoot = path.join(workspaceRoot, "Source");
@@ -26,7 +27,13 @@ buildDesktopPreload(desktopPreloadSource, desktopPreloadTarget);
 
 readAgentToolApprovalPolicyArtifact(resolveAgentToolApprovalPolicyArtifactDirectory(distSourceRoot));
 
-process.stdout.write(`Runtime assets prepared: ${runtimeAssets.length + 1}\n`);
+const desktopServerBundle = await bundleDesktopServer();
+
+process.stdout.write(
+  `Runtime assets prepared: ${runtimeAssets.length + 1}, desktop server bundle ${
+    desktopServerBundle.skipped ? "up to date" : "rebuilt"
+  } (${desktopServerBundle.bytes} bytes)\n`,
+);
 
 function buildDesktopPreload(sourcePath: string, targetPath: string): void {
   fs.mkdirSync(path.dirname(targetPath), { recursive: true });
@@ -50,6 +57,10 @@ function discoverRuntimeAssets(root: string): string[] {
 }
 
 function copyFile(sourcePath: string, targetPath: string): void {
+  const source = fs.statSync(sourcePath);
+  const target = fs.statSync(targetPath, { throwIfNoEntry: false });
+  // Live starts re-run this step on every launch, so leave already-matching assets alone.
+  if (target && target.size === source.size && target.mtimeMs >= source.mtimeMs) return;
   fs.mkdirSync(path.dirname(targetPath), { recursive: true });
   fs.copyFileSync(sourcePath, targetPath);
 }

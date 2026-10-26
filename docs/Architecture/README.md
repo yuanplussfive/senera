@@ -2,6 +2,7 @@
 
 - [核心链路导览](./CoreFlow.md)
 - [工作区宿主](./WorkspaceHost.md)
+- [桌面运行时](./DesktopRuntime.md)
 - [事件观测架构](./EventObservability.md)
 - [子代理与任务调度](../../Source/AgentSystem/Orchestration/README.md)
 - [工具执行运行时](./ToolExecutionRuntime.md)
