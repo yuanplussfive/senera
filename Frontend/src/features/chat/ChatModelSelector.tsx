@@ -40,7 +40,12 @@ export function ChatModelSelector({
   prefersCompactControls: boolean;
 }): JSX.Element {
   const chatModels = useMemo(() => readChatModelProviders(models), [models]);
-  const selected = useMemo(() => readSelectedModelProvider(chatModels, selectedId) ?? null, [chatModels, selectedId]);
+  // A conversation without its own choice inherits the configured default, so the default
+  // model — not a stale id — is what the menu and the trigger display.
+  const selected = useMemo(
+    () => readSelectedModelProvider(chatModels, selectedId ?? defaultModelId ?? null) ?? null,
+    [chatModels, selectedId, defaultModelId],
+  );
   const label = selected ? readModelSelectorLabel(selected) : frontendMessage("chat.composer.selectModel");
   const defaultModel = useMemo(
     () => readSelectedModelProvider(chatModels, defaultModelId ?? null) ?? null,
@@ -99,12 +104,9 @@ export function ChatModelSelector({
                     key={model.id}
                     onSelect={() => onSelect(model.id)}
                     className="h-10 py-2"
-                    icon={
-                      active ? (
-                        <AppIcon icon="checkmark" size={14} className="text-accent-content" />
-                      ) : (
-                        <ModelProviderIcon icon={model.icon} size={14} />
-                      )
+                    icon={<ModelProviderIcon icon={model.icon} size={14} />}
+                    trailing={
+                      active ? <AppIcon icon="checkmark" size={14} className="text-accent-content" /> : undefined
                     }
                   >
                     <span className="min-w-0 truncate text-[13px] text-content-primary">
@@ -164,12 +166,10 @@ export function ChatModelSelector({
                     key={level}
                     onSelect={() => onSelectThinkingLevel(level)}
                     className="h-9 py-1.5"
-                    icon={
+                    trailing={
                       level === selectedLevel ? (
                         <AppIcon icon="checkmark" size={14} className="text-accent-content" />
-                      ) : (
-                        <span className="h-3.5 w-3.5" />
-                      )
+                      ) : undefined
                     }
                   >
                     <span className="min-w-0 truncate text-[13px] text-content-primary">{label}</span>

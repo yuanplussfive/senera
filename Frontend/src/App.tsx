@@ -63,6 +63,11 @@ const LazyContinuityPanel = lazy(() =>
     default: module.ContinuityPanel,
   })),
 );
+const LazyAgentBoardPanel = lazy(() =>
+  import("./features/workflow/AgentBoardPanel").then((module) => ({
+    default: module.AgentBoardPanel,
+  })),
+);
 type TerminalPanelLoadState =
   | { status: "idle" }
   | { status: "loading" }
@@ -249,7 +254,7 @@ export function App({
     };
   });
 
-  const { status, send } = useAgentSocket({
+  const { status, send, reconnect } = useAgentSocket({
     url: workspaceSocketUrl,
     reconnectPolicy: socketReconnectPolicy,
     onEvents: useCallback(
@@ -365,6 +370,7 @@ export function App({
     resolveApproval: handleResolveApproval,
     resolveApprovalBatch: handleResolveApprovalBatch,
     resolveInteractionInput: handleResolveInteractionInput,
+    recordMessageFeedback: handleRecordMessageFeedback,
     sendMessage: handleSend,
   } = useChatCommands({
     activeSessionId: activeId,
@@ -452,6 +458,7 @@ export function App({
     onUpdateUserProfile: handleUpdateUserProfile,
     onLogout,
     socketStatus: status,
+    onReconnectSocket: reconnect,
     httpBaseUrl: scopedHttpBaseUrl,
     uploadCsrfToken,
     onSettingsIntent: () => {
@@ -537,6 +544,7 @@ export function App({
                           onResolveApproval: handleResolveApproval,
                           onResolveApprovalBatch: handleResolveApprovalBatch,
                           onResolveInteractionInput: handleResolveInteractionInput,
+                          onRecordMessageFeedback: handleRecordMessageFeedback,
                         }}
                         navigationActions={{
                           onOpenSessionPanel: appShellRenderPlan.showChatSessionPanelAction
@@ -599,6 +607,33 @@ export function App({
                   >
                     <LazyContinuityPanel send={send} connected={status === "open"} />
                   </Suspense>
+                }
+                agentsPanel={
+                  <ErrorBoundary
+                    resetKey={activeId}
+                    fallback={(error) => (
+                      <StateView
+                        status="error"
+                        title={frontendMessage("app.errorBoundary.title")}
+                        description={error.message}
+                        onRetry={() => window.location.reload()}
+                        retryLabel={frontendMessage("app.errorBoundary.reload")}
+                        className="h-full min-h-0 bg-surface-panel"
+                      />
+                    )}
+                  >
+                    <Suspense
+                      fallback={
+                        <StateView
+                          status="loading"
+                          title={frontendMessage("workflow.childRun.board.emptyTitle")}
+                          className="h-full min-h-0 bg-surface-panel"
+                        />
+                      }
+                    >
+                      <LazyAgentBoardPanel />
+                    </Suspense>
+                  </ErrorBoundary>
                 }
                 workflowDockTool={workflowDockTool}
                 onWorkflowDockToolChange={handleWorkflowDockToolChange}

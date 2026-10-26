@@ -4,9 +4,15 @@ import type { StoreState } from "./types";
 import { syncActiveSessionThinkingSelection } from "./sessionThinkingSelection";
 
 /**
- * The configured default is the starting model for a newly created conversation.
- * An active conversation keeps its own local model choice until the user explicitly
- * chooses the default again. This matches the Chat model ownership shown in the UI.
+ * A conversation owns a model only after an explicit choice: a local selection for that
+ * conversation, the conversation's durable server-side preference, or the model supplied
+ * when the conversation was created. Every other conversation inherits the configured
+ * default, so changing the default in settings immediately changes what an inheriting
+ * conversation displays and sends.
+ *
+ * `selectedModelProviderId` therefore holds an explicit choice or `null` (inherit). The
+ * model id reported by the server for a session resolves display history (last run, Pi
+ * session) and MUST NOT be stored as an explicit choice.
  */
 export function applyModelListSnapshotSelection(state: StoreState, data: ModelListSnapshotData): void {
   state.modelProviders = data.models;
@@ -28,6 +34,10 @@ export function applyModelListSnapshotSelection(state: StoreState, data: ModelLi
   syncActiveSessionThinkingSelection(state);
 }
 
+/**
+ * Records an explicit model choice. Without an open conversation it is the pending choice
+ * that the next created conversation adopts.
+ */
 export function selectModelForActiveSession(state: StoreState, modelId: string): void {
   state.selectedModelProviderId = modelId;
   if (state.activeSessionId) {
@@ -36,10 +46,15 @@ export function selectModelForActiveSession(state: StoreState, modelId: string):
   syncActiveSessionThinkingSelection(state);
 }
 
+/** Drops the explicit choice so the conversation follows the configured default again. */
 export function applyDefaultModelToActiveSession(state: StoreState): boolean {
-  const defaultModelId = state.defaultModelProviderId;
-  if (!defaultModelId) return false;
-  selectModelForActiveSession(state, defaultModelId);
+  if (!state.defaultModelProviderId) return false;
+  if (state.activeSessionId) {
+    delete state.selectedModelProviderIdsBySession[state.activeSessionId];
+  } else {
+    state.selectedModelProviderId = null;
+  }
+  syncActiveSessionModelSelection(state);
   return true;
 }
 
@@ -50,23 +65,17 @@ export function syncActiveSessionModelSelection(state: StoreState): void {
 
 function syncActiveSessionModelSelectionWithAvailableIds(state: StoreState, availableIds: ReadonlySet<string>): void {
   const activeSessionId = state.activeSessionId;
-  const fallbackModelId = isAvailable(state.defaultModelProviderId, availableIds) ? state.defaultModelProviderId : null;
 
   if (!activeSessionId) {
     state.selectedModelProviderId = isAvailable(state.selectedModelProviderId, availableIds)
       ? state.selectedModelProviderId
-      : fallbackModelId;
+      : null;
     syncActiveSessionThinkingSelection(state);
     return;
   }
 
   const rememberedModelId = state.selectedModelProviderIdsBySession[activeSessionId];
-  const legacySelectedModelId = state.selectedModelProviderId;
-  const selectedModelId = isAvailable(rememberedModelId, availableIds)
-    ? rememberedModelId
-    : isAvailable(legacySelectedModelId, availableIds)
-      ? legacySelectedModelId
-      : fallbackModelId;
+  const selectedModelId = isAvailable(rememberedModelId, availableIds) ? rememberedModelId : null;
 
   if (selectedModelId) {
     state.selectedModelProviderIdsBySession[activeSessionId] = selectedModelId;

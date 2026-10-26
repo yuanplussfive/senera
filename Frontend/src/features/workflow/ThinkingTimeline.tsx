@@ -1,13 +1,15 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useState } from "react";
 import { motion } from "framer-motion";
 import { cn } from "../../lib/util";
 import { ListTree, Maximize2, PanelRightClose } from "lucide-react";
-import { readActiveRun, useStore, type RunRecord } from "../../store/sessionStore";
+import type { RunRecord } from "../../store/sessionStore";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { Dialog, DialogContent, IconButton, Spinner } from "../../shared/ui";
 import { summarizeRun } from "./runSummary";
 import { shouldLoadWorkflowCanvas } from "./canvasLoadPolicy";
 import { RunSelector, RunSummaryStrip } from "./WorkflowRunControls";
+import { readRunTaskGroups, WorkflowTaskProgress } from "./WorkflowTaskProgress";
+import { useViewedRun } from "./useViewedRun";
 import { motionSprings, motionTimings, readFocusPanelVariants, useMotionLevel } from "../../shared/motion";
 import type { WorkflowLayoutDirection } from "./layout";
 
@@ -43,34 +45,8 @@ function ThinkingPanel({
   hidePanelTitle: boolean;
   onClosePanel?: () => void;
 }): JSX.Element {
-  const activeId = useStore((s) => s.activeSessionId);
-  const session = useStore((s) => (activeId ? s.sessions[activeId] : null));
-  const viewedRunId = useStore((s) => (activeId ? s.viewedRunIdBySession[activeId] : undefined));
-  const setViewedRun = useStore((s) => s.setViewedRun);
+  const { runs, run, pinnedToHistory, selectRun, followLatest } = useViewedRun();
   const [focusOpen, setFocusOpen] = useState(false);
-
-  const runs = useMemo(() => session?.runs ?? [], [session?.runs]);
-  const latestRun = runs[runs.length - 1];
-  const activeRun = readActiveRun(session ?? undefined);
-  const defaultRun = activeRun ?? latestRun;
-  const selectedRun = useMemo(() => {
-    if (!viewedRunId) return undefined;
-    return runs.find((r) => r.requestId === viewedRunId);
-  }, [runs, viewedRunId]);
-  const isPinnedToHistory = !!selectedRun && selectedRun.requestId !== defaultRun?.requestId;
-  const run = isPinnedToHistory ? selectedRun : defaultRun;
-
-  useEffect(() => {
-    if (!activeId) return;
-    if (!viewedRunId) return;
-    if (!selectedRun) {
-      setViewedRun(activeId, undefined);
-      return;
-    }
-    if (selectedRun.requestId === defaultRun?.requestId) {
-      setViewedRun(activeId, undefined);
-    }
-  }, [activeId, viewedRunId, selectedRun, defaultRun?.requestId, setViewedRun]);
 
   const toggleFocus = useCallback(() => {
     setFocusOpen((value) => !value);
@@ -90,13 +66,14 @@ function ThinkingPanel({
           run={run}
           runs={runs}
           currentRunId={run?.requestId}
-          pinnedToHistory={isPinnedToHistory}
+          pinnedToHistory={pinnedToHistory}
           hideTitle={hidePanelTitle}
           presentation={presentation}
-          onSelect={(rid) => activeId && setViewedRun(activeId, rid)}
-          onFollowLatest={() => activeId && setViewedRun(activeId, undefined)}
+          onSelect={selectRun}
+          onFollowLatest={followLatest}
           onClosePanel={onClosePanel}
         />
+        {run ? <WorkflowTaskProgress groups={readRunTaskGroups(run)} /> : null}
         <CanvasArea run={run} compact={presentation === "dock"} focusOpen={focusOpen} onToggleFocus={toggleFocus} />
       </aside>
       <TimelineFocusDialog
@@ -104,10 +81,10 @@ function ThinkingPanel({
         run={run}
         runs={runs}
         currentRunId={run?.requestId}
-        pinnedToHistory={isPinnedToHistory}
+        pinnedToHistory={pinnedToHistory}
         onOpenChange={setFocusOpen}
-        onSelect={(rid) => activeId && setViewedRun(activeId, rid)}
-        onFollowLatest={() => activeId && setViewedRun(activeId, undefined)}
+        onSelect={selectRun}
+        onFollowLatest={followLatest}
       />
     </>
   );
@@ -127,7 +104,7 @@ function TopBar({
   onClosePanel,
 }: {
   run?: RunRecord;
-  runs: RunRecord[];
+  runs: readonly RunRecord[];
   currentRunId?: string;
   pinnedToHistory: boolean;
   hideTitle?: boolean;
@@ -218,7 +195,7 @@ function TimelineFocusDialog({
 }: {
   open: boolean;
   run?: RunRecord;
-  runs: RunRecord[];
+  runs: readonly RunRecord[];
   currentRunId?: string;
   pinnedToHistory: boolean;
   onOpenChange: (open: boolean) => void;

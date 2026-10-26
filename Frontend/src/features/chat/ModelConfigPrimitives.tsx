@@ -265,27 +265,6 @@ export function SearchInput({
   );
 }
 
-export function ProviderStatusIcon({
-  loading,
-  catalog,
-  error,
-}: {
-  loading?: boolean;
-  catalog?: ProviderModelsSnapshotData;
-  error?: ProviderModelsFailedData;
-}): JSX.Element {
-  if (loading) {
-    return <Spinner size="sm" className="text-ink-500" />;
-  }
-  if (error) {
-    return <AlertTriangle className="h-3.5 w-3.5 text-brick-600" />;
-  }
-  if (catalog) {
-    return <Check className="h-3.5 w-3.5 text-moss-600" />;
-  }
-  return <AppIcon icon="refresh" size={14} className="text-ink-350" aria-hidden="true" />;
-}
-
 export function ProviderCatalogStatus({
   catalog,
   error,

@@ -64,7 +64,7 @@ export function RunSelector({
   onSelect,
   pinnedToHistory,
 }: {
-  runs: RunRecord[];
+  runs: readonly RunRecord[];
   currentRunId?: string;
   onSelect: (id: string) => void;
   pinnedToHistory: boolean;

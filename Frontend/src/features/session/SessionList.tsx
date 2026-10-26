@@ -14,6 +14,7 @@ import { SessionPanelBody } from "./SessionPanelBody";
 import type { ConfirmationIntent } from "./types";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { EventSourceChannel } from "../../api/eventTypes";
+import type { SocketStatus } from "../../api/useAgentSocket";
 import type { SettingsSectionId } from "../settings/types";
 
 interface Props {
@@ -27,7 +28,8 @@ interface Props {
   userProfile: UserProfile;
   onUpdateUserProfile: (profile: ConversationProfileUpdate) => void;
   onLogout?: () => Promise<void>;
-  socketStatus: string;
+  socketStatus: SocketStatus;
+  onReconnectSocket?: () => void;
   onSettingsIntent?: () => void;
   onOpenSettings: (section?: SettingsSectionId, returnFocus?: HTMLElement | null) => void;
   httpBaseUrl?: string;
@@ -53,6 +55,7 @@ export function SessionList({
   onUpdateUserProfile,
   onLogout,
   socketStatus,
+  onReconnectSocket,
   onSettingsIntent,
   onOpenSettings,
   httpBaseUrl,
@@ -267,6 +270,7 @@ export function SessionList({
   const userFooterProps = {
     profile: userProfile,
     socketStatus,
+    onReconnectSocket,
     onSettingsIntent,
     onOpenSettings,
     onUpdateProfile: onUpdateUserProfile,
