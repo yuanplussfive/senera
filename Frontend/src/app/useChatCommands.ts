@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import type { ExplicitActivationSet, ModelThinkingLevel, UploadAttachmentData, WsRequest } from "../api/eventTypes";
 import type { ApprovalBatchReference, ApprovalDecision } from "../api/approvalEventTypes";
 import type { InteractionInputAction, InteractionInputContent } from "../api/eventTypes";
+import type { FeedbackCategory, FeedbackRating } from "../api/feedbackEventTypes";
 import type { SocketStatus } from "../api/useAgentSocket";
 import { readActiveRun, useStore, type ChatMessage, type SessionRecord } from "../store/sessionStore";
 import { blocksSessionInput, readSessionHydrationState } from "../store/session/sessionHydration";
@@ -51,6 +52,12 @@ export interface ChatCommandsHandle {
     interactionId: string,
     action: InteractionInputAction,
     content?: InteractionInputContent,
+  ) => void;
+  recordMessageFeedback: (
+    sessionId: string,
+    requestId: string,
+    rating: FeedbackRating | null,
+    category?: FeedbackCategory,
   ) => void;
   sendMessage: (
     input: string,
@@ -603,6 +610,24 @@ export function useChatCommands({
     [send, status],
   );
 
+  const recordMessageFeedback = useCallback(
+    (sessionId: string, requestId: string, rating: FeedbackRating | null, category?: FeedbackCategory): void => {
+      if (status !== "open") {
+        toast.error(frontendMessage("feedback.recordDisconnected"));
+        return;
+      }
+      const ok = send({
+        type: "session.feedback",
+        sessionId,
+        requestId,
+        rating,
+        ...(category ? { category } : {}),
+      });
+      if (!ok) toast.error(frontendMessage("feedback.recordDisconnected"));
+    },
+    [send, status],
+  );
+
   return {
     cancelActiveSession,
     deleteFromMessage,
@@ -614,6 +639,7 @@ export function useChatCommands({
     resolveApproval,
     resolveApprovalBatch,
     resolveInteractionInput,
+    recordMessageFeedback,
     sendMessage,
   };
 }

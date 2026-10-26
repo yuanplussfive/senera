@@ -14,6 +14,7 @@ import type {
   ExplicitActivationSet,
 } from "../../api/eventTypes";
 import type { SocketStatus } from "../../api/useAgentSocket";
+import type { FeedbackCategory, FeedbackRating } from "../../api/feedbackEventTypes";
 import type { ApprovalBatchReference, ApprovalDecision } from "../../api/approvalEventTypes";
 import type { MessageQueueMode } from "../../app/useChatCommands";
 import type { SettingsSectionId } from "../settings/settingsSectionContract";
@@ -22,13 +23,14 @@ import type { ExecutionApprovalMode } from "../../api/executionApprovalMode";
 
 export interface ChatModelConfig {
   modelProviders: ModelProviderListItem[];
+  /** 对话显式选择的模型；null 表示继承 defaultModelProviderId。 */
   selectedModelProviderId: string | null;
-  /** Server-configured default used for new conversations and inherited selections. */
+  /** Server-configured default inherited by conversations without their own choice. */
   defaultModelProviderId?: string | null;
   onSelectModelProvider: (id: string) => void;
   selectedThinkingLevel: ModelThinkingLevel | null;
   onSelectThinkingLevel: (level: ModelThinkingLevel) => void;
-  /** Restores the active conversation to the current configured default model. */
+  /** Drops the conversation's own model so it follows the configured default again. */
   onApplyDefaultModel?: () => void;
   /** Opens provider settings so another model can be configured. */
   onAddModel?: () => void;
@@ -80,6 +82,12 @@ export interface ChatMessageActions {
     interactionId: string,
     action: InteractionInputAction,
     content?: InteractionInputContent,
+  ) => void;
+  onRecordMessageFeedback: (
+    sessionId: string,
+    requestId: string,
+    rating: FeedbackRating | null,
+    category?: FeedbackCategory,
   ) => void;
 }
 

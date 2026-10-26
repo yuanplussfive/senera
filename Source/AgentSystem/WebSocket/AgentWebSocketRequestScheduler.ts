@@ -65,6 +65,7 @@ const RequestSchedulingCatalog = {
   "session.list": concurrent,
   "session.history": serial((request) => sessionKey(request.sessionId)),
   "session.rename": serial((request) => sessionKey(request.sessionId)),
+  "session.feedback": serial((request) => sessionKey(request.sessionId)),
   "model.list": concurrent,
   "provider.models.fetch": concurrent,
   "config.get": concurrent,

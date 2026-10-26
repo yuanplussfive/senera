@@ -48,6 +48,7 @@ import {
 } from "../ModelEndpoints/AgentModelMetadata.js";
 import { mergeSessionConversationEntries } from "./AgentSessionRunProjection.js";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
+import type { AgentFeedbackCategory, AgentFeedbackRating } from "../Interaction/AgentFeedbackTypes.js";
 import type { AgentChannelFinalizationRecord } from "../Channels/AgentChannelFinalizationTypes.js";
 import type { AgentChannelKind } from "../Channels/AgentChannelTypes.js";
 import type { AgentExplicitActivationSet } from "../Activation/AgentActivationTypes.js";
@@ -520,6 +521,53 @@ export class AgentSessionManager {
 
       this.store.rename(request.sessionId, request.title);
       await emitAgentEvent(request.onEvent, this.eventFactory.snapshot(lookup.session));
+    });
+  }
+
+  /**
+   * Records or retracts the caller's rating of one finished turn. The record
+   * is durable and replaces any earlier one, so `rating: null` retracts.
+   */
+  async recordMessageFeedback(request: {
+    sessionId: string;
+    requestId: string;
+    rating: AgentFeedbackRating | null;
+    category?: AgentFeedbackCategory;
+    onEvent?: AgentEventSink;
+  }): Promise<void> {
+    await this.sessionAdmissions.run(request.sessionId, async () => {
+      await this.ready();
+      const lookup = this.store.get(request.sessionId);
+      if (lookup.kind === "missing") {
+        await emitAgentEvent(
+          request.onEvent,
+          this.eventFactory.notFound(request.sessionId, AgentSessionOperations.Message),
+        );
+        return;
+      }
+      if (!this.store.hasRequest(request.sessionId, request.requestId)) {
+        await emitAgentEvent(request.onEvent, {
+          kind: AgentEventKinds.RequestInvalid,
+          context: { sessionId: request.sessionId, requestId: request.requestId },
+          data: {
+            code: "feedback_request_missing",
+            ...projectAgentMessage("feedback.requestMissing", { requestId: request.requestId }),
+            details: { sessionId: request.sessionId, requestId: request.requestId },
+          },
+        });
+        return;
+      }
+      await emitAgentEvent(request.onEvent, {
+        kind: AgentEventKinds.FeedbackRecorded,
+        context: { sessionId: request.sessionId, requestId: request.requestId },
+        data: {
+          sessionId: request.sessionId,
+          requestId: request.requestId,
+          rating: request.rating,
+          ...(request.category ? { category: request.category } : {}),
+          updatedAt: new Date().toISOString(),
+        },
+      });
     });
   }
 

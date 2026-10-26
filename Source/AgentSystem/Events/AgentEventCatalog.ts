@@ -71,6 +71,7 @@ export const AgentEventKinds = {
   ApprovalResolved: "approval.resolved",
   InteractionInputRequested: "interaction.input.requested",
   InteractionInputResolved: "interaction.input.resolved",
+  FeedbackRecorded: "feedback.recorded",
   ExecutionResourceCreated: "execution.resource.created",
   ExecutionResourceOutput: "execution.resource.output",
   ExecutionResourceResized: "execution.resource.resized",
@@ -328,6 +329,10 @@ export const AgentEventSpecTable: {
   [AgentEventKinds.InteractionInputResolved]: {
     layer: AgentEventLayers.Progress,
     phase: AgentEventPhases.Tool,
+  },
+  [AgentEventKinds.FeedbackRecorded]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Session,
   },
   [AgentEventKinds.ExecutionResourceCreated]: {
     layer: AgentEventLayers.Snapshot,

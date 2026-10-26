@@ -78,6 +78,8 @@ export type {
 
 export type { RequestInvalidData, RunCancellationProgressData } from "./runControlEventTypes";
 
+export type { FeedbackRecordedData } from "./feedbackEventTypes";
+
 export type {
   ContinuitySelectionCountData,
   ContinuitySnapshotData,

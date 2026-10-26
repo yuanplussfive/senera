@@ -29,6 +29,13 @@ const RunEventHistoryExcludedKinds = new Set<AgentEventKind>([
   AgentEventKinds.ToolCallResultDetail,
 ]);
 
+/**
+ * Session-phase kinds that still belong in the durable conversation log: a
+ * user's rating annotates one turn and must come back with history replay,
+ * while the transport-level session events around it do not.
+ */
+const RunEventHistoryIncludedSessionKinds = new Set<AgentEventKind>([AgentEventKinds.FeedbackRecorded]);
+
 const RunEventHistoryDataProjectors = new Map<AgentEventKind, RunEventHistoryDataProjector>([
   [
     AgentEventKinds.ModelCompleted,
@@ -77,6 +84,7 @@ function shouldPersistRunEvent(envelope: AgentEventEnvelope): boolean {
   }
 
   const spec = getAgentEventSpec(envelope.kind);
+  if (RunEventHistoryIncludedSessionKinds.has(envelope.kind)) return true;
   return RunEventHistoryPhases.has(spec.phase);
 }
 
