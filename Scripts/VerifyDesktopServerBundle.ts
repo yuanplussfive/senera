@@ -12,10 +12,11 @@ const workspaceRoot = process.cwd();
 const bundlePath = path.join(workspaceRoot, "Dist", "Apps", "Desktop", "DesktopServerProcess.bundle.mjs");
 const entryPath = path.join(workspaceRoot, "Dist", "Apps", "Desktop", "DesktopServerProcess.js");
 
-assert.ok(fs.existsSync(bundlePath), `Desktop server bundle is missing: ${bundlePath}. Run npm run build first.`);
+const bundleStat = fs.statSync(bundlePath, { throwIfNoEntry: false });
+assert.ok(bundleStat, `Desktop server bundle is missing: ${bundlePath}. Run npm run build first.`);
 
-const bundleStat = fs.statSync(bundlePath);
-const entryStat = fs.statSync(entryPath);
+const entryStat = fs.statSync(entryPath, { throwIfNoEntry: false });
+assert.ok(entryStat, `Desktop server entry is missing: ${entryPath}. Run npm run build first.`);
 // The bundle is produced after `tsc`, so a stale bundle means the desktop forks
 // code that no longer matches the compiled server.
 assert.ok(
