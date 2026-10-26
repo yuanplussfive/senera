@@ -33,6 +33,7 @@ export interface DesktopRuntimePaths {
   sandboxRuntimeRoot: string;
   upgradeStateRoot: string;
   frontendIndexHtml: string;
+  startupSurfaceHtml: string;
   windowIconPath: string;
   logPath: string;
 }
@@ -98,6 +99,7 @@ export async function prepareDesktopRuntime(): Promise<DesktopRuntimePaths> {
     sandboxRuntimeRoot,
     upgradeStateRoot,
     frontendIndexHtml: path.join(resourceRoot, "Frontend", "dist", "index.html"),
+    startupSurfaceHtml: path.join(resourceRoot, "Frontend", "dist", "startup.html"),
     windowIconPath: path.join(resourceRoot, "Apps", "Desktop", "Assets", DesktopIconFileName),
     logPath: path.join(desktopDataRoot, "desktop.log"),
   };
@@ -135,6 +137,30 @@ export class DesktopWorkspaceSelectionRequiredError extends Error {
     );
     this.name = "DesktopWorkspaceSelectionRequiredError";
   }
+}
+
+const DesktopSessionMarkerFileName = "desktop.session";
+
+/**
+ * Desktop main has no supervisor: a crash that kills the process leaves no shutdown
+ * record anywhere. The marker file is that record — written once the session reaches
+ * readiness and removed on a clean quit, so a leftover marker means the previous run
+ * died without finishing its shutdown.
+ */
+export function readDesktopSessionCrashed(paths: DesktopRuntimePaths): boolean {
+  return fs.existsSync(desktopSessionMarkerPath(paths));
+}
+
+export function beginDesktopSession(paths: DesktopRuntimePaths): void {
+  fs.writeFileSync(desktopSessionMarkerPath(paths), `${new Date().toISOString()} pid=${process.pid}\n`, "utf8");
+}
+
+export function endDesktopSession(paths: DesktopRuntimePaths): void {
+  fs.rmSync(desktopSessionMarkerPath(paths), { force: true });
+}
+
+function desktopSessionMarkerPath(paths: DesktopRuntimePaths): string {
+  return path.join(paths.desktopDataRoot, DesktopSessionMarkerFileName);
 }
 
 export function appendDesktopLog(logPath: string, message: string): void {

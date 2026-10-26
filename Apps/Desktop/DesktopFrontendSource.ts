@@ -12,16 +12,19 @@ export type DesktopFrontendSource =
 
 export function createDesktopFrontendSource({
   devServerUrl,
-  frontendIndexHtml,
+  documentPath,
+  devServerPath = "/",
 }: {
   devServerUrl: string | undefined;
-  frontendIndexHtml: string;
+  documentPath: string;
+  /** Document the dev server serves for this source, relative to its root. */
+  devServerPath?: string;
 }): DesktopFrontendSource {
   const trimmedUrl = devServerUrl?.trim();
   if (!trimmedUrl) {
     return {
       kind: "file",
-      filePath: frontendIndexHtml,
+      filePath: documentPath,
     };
   }
 
@@ -32,7 +35,9 @@ export function createDesktopFrontendSource({
 
   return {
     kind: "url",
-    url: url.toString(),
+    // Relative so a dev server mounted under a path keeps it, and the default
+    // root document stays exactly the configured URL.
+    url: new URL(devServerPath.replace(/^\/+/u, ""), url).toString(),
   };
 }
 

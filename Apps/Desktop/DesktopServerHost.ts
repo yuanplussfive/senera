@@ -41,7 +41,9 @@ export class DesktopServerHost {
   }
 
   static start(options: DesktopServerHostOptions): Promise<DesktopServerHost> {
-    const modulePath = fileURLToPath(new URL("./DesktopServerProcess.js", import.meta.url));
+    // Built by `Build/BundleDesktopServer.ts`: loading the unbundled graph costs
+    // seconds of module resolution before the window can show anything.
+    const modulePath = fileURLToPath(new URL("./DesktopServerProcess.bundle.mjs", import.meta.url));
     const process = utilityProcess.fork(modulePath, [], {
       cwd: options.bootstrap.resourcesRoot,
       env: processEnvironment(),

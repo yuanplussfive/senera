@@ -8,6 +8,8 @@ const desktopRuntime = read("Apps/Desktop/DesktopRuntime.ts");
 const desktopMain = read("Apps/Desktop/Main.ts");
 const desktopServerHost = read("Apps/Desktop/DesktopServerHost.ts");
 const desktopServerProcess = read("Apps/Desktop/DesktopServerProcess.ts");
+const desktopServerBundle = read("Build/BundleDesktopServer.ts");
+const desktopServerBundleFileName = "DesktopServerProcess.bundle.mjs";
 assert.ok(
   !desktopRuntime.includes("TerminalSidecarRuntime") && !desktopRuntime.includes("syncRuntimeDirectory"),
   "Desktop startup must not copy a host-prepared Linux Terminal Sidecar runtime.",
@@ -15,7 +17,8 @@ assert.ok(
 assert.ok(
   desktopMain.includes("DesktopServerHost.start") &&
     desktopServerHost.includes("utilityProcess.fork") &&
-    desktopServerHost.includes("DesktopServerProcess.js") &&
+    desktopServerHost.includes(desktopServerBundleFileName) &&
+    desktopServerBundle.includes(desktopServerBundleFileName) &&
     desktopServerProcess.includes("SeneraServerDeployments.Local") &&
     desktopServerProcess.includes("deployment: SeneraServerDeployments.Local") &&
     ![desktopMain, desktopServerHost, desktopServerProcess].some(

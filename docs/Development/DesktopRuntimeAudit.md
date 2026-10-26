@@ -1,10 +1,23 @@
 # 桌面运行时审计：IPC、打包与启动成本
 
-状态：部分已修复（2026-10-21 复核，#150 已关闭 P0 项）
+状态：全部已修复（2026-10-26 复核）；本文作为历史审计记录保留，删除与否由 PR 作者在合并后决定
 范围：Electron 桌面端，Windows 发布链
 性质：带证据的缺陷/风险清单，不是性能预算，也不是路线图。
 
 关闭条件：P0/P1 全部有回归验证；长期约束（IPC 单源、打包冒烟、进程边界）迁入架构文档后删除本文。不要把它留成永久流水账。
+
+## 复核结论（2026-10-26）
+
+本文的全部待办项已在桌面运行时改动中关闭，长期约束已迁入[桌面运行时](../Architecture/DesktopRuntime.md)：
+
+| 原缺口                         | 关闭方式                                                                                                                                                                     |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| IPC 契约无自动检查（§1）       | `Scripts/VerifyDesktopIpcContract.ts`（platform suite）用 AST 比对 main / preload / 前端 bridge / E2E 假 main 四方 channel 与成员集合                                        |
+| 打包产物没有启动冒烟（§2）     | `Apps/Desktop/SmokeDesktopPackage.ts`（`npm run desktop.smoke`）在 `desktop.pack` 内启动 `Release/win-unpacked` 产物，失败阻止发布                                           |
+| renderer/main 崩溃无恢复（§4） | `render-process-gone` 原地重载（含 60s/3 次崩溃循环熔断）、`crashReporter`、main 的 `installAgentProcessFailureGuard`、`child-process-gone` 日志、会话标记区分崩溃与干净退出 |
+| 启动耗时无口径（§3）           | `desktop.log` 的 `desktop ready in Xms server=Xms frontend=Xms`；预算口径与打包基线见架构文档第 5 节                                                                         |
+
+因此下面各节的“已确证缺失/当前没有”都是 2026-10-21 的判据，保留用于追溯证据，不代表当前实现。本文是否删除由 PR 作者在合并后决定。
 
 结论按证据等级标注：
 
@@ -14,14 +27,14 @@
 
 ## 0. 结论摘要
 
-| 项目                                     | 状态           | 影响                                                   |
-| ---------------------------------------- | -------------- | ------------------------------------------------------ |
-| IPC 契约漂移                             | 已修复（#150） | `Preload.ts` 经 esbuild 生成唯一运行时 `Preload.cjs`   |
-| 设置分区漂移                             | 已修复（#150） | 分区白名单改为共享 `isAgentSettingsSectionId`          |
-| 打包产物没有启动冒烟                     | 已确证，P1     | “开发正常、打包启动失败”仍可能漏出                     |
-| 启动/内存成本                            | 实测快照，P2   | v1.18.0 启动约 8 秒；#150 后 server 已移出 Main        |
-| renderer/main 崩溃无恢复                 | 已确证缺失，P1 | 长驻托盘模式下崩溃没有自动重载/上报                    |
-| macOS 26 系统级卡顿、V8 `EXC_BREAKPOINT` | 未验证/不适用  | 当前只发布 Windows；未观测到该崩溃，也没有恢复机制兜底 |
+| 项目                                     | 状态                 | 影响                                                   |
+| ---------------------------------------- | -------------------- | ------------------------------------------------------ |
+| IPC 契约漂移                             | 已修复（#150）       | `Preload.ts` 经 esbuild 生成唯一运行时 `Preload.cjs`   |
+| 设置分区漂移                             | 已修复（#150）       | 分区白名单改为共享 `isAgentSettingsSectionId`          |
+| 打包产物没有启动冒烟                     | 已修复（2026-10-26） | `desktop.pack` 内启动打包产物，失败阻止发布            |
+| 启动/内存成本                            | 已修复（2026-10-26） | 打包基线 `server=` 1.8–2.8s；口径见架构文档第 5 节     |
+| renderer/main 崩溃无恢复                 | 已修复（2026-10-26） | 原地重载 + `crashReporter` + main guard + 会话标记     |
+| macOS 26 系统级卡顿、V8 `EXC_BREAKPOINT` | 未验证/不适用        | 当前只发布 Windows；未观测到该崩溃，也没有恢复机制兜底 |
 
 ## 1. IPC 契约漂移（已修复，#150 复核）
 
@@ -96,7 +109,9 @@ CDP 实测：从主窗口调用 `window.seneraDesktop.openSettings({ section: "p
 - [ ] 增加契约检查：`Main.ts` 发送/处理的每个 channel、实际 preload 暴露的每个方法、前端 bridge 声明的方法三者一致；新增/删除 channel 时检查失败。
 - [x] `Preload.cjs` 由单一 TS 源打包生成，不再保留只编译不运行的假源。
 
-## 2. 打包产物没有启动冒烟（已确证，P1）
+## 2. 打包产物没有启动冒烟（已确证，P1；2026-10-26 已修复）
+
+> 本节是 2026-10-21 的判据。缺口现由 `Apps/Desktop/SmokeDesktopPackage.ts` 关闭，见开头复核结论。
 
 原生模块这条经典坑目前控制得不错，不要重复造轮子：
 
@@ -165,12 +180,14 @@ main 进程监听 `127.0.0.1:8788`，确认 server 在 main 内。`Dist` 下 154
 
 ### 可做的优化
 
-1. 先加 `desktop ready in Xms` 日志（`loadDesktopFrontend` 完成后），不要在没有打包版数据前定预算。
-2. 把 `startSeneraServer` 改为动态导入，并在窗口/启动画面之后再执行；至少消除“窗口出现前先加载完整 server 图”的白屏。
-3. 更彻底的是把 server 放到 `utilityProcess` 或子进程：它本来就通过 loopback HTTP/WS 通信，隔离后能减少 main 的 CPU/GC 对窗口 IPC 的影响，并获得崩溃隔离。代价是端口、生命周期和日志要重新编排。
-4. 保持 `--disable-gpu` 仅用于开发诊断；不要把它当成桌面默认参数。
+1. [x] 先加 `desktop ready in Xms` 日志（`loadDesktopFrontend` 完成后），不要在没有打包版数据前定预算。
+2. [x] 把 `startSeneraServer` 改为动态导入，并在窗口/启动画面之后再执行；至少消除“窗口出现前先加载完整 server 图”的白屏。（改为 `DesktopServerHost` 托管的 utility process + `Frontend/public/startup.html` 启动画面）
+3. [x] 更彻底的是把 server 放到 `utilityProcess` 或子进程：它本来就通过 loopback HTTP/WS 通信，隔离后能减少 main 的 CPU/GC 对窗口 IPC 的影响，并获得崩溃隔离。代价是端口、生命周期和日志要重新编排。
+4. [x] 保持 `--disable-gpu` 仅用于开发诊断；不要把它当成桌面默认参数。（`SENERA_DESKTOP_DIAGNOSTIC_GPU=1` 才启用）
 
-## 4. renderer/main 崩溃没有恢复（已确证缺失，P1）
+## 4. renderer/main 崩溃没有恢复（已确证缺失，P1；2026-10-26 已修复）
+
+> 本节是 2026-10-21 的判据。缺口现由 `Apps/Desktop/Main.ts` 的 renderer 重载 / `crashReporter` / `installAgentProcessFailureGuard` 与会话标记关闭，见[桌面运行时](../Architecture/DesktopRuntime.md)第 4 节。
 
 长驻是默认行为：`Apps/Desktop/Main.ts:341-345` 拦截窗口 `close` 并隐藏到托盘；`before-quit` 才停止 server。
 
@@ -200,17 +217,17 @@ main 进程监听 `127.0.0.1:8788`，确认 server 在 main 内。`Dist` 下 154
 
 1. [x] 修 `onWorkspaceFolderRequested` 与实际 preload 的漂移；托盘“选择工作区”恢复。
 2. [x] 统一设置分区契约，删除 `Main.ts` 的旧白名单或改为共享常量；修 `prompt`/`mcp-servers`/`system-tools` 的入口。
-3. [ ] 加 IPC 契约检查，覆盖 main、实际 preload、前端 bridge。
+3. [x] 加 IPC 契约检查，覆盖 main、实际 preload、前端 bridge。（`Scripts/VerifyDesktopIpcContract.ts`，另覆盖 E2E 假 main）
 
 **P1：补发布防线**
 
-4. [ ] 打包产物启动冒烟，接入 release job，失败阻止发布。
-5. [ ] renderer 崩溃自动重载 + `crashReporter` + main 进程 guard。
+4. [x] 打包产物启动冒烟，接入 release job，失败阻止发布。（`Apps/Desktop/SmokeDesktopPackage.ts`，由 `desktop.pack` 调用）
+5. [x] renderer 崩溃自动重载 + `crashReporter` + main 进程 guard。
 
 **P2：启动与进程边界**
 
-6. [ ] 加启动耗时日志并测打包版。
-7. [ ] 动态导入 server / 启动画面；评估 `utilityProcess` 隔离（#150 已引入 `DesktopServerHost`，需按新边界重测）。
+6. [x] 加启动耗时日志并测打包版。（打包基线见[桌面运行时](../Architecture/DesktopRuntime.md)第 5 节）
+7. [x] 动态导入 server / 启动画面；评估 `utilityProcess` 隔离（#150 已引入 `DesktopServerHost`，需按新边界重测）。（已隔离为 utility process + 单文件 bundle，按新边界重测见[后续改进清单](./FollowUpBacklog.md)第 12 项）
 
 ## 7. 立即复现（人工）
 
@@ -228,10 +245,11 @@ await window.seneraDesktop.openSettings({ section: "prompt" });
 // 再查 /json/list，确认 settings URL 的 section 仍是 prompt
 ```
 
-这些仍是手工判据。P0 修复后应落成仓库内的契约检查脚本，而不是长期依赖手工 CDP。
+这些仍是手工判据。P0 修复后应落成仓库内的契约检查脚本，而不是长期依赖手工 CDP。（已落成：`Scripts/VerifyDesktopIpcContract.ts`，本节保留为手工复现步骤）
 
 ## 8. 相关文档
 
+- [桌面运行时](../Architecture/DesktopRuntime.md)——当前的进程边界、IPC 契约、打包冒烟与启动成本口径
 - [后续改进清单](./FollowUpBacklog.md)
 - [工作区宿主](../Architecture/WorkspaceHost.md)
 - [部署与运维](../Operations.md)
