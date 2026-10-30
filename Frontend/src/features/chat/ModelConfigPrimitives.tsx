@@ -68,8 +68,8 @@ export function SectionLabel({ icon, title }: { icon: ReactNode; title: string }
 
 export function SettingsTable({ children }: { children: ReactNode }): JSX.Element {
   return (
-    <div className="overflow-hidden rounded-md border border-ink-200/65 bg-paper-100/65">
-      <div className="divide-y divide-ink-200/70">{children}</div>
+    <div className="overflow-hidden rounded-md border border-line-subtle/70 bg-surface-subtle/65">
+      <div className="divide-y divide-line-subtle/70">{children}</div>
     </div>
   );
 }
@@ -95,7 +95,7 @@ export function TextRow({
 }): JSX.Element {
   return (
     <SettingRow icon={icon} label={label}>
-      <div className="flex min-w-0 overflow-hidden rounded-md border border-ink-200 bg-paper-50">
+      <div className="flex min-w-0 overflow-hidden rounded-md border border-line bg-surface-panel transition-[border-color,box-shadow]">
         <input
           type={secret ? "password" : "text"}
           value={value}
@@ -158,7 +158,7 @@ export function NumberRow({
         step={step}
         placeholder={placeholder}
         disabled={disabled}
-        className={cn(inputClassName, "rounded-md border border-ink-200 bg-paper-50")}
+        className={cn(inputClassName, "rounded-md border border-line bg-surface-panel")}
         onChange={(event) => {
           const next = event.currentTarget.value;
           onChange(next === "" ? undefined : Number(next));
@@ -215,13 +215,13 @@ export function SettingRow({
   children: ReactNode;
 }): JSX.Element {
   return (
-    <div className="grid min-w-0 gap-3 bg-paper-50 px-3 py-3 sm:grid-cols-[150px_minmax(0,1fr)] sm:items-start">
+    <div className="grid min-w-0 gap-3 bg-surface-panel px-3 py-3 sm:grid-cols-[150px_minmax(0,1fr)] sm:items-start">
       <div className="min-w-0">
-        <div className="flex min-w-0 items-center gap-1.5 text-[12.5px] font-medium text-ink-800">
-          <span className="text-ink-400">{icon}</span>
+        <div className="flex min-w-0 items-center gap-1.5 text-[12.5px] font-medium text-content-primary">
+          <span className="text-content-muted">{icon}</span>
           <span className="truncate">{label}</span>
         </div>
-        {description ? <div className="mt-1 text-[11px] leading-4 text-ink-500">{description}</div> : null}
+        {description ? <div className="mt-1 text-[11px] leading-4 text-content-secondary">{description}</div> : null}
       </div>
       <div className="min-w-0">{children}</div>
     </div>
@@ -247,18 +247,18 @@ export function SearchInput({
   return (
     <div
       className={cn(
-        "flex h-8 min-w-0 items-center gap-2 rounded-md border border-ink-200 bg-paper-50 px-2.5",
+        "flex h-8 min-w-0 items-center gap-2 rounded-md border border-line bg-surface-panel px-2.5 transition-[border-color,box-shadow]",
         className,
       )}
     >
-      <Search className="h-3.5 w-3.5 shrink-0 text-ink-350" />
+      <Search className="h-3.5 w-3.5 shrink-0 text-content-muted" />
       <input
         value={value}
         disabled={disabled}
         autoFocus={autoFocus}
         placeholder={resolvedPlaceholder}
         aria-label={resolvedPlaceholder}
-        className="min-w-0 flex-1 bg-transparent text-[12.5px] text-ink-800 outline-none placeholder:text-ink-350 disabled:opacity-55"
+        className="min-w-0 flex-1 bg-transparent text-[12px] text-content-primary outline-none placeholder:text-content-muted disabled:opacity-55"
         onChange={(event) => onChange(event.currentTarget.value)}
       />
     </div>
@@ -446,14 +446,14 @@ export function EmptyList({ text }: { text: string }): JSX.Element {
 }
 
 export const iconButtonClassName = cn(
-  "grid h-8 w-8 shrink-0 place-items-center rounded-md border border-ink-200 bg-paper-50 text-ink-600",
+  "grid h-8 w-8 shrink-0 place-items-center rounded-md border border-line bg-surface-panel text-content-secondary",
   "transition hover:border-accent-border-strong hover:bg-accent-surface-hover hover:text-accent-content-hover",
   "disabled:pointer-events-none disabled:opacity-45",
 );
 
 export const inputClassName = cn(
-  "h-8 min-w-0 flex-1 bg-transparent px-2.5 text-[12.5px] text-ink-800",
-  "outline-none placeholder:text-ink-350 disabled:pointer-events-none disabled:opacity-55",
+  "h-8 min-w-0 flex-1 bg-transparent px-2.5 text-[12px] text-content-primary",
+  "outline-none placeholder:text-content-muted disabled:pointer-events-none disabled:opacity-55",
 );
 
 const statusToneClassName = {

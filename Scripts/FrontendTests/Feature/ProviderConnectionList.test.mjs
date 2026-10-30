@@ -71,6 +71,12 @@ test("provider list reports availability without an inline toggle", () => {
       }),
     ).toBeInTheDocument();
   }
+
+  const enabledDot = document.querySelector('[data-provider-availability="openai"]');
+  const disabledDot = document.querySelector('[data-provider-availability="anthropic"]');
+  expect(enabledDot).toHaveClass("bg-[#72A0E9]");
+  expect(enabledDot.className).not.toMatch(/accent/);
+  expect(disabledDot).toHaveClass("bg-content-disabled");
 });
 
 test("provider hosting the default model shows a default tag and keeps the whole row selectable", async () => {

@@ -45,7 +45,10 @@ export const defaultResponsiveQueryMatches: ResponsiveQueryMatches = {
 };
 
 export function deriveResponsiveMode(matches: ResponsiveQueryMatches): ResponsiveMode {
-  const isCoarsePointer = matches.hasPrimaryCoarsePointer || matches.hasAnyCoarsePointer;
+  // `any-pointer: coarse` only says a touch digitizer exists — nearly every modern
+  // laptop has one, while the user is on a mouse. Touch-safe hit targets must follow
+  // the primary pointer, or a 1963px desktop window gets phone-sized controls.
+  const isCoarsePointer = matches.hasPrimaryCoarsePointer;
   const viewport: ResponsiveViewport = matches.wideUp
     ? "wide"
     : matches.desktopUp

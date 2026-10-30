@@ -486,7 +486,7 @@ function HeadersEditor({
             type="button"
             aria-label={frontendMessage("settings.provider.deleteHeader")}
             disabled={disabled}
-            className="grid h-9 w-9 place-items-center rounded-md text-content-muted transition hover:bg-surface-hover hover:text-danger disabled:pointer-events-none disabled:opacity-40"
+            className="grid h-9 w-9 place-items-center rounded-md text-content-muted transition hover:bg-surface-hover hover:text-brick-600 disabled:pointer-events-none disabled:opacity-40"
             onClick={() => onChange(rows.filter((entry) => entry.id !== row.id))}
           >
             <AppIcon icon="trash" size={14} />

@@ -102,7 +102,7 @@ function ModelRemovalDialog({
             ? frontendMessage("settings.modelLifecycle.removeDefault.description", { model: model.Model })
             : frontendMessage("settings.modelLifecycle.removeModel.description")
         }
-        className="w-[min(480px,calc(100vw_-_28px))]"
+        className="w-[min(420px,calc(100vw-28px))]"
         bodyClassName="p-4"
         footerClassName="px-4"
         footer={
@@ -185,7 +185,7 @@ function ProviderRemovalDialog({
       <DialogContent
         title={frontendMessage("settings.modelLifecycle.deleteProvider.title")}
         description={description}
-        className="w-[min(520px,calc(100vw_-_28px))]"
+        className="w-[min(420px,calc(100vw-28px))]"
         bodyClassName="p-4"
         footerClassName="px-4"
         footer={
@@ -215,11 +215,11 @@ function ProviderRemovalDialog({
       >
         <div className="space-y-4">
           {cascadeModels ? (
-            <section className="rounded-lg border border-ink-200/70 bg-paper-100/65 p-3">
-              <h3 className="text-[12px] font-semibold text-ink-800">
+            <section className="rounded-lg border border-line bg-surface-muted p-3">
+              <h3 className="text-[12px] font-semibold text-content-primary">
                 {frontendMessage("settings.modelLifecycle.affectedModels")}
               </h3>
-              <ul className="mt-2 space-y-1 text-[12px] text-ink-600">
+              <ul className="mt-2 space-y-1 text-[12px] text-content-secondary">
                 {providerModels.map((model) => (
                   <li key={model.Id} className="truncate">
                     {model.Model}

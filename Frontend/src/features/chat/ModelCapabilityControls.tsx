@@ -1,5 +1,4 @@
 import type { ElementType, ReactNode } from "react";
-import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import ChatBubbleLeftRightIcon from "@heroicons/react/24/outline/ChatBubbleLeftRightIcon";
 import CommandLineIcon from "@heroicons/react/24/outline/CommandLineIcon";
 import EyeIcon from "@heroicons/react/24/outline/EyeIcon";
@@ -153,38 +152,32 @@ export function CapabilityIconStrip({
 
 function RemainingCapabilityTooltip({ items }: { items: readonly { key: string; label: string }[] }): JSX.Element {
   return (
-    <TooltipPrimitive.Root delayDuration={120}>
-      <TooltipPrimitive.Trigger asChild>
-        <span
-          tabIndex={0}
-          data-capability-overflow
-          className="inline-flex h-[18px] min-w-[18px] cursor-help items-center justify-center rounded-[5px] bg-ink-900/[0.045] px-1.5 text-[10.5px] leading-none text-content-muted outline-none transition hover:bg-ink-900/[0.075] hover:text-content-secondary focus-visible:ring-2 focus-visible:ring-accent-focus"
-          aria-label={items.map((item) => item.label).join("、")}
-        >
-          +{items.length}
-        </span>
-      </TooltipPrimitive.Trigger>
-      <TooltipPrimitive.Portal>
-        <TooltipPrimitive.Content
-          side="top"
-          align="start"
-          sideOffset={8}
-          className="z-50 max-w-64 rounded-lg border border-ink-700/70 bg-ink-900 p-2 shadow-[0_8px_24px_-12px_rgba(24,25,28,0.45)]"
-        >
-          <div className="flex flex-wrap gap-1">
-            {items.map((item) => (
-              <span
-                key={item.key}
-                className="inline-flex h-5 items-center rounded-full border border-paper-50/15 bg-paper-50/10 px-2 text-[10.5px] leading-none text-paper-50"
-              >
-                {item.label}
-              </span>
-            ))}
-          </div>
-          <TooltipPrimitive.Arrow className="fill-ink-900" width={8} height={4} />
-        </TooltipPrimitive.Content>
-      </TooltipPrimitive.Portal>
-    </TooltipPrimitive.Root>
+    <Tooltip
+      delayDuration={120}
+      side="top"
+      align="start"
+      content={
+        <div className="flex max-w-64 flex-wrap gap-1">
+          {items.map((item) => (
+            <span
+              key={item.key}
+              className="inline-flex h-5 items-center rounded-full border border-line-subtle bg-surface-subtle px-2 text-[10.5px] leading-none text-content-secondary"
+            >
+              {item.label}
+            </span>
+          ))}
+        </div>
+      }
+    >
+      <span
+        tabIndex={0}
+        data-capability-overflow
+        className="inline-flex h-[18px] min-w-[18px] cursor-help items-center justify-center rounded-[5px] bg-ink-900/[0.045] px-1.5 text-[10.5px] leading-none text-content-muted outline-none transition hover:bg-ink-900/[0.075] hover:text-content-secondary focus-visible:ring-2 focus-visible:ring-accent-focus"
+        aria-label={items.map((item) => item.label).join("、")}
+      >
+        +{items.length}
+      </span>
+    </Tooltip>
   );
 }
 

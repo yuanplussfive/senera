@@ -1,7 +1,17 @@
-import { twMerge } from "tailwind-merge";
+import { extendTailwindMerge } from "tailwind-merge";
 import { clsx, type ClassValue } from "clsx";
 import { getFrontendLocale } from "../i18n/frontendLocaleStore";
 import { resolveRuntimeTimeZone } from "../config/runtimeConfig";
+
+/**
+ * `tailwind.config.js` extends `boxShadow` with project-only keys. Without
+ * registering them, tailwind-merge treats `shadow-panel` as an unknown class and
+ * keeps it next to a later `shadow-none`, so the override silently loses to
+ * stylesheet order.
+ */
+const twMerge = extendTailwindMerge({
+  extend: { theme: { shadow: ["accent", "bubble-user", "bubble-ai", "panel", "soft"] } },
+});
 
 const integerFormatters = new Map<string, Intl.NumberFormat>();
 const shortTimeFormatters = new Map<string, Intl.DateTimeFormat>();

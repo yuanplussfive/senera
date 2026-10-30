@@ -271,7 +271,7 @@ function InteractionControl({
   onChange: (value: InteractionInputValue | undefined) => void;
 }): JSX.Element {
   const className =
-    "h-8 w-full border border-line-subtle bg-surface-panel px-2 text-[12px] text-content-primary outline-none focus:border-accent-border disabled:bg-surface-muted";
+    "h-8 w-full border border-line-subtle bg-surface-panel px-2 text-[12px] text-content-primary outline-none disabled:bg-surface-muted";
   if (property.type === "boolean") {
     return (
       <input
