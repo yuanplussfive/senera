@@ -122,46 +122,29 @@ test("selects the visible sessions and confirms bulk deletion", async () => {
   });
   renderWithFrontendProviders(React.createElement(SessionList, createProps({ onCloseSessions })));
 
-  await user.click(screen.getByRole("button", { name: frontendMessage("session.startSelection") }));
-  await user.click(
-    screen.getByRole("checkbox", {
-      name: frontendMessage("session.selectConversation", { title: "Frontend refactor" }),
-    }),
-  );
-  await user.type(screen.getByRole("searchbox", { name: frontendMessage("session.searchPlaceholder") }), "provider");
-  await waitFor(() => expect(screen.queryByText("Frontend refactor")).not.toBeInTheDocument());
-  await user.click(screen.getByRole("checkbox", { name: frontendMessage("session.selectVisible") }));
+  // The row menu is the only way into multi-select: enter it, then select all.
+  await user.pointer({ keys: "[MouseRight]", target: document.querySelector("[data-session-row]") });
+  await user.click(await screen.findByRole("menuitem", { name: frontendMessage("session.enterSelectionMode") }));
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.selectVisible") }));
 
-  expect(screen.getByText(frontendMessage("session.selectedCount", { count: 2 }))).toBeVisible();
-  expect(
-    screen.getByRole("checkbox", {
-      name: frontendMessage("session.selectConversation", { title: "Provider settings" }),
-    }),
-  ).toBeChecked();
-  expect(
-    screen.queryByRole("checkbox", {
-      name: frontendMessage("session.selectConversation", { title: "Frontend refactor" }),
-    }),
-  ).not.toBeInTheDocument();
+  expect(screen.getByText(frontendMessage("session.selectedCount", { count: 3 }))).toBeVisible();
 
   await user.click(screen.getByRole("button", { name: frontendMessage("session.deleteSelected") }));
   await waitFor(() => {
     expect(
       within(screen.getByRole("dialog", { name: frontendMessage("session.deleteSelectedTitle") })).getByText(
-        frontendMessage("session.deleteSelectedDescription", { count: 2 }),
+        frontendMessage("session.deleteSelectedDescription", { count: 3 }),
       ),
     ).toBeVisible();
   });
   await user.click(screen.getByRole("button", { name: frontendMessage("session.deleteSelectedConfirm") }));
 
   expect(onCloseSessions).toHaveBeenCalledOnce();
-  expect(onCloseSessions).toHaveBeenCalledWith(["first", "second"]);
+  expect(onCloseSessions).toHaveBeenCalledWith(["first", "second", "third"]);
   await waitFor(() => {
     expect(screen.queryByText("Frontend refactor")).not.toBeInTheDocument();
     expect(screen.queryByText("Provider settings")).not.toBeInTheDocument();
   });
-  await user.click(screen.getByRole("button", { name: frontendMessage("session.searchClear") }));
-  await waitFor(() => expect(screen.getByText("Release notes")).toBeVisible());
   expect(screen.queryByRole("button", { name: frontendMessage("session.cancelSelection") })).not.toBeInTheDocument();
 });
 
@@ -185,24 +168,95 @@ test("keeps failed bulk-delete requests selected for retry", async () => {
   });
   renderWithFrontendProviders(React.createElement(SessionList, createProps({ onCloseSessions })));
 
-  await user.click(screen.getByRole("button", { name: frontendMessage("session.startSelection") }));
-  await user.click(screen.getByRole("checkbox", { name: frontendMessage("session.selectVisible") }));
+  await user.pointer({ keys: "[MouseRight]", target: document.querySelector("[data-session-row]") });
+  await user.click(await screen.findByRole("menuitem", { name: frontendMessage("session.enterSelectionMode") }));
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.selectVisible") }));
   await user.click(screen.getByRole("button", { name: frontendMessage("session.deleteSelected") }));
   await user.click(screen.getByRole("button", { name: frontendMessage("session.deleteSelectedConfirm") }));
 
   expect(onCloseSessions).toHaveBeenCalledOnce();
   expect(onCloseSessions).toHaveBeenCalledWith(["first", "second"]);
   expect(useStore.getState().sessionOrder).toEqual(["second"]);
-  expect(
-    screen.getByRole("checkbox", {
-      name: frontendMessage("session.selectConversation", { title: "Unsent deletion" }),
-    }),
-  ).toBeChecked();
   expect(screen.getByText(frontendMessage("session.selectedCount", { count: 1 }))).toBeVisible();
   expect(screen.getByRole("button", { name: frontendMessage("session.cancelSelection") })).toBeVisible();
 });
 
-test("moves channel filtering into the Senera menu", async () => {
+test("context menu enters selection mode from a row and preselects it", async () => {
+  const user = userEvent.setup();
+  resetSessionStore({
+    sessions: {
+      first: session("first", "Frontend refactor"),
+      second: session("second", "Provider settings"),
+      third: session("third", "Release notes"),
+    },
+    sessionOrder: ["first", "second", "third"],
+    activeSessionId: "first",
+  });
+  renderWithFrontendProviders(React.createElement(SessionList, createProps()));
+
+  // Outside selection mode there are no checkboxes at all: the row title keeps
+  // the full width and selection starts from the row menu.
+  expect(screen.queryByRole("checkbox", { name: /选择会话/ })).not.toBeInTheDocument();
+
+  await user.pointer({ keys: "[MouseRight]", target: document.querySelectorAll("[data-session-row]")[1] });
+  await user.click(await screen.findByRole("menuitem", { name: frontendMessage("session.enterSelectionMode") }));
+
+  expect(screen.getByText(frontendMessage("session.selectedCount", { count: 1 }))).toBeVisible();
+  expect(document.querySelectorAll("[data-session-selected]")).toHaveLength(1);
+  expect(
+    document.querySelectorAll("[data-session-row]")[1]?.hasAttribute("data-session-selected"),
+  ).toBe(true);
+
+  await user.pointer({ keys: "[MouseRight]", target: document.querySelector("[data-session-row]") });
+  await user.click(await screen.findByRole("menuitem", { name: frontendMessage("session.addToSelection") }));
+
+  expect(screen.getByText(frontendMessage("session.selectedCount", { count: 2 }))).toBeVisible();
+
+  await user.pointer({ keys: "[MouseRight]", target: document.querySelector("[data-session-row]") });
+  expect(
+    await screen.findByRole("menuitem", { name: frontendMessage("session.deleteSelectedMenu", { count: 2 }) }),
+  ).toBeVisible();
+});
+
+test("shift-click selects a contiguous range and escape exits selection mode", async () => {
+  const user = userEvent.setup();
+  resetSessionStore({
+    sessions: {
+      first: session("first", "Frontend refactor"),
+      second: session("second", "Provider settings"),
+      third: session("third", "Release notes"),
+    },
+    sessionOrder: ["first", "second", "third"],
+    activeSessionId: "first",
+  });
+  renderWithFrontendProviders(React.createElement(SessionList, createProps()));
+
+  // Shift-click outside selection mode opens the session instead of selecting.
+  await user.keyboard("{Shift>}");
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.open", { title: "Release notes" }) }));
+  await user.keyboard("{/Shift}");
+  expect(useStore.getState().activeSessionId).toBe("third");
+  expect(screen.queryByText(frontendMessage("session.selectedCount", { count: 1 }))).not.toBeInTheDocument();
+
+  const rowButton = (title) =>
+    screen.getByRole("button", { name: frontendMessage("session.selectConversation", { title }) });
+  await user.pointer({ keys: "[MouseRight]", target: document.querySelector("[data-session-row]") });
+  await user.click(await screen.findByRole("menuitem", { name: frontendMessage("session.enterSelectionMode") }));
+  await user.click(rowButton("Frontend refactor"));
+  await user.keyboard("{Shift>}");
+  await user.click(rowButton("Release notes"));
+  await user.keyboard("{/Shift}");
+
+  expect(screen.getByText(frontendMessage("session.selectedCount", { count: 3 }))).toBeVisible();
+
+  await user.keyboard("{Escape}");
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: frontendMessage("session.cancelSelection") })).not.toBeInTheDocument(),
+  );
+  expect(screen.queryByRole("checkbox", { name: /选择会话/ })).not.toBeInTheDocument();
+});
+
+test("scopes the session list by channel from the list toolbar", async () => {
   const user = userEvent.setup();
   const first = session("first", "Frontend refactor");
   const second = session("second", "QQ support");
@@ -214,15 +268,12 @@ test("moves channel filtering into the Senera menu", async () => {
   });
   renderWithFrontendProviders(React.createElement(SessionList, createProps()));
 
-  await user.click(screen.getByRole("button", { name: "Senera" }));
+  // The filter narrows the same collection as search, so it sits beside it
+  // instead of hiding behind the product menu.
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.channel.filter") }));
 
   expect(screen.getByRole("menuitem", { name: frontendMessage("session.channel.all") })).toBeVisible();
   expect(screen.getByRole("menuitem", { name: frontendMessage("session.channel.qq") })).toBeVisible();
-  expect(
-    screen.queryByRole("button", {
-      name: `${frontendMessage("session.channel.filter")}: ${frontendMessage("session.channel.all")}`,
-    }),
-  ).not.toBeInTheDocument();
 
   await user.click(screen.getByRole("menuitem", { name: frontendMessage("session.channel.qq") }));
   await waitFor(() => {
