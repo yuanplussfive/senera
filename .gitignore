@@ -46,3 +46,6 @@ Build/Release/*
 !Build/Release/ReleasePleaseConfig.json
 !Build/Release/ReleasePleaseManifest.json
 论题.txt
+
+# ui-diff-review prototypes
+.review/
