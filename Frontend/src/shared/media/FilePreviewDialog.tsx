@@ -6,6 +6,7 @@ import { resolveFilePreview, type FilePreviewDescriptor } from "../../lib/filePr
 import { cn, formatFileSize } from "../../lib/util";
 import { Dialog, DialogContent, IconButton, AppIcon, Spinner } from "../ui";
 import { ImagePreviewDialog } from "./ImagePreviewDialog";
+import { OpenWithDefaultAppButton } from "./OpenWithDefaultAppButton";
 
 const TextPreviewLimitBytes = 128 * 1024;
 const TextPreviewLimitCharacters = 16_000;
@@ -151,6 +152,7 @@ function FilePreviewBody({
       <p className="max-w-md text-[11px] leading-5 text-content-muted">
         {frontendMessage("resource.downloadDescription")}
       </p>
+      <OpenWithDefaultAppButton name={name} source={source} variant="labeled" className="mt-1" />
     </div>
   );
 }

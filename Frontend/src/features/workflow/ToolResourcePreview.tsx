@@ -7,6 +7,7 @@ import { downloadUrl } from "../../lib/download";
 import { resolveFilePreview, type FilePreviewRenderKind } from "../../lib/filePreview";
 import { cn, formatFileSize } from "../../lib/util";
 import { ImagePreviewDialog } from "../../shared/media/ImagePreviewDialog";
+import { OpenWithDefaultAppButton } from "../../shared/media/OpenWithDefaultAppButton";
 import { useWorkspaceResourceController } from "../../shared/workspace/WorkspaceResourceProvider";
 import { AppIcon, IconButton, MetaLabel, Spinner } from "../../shared/ui";
 import { Popover, PopoverAnchor, PopoverContent } from "../../shared/ui/Popover";
@@ -184,6 +185,14 @@ export function ToolResourceItem({
               >
                 <AppIcon icon="download" size={14} />
               </IconButton>
+            ) : null}
+            {kind === "file" ? (
+              <OpenWithDefaultAppButton
+                name={resource.name}
+                source={source}
+                size="sm"
+                className="h-7 w-7 shrink-0 rounded-md text-content-muted hover:bg-surface-hover hover:text-content-primary"
+              />
             ) : null}
           </header>
 

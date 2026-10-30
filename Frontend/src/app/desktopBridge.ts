@@ -19,6 +19,11 @@ export interface DesktopUpdateSnapshot {
   errorMessage?: string;
 }
 
+export interface DesktopExternalOpenResult {
+  readonly ok: boolean;
+  readonly code?: "blocked" | "invalid-payload" | "write-failed" | "open-failed";
+}
+
 export interface SeneraDesktopBridge {
   readonly isDesktop: boolean;
   readonly windowControls?: "custom" | "native";
@@ -35,6 +40,7 @@ export interface SeneraDesktopBridge {
   confirmSettingsClose?: () => Promise<void>;
   cancelSettingsClose?: () => Promise<void>;
   openExternalUrl?: (url: string) => Promise<void>;
+  openFileExternally?: (payload: { name: string; bytes: Uint8Array }) => Promise<DesktopExternalOpenResult | undefined>;
   chooseWorkspaceFolder?: () => Promise<string | null>;
   onWorkspaceFolderRequested?: (listener: () => void) => () => void;
   getUpdateState?: () => Promise<DesktopUpdateSnapshot | undefined>;
@@ -66,6 +72,45 @@ export async function openExternalUrl(
     }
   }
   return openWindow(url) ? "web" : "blocked";
+}
+
+/**
+ * Opens a rendered resource in the operating system's default application. The
+ * bytes are fetched through the page's authenticated session, so the desktop main
+ * process never needs the resource URL, a workspace path, or network access.
+ *
+ * Returns `unsupported` outside the desktop app, where the download path stays the
+ * only way to hand a file to a local application.
+ */
+export async function openFileWithDefaultApp(
+  input: { name: string; source: string },
+  {
+    bridge = readDesktopBridge(),
+    fetchBytes = readSourceBytes,
+  }: {
+    bridge?: Pick<SeneraDesktopBridge, "isDesktop" | "openFileExternally">;
+    fetchBytes?: (source: string) => Promise<Uint8Array>;
+  } = {},
+): Promise<"desktop" | "unsupported" | "failed"> {
+  if (!bridge?.isDesktop || !bridge.openFileExternally) return "unsupported";
+  let bytes: Uint8Array;
+  try {
+    bytes = await fetchBytes(input.source);
+  } catch {
+    return "failed";
+  }
+  try {
+    const result = await bridge.openFileExternally({ name: input.name, bytes });
+    return result?.ok ? "desktop" : "failed";
+  } catch {
+    return "failed";
+  }
+}
+
+async function readSourceBytes(source: string): Promise<Uint8Array> {
+  const response = await fetch(source, { credentials: "include" });
+  if (!response.ok) throw new Error(`External open source failed with status ${response.status}.`);
+  return new Uint8Array(await response.arrayBuffer());
 }
 
 function isSafeExternalUrl(input: string): boolean {
