@@ -223,7 +223,7 @@ export function ProviderConnectionEditor({
             hint={frontendMessage("settings.provider.apiUrlHint")}
             inline
           >
-            <div className="flex h-11 min-w-0 items-center overflow-hidden rounded-[10px] border border-line-subtle bg-surface-panel px-3 transition-[border-color,box-shadow] focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus">
+            <div className="flex h-11 min-w-0 items-center overflow-hidden rounded-[10px] border border-line-subtle bg-surface-panel px-3 transition-[border-color,box-shadow]">
               <input
                 value={baseUrlDraft}
                 disabled={disabled}

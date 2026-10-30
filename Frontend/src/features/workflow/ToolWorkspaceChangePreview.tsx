@@ -137,14 +137,17 @@ export function ToolWorkspaceChangePreview({
             "flex min-w-0 items-start gap-2 rounded-md border px-2.5 py-2 text-[11px] text-content-secondary",
             observation.quality === "bounded"
               ? "border-line-subtle bg-surface-subtle/45"
-              : "border-danger/30 bg-danger/5",
+              : "border-brick-500/30 bg-brick-500/5",
           )}
           data-workspace-observation={observation.quality === "bounded" ? "bounded" : "partial"}
         >
           <AppIcon
             icon="warning"
             size={14}
-            className={cn("mt-0.5 shrink-0", observation.quality === "bounded" ? "text-content-muted" : "text-danger")}
+            className={cn(
+              "mt-0.5 shrink-0",
+              observation.quality === "bounded" ? "text-content-muted" : "text-brick-600",
+            )}
             aria-hidden="true"
           />
           <span className="min-w-0">

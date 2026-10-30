@@ -40,7 +40,7 @@ export function ThinkingSummaryBar({
 
   const summary = summarizeRun(run);
   const label = readThinkingLabel(run.status, summary.duration);
-  const compactLabel = live || cancelling ? label : readTerminalLabel(run.status);
+  const compactLabel = live || cancelling || run.status === "completed" ? label : readTerminalLabel(run.status);
 
   return (
     <div className="mt-1.5" data-ui-chrome>
@@ -48,7 +48,7 @@ export function ThinkingSummaryBar({
         <PopoverTrigger asChild>
           <button
             type="button"
-            className="thinking-summary-trigger group inline-flex max-w-full items-center gap-1.5 rounded-sm py-0.5 text-left text-[13px] font-medium leading-[18px] text-content-secondary transition-colors hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
+            className="thinking-summary-trigger group inline-flex max-w-full items-center gap-1.5 rounded-md bg-surface-muted py-1 pl-2 pr-1.5 text-left text-[13px] font-medium leading-[18px] text-content-secondary transition-colors hover:bg-surface-hover hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
             aria-controls={detailId}
             aria-expanded={expanded}
             aria-label={label}
@@ -136,7 +136,7 @@ function readThinkingLabel(status: NonNullable<RunRecord>["status"], duration: s
     case "failed":
       return frontendMessage("workflow.run.status.failed");
     case "completed":
-      return `Thinking ${duration}`;
+      return frontendMessage("chat.metrics.elapsed", { duration });
   }
 }
 

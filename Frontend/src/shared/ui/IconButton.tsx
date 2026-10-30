@@ -31,11 +31,10 @@ const sizeClasses: Record<IconButtonSize, string> = {
 };
 
 const toneClasses: Record<IconButtonTone, string> = {
-  neutral: "text-content-secondary hover:bg-surface-hover hover:text-content-primary hover:shadow-panel",
-  muted: "text-content-muted hover:bg-surface-hover hover:text-content-primary hover:shadow-panel",
-  danger:
-    "text-content-muted hover:bg-surface-hover hover:text-brick-500 hover:shadow-panel focus-visible:ring-brick-200",
-  primary: "text-accent-content hover:bg-accent-surface hover:text-accent-content hover:shadow-panel",
+  neutral: "text-content-secondary hover:bg-surface-hover hover:text-content-primary",
+  muted: "text-content-muted hover:bg-surface-hover hover:text-content-primary",
+  danger: "text-content-muted hover:bg-surface-hover hover:text-brick-500 focus-visible:ring-brick-200",
+  primary: "text-accent-content hover:bg-accent-surface hover:text-accent-content",
 };
 
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(

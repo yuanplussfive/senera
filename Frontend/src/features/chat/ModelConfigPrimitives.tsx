@@ -279,7 +279,7 @@ export function SearchInput({
   return (
     <div
       className={cn(
-        "flex h-8 min-w-0 items-center gap-2 rounded-md border border-ink-200 bg-paper-50 px-2.5",
+        "flex h-8 min-w-0 items-center gap-2 rounded-md border border-line bg-surface-panel px-2.5 transition-[border-color,box-shadow]",
         className,
       )}
     >
@@ -290,7 +290,7 @@ export function SearchInput({
         autoFocus={autoFocus}
         placeholder={resolvedPlaceholder}
         aria-label={resolvedPlaceholder}
-        className="min-w-0 flex-1 bg-transparent text-[12.5px] text-ink-800 outline-none placeholder:text-ink-350 disabled:opacity-55"
+        className="min-w-0 flex-1 bg-transparent text-[12px] text-content-primary outline-none placeholder:text-content-muted disabled:opacity-55"
         onChange={(event) => onChange(event.currentTarget.value)}
       />
     </div>
@@ -478,14 +478,14 @@ export function EmptyList({ text }: { text: string }): JSX.Element {
 }
 
 export const iconButtonClassName = cn(
-  "grid h-8 w-8 shrink-0 place-items-center rounded-md border border-ink-200 bg-paper-50 text-ink-600",
+  "grid h-8 w-8 shrink-0 place-items-center rounded-md border border-line bg-surface-panel text-content-secondary",
   "transition hover:border-accent-border-strong hover:bg-accent-surface-hover hover:text-accent-content-hover",
   "disabled:pointer-events-none disabled:opacity-45",
 );
 
 export const inputClassName = cn(
-  "h-8 min-w-0 flex-1 bg-transparent px-2.5 text-[12.5px] text-ink-800",
-  "outline-none placeholder:text-ink-350 disabled:pointer-events-none disabled:opacity-55",
+  "h-8 min-w-0 flex-1 bg-transparent px-2.5 text-[12px] text-content-primary",
+  "outline-none placeholder:text-content-muted disabled:pointer-events-none disabled:opacity-55",
 );
 
 const statusToneClassName = {

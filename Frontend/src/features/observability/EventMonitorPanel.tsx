@@ -125,7 +125,7 @@ export function EventMonitorPanel(): JSX.Element {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={frontendMessage("observability.search")}
-              className="h-7 w-full min-w-0 border-0 border-b border-line-subtle bg-transparent pl-5 pr-1 font-sans text-[10.5px] text-content-primary outline-none placeholder:text-content-disabled focus:border-accent-border"
+              className="h-7 w-full min-w-0 border-0 border-b border-line-subtle bg-transparent pl-5 pr-1 font-sans text-[10.5px] text-content-primary outline-none placeholder:text-content-disabled"
             />
           </label>
           <MenuSelect

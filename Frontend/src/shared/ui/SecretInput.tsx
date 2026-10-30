@@ -57,7 +57,7 @@ export function SecretInput({
         compact
           ? "relative flex h-9 w-full min-w-0 overflow-hidden rounded-md border border-line bg-surface-panel"
           : "relative flex h-11 w-full min-w-0 overflow-hidden rounded-lg border border-line bg-surface-panel",
-        "transition-[border-color,box-shadow] focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus",
+        "transition-[border-color,box-shadow]",
       )}
     >
       <input

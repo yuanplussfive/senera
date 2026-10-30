@@ -30,12 +30,15 @@ export function MenuItemContent({
   icon,
   shortcut,
   trailing,
+  stacked,
 }: {
   children: ReactNode;
   destructive?: boolean;
   icon?: ReactNode;
   shortcut?: string;
   trailing?: ReactNode;
+  /** Two-line items (title plus consequence) must wrap instead of truncating. */
+  stacked?: boolean;
 }): JSX.Element {
   return (
     <>
@@ -50,7 +53,7 @@ export function MenuItemContent({
           {icon}
         </span>
       ) : null}
-      <div className="min-w-0 flex-1 truncate">{children}</div>
+      <div className={cn("min-w-0 flex-1", !stacked && "truncate")}>{children}</div>
       {shortcut ? (
         <span className="ml-3 shrink-0 font-mono text-[10.5px] tracking-tight text-content-muted">{shortcut}</span>
       ) : null}

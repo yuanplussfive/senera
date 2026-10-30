@@ -5,7 +5,7 @@ import { cn } from "../../lib/util";
 import { useResponsiveMode } from "../responsive";
 import { AppIcon } from "./AppIcon";
 import { metaLabelClassName } from "./MetaLabel";
-import { MenuItemContent, menuItemClassName, menuSeparatorClassName, menuSurfaceClassName } from "./MenuShared";
+import { MenuItemContent, menuItemClassName, menuSeparatorClassName, overlaySurfaceClassName } from "./MenuShared";
 
 export function DropdownMenu({
   modal = false,
@@ -157,6 +157,8 @@ interface ItemProps extends React.ComponentPropsWithoutRef<typeof DropdownMenuPr
   destructive?: boolean;
   shortcut?: string;
   trailing?: ReactNode;
+  /** Let the item render multiple lines (title plus description) instead of one truncated line. */
+  stacked?: boolean;
 }
 
 export const DropdownMenuItem = forwardRef<HTMLDivElement, ItemProps>(

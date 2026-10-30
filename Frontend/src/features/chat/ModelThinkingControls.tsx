@@ -89,24 +89,24 @@ export function ModelThinkingControls({
       </SettingRow>
       <div className="mt-1 overflow-hidden rounded-md border border-line-subtle">
         {profiles.length > 0 ? (
-          <div className="divide-y divide-ink-200/70">
+          <div className="divide-y divide-line-subtle/70">
             {profiles.map((profile, index) => (
               <div
                 key={`${profile.Id}-${index}`}
-                className="grid min-w-0 gap-2 bg-paper-50 px-3 py-2.5 sm:grid-cols-[minmax(120px,0.8fr)_minmax(140px,1fr)_140px_32px] sm:items-center"
+                className="grid min-w-0 gap-2 bg-surface-panel px-3 py-2.5 sm:grid-cols-[minmax(120px,0.8fr)_minmax(140px,1fr)_140px_32px] sm:items-center"
               >
                 <input
                   value={profile.Id}
                   disabled={disabled}
                   aria-label={frontendMessage("config.model.thinking.profileId")}
-                  className="h-8 min-w-0 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[12px] text-ink-800 outline-none focus:border-accent-border focus:ring-2 focus:ring-accent-focus disabled:opacity-55"
+                  className="h-8 min-w-0 rounded-md border border-line bg-surface-panel px-2.5 text-[12px] text-content-primary outline-none transition placeholder:text-content-muted disabled:opacity-55"
                   onChange={(event) => updateProfile(index, { Id: event.currentTarget.value })}
                 />
                 <input
                   value={profile.Label}
                   disabled={disabled}
                   aria-label={frontendMessage("config.model.thinking.profileLabel")}
-                  className="h-8 min-w-0 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[12px] text-ink-800 outline-none focus:border-accent-border focus:ring-2 focus:ring-accent-focus disabled:opacity-55"
+                  className="h-8 min-w-0 rounded-md border border-line bg-surface-panel px-2.5 text-[12px] text-content-primary outline-none transition placeholder:text-content-muted disabled:opacity-55"
                   onChange={(event) => updateProfile(index, { Label: event.currentTarget.value })}
                 />
                 <input
@@ -114,7 +114,7 @@ export function ModelThinkingControls({
                   disabled={disabled}
                   aria-label={frontendMessage("config.model.thinking.level")}
                   placeholder={frontendMessage("config.model.thinking.levelPlaceholder")}
-                  className="h-8 min-w-0 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[12px] text-ink-800 outline-none focus:border-accent-border focus:ring-2 focus:ring-accent-focus disabled:opacity-55"
+                  className="h-8 min-w-0 rounded-md border border-line bg-surface-panel px-2.5 text-[12px] text-content-primary outline-none transition placeholder:text-content-muted disabled:opacity-55"
                   onChange={(event) => updateProfile(index, { Level: event.currentTarget.value as ModelThinkingLevel })}
                 />
                 <button

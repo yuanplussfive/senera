@@ -155,7 +155,7 @@ export function SettingsNavigation({
   return (
     <>
       <div className="shrink-0 px-3 pb-2 pt-1.5">
-        <label className="flex h-8 items-center gap-2 rounded-md border border-transparent bg-surface-hover px-2.5 text-content-muted transition-[background-color,border-color,box-shadow] focus-within:border-accent-border focus-within:bg-surface-panel focus-within:ring-2 focus-within:ring-accent-focus">
+        <label className="flex h-8 items-center gap-2 rounded-md border border-transparent bg-surface-hover px-2.5 text-content-muted transition-[background-color,border-color,box-shadow] focus-within:bg-surface-panel">
           <AppIcon icon="search" size={14} aria-hidden="true" />
           <input
             value={search}

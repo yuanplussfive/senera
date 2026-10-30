@@ -4,7 +4,7 @@ import { type ReactNode, forwardRef } from "react";
 import { cn } from "../../lib/util";
 import { useResponsiveMode } from "../responsive";
 import { metaLabelClassName } from "./MetaLabel";
-import { MenuItemContent, menuItemClassName, menuSeparatorClassName, menuSurfaceClassName } from "./MenuShared";
+import { MenuItemContent, menuItemClassName, menuSeparatorClassName, overlaySurfaceClassName } from "./MenuShared";
 
 export const ContextMenu = ContextMenuPrimitive.Root;
 export const ContextMenuTrigger = ContextMenuPrimitive.Trigger;

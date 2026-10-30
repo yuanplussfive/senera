@@ -1,6 +1,6 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { useEffect, useRef } from "react";
-import { AppIcon, Dialog, DialogActionButton, DialogActions, DialogContent } from "../../shared/ui";
+import { Dialog, DialogActionButton, DialogActions, DialogContent } from "../../shared/ui";
 import type { ConfirmationIntent } from "./types";
 
 export function RenameDialog({
@@ -61,7 +61,7 @@ export function RenameDialog({
             ref={inputRef}
             value={value}
             onChange={(event) => onValueChange(event.target.value)}
-            className="h-10 w-full rounded-lg border border-ink-200 bg-paper-50 px-3 text-[13px] text-ink-900 outline-none transition placeholder:text-ink-300 focus:border-ink-300 focus:ring-2 focus:ring-accent-focus"
+            className="h-10 w-full rounded-lg border border-line bg-surface-panel px-3 text-[13px] text-content-primary outline-none transition placeholder:text-content-muted"
           />
         </form>
       </DialogContent>
@@ -82,7 +82,7 @@ export function ConfirmationDialog({
       <DialogContent
         title={intent?.title ?? ""}
         description={intent?.description}
-        className="w-[min(480px,calc(100vw-28px))]"
+        className="w-[min(420px,calc(100vw-28px))]"
         bodyClassName="p-4"
         footerClassName="px-4"
         footer={
@@ -102,18 +102,17 @@ export function ConfirmationDialog({
         onCloseAutoFocus={(event) => restoreDialogFocus(event, returnFocus)}
         onEscapeKeyDown={() => onOpenChange(false)}
       >
-        <div className="rounded-lg border border-ink-200/70 bg-paper-100/70 p-3">
-          <div className="flex gap-2.5">
-            <AppIcon icon="alert" className="mt-0.5 h-4 w-4 shrink-0 text-brick-500" />
+        {intent?.details.length ? (
+          <div className="rounded-lg border border-line bg-surface-muted p-3">
             <div className="space-y-1.5">
               {intent?.details.map((detail) => (
-                <p key={detail} className="text-[12.5px] leading-5 text-ink-600">
+                <p key={detail} className="text-[12.5px] leading-5 text-content-secondary">
                   {detail}
                 </p>
               ))}
             </div>
           </div>
-        </div>
+        ) : null}
       </DialogContent>
     </Dialog>
   );

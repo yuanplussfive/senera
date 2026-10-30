@@ -671,9 +671,9 @@ html:is([data-motion-level="reduced"], [data-motion-level="none"]) .motion-discl
   --theme-chat-composer-bg: rgb(var(--color-paper-100) / 0.8);
   --theme-chat-composer-focus-bg: rgb(var(--color-paper-50));
   --theme-session-active-bg: rgb(var(--color-paper-300));
-  --theme-tooltip-bg: rgb(var(--color-ink-900));
-  --theme-tooltip-fg: rgb(var(--color-paper-50));
-  --theme-tooltip-border: rgb(var(--color-paper-50) / 0.18);
+  --theme-tooltip-bg: var(--surface-panel);
+  --theme-tooltip-fg: var(--content-primary);
+  --theme-tooltip-border: var(--line-default);
   --theme-tooltip-shadow: var(--shadow-soft);
   --surface-canvas: var(--theme-bg);
   --surface-sidebar: var(--theme-sidebar-bg);
@@ -736,7 +736,8 @@ html:is([data-motion-level="reduced"], [data-motion-level="none"]) .motion-discl
   --modal-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --dialog-presence-exit-dur: 320ms;
   --overlay-radius: 10px;
-  --menu-surface-radius: 16px;
+  --overlay-surface-radius: 16px;
+  --overlay-surface-shadow: 0 4px 16.4px rgb(var(--color-ink-950) / 0.1);
   --menu-item-radius: 10px;
   --menu-open-dur: 220ms;
   --menu-close-dur: 130ms;
@@ -752,7 +753,6 @@ html:is([data-motion-level="reduced"], [data-motion-level="none"]) .motion-discl
   --menu-check-ease: cubic-bezier(0.2, 0.9, 0.2, 1.25);
   --icon-rotate-dur: 200ms;
   --icon-rotate-ease: cubic-bezier(0.4, 0, 0.2, 1);
-  --menu-surface-shadow: 0 4px 16.4px rgb(var(--color-ink-950) / 0.1);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -910,10 +910,6 @@ body {
   background: var(--theme-tooltip-bg);
   color: var(--theme-tooltip-fg);
   box-shadow: var(--theme-tooltip-shadow);
-}
-
-.theme-tooltip__arrow {
-  fill: var(--theme-tooltip-bg);
 }
 
 :where(
@@ -1138,7 +1134,7 @@ html[data-motion-level="none"] .senera-state-enter {
   --vinyasa-text-default: var(--content-primary);
   --vinyasa-text-muted: var(--content-muted);
   --vinyasa-border-color-default: var(--line-subtle);
-  --vinyasa-focus: var(--accent-focus);
+  --vinyasa-focus: var(--accent-focus-ring);
   min-width: 0;
   max-width: 100%;
   overflow-x: hidden;
@@ -1236,7 +1232,7 @@ html[data-motion-level="none"] .senera-state-enter {
 
 .runtime-vinyasa-step-label__trigger:focus-visible {
   border-radius: 4px;
-  box-shadow: 0 0 0 2px var(--accent-focus);
+  box-shadow: 0 0 0 2px var(--accent-focus-ring);
 }
 
 .runtime-vinyasa-step-label__preview {
@@ -2255,32 +2251,18 @@ html[data-motion-level="none"]::view-transition-new(root) {
 }
 
 /* Electron desktop chrome -------------------------------------------------- */
+/* The title bar is empty chrome: its controls sit at the surface edges, so it
+   never needs to resolve the conversation rail. The rail is owned by
+   .conversation-frame and .assistant-turn-content alone. */
 .chat-header-shell {
   --chat-header-inline-padding: 12px;
-  padding-inline-start: max(12px, calc((100cqw - min(64rem, 100cqw)) / 2 + 24px));
-  padding-inline-end: var(--chat-header-inline-padding);
+  padding-inline: var(--chat-header-inline-padding);
 }
 
 @media (min-width: 640px) {
   .chat-header-shell {
-    --chat-header-inline-padding: 24px;
+    --chat-header-inline-padding: 16px;
   }
-}
-
-/* Same specificity as the base rule above; source order must stay after it. */
-@container workspace-main (max-width: 720px) {
-  .chat-header-shell {
-    padding-inline-start: 14px;
-  }
-}
-
-[data-chat-run-status] {
-  line-height: 1;
-  white-space: nowrap;
-}
-
-[data-chat-run-status] [data-execution-status-icon] {
-  display: block;
 }
 
 html[data-senera-window-controls="custom"] {

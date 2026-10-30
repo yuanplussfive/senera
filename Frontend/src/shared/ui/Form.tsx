@@ -40,7 +40,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           ? "h-9 w-full min-w-0 rounded-md border border-line bg-surface-panel px-3 text-[13px] text-content-primary"
           : "h-11 w-full min-w-0 rounded-lg border border-line bg-surface-panel px-3.5 text-[14px] text-content-primary",
         "outline-none transition-[border-color,box-shadow,background-color] duration-150 placeholder:text-content-disabled",
-        "hover:border-line-strong focus:border-accent-border focus:ring-2 focus:ring-accent-focus",
+        "hover:border-line-strong",
         "aria-[invalid=true]:border-brick-500 aria-[invalid=true]:ring-2 aria-[invalid=true]:ring-brick-100/70",
         "disabled:cursor-not-allowed disabled:bg-surface-subtle disabled:opacity-60",
         className,

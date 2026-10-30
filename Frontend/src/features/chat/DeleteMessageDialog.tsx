@@ -39,11 +39,10 @@ export function DeleteMessageDialog({
         }
       >
         <div className="space-y-3">
-          <p className="text-[12.5px] leading-5 text-ink-600">{frontendMessage("chat.deleteDialog.warning")}</p>
           {message ? (
-            <div className="rounded-lg border border-ink-200/70 bg-paper-100/65 px-3 py-2.5">
-              <div className="mb-1 font-mono text-[10.5px] text-ink-400">{formatTime(message.createdAt)}</div>
-              <p className="line-clamp-3 whitespace-pre-wrap text-[12.5px] leading-5 text-ink-700">
+            <div className="rounded-lg border border-line bg-surface-muted px-3 py-2.5">
+              <div className="mb-1 font-mono text-[10.5px] text-content-muted">{formatTime(message.createdAt)}</div>
+              <p className="line-clamp-3 whitespace-pre-wrap text-[12.5px] leading-5 text-content-primary">
                 {message.content || frontendMessage("chat.deleteDialog.emptyMessage")}
               </p>
             </div>

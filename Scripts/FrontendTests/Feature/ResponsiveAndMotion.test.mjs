@@ -64,6 +64,23 @@ test("responsive mode derives stable layout capabilities from media query matche
   expect(inlineDesktop.viewport).toBe("desktop");
   expect(inlineDesktop.hasInlineWorkflowPanel).toBe(true);
   expect(desktop.supportsHover).toBe(true);
+  // A touch digitizer on a mouse-driven laptop must not trigger phone-sized controls.
+  expect(
+    deriveResponsiveMode({
+      ...defaultResponsiveQueryMatches,
+      tabletUp: true,
+      desktopUp: true,
+      hasAnyCoarsePointer: true,
+    }).prefersCompactControls,
+  ).toBe(false);
+  expect(
+    deriveResponsiveMode({
+      ...defaultResponsiveQueryMatches,
+      tabletUp: true,
+      desktopUp: true,
+      hasPrimaryCoarsePointer: true,
+    }).prefersCompactControls,
+  ).toBe(true);
   expect(areResponsiveQueryMatchesEqual(defaultResponsiveQueryMatches, defaultResponsiveQueryMatches)).toBe(true);
 });
 

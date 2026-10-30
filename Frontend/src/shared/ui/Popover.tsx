@@ -2,7 +2,7 @@ import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { OverlayLayerScope, useOverlayLayer, useOverlayPortalContainer } from "./overlayPortalScope";
 import { forwardRef } from "react";
 import { cn } from "../../lib/util";
-
+import { overlaySurfaceClassName } from "./MenuShared";
 export const Popover = PopoverPrimitive.Root;
 export const PopoverTrigger = PopoverPrimitive.Trigger;
 export const PopoverAnchor = PopoverPrimitive.Anchor;

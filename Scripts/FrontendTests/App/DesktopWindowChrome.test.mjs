@@ -195,8 +195,19 @@ describe("desktop window chrome", () => {
       ),
     );
 
-    expect(document.querySelector("[data-desktop-window-controls]")).toHaveClass("z-40");
-    expect(document.querySelector(".fixed.inset-0")).toHaveClass("z-50");
-    expect(screen.getByRole("dialog", { name: "模态窗口" })).toHaveClass("z-50");
+    // jsdom does not resolve Tailwind, so read the declared layer from the class list.
+    const layer = (element) => {
+      const token = (element?.className ?? "")
+        .split(/\s+/)
+        .map((name) => /^z-\[?(\d+)\]?$/.exec(name))
+        .find(Boolean);
+      return token ? Number(token[1]) : 0;
+    };
+    const controls = layer(document.querySelector("[data-desktop-window-controls]"));
+    const overlay = layer(document.querySelector(".fixed.inset-0"));
+    const dialog = layer(screen.getByRole("dialog", { name: "模态窗口" }));
+    expect(controls).toBeGreaterThan(0);
+    expect(overlay).toBeGreaterThan(controls);
+    expect(dialog).toBeGreaterThanOrEqual(overlay);
   });
 });
