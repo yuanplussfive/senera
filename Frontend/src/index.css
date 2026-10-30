@@ -1541,8 +1541,20 @@ html[data-motion-level="none"] .senera-state-enter {
   }
 }
 
+/* Layout-only containment: the hover metadata row is suspended below the
+   content box (see `[data-message-hover-meta]`), so it overhangs the item's
+   bottom padding by a few pixels. `paint` would clip that overhang. */
 .chat-message-item {
-  contain: layout paint;
+  contain: layout;
+}
+
+/* The suspended hover chrome overhangs the item's bottom padding. Each item is
+   its own stacking context (`contain: layout`), so the following item would
+   otherwise cover the overhang and steal the lower part of the buttons. */
+.chat-message-item:hover,
+.chat-message-item:focus-within {
+  position: relative;
+  z-index: 1;
 }
 
 /* Reply navigator: Grok-style local landmarks without restoring a native scrollbar track. */
