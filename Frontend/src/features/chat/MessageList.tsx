@@ -586,7 +586,7 @@ const LazyMessageListVirtualizer = lazy(() =>
 
 function MessageListVirtualizerLoadingState(): JSX.Element {
   return (
-    <div className="min-h-0 flex-1" data-message-list-loading>
+    <div className="flex min-h-0 flex-1 flex-col" data-message-list-loading>
       <ChatLoadingSurface label={frontendMessage("ui.loading")} />
     </div>
   );
