@@ -203,7 +203,7 @@ test("chat composer exposes the selected execution approval mode", async () => {
     ),
   );
 
-  await user.click(await screen.findByRole("button", { name: "替我审批" }));
+  await user.click(await screen.findByRole("button", { name: "自动审批" }));
   await user.click(await screen.findByText("完全访问"));
 
   expect(onSelectMode).toHaveBeenCalledWith("full_access");
@@ -415,7 +415,8 @@ test("chat panel fills the composer from an empty-state suggestion without sendi
 
   await user.click(screen.getByRole("button", { name: "整理日志" }));
 
-  expect(screen.getByText("空会话")).toBeInTheDocument();
+  // The suggestion fills the composer; the title bar no longer mirrors the session title.
+  expect(screen.queryByText("空会话")).not.toBeInTheDocument();
   expect(onSend).not.toHaveBeenCalled();
   expect(screen.getByRole("textbox", { name: "输入消息" })).toHaveValue("整理日志");
 });

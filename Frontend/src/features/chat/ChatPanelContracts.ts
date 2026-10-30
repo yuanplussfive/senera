@@ -30,10 +30,6 @@ export interface ChatModelConfig {
   onSelectModelProvider: (id: string) => void;
   selectedThinkingLevel: ModelThinkingLevel | null;
   onSelectThinkingLevel: (level: ModelThinkingLevel) => void;
-  /** Drops the conversation's own model so it follows the configured default again. */
-  onApplyDefaultModel?: () => void;
-  /** Opens provider settings so another model can be configured. */
-  onAddModel?: () => void;
 }
 
 export interface ChatApprovalConfig {

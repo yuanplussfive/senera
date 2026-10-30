@@ -95,7 +95,6 @@ export function App({
   const selectedModelProviderId = useStore((s) => s.selectedModelProviderId);
   const defaultModelProviderId = useStore((s) => s.defaultModelProviderId);
   const selectModelProvider = useStore((s) => s.selectModelProvider);
-  const applyDefaultModelToActiveSession = useStore((s) => s.applyDefaultModelToActiveSession);
   const selectedThinkingLevel = useStore((s) => s.selectedThinkingLevel);
   const selectThinkingLevel = useStore((s) => s.selectThinkingLevel);
   const userProfile = useStore((s) => s.userProfile);
@@ -517,12 +516,6 @@ export function App({
                           onSelectModelProvider: selectModelProvider,
                           selectedThinkingLevel,
                           onSelectThinkingLevel: selectThinkingLevel,
-                          onApplyDefaultModel: applyDefaultModelToActiveSession,
-                          onAddModel: () => {
-                            void settingsController
-                              .openSettings("model-service")
-                              .catch(() => toast.error(frontendMessage("settings.loadFailed")));
-                          },
                         }}
                         runtime={{
                           workspaceId: workspaceIdentity,

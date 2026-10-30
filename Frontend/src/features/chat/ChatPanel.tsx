@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { useMemo } from "react";
 import { useComposerDraft } from "./useComposerDraft";
-import { readActiveRun, useStore, DEFAULT_SESSION_TITLE } from "../../store/sessionStore";
+import { readActiveRun, useStore } from "../../store/sessionStore";
 import type { ChatMessage, RunRecord } from "../../store/sessionStore";
 import { useChatState } from "../../store/selectors/chatSelectors";
 import { ErrorBoundary } from "../../shared/ui";
@@ -59,11 +59,6 @@ export function ChatPanel({
     <UploadPreviewProvider>
       <main className="relative flex h-full min-w-0 flex-1 flex-col bg-transparent" data-agent-workspace>
         <ChatHeader
-          title={session?.title ?? DEFAULT_SESSION_TITLE}
-          runStatus={currentRun?.status}
-          waitingForApproval={currentRun?.activeFlags?.includes("waiting_for_approval") === true}
-          waitingForInput={currentRun?.activeFlags?.includes("waiting_for_input") === true}
-          sandboxStatus={runtime.sandboxStatus}
           onOpenSessionPanel={navigationActions?.onOpenSessionPanel}
           onOpenWorkflowPanel={navigationActions?.onOpenWorkflowPanel}
         />
@@ -144,12 +139,14 @@ export function ChatPanel({
             socketStatus: runtime.socketStatus,
             uploadUrl: runtime.uploadUrl,
             uploadCsrfToken: runtime.uploadCsrfToken,
+            sandboxStatus: runtime.sandboxStatus,
           }}
           runtimeUsage={runtimeUsage}
           activationCatalog={activationCatalog}
           onSend={messageActions.onSend}
           onCancel={messageActions.onCancel}
           onOpenSettings={navigationActions?.onOpenSettings}
+          onOpenExecutionPanel={navigationActions?.onOpenWorkflowPanel}
         />
       </main>
     </UploadPreviewProvider>

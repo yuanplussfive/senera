@@ -1,12 +1,13 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { buildStyles, CircularProgressbar } from "react-circular-progressbar";
 import type { UploadAttachmentData } from "../../api/eventTypes";
 import type {
   AgentActivationCatalogSnapshot,
   ExplicitActivationReference,
   ExplicitActivationSet,
+  SandboxStatusSnapshotData,
 } from "../../api/eventTypes";
-import { WorkspaceMenu } from "../../shared/workspace/WorkspaceMenu";
+import { ExecutionContextChip } from "../../shared/workspace/ExecutionContextChip";
 import { useWorkspaceResourceController } from "../../shared/workspace/WorkspaceResourceProvider";
 import type { UploadProgress } from "../../api/uploadClient";
 import { cn, formatFileSize } from "../../lib/util";
@@ -44,8 +45,6 @@ import {
   readActivationTokens,
   stepActivationIndex,
 } from "./ChatActivationPalette";
-
-const ApprovalModeControl = lazy(() => import("./ApprovalModeControl"));
 
 const DESKTOP_TEXTAREA_MAX_HEIGHT = 240;
 const TOUCH_TEXTAREA_MAX_HEIGHT = 160;
@@ -87,6 +86,7 @@ export interface ChatComposerProps {
     socketStatus: string;
     uploadUrl: string;
     uploadCsrfToken?: string;
+    sandboxStatus?: SandboxStatusSnapshotData | null;
   };
   runtimeUsage?: RuntimeUsageSnapshot;
   onSend: (
@@ -97,6 +97,8 @@ export interface ChatComposerProps {
   ) => boolean;
   onCancel: () => void;
   onOpenSettings?: (section: SettingsSectionId, returnFocus?: HTMLElement | null) => void;
+  /** Where the boundary explanation lives; the chip links to it when it needs attention. */
+  onOpenExecutionPanel?: () => void;
   activationCatalog?: AgentActivationCatalogSnapshot | null;
 }
 
@@ -115,6 +117,7 @@ export function ChatComposer({
   onSend,
   onCancel,
   onOpenSettings,
+  onOpenExecutionPanel,
   activationCatalog,
 }: ChatComposerProps): JSX.Element {
   const locale = useFrontendLocale();
@@ -362,7 +365,11 @@ export function ChatComposer({
           onDragLeave={attachments.handleDragLeave}
           onDrop={attachments.handleDrop}
           className={cn(
-            "relative flex min-w-0 flex-col gap-2 rounded-2xl border border-line-subtle bg-surface-raised px-4 pb-3 pt-3.5 shadow-[0_12px_32px_-16px_rgb(43_40_32_/_0.10)] transition-[background-color,border-color,box-shadow] duration-150",
+            // The card separates from the canvas by its shadow, not by a drawn line:
+            // a full-strength border reads as an outlined input box, while the
+            // prototype reads as a raised surface. The border stays only to keep the
+            // edge crisp on borders of the same value as the canvas.
+            "relative flex min-w-0 flex-col gap-2 rounded-2xl border border-line-subtle/50 bg-surface-raised px-4 pb-3 pt-3.5 shadow-[0_1px_2px_rgb(43_40_32_/_0.04),0_12px_32px_-16px_rgb(43_40_32_/_0.14)] transition-[background-color,border-color,box-shadow] duration-150",
             attachments.isDraggingFiles && "border-accent-border bg-accent-surface ring-2 ring-accent-focus",
           )}
           data-chat-composer
@@ -423,15 +430,19 @@ export function ChatComposer({
           ) : null}
 
           <div className="flex min-w-0 items-center gap-1.5">
-            <div className="flex min-w-0 flex-1 items-center gap-1">
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
               <DropdownMenu modal={false} open={toolkitOpen} onOpenChange={setToolkitOpen}>
                 <DropdownMenuTrigger asChild>
+                  {/* Icon-only actions in this row hover as a circle, like the send
+                      button; labelled chips stay rounded-md. Same h-7 box as the
+                      chips, and the shared IconButton hover ring is dropped so the
+                      whole row shares one hover language. */}
                   <IconButton
                     label={frontendChatMessage("chat.composer.toolkit.tooltip")}
                     tooltip={frontendChatMessage("chat.composer.toolkit.tooltip")}
                     tooltipSide="top"
                     touchSafe
-                    className="[&[data-state=open]>svg]:rotate-45"
+                    className="h-8 w-8 rounded-full hover:shadow-none data-[state=open]:bg-surface-muted [&[data-state=open]>svg]:rotate-45"
                   >
                     <AppIcon
                       icon="plus"
@@ -441,7 +452,6 @@ export function ChatComposer({
                   </IconButton>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" side="top" sideOffset={6} alignOffset={6}>
-                  <WorkspaceMenu onClose={() => setToolkitOpen(false)} />
                   <DropdownMenuItem
                     icon={<AppIcon icon="paperclip" size={16} />}
                     disabled={disabled || running || cancelling}
@@ -489,28 +499,16 @@ export function ChatComposer({
                   ) : null}
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Suspense
-                fallback={
-                  <span
-                    className={cn(
-                      "inline-flex h-7 w-24 shrink-0 items-center justify-center text-content-muted",
-                      prefersCompactControls && "h-11 w-11",
-                    )}
-                    role="status"
-                    aria-busy="true"
-                    aria-label={frontendMessage("ui.loading")}
-                  >
-                    <Spinner size="xs" />
-                  </span>
-                }
-              >
-                <ApprovalModeControl
-                  disabled={disabled || running || cancelling}
-                  mode={approvalConfig.mode}
-                  onSelect={approvalConfig.onSelectMode}
-                  prefersCompactControls={prefersCompactControls}
-                />
-              </Suspense>
+              <ExecutionContextChip
+                sandboxStatus={runtime.sandboxStatus}
+                approval={{
+                  disabled: disabled || running || cancelling,
+                  mode: approvalConfig.mode,
+                  onSelect: approvalConfig.onSelectMode,
+                }}
+                prefersCompactControls={prefersCompactControls}
+                onOpenExecutionPanel={onOpenExecutionPanel}
+              />
             </div>
 
             <div className="flex min-w-0 shrink-0 items-center gap-1" data-composer-trailing-controls>
@@ -523,8 +521,6 @@ export function ChatComposer({
                 selectedThinkingLevel={modelConfig.selectedThinkingLevel}
                 onSelect={modelConfig.onSelectModelProvider}
                 onSelectThinkingLevel={modelConfig.onSelectThinkingLevel}
-                onUseDefault={modelConfig.onApplyDefaultModel}
-                onAddModel={modelConfig.onAddModel}
                 prefersCompactControls={prefersCompactControls}
               />
               {composerAction === "cancelling" ? (
@@ -578,9 +574,12 @@ export function ChatComposer({
                     className={cn(
                       "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-0 transition-[background-color,border-color,color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-chat-composer-focus-bg)] disabled:pointer-events-none",
                       prefersCompactControls && "min-h-11 min-w-11",
+                      // Sendable stays the dark solid state; the only change on hover is
+                      // a slight darkening. Hues are reserved for the accent actions,
+                      // so the primary action never repaints itself on hover.
                       canSend
-                        ? "bg-content-strong text-content-inverse hover:bg-accent-solid hover:text-accent-on-solid active:bg-accent-solid-pressed"
-                        : "bg-surface-muted text-content-disabled",
+                        ? "bg-content-strong text-content-inverse hover:bg-content-primary active:bg-content-strong"
+                        : "bg-surface-muted text-content-secondary",
                     )}
                     aria-label={
                       composerAction === "steer"
@@ -623,8 +622,8 @@ function ContextUsageIndicator({ usage }: { usage?: RuntimeContextUsage }): JSX.
               remaining: remainingPercent,
             })}
           </span>
-          <span className="text-ink-300">·</span>
-          <span className="text-ink-300">
+          <span className="text-content-muted">·</span>
+          <span className="text-content-secondary">
             {frontendMessage("chat.composer.contextUsageTokens", {
               used: formatComposerTokenCount(used),
               total: formatComposerTokenCount(usage.contextWindow),
