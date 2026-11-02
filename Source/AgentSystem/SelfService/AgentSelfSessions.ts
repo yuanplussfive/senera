@@ -5,7 +5,24 @@ import type {
   AgentSelfSessionSummary,
 } from "./AgentSelfServiceTypes.js";
 import { resolveModelProviderCatalog } from "../AgentDefaults.js";
-import { createModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
+import {
+  createModelProviderMetadata,
+  type AgentEffectiveModelReceipt,
+  type AgentSessionModelPreference,
+} from "../ModelEndpoints/AgentModelMetadata.js";
+import { formatAgentTimeDisplay } from "../Time/AgentTime.js";
+
+function projectModelReceiptDisplay(
+  receipt: AgentEffectiveModelReceipt | undefined,
+): AgentEffectiveModelReceipt | undefined {
+  return receipt ? { ...receipt, effectiveAt: formatAgentTimeDisplay(receipt.effectiveAt) } : undefined;
+}
+
+function projectModelPreferenceDisplay(
+  preference: AgentSessionModelPreference | undefined,
+): AgentSessionModelPreference | undefined {
+  return preference ? { ...preference, updatedAt: formatAgentTimeDisplay(preference.updatedAt) } : undefined;
+}
 
 /** Session catalog for `senera sessions list`. Hosts without a session store
  * fail deterministically instead of approximating an empty list. */
@@ -22,14 +39,19 @@ export function listAgentSelfSessions(port: AgentSelfServicePort): {
       error: "sessions_unavailable",
     };
   }
-  const sessions = [...port.sessions.list()].sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
+  const sessions = [...port.sessions.list()]
+    .sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))
+    .map((session) => ({
+      ...session,
+      ...(session.updatedAt ? { updatedAt: formatAgentTimeDisplay(session.updatedAt) } : {}),
+    }));
   if (sessions.length === 0) {
     return { ok: true, text: "暂无会话记录。", data: { sessions } };
   }
   const text = sessions
     .map(
       (session) =>
-        `${session.id} · ${session.title} · ${session.messageCount} 条消息 · ${session.updatedAt ?? ""}${
+        `${session.id} · ${session.title} · ${session.messageCount} 条消息 · ${formatAgentTimeDisplay(session.updatedAt)}${
           session.modelProviderId ? ` · model=${session.modelProviderId}` : ""
         }`,
     )
@@ -71,10 +93,10 @@ export async function executeAgentSelfSessionModel(
           : `会话 ${sessionId} 尚无已执行轮次模型。下一轮将按请求、会话偏好或系统默认解析。`,
       data: {
         sessionId,
-        effective: effective ?? null,
-        preference: runtime?.preference ?? preference ?? null,
+        effective: projectModelReceiptDisplay(effective) ?? null,
+        preference: projectModelPreferenceDisplay(runtime?.preference ?? preference) ?? null,
         default: { modelProviderId: defaultProvider.id, ...defaultProvider },
-        lastRun: runtime?.lastRun ?? null,
+        lastRun: projectModelReceiptDisplay(runtime?.lastRun) ?? null,
         effectiveAt: runtime?.active ? "current" : effective ? "last_run" : "next_turn",
       },
     };
@@ -95,6 +117,10 @@ export async function executeAgentSelfSessionModel(
       result.status === "updated"
         ? `已将会话 ${sessionId} 的下一轮模型设置为 ${result.modelProviderId}。当前轮次保持不变。`
         : `会话 ${sessionId} 已经使用 ${result.modelProviderId}，无需重复设置。`,
-    data: { sessionId, preference: result, effectiveAt: "next_turn" },
+    data: {
+      sessionId,
+      preference: { ...result, updatedAt: formatAgentTimeDisplay(result.updatedAt) },
+      effectiveAt: "next_turn",
+    },
   };
 }

@@ -4,6 +4,8 @@ import path from "node:path";
 import { z } from "zod";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
+import { sha256Hex } from "../Core/AgentHash.js";
+import { isAgentBase64 } from "../Core/AgentBase64.js";
 import { isMissingFileError, removeAgentPathWithRetry, writeFileAtomic } from "../Core/AgentFs.js";
 import { AgentResourceAccessIntents } from "../Safety/AgentResourceAccessPolicy.js";
 import { SeneraWorkspaceBoundary, SeneraWorkspaceBoundaryError } from "../Execution/SeneraWorkspaceBoundary.js";
@@ -36,13 +38,15 @@ export interface AgentWorkspaceCheckpointRestoreInput {
   readonly targetKind?: "before" | "after";
   readonly artifactRoot?: string;
   readonly signal?: AbortSignal;
+  /** User-facing turn undo must never report success after skipping a path. */
+  readonly requireComplete?: boolean;
 }
 
 const WorkspaceFileContentSchema = z.discriminatedUnion("state", [
   z
     .object({
       state: z.literal("captured"),
-      encoding: z.literal("utf8"),
+      encoding: z.enum(["utf8", "base64"]),
       byteLength: z.number().int().nonnegative(),
       lineCount: z.number().int().nonnegative(),
       text: z.string().optional(),
@@ -187,6 +191,17 @@ export async function restoreAgentWorkspaceCheckpoint(
   }
   const entries = sortRestoreEntries(input.target.files);
   const preparedTexts = await prepareRestoreTexts(entries, input.artifactRoot, input.signal);
+  if (input.requireComplete) {
+    for (const entry of entries) {
+      if (
+        entry.exists &&
+        entry.kind !== "directory" &&
+        (entry.kind !== "file" || preparedTexts.get(entry.path) === undefined)
+      ) {
+        throw new AgentWorkspaceCheckpointConflictError(`The before-image of ${entry.path} is not restorable.`);
+      }
+    }
+  }
   // Artifact reads can be large. Revalidate after they complete so a concurrent
   // writer cannot change the workspace during preparation and still receive a
   // restore based on the old revision.
@@ -426,7 +441,7 @@ async function assertUncoveredTargetPathsAbsent(input: AgentWorkspaceCheckpointR
 async function restoreFile(
   entry: ToolWorkspaceFileSnapshot,
   boundary: SeneraWorkspaceBoundary,
-  preparedTexts: ReadonlyMap<string, string | undefined>,
+  preparedTexts: ReadonlyMap<string, Buffer | undefined>,
 ): Promise<{ readonly kind: "restored" } | { readonly kind: "skipped"; readonly reason: string }> {
   const resolved = await boundary.resolve(entry.path, AgentResourceAccessIntents.Replace);
   const absolutePath = resolved.absolutePath;
@@ -468,18 +483,23 @@ async function prepareRestoreTexts(
   entries: readonly ToolWorkspaceFileSnapshot[],
   artifactRoot: string | undefined,
   signal: AbortSignal | undefined,
-): Promise<ReadonlyMap<string, string | undefined>> {
-  const prepared = new Map<string, string | undefined>();
+): Promise<ReadonlyMap<string, Buffer | undefined>> {
+  const prepared = new Map<string, Buffer | undefined>();
   for (const entry of entries) {
     throwIfAborted(signal);
     if (entry.kind !== "file" || !entry.exists || entry.content?.state !== "captured") continue;
     const content = entry.content;
     const artifactReference = content.relativeArtifactPath ?? content.artifactPath;
-    const text =
-      content.text ??
-      (artifactReference && artifactRoot ? await readArtifactText(artifactReference, artifactRoot, signal) : undefined);
-    if (text !== undefined) validateCapturedText(entry, text);
-    prepared.set(entry.path, text);
+    if (content.text !== undefined && content.encoding === "base64" && !isAgentBase64(content.text))
+      throw new AgentWorkspaceCheckpointConflictError(`Invalid binary checkpoint content for ${entry.path}.`);
+    const bytes =
+      content.text !== undefined
+        ? Buffer.from(content.text, content.encoding)
+        : artifactReference && artifactRoot
+          ? await readArtifactContent(artifactReference, artifactRoot, signal)
+          : undefined;
+    if (bytes !== undefined) validateCapturedContent(entry, bytes);
+    prepared.set(entry.path, bytes);
   }
   return prepared;
 }
@@ -564,13 +584,15 @@ async function readLiveWorkspaceSnapshot(
     const kind = stat.isFile() ? "file" : stat.isDirectory() ? "directory" : "other";
     const hash = stat.isFile()
       ? await hashWorkspaceFile(resolved.absolutePath)
-      : hashWorkspaceText(`${kind}:${stat.size}:${Math.floor(stat.mtimeMs)}`);
+      : kind === "directory"
+        ? hashWorkspaceText("directory")
+        : hashWorkspaceText(`${kind}:${stat.size}:${Math.floor(stat.mtimeMs)}`);
     files.push({
       ...entry,
       absolutePath: resolved.absolutePath,
       exists: true,
       kind,
-      size: stat.size,
+      size: kind === "directory" ? 0 : stat.size,
       mtimeMs: stat.mtimeMs,
       hash,
     });
@@ -578,29 +600,29 @@ async function readLiveWorkspaceSnapshot(
   return { capturedAt: expected.capturedAt, files, warnings: expected.warnings };
 }
 
-function validateCapturedText(entry: ToolWorkspaceFileSnapshot, text: string): void {
+function validateCapturedContent(entry: ToolWorkspaceFileSnapshot, bytes: Buffer): void {
   const expectedBytes = entry.content?.state === "captured" ? entry.content.byteLength : undefined;
-  const actualBytes = Buffer.byteLength(text, "utf8");
+  const actualBytes = bytes.byteLength;
   if (expectedBytes !== undefined && actualBytes !== expectedBytes) {
     throw new AgentWorkspaceCheckpointConflictError(
       `Workspace checkpoint content length mismatch for ${entry.path}; expected ${expectedBytes}, received ${actualBytes}.`,
     );
   }
   const expectedHash = entry.hash;
-  if (expectedHash && hashWorkspaceText(text) !== expectedHash) {
+  if (expectedHash && `sha256:${sha256Hex(bytes)}` !== expectedHash) {
     throw new AgentWorkspaceCheckpointConflictError(`Workspace checkpoint content hash mismatch for ${entry.path}.`);
   }
 }
 
-async function readArtifactText(
+async function readArtifactContent(
   filePath: string,
   artifactRoot: string,
   signal: AbortSignal | undefined,
-): Promise<string> {
+): Promise<Buffer> {
   throwIfAborted(signal);
   const boundary = new SeneraWorkspaceBoundary({ workspaceRoot: artifactRoot, linkPolicy: "deny" });
   const resolved = await boundary.resolve(filePath, AgentResourceAccessIntents.Read);
-  const text = await fs.readFile(resolved.absolutePath, "utf8");
+  const text = await fs.readFile(resolved.absolutePath);
   throwIfAborted(signal);
   return text;
 }
@@ -613,6 +635,10 @@ async function removeFile(filePath: string): Promise<void> {
     if (entries.length > 0) {
       throw new AgentWorkspaceCheckpointConflictError(`Refusing to remove non-empty workspace directory: ${filePath}`);
     }
+    // Keep the emptiness check atomic at removal too: a concurrent writer may
+    // add an unrelated file after readdir. Recursive removal would erase it.
+    await fs.rmdir(filePath);
+    return;
   }
-  await removeAgentPathWithRetry(filePath, { recursive: stat.isDirectory() && !stat.isSymbolicLink() });
+  await removeAgentPathWithRetry(filePath);
 }

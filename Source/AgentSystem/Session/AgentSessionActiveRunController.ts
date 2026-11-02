@@ -1,7 +1,10 @@
+import { AgentSessionInputDelivery } from "./AgentSessionInputDelivery.js";
+import type { AgentSessionMessageRequest } from "./AgentSessionMessageCoordinator.js";
+import type { AgentSessionInputBoundary, AgentSessionQueuedInput } from "./AgentSessionQueuedInput.js";
+export { AgentSessionQueuedMessageConflictError } from "./AgentSessionQueuedInput.js";
 import { AgentCancellationError } from "../Core/AgentCancellation.js";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
 import { readAgentSessionRecoveryModes } from "./AgentSessionRunRecovery.js";
-import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import { releaseAgentLifecycleResources } from "../Core/AgentLifecycleResource.js";
 import { createOpaqueId, createRequestId } from "../Core/AgentIds.js";
 import type { AgentConversationPolicy } from "../Conversation/AgentConversationPolicy.js";
@@ -12,19 +15,9 @@ import { AgentEventKinds, emitAgentEvent, type AgentDomainEvent, type AgentEvent
 import { agentErrorMessage, type AgentLocalizedMessage } from "../I18n/AgentMessageCatalog.js";
 import { projectAgentErrorMessage, projectAgentMessage } from "../I18n/AgentMessageProjection.js";
 import type { AgentPiActiveSessionRegistry } from "../Pi/AgentPiActiveSessionRegistry.js";
-import {
-  AgentPiDiagnosticSources,
-  emitAgentPiDiagnostic,
-  type AgentPiDiagnosticSink,
-} from "../Pi/AgentPiDiagnostics.js";
-import type { AgentPiSession } from "../Pi/AgentPiRuntimeTypes.js";
-import type { ImageContent } from "@earendil-works/pi-ai";
-import { projectAgentPiImageAttachments } from "../Pi/AgentPiImageAttachmentProjector.js";
+import { type AgentPiDiagnosticSink } from "../Pi/AgentPiDiagnostics.js";
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
-import {
-  resolveAgentTurnAttachmentReferences,
-  type AgentTurnAttachmentUploadStore,
-} from "../Prompt/AgentTurnRequestComposer.js";
+import { type AgentTurnAttachmentUploadStore } from "../Prompt/AgentTurnRequestComposer.js";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 import { AgentSessionStatuses, type AgentSession } from "./AgentSession.js";
 import { clearAgentSessionCancellation, withAgentSessionCancellationPending } from "./AgentSessionLifecycleMetadata.js";
@@ -34,6 +27,7 @@ import {
   withAgentPiSessionLifecycle,
 } from "../Pi/AgentPiSessionLifecycleMetadata.js";
 import type { AgentPiSessionMutationPort } from "../Pi/AgentPiSessionMutationService.js";
+import type { AgentImageNormalizationService } from "../Images/AgentImageNormalizationService.js";
 import { AgentSessionMessageQueueModes, type AgentSessionMessageQueueMode } from "./AgentSessionMessageQueueMode.js";
 import {
   AgentSessionRunSettlementTimeoutError,
@@ -41,18 +35,14 @@ import {
   waitForAgentSessionRunSettlement,
 } from "./AgentSessionRunControlPolicy.js";
 import type { AgentSessionRunResource } from "./AgentSessionRunResource.js";
-import {
-  cloneAgentSessionState,
-  mergeSessionConversationEntries,
-  projectSessionUserEntry,
-  replaceAgentSessionState,
-} from "./AgentSessionRunProjection.js";
+import { cloneAgentSessionState, replaceAgentSessionState } from "./AgentSessionRunProjection.js";
 import { AgentSessionRunSnapshotWriter } from "./AgentSessionRunSnapshotWriter.js";
 import type { AgentSessionStore } from "./AgentSessionStore.js";
 import type { AgentConversationEntryMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { AgentExplicitActivationSet } from "../Activation/AgentActivationTypes.js";
 
 export interface AgentSessionActiveRunControllerOptions {
+  readonly onQueuedInputAccepted?: import("./AgentSessionInputDelivery.js").AgentSessionInputDeliveryOptions["onQueuedInputAccepted"];
   readonly store: AgentSessionStore;
   readonly conversationProjector: AgentConversationProjector;
   readonly conversationPolicy: AgentConversationPolicy;
@@ -62,6 +52,7 @@ export interface AgentSessionActiveRunControllerOptions {
   readonly piSessions?: AgentPiActiveSessionRegistry;
   readonly piDiagnostics?: AgentPiDiagnosticSink;
   readonly uploadStore?: AgentTurnAttachmentUploadStore;
+  readonly imageNormalization?: Pick<AgentImageNormalizationService, "normalize">;
   readonly logger?: AgentLogger;
 }
 
@@ -71,7 +62,7 @@ export interface AgentSessionActiveRun {
   readonly onEvent?: AgentEventSink;
   readonly settled: Promise<void>;
   readonly resolveSettled: () => void;
-  readonly queuedMessages: Map<string, AgentSessionQueuedMessageAdmission>;
+  readonly messageRequest: AgentSessionMessageRequest;
   stopPromise?: Promise<void>;
   cancellationPromise?: Promise<void>;
   cancellationCleanupPromise?: Promise<void>;
@@ -80,32 +71,20 @@ export interface AgentSessionActiveRun {
   terminalStatus?: "completed" | "failed" | "cancelled";
 }
 
-interface AgentSessionQueuedMessageAdmission {
-  readonly payloadHash: string;
-  readonly accepted: Promise<boolean>;
-}
-
-export class AgentSessionQueuedMessageConflictError extends AgentBaseError {
-  constructor(
-    readonly sessionId: string,
-    readonly requestId: string,
-  ) {
-    super(`Queued session message identity conflict: ${sessionId}/${requestId}`);
-  }
-}
-
 export type AgentSessionAvailability =
   { kind: "available"; current: AgentSession } | { kind: "busy"; current: AgentSession };
 
 export class AgentSessionActiveRunController {
   private readonly activeRuns = new Map<string, AgentSessionActiveRun>();
   private readonly cancellingRuns = new Map<string, AgentSessionActiveRun>();
+  private readonly inputs: AgentSessionInputDelivery;
   private readonly snapshots: AgentSessionRunSnapshotWriter;
   private readonly runResources: readonly AgentSessionRunResource[];
   private acceptingRuns = true;
   private shutdownPromise?: Promise<void>;
 
   constructor(private readonly options: AgentSessionActiveRunControllerOptions) {
+    this.inputs = new AgentSessionInputDelivery(options);
     this.snapshots = new AgentSessionRunSnapshotWriter(options.store);
     this.runResources = [...(options.runResources ?? [])];
   }
@@ -129,7 +108,12 @@ export class AgentSessionActiveRunController {
     session.activeRequest = activeRequest;
   }
 
-  register(sessionId: string, requestId: string, onEvent?: AgentEventSink): AgentSessionActiveRun {
+  register(
+    sessionId: string,
+    requestId: string,
+    onEvent: AgentEventSink | undefined,
+    messageRequest: AgentSessionMessageRequest,
+  ): AgentSessionActiveRun {
     if (this.activeRuns.has(sessionId)) throw new Error(`Session ${sessionId} already has an active run.`);
     const settlement = createRunSettlement();
     const run: AgentSessionActiveRun = {
@@ -138,7 +122,7 @@ export class AgentSessionActiveRunController {
       onEvent,
       settled: settlement.promise,
       resolveSettled: settlement.resolve,
-      queuedMessages: new Map(),
+      messageRequest,
     };
     this.activeRuns.set(sessionId, run);
     return run;
@@ -209,76 +193,51 @@ export class AgentSessionActiveRunController {
     onEvent?: AgentEventSink;
   }): Promise<boolean> {
     const run = this.activeRuns.get(request.session.id);
-    const handle = this.options.piSessions?.get(request.session.id);
-    if (!run || !handle || handle.requestId !== run.requestId) return false;
+    if (!run || run.controller.signal.aborted || run.terminalStatus) return false;
+    const { session, ...input } = request;
+    await this.inputs.accept(
+      {
+        ...run.messageRequest,
+        ...input,
+        sessionId: session.id,
+        requestId: request.requestId ?? createRequestId(),
+        onEvent: request.onEvent ?? run.onEvent,
+      },
+      run.requestId,
+    );
+    return true;
+  }
 
+  async deferMessage(request: AgentSessionMessageRequest): Promise<void> {
+    this.assertAcceptingRuns();
     const requestId = request.requestId?.trim() || createRequestId();
-    const payloadHash = sha256HexOfCanonicalJson({
-      version: 1,
-      parentRequestId: run.requestId,
-      queueMode: request.queueMode,
-      input: request.input,
-      attachments: request.attachments ?? [],
-      metadata: request.metadata ?? null,
-      interaction: request.interaction ?? null,
-      activations: request.activations ?? null,
-    });
-    const existing = run.queuedMessages.get(requestId);
-    if (existing) {
-      if (existing.payloadHash !== payloadHash) {
-        throw new AgentSessionQueuedMessageConflictError(request.session.id, requestId);
-      }
-      return existing.accepted;
+    await this.inputs.accept({ ...request, requestId }, requestId);
+  }
+
+  async inputBoundary(
+    boundary: AgentSessionInputBoundary,
+    delivered: (input: AgentSessionQueuedInput) => void | Promise<void>,
+  ): Promise<void> {
+    const run = this.activeRuns.get(boundary.sessionId);
+    const handle = this.options.piSessions?.get(boundary.sessionId);
+    if (!run || !handle || run.requestId !== boundary.requestId || handle.requestId !== run.requestId) return;
+    await this.inputs.boundary(boundary, handle, run.onEvent, delivered, run.controller.signal);
+  }
+
+  settleQueuedInputs(sessionId: string, run: AgentSessionActiveRun, terminalCommitted: boolean): Promise<void> {
+    if (!terminalCommitted) {
+      this.inputs.release(sessionId, run.requestId);
+      return Promise.resolve();
     }
-
-    const accepted = Promise.resolve().then(async () => {
-      const timestamp = new Date().toISOString();
-      const userEntry = projectSessionUserEntry(
-        this.options.conversationProjector,
-        requestId,
-        {
-          ...request,
-          metadata: request.metadata,
-          activations: request.activations,
-          queue: { parentRequestId: run.requestId, mode: request.queueMode },
-        },
-        timestamp,
-      );
-      const [attachmentReferences, images] = await Promise.all([
-        resolveAgentTurnAttachmentReferences(request.attachments, this.options.uploadStore),
-        projectAgentPiImageAttachments({
-          attachments: request.attachments,
-          model: handle.session.model,
-          uploadStore: this.options.uploadStore,
-        }),
-      ]);
-      const renderedInput = this.options.conversationPolicy.renderCurrentUserMessage(
-        userEntry,
-        request.interaction,
-        attachmentReferences,
-      );
-      await ActiveRunQueueHandlers[request.queueMode](handle.session, renderedInput, images);
-
-      this.options.store.persistEntries(request.session.id, [userEntry]);
-      request.session.conversation = mergeSessionConversationEntries([...request.session.conversation, userEntry]);
-      request.session.updatedAt = timestamp;
-      this.options.store.persistMetadata(request.session);
-
-      await emitAgentPiDiagnostic(this.options.piDiagnostics, {
-        context: { sessionId: request.session.id, requestId: run.requestId, step: handle.step },
-        source: AgentPiDiagnosticSources.Substrate,
-        name: `runtime_queue.${request.queueMode}.accepted`,
-        details: {
-          queueMode: request.queueMode,
-          steeringRequestId: requestId,
-          inputChars: request.input.length,
-          attachmentCount: request.attachments?.length ?? 0,
-        },
-      });
-      return true;
-    });
-    run.queuedMessages.set(requestId, { payloadHash, accepted });
-    return accepted;
+    return run.terminalStatus
+      ? this.inputs.settle(
+          sessionId,
+          run.requestId,
+          run.terminalStatus,
+          run.onEvent,
+          !this.acceptingRuns || run.messageRequest.sessionOwnership?.type === "child_run",
+        )
+      : Promise.resolve();
   }
 
   async requestActiveRunFinalAnswer(request: { sessionId: string; instruction: string }): Promise<boolean> {
@@ -290,7 +249,10 @@ export class AgentSessionActiveRunController {
 
   async steerActiveRun(request: {
     sessionId: string;
+    requestId?: string;
+    queueMode?: AgentSessionMessageQueueMode;
     input: string;
+    metadata?: AgentConversationEntryMetadata;
     interaction?: AgentInteractionContext;
     onEvent?: AgentEventSink;
   }): Promise<boolean> {
@@ -299,8 +261,10 @@ export class AgentSessionActiveRunController {
     return this.enqueueActiveRunMessage({
       session: lookup.session,
       input: request.input,
+      requestId: request.requestId,
       interaction: request.interaction,
-      queueMode: AgentSessionMessageQueueModes.Steer,
+      queueMode: request.queueMode ?? AgentSessionMessageQueueModes.Steer,
+      metadata: request.metadata,
       onEvent: request.onEvent,
     });
   }
@@ -766,6 +730,20 @@ export function createAgentSessionRunFailedEvent(
   };
 }
 
+export function createAgentSessionMessageQueuedEvent(input: {
+  sessionId: string;
+  requestId: string;
+  parentRequestId: string;
+  mode: AgentSessionMessageQueueMode;
+}): AgentDomainEvent {
+  return {
+    eventId: createOpaqueId("event"),
+    kind: AgentEventKinds.SessionMessageQueued,
+    context: { sessionId: input.sessionId, requestId: input.requestId },
+    data: input,
+  };
+}
+
 interface AgentRunCancellationComponent {
   readonly name: "agent_loop" | "pi_session";
   readonly settlement: Promise<void>;
@@ -791,13 +769,3 @@ async function settleActiveRun(settlements: readonly Promise<void>[]): Promise<v
   if (failures.length === 1) throw failures[0];
   if (failures.length > 1) throw new AggregateError(failures, "Active run settlement failed.");
 }
-
-const ActiveRunQueueHandlers = {
-  [AgentSessionMessageQueueModes.Steer]: (session: AgentPiSession, input: string, images: readonly ImageContent[]) =>
-    session.steer(input, images),
-  [AgentSessionMessageQueueModes.FollowUp]: (session: AgentPiSession, input: string, images: readonly ImageContent[]) =>
-    session.followUp(input, images),
-} satisfies Record<
-  AgentSessionMessageQueueMode,
-  (session: AgentPiSession, input: string, images: readonly ImageContent[]) => Promise<void>
->;

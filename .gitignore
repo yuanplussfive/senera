@@ -32,6 +32,9 @@ senera-code-review/
 tmp/
 .tmp/
 Release/
+/Release-ignore/
+/.preview-crops/
+/generated/
 
 # Local debug / ad-hoc test leftovers (not part of the project)
 /artifacts/

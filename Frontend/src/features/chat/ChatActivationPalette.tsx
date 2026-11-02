@@ -1,4 +1,6 @@
+import { Tooltip } from "../../shared/ui/Tooltip";
 import { forwardRef } from "react";
+import { useActiveOptionScroll } from "../../shared/selection/useActiveOptionScroll";
 import type {
   AgentActivationCatalogEntry,
   AgentActivationCatalogSnapshot,
@@ -8,8 +10,7 @@ import type {
 import { frontendChatMessage } from "../../i18n/frontendChatMessageCatalog";
 import { resolveFrontendLocalizedText, type FrontendLocale } from "../../i18n/frontendLocaleModel";
 import { cn } from "../../lib/util";
-import { MotionList, MotionListItem } from "../../shared/motion";
-import { AppIcon, isAppIconName, type AppIconName } from "../../shared/ui";
+import { AppIcon, ScrollArea, isAppIconName, type AppIconName } from "../../shared/ui";
 import {
   AgentToolPresentationIcon,
   isAgentToolPresentationIcon,
@@ -102,52 +103,45 @@ function activationMatchScore(entry: AgentActivationCatalogEntry, query: string)
 }
 
 export function readActivationQuery(nextValue: string, caret: number): string | null {
+  return readActivationRange(nextValue, caret)?.query ?? null;
+}
+
+export function readActivationRange(
+  nextValue: string,
+  caret: number,
+): { query: string; start: number; end: number } | null {
   const beforeCaret = nextValue.slice(0, caret);
   const match = beforeCaret.match(/(?:^|\s)@([^\s@]*)$/u);
-  return match ? match[1] : null;
+  if (!match) return null;
+  const suffix = nextValue.slice(caret).match(/^[^\s@]*/u)![0];
+  return { query: match[1], start: caret - match[1].length - 1, end: caret + suffix.length };
 }
 
 export function readActivationTokens(value: string): string[] {
   return [...value.matchAll(/(?:^|\s)@([^\s@]+)/gu)].map((match) => match[1]);
 }
 
-export const ActivationTextOverlay = forwardRef<HTMLDivElement, { value: string }>(function ActivationTextOverlay(
-  { value },
-  ref,
-) {
+export const ActivationTextOverlay = forwardRef<
+  HTMLDivElement,
+  { value: string; selected: readonly ExplicitActivationReference[] }
+>(function ActivationTextOverlay({ value, selected }, ref) {
   return (
     <div
       ref={ref}
       aria-hidden="true"
-      className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-1 py-1.5 font-sans text-[14px] leading-5 tracking-normal text-content-primary"
+      className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-1 py-2 font-sans text-[14px] leading-5 tracking-normal text-content-primary"
     >
-      {value.split(/(@[^\s@]+)/gu).map((part, index) =>
-        part.startsWith("@") ? (
-          <span key={`${part}-${index}`} className="font-medium text-accent-content">
-            {part}
-          </span>
-        ) : (
-          <span key={`${part}-${index}`}>{part}</span>
-        ),
-      )}
+      {value.split(/((?:^|\s)@[^\s@]+)/gu).map((part, index) => (
+        <span
+          key={index}
+          className={selected.some((entry) => part.trim() === `@${entry.id}`) ? "text-accent-content" : undefined}
+        >
+          {part}
+        </span>
+      ))}
     </div>
   );
 });
-
-function compactActivationText(value: string, locale?: string): string {
-  const normalized = value.replace(/\s+/gu, " ").trim();
-  if (!normalized || !locale) return normalized;
-  const segments = normalized.split(/(?<=[.!?。！？])\s*/u).filter(Boolean);
-  if (segments.length < 2) return normalized;
-  const hasCjk = /[\u3400-\u9fff]/u.test(normalized);
-  const hasLatin = /[A-Za-z]/u.test(normalized);
-  if (!hasCjk || !hasLatin) return normalized;
-  const preferCjk = locale.toLocaleLowerCase().startsWith("zh");
-  const preferred = segments.filter((segment) =>
-    preferCjk ? /[\u3400-\u9fff]/u.test(segment) : /[A-Za-z]/u.test(segment) && !/[\u3400-\u9fff]/u.test(segment),
-  );
-  return preferred.length > 0 ? preferred.join(" ") : normalized;
-}
 
 export function ActivationPalette({
   catalog,
@@ -157,6 +151,7 @@ export function ActivationPalette({
   selected,
   locale,
   onSelect,
+  id,
 }: {
   catalog: AgentActivationCatalogSnapshot | null | undefined;
   query: string;
@@ -165,7 +160,10 @@ export function ActivationPalette({
   selected: readonly ExplicitActivationReference[];
   locale: FrontendLocale;
   onSelect: (index: number) => void;
+  id: string;
 }): JSX.Element {
+  const activeEntry = candidates[activeIndex];
+  const scrollRef = useActiveOptionScroll(activeEntry ? `${activeEntry.kind}:${activeEntry.id}:${query}` : undefined);
   const selectableCount = catalog?.entries.filter((entry) => entry.selectable).length ?? 0;
   const statusMessage = !catalog
     ? frontendChatMessage("chat.composer.activation.syncing", {}, locale)
@@ -177,115 +175,113 @@ export function ActivationPalette({
 
   return (
     <div
-      className="absolute bottom-full left-3 z-20 mb-2 flex w-80 max-w-[90vw] flex-col overflow-hidden rounded-[13px] border border-line-subtle bg-surface-panel/95 shadow-[0_18px_42px_-24px_rgb(43_40_32_/_0.42)] backdrop-blur-md"
-      role="listbox"
-      aria-label={frontendChatMessage("chat.composer.activation.ariaLabel", {}, locale)}
-      aria-activedescendant={candidates[activeIndex] ? activationOptionId(candidates[activeIndex]) : undefined}
+      className="absolute bottom-full left-0 z-20 mb-2 flex w-[38rem] max-w-full min-w-0 flex-col overflow-hidden rounded-lg border border-line bg-surface-panel shadow-panel"
+      data-activation-palette
     >
-      <div className="flex items-center justify-between gap-3 border-b border-line-subtle px-3.5 py-2.5">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-[8px] bg-accent-surface font-mono text-[13px] text-accent-content">
+      <Tooltip content={frontendChatMessage("chat.composer.activation.purpose", {}, locale)}>
+        <div className="flex items-center gap-2 px-3 py-2 text-[11px] text-content-muted">
+          <span aria-hidden="true" className="text-content-muted">
             @
           </span>
-          <span className="min-w-0 truncate text-[12px] font-medium text-accent-content">@{query}</span>
+          <span>{frontendChatMessage("chat.composer.activation.ariaLabel", {}, locale)}</span>
+          {query ? <span className="ml-auto truncate text-content-muted">{query}</span> : null}
         </div>
-        {catalog ? (
-          <span className="shrink-0 text-[10px] tabular-nums text-content-muted">{selectableCount}</span>
-        ) : null}
-      </div>
+      </Tooltip>
 
-      {statusMessage ? (
-        <div className="px-3.5 py-5 text-center text-[12px] text-content-muted" role="status" aria-live="polite">
-          {statusMessage}
-        </div>
-      ) : (
-        <MotionList className="max-h-72 overflow-y-auto p-1.5" presence="animated">
-          {groupActivationCandidates(candidates).map((group, groupIndex) => {
-            const presentation = activationKindPresentation[group.kind];
-            return (
-              <div key={group.kind} role="group" aria-label={frontendChatMessage(presentation.label, {}, locale)}>
-                <div
-                  className={cn(
-                    "flex items-center gap-2 px-2.5 pb-1 text-[10px] font-medium text-content-muted",
-                    groupIndex === 0 ? "pt-1" : "border-t border-line-subtle pt-2.5",
-                  )}
-                >
-                  <AppIcon icon={presentation.icon} size={12} aria-hidden="true" />
-                  <span>{frontendChatMessage(presentation.label, {}, locale)}</span>
-                  <span className="h-px min-w-3 flex-1 bg-line-subtle" aria-hidden="true" />
-                  <span className="tabular-nums text-content-disabled">{group.entries.length}</span>
-                </div>
-                {group.entries.map(({ entry, index }) => {
-                  const text = resolveActivationText(entry, locale);
-                  const icon = resolveActivationIcon(entry.icon, presentation.icon);
-                  const isSelected = selected.some(
-                    (selection) =>
-                      selection.kind === entry.kind &&
-                      selection.id === entry.id &&
-                      selection.revision === entry.revision,
-                  );
-                  return (
-                    <MotionListItem key={`${entry.kind}:${entry.id}`} layout="position" initial={false}>
-                      <button
-                        id={activationOptionId(entry)}
-                        type="button"
-                        role="option"
-                        disabled={!entry.selectable}
-                        aria-selected={index === activeIndex}
-                        aria-disabled={!entry.selectable}
-                        aria-label={`${text.title} @${entry.id}`}
-                        className={cn(
-                          "group flex w-full items-start gap-2.5 rounded-[11px] px-2.5 py-2 text-left outline-none transition-[background-color,color] duration-150",
-                          !entry.selectable
-                            ? "cursor-not-allowed opacity-55"
-                            : index === activeIndex
-                              ? "bg-surface-hover/70"
-                              : "hover:bg-surface-hover/45",
-                        )}
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => onSelect(index)}
-                      >
-                        <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-[7px] bg-surface-muted text-content-secondary transition-colors group-hover:text-content-primary">
-                          {isAgentToolPresentationIcon(icon) ? (
-                            <AgentToolPresentationIcon icon={icon} size={14} aria-hidden="true" />
-                          ) : (
-                            <AppIcon icon={icon} size={14} aria-hidden="true" />
-                          )}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="flex min-w-0 items-center gap-2">
-                            <span className="min-w-0 truncate text-[12.5px] font-medium text-content-primary">
-                              {text.title}
+      <div id={id} role="listbox" aria-label={frontendChatMessage("chat.composer.activation.ariaLabel", {}, locale)}>
+        {statusMessage ? (
+          <div className="px-3.5 py-5 text-center text-[12px] text-content-muted" role="status" aria-live="polite">
+            {statusMessage}
+          </div>
+        ) : (
+          <ScrollArea ref={scrollRef} viewportClassName="max-h-[min(24rem,45dvh)]" className="min-h-0">
+            <div className="min-w-0 px-1 pb-1">
+              {groupActivationCandidates(candidates).map((group, groupIndex) => {
+                const presentation = activationKindPresentation[group.kind];
+                return (
+                  <div key={group.kind} role="group" aria-label={frontendChatMessage(presentation.label, {}, locale)}>
+                    <div
+                      className={cn(
+                        "px-2 pb-1 text-[11px] font-medium text-content-muted",
+                        groupIndex === 0 ? "pt-1" : "mt-1 border-t border-line-subtle pt-2",
+                      )}
+                    >
+                      <span>{frontendChatMessage(presentation.label, {}, locale)}</span>
+                    </div>
+                    {group.entries.map(({ entry, index }) => {
+                      const text = resolveActivationText(entry, locale);
+                      const icon = resolveActivationIcon(entry.icon, presentation.icon);
+                      const isSelected = selected.some(
+                        (selection) =>
+                          selection.kind === entry.kind &&
+                          selection.id === entry.id &&
+                          selection.revision === entry.revision,
+                      );
+                      return (
+                        <Tooltip
+                          content={[text.title, text.description, `@${entry.id}`].filter(Boolean).join("\n")}
+                          key={`${entry.kind}:${entry.id}`}
+                        >
+                          <button
+                            id={activationOptionId(id, entry)}
+                            type="button"
+                            role="option"
+                            tabIndex={-1}
+                            disabled={!entry.selectable}
+                            aria-selected={index === activeIndex}
+                            data-active-option={index === activeIndex}
+                            aria-disabled={!entry.selectable}
+                            aria-label={`${text.title} @${entry.id}`}
+
+                            className={cn(
+                              "group flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left outline-none transition-colors duration-100 focus-visible:ring-2 focus-visible:ring-accent-focus sm:min-h-8",
+                              !entry.selectable
+                                ? "cursor-not-allowed opacity-55"
+                                : index === activeIndex
+                                  ? "bg-surface-hover"
+                                  : "hover:bg-surface-hover",
+                            )}
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => onSelect(index)}
+                          >
+                            <span className="grid h-5 w-5 shrink-0 place-items-center text-content-secondary">
+                              {isAgentToolPresentationIcon(icon) ? (
+                                <AgentToolPresentationIcon icon={icon} size={16} aria-hidden="true" />
+                              ) : (
+                                <AppIcon icon={icon} size={16} aria-hidden="true" />
+                              )}
                             </span>
-                            <span className="shrink-0 text-[10px] text-content-muted">
-                              {entry.selectable
-                                ? frontendChatMessage(presentation.label, {}, locale)
-                                : entry.enabled
-                                  ? frontendChatMessage("chat.composer.activation.needsSetup", {}, locale)
-                                  : frontendChatMessage("chat.composer.activation.unavailable", {}, locale)}
+                            <span className="flex min-w-0 flex-1 items-baseline gap-2">
+                              <span className="max-w-[50%] shrink-0 truncate text-[13px] text-content-primary">
+                                {text.title}
+                              </span>
+                              {!entry.selectable ? (
+                                <span className="shrink-0 text-[11px] text-content-muted">
+                                  {entry.enabled
+                                    ? frontendChatMessage("chat.composer.activation.needsSetup", {}, locale)
+                                    : frontendChatMessage("chat.composer.activation.unavailable", {}, locale)}
+                                </span>
+                              ) : null}
+                              {text.description ? (
+                                <span className="min-w-0 flex-1 truncate text-xs text-content-muted">
+                                  {text.description}
+                                </span>
+                              ) : null}
                             </span>
-                          </span>
-                          <span className="mt-0.5 block truncate text-[11px] font-medium text-accent-content">
-                            @{entry.id}
-                          </span>
-                          {text.description ? (
-                            <span className="mt-0.5 block truncate text-[10.5px] leading-4 text-content-secondary">
-                              {compactActivationText(text.description, locale)}
-                            </span>
-                          ) : null}
-                        </span>
-                        {isSelected ? (
-                          <AppIcon icon="checkmark" size={14} className="mt-1 text-accent-content" />
-                        ) : null}
-                      </button>
-                    </MotionListItem>
-                  );
-                })}
-              </div>
-            );
-          })}
-        </MotionList>
-      )}
+                            {isSelected ? (
+                              <AppIcon icon="checkmark" size={14} className="shrink-0 text-content-secondary" />
+                            ) : null}
+                          </button>
+                        </Tooltip>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          </ScrollArea>
+        )}
+      </div>
       <div className="border-t border-line-subtle px-3.5 py-2 text-[10px] text-content-muted">
         {frontendChatMessage("chat.composer.activation.hint", {}, locale)}
       </div>
@@ -323,8 +319,8 @@ function groupActivationCandidates(candidates: readonly AgentActivationCatalogEn
   });
 }
 
-function activationOptionId(entry: AgentActivationCatalogEntry): string {
-  return `activation-option-${entry.kind}-${entry.id}`;
+export function activationOptionId(listId: string, entry: AgentActivationCatalogEntry): string {
+  return `${listId}-${entry.kind}-${entry.id}`;
 }
 
 function resolveActivationIcon(

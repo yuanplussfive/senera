@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { z } from "zod";
 import { AgentWebToolsConfigurationSchema } from "../../../Source/AgentSystem/Web/AgentWebConfiguration.js";
 import {
   extractAgentWebContent,
@@ -7,9 +6,19 @@ import {
 } from "../../../Source/AgentSystem/Web/AgentWebContentExtractor.js";
 import { fetchWebResource } from "../../../Source/AgentSystem/Web/AgentWebHttpClient.js";
 import { DefaultAgentWebRuntime } from "../../../Source/AgentSystem/Web/AgentWebRuntime.js";
+import { projectAgentWebFetchModelOutput } from "../../../Source/AgentSystem/Web/AgentWebFetchModelOutput.js";
+import type { AgentWebFetchOutput } from "../../../Source/AgentSystem/Web/AgentWebTypes.js";
+import { collectArtifactEvidence } from "../../../Source/AgentSystem/Artifacts/AgentArtifactEvidenceProjection.js";
+import { buildArtifactSummary } from "../../../Source/AgentSystem/Artifacts/AgentArtifactTemplateProjection.js";
 import { assessAgentWebDocument } from "../../../Source/AgentSystem/Web/AgentWebDynamicPolicy.js";
 import { assertSafeWebUrl } from "../../../Source/AgentSystem/Web/AgentWebUrlPolicy.js";
 import { createWebSystemTools } from "../../../Source/AgentSystem/SystemTools/WebSystemTools.js";
+import {
+  loadSystemToolContractByCapability,
+  loadSystemToolContractByName,
+  materializeSystemToolArguments,
+  validateSystemToolOutput,
+} from "../SystemTools/SystemToolContractTestSupport.js";
 
 const publicAddressResolver = async (): Promise<readonly string[]> => ["93.184.216.34"];
 
@@ -189,6 +198,7 @@ describe("web host tools", () => {
       `<!doctype html><html><head><script src="/assets/app.js"></script></head><body><div id="app"></div></body></html>`,
       "",
       AgentWebToolsConfigurationSchema.parse({}).fetch.render.detection,
+      "text/html",
     );
 
     expect(assessment.decision).toBe("dynamic_likely");
@@ -203,11 +213,41 @@ describe("web host tools", () => {
       `<html><body><article>${article}</article></body></html>`,
       "Readable static article content.",
       AgentWebToolsConfigurationSchema.parse({}).fetch.render.detection,
+      "text/html",
     );
 
     expect(assessment.decision).toBe("static_sufficient");
     expect(assessment.signals.visibleTextChars).toBeGreaterThan(240);
     expect(assessment.signals.markdownChars).toBeLessThan(assessment.signals.visibleTextChars);
+  });
+
+  test.each([
+    ["application/json", '[{"file_url":"https://images.example/art.png"}]'],
+    ["text/plain", "plain text without an HTML root"],
+    ["text/html", ""],
+  ])("fetches %s text without requiring an HTML document", async (contentType, body) => {
+    const runtime = new DefaultAgentWebRuntime(AgentWebToolsConfigurationSchema.parse({}), {
+      fetchImpl: async () => new Response(body, { headers: { "content-type": contentType } }),
+      resolveHostAddresses: publicAddressResolver,
+    });
+    const output = await runtime.fetch({ url: "https://docs.example/data", contentMode: "text" });
+    expect(output.content).toBe(body);
+    expect(output.render.usedBrowser).toBe(false);
+    if (contentType !== "text/html") expect(output.render.signals.dynamicScore).toBe(0);
+  });
+
+  test("extracts an empty HTML response without accessing a missing document root", () => {
+    expect(
+      extractAgentWebContent({
+        source: "",
+        contentType: "text/html",
+        finalUrl: "https://docs.example/empty",
+        mode: "article",
+        maxExtractBlocks: 4,
+        maxMarkdownChars: 10_000,
+        maxLinks: 8,
+      }).markdown,
+    ).toBe("");
   });
 
   test("uses a configured keyless SearXNG provider, filters domains, cites, and caches", async () => {
@@ -585,45 +625,39 @@ describe("web host tools", () => {
   });
 
   test("publishes strict system-tool definitions for both web capabilities", () => {
-    expect(createWebSystemTools()).toHaveLength(2);
-    expect(createWebSystemTools().map((tool) => tool.name)).toEqual(["WebSearch", "WebFetch"]);
+    const tools = createWebSystemTools();
+    expect(tools).toHaveLength(2);
+    expect(tools.map((tool) => loadSystemToolContractByCapability(tool.capability).contract.name)).toEqual([
+      "WebSearch",
+      "WebFetch",
+    ]);
   });
 
-  test("projects configured defaults and bounds into the host-tool input contracts", () => {
-    const [search, fetch] = createWebSystemTools({
-      search: {
-        provider: "searxng",
-        endpoint: "https://search.example/search",
-        defaultMaxResults: 3,
-        maxMaxResults: 4,
-        maxOperationTimeoutMs: 600_000,
-      },
-      fetch: {
-        defaultContentMode: "text",
-        maxUrlLength: 512,
-        responseMaxBytes: 4_096,
-        maxOperationTimeoutMs: 600_000,
-      },
-    });
+  test("uses the package-owned defaults and bounds for web calls", () => {
+    const search = loadSystemToolContractByName("WebSearch");
+    const fetch = loadSystemToolContractByName("WebFetch");
 
-    expect(search?.input.parse({ query: "senera", timeoutMs: 420_000 })).toMatchObject({
-      maxResults: 3,
-      timeoutMs: 420_000,
+    expect(materializeSystemToolArguments(search, { query: "senera", timeoutMs: 420_000 })).toMatchObject({
+      ok: true,
+      value: { maxResults: 8, timeoutMs: 420_000 },
     });
-    expect(fetch?.input.parse({ url: "https://docs.example/readme", timeoutMs: 420_000 })).toMatchObject({
-      contentMode: "text",
-      maxBytes: 4_096,
-      timeoutMs: 420_000,
+    expect(
+      materializeSystemToolArguments(fetch, { url: "https://docs.example/readme", timeoutMs: 420_000 }),
+    ).toMatchObject({
+      ok: true,
+      value: { contentMode: "auto", maxBytes: 5_000_000, timeoutMs: 420_000 },
     });
-    const fetchSchema = z.toJSONSchema(fetch!.input, { target: "draft-7", io: "input" });
-    expect(fetchSchema.properties?.maxBytes).toMatchObject({
-      default: 4_096,
+    const properties = fetch.contract.inputSchema.properties as Record<string, unknown>;
+    expect(properties.maxBytes).toMatchObject({
+      default: 5_000_000,
       description: expect.stringContaining("truncated and marked"),
     });
-    expect(() => search?.input.parse({ query: "senera", maxResults: 5 })).toThrow();
-    expect(() => search?.input.parse({ query: "senera", timeoutMs: 600_001 })).toThrow();
-    expect(() => fetch?.input.parse({ url: "https://docs.example/readme", timeoutMs: 600_001 })).toThrow();
-    expect(() => fetch?.input.parse({ url: `https://docs.example/${"x".repeat(600)}` })).toThrow();
+    expect(materializeSystemToolArguments(search, { query: "senera", maxResults: 21 }).ok).toBe(false);
+    expect(materializeSystemToolArguments(search, { query: "senera", timeoutMs: 900_001 }).ok).toBe(false);
+    expect(materializeSystemToolArguments(fetch, { url: "https://docs.example/readme", timeoutMs: 900_001 }).ok).toBe(
+      false,
+    );
+    expect(materializeSystemToolArguments(fetch, { url: `https://docs.example/${"x".repeat(4_100)}` }).ok).toBe(false);
   });
 
   test("defaults web requests to three minutes while allowing host-bounded overrides", () => {
@@ -638,15 +672,64 @@ describe("web host tools", () => {
     ).toThrow(/Maximum operation timeout/u);
   });
 
-  test("declares fetched page evidence and preserves the complete output schema", () => {
-    const fetchTool = createWebSystemTools()[1]!;
-    const completeContent = "full page content that belongs in the raw Artifact";
-    const output = fetchTool.output.parse({
+  test("narrows the fetched page for the model and keeps the complete result for the artifact", () => {
+    const fetchContract = loadSystemToolContractByName("WebFetch");
+    const complete: AgentWebFetchOutput = {
       title: "Docs",
       finalUrl: "https://docs.example/guide",
       markdownSummary: "Relevant token paragraph.",
-      content: completeContent,
-      links: [],
+      content: "full page content that belongs in the raw Artifact",
+      links: [{ title: "Guide", url: "https://docs.example/guide/next" }],
+      citationId: "citation_docs",
+      transfer: { maxBytes: 5_000_000, receivedBytes: 40, truncated: false },
+      render: {
+        strategy: "http",
+        decision: "not_requested",
+        usedBrowser: false,
+        browserContentChanged: false,
+        browserOutputTruncated: false,
+        score: 0,
+        reasons: [],
+        signals: {
+          htmlChars: 100,
+          visibleTextChars: 40,
+          markdownChars: 40,
+          markdownBlockCount: 1,
+          scriptCount: 0,
+          scriptChars: 0,
+          scriptShare: 0,
+          contentDensity: 0.4,
+          textDeficit: 0,
+          densityDeficit: 0,
+          scriptPressure: 0,
+          structureDeficit: 0,
+          dynamicScore: 0,
+        },
+      },
+    };
+
+    // The package contract declares exactly the model-facing schema.
+    const output = projectAgentWebFetchModelOutput(complete);
+    expect(validateSystemToolOutput(fetchContract, output)).toEqual([]);
+    expect(output.content).toBe(complete.content);
+    expect(output.transfer).toEqual({ truncated: false });
+    const serialized = JSON.stringify(output);
+    for (const dropped of ["markdownSummary", "maxBytes", "receivedBytes", "signals", "dynamicScore", "score"]) {
+      expect(serialized, dropped).not.toContain(dropped);
+    }
+    // The complete runtime result is artifact-only, not model-facing output.
+    expect(validateSystemToolOutput(fetchContract, complete)).not.toEqual([]);
+    expect(fetchContract.contract.artifacts?.Evidence?.[0]?.PlannerMemory.ArtifactRefs).toContain("raw");
+  });
+
+  test("compiles page evidence and a summary from the narrowed fetch result", () => {
+    const policy = loadSystemToolContractByName("WebFetch").contract.artifacts;
+    const result = projectAgentWebFetchModelOutput({
+      title: "Docs",
+      finalUrl: "https://docs.example/guide",
+      markdownSummary: "Relevant token paragraph.",
+      content: "# Guide\n\nThe page the model reads.",
+      links: [{ title: "Next", url: "https://docs.example/guide/next" }],
       citationId: "citation_docs",
       transfer: { maxBytes: 5_000_000, receivedBytes: 40, truncated: false },
       render: {
@@ -675,7 +758,26 @@ describe("web host tools", () => {
       },
     });
 
-    expect(output).toMatchObject({ content: completeContent });
-    expect(fetchTool.metadata.artifacts?.Evidence?.[0]?.PlannerMemory.ArtifactRefs).toContain("raw");
+    // An evidence record whose Presentation.Source renders empty is dropped
+    // whole, so this is the assertion that keeps the page citable.
+    const evidence = collectArtifactEvidence(result, policy, "artifact-1");
+    const page = evidence.find((record) => record.kind === "web_page");
+    expect(page?.source).toBe("https://docs.example/guide");
+    expect(page?.slots).not.toHaveProperty("content");
+    expect(evidence.some((record) => record.kind === "web_page_link")).toBe(true);
+
+    const summary = buildArtifactSummary({
+      toolName: "WebFetch",
+      callId: "call-1",
+      args: { url: "https://docs.example/guide" },
+      result,
+      evidence,
+      delta: [],
+      policy,
+      artifact: { artifactUri: "senera://artifact/artifact-1" },
+      workspace: undefined,
+    });
+    expect(summary).toContain('Fetched "Docs" from https://docs.example/guide.');
+    expect(summary).toContain("The page the model reads.");
   });
 });

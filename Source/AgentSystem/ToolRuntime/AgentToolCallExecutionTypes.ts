@@ -1,4 +1,5 @@
 import type { AgentEventSink } from "../Events/AgentEvent.js";
+import type { AgentToolComposition } from "./AgentToolComposition.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import type { AgentToolTokenBudget } from "../Text/AgentTurnTokenBudget.js";
 import type { AgentToolAccessGrant } from "./AgentToolAccessGrant.js";
@@ -18,6 +19,11 @@ export type AgentToolCallExecutionResult =
       value: ExecutedToolCallResult[];
     }
   | {
+      /** A host tool registered a durable continuation and ends this inference turn. */
+      kind: "SuspendRun";
+      value: ExecutedToolCallResult[];
+    }
+  | {
       kind: "SuspendChildRun";
       value: SuspendChildRunControlResult;
     };
@@ -31,6 +37,7 @@ export interface SuspendChildRunControlResult {
 }
 
 export interface AgentToolCallExecutionContext {
+  composition?: AgentToolComposition;
   interaction?: AgentInteractionContext;
   sessionId?: string;
   logicalCacheScope?: string;
@@ -59,7 +66,8 @@ export interface AgentToolCallExecutionContext {
 export interface AgentToolCallExecutionRequest {
   name: string;
   arguments?: Record<string, unknown>;
-  expectedContractDigest?: string | null;
+  /** Host execution snapshot captured by the caller, independent of model contract confirmation. */
+  expectedExecutionDigest?: string;
   callId?: string;
   index?: number;
 }

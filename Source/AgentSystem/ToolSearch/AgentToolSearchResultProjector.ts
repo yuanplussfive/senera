@@ -1,76 +1,22 @@
-import { z } from "zod";
 import { AgentToolDiscoveryProtocol } from "./AgentToolMetaToolProtocol.js";
 import type { AgentToolSearchDiscovery, AgentToolSearchResult, AgentToolSearchSource } from "./AgentToolSearchTypes.js";
 import { AgentModelTokenEstimator } from "../Text/AgentTextBudget.js";
-import { AgentToolAvailabilitySchema } from "../ToolRuntime/AgentToolAvailability.js";
 import type { AgentToolAvailability } from "../ToolRuntime/AgentToolAvailability.js";
-
-/**
- * Tool discovery is intentionally a compact wire contract. Full descriptions,
- * argument schemas, effects, and provenance remain the responsibility of
- * ToolDescribe, so broad retrieval never repeats nested JSON contracts.
- *
- * match: [toolName, description, state?]
- * maybe: [toolName, description]
- * more:  [sourceId, sourceName, omittedToolCount]
- */
-const AgentToolSearchNameTupleSchema = z.tuple([z.string(), z.string()]);
-const AgentToolSearchStateTupleSchema = z.union([
-  z.tuple([z.enum(["visible", "discoverable"]), z.enum(["confirmed", "unconfirmed"]), z.enum(["arguments", "none"])]),
-  z.tuple([
-    z.enum(["visible", "discoverable"]),
-    z.enum(["confirmed", "unconfirmed"]),
-    z.literal("arguments"),
-    z.record(z.string(), z.unknown()),
-  ]),
-]);
-const AgentToolSearchMatchTupleSchema = z.union([
-  AgentToolSearchNameTupleSchema,
-  z.tuple([z.string(), z.string(), AgentToolSearchStateTupleSchema]),
-]);
-const AgentToolSearchSourceTupleSchema = z.tuple([z.string(), z.string(), z.number()]);
-
-/**
- * The emitted wire contract is also generated into the bundled ToolSearch
- * extension. Optional tuple suffixes use explicit alternatives so draft-07
- * remains valid under strict JSON Schema compilers.
- */
-export const AgentToolSearchOutputSchema = z
-  .object({
-    type: z.literal(AgentToolDiscoveryProtocol.type),
-    availability: z.record(z.string(), AgentToolAvailabilitySchema).optional(),
-    services: z
-      .array(
-        z
-          .object({
-            id: z.string(),
-            title: z.string(),
-            description: z.string(),
-            availability: AgentToolAvailabilitySchema,
-          })
-          .strict(),
-      )
-      .optional(),
-    status: z.enum(["empty", "stale"]).optional(),
-    reason: z.string().optional(),
-    diagnostics: z.array(z.string()).optional(),
-    catalogRevision: z.string().optional(),
-    match: z.array(AgentToolSearchMatchTupleSchema).optional(),
-    maybe: z.array(AgentToolSearchNameTupleSchema).optional(),
-    more: z.array(AgentToolSearchSourceTupleSchema).optional(),
-  })
-  .strict();
+import type { AgentToolDescriptionTuple } from "./AgentToolMetaToolProjector.js";
 
 /**
  * Builds the complete ToolSearch wire response at the projection boundary.
- * The same schema generates the extension contract, so a producer change
- * cannot silently drift from the result exposed to the model.
+ * Discovery keeps uncertain candidates shallow. Selected matches may carry
+ * complete compact contracts within the same disclosure budget.
+ * Validation is intentionally performed by AgentToolRunner against the
+ * package-owned ToolSearch.tool.json outputSchema. Keeping no second runtime
+ * schema here makes that package contract the only public authority.
  */
 export function createAgentToolSearchOutput(projection: AgentToolSearchResultProjection) {
-  return AgentToolSearchOutputSchema.parse({
+  return {
     ...projection,
     type: AgentToolDiscoveryProtocol.type,
-  });
+  };
 }
 
 export interface AgentToolSearchResultProjection {
@@ -88,6 +34,7 @@ export interface AgentToolSearchResultProjection {
   readonly match?: readonly AgentToolSearchMatchTuple[];
   readonly maybe?: readonly AgentToolSearchNameTuple[];
   readonly more?: readonly AgentToolSearchSourceTuple[];
+  readonly contracts?: readonly AgentToolDescriptionTuple[];
 }
 
 export interface AgentToolSearchResultProjectionOptions {
@@ -95,6 +42,7 @@ export interface AgentToolSearchResultProjectionOptions {
   readonly model: string;
   /** Maximum BPE tokens for uncertain candidates; matches and selected service availability are retained. */
   readonly tokenBudget: number;
+  readonly describeTool?: (toolName: string) => AgentToolDescriptionTuple | undefined;
 }
 
 export type AgentToolSearchNameTuple = readonly [string, string];
@@ -118,13 +66,32 @@ export function buildToolSearchResultProjection(
   const tokenBudget = validateTokenBudget(options.tokenBudget);
   const estimator = new AgentModelTokenEstimator({ model: options.model });
   const match = discovery.match.map(projectMatch);
+  const sourceCoverage = options.describeTool
+    ? projectFittingWithheldSources({
+        discovery,
+        results: [...discovery.maybe, ...discovery.omitted],
+        maybe: [],
+        estimator,
+        tokenBudget,
+        contracts: [],
+      })
+    : [];
+  const contracts: AgentToolDescriptionTuple[] = [];
+  for (const candidate of discovery.match) {
+    if (candidate.state?.contract === "confirmed") continue;
+    const description = options.describeTool?.(candidate.toolName);
+    if (!description) continue;
+    if (fitsBudget(estimator, tokenBudget, discovery, [], sourceCoverage, [...contracts, description]))
+      contracts.push(description);
+  }
   const { maybe, more } = projectUncertainCandidates({
     discovery,
     estimator,
     tokenBudget,
+    contracts,
   });
 
-  return projectWire(discovery, match, maybe, more);
+  return projectWire(discovery, match, maybe, more, contracts);
 }
 
 /** Only `match` candidates can feed capability reuse and routing scenarios. */
@@ -160,6 +127,7 @@ function projectWire(
   match: readonly AgentToolSearchMatchTuple[],
   maybe: readonly AgentToolSearchNameTuple[],
   more: readonly AgentToolSearchSourceTuple[],
+  contracts: readonly AgentToolDescriptionTuple[] = [],
 ): AgentToolSearchResultProjection {
   const shownNames = new Set([...match, ...maybe].map(([name]) => name));
   const availability = Object.fromEntries(
@@ -182,6 +150,7 @@ function projectWire(
     ...(match.length > 0 ? { match } : {}),
     ...(maybe.length > 0 ? { maybe } : {}),
     ...(more.length > 0 ? { more } : {}),
+    ...(contracts.length > 0 ? { contracts } : {}),
   };
 }
 
@@ -189,6 +158,7 @@ interface UncertainCandidateProjectionOptions {
   readonly discovery: AgentToolSearchDiscovery;
   readonly estimator: AgentModelTokenEstimator;
   readonly tokenBudget: number;
+  readonly contracts: readonly AgentToolDescriptionTuple[];
 }
 
 /**
@@ -212,6 +182,7 @@ function projectUncertainCandidates(options: UncertainCandidateProjectionOptions
       maybe,
       estimator: options.estimator,
       tokenBudget: options.tokenBudget,
+      contracts: options.contracts,
     });
     const proposedMaybe = [...maybe, candidate];
     const proposedMore = projectFittingWithheldSources({
@@ -220,11 +191,19 @@ function projectUncertainCandidates(options: UncertainCandidateProjectionOptions
       maybe: proposedMaybe,
       estimator: options.estimator,
       tokenBudget: options.tokenBudget,
+      contracts: options.contracts,
     });
     const preservesSourceDisclosure = currentMore.length === 0 || proposedMore.length > 0;
     if (
       preservesSourceDisclosure &&
-      fitsBudget(options.estimator, options.tokenBudget, options.discovery, proposedMaybe, proposedMore)
+      fitsBudget(
+        options.estimator,
+        options.tokenBudget,
+        options.discovery,
+        proposedMaybe,
+        proposedMore,
+        options.contracts,
+      )
     ) {
       maybe.push(candidate);
     } else {
@@ -242,6 +221,7 @@ function projectUncertainCandidates(options: UncertainCandidateProjectionOptions
             maybe,
             estimator: options.estimator,
             tokenBudget: options.tokenBudget,
+            contracts: options.contracts,
           })
         : [],
   };
@@ -258,13 +238,16 @@ interface WithheldSourceProjectionOptions {
   readonly maybe: readonly AgentToolSearchNameTuple[];
   readonly estimator: AgentModelTokenEstimator;
   readonly tokenBudget: number;
+  readonly contracts: readonly AgentToolDescriptionTuple[];
 }
 
 function projectFittingWithheldSources(options: WithheldSourceProjectionOptions): AgentToolSearchSourceTuple[] {
   const more: AgentToolSearchSourceTuple[] = [];
   for (const source of projectWithheldSources(options.results)) {
     const proposed = [...more, source];
-    if (fitsBudget(options.estimator, options.tokenBudget, options.discovery, options.maybe, proposed)) {
+    if (
+      fitsBudget(options.estimator, options.tokenBudget, options.discovery, options.maybe, proposed, options.contracts)
+    ) {
       more.push(source);
     }
   }
@@ -277,11 +260,12 @@ function fitsBudget(
   discovery: AgentToolSearchDiscovery,
   maybe: readonly AgentToolSearchNameTuple[],
   more: readonly AgentToolSearchSourceTuple[],
+  contracts: readonly AgentToolDescriptionTuple[] = [],
 ): boolean {
   // Matches and selected service availability are evidence tiers exempt from the
   // uncertain disclosure budget. Otherwise one verbose producer summary could
   // suppress every `maybe`/`more` signal and hide the catalog frontier.
-  const wire = projectWire({ ...discovery, services: undefined }, [], maybe, more);
+  const wire = projectWire({ ...discovery, services: undefined }, [], maybe, more, contracts);
   const payload = { type: AgentToolDiscoveryProtocol.type, ...wire };
   return estimator.inspect(JSON.stringify(payload), tokenBudget).withinLimit;
 }

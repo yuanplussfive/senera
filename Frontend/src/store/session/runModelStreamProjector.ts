@@ -10,6 +10,7 @@ import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { readCurrentRun, type RunEventHandlerMap } from "./runEventProjectionTypes";
 import { upsertStep } from "./sessionProjectorCore";
 import { alignRunDisplayTarget, isRunTerminal, projectStreamingVisibility, touchRun } from "./sessionRunProjection";
+import { findOrCreateModelThinkingBlock } from "./modelThinkingBlocks";
 
 export const runModelStreamEventHandlers = {
   [EventKinds.ModelStarted]: (state, env) => {
@@ -46,6 +47,7 @@ export const runModelStreamEventHandlers = {
       status: "running",
       startedAt: env.timestamp,
       modelName,
+      contextSnapshot: data.contextSnapshot,
     });
   },
 
@@ -102,7 +104,9 @@ export const runModelStreamEventHandlers = {
       (item) => item.id === `${run.requestId}-model-${env.step ?? 0}-${data.messageIndex ?? "request"}`,
     );
     if (step) {
-      step.status = "done";
+      step.status = data.outcome === "failed" ? "failed" : data.outcome === "cancelled" ? "cancelled" : "done";
+      step.modelUsage = data.usage;
+      step.errorMessage = data.errorMessage;
       step.endedAt = env.timestamp;
       step.completedSequence = env.sequence;
       touchRun(run);
@@ -120,20 +124,11 @@ function findOrCreateThinkingBlock(
   data: Pick<ModelThinkingDeltaData, "messageIndex" | "contentIndex">,
 ) {
   const resolvedStep = step ?? 0;
-  const id = `step:${resolvedStep}:message:${data.messageIndex}:content:${data.contentIndex}`;
   run.thinkingBlocks ??= [];
-  let block = run.thinkingBlocks.find((entry) => entry.id === id);
-  if (!block) {
-    block = {
-      id,
-      step: resolvedStep,
-      messageIndex: data.messageIndex,
-      contentIndex: data.contentIndex,
-      eventSequence,
-      content: "",
-      status: "streaming",
-    };
-    run.thinkingBlocks.push(block);
-  }
-  return block;
+  return findOrCreateModelThinkingBlock(run.thinkingBlocks, {
+    step: resolvedStep,
+    messageIndex: data.messageIndex,
+    contentIndex: data.contentIndex,
+    eventSequence,
+  });
 }

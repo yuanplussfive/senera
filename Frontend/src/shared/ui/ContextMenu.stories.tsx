@@ -1,3 +1,4 @@
+import { OverlayScrollFixture } from "../../dev/OverlayScrollFixture";
 import type { Story } from "@ladle/react";
 import { Copy, Download, Edit, Share, Trash2 } from "lucide-react";
 import {
@@ -114,3 +115,5 @@ export const DocumentPreview: Story = () => (
     </div>
   </div>
 );
+
+export const ModalScrolling: Story = () => <OverlayScrollFixture />;

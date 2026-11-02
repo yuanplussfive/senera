@@ -56,3 +56,26 @@ export const States: Story = () => (
     </div>
   </main>
 );
+
+export const Underline: Story = () => {
+  const [value, setValue] = useState("all");
+  return (
+    <main className="min-h-[320px] bg-surface-canvas p-6 text-content-primary">
+      <h1 className="mb-5 text-base font-semibold">目录筛选</h1>
+      <div className="border-b border-line-subtle">
+        <SegmentedControl
+          variant="underline"
+          ariaLabel="插件类型"
+          options={[
+            { value: "all", label: "全部 22" },
+            { value: "extension", label: "系统扩展 19" },
+            { value: "mcp", label: "MCP 服务 3" },
+          ]}
+          value={value}
+          onChange={setValue}
+        />
+      </div>
+      <p className="mt-5 text-sm text-content-secondary">沿用分段选择的方向键、焦点和选中动效，适合开放式目录。</p>
+    </main>
+  );
+};

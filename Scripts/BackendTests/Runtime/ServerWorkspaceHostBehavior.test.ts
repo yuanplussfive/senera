@@ -1,3 +1,4 @@
+import { AgentServerAccessProfiles } from "../../../Source/AgentSystem/Auth/AgentServerAccessPolicy.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
@@ -8,6 +9,15 @@ import { expect, test } from "vitest";
 import { startSeneraServer, SeneraServerDeployments, type SeneraServerHandle } from "../../../Apps/ServerRuntime.js";
 import { CurrentAgentConfigVersion } from "../../../Source/AgentSystem/Config/AgentConfigVersion.js";
 import { removeAgentPathWithRetry } from "../../../Source/AgentSystem/Core/AgentFs.js";
+import { resolveAgentApplicationPaths } from "../../../Source/AgentSystem/Core/AgentApplicationPaths.js";
+import { AgentClientExtensionStore } from "../../../Source/AgentSystem/Channels/Client/AgentClientExtensionStore.js";
+import { AgentQqClientBuild } from "../../../Source/AgentSystem/Channels/Client/AgentQqClientBuildContract.js";
+import { agentOneBot11ClientPath } from "../../../Source/AgentSystem/Channels/AgentChannelClientRoutes.js";
+import { qqClientArchive } from "../Support/QqClientBuildFixture.js";
+import {
+  AgentDirectorySnapshotSchema,
+  workspaceAgentInput,
+} from "../../../Source/AgentSystem/Core/AgentDirectoryContract.js";
 
 test("real workspace opening isolates configuration, keeps the listener and survives an invalid target", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "senera-workspace-host-"));
@@ -35,12 +45,15 @@ test("real workspace opening isolates configuration, keeps the listener and surv
         Extensions: { "workspace-tools": { Enabled: true } },
       }),
     );
+    const applicationPaths = resolveAgentApplicationPaths(path.join(root, "application"));
+    const extensions = new AgentClientExtensionStore(applicationPaths.clientExtensionsRoot);
+    await extensions.install(AgentQqClientBuild.id, qqClientArchive().archive);
     app = await startSeneraServer({
       workspaceRoot: a,
-      applicationStateRoot: path.join(root, "application"),
+      applicationStateRoot: applicationPaths.root,
       configPath: path.join(a, "senera.config.json"),
       deployment: SeneraServerDeployments.Local,
-      automaticLoopbackHttp: true,
+      accessProfile: AgentServerAccessProfiles.Development,
     });
     await expect(app.switchWorkspace(path.join(root, "missing"))).rejects.toThrow();
     expect((await fetch(app.healthUrl)).status).toBe(200);
@@ -48,6 +61,15 @@ test("real workspace opening isolates configuration, keeps the listener and surv
     expect(next.websocketUrl).toBe(concurrent.websocketUrl);
     expect(new URL(next.websocketUrl).origin).toBe(new URL(app.websocketUrl).origin);
     expect(next.configPath).toBe(path.join(b, "senera.config.json"));
+    for (const handle of [app, next]) {
+      const workspaceId = new URL(handle.websocketUrl).searchParams.get("workspaceId")!;
+      const response = await fetch(new URL(agentOneBot11ClientPath(workspaceId), handle.healthUrl));
+      expect(response.status).toBe(200);
+      expect(await response.text()).toContain("QQ client");
+      await expect(fs.access(path.join(handle.workspaceRoot, ".senera", "client-extensions"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    }
     const storage = await (await fetch(new URL("/api/application-storage", app.healthUrl))).json();
     expect(storage.root).toBe(path.join(root, "application"));
     expect(storage.scope).toBe("application-state");
@@ -79,9 +101,13 @@ test("real workspace opening isolates configuration, keeps the listener and surv
     for (const handle of [app, next]) {
       const workspaceId = new URL(handle.websocketUrl).searchParams.get("workspaceId")!;
       const stateRoot = path.join(handle.workspaceRoot, ".senera");
+      const directory = AgentDirectorySnapshotSchema.parse(
+        await (await fetch(new URL(`/api/agents?workspaceId=${workspaceId}`, handle.healthUrl))).json(),
+      );
       expect(
-        JSON.parse(await fs.readFile(path.join(stateRoot, "data", "continuity-identity.json"), "utf8")),
-      ).toMatchObject({ workspaceId });
+        JSON.parse(await fs.readFile(path.join(stateRoot, "data", "agent-learning-migration.json"), "utf8")),
+      ).toMatchObject({ agentId: directory.agents[0].id, complete: true });
+      await fs.access(path.join(stateRoot, "data", "agents", directory.agents[0].id));
       await fs.access(path.join(stateRoot, "data", "sessions", "sessions.sqlite"));
       await fs.access(path.join(handle.workspaceRoot, ".senera", "data", "sessions", "sessions.sqlite"));
     }
@@ -128,6 +154,52 @@ test("real workspace opening isolates configuration, keeps the listener and surv
       values.push(await config);
     }
     expect(values[0]).not.toEqual(values[1]);
+    // Use the real HTTP/WS host boundary to ensure Agent deletion closes its
+    // session and removes only its owned store, including unopened stores.
+    const agentsUrl = new URL("/api/agents", app.healthUrl);
+    agentsUrl.search = new URL(app.websocketUrl).search;
+    const before = AgentDirectorySnapshotSchema.parse(await (await fetch(agentsUrl)).json());
+    const createdResponse = await fetch(agentsUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "agent.create",
+        revision: before.revision,
+        agent: { ...workspaceAgentInput(before.agents[0]), name: "Isolated test Agent" },
+      }),
+    });
+    expect(createdResponse.status).toBe(200);
+    const created = AgentDirectorySnapshotSchema.parse(await createdResponse.json());
+    const owned = created.agents.at(-1)!;
+    const sessionCreated = new Promise<string>((resolve) =>
+      sockets[0].on("message", (data) => {
+        const event = JSON.parse(data.toString());
+        if (event.kind === "session.created" && event.data.agentId === owned.id) resolve(event.sessionId);
+      }),
+    );
+    sockets[0].send(JSON.stringify({ type: "session.create", agentId: owned.id }));
+    const sessionId = await sessionCreated;
+    const ownedRoot = path.join(a, ".senera", "data", "agents", owned.id);
+    await fs.mkdir(ownedRoot, { recursive: true });
+    await fs.writeFile(path.join(ownedRoot, "owned-sentinel"), "owned");
+    const closed = new Promise<void>((resolve) =>
+      sockets[0].on("message", (data) => {
+        const event = JSON.parse(data.toString());
+        if (event.kind === "session.closed" && event.sessionId === sessionId) resolve();
+      }),
+    );
+    const deleted = await fetch(agentsUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "agent.delete", revision: created.revision, id: owned.id }),
+    });
+    expect(deleted.status).toBe(200);
+    expect(AgentDirectorySnapshotSchema.parse(await deleted.json()).agents.some((agent) => agent.id === owned.id)).toBe(
+      false,
+    );
+    await closed;
+    await expect(fs.access(ownedRoot)).rejects.toMatchObject({ code: "ENOENT" });
+    await fs.access(path.join(a, ".senera", "data", "agents", before.defaultAgentId));
     const additionalA = new WebSocket(app.websocketUrl);
     sockets.push(additionalA);
     await once(additionalA, "open");
@@ -150,7 +222,7 @@ test("real workspace opening isolates configuration, keeps the listener and surv
       applicationStateRoot: path.join(root, "application"),
       configPath: path.join(a, "senera.config.json"),
       deployment: SeneraServerDeployments.Local,
-      automaticLoopbackHttp: true,
+      accessProfile: AgentServerAccessProfiles.Development,
     });
     const restored = new WebSocket(restoredUrl);
     sockets.push(restored);
@@ -204,7 +276,7 @@ test("keeps nested JSON configuration inside workspace roots with spaces and Uni
       applicationStateRoot: path.join(root, "application"),
       configPath: configRelativePath,
       deployment: SeneraServerDeployments.Local,
-      automaticLoopbackHttp: true,
+      accessProfile: AgentServerAccessProfiles.Development,
     });
     const next = await app.switchWorkspace(b);
     expect(app.configPath).toBe(path.join(a, configRelativePath));

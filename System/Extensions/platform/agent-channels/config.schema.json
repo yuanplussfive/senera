@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
-  "description": "Message channel gateway configuration. Channels connect Senera sessions to Telegram, QQ and Discord bots.",
+  "description": "Message channel gateway configuration. Channels connect Senera sessions to Telegram, QQ, Discord, and the local OneBot 11 gateway.",
   "properties": {
     "enabled": {
       "type": "boolean",
@@ -14,11 +14,6 @@
       "enum": ["agent", "always_ask", "full_access"],
       "description": "Approval mode used for agent turns started from channels."
     },
-    "finalResponseRewrite": {
-      "type": "boolean",
-      "default": false,
-      "description": "Use the configured model to serialize settled channel answers into platform delivery parts."
-    },
     "profileRoutes": {
       "type": "array",
       "maxItems": 512,
@@ -28,32 +23,87 @@
         "additionalProperties": false,
         "required": ["id", "selector", "profileId"],
         "properties": {
-          "id": { "type": "string", "minLength": 1, "maxLength": 128 },
-          "priority": { "type": "integer", "minimum": -1000000, "maximum": 1000000 },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": -1000000,
+            "maximum": 1000000
+          },
           "selector": {
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "surface": { "type": "string", "enum": ["console", "channel"] },
-              "platform": { "type": "string", "enum": ["qq", "telegram", "discord"] },
-              "chatType": { "type": "string", "enum": ["direct", "group", "channel", "thread"] },
-              "chatId": { "type": "string", "minLength": 1, "maxLength": 512 },
-              "userId": { "type": "string", "minLength": 1, "maxLength": 512 },
-              "threadId": { "type": "string", "minLength": 1, "maxLength": 512 }
+              "surface": {
+                "type": "string",
+                "enum": ["console", "channel"]
+              },
+              "platform": {
+                "type": "string",
+                "enum": ["qq", "telegram", "discord", "onebot11", "onebot"]
+              },
+              "chatType": {
+                "type": "string",
+                "enum": ["direct", "group", "channel", "thread"]
+              },
+              "chatId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "userId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "threadId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "authority": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              }
             }
           },
-          "profileId": { "type": "string", "minLength": 1, "maxLength": 128 },
-          "modelProviderId": { "type": "string", "minLength": 1, "maxLength": 256 }
+          "profileId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "modelProviderId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
         }
       }
     },
     "telegram": {
       "type": "object",
-      "default": { "enabled": false },
+      "default": {
+        "enabled": false
+      },
       "properties": {
-        "enabled": { "type": "boolean", "default": false },
-        "token": { "type": "string", "minLength": 1, "description": "Bot token from @BotFather." },
-        "mode": { "type": "string", "enum": ["long_polling", "webhook"], "default": "long_polling" },
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Bot token from @BotFather."
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["long_polling", "webhook"],
+          "default": "long_polling"
+        },
         "webhookUrl": {
           "type": "string",
           "minLength": 1,
@@ -66,20 +116,36 @@
         },
         "allowedUsers": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Telegram user IDs allowed to interact."
         },
         "allowedRoles": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Reserved role allowlist for future use."
         },
-        "allowAllUsers": { "type": "boolean", "default": false },
-        "homeChannelId": { "type": "string", "description": "Optional chat id used for detached completion notices." },
-        "requireMention": { "type": "boolean", "default": false },
-        "groupSessionsPerUser": { "type": "boolean", "default": true },
+        "allowAllUsers": {
+          "type": "boolean",
+          "default": false
+        },
+        "homeChannelId": {
+          "type": "string",
+          "description": "Optional chat id used for detached completion notices."
+        },
+        "requireMention": {
+          "type": "boolean",
+          "default": false
+        },
+        "groupSessionsPerUser": {
+          "type": "boolean",
+          "default": true
+        },
         "streamProgress": {
           "type": "boolean",
           "default": true,
@@ -95,9 +161,15 @@
     },
     "qq": {
       "type": "object",
-      "default": { "enabled": false, "allowAllUsers": true },
+      "default": {
+        "enabled": false,
+        "allowAllUsers": true
+      },
       "properties": {
-        "enabled": { "type": "boolean", "default": false },
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
         "mode": {
           "type": "string",
           "enum": ["websocket", "webhook"],
@@ -109,16 +181,36 @@
           "enum": ["websocket", "webhook"],
           "description": "Compatibility alias for mode."
         },
-        "appId": { "type": "string", "minLength": 1, "description": "QQ open platform AppID." },
-        "app_id": { "type": "string", "minLength": 1, "description": "Hermes-compatible alias for appId." },
-        "appSecret": { "type": "string", "minLength": 1, "description": "QQ open platform AppSecret." },
-        "client_secret": { "type": "string", "minLength": 1, "description": "Hermes-compatible alias for appSecret." },
+        "appId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "QQ open platform AppID."
+        },
+        "app_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Hermes-compatible alias for appId."
+        },
+        "appSecret": {
+          "type": "string",
+          "minLength": 1,
+          "description": "QQ open platform AppSecret."
+        },
+        "client_secret": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Hermes-compatible alias for appSecret."
+        },
         "webhookUrl": {
           "type": "string",
           "minLength": 1,
           "description": "Public HTTPS callback URL used by QQ webhook mode."
         },
-        "webhook_url": { "type": "string", "minLength": 1, "description": "Hermes-compatible alias for webhookUrl." },
+        "webhook_url": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Hermes-compatible alias for webhookUrl."
+        },
         "webhookSecret": {
           "type": "string",
           "minLength": 1,
@@ -131,19 +223,25 @@
         },
         "allowedUsers": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "OpenIDs allowed to interact."
         },
         "allow_from": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Hermes-compatible alias for allowedUsers."
         },
         "allowFrom": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Compatibility alias for allowedUsers."
         },
         "dmPolicy": {
@@ -170,30 +268,40 @@
         },
         "groupAllowedUsers": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "OpenIDs allowed to trigger group sessions."
         },
         "group_allow_from": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Hermes-compatible alias for groupAllowedUsers."
         },
         "groupAllowFrom": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Compatibility alias for groupAllowedUsers."
         },
         "allowedRoles": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Reserved role allowlist for future use."
         },
         "allowed_roles": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Hermes-compatible alias for allowedRoles."
         },
         "allowAllUsers": {
@@ -201,61 +309,155 @@
           "default": true,
           "description": "Allow every user to interact with the bot. Disable and use allowedUsers for a closed allowlist."
         },
-        "requireMention": { "type": "boolean", "default": false },
-        "require_mention": { "type": "boolean", "description": "Compatibility alias for requireMention." },
-        "groupSessionsPerUser": { "type": "boolean", "default": false },
+        "requireMention": {
+          "type": "boolean",
+          "default": false
+        },
+        "require_mention": {
+          "type": "boolean",
+          "description": "Compatibility alias for requireMention."
+        },
+        "groupSessionsPerUser": {
+          "type": "boolean",
+          "default": false
+        },
         "group_sessions_per_user": {
           "type": "boolean",
           "description": "Compatibility alias for groupSessionsPerUser."
         },
-        "homeChannelId": { "type": "string", "description": "Optional channel used for detached completion notices." },
-        "home_channel_id": { "type": "string", "description": "Compatibility alias for homeChannelId." },
-        "streamProgress": { "type": "boolean", "default": true },
-        "stream_progress": { "type": "boolean", "description": "Compatibility alias for streamProgress." },
+        "homeChannelId": {
+          "type": "string",
+          "description": "Optional channel used for detached completion notices."
+        },
+        "home_channel_id": {
+          "type": "string",
+          "description": "Compatibility alias for homeChannelId."
+        },
+        "streamProgress": {
+          "type": "boolean",
+          "default": true
+        },
+        "stream_progress": {
+          "type": "boolean",
+          "description": "Compatibility alias for streamProgress."
+        },
         "markdownSupport": {
           "type": "boolean",
           "default": true,
           "description": "Use QQ native Markdown messages for direct and group replies."
         },
-        "markdown_support": { "type": "boolean", "description": "Hermes-compatible alias for markdownSupport." },
+        "markdown_support": {
+          "type": "boolean",
+          "description": "Hermes-compatible alias for markdownSupport."
+        },
         "stt": {
           "type": "object",
           "description": "Optional OpenAI-compatible voice transcription fallback. QQ's built-in asr_refer_text is always preferred.",
           "properties": {
-            "enabled": { "type": "boolean", "default": true },
-            "provider": { "type": "string", "description": "Provider preset, for example openai, zai, or glm." },
-            "baseUrl": { "type": "string", "description": "OpenAI-compatible API base URL." },
-            "base_url": { "type": "string", "description": "Snake_case alias for baseUrl." },
-            "apiKey": { "type": "string" },
-            "api_key": { "type": "string" },
-            "model": { "type": "string", "default": "whisper-1" },
-            "timeoutMs": { "type": "integer", "minimum": 1000, "default": 30000 },
-            "timeout_ms": { "type": "integer", "minimum": 1000 },
-            "maxBytes": { "type": "integer", "minimum": 1024, "default": 26214400 },
-            "max_bytes": { "type": "integer", "minimum": 1024 }
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "provider": {
+              "type": "string",
+              "description": "Provider preset, for example openai, zai, or glm."
+            },
+            "baseUrl": {
+              "type": "string",
+              "description": "OpenAI-compatible API base URL."
+            },
+            "base_url": {
+              "type": "string",
+              "description": "Snake_case alias for baseUrl."
+            },
+            "apiKey": {
+              "type": "string"
+            },
+            "api_key": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string",
+              "default": "whisper-1"
+            },
+            "timeoutMs": {
+              "type": "integer",
+              "minimum": 1000,
+              "default": 30000
+            },
+            "timeout_ms": {
+              "type": "integer",
+              "minimum": 1000
+            },
+            "maxBytes": {
+              "type": "integer",
+              "minimum": 1024,
+              "default": 26214400
+            },
+            "max_bytes": {
+              "type": "integer",
+              "minimum": 1024
+            }
           },
           "additionalProperties": false
         },
-        "maxMessageLength": { "type": "integer", "minimum": 1, "maximum": 4000, "default": 4000 },
+        "maxMessageLength": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4000,
+          "default": 4000
+        },
         "max_message_length": {
           "type": "integer",
           "minimum": 1,
           "maximum": 4000,
           "description": "Hermes-compatible alias for maxMessageLength."
         },
-        "dedupWindowMs": { "type": "integer", "minimum": 1000, "default": 300000 },
-        "dedupMaxSize": { "type": "integer", "minimum": 100, "default": 1000 },
-        "maxMediaBytes": { "type": "integer", "minimum": 1, "default": 100000000 },
-        "inlineMediaLimitBytes": { "type": "integer", "minimum": 1, "default": 10000000 },
-        "mediaUploadTimeoutMs": { "type": "integer", "minimum": 1000, "default": 120000 },
-        "chunkUploadTimeoutMs": { "type": "integer", "minimum": 1000, "default": 300000 },
+        "dedupWindowMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "default": 300000
+        },
+        "dedupMaxSize": {
+          "type": "integer",
+          "minimum": 100,
+          "default": 1000
+        },
+        "maxMediaBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 100000000
+        },
+        "inlineMediaLimitBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 10000000
+        },
+        "mediaUploadTimeoutMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "default": 120000
+        },
+        "chunkUploadTimeoutMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "default": 300000
+        },
         "intents": {
           "type": "integer",
           "minimum": 0,
           "description": "Raw QQ gateway intents bitmask; defaults to direct/group/guild/interaction events."
         },
-        "ackTimeoutMs": { "type": "integer", "minimum": 1000, "default": 10000 },
-        "maxReconnectAttempts": { "type": "integer", "minimum": 1, "default": 100 },
+        "ackTimeoutMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "default": 10000
+        },
+        "maxReconnectAttempts": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 100
+        },
         "max_reconnect_attempts": {
           "type": "integer",
           "minimum": 1,
@@ -283,20 +485,33 @@
           "minimum": 1,
           "description": "Hermes-compatible alias for maxQuickDisconnects."
         },
-        "uploadConcurrency": { "type": "integer", "minimum": 1, "maximum": 10, "default": 3 },
+        "uploadConcurrency": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "default": 3
+        },
         "upload_concurrency": {
           "type": "integer",
           "minimum": 1,
           "maximum": 10,
           "description": "Hermes-compatible alias for uploadConcurrency."
         },
-        "mediaCacheTtlMs": { "type": "integer", "minimum": 1000, "default": 600000 },
+        "mediaCacheTtlMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "default": 600000
+        },
         "media_cache_ttl_ms": {
           "type": "integer",
           "minimum": 1000,
           "description": "Hermes-compatible alias for mediaCacheTtlMs."
         },
-        "typingDebounceMs": { "type": "integer", "minimum": 1000, "default": 45000 },
+        "typingDebounceMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "default": 45000
+        },
         "typing_debounce_ms": {
           "type": "integer",
           "minimum": 1000,
@@ -340,25 +555,55 @@
       },
       "additionalProperties": false
     },
+    "onebot11": {
+      "type": "object",
+      "default": {
+        "enabled": false
+      },
+      "description": "Embedded Senera QQ client.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    },
     "discord": {
       "type": "object",
-      "default": { "enabled": false },
+      "default": {
+        "enabled": false
+      },
       "properties": {
-        "enabled": { "type": "boolean", "default": false },
-        "token": { "type": "string", "minLength": 1, "description": "Discord bot token." },
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Discord bot token."
+        },
         "allowedUsers": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Discord user IDs allowed to interact."
         },
         "allowedRoles": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Discord role IDs allowed to interact."
         },
-        "allowAllUsers": { "type": "boolean", "default": false },
+        "allowAllUsers": {
+          "type": "boolean",
+          "default": false
+        },
         "intents": {
           "type": "integer",
           "minimum": 0,
@@ -366,6 +611,148 @@
         }
       },
       "additionalProperties": false
+    },
+    "onebot": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "wsUrl": {
+          "type": "string",
+          "pattern": "^wss?://",
+          "description": "Forward WebSocket event endpoint. Use wsToken for credentials."
+        },
+        "wsToken": {
+          "type": "string",
+          "format": "password"
+        },
+        "httpUrl": {
+          "type": "string",
+          "pattern": "^https?://",
+          "description": "HTTP action base URL, used only when actionTransport is http."
+        },
+        "httpToken": {
+          "type": "string",
+          "format": "password"
+        },
+        "actionTransport": {
+          "type": "string",
+          "enum": ["websocket", "http"],
+          "default": "websocket"
+        },
+        "expectedSelfId": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "Reject the connection if get_login_info returns a different account."
+        },
+        "allowAllUsers": {
+          "type": "boolean",
+          "default": false
+        },
+        "allowedUsers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^\\d+$"
+          },
+          "default": []
+        },
+        "groupAllowedUsers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^\\d+$"
+          },
+          "default": []
+        },
+        "commandUsers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^\\d+$"
+          },
+          "default": [],
+          "description": "Users allowed to run group session-control commands. Read-only commands remain available to admitted group participants."
+        },
+        "requestTimeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647,
+          "default": 30000
+        },
+        "reconnectDelayMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647,
+          "default": 1000
+        },
+        "maxReconnectDelayMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647,
+          "default": 30000
+        },
+        "fileMessages": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable only if the gateway supports outbound file segments with inline base64 content."
+        },
+        "poke": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable only if the gateway implements the send_poke extension action."
+        },
+        "ownerQq": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "Verified QQ account permitted to administer this channel. Omit to leave the channel without an owner."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "actionTransport": {
+                "const": "http"
+              }
+            },
+            "required": ["actionTransport"]
+          },
+          "then": {
+            "properties": {
+              "httpUrl": {
+                "type": "string"
+              }
+            },
+            "required": ["httpUrl"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "enabled": {
+                "const": true
+              }
+            },
+            "required": ["enabled"]
+          },
+          "then": {
+            "properties": {
+              "wsUrl": {
+                "type": "string"
+              }
+            },
+            "required": ["wsUrl"]
+          }
+        }
+      ],
+      "additionalProperties": false,
+      "default": {
+        "enabled": false
+      },
+      "description": "Connect to an external OneBot 11 service such as SnowLuma."
     }
   },
   "additionalProperties": false

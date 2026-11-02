@@ -4,13 +4,13 @@ import type {
   AgentModelProviderEndpointConfig,
   AgentSystemConfig,
   AgentModelRuntimeDefaultsConfig,
+  ResolvedAgentModelCapabilitiesConfig,
   ResolvedAgentModelProviderEndpointConfig,
   ResolvedAgentModelProviderConfig,
 } from "../Types/AgentConfigTypes.js";
 import { resolveAgentDefaults } from "./AgentDefaultResolver.js";
 import { optionalDisabledOrSecondsToMilliseconds, optionalSecondsToMilliseconds } from "./AgentTimeDefaults.js";
-import { resolveAgentNativeToolRoute } from "../ModelEndpoints/AgentModelEndpointContract.js";
-import { resolveAgentModelThinking } from "../ModelEndpoints/AgentModelThinking.js";
+import { resolveAgentConfiguredModelThinking } from "../ModelEndpoints/AgentModelThinking.js";
 import { carriesAgentSecretScheme } from "../Security/AgentSecretEnvelopeCodec.js";
 
 export function resolveModelProviderConfig(config: AgentSystemConfig, id?: string): ResolvedAgentModelProviderConfig {
@@ -123,7 +123,7 @@ export function resolveModelProviderCatalog(config: AgentSystemConfig) {
       {
         ...endpoint,
         ...runtime,
-        DeclaredCapabilities: provider.Capabilities ? { ...provider.Capabilities } : undefined,
+        DeclaredCapabilities: cloneModelCapabilities(provider.Capabilities),
         TimeoutMs: optionalSecondsToMilliseconds(runtime.TimeoutSeconds) ?? defaults.ModelRuntime.TimeoutMs,
         FirstTokenTimeoutMs:
           optionalDisabledOrSecondsToMilliseconds(runtime.FirstTokenTimeoutSeconds) ??
@@ -277,15 +277,7 @@ function toModelProviderListItem(
   defaultId: string,
   runtimeDefaults: AgentModelRuntimeDefaultsConfig,
 ) {
-  const thinking = resolveAgentModelThinking({
-    api: resolveAgentNativeToolRoute(provider.Endpoint, provider.BaseUrl).api,
-    provider: provider.ProviderId,
-    model: provider.Model,
-    capabilities: provider.Capabilities,
-    declaredCapabilities: provider.DeclaredCapabilities,
-    thinkingProfiles: provider.ThinkingProfiles,
-    defaultThinkingLevel: provider.DefaultThinkingLevel,
-  });
+  const thinking = resolveAgentConfiguredModelThinking(provider);
   return {
     id: provider.Id,
     providerId: provider.ProviderId,
@@ -299,6 +291,8 @@ function toModelProviderListItem(
     baseUrl: provider.BaseUrl,
     model: provider.Model,
     isDefault: provider.Id === defaultId,
+    toolPlanningMode: provider.ToolPlanningMode,
+    stream: provider.Stream,
     thinkingLevels: [...thinking.levels],
     thinkingProfiles: [...thinking.profiles],
     defaultThinkingLevel: thinking.defaultLevel,
@@ -308,9 +302,41 @@ function toModelProviderListItem(
 function resolveModelCapabilities(
   base: Pick<AgentModelRuntimeDefaultsConfig, "Capabilities">,
   capabilities: AgentModelCapabilitiesConfig | undefined,
-) {
+): ResolvedAgentModelCapabilitiesConfig {
   return {
     ...base.Capabilities,
     ...(capabilities ?? {}),
+    VisionInput: {
+      ...base.Capabilities.VisionInput,
+      ...(capabilities?.VisionInput ?? {}),
+      ...(capabilities?.VisionInput?.SupportedMimeTypes
+        ? { SupportedMimeTypes: [...capabilities.VisionInput.SupportedMimeTypes] }
+        : {}),
+      ...(capabilities?.VisionInput?.SupportedAnimatedMimeTypes
+        ? { SupportedAnimatedMimeTypes: [...capabilities.VisionInput.SupportedAnimatedMimeTypes] }
+        : {}),
+    },
+  };
+}
+
+function cloneModelCapabilities(
+  capabilities: AgentModelCapabilitiesConfig | undefined,
+): AgentModelCapabilitiesConfig | undefined {
+  if (!capabilities) return undefined;
+  return {
+    ...capabilities,
+    ...(capabilities.VisionInput
+      ? {
+          VisionInput: {
+            ...capabilities.VisionInput,
+            ...(capabilities.VisionInput.SupportedMimeTypes
+              ? { SupportedMimeTypes: [...capabilities.VisionInput.SupportedMimeTypes] }
+              : {}),
+            ...(capabilities.VisionInput.SupportedAnimatedMimeTypes
+              ? { SupportedAnimatedMimeTypes: [...capabilities.VisionInput.SupportedAnimatedMimeTypes] }
+              : {}),
+          },
+        }
+      : {}),
   };
 }

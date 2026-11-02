@@ -1,7 +1,7 @@
 {
   "name": "BrowserOpen",
   "loading": "Dynamic",
-  "description": "Open an HTTP(S) page or file:// resource in the controlled browser session. Private-network and local-file targets require approval outside Full Access mode. Navigation invalidates earlier BrowserSnapshot references; capture a new snapshot before interacting.",
+  "description": "Open an HTTP(S) page or file:// resource in the controlled browser session. Private-network and local-file targets require approval outside Full Access mode. If navigation.status is pending, the target URL was reached but the page may still be loading; wait for a concrete condition instead of opening it again. Navigation invalidates earlier BrowserSnapshot references; capture a new snapshot before interacting.",
   "presentation": {
     "category": "browser-navigation",
     "icon": "external-link",
@@ -12,13 +12,7 @@
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
     "properties": {
-      "url": { "type": "string", "minLength": 1, "maxLength": 8192 },
-      "timeoutMs": {
-        "description": "Optional per-call operation timeout in milliseconds.",
-        "type": "integer",
-        "minimum": 1000,
-        "maximum": 900000
-      }
+      "url": { "type": "string", "minLength": 1, "maxLength": 8192 }
     },
     "required": ["url"],
     "additionalProperties": false
@@ -38,12 +32,24 @@
         "required": ["url", "title"],
         "additionalProperties": false
       },
+      "navigation": {
+        "description": "The target URL was reached, but the page may still be loading. Wait for a concrete page condition before interacting.",
+        "type": "object",
+        "properties": { "status": { "type": "string", "const": "pending" } },
+        "required": ["status"],
+        "additionalProperties": false
+      },
       "screenshot": {
         "type": "object",
         "properties": {
           "assetId": { "type": "string", "minLength": 1 },
           "mediaType": { "type": "string", "minLength": 1 },
-          "markdown": { "type": "string", "minLength": 1 }
+          "markdown": { "type": "string", "minLength": 1 },
+          "workspacePath": {
+            "description": "Workspace-relative path of the recorded asset. Read it with WorkspaceRead when the image itself is needed.",
+            "type": "string",
+            "minLength": 1
+          }
         },
         "required": ["assetId", "mediaType", "markdown"],
         "additionalProperties": false
@@ -54,7 +60,12 @@
           "assetId": { "type": "string", "minLength": 1 },
           "fileName": { "type": "string", "minLength": 1 },
           "mediaType": { "type": "string", "minLength": 1 },
-          "markdown": { "type": "string", "minLength": 1 }
+          "markdown": { "type": "string", "minLength": 1 },
+          "workspacePath": {
+            "description": "Workspace-relative path of the recorded asset. Read it with WorkspaceRead when the file itself is needed.",
+            "type": "string",
+            "minLength": 1
+          }
         },
         "required": ["assetId", "fileName", "mediaType", "markdown"],
         "additionalProperties": false
@@ -67,9 +78,9 @@
   "execution": { "Targets": ["Local"], "Network": "Allow", "Workspace": "ReadOnly" },
   "runtime": {
     "Lifecycle": "Persistent",
-    "ProtocolVersion": 2,
     "ResultAssessment": "ProcessExit",
     "Scheduling": "SelfManaged",
+    "DeadlinePolicy": "ToolAware",
     "Capabilities": { "Progress": true, "Cancellation": true }
   },
   "resources": [{ "Capability": "senera.network.url", "Pointer": "/url" }],

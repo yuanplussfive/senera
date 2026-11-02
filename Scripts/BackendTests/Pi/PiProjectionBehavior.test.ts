@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { AgentDefaults } from "../../../Source/AgentSystem/Defaults/AgentDefaultCatalog.js";
 import { projectSeneraModelProviderToPi } from "../../../Source/AgentSystem/Pi/AgentPiModelProjector.js";
 import { resolveAgentPiCompactionReserveTokens } from "../../../Source/AgentSystem/Pi/AgentPiCompactionSettings.js";
 import type { Model } from "@earendil-works/pi-ai";
@@ -155,5 +156,6 @@ function createProvider(overrides: Partial<ResolvedAgentModelProviderConfig> = {
     RetryAfterMaxDelayMs: 60_000,
     Headers: {},
     ...overrides,
+    Capabilities: { ...AgentDefaults.ModelRuntime.Capabilities, ...overrides.Capabilities },
   };
 }

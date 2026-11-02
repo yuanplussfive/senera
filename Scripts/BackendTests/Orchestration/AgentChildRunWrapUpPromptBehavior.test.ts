@@ -36,6 +36,8 @@ describe("child-run wrap-up prompt", () => {
     expect(prompt).toContain("revision-1");
     expect(prompt).toContain("sha256:workspace");
     expect(prompt).toContain("已完成源码检查");
+    expect(prompt).toContain("2026-09-12T08:00:00.000+08:00");
+    expect(prompt).not.toContain("2026-09-12T00:00:00.000Z");
     expect(prompt).not.toContain('"provenance":"user"');
   });
 });

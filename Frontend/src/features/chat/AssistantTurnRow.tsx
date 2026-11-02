@@ -1,18 +1,20 @@
 import { lazy, memo, Suspense, useEffect, useId, useState } from "react";
 import type { InteractionInputAction, InteractionInputContent } from "../../api/eventTypes";
+import type { FeedbackCategory, FeedbackRating } from "../../api/feedbackEventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { useFrontendLocale } from "../../i18n/useFrontendLocale";
 import { cn } from "../../lib/util";
-import type { ChatMessage, ConversationIdentity } from "../../store/sessionStore";
+import type { ChatMessage, ConversationIdentity, ModelThinkingBlock } from "../../store/sessionStore";
 import { DEFAULT_ASSISTANT_PROFILE } from "../../store/session/userProfile";
 import { ActivityLoader, ActivityStatusIcon, AppIcon, ConversationFrame, ExecutionStatusTones } from "../../shared/ui";
 import { activeRunActivityLabel, runActivityPresentationPriority } from "../workflow/runActivityPresentation";
-import { isChildRunActive } from "../workflow/ChildRunOverview";
 import { readRunStatusLabel } from "../workflow/stepPresentation";
 import { AssistantMessageBody } from "./AssistantMessageBody";
 import { InteractionInputStrip } from "./InteractionInputStrip";
 import { MessageActions } from "./MessageActions";
+import { MessageFeedbackControl } from "./MessageFeedbackControl";
 import { MessageMetrics } from "./MessageMetrics";
-import { AssistantMessageAvatar, MessageMeta } from "./MessageChrome";
+import { AssistantMessageAvatar, MessageFooter, MessageMeta } from "./MessageChrome";
 import {
   MotionList,
   MotionListItem,
@@ -24,8 +26,8 @@ import { InitialThinkingIndicator, RunThinkingPresentation } from "./ModelThinki
 import { preloadMarkdownRenderer } from "../../shared/code/LazyMarkdownRenderer";
 import { scheduleIdleTask } from "../../shared/scheduling/scheduleIdleTask";
 import { readAssistantDisplayContent } from "./messagePresentation";
-import { projectAssistantTurnStages, type AssistantTurnStage } from "./assistantTurnStageProjection";
-import { isRunTerminal } from "../../store/session/sessionRunProjection";
+import type { AssistantTurnStage } from "./assistantTurnStageProjection";
+import { hasActiveExecutionWork, projectAssistantTurnPresentation } from "./assistantTurnPresentationProjection";
 import {
   readAssistantTurnActionMessage,
   readAssistantTurnAnchorId,
@@ -58,9 +60,16 @@ export interface AssistantTurnRowProps {
     action: InteractionInputAction,
     content?: InteractionInputContent,
   ) => void;
+  onRecordMessageFeedback?: (
+    sessionId: string,
+    requestId: string,
+    rating: FeedbackRating | null,
+    category?: FeedbackCategory,
+  ) => void;
 }
 
 export const AssistantTurnRow = memo(function AssistantTurnRow({
+  sessionId,
   turn,
   assistantProfile = DEFAULT_ASSISTANT_PROFILE,
   showInlineActions,
@@ -69,7 +78,9 @@ export const AssistantTurnRow = memo(function AssistantTurnRow({
   onDeleteFromMessage,
   onViewWorkflow,
   onResolveInteractionInput,
+  onRecordMessageFeedback,
 }: AssistantTurnRowProps): JSX.Element {
+  useFrontendLocale();
   const { run } = turn;
   const runRequestId = run?.requestId;
   const runStatus = run?.status;
@@ -85,68 +96,26 @@ export const AssistantTurnRow = memo(function AssistantTurnRow({
     }
     return scheduleIdleTask(preload);
   }, [runRequestId, runStatus, runStepsLength]);
-  const prefaces = turn.messages.filter((message) => message.kind === "AssistantToolPreface");
-  const terminalMessages = turn.messages.filter((message) => message.kind !== "AssistantToolPreface");
   const actionMessage = readAssistantTurnActionMessage(turn);
   const fallbackMessage = turn.messages.at(-1);
   const forkBoundary = actionMessage ?? (turn.requestId ? { requestId: turn.requestId } : undefined);
-  const transientPreface = readTransientPreface(turn, prefaces);
-  const transientAnswer = readTransientAnswer(turn, terminalMessages);
-  const copyContent = readTurnCopyContent(turn, transientPreface, transientAnswer);
-  const stages = projectAssistantTurnStages(turn);
-  const renderedStages = projectTransientStages(stages, turn, transientPreface, transientAnswer);
-  const hasResponseOrderedThinking = renderedStages.some((stage) => stage.responseItems !== undefined);
-  const showLiveExecution = run?.status === "running" || run?.status === "cancelling";
-  const liveToolStageId = showLiveExecution ? readLatestToolStageId(renderedStages) : undefined;
-  const currentStageId = renderedStages.find((stage) => stage.current)?.id;
-  const foregroundActivity =
-    showLiveExecution && run?.liveActivity && runActivityPresentationPriority(run.liveActivity) === "foreground";
-  const liveExecutionStageId = liveToolStageId ?? (foregroundActivity ? currentStageId : undefined);
-  const activeExecutionStageIds = showLiveExecution ? readActiveExecutionStageIds(renderedStages) : new Set<string>();
-  const liveTextActivityExists = Boolean(
-    transientPreface ||
-    transientAnswer ||
-    run?.thinkingBlocks?.some((block) => block.status === "streaming" && block.content.trim()),
-  );
-  const liveTextActivityStageId = liveTextActivityExists ? currentStageId : undefined;
-  // `visibleText` is the provider-side target. It can be populated before the
-  // display ticker has produced a paintable fragment, so using it here would
-  // remove the thinking slot and leave an empty frame before the answer.
-  const hasCurrentRunText = Boolean(run?.displayText?.trim());
-  const hasStreamingThinking = Boolean(
-    run?.thinkingBlocks?.some((block) => block.status === "streaming" && block.content.trim()),
-  );
-  // Completed thinking blocks are historical context, not a visible answer.
-  // Keep the live placeholder available while the model is between blocks.
-  const hasCurrentStageResponse = renderedStages.some(
-    (stage) => stage.current && hasVisibleStageResponse(stage, { includeThinking: false }),
-  );
-  const hasPendingUserAction = Boolean(
-    run?.approvals?.some((approval) => approval.status === "pending") ||
-    run?.interactionInputs?.some((interaction) => interaction.status !== "resolved"),
-  );
-  const hasRenderableActiveExecution = [...activeExecutionStageIds].some((stageId) => {
-    const stage = renderedStages.find((candidate) => candidate.id === stageId);
-    return stage?.run?.steps.some(isRenderableExecutionStep) ?? false;
-  });
-  const liveRunWaiting = run?.status === "running" || (!run && turn.streaming);
-  const showLiveWaiting =
-    liveRunWaiting &&
-    !hasCurrentRunText &&
-    !hasStreamingThinking &&
-    !hasCurrentStageResponse &&
-    !hasPendingUserAction &&
-    !foregroundActivity &&
-    !hasRenderableActiveExecution;
-  const liveActivityStage = renderedStages.find((stage) => stage.current) ?? renderedStages.at(-1);
-  const thinkingProjectionStageId = hasResponseOrderedThinking
-    ? undefined
-    : (currentStageId ?? renderedStages.at(-1)?.id);
-  const terminalFinalStage = readTerminalFinalStage(renderedStages, run);
-  const terminalProcessStages = projectTerminalProcessStages(renderedStages, terminalFinalStage?.id);
-  const hasTerminalExecution = terminalProcessStages.some(hasExecutionStageContent);
-  const showTerminalPresentation = terminalFinalStage !== undefined || (isTerminalRun(run) && hasTerminalExecution);
-  const showTerminalDisclosure = showTerminalPresentation && terminalProcessStages.length > 0;
+  const {
+    copyContent,
+    renderedStages,
+    showTerminalPresentation,
+    terminalFinalStage,
+    terminalProcessStages,
+    terminalThinkingBlocks,
+    showTerminalDisclosure,
+    thinkingProjectionStageId,
+    showLiveWaiting,
+    liveActivityStage,
+    liveTextActivityExists,
+    liveTextActivityStageId,
+    liveExecutionStageId,
+    executionPresentationStageId,
+    activeExecutionStageIds,
+  } = projectAssistantTurnPresentation(turn);
   const [terminalProcessOpen, setTerminalProcessOpen] = useState(false);
   const terminalProcessId = useId();
 
@@ -155,37 +124,36 @@ export const AssistantTurnRow = memo(function AssistantTurnRow({
   }, [showTerminalDisclosure]);
 
   return (
-    <ConversationFrame mode="wide" className="group/msg" data-assistant-turn={turn.requestId ?? turn.key}>
+    <ConversationFrame
+      mode="wide"
+      className="group/msg"
+      data-message-hover-surface
+      data-assistant-turn={turn.requestId ?? turn.key}
+    >
       <div className="flex min-w-0 items-start gap-4" data-assistant-message>
         <AssistantMessageAvatar profile={assistantProfile} />
         <div className="assistant-turn-content min-w-0 flex-1">
           <MessageMeta title={assistantProfile.name} timestamp={turn.createdAt} />
-          {showTerminalPresentation ? (
-            <TerminalTurnPresentation
-              finalStage={terminalFinalStage}
-              processStages={terminalProcessStages}
-              processOpen={showTerminalDisclosure && terminalProcessOpen}
-              processId={terminalProcessId}
-              run={run}
-              onProcessOpenChange={setTerminalProcessOpen}
-            />
-          ) : (
-            <div className="assistant-turn-flow" data-assistant-turn-stage-list>
-              <RunElapsedRow run={run} />
-              {renderedStages.map((stage) => (
-                <AssistantStage
-                  key={stage.id}
-                  stage={stage}
-                  thinkingRun={stage.id === thinkingProjectionStageId ? run : undefined}
-                  showLiveWaiting={showLiveWaiting && stage.id === liveActivityStage?.id}
-                  liveActivity={!liveTextActivityExists && stage.id === liveExecutionStageId}
-                  liveTextActivity={stage.id === liveTextActivityStageId}
-                  onResolveInteractionInput={onResolveInteractionInput}
-                  showExecution={stage.id === liveExecutionStageId || activeExecutionStageIds.has(stage.id)}
-                />
-              ))}
-            </div>
-          )}
+          <AssistantTurnPresentation
+            run={run}
+            stages={renderedStages}
+            terminalPresentation={showTerminalPresentation}
+            finalStage={terminalFinalStage}
+            processStages={terminalProcessStages}
+            processThinkingBlocks={terminalThinkingBlocks}
+            processOpen={showTerminalDisclosure && terminalProcessOpen}
+            processId={terminalProcessId}
+            thinkingProjectionStageId={thinkingProjectionStageId}
+            showLiveWaiting={showLiveWaiting}
+            liveActivityStageId={liveActivityStage?.id}
+            liveTextActivityExists={liveTextActivityExists}
+            liveTextActivityStageId={liveTextActivityStageId}
+            liveExecutionStageId={liveExecutionStageId}
+            executionPresentationStageId={executionPresentationStageId}
+            activeExecutionStageIds={activeExecutionStageIds}
+            onProcessOpenChange={setTerminalProcessOpen}
+            onResolveInteractionInput={onResolveInteractionInput}
+          />
 
           {run ? (
             <Suspense fallback={null}>
@@ -193,12 +161,7 @@ export const AssistantTurnRow = memo(function AssistantTurnRow({
             </Suspense>
           ) : null}
 
-          <div
-            className={cn(
-              "mt-3 flex min-h-6 min-w-0 items-center gap-3 overflow-hidden opacity-0 pointer-events-none transition-opacity group-hover/msg:opacity-100 group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto empty:hidden",
-              showInlineActions && "opacity-100 pointer-events-auto",
-            )}
-          >
+          <MessageFooter visible={showInlineActions}>
             <MessageMetrics
               role="assistant"
               usage={run?.usage ?? actionMessage?.metadata?.run?.usage}
@@ -207,7 +170,14 @@ export const AssistantTurnRow = memo(function AssistantTurnRow({
             />
 
             {forkBoundary ? (
-              <div className="ml-auto flex min-w-0">
+              <div className="ml-auto flex min-w-0 items-center gap-1">
+                {actionMessage && turn.requestId && onRecordMessageFeedback ? (
+                  <MessageFeedbackControl
+                    sessionId={sessionId}
+                    requestId={turn.requestId}
+                    onRecord={onRecordMessageFeedback}
+                  />
+                ) : null}
                 <MessageActions
                   content={copyContent}
                   placement="left"
@@ -226,33 +196,62 @@ export const AssistantTurnRow = memo(function AssistantTurnRow({
                 />
               </div>
             ) : null}
-          </div>
+          </MessageFooter>
         </div>
       </div>
     </ConversationFrame>
   );
 }, areAssistantTurnRowPropsEqual);
 
-function TerminalTurnPresentation({
+function AssistantTurnPresentation({
+  stages,
+  terminalPresentation,
   finalStage,
   processStages,
+  processThinkingBlocks,
   processOpen,
   processId,
   run,
+  thinkingProjectionStageId,
+  showLiveWaiting,
+  liveActivityStageId,
+  liveTextActivityExists,
+  liveTextActivityStageId,
+  liveExecutionStageId,
+  executionPresentationStageId,
+  activeExecutionStageIds,
   onProcessOpenChange,
+  onResolveInteractionInput,
 }: {
+  stages: readonly RenderedAssistantStage[];
+  terminalPresentation: boolean;
   finalStage?: RenderedAssistantStage;
   processStages: readonly RenderedAssistantStage[];
+  processThinkingBlocks: readonly ModelThinkingBlock[];
   processOpen: boolean;
   processId: string;
   run?: AssistantTurnListItem["run"];
+  thinkingProjectionStageId?: string;
+  showLiveWaiting: boolean;
+  liveActivityStageId?: string;
+  liveTextActivityExists: boolean;
+  liveTextActivityStageId?: string;
+  liveExecutionStageId?: string;
+  executionPresentationStageId?: string;
+  activeExecutionStageIds: ReadonlySet<string>;
   onProcessOpenChange: (open: boolean) => void;
+  onResolveInteractionInput?: AssistantStageProps["onResolveInteractionInput"];
 }): JSX.Element {
-  const hasProcess = processStages.length > 0;
+  const displayStages = terminalPresentation ? processStages : stages;
+  const hasTerminalProcess = terminalPresentation && (processStages.length > 0 || processThinkingBlocks.length > 0);
 
   return (
-    <div className="assistant-turn-flow" data-assistant-turn-stage-list data-assistant-turn-settled>
-      {hasProcess ? (
+    <div
+      className="assistant-turn-flow"
+      data-assistant-turn-stage-list
+      data-assistant-turn-settled={terminalPresentation || undefined}
+    >
+      {hasTerminalProcess ? (
         <button
           type="button"
           className="group flex min-w-0 w-full items-center gap-1.5 border-b border-line-subtle py-[5px] text-left text-[length:var(--theme-chat-assistant-font-size-scaled)] leading-5 text-content-secondary transition-colors hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
@@ -275,17 +274,66 @@ function TerminalTurnPresentation({
       ) : (
         <RunElapsedRow run={run} />
       )}
-      {hasProcess ? (
-        <MotionDisclosure id={processId} open={processOpen} className="assistant-turn-process-disclosure">
-          <div className="assistant-turn-process-list flex min-w-0 flex-col" data-settled-turn-process>
-            {processStages.map((stage) => (
-              <AssistantStage key={stage.id} stage={stage} displayMode="process" showExecution={false} />
-            ))}
-          </div>
-        </MotionDisclosure>
-      ) : null}
-      {finalStage ? <AssistantStage stage={finalStage} displayMode="final" showExecution={false} /> : null}
+      <MotionDisclosure
+        id={processId}
+        open={terminalPresentation ? processOpen : true}
+        strategy="stable"
+        lazyMount
+        className="assistant-turn-process-disclosure"
+      >
+        <div
+          className={cn("min-w-0", terminalPresentation && "assistant-turn-process-list flex flex-col")}
+          data-settled-turn-process={terminalPresentation || undefined}
+        >
+          {terminalPresentation && processThinkingBlocks.length > 0 ? (
+            <RunThinkingPresentation blocks={processThinkingBlocks} />
+          ) : null}
+          {displayStages.map((stage) => (
+            <AssistantStage
+              key={stage.id}
+              stage={stage}
+              thinkingRun={!terminalPresentation && stage.id === thinkingProjectionStageId ? run : undefined}
+              showLiveWaiting={!terminalPresentation && showLiveWaiting && stage.id === liveActivityStageId}
+              liveActivity={!terminalPresentation && !liveTextActivityExists && stage.id === liveExecutionStageId}
+              liveTextActivity={!terminalPresentation && stage.id === liveTextActivityStageId}
+              onResolveInteractionInput={onResolveInteractionInput}
+              showExecution={
+                !terminalPresentation &&
+                (stage.id === executionPresentationStageId || activeExecutionStageIds.has(stage.id))
+              }
+              displayMode={terminalPresentation ? "process" : "normal"}
+            />
+          ))}
+        </div>
+      </MotionDisclosure>
+      {terminalPresentation && finalStage ? <TerminalFinalResponse stage={finalStage} /> : null}
     </div>
+  );
+}
+
+function TerminalFinalResponse({ stage }: { stage: RenderedAssistantStage }): JSX.Element {
+  return (
+    <section className="assistant-turn-stage" data-assistant-turn-stage="final" data-current-stage="false">
+      {stage.responseItems ? (
+        <MotionList presence="static" className="assistant-turn-response-items min-w-0">
+          {stage.responseItems
+            .filter((item) => item.kind === "message")
+            .map((item) => {
+              if (item.kind !== "message") return null;
+              return (
+                <MotionListItem key={item.message.id} className="assistant-turn-response-item min-w-0" initial={false}>
+                  <TurnMessageSegment message={item.message} run={stage.run} liveActivity={false} />
+                </MotionListItem>
+              );
+            })}
+        </MotionList>
+      ) : stage.message ? (
+        <TurnMessageSegment message={stage.message} run={stage.run} liveActivity={false} />
+      ) : null}
+      {stage.transientContent && stage.transientKind ? (
+        <AssistantMessageBody message={{ kind: stage.transientKind, content: stage.transientContent }} />
+      ) : null}
+    </section>
   );
 }
 
@@ -299,7 +347,8 @@ function areAssistantTurnRowPropsEqual(previous: AssistantTurnRowProps, next: As
     previous.onRegenerate !== next.onRegenerate ||
     previous.onDeleteFromMessage !== next.onDeleteFromMessage ||
     previous.onViewWorkflow !== next.onViewWorkflow ||
-    previous.onResolveInteractionInput !== next.onResolveInteractionInput
+    previous.onResolveInteractionInput !== next.onResolveInteractionInput ||
+    previous.onRecordMessageFeedback !== next.onRecordMessageFeedback
   ) {
     return false;
   }
@@ -321,60 +370,6 @@ function areAssistantTurnRowPropsEqual(previous: AssistantTurnRowProps, next: As
 }
 
 type RenderedAssistantStage = AssistantTurnStage;
-
-function readTerminalFinalStage(
-  stages: readonly RenderedAssistantStage[],
-  run?: AssistantTurnListItem["run"],
-): RenderedAssistantStage | undefined {
-  if (!isTerminalRun(run)) return undefined;
-  return [...stages]
-    .reverse()
-    .find(
-      (stage) =>
-        stage.kind === "final" &&
-        (Boolean(stage.message) ||
-          Boolean(stage.responseItems?.some((item) => item.kind === "message")) ||
-          Boolean(stage.transientContent?.trim())),
-    );
-}
-
-function projectTerminalProcessStages(
-  stages: readonly RenderedAssistantStage[],
-  finalStageId?: string,
-): RenderedAssistantStage[] {
-  return stages.flatMap((stage) => {
-    const isFinalStage = stage.id === finalStageId;
-    const processResponseItems = isFinalStage
-      ? stage.responseItems?.filter((item) => item.kind !== "message")
-      : stage.responseItems;
-    const projected: RenderedAssistantStage = {
-      ...stage,
-      current: false,
-      ...(isFinalStage
-        ? {
-            message: undefined,
-            transientContent: undefined,
-            transientKind: undefined,
-          }
-        : {}),
-      responseItems: processResponseItems,
-    };
-    const hasProcessContent =
-      Boolean(projected.message) ||
-      Boolean(projected.transientContent?.trim()) ||
-      Boolean(projected.run?.steps.length) ||
-      Boolean(projected.responseItems?.length);
-    return hasProcessContent ? [projected] : [];
-  });
-}
-
-function isTerminalRun(run?: AssistantTurnListItem["run"]): boolean {
-  return run !== undefined && isRunTerminal(run);
-}
-
-function hasExecutionStageContent(stage: RenderedAssistantStage): boolean {
-  return Boolean(stage.run?.steps.length) || Boolean(stage.responseItems?.some((item) => item.kind === "execution"));
-}
 
 function RunElapsedRow({ run }: { run?: AssistantTurnListItem["run"] }): JSX.Element {
   return (
@@ -455,16 +450,7 @@ function getElapsedUnitSeparator(): string {
   return frontendMessage("chat.metrics.elapsed.separator");
 }
 
-function AssistantStage({
-  stage,
-  thinkingRun,
-  showLiveWaiting = false,
-  liveActivity = false,
-  liveTextActivity = false,
-  onResolveInteractionInput,
-  showExecution,
-  displayMode = "normal",
-}: {
+interface AssistantStageProps {
   stage: RenderedAssistantStage;
   thinkingRun?: AssistantTurnListItem["run"];
   showLiveWaiting?: boolean;
@@ -477,18 +463,27 @@ function AssistantStage({
   ) => void;
   showExecution: boolean;
   displayMode?: "normal" | "process" | "final";
-}): JSX.Element {
+}
+
+const AssistantStage = memo(function AssistantStage({
+  stage,
+  thinkingRun,
+  showLiveWaiting = false,
+  liveActivity = false,
+  liveTextActivity = false,
+  onResolveInteractionInput,
+  showExecution,
+  displayMode = "normal",
+}: AssistantStageProps): JSX.Element {
+  useFrontendLocale();
   const stageRunActive = stage.run?.status === "running" || stage.run?.status === "cancelling";
-  // A live response execution item owns its own generic waiting row when the
-  // provider has not exposed a renderable tool yet. Do not add the stage-level
-  // placeholder alongside it, otherwise one model turn briefly shows two
-  // identical "Thinking" rows while the response timeline is being built.
+  // A genuine live tool or delegation owns its execution view. Generic model
+  // waiting stays with this stage's single InitialThinkingIndicator.
   const hasLiveResponseExecution = Boolean(
-    stage.responseItems?.some((item) => item.kind === "execution" && isLiveRun(item.run)),
+    stage.responseItems?.some((item) => item.kind === "execution" && hasActiveExecutionWork(item.run)),
   );
-  // Once an active execution is mounted, its Suspense/fallback row owns the
-  // waiting slot. Keeping the stage placeholder at the same time creates two
-  // Thinking rows during the short lazy-load window.
+  // The execution view, including its loading fallback, owns the slot while
+  // real execution work is active.
   const executionOwnsWaiting = Boolean(stage.run && stageRunActive && showExecution);
   const shouldShowInitialThinking = showLiveWaiting && !hasLiveResponseExecution && !executionOwnsWaiting;
   const shouldRenderExecution = !!stage.run && (!stageRunActive || showExecution);
@@ -511,7 +506,7 @@ function AssistantStage({
       data-current-stage={stage.current ? "true" : "false"}
     >
       {thinkingRun && displayMode === "normal" ? (
-        <RunThinkingPresentation run={thinkingRun} current={liveTextActivity} showSummaryWhenEmpty />
+        <RunThinkingPresentation run={thinkingRun} showSummaryWhenEmpty />
       ) : null}
       {stage.responseItems ? (
         <>
@@ -519,12 +514,11 @@ function AssistantStage({
             {stage.responseItems
               .filter((item) => displayMode !== "final" || item.kind === "message")
               .map((item, index) => {
-                const liveActivity =
-                  stage.liveActivityItemId === item.id || (stage.current && index === stage.responseItems!.length - 1);
+                const liveActivity = stage.current && index === stage.responseItems!.length - 1;
                 if (item.kind === "thinking") {
                   return (
                     <MotionListItem key={item.id} className="assistant-turn-response-item min-w-0" initial={false}>
-                      <RunThinkingPresentation blocks={item.blocks} current={liveActivity} />
+                      <RunThinkingPresentation blocks={item.blocks} />
                     </MotionListItem>
                   );
                 }
@@ -549,6 +543,7 @@ function AssistantStage({
                 );
               })}
           </MotionList>
+          {stage.responseItems.length === 0 && displayMode !== "final" && stage.kind === "final" ? execution : null}
           {shouldShowInitialThinking && displayMode === "normal" ? <InitialThinkingIndicator /> : null}
         </>
       ) : (
@@ -574,6 +569,106 @@ function AssistantStage({
         <StageInteractionContent run={stage.run} onResolveInteractionInput={onResolveInteractionInput} />
       ) : null}
     </section>
+  );
+}, areAssistantStagePropsEqual);
+
+function areAssistantStagePropsEqual(previous: AssistantStageProps, next: AssistantStageProps): boolean {
+  return (
+    previous.showLiveWaiting === next.showLiveWaiting &&
+    previous.liveActivity === next.liveActivity &&
+    previous.liveTextActivity === next.liveTextActivity &&
+    previous.showExecution === next.showExecution &&
+    previous.displayMode === next.displayMode &&
+    previous.onResolveInteractionInput === next.onResolveInteractionInput &&
+    sameAssistantStage(previous.stage, next.stage) &&
+    sameThinkingRun(previous.thinkingRun, next.thinkingRun)
+  );
+}
+
+function sameAssistantStage(left: RenderedAssistantStage, right: RenderedAssistantStage): boolean {
+  return (
+    left === right ||
+    (left.id === right.id &&
+      left.kind === right.kind &&
+      left.message === right.message &&
+      left.current === right.current &&
+      left.transientContent === right.transientContent &&
+      left.transientKind === right.transientKind &&
+      samePresentationRun(left.run, right.run) &&
+      sameResponseItems(left.responseItems, right.responseItems))
+  );
+}
+
+function sameResponseItems(
+  left: AssistantTurnStage["responseItems"],
+  right: AssistantTurnStage["responseItems"],
+): boolean {
+  if (left === right) return true;
+  if (!left || !right || left.length !== right.length) return false;
+  return left.every((item, index) => {
+    const candidate = right[index];
+    if (
+      !candidate ||
+      item.id !== candidate.id ||
+      item.kind !== candidate.kind ||
+      item.modelContentIndex !== candidate.modelContentIndex ||
+      item.eventSequence !== candidate.eventSequence
+    ) {
+      return false;
+    }
+    if (item.kind === "thinking" && candidate.kind === "thinking") {
+      return sameThinkingBlocks(item.blocks, candidate.blocks);
+    }
+    if (item.kind === "message" && candidate.kind === "message") return item.message === candidate.message;
+    return item.kind === "execution" && candidate.kind === "execution" && samePresentationRun(item.run, candidate.run);
+  });
+}
+
+function sameThinkingRun(
+  left: AssistantTurnListItem["run"] | undefined,
+  right: AssistantTurnListItem["run"] | undefined,
+): boolean {
+  return samePresentationRun(left, right) && sameThinkingBlocks(left?.thinkingBlocks, right?.thinkingBlocks);
+}
+
+function samePresentationRun(
+  left: AssistantTurnListItem["run"] | undefined,
+  right: AssistantTurnListItem["run"] | undefined,
+): boolean {
+  return (
+    left === right ||
+    (!!left &&
+      !!right &&
+      left.requestId === right.requestId &&
+      left.status === right.status &&
+      left.steps === right.steps &&
+      left.activities === right.activities &&
+      left.liveActivity === right.liveActivity &&
+      left.activeFlags === right.activeFlags &&
+      left.approvals === right.approvals &&
+      left.interactionInputs === right.interactionInputs &&
+      left.activeModelRequest === right.activeModelRequest &&
+      left.outputState === right.outputState &&
+      left.visibleKind === right.visibleKind)
+  );
+}
+
+function sameThinkingBlocks(
+  left: readonly ModelThinkingBlock[] | undefined,
+  right: readonly ModelThinkingBlock[] | undefined,
+): boolean {
+  if (left === right) return true;
+  if (!left || !right || left.length !== right.length) return false;
+  return left.every(
+    (block, index) =>
+      block === right[index] ||
+      (block.id === right[index]?.id &&
+        block.content === right[index]?.content &&
+        block.status === right[index]?.status &&
+        block.step === right[index]?.step &&
+        block.messageIndex === right[index]?.messageIndex &&
+        block.contentIndex === right[index]?.contentIndex &&
+        block.eventSequence === right[index]?.eventSequence),
   );
 }
 
@@ -606,47 +701,6 @@ function ResponseExecutionItem({
       </Suspense>
     </StableActivitySlot>
   );
-}
-
-function readLatestToolStageId(stages: readonly RenderedAssistantStage[]): string | undefined {
-  const latestExecutionStage = [...stages]
-    .reverse()
-    .find((stage) => stage.kind === "execution" && stage.run?.steps.some(hasNamedToolStep));
-  return latestExecutionStage?.id ?? [...stages].reverse().find((stage) => stage.run?.steps.some(hasNamedToolStep))?.id;
-}
-
-function readActiveExecutionStageIds(stages: readonly RenderedAssistantStage[]): ReadonlySet<string> {
-  return new Set(stages.filter((stage) => stage.run?.steps.some(isUnfinishedExecutionStep)).map((stage) => stage.id));
-}
-
-function isUnfinishedExecutionStep(step: NonNullable<AssistantTurnListItem["run"]>["steps"][number]): boolean {
-  const activeChildRun = step.kind === "delegation" && step.childRun && isChildRunActive(step.childRun.status);
-  if (activeChildRun) return true;
-  if (step.status !== "pending" && step.status !== "running" && step.status !== "cancelling") return false;
-  return step.kind === "delegation" || (step.kind === "tool" && Boolean(step.toolName?.trim()));
-}
-
-function isRenderableExecutionStep(step: NonNullable<AssistantTurnListItem["run"]>["steps"][number]): boolean {
-  return (step.kind === "tool" && Boolean(step.toolName?.trim())) || step.kind === "delegation";
-}
-
-function hasVisibleStageResponse(
-  stage: RenderedAssistantStage,
-  { includeThinking = true }: { includeThinking?: boolean } = {},
-): boolean {
-  if (stage.transientContent?.trim()) return true;
-  if (stage.message && readAssistantDisplayContent(stage.message, stage.run).trim()) return true;
-  return Boolean(
-    stage.responseItems?.some((item) => {
-      if (item.kind === "message") return Boolean(readAssistantDisplayContent(item.message, stage.run).trim());
-      if (item.kind === "thinking") return includeThinking && item.blocks.some((block) => block.content.trim());
-      return false;
-    }),
-  );
-}
-
-function hasNamedToolStep(step: NonNullable<AssistantTurnListItem["run"]>["steps"][number]): boolean {
-  return step.kind === "tool" && Boolean(step.toolName?.trim());
 }
 
 function TurnMessageSegment({
@@ -725,97 +779,4 @@ function LiveActivityFallback(): JSX.Element {
 
 function isLiveRun(run: Pick<NonNullable<AssistantTurnListItem["run"]>, "status">): boolean {
   return run.status === "running" || run.status === "cancelling";
-}
-
-function readTransientPreface(turn: AssistantTurnListItem, prefaces: readonly ChatMessage[]): string {
-  const { run } = turn;
-  if (!turn.streaming || run?.visibleKind !== "tool_preface" || !run.displayText) return "";
-  if (run.displayMessageId && prefaces.some((message) => message.id === run.displayMessageId)) return "";
-  return run.displayText;
-}
-
-function readTransientAnswer(turn: AssistantTurnListItem, terminalMessages: readonly ChatMessage[]): string {
-  const { run } = turn;
-  if (!turn.streaming || !run?.displayText) return "";
-  if (run.visibleKind !== "final_answer" && run.visibleKind !== "ask_user") return "";
-  if (run.displayMessageId && terminalMessages.some((message) => message.id === run.displayMessageId)) return "";
-  return run.displayText;
-}
-
-function readTurnCopyContent(turn: AssistantTurnListItem, transientPreface: string, transientAnswer: string): string {
-  const segments = turn.messages
-    .map((message) => readAssistantDisplayContent(message, turn.run).trim())
-    .filter(Boolean);
-  if (transientPreface.trim()) segments.push(transientPreface.trim());
-  if (transientAnswer.trim()) segments.push(transientAnswer.trim());
-  return segments.join("\n\n");
-}
-
-function projectTransientStages(
-  stages: readonly AssistantTurnStage[],
-  turn: AssistantTurnListItem,
-  transientPreface: string,
-  transientAnswer: string,
-): RenderedAssistantStage[] {
-  const projected: RenderedAssistantStage[] = stages.map((stage) => ({ ...stage }));
-  if (transientPreface) {
-    const current = projected.find((stage) => stage.current && stage.kind === "execution" && !stage.message);
-    if (current) {
-      current.transientContent = transientPreface;
-      current.transientKind = "AssistantToolPreface";
-    } else {
-      projected.forEach((stage) => {
-        stage.current = false;
-      });
-      projected.push({
-        id: readTransientStageId(turn, "transient-preface"),
-        kind: "execution",
-        run: projectCurrentStageRun(turn.run),
-        current: true,
-        transientContent: transientPreface,
-        transientKind: "AssistantToolPreface",
-      });
-    }
-  }
-  if (transientAnswer) {
-    const current = projected.find((stage) => stage.current && stage.kind === "final" && !stage.message);
-    if (current) {
-      current.transientContent = transientAnswer;
-      current.transientKind = turn.run?.visibleKind === "ask_user" ? "AssistantAsk" : "AssistantFinal";
-    } else {
-      projected.forEach((stage) => {
-        stage.current = false;
-      });
-      projected.push({
-        id: readTransientStageId(turn, "transient-answer"),
-        kind: "final",
-        run: projectCurrentStageRun(turn.run),
-        current: true,
-        transientContent: transientAnswer,
-        transientKind: turn.run?.visibleKind === "ask_user" ? "AssistantAsk" : "AssistantFinal",
-      });
-    }
-  }
-  return projected;
-}
-
-function readTransientStageId(turn: AssistantTurnListItem, fallback: string): string {
-  const matchingDecision = [...(turn.run?.steps ?? [])]
-    .reverse()
-    .find((step) => step.kind === (turn.run?.visibleKind === "final_answer" ? "answer" : "decision"));
-  return `stage:${turn.requestId ?? turn.key}:${matchingDecision ? `step:${matchingDecision.id}` : fallback}`;
-}
-
-function projectCurrentStageRun(run?: AssistantTurnListItem["run"]): AssistantTurnListItem["run"] {
-  if (!run) return undefined;
-  return {
-    ...run,
-    steps: run.steps.filter(
-      (step) => step.kind === "tool" || step.kind === "delegation" || step.kind === "retry" || step.kind === "error",
-    ),
-    visibleText: "",
-    displayText: "",
-    visibleKind: "unknown",
-    outputState: "pending",
-  };
 }

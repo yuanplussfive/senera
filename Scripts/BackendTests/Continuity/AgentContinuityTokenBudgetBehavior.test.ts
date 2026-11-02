@@ -25,10 +25,29 @@ const entry = (id: string, summary: string): AgentContinuityEventCandidate => ({
 });
 
 describe("complete serialized recall token budgets", () => {
+  test("uses priority before length, with deterministic time ordering for equal priorities", () => {
+    const detailed = { ...entry("critical", "Confirmed root cause and next action. ".repeat(20)), score: 0.95 };
+    const short = { ...entry("short", "Minor detail"), score: 0.7 };
+    const maxTokens = renderAgentContinuityPromptWire(
+      { ...EmptyAgentContinuityMemoryPromptContext, enabled: true, eventCandidates: [detailed] },
+      { estimateTokens },
+    ).tokenCount;
+    const selected = applyAgentContinuityPromptBudget(
+      { events: [short, detailed], historicalTokenBudget: { maxTokens, estimateTokens } },
+      { MaxTokens: 16384 },
+    );
+    expect(selected.events.map((record) => record.id)).toEqual(["critical"]);
+    const newer = { ...short, id: "newer", uri: "memos:newer", occurredAt: "2026-10-10T00:00:00Z" };
+    const ordered = applyAgentContinuityPromptBudget(
+      { events: [short, newer], historicalTokenBudget: { maxTokens: 16384, estimateTokens } },
+      { MaxTokens: 16384 },
+    );
+    expect(ordered.events.map((record) => record.id)).toEqual(["newer", "short"]);
+  });
   test("admits more than old entry caps while counting references and full wire overhead", () => {
     const events = Array.from({ length: 32 }, (_, index) => entry(String(index), `记录${index}：已经确认的信息。`));
     const budgeted = applyAgentContinuityPromptBudget(
-      { digests: [], events, historicalTokenBudget: { maxTokens: 100000, estimateTokens } },
+      { events, historicalTokenBudget: { maxTokens: 100000, estimateTokens } },
       { MaxTokens: 16384 },
     );
     expect(budgeted.events).toHaveLength(32);
@@ -36,7 +55,6 @@ describe("complete serialized recall token budgets", () => {
       ...EmptyAgentContinuityMemoryPromptContext,
       enabled: true,
       eventCandidates: budgeted.events,
-      periodDigests: budgeted.digests,
     };
     const wire = renderAgentContinuityPromptWire(context, { estimateTokens });
     expect(budgeted.selection.usedTokens).toBe(estimateTokens(wire.text));
@@ -44,7 +62,7 @@ describe("complete serialized recall token budgets", () => {
     expect(
       renderAgentLiveStateWire({ continuity: context, workflow: EmptyAgentWorkflowPromptContext }, { estimateTokens })
         .text,
-    ).toBe(wire.text);
+    ).toBe("");
   });
 
   test("fits smaller model headroom, skips oversized records whole, and marks only selected coverage", () => {
@@ -54,45 +72,33 @@ describe("complete serialized recall token budgets", () => {
       entry("other", "用户喝咖啡。"),
     ];
     const one = applyAgentContinuityPromptBudget(
-      { digests: [], events: [events[1]!], historicalTokenBudget: { maxTokens: 16384, estimateTokens } },
+      { events: [events[1]!], historicalTokenBudget: { maxTokens: 16384, estimateTokens } },
       { MaxTokens: 16384 },
     );
     const budgeted = applyAgentContinuityPromptBudget(
-      { digests: [], events, historicalTokenBudget: { maxTokens: one.selection.usedTokens, estimateTokens } },
+      { events, historicalTokenBudget: { maxTokens: one.selection.usedTokens, estimateTokens } },
       { MaxTokens: 16384 },
     );
     expect(budgeted.events).toHaveLength(1);
     expect(budgeted.events[0]?.id).not.toBe("oversized");
     expect(budgeted.selection.usedTokens).toBeLessThanOrEqual(one.selection.usedTokens);
     const empty = applyAgentContinuityPromptBudget(
-      { digests: [], events, historicalTokenBudget: { maxTokens: 0, estimateTokens } },
+      { events, historicalTokenBudget: { maxTokens: 0, estimateTokens } },
       { MaxTokens: 16384 },
     );
     expect(empty.events).toHaveLength(0);
     expect(empty.selection.usedTokens).toBe(0);
   });
 
-  test("prefixes event and digest summaries with Shanghai minute markers", () => {
+  test("prefixes automatic knowledge summaries with Shanghai minute markers", () => {
     const context = {
       ...EmptyAgentContinuityMemoryPromptContext,
       enabled: true,
-      periodDigests: [
-        {
-          id: "digest",
-          uri: "memos:digest",
-          revision: "digest-v1",
-          granularity: "day" as const,
-          periodStart: "2026-10-09T00:00:00Z",
-          periodEnd: "2026-10-10T00:00:00Z",
-          summary: "当天摘要。",
-          score: 0.9,
-          matchedBy: ["memos"],
-        },
-      ],
       eventCandidates: [entry("event", "事件摘要。")],
     };
     const wire = renderAgentContinuityPromptWire(context, { estimateTokens });
-    expect(wire.text).toContain("[2026-10-09 08:00] 当天摘要。");
     expect(wire.text).toContain("[2026-10-09 08:00] 事件摘要。");
+    expect(wire.text.match(/2026-10-09/gu)).toHaveLength(1);
+    expect(wire.text).not.toContain("2026-10-09T00:00:00Z");
   });
 });

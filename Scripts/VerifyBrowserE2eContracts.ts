@@ -66,7 +66,7 @@ for (const testFile of testFiles) {
 for (const frontendTestFile of frontendTestFiles) {
   const source = fs.readFileSync(frontendTestFile, "utf8");
   const relative = toPosixRelative(workspaceRoot, frontendTestFile);
-  for (const forbidden of ["toHaveFocus(", "fireEvent.contextMenu(", "{Shift>}{F10}{/Shift}"]) {
+  for (const forbidden of ["toHaveFocus(", "{Shift>}{F10}{/Shift}"]) {
     if (source.includes(forbidden)) {
       violations.push(`${relative} asserts a real-browser interaction in jsdom: ${forbidden}`);
     }

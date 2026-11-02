@@ -31,7 +31,7 @@ export type CanonicalSettingsSectionId = Exclude<SettingsSectionId, RetiredSetti
 export const settingsSections = [
   defineSettingsSection(
     "model-service",
-    "link",
+    "server",
     "settings.section.modelService.label",
     "settings.section.modelService.description",
     "local",
@@ -58,7 +58,7 @@ export const settingsSections = [
   ),
   defineSettingsSection(
     "planning",
-    "route",
+    "book-open",
     "settings.section.planning.label",
     "settings.section.planning.description",
   ),
@@ -70,21 +70,21 @@ export const settingsSections = [
   ),
   defineSettingsSection(
     "system-tools",
-    "package",
+    "puzzle",
     "settings.section.systemTools.label",
     "settings.section.systemTools.description",
     "none",
   ),
   defineSettingsSection(
     "dependencies",
-    "server",
+    "package",
     "settings.section.dependencies.label",
     "settings.section.dependencies.description",
     "none",
   ),
   defineSettingsSection(
     "channels",
-    "message",
+    "message-square",
     "settings.section.channels.label",
     "settings.section.channels.description",
     "local",

@@ -16,6 +16,44 @@ import {
 } from "./SessionRunCoordinatorTestFixtures.js";
 
 describe("Session run coordinator behavior", () => {
+  test("persists native channel events and publishes the same metadata on run start", async () => {
+    const fixture = createCoordinatorFixture({
+      loop: { run: async (request) => completedRun(request.requestId) },
+    });
+    const channelEvent = {
+      id: "poke-event",
+      type: "poke",
+      actorId: "user-1",
+      actorName: "用户",
+      targetId: "agent-1",
+      targetName: "玉米",
+      sentAt: "2026-10-25T03:46:37.000Z",
+    };
+    fixture.session.createdAt = "2026-10-24T16:23:37.000Z";
+    const events: AgentDomainEvent[] = [];
+    await fixture.coordinator.runTurn(fixture.session, {
+      approvalMode: "agent",
+      requestId: "request-poke",
+      input: "",
+      metadata: { channel: { platform: "onebot11", chatType: "group", chatId: "group-1", chatName: "测试群" } },
+      interaction: { surface: "channel", platform: "onebot11", event: channelEvent },
+      onEvent: async (event) => {
+        events.push(event);
+      },
+    });
+
+    const entry = fixture.session.conversation.find((item) => item.kind === "user.message");
+    expect(entry).toMatchObject({ content: "", metadata: { channelEvent } });
+    expect(events.find((event) => event.kind === AgentEventKinds.RunStarted)).toMatchObject({
+      data: { input: "", metadata: entry?.metadata, title: "测试群 · 10/25 00:23" },
+    });
+    expect(
+      fixture.sessionRepository
+        .loadSession(fixture.session.id)
+        ?.conversation.find((item) => item.kind === "user.message"),
+    ).toMatchObject({ metadata: { channelEvent } });
+  });
+
   test("projects the resolved turn model into the active and completed session receipt", async () => {
     let observedRequest: Parameters<AgentLoopRunner["run"]>[0] | undefined;
     const fixture = createCoordinatorFixture({
@@ -84,7 +122,7 @@ describe("Session run coordinator behavior", () => {
     );
   });
 
-  test("reuses persisted channel space affinity when a wake has no interaction context", async () => {
+  test("reuses persisted channel space affinity when a turn has no interaction context", async () => {
     let observedRequest: Parameters<AgentLoopRunner["run"]>[0] | undefined;
     const fixture = createCoordinatorFixture({
       loop: {
@@ -101,9 +139,8 @@ describe("Session run coordinator behavior", () => {
 
     await fixture.coordinator.runTurn(fixture.session, {
       approvalMode: "agent",
-      requestId: "request-background-wake",
+      requestId: "request-channel-space-reuse",
       input: "Resume the channel task",
-      metadata: { backgroundTask: { taskId: "task-1", runId: "run-1" } },
     });
 
     expect(observedRequest?.logicalCacheScope).toBe(

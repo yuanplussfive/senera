@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { withAgentModelDiagnosticScope } from "../Diagnostics/AgentModelDiagnosticScope.js";
+import type { AgentPiDiagnosticSink } from "../PiShared/AgentPiDiagnosticsTypes.js";
 import { setTimeout as delay } from "node:timers/promises";
 import Database from "better-sqlite3";
 import { z } from "zod";
@@ -60,6 +62,8 @@ export interface AgentBackgroundLearningRequestStart {
   readonly board: AgentBackgroundLearningBoard;
   readonly stage: string;
   readonly entityUri?: string;
+  /** Direct source session identity when this learning job derives from a turn. */
+  readonly sessionId?: string;
   readonly sourceRevision?: string;
   readonly attempt: number;
   readonly providerId?: string;
@@ -90,6 +94,7 @@ export interface AgentBackgroundLearningRequestRecord {
   readonly board: AgentBackgroundLearningBoard;
   readonly stage: string;
   readonly entityUri: string | null;
+  readonly sessionId: string | null;
   readonly sourceRevision: string | null;
   readonly attempt: number;
   readonly providerId: string | null;
@@ -113,6 +118,7 @@ interface RequestRow {
   readonly board: AgentBackgroundLearningBoard;
   readonly stage: string;
   readonly entity_uri: string | null;
+  readonly session_id: string | null;
   readonly source_revision: string | null;
   readonly attempt: number;
   readonly provider_id: string | null;
@@ -161,6 +167,7 @@ export class AgentBackgroundLearningRequestLedger {
   constructor(
     database: AgentSqliteDatabaseKernel | Database.Database,
     private readonly logger?: AgentLogger,
+    private readonly diagnostics?: AgentPiDiagnosticSink,
   ) {
     this.db = "connection" in database ? database.connection : database;
   }
@@ -177,9 +184,9 @@ export class AgentBackgroundLearningRequestLedger {
       this.db
         .prepare(
           `INSERT OR IGNORE INTO memory_background_learning_requests
-            (request_id, operation_key, board, stage, entity_uri, source_revision, attempt,
+            (request_id, operation_key, board, stage, entity_uri, session_id, source_revision, attempt,
              provider_id, model, status, started_at, started_at_ms, metadata_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'started', ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'started', ?, ?, ?)`,
         )
         .run(
           requestId,
@@ -187,6 +194,7 @@ export class AgentBackgroundLearningRequestLedger {
           input.board,
           stage,
           input.entityUri ?? null,
+          input.sessionId ?? null,
           input.sourceRevision ?? null,
           attempt,
           input.providerId ?? null,
@@ -217,7 +225,19 @@ export class AgentBackgroundLearningRequestLedger {
     const handle = this.begin(input);
     const usage = new AgentModelUsageLedger(activeAgentModelUsageLedger());
     try {
-      const result = await withAgentModelUsageLedger(usage, () => operation(handle));
+      const result = await withAgentModelDiagnosticScope(
+        {
+          sink: this.diagnostics,
+          context: {
+            sessionId: input.sessionId,
+            requestId: handle.requestId,
+            step: undefined,
+            toolCallId: undefined,
+            modelMessageIndex: undefined,
+          },
+        },
+        () => withAgentModelUsageLedger(usage, () => operation(handle)),
+      );
       handle.complete({ ...finish?.(result), usage: usage.aggregate() });
       return result;
     } catch (error) {
@@ -259,7 +279,19 @@ export class AgentBackgroundLearningRequestLedger {
       const handle = this.begin({ ...input, attempt });
       const usage = new AgentModelUsageLedger(activeAgentModelUsageLedger());
       try {
-        const result = await withAgentModelUsageLedger(usage, () => operation(attempt));
+        const result = await withAgentModelDiagnosticScope(
+          {
+            sink: this.diagnostics,
+            context: {
+              sessionId: input.sessionId,
+              requestId: handle.requestId,
+              step: undefined,
+              toolCallId: undefined,
+              modelMessageIndex: undefined,
+            },
+          },
+          () => withAgentModelUsageLedger(usage, () => operation(attempt)),
+        );
         handle.complete({ ...finish?.(result), usage: usage.aggregate() });
         return result;
       } catch (error) {
@@ -291,6 +323,7 @@ export class AgentBackgroundLearningRequestLedger {
       readonly stage?: string;
       readonly status?: AgentBackgroundLearningRequestStatus;
       readonly entityUri?: string;
+      readonly sessionId?: string;
       readonly sourceRevision?: string;
       readonly limit?: number;
     } = {},
@@ -312,6 +345,10 @@ export class AgentBackgroundLearningRequestLedger {
     if (input.entityUri) {
       clauses.push("entity_uri = @entityUri");
       bindings.entityUri = input.entityUri;
+    }
+    if (input.sessionId) {
+      clauses.push("session_id = @sessionId");
+      bindings.sessionId = input.sessionId;
     }
     if (input.sourceRevision) {
       clauses.push("source_revision = @sourceRevision");
@@ -426,6 +463,7 @@ function decodeRequest(row: RequestRow): AgentBackgroundLearningRequestRecord {
     board: row.board,
     stage: row.stage,
     entityUri: row.entity_uri,
+    sessionId: row.session_id,
     sourceRevision: row.source_revision,
     attempt: row.attempt,
     providerId: row.provider_id,

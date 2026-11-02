@@ -82,6 +82,20 @@ describe("models.dev catalog", () => {
     const second = new AgentModelsDevCatalog(options(root, { fetchImpl: secondFetch, now: () => clock }));
     await expect(second.snapshot()).resolves.toMatchObject({ state: "ready", sourceKind: "cache", modelCount: 4 });
     expect(secondFetch).toHaveBeenCalledOnce();
+    expect(second.resolve("openai", "gpt-4o")?.pricing).toEqual({
+      input: 2,
+      output: 8,
+      cacheRead: 0.2,
+      cacheWrite: 0.4,
+    });
+
+    await second.stop();
+    const thirdFetch = vi.fn<typeof fetch>();
+    const third = new AgentModelsDevCatalog(options(root, { fetchImpl: thirdFetch, now: () => clock }));
+    await third.snapshot();
+    expect(thirdFetch).not.toHaveBeenCalled();
+    expect(third.resolve("openai", "gpt-4o")?.pricing).toEqual(second.resolve("openai", "gpt-4o")?.pricing);
+    await third.stop();
   });
 
   test("deduplicates concurrent refreshes and supports the periodic lifecycle", async () => {

@@ -72,8 +72,8 @@ function buildLayerManifest(input: AgentPromptContextCompilerInput): readonly Ag
     {
       name: "memory",
       source: "continuity",
-      stability: "turn",
-      included: input.continuityMemory.eventCandidates.length > 0 || input.continuityMemory.periodDigests.length > 0,
+      stability: "stable",
+      included: input.continuityMemory.eventCandidates.length > 0 || Boolean(input.continuityMemory.diaryIndex),
     },
     {
       name: "workflow",
@@ -88,7 +88,11 @@ function buildLayerManifest(input: AgentPromptContextCompilerInput): readonly Ag
       name: "task",
       source: "request",
       stability: "turn",
-      included: input.rootCommand !== null || input.toolCards.length > 0,
+      included:
+        input.rootCommand !== null ||
+        input.toolCards.length > 0 ||
+        (input.continuityMemory.taskCandidates?.length ?? 0) > 0 ||
+        (input.continuityMemory.relatedCandidates?.length ?? 0) > 0,
     },
   ];
 }

@@ -1,0 +1,23 @@
+{
+  "formatVersion": 1,
+  "id": "resource-identities",
+  "dataClass": "authoritative",
+  "versions": [
+    {
+      "version": 1,
+      "name": "resource-id-reservations",
+      "sql": "CREATE TABLE resource_id_reservations (\n  resource_id TEXT PRIMARY KEY NOT NULL,\n  owner_key TEXT UNIQUE,\n  allocated_at TEXT NOT NULL\n) STRICT;\n",
+      "checksum": "045274800c7e2f40ef643a261d47b11f9e8d7b63ad4a24b983f22307f67b7866",
+      "snapshot": "-- table: resource_id_reservations\ncreate table resource_id_reservations ( resource_id text primary key not null , owner_key text unique , allocated_at text not null ) strict;\n",
+      "snapshotChecksum": "04a14b7a9f076435834bc578f08f594a96d6daaab4535ed8650f9274418f6eab"
+    },
+    {
+      "version": 2,
+      "name": "resource-records",
+      "sql": "CREATE TABLE resource_records (\n  resource_id TEXT PRIMARY KEY NOT NULL REFERENCES resource_id_reservations(resource_id),\n  kind TEXT NOT NULL CHECK(kind IN ('artifact', 'file')),\n  entity_id TEXT NOT NULL,\n  locator TEXT NOT NULL,\n  state TEXT NOT NULL CHECK(state IN ('pending', 'ready', 'deleted')),\n  UNIQUE(kind, entity_id)\n) STRICT;\n\nCREATE TABLE resource_uri_aliases (\n  alias TEXT PRIMARY KEY NOT NULL,\n  resource_id TEXT NOT NULL REFERENCES resource_records(resource_id)\n) STRICT;\n",
+      "checksum": "e55a6fa8d4006ed884a0a3d09ac690a84c2d6c917826685a2c4ad8ca442e94bc",
+      "snapshot": "-- table: resource_id_reservations\ncreate table resource_id_reservations ( resource_id text primary key not null , owner_key text unique , allocated_at text not null ) strict;\n\n-- table: resource_records\ncreate table resource_records ( resource_id text primary key not null references resource_id_reservations ( resource_id ) , kind text not null check ( kind in ( 'artifact' , 'file' ) ) , entity_id text not null , locator text not null , state text not null check ( state in ( 'pending' , 'ready' , 'deleted' ) ) , unique ( kind , entity_id ) ) strict;\n\n-- table: resource_uri_aliases\ncreate table resource_uri_aliases ( alias text primary key not null , resource_id text not null references resource_records ( resource_id ) ) strict;\n",
+      "snapshotChecksum": "f8e4655835462e0a17f8ab5713f40e459728e94e19c84e2dcf12473a1a0c5f1a"
+    }
+  ]
+}

@@ -20,9 +20,113 @@ import { resolveAgentPiTokenBudgetHeadroom } from "../../../Source/AgentSystem/P
 import { AgentRunActivities, AgentRunActivityStates } from "../../../Source/AgentSystem/Events/AgentRunEventTypes.js";
 import { emptyAgentToolAccessGrant } from "../../../Source/AgentSystem/ToolRuntime/AgentToolAccessGrant.js";
 import { AgentToolExposureState } from "../../../Source/AgentSystem/ToolRuntime/AgentToolExposureState.js";
-import { toolRootCommand } from "../Support/AgentTestFixtures.js";
+import { createTemporaryDirectory, removeDirectory, toolRootCommand } from "../Support/AgentTestFixtures.js";
+import { AgentSqliteDatabaseKernel } from "../../../Source/AgentSystem/Database/AgentSqliteDatabaseKernel.js";
+import { AgentMemoryDatabaseContract } from "../../../Source/AgentSystem/Memory/AgentMemorySqlSchema.js";
+import { resolveAgentWorkspaceLayout } from "../../../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
+import { AgentExecutionLedgerSqliteStore } from "../../../Source/AgentSystem/Goals/AgentExecutionLedgerSqliteStore.js";
+import { AgentExecutionLedgerService } from "../../../Source/AgentSystem/Goals/AgentExecutionLedgerService.js";
+import { runAgentPiGuardedPhase } from "../../../Source/AgentSystem/Pi/AgentPiTurnGuard.js";
+
+test("a throwing cleanup callback cannot prevent the phase deadline from rejecting", async () => {
+  vi.useFakeTimers();
+  const abort = vi.fn(() => {
+    throw new Error("Cleanup failed.");
+  });
+  try {
+    const pending = runAgentPiGuardedPhase({
+      phase: "test.cleanup",
+      timeoutMs: 10,
+      abort,
+      run: () => new Promise<void>(() => {}),
+    });
+    const outcome = expect(pending).rejects.toMatchObject({ name: "AgentPiTurnPhaseTimeoutError", timeoutMs: 10 });
+    await vi.advanceTimersByTimeAsync(10);
+    await outcome;
+    expect(abort).toHaveBeenCalledOnce();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+const nonTextRequests: { name: string; request: Pick<AgentPiTurnRequest, "interaction" | "attachments"> }[] = [
+  {
+    name: "platform event",
+    request: {
+      interaction: {
+        surface: "channel",
+        platform: "onebot11",
+        event: { id: "poke-1", type: "poke", actorId: "10", targetId: "20", sentAt: "2026-10-25T04:00:00+08:00" },
+      },
+    },
+  },
+  {
+    name: "scheduled wake",
+    request: {
+      interaction: {
+        surface: "channel",
+        platform: "onebot11",
+        wake: { reason: "time", waitId: "wait-1", afterSequence: 1 },
+      },
+    },
+  },
+  ...["image/png", "application/pdf"].map((mime) => ({
+    name: `${mime} attachment without text`,
+    request: {
+      attachments: [
+        {
+          resourceUri: "senera://resource/attachment-1",
+          name: "attachment",
+          mime,
+          size: 100,
+          status: "uploaded" as const,
+        },
+      ],
+    },
+  })),
+];
 
 describe("Pi turn executor behavior", () => {
+  test.each(nonTextRequests)(
+    "records and completes tool execution for a $name without inventing user text",
+    async ({ request }) => {
+      const workspace = createTemporaryDirectory("senera-event-execution");
+      const kernel = new AgentSqliteDatabaseKernel({
+        databasePath: resolveAgentWorkspaceLayout(workspace).databases.memory,
+        contract: AgentMemoryDatabaseContract,
+      });
+      try {
+        const ledger = new AgentExecutionLedgerService({ store: new AgentExecutionLedgerSqliteStore(kernel) });
+        const fixture = new PiTurnRuntimeFixture({ executeTool: true });
+        fixture.runtime.services.executionLedger = ledger;
+        const command = { ...createPiTurnCommand(), ...request, input: "" };
+        const events: AgentDomainEvent[] = [];
+        const result = await new AgentPiTurnExecutor({ runtime: fixture.runtime }).run(command, (event) => {
+          events.push(event);
+        });
+
+        expect(result.responseText).toBe("The workspace inspection is complete.");
+        expect(ledger.find(command.sessionId!, command.requestId)).toMatchObject({
+          objective: "",
+          status: "completed",
+          steps: [{ title: "ChannelReadHistory", status: "completed" }],
+        });
+        expect(events.some((event) => event.kind === "execution.completed")).toBe(true);
+        expect(fixture.lastSessionOptions?.input).toBe("");
+        expect(fixture.lastSessionOptions?.interaction).toEqual(request.interaction);
+        if (request.interaction?.event || request.interaction?.wake) {
+          expect(fixture.session.prompts[0]).toContain('<channel_activity attribution="root">');
+          expect(fixture.session.prompts[0]).not.toContain("<content>");
+        } else {
+          expect(fixture.session.prompts[0]).toContain("senera://resource/attachment-1");
+        }
+      } finally {
+        kernel.close();
+        removeDirectory(workspace);
+      }
+    },
+  );
+
   test("uses the native Pi session and clears the active session after a completed turn", async () => {
     const fixture = new PiTurnRuntimeFixture();
     const command = createPiTurnCommand();
@@ -296,6 +400,7 @@ class PiTurnRuntimeFixture {
       modelTimeoutMs?: number;
       maxRequestMs?: number;
       leaseTimeoutMs?: number;
+      executeTool?: boolean;
     } = {},
   ) {
     this.session = new ScriptedPiSession(behavior);
@@ -399,6 +504,7 @@ class ScriptedPiSession implements AgentPiSession {
       deferPrompt?: boolean;
       deferCompaction?: boolean;
       promptFailure?: Error;
+      executeTool?: boolean;
     },
   ) {}
 
@@ -419,7 +525,7 @@ class ScriptedPiSession implements AgentPiSession {
     await this.emitTurnEvents();
   }
 
-  prepareContinuation(sourceRequestId?: string): void {
+  async prepareContinuation(sourceRequestId?: string): Promise<void> {
     this.continuationSourceRequestIds.push(sourceRequestId);
   }
 
@@ -475,6 +581,16 @@ class ScriptedPiSession implements AgentPiSession {
   private async emitTurnEvents(): Promise<void> {
     if (!this.turnState) throw new Error("The scripted Pi session has no active turn state.");
     this.turnState.beginModelRequest();
+    if (this.behavior.executeTool) {
+      await this.emit({ type: "tool_execution_start", toolCallId: "call-1", toolName: "ChannelReadHistory", args: {} });
+      await this.emit({
+        type: "tool_execution_end",
+        toolCallId: "call-1",
+        toolName: "ChannelReadHistory",
+        result: { content: [{ type: "text", text: "No unread messages." }] },
+        isError: false,
+      });
+    }
     const assistantMessage = {
       role: "assistant" as const,
       api: "senera-planning" as const,

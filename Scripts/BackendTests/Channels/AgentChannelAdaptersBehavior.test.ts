@@ -45,6 +45,60 @@ function fakeTransport(script: FakeTransportEntry[]): AgentChannelHttpTransport 
   };
 }
 
+test("official QQ accepts ordered Agent tool parts, shares group lanes and retains passive reply identity", async () => {
+  const transport = fakeTransport([
+    { body: { access_token: "tok", expires_in: 7200 } },
+    { body: { file_info: "image-file" } },
+    { body: { id: "sent-image" } },
+    { body: { id: "sent-text" } },
+    { body: {} },
+  ]);
+  const adapter = new AgentQqChannelAdapter({ appId: "app", appSecret: "sec", mode: "webhook", transport });
+  const received: AgentChannelInboundMessage[] = [];
+  adapter.bind({
+    onMessage: (message) => {
+      received.push(message);
+    },
+    onFatal: vi.fn(),
+  });
+  await adapter.connect(new AbortController().signal);
+  try {
+    const payload = {
+      op: 0,
+      t: "GROUP_AT_MESSAGE_CREATE",
+      d: {
+        id: "incoming",
+        group_openid: "group",
+        author: { member_openid: "member" },
+        content: "查看图片",
+      },
+    };
+    const body = JSON.stringify(payload);
+    await adapter.handleWebhookUpdate(payload, body, qqWebhookHeaders(body, "sec"));
+    expect(adapter.capabilities.automaticDelivery).toBe(false);
+    expect(received[0]).toMatchObject({ senderId: "member", addressedToSelf: true });
+    const lane = adapter.routeInbound(received[0]!)[0]!;
+    expect(lane).toMatchObject({ userId: "group", chatId: "group" });
+    await adapter.send({ ...lane, messageId: undefined }, "", {
+      chatType: "group",
+      parts: [
+        { kind: "media", media: { kind: "image", url: "https://cdn.example/image.png", contentType: "image/png" } },
+        { kind: "text", content: "这是图片" },
+      ],
+    });
+    const messages = transport.requests.filter((request) => request.url.endsWith("/messages"));
+    expect(messages.map((request) => jsonBody(request.options?.body)?.msg_type)).toEqual([7, 2]);
+    expect(jsonBody(messages[0]!.options?.body)).toMatchObject({
+      msg_id: "incoming",
+      media: { file_info: "image-file" },
+    });
+    await expect(adapter.deleteMessage(lane, "sent-image")).resolves.toEqual({ kind: "deleted" });
+    expect(transport.calls.at(-1)).toContain("DELETE https://api.sgroup.qq.com/v2/groups/group/messages/sent-image");
+  } finally {
+    await adapter.disconnect();
+  }
+});
+
 describe("telegram adapter", () => {
   test("validates the token and processes a polled update into an inbound message", async () => {
     const transport = fakeTransport([

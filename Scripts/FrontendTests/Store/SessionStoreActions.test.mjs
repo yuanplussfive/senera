@@ -5,6 +5,9 @@ installLocalStorage();
 const { clearPersistedStore, DEFAULT_SESSION_TITLE, useStore } =
   await import("../../../Frontend/src/store/sessionStore.ts");
 const { PERSIST_KEY } = await import("../../../Frontend/src/store/session/persistence.ts");
+const { selectConversationAgent } = await import("../../../Frontend/src/store/session/sessionAgentSelection.ts");
+const { syncActiveSessionModelSelection } =
+  await import("../../../Frontend/src/store/session/sessionModelSelection.ts");
 const { activateWorkspaceSessionProjection } =
   await import("../../../Frontend/src/store/workspaceSessionProjection.ts");
 
@@ -17,7 +20,7 @@ beforeEach(() => {
     activeSessionId: null,
     sidebarCollapsed: false,
     rightPanelCollapsed: false,
-    workflowDockWidth: 420,
+    workflowDockWidthRatio: 0.42,
     viewedRunIdBySession: {},
     historyLoadedIds: {},
     historyLoadingIds: {},
@@ -36,12 +39,82 @@ beforeEach(() => {
     selectedModelProviderId: null,
     defaultModelProviderId: null,
     selectedModelProviderIdsBySession: {},
+    agentDirectory: null,
+    selectedAgentId: null,
     executionApprovalMode: "agent",
     systemTools: [],
     systemExtensions: [],
     mcpServers: [],
     toolSettingsSynced: { systemTools: false, mcpServers: false },
   });
+});
+
+test("switching Agents selects their default while conversation overrides stay isolated", () => {
+  const agents = [
+    { id: "agent-a", name: "A", enabled: true, modelProviderId: "provider_a" },
+    { id: "agent-b", name: "B", enabled: true, modelProviderId: "provider_b" },
+  ];
+  useStore.setState({
+    agentDirectory: { revision: 1, defaultAgentId: "agent-a", agents, deletingAgentIds: [] },
+    modelProviders: ["provider_a", "provider_b"].map((id) => ({
+      id,
+      capabilities: { Chat: true },
+      toolPlanningMode: "baml",
+      stream: true,
+    })),
+    defaultModelProviderId: "provider_a",
+    selectedAgentId: "agent-a",
+    selectedModelProviderId: "provider_a",
+    sessions: { old: { sessionId: "old", agentId: "agent-a" } },
+    activeSessionId: "old",
+  });
+  useStore.setState((state) => selectConversationAgent(state, "agent-b"));
+  expect(useStore.getState()).toMatchObject({
+    activeSessionId: null,
+    selectedAgentId: "agent-b",
+    selectedModelProviderId: "provider_b",
+  });
+  const store = useStore.getState();
+  store.selectModelProvider("provider_a");
+  store.registerCreatingSession("new", undefined, "provider_a");
+  expect(useStore.getState().sessions.new.agentId).toBe("agent-b");
+  expect(useStore.getState().agentDirectory.agents[1].modelProviderId).toBe("provider_b");
+  store.selectSession("old");
+  expect(useStore.getState().selectedModelProviderId).toBe("provider_a");
+  expect(useStore.getState().selectedModelProviderIdsBySession.old).toBeUndefined();
+  store.selectSession("new");
+  expect(useStore.getState().selectedModelProviderId).toBe("provider_a");
+});
+
+test("model snapshots keep defaults derived and acknowledge local overrides without masking future preferences", () => {
+  useStore.setState({
+    modelProviders: ["provider_a", "provider_b"].map((id) => ({
+      id,
+      capabilities: { Chat: true },
+      toolPlanningMode: "baml",
+      stream: true,
+    })),
+    defaultModelProviderId: "provider_a",
+    sessions: { a: { sessionId: "a" }, b: { sessionId: "b", modelPreference: { modelProviderId: "provider_b" } } },
+    selectedModelProviderId: "provider_b",
+    activeSessionId: "a",
+  });
+  useStore.setState(syncActiveSessionModelSelection);
+  expect(useStore.getState().selectedModelProviderId).toBe("provider_a");
+  expect(useStore.getState().selectedModelProviderIdsBySession).toEqual({});
+  useStore.getState().selectSession("b");
+  expect(useStore.getState().selectedModelProviderId).toBe("provider_b");
+  useStore.getState().selectModelProvider("provider_a");
+  useStore.setState((state) => {
+    state.sessions.b.modelPreference = { modelProviderId: "provider_a" };
+    syncActiveSessionModelSelection(state);
+  });
+  expect(useStore.getState().selectedModelProviderIdsBySession.b).toBeUndefined();
+  useStore.setState((state) => {
+    state.sessions.b.modelPreference = { modelProviderId: "provider_b" };
+    syncActiveSessionModelSelection(state);
+  });
+  expect(useStore.getState().selectedModelProviderId).toBe("provider_b");
 });
 
 test("ingest projects tool settings snapshots without credential values", () => {
@@ -101,7 +174,7 @@ test("cross-window preference refresh preserves manually toggled panels when the
     defaultSidebarCollapsed: false,
     sidebarCollapsed: true,
     rightPanelCollapsed: true,
-    workflowDockWidth: 512,
+    workflowDockWidthRatio: 0.512,
     motionLevel: "full",
     selectedModelProviderId: "provider_a",
     selectedModelProviderIdsBySession: { session_a: "provider_a" },
@@ -110,7 +183,7 @@ test("cross-window preference refresh preserves manually toggled panels when the
   dispatchPersistedStorage({
     state: {
       defaultSidebarCollapsed: false,
-      workflowDockWidth: 512,
+      workflowDockWidthRatio: 0.512,
       motionLevel: "full",
       selectedModelProviderId: "provider_a",
       selectedModelProviderIdsBySession: { session_a: "provider_a" },
@@ -121,7 +194,7 @@ test("cross-window preference refresh preserves manually toggled panels when the
   expect(useStore.getState()).toMatchObject({
     sidebarCollapsed: true,
     rightPanelCollapsed: true,
-    workflowDockWidth: 512,
+    workflowDockWidthRatio: 0.512,
   });
 });
 
@@ -130,14 +203,14 @@ test("cross-window layout and dock-width preferences do not reopen the right pan
     defaultSidebarCollapsed: false,
     sidebarCollapsed: false,
     rightPanelCollapsed: false,
-    workflowDockWidth: 420,
+    workflowDockWidthRatio: 0.42,
   });
 
   dispatchPersistedStorage({
     state: {
       defaultSidebarCollapsed: true,
       defaultRightPanelCollapsed: true,
-      workflowDockWidth: 580,
+      workflowDockWidthRatio: 0.58,
       motionLevel: useStore.getState().motionLevel,
       selectedModelProviderId: useStore.getState().selectedModelProviderId,
       selectedModelProviderIdsBySession: useStore.getState().selectedModelProviderIdsBySession,
@@ -149,7 +222,7 @@ test("cross-window layout and dock-width preferences do not reopen the right pan
     defaultSidebarCollapsed: true,
     sidebarCollapsed: true,
     rightPanelCollapsed: false,
-    workflowDockWidth: 580,
+    workflowDockWidthRatio: 0.58,
   });
 });
 
@@ -173,7 +246,7 @@ test("register and append user message create a local run without persisting bac
   expect(session.activeRequestId).toBe("request_a");
 });
 
-test("moves sessions by placement and persists the custom sidebar order", () => {
+test("moves sessions by placement and persists the custom sidebar order", async () => {
   activateWorkspaceSessionProjection("sidebar-order-workspace");
   useStore.setState({
     sessions: {
@@ -189,11 +262,9 @@ test("moves sessions by placement and persists the custom sidebar order", () => 
 
   useStore.getState().moveSession("third", "second", "after");
   expect(useStore.getState().sessionOrder).toEqual(["first", "second", "third"]);
-  expect(JSON.parse(localStorage.getItem("senera-workspace:sidebar-order-workspace")).sessionOrder).toEqual([
-    "first",
-    "second",
-    "third",
-  ]);
+  await expect
+    .poll(() => JSON.parse(localStorage.getItem("senera-workspace:sidebar-order-workspace"))?.sessionOrder)
+    .toEqual(["first", "second", "third"]);
   expect(JSON.parse(localStorage.getItem(PERSIST_KEY)).state).not.toHaveProperty("sessionOrder");
 });
 
@@ -230,6 +301,8 @@ test("keeps the active conversation model independent from a later default-model
           id: "provider_a",
           icon: "mistral",
           capabilities: { Chat: true },
+          toolPlanningMode: "baml",
+          stream: true,
           kind: "OpenAICompatible",
           endpoint: "ChatCompletions",
           baseUrl: "https://example.invalid/v1",
@@ -240,6 +313,8 @@ test("keeps the active conversation model independent from a later default-model
           id: "provider_b",
           icon: "openai",
           capabilities: { Chat: true },
+          toolPlanningMode: "baml",
+          stream: true,
           kind: "OpenAICompatible",
           endpoint: "ChatCompletions",
           baseUrl: "https://example.invalid/v1",
@@ -266,8 +341,10 @@ test("keeps the active conversation model independent from a later default-model
   expect(useStore.getState().selectedModelProviderId).toBe("provider_a");
   expect(useStore.getState().selectedModelProviderIdsBySession).toMatchObject({
     session_a: "provider_a",
-    session_b: "provider_a",
   });
+  expect(useStore.getState().selectedModelProviderIdsBySession.session_b).toBeUndefined();
+  store.ingest(snapshot("provider_b"));
+  expect(useStore.getState().selectedModelProviderId).toBe("provider_b");
 });
 
 test("ingest applies model snapshots and keeps selected provider stable", () => {
@@ -288,6 +365,8 @@ test("ingest applies model snapshots and keeps selected provider stable", () => 
           id: "provider_a",
           icon: "mistral",
           capabilities: { Chat: true },
+          toolPlanningMode: "baml",
+          stream: true,
           kind: "OpenAICompatible",
           endpoint: "ChatCompletions",
           baseUrl: "https://example.invalid/v1",
@@ -371,6 +450,8 @@ function modelSnapshot(providerId, model, sequence) {
           id: providerId,
           icon: providerId === "provider_a" ? "mistral" : "openai",
           capabilities: { Chat: true },
+          toolPlanningMode: "baml",
+          stream: true,
           kind: "OpenAICompatible",
           endpoint: "ChatCompletions",
           baseUrl: "https://example.invalid/v1",

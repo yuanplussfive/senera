@@ -28,6 +28,7 @@ import {
   SqliteSessionRepository,
 } from "../../../Source/AgentSystem/Session/AgentSqliteSessionRepository.js";
 import { createTemporaryDirectory, removeDirectory, toolRootCommand } from "../Support/AgentTestFixtures.js";
+import type { AgentSessionQueuedInput } from "../../../Source/AgentSystem/Session/AgentSessionQueuedInput.js";
 
 interface RepositoryFixture {
   readonly repository: AgentSessionRepository;
@@ -73,6 +74,77 @@ for (const adapter of RepositoryAdapters) {
 
     afterEach(() => {
       fixture.close();
+    });
+
+    test("accepts input and its history once, persists delivery state, and rejects identity conflicts", () => {
+      const repository = fixture.repository;
+      repository.upsertSession(session("queued"));
+      const input = queuedInput("queued", "supplement", "parent");
+      repository.saveQueuedInput(input);
+      repository.saveQueuedInput(input);
+      expect(repository.loadEntries("queued")).toHaveLength(1);
+      expect(repository.listQueuedInputs("queued")).toEqual([input]);
+      const delivered = { ...input, state: "delivered", wireInput: "native input" } as const;
+      repository.saveQueuedInput(delivered);
+      expect(repository.loadQueuedInput("queued", "supplement")).toEqual(delivered);
+      expect(repository.loadEntries("queued")[0]?.metadata?.queue?.status).toBe("delivered");
+      expect(() => repository.saveQueuedInput({ ...input, payloadHash: "different" })).toThrow("identity conflict");
+      expect(repository.loadQueuedInput("queued", "supplement")).toEqual(delivered);
+      repository.saveQueuedInput({ ...delivered, state: "completed" });
+      expect(repository.listQueuedInputs("queued")).toEqual([]);
+      expect(repository.loadQueuedInput("queued", "supplement")?.state).toBe("completed");
+    });
+
+    test("removes owned input on history deletion and clears root queue metadata after recovery", () => {
+      const repository = fixture.repository;
+      repository.upsertSession(session("queued"));
+      const input = queuedInput("queued", "root", "root");
+      repository.saveQueuedInput(input);
+      repository.saveQueuedInput({ ...input, state: "delivered" });
+      expect(repository.loadEntries("queued")[0]?.metadata?.queue).toBeUndefined();
+      repository.saveQueuedInput(queuedInput("queued", "child", "root"));
+      repository.deleteEntriesFrom("queued", "root");
+      expect(repository.listQueuedInputs("queued")).toEqual([]);
+      expect(repository.loadQueuedInput("queued", "root")).toBeUndefined();
+      repository.saveQueuedInput(input);
+      repository.deleteSession("queued");
+      expect(repository.loadQueuedInput("queued", "root")).toBeUndefined();
+    });
+
+    test("request windows include snapshot-only failures, legacy messages, and stable high-water marks", () => {
+      const repository = fixture.repository;
+      const sessionId = "request-windows";
+      repository.upsertSession(session(sessionId));
+      repository.appendEntry(sessionId, { ...userEntry("legacy", "Legacy input"), timestamp: timestamp(0) }, 0);
+      repository.appendEntry(sessionId, { ...userEntry("kept", "Image input"), timestamp: timestamp(10) }, 1);
+      repository.upsertRunSnapshot(runSnapshot(sessionId, "kept", "completed", 10));
+      repository.upsertRunSnapshot(runSnapshot(sessionId, "failed-without-entry", "failed", 20));
+      repository.persistTurnArtifacts(
+        sessionId,
+        [],
+        [{ requestId: "failed-without-entry", turnSequence: 2, trace: stepTrace(20) }],
+      );
+      const history = repository.captureHistorySnapshot(sessionId)!;
+      repository.upsertRunSnapshot(runSnapshot(sessionId, "later", "completed", 30));
+      const request = {
+        entryHighWaterMark: history.entryHighWaterMark,
+        runSnapshotHighWaterMark: history.runSnapshotHighWaterMark,
+        pageSize: 2,
+      };
+      expect(repository.loadHistoryRequestPage(sessionId, { ...request, fromRequestId: "kept" })).toEqual({
+        requestIds: ["kept", "failed-without-entry"],
+        before: "kept",
+      });
+      expect(repository.loadHistoryRequestPage(sessionId, { ...request, before: "kept" })).toEqual({
+        requestIds: ["legacy"],
+        before: undefined,
+      });
+      expect(
+        repository.loadHistoryRequestPage(sessionId, { ...request, fromRequestId: "missing-native-marker" }).requestIds,
+      ).toEqual(["kept", "failed-without-entry"]);
+      expect(
+        repository.loadStepTracesForRequests(sessionId, ["failed-without-entry"], history.stepTraceHighWaterMark!),
+      ).toEqual([{ requestId: "failed-without-entry", turnSequence: 2, traces: [stepTrace(20)] }]);
     });
 
     test("preserves session ordering, scoped entry identity, message counts, and atomic appends", () => {
@@ -330,6 +402,23 @@ for (const adapter of RepositoryAdapters) {
       expect(repository.loadEntries(sessionId).map((entry) => entry.requestId)).toEqual(["request-a"]);
     });
   });
+}
+
+function queuedInput(sessionId: string, requestId: string, parentRequestId: string): AgentSessionQueuedInput {
+  return {
+    sessionId,
+    requestId,
+    parentRequestId,
+    payloadHash: requestId,
+    state: "pending",
+    createdAt: timestamp(0),
+    updatedAt: timestamp(0),
+    request: { sessionId, requestId, input: requestId, approvalMode: "agent", queueMode: "steer" },
+    entry: {
+      ...userEntry(requestId, requestId),
+      metadata: { queue: { parentRequestId, mode: "steer", status: "pending" } },
+    },
+  };
 }
 
 function session(id: string, updatedOffset = 0) {

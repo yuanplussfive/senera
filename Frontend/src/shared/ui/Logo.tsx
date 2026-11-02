@@ -5,6 +5,10 @@ interface LogoProps {
   size?: number;
 }
 
+// The document base is rewritten at runtime (file:// windows have none, the dev server serves under
+// /development/), so the mark must follow the bundler base instead of a document-relative path.
+const LogoMarkSource = `${import.meta.env.BASE_URL}favicon.svg`;
+
 export function LogoMark({ className, size = 22 }: LogoProps): JSX.Element {
   return (
     <span
@@ -12,7 +16,7 @@ export function LogoMark({ className, size = 22 }: LogoProps): JSX.Element {
       style={{ width: size, height: size }}
       aria-hidden="true"
     >
-      <img src="./favicon.svg" alt="" className="h-full w-full object-contain" draggable={false} />
+      <img src={LogoMarkSource} alt="" className="h-full w-full object-contain" draggable={false} />
     </span>
   );
 }

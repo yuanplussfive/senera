@@ -102,6 +102,29 @@ describe("Tool invocation deadline", () => {
       removeDirectory(workspaceRoot);
     }
   });
+
+  test("applies a producer-declared tool deadline before MCP execution", async () => {
+    const workspaceRoot = createTemporaryDirectory("senera-tool-aware-deadline");
+    const tool = registeredTool(workspaceRoot, "Immediate", "ToolAware", 40);
+    const capabilities = new AgentToolHostCapabilityRegistry().register("test.deadline", async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return toolProcessSuccessResult({ completed: true });
+    });
+    const runner = new AgentToolRunner(
+      configWithTimeout(0.01),
+      workspaceRoot,
+      capabilities,
+      { getTool: () => tool },
+      new SeneraLocalExecutionEnv({ workspaceRoot }),
+    );
+
+    try {
+      await expect(runner.run(tool, {})).resolves.toMatchObject({ response: { ok: true } });
+    } finally {
+      await runner.close();
+      removeDirectory(workspaceRoot);
+    }
+  });
 });
 
 function configWithTimeout(timeoutSeconds: number): AgentSystemConfig {
@@ -112,6 +135,7 @@ function registeredTool(
   workspaceRoot: string,
   lifecycle: RegisteredTool["runtime"]["Lifecycle"] = "Immediate",
   deadlinePolicy?: RegisteredTool["runtime"]["DeadlinePolicy"],
+  deadlineMs?: number,
 ): RegisteredTool {
   return {
     owner: {
@@ -129,9 +153,9 @@ function registeredTool(
     execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
     runtime: {
       Lifecycle: lifecycle,
-      ProtocolVersion: 2,
       ResultAssessment: "ProcessExit",
       ...(deadlinePolicy ? { DeadlinePolicy: deadlinePolicy } : {}),
+      ...(deadlineMs === undefined ? {} : { DeadlineMs: deadlineMs }),
       Capabilities: { Cancellation: true },
     },
     sources: [],

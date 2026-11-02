@@ -72,6 +72,7 @@ describe("agent model usage", () => {
 
     expect(ledger.contextUsage()).toMatchObject({ inputTokens: 130, totalTokens: 150 });
     expect(ledger.aggregate()).toEqual({
+      cost: { currency: "USD" },
       source: "mixed",
       inputTokens: 230,
       outputTokens: 30,
@@ -85,7 +86,7 @@ describe("agent model usage", () => {
     const turn = new AgentModelUsageLedger();
     const sidecar = turn.fork();
     sidecar.record({
-      stage: "resident-speech",
+      stage: "imageAnalyze",
       usage: { source: "provider_reported", inputTokens: 40, outputTokens: 6, totalTokens: 46 },
     });
 

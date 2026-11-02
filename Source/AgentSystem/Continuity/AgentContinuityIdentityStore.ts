@@ -19,6 +19,7 @@ const AgentContinuityIdentityDocumentSchema = z
 type AgentContinuityIdentityDocument = z.infer<typeof AgentContinuityIdentityDocumentSchema>;
 
 export interface AgentContinuityIdentityContext {
+  readonly agentId?: string;
   readonly workspaceId: string;
   readonly accountId?: string;
   readonly userId?: string;

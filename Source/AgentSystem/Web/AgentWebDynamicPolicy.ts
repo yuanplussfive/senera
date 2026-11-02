@@ -1,4 +1,5 @@
 import { parseHTML } from "linkedom";
+import { isAgentWebHtmlContentType } from "./AgentWebContentExtractor.js";
 
 export const AgentWebRenderStrategyValues = ["http", "auto", "browser"] as const;
 export type AgentWebRenderStrategy = (typeof AgentWebRenderStrategyValues)[number];
@@ -57,10 +58,12 @@ export function assessAgentWebDocument(
   source: string,
   markdown: string,
   configuration: AgentWebDynamicDetectionConfiguration,
+  contentType: string,
 ): AgentWebDynamicAssessment {
-  const signals = measureAgentWebDocument(source, markdown, configuration);
+  const html = isAgentWebHtmlContentType(contentType);
+  const signals = measureAgentWebDocument(source, markdown, configuration, html);
   const reasons =
-    signals.dynamicScore >= configuration.dynamicScoreThreshold
+    html && signals.dynamicScore >= configuration.dynamicScoreThreshold
       ? [
           [signals.textDeficit, "静态正文不足"],
           [signals.densityDeficit, "正文相对 HTML 密度偏低"],
@@ -73,7 +76,8 @@ export function assessAgentWebDocument(
       : [];
 
   return {
-    decision: signals.dynamicScore >= configuration.dynamicScoreThreshold ? "dynamic_likely" : "static_sufficient",
+    decision:
+      html && signals.dynamicScore >= configuration.dynamicScoreThreshold ? "dynamic_likely" : "static_sufficient",
     signals,
     reasons,
   };
@@ -83,12 +87,13 @@ function measureAgentWebDocument(
   source: string,
   markdown: string,
   configuration: AgentWebDynamicDetectionConfiguration,
+  html: boolean,
 ): AgentWebDocumentSignals {
   const htmlChars = Array.from(source).length;
-  const parsed = parseHTML(source).document;
-  const scripts = Array.from(parsed.querySelectorAll("script"));
+  const parsed = html ? parseHTML(source).document : undefined;
+  const scripts = parsed ? Array.from(parsed.querySelectorAll("script")) : [];
   const scriptChars = scripts.reduce((total, element) => total + Array.from(element.toString()).length, 0);
-  const visibleTextChars = visibleTextLength(parsed);
+  const visibleTextChars = parsed ? visibleTextLength(parsed) : normalizedTextLength(source);
   const markdownChars = Array.from(markdown).length;
   const markdownBlockCount = markdown
     .split(/\n{2,}/u)
@@ -126,7 +131,7 @@ function measureAgentWebDocument(
     densityDeficit,
     scriptPressure,
     structureDeficit,
-    dynamicScore,
+    dynamicScore: html ? dynamicScore : 0,
   };
 }
 
@@ -134,10 +139,15 @@ function visibleTextLength(document: ReturnType<typeof parseHTML>["document"]): 
   for (const selector of ["script", "style", "noscript", "template", "svg", "canvas"]) {
     for (const element of Array.from(document.querySelectorAll(selector))) element.remove();
   }
-  return Array.from((document.body ?? document.documentElement).textContent ?? "")
-    .join("")
-    .replace(/\s+/gu, " ")
-    .trim().length;
+  const root = document.documentElement;
+  const text = root
+    ? (document.body ?? root).textContent
+    : Array.from(document.childNodes, (node) => node.textContent).join("");
+  return normalizedTextLength(text ?? "");
+}
+
+function normalizedTextLength(text: string): number {
+  return Array.from(text.replace(/\s+/gu, " ").trim()).length;
 }
 
 function ratio(numerator: number, denominator: number): number {

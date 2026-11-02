@@ -86,6 +86,81 @@ describe("Turn preparation behavior", () => {
     expect(prepared.toolAccessGrant.exposedToolNames).toEqual(prepared.loadedToolNames);
   });
 
+  test("resolves conversational references before skill and capability retrieval", async () => {
+    const order: string[] = [];
+    const standaloneRequest = "使用浏览器工具下载一个好看的动漫帅哥图片";
+    const resolveStateCard = vi.fn(async () => {
+      order.push("state-card");
+      return {
+        ...buildAgentStateCard({ currentRequest: standaloneRequest, history: [] }),
+        topicRelation: "continue" as const,
+        standaloneRequest,
+      };
+    });
+    const activeSkill = {
+      name: "browser-workflow",
+      revision: "r1",
+      title: "Browser workflow",
+      summary: "Use browser tools.",
+      useCases: [],
+      avoid: [],
+      recommendedTools: [],
+      evidenceRequirements: [],
+      descriptionFile: "SKILL.md",
+      content: "",
+      matchedTerms: ["browser"],
+      matchedFields: [],
+      score: 1,
+    };
+    const activateSkills = vi.fn(async (options: { input?: string }) => {
+      order.push(`skills:${options.input}`);
+      return [activeSkill];
+    });
+    const reusableCapabilities = vi.fn(() => {
+      order.push("reuse");
+      return [];
+    });
+    const resolvePlannedLoadedTools = vi.fn(async (options: { currentLoadedTools?: readonly string[] }) => {
+      order.push("tools");
+      return [...(options.currentLoadedTools ?? [])];
+    });
+    const service = new AgentTurnPreparationService({
+      services: {
+        retrieval: { resolveStateCard, resolvePlannedLoadedTools, reusableCapabilities },
+        promptContext: {
+          activateSkills,
+          recommendedSkillToolRouting: () => ({
+            directToolNames: [],
+            dynamicToolNames: [],
+            nativeToolNames: [],
+            requiredToolNames: [],
+          }),
+          buildRootCommand: vi.fn(({ loadedToolNames }) => rootCommand(loadedToolNames)),
+        },
+      },
+    });
+
+    const prepared = await service.prepare({
+      requestId: "request-correction",
+      sessionId: "session-correction",
+      userInput: "不是这个",
+      loadedToolNames: ["ToolSearch"],
+    });
+
+    expect(order).toEqual(["state-card", `skills:${standaloneRequest}`, "reuse", "tools"]);
+    expect(reusableCapabilities).toHaveBeenCalledWith({
+      sessionId: "session-correction",
+      logicalCacheScope: undefined,
+      query: standaloneRequest,
+      authorizedToolNames: undefined,
+    });
+    expect(prepared.stateCard).toMatchObject({
+      topicRelation: "continue",
+      standaloneRequest,
+      activeSkills: ["browser-workflow"],
+    });
+  });
+
   test("loads exact tools from an explicit activation without semantic discovery", async () => {
     const resolvePlannedLoadedTools = vi.fn(
       async (options: { currentLoadedTools?: readonly string[]; requiredToolNames?: readonly string[] }) => [

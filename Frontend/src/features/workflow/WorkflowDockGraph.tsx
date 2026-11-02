@@ -1,7 +1,8 @@
-import { useMemo, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { memo, useMemo, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import "./WorkflowDockGraph.css";
 import type { RunActivityRecord, RunRecord, TimelineStep, TimelineStepStatus } from "../../store/sessionStore";
 import { formatFrontendMessage, frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { useFrontendLocale } from "../../i18n/useFrontendLocale";
 import { cn, formatDurationMs } from "../../lib/util";
 import { OrganicTimelineRail } from "../../shared/motion";
 import { NodeDetailDrawer } from "./NodeDetailDrawer";
@@ -32,9 +33,18 @@ const DockCompactPreviewRowCount = 2;
  * colors the ordinal only while its entry is inspected, keeping completed
  * history quiet and scannable at all dock widths.
  */
-export function WorkflowDockGraph({ run }: { run: RunRecord }): JSX.Element {
-  const entries = useMemo(() => projectDockWorkflow(run), [run]);
-  const [selectedStep, setSelectedStep] = useState<TimelineStep | null>(null);
+export const WorkflowDockGraph = memo(function WorkflowDockGraph({ run }: { run: RunRecord }): JSX.Element {
+  useFrontendLocale();
+  const { activities, steps } = run;
+  const entries = useMemo(() => projectDockWorkflow({ activities, steps }), [activities, steps]);
+  // Keep only the stable identity in local UI state. Tool-result history can
+  // arrive after the drawer opens, so retaining the step object would leave
+  // the drawer rendering an obsolete snapshot forever.
+  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
+  const selectedStep = useMemo(
+    () => (selectedStepId ? (steps.find((step) => step.id === selectedStepId) ?? null) : null),
+    [selectedStepId, steps],
+  );
   const [hoveredEntryId, setHoveredEntryId] = useState<string | null>(null);
   // Parallel calls remain compact until the user asks for their individual
   // entries. Their first declared action stays visible in the summary.
@@ -83,8 +93,8 @@ export function WorkflowDockGraph({ run }: { run: RunRecord }): JSX.Element {
                   firstOrdinal={firstOrdinal}
                   expanded={expandedBatchIds.has(entry.id)}
                   onExpandedChange={() => setExpandedBatchIds((current) => toggleSetEntry(current, entry.id))}
-                  selectedStepId={selectedStep?.id}
-                  onSelect={setSelectedStep}
+                  selectedStepId={selectedStepId ?? undefined}
+                  onSelect={setSelectedStepId}
                   highlighted={hoveredEntryId === entry.id}
                   hoveredEntryId={hoveredEntryId}
                 />
@@ -109,8 +119,8 @@ export function WorkflowDockGraph({ run }: { run: RunRecord }): JSX.Element {
                   step={entry.step}
                   entryId={entry.id}
                   ordinal={ordinal}
-                  selected={selectedStep?.id === entry.step.id}
-                  onSelect={setSelectedStep}
+                  selected={selectedStepId === entry.step.id}
+                  onSelect={setSelectedStepId}
                   highlighted={hoveredEntryId === entry.id}
                 />
               );
@@ -121,8 +131,8 @@ export function WorkflowDockGraph({ run }: { run: RunRecord }): JSX.Element {
                 step={entry.step}
                 entryId={entry.id}
                 ordinal={ordinal}
-                selected={selectedStep?.id === entry.step.id}
-                onSelect={setSelectedStep}
+                selected={selectedStepId === entry.step.id}
+                onSelect={setSelectedStepId}
                 highlighted={hoveredEntryId === entry.id}
               />
             );
@@ -143,13 +153,23 @@ export function WorkflowDockGraph({ run }: { run: RunRecord }): JSX.Element {
           layoutVersion={entries}
         />
       </div>
-      <ToolRunOutputSummary run={run} />
-      <NodeDetailDrawer step={selectedStep} onClose={() => setSelectedStep(null)} />
+      <ToolRunOutputSummary run={run} mode="detail" />
+      <NodeDetailDrawer step={selectedStep} relatedSteps={run.steps} onClose={() => setSelectedStepId(null)} />
     </div>
   );
+}, areWorkflowDockGraphPropsEqual);
+
+function areWorkflowDockGraphPropsEqual(
+  previous: Readonly<{ run: RunRecord }>,
+  next: Readonly<{ run: RunRecord }>,
+): boolean {
+  // The dock has no dependency on streamed prose or reasoning blocks. Those
+  // update frequently, whereas its topology is defined only by workflow
+  // steps and visible activities.
+  return previous.run.steps === next.run.steps && previous.run.activities === next.run.activities;
 }
 
-export function projectDockWorkflow(run: RunRecord): DockWorkflowEntry[] {
+export function projectDockWorkflow(run: Pick<RunRecord, "steps" | "activities">): DockWorkflowEntry[] {
   const steps = projectWorkflowSteps(run);
   const activities = projectWorkflowActivities(run);
   const batches = collectDockToolBatches(steps);
@@ -198,7 +218,7 @@ function DockStepNode({
   readonly entryId: string;
   readonly ordinal: number;
   readonly selected: boolean;
-  readonly onSelect: (step: TimelineStep) => void;
+  readonly onSelect: (stepId: string) => void;
   readonly highlighted: boolean;
 }): JSX.Element {
   const title = readDockStepTitle(step);
@@ -234,7 +254,7 @@ function DockStepNode({
         ) : (
           <button
             type="button"
-            onClick={() => onSelect(step)}
+            onClick={() => onSelect(step.id)}
             aria-haspopup="dialog"
             aria-expanded={selected}
             aria-label={frontendMessage("workflow.dock.expandNode", {
@@ -262,7 +282,7 @@ function DockToolCallNode({
   readonly entryId: string;
   readonly ordinal: number;
   readonly selected: boolean;
-  readonly onSelect: (step: TimelineStep) => void;
+  readonly onSelect: (stepId: string) => void;
   readonly highlighted: boolean;
 }): JSX.Element {
   const summary = projectDockToolSummary(step);
@@ -281,7 +301,7 @@ function DockToolCallNode({
       <div className="workflow-dock-entry-content">
         <button
           type="button"
-          onClick={() => onSelect(step)}
+          onClick={() => onSelect(step.id)}
           aria-haspopup="dialog"
           aria-expanded={selected}
           aria-label={frontendMessage("workflow.dock.expandNode", {
@@ -298,7 +318,7 @@ function DockToolCallNode({
         {summary.detail ? <span className="workflow-dock-entry-summary">{summary.detail}</span> : null}
         {summary.parameters?.length ? <DockToolParameters parameters={summary.parameters} /> : null}
         {summary.failure ? <span className="workflow-dock-failure">{summary.failure}</span> : null}
-        {summary.result ? <DockToolResultBody result={summary.result} onOpenDetails={() => onSelect(step)} /> : null}
+        {summary.result ? <DockToolResultBody result={summary.result} onOpenDetails={() => onSelect(step.id)} /> : null}
       </div>
     </div>
   );
@@ -310,14 +330,14 @@ function DockToolParameters({
   readonly parameters: NonNullable<ReturnType<typeof projectDockToolSummary>["parameters"]>;
 }): JSX.Element {
   return (
-    <span className="workflow-dock-parameters">
+    <div className="workflow-dock-parameters">
       {parameters.map((parameter) => (
         <span key={parameter.label} className="workflow-dock-parameter">
           <span className="workflow-dock-parameter-label">{parameter.label}</span>
           <span className="workflow-dock-parameter-value">{parameter.values.join(" · ")}</span>
         </span>
       ))}
-    </span>
+    </div>
   );
 }
 
@@ -494,7 +514,7 @@ function DockBatchNode({
   readonly expanded: boolean;
   readonly onExpandedChange: () => void;
   readonly selectedStepId?: string;
-  readonly onSelect: (step: TimelineStep) => void;
+  readonly onSelect: (stepId: string) => void;
   readonly highlighted: boolean;
   readonly hoveredEntryId: string | null;
 }): JSX.Element {

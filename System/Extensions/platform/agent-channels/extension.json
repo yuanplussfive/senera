@@ -9,18 +9,100 @@
     "icon": "message",
     "group": {
       "id": "channels",
-      "title": { "zh-CN": "渠道连接", "en-US": "Channels" }
+      "title": {
+        "zh-CN": "渠道连接",
+        "en-US": "Channels"
+      }
     },
     "activity": {
-      "action": { "zh-CN": "管理渠道", "en-US": "Manage channels" }
+      "action": {
+        "zh-CN": "管理渠道",
+        "en-US": "Manage channels"
+      }
     }
   },
-  "version": "1.0.0",
-  "displayName": { "zh-CN": "消息渠道", "en-US": "Message Channels" },
+  "usageExamples": [
+    {
+      "title": {
+        "zh-CN": "跨渠道继续对话",
+        "en-US": "Continue across channels"
+      },
+      "prompt": {
+        "zh-CN": "在这个聊天里发送整理好的图片和文档。",
+        "en-US": "Send the prepared images and documents to this chat."
+      },
+      "outcome": {
+        "zh-CN": "使用渠道工具收发消息、引用回复、发送附件，并同步主控台进度。",
+        "en-US": "Use channel tools to send messages, quote replies and attachments, with progress visible in the console."
+      }
+    }
+  ],
+  "documentation": {
+    "zh-CN": "### 同一个工作台，不同的消息入口\n\n消息渠道把外部或本地聊天与 Agent 会话连接起来。对话入口各有平台能力和接入条件，请在对应渠道详情查看。\n\n渠道工具区分文字发送、附件发送、引用回复、历史读取和等待事件。是否支持某项操作，以当前渠道的实际能力为准；本地 Senera QQ 还支持相应的本地群聊事件。\n\n主控台展示执行轨迹，渠道通过自己的消息链路展示发言；两者不应重复发送同一份内容。",
+    "en-US": "### One workbench, multiple conversation surfaces\n\nChannels connect external or local chats to Agent sessions. Each platform has its own capabilities and setup requirements, documented in its detail page.\n\nChannel tools separate text, attachments, replies, history and waiting for events. Availability depends on the active adapter; local Senera QQ also exposes local group events. The console shows execution traces while channel tools deliver conversation messages."
+  },
+  "displayName": {
+    "zh-CN": "消息渠道",
+    "en-US": "Message Channels"
+  },
   "description": {
-    "zh-CN": "把 Senera 会话接入 Telegram、QQ 与 Discord 机器人网关：多渠道收发、群聊与会话映射、后台任务完成通知。",
-    "en-US": "Connects Senera sessions to Telegram, QQ and Discord bot gateways: multi-channel messaging, conversation mapping, and detached task completion notices."
+    "zh-CN": "接入 QQ、OneBot 11、Telegram、Discord 和本地 Senera QQ，共享会话、附件与任务。",
+    "en-US": "Connect QQ, OneBot 11, Telegram, Discord and local Senera QQ through shared sessions, attachments and tasks."
   },
   "priority": 2,
-  "configuration": { "schema": "config.schema.json", "ui": "ui.schema.json" }
+  "configuration": {
+    "schema": "config.schema.json",
+    "ui": "ui.schema.json"
+  },
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "channels/shared/tools/ChannelUpdateConversation.tool.json",
+      "capability": "channel.update_conversation"
+    },
+    {
+      "kind": "skill",
+      "path": "channels/shared/skills/channel-conversation"
+    },
+    {
+      "kind": "hostTool",
+      "contract": "channels/shared/tools/ChannelSendMedia.tool.json",
+      "capability": "channel.send_media"
+    },
+    {
+      "kind": "hostTool",
+      "contract": "channels/onebot11/tools/ChannelPoke.tool.json",
+      "capability": "channel.poke"
+    },
+    {
+      "kind": "hostTool",
+      "contract": "channels/shared/tools/ChannelSendMessage.tool.json",
+      "capability": "channel.send_message"
+    },
+    {
+      "kind": "hostTool",
+      "contract": "channels/shared/tools/ChannelReplyMessage.tool.json",
+      "capability": "channel.reply_message"
+    },
+    {
+      "kind": "hostTool",
+      "contract": "channels/shared/tools/ChannelRecallMessage.tool.json",
+      "capability": "channel.recall_message"
+    },
+    {
+      "kind": "hostTool",
+      "contract": "channels/shared/tools/ChannelWaitMessage.tool.json",
+      "capability": "channel.wait_message"
+    },
+    {
+      "kind": "hostTool",
+      "contract": "channels/shared/tools/ChannelReadHistory.tool.json",
+      "capability": "channel.read_history"
+    },
+    {
+      "kind": "hostTool",
+      "contract": "channels/onebot11/tools/ChannelReadArchive.tool.json",
+      "capability": "channel.read_archive"
+    }
+  ]
 }

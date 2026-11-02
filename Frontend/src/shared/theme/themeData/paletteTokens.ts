@@ -9,7 +9,7 @@ import { monoPalette } from "./palettes/monoPalette";
 import { oceanPalette } from "./palettes/oceanPalette";
 import { sakuraPalette } from "./palettes/sakuraPalette";
 import { seneraPalette } from "./palettes/seneraPalette";
-import type { ThemeTokenSet } from "./themeTokenTypes";
+import type { PaletteTokenSet } from "./basePalette";
 
 export const paletteTokens = {
   senera: seneraPalette,
@@ -22,4 +22,4 @@ export const paletteTokens = {
   matcha: matchaPalette,
   honey: honeyPalette,
   celadon: celadonPalette,
-} as const satisfies Record<ColorScheme, ThemeTokenSet>;
+} as const satisfies Record<ColorScheme, PaletteTokenSet>;

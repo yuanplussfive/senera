@@ -15,6 +15,7 @@ import {
   assertAgentBrowserWindowModeSupported,
   AgentBrowserExecutableResolutionError,
   resolveAgentBrowserExecutable,
+  resolveAgentBrowserExecutableSelection,
 } from "../../../Source/AgentSystem/Browser/AgentBrowserExecutableResolver.js";
 import {
   agentBrowserControllerBinaryName,
@@ -22,12 +23,15 @@ import {
 } from "../../../Source/AgentSystem/Browser/AgentBrowserControllerResolver.js";
 import { AgentBrowserRuntime } from "../../../Source/AgentSystem/Browser/AgentBrowserRuntime.js";
 import { browserTargetScope } from "../../../Source/AgentSystem/Browser/AgentBrowserUrlPolicy.js";
-import { createAgentBrowserSystemTools } from "../../../Source/AgentSystem/SystemTools/AgentBrowserSystemTools.js";
 import { AgentExtensionRegistry } from "../../../Source/AgentSystem/Extensions/AgentExtensionRegistry.js";
 import type { SeneraExecutionEnv } from "../../../Source/AgentSystem/Execution/SeneraExecutionTypes.js";
 import type { AgentHostToolContext } from "../../../Source/AgentSystem/ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
 import type { AgentBrowserOperation } from "../../../Source/AgentSystem/Browser/AgentBrowserTypes.js";
+import {
+  loadSystemToolContractByName,
+  materializeSystemToolArguments,
+} from "../SystemTools/SystemToolContractTestSupport.js";
 
 interface BrowserCall {
   readonly operation: AgentBrowserOperation;
@@ -92,6 +96,102 @@ describe("controlled browser runtime", () => {
 
   test("requires an explicit path when the host asks Senera to resolve one", () => {
     expect(() => resolveAgentBrowserExecutable()).toThrow(AgentBrowserExecutableResolutionError);
+  });
+
+  test("auto-detects an installed browser with a stable priority order", () => {
+    const chrome = path.win32.join("C:\\Program Files", "Google", "Chrome", "Application", "chrome.exe");
+    const edge = path.win32.join("C:\\Program Files (x86)", "Microsoft", "Edge", "Application", "msedge.exe");
+    const installed = new Set([chrome, edge]);
+
+    expect(
+      resolveAgentBrowserExecutableSelection({
+        selection: "auto",
+        platform: "win32",
+        environment: { ProgramFiles: "C:\\Program Files", "ProgramFiles(x86)": "C:\\Program Files (x86)" },
+        homeDirectory: "C:\\Users\\tester",
+        exists: (candidate) => installed.has(candidate),
+      }),
+    ).toBe(chrome);
+    expect(
+      resolveAgentBrowserExecutableSelection({
+        selection: "auto",
+        platform: "win32",
+        environment: { ProgramFiles: "C:\\Program Files", "ProgramFiles(x86)": "C:\\Program Files (x86)" },
+        homeDirectory: "C:\\Users\\tester",
+        exists: (candidate) => candidate === edge,
+      }),
+    ).toBe(edge);
+  });
+
+  test("falls back to the managed browser when auto-detection finds nothing", () => {
+    expect(
+      resolveAgentBrowserExecutableSelection({
+        selection: "auto",
+        platform: "win32",
+        environment: {},
+        homeDirectory: "C:\\Users\\tester",
+        exists: () => false,
+      }),
+    ).toBeUndefined();
+    expect(
+      resolveAgentBrowserExecutableSelection({
+        selection: "bundled",
+        platform: "win32",
+        environment: { PATH: "C:\\tools" },
+        exists: () => true,
+      }),
+    ).toBeUndefined();
+  });
+
+  test("reports a missing explicit browser selection instead of silently falling back", () => {
+    expect(() =>
+      resolveAgentBrowserExecutableSelection({
+        selection: "brave",
+        platform: "linux",
+        environment: {},
+        exists: () => false,
+      }),
+    ).toThrow(/Brave was not found/u);
+  });
+
+  test("validates a configured executable before the selection", () => {
+    const configured = path.resolve(os.tmpdir(), "senera-configured-browser");
+    expect(
+      resolveAgentBrowserExecutableSelection({
+        selection: "edge",
+        configuredPath: configured,
+        exists: (candidate) => candidate === configured,
+      }),
+    ).toBe(configured);
+    expect(() =>
+      resolveAgentBrowserExecutableSelection({
+        selection: "auto",
+        configuredPath: configured,
+        exists: () => false,
+      }),
+    ).toThrow(/Configured browser executable is unavailable/u);
+  });
+
+  test("detects platform-specific browser installation layouts", () => {
+    const edgeBundle = "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge";
+    expect(
+      resolveAgentBrowserExecutableSelection({
+        selection: "edge",
+        platform: "darwin",
+        homeDirectory: "/Users/tester",
+        exists: (candidate) => candidate === edgeBundle,
+      }),
+    ).toBe(edgeBundle);
+
+    const chromium = "/opt/tools/bin/chromium";
+    expect(
+      resolveAgentBrowserExecutableSelection({
+        selection: "chromium",
+        platform: "linux",
+        environment: { PATH: "/opt/tools/bin:/usr/local/bin" },
+        exists: (candidate) => candidate === chromium,
+      }),
+    ).toBe(chromium);
   });
 
   test("allows public browser requests by default while retaining host-owned arguments", async () => {
@@ -197,7 +297,7 @@ describe("controlled browser runtime", () => {
     );
   });
 
-  test("uses the model-selected timeout within the host-configured bound", async () => {
+  test("uses the configured operation budget without accepting model-owned overrides", async () => {
     await withBrowserRuntime(
       async ({ runtime, driver, root }) => {
         await runtime.execute("open", { url: "https://example.com", timeoutMs: 420_000 }, browserContext(root));
@@ -206,36 +306,74 @@ describe("controlled browser runtime", () => {
           { state: "load", waitTimeoutMs: 240_000, timeoutMs: 420_000 },
           browserContext(root),
         );
-        expect(driver.operationTimeouts).toEqual([420_000, 420_000]);
-        await expect(
-          runtime.execute("open", { url: "https://example.com", timeoutMs: 600_001 }, browserContext(root)),
-        ).rejects.toThrow(/between 1000 and 600000/u);
+        expect(driver.operationTimeouts).toHaveLength(2);
+        for (const budget of driver.operationTimeouts) {
+          expect(budget).toBeGreaterThan(590_000);
+          expect(budget).toBeLessThanOrEqual(600_000);
+        }
       },
-      { configuration: { runtime: { maxOperationTimeoutMs: 600_000 } } },
+      { configuration: { runtime: { requestTimeoutMs: 600_000 } } },
     );
   });
 
-  test("exposes a bounded timeoutMs input on every browser system tool", () => {
-    const tools = createAgentBrowserSystemTools({ runtime: { maxOperationTimeoutMs: 600_000 } });
-    const open = tools.find((tool) => tool.name === "BrowserOpen");
-    const wait = tools.find((tool) => tool.name === "BrowserWaitForLoad");
+  test("extends the host deadline to the browser operation budget", async () => {
+    await withBrowserRuntime(async ({ runtime, root }) => {
+      const extended: number[] = [];
+      await runtime.execute(
+        "open",
+        { url: "https://example.com", timeoutMs: 420_000 },
+        browserContext(root, {
+          deadline: {
+            signal: new AbortController().signal,
+            timeoutMs: 120_000,
+            extendTo: (timeoutMs) => extended.push(timeoutMs),
+            close: () => undefined,
+          },
+        }),
+      );
 
-    expect(open?.input.parse({ url: "https://example.com", timeoutMs: 420_000 })).toMatchObject({
-      timeoutMs: 420_000,
+      expect(extended).toEqual([180_000]);
     });
-    expect(wait?.input.parse({ state: "load", timeoutMs: 420_000 })).toMatchObject({ timeoutMs: 420_000 });
-    expect(open?.input.safeParse({ url: "https://example.com", timeoutMs: 600_001 }).success).toBe(false);
+  });
+
+  test("declares host-managed deadlines on every browser tool", async () => {
+    const toolsDirectory = path.join(process.cwd(), "System", "Extensions", "execute", "agent-browser", "tools");
+    const contracts = (await fs.readdir(toolsDirectory)).filter((name) => name.endsWith(".tool.json"));
+
+    expect(contracts.length).toBeGreaterThan(0);
+    for (const file of contracts) {
+      const contract = JSON.parse(await fs.readFile(path.join(toolsDirectory, file), "utf8")) as {
+        runtime?: { DeadlinePolicy?: string };
+      };
+      expect(contract.runtime?.DeadlinePolicy, file).toBe("ToolAware");
+    }
+  });
+
+  test("rejects timeout overrides in browser tool contracts", () => {
+    const open = loadSystemToolContractByName("BrowserOpen");
+    const wait = loadSystemToolContractByName("BrowserWaitForLoad");
+    const waitForUrl = loadSystemToolContractByName("BrowserWaitForUrl");
+    const waitForFunction = loadSystemToolContractByName("BrowserWaitForFunction");
+
+    expect(materializeSystemToolArguments(open, { url: "https://example.com", timeoutMs: 420_000 }).ok).toBe(false);
+    expect(materializeSystemToolArguments(wait, { state: "load", waitTimeoutMs: 420_000 }).ok).toBe(false);
+    expect(
+      materializeSystemToolArguments(waitForUrl, { urlPattern: "**/dashboard", timeoutMs: 420_000 }),
+    ).toMatchObject({ ok: false });
+    expect(
+      materializeSystemToolArguments(waitForFunction, { expression: "window.ready === true", timeoutMs: 420_000 }),
+    ).toMatchObject({ ok: false });
+    expect(materializeSystemToolArguments(open, { url: "https://example.com", timeoutMs: 900_001 }).ok).toBe(false);
   });
 
   test("documents the snapshot-reference lifecycle for browser interactions", () => {
-    const tools = createAgentBrowserSystemTools();
-    const open = tools.find((tool) => tool.name === "BrowserOpen");
-    const snapshot = tools.find((tool) => tool.name === "BrowserSnapshot");
-    const click = tools.find((tool) => tool.name === "BrowserClick");
+    const open = loadSystemToolContractByName("BrowserOpen").contract;
+    const snapshot = loadSystemToolContractByName("BrowserSnapshot").contract;
+    const click = loadSystemToolContractByName("BrowserClick").contract;
 
-    expect(open?.metadata.description).toMatch(/invalidates earlier BrowserSnapshot references/u);
-    expect(snapshot?.metadata.description).toMatch(/current page/u);
-    expect(click?.metadata.description).toMatch(/most recent BrowserSnapshot/u);
+    expect(open.description).toMatch(/invalidates earlier BrowserSnapshot references/u);
+    expect(snapshot.description).toMatch(/current page/u);
+    expect(click.description).toMatch(/most recent BrowserSnapshot/u);
   });
 
   test("requires a matching call authorization for private network navigation", async () => {
@@ -381,7 +519,7 @@ describe("controlled browser runtime", () => {
 
       expect(output.result.screenshot).toMatchObject({
         mediaType: "image/png",
-        markdown: expect.stringMatching(/^!\[Browser screenshot\]\(senera:\/\/resource\//u),
+        markdown: expect.stringMatching(/^!\[Browser screenshot\]\(asset:/u),
       });
       expect(output.artifactPayload.assets).toHaveLength(1);
       expect(Buffer.from(output.artifactPayload.assets![0]!.dataBase64, "base64")).toEqual(Buffer.from("senera-image"));
@@ -399,7 +537,7 @@ describe("controlled browser runtime", () => {
           download: {
             fileName: "report.csv",
             mediaType: "text/csv",
-            markdown: expect.stringMatching(/^\[report\.csv\]\(senera:\/\/resource\//u),
+            markdown: expect.stringMatching(/^\[report\.csv\]\(asset:/u),
           },
         });
         expect(output.artifactPayload.assets).toHaveLength(1);
@@ -430,11 +568,10 @@ describe("controlled browser runtime", () => {
   });
 
   test("exposes ordered visual actions for pages without usable accessibility controls", () => {
-    const tools = createAgentBrowserSystemTools();
-    const computer = tools.find((tool) => tool.name === "BrowserComputer");
+    const computer = loadSystemToolContractByName("BrowserComputer");
 
     expect(
-      computer?.input.parse({
+      materializeSystemToolArguments(computer, {
         actions: [
           { type: "scroll", x: 640, y: 360, scrollY: 720 },
           { type: "click", x: 640, y: 360 },
@@ -442,20 +579,26 @@ describe("controlled browser runtime", () => {
         ],
       }),
     ).toMatchObject({
-      actions: [
-        { type: "scroll", scrollY: 720 },
-        { type: "click", button: "left" },
-        { type: "keypress", keys: ["CTRL", "L"] },
-      ],
+      ok: true,
+      value: {
+        actions: [
+          { type: "scroll", scrollY: 720 },
+          { type: "click", button: "left" },
+          { type: "keypress", keys: ["CTRL", "L"] },
+        ],
+      },
     });
-    expect(computer?.input.safeParse({ actions: [{ type: "unknown" }] }).success).toBe(false);
+    expect(materializeSystemToolArguments(computer, { actions: [{ type: "unknown" }] }).ok).toBe(false);
   });
 
   test("uses the same key sequence shape for semantic browser key presses", () => {
-    const press = createAgentBrowserSystemTools().find((tool) => tool.name === "BrowserPress");
+    const press = loadSystemToolContractByName("BrowserPress");
 
-    expect(press?.input.parse({ keys: ["CTRL", "L"] })).toEqual({ keys: ["CTRL", "L"] });
-    expect(press?.input.safeParse({ key: "Control+L" }).success).toBe(false);
+    expect(materializeSystemToolArguments(press, { keys: ["CTRL", "L"] })).toMatchObject({
+      ok: true,
+      value: { keys: ["CTRL", "L"] },
+    });
+    expect(materializeSystemToolArguments(press, { key: "Control+L" }).ok).toBe(false);
   });
 
   test("serializes operations within one Senera browser session", async () => {

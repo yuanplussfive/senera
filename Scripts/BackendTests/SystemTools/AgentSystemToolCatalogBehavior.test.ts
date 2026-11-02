@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
-import { z } from "zod";
 import { LocalizedConfigFormDocumentSchema } from "../../../Source/AgentSystem/Config/AgentConfigFormDocument.js";
 import { AgentExtensionRegistry } from "../../../Source/AgentSystem/Extensions/AgentExtensionRegistry.js";
+import { sha256HexOfCanonicalJson } from "../../../Source/AgentSystem/Core/AgentHash.js";
 import {
   AgentExtensionLocales,
   resolveAgentExtensionLocalizedText,
@@ -14,7 +14,10 @@ import {
 } from "../../../Source/AgentSystem/SystemTools/AgentSystemToolCatalog.js";
 import { AgentSystemToolContractSchema } from "../../../Source/AgentSystem/SystemTools/AgentSystemExtensionManifest.js";
 import { AgentSystemExtensionCatalog } from "../../../Source/AgentSystem/SystemTools/AgentSystemToolSource.js";
-import { createAgentSystemTools } from "../../../Source/AgentSystem/SystemTools/AgentSystemTools.js";
+import {
+  createAgentSystemTools,
+  listAgentSystemToolImplementationCapabilities,
+} from "../../../Source/AgentSystem/SystemTools/AgentSystemTools.js";
 import { buildToolCapabilityDocument } from "../../../Source/AgentSystem/ToolSearch/AgentCapabilityDocumentBuilder.js";
 import { AgentToolSearchDocumentBuilder } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchDocumentBuilder.js";
 import { AgentToolSearchIndex } from "../../../Source/AgentSystem/ToolSearch/AgentToolSearchIndex.js";
@@ -34,12 +37,117 @@ import {
   AgentHostCapabilityNames,
   listDefaultAgentHostCapabilityNames,
 } from "../../../Source/AgentSystem/AgentDefaultHostCapabilities.js";
-import {
-  AgentResidentActionSpeechCapability,
-  AgentResidentFinalSpeechCapability,
-} from "../../../Source/AgentSystem/ResidentSpeech/AgentResidentSpeechTypes.js";
+import { AgentHostCapabilityProtocol } from "../../../Source/AgentSystem/Types/AgentToolContractTypes.js";
+import { loadSystemToolContractByCapability, materializeSystemToolArguments } from "./SystemToolContractTestSupport.js";
 
 describe("System Tool catalog", () => {
+  test("shared QQ tools preserve opaque official message IDs", () => {
+    for (const [capability, args] of [
+      ["channel.reply_message", { messageId: "QQ:opaque/message-id", messages: ["reply"] }],
+      ["channel.send_media", { messageId: "QQ:opaque/message-id", resource: "images/photo.png", kind: "image" }],
+      ["channel.recall_message", { messageId: "QQ:opaque/message-id" }],
+    ] as const) {
+      const contract = loadSystemToolContractByCapability(capability);
+      expect(contract.contract.platforms).toEqual(["onebot11", "qq", "onebot"]);
+      const materialized = materializeSystemToolArguments(contract, args);
+      expect(materialized.ok).toBe(true);
+      if (!materialized.ok) throw new Error(JSON.stringify(materialized.issues));
+      expect(materialized.value.messageId).toBe(args.messageId);
+    }
+  });
+
+  test("rejects defaults declared within oneOf or anyOf branches", () => {
+    const schema = {
+      ...minimalContract("AlternativeDefaults"),
+      inputSchema: {
+        type: "object",
+        oneOf: [
+          {
+            type: "object",
+            properties: {
+              operation: { const: "inspect" },
+              limit: { type: "integer", default: 20 },
+            },
+            required: ["operation"],
+            additionalProperties: false,
+          },
+        ],
+      },
+    };
+
+    const parsed = AgentSystemToolContractSchema.safeParse(schema);
+
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    expect(parsed.error.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: ["inputSchema", "oneOf", 0, "properties", "limit", "default"],
+          message: expect.stringContaining("allOf and if/then"),
+        }),
+      ]),
+    );
+  });
+
+  test("accepts conditional defaults outside alternative branches", () => {
+    const schema = {
+      ...minimalContract("ConditionalDefaults"),
+      inputSchema: {
+        type: "object",
+        oneOf: [
+          {
+            type: "object",
+            properties: { operation: { const: "inspect" } },
+            required: ["operation"],
+            additionalProperties: false,
+          },
+        ],
+        allOf: [
+          {
+            if: { type: "object", properties: { operation: { const: "inspect" } }, required: ["operation"] },
+            then: { type: "object", properties: { limit: { type: "integer", default: 20 } } },
+          },
+        ],
+      },
+    };
+
+    expect(AgentSystemToolContractSchema.safeParse(schema).success).toBe(true);
+  });
+
+  test("rejects alternative defaults reached through a local reference", () => {
+    const schema = {
+      ...minimalContract("ReferencedAlternativeDefaults"),
+      inputSchema: {
+        type: "object",
+        oneOf: [{ $ref: "#/$defs/inspect" }],
+        $defs: {
+          inspect: {
+            type: "object",
+            properties: {
+              operation: { const: "inspect" },
+              limit: { type: "integer", default: 20 },
+            },
+            required: ["operation"],
+            additionalProperties: false,
+          },
+        },
+      },
+    };
+
+    const parsed = AgentSystemToolContractSchema.safeParse(schema);
+
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    expect(parsed.error.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: ["inputSchema", "$defs", "inspect", "properties", "limit", "default"],
+          message: expect.stringContaining("allOf and if/then"),
+        }),
+      ]),
+    );
+  });
+
   test("registers code-defined host handlers while contracts remain package-owned", () => {
     const definitions = createAgentSystemTools(testConfig());
     const handlers = new AgentToolHostCapabilityRegistry();
@@ -48,17 +156,17 @@ describe("System Tool catalog", () => {
 
     for (const definition of definitions) {
       expect(handlers.get(systemToolCapability(definition))).toBeTypeOf("function");
-      expect(() => z.toJSONSchema(definition.input, { target: "draft-7", io: "input" })).not.toThrow();
-      expect(() => z.toJSONSchema(definition.output, { target: "draft-7", io: "output" })).not.toThrow();
+      const published = loadSystemToolContractByCapability(systemToolCapability(definition));
+      expect(published.contribution.capability).toBe(systemToolCapability(definition));
+      expect(published.contract.name).toMatch(/\S/u);
     }
   });
 
   test("loads every host tool from System extension packages", () => {
     const registry = new AgentExtensionRegistry();
-    const definitions = createAgentSystemTools(testConfig());
     const catalog = new AgentSystemExtensionCatalog();
     catalog.registerRoot(registry, path.resolve("System", "Extensions"), {
-      capabilities: new Set([...listDefaultAgentHostCapabilityNames(), ...definitions.map(systemToolCapability)]),
+      capabilities: systemToolCapabilityUniverse(testConfig()),
     });
 
     const extensions = catalog.listExtensions();
@@ -69,13 +177,24 @@ describe("System Tool catalog", () => {
         .sort(),
     ).toEqual(extensions.flatMap((extension) => extension.tools.map((tool) => tool.name)).sort());
     expect(registry.listTools().every((tool) => tool.contract?.outputSchema !== undefined)).toBe(true);
-    expect(registry.listSidecarTools().every((tool) => tool.outputSchema !== undefined)).toBe(true);
+    const shellContract = loadSystemToolContractByCapability("shell.run");
+    const shell = registry.getTool(shellContract.contract.name);
+    expect(shell?.runtime).not.toHaveProperty("ProtocolVersion");
+    expect(shell?.contract?.digest).toBe(
+      sha256HexOfCanonicalJson({
+        hostCapabilityProtocol: AgentHostCapabilityProtocol,
+        contract: shellContract.contract,
+        capability: shellContract.contribution.capability,
+        childGrant: shell?.childGrant,
+        presentation: shell?.presentation,
+      }),
+    );
     expect(registry.getTool("WorkspaceApplyPatch")).toMatchObject({
       owner: {
         kind: "system",
         name: "workspace-patch",
         title: "工作区补丁",
-        description: "以原子方式应用工作区补丁，并在提交前验证受影响的扩展。",
+        description: "编辑工作区文件，应用补丁并校验改动。",
       },
       handler: {
         kind: "HostCapability",
@@ -103,18 +222,6 @@ describe("System Tool catalog", () => {
     expect(registry.getTool("WebFetch")).not.toHaveProperty("contentPolicy");
     expect(registry.getTool("ResidentActionSpeak")).toBeUndefined();
     expect(registry.getTool("ResidentFinalSpeak")).toBeUndefined();
-    expect(registry.getSidecarTool(AgentResidentActionSpeechCapability)).toMatchObject({
-      name: "ResidentActionSpeak",
-      capability: AgentResidentActionSpeechCapability,
-      owner: { kind: "system", name: "resident-speech" },
-      outputSchema: expect.objectContaining({ type: "object", additionalProperties: false }),
-      presentation: expect.objectContaining({ preview: expect.objectContaining({ body: expect.any(Object) }) }),
-    });
-    expect(registry.getSidecarTool(AgentResidentFinalSpeechCapability)).toMatchObject({
-      name: "ResidentFinalSpeak",
-      capability: AgentResidentFinalSpeechCapability,
-      owner: { kind: "system", name: "resident-speech" },
-    });
     expect(extensions.some((extension) => extension.id === "resident-speech")).toBe(false);
     expect(registry.listTools().some((tool) => tool.loading === "Bootstrap")).toBe(true);
     expect(registry.listTools().some((tool) => tool.loading === "Dynamic")).toBe(true);
@@ -137,45 +244,27 @@ describe("System Tool catalog", () => {
       });
     }
     expect(registry.getTool("TavilySearchTool")).toBeUndefined();
-    expect(registry.getTool("AgentSpawn")).toMatchObject({
-      owner: { kind: "system", name: "agent-delegation" },
-      handler: { kind: "HostCapability", capability: AgentHostCapabilityNames.AgentSpawn },
-      childGrant: "delegation",
-    });
-    expect(registry.getTool("AgentList")).toMatchObject({
-      owner: { kind: "system", name: "agent-delegation" },
-      handler: { kind: "HostCapability", capability: AgentHostCapabilityNames.AgentList },
-    });
-    expect(registry.getTool("AgentWait")).toMatchObject({
-      owner: { kind: "system", name: "agent-delegation" },
-      handler: { kind: "HostCapability", capability: AgentHostCapabilityNames.AgentWait },
-      runtime: {
-        Lifecycle: "RemoteJob",
-        Capabilities: { Progress: true, Cancellation: true, ResumableEvents: true },
-      },
-    });
-    expect(registry.getTool("AgentInput")).toMatchObject({
-      owner: { kind: "system", name: "agent-delegation" },
-      handler: { kind: "HostCapability", capability: AgentHostCapabilityNames.AgentInput },
-    });
-    expect(registry.getTool("AgentStop")).toMatchObject({
-      owner: { kind: "system", name: "agent-delegation" },
-      handler: { kind: "HostCapability", capability: AgentHostCapabilityNames.AgentStop },
-    });
-    expect(registry.getTool("AgentResume")).toMatchObject({
-      owner: { kind: "system", name: "agent-delegation" },
-      handler: { kind: "HostCapability", capability: AgentHostCapabilityNames.AgentResume },
-      childGrant: "delegation",
-    });
-    expect(registry.getTool("AgentContactSupervisor")).toMatchObject({ childGrant: "internal" });
+    for (const [name, capability, owner] of [
+      ["subagent", AgentHostCapabilityNames.Subagent, "agent-delegation"],
+      ["send_message", AgentHostCapabilityNames.AgentSendMessage, "agent-delegation"],
+      ["list_agents", AgentHostCapabilityNames.ListAgents, "agent-delegation"],
+      ["interrupt_agent", AgentHostCapabilityNames.InterruptAgent, "agent-delegation"],
+      ["schedule_create", AgentHostCapabilityNames.ScheduleCreate, "agent-scheduler"],
+      ["schedule_list", AgentHostCapabilityNames.ScheduleList, "agent-scheduler"],
+      ["schedule_view", AgentHostCapabilityNames.ScheduleView, "agent-scheduler"],
+      ["schedule_edit", AgentHostCapabilityNames.ScheduleEdit, "agent-scheduler"],
+      ["job_list", AgentHostCapabilityNames.JobList, "jobs"],
+    ]) {
+      expect(registry.getTool(name!)).toMatchObject({
+        owner: { kind: "system", name: owner },
+        handler: { kind: "HostCapability", capability },
+      });
+    }
+    for (const name of ["AgentSpawn", "AgentWait", "AgentScheduleManage", "TodoAdd", "TodoUpdate", "TodoRead"])
+      expect(registry.getTool(name)).toBeUndefined();
     expect(registry.getSkill("agent-orchestration")).toMatchObject({
       source: { kind: "system", id: "agent-delegation" },
-      recommendedTools: ["AgentSpawn", "AgentList", "AgentWait", "AgentInput", "AgentStop", "AgentResume"],
-    });
-    expect(registry.getTool("AgentSubmitStructuredResult")).toBeUndefined();
-    expect(registry.getTool("AgentScheduleManage")).toMatchObject({
-      owner: { kind: "system", name: "agent-scheduler" },
-      handler: { kind: "HostCapability", capability: AgentHostCapabilityNames.ScheduleManage },
+      recommendedTools: expect.arrayContaining(["subagent", "send_message", "list_agents", "interrupt_agent"]),
     });
     expect(registry.listDiscoverySources()).toEqual(
       expect.arrayContaining([
@@ -203,6 +292,87 @@ describe("System Tool catalog", () => {
     }
   });
 
+  test("rejects duplicate package publications before the registry can resolve a winner", () => {
+    const root = createTemporaryDirectory("senera-system-extension-duplicate-publication");
+    try {
+      const first = createTestPackage(root, "first");
+      const second = createTestPackage(root, "second");
+      fs.mkdirSync(path.join(first, "tools"), { recursive: true });
+      fs.mkdirSync(path.join(second, "tools"), { recursive: true });
+      writeJson(path.join(first, "tools", "First.tool.json"), minimalContract("FirstTool"));
+      writeJson(path.join(second, "tools", "Second.tool.json"), minimalContract("SecondTool"));
+      writeJson(path.join(first, "extension.json"), extensionManifest("first", "tools/First.tool.json", "shell.run"));
+      writeJson(
+        path.join(second, "extension.json"),
+        extensionManifest("second", "tools/Second.tool.json", "shell.run"),
+      );
+
+      expect(() =>
+        new AgentSystemExtensionCatalog().registerRoot(new AgentExtensionRegistry(), root, {
+          capabilities: new Set(["shell.run"]),
+        }),
+      ).toThrow(/duplicate host capability 'shell\.run'/u);
+    } finally {
+      removeDirectory(root);
+    }
+  });
+
+  test("requires every runtime capability to have one package contract when a catalog is strict", () => {
+    const root = createTemporaryDirectory("senera-system-extension-required-publication");
+    try {
+      const packageRoot = createTestPackage(root, "only-shell");
+      fs.mkdirSync(path.join(packageRoot, "tools"), { recursive: true });
+      writeJson(path.join(packageRoot, "tools", "Shell.tool.json"), minimalContract("OnlyShell"));
+      writeJson(
+        path.join(packageRoot, "extension.json"),
+        extensionManifest("only-shell", "tools/Shell.tool.json", "shell.run"),
+      );
+
+      expect(() =>
+        new AgentSystemExtensionCatalog().registerRoot(new AgentExtensionRegistry(), root, {
+          capabilities: new Set(["shell.run", "terminal.start"]),
+          requiredHostCapabilities: new Set(["shell.run", "terminal.start"]),
+        }),
+      ).toThrow(/missing required host capability publication\(s\): terminal\.start/u);
+    } finally {
+      removeDirectory(root);
+    }
+  });
+
+  test("omits a package when any of its known capabilities lacks an executable runtime binding", () => {
+    const root = createTemporaryDirectory("senera-system-extension-partial-capability");
+    try {
+      const packageRoot = createTestPackage(root, "coordinated-tools");
+      fs.mkdirSync(path.join(packageRoot, "tools"), { recursive: true });
+      writeJson(path.join(packageRoot, "tools", "Shell.tool.json"), minimalContract("CoordinatedShell"));
+      writeJson(path.join(packageRoot, "tools", "Spawn.tool.json"), minimalContract("CoordinatedSpawn"));
+      writeJson(path.join(packageRoot, "extension.json"), {
+        ...extensionManifest("coordinated-tools", "tools/Shell.tool.json", "shell.run"),
+        contributions: [
+          { kind: "hostTool", contract: "tools/Shell.tool.json", capability: "shell.run" },
+          {
+            kind: "hostTool",
+            contract: "tools/Spawn.tool.json",
+            capability: "orchestration.agent.spawn",
+          },
+        ],
+      });
+
+      const registry = new AgentExtensionRegistry();
+      const catalog = new AgentSystemExtensionCatalog();
+      catalog.registerRoot(registry, root, {
+        capabilities: new Set(["shell.run"]),
+        capabilityUniverse: new Set(["shell.run", "orchestration.agent.spawn"]),
+      });
+
+      expect(registry.getTool("CoordinatedShell")).toBeUndefined();
+      expect(registry.getTool("CoordinatedSpawn")).toBeUndefined();
+      expect(catalog.listExtensions()).toEqual([]);
+    } finally {
+      removeDirectory(root);
+    }
+  });
+
   test("projects declared System Tool search examples as semantic evidence", () => {
     const registry = systemToolRegistry();
     const documentBuilder = new AgentToolSearchDocumentBuilder();
@@ -221,10 +391,9 @@ describe("System Tool catalog", () => {
 
   test("assigns each operation in an extension a distinct presentation icon", () => {
     const registry = new AgentExtensionRegistry();
-    const definitions = createAgentSystemTools(testConfig());
     const catalog = new AgentSystemExtensionCatalog();
     catalog.registerRoot(registry, path.resolve("System", "Extensions"), {
-      capabilities: new Set([...listDefaultAgentHostCapabilityNames(), ...definitions.map(systemToolCapability)]),
+      capabilities: systemToolCapabilityUniverse(testConfig()),
     });
 
     for (const extension of catalog.listExtensions()) {
@@ -235,10 +404,9 @@ describe("System Tool catalog", () => {
 
   test("projects domain presentation into registered tools and their lifecycle origins", () => {
     const registry = new AgentExtensionRegistry();
-    const definitions = createAgentSystemTools(testConfig());
     const catalog = new AgentSystemExtensionCatalog();
     catalog.registerRoot(registry, path.resolve("System", "Extensions"), {
-      capabilities: new Set([...listDefaultAgentHostCapabilityNames(), ...definitions.map(systemToolCapability)]),
+      capabilities: systemToolCapabilityUniverse(testConfig()),
     });
 
     const extension = catalog.listExtensions().find((candidate) => candidate.id === "workspace-tools");
@@ -334,7 +502,7 @@ describe("System Tool catalog", () => {
     }
   });
 
-  test("routes every complete dynamically discoverable System Tool example through declared example evidence", async () => {
+  test("routes every complete dynamically discoverable System Tool example within its declared interaction", async () => {
     const registry = systemToolRegistry();
     const index = new AgentToolSearchIndex(registry, resolveToolSearchConfig(testConfig()));
     const loadedToolNames = registry.listTools().map((tool) => tool.name);
@@ -344,7 +512,12 @@ describe("System Tool catalog", () => {
       .listTools()
       .filter((tool) => isAgentToolDynamicallyDiscoverable(tool) && !isAgentToolMetaToolName(tool.name))) {
       for (const example of tool.search?.Examples ?? []) {
-        const results = (await index.discoverHybrid({ query: example, loadedToolNames })).match;
+        const interaction = tool.interactionPlatforms?.[0]
+          ? { surface: "channel" as const, platform: tool.interactionPlatforms[0] }
+          : tool.interactionSurfaces?.[0]
+            ? { surface: tool.interactionSurfaces[0] }
+            : undefined;
+        const results = (await index.discoverHybrid({ query: example, loadedToolNames, interaction })).match;
         if (!results.some((result) => result.toolName === tool.name && result.ranks.example === 1)) {
           misses.push({ tool: tool.name, example, returned: results.map((result) => result.toolName) });
         }
@@ -467,10 +640,9 @@ describe("System Tool catalog", () => {
         },
       },
     };
-    const definitions = createAgentSystemTools(config);
     const catalog = new AgentSystemExtensionCatalog();
     catalog.registerRoot(registry, path.resolve("System", "Extensions"), {
-      capabilities: new Set([...listDefaultAgentHostCapabilityNames(), ...definitions.map(systemToolCapability)]),
+      capabilities: systemToolCapabilityUniverse(config),
       configurations: config.Extensions,
     });
 
@@ -504,6 +676,32 @@ describe("System Tool catalog", () => {
     );
   });
 
+  test("exposes only the local OneBot enable switch without transport or identity configuration", () => {
+    const registry = new AgentExtensionRegistry();
+    const config = testConfig();
+    config.Extensions = {
+      "agent-channels": {
+        Configuration: { onebot11: { enabled: true } },
+      },
+    };
+    const catalog = new AgentSystemExtensionCatalog();
+    catalog.registerRoot(registry, path.resolve("System", "Extensions"), {
+      capabilities: systemToolCapabilityUniverse(config),
+      configurations: config.Extensions,
+    });
+
+    const extension = catalog.listExtensions().find((item) => item.id === "agent-channels");
+    expect(extension?.configuration).toMatchObject({
+      configured: true,
+      value: { onebot11: { enabled: true } },
+      effectiveValue: { onebot11: { enabled: true } },
+    });
+    const fields = extension?.configuration?.sections
+      .flatMap((section) => section.fields)
+      .filter((field) => field.path[0] === "onebot11");
+    expect(fields?.map((field) => field.path)).toEqual([["onebot11", "enabled"]]);
+  });
+
   test("projects package-owned configuration and disables all contributions as one unit", () => {
     const registry = new AgentExtensionRegistry();
     const config = testConfig();
@@ -513,10 +711,9 @@ describe("System Tool catalog", () => {
         Configuration: { output: { maxChunks: 7 } },
       },
     };
-    const definitions = createAgentSystemTools(config);
     const catalog = new AgentSystemExtensionCatalog();
     catalog.registerRoot(registry, path.resolve("System", "Extensions"), {
-      capabilities: new Set([...listDefaultAgentHostCapabilityNames(), ...definitions.map(systemToolCapability)]),
+      capabilities: systemToolCapabilityUniverse(config),
       configurations: config.Extensions,
     });
 
@@ -546,14 +743,29 @@ describe("System Tool catalog", () => {
       };
       const first = writeConfigurableExtension(root, "first-channel-surface", schema);
       const second = writeConfigurableExtension(root, "second-channel-surface", schema);
-      for (const packageRoot of [first, second]) {
+      writeJson(path.join(second, "tools", "Test.tool.json"), minimalContract("SecondChannelSurfaceTool"));
+      for (const [index, packageRoot] of [first, second].entries()) {
         const manifestPath = path.join(packageRoot, "extension.json");
-        writeJson(manifestPath, { ...readJson(manifestPath), settingsSurface: "channels" });
+        const manifest = readJson(manifestPath);
+        writeJson(manifestPath, {
+          ...manifest,
+          settingsSurface: "channels",
+          ...(index === 0
+            ? {}
+            : {
+                contributions: [
+                  {
+                    ...(manifest.contributions as readonly Record<string, unknown>[])[0],
+                    capability: "terminal.start",
+                  },
+                ],
+              }),
+        });
       }
 
       expect(() =>
         new AgentSystemExtensionCatalog().registerRoot(new AgentExtensionRegistry(), root, {
-          capabilities: new Set(["shell.run"]),
+          capabilities: new Set(["shell.run", "terminal.start"]),
         }),
       ).toThrow(/System settings surface 'channels' is declared by both/u);
     } finally {
@@ -562,8 +774,7 @@ describe("System Tool catalog", () => {
   });
 
   test("rejects unknown extensions and invalid package configuration values", () => {
-    const definitions = createAgentSystemTools(testConfig());
-    const capabilities = new Set([...listDefaultAgentHostCapabilityNames(), ...definitions.map(systemToolCapability)]);
+    const capabilities = systemToolCapabilityUniverse(testConfig());
     expect(() =>
       new AgentSystemExtensionCatalog().registerRoot(
         new AgentExtensionRegistry(),
@@ -859,11 +1070,14 @@ describe("System Tool catalog", () => {
 
 function systemToolRegistry(): AgentExtensionRegistry {
   const registry = new AgentExtensionRegistry();
-  const definitions = createAgentSystemTools(testConfig());
   new AgentSystemExtensionCatalog().registerRoot(registry, path.resolve("System", "Extensions"), {
-    capabilities: new Set([...listDefaultAgentHostCapabilityNames(), ...definitions.map(systemToolCapability)]),
+    capabilities: systemToolCapabilityUniverse(testConfig()),
   });
   return registry;
+}
+
+function systemToolCapabilityUniverse(config: AgentSystemConfig): Set<string> {
+  return new Set([...listDefaultAgentHostCapabilityNames(), ...listAgentSystemToolImplementationCapabilities(config)]);
 }
 
 function testConfig(): AgentSystemConfig {
@@ -888,7 +1102,6 @@ function extensionManifest(id: string, contract: string, capability: string) {
     id,
     domain: "test",
     settingsSurface: "system-tools",
-    version: "1.0.0",
     displayName: { "zh-CN": `${id} 中文`, "en-US": `${id} English` },
     description: { "zh-CN": `${id} 中文描述。`, "en-US": `${id} English description.` },
     contributions: [{ kind: "hostTool", contract, capability }],
@@ -906,7 +1119,6 @@ function minimalContract(name: string) {
     execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
     runtime: {
       Lifecycle: "Immediate",
-      ProtocolVersion: 2,
       ResultAssessment: "ProcessExit",
       Scheduling: "Parallel",
     },

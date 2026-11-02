@@ -1,36 +1,46 @@
-import type {
-  AgentContinuityMemoryPromptContext,
-  AgentContinuityDigestPromptEntry,
-  AgentContinuityEventCandidate,
-} from "./AgentContinuityMemoryTypes.js";
+import type { AgentContinuityMemoryPromptContext } from "./AgentContinuityMemoryTypes.js";
+import { AgentMemoryRecallSnapshotSchema, type AgentMemoryRecallSnapshot } from "./AgentMemoryRecallContract.js";
+import { summarizeAgentMemoryRecall } from "./AgentMemoryRecallRanking.js";
 
 /** Browser-safe record of the MemOS memory actually selected for this turn. */
-export type AgentContinuitySnapshot = Omit<
-  AgentContinuityMemoryPromptContext,
-  "deliveryEpoch" | "periodDigests" | "eventCandidates"
-> & {
-  readonly periodDigests: readonly Omit<AgentContinuityDigestPromptEntry, "deliveryKeys">[];
-  readonly eventCandidates: readonly Omit<AgentContinuityEventCandidate, "deliveryKeys">[];
-};
+export type AgentContinuitySnapshot = AgentMemoryRecallSnapshot;
 
 export function projectAgentContinuitySnapshot(memory: AgentContinuityMemoryPromptContext): AgentContinuitySnapshot {
-  return {
+  return AgentMemoryRecallSnapshotSchema.parse({
     enabled: memory.enabled,
     ...(memory.query ? { query: memory.query } : {}),
-    periodDigests: memory.periodDigests.map(({ deliveryKeys: _deliveryKeys, ...digest }) => ({
-      ...digest,
-      matchedBy: [...digest.matchedBy],
-      ...(digest.scores ? { scores: { ...digest.scores } } : {}),
-    })),
-    eventCandidates: memory.eventCandidates.map(({ deliveryKeys: _deliveryKeys, ...event }) => ({
+    eventCandidates: memory.eventCandidates.map(({ dedupeKeys: _dedupeKeys, ...event }) => ({
       ...event,
       matchedBy: [...event.matchedBy],
       ...(event.scores ? { scores: { ...event.scores } } : {}),
     })),
+    ...(memory.snapshotGeneration !== undefined ? { snapshotGeneration: memory.snapshotGeneration } : {}),
+    ...(memory.diagnostics ? { diagnostics: memory.diagnostics } : {}),
+    ...(memory.retrieval ? { retrieval: memory.retrieval } : {}),
+    ...(memory.currentQuality ? { currentQuality: memory.currentQuality } : {}),
+    metrics: summarizeAgentMemoryRecall(
+      [...memory.eventCandidates, ...(memory.taskCandidates ?? []), ...(memory.relatedCandidates ?? [])],
+      memory.currentQuality,
+    ),
+    ...(memory.taskCandidates
+      ? {
+          taskCandidates: memory.taskCandidates.map(({ dedupeKeys: _keys, ...entry }) => ({
+            ...entry,
+            matchedBy: [...entry.matchedBy],
+          })),
+        }
+      : {}),
     selection: {
       ...memory.selection,
-      digests: { ...memory.selection.digests },
       events: { ...memory.selection.events },
     },
-  };
+    ...(memory.relatedCandidates
+      ? {
+          relatedCandidates: memory.relatedCandidates.map(({ dedupeKeys: _keys, ...entry }) => ({
+            ...entry,
+            matchedBy: [...entry.matchedBy],
+          })),
+        }
+      : {}),
+  });
 }

@@ -146,6 +146,29 @@ describe("Tool output contract validation", () => {
       removeDirectory(workspaceRoot);
     }
   });
+
+  test("materializes public contract defaults before invoking the host capability", async () => {
+    const workspaceRoot = createTemporaryDirectory("senera-argument-contract-defaults");
+    const tool = defaultingArgumentContractTool(workspaceRoot);
+    const observe = vi.fn(async () => toolProcessSuccessResult({ answer: "done" }));
+    const capabilities = new AgentToolHostCapabilityRegistry().register("test.output", observe);
+    const runner = new AgentToolRunner(
+      {} as AgentSystemConfig,
+      workspaceRoot,
+      capabilities,
+      { getTool: () => tool },
+      new SeneraLocalExecutionEnv({ workspaceRoot }),
+    );
+
+    try {
+      const result = await runner.run(tool, {});
+      expect(result.response).toMatchObject({ ok: true, result: { answer: "done" } });
+      expect(observe).toHaveBeenCalledWith({ limit: 20 }, expect.any(Object));
+    } finally {
+      await runner.close();
+      removeDirectory(workspaceRoot);
+    }
+  });
 });
 
 function registeredTool(workspaceRoot: string): RegisteredTool {
@@ -173,7 +196,7 @@ function registeredTool(workspaceRoot: string): RegisteredTool {
     permissions: [],
     handler: { kind: "HostCapability", capability: "test.output" },
     execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
-    runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, ResultAssessment: "ProcessExit" },
+    runtime: { Lifecycle: "Immediate", ResultAssessment: "ProcessExit" },
     sources: [],
     childGrant: "inherit",
     evidenceCapabilities: [],
@@ -194,6 +217,24 @@ function argumentContractTool(workspaceRoot: string): RegisteredTool {
         required: ["city"],
         additionalProperties: false,
       }),
+    },
+  };
+}
+
+function defaultingArgumentContractTool(workspaceRoot: string): RegisteredTool {
+  const base = registeredTool(workspaceRoot);
+  const contracts = new AgentJsonSchemaPromptContractProjector();
+  return {
+    ...base,
+    name: "DefaultingArgumentContractTool",
+    contract: {
+      digest: "argument-contract-defaults-v1",
+      arguments: contracts.project({
+        type: "object",
+        properties: { limit: { type: "integer", default: 20 } },
+        additionalProperties: false,
+      }),
+      outputSchema: base.contract?.outputSchema,
     },
   };
 }

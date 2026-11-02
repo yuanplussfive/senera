@@ -3,9 +3,11 @@ import { toast } from "sonner";
 import type { ExplicitActivationSet, ModelThinkingLevel, UploadAttachmentData, WsRequest } from "../api/eventTypes";
 import type { ApprovalBatchReference, ApprovalDecision } from "../api/approvalEventTypes";
 import type { InteractionInputAction, InteractionInputContent } from "../api/eventTypes";
+import type { FeedbackCategory, FeedbackRating } from "../api/feedbackEventTypes";
 import type { SocketStatus } from "../api/useAgentSocket";
 import { readActiveRun, useStore, type ChatMessage, type SessionRecord } from "../store/sessionStore";
 import { blocksSessionInput, readSessionHydrationState } from "../store/session/sessionHydration";
+import { readConversationAgent } from "../store/session/sessionAgentSelection";
 import { generateId } from "../lib/util";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import type { ExecutionApprovalMode } from "../api/executionApprovalMode";
@@ -28,11 +30,18 @@ export interface UseChatCommandsOptions {
     requestId: string,
     input: string,
     attachments?: UploadAttachmentData[],
-    options?: { createRun?: boolean; metadata?: import("../api/eventTypes").ConversationEntryMetadata },
+    options?: {
+      createRun?: boolean;
+      metadata?: import("../api/eventTypes").ConversationEntryMetadata;
+      queueAdmission?: ChatMessage["queueAdmission"];
+    },
   ) => void;
   lastSendRef: MutableRefObject<LastSentMessage | null>;
   registerSession: (sessionId: string, title?: string, modelProviderId?: string | null) => void;
   send: (request: WsRequest) => boolean;
+  sendAccepted: (
+    request: Extract<WsRequest, { type: "session.message" }> & { requestId: string },
+  ) => Promise<void> | false;
   serverKnownSessionIdsRef: MutableRefObject<Set<string>>;
   status: SocketStatus;
 }
@@ -52,12 +61,18 @@ export interface ChatCommandsHandle {
     action: InteractionInputAction,
     content?: InteractionInputContent,
   ) => void;
+  recordMessageFeedback: (
+    sessionId: string,
+    requestId: string,
+    rating: FeedbackRating | null,
+    category?: FeedbackCategory,
+  ) => void;
   sendMessage: (
     input: string,
     attachments?: UploadAttachmentData[],
     queueMode?: MessageQueueMode,
     activations?: ExplicitActivationSet,
-  ) => boolean;
+  ) => boolean | Promise<boolean>;
 }
 
 export type MessageQueueMode = Extract<WsRequest, { type: "session.message" }>["queueMode"];
@@ -222,6 +237,7 @@ export function useChatCommands({
   lastSendRef,
   registerSession,
   send,
+  sendAccepted,
   serverKnownSessionIdsRef,
   status,
 }: UseChatCommandsOptions): ChatCommandsHandle {
@@ -477,9 +493,17 @@ export function useChatCommands({
       attachments?: UploadAttachmentData[],
       queueMode?: MessageQueueMode,
       activations?: ExplicitActivationSet,
-    ): boolean => {
+    ): boolean | Promise<boolean> => {
       const state = useStore.getState();
-      const modelProviderId = readConfiguredChatModelProviderId(state.modelProviders, state.selectedModelProviderId);
+      const boundSession = activeSessionId ? state.sessions[activeSessionId] : undefined;
+      const agent = readConversationAgent({ ...state, activeSessionId });
+      const inheritedModelId =
+        boundSession?.modelPreference?.modelProviderId ?? agent?.modelProviderId ?? state.defaultModelProviderId;
+      const pendingModelId = activeSessionId ? state.selectedModelProviderIdsBySession[activeSessionId] : undefined;
+      const inheritsSelection = !pendingModelId && state.selectedModelProviderId === inheritedModelId;
+      const modelProviderId = inheritsSelection
+        ? undefined
+        : readConfiguredChatModelProviderId(state.modelProviders, state.selectedModelProviderId);
       const thinkingLevel = state.selectedThinkingLevel ?? undefined;
       const approvalMode = state.executionApprovalMode;
       const target = resolveSendTargetSession({
@@ -508,9 +532,10 @@ export function useChatCommands({
 
       const requestId = generateId();
       const createIfMissing = !serverKnownSessionIdsRef.current.has(targetSessionId);
-      const ok = send({
+      const accepted = sendAccepted({
         type: "session.message",
         sessionId: targetSessionId,
+        agentId: boundSession?.agentId ?? agent?.id,
         requestId,
         modelProviderId,
         thinkingLevel,
@@ -521,7 +546,7 @@ export function useChatCommands({
         queueMode,
         activations,
       });
-      if (!ok) {
+      if (accepted === false) {
         toast.error(frontendMessage("chat.sendDisconnected"));
         return false;
       }
@@ -532,6 +557,7 @@ export function useChatCommands({
       appendUserMessage(targetSessionId, requestId, input, attachments, {
         createRun: queueMode === undefined,
         metadata: activations ? { activation: activations } : undefined,
+        ...(queueMode ? { queueAdmission: { mode: queueMode, status: "pending" } } : {}),
       });
       lastSendRef.current = {
         sessionId: targetSessionId,
@@ -544,9 +570,28 @@ export function useChatCommands({
         queueMode,
         activations,
       };
-      return true;
+      return accepted.then(
+        () => true,
+        (error: unknown) => {
+          toast.error(error instanceof Error ? error.message : frontendMessage("chat.sendUnconfirmed"));
+          // Drop unconfirmed optimistic rows. The server's next snapshot remains
+          // authoritative if it accepted the message just before connection loss.
+          useStore.setState((current) => {
+            const session = current.sessions[targetSessionId];
+            if (!session) return;
+            session.messages = session.messages.filter(
+              (message) => message.requestId !== requestId || message.role !== "user",
+            );
+            session.runs = session.runs.filter(
+              (run) => run.requestId !== requestId || (run.status !== "running" && run.status !== "cancelling"),
+            );
+            if (session.activeRequestId === requestId) session.activeRequestId = undefined;
+          });
+          return false;
+        },
+      );
     },
-    [activeSessionId, appendUserMessage, lastSendRef, registerSession, send, serverKnownSessionIdsRef],
+    [activeSessionId, appendUserMessage, lastSendRef, registerSession, sendAccepted, serverKnownSessionIdsRef],
   );
 
   const resolveApproval = useCallback(
@@ -603,6 +648,24 @@ export function useChatCommands({
     [send, status],
   );
 
+  const recordMessageFeedback = useCallback(
+    (sessionId: string, requestId: string, rating: FeedbackRating | null, category?: FeedbackCategory): void => {
+      if (status !== "open") {
+        toast.error(frontendMessage("feedback.recordDisconnected"));
+        return;
+      }
+      const ok = send({
+        type: "session.feedback",
+        sessionId,
+        requestId,
+        rating,
+        ...(category ? { category } : {}),
+      });
+      if (!ok) toast.error(frontendMessage("feedback.recordDisconnected"));
+    },
+    [send, status],
+  );
+
   return {
     cancelActiveSession,
     deleteFromMessage,
@@ -614,6 +677,7 @@ export function useChatCommands({
     resolveApproval,
     resolveApprovalBatch,
     resolveInteractionInput,
+    recordMessageFeedback,
     sendMessage,
   };
 }

@@ -1,5 +1,9 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { applyCredentialedCors, writeCorsPreflight } from "../Auth/AgentCredentialedCors.js";
+import {
+  acceptAgentPrivateJsonGet,
+  sendAgentPrivateJson,
+  sendAgentPrivateJsonError,
+} from "../Web/AgentPrivateJsonHttp.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { carriesAgentSecretScheme } from "../Security/AgentSecretEnvelopeCodec.js";
 
@@ -29,40 +33,24 @@ export class AgentProviderCredentialHttpApi {
   }
 
   handle(request: IncomingMessage, response: ServerResponse): void {
-    if (
-      !applyCredentialedCors(request, response, {
-        allowedMethods: ["GET", "OPTIONS"],
-        isOriginAllowed: (origin, corsRequest) => this.options.isOriginAllowed?.(origin, corsRequest) ?? false,
-      })
-    ) {
-      this.sendError(response, 403, "forbidden_origin", "The request origin is not allowed.");
-      return;
-    }
-    if (request.method === "OPTIONS") {
-      writeCorsPreflight(response);
-      return;
-    }
-    if (request.method !== "GET") {
-      this.sendError(response, 405, "method_not_allowed", "Use GET.");
-      return;
-    }
+    if (!acceptAgentPrivateJsonGet(request, response, this.options.isOriginAllowed)) return;
 
     const providerId = new URL(request.url ?? "/", "http://senera.local").searchParams.get("providerId")?.trim();
     if (!providerId) {
-      this.sendError(response, 400, "provider_id_required", "A provider id is required.");
+      sendAgentPrivateJsonError(response, 400, "provider_id_required", "A provider id is required.");
       return;
     }
     const endpoint = this.options
       .configSnapshot()
       .ModelProviderEndpoints?.find((candidate) => candidate.Id === providerId);
     if (!endpoint) {
-      this.sendError(response, 404, "provider_not_found", "The provider was not found.");
+      sendAgentPrivateJsonError(response, 404, "provider_not_found", "The provider was not found.");
       return;
     }
 
     const apiKey = endpoint.ApiKey ?? "";
     if (carriesAgentSecretScheme(apiKey)) {
-      this.sendError(
+      sendAgentPrivateJsonError(
         response,
         409,
         "secret_unresolved",
@@ -71,27 +59,10 @@ export class AgentProviderCredentialHttpApi {
       return;
     }
 
-    this.sendJson(response, 200, {
+    sendAgentPrivateJson(response, 200, {
       ok: true,
       providerId,
       apiKey,
     });
-  }
-
-  private sendJson(response: ServerResponse, statusCode: number, value: unknown): void {
-    const body = JSON.stringify(value);
-    response.writeHead(statusCode, {
-      "Cache-Control": "private, no-store, max-age=0",
-      "Content-Length": Buffer.byteLength(body),
-      "Content-Security-Policy": "default-src 'none'",
-      "Content-Type": "application/json; charset=utf-8",
-      Pragma: "no-cache",
-      "X-Content-Type-Options": "nosniff",
-    });
-    response.end(body);
-  }
-
-  private sendError(response: ServerResponse, statusCode: number, code: string, message: string): void {
-    this.sendJson(response, statusCode, { ok: false, error: { code, message } });
   }
 }

@@ -47,10 +47,21 @@ test("readRecoveryPollingKey retains only unfinished history runs in stable orde
     },
   });
 
-  expect(key.split("\u0000")).toEqual([
-    "alpha\u0001run-alpha\u00011\u0001idle",
-    "beta\u0001run-beta\u00012\u0001loading",
-  ]);
+  expect(key.split("\u0000")).toEqual(["alpha\u0001run-alpha\u0001idle", "beta\u0001run-beta\u0001loading"]);
+});
+
+test("stream revisions do not postpone recovery polling for concurrent sessions", () => {
+  const sessions = {
+    alpha: session("alpha", [recoveryRun("run-alpha", 1)]),
+    beta: session("beta", [recoveryRun("run-beta", 2)]),
+  };
+  const initialKey = readRecoveryPollingKey({ sessions, historyLoadingIds: {} });
+  sessions.alpha.runs[0] = { ...sessions.alpha.runs[0], revision: 100 };
+  sessions.beta.runs[0] = { ...sessions.beta.runs[0], revision: 200 };
+  expect(readRecoveryPollingKey({ sessions, historyLoadingIds: {} })).toBe(initialKey);
+  expect(readRecoveryPollingKey({ sessions, historyLoadingIds: { beta: true } })).not.toBe(initialKey);
+  sessions.alpha.runs[0].status = "completed";
+  expect(readRecoveryPollingKey({ sessions, historyLoadingIds: {} })).toBe("beta\u0001run-beta\u0001idle");
 });
 
 test("automatically loads the active session exactly once after the socket opens", () => {
@@ -77,7 +88,61 @@ test("automatically loads the active session exactly once after the socket opens
   act(() => {
     handleRef.current.requestSessionHistory("active");
   });
+  expect(send).toHaveBeenCalledTimes(1);
+});
+
+test("refreshes a compacted local QQ window after the in-flight replay completes", () => {
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  useStore.setState({
+    sessions: { active: session("active", [], { channel: { platform: "onebot11" }, messageCount: 1 }) },
+    sessionOrder: ["active"],
+    activeSessionId: "active",
+    catalogSynced: { sessions: true },
+  });
+  render(React.createElement(HistoryRecoveryHarness, { activeSessionId: "active", handleRef, send, status: "open" }));
+  act(() => {
+    useStore.getState().ingest({
+      channel: "agent.event",
+      kind: "session.history.started",
+      layer: "progress",
+      phase: "session",
+      sequence: 1,
+      timestamp: "2026-07-12T00:00:00.000Z",
+      sessionId: "active",
+      data: { sessionId: "active", totalEntries: 1, messageCount: 1 },
+    });
+    useStore.getState().ingest({
+      channel: "agent.event",
+      kind: "session.compacted",
+      layer: "progress",
+      phase: "session",
+      sequence: 2,
+      timestamp: "2026-07-12T00:00:01.000Z",
+      sessionId: "active",
+      data: { sessionId: "active", tokensBefore: 1000, boundaryId: "compaction-1" },
+    });
+  });
+  expect(send).toHaveBeenCalledTimes(1);
+  act(() => {
+    useStore.getState().ingest({
+      channel: "agent.event",
+      kind: "session.history.completed",
+      layer: "progress",
+      phase: "session",
+      sequence: 3,
+      timestamp: "2026-07-12T00:00:02.000Z",
+      sessionId: "active",
+      data: { sessionId: "active" },
+    });
+  });
   expect(send).toHaveBeenCalledTimes(2);
+  expect(send).toHaveBeenLastCalledWith({
+    type: "session.history",
+    sessionId: "active",
+    refresh: true,
+    initialWindow: true,
+  });
 });
 
 test("marks history recovery as failed when the socket cannot accept the request", () => {

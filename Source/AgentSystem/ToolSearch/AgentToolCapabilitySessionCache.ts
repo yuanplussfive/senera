@@ -129,9 +129,20 @@ export class AgentToolCapabilitySessionCache {
     catalogRevision: string;
     contractDigest?: string;
   }): AgentToolCapabilityCacheEntry | undefined {
+    const entry = this.getConfirmed(input);
+    return entry?.arguments ? entry : undefined;
+  }
+
+  getConfirmed(input: {
+    sessionId?: string;
+    logicalCacheScope?: string;
+    toolName: string;
+    catalogRevision: string;
+    contractDigest?: string;
+  }): AgentToolCapabilityCacheEntry | undefined {
     if (!input.sessionId) return undefined;
     const entry = this.sessionEntries(input.sessionId, input.logicalCacheScope)?.get(input.toolName);
-    if (!entry || !entry.arguments || !sameContract(entry, input)) return undefined;
+    if (!entry || !sameContract(entry, input)) return undefined;
     entry.lastUsedAt = Date.now();
     return freezeEntry(entry);
   }
@@ -203,7 +214,9 @@ function sameContract(
   left: Pick<MutableEntry, "catalogRevision" | "contractDigest">,
   right: Pick<MutableEntry, "catalogRevision" | "contractDigest">,
 ): boolean {
-  return left.catalogRevision === right.catalogRevision && left.contractDigest === right.contractDigest;
+  // A different catalog entry must not invalidate this tool's unchanged contract.
+  // A digest-less entry has no stable tool identity and cannot be reused.
+  return Boolean(left.contractDigest) && left.contractDigest === right.contractDigest;
 }
 
 function cloneArguments(value: Record<string, unknown>): Readonly<Record<string, unknown>> {

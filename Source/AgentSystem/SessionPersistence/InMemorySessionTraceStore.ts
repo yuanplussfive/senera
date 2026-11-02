@@ -85,6 +85,25 @@ export class InMemorySessionTraceStore {
       .sort((left, right) => left.turnSequence - right.turnSequence);
   }
 
+  loadForRequests(sessionId: string, requestIds: readonly string[], throughRowId: number): StoredStepTraceRun[] {
+    const selected = new Set(normalizeAgentSessionRequestIds(requestIds));
+    const grouped = new Map<string, StoredStepTraceRun>();
+    for (const run of this.runOrder.get(sessionId) ?? []) {
+      if (!selected.has(run.requestId)) continue;
+      const traces = run.traces.filter((item) => item.rowId <= throughRowId).map((item) => item.trace);
+      traces.sort((left, right) => left.step - right.step || left.seq - right.seq);
+      if (traces.length === 0) continue;
+      const stored = grouped.get(run.requestId) ?? {
+        requestId: run.requestId,
+        turnSequence: run.turnSequence,
+        traces: [],
+      };
+      stored.traces.push(...traces);
+      grouped.set(run.requestId, stored);
+    }
+    return [...grouped.values()];
+  }
+
   loadPage(
     sessionId: string,
     request: AgentStepTracePageRequest,

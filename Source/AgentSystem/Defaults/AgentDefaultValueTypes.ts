@@ -1,5 +1,7 @@
 import type {
+  AgentActionPlannerClientConfig,
   AgentActionPlannerConfig,
+  AgentActionPlannerTuningClientConfig,
   AgentContinuityLearningConfig,
   AgentContinuityLearningRuntimeConfig,
   AgentContinuityLearningRecallConfig,
@@ -33,10 +35,12 @@ export type ResolvedAgentModelRuntimeDefaultsConfig = AgentModelRuntimeDefaultsC
   RetryAfterMaxDelayMs: number;
 };
 
-export type AgentActionPlannerClientDefaultsConfig = Required<
-  Omit<NonNullable<AgentActionPlannerConfig["Client"]>, "ModelProviderId">
+export type AgentActionPlannerClientDefaultsConfig = Required<AgentActionPlannerTuningClientConfig>;
+
+export type AgentActionPlannerFinalAnswerClientDefaultsConfig = Required<
+  Omit<AgentActionPlannerClientConfig, "ModelProviderId">
 > &
-  Pick<NonNullable<AgentActionPlannerConfig["Client"]>, "ModelProviderId">;
+  Pick<AgentActionPlannerClientConfig, "ModelProviderId">;
 
 export type AgentStateCardClientDefaultsConfig = Required<
   Omit<NonNullable<AgentStateCardConfig["Client"]>, "ModelProviderId">
@@ -53,21 +57,22 @@ export type AgentContinuityLearningClientDefaultsConfig = Required<
   Pick<NonNullable<AgentContinuityLearningConfig["Client"]>, "ModelProviderId">;
 
 export type AgentContinuityLearningDefaultsConfig = Required<
-  Omit<AgentContinuityLearningConfig, "Client" | "Runtime" | "MemOS">
+  Omit<AgentContinuityLearningConfig, "Client" | "Runtime" | "MemOS" | "Diary" | "Retention">
 > & {
   Client: AgentContinuityLearningClientDefaultsConfig;
   Runtime: AgentContinuityLearningRuntimeConfig;
   MemOS: AgentContinuityMemOSConfig;
+  Diary: import("../Continuity/AgentMemoryDiaryContract.js").AgentMemoryDiaryConfig;
+  Retention: import("../Continuity/AgentMemoryRetention.js").AgentMemoryRetentionPolicy;
   Recall: AgentContinuityLearningRecallConfig;
 };
 
 export type AgentActionPlannerDefaultsConfig = Required<
-  Omit<AgentActionPlannerConfig, "Evidence" | "Client" | "PlanningClient" | "FinalAnswerClient">
+  Omit<AgentActionPlannerConfig, "Evidence" | "Client" | "FinalAnswerClient">
 > & {
   Evidence: Required<NonNullable<AgentActionPlannerConfig["Evidence"]>>;
   Client: AgentActionPlannerClientDefaultsConfig;
-  PlanningClient: AgentActionPlannerClientDefaultsConfig;
-  FinalAnswerClient: AgentActionPlannerClientDefaultsConfig;
+  FinalAnswerClient: AgentActionPlannerFinalAnswerClientDefaultsConfig;
 };
 
 export interface ResolvedAgentDefaultsConfig {

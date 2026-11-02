@@ -75,6 +75,10 @@ export class AgentToolExposureState {
     return this.confirmedContractDigests.get(toolName) === (contractDigest ?? null);
   }
 
+  clearConfirmedContracts(): void {
+    this.confirmedContractDigests.clear();
+  }
+
   subscribe(listener: (snapshot: AgentToolExposureSnapshot) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);

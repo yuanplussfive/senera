@@ -10,6 +10,7 @@ export function createSeneraWorkspaceLogPolicy(configSnapshot: () => AgentSystem
       detailMaxBytes: logs.DetailMaxBytes,
       projectionMaxBytes: logs.ProjectionMaxBytes,
       retentionHours: logs.RetentionHours,
+      maintenanceIntervalMinutes: logs.MaintenanceIntervalMinutes,
       queryPageSize: logs.QueryPageSize,
       tailLineCount: logs.TailLineCount,
     };

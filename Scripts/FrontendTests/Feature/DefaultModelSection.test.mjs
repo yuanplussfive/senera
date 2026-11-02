@@ -24,19 +24,19 @@ describe("DefaultModelSection", () => {
     expect(container.querySelectorAll("[data-model-assignment-group]")).toHaveLength(2);
     expect(container.querySelectorAll("[data-model-assignment-row]")).toHaveLength(2);
     expect(container.querySelector('[data-model-assignment-icon="assistant"]')?.tagName).toBe("svg");
-    expect(container.querySelector('[data-model-assignment-icon="planner"]')?.tagName).toBe("svg");
+    expect(container.querySelector('[data-model-assignment-icon="final-answer"]')?.tagName).toBe("svg");
 
-    await user.click(screen.getByRole("button", { name: /默认模型: Chat Alpha/ }));
-    expect(screen.queryByRole("menuitemradio", { name: /embedding-alpha/ })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("menuitemradio", { name: /Chat Beta/ }));
+    await user.click(screen.getByRole("combobox", { name: "默认模型" }));
+    expect(screen.queryByRole("option", { name: /embedding-alpha/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: /Chat Beta/ }));
     expect(setDefaultProviderModel).toHaveBeenCalledWith("chat-b");
 
-    await user.click(screen.getByRole("button", { name: /Planner 模型: Chat Alpha/ }));
-    expect(screen.queryByRole("menuitemradio", { name: /embedding-alpha/ })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("menuitemradio", { name: /Chat Beta/ }));
+    await user.click(screen.getByRole("combobox", { name: "最终回答模型" }));
+    expect(screen.queryByRole("option", { name: /embedding-alpha/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: /Chat Beta/ }));
     expect(updateDraft).toHaveBeenCalledWith(
       expect.objectContaining({
-        ActionPlanner: { Client: { ModelProviderId: "chat-b" } },
+        ActionPlanner: { FinalAnswerClient: { ModelProviderId: "chat-b" } },
       }),
       "immediate",
     );
@@ -62,7 +62,8 @@ describe("DefaultModelSection", () => {
     expect(modelPool).toBeInTheDocument();
     await waitFor(() => {
       expect(within(modelPool).getByText("Chat Beta")).toBeVisible();
-      expect(within(modelPool).getByText("provider-b")).toBeVisible();
+      expect(within(modelPool).getByText("Chat Beta").closest("[title]")).toBeNull();
+      expect(within(modelPool).queryByText("provider-b")).not.toBeInTheDocument();
     });
 
     await user.click(screen.getByRole("switch", { name: "继承发起模型" }));
@@ -79,8 +80,8 @@ describe("DefaultModelSection", () => {
       "immediate",
     );
 
-    await user.click(screen.getByRole("button", { name: "添加候选模型" }));
-    await user.click(screen.getByRole("menuitemradio", { name: /Chat Alpha/ }));
+    await user.click(screen.getByRole("combobox", { name: "添加候选模型" }));
+    await user.click(screen.getByRole("option", { name: /Chat Alpha/ }));
     expect(updateDraft).toHaveBeenLastCalledWith(
       expect.objectContaining({
         Extensions: {
@@ -155,8 +156,8 @@ function createSystemConfig(setDefaultProviderModel, { includeChildModelPool = f
             },
           ]),
           createSection("planning", [
-            createField(["ActionPlanner", "Client", "ModelProviderId"], "Planner 模型", {
-              id: "planner",
+            createField(["ActionPlanner", "FinalAnswerClient", "ModelProviderId"], "最终回答模型", {
+              id: "final-answer",
               capability: "Chat",
               valueKind: "model-id",
               mutation: "config",
@@ -178,7 +179,6 @@ function createSystemConfig(setDefaultProviderModel, { includeChildModelPool = f
 function createChildModelPoolExtension() {
   return {
     id: "agent-delegation",
-    version: "1.0.0",
     displayName: { "zh-CN": "子代理编排", "en-US": "Subagent orchestration" },
     description: { "zh-CN": "子代理", "en-US": "Subagents" },
     presentation: { icon: "users" },

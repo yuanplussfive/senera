@@ -10,6 +10,7 @@ import {
   AgentUploadHttpApi,
   AgentUploadMaintenanceTriggers,
 } from "../../../Source/AgentSystem/Uploads/AgentUploadHttpApi.js";
+import { isAgentInlinePreviewMime } from "../../../Source/AgentSystem/Uploads/AgentUploadMime.js";
 import { AgentUploadStore } from "../../../Source/AgentSystem/Uploads/AgentUploadStore.js";
 import type { ResolvedAgentUploadsConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { AgentToolExecutionArtifactRecorder } from "../../../Source/AgentSystem/Artifacts/AgentToolExecutionArtifactRecorder.js";
@@ -44,6 +45,69 @@ afterEach(async () => {
 });
 
 describe("upload governance behavior", () => {
+  test("reads canonical context metadata and raw content through the real HTTP resource route", async () => {
+    const harness = await createHttpHarness();
+    const resource = await harness.store.publishBytes({
+      bytes: Buffer.from("完整请求正文\ncontext"),
+      name: "context.txt",
+      mime: "text/plain",
+      retention: "persistent",
+      owner: { sessionId: "session", requestId: "first" },
+    });
+    const url = `${harness.baseUrl}/api/resources/${resource.resourceUri.split("/").at(-1)}`;
+    const metadata = await fetch(`${url}?view=metadata`);
+    expect(metadata.status).toBe(200);
+    expect(await metadata.json()).toMatchObject({
+      ok: true,
+      resource: { path: resource.resourceUri, editable: false, kind: "text", content: "完整请求正文\ncontext" },
+    });
+    expect(await (await fetch(url)).text()).toBe("完整请求正文\ncontext");
+    expect((await fetch(`${url}?view=metadata`, { method: "HEAD" })).status).toBe(200);
+    expect((await fetch(`${url}?view=metadata&unknown=yes`)).status).toBe(404);
+  });
+
+  test("persistent inspection resources survive store restart and expiry maintenance under the same quota", async () => {
+    let now = new Date("2026-10-01T00:00:00Z");
+    const harness = createStore({}, () => now);
+    const persistent = await harness.store.publishBytes({
+      bytes: Buffer.from("durable snapshot"),
+      name: "context.txt",
+      mime: "text/plain",
+      retention: "persistent",
+      owner: { sessionId: "session", requestId: "first" },
+    });
+    const retainedForAnotherTurn = await harness.store.publishBytes({
+      bytes: Buffer.from("next snapshot"),
+      name: "context-next.txt",
+      mime: "text/plain",
+      retention: "persistent",
+      owner: { sessionId: "session", requestId: "second" },
+    });
+    const temporary = await saveText(harness.store, "temporary.txt", "temporary");
+    now = new Date(now.getTime() + 48 * HOUR_MS);
+    const reopened = new AgentUploadStore({
+      workspaceRoot: harness.root,
+      config: createUploadConfig({}),
+      now: () => now,
+    });
+    const maintenance = await reopened.maintain();
+    expect(maintenance.removedUploads).toBe(1);
+    expect(maintenance.retainedBytes).toBeGreaterThan(persistent.size);
+    const resource = await reopened.resolve(persistent.resourceUri);
+    expect(await fs.readFile(resource!.filePath, "utf8")).toBe("durable snapshot");
+    await expect(reopened.resolve(temporary.resourceUri)).rejects.toMatchObject({ code: "ENOENT" });
+    await reopened.deletePersistentOwned({ sessionId: "session", requestIds: ["first"] });
+    await expect(reopened.resolve(persistent.resourceUri)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await reopened.resolve(retainedForAnotherTurn.resourceUri)).toBeDefined();
+  });
+
+  test("defaults completed and incomplete upload retention independently", () => {
+    expect(resolveUploadsConfig({ ModelProviders: [] })).toMatchObject({
+      RetentionHours: 72,
+      IncompleteRetentionHours: 1,
+    });
+  });
+
   test("rejects effective request and storage limits below the per-file limit", () => {
     const base = { ModelProviders: [] };
     expect(() =>
@@ -316,7 +380,10 @@ describe("upload governance behavior", () => {
 
     const svgResponse = await fetch(buildContentUrl(harness.baseUrl, svg.resourceUri));
     expect(svgResponse.status).toBe(200);
-    expect(svgResponse.headers.get("content-type")).toBe("application/octet-stream");
+    expect(svgResponse.headers.get("content-type")).toBe("image/svg+xml");
+    expect(svgResponse.headers.get("content-disposition")).toContain("inline");
+    expect(svgResponse.headers.get("content-security-policy")).toBe("default-src 'none'; sandbox");
+    expect(svgResponse.headers.get("x-content-type-options")).toBe("nosniff");
 
     const missingResponse = await fetch(`${harness.baseUrl}/api/resources/upl_missing`);
     expect(missingResponse.status).toBe(404);
@@ -329,10 +396,10 @@ describe("upload governance behavior", () => {
     expect(traversalResponse.status).toBe(404);
   });
 
-  test("removes expired uploads and abandoned incomplete directories", async () => {
+  test("applies independent retention policies to complete and incomplete upload directories", async () => {
     const createdAt = new Date("2026-01-01T00:00:00.000Z");
     let now = createdAt;
-    const harness = createStore({ RetentionHours: 1 }, () => now);
+    const harness = createStore({ RetentionHours: 1, IncompleteRetentionHours: 3 }, () => now);
     const attachment = await saveText(harness.store, "expired.txt", "expired");
     const incompleteDir = path.join(harness.root, UploadRootDir, "upl_incomplete");
     await fs.mkdir(incompleteDir, { recursive: true });
@@ -340,9 +407,18 @@ describe("upload governance behavior", () => {
     await fs.utimes(incompleteDir, createdAt, createdAt);
     now = new Date(createdAt.getTime() + 2 * HOUR_MS);
 
-    await expect(harness.store.maintain()).resolves.toMatchObject({ removedUploads: 2 });
+    await expect(harness.store.maintain()).resolves.toMatchObject({ removedUploads: 1 });
     await expect(harness.store.resolve(attachment.resourceUri)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(fs.access(incompleteDir)).resolves.toBeUndefined();
+
+    now = new Date(createdAt.getTime() + 4 * HOUR_MS);
+    await expect(harness.store.maintain()).resolves.toMatchObject({ removedUploads: 1 });
     await expect(readUploadEntries(harness.root)).resolves.toEqual([]);
+  });
+
+  test("keeps APNG and SVG renderable under the resource response sandbox", () => {
+    expect(isAgentInlinePreviewMime("image/apng")).toBe(true);
+    expect(isAgentInlinePreviewMime("image/svg+xml")).toBe(true);
   });
 
   test("does not collect an upload that is still being written", async () => {
@@ -480,6 +556,7 @@ function createUploadConfig(overrides: Partial<ResolvedAgentUploadsConfig>): Res
     MaxConcurrentUploads: 2,
     MaxStoredBytes: 64 * KIBIBYTE,
     RetentionHours: 24,
+    IncompleteRetentionHours: 1,
     MaintenanceIntervalMinutes: 15,
     ...overrides,
   };

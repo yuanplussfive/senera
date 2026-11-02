@@ -1,3 +1,4 @@
+import { OverlayScrollFixture } from "../../dev/OverlayScrollFixture";
 import type { Story } from "@ladle/react";
 import { ChevronDown, Copy, FileText, Info, LogOut, Settings, Trash2, User, UserRoundPen, Wifi } from "lucide-react";
 import { useState } from "react";
@@ -19,6 +20,34 @@ import {
   DropdownMenuTrigger,
 } from "./DropdownMenu";
 import { AppIcon } from "./AppIcon";
+import { IconButton } from "./IconButton";
+
+export const ButtonItem: Story = () => {
+  const [count, setCount] = useState(0);
+  return (
+    <main className="min-h-[360px] space-y-4 p-6">
+      <p className="text-sm text-content-secondary">图标按钮保留菜单项的键盘操作，已执行 {count} 次。</p>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline">终端操作</Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem
+            asChild
+            onSelect={(event) => {
+              event.preventDefault();
+              setCount((value) => value + 1);
+            }}
+          >
+            <IconButton label="停止终端" size="sm" tone="danger">
+              <AppIcon icon="square" size={12} />
+            </IconButton>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </main>
+  );
+};
 
 export const WithSelection: Story = () => {
   const [showDiagnostics, setShowDiagnostics] = useState(true);
@@ -39,6 +68,38 @@ export const WithSelection: Story = () => {
               诊断详情
             </DropdownMenuCheckboxItem>
           </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+};
+
+export const ModalScrolling: Story = () => <OverlayScrollFixture />;
+
+export const DescriptiveSelection: Story = () => {
+  const [value, setValue] = useState("ask");
+  return (
+    <div className="flex min-h-[360px] items-center justify-center p-4">
+      <DropdownMenu defaultOpen>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline">选择审批方式</Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-[min(340px,calc(100vw-24px))]">
+          <DropdownMenuLabel>如何批准操作？</DropdownMenuLabel>
+          <DropdownMenuRadioGroup value={value} onValueChange={setValue}>
+            <DropdownMenuRadioItem value="ask" icon={<AppIcon icon="shield-alert" size={17} />}>
+              <span className="block">需要时询问</span>
+              <span className="block whitespace-normal text-xs leading-5 text-content-muted">
+                由你确认需要审批的操作。
+              </span>
+            </DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="agent" icon={<AppIcon icon="shield" size={17} />}>
+              <span className="block">替我审批</span>
+              <span className="block whitespace-normal text-xs leading-5 text-content-muted">
+                交给审批 Agent 审核。
+              </span>
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

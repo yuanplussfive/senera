@@ -11,6 +11,7 @@ import { createSeneraExecutionRuntimeCapabilities } from "../../../Source/AgentS
 import { AgentPromptTierRenderCache } from "../../../Source/AgentSystem/Prompt/AgentPromptTierRenderCache.js";
 import { EmptyAgentWorkflowPromptContext } from "../../../Source/AgentSystem/Prompt/AgentWorkflowPromptContext.js";
 import { resolveAgentDockerEngineGuestWorkspaceRoot } from "../../../Source/AgentSystem/Sandbox/DockerEngine/AgentDockerEngineRuntimeContract.js";
+import { buildAgentStateCard } from "../../../Source/AgentSystem/StateCard/AgentStateCardBuilder.js";
 
 describe("turn prompt projection", () => {
   test.each([
@@ -37,9 +38,29 @@ describe("turn prompt projection", () => {
         },
         config: {},
         services: {
+          pi: {
+            workspaceTurnContext: async () => ({
+              scope: "previous-turn",
+              captures: [],
+              changes: [],
+              outputs: [
+                { uri: "senera://resource/test-output", name: "result.svg", mime: "image/svg+xml", origin: "artifact" },
+              ],
+              unavailableResults: 0,
+            }),
+          },
           promptContext: {
             promptPersona: () => EmptyAgentPersonaContext,
-            liveContinuityMemory: async () => EmptyAgentContinuityMemoryPromptContext,
+            previewContinuityMemory: async () => ({
+              ...EmptyAgentContinuityMemoryPromptContext,
+              enabled: true,
+              diaryIndex: "# Memory index\n\n- [上传机制统一](2026/10/26/diary.md) — 2026-10-26",
+            }),
+            liveContinuityMemory: async () => ({
+              ...EmptyAgentContinuityMemoryPromptContext,
+              enabled: true,
+              diaryIndex: "# Memory index\n\n- [上传机制统一](2026/10/26/diary.md) — 2026-10-26",
+            }),
             promptWorkflow: () => EmptyAgentWorkflowPromptContext,
             buildBaseContext: ({ persona }: { persona: unknown }) => ({
               ExecutionEnvironment: buildAgentExecutionEnvironmentContext(process.cwd()),
@@ -78,6 +99,9 @@ describe("turn prompt projection", () => {
       ]);
       expect(rendered.text).toContain(marker);
       expect(rendered.systemPrompt).toContain("<senera_kernel>");
+      expect(rendered.systemPrompt).toContain("[上传机制统一](2026/10/26/diary.md)");
+      expect(rendered.turnContext).not.toContain("# Memory index");
+      expect(rendered.systemPrompt.match(/# Memory index/g)).toHaveLength(1);
       expect(rendered.text).toContain("<interaction_stance>");
       expect(rendered.text).toContain(
         "Use discovery or a tool only when the task needs a capability that is not already available or a verified external outcome; answer directly when neither is needed.",
@@ -96,6 +120,7 @@ describe("turn prompt projection", () => {
       const identity = await new AgentTurnPromptRenderer(runtime).render({
         userInput: "测试请求",
         sessionId: "conversation-space",
+        stateCard: buildAgentStateCard({ currentRequest: "测试请求", history: [], activeSkills: ["example-skill"] }),
         requestId: "turn-luna",
         logicalCacheScope: "logical-space-cache",
         turnNumber: 3,
@@ -125,10 +150,19 @@ describe("turn prompt projection", () => {
       });
       expect(identity.systemPrompt).toBe(baseline.systemPrompt);
       expect(identity.systemPrompt).not.toContain("senera.conversation_space=v1");
-      expect(identity.turnContext).toContain("senera.conversation_space=v1");
+      expect(identity.turnContext).not.toContain("senera.conversation_space=v1");
       expect(identity.turnContext).toContain("conversation-space");
       expect(identity.turnContext).not.toContain("<senera_conversation_space>");
-      expect(identity.turnContext).toContain("senera.turn=v1");
+      expect(identity.turnContext).toContain("senera.turn=v2");
+      expect(identity.turnContext).not.toContain("turn-luna");
+      expect(identity.turnContext).not.toContain("<context_note");
+      expect(identity.turnContext).not.toContain("<persona_check");
+      expect(identity.turnContext).toContain("senera.workspace_changes=v1");
+      expect(identity.turnContext).toContain("result.svg");
+      expect(identity.turnContext).not.toContain("standaloneRequest");
+      expect(identity.turnContext).not.toContain("activeSkills");
+      expect(identity.turnContext).not.toContain("example-skill");
+      expect(identity.turnContext).not.toContain("failedTools");
       expect(identity.turnContext).toContain("gpt-5.6-luna");
       expect(identity.turnContext).toContain('"platform":"qq"');
     },
@@ -188,6 +222,7 @@ describe("turn prompt projection", () => {
       services: {
         promptContext: {
           promptPersona: () => EmptyAgentPersonaContext,
+          previewContinuityMemory: async () => EmptyAgentContinuityMemoryPromptContext,
           liveContinuityMemory: async () => EmptyAgentContinuityMemoryPromptContext,
           promptWorkflow: () => EmptyAgentWorkflowPromptContext,
           buildBaseContext: ({ persona }: { persona: unknown }) => ({
@@ -246,6 +281,7 @@ describe("turn prompt projection", () => {
                 markdown: "# 一位可靠的代码审阅搭档\n\n直接、简洁，并先说明结论。",
               },
             }),
+            previewContinuityMemory: async () => EmptyAgentContinuityMemoryPromptContext,
             liveContinuityMemory: async () => EmptyAgentContinuityMemoryPromptContext,
             promptWorkflow: () => EmptyAgentWorkflowPromptContext,
             buildBaseContext: ({ persona }: { persona: unknown }) => ({
@@ -288,98 +324,111 @@ describe("turn prompt projection", () => {
     },
   );
 
-  test.each(["native", "baml"] as const)("keeps learned knowledge in turn context for %s", async (mode) => {
-    const rootCommand = toolRootCommand();
-    const continuityMemory = {
-      enabled: true,
-      periodDigests: [],
-      eventCandidates: [
-        {
-          id: "knowledge-1",
-          uri: "memos:knowledge-1",
-          revision: "rev-1",
-          type: "preference",
-          summary: "用户偏好简洁回答。",
-          occurredAt: "2026-08-22T08:00:00Z",
-          score: 0.92,
-          matchedBy: ["memos"],
+  test.each(["native", "baml"] as const)(
+    "keeps learned knowledge in the versioned system background for %s",
+    async (mode) => {
+      const rootCommand = toolRootCommand();
+      const continuityOperations: string[] = [];
+      const continuityMemory = {
+        enabled: true,
+        eventCandidates: [
+          {
+            id: "knowledge-1",
+            uri: "memos:knowledge-1",
+            revision: "rev-1",
+            type: "preference",
+            summary: "用户偏好简洁回答。",
+            occurredAt: "2026-08-22T08:00:00Z",
+            score: 0.92,
+            matchedBy: ["memos"],
+          },
+        ],
+        selection: {
+          events: { selected: 1, matched: 1, available: 1 },
+          usedTokens: 32,
+          maxTokens: 2048,
         },
-      ],
-      selection: {
-        digests: { selected: 0, matched: 0, available: 0 },
-        events: { selected: 1, matched: 1, available: 1 },
-        usedTokens: 32,
-        maxTokens: 2048,
-      },
-    };
-    const workflow = {
-      execution: { active: null, executions: [] },
-      todos: {
-        items: [],
-        counts: { total: 0, pending: 0, inProgress: 0, completed: 0, cancelled: 0 },
-      },
-    };
-    const runtime = {
-      registry: {
-        getTemplate: (templateName: string) => ({
-          name: templateName,
-          path: path.resolve(process.cwd(), "System", "Prompts", "Templates", `${templateName}.liquid`),
-          exposeToPi: false,
-        }),
-      },
-      config: {},
-      services: {
-        promptContext: {
-          promptPersona: () => EmptyAgentPersonaContext,
-          liveContinuityMemory: async () => continuityMemory,
-          promptWorkflow: () => workflow,
-          buildBaseContext: ({
-            persona,
-            continuityMemory: normalizedContinuityMemory,
-            workflow: normalizedWorkflow,
-          }: {
-            persona: unknown;
-            continuityMemory: unknown;
-            workflow: unknown;
-          }) => ({
-            ExecutionEnvironment: buildAgentExecutionEnvironmentContext(process.cwd()),
-            ToolCards: [],
-            ToolDiscoveryToolName: null,
-            RootCommand: rootCommand,
-            Persona: persona,
-            ContinuityMemory: normalizedContinuityMemory,
-            Workflow: normalizedWorkflow,
-            ContextRevisions: { stable: "stable", context: "context", volatile: "volatile" },
+      };
+      const workflow = {
+        execution: { active: null, executions: [] },
+        todos: {
+          items: [],
+          counts: { total: 0, pending: 0, inProgress: 0, completed: 0, cancelled: 0 },
+        },
+      };
+      const runtime = {
+        registry: {
+          getTemplate: (templateName: string) => ({
+            name: templateName,
+            path: path.resolve(process.cwd(), "System", "Prompts", "Templates", `${templateName}.liquid`),
+            exposeToPi: false,
           }),
         },
-      },
-      promptRenderer: new AgentPromptRenderer(),
-      promptTierRenderCache: new AgentPromptTierRenderCache(),
-      tokenEstimator: { estimate: (text: string) => ({ tokenCount: text.length }) },
-      promptConfig: {
-        UserMessageEnvelope: true,
-        TimeZone: "Asia/Shanghai",
-        BamlToolAttribution: true,
-      },
-    } as unknown as AgentSystemRuntime;
+        config: {},
+        services: {
+          pi: { workspaceTurnContext: async () => undefined },
+          promptContext: {
+            promptPersona: () => EmptyAgentPersonaContext,
+            previewContinuityMemory: async () => {
+              continuityOperations.push("preview");
+              return continuityMemory;
+            },
+            liveContinuityMemory: async () => {
+              continuityOperations.push("commit");
+              return continuityMemory;
+            },
+            promptWorkflow: () => workflow,
+            buildBaseContext: ({
+              persona,
+              continuityMemory: normalizedContinuityMemory,
+              workflow: normalizedWorkflow,
+            }: {
+              persona: unknown;
+              continuityMemory: unknown;
+              workflow: unknown;
+            }) => ({
+              ExecutionEnvironment: buildAgentExecutionEnvironmentContext(process.cwd()),
+              ToolCards: [],
+              ToolDiscoveryToolName: null,
+              RootCommand: rootCommand,
+              Persona: persona,
+              ContinuityMemory: normalizedContinuityMemory,
+              Workflow: normalizedWorkflow,
+              ContextRevisions: { stable: "stable", context: "context", volatile: "volatile" },
+            }),
+          },
+        },
+        promptRenderer: new AgentPromptRenderer(),
+        promptTierRenderCache: new AgentPromptTierRenderCache(),
+        tokenEstimator: { estimate: (text: string) => ({ tokenCount: text.length }) },
+        promptConfig: {
+          UserMessageEnvelope: true,
+          TimeZone: "Asia/Shanghai",
+          BamlToolAttribution: true,
+        },
+      } as unknown as AgentSystemRuntime;
 
-    const rendered = await new AgentTurnPromptRenderer(runtime).render({
-      userInput: "继续调查雾港灯塔",
-      sessionId: "continuity-session",
-      loadedToolNames: [],
-      reusableCapabilities: [],
-      rootCommand,
-      toolPlanningMode: mode,
-    });
+      const rendered = await new AgentTurnPromptRenderer(runtime).render({
+        userInput: "继续调查雾港灯塔",
+        sessionId: "continuity-session",
+        loadedToolNames: [],
+        reusableCapabilities: [],
+        rootCommand,
+        toolPlanningMode: mode,
+      });
 
-    expect(rendered.text).toContain("用户偏好简洁回答。");
-    expect(rendered.turnContext).toContain("用户偏好简洁回答。");
-    expect(rendered.systemPrompt).not.toContain("用户偏好简洁回答。");
-    expect(rendered.text).toContain("memos:knowledge-1");
-    expect(rendered.text).not.toContain("rev-1");
-    expect(rendered.text).not.toContain("senera.profile");
-    expect(rendered.text).not.toContain("memory_selection");
-  });
+      expect(rendered.text).toContain("用户偏好简洁回答。");
+      expect(rendered.turnContext).not.toContain("用户偏好简洁回答。");
+      expect(rendered.systemPrompt).toContain("用户偏好简洁回答。");
+      expect(rendered.text).toContain("memos:knowledge-1");
+      expect(rendered.text).not.toContain("rev-1");
+      expect(rendered.text).not.toContain("senera.profile");
+      expect(rendered.text).not.toContain("memory_selection");
+      expect(continuityOperations[0]).toBe("preview");
+      expect(continuityOperations.at(-1)).toBe("commit");
+      expect(continuityOperations.filter((operation) => operation === "commit")).toHaveLength(1);
+    },
+  );
 
   test("projects host profile identity separately from persona expression and refreshes it per turn", async () => {
     const rootCommand = toolRootCommand(["ShellCommandTool"]);
@@ -401,6 +450,7 @@ describe("turn prompt projection", () => {
             enabled: true,
             card: { markdown: "{{user}} works beside {{assistant}}. {{resident}} and {{char}} stay literal." },
           }),
+          previewContinuityMemory: async () => EmptyAgentContinuityMemoryPromptContext,
           liveContinuityMemory: async () => EmptyAgentContinuityMemoryPromptContext,
           promptWorkflow: () => EmptyAgentWorkflowPromptContext,
           buildBaseContext: ({ persona }: { persona: { readonly card: { readonly markdown: string } } }) => ({
@@ -441,10 +491,9 @@ describe("turn prompt projection", () => {
     });
 
     expect(consoleTurn.systemPrompt).toContain("Ada works beside Nova. {{resident}} and {{char}} stay literal.");
-    expect(consoleTurn.turnContext).toContain("senera.identity=v1");
-    expect(consoleTurn.turnContext).toContain("rule=continuity-references-to-user-and-i-resolve-through-this-profile");
-    expect(consoleTurn.turnContext).toContain('"assistant":{"name":"Nova"}');
-    expect(consoleTurn.turnContext).toContain('"counterpart":{"name":"Ada","relationship":"workspace_owner"}');
+    expect(consoleTurn.turnContext).toContain("senera.turn=v2");
+    expect(consoleTurn.turnContext).toContain('"assistant":"Nova"');
+    expect(consoleTurn.turnContext).toContain('"counterpart":"Ada"');
 
     identity = { user: "Bea <profile>", assistant: "Orbit {{user}}" };
     const channelTurn = await renderer.render({
@@ -459,7 +508,7 @@ describe("turn prompt projection", () => {
 
     expect(channelTurn.systemPrompt).toContain("Bea &lt;profile&gt; works beside Orbit {{user}}.");
     expect(channelTurn.systemPrompt).not.toContain("Bea <profile>");
-    expect(channelTurn.turnContext).toContain('"assistant":{"name":"Orbit {{user}}"}');
+    expect(channelTurn.turnContext).toContain('"assistant":"Orbit {{user}}"');
     expect(channelTurn.turnContext).not.toContain('"counterpart"');
     expect(channelTurn.harness.sections.volatile.revision).not.toBe(consoleTurn.harness.sections.volatile.revision);
   });

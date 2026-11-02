@@ -14,15 +14,23 @@ on:
       - reopened
       - edited
   workflow_dispatch:
+  workflow_call:
     inputs:
+      source_ref:
+        description: Exact source commit to verify.
+        required: true
+        type: string
       full_suite:
-        description: Run every local verification script after the normal gates.
+        description: Check formatting across the entire repository.
         required: false
         type: boolean
         default: false
 
+permissions:
+  contents: read
+
 concurrency:
-  group: verify-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: verify-${{ github.workflow }}-${{ inputs.source_ref || github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -33,6 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          ref: ${{ inputs.source_ref || github.sha }}
           fetch-depth: 0
       - uses: ./.github/actions/setup-node
       - id: range
@@ -70,37 +79,85 @@ jobs:
   build-artifacts:
     name: Build Verification Artifacts
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
       - uses: ./.github/actions/setup-node
       - run: npm run policy.verify
       - run: npm run quality.baml
       - run: npm run build
       - run: npm --workspace senera-frontend run build
+      - run: npm run client.qq.pack
+      - name: Upload optional QQ client
+        uses: actions/upload-artifact@v6
+        with:
+          name: senera-qq-client
+          compression-level: 0
+          path: |
+            Release/SeneraQQ-*.zip
+            Release/SeneraQQ-*.json
+            Release/SeneraQQ-*-source.tar.gz
+          if-no-files-found: error
+          retention-days: 7
       - name: Upload verification build
         uses: actions/upload-artifact@v6
         with:
           name: verification-build
+          include-hidden-files: true
           path: |
             Dist
             Frontend/dist
           if-no-files-found: error
           retention-days: 1
 
+  android:
+    name: Build Android APK
+    needs: build-artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
+      - uses: ./.github/actions/setup-node
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/download-artifact@v7
+        with:
+          name: verification-build
+          path: .
+      - run: chmod +x Apps/Mobile/android/gradlew
+      - run: npm run mobile.android.from-build
+      - uses: actions/upload-artifact@v6
+        with:
+          name: senera-android-apk
+          compression-level: 0
+          path: Release/Senera-*-android-*-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
   fast:
     name: Fast Gate
     needs: build-artifacts
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
         with:
+          ref: ${{ inputs.source_ref || github.sha }}
           fetch-depth: 0
       - uses: ./.github/actions/setup-node
       - name: Restore ESLint cache
         uses: actions/cache@v5
         with:
           path: .cache/eslint
-          key: ${{ runner.os }}-eslint-${{ hashFiles('package-lock.json') }}
+          key: ${{ runner.os }}-eslint-${{ hashFiles('package-lock.json') }}-${{ inputs.source_ref || github.sha }}
           restore-keys: |
             ${{ runner.os }}-eslint-${{ hashFiles('package-lock.json') }}-
       - name: Download verification build
@@ -138,8 +195,12 @@ jobs:
             echo "arguments=--from=$from --to=$to" >> "$GITHUB_OUTPUT"
           fi
       - run: npm run quality.lint
-      - run: npm run quality.format -- ${{ steps.range.outputs.arguments }}
-      - run: npm run test.frontend.static
+      - if: inputs.full_suite || steps.range.outputs.arguments == ''
+        run: npm run quality.format.full
+      - if: ${{ !inputs.full_suite && steps.range.outputs.arguments != '' }}
+        run: npm run quality.format -- ${{ steps.range.outputs.arguments }}
+      - run: npm run quality.docs
+      - run: npm run test.frontend.governance
       - run: npm run test.integration
       - run: npm run verify.suite -- workspace core integration e2e release
 
@@ -147,8 +208,11 @@ jobs:
     name: Chromium Browser E2E
     needs: build-artifacts
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
       - uses: ./.github/actions/setup-node
       - name: Download verification build
         uses: actions/download-artifact@v7
@@ -181,8 +245,11 @@ jobs:
     name: Windows Platform Smoke
     needs: build-artifacts
     runs-on: windows-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
       - uses: ./.github/actions/setup-node
         with:
           install-electron: "true"
@@ -197,9 +264,12 @@ jobs:
   coverage:
     name: Coverage Gate
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
       - uses: ./.github/actions/setup-node
       - run: npm run test.coverage.frontend
       - uses: actions/upload-artifact@v6
@@ -214,12 +284,3 @@ jobs:
           path: coverage/backend
           if-no-files-found: error
       - run: npm run quality.coverage.ratchet
-
-  all-local:
-    name: All Local Verifications
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && inputs.full_suite
-    steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/setup-node
-      - run: npm run verify.all

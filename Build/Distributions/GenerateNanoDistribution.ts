@@ -13,6 +13,7 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
+import { isPathWithin, relativePathWithin } from "../../Source/AgentSystem/Core/AgentPath.js";
 import {
   AgentSandboxDistributionContractSchema,
   resolveAgentSandboxDistributionTarget,
@@ -228,8 +229,7 @@ function assertPackageProjection(value: Record<string, unknown>, label: string):
 
 function prepareOutputRoot(sourceRoot: string, requestedOutput: string): string {
   const outputRoot = path.resolve(requestedOutput);
-  const relativeToSource = path.relative(sourceRoot, outputRoot);
-  if (!relativeToSource || (!relativeToSource.startsWith(`..${path.sep}`) && !path.isAbsolute(relativeToSource))) {
+  if (isPathWithin(sourceRoot, outputRoot)) {
     throw new Error("Nano output must be outside the source repository.");
   }
   if (existsSync(outputRoot) && readdirSync(outputRoot).length > 0) {
@@ -339,8 +339,7 @@ function resolveRelativeModuleSource(sourceRoot: string, sourcePath: string, spe
   // the bundler remains responsible for interpreting that metadata later.
   const resourceSpecifier = specifier.split(/[?#]/u, 1)[0];
   const unresolved = path.resolve(path.dirname(sourcePath), resourceSpecifier);
-  const relative = path.relative(sourceRoot, unresolved);
-  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+  if (!isPathWithin(sourceRoot, unresolved)) {
     throw new Error(`Nano relative module import escapes the source root: ${toPosixPath(sourcePath)} -> ${specifier}`);
   }
   const candidates = relativeModuleCandidates(unresolved);
@@ -543,8 +542,7 @@ function sortRecord(source: Record<string, string>): Record<string, string> {
 function resolveContainedPath(root: string, relativePath: string): string {
   if (!relativePath || path.isAbsolute(relativePath)) throw new Error(`Expected a relative path: ${relativePath}`);
   const resolved = path.resolve(root, relativePath);
-  const relative = path.relative(root, resolved);
-  if (!relative || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+  if (!relativePathWithin(root, resolved)) {
     throw new Error(`Path escapes its declared root: ${relativePath}`);
   }
   return resolved;

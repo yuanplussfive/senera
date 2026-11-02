@@ -242,9 +242,9 @@ describe("modelServiceState", () => {
       repairAction: "select_default",
     });
   });
-  it("only exposes configured models from enabled providers with chat capability as default candidates", () => {
+  it("only exposes configured models from enabled providers that meet Agent planning requirements", () => {
     const candidates = readDefaultAssistantModelCandidates({
-      modelTemplate: {},
+      modelTemplate: { Stream: true },
       providers: [
         { Id: "enabled", Enabled: true },
         { Id: "disabled", Enabled: false },

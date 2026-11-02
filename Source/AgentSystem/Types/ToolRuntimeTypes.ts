@@ -3,6 +3,7 @@ import type {
   AgentToolProcessResponseVersion,
 } from "../ToolRuntime/AgentToolProcessEnvelope.js";
 import type { RegisteredTool } from "./AgentToolRuntimeTypes.js";
+import type { AgentToolContractReceipt } from "../ToolSearch/AgentToolContractDelivery.js";
 import type { RegisteredSkill } from "../Skills/AgentSkillTypes.js";
 import {
   ToolResultStorageModes,
@@ -74,6 +75,8 @@ export interface AgentToolArtifactAsset {
  * the raw tool result; the raw result remains in the published artifact.
  */
 export interface AgentToolEvidenceCandidate {
+  /** Result-derived facts can be deferred when the result itself is delivered. */
+  readonly origin?: "result" | "supplement";
   readonly key?: string;
   readonly kind: string;
   readonly locator: string;
@@ -164,6 +167,8 @@ export interface ExecutedToolCallResult {
   artifactPayload?: AgentToolArtifactPayload;
   artifactAvailability?: AgentToolArtifactAvailability;
   outputCapture?: SeneraOutputSpoolDescriptor;
+  /** Host-only provenance for exact model-facing contract bodies. */
+  toolContractReceipts?: readonly AgentToolContractReceipt[];
   /** Declarative result persistence policy copied from the registered tool. */
   resultStorage?: ToolResultStorageMode;
   /** Original Artifact coordinates for a SourceView result. */
@@ -363,9 +368,10 @@ export interface ToolWorkspaceFileSnapshot {
 export type ToolWorkspaceFileContentSnapshot =
   | {
       state: "captured";
-      encoding: "utf8";
+      encoding: "utf8" | "base64";
       byteLength: number;
       lineCount: number;
+      /** Encoded content; binary snapshots never participate in text diffs or model input. */
       text?: string;
       artifactPath?: string;
       relativeArtifactPath?: string;
@@ -407,6 +413,8 @@ export interface ToolWorkspaceChange {
 }
 
 export interface ToolArtifactEvidenceRecord {
+  /** Absent on older records whose relationship to the result is unknown. */
+  origin?: AgentToolEvidenceCandidate["origin"];
   key: string;
   evidenceUri: string;
   kind: string;

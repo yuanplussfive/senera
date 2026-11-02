@@ -24,6 +24,7 @@ export const AgentLoopSchema = z
 
 export const TodosSchema = z
   .object({
+    AllowParallelInProgress: z.boolean().optional(),
     MaxItems: z.number().int().positive().optional(),
     MaxContentCharacters: z.number().int().positive().optional(),
     MaxResultCharacters: z.number().int().positive().optional(),
@@ -141,6 +142,7 @@ export const UploadsSchema = z
     MaxConcurrentUploads: z.number().int().min(1).optional(),
     MaxStoredBytes: z.number().int().min(1).optional(),
     RetentionHours: z.number().int().min(1).optional(),
+    IncompleteRetentionHours: z.number().positive().optional(),
     MaintenanceIntervalMinutes: z.number().int().min(1).optional(),
   })
   .strict();
@@ -214,8 +216,10 @@ export const PersistenceSchema = z
       .object({
         Enabled: z.boolean().optional(),
         DetailMaxBytes: z.number().int().min(AgentLogPolicyLimits.minimumDetailMaxBytes).optional(),
+        DetailMaxConcurrentWrites: z.number().int().positive().optional(),
         ProjectionMaxBytes: z.number().int().positive().optional(),
         RetentionHours: z.number().int().positive().optional(),
+        MaintenanceIntervalMinutes: z.number().positive().optional(),
         QueryPageSize: z.number().int().positive().max(AgentLogPolicyLimits.maximumQueryPageSize).optional(),
         TailLineCount: z.number().int().positive().max(AgentLogPolicyLimits.maximumTailLineCount).optional(),
         CaptureHiddenEvents: z.boolean().optional(),
@@ -236,10 +240,6 @@ export const PromptSchema = z
       .min(1)
       .refine(isSupportedIanaTimeZone, "TimeZone must be a supported IANA time zone.")
       .optional(),
-    /** Rewrite the model-authored preface independently from persona text. */
-    PrefaceRewrite: z.boolean().optional(),
-    /** Rewrite the settled final answer independently from persona text (polish tier when no card). */
-    FinalResponseRewrite: z.boolean().optional(),
     /** Wrap BAML tool observations with attribution="tool" at the projection exit. */
     BamlToolAttribution: z.boolean().optional(),
   })

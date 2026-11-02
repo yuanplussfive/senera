@@ -147,6 +147,10 @@ export class AgentDiscordChannelAdapter implements AgentChannelAdapter {
     this.now = options.now ?? (() => new Date());
   }
 
+  resolveActor(senderId: string) {
+    return { authority: `discord:${this.apiBase}`, account: senderId };
+  }
+
   bind(handlers: AgentChannelAdapterHandlers): void {
     this.handlers = handlers;
   }

@@ -12,6 +12,7 @@ import type {
   AgentPiPlanningCompilerFactory,
 } from "../../../Source/AgentSystem/Pi/AgentPiPlanningCompiler.js";
 import { AgentPiSubstrate } from "../../../Source/AgentSystem/Pi/AgentPiSubstrate.js";
+import { AgentPiToolRegistryProjector } from "../../../Source/AgentSystem/Pi/AgentPiToolRegistryProjector.js";
 import { AgentPiTurnState } from "../../../Source/AgentSystem/Pi/AgentPiTurnState.js";
 import {
   readAgentPiMessageTextContent,
@@ -26,7 +27,10 @@ import {
   systemToolCapability,
 } from "../../../Source/AgentSystem/SystemTools/AgentSystemToolCatalog.js";
 import { AgentSystemExtensionCatalog } from "../../../Source/AgentSystem/SystemTools/AgentSystemToolSource.js";
-import { createAgentSystemTools } from "../../../Source/AgentSystem/SystemTools/AgentSystemTools.js";
+import {
+  createAgentSystemTools,
+  listAgentSystemExtensionHostCapabilityUniverse,
+} from "../../../Source/AgentSystem/SystemTools/AgentSystemTools.js";
 import { AgentModelUsageLedger } from "../../../Source/AgentSystem/ModelEndpoints/AgentModelUsage.js";
 import { AgentPiToolPlanCoordinator } from "../../../Source/AgentSystem/PiShared/AgentPiToolPlanCoordinator.js";
 import { AgentTurnTokenBudget } from "../../../Source/AgentSystem/Text/AgentTurnTokenBudget.js";
@@ -64,6 +68,111 @@ afterEach(async () => {
 });
 
 describe("Pi Coding Agent production substrate", () => {
+  test("awaits safe input boundaries and commits steering and follow-up before settling", async () => {
+    const workspaceRoot = await createTemporaryWorkspace();
+    const config = testConfig(workspaceRoot);
+    const modelProvider = createModelProvider();
+    const registry = new AgentExtensionRegistry();
+    const executionEnv = new SeneraLocalExecutionEnv({ workspaceRoot });
+    const executor = new AgentToolCallExecutor({
+      registry,
+      config,
+      protocol: createXmlProtocolSpec(config),
+      workspaceRoot,
+      hostCapabilities: new AgentToolHostCapabilityRegistry(),
+      executionEnv,
+      emitLifecycleEvents: false,
+    });
+    const compiler = new RecordingCompilerFactory(() => ({ kind: "final_text", content: "done", toolCalls: [] }));
+    const substrate = new AgentPiSubstrate({
+      workspaceRoot,
+      config,
+      modelProvider,
+      planningCompilerFactory: compiler,
+      registry,
+      toolCallExecutor: executor,
+      executionEnv,
+      resourcesPath: workspaceRoot,
+      artifactRecorder: new AgentToolExecutionArtifactRecorder({
+        workspaceRoot,
+        config: resolveArtifactsConfig(config),
+        model: modelProvider.Model,
+      }),
+    });
+    const grant = createAgentToolAccessGrant({ authorizedToolNames: [], exposedToolNames: [] });
+    const turn = createTurnState("boundary-session", "boundary-request", 1, grant, modelProvider);
+    const phases: string[] = [];
+    const receipts = new Set<string>();
+    let steered = false;
+    let followed = false;
+    try {
+      const lease = await substrate.leaseTurn({
+        sessionId: "boundary-session",
+        requestId: "boundary-request",
+        input: "initial",
+        systemPrompt: "Reply briefly.",
+        toolAccessGrant: grant,
+        turnState: turn,
+        tokenBudget: turn.context.tokenBudget,
+        inputBoundary: async (boundary) => {
+          phases.push(boundary.phase);
+          for (const input of boundary.committedInputs) receipts.add(input);
+          await Promise.resolve();
+          if (boundary.phase === "steer" && !steered) {
+            steered = true;
+            await lease.session.steer("supplement");
+          } else if (boundary.phase === "follow_up" && !followed) {
+            followed = true;
+            await lease.session.followUp("next task");
+          }
+        },
+      });
+      try {
+        await lease.session.prompt("initial");
+        expect(compiler.requests).toHaveLength(3);
+        expect(JSON.stringify(compiler.requests[1]?.context.messages)).toContain("supplement");
+        expect(JSON.stringify(compiler.requests[2]?.context.messages)).toContain("next task");
+        expect(phases).toContain("start");
+        expect(receipts.has("supplement")).toBe(true);
+        expect(receipts.has("next task")).toBe(true);
+      } finally {
+        lease.session.dispose();
+      }
+    } finally {
+      await substrate.close();
+      await executor.close();
+    }
+  });
+
+  test("registers channel-scoped tools without exposing them to console turns", async () => {
+    const workspaceRoot = await createTemporaryWorkspace();
+    const registry = new AgentExtensionRegistry();
+    const tool: RegisteredTool = {
+      ...addNumbersTool(workspaceRoot),
+      loading: "Bootstrap",
+      interactionSurfaces: ["channel"],
+      interactionPlatforms: ["onebot11"],
+    };
+    registry.registerToolExtension(tool.owner, [tool]);
+    const projector = new AgentPiToolRegistryProjector({
+      config: testConfig(workspaceRoot),
+      registry,
+      execution: {} as never,
+      toolPlanningMode: "native",
+    });
+    expect(projector.createToolSet().activeToolNames).not.toContain(tool.name);
+    expect(
+      projector.createToolSet(undefined, [], { surface: "channel", platform: "telegram" }).activeToolNames,
+    ).not.toContain(tool.name);
+    expect(
+      projector.createToolSet(undefined, [], { surface: "channel", platform: "onebot11" }).activeToolNames,
+    ).toContain(tool.name);
+    const registered = projector.createRegisteredToolSet();
+    expect(registered.activeToolNames).toContain(tool.name);
+    expect(registered.materialize(() => ({})).map((definition) => definition.name)).toContain(tool.name);
+    expect(registered.refresh().fingerprint).toBe(registered.fingerprint);
+  });
+
   test("loads a newly discovered MCP schema in the same BAML Pi turn", async () => {
     const workspaceRoot = await createTemporaryWorkspace();
     const config = testConfig(workspaceRoot);
@@ -72,6 +181,7 @@ describe("Pi Coding Agent production substrate", () => {
     const systemTools = createAgentSystemTools(config);
     new AgentSystemExtensionCatalog().registerRoot(registry, path.resolve("System", "Extensions"), {
       capabilities: new Set([...listDefaultAgentHostCapabilityNames(), ...systemTools.map(systemToolCapability)]),
+      capabilityUniverse: listAgentSystemExtensionHostCapabilityUniverse(config),
     });
     const dynamicTool: RegisteredTool = {
       ...addNumbersTool(workspaceRoot),
@@ -211,6 +321,7 @@ describe("Pi Coding Agent production substrate", () => {
     const systemTools = createAgentSystemTools(config);
     new AgentSystemExtensionCatalog().registerRoot(registry, path.resolve("System", "Extensions"), {
       capabilities: new Set([...listDefaultAgentHostCapabilityNames(), ...systemTools.map(systemToolCapability)]),
+      capabilityUniverse: listAgentSystemExtensionHostCapabilityUniverse(config),
     });
     const hostCapabilities = new AgentToolHostCapabilityRegistry();
     registerAgentSystemToolHandlers(hostCapabilities, systemTools);
@@ -654,7 +765,7 @@ function addNumbersTool(workspaceRoot: string): RegisteredTool {
     permissions: [],
     handler: { kind: "HostCapability", capability: AddCapability },
     execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
-    runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, ResultAssessment: "ProcessExit" },
+    runtime: { Lifecycle: "Immediate", ResultAssessment: "ProcessExit" },
     sources: [],
     search: {
       Summary: "Add two numbers for deterministic arithmetic tasks.",

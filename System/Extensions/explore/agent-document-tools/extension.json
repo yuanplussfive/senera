@@ -4,20 +4,53 @@
   "id": "agent-document-tools",
   "domain": "explore",
   "settingsSurface": "system-tools",
-  "version": "1.0.0",
-  "displayName": { "zh-CN": "文档理解", "en-US": "Document Understanding" },
+  "usageExamples": [
+    {
+      "title": { "zh-CN": "读懂文档", "en-US": "Read a document" },
+      "prompt": {
+        "zh-CN": "帮我整理这份文档的重点和待办事项。",
+        "en-US": "Summarize this document and extract action items."
+      },
+      "outcome": {
+        "zh-CN": "提取文档文字与结构，结合你的问题整理内容。",
+        "en-US": "Extract document text and structure, then organize it around your question."
+      }
+    }
+  ],
+  "documentation": {
+    "zh-CN": "### 从文档里提取可用内容\n\n用于读取上传或已有文档，整理文字、结构与元数据。你可以要求摘要、信息对照、提取待办，或定位某一段内容。\n\n先上传文件或提供工作区位置，再说明想知道什么。支持的格式和提取方式以工具返回为准；扫描件、图片和复杂排版的处理能力取决于相应读取路径。\n\n这组工具负责理解文档。创建或修改 Word、表格、演示文稿需要使用对应的编辑能力。",
+    "en-US": "### Extract usable information from documents\n\nRead uploaded or existing documents to inspect text, structure and metadata. Ask for summaries, comparisons, action items or specific passages.\n\nUpload the file or provide its workspace location, then describe your question. Supported formats and extraction details are reported by the tools; scans and complex layouts depend on the available reading path.\n\nUnderstanding a document is separate from editing Word, spreadsheets or presentations."
+  },
+  "displayName": {
+    "zh-CN": "文档理解",
+    "en-US": "Document Understanding"
+  },
   "description": {
-    "zh-CN": "探测并提取统一资源中文档的文本、结构和元数据。",
-    "en-US": "Probes and extracts text, structure, and metadata from canonical Senera document resources."
+    "zh-CN": "读取文档中的文字、结构与文件信息。",
+    "en-US": "Read document text, structure, and file metadata."
   },
   "priority": 8,
   "presentation": {
     "category": "document",
     "icon": "file-text",
-    "group": { "id": "document", "title": { "zh-CN": "读取文档", "en-US": "Read documents" } },
-    "activity": { "action": { "zh-CN": "读取文档", "en-US": "Read document" } }
+    "group": {
+      "id": "document",
+      "title": {
+        "zh-CN": "读取文档",
+        "en-US": "Read documents"
+      }
+    },
+    "activity": {
+      "action": {
+        "zh-CN": "读取文档",
+        "en-US": "Read document"
+      }
+    }
   },
-  "configuration": { "schema": "config.schema.json", "ui": "ui.schema.json" },
+  "configuration": {
+    "schema": "config.schema.json",
+    "ui": "ui.schema.json"
+  },
   "contributions": [
     {
       "kind": "hostTool",

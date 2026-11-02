@@ -30,7 +30,7 @@ export interface AgentToolSearchCapabilityReuseOptions {
 
 /**
  * Keeps confirmed Dynamic-tool evidence separate from discovery ranking.
- * Catalog and contract revisions are checked at every read, so a successful
+ * The current tool contract is checked at every read, so a successful
  * invocation never becomes permission to reuse a replacement tool.
  */
 export class AgentToolSearchCapabilityReuse {
@@ -87,7 +87,7 @@ export class AgentToolSearchCapabilityReuse {
     if (!options.sessionId) return undefined;
     const tool = this.options.registry.getTool(options.toolName);
     if (!tool || !isAgentToolExecutable(tool)) return undefined;
-    return this.options.cache.getReusable({
+    return this.options.cache.getConfirmed({
       sessionId: options.sessionId,
       logicalCacheScope: options.logicalCacheScope,
       toolName: options.toolName,

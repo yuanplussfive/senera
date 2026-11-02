@@ -18,6 +18,8 @@ export interface AgentSelfSkillSource {
   readonly displayName: string;
   readonly kind: "system" | "workspace";
   readonly root: string;
+  /** Registered immediate child directories; omitted for an unrestricted inventory root. */
+  readonly skillDirectories?: readonly string[];
 }
 
 export interface AgentSelfSkillSummary {
@@ -142,6 +144,7 @@ export interface AgentSelfPromptPresetEntry {
 }
 
 export interface AgentSelfPromptPresetStatus {
+  readonly agentId: string;
   readonly root: string;
   readonly valid: boolean;
   readonly enabled: boolean;
@@ -164,11 +167,13 @@ export type AgentSelfPromptPresetReadResult =
 export type AgentSelfPromptPresetMutationResult =
   | {
       readonly status: "enabled";
+      readonly agentId: string;
       readonly enabled: boolean;
       readonly activePath: string;
     }
   | {
       readonly status: "disabled";
+      readonly agentId: string;
       readonly enabled: boolean;
       readonly activePath: string;
     }
@@ -176,12 +181,27 @@ export type AgentSelfPromptPresetMutationResult =
 
 /**
  * Host services the senera self-service commands need. The same command
- * vocabulary powers the model-facing `SeneraCommand` host tool and the
+ * vocabulary powers the model-facing `senera CLI` host tool and the
  * human-facing `senera` CLI; both dispatch through this port on the live
  * service process, so every command is revision-guarded, validated, and
  * broadcast to the frontend. There is no standalone file-writing path.
  */
 export interface AgentSelfServicePort {
+  readonly cli?: import("./AgentSelfCliRuntime.js").AgentSelfCliRuntime;
+  readonly diaries?: {
+    forSubject?(subject: string): NonNullable<AgentSelfServicePort["diaries"]>;
+    list(
+      period?: string,
+      agentId?: string,
+    ): {
+      readonly index: string;
+      readonly entries: readonly import("../Continuity/AgentMemoryDiaryContract.js").AgentMemoryDiaryEntry[];
+    };
+    read(
+      period: string,
+      agentId?: string,
+    ): import("../Continuity/AgentMemoryDiaryStore.js").AgentMemoryDiaryRead | undefined;
+  };
   readonly workspaceRoot: string;
   /** Absolute path of the active configuration file, for `senera config env-path`. */
   readonly configPath?: string;
@@ -207,6 +227,8 @@ export interface AgentSelfServicePort {
       modelProviderId: string,
       source?: "user" | "agent" | "channel",
     ): Promise<AgentSessionModelPreferenceMutationResult>;
+    /** Authoritative Agent ownership for commands scoped to the active session. */
+    resolveAgentId(sessionId: string): string | undefined;
     /** Snapshot used to publish an immediate session update after a mutation. */
     snapshot(sessionId: string): AgentSessionSnapshot | undefined;
   };
@@ -259,14 +281,14 @@ export interface AgentSelfServicePort {
     history(name: string): readonly AgentSelfSkillHistoryEntry[];
   };
   readonly promptPresets?: {
-    /** Lists workspace Markdown presets and the host-owned activation pointer. */
-    status(): Promise<AgentSelfPromptPresetStatus>;
+    /** Lists shared Markdown documents and the selected Agent's activation state. */
+    status(agentId?: string): Promise<AgentSelfPromptPresetStatus>;
     /** Reads one path after validating it against the fixed prompts/ contract. */
     read(path: string): Promise<AgentSelfPromptPresetReadResult>;
-    /** Enables one existing Markdown preset through an atomic host-owned write. */
-    enable(path: string): Promise<AgentSelfPromptPresetMutationResult>;
+    /** Selects and enables a document through the canonical Agent directory. */
+    enable(path: string, agentId?: string): Promise<AgentSelfPromptPresetMutationResult>;
     /** Disables the active preset without removing user content. */
-    disable(): Promise<AgentSelfPromptPresetMutationResult>;
+    disable(agentId?: string): Promise<AgentSelfPromptPresetMutationResult>;
   };
   readonly channels?: {
     /** Resolved channel configuration; command projection applies redaction. */
@@ -290,99 +312,7 @@ export type AgentSelfConfigRevisionReadResult =
   | { readonly status: "unavailable" }
   | { readonly status: "missing" };
 
-export type AgentSelfCommand =
-  | { readonly command: "config"; readonly action: "get"; readonly path?: string }
-  | { readonly command: "config"; readonly action: "models" }
-  | { readonly command: "config"; readonly action: "endpoints" }
-  | { readonly command: "config"; readonly action: "update"; readonly path: string; readonly value: unknown }
-  | { readonly command: "config"; readonly action: "history" }
-  | { readonly command: "config"; readonly action: "env-path" }
-  | { readonly command: "config"; readonly action: "check" }
-  | { readonly command: "config"; readonly action: "rollback"; readonly revision: number }
-  | { readonly command: "workspace"; readonly action: "info" }
-  | { readonly command: "sessions"; readonly action: "list" }
-  | {
-      readonly command: "session";
-      readonly action: "model";
-      readonly operation: "get" | "set";
-      readonly modelProviderId?: string;
-      readonly sessionId?: string;
-    }
-  | { readonly command: "plugins"; readonly action: "list" }
-  | { readonly command: "preset"; readonly action: "list" | "status" }
-  | { readonly command: "preset"; readonly action: "read"; readonly path: string }
-  | { readonly command: "preset"; readonly action: "enable"; readonly path: string }
-  | { readonly command: "preset"; readonly action: "disable" }
-  | { readonly command: "channels"; readonly action: "list" }
-  | { readonly command: "channels"; readonly action: "get"; readonly channel: "telegram" | "qq" | "discord" }
-  | {
-      readonly command: "channels";
-      readonly action: "update";
-      readonly channel: "telegram" | "qq" | "discord";
-      readonly path: string;
-      readonly value: unknown;
-    }
-  | { readonly command: "skills"; readonly action: "list" }
-  | { readonly command: "skills"; readonly action: "search"; readonly query: string; readonly limit?: number }
-  | { readonly command: "skills"; readonly action: "inspect"; readonly name: string }
-  | { readonly command: "skills"; readonly action: "resources"; readonly name: string }
-  | {
-      readonly command: "skills";
-      readonly action: "read";
-      readonly name: string;
-      readonly path: string;
-      readonly revision?: string;
-    }
-  | { readonly command: "skills"; readonly action: "diff"; readonly name: string; readonly revision: string }
-  | { readonly command: "skills"; readonly action: "check"; readonly name?: string }
-  | { readonly command: "skills"; readonly action: "history"; readonly name: string }
-  | { readonly command: "skills"; readonly action: "create"; readonly name: string; readonly content: string }
-  | {
-      readonly command: "skills";
-      readonly action: "update";
-      readonly name: string;
-      readonly content: string;
-      readonly expectedRevision: string;
-    }
-  | { readonly command: "skills"; readonly action: "archive"; readonly name: string; readonly expectedRevision: string }
-  | { readonly command: "skills"; readonly action: "restore"; readonly name: string; readonly revision: string }
-  | { readonly command: "capabilities" }
-  | { readonly command: "logs"; readonly action: "list" }
-  | {
-      readonly command: "logs";
-      readonly action: "latest";
-      readonly kind?: string;
-      readonly level?: string;
-      readonly scope?: string;
-      readonly stream?: string;
-      readonly limit?: number;
-    }
-  | {
-      readonly command: "logs";
-      readonly action: "range";
-      readonly from: string;
-      readonly to: string;
-      readonly kind?: string;
-      readonly level?: string;
-      readonly scope?: string;
-      readonly stream?: string;
-      readonly limit?: number;
-    }
-  | { readonly command: "logs"; readonly action: "session"; readonly sessionId: string; readonly limit?: number }
-  | { readonly command: "logs"; readonly action: "next"; readonly cursor: string; readonly limit?: number }
-  | { readonly command: "logs"; readonly action: "detail"; readonly detailId: string }
-  | { readonly command: "logs"; readonly action: "trace"; readonly requestId: string; readonly limit?: number }
-  | { readonly command: "logs"; readonly action: "health" }
-  | { readonly command: "logs"; readonly action: "streams" }
-  | { readonly command: "logs"; readonly action: "tail"; readonly name: string; readonly lines?: number }
-  | { readonly command: "status" }
-  | { readonly command: "doctor"; readonly action: "status" }
-  | {
-      readonly command: "approval";
-      readonly action: "resolve";
-      readonly approvalId: string;
-      readonly decision: "approve" | "deny";
-    };
+export type AgentSelfCommand = import("./AgentSelfCommandSchema.js").AgentSelfCommandSchemaInput;
 
 export interface AgentSelfPluginCommand {
   readonly command: string;
@@ -391,6 +321,17 @@ export interface AgentSelfPluginCommand {
 }
 
 export type AgentSelfInvocation = AgentSelfCommand | AgentSelfPluginCommand;
+
+/**
+ * The slice of a command result the model has to act on, declared by the
+ * producer that already holds the typed value. `data` omitted means the text is
+ * the whole answer and the model receives no structured payload at all.
+ */
+export interface AgentSelfModelProjection {
+  readonly data?: unknown;
+  /** The one revision a follow-up mutation must quote. */
+  readonly revision?: string;
+}
 
 export interface AgentSelfCommandOutput {
   readonly ok: boolean;
@@ -405,6 +346,11 @@ export interface AgentSelfCommandOutput {
     readonly reason: string;
     readonly deadlineAt: string;
   };
+  /** Present when `data` carries more than the model needs. The CLI and the
+   * HTTP adapters keep reading the complete `data`; the host tool reads this
+   * instead. `projectAgentSelfHttpPayload` whitelists the wire fields, so it
+   * never reaches an HTTP response. */
+  readonly model?: AgentSelfModelProjection;
 }
 
 export interface AgentSelfWorkspaceInfo {

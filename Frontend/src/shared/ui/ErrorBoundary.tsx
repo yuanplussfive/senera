@@ -1,9 +1,15 @@
-import { Component, type ErrorInfo, type ReactNode, useId, useState } from "react";
+import { Component, type ErrorInfo, type ReactNode, lazy, Suspense, useId, useState } from "react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { AppIcon } from "./AppIcon";
 import { RetryButton } from "./StateView";
 import { useClipboardCopy } from "./useClipboardCopy";
+
+// Recovery controls stay usable immediately; hover details do not enter the bootstrap bundle.
+const ErrorDetailsTooltip = lazy(async () => {
+  const { ErrorDetailsTooltip } = await import("./ErrorDetailsTooltip");
+  return { default: ErrorDetailsTooltip };
+});
 
 export interface ErrorBoundaryProps {
   children: ReactNode;
@@ -85,6 +91,19 @@ function DefaultErrorFallback({ error, onReset, onReload, presentation }: Defaul
   const Container = appPresentation ? "main" : "section";
   const Heading = appPresentation ? "h1" : "h2";
   const trace = error.stack || error.message;
+  const copyButton = (
+    <button
+      type="button"
+      onClick={() => void copyText(trace)}
+      aria-label={frontendMessage("app.errorBoundary.copyDetails")}
+      className="grid h-5 w-5 shrink-0 cursor-pointer place-items-center rounded text-content-muted transition-colors hover:bg-ink-900/[0.05] hover:text-content-primary active:scale-[0.94]"
+    >
+      <span className="t-icon-swap h-3 w-3" data-state={copied ? "b" : "a"} aria-hidden="true">
+        <AppIcon icon="copy" size={12} className="t-icon" data-icon="a" />
+        <AppIcon icon="checkmark" size={12} className="t-icon" data-icon="b" />
+      </span>
+    </button>
+  );
 
   return (
     <Container
@@ -146,18 +165,9 @@ function DefaultErrorFallback({ error, onReset, onReload, presentation }: Defaul
                   {frontendMessage(detailsExpanded ? "app.errorBoundary.hideDetails" : "app.errorBoundary.details")}
                 </span>
               </button>
-              <button
-                type="button"
-                onClick={() => void copyText(trace)}
-                aria-label={frontendMessage("app.errorBoundary.copyDetails")}
-                title={frontendMessage("app.errorBoundary.copyDetails")}
-                className="grid h-5 w-5 shrink-0 cursor-pointer place-items-center rounded text-content-muted transition-colors hover:bg-ink-900/[0.05] hover:text-content-primary active:scale-[0.94]"
-              >
-                <span className="t-icon-swap h-3 w-3" data-state={copied ? "b" : "a"} aria-hidden="true">
-                  <AppIcon icon="copy" size={12} className="t-icon" data-icon="a" />
-                  <AppIcon icon="checkmark" size={12} className="t-icon" data-icon="b" />
-                </span>
-              </button>
+              <Suspense fallback={copyButton}>
+                <ErrorDetailsTooltip>{copyButton}</ErrorDetailsTooltip>
+              </Suspense>
             </div>
             {detailsExpanded ? (
               <div

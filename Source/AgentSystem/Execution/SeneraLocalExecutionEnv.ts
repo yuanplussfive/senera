@@ -15,15 +15,13 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
-  ExecutionError,
-  FileError,
-  type Context,
-  type FileInfo,
-  type ShellOutputMetadata,
-} from "@earendil-works/pi-agent-core";
-import type { Result } from "@earendil-works/pi-agent-core";
+  SeneraFileError as FileError,
+  type SeneraOperationContext as Context,
+  type SeneraFileInfo as FileInfo,
+  type SeneraOperationResult as Result,
+} from "./SeneraFileSystemTypes.js";
 import type {
-  SeneraExecutionErrorCode,
+  SeneraShellOutputMetadata,
   SeneraExecutionEnv,
   SeneraArgvExecutionRequest,
   SeneraExecutionContext,
@@ -251,7 +249,7 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
     command: string,
     options?: SeneraShellExecOptions,
     context?: Context,
-  ): Promise<Result<SeneraShellExecResult, ExecutionError>> {
+  ): Promise<Result<SeneraShellExecResult, SeneraExecutionError>> {
     const signal = options?.abortSignal ?? context?.abortSignal;
     try {
       const result = await this.executeShell({
@@ -288,7 +286,7 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
         ...createShellOutputMetadata(result, options),
       });
     } catch (error) {
-      return err(toPiExecutionError(error));
+      return err(toExecutionError(error));
     }
   }
 
@@ -519,6 +517,23 @@ export class SeneraLocalExecutionEnv implements SeneraExecutionEnv {
       return fileInfoFromStats(resolved, await lstat(resolved));
     } catch (error) {
       return err(toFileError(error, resolved));
+    }
+  }
+
+  async readDirectoryNames(
+    value: string,
+    contextOrSignal?: SeneraExecutionContext,
+  ): Promise<Result<string[], FileError>> {
+    const abortSignal = resolveAbortSignal(contextOrSignal);
+    const pathResult = await this.resolveFilePath(value, AgentResourceAccessIntents.Read);
+    if (!pathResult.ok) return pathResult;
+    if (abortSignal?.aborted) return err(new FileError("aborted", "aborted", pathResult.value));
+    try {
+      const names = await readdir(pathResult.value);
+      if (abortSignal?.aborted) return err(new FileError("aborted", "aborted", pathResult.value));
+      return ok(names);
+    } catch (error) {
+      return err(toFileError(error, pathResult.value));
     }
   }
 
@@ -776,7 +791,7 @@ function err<TError>(error: TError): Result<never, TError> {
 
 function resolveAbortSignal(contextOrSignal: SeneraExecutionContext): AbortSignal | undefined {
   if (!contextOrSignal) return undefined;
-  return "abortSignal" in contextOrSignal ? contextOrSignal.abortSignal : contextOrSignal;
+  return "aborted" in contextOrSignal ? contextOrSignal : contextOrSignal.abortSignal;
 }
 
 function createShellOutputMetadata(
@@ -785,7 +800,7 @@ function createShellOutputMetadata(
     "stdout" | "stderr" | "stdoutBytes" | "stderrBytes" | "stdoutTruncated" | "stderrTruncated" | "outputCapture"
   >,
   options: SeneraShellExecOptions | undefined,
-): ShellOutputMetadata {
+): SeneraShellOutputMetadata {
   const text = `${result.stdout}${result.stderr}`;
   const totalBytes = Buffer.byteLength(text, "utf8");
   const totalLines = text.length === 0 ? 0 : text.split("\n").length;
@@ -816,28 +831,10 @@ function toBoundaryFileError(error: unknown, filePath: string): FileError {
   return toFileError(error, filePath);
 }
 
-const PiExecutionCodeBySeneraCode = {
-  [SeneraExecutionErrorCodes.Aborted]: "aborted",
-  [SeneraExecutionErrorCodes.InvalidWorkspacePath]: "unknown",
-  [SeneraExecutionErrorCodes.Timeout]: "timeout",
-  [SeneraExecutionErrorCodes.StdoutLimitExceeded]: "unknown",
-  [SeneraExecutionErrorCodes.StderrLimitExceeded]: "unknown",
-  [SeneraExecutionErrorCodes.SandboxUnavailable]: "unknown",
-  [SeneraExecutionErrorCodes.SpawnFailed]: "spawn_error",
-  [SeneraExecutionErrorCodes.CleanupFailed]: "unknown",
-  [SeneraExecutionErrorCodes.Unknown]: "unknown",
-} satisfies Record<SeneraExecutionErrorCode, ConstructorParameters<typeof ExecutionError>[0]>;
-
-function toPiExecutionError(error: unknown): ExecutionError {
-  if (error instanceof ExecutionError) {
-    return error;
-  }
-  if (error instanceof SeneraExecutionError) {
-    return new ExecutionError(PiExecutionCodeBySeneraCode[error.code], error.message, error);
-  }
-
+function toExecutionError(error: unknown): SeneraExecutionError {
+  if (error instanceof SeneraExecutionError) return error;
   const cause = error instanceof Error ? error : new Error(String(error));
-  return new ExecutionError("unknown", cause.message, cause);
+  return new SeneraExecutionError(SeneraExecutionErrorCodes.Unknown, cause.message, {}, cause);
 }
 
 function fileInfoFromStats(

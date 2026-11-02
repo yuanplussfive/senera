@@ -57,14 +57,13 @@ System/Extensions/example-domain/example-extension/
 
 The host records the complete redacted result as an Artifact when durable capture is applicable, then the Pi bridge applies a shared token budget to the model-facing observation. Tool packages must not define observation projection files, content policies, inline thresholds, or per-tool compression behavior. See [Tool Observation Compression](../Architecture/ToolObservationCompression.md).
 
-Host implementation code stays under `Source/AgentSystem/SystemTools` or another host-owned module and is registered in code. A package cannot name a module to import. For a Zod-defined tool, run:
+Host implementation code stays under `Source/AgentSystem/SystemTools` or another host-owned module and is registered in code. A package cannot name a module to import. After editing a package contract or its executor binding, run:
 
 ```bash
-npm run generate.system-extension-contracts
 npm run verify.system-extension-contracts
 ```
 
-Every System Tool runtime contract declares `Lifecycle`, `ProtocolVersion`, `ResultAssessment`, and `Scheduling`. Use `Parallel` for independent calls, `ResourceClaims` with explicit RFC 6901 resource declarations for data conflicts, and `SelfManaged` only when the host implementation owns scheduling. `Runtime.MaxConcurrency` may place a stricter tool-wide limit on `Parallel` or `ResourceClaims`; omit it to inherit the run limit. `ProcessExit` interprets nonzero process exits as failure; `Unassessed` preserves exit data for the model. These policies are fixed by the contract and are never model-controlled.
+Every System Tool runtime contract declares `Lifecycle`, `ResultAssessment`, and `Scheduling`. The in-process `HostCapability` protocol is product-owned rather than repeated in every `.tool.json`; its global revision participates in the projected contract digest. Use `Parallel` for independent calls, `ResourceClaims` with explicit RFC 6901 resource declarations for data conflicts, and `SelfManaged` only when the host implementation owns scheduling. `Runtime.MaxConcurrency` may place a stricter tool-wide limit on `Parallel` or `ResourceClaims`; omit it to inherit the run limit. `ProcessExit` interprets nonzero process exits as failure; `Unassessed` preserves exit data for the model. These policies are fixed by the contract and are never model-controlled.
 
 An empty `resources` array does not request a global lock. Resource declarations and scheduling mode must agree, and invalid claim projection fails explicitly. The default run capacity comes from `ToolExecution.MaxConcurrentCallsPerRun` and is 10 unless deployment configuration overrides it.
 

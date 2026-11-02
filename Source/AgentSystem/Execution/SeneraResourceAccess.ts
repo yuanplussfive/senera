@@ -1,4 +1,5 @@
 import path from "node:path";
+import { z } from "zod";
 import type { AgentWorkspaceResourceDomain } from "../Core/AgentWorkspaceLayout.js";
 import { isPathWithin, isSamePath } from "../Core/AgentPath.js";
 
@@ -60,6 +61,42 @@ export interface AgentResourceAccessGrantEntry {
   readonly recursive: boolean;
 }
 
+export const AgentResourceAccessScopeSchema = z
+  .object({
+    resources: z.array(
+      z
+        .object({
+          canonicalPath: z
+            .string()
+            .min(1)
+            .refine((value) => path.isAbsolute(value), "Resource scope paths must be absolute."),
+          intent: z.enum(AgentResourceAccessIntents),
+          recursive: z.boolean(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+
+export interface AgentResourceAccessScope {
+  readonly resources: readonly AgentResourceAccessGrantEntry[];
+}
+
+export function resourceAccessScopeAllows(
+  scope: AgentResourceAccessScope,
+  canonicalPath: string,
+  intent: AgentResourceAccessIntent,
+  recursive = false,
+): boolean {
+  const target = path.resolve(canonicalPath);
+  return scope.resources.some(
+    (resource) =>
+      intentIsCovered(resource.intent, intent) &&
+      (!recursive || resource.recursive) &&
+      (resource.recursive ? isPathWithin(resource.canonicalPath, target) : isSamePath(resource.canonicalPath, target)),
+  );
+}
+
 export interface AgentResourceAccessBinding {
   readonly sessionId?: string;
   readonly requestId?: string;
@@ -98,12 +135,7 @@ export function resourceAccessGrantAllows(
   intent: AgentResourceAccessIntent,
 ): boolean {
   if (grant.mode === AgentResourceAccessGrantModes.FullHost) return true;
-  const target = path.resolve(canonicalPath);
-  return grant.resources.some(
-    (resource) =>
-      intentIsCovered(resource.intent, intent) &&
-      (resource.recursive ? isPathWithin(resource.canonicalPath, target) : isSamePath(resource.canonicalPath, target)),
-  );
+  return resourceAccessScopeAllows(grant, canonicalPath, intent);
 }
 
 export function resourceAccessGrantMatchesBinding(

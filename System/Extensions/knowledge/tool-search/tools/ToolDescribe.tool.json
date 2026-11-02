@@ -21,7 +21,7 @@
     "properties": {
       "tools": {
         "type": "array",
-        "items": { "type": "string" },
+        "items": { "type": "string", "minLength": 1, "pattern": "\\S" },
         "minItems": 1,
         "maxItems": 12,
         "description": "需要说明的准确工具名。"
@@ -95,7 +95,6 @@
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
   "runtime": {
     "Lifecycle": "Immediate",
-    "ProtocolVersion": 2,
     "ResultAssessment": "ProcessExit",
     "Scheduling": "Parallel",
     "Capabilities": { "Cancellation": true }

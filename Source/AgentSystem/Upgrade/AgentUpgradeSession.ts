@@ -61,6 +61,7 @@ export class AgentUpgradeSession {
   private readonly operationId: () => string;
   private manifest: AgentUpgradeManifest | undefined;
   private releaseLock: (() => void) | undefined;
+  private startupHealthy = false;
 
   constructor(private readonly options: AgentUpgradeSessionOptions) {
     const workspaceRoot = path.resolve(options.workspaceRoot);
@@ -112,7 +113,7 @@ export class AgentUpgradeSession {
     this.dryRunSqlite(participant, input.contract);
     migrateAgentSqliteStore(input.database, input.contract);
     assertSqliteHealth(input.database, input.contract.id);
-    this.updateParticipant(participant.id, AgentUpgradeParticipantPhases.Migrated, "migration.applied");
+    this.completeMigration(participant.id);
   }
 
   migrateSqliteData(input: AgentSqliteDataUpgradeInput): void {
@@ -128,7 +129,7 @@ export class AgentUpgradeSession {
     this.dryRunSqliteData(participant, input);
     input.migrate(input.database);
     assertSqliteHealth(input.database, input.id);
-    this.updateParticipant(participant.id, AgentUpgradeParticipantPhases.Migrated, "migration.applied");
+    this.completeMigration(participant.id);
   }
 
   prepareDerivedSqliteRebuild(input: AgentDerivedSqliteUpgradeInput): void {
@@ -147,7 +148,7 @@ export class AgentUpgradeSession {
   }
 
   markSqliteMigrationApplied(id: string): void {
-    this.updateParticipant(id, AgentUpgradeParticipantPhases.Migrated, "migration.applied");
+    this.completeMigration(id);
   }
 
   backupFileMigration(input: { id: string; sourcePath: string; sourceVersion?: number; targetVersion?: number }): void {
@@ -183,7 +184,7 @@ export class AgentUpgradeSession {
   }
 
   markFileMigrationApplied(id: string): void {
-    this.updateParticipant(id, AgentUpgradeParticipantPhases.Migrated, "migration.applied");
+    this.completeMigration(id);
   }
 
   markStarting(): void {
@@ -206,6 +207,7 @@ export class AgentUpgradeSession {
     });
     this.unlock();
     this.manifest = undefined;
+    this.startupHealthy = true;
   }
 
   failAndRollback(error: unknown): void {
@@ -388,6 +390,13 @@ export class AgentUpgradeSession {
     if (!participant) throw new Error(`Upgrade participant is not registered: ${id}`);
     participant.phase = phase;
     this.record(event, id);
+  }
+
+  private completeMigration(id: string): void {
+    this.updateParticipant(id, AgentUpgradeParticipantPhases.Migrated, "migration.applied");
+    // Lazy stores can migrate after the server's readiness probe. Commit before
+    // callers can write business data, so restart recovery cannot rewind it.
+    if (this.startupHealthy) this.markHealthy();
   }
 
   private record(phase: string, participantId?: string, detail?: string): void {

@@ -178,7 +178,6 @@
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadWrite" },
   "runtime": {
     "Lifecycle": "Immediate",
-    "ProtocolVersion": 2,
     "ResultAssessment": "ProcessExit",
     "Scheduling": "ResourceClaims",
     "MaxConcurrency": 1,
@@ -296,6 +295,11 @@
       "applied": { "type": "boolean", "const": true },
       "operationCount": { "type": "integer", "minimum": 1, "maximum": 64 },
       "changedPaths": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+      "externalChangedPaths": {
+        "type": "array",
+        "items": { "type": "string", "minLength": 1 },
+        "description": "Authorized paths outside the current workspace. Transaction rollback applies; workspace undo checkpoints cover workspace paths only."
+      },
       "operations": {
         "minItems": 1,
         "maxItems": 64,

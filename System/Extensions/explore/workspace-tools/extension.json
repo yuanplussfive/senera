@@ -4,18 +4,48 @@
   "id": "workspace-tools",
   "domain": "explore",
   "settingsSurface": "system-tools",
-  "version": "1.0.0",
-  "displayName": { "zh-CN": "工作区工具", "en-US": "Workspace Tools" },
+  "usageExamples": [
+    {
+      "title": { "zh-CN": "找到相关代码", "en-US": "Find relevant files" },
+      "prompt": {
+        "zh-CN": "找一下模型选择菜单在哪个文件里实现。",
+        "en-US": "Find the file that implements the model selection menu."
+      },
+      "outcome": {
+        "zh-CN": "浏览目录、搜索文件和内容，读取与问题相关的代码。",
+        "en-US": "Browse directories, search files and content, and read relevant code."
+      }
+    }
+  ],
+  "documentation": {
+    "zh-CN": "### 从当前工作区找答案\n\n目录、文件名与文件内容都可以成为查找入口。适合定位实现、理解配置和检查修改前的上下文。\n\n- 浏览目录与定位文件。\n- 搜索符号、文本和相关调用。\n- 读取文件内容，再决定下一步操作。\n\n给出大致功能、文件名或一段报错即可开始。这里只读取与搜索；需要修改时由补丁或其他写入工具接续。",
+    "en-US": "### Find answers in the workspace\n\nLocate implementations and configuration through directories, filenames and file content.\n\n- Browse directories and locate files.\n- Search symbols, text and related calls.\n- Read the surrounding context before deciding what to do.\n\nStart with a feature, filename or error message. Reading and searching are separate from edits handled by patch or other write tools."
+  },
+  "displayName": {
+    "zh-CN": "工作区工具",
+    "en-US": "Workspace Tools"
+  },
   "description": {
-    "zh-CN": "使用 Pi 原生文件工具安全地读取、搜索和浏览当前工作区。",
-    "en-US": "Safely reads, searches, and browses the current workspace with Pi's native file tools."
+    "zh-CN": "读取文件，搜索内容，浏览工作区目录。",
+    "en-US": "Read files, search content, and browse workspace directories."
   },
   "priority": 95,
   "presentation": {
     "category": "workspace",
-    "icon": "folder",
-    "group": { "id": "workspace", "title": { "zh-CN": "浏览工作区", "en-US": "Explore workspace" } },
-    "activity": { "action": { "zh-CN": "查看工作区", "en-US": "Inspect workspace" } }
+    "icon": "folder-open",
+    "group": {
+      "id": "workspace",
+      "title": {
+        "zh-CN": "浏览工作区",
+        "en-US": "Explore workspace"
+      }
+    },
+    "activity": {
+      "action": {
+        "zh-CN": "查看工作区",
+        "en-US": "Inspect workspace"
+      }
+    }
   },
   "contributions": [
     {

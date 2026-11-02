@@ -23,11 +23,6 @@ export interface AgentToolSearchConfig {
   Embedding?: {
     Enabled?: boolean;
   };
-  Tokenize?: {
-    /** Retrieval-only stopwords removed from query tokens before lexical and
-     * fuzzy matching. Empty disables filtering. */
-    Stopwords?: string[];
-  };
   Memory?: {
     MaxEpisodes?: number;
     HalfLifeDays?: number;
@@ -54,9 +49,6 @@ export interface ResolvedAgentToolSearchConfig {
   };
   Embedding: {
     Enabled: boolean;
-  };
-  Tokenize: {
-    Stopwords: string[];
   };
   Memory: {
     MaxEpisodes: number;
@@ -118,12 +110,16 @@ export interface AgentContinuityLearningConfig {
     KnowledgeCandidateLimit?: number;
     /** Model-token ceiling for assistant previews used by semantic extraction. */
     AssistantPreviewTokens?: number;
-    /** Maximum model-token payload for one daily/monthly digest batch. */
-    DigestInputTokenBudget?: number;
-    /** Maximum model tokens emitted by fragment and period summaries. */
-    DigestSummaryTokenLimit?: number;
+    /** Complete model input ceiling for relevance and fact-retention assessment. */
+    RelevanceInputTokenBudget?: number;
+    /** Maximum model tokens retained per semantic fragment. */
+    FragmentSummaryTokenLimit?: number;
   };
+  Diary?: Partial<import("../Continuity/AgentMemoryDiaryContract.js").AgentMemoryDiaryConfig>;
+  Retention?: Partial<import("../Continuity/AgentMemoryRetention.js").AgentMemoryRetentionPolicy>;
   Recall?: {
+    FrozenBudgetRatio?: number;
+    TaskBudgetRatio?: number;
     PromptBudget?: {
       MaxTokens?: number;
     };
@@ -131,6 +127,8 @@ export interface AgentContinuityLearningConfig {
 }
 
 export interface AgentContinuityLearningRecallConfig {
+  FrozenBudgetRatio?: number;
+  TaskBudgetRatio?: number;
   PromptBudget: AgentContinuityPromptBudgetConfig;
 }
 
@@ -145,8 +143,8 @@ export interface AgentContinuityMemOSConfig {
   FragmentHistoryTurns: number;
   KnowledgeCandidateLimit: number;
   AssistantPreviewTokens: number;
-  DigestInputTokenBudget: number;
-  DigestSummaryTokenLimit: number;
+  RelevanceInputTokenBudget: number;
+  FragmentSummaryTokenLimit: number;
 }
 
 export interface AgentContinuityLearningRuntimeConfig {
@@ -161,6 +159,8 @@ export interface ResolvedAgentContinuityLearningConfig {
   Client: ResolvedAgentActionPlannerClientConfig;
   Runtime: AgentContinuityLearningRuntimeConfig;
   MemOS: AgentContinuityMemOSConfig;
+  Diary: import("../Continuity/AgentMemoryDiaryContract.js").AgentMemoryDiaryConfig;
+  Retention: import("../Continuity/AgentMemoryRetention.js").AgentMemoryRetentionPolicy;
   Recall: AgentContinuityLearningRecallConfig;
   UsesDefaultModel: boolean;
 }

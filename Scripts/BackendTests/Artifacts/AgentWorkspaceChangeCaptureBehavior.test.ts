@@ -2,7 +2,15 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { AgentWorkspaceChangeCapture } from "../../../Source/AgentSystem/Artifacts/AgentWorkspaceChangeCapture.js";
+import {
+  AgentWorkspaceChangeCapture,
+  mergeAgentWorkspaceCaptures,
+} from "../../../Source/AgentSystem/Artifacts/AgentWorkspaceChangeCapture.js";
+import {
+  createAgentWorkspaceUndoCheckpoint,
+  workspaceSnapshotRevision,
+} from "../../../Source/AgentSystem/Continuity/AgentContinuityLedger.js";
+import { restoreAgentWorkspaceCheckpoint } from "../../../Source/AgentSystem/Artifacts/AgentWorkspaceCheckpointRecovery.js";
 import type { ToolArtifactPolicyManifest } from "../../../Source/AgentSystem/Types/AgentToolContractTypes.js";
 import {
   AgentWorkspaceMutationReceiptProtocol,
@@ -118,6 +126,48 @@ describe("AgentWorkspaceChangeCapture", () => {
     const capture = new AgentWorkspaceChangeCapture({ workspaceRoot: await createWorkspace() });
 
     expect(() => capture.capture({ policy: receiptPolicy() })).toThrow(/mutation receipt is missing or invalid/i);
+  });
+
+  test("merges observed and exact changes into one restorable checkpoint without losing writer authority", async () => {
+    const workspaceRoot = await createWorkspace();
+    const capture = new AgentWorkspaceChangeCapture({ workspaceRoot });
+    const exact = capture.capture({
+      policy: receiptPolicy(),
+      mutationReceipt: mutationReceipt([
+        { path: "code.txt", before: textImage("original"), after: textImage("committed") },
+      ]),
+    })!;
+    const observed = capture.capture({
+      policy: receiptPolicy(),
+      mutationReceipt: mutationReceipt([
+        { path: "code.txt", before: textImage("stale"), after: textImage("stale observation") },
+        { path: "image.bin", before: { kind: "missing" }, after: { kind: "file", bytes: Buffer.from([0, 255, 42]) } },
+      ]),
+    })!;
+    const merged = mergeAgentWorkspaceCaptures(exact, observed)!;
+    expect(merged.checkpoint?.changedPaths).toEqual(["code.txt", "image.bin"]);
+    expect(merged.checkpoint?.baseRevision).toBe(workspaceSnapshotRevision(merged.before));
+    expect(merged.checkpoint?.revision).toBe(workspaceSnapshotRevision(merged.after));
+    await fs.writeFile(path.join(workspaceRoot, "code.txt"), "committed");
+    await fs.writeFile(path.join(workspaceRoot, "image.bin"), Buffer.from([0, 255, 42]));
+    await restoreAgentWorkspaceCheckpoint({
+      workspaceRoot,
+      artifactRoot: workspaceRoot,
+      checkpoint: merged.checkpoint!,
+      target: merged.before,
+      currentSnapshot: merged.after,
+      targetKind: "before",
+      requireComplete: true,
+    });
+    expect(await fs.readFile(path.join(workspaceRoot, "code.txt"), "utf8")).toBe("original");
+    expect(await fs.stat(path.join(workspaceRoot, "image.bin")).catch(() => undefined)).toBeUndefined();
+    expect(
+      createAgentWorkspaceUndoCheckpoint({
+        before: { ...merged.before, files: [] },
+        after: merged.after,
+        changes: merged.changes,
+      }),
+    ).toBeUndefined();
   });
 
   test("retains exact identities when preview content reaches the declared bound", async () => {

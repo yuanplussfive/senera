@@ -38,6 +38,8 @@ import { findAgentSelfPluginCommand, listAgentSelfBuiltinCommandSpecs } from "./
 import { AgentSelfCommandSchema, AgentSelfPluginCommandEnvelopeSchema } from "./AgentSelfCommandSchema.js";
 import type { AgentSelfInvocation } from "./AgentSelfServiceTypes.js";
 import { describeAgentSelfCapabilities, projectAgentSelfCapabilities } from "./AgentSelfCapabilities.js";
+import { formatAgentTimeDisplay } from "../Time/AgentTime.js";
+import { executeAgentSelfDiary } from "./AgentSelfDiary.js";
 import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
 import { projectInvalidAgentSelfInvocation, readAgentSelfCommandRoot } from "./AgentSelfCommandValidation.js";
 import { AgentChannelsConfigPathPrefix } from "../Channels/AgentChannelsConfig.js";
@@ -56,6 +58,8 @@ export async function executeAgentSelfCommand(
 ): Promise<AgentSelfCommandOutput> {
   try {
     switch (invocation.command) {
+      case "diary":
+        return executeAgentSelfDiary(invocation, port);
       case "config":
         return await executeConfig(invocation, port, options);
       case "approval":
@@ -79,8 +83,23 @@ export async function executeAgentSelfCommand(
       case "skills":
         return await executeAgentSelfSkills(invocation, port, options, projectDeferredApproval);
       case "capabilities": {
-        const report = projectAgentSelfCapabilities();
-        return { ok: true, text: describeAgentSelfCapabilities(report), data: report };
+        const report = projectAgentSelfCapabilities(invocation.domain, invocation.operation);
+        return {
+          ok: true,
+          text: describeAgentSelfCapabilities(report),
+          data: report,
+          ...(invocation.domain
+            ? {
+                model: {
+                  data: {
+                    commandContract: report.commandContract,
+                    commands: report.commands,
+                    ...(report.inputSchema ? { inputSchema: report.inputSchema } : {}),
+                  },
+                },
+              }
+            : {}),
+        };
       }
       case "logs":
         return executeLogs(invocation, port);
@@ -108,7 +127,7 @@ export async function executeAgentSelfCommand(
 
 /** Dispatches either a built-in command or a command owned by the live plugin
  * registry. This is the shared entry point for HTTP, CLI adapters and the
- * model-facing SeneraCommand tool. */
+ * model-facing senera CLI tool. */
 export async function executeAgentSelfInvocation(
   invocation: AgentSelfInvocation,
   port: AgentSelfServicePort,
@@ -160,7 +179,9 @@ async function executeConfig(
     }
     case "history": {
       const snapshot = port.config.getSnapshot();
-      const entries = port.config.history();
+      const entries = port.config
+        .history()
+        .map((entry) => ({ ...entry, createdAt: formatAgentTimeDisplay(entry.createdAt) }));
       return {
         ok: true,
         text:
@@ -168,7 +189,10 @@ async function executeConfig(
             ? "配置历史不可用（未启用配置存储）。"
             : [...entries]
                 .reverse()
-                .map((entry) => `revision ${entry.revision} · ${entry.source} · ${entry.createdAt}`)
+                .map(
+                  (entry) =>
+                    `revision ${entry.revision} · ${entry.source} · ${formatAgentTimeDisplay(entry.createdAt)}`,
+                )
                 .join("\n"),
         data: { currentRevision: snapshot.revision, entries },
       };
@@ -231,12 +255,21 @@ async function executePromptPreset(
   switch (invocation.action) {
     case "list":
     case "status": {
-      const status = await port.promptPresets.status();
+      const current = await port.promptPresets.status(invocation.agentId);
+      const status = {
+        ...current,
+        presets: current.presets.map((preset) => ({
+          ...preset,
+          updatedAt: formatAgentTimeDisplay(preset.updatedAt),
+        })),
+      };
       const text = describePromptPresetStatus(status, invocation.action === "list");
       return { ok: status.valid, text, data: status };
     }
     case "read": {
-      const result = await port.promptPresets.read(invocation.path);
+      const current = await port.promptPresets.read(invocation.path);
+      const result =
+        current.status === "found" ? { ...current, updatedAt: formatAgentTimeDisplay(current.updatedAt) } : current;
       return {
         ok: result.status === "found",
         text: result.status === "found" ? result.content : result.error,
@@ -245,7 +278,7 @@ async function executePromptPreset(
       };
     }
     case "enable": {
-      const result = await port.promptPresets.enable(invocation.path);
+      const result = await port.promptPresets.enable(invocation.path, invocation.agentId);
       return {
         ok: result.status === "enabled",
         text:
@@ -257,7 +290,7 @@ async function executePromptPreset(
       };
     }
     case "disable": {
-      const result = await port.promptPresets.disable();
+      const result = await port.promptPresets.disable(invocation.agentId);
       return {
         ok: result.status === "disabled",
         text:
@@ -309,7 +342,6 @@ function projectAgentSelfChannels(
   return projectAgentSelfRedacted({
     enabled: snapshot.enabled,
     defaultApprovalMode: snapshot.defaultApprovalMode,
-    finalResponseRewrite: snapshot.finalResponseRewrite,
     channels: snapshot.channels,
     profileRoutes: snapshot.profileRoutes?.list(),
   });
@@ -485,7 +517,7 @@ function projectDeferredApproval(
     ok: false,
     text: `该操作需要审批: ${reason}`,
     error: "approval_required",
-    approvalRequired: { approvalId, command, reason, deadlineAt },
+    approvalRequired: { approvalId, command, reason, deadlineAt: formatAgentTimeDisplay(deadlineAt) },
   };
 }
 

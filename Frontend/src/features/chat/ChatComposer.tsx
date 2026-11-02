@@ -1,5 +1,5 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { buildStyles, CircularProgressbar } from "react-circular-progressbar";
+import { lazy, memo, Suspense, useEffect, useId, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import type { UploadAttachmentData } from "../../api/eventTypes";
 import type {
   AgentActivationCatalogSnapshot,
@@ -8,13 +8,12 @@ import type {
 } from "../../api/eventTypes";
 import { WorkspaceMenu } from "../../shared/workspace/WorkspaceMenu";
 import { useWorkspaceResourceController } from "../../shared/workspace/WorkspaceResourceProvider";
-import type { UploadProgress } from "../../api/uploadClient";
-import { cn, formatFileSize } from "../../lib/util";
+import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { frontendChatMessage } from "../../i18n/frontendChatMessageCatalog";
 import { useFrontendLocale } from "../../i18n/useFrontendLocale";
 import { useResponsiveMode } from "../../shared/responsive";
-import { MotionButton, MotionList, MotionListItem } from "../../shared/motion";
+import { MotionButton } from "../../shared/motion";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,24 +22,34 @@ import {
   DropdownMenuTrigger,
   ConversationFrame,
   IconButton,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   Spinner,
   Tooltip,
   AppIcon,
+  BrandIcon,
 } from "../../shared/ui";
-import { FilePreviewIcon } from "./FilePreviewIcon";
-import { FilePreviewDialog } from "../../shared/media/FilePreviewDialog";
-import { isImageFilePreview } from "../../lib/filePreview";
+import { DesktopHostMenuItems } from "./DesktopHostMenuItems";
 import { ChatModelSelector } from "./ChatModelSelector";
+import { composerControlClassName, composerIconControlClassName } from "./composerControls";
+import { AgentMenu } from "../agents/AgentMenu";
+import { AgentSettingsDialog } from "../agents/AgentSettingsDialog";
+import { useStore } from "../../store/sessionStore";
+import { readConversationAgent } from "../../store/session/sessionAgentSelection";
 import type { MessageQueueMode } from "../../app/useChatCommands";
 import type { ChatApprovalConfig, ChatModelConfig } from "./ChatPanelContracts";
 import type { SettingsSectionId } from "../settings/settingsSectionContract";
-import { useComposerAttachments, type PendingAttachment } from "./useComposerAttachments";
+import { useComposerAttachments } from "./useComposerAttachments";
+import { ComposerAttachmentTray } from "./ComposerAttachmentTray";
 import type { RuntimeContextUsage, RuntimeUsageSnapshot } from "../observability/runtimeDiagnosticProjection";
 import {
   ActivationPalette,
   ActivationTextOverlay,
+  activationOptionId,
   rankActivationCandidates,
   readActivationQuery,
+  readActivationRange,
   readActivationTokens,
   stepActivationIndex,
 } from "./ChatActivationPalette";
@@ -94,13 +103,14 @@ export interface ChatComposerProps {
     attachments?: UploadAttachmentData[],
     queueMode?: MessageQueueMode,
     activations?: ExplicitActivationSet,
-  ) => boolean;
+  ) => boolean | Promise<boolean>;
   onCancel: () => void;
   onOpenSettings?: (section: SettingsSectionId, returnFocus?: HTMLElement | null) => void;
+  onOpenLocalClient?: () => void;
   activationCatalog?: AgentActivationCatalogSnapshot | null;
 }
 
-export function ChatComposer({
+export const ChatComposer = memo(function ChatComposer({
   disabled,
   cancelDisabled,
   running,
@@ -115,20 +125,29 @@ export function ChatComposer({
   onSend,
   onCancel,
   onOpenSettings,
+  onOpenLocalClient,
   activationCatalog,
 }: ChatComposerProps): JSX.Element {
   const locale = useFrontendLocale();
   const [internalValue, setInternalValue] = useState("");
+  const submitting = useRef(false);
+  const [sending, setSending] = useState(false);
+  const currentDraft = useRef({ key: runtime.draftKey, value: controlledValue ?? internalValue });
+  currentDraft.current = { key: runtime.draftKey, value: controlledValue ?? internalValue };
   const value = controlledValue ?? internalValue;
   const setValue = onValueChange ?? setInternalValue;
   const taRef = useRef<HTMLTextAreaElement>(null);
   const textOverlayRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingSettingsSectionRef = useRef<SettingsSectionId | null>(null);
+  const pendingAgentManagementRef = useRef(false);
+  const [agentManagementOpen, setAgentManagementOpen] = useState(false);
+  const activeAgent = useStore(readConversationAgent);
   const [toolkitOpen, setToolkitOpen] = useState(false);
   const [activationSelection, setActivationSelection] = useState<ExplicitActivationReference[]>([]);
   const [activationQuery, setActivationQuery] = useState<string | null>(null);
   const [activationIndex, setActivationIndex] = useState(0);
+  const activationListId = useId();
   const workspaceResources = useWorkspaceResourceController();
   const attachments = useComposerAttachments({
     draftKey: runtime.draftKey,
@@ -144,7 +163,7 @@ export function ChatComposer({
   }, [registerReferenceHandler]);
   const { prefersCompactControls } = useResponsiveMode();
   const textareaMaxHeight = prefersCompactControls ? TOUCH_TEXTAREA_MAX_HEIGHT : DESKTOP_TEXTAREA_MAX_HEIGHT;
-  const showActivationOverlay = /(?:^|\s)@[^\s@]*/u.test(value);
+  const showActivationOverlay = activationSelection.length > 0;
 
   const hint = useMemo(() => {
     if (cancelling) return frontendMessage("chat.composer.hintCancelling", {}, locale);
@@ -163,7 +182,12 @@ export function ChatComposer({
     return frontendMessage("chat.composer.hintDisconnected", {}, locale);
   }, [cancelling, locale, prefersCompactControls, runtime.socketStatus, running, settling]);
 
-  const canSend = !disabled && !attachments.uploading && value.trim().length > 0;
+  const canSend =
+    !disabled &&
+    !sending &&
+    !attachments.restoring &&
+    attachments.pendingAttachments.every((entry) => entry.status === "uploaded") &&
+    (value.trim().length > 0 || attachments.pendingAttachments.length > 0);
   const composerAction = readComposerAction({ running, settling, cancelling, canSubmit: canSend });
 
   useEffect(() => {
@@ -204,6 +228,11 @@ export function ChatComposer({
 
   useEffect(() => {
     if (toolkitOpen) return;
+    if (pendingAgentManagementRef.current) {
+      pendingAgentManagementRef.current = false;
+      setAgentManagementOpen(true);
+      return;
+    }
     const pendingSection = pendingSettingsSectionRef.current;
     if (!pendingSection || !onOpenSettings) return;
     pendingSettingsSectionRef.current = null;
@@ -211,17 +240,10 @@ export function ChatComposer({
   }, [onOpenSettings, toolkitOpen]);
 
   useEffect(() => {
-    setActivationSelection((current) => {
-      const next = current.filter((selection) =>
-        activationCatalog?.entries.some(
-          (entry) =>
-            entry.kind === selection.kind && entry.id === selection.id && entry.revision === selection.revision,
-        ),
-      );
-      return next.length === current.length ? current : next;
-    });
-    if (!activationCatalog) setActivationQuery(null);
-  }, [activationCatalog]);
+    setActivationSelection([]);
+    setActivationQuery(null);
+    setActivationIndex(0);
+  }, [runtime.draftKey]);
 
   const activationCanSelect = !disabled && !running && !settling && !cancelling;
   const activationCandidates = useMemo(() => {
@@ -248,47 +270,92 @@ export function ChatComposer({
     const candidate = activationCandidates[index];
     if (!candidate?.selectable || activationQuery === null) return;
     const caret = taRef.current?.selectionStart ?? value.length;
-    const before = value.slice(0, caret);
-    const match = before.match(/(?:^|\s)@([^\s@]*)$/u);
-    if (!match) return;
-    const tokenStart = caret - match[1].length - 1;
-    const nextValue = `${value.slice(0, tokenStart)}@${candidate.id} ${value.slice(caret)}`;
+    const token = readActivationRange(value, caret);
+    if (!token) return;
+    const suffix = value.slice(token.end);
+    const separator = /^\s/u.test(suffix) ? "" : " ";
+    const nextValue = `${value.slice(0, token.start)}@${candidate.id}${separator}${suffix}`;
+    const referencedIds = new Set(readActivationTokens(nextValue));
     setValue(nextValue);
-    setActivationSelection((current) =>
-      current.some((entry) => entry.kind === candidate.kind && entry.id === candidate.id)
-        ? current
-        : [...current, { kind: candidate.kind, id: candidate.id, revision: candidate.revision }],
-    );
+    setActivationSelection((current) => [
+      ...current.filter(
+        (entry) => referencedIds.has(entry.id) && (entry.kind !== candidate.kind || entry.id !== candidate.id),
+      ),
+      { kind: candidate.kind, id: candidate.id, revision: candidate.revision },
+    ]);
     setActivationQuery(null);
     setActivationIndex(0);
     requestAnimationFrame(() => {
-      const nextCaret = tokenStart + candidate.id.length + 2;
+      const nextCaret = token.start + candidate.id.length + 2;
       taRef.current?.focus();
       taRef.current?.setSelectionRange(nextCaret, nextCaret);
     });
   };
 
-  const submit = (queueMode?: MessageQueueMode): void => {
+  const submit = async (queueMode?: MessageQueueMode): Promise<void> => {
     const text = value.trim();
-    if (!text || disabled || attachments.uploading) return;
+    if (!canSend || submitting.current) return;
+    const stale = activationSelection.filter(
+      (selection) =>
+        !activationCatalog?.entries.some(
+          (entry) =>
+            entry.kind === selection.kind &&
+            entry.id === selection.id &&
+            entry.revision === selection.revision &&
+            entry.selectable,
+        ),
+    );
+    if (stale.length > 0) {
+      toast.error(
+        frontendChatMessage(
+          "chat.composer.activation.changed",
+          { names: stale.map((entry) => `@${entry.id}`).join(", ") },
+          locale,
+        ),
+      );
+      return;
+    }
     const uploaded = attachments.collectUploadedAttachments();
     const activations: ExplicitActivationSet | undefined =
       activationSelection.length > 0 && activationCatalog
         ? { catalogRevision: activationCatalog.revision, explicit: activationSelection }
         : undefined;
-    const sent = activations
-      ? onSend(text, uploaded.length > 0 ? uploaded : undefined, queueMode, activations)
-      : onSend(text, uploaded.length > 0 ? uploaded : undefined, queueMode);
+    const draft = currentDraft.current;
+    submitting.current = true;
+    setSending(true);
+    const releaseDraft = attachments.retain();
+    let sent: boolean;
+    try {
+      sent = await (activations
+        ? onSend(text, uploaded.length > 0 ? uploaded : undefined, queueMode, activations)
+        : onSend(text, uploaded.length > 0 ? uploaded : undefined, queueMode));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : frontendMessage("chat.sendUnconfirmed"));
+      return;
+    } finally {
+      submitting.current = false;
+      setSending(false);
+      releaseDraft();
+    }
     if (sent === false) return;
     attachments.commitSentAttachments();
+    // Acknowledgement can arrive after switching conversations or typing the next message.
+    if (currentDraft.current.key === draft.key && currentDraft.current.value !== draft.value) return;
     setValue("");
+    if (currentDraft.current.key !== draft.key) return;
     setActivationSelection([]);
     setActivationQuery(null);
     if (taRef.current) taRef.current.style.height = "auto";
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (activationQuery !== null && activationCandidates.length > 0) {
+    if (e.nativeEvent.isComposing) return;
+    if (activationQuery !== null) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setActivationQuery(null);
+        return;
+      }
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setActivationIndex((current) => stepActivationIndex(activationCandidates, current, 1));
@@ -304,15 +371,11 @@ export function ChatComposer({
         selectActivation(activationIndex);
         return;
       }
-      if (e.key === "Escape") {
-        setActivationQuery(null);
-        return;
-      }
     }
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       if (composerAction === "cancel" || composerAction === "cancelling") return;
-      submit(
+      void submit(
         composerAction === "follow_up" || (composerAction === "steer" && e.altKey)
           ? "follow_up"
           : composerAction === "steer"
@@ -342,13 +405,13 @@ export function ChatComposer({
       case "cancelling":
         return;
       case "follow_up":
-        submit("follow_up");
+        void submit("follow_up");
         return;
       case "steer":
-        submit("steer");
+        void submit("steer");
         return;
       case "send":
-        submit();
+        void submit();
         return;
     }
   };
@@ -379,7 +442,7 @@ export function ChatComposer({
             multiple
             onChange={attachments.handleFileSelection}
           />
-          <AttachmentTray
+          <ComposerAttachmentTray
             attachments={attachments.pendingAttachments}
             onRemove={attachments.removeAttachment}
             onRetry={attachments.retryAttachment}
@@ -387,13 +450,32 @@ export function ChatComposer({
           />
 
           <div className="relative min-h-10">
-            {showActivationOverlay ? <ActivationTextOverlay ref={textOverlayRef} value={value} /> : null}
+            {showActivationOverlay ? (
+              <ActivationTextOverlay ref={textOverlayRef} value={value} selected={activationSelection} />
+            ) : null}
             <textarea
               ref={taRef}
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={activationQuery !== null && activationCanSelect}
+              aria-controls={activationQuery !== null && activationCanSelect ? activationListId : undefined}
+              aria-activedescendant={
+                activationQuery !== null && activationCanSelect && activationCandidates[activationIndex]
+                  ? activationOptionId(activationListId, activationCandidates[activationIndex])
+                  : undefined
+              }
               aria-label={frontendMessage("chat.composer.inputMessage")}
               value={value}
               rows={1}
               onChange={handleInput}
+              onSelect={(event) => {
+                const textarea = event.currentTarget;
+                setActivationQuery(
+                  activationCanSelect && textarea.selectionStart === textarea.selectionEnd
+                    ? readActivationQuery(textarea.value, textarea.selectionStart)
+                    : null,
+                );
+              }}
               onKeyDown={handleKeyDown}
               onPaste={attachments.handlePaste}
               onScroll={() => {
@@ -412,6 +494,7 @@ export function ChatComposer({
           </div>
           {activationQuery !== null && activationCanSelect ? (
             <ActivationPalette
+              id={activationListId}
               catalog={activationCatalog}
               query={activationQuery}
               candidates={activationCandidates}
@@ -423,7 +506,7 @@ export function ChatComposer({
           ) : null}
 
           <div className="flex min-w-0 items-center gap-1.5">
-            <div className="flex min-w-0 flex-1 items-center gap-1">
+            <div className="flex shrink-0 items-center gap-1">
               <DropdownMenu modal={false} open={toolkitOpen} onOpenChange={setToolkitOpen}>
                 <DropdownMenuTrigger asChild>
                   <IconButton
@@ -431,7 +514,10 @@ export function ChatComposer({
                     tooltip={frontendChatMessage("chat.composer.toolkit.tooltip")}
                     tooltipSide="top"
                     touchSafe
-                    className="[&[data-state=open]>svg]:rotate-45"
+                    className={cn(
+                      composerIconControlClassName(prefersCompactControls),
+                      "[&[data-state=open]>svg]:rotate-45",
+                    )}
                   >
                     <AppIcon
                       icon="plus"
@@ -440,8 +526,7 @@ export function ChatComposer({
                     />
                   </IconButton>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" side="top" sideOffset={6} alignOffset={6}>
-                  <WorkspaceMenu onClose={() => setToolkitOpen(false)} />
+                <DropdownMenuContent align="start" side="top" sideOffset={6} alignOffset={6} className="w-64">
                   <DropdownMenuItem
                     icon={<AppIcon icon="paperclip" size={16} />}
                     disabled={disabled || running || cancelling}
@@ -449,6 +534,15 @@ export function ChatComposer({
                   >
                     {frontendChatMessage("chat.composer.toolkit.fileAndImage")}
                   </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <AgentMenu
+                    disabled={disabled || running || cancelling}
+                    onManage={() => {
+                      pendingAgentManagementRef.current = true;
+                    }}
+                  />
+                  <WorkspaceMenu onClose={() => setToolkitOpen(false)} />
+                  <DesktopHostMenuItems />
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     icon={<AppIcon icon="file-text" size={16} />}
@@ -477,13 +571,13 @@ export function ChatComposer({
                       >
                         {frontendChatMessage("chat.composer.toolkit.skills")}
                       </DropdownMenuItem>
-                      <DropdownMenuItem
-                        icon={<AppIcon icon="globe" size={16} />}
-                        onSelect={() => {
-                          pendingSettingsSectionRef.current = "system-tools";
-                        }}
-                      >
-                        {frontendChatMessage("chat.composer.toolkit.webSearch")}
+                    </>
+                  ) : null}
+                  {onOpenLocalClient ? (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem icon={<BrandIcon brand="qq" size={16} />} onSelect={onOpenLocalClient}>
+                        {frontendMessage("settings.channels.openLocalClient")}
                       </DropdownMenuItem>
                     </>
                   ) : null}
@@ -493,8 +587,9 @@ export function ChatComposer({
                 fallback={
                   <span
                     className={cn(
-                      "inline-flex h-7 w-24 shrink-0 items-center justify-center text-content-muted",
-                      prefersCompactControls && "h-11 w-11",
+                      "inline-flex w-24 shrink-0 items-center justify-center text-content-muted",
+                      composerControlClassName(prefersCompactControls),
+                      prefersCompactControls && "w-11",
                     )}
                     role="status"
                     aria-busy="true"
@@ -513,7 +608,7 @@ export function ChatComposer({
               </Suspense>
             </div>
 
-            <div className="flex min-w-0 shrink-0 items-center gap-1" data-composer-trailing-controls>
+            <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1" data-composer-trailing-controls>
               <RuntimeUsageIndicator runtimeUsage={runtimeUsage} />
               <ChatModelSelector
                 disabled={disabled || running}
@@ -532,8 +627,8 @@ export function ChatComposer({
                   <MotionButton
                     disabled
                     className={cn(
-                      "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line bg-surface-muted text-content-muted",
-                      prefersCompactControls && "min-h-11 min-w-11",
+                      "inline-flex shrink-0 items-center justify-center rounded-lg border border-line bg-surface-muted text-content-muted",
+                      composerIconControlClassName(prefersCompactControls),
                     )}
                     aria-label={frontendMessage("chat.composer.cancelling")}
                     data-composer-action="cancelling"
@@ -551,8 +646,8 @@ export function ChatComposer({
                     onClick={handleComposerAction}
                     disabled={cancelDisabled}
                     className={cn(
-                      "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-brick-200 bg-surface-raised text-brick-600 transition-colors duration-150 hover:bg-brick-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brick-200 disabled:pointer-events-none disabled:opacity-50",
-                      prefersCompactControls && "min-h-11 min-w-11",
+                      "inline-flex shrink-0 items-center justify-center rounded-lg border border-brick-200 bg-surface-raised text-brick-600 transition-colors duration-150 hover:bg-brick-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brick-200 disabled:pointer-events-none disabled:opacity-50",
+                      composerIconControlClassName(prefersCompactControls),
                     )}
                     aria-label={frontendMessage("chat.composer.cancelRunning")}
                     data-composer-action="cancel"
@@ -576,8 +671,8 @@ export function ChatComposer({
                     onClick={handleComposerAction}
                     disabled={!canSend}
                     className={cn(
-                      "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-0 transition-[background-color,border-color,color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-chat-composer-focus-bg)] disabled:pointer-events-none",
-                      prefersCompactControls && "min-h-11 min-w-11",
+                      "inline-flex shrink-0 items-center justify-center rounded-full border-0 transition-[background-color,border-color,color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-chat-composer-focus-bg)] disabled:pointer-events-none",
+                      composerIconControlClassName(prefersCompactControls),
                       canSend
                         ? "bg-content-strong text-content-inverse hover:bg-accent-solid hover:text-accent-on-solid active:bg-accent-solid-pressed"
                         : "bg-surface-muted text-content-disabled",
@@ -599,11 +694,30 @@ export function ChatComposer({
           </div>
         </div>
       </ConversationFrame>
+      {agentManagementOpen && activeAgent ? (
+        <AgentSettingsDialog open onOpenChange={setAgentManagementOpen} initialId={activeAgent.id} />
+      ) : null}
     </div>
   );
-}
+});
+
+const CONTEXT_USAGE_METER_CELLS = 18;
+const CONTEXT_USAGE_WARN_PERCENT = 60;
+const CONTEXT_USAGE_CRITICAL_PERCENT = 85;
 
 function ContextUsageIndicator({ usage }: { usage?: RuntimeContextUsage }): JSX.Element | null {
+  const locale = useFrontendLocale();
+  const { prefersCompactControls } = useResponsiveMode();
+  const [open, setOpen] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(
+    () => () => {
+      if (closeTimer.current !== undefined) clearTimeout(closeTimer.current);
+    },
+    [],
+  );
+
   const hasTokens = typeof usage?.tokens === "number" && Number.isFinite(usage.tokens);
   const hasContextWindow = typeof usage?.contextWindow === "number" && Number.isFinite(usage.contextWindow);
   if (!usage || !hasTokens || !hasContextWindow || usage.contextWindow <= 0) return null;
@@ -611,55 +725,181 @@ function ContextUsageIndicator({ usage }: { usage?: RuntimeContextUsage }): JSX.
   const used = Math.max(0, usage.tokens);
   const percent = Math.max(0, Math.min(100, usage.percent ?? (used / usage.contextWindow) * 100));
   const roundedPercent = Math.round(percent);
-  const remainingPercent = Math.max(0, 100 - roundedPercent);
+  const remaining = Math.max(0, usage.contextWindow - used);
+  const warn = percent >= CONTEXT_USAGE_WARN_PERCENT;
+  const critical = percent >= CONTEXT_USAGE_CRITICAL_PERCENT;
+  const meterColor = critical
+    ? "rgb(var(--color-brick-600))"
+    : warn
+      ? "rgb(var(--color-brick-500))"
+      : "rgb(var(--color-ink-600))";
+  const activeCells = Math.round((percent / 100) * CONTEXT_USAGE_METER_CELLS);
+  const numberFormat = new Intl.NumberFormat(locale);
+
+  const compactHidden = prefersCompactControls && percent < CONTEXT_USAGE_WARN_PERCENT;
+  if (compactHidden) return null;
+
+  const cancelClose = (): void => {
+    if (closeTimer.current === undefined) return;
+    clearTimeout(closeTimer.current);
+    closeTimer.current = undefined;
+  };
+
+  const reveal = (): void => {
+    cancelClose();
+    setOpen(true);
+  };
+
+  const scheduleClose = (): void => {
+    cancelClose();
+    closeTimer.current = setTimeout(() => {
+      setOpen(false);
+      closeTimer.current = undefined;
+    }, 160);
+  };
 
   return (
-    <Tooltip
-      content={
-        <span className="flex items-center gap-1 whitespace-nowrap text-left leading-4 tabular-nums">
-          <span className="font-medium">
-            {frontendMessage("chat.composer.contextUsageSummary", {
-              used: roundedPercent,
-              remaining: remainingPercent,
-            })}
-          </span>
-          <span className="text-ink-300">·</span>
-          <span className="text-ink-300">
-            {frontendMessage("chat.composer.contextUsageTokens", {
-              used: formatComposerTokenCount(used),
-              total: formatComposerTokenCount(usage.contextWindow),
-            })}
-          </span>
-        </span>
-      }
-      side="top"
-      delayDuration={120}
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        cancelClose();
+        setOpen(next);
+      }}
     >
-      <span
-        role="progressbar"
-        tabIndex={0}
-        aria-label={frontendMessage("chat.composer.contextUsage")}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={percent}
-        aria-valuetext={`${roundedPercent}%`}
-        data-context-usage-indicator
-        className="inline-block h-[13px] w-[13px] shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={frontendMessage(
+            "chat.composer.contextUsageSummary",
+            { used: roundedPercent, remaining: Math.max(0, 100 - roundedPercent) },
+            locale,
+          )}
+          data-context-usage-indicator
+          data-level={critical ? "critical" : warn ? "warn" : "normal"}
+          onPointerEnter={(event) => {
+            if (event.pointerType === "mouse") reveal();
+          }}
+          onPointerLeave={(event) => {
+            if (event.pointerType === "mouse") scheduleClose();
+          }}
+          className={cn(
+            "group inline-flex shrink-0 items-center justify-center rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
+            composerControlClassName(prefersCompactControls),
+            prefersCompactControls && "min-w-11",
+          )}
+        >
+          <span
+            className={cn(
+              "inline-flex items-center",
+              prefersCompactControls
+                ? cn(
+                    critical
+                      ? "h-6 rounded-[7px] px-2 bg-[linear-gradient(180deg,rgb(var(--color-paper-50)/0.86),rgb(var(--color-brick-50)/0.72))] shadow-[0_0_0_1px_rgb(var(--color-brick-500)/0.28),0_1px_2px_rgb(var(--color-ink-950)/0.05),inset_0_1px_0_rgb(var(--color-paper-50)/0.9)] backdrop-blur-[8px] backdrop-saturate-[1.08]"
+                      : "px-1",
+                  )
+                : "h-full gap-2 rounded-lg px-2 bg-[linear-gradient(180deg,rgb(var(--color-paper-50)/0.82),rgb(var(--color-paper-100)/0.58))] shadow-[0_0_0_1px_rgb(var(--color-ink-950)/0.07),0_1px_2px_rgb(var(--color-ink-950)/0.05),inset_0_1px_0_rgb(var(--color-paper-50)/0.9)] backdrop-blur-[8px] backdrop-saturate-[1.08] transition-[background,box-shadow] duration-150 group-hover:bg-[linear-gradient(180deg,rgb(var(--color-paper-50)/0.96),rgb(var(--color-paper-100)/0.76))] group-hover:shadow-[0_0_0_1px_rgb(var(--color-ink-950)/0.1),0_2px_4px_rgb(var(--color-ink-950)/0.06),inset_0_1px_0_rgb(var(--color-paper-50)/0.95)] group-data-[state=open]:bg-[linear-gradient(180deg,rgb(var(--color-paper-50)/0.96),rgb(var(--color-paper-100)/0.76))]",
+            )}
+          >
+            <span
+              className={cn(
+                "inline-flex items-baseline gap-px font-mono text-[10.5px] font-medium leading-none tabular-nums tracking-[0.02em]",
+                critical ? "text-brick-700" : warn ? "text-brick-600" : "text-ink-600",
+              )}
+            >
+              {roundedPercent}
+              <i className="text-[8.5px] font-normal not-italic text-ink-400">%</i>
+            </span>
+            {prefersCompactControls ? null : (
+              <span aria-hidden="true" className="block h-[3px] w-6 overflow-hidden rounded-full bg-ink-900/10">
+                <span
+                  className="block h-full rounded-full transition-[width] duration-300 ease-out"
+                  style={{ width: `${percent}%`, backgroundColor: meterColor }}
+                />
+              </span>
+            )}
+          </span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        side="top"
+        align="end"
+        sideOffset={10}
+        collisionPadding={12}
+        onPointerEnter={(event) => {
+          if (event.pointerType === "mouse") cancelClose();
+        }}
+        onPointerLeave={(event) => {
+          if (event.pointerType === "mouse") scheduleClose();
+        }}
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        data-context-usage-popover
+        className={cn(
+          "w-[244px] overflow-visible rounded-xl border-0 p-0",
+          "bg-[linear-gradient(180deg,rgb(var(--color-paper-50)/0.9),rgb(var(--color-paper-100)/0.76))]",
+          "shadow-[0_0_0_1px_rgb(var(--color-ink-950)/0.09),0_16px_36px_rgb(var(--color-ink-950)/0.16),inset_0_1px_0_rgb(var(--color-paper-50)/0.95)]",
+          "backdrop-blur-[18px] backdrop-saturate-[1.16]",
+        )}
       >
-        <CircularProgressbar
-          value={percent}
-          strokeWidth={11}
-          className="h-full w-full align-middle"
-          aria-hidden="true"
-          styles={buildStyles({
-            pathColor: "rgb(var(--color-ink-600))",
-            trailColor: "rgb(var(--color-ink-300) / 0.6)",
-            strokeLinecap: "round",
-            pathTransitionDuration: 0.35,
-          })}
-        />
-      </span>
-    </Tooltip>
+        <div className="px-3 pb-3 pt-[11px]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[9.5px] tracking-[0.06em] text-content-muted">
+              {frontendMessage("chat.composer.contextUsage", {}, locale)}
+            </span>
+            <span className="font-mono text-[9px] tracking-[0.04em] text-content-disabled">
+              CTX / {formatComposerTokenCount(usage.contextWindow).toUpperCase()}
+            </span>
+          </div>
+          <div className="mb-2 mt-1.5 flex items-baseline gap-1.5">
+            <b
+              className={cn(
+                "font-mono text-[22px] font-semibold leading-none tracking-[-0.02em] tabular-nums",
+                warn ? "text-brick-600" : "text-content-strong",
+              )}
+            >
+              {roundedPercent}
+              <i className="text-[11px] font-medium not-italic text-content-muted">%</i>
+            </b>
+            <span className="text-[10px] text-content-muted">
+              {frontendMessage("chat.composer.contextUsageUsed", {}, locale)}
+            </span>
+          </div>
+          <div className="mb-2.5 flex h-3 items-end gap-[2px]" aria-hidden="true">
+            {Array.from({ length: CONTEXT_USAGE_METER_CELLS }, (_, index) => (
+              <i
+                key={index}
+                className={cn(
+                  "block flex-1 rounded-[1px] transition-[background-color,height] duration-200",
+                  index < activeCells ? "h-2.5" : "h-[7px] bg-ink-900/10",
+                )}
+                style={index < activeCells ? { backgroundColor: meterColor } : undefined}
+              />
+            ))}
+          </div>
+          <dl className="flex flex-col gap-1 text-[10px]">
+            <div className="flex items-baseline justify-between gap-2.5 text-content-muted">
+              <dt>{frontendMessage("chat.composer.contextUsageUsed", {}, locale)}</dt>
+              <dd className="font-mono font-medium tabular-nums text-content-primary">{numberFormat.format(used)}</dd>
+            </div>
+            <div className="flex items-baseline justify-between gap-2.5 text-content-muted">
+              <dt>{frontendMessage("chat.composer.contextUsageRemaining", {}, locale)}</dt>
+              <dd className="font-mono font-medium tabular-nums text-content-primary">
+                {numberFormat.format(remaining)}
+              </dd>
+            </div>
+            <div className="flex items-baseline justify-between gap-2.5 text-content-muted">
+              <dt>{frontendMessage("chat.composer.contextUsageWindow", {}, locale)}</dt>
+              <dd className="font-mono font-medium tabular-nums text-content-primary">
+                {numberFormat.format(usage.contextWindow)}
+              </dd>
+            </div>
+          </dl>
+          <div className="my-[9px] h-px bg-ink-900/[0.07]" />
+          <p className="m-0 text-[9.5px] leading-[1.5] text-content-muted">
+            {frontendMessage("chat.composer.contextUsageHint", {}, locale)}
+          </p>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -682,229 +922,4 @@ function hasActiveInteractionLayer(event: KeyboardEvent): boolean {
     return true;
   }
   return document.querySelector(ACTIVE_LAYER_SELECTOR) !== null;
-}
-
-function AttachmentTray({
-  attachments,
-  onRemove,
-  onRetry,
-  onPreviewUnavailable,
-}: {
-  attachments: PendingAttachment[];
-  onRemove: (id: string) => void;
-  onRetry: (id: string) => void;
-  onPreviewUnavailable: (id: string) => void;
-}): JSX.Element {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const selected = attachments.find((entry) => entry.id === selectedId);
-  const previewable = (entry: PendingAttachment): boolean =>
-    Boolean(entry.file || entry.previewUrl) && entry.status !== "error";
-  const activatePreview = (entry: PendingAttachment): void => {
-    if (previewable(entry)) setSelectedId(entry.id);
-  };
-
-  return (
-    <>
-      <MotionList className={cn("flex flex-wrap gap-1.5 px-0.5 pb-1", attachments.length === 0 && "hidden")}>
-        {attachments.map((entry) => (
-          <MotionListItem
-            key={entry.id}
-            layout="position"
-            initial={false}
-            className={cn(
-              entry.previewUrl && isImageFilePreview({ name: entry.fileName, mime: entry.mime }) && "shrink-0",
-            )}
-          >
-            {entry.previewUrl && isImageFilePreview({ name: entry.fileName, mime: entry.mime }) ? (
-              <div
-                className={cn(
-                  "relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border bg-surface-muted",
-                  entry.status === "error" ? "border-brick-500" : "border-line-subtle",
-                )}
-                role={previewable(entry) ? "button" : undefined}
-                tabIndex={previewable(entry) ? 0 : undefined}
-                aria-label={
-                  previewable(entry)
-                    ? frontendMessage("chat.attachment.filePreview", { name: entry.fileName })
-                    : undefined
-                }
-                onClick={() => activatePreview(entry)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    activatePreview(entry);
-                  }
-                }}
-              >
-                <img
-                  src={entry.previewUrl}
-                  alt={entry.fileName}
-                  className="h-full w-full object-contain"
-                  onError={() => onPreviewUnavailable(entry.id)}
-                />
-                {entry.status === "uploading" ? (
-                  <span className="absolute inset-x-0 bottom-0 flex items-center gap-1 bg-ink-950/70 px-1 py-1">
-                    <UploadProgressBar progress={entry.progress} className="min-w-0 flex-1 bg-paper-50/25" />
-                    <span className="font-mono text-[9px] text-paper-50">{formatUploadProgress(entry.progress)}</span>
-                  </span>
-                ) : null}
-                {entry.status === "error" ? (
-                  <Tooltip content={entry.error ?? frontendMessage("ui.retry")} side="top">
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onRetry(entry.id);
-                      }}
-                      aria-label={frontendMessage("ui.retry")}
-                      className="absolute bottom-1 left-1 grid h-5 w-5 place-items-center rounded-full bg-brick-50 text-brick-600 transition hover:bg-brick-100"
-                    >
-                      <AppIcon icon="refresh" size={12} />
-                    </button>
-                  </Tooltip>
-                ) : null}
-                <IconButton
-                  label={frontendMessage("chat.attachment.remove")}
-                  tooltip={entry.error ?? frontendMessage("chat.attachment.removeTooltip")}
-                  tooltipSide="top"
-                  size="sm"
-                  className="absolute right-0.5 top-0.5 bg-ink-950/70 text-paper-50 hover:bg-ink-900"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onRemove(entry.id);
-                  }}
-                >
-                  <AppIcon icon="close" size={12} />
-                </IconButton>
-              </div>
-            ) : (
-              <div
-                className={cn(
-                  "inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px]",
-                  entry.status === "uploading" && "min-w-[210px]",
-                  entry.status === "error"
-                    ? "border-brick-200 bg-brick-50 text-brick-700"
-                    : "border-line-subtle bg-surface-raised text-content-secondary",
-                )}
-                role={previewable(entry) ? "button" : undefined}
-                tabIndex={previewable(entry) ? 0 : undefined}
-                aria-label={
-                  previewable(entry)
-                    ? frontendMessage("chat.attachment.filePreview", { name: entry.fileName })
-                    : undefined
-                }
-                onClick={() => activatePreview(entry)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    activatePreview(entry);
-                  }
-                }}
-              >
-                <span className="relative shrink-0">
-                  <FilePreviewIcon name={entry.fileName} mime={entry.mime ?? entry.attachment?.mime} />
-                  {entry.status === "uploading" ? (
-                    <span className="absolute -bottom-0.5 -right-0.5 grid h-3.5 w-3.5 place-items-center rounded-full border border-surface-raised bg-surface-raised">
-                      <Spinner size="xs" className="h-2.5 w-2.5 text-accent-content" />
-                    </span>
-                  ) : null}
-                  {entry.status === "error" ? (
-                    <span className="absolute -bottom-0.5 -right-0.5 grid h-3.5 w-3.5 place-items-center rounded-full border border-paper-50 bg-brick-50">
-                      <AppIcon icon="alert-circle" size={10} className="text-brick-500" />
-                    </span>
-                  ) : null}
-                </span>
-                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="min-w-0 truncate">{entry.fileName}</span>
-                    <span className="shrink-0 font-mono text-[10px] text-content-muted">
-                      {formatFileSize(entry.size)}
-                    </span>
-                    {entry.status === "uploading" ? (
-                      <span className="shrink-0 font-mono text-[10px] text-accent-content">
-                        {formatUploadProgress(entry.progress)}
-                      </span>
-                    ) : null}
-                  </span>
-                  {entry.previewUnavailable ? (
-                    <span className="text-[10px] text-content-muted">
-                      {frontendMessage("chat.attachment.previewUnavailable")}
-                    </span>
-                  ) : null}
-                  {entry.status === "error" ? (
-                    <span className="flex min-w-0 items-center gap-1.5 text-[10px] text-brick-600">
-                      <Tooltip content={entry.error ?? frontendMessage("upload.fileFailed")} side="top">
-                        <span className="min-w-0 truncate">{entry.error ?? frontendMessage("upload.fileFailed")}</span>
-                      </Tooltip>
-                      <button
-                        type="button"
-                        onClick={() => onRetry(entry.id)}
-                        className="shrink-0 font-medium underline underline-offset-2 hover:text-brick-700"
-                      >
-                        {frontendMessage("ui.retry")}
-                      </button>
-                    </span>
-                  ) : null}
-                  {entry.status === "uploading" ? <UploadProgressBar progress={entry.progress} /> : null}
-                </span>
-                <IconButton
-                  label={frontendMessage("chat.attachment.remove")}
-                  tooltip={entry.error ?? frontendMessage("chat.attachment.removeTooltip")}
-                  tooltipSide="top"
-                  size="sm"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onRemove(entry.id);
-                  }}
-                >
-                  <AppIcon icon="close" size={12} />
-                </IconButton>
-              </div>
-            )}
-          </MotionListItem>
-        ))}
-      </MotionList>
-      {selected ? (
-        <FilePreviewDialog
-          file={selected.file}
-          mime={selected.mime ?? selected.attachment?.mime}
-          name={selected.fileName}
-          size={selected.size}
-          source={selected.previewUrl}
-          open
-          onOpenChange={(open) => {
-            if (!open) {
-              setSelectedId(null);
-            }
-          }}
-        />
-      ) : null}
-    </>
-  );
-}
-
-function UploadProgressBar({ progress, className }: { progress?: UploadProgress; className?: string }): JSX.Element {
-  const ratio = readProgressRatio(progress);
-  return (
-    <span className={cn("h-1 overflow-hidden rounded-full bg-surface-muted", className)}>
-      <span
-        className={cn(
-          "block h-full origin-left rounded-full bg-accent-solid transition-transform duration-150",
-          ratio === undefined && "senera-loading-pulse",
-        )}
-        style={{ transform: `scaleX(${ratio ?? 1})` }}
-      />
-    </span>
-  );
-}
-
-function formatUploadProgress(progress?: UploadProgress): string {
-  const ratio = readProgressRatio(progress);
-  return ratio === undefined ? frontendMessage("chat.composer.uploading") : `${Math.round(ratio * 100)}%`;
-}
-
-function readProgressRatio(progress?: UploadProgress): number | undefined {
-  const ratio =
-    progress?.ratio ?? (progress?.total && progress.total > 0 ? progress.loaded / progress.total : undefined);
-  return typeof ratio === "number" && Number.isFinite(ratio) ? Math.min(1, Math.max(0, ratio)) : undefined;
 }

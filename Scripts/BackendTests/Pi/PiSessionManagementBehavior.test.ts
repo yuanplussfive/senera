@@ -213,6 +213,7 @@ describe("Pi session management", () => {
     const sessions = (pool as unknown as { sessions: Map<string, unknown> }).sessions;
     const waitForIdle = vi.fn();
     sessions.set("active-session", {
+      sessionManager: SessionManager.inMemory(workspaceRoot),
       session: {
         getSessionStats: vi.fn(() => ({
           sessionFile: "managed-session.jsonl",

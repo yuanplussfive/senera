@@ -1,12 +1,12 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { clampWorkflowDockWidth, DEFAULT_WORKFLOW_DOCK_WIDTH } from "../shared/responsive/workflowDock";
+import { clampWorkflowDockWidthRatio, DEFAULT_WORKFLOW_DOCK_WIDTH_RATIO } from "../shared/responsive/workflowDock";
 import { immer } from "zustand/middleware/immer";
+import { clampTerminalPanelHeightRatio, DEFAULT_TERMINAL_PANEL_HEIGHT_RATIO } from "../shared/responsive/terminalPanel";
 import { DEFAULT_SESSION_TITLE } from "./session/defaults";
 import { clearPersistedStore, sessionPersistOptions, type PersistedSessionState } from "./session/persistence";
 import { installSessionPreferenceSynchronization } from "./session/sessionPreferenceSync";
 import {
-  advanceRunDisplayText,
   applyEvent,
   advanceHistoryHydration,
   bumpSessionMessageCount,
@@ -26,9 +26,15 @@ import {
   syncActiveSessionThinkingSelection,
 } from "./session/sessionThinkingSelection";
 import { DEFAULT_USER_PROFILE, normalizeUserProfile, UserProfileSyncStates } from "./session/userProfile";
+import { projectAgentDirectory } from "./session/agentDirectoryProjection";
 import { ExecutionApprovalModes } from "../api/executionApprovalMode";
 import type { SessionRecord, StoreState } from "./session/types";
 import { rejectRunRecovery } from "./session/runRecoveryProjection";
+import {
+  abandonPendingRunHistoryDetailLoads,
+  abandonRunHistoryDetailLoad,
+  beginRunHistoryDetailLoad,
+} from "./session/runHistoryDetailState";
 
 export { DEFAULT_SESSION_TITLE } from "./session/defaults";
 export { DEFAULT_USER_PROFILE, normalizeUserProfile, UserProfileSyncStates } from "./session/userProfile";
@@ -77,6 +83,8 @@ export const useStore = create<StoreState>()(
   persist<StoreState, [], [["zustand/immer", never]], PersistedSessionState>(
     immer<StoreState, [["zustand/persist", unknown]]>((set) => ({
       sessions: {},
+      agentDirectory: null,
+      selectedAgentId: null,
       runtimeSnapshotsBySession: {},
       sessionOrder: [],
       activeSessionId: null,
@@ -84,7 +92,10 @@ export const useStore = create<StoreState>()(
       rightPanelCollapsed: true,
       defaultSidebarCollapsed: false,
       defaultRightPanelCollapsed: true,
-      workflowDockWidth: DEFAULT_WORKFLOW_DOCK_WIDTH,
+      workflowDockWidthRatio: DEFAULT_WORKFLOW_DOCK_WIDTH_RATIO,
+      terminalPanelOpen: false,
+      terminalPanelMaximized: false,
+      terminalPanelHeightRatio: DEFAULT_TERMINAL_PANEL_HEIGHT_RATIO,
       motionLevel: "full",
       viewedRunIdBySession: {},
       historyLoadedIds: {},
@@ -99,7 +110,9 @@ export const useStore = create<StoreState>()(
       historyPreviewedIds: {},
       historyHydration: {},
       processedEventIds: {},
+      processedEventRequestIds: {},
       processedEventIdOrder: [],
+      runHistoryDetailStates: {},
       missingOnServerIds: {},
       pendingCreatedSessionIds: {},
       pendingDeletedSessionIds: {},
@@ -195,9 +208,22 @@ export const useStore = create<StoreState>()(
           state.rightPanelCollapsed = collapsed;
         }),
 
-      setWorkflowDockWidth: (width) =>
+      setWorkflowDockWidthRatio: (ratio) =>
         set((state) => {
-          state.workflowDockWidth = clampWorkflowDockWidth(width);
+          state.workflowDockWidthRatio = clampWorkflowDockWidthRatio(ratio);
+        }),
+
+      setTerminalPanelOpen: (open) =>
+        set((state) => {
+          state.terminalPanelOpen = open;
+        }),
+      setTerminalPanelMaximized: (maximized) =>
+        set((state) => {
+          state.terminalPanelMaximized = maximized;
+        }),
+      setTerminalPanelHeightRatio: (ratio) =>
+        set((state) => {
+          state.terminalPanelHeightRatio = clampTerminalPanelHeightRatio(ratio);
         }),
 
       setMotionLevel: (level) =>
@@ -254,9 +280,9 @@ export const useStore = create<StoreState>()(
         set((state) => {
           delete state.pendingDeletedSessionIds[sessionId];
           state.pendingCreatedSessionIds[sessionId] = true;
-          const initialModelId = modelProviderId ?? state.defaultModelProviderId;
-          if (initialModelId) {
-            state.selectedModelProviderIdsBySession[sessionId] = initialModelId;
+          const agentId = state.selectedAgentId ?? state.agentDirectory?.defaultAgentId;
+          if (modelProviderId) {
+            state.selectedModelProviderIdsBySession[sessionId] = modelProviderId;
           }
           if (state.sessions[sessionId]) {
             if (!state.sessionOrder.includes(sessionId)) {
@@ -268,6 +294,7 @@ export const useStore = create<StoreState>()(
           }
           state.sessions[sessionId] = {
             sessionId,
+            agentId,
             title: title ?? DEFAULT_SESSION_TITLE,
             status: "creating",
             createdAt: nowIso(),
@@ -349,6 +376,11 @@ export const useStore = create<StoreState>()(
 
       markHistoryLoading: (sessionId) =>
         set((state) => {
+          const session = state.sessions[sessionId];
+          if (session) {
+            delete session.pendingHistoryWindow;
+            session.historyInvalidated = false;
+          }
           state.historyLoadingIds[sessionId] = true;
           state.historyReplayBuffers[sessionId] = [];
           state.historyStepBuffers[sessionId] = [];
@@ -362,6 +394,8 @@ export const useStore = create<StoreState>()(
 
       markHistoryLoadFailed: (sessionId) =>
         set((state) => {
+          const session = state.sessions[sessionId];
+          if (session) delete session.pendingHistoryWindow;
           state.historyLoadingIds[sessionId] = false;
           state.historyFailedIds[sessionId] = true;
           delete state.historyReplayBuffers[sessionId];
@@ -371,6 +405,24 @@ export const useStore = create<StoreState>()(
           delete state.historyRunEventBuffers[sessionId];
           delete state.historyPreviewedIds[sessionId];
           delete state.historyHydration[sessionId];
+        }),
+
+      beginRunHistoryDetailLoad: (sessionId, requestId) => {
+        let started = false;
+        set((state) => {
+          started = beginRunHistoryDetailLoad(state, sessionId, requestId);
+        });
+        return started;
+      },
+
+      abandonRunHistoryDetailLoad: (sessionId, requestId) =>
+        set((state) => {
+          abandonRunHistoryDetailLoad(state, sessionId, requestId);
+        }),
+
+      abandonPendingRunHistoryDetailLoads: () =>
+        set((state) => {
+          abandonPendingRunHistoryDetailLoads(state);
         }),
 
       advanceHistoryHydration: (sessionId) => {
@@ -405,6 +457,7 @@ export const useStore = create<StoreState>()(
       setUserProfile: (profile) =>
         set((state) => {
           state.userProfile = normalizeUserProfile({
+            ...state.userProfile,
             ...profile,
             updatedAt: new Date().toISOString(),
             syncState: UserProfileSyncStates.Pending,
@@ -419,13 +472,13 @@ export const useStore = create<StoreState>()(
           const snapshotMatchesCurrent =
             snapshot.name === current.name &&
             snapshot.avatarDataUrl === current.avatarDataUrl &&
-            snapshot.assistant.name === current.assistant.name &&
-            snapshot.assistant.avatarDataUrl === current.assistant.avatarDataUrl;
+            snapshot.avatarPath === current.avatarPath;
           if (isCurrentPending && !snapshotMatchesCurrent) return;
           state.userProfile = {
             ...snapshot,
             syncState: UserProfileSyncStates.Synced,
           };
+          if (state.agentDirectory) projectAgentDirectory(state, state.agentDirectory);
         }),
 
       replaceWithDevMockData: (mockSessions, activeSessionId) =>
@@ -446,6 +499,7 @@ export const useStore = create<StoreState>()(
           state.historyRunEventBuffers = {};
           state.historyPreviewedIds = {};
           state.historyHydration = {};
+          state.runHistoryDetailStates = {};
           state.missingOnServerIds = {};
           state.pendingCreatedSessionIds = {};
           state.pendingDeletedSessionIds = {};
@@ -483,11 +537,14 @@ export const useStore = create<StoreState>()(
             createdAt: nowIso(),
             requestId,
             metadata: options?.metadata,
+            queueAdmission: options?.queueAdmission,
           });
           bumpSessionMessageCount(session);
           if (options?.createRun !== false) {
             session.activeRequestId = requestId;
-            session.runs.push(createRunRecord({ requestId, startedAt: nowIso(), input }));
+            session.runs.push(
+              createRunRecord({ requestId, startedAt: nowIso(), input, inputAttachments: attachments }),
+            );
           }
         }),
 
@@ -495,18 +552,6 @@ export const useStore = create<StoreState>()(
         set((state) => {
           truncateSessionFromRequest(state, sessionId, fromRequestId);
         }),
-
-      advanceStreamingDisplay: (sessionId, requestId) => {
-        let pending = false;
-        set((state) => {
-          const run = (state.sessions as Record<string, SessionRecord>)[sessionId]?.runs.find(
-            (item) => item.requestId === requestId,
-          );
-          if (!run) return;
-          pending = advanceRunDisplayText(run, state.motionLevel);
-        });
-        return pending;
-      },
 
       ingest: (env) =>
         set((state) => {

@@ -35,6 +35,9 @@ export interface SystemExtensionConfigurationSettings {
 }
 
 export interface SystemExtensionSettingsItem {
+  documentation?: FrontendLocalizedText;
+  skills?: readonly { readonly name: string; readonly title?: string; readonly description: string }[];
+  usageExamples?: readonly import("../../../Source/AgentSystem/Extensions/AgentPluginUsageExamples").AgentPluginUsageExample[];
   id: string;
   settingsSurface: AgentSystemExtensionSettingsSurface;
   domain: {
@@ -43,7 +46,6 @@ export interface SystemExtensionSettingsItem {
     description: FrontendLocalizedText;
     presentation: AgentToolPresentation;
   };
-  version: string;
   displayName: FrontendLocalizedText;
   description: FrontendLocalizedText;
   presentation: AgentToolPresentation;

@@ -1,0 +1,139 @@
+{
+  "name": "ChannelPoke",
+  "loading": "Bootstrap",
+  "description": "Send a native poke in this conversation. Groups require a verified participant targetId; private chat defaults to the other person. A needs_review result contains new inbox events and confirms nothing was sent; reconsider before retrying.",
+  "presentation": {
+    "category": "channel-message",
+    "icon": "target",
+    "activity": {
+      "action": {
+        "zh-CN": "戳一戳",
+        "en-US": "Poke"
+      },
+      "argumentPath": "/targetId"
+    },
+    "preview": {
+      "body": {
+        "pointer": "/status",
+        "from": "result"
+      }
+    }
+  },
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "taskId": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Durable task ID from conversation_tasks or ChannelUpdateConversation; scope review to its verified participants."
+      },
+      "allowUnread": {
+        "type": "boolean",
+        "default": false,
+        "description": "Explicitly send even with unread activity, only when this action remains appropriate independently of it. Otherwise new activity returns needs_review without sending."
+      },
+      "targetId": {
+        "type": "string",
+        "pattern": "^[1-9][0-9]*$",
+        "description": "Verified channel account ID of the participant to poke. Required in a group."
+      }
+    },
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "oneOf": [
+      {
+        "type": "object",
+        "properties": {
+          "status": {
+            "const": "sent"
+          }
+        },
+        "required": ["status"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "status": {
+            "const": "needs_review"
+          },
+          "inbox": {
+            "type": "object",
+            "properties": {
+              "afterSequence": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "throughSequence": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "hasMore": {
+                "type": "boolean"
+              },
+              "entries": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            },
+            "required": ["afterSequence", "throughSequence", "hasMore", "entries"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["status", "inbox"],
+        "additionalProperties": false
+      }
+    ]
+  },
+  "permissions": ["channel:send"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "SelfManaged",
+    "Capabilities": {
+      "Cancellation": true
+    }
+  },
+  "resources": [],
+  "sources": [],
+  "surfaces": ["channel"],
+  "platforms": ["onebot11", "onebot"],
+  "search": {
+    "Summary": "在当前 QQ 私聊或群聊中戳一戳指定成员。",
+    "Tags": ["OneBot", "戳一戳"],
+    "Capabilities": [
+      {
+        "Id": "channel.poke",
+        "Title": "Poke current participant",
+        "Description": "Send a native poke notice in the active lane.",
+        "Facets": {
+          "Actions": ["poke"],
+          "Targets": ["current-onebot-participant"],
+          "Inputs": ["target-id"],
+          "Outputs": ["delivery-receipt"],
+          "Effects": ["external-communication"]
+        },
+        "Aliases": ["戳一戳", "poke"],
+        "Risk": {
+          "SideEffect": "external-communication",
+          "Permission": "channel-send"
+        }
+      }
+    ],
+    "UseCases": ["需要原生戳一戳交互"],
+    "Examples": ["戳一戳当前会话的用户"],
+    "Avoid": ["不要使用文本伪造戳一戳事件"]
+  },
+  "evidenceCapabilities": []
+}

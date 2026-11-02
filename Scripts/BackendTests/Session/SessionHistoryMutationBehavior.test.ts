@@ -10,6 +10,43 @@ import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestF
 import { assistantEntry, createManagerFixture, turnPreparation, userEntry } from "./SessionManagerTestFixtures.js";
 
 describe("Session history mutation behavior", () => {
+  test("uses the persisted parent task when truncating a queued channel message", async () => {
+    const fixture = createManagerFixture();
+    const sessionId = "queued-task-boundary";
+    await fixture.manager.createSession({ sessionId });
+    fixture.store.persistEntries(sessionId, [
+      userEntry("earlier", "keep"),
+      userEntry("parent", "start"),
+      { ...userEntry("queued", "continue"), metadata: { queue: { parentRequestId: "parent", mode: "steer" } } },
+      assistantEntry("parent", "response"),
+    ]);
+    const events: AgentDomainEvent[] = [];
+    await fixture.manager.truncateFromRequest({
+      sessionId,
+      requestId: "queued",
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    expect(fixture.store.loadConversation(sessionId).map((entry) => entry.requestId)).toEqual(["earlier"]);
+    expect(events.find((event) => event.kind === AgentEventKinds.SessionTruncated)).toMatchObject({
+      data: { fromRequestId: "parent" },
+    });
+  });
+
+  test("does not report a successful truncation for a missing session", async () => {
+    const fixture = createManagerFixture();
+    const events: AgentDomainEvent[] = [];
+    await fixture.manager.truncateFromRequest({
+      sessionId: "missing",
+      requestId: "missing",
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    expect(events.some((event) => event.kind === AgentEventKinds.SessionTruncated)).toBe(false);
+    expect(events.some((event) => event.kind === AgentEventKinds.RequestInvalid)).toBe(true);
+  });
   test("keeps SQLite history intact when Pi alignment fails before regeneration", async () => {
     const rewindError = new Error("Pi rewind unavailable");
     const fixture = createManagerFixture({

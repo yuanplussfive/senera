@@ -2,6 +2,8 @@ import { resolveBackendMessage } from "../i18n/backendMessage";
 
 import { SeneraResourceHttpRoutes } from "./resourceContract";
 import { buildHttpApiUrl } from "./httpApiUrl";
+import { buildWorkspaceResourceUrl } from "@senera/resource-links";
+export { buildWorkspaceResourceUrl } from "@senera/resource-links";
 
 export type WorkspaceResourceKind = "text" | "image" | "binary";
 
@@ -42,6 +44,12 @@ interface WorkspaceTreeEntryResponse {
   readonly entry: WorkspaceTreeEntry;
 }
 
+export interface WorkspaceCheckpointUndoResult {
+  readonly checkpointId: string;
+  readonly restoredPaths: readonly string[];
+  readonly skippedPaths: readonly { readonly path: string; readonly reason: string }[];
+}
+
 export class WorkspaceResourceClientError extends Error {
   constructor(
     message: string,
@@ -52,18 +60,35 @@ export class WorkspaceResourceClientError extends Error {
   }
 }
 
-export function buildWorkspaceResourceUrl(httpBaseUrl: string, path: string, raw = false): string {
-  const url = new URL(
-    buildHttpApiUrl(httpBaseUrl, raw ? SeneraResourceHttpRoutes.WorkspaceContent : SeneraResourceHttpRoutes.Collection),
-  );
-  url.searchParams.set("path", path);
-  return url.toString();
-}
-
 export function buildWorkspaceTreeUrl(httpBaseUrl: string, path = "."): string {
   const url = new URL(buildHttpApiUrl(httpBaseUrl, SeneraResourceHttpRoutes.WorkspaceTree));
   if (path && path !== ".") url.searchParams.set("path", path);
   return url.toString();
+}
+
+export function buildWorkspaceCheckpointUndoUrl(httpBaseUrl: string): string {
+  return buildHttpApiUrl(httpBaseUrl, SeneraResourceHttpRoutes.WorkspaceCheckpointUndo);
+}
+
+/** Restore a turn's published transactions together under one live revision guard. */
+export async function undoWorkspaceCheckpoint(
+  httpBaseUrl: string,
+  input: { readonly checkpoints: readonly { readonly artifactUri: string; readonly checkpointId: string }[] },
+  csrfToken?: string,
+): Promise<WorkspaceCheckpointUndoResult> {
+  const response = await fetch(buildWorkspaceCheckpointUndoUrl(httpBaseUrl), {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...(csrfToken ? { "X-Senera-Csrf": csrfToken } : {}),
+    },
+    body: JSON.stringify(input),
+  });
+  const payload = await readJson(response);
+  if (!response.ok || !isWorkspaceCheckpointUndoResponse(payload)) throw readPayloadError(response, payload);
+  return payload.result;
 }
 
 export async function readWorkspaceResource(
@@ -243,6 +268,22 @@ function isWorkspaceTreeResponse(value: unknown): value is WorkspaceTreeResponse
 
 function isWorkspaceTreeEntryResponse(value: unknown): value is WorkspaceTreeEntryResponse {
   return isRecord(value) && value.ok === true && isWorkspaceTreeEntry(value.entry);
+}
+
+function isWorkspaceCheckpointUndoResponse(
+  value: unknown,
+): value is { readonly ok: true; readonly result: WorkspaceCheckpointUndoResult } {
+  if (!isRecord(value) || value.ok !== true || !isRecord(value.result)) return false;
+  const result = value.result;
+  return (
+    typeof result.checkpointId === "string" &&
+    Array.isArray(result.restoredPaths) &&
+    result.restoredPaths.every((path) => typeof path === "string") &&
+    Array.isArray(result.skippedPaths) &&
+    result.skippedPaths.every(
+      (entry) => isRecord(entry) && typeof entry.path === "string" && typeof entry.reason === "string",
+    )
+  );
 }
 
 function isWorkspaceTreeEntry(value: unknown): value is WorkspaceTreeEntry {

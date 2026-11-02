@@ -3,7 +3,7 @@ import type { AgentContinuityMemoryService } from "./AgentContinuityMemoryServic
 
 export interface AgentContinuityLifecyclePort {
   beforeCompaction(sessionId: string): Promise<void>;
-  afterCompaction?(sessionId: string): Promise<void> | void;
+  afterCompaction?(sessionId: string, boundaryKey?: string): Promise<void> | void;
   invalidateSessionContext?(sessionId: string): Promise<void> | void;
   close(): Promise<void>;
 }
@@ -41,8 +41,8 @@ export class AgentContinuityLifecycleCoordinator implements AgentContinuityLifec
     }
   }
 
-  afterCompaction(sessionId: string): void {
-    this.options.promptContext.invalidateSessionContext?.(sessionId);
+  afterCompaction(sessionId: string, boundaryKey?: string): void {
+    this.options.promptContext.invalidateSessionContext?.(sessionId, boundaryKey);
   }
 
   invalidateSessionContext(sessionId: string): void {

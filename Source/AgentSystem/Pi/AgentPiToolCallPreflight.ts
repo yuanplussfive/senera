@@ -7,6 +7,7 @@ export interface AgentPiToolCallPreflightInput {
   readonly purpose?: string;
   readonly modelMessageIndex?: number;
   readonly modelContentIndex?: number;
+  readonly parentToolCallId?: string;
 }
 
 export interface AgentPiToolCallPreflightResult {

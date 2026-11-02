@@ -12,6 +12,7 @@ import { projectAgentWebSocketRequestFailure } from "../../../Source/AgentSystem
 import { AgentWebSocketToolSettingsRequestHandlers } from "../../../Source/AgentSystem/WebSocket/AgentWebSocketSettingsRequestHandlers.js";
 import type { AgentWebSocketRequestContext } from "../../../Source/AgentSystem/WebSocket/AgentWebSocketTypes.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
+import { createAgentSelfSkillsPort } from "../../../Source/AgentSystem/SelfService/AgentSelfSkills.js";
 
 const workspaces = new Set<string>();
 const inputServices = new Set<AgentMcpInputService>();
@@ -24,6 +25,37 @@ afterEach(() => {
 });
 
 describe("MCP management", () => {
+  test("includes system skills associated through declared tools in plugin settings", () => {
+    const { management } = createManagement();
+    const extensions = management.systemSettingsSnapshot().extensions;
+    const browser = extensions.find((extension) => extension.id === "agent-browser")!;
+    expect(browser.skills).toEqual(expect.arrayContaining([expect.objectContaining({ name: "browser-automation" })]));
+    expect(browser.skillCount).toBe(browser.skills!.length);
+    const channels = extensions.find((extension) => extension.id === "agent-channels")!;
+    expect(channels.skills?.filter((skill) => skill.name === "channel-conversation")).toHaveLength(1);
+  });
+  test("exposes package-contributed skills through the live self-service catalog", () => {
+    let config: AgentSystemConfig = { ModelProviders: [] };
+    const { management } = createManagement(() => config);
+    const skills = createAgentSelfSkillsPort(() => management.systemSkillSources());
+    expect(skills.readResource("channel-conversation", "SKILL.md")).toMatchObject({
+      status: "found",
+      resource: { encoding: "utf8", content: expect.stringContaining("ChannelWaitMessage") },
+    });
+    config = { ...config, Extensions: { "agent-channels": { Enabled: false } } };
+    expect(skills.inspect("channel-conversation").status).toBe("missing");
+  });
+  test("resolves channel defaults from the registered package without mutating caller arguments", () => {
+    const { management } = createManagement();
+    const args = {};
+    const resolved = management.materializeSystemToolArguments("ChannelReadHistory", args);
+    expect(resolved).toEqual({ ok: true, value: { limit: 40 } });
+    expect(args).toEqual({});
+    expect(management.materializeSystemToolArguments("ChannelReadHistory", { limit: 0 }).ok).toBe(false);
+    expect(() => management.materializeSystemToolArguments("MissingTool", {})).toThrow(
+      "no registered argument contract",
+    );
+  });
   test("reuses revision-driven discovery snapshots and limits input invalidation to MCP settings", () => {
     const { management } = createManagement();
 
@@ -130,7 +162,7 @@ describe("MCP management", () => {
         }),
       ]),
     );
-    expect(entries.map((entry) => entry.id)).toContain("imagen");
+    expect(entries.map((entry) => entry.id)).not.toContain("imagen");
 
     management.setInput("credential-test", "TEST_SECRET", "configured-for-activation");
     expect(

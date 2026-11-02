@@ -395,7 +395,7 @@ describe("tool call executor outcome", () => {
       toolRunner: {
         run: async () => {
           clock.advance(42);
-          return toolProcessSuccessResult({ output: "timed" });
+          return toolProcessSuccessResult({ output: "timed", token: "result-secret" });
         },
       },
     });
@@ -431,7 +431,7 @@ describe("tool call executor outcome", () => {
     });
     expect(events.find((event) => event.kind === "tool.call.result.detail")?.data).toMatchObject({
       callId: "call-timed",
-      value: { output: "timed" },
+      value: { output: "timed", token: "[REDACTED]" },
       presentation: expect.objectContaining({ status: "success" }),
     });
   });
@@ -595,7 +595,6 @@ function registeredTool(ResultAssessment: "ProcessExit" | "Unassessed" = "Proces
     execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
     runtime: {
       Lifecycle: "Immediate",
-      ProtocolVersion: 2,
       ResultAssessment,
       Capabilities: { Cancellation: true },
     },

@@ -7,7 +7,6 @@ import {
   inspectAgentToolRuntimeContract,
 } from "../Types/AgentToolRuntimeContract.js";
 import {
-  AgentHostToolProtocolVersion,
   ToolExecutionTargets,
   ToolLoadingModes,
   ToolPlanningModes,
@@ -113,15 +112,25 @@ const ToolRuntimeCapabilitiesSchema = z
 export const ToolRuntimeSchema = z
   .object({
     Lifecycle: z.enum(["Immediate", "OneShot", "Persistent", "RemoteJob"]),
-    ProtocolVersion: z.literal(AgentHostToolProtocolVersion).optional(),
     ResultAssessment: z.enum(ToolResultAssessmentPolicies),
     DeadlinePolicy: z.enum(ToolDeadlinePolicies).optional(),
+    DeadlineMs: z.number().int().positive().optional(),
     ResultStorage: z.enum([ToolResultStorageModes.Artifact, ToolResultStorageModes.SourceView]).optional(),
     Scheduling: z.enum(ToolSchedulingModes).optional(),
     MaxConcurrency: z.number().int().min(1).max(1_000).optional(),
+    Composition: z.enum(["callable", "model-only", "orchestrator"]).optional(),
     Capabilities: ToolRuntimeCapabilitiesSchema.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((runtime, context) => {
+    if (runtime.Composition === "orchestrator" && runtime.Scheduling !== ToolSchedulingModes.SelfManaged) {
+      context.addIssue({
+        code: "custom",
+        path: ["Scheduling"],
+        message: "Tool orchestrators must manage their own capacity so nested tools can acquire execution slots.",
+      });
+    }
+  });
 
 /**
  * Planner support belongs to the tool contract rather than a provider, tool
@@ -166,12 +175,13 @@ export const ToolSchema = z
     const issuePaths = {
       handler: ["Handler", "Kind"],
       lifecycle: ["Runtime", "Lifecycle"],
-      protocolVersion: ["Runtime", "ProtocolVersion"],
+      deadline: ["Runtime", "DeadlineMs"],
     } as const;
     for (const issue of inspectAgentToolRuntimeContract({
       handlerKind: tool.Handler.Kind,
       lifecycle: tool.Runtime.Lifecycle,
-      protocolVersion: tool.Runtime.ProtocolVersion,
+      deadlinePolicy: tool.Runtime.DeadlinePolicy,
+      deadlineMs: tool.Runtime.DeadlineMs,
     })) {
       context.addIssue({
         code: "custom",

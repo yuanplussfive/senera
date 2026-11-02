@@ -263,6 +263,27 @@ export function workspaceSnapshotRevision(snapshot: ToolWorkspaceSnapshot): stri
   );
 }
 
+/** Advertise undo only when every changed before-image can be restored. */
+export function createAgentWorkspaceUndoCheckpoint(
+  input: Parameters<typeof createAgentWorkspaceContinuityCheckpoint>[0],
+): AgentWorkspaceContinuityCheckpoint | undefined {
+  if ([input.before, input.after].some((snapshot) => snapshot.status === "degraded" || snapshot.warnings?.length))
+    return undefined;
+  const checkpoint = createAgentWorkspaceContinuityCheckpoint(input);
+  if (checkpoint.changedPaths.length === 0) return undefined;
+  const before = new Map(input.before.files.map((file) => [file.path, file]));
+  const after = new Set(input.after.files.map((file) => file.path));
+  if (
+    checkpoint.changedPaths.some((path) => {
+      const file = before.get(path);
+      if (!file || !after.has(path)) return true;
+      return file?.exists && file.kind !== "directory" && (file.kind !== "file" || file.content?.state !== "captured");
+    })
+  )
+    return undefined;
+  return checkpoint;
+}
+
 export function createAgentContinuityLedger(input: {
   readonly scope: string;
   readonly references?: readonly AgentContinuityReference[];

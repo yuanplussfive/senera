@@ -1,15 +1,19 @@
 import React from "react";
-import { cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
 
 const { ToolResourcePreview } = await import("../../../Frontend/src/features/workflow/ToolResourcePreview.tsx");
-const { ToolWorkspaceChangePreview } =
+const { ToolWorkspaceChangePreview, WorkspaceChangeReviewFile } =
   await import("../../../Frontend/src/features/workflow/ToolWorkspaceChangePreview.tsx");
 const { ToolArtifactPreview } = await import("../../../Frontend/src/features/workflow/ToolArtifactPreview.tsx");
 const { ToolRunOutputSummary } = await import("../../../Frontend/src/features/workflow/ToolRunOutputSummary.tsx");
-const { collectToolResources, collectToolWorkspaceChanges, collectToolWorkspaceObservation } =
-  await import("../../../Frontend/src/features/workflow/toolResourceProjection.ts");
+const {
+  collectToolResources,
+  collectToolWorkspaceChanges,
+  collectToolWorkspaceObservation,
+  findReversibleWorkspaceCheckpoints,
+} = await import("../../../Frontend/src/features/workflow/toolResourceProjection.ts");
 const { mergeToolResultPresentation } = await import("../../../Frontend/src/store/session/toolResultPresentation.ts");
 const { WorkspaceResourceProvider } =
   await import("../../../Frontend/src/shared/workspace/WorkspaceResourceProvider.tsx");
@@ -62,9 +66,15 @@ test("keeps media resources compact, opens them explicitly, and previews documen
   }
   expect(document.body.querySelector("img, audio, video")).toBeNull();
   for (const id of resourceIds.slice(1, 3)) {
-    const link = view.container.querySelector(`[data-tool-resource="senera://resource/${id}"] a`);
-    expect(link).toHaveAttribute("target", "_blank");
-    expect(link.getAttribute("href")).toContain(`/resources/${id}`);
+    const trigger = view.container.querySelector(`[data-tool-resource="senera://resource/${id}"] button`);
+    fireEvent.click(trigger);
+    await act(async () => vi.dynamicImportSettled());
+    const mediaSelector = id === resourceIds[1] ? "audio" : "video";
+    await waitFor(() => expect(document.body.querySelector(mediaSelector)).not.toBeNull());
+    const media = document.body.querySelector(mediaSelector);
+    expect(media.getAttribute("src")).toContain(`/resources/${id}`);
+    fireEvent.click(view.getByRole("button", { name: frontendMessage("ui.close") }));
+    await waitFor(() => expect(document.body.querySelector("[data-workspace-resource-preview]")).toBeNull());
   }
 
   fireEvent.pointerEnter(view.container.querySelector(`[data-tool-resource="senera://resource/${resourceIds[3]}"]`));
@@ -132,14 +142,36 @@ test("uses canonical resource URLs for download and image enlargement", async ()
   await waitFor(() => expect(fetchMock).toHaveBeenCalled());
   expect(click).toHaveBeenCalled();
 
-  fireEvent.click(view.getByRole("button", { name: "查看图片：preview.png" }));
-  await waitFor(() => expect(document.body.querySelector("[data-image-preview-dialog]")).not.toBeNull());
-  expect(document.body.querySelector("[data-image-preview-dialog] img")).toHaveAttribute(
+  fireEvent.click(
+    view.getByRole("button", { name: frontendMessage("chat.attachment.filePreview", { name: "preview.png" }) }),
+  );
+  await waitFor(() =>
+    expect(document.body.querySelector('[data-workspace-resource-preview="image"] img')).not.toBeNull(),
+  );
+  expect(document.body.querySelector('[data-workspace-resource-preview="image"] img')).toHaveAttribute(
     "src",
     expect.stringContaining(`/resources/${resourceId}`),
   );
   fireEvent.click(view.getByRole("button", { name: frontendMessage("ui.close") }));
-  await waitFor(() => expect(document.body.querySelector("[data-image-preview-dialog]")).toBeNull());
+  await waitFor(() => expect(document.body.querySelector("[data-workspace-resource-preview]")).toBeNull());
+});
+
+test("image preview failures offer a retry with the same scoped resource URL", async () => {
+  const view = renderResources([resource("phone.png", "image/png")]);
+  const trigger = view.getByRole("button", {
+    name: frontendMessage("chat.attachment.filePreview", { name: "phone.png" }),
+  });
+  expect(trigger.querySelector("svg")).not.toBeNull();
+  fireEvent.click(trigger);
+  const image = document.body.querySelector("[data-image-canvas-image]");
+  const source = image.getAttribute("src");
+  fireEvent.error(image);
+  expect(view.getByRole("alert")).toHaveTextContent(frontendMessage("profile.imageLoadFailed"));
+  fireEvent.click(view.getByRole("button", { name: frontendMessage("ui.retry") }));
+  const retried = document.body.querySelector("[data-image-canvas-image]");
+  expect(retried).not.toBe(image);
+  expect(retried).toHaveAttribute("src", source);
+  expect(view.queryByRole("alert")).toBeNull();
 });
 
 test("reports a failed resource download instead of swallowing the error", async () => {
@@ -151,6 +183,27 @@ test("reports a failed resource download instead of swallowing the error", async
   fireEvent.click(view.getByRole("button", { name: frontendMessage("workflow.resource.download") }));
 
   await waitFor(() => expect(toastError).toHaveBeenCalledWith(frontendMessage("resource.downloadFailed")));
+});
+
+test.each(["http", "body"])("reports %s failures while loading a document preview", async (failure) => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({
+      ok: failure !== "http",
+      status: failure === "http" ? 503 : 200,
+      text: async () => {
+        throw new Error("Response body interrupted");
+      },
+    }),
+  );
+  const view = renderResources([resource("answer.ts", "text/plain")]);
+  fireEvent.pointerEnter(view.container.querySelector("[data-tool-resource]"));
+  await waitFor(() => expect(document.body.querySelector("[data-resource-hover-preview]")).not.toBeNull());
+  await waitFor(() =>
+    expect(document.body.querySelector("[data-resource-hover-preview]")?.textContent).toContain(
+      frontendMessage("workflow.resource.previewUnavailable"),
+    ),
+  );
 });
 
 test("bounds text previews before fetching oversized resources", async () => {
@@ -171,7 +224,7 @@ test("keeps the metadata view usable when no workspace resource controller is mo
   );
 
   expect(view.container.querySelector('[data-tool-resource][data-resource-kind="file"]')).not.toBeNull();
-  expect(view.container.querySelector("button[aria-label]")).toBeNull();
+  expect(view.container.querySelector("button[aria-label]")).toBeDisabled();
 });
 
 test("merges later resource metadata without changing URI identity", () => {
@@ -370,6 +423,33 @@ test("falls back to the current workspace content when no line-level patch is av
     expect.stringContaining("/api/resources?path=src%2Fcurrent.ts"),
     expect.objectContaining({ credentials: "include" }),
   );
+});
+
+test("shows the actual patch request failure and retries the artifact without reading a different current file", async () => {
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce({ ok: false, status: 403 })
+    .mockResolvedValueOnce({
+      ok: true,
+      text: async () => "--- a/historical-only.ts\n+++ b/historical-only.ts\n@@ -1 +1 @@\n-old\n+restored\n",
+    });
+  vi.stubGlobal("fetch", fetchMock);
+  const view = renderWithFrontendProviders(
+    React.createElement(
+      WorkspaceResourceProvider,
+      { httpBaseUrl: "http://localhost:4517" },
+      React.createElement(WorkspaceChangeReviewFile, {
+        change: { kind: "workspace", key: "historical-only.ts", workspaceStatus: "modified", status: "changed" },
+        patchResources: [resource("workspace.patch", "text/x-diff", undefined, "patch_retry")],
+      }),
+    ),
+  );
+  await waitFor(() => expect(view.getByRole("alert").textContent).toContain("403"));
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  fireEvent.click(view.getByRole("button", { name: frontendMessage("ui.retry") }));
+  await waitFor(() => expect(view.container.querySelector('[data-workspace-preview-kind="diff"]')).not.toBeNull());
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(fetchMock.mock.calls.every(([url]) => url.includes("/api/resources/patch_retry"))).toBe(true);
 });
 
 test("keeps the net workspace status when one file changes across multiple tool steps", () => {
@@ -629,6 +709,167 @@ test("right-side output rows keep open and download actions without hover previe
   expect(view.getByRole("button", { name: frontendMessage("workflow.workspace.open") })).toBeInTheDocument();
 });
 
+test("keeps the conversation summary free of hover diffs while dock detail retains them", async () => {
+  const change = {
+    kind: "workspace",
+    key: "src/answer.ts",
+    status: "changed",
+    workspaceStatus: "added",
+    summary: "added: src/answer.ts",
+    addedLines: 3,
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        resource: {
+          path: change.key,
+          name: "answer.ts",
+          mime: "text/typescript",
+          size: 24,
+          kind: "text",
+          editable: true,
+          etag: "etag",
+          content: "export const answer = 42;\n",
+        },
+      }),
+    }),
+  );
+
+  const summary = renderWithFrontendProviders(
+    React.createElement(
+      WorkspaceResourceProvider,
+      { httpBaseUrl: "http://localhost:4310" },
+      React.createElement(ToolArtifactPreview, { changes: [change], mode: "summary" }),
+    ),
+  );
+  expect(summary.container.querySelector("[data-turn-output-change]")).not.toBeNull();
+  expect(summary.container.querySelector("[data-turn-output-change] [data-file-preview-row-icon]")).toBeNull();
+  expect(summary.container.querySelector("[data-workspace-change-trigger]")).toBeNull();
+  expect(document.body.querySelector("[data-workspace-change-preview]")).toBeNull();
+  summary.unmount();
+
+  const detail = renderWithFrontendProviders(
+    React.createElement(
+      WorkspaceResourceProvider,
+      { httpBaseUrl: "http://localhost:4310" },
+      React.createElement(ToolArtifactPreview, { changes: [change], mode: "detail" }),
+    ),
+  );
+  fireEvent.pointerEnter(detail.container.querySelector("[data-workspace-change]"));
+  await waitFor(() => expect(document.body.querySelector("[data-workspace-change-preview]")).not.toBeNull());
+});
+
+test("offers turn undo for fully captured transactions and rejects uncaptured changes", () => {
+  const changes = [
+    {
+      kind: "workspace",
+      key: "src/answer.ts",
+      status: "changed",
+      workspaceStatus: "modified",
+      summary: "modified: src/answer.ts",
+    },
+  ];
+  const checkpoint = {
+    id: "workspace:answer",
+    artifactUri: "senera://artifact/art_0123456789abcdef01234567",
+    changedPaths: ["src/answer.ts"],
+  };
+  const step = { toolPresentation: { workspaceCheckpoint: checkpoint } };
+
+  expect(findReversibleWorkspaceCheckpoints([step], changes)).toEqual([
+    {
+      artifactUri: checkpoint.artifactUri,
+      checkpointId: checkpoint.id,
+    },
+  ]);
+  expect(findReversibleWorkspaceCheckpoints([step, step], changes)).toEqual([
+    {
+      artifactUri: checkpoint.artifactUri,
+      checkpointId: checkpoint.id,
+    },
+  ]);
+  expect(
+    findReversibleWorkspaceCheckpoints(
+      [step, { toolPresentation: { workspaceCheckpoint: { ...checkpoint, id: "workspace:other" } } }],
+      changes,
+    ),
+  ).toEqual([
+    { artifactUri: checkpoint.artifactUri, checkpointId: checkpoint.id },
+    { artifactUri: checkpoint.artifactUri, checkpointId: "workspace:other" },
+  ]);
+  expect(
+    findReversibleWorkspaceCheckpoints(
+      [step],
+      [
+        ...changes,
+        {
+          kind: "workspace",
+          key: "src/other.ts",
+          status: "changed",
+          workspaceStatus: "modified",
+          summary: "modified: src/other.ts",
+        },
+      ],
+    ),
+  ).toBeUndefined();
+});
+
+test("confirms and submits undo by checkpoint identity instead of file paths", async () => {
+  const checkpoint = {
+    artifactUri: "senera://artifact/art_0123456789abcdef01234567",
+    checkpointId: "workspace:answer",
+  };
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({
+      ok: true,
+      result: { checkpointId: checkpoint.checkpointId, restoredPaths: ["src/answer.ts"], skippedPaths: [] },
+    }),
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  const view = renderWithFrontendProviders(
+    React.createElement(
+      WorkspaceResourceProvider,
+      { httpBaseUrl: "http://localhost:4310", csrfToken: "csrf-token" },
+      React.createElement(ToolArtifactPreview, {
+        mode: "summary",
+        checkpoints: [checkpoint],
+        changes: [
+          {
+            kind: "workspace",
+            key: "src/answer.ts",
+            status: "changed",
+            workspaceStatus: "modified",
+            summary: "modified: src/answer.ts",
+          },
+        ],
+      }),
+    ),
+  );
+
+  fireEvent.click(view.getByRole("button", { name: "撤销" }));
+  await waitFor(() => expect(document.body.textContent).toContain("撤销本轮变更？"));
+  const undoButtons = Array.from(document.body.querySelectorAll("button")).filter(
+    (button) => button.textContent?.trim() === "撤销",
+  );
+  fireEvent.click(undoButtons.at(-1));
+
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+  expect(fetchMock).toHaveBeenCalledWith(
+    "http://localhost:4310/api/workspace/checkpoints/undo",
+    expect.objectContaining({
+      method: "POST",
+      headers: expect.objectContaining({ "X-Senera-Csrf": "csrf-token" }),
+      body: JSON.stringify({ checkpoints: [checkpoint] }),
+    }),
+  );
+  await waitFor(() => expect(view.queryByRole("button", { name: "撤销" })).toBeNull());
+  expect(view.container.textContent).toContain("已撤销");
+});
+
 test("keeps non-visual binary workspace changes out of hover previews", async () => {
   const view = renderWithFrontendProviders(
     React.createElement(
@@ -800,17 +1041,27 @@ test("summarizes a run output after the execution details and keeps additional f
   );
 
   expect(view.container.querySelector("[data-tool-run-output-summary]")).not.toBeNull();
-  expect(view.container.textContent).toContain("本轮产出");
-  expect(view.container.textContent).toContain("+10");
-  expect(view.container.textContent).toContain("−6");
+  expect(view.container.textContent).toContain("已修改 7 个文件");
+  expect(view.container.textContent).toContain("+4");
+  expect(view.container.textContent).toContain("−1");
   expect(view.container.textContent).not.toContain("行");
-  expect(view.container.querySelector(".text-emerald-700")).toHaveTextContent("+10");
-  expect(view.container.querySelector(".text-rose-700")).toHaveTextContent("−6");
-  expect(view.container.querySelectorAll("[data-workspace-change]")).toHaveLength(3);
+  expect(
+    view.container.querySelectorAll("[data-tool-run-output-summary] [data-workspace-line-delta]"),
+  ).not.toHaveLength(0);
+  expect(view.container.querySelectorAll("[data-turn-output-change]")).toHaveLength(3);
 
-  fireEvent.click(view.getByRole("button", { name: "再显示 4 个文件" }));
-  await waitFor(() => expect(view.container.querySelectorAll("[data-workspace-change]")).toHaveLength(7));
-  expect(view.getByRole("button", { name: "收起文件列表" })).toBeInTheDocument();
+  const reviewActions = view.getAllByRole("button", { name: frontendMessage("workflow.run.output.review") });
+  fireEvent.click(reviewActions.at(-1));
+  await waitFor(() => expect(document.querySelector("[data-workspace-change-review-scroll]")).not.toBeNull());
+  expect(document.body).not.toHaveAttribute("data-scroll-locked");
+
+  const summaryShowMore = view.container.querySelector('[data-turn-output-change-list] button[aria-expanded="false"]');
+  expect(summaryShowMore).toHaveTextContent("再显示 4 个文件");
+  fireEvent.click(summaryShowMore);
+  await waitFor(() => expect(view.container.querySelectorAll("[data-turn-output-change]")).toHaveLength(7));
+  expect(view.container.querySelector('[data-turn-output-change-list] button[aria-expanded="true"]')).toHaveTextContent(
+    "收起文件列表",
+  );
 });
 
 test("merges lifecycle and detail changes without dropping workspace metadata", () => {

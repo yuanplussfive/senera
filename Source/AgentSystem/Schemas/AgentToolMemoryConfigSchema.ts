@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { AgentMemoryDiaryConfigSchema } from "../Continuity/AgentMemoryDiaryContract.js";
+import { AgentMemoryRetentionPolicySchema } from "../Continuity/AgentMemoryRetention.js";
 import { AgentToolSearchChannelWeightKeys } from "../Types/AgentToolAndMemoryConfigTypes.js";
 
 export const ToolSearchSchema = z
@@ -13,12 +15,6 @@ export const ToolSearchSchema = z
     Embedding: z
       .object({
         Enabled: z.boolean().optional(),
-      })
-      .strict()
-      .optional(),
-    Tokenize: z
-      .object({
-        Stopwords: z.array(z.string().min(1)).optional(),
       })
       .strict()
       .optional(),
@@ -94,13 +90,17 @@ export const ContinuityLearningSchema = z
         FragmentHistoryTurns: z.number().int().positive().optional(),
         KnowledgeCandidateLimit: z.number().int().positive().optional(),
         AssistantPreviewTokens: z.number().int().positive().optional(),
-        DigestInputTokenBudget: z.number().int().positive().optional(),
-        DigestSummaryTokenLimit: z.number().int().positive().optional(),
+        RelevanceInputTokenBudget: z.number().int().positive().optional(),
+        FragmentSummaryTokenLimit: z.number().int().positive().optional(),
       })
       .strict()
       .optional(),
+    Diary: AgentMemoryDiaryConfigSchema.partial().optional(),
+    Retention: AgentMemoryRetentionPolicySchema.partial().optional(),
     Recall: z
       .object({
+        FrozenBudgetRatio: z.number().positive().max(1).optional(),
+        TaskBudgetRatio: z.number().positive().max(1).optional(),
         PromptBudget: z
           .object({
             MaxTokens: z.number().int().positive().optional(),

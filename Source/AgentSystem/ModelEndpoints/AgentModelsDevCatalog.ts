@@ -430,7 +430,14 @@ function parseModel(value: unknown, sourceModelId: string, providerId?: string):
     outputModalities: readStringArray(modalities?.output),
     ...optionalBoolean("openWeights", readBoolean(record?.open_weights)),
     ...optionalString("license", readLicense(record?.license)),
-    ...optionalPricing(cost),
+    ...optionalPricing(
+      cost && {
+        input: cost.input,
+        output: cost.output,
+        cacheRead: cost.cache_read,
+        cacheWrite: cost.cache_write,
+      },
+    ),
     ...(links.length > 0 ? { links } : {}),
   };
   return metadata;
@@ -580,8 +587,8 @@ function optionalPricing(value: Record<string, unknown> | undefined): Record<str
   const pricing: AgentModelsDevPricing = {
     ...optionalNumber("input", readNumber(value.input)),
     ...optionalNumber("output", readNumber(value.output)),
-    ...optionalNumber("cacheRead", readNumber(value.cache_read)),
-    ...optionalNumber("cacheWrite", readNumber(value.cache_write)),
+    ...optionalNumber("cacheRead", readNumber(value.cacheRead)),
+    ...optionalNumber("cacheWrite", readNumber(value.cacheWrite)),
   };
   return Object.keys(pricing).length > 0 ? { pricing } : {};
 }

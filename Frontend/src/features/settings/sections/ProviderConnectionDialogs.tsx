@@ -16,7 +16,7 @@ import {
   MenuSelect,
   SecretInput,
 } from "../../../shared/ui";
-import { ModelProviderIcon } from "../../chat/ModelProviderIcon";
+import { ModelProviderIcon } from "../../../shared/models/ModelProviderIcon";
 import { isRedactedConfigSecret, normalizeProviderEndpointDraft } from "../../chat/modelConfigData";
 import type { ProviderEndpointDraft } from "../../chat/modelConfigTypes";
 import { ProviderFormError } from "./ProviderConnectionFeedback";
@@ -395,7 +395,6 @@ function ProviderConfigDialog({
               ariaLabel={frontendMessage("settings.provider.apiKey")}
               showLabel={frontendMessage("config.provider.showApiKey")}
               hideLabel={frontendMessage("config.provider.hideApiKey")}
-              hideRevealWhenEmpty
               className="font-mono text-[12.5px] px-[11px]"
               onChange={(value) => {
                 apiKeyTouched.current = true;

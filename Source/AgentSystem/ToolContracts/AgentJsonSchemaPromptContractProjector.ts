@@ -249,6 +249,9 @@ function schemaTypeText(schema: JsonSchema, rootSchema: JsonSchema): string {
   const resolved = resolveSchema(schema, rootSchema);
   if (resolved !== schema) return schemaTypeText(resolved, rootSchema);
   const type = resolved.type;
+  if (Array.isArray(type)) {
+    return [...new Set(type.map((entry) => schemaTypeText({ ...resolved, type: entry }, rootSchema)))].join(" | ");
+  }
   if (type === "integer") return "number";
   if (type === "array") {
     const items = recordValue(resolved.items);

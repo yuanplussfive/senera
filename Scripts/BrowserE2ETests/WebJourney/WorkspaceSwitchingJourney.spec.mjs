@@ -89,7 +89,7 @@ test("storage settings show the actual application directory without deployment 
   const settings = page.locator("[data-settings-workbench]");
   await expect(settings).toBeVisible();
   await expect(settings.getByText(harness.applicationRoot, { exact: true })).toBeVisible();
-  await expect(settings.getByTitle(harness.a, { exact: true })).toBeVisible();
+  await expect(settings.getByText(harness.a, { exact: true })).toBeVisible();
   await expect(settings.getByText("插件目录", { exact: true })).toHaveCount(0);
   await expect(settings.getByText("产物目录", { exact: true })).toHaveCount(0);
   await expect(settings.getByRole("button", { name: "刷新存储占用", exact: true })).toBeEnabled();
@@ -121,11 +121,11 @@ test("switches real workspace scopes and restores the original composer draft", 
 test("searches, previews, watches and attaches real workspace files", async ({ page }) => {
   await page.goto(harness.httpOrigin);
   await expect(page.getByLabel("输入消息")).toBeEnabled();
-  await openWorkspaceMenu(page);
-  const tree = page.locator("[data-workspace-file-tree]");
-  await tree.getByPlaceholder("搜索当前工作区文件").fill("example");
+  const menu = await openWorkspaceMenu(page);
+  const tree = menu.locator("[data-workspace-file-tree]");
+  await tree.getByPlaceholder("搜索文件").fill("example");
   await tree.locator('[role="treeitem"][data-item-path="src/example.txt"]:visible').click();
-  const preview = page.getByRole("dialog", { name: "example.txt", exact: true });
+  const preview = fileWorkbench(page);
   await expect(preview).toBeVisible();
   await expect(preview.locator("diffs-container")).toContainText("工作区 A 的文件");
   await expect(page.getByRole("menu")).toHaveCount(0);
@@ -147,44 +147,47 @@ test("searches, previews, watches and attaches real workspace files", async ({ p
   await expect(page.locator("[data-chat-composer]")).toContainText("example.txt");
 });
 
-for (const width of [390, 900, 1280, 1440, 1600]) {
-  test(`workspace selector and browser fit ${width}px`, async ({ page }, testInfo) => {
-    await page.setViewportSize({ width, height: 900 });
+for (const theme of ["light", "dark"]) {
+  test(`workspace selector and browser fit every supported viewport in ${theme} appearance`, async ({
+    page,
+  }, testInfo) => {
+    if (theme === "dark") await useDarkAppearance(page);
+    await page.setViewportSize({ width: 390, height: 900 });
     await page.goto(harness.httpOrigin);
     await expect(page.getByLabel("输入消息")).toBeVisible();
     const selector = await openWorkspaceMenu(page, "切换");
     await expect(workspaceFolderAction(selector)).toBeEnabled();
     await workspaceFolderAction(selector).click();
     const browser = page.getByRole("dialog", { name: "切换工作区", exact: true });
-    await expect(browser.getByRole("button", { name: "src", exact: true })).toBeVisible();
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await page.screenshot({ path: testInfo.outputPath(`workspace-${width}.png`) });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    for (const width of [390, 900, 1280, 1440, 1600]) {
+      await test.step(`${width}px`, async () => {
+        await page.setViewportSize({ width, height: 900 });
+        await expect(browser.getByRole("button", { name: "src", exact: true })).toBeVisible();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+        await page.screenshot({ path: testInfo.outputPath(`workspace-${width}-${theme}.png`) });
+      });
+    }
     await page.keyboard.press("Escape");
     await expect(browser).toBeHidden();
-    await useDarkAppearance(page);
-    await page.reload();
-    await openWorkspaceMenu(page, "切换");
-    await workspaceFolderAction(selector).click();
-    await expect(browser.getByRole("button", { name: "src", exact: true })).toBeVisible();
-    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await page.screenshot({ path: testInfo.outputPath(`workspace-${width}-dark.png`) });
   });
 }
 
+function fileWorkbench(page) {
+  return page
+    .locator('[data-workspace-resource-workbench="dock"]:visible, [role="dialog"]:visible [data-dialog-panel="true"]')
+    .filter({ has: page.locator(".resource-header") });
+}
+
 async function openFile(page, file) {
-  await openWorkspaceMenu(page);
-  const tree = page.locator("[data-workspace-file-tree]");
-  await tree.getByPlaceholder("搜索当前工作区文件").fill(file);
+  const menu = await openWorkspaceMenu(page);
+  const tree = menu.locator("[data-workspace-file-tree]");
+  await tree.getByPlaceholder("搜索文件").fill(file);
   await tree.locator(`[role="treeitem"][data-item-path="${file}"]:visible`).click();
-  const preview = page.getByRole("dialog").filter({ has: page.locator("[data-workspace-text-surface]") });
+  const preview = fileWorkbench(page);
   const name = file.split(/[\\/]/u).at(-1) ?? file;
   await expect(preview.locator(".resource-header")).toContainText(name);
-  await expect
-    .poll(() =>
-      preview.locator("[data-dialog-panel='true']").evaluate((node) => Number(getComputedStyle(node).opacity)),
-    )
-    .toBeGreaterThan(0.98);
+  await expect.poll(() => preview.evaluate((node) => Number(getComputedStyle(node).opacity))).toBeGreaterThan(0.98);
   return preview;
 }
 
@@ -297,12 +300,13 @@ test("file selection aborts stale loads and invalid JSON reports its structure e
   await expect(page.getByLabel("输入消息")).toBeEnabled();
   await openWorkspaceMenu(page);
   const tree = page.locator("[data-workspace-file-tree]");
-  await tree.getByPlaceholder("搜索当前工作区文件").fill("src/example.ts");
+  await tree.getByPlaceholder("搜索文件").fill("src/example.ts");
   await tree.locator('[role="treeitem"][data-item-path="src/example.ts"]:visible').click();
   await loading;
-  const preview = page.getByRole("dialog").filter({ has: page.locator("[data-workspace-explorer]") });
+  const preview = fileWorkbench(page);
+  await preview.getByRole("button", { name: "显示或隐藏文件树", exact: true }).click();
   const explorer = preview.locator("[data-workspace-explorer]");
-  await explorer.getByPlaceholder("搜索当前工作区文件").fill("invalid.json");
+  await explorer.getByPlaceholder("搜索文件").fill("invalid.json");
   await explorer.locator('[role="treeitem"][data-item-path="invalid.json"]:visible').click();
   await expect(preview.locator("diffs-container")).toContainText("broken");
   release();
@@ -395,6 +399,7 @@ test("resource workbench scrolls its explorer and Markdown surface with the whee
   await page.goto(harness.httpOrigin);
   await expect(page.getByLabel("输入消息")).toBeEnabled();
   const preview = await openFile(page, "long-preview.md");
+  await preview.getByRole("button", { name: "显示或隐藏文件树", exact: true }).click();
   const explorerScroller = preview.locator("[data-workspace-explorer] [data-file-tree-virtualized-scroll]:visible");
   await expect(explorerScroller).toBeVisible();
   await expect
@@ -425,31 +430,33 @@ test("file preview follows the actual dark appearance preference", async ({ page
   await page.screenshot({ path: testInfo.outputPath("pierre-markdown-dark.png") });
 });
 
-for (const width of [390, 900, 1280, 1440, 1600]) {
-  test(`Pierre file workbench fits ${width}px`, async ({ page }, testInfo) => {
-    await page.setViewportSize({ width, height: 900 });
+for (const theme of ["light", "dark"]) {
+  test(`Pierre file workbench fits every supported viewport in ${theme} appearance`, async ({ page }, testInfo) => {
+    if (theme === "dark") await useDarkAppearance(page);
+    await page.setViewportSize({ width: 390, height: 900 });
     await page.goto(harness.httpOrigin);
     await expect(page.getByLabel("输入消息")).toBeEnabled();
     const preview = await openFile(page, "src/example.ts");
     await expect(preview.locator("diffs-container")).toContainText("Hello Senera");
-    const panel = preview.locator("[data-dialog-panel]");
-    const bounds = await panel.boundingBox();
-    expect(bounds.x).toBeGreaterThanOrEqual(0);
-    expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
-    if (width === 390) {
-      await preview.getByRole("button", { name: "显示或隐藏文件树", exact: true }).click();
-      await expect(preview.locator("[data-workspace-explorer]")).toBeVisible();
-      await preview.locator('[role="treeitem"][data-item-path="src/example.ts"]:visible').click();
-      await expect(preview.locator("[data-workspace-explorer]")).toBeHidden();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    for (const width of [390, 900, 1280, 1440, 1600]) {
+      await test.step(`${width}px`, async () => {
+        await page.setViewportSize({ width, height: 900 });
+        await expect(async () => {
+          const bounds = await preview.boundingBox();
+          expect(bounds).not.toBeNull();
+          expect(bounds.x).toBeGreaterThanOrEqual(0);
+          expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+        }).toPass();
+        if (width === 390) {
+          await preview.getByRole("button", { name: "显示或隐藏文件树", exact: true }).click();
+          await expect(preview.locator("[data-workspace-explorer]")).toBeVisible();
+          await preview.locator('[role="treeitem"][data-item-path="src/example.ts"]:visible').click();
+          await expect(preview.locator("[data-workspace-explorer]")).toBeHidden();
+        }
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+        await page.screenshot({ path: testInfo.outputPath(`pierre-workbench-${width}-${theme}.png`) });
+      });
     }
-    await page.screenshot({ path: testInfo.outputPath(`pierre-workbench-${width}.png`) });
-    await useDarkAppearance(page);
-    await page.reload();
-    await expect(page.getByLabel("输入消息")).toBeEnabled();
-    const darkPreview = await openFile(page, "src/example.ts");
-    await expect(darkPreview.locator("diffs-container")).toContainText("Hello Senera");
-    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await page.screenshot({ path: testInfo.outputPath(`pierre-workbench-${width}-dark.png`) });
   });
 }

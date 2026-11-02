@@ -17,6 +17,8 @@ export const AgentBrowserOperationNames = [
   "wait_for_selector",
   "wait_for_text",
   "wait_for_load",
+  "wait_for_url",
+  "wait_for_function",
   "screenshot",
   "get_text",
   "get_url",
@@ -86,6 +88,11 @@ export type AgentBrowserComputerAction =
   | { readonly type: "wait"; readonly ms: number }
   | { readonly type: "screenshot" };
 
+/** A navigation target was reached, while its page may still be loading. */
+export interface AgentBrowserPendingNavigation {
+  readonly status: "pending";
+}
+
 export interface AgentBrowserOperationResult {
   readonly status: "completed";
   readonly summary: string;
@@ -107,6 +114,7 @@ export interface AgentBrowserOperationResult {
     readonly mediaType: string;
     readonly markdown: string;
   };
+  readonly navigation?: AgentBrowserPendingNavigation;
 }
 
 export interface AgentBrowserOperationExecution {

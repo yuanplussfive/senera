@@ -6,6 +6,17 @@ In native mode the client generates the Pi tool schema from Zod and requires exa
 
 `AgentPiModelRequestExecutor` owns provider configuration, prompt-cache capture, first-output and request deadlines, cancellation, usage and timing. Text planning and resident native continuation also share this executor. A resident continuation keeps its owning Pi transcript and transport. Provider requests contain native image content; image bytes are excluded from text token accounting.
 
+Model registration does not require Agent planning capabilities. The shared
+`AgentModelCapabilityContract` declares consumer requirements and is generated
+into the frontend. Default Agent bindings, session startup, child model pools
+and Agent selection use the same planning requirements. The request executor
+checks the actual outgoing content before starting timers or making a provider
+request: Chat for text, Vision for image content, and ToolCalling for declared
+tools or an explicit tool choice. Image analysis does not inherit native planner
+requirements. A missing capability produces an explicit error; editing a
+capability never changes planning mode, and switching planning mode never
+rewrites capability flags.
+
 Response budgets apply to Pi output: `MaxResponseBytes` bounds accumulated deltas and the authoritative terminal message, while the existing `MaxSseEventBytes` and `MaxSseEvents` settings bound projected Pi events and their count. Shared partial messages are excluded from per-event accounting. A limit failure aborts the provider stream and retains its typed cause; it never triggers an output-contract repair.
 
 Repairs follow configured budgets. Durable MemOS jobs own their total attempts and disable inner provider/contract retries. The background request ledger continues attempt counts and retry deadlines after restart and records usage even when output validation fails. Exhausted jobs cannot restart at attempt one for the same operation and source revision. Shutdown cancels pending model requests and retry waits.

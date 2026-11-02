@@ -4,6 +4,31 @@ import { coalesceStreamingEvents } from "../../../Frontend/src/api/streamingEven
 import { applyEvent } from "../../../Frontend/src/store/session/sessionProjector.ts";
 import { createEvent, createTestState, TestRequestId, TestSessionId } from "./sessionProjectorTestUtils.mjs";
 
+test("live console events project the sender's input on another device without duplicating its optimistic entry", () => {
+  const state = createTestState({ activeSessionId: "another-session" });
+  const start = createEvent(EventKinds.RunStarted, {
+    input: "host-enriched input",
+    displayInput: "手机发来的问题",
+    attachments: [{ resourceUri: "senera://resource/a1b2c3", name: "notes.yaml", status: "uploaded" }],
+  });
+  applyEvent(state, start);
+  const session = state.sessions[TestSessionId];
+  expect(session.messages).toMatchObject([
+    { role: "user", content: "手机发来的问题", attachments: [{ name: "notes.yaml" }] },
+  ]);
+  expect(state.activeSessionId).toBe("another-session");
+  applyEvent(state, start);
+  expect(session.messages).toHaveLength(1);
+  expect(session.messageCount).toBe(1);
+  applyEvent(state, createEvent(EventKinds.ModelStarted, { model: "test" }, { phase: "model" }));
+  applyEvent(state, createEvent(EventKinds.ModelDelta, { text: "实时回复" }, { phase: "model" }));
+  expect(session.runs[0].streamingRaw).toBe("实时回复");
+
+  const internal = createTestState();
+  applyEvent(internal, createEvent(EventKinds.RunStarted, { input: "host wake-up", internal: true }));
+  expect(internal.sessions[TestSessionId].messages).toEqual([]);
+});
+
 test("history events can hydrate a session before a snapshot arrives", () => {
   const state = createTestState();
   applyEvent(

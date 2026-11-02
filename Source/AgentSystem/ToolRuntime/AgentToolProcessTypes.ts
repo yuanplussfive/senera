@@ -6,6 +6,7 @@ import type {
 } from "../Types/ToolRuntimeTypes.js";
 import type { AgentToolArtifactPayload } from "../Types/ToolRuntimeTypes.js";
 import type { SeneraOutputSpoolDescriptor } from "../Execution/SeneraOutputSpool.js";
+import type { AgentToolContractReceipt } from "../ToolSearch/AgentToolContractDelivery.js";
 export interface AgentToolProcessRunResult {
   response: AgentToolProcessResponse;
   stdout: string;
@@ -15,6 +16,8 @@ export interface AgentToolProcessRunResult {
   artifactPayload?: AgentToolArtifactPayload;
   /** Internal provider-shape value used for contract validation before projection. */
   validationResult?: unknown;
+  /** Contract bodies published by a host metadata capability, before observation budgeting. */
+  toolContractReceipts?: readonly AgentToolContractReceipt[];
   outputCapture?: SeneraOutputSpoolDescriptor;
   /** Host-only mutation proof consumed by workspace ChangeSet capture. */
   workspaceMutationReceipt?: AgentWorkspaceMutationReceipt;

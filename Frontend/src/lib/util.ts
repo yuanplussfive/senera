@@ -2,6 +2,7 @@ import { twMerge } from "tailwind-merge";
 import { clsx, type ClassValue } from "clsx";
 import { getFrontendLocale } from "../i18n/frontendLocaleStore";
 import { resolveRuntimeTimeZone } from "../config/runtimeConfig";
+export { formatFileSize } from "./fileSize";
 
 const integerFormatters = new Map<string, Intl.NumberFormat>();
 const shortTimeFormatters = new Map<string, Intl.DateTimeFormat>();
@@ -113,16 +114,6 @@ export function hasMeasuredDuration(startIso?: string, endIso?: string): boolean
   } catch {
     return false;
   }
-}
-
-export function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes}B`;
-  const kb = bytes / 1024;
-  if (kb < 1024) return `${kb.toFixed(kb < 10 ? 1 : 0)}KB`;
-  const mb = kb / 1024;
-  if (mb < 1024) return `${mb.toFixed(mb < 10 ? 1 : 0)}MB`;
-  const gb = mb / 1024;
-  return `${gb.toFixed(gb < 10 ? 1 : 0)}GB`;
 }
 
 export function formatInteger(value: number): string {

@@ -61,6 +61,26 @@ describe("execution resource broker", () => {
     await broker.close();
   });
 
+  it("keeps process ownership when a synchronous presentation sink throws", async () => {
+    const child = new FakePersistentChild();
+    const owner = sessionOwner("session-broken-presentation");
+    const broker = createBroker(
+      async () => child,
+      undefined,
+      () => {
+        throw new Error("Presentation disconnected.");
+      },
+    );
+    try {
+      const started = await broker.startProcess(startRequest(owner));
+      expect(broker.inspect(started.resourceId, owner).state).toBe("running");
+      await broker.release(started.resourceId, owner);
+      expect(broker.list(owner)).toEqual([]);
+    } finally {
+      await broker.close();
+    }
+  });
+
   it("retains cursor-addressable output and enforces session ownership", async () => {
     const child = new FakePersistentChild();
     const broker = createBroker(async () => child);

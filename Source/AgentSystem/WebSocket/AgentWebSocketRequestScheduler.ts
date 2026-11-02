@@ -63,8 +63,12 @@ const RequestSchedulingCatalog = {
   "session.runtime_status": concurrent,
   "session.export": serial((request) => sessionKey(request.sessionId)),
   "session.list": concurrent,
-  "session.history": serial((request) => sessionKey(request.sessionId)),
+  // History has a fixed high-water mark and never mutates session state. A
+  // reconnect must therefore be able to start while an agent owns its turn.
+  "session.history": concurrent,
+  "session.run_history": concurrent,
   "session.rename": serial((request) => sessionKey(request.sessionId)),
+  "session.feedback": serial((request) => sessionKey(request.sessionId)),
   "model.list": concurrent,
   "provider.models.fetch": concurrent,
   "config.get": concurrent,

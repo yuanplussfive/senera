@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   DefaultAgentToolArgumentProjection,
   projectAgentToolArguments,
+  projectAgentToolResultForDisplay,
   truncateUtf8,
 } from "../../../Source/AgentSystem/Core/AgentToolArgumentProjection.js";
 import { readAgentJsonPointer } from "../../../Source/AgentSystem/Core/AgentJsonPointerOperations.js";
@@ -117,6 +118,17 @@ describe("projectAgentToolArguments", () => {
     expect(String(readAgentJsonPointer(projected.value, "/stdout").value).length).toBeLessThan(9_000);
   });
 
+  test("keeps unconstrained tool results within the aggregate byte limit", () => {
+    const result = projectAgentToolResultForDisplay({
+      rows: Array.from({ length: 1_000 }, () => ({ text: "x".repeat(2_048) })),
+    });
+
+    expect(Buffer.byteLength(JSON.stringify(result.value))).toBeLessThanOrEqual(
+      DefaultAgentToolArgumentProjection.maxBytes,
+    );
+    expect(result.omissions.some((omission) => omission.reason === "branch_limit")).toBe(true);
+  });
+
   test("passes scalars through untouched when they fit", () => {
     expect(projectAgentToolArguments(7, policy(["/x"])).value).toBe(7);
     expect(projectAgentToolArguments(true, policy(["/x"])).value).toBe(true);
@@ -146,6 +158,7 @@ describe("collectAgentToolPresentationArgumentPointers", () => {
       presentation({
         action: localized("Edit"),
         argumentPath: "/path",
+        subjectPath: "/identity",
         detailPaths: ["/operations/*/source"],
         v2: {
           measures: [
@@ -157,12 +170,15 @@ describe("collectAgentToolPresentationArgumentPointers", () => {
               id: "move",
               when: { measure: "kind", equals: "move" },
               argumentPath: "/operations/0/destination",
+              subjectPath: "/destinationIdentity",
             },
           ],
         },
       }),
     );
     expect(pointers).toContain("/path");
+    expect(pointers).toContain("/identity");
+    expect(pointers).toContain("/destinationIdentity");
     expect(pointers).toContain("/operations/*/source");
     expect(pointers).toContain("/operations");
     // A measure reading `field` off each entry needs the entry-relative path too.

@@ -24,6 +24,7 @@ import {
   type QqWebhookEnvelope,
   boundedInteger,
   cleanQqContent,
+  messageEndpoint,
   collectQqAttachments,
   createQqWebhookVerificationResponse,
   defaultQqIntents,
@@ -99,6 +100,7 @@ export interface AgentQqChannelAdapterOptions {
   readonly maxReconnectAttempts?: number;
   readonly maxMessageLength?: number;
   readonly markdownSupport?: boolean;
+  readonly groupSessionsPerUser?: boolean;
   readonly dedupWindowMs?: number;
   readonly dedupMaxSize?: number;
   readonly maxMediaBytes?: number;
@@ -131,6 +133,11 @@ export type { QqApprovalRequest, QqUpdatePromptRequest } from "./AgentQqProtocol
 export class AgentQqChannelAdapter implements AgentChannelAdapter {
   readonly kind = AgentChannelKinds.Qq;
   readonly capabilities: AgentChannelCapabilities;
+  private readonly identityAuthority: string;
+
+  resolveActor(senderId: string) {
+    return { authority: this.identityAuthority, account: senderId };
+  }
 
   private handlers?: AgentChannelAdapterHandlers;
   private readonly transport: AgentChannelHttpTransport;
@@ -152,6 +159,7 @@ export class AgentQqChannelAdapter implements AgentChannelAdapter {
   private readonly maxQuickDisconnects: number;
   private readonly quickDisconnectCooldownMs: number;
   private readonly markdownSupport: boolean;
+  private readonly groupSessionsPerUser: boolean;
   private readonly now: () => Date;
   private readonly seenMessages = new Map<string, number>();
   private readonly mediaUploader: QqMediaUploader;
@@ -166,7 +174,9 @@ export class AgentQqChannelAdapter implements AgentChannelAdapter {
   private connectionState: AgentChannelConnectionState = "stopped";
 
   constructor(options: AgentQqChannelAdapterOptions) {
+    this.identityAuthority = `qq:${options.appId.trim()}`;
     this.mode = options.mode === "webhook" ? "webhook" : "websocket";
+    this.groupSessionsPerUser = options.groupSessionsPerUser === true;
     this.appSecret = options.appSecret.trim();
     this.webhookSecret = options.webhookSecret?.trim() || undefined;
     this.transport = options.transport ?? new AgentChannelFetchTransport();
@@ -256,6 +266,10 @@ export class AgentQqChannelAdapter implements AgentChannelAdapter {
       supportsMedia: true,
       supportsKeyboard: true,
       supportsInteractions: true,
+      automaticDelivery: false,
+      supportsMentions: false,
+      supportsQuotedReplies: false,
+      inboundEvents: ["message", "mention"],
     };
     this.mediaUploader = new QqMediaUploader({
       transport: this.transport,
@@ -299,6 +313,34 @@ export class AgentQqChannelAdapter implements AgentChannelAdapter {
     this.handlers = handlers;
   }
 
+  routeInbound(message: AgentChannelInboundMessage): readonly AgentChannelSource[] {
+    return [this.conversationSource(message.source)];
+  }
+
+  canParticipate(source: AgentChannelSource): boolean {
+    return source.authority === this.identityAuthority;
+  }
+
+  private conversationSource(source: AgentChannelSource): AgentChannelSource {
+    // The group lane is shared; senderId retains the actual author for identity and admission.
+    return {
+      ...source,
+      authority: this.identityAuthority,
+      ...(source.chatType === "group" && !this.groupSessionsPerUser ? { userId: source.chatId } : {}),
+    };
+  }
+
+  routeCommand(message: AgentChannelInboundMessage): readonly AgentChannelSource[] {
+    return this.routeInbound(message);
+  }
+
+  async deleteMessage(source: AgentChannelSource, messageId: string): Promise<AgentChannelSendResult> {
+    const endpoint = messageEndpoint(source);
+    if (!endpoint) return { kind: "unsupported" };
+    await this.rest.request(`${endpoint}/${encodeURIComponent(messageId)}`, "DELETE", undefined, 15_000);
+    return { kind: "deleted" };
+  }
+
   /**
    * QQ CDN attachment URLs are short-lived and may require the bot bearer
    * token. The channel service uses these headers only while materializing an
@@ -320,21 +362,21 @@ export class AgentQqChannelAdapter implements AgentChannelAdapter {
     const internal = new AbortController();
     this.internal = internal;
     this.setConnectionState("connecting");
-    signal.addEventListener(
-      "abort",
-      () => {
-        internal.abort();
-        this.setConnectionState("stopped");
-      },
-      { once: true },
-    );
+    const onAbort = () => {
+      internal.abort();
+      this.setConnectionState("stopped");
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    internal.signal.addEventListener("abort", () => signal.removeEventListener("abort", onAbort), { once: true });
     try {
       await this.rest.getToken();
+      internal.signal.throwIfAborted();
       if (this.mode === "webhook") {
         this.setConnectionState("connected");
         return;
       }
       const gateway = await this.fetchGatewayUrl();
+      internal.signal.throwIfAborted();
       this.gatewayUrl = sanitizeGatewayUrl(gateway.url);
       const gatewayUrl = this.gatewayUrl;
       if (!gatewayUrl) throw new Error("QQ gateway URL is not resolved.");
@@ -373,6 +415,8 @@ export class AgentQqChannelAdapter implements AgentChannelAdapter {
       });
     } catch (error) {
       this.setConnectionState(internal.signal.aborted ? "stopped" : "degraded");
+      internal.abort();
+      if (this.internal === internal) this.internal = undefined;
       throw error;
     }
   }
@@ -381,8 +425,9 @@ export class AgentQqChannelAdapter implements AgentChannelAdapter {
     this.setConnectionState("stopped");
     this.internal?.abort();
     this.gatewaySocket?.close(1000);
-    await this.gatewayPromise?.catch(() => undefined);
+    await this.gatewayPromise;
     this.gatewayPromise = undefined;
+    this.internal = undefined;
     this.gatewaySocket = undefined;
     this.mediaUploader.clear();
     this.rest.clear();
@@ -516,15 +561,34 @@ export class AgentQqChannelAdapter implements AgentChannelAdapter {
     if (!data || typeof data !== "object") return;
     const messageId = stringValue(data.id);
     if (messageId && this.isDuplicate(messageId)) return;
-    const source = qqDispatchSource(eventType, data, forcedKind);
-    if (!source) return;
-    if (messageId) this.messageClient.rememberInboundMessage(source, messageId);
+    const nativeSource = qqDispatchSource(eventType, data, forcedKind);
+    if (!nativeSource) return;
+    const source = { ...nativeSource, authority: this.identityAuthority };
+    if (messageId) this.messageClient.rememberInboundMessage(this.conversationSource(source), messageId);
     const normalizedAttachments = normalizeQqAttachments(collectQqAttachments(data));
-    const attachments = await this.voiceTranscriber.enrich(normalizedAttachments);
+    const attachments = await this.voiceTranscriber.enrich(
+      normalizedAttachments?.map((attachment, index) => ({
+        ...attachment,
+        id: `${messageId}:${index}`,
+      })),
+    );
     const inbound: AgentChannelInboundMessage = {
       source,
+      senderId: source.userId,
+      addressedToSelf:
+        eventType === QqGatewayDispatch.GroupAtMessageCreate || eventType === QqGatewayDispatch.GuildAtMessageCreate,
       text: [quotedQqContent(data), cleanQqContent(data.content ?? "")].filter(Boolean).join("\n\n").trim(),
       attachments,
+      segments: [
+        ...(data.message_reference?.message_id || data.referenced_message?.id
+          ? [{ type: "reply", data: { id: data.message_reference?.message_id ?? data.referenced_message?.id } }]
+          : []),
+        ...(data.content ? [{ type: "text", data: { text: data.content } }] : []),
+        ...(attachments ?? []).map((attachment) => ({
+          type: attachment.mediaType ?? "file",
+          data: { ...attachment },
+        })),
+      ],
       replyToMessageId: data.message_reference?.message_id ?? data.referenced_message?.id,
       sentAt: data.timestamp ?? this.now().toISOString(),
       raw: data,
@@ -534,9 +598,11 @@ export class AgentQqChannelAdapter implements AgentChannelAdapter {
     // platform transport must keep consuming events while the session
     // pipeline may wait on uploads/model work. Always observe the Promise so
     // a rejected handler cannot become an unhandled rejection.
-    void Promise.resolve(this.handlers?.onMessage(inbound)).catch((error) => {
-      this.handlers?.onFatal?.(new Error(`QQ message handler failed: ${describe(error)}`), this.kind);
-    });
+    void Promise.resolve()
+      .then(() => this.handlers?.onMessage(inbound))
+      .catch((error) => {
+        this.handlers?.onFatal?.(new Error(`QQ message handler failed: ${describe(error)}`), this.kind);
+      });
   }
 
   private async processInteraction(raw: unknown): Promise<void> {
@@ -549,8 +615,9 @@ export class AgentQqChannelAdapter implements AgentChannelAdapter {
     } catch (error) {
       this.handlers?.onFatal?.(new Error(`QQ interaction ACK failed: ${describe(error)}`), this.kind);
     }
-    const source = qqInteractionSource(payload);
-    if (!source) return;
+    const nativeSource = qqInteractionSource(payload);
+    if (!nativeSource) return;
+    const source = { ...nativeSource, authority: this.identityAuthority };
     try {
       await this.handlers?.onInteraction?.({
         id,

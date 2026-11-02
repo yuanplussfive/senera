@@ -1,28 +1,30 @@
-import {
-  EventKinds,
-  type ExecutionResourceOutputData,
-  type ExecutionResourceStateData,
-  type AssistantMessageCreatedData,
-  type ToolCallResultDetailData,
-  type ToolCallCompletedData,
-  type ToolCallFailedData,
-  type ToolCallOutputData,
-  type ToolCallProgressData,
-  type ToolCallStartedData,
-  type ToolCallsPlannedData,
-} from "../../api/eventTypes";
+import { EventKinds, type EventEnvelope, type AssistantMessageCreatedData } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { resolveBackendMessage } from "../../i18n/backendMessage";
 import { upsertMessageByRequestId } from "./historyRunProjection";
 import { readCurrentRun, type RunEventHandlerMap } from "./runEventProjectionTypes";
 import { bumpSessionMessageCount, currentRun, ensureSession, upsertStep } from "./sessionProjectorCore";
 import { alignRunDisplayTarget, isRunTerminal, touchRun } from "./sessionRunProjection";
-import { summarizeToolPlan, toolPlanTitle, truncate } from "./sessionPresentation";
-import { toolBatchFromEvent } from "./timelineProjection";
-import { mergeToolResultPresentation } from "./toolResultPresentation";
-import { projectToolOutput, projectToolProgress } from "./toolRuntimeProjection";
+import { truncate } from "./sessionPresentation";
+import { projectToolCallEvent, toolCallEventHandlers } from "./toolCallProjection";
+import type { StoreState } from "./types";
+
+const toolCallRunEventHandlers: RunEventHandlerMap = Object.fromEntries(
+  Object.keys(toolCallEventHandlers).map((kind) => [
+    kind,
+    (state: StoreState, env: EventEnvelope) => {
+      const run = readCurrentRun(state, env);
+      if (!run) return;
+      const historical = isHistoricalRunEvent(state, env);
+      const startsCall = env.kind === EventKinds.ToolCallsPlanned || env.kind === EventKinds.ToolCallStarted;
+      if (startsCall && isRunTerminal(run) && !historical) return;
+      if (env.kind === EventKinds.ToolCallStarted && !historical) resetCompletedAssistantStreamBeforeTool(run);
+      projectToolCallEvent(run, env);
+    },
+  ]),
+);
 
 export const runToolAndAnswerEventHandlers = {
+  ...toolCallRunEventHandlers,
   [EventKinds.AssistantMessageCreated]: (state, env) => {
     const sessionId = env.sessionId;
     if (!sessionId) return;
@@ -73,208 +75,13 @@ export const runToolAndAnswerEventHandlers = {
     session.updatedAt = env.timestamp;
     // A completed run must not override the user's manually arranged sidebar order.
   },
-
-  [EventKinds.ToolCallsPlanned]: (state, env) => {
-    const run = readCurrentRun(state, env);
-    if (!run) return;
-    if (isRunTerminal(run)) return;
-    const data = env.data as ToolCallsPlannedData;
-    if (data.modelMessageIndex !== undefined) {
-      run.activeModelRequest = {
-        agentStep: env.step ?? 0,
-        modelMessageIndex: data.modelMessageIndex,
-        eventSequence: env.sequence,
-      };
-    }
-    const toolBatch = toolBatchFromEvent(env, undefined, data.toolCount);
-    upsertStep(run, {
-      id: `${run.requestId}-tool-plan-${toolBatch.id}`,
-      kind: "tool",
-      agentStep: env.step,
-      modelMessageIndex: data.modelMessageIndex,
-      modelContentIndex: data.calls?.find((call) => call.modelContentIndex !== undefined)?.modelContentIndex,
-      eventSequence: env.sequence,
-      title: toolPlanTitle(data),
-      description: summarizeToolPlan(data),
-      status: "done",
-      startedAt: env.timestamp,
-      endedAt: env.timestamp,
-      toolBatch,
-    });
-    for (const [index, call] of (data.calls ?? []).entries()) {
-      upsertStep(run, {
-        id: `tool-${call.callId}`,
-        kind: "tool",
-        agentStep: env.step,
-        modelMessageIndex: data.modelMessageIndex,
-        modelContentIndex: call.modelContentIndex,
-        eventSequence: env.sequence,
-        title: frontendMessage("workflow.projection.toolCall", { toolName: call.toolName }),
-        status: "pending",
-        startedAt: env.timestamp,
-        toolName: call.toolName,
-        callId: call.callId,
-        purpose: call.purpose,
-        ...(call.origin ? { toolOrigin: call.origin } : {}),
-        toolBatch: {
-          ...toolBatch,
-          index,
-          size: data.toolCount,
-        },
-      });
-    }
-  },
-
-  [EventKinds.ToolCallStarted]: (state, env) => {
-    const run = readCurrentRun(state, env);
-    if (!run) return;
-    if (isRunTerminal(run)) return;
-    const data = env.data as ToolCallStartedData;
-    resetCompletedAssistantStreamBeforeTool(run);
-    upsertStep(run, {
-      id: `tool-${data.callId}`,
-      kind: "tool",
-      agentStep: env.step,
-      modelMessageIndex: data.modelMessageIndex,
-      modelContentIndex: data.modelContentIndex,
-      eventSequence: env.sequence,
-      startedSequence: env.sequence,
-      title: frontendMessage("workflow.projection.toolCall", { toolName: data.toolName }),
-      status: "running",
-      startedAt: env.timestamp,
-      toolName: data.toolName,
-      callId: data.callId,
-      ...(data.purpose ? { purpose: data.purpose } : {}),
-      toolBatch: toolBatchFromEvent(env, data),
-      ...(data.origin ? { toolOrigin: data.origin } : {}),
-      ...(data.arguments === undefined ? {} : { toolArgs: data.arguments }),
-    });
-  },
-
-  [EventKinds.ToolCallOutput]: (state, env) => {
-    const run = readCurrentRun(state, env);
-    if (!run) return;
-    const data = env.data as ToolCallOutputData;
-    const step = run.steps.find((item) => item.id === `tool-${data.callId}`);
-    if (!step) return;
-    projectToolOutput(step, data);
-    touchRun(run);
-  },
-
-  [EventKinds.ToolCallProgress]: (state, env) => {
-    const run = readCurrentRun(state, env);
-    if (!run) return;
-    const data = env.data as ToolCallProgressData;
-    const step = run.steps.find((item) => item.id === `tool-${data.callId}`);
-    if (!step) return;
-    projectToolProgress(step, data);
-    touchRun(run);
-  },
-
-  [EventKinds.ExecutionResourceOutput]: (state, env) => {
-    const run = readCurrentRun(state, env);
-    if (!run) return;
-    const data = env.data as ExecutionResourceOutputData;
-    if (!data.toolCallId) return;
-    const step = run.steps.find((item) => item.id === `tool-${data.toolCallId}`);
-    if (!step) return;
-    projectToolOutput(step, {
-      toolName: data.toolName ?? step.toolName ?? "ExecutionResource",
-      callId: data.toolCallId,
-      stream: data.stream,
-      outputSequence: data.cursor,
-      text: data.text,
-      byteLength: data.byteLength,
-      totalBytes: data.totalBytes,
-      resourceId: data.resourceId,
-    });
-    touchRun(run);
-  },
-
-  [EventKinds.ExecutionResourceState]: (state, env) => {
-    const run = readCurrentRun(state, env);
-    if (!run) return;
-    const data = env.data as ExecutionResourceStateData;
-    if (!data.toolCallId) return;
-    const step = run.steps.find((item) => item.id === `tool-${data.toolCallId}`);
-    if (!step) return;
-    projectToolProgress(step, {
-      toolName: data.toolName ?? step.toolName ?? "ExecutionResource",
-      callId: data.toolCallId,
-      progressSequence: data.cursor,
-      message: data.reason ? `${data.state}: ${data.reason}` : data.state,
-      resourceId: data.resourceId,
-    });
-    touchRun(run);
-  },
-
-  [EventKinds.ToolCallCompleted]: (state, env) => {
-    const run = readCurrentRun(state, env);
-    if (!run) return;
-    const data = env.data as ToolCallCompletedData;
-    const step = run.steps.find((item) => item.id === `tool-${data.callId}`);
-    if (step) {
-      step.status = "done";
-      step.completedSequence = env.sequence;
-      step.toolOrigin = data.origin ?? step.toolOrigin;
-      step.endedAt = env.timestamp;
-      if (data.purpose) step.purpose = data.purpose;
-      step.toolPresentation = mergeToolResultPresentation(step.toolPresentation, data.presentation);
-      step.toolPreview = step.toolPresentation?.headline;
-      touchRun(run);
-    }
-  },
-
-  [EventKinds.ToolCallFailed]: (state, env) => {
-    const run = readCurrentRun(state, env);
-    if (!run) return;
-    const data = env.data as ToolCallFailedData;
-    const message = resolveBackendMessage(data) ?? data.message;
-    const step = run.steps.find((item) => item.id === `tool-${data.callId}`);
-    if (step) {
-      step.status = "failed";
-      step.completedSequence = env.sequence;
-      step.toolOrigin = data.origin ?? step.toolOrigin;
-      step.endedAt = env.timestamp;
-      if (data.purpose) step.purpose = data.purpose;
-      step.toolErrorMessage = message;
-      touchRun(run);
-      return;
-    }
-    upsertStep(run, {
-      id: `tool-${data.callId}`,
-      kind: "tool",
-      title: frontendMessage("workflow.projection.toolCallFailed", { toolName: data.toolName }),
-      status: "failed",
-      startedAt: env.timestamp,
-      agentStep: env.step,
-      eventSequence: env.sequence,
-      startedSequence: env.sequence,
-      completedSequence: env.sequence,
-      endedAt: env.timestamp,
-      toolName: data.toolName,
-      toolOrigin: data.origin,
-      callId: data.callId,
-      ...(data.purpose ? { purpose: data.purpose } : {}),
-      toolBatch: toolBatchFromEvent(env, data),
-      toolErrorMessage: message,
-    });
-  },
-
-  [EventKinds.ToolCallResultDetail]: (state, env) => {
-    const run = readCurrentRun(state, env);
-    if (!run) return;
-    const data = env.data as ToolCallResultDetailData;
-    const step = run.steps.find((item) => item.id === `tool-${data.callId}`);
-    if (step) {
-      step.toolResult = data.value;
-      step.toolOrigin = data.origin ?? step.toolOrigin;
-      step.toolPresentation = mergeToolResultPresentation(step.toolPresentation, data.presentation);
-      step.toolPreview = step.toolPresentation?.headline ?? step.toolPreview;
-      touchRun(run);
-    }
-  },
 } satisfies RunEventHandlerMap;
+
+function isHistoricalRunEvent(state: StoreState, env: EventEnvelope): boolean {
+  const sessionId = env.sessionId;
+  const requestId = env.requestId;
+  return Boolean(sessionId && requestId && state.historyEventRunIds[sessionId]?.[requestId]);
+}
 
 function resetCompletedAssistantStreamBeforeTool(run: NonNullable<ReturnType<typeof currentRun>>): void {
   run.outputState = "pending";

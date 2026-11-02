@@ -1,4 +1,7 @@
 import type { AgentDomainEvent } from "../Events/AgentEvent.js";
+import type { AgentServerAccessProfile } from "../Auth/AgentServerAccessPolicy.js";
+import type { IncomingMessage } from "node:http";
+import type { WebSocket } from "ws";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import type { AgentServerEventLogger } from "../Diagnostics/AgentServerEventLogger.js";
 import type { AgentUserProfileManager } from "../Session/AgentUserProfile.js";
@@ -29,12 +32,14 @@ import type { AgentArtifactManifestIndexCache } from "../Memory/AgentArtifactMan
 import type { AgentPluginHost } from "../Plugins/AgentPluginHost.js";
 import type { AgentRuntimeDependencyService } from "../Runtime/AgentRuntimeDependencyTypes.js";
 import type { AgentProfileAvatarStore } from "../Session/AgentProfileAvatarStore.js";
+import type { AgentOneBot11ClientHttpApiOptions } from "../Channels/Client/AgentOneBot11ClientHttpApi.js";
 
 export type AgentPluginCatalogSource = Pick<AgentPluginHost, "list">;
 
 /** Narrow surface the WebSocket layer needs to drive channel connections. */
 export interface AgentChannelServiceControl {
   connectChannel(kind: AgentChannelKind): Promise<void>;
+  connectOneBot11Client?(socket: WebSocket, request: IncomingMessage): void;
   statuses: readonly AgentChannelStatus[];
 }
 
@@ -57,6 +62,8 @@ export type AgentWorkspaceSwitchRequest = (
 ) => Promise<AgentWorkspaceInfoSnapshot | AgentWorkspaceSwitchResult>;
 
 export interface AgentWebSocketServerOptions {
+  agentDirectory?: import("../Profile/AgentDirectory.js").AgentDirectory;
+  agentDirectoryCommands?: import("../Profile/AgentDirectoryLifecycle.js").AgentDirectoryLifecycle;
   artifactManifestIndex?: AgentArtifactManifestIndexCache;
   onClientCountChanged?: (count: number) => void;
   transport?: AgentWebSocketTransport;
@@ -68,8 +75,9 @@ export interface AgentWebSocketServerOptions {
   config: AgentSystemConfig;
   workspaceRoot?: string;
   /** Deployment-provided safe default for loopback HTTP (for example, a local container port). */
-  automaticLoopbackHttp?: boolean;
+  accessProfile?: AgentServerAccessProfile;
   staticFrontendRoot?: string;
+  channelClient?: AgentOneBot11ClientHttpApiOptions;
   configSnapshot?: () => AgentSystemConfig;
   configService?: AgentConfigService;
   sessionManager: AgentSessionManager;

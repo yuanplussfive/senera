@@ -7,8 +7,14 @@ import {
   readDefaultModelGroup,
   readDefaultModelGroupRules,
   type ModelProviderRuleMatchKind,
-} from "./ModelProviderIcon";
-import { inferModelCatalogCapabilities, inferModelCatalogGroup, type ModelCatalogGroup } from "./modelCatalogRules";
+} from "../../shared/models/ModelProviderIcon";
+import { inferModelCatalogGroup, type ModelCatalogGroup } from "./modelCatalogRules";
+import {
+  AgentImageGenerationApis,
+  AgentModelCapabilityKeys,
+  AgentModelInvocationDefaults,
+  type AgentModelCapabilityFlags,
+} from "../../api/generatedModelCapabilityContract";
 import { readModelsDevCapabilities } from "./modelsDevCapabilities";
 import type {
   ConfigFormFieldData,
@@ -22,6 +28,7 @@ import type {
   ProviderModelEndpointInput,
   ProviderModelGroup,
   ProviderModelInfo,
+  ResolvedModelCapabilitiesDraft,
 } from "./modelConfigTypes";
 import { ModelThinkingLevels } from "./modelThinking";
 
@@ -89,6 +96,7 @@ export function createModelDraft({
 
 export function copyModelRuntimeTemplate(template: Record<string, unknown>): Partial<ModelProviderDraft> {
   return {
+    ...optionalPricing(template.Pricing),
     ...optionalCapabilities("Capabilities", template.Capabilities),
     ...optionalThinkingProfiles(template.ThinkingProfiles),
     ...optionalThinkingLevel("DefaultThinkingLevel", template.DefaultThinkingLevel),
@@ -229,6 +237,8 @@ export function normalizeModelProviderDraft(value: unknown): ModelProviderDraft 
   const id = readString(record.Id) ?? (providerId && model ? modelConfigId(providerId, model) : "");
   return {
     Id: id,
+    ...optionalImageGeneration(record.ImageGeneration),
+    ...optionalPricing(record.Pricing),
     ProviderId: providerId,
     ...optionalString("Icon", record.Icon),
     ...optionalCapabilities("Capabilities", record.Capabilities),
@@ -253,6 +263,30 @@ export function normalizeModelProviderDraft(value: unknown): ModelProviderDraft 
     ...optionalNumber("MaxSseEventBytes", record.MaxSseEventBytes),
     ...optionalNumber("MaxSseEvents", record.MaxSseEvents),
   };
+}
+
+function optionalImageGeneration(value: unknown): Pick<ModelProviderDraft, "ImageGeneration"> {
+  if (!isRecord(value)) return {};
+  const Api = AgentImageGenerationApis.find((api) => api === value.Api);
+  if (!Api) return {};
+  return {
+    ImageGeneration: {
+      Api,
+      ...(typeof value.Editing === "boolean" ? { Editing: value.Editing } : {}),
+      ...(typeof value.Mask === "boolean" ? { Mask: value.Mask } : {}),
+    },
+  };
+}
+
+function optionalPricing(value: unknown): Pick<ModelProviderDraft, "Pricing"> {
+  if (!isRecord(value)) return {};
+  const pricing = Object.fromEntries(
+    (["input", "output", "cacheRead", "cacheWrite"] as const).flatMap((key) => {
+      const price = value[key];
+      return typeof price === "number" && Number.isFinite(price) && price >= 0 ? [[key, price]] : [];
+    }),
+  );
+  return Object.keys(pricing).length > 0 ? { Pricing: pricing } : {};
 }
 
 function optionalThinkingProfiles(value: unknown): Pick<ModelProviderDraft, "ThinkingProfiles"> {
@@ -280,11 +314,8 @@ export function readModelCapabilities(
   model: ModelProviderDraft,
   template: Record<string, unknown>,
   modelsDev?: ModelsDevModelMetadata,
-): Required<ModelCapabilitiesDraft> {
-  return {
-    ...defaultModelCapabilities(template, model.Model, model.ProviderId, modelsDev),
-    ...(model.Capabilities ?? {}),
-  };
+): ResolvedModelCapabilitiesDraft {
+  return mergeModelCapabilities(defaultModelCapabilities(template, modelsDev), model.Capabilities);
 }
 
 export function readModelToolPlanningMode(
@@ -292,28 +323,35 @@ export function readModelToolPlanningMode(
   template: Record<string, unknown>,
 ): ModelToolPlanningMode {
   const configured = model.ToolPlanningMode ?? template.ToolPlanningMode;
-  return configured === "baml" ? "baml" : "native";
+  return configured === "baml" ? "baml" : AgentModelInvocationDefaults.ToolPlanningMode;
+}
+
+export function readModelInvocationCapabilities(
+  model: ModelProviderDraft,
+  template: Record<string, unknown>,
+  modelsDev?: ModelsDevModelMetadata,
+) {
+  return {
+    ...readModelCapabilities(model, template, modelsDev),
+    Stream:
+      readBoolean(model.Stream) ?? readBooleanWithTemplate(template, "Stream") ?? AgentModelInvocationDefaults.Stream,
+  };
 }
 
 export function defaultModelCapabilities(
   template: Record<string, unknown>,
-  modelName?: string,
-  providerHint?: string,
   modelsDev?: ModelsDevModelMetadata,
-): Required<ModelCapabilitiesDraft> {
+): ResolvedModelCapabilitiesDraft {
   const capabilities = isRecord(template.Capabilities) ? template.Capabilities : {};
-  const inferred = inferModelCatalogCapabilities(modelName, providerHint);
   const catalog = readModelsDevCapabilities(modelsDev);
-  const defaultCapability = <T extends keyof ModelCapabilitiesDraft>(key: T, fallback: boolean): boolean =>
-    catalog[key] ?? readBoolean(capabilities[key]) ?? inferred[key] ?? fallback;
   return {
-    Chat: defaultCapability("Chat", true),
-    Vision: defaultCapability("Vision", false),
-    ImageOutput: defaultCapability("ImageOutput", false),
-    Reasoning: defaultCapability("Reasoning", false),
-    DeveloperRole: defaultCapability("DeveloperRole", false),
-    StreamingUsage: defaultCapability("StreamingUsage", true),
-    ToolCalling: defaultCapability("ToolCalling", true),
+    ...(Object.fromEntries(
+      AgentModelCapabilityKeys.map((key) => [
+        key,
+        catalog[key] ?? readBoolean(capabilities[key]) ?? AgentModelInvocationDefaults.Capabilities[key],
+      ]),
+    ) as Required<AgentModelCapabilityFlags>),
+    ...optionalVisionInput(capabilities.VisionInput),
   };
 }
 
@@ -589,7 +627,59 @@ export function optionalCapabilities<TKey extends string>(
       capabilities[capability] = enabled;
     }
   }
+  Object.assign(capabilities, optionalVisionInput(value.VisionInput));
   return { [key]: capabilities } as Partial<Record<TKey, ModelCapabilitiesDraft>>;
+}
+
+function mergeModelCapabilities(
+  base: ResolvedModelCapabilitiesDraft,
+  override: ModelCapabilitiesDraft | undefined,
+): ResolvedModelCapabilitiesDraft {
+  const visionInput = mergeVisionInput(base.VisionInput, override?.VisionInput);
+  return {
+    ...base,
+    ...(override ?? {}),
+    ...(visionInput ? { VisionInput: visionInput } : {}),
+  };
+}
+
+function mergeVisionInput(
+  base: ModelCapabilitiesDraft["VisionInput"],
+  override: ModelCapabilitiesDraft["VisionInput"],
+): ModelCapabilitiesDraft["VisionInput"] {
+  if (!base && !override) return undefined;
+  const supportedMimeTypes = override?.SupportedMimeTypes ?? base?.SupportedMimeTypes;
+  const supportedAnimatedMimeTypes = override?.SupportedAnimatedMimeTypes ?? base?.SupportedAnimatedMimeTypes;
+  return {
+    ...base,
+    ...override,
+    ...(supportedMimeTypes ? { SupportedMimeTypes: [...supportedMimeTypes] } : {}),
+    ...(supportedAnimatedMimeTypes ? { SupportedAnimatedMimeTypes: [...supportedAnimatedMimeTypes] } : {}),
+  };
+}
+
+function optionalVisionInput(value: unknown): Pick<ModelCapabilitiesDraft, "VisionInput"> {
+  if (!isRecord(value)) return {};
+  const supportedMimeTypes = readStringArray(value.SupportedMimeTypes);
+  const supportedAnimatedMimeTypes = readStringArray(value.SupportedAnimatedMimeTypes);
+  const maxBytes = readNumber(value.MaxBytes);
+  const maxPixels = readNumber(value.MaxPixels);
+  if (
+    supportedMimeTypes.length === 0 &&
+    supportedAnimatedMimeTypes.length === 0 &&
+    maxBytes === undefined &&
+    maxPixels === undefined
+  ) {
+    return {};
+  }
+  return {
+    VisionInput: {
+      ...(supportedMimeTypes.length > 0 ? { SupportedMimeTypes: supportedMimeTypes } : {}),
+      ...(supportedAnimatedMimeTypes.length > 0 ? { SupportedAnimatedMimeTypes: supportedAnimatedMimeTypes } : {}),
+      ...(maxBytes === undefined ? {} : { MaxBytes: maxBytes }),
+      ...(maxPixels === undefined ? {} : { MaxPixels: maxPixels }),
+    },
+  };
 }
 
 function optionalToolPlanningMode(value: unknown): Partial<ModelProviderDraft> {
@@ -618,14 +708,6 @@ export function readBoolean(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
 }
 
-export const ModelCapabilityKeys = [
-  "Chat",
-  "Vision",
-  "ImageOutput",
-  "Reasoning",
-  "ToolCalling",
-  "DeveloperRole",
-  "StreamingUsage",
-] as const satisfies readonly (keyof ModelCapabilitiesDraft)[];
+export const ModelCapabilityKeys = AgentModelCapabilityKeys;
 
 const ModelGroupMatchKinds = ["prefix", "includes", "exact", "suffix"] as const;

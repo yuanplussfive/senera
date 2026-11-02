@@ -1,5 +1,11 @@
 import { type WebSocket, type RawData } from "ws";
-import { AgentEventKinds, type AgentDomainEvent } from "../Events/AgentEvent.js";
+import {
+  AgentEventKinds,
+  AgentEventLayers,
+  AgentEventPhases,
+  getAgentEventSpec,
+  type AgentDomainEvent,
+} from "../Events/AgentEvent.js";
 import { matchByType } from "../Core/AgentMatch.js";
 import { AgentWebSocketRequestSchema, type AgentWebSocketRequest } from "./AgentWebSocketProtocol.js";
 import {
@@ -26,6 +32,7 @@ import { parseJsonText } from "../Core/AgentJsonParsing.js";
 import { AgentWebSocketWorkspaceRequestHandlers } from "./AgentWebSocketWorkspaceRequestHandlers.js";
 import { AgentWebSocketChannelRequestHandlers } from "./AgentWebSocketChannelRequestHandlers.js";
 import type { AgentChannelServiceControl } from "./AgentWebSocketTypes.js";
+import { AgentWebSocketDeliveryError, assertAgentWebSocketOpen } from "./AgentWebSocketDeliveryError.js";
 
 export class AgentWebSocketMessageRouter {
   private readonly session: AgentWebSocketSessionRequestHandlers;
@@ -66,6 +73,14 @@ export class AgentWebSocketMessageRouter {
   }
 
   async handleMessage(socket: WebSocket, data: RawData): Promise<void> {
+    try {
+      await this.handleRequest(socket, data);
+    } catch (error) {
+      if (!(error instanceof AgentWebSocketDeliveryError)) throw error;
+    }
+  }
+
+  private async handleRequest(socket: WebSocket, data: RawData): Promise<void> {
     const parsed = this.parseMessage(data);
     if (!parsed.ok) {
       await this.options.sendEnvelope(socket, parsed.event);
@@ -73,6 +88,15 @@ export class AgentWebSocketMessageRouter {
     }
 
     const sendEvent = (event: AgentDomainEvent): void | Promise<void> => {
+      if (parsed.request.type === "profile.update" && event.kind === AgentEventKinds.ProfileSnapshot)
+        return this.options.broadcast(event);
+      if (
+        event.kind === AgentEventKinds.SessionClosed ||
+        event.kind === AgentEventKinds.SessionTruncated ||
+        event.kind === AgentEventKinds.FeedbackRecorded
+      )
+        return this.options.broadcast(event);
+      assertAgentWebSocketOpen(socket);
       return this.options.sendEnvelope(socket, event);
     };
 
@@ -80,6 +104,7 @@ export class AgentWebSocketMessageRouter {
       await this.scheduler.run(parsed.request, () => this.dispatch(parsed.request, sendEvent));
       await this.options.flushPersistence?.();
     } catch (error) {
+      if (error instanceof AgentWebSocketDeliveryError) throw error;
       await sendEvent(projectAgentWebSocketRequestFailure(parsed.request, error, this.options.context));
       await this.recoverOptimisticRequest(parsed.request, sendEvent);
     }
@@ -98,22 +123,32 @@ export class AgentWebSocketMessageRouter {
   }
 
   private async dispatch(request: AgentWebSocketRequest, sendEvent: AgentWebSocketEventSender): Promise<void> {
+    // Conversation mutations belong to the workspace, regardless of which device submitted them.
+    // Queries and request failures retain their requester-only response path.
+    const publishSessionEvent: AgentWebSocketEventSender = (event) => {
+      const spec = getAgentEventSpec(event.kind);
+      const requestResponse =
+        spec.phase === AgentEventPhases.Request ||
+        (spec.phase === AgentEventPhases.Session && spec.layer === AgentEventLayers.Error);
+      return requestResponse ? sendEvent(event) : this.options.broadcast(event);
+    };
     await matchByType(request, {
-      "session.create": (entry) => this.session.create(entry, sendEvent),
-      "session.message": (entry) => this.session.message(entry, sendEvent),
-      "session.close": (entry) => this.session.close(entry, sendEvent),
-      "session.close_many": (entry) => this.session.closeMany(entry, sendEvent),
-      "session.cancel": (entry) => this.session.cancel(entry, sendEvent),
-      "session.truncate_from": (entry) => this.session.truncateFrom(entry, sendEvent),
-      "session.regenerate": (entry) => this.session.regenerate(entry, sendEvent),
-      "session.retry": (entry) => this.session.retry(entry, sendEvent),
-      "session.fork": (entry) => this.session.fork(entry, sendEvent),
-      "session.compact": (entry) => this.session.compact(entry, sendEvent),
+      "session.create": (entry) => this.session.create(entry, publishSessionEvent),
+      "session.message": (entry) => this.session.message(entry, publishSessionEvent),
+      "session.close": (entry) => this.session.close(entry, publishSessionEvent),
+      "session.close_many": (entry) => this.session.closeMany(entry, publishSessionEvent),
+      "session.cancel": (entry) => this.session.cancel(entry, publishSessionEvent),
+      "session.truncate_from": (entry) => this.session.truncateFrom(entry, publishSessionEvent),
+      "session.regenerate": (entry) => this.session.regenerate(entry, publishSessionEvent),
+      "session.retry": (entry) => this.session.retry(entry, publishSessionEvent),
+      "session.fork": (entry) => this.session.fork(entry, publishSessionEvent),
+      "session.compact": (entry) => this.session.compact(entry, publishSessionEvent),
       "session.runtime_status": (entry) => this.session.runtimeStatus(entry, sendEvent),
       "session.export": (entry) => this.session.export(entry, sendEvent),
       "session.list": () => this.session.list(sendEvent),
       "session.history": (entry) => this.session.history(entry, sendEvent),
-      "session.rename": (entry) => this.session.rename(entry, sendEvent),
+      "session.run_history": (entry) => this.session.runHistory(entry, sendEvent),
+      "session.rename": (entry) => this.session.rename(entry, publishSessionEvent),
       "model.list": () => this.config.listModels(sendEvent),
       "provider.models.fetch": (entry) => this.config.fetchProviderModels(entry, sendEvent),
       "config.get": () => this.config.getConfig(sendEvent),
@@ -144,6 +179,7 @@ export class AgentWebSocketMessageRouter {
       "approval.resolve": (entry) => this.approval.resolve(entry, sendEvent),
       "approval.resolve_batch": (entry) => this.approval.resolveBatch(entry, sendEvent),
       "interaction.input.resolve": (entry) => this.interactionInput.resolve(entry),
+      "session.feedback": (entry) => this.session.feedback(entry, publishSessionEvent),
       "sandbox.status": () => this.sandbox.status(sendEvent),
       "execution.resource.start_terminal": (entry) => this.executionResources.startTerminal(entry, sendEvent),
       "execution.resource.list": (entry) => this.executionResources.list(entry, sendEvent),

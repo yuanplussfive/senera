@@ -2,7 +2,9 @@ import type {
   AgentModelEndpointKind,
   AgentModelToolPlanningMode,
 } from "../ModelEndpoints/AgentModelEndpointContract.js";
-import type { AgentModelsDevModelMetadata } from "../ModelEndpoints/AgentModelsDevCatalog.js";
+import type { AgentImageGenerationConfiguration } from "../Images/AgentImageGenerationContract.js";
+import type { AgentModelsDevModelMetadata, AgentModelsDevPricing } from "../ModelEndpoints/AgentModelsDevCatalog.js";
+import type { AgentModelCapabilityFlags } from "../Core/AgentModelCapabilityContract.js";
 import type {
   AgentModelThinkingLevel,
   AgentModelThinkingProfile,
@@ -10,6 +12,9 @@ import type {
 } from "../ModelEndpoints/AgentModelThinking.js";
 
 export interface AgentModelProviderConfig {
+  ImageGeneration?: AgentImageGenerationConfiguration;
+  /** USD per million tokens. Omitted fields inherit the models.dev reference price. */
+  Pricing?: AgentModelsDevPricing;
   Id: string;
   ProviderId: string;
   Icon?: string;
@@ -36,15 +41,23 @@ export interface AgentModelProviderConfig {
   MaxSseEvents?: number;
 }
 
-export interface AgentModelCapabilitiesConfig {
-  Chat?: boolean;
-  Vision?: boolean;
-  ImageOutput?: boolean;
-  Reasoning?: boolean;
-  DeveloperRole?: boolean;
-  StreamingUsage?: boolean;
-  ToolCalling?: boolean;
+export interface AgentModelCapabilitiesConfig extends AgentModelCapabilityFlags {
+  /** Model-specific visual-input transport contract. */
+  VisionInput?: AgentModelVisionInputConfig;
 }
+
+export interface AgentModelVisionInputConfig {
+  SupportedMimeTypes?: string[];
+  /** Animated formats are never inferred from the static MIME declaration. */
+  SupportedAnimatedMimeTypes?: string[];
+  MaxBytes?: number;
+  MaxPixels?: number;
+}
+
+/** Runtime capability shape after model defaults have been resolved. */
+export type ResolvedAgentModelCapabilitiesConfig = Required<Omit<AgentModelCapabilitiesConfig, "VisionInput">> & {
+  VisionInput: AgentModelVisionInputConfig;
+};
 
 export type AgentModelGroupMatchKind = "exact" | "prefix" | "suffix" | "includes";
 
@@ -96,7 +109,7 @@ export interface ResolvedAgentModelProviderEndpointConfig {
 export interface AgentModelRuntimeDefaultsConfig {
   Kind: "OpenAICompatible";
   Endpoint: AgentModelEndpointKind;
-  Capabilities: Required<AgentModelCapabilitiesConfig>;
+  Capabilities: ResolvedAgentModelCapabilitiesConfig;
   ToolPlanningMode: AgentModelToolPlanningMode;
   ContextWindowTokens: number;
   MaxModelOutputTokens: number;
@@ -116,6 +129,8 @@ export interface AgentModelRuntimeDefaultsConfig {
 }
 
 export interface ResolvedAgentModelProviderConfig {
+  ImageGeneration?: AgentImageGenerationConfiguration;
+  Pricing?: AgentModelsDevPricing;
   Id: string;
   ProviderId: string;
   Icon?: string;
@@ -157,7 +172,9 @@ export interface AgentModelProviderListItem {
   id: string;
   providerId: string;
   icon?: string;
-  capabilities: Required<AgentModelCapabilitiesConfig>;
+  capabilities: ResolvedAgentModelCapabilitiesConfig;
+  toolPlanningMode: AgentModelToolPlanningMode;
+  stream: boolean;
   kind: ResolvedAgentModelProviderConfig["Kind"];
   endpoint: ResolvedAgentModelProviderConfig["Endpoint"];
   baseUrl: string;

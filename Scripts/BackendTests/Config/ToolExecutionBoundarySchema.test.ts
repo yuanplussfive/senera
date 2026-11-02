@@ -60,7 +60,6 @@ describe("tool execution manifest schema", () => {
       ...tool(["Local"]),
       Runtime: {
         Lifecycle: "Persistent",
-        ProtocolVersion: 2,
         ResultAssessment: "ProcessExit",
         Capabilities: {
           Progress: true,
@@ -75,12 +74,12 @@ describe("tool execution manifest schema", () => {
     expect(result.success).toBe(true);
   });
 
-  test("rejects removed private protocol versions", () => {
+  test("rejects obsolete per-tool protocol declarations", () => {
     const result = ToolSchema.safeParse({
       ...tool(["Local"]),
       Runtime: {
         Lifecycle: "Persistent",
-        ProtocolVersion: 1,
+        ProtocolVersion: 2,
         ResultAssessment: "ProcessExit",
       },
     });
@@ -88,35 +87,9 @@ describe("tool execution manifest schema", () => {
     expect(result.success).toBe(false);
   });
 
-  test("requires every host capability to declare private protocol v2", () => {
-    const value = tool(["Local"]);
-    delete (value.Runtime as Partial<typeof value.Runtime>).ProtocolVersion;
-    const result = ToolSchema.safeParse(value);
-
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues).toContainEqual(
-        expect.objectContaining({
-          path: ["Runtime", "ProtocolVersion"],
-          message: "HostCapability requires private tool protocol version 2.",
-        }),
-      );
-    }
-  });
-
-  test("keeps MCP on its native protocol without a private protocol declaration", () => {
+  test("accepts host and MCP contracts without a duplicated execution protocol", () => {
+    expect(ToolSchema.safeParse(tool(["Local"])).success).toBe(true);
     expect(ToolSchema.safeParse(mcpTool()).success).toBe(true);
-    const result = ToolSchema.safeParse(mcpTool(2));
-
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues).toContainEqual(
-        expect.objectContaining({
-          path: ["Runtime", "ProtocolVersion"],
-          message: "McpTool uses its native protocol and must not declare a private tool protocol version.",
-        }),
-      );
-    }
   });
 
   test("requires source-view tools to declare a recoverable source evidence coordinate", () => {
@@ -322,22 +295,7 @@ describe("tool execution manifest schema", () => {
     }
   });
 
-  test.each(["Persistent", "RemoteJob"] as const)(
-    "requires an explicit v2 protocol for %s host runtimes",
-    (lifecycle) => {
-      const result = ToolSchema.safeParse({
-        ...tool(["Local"]),
-        Runtime: { Lifecycle: lifecycle, ResultAssessment: "ProcessExit" },
-      });
-
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.issues).toContainEqual(expect.objectContaining({ path: ["Runtime", "ProtocolVersion"] }));
-      }
-    },
-  );
-
-  test.each(["Handler", "Runtime"] as const)("rejects v2 tools without %s", (field) => {
+  test.each(["Handler", "Runtime"] as const)("rejects tools without %s", (field) => {
     const value: Record<string, unknown> = { ...tool(["Local"]) };
     delete value[field];
     expect(ToolSchema.safeParse(value).success).toBe(false);
@@ -431,19 +389,18 @@ function tool(Targets: Array<"Sandbox" | "Local">) {
   return {
     Name: "BoundaryTool",
     Handler: { Kind: "HostCapability", Capability: "test" },
-    Runtime: { Lifecycle: "Immediate", ProtocolVersion: 2 as const, ResultAssessment: "ProcessExit" as const },
+    Runtime: { Lifecycle: "Immediate", ResultAssessment: "ProcessExit" as const },
     Execution: { Targets, Network: "Deny", Workspace: "ReadOnly" },
   };
 }
 
-function mcpTool(protocolVersion?: 2) {
+function mcpTool() {
   return {
     Name: "McpBoundaryTool",
     Handler: { Kind: "McpTool", Server: "test", Tool: "test" },
     Runtime: {
       Lifecycle: "OneShot",
       ResultAssessment: "ProcessExit",
-      ...(protocolVersion === undefined ? {} : { ProtocolVersion: protocolVersion }),
     },
     Execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
   };
@@ -484,7 +441,7 @@ function registeredTool(Targets: Array<"Sandbox" | "Local">): RegisteredTool {
     sources: [],
     execution: { Targets, Network: "Deny", Workspace: "ReadOnly" },
     handler: { kind: "HostCapability", capability: "test" },
-    runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, ResultAssessment: "ProcessExit" },
+    runtime: { Lifecycle: "Immediate", ResultAssessment: "ProcessExit" },
     childGrant: "inherit",
     evidenceCapabilities: [],
   };

@@ -72,6 +72,8 @@ export interface RealRuntimeIntegrationHarnessOptions {
   readonly authenticationMode?: "disabled" | "required";
   readonly authentication?: Partial<typeof RealRuntimeIntegrationAdmin>;
   readonly staticFrontendRoot?: string;
+  /** Bind to a local network interface when testing an insecure LAN browser origin. */
+  readonly host?: string;
   /** Adds the workspace identity that a desktop settings surface receives from a hosted runtime. */
   readonly workspaceMode?: "standalone" | "single-workspace";
 }
@@ -82,8 +84,9 @@ export async function createRealRuntimeIntegrationHarness(
   const workspaceRoot = mkdtempSync(path.join(os.tmpdir(), "senera-runtime-e2e-"));
   const modelServer = await FakeControllerModelServer.start();
   try {
-    const serverPort = await reserveLoopbackPort();
-    const httpOrigin = `http://127.0.0.1:${serverPort}`;
+    const host = options.host ?? "127.0.0.1";
+    const serverPort = await reservePort(host);
+    const httpOrigin = `http://${host}:${serverPort}`;
     const authenticationMode = options.authenticationMode ?? (options.authentication ? "required" : "disabled");
     if (authenticationMode === "disabled" && options.authentication) {
       throw new Error("authentication credentials require authenticationMode=required.");
@@ -94,6 +97,7 @@ export async function createRealRuntimeIntegrationHarness(
       authenticationOrigin: authentication ? httpOrigin : undefined,
       modelBaseUrl: modelServer.baseUrl,
       serverPort,
+      host,
     });
     if (authentication) {
       await new AgentLocalAdminAccountStore(
@@ -140,7 +144,7 @@ export async function createRealRuntimeIntegrationHarness(
     });
     const sandboxRuntimeService = new AgentSandboxRuntimeService({ workspaceRoot, configSnapshot });
     sandboxRuntimeService.markUnavailable(new Error("Runtime integration uses deterministic host capabilities."));
-    const websocketUrl = `ws://127.0.0.1:${config.Defaults!.Server!.Port}`;
+    const websocketUrl = `ws://${host}:${serverPort}`;
     const workspaceTransport =
       options.workspaceMode === "single-workspace"
         ? createSingleWorkspaceTransportState({ workspaceRoot, configPath, websocketUrl })
@@ -160,6 +164,10 @@ export async function createRealRuntimeIntegrationHarness(
       ...workspaceTransport,
     });
     await server.start();
+    if (options.host) {
+      // The explicit LAN test listener uses the same origin registry as the production LAN listener.
+      server.transport.accessGuard.setDeviceLanOrigins([httpOrigin]);
+    }
     const client = authentication
       ? await AgentProtocolIntegrationClient.connectAuthenticated({
           websocketUrl,
@@ -360,11 +368,12 @@ function createRuntimeConfig(input: {
   authenticationOrigin?: string;
   modelBaseUrl: string;
   serverPort: number;
+  host: string;
 }): AgentSystemConfig {
   return {
     Defaults: {
       Server: {
-        Host: "127.0.0.1",
+        Host: input.host,
         Port: input.serverPort,
         HotReload: false,
         RequestMaxBytes: 1_048_576,
@@ -485,12 +494,15 @@ async function listenLoopback(server: net.Server): Promise<void> {
   });
 }
 
-async function reserveLoopbackPort(): Promise<number> {
+async function reservePort(host: string): Promise<number> {
   const server = net.createServer();
-  await listenLoopback(server);
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, host, resolve);
+  });
   const address = server.address();
   if (!address || typeof address === "string") {
-    throw new Error("Unable to reserve a loopback port.");
+    throw new Error(`Unable to reserve a test server port on ${host}.`);
   }
   await new Promise<void>((resolve, reject) => {
     server.close((error) => (error ? reject(error) : resolve()));

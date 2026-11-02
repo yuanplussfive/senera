@@ -30,7 +30,6 @@
             "description": "Legacy optional revision hint. The host derives the expected revision from the checkpoint and verifies the live workspace itself."
           },
           "target": {
-            "default": "after",
             "description": "Snapshot side to materialize. after resumes the captured change; before restores its base.",
             "type": "string",
             "enum": ["before", "after"]
@@ -58,7 +57,6 @@
             "description": "Legacy optional revision hint. The host derives the expected revision from the checkpoint and verifies the live workspace itself."
           },
           "target": {
-            "default": "after",
             "description": "Snapshot side to materialize. after resumes the captured change; before restores its base.",
             "type": "string",
             "enum": ["before", "after"]
@@ -68,6 +66,14 @@
         "additionalProperties": false
       }
     ],
+    "properties": {
+      "target": {
+        "default": "after",
+        "description": "Snapshot side to materialize. after resumes the captured change; before restores its base.",
+        "type": "string",
+        "enum": ["before", "after"]
+      }
+    },
     "type": "object"
   },
   "outputSchema": {
@@ -122,7 +128,6 @@
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadWrite" },
   "runtime": {
     "Lifecycle": "Immediate",
-    "ProtocolVersion": 2,
     "ResultAssessment": "ProcessExit",
     "Scheduling": "ResourceClaims",
     "MaxConcurrency": 1,

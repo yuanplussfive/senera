@@ -86,8 +86,10 @@ test("code artifact source SSR smoke covers source and preview metadata", () => 
   expect(artifact.filename).toBe("snippet.html");
   expect(artifact.preview?.id).toBe("html-document");
   expect(artifact.preview.source).toMatch(/<main>/);
-  expect(markup).toMatch(/<diffs-container[^>]*class="senera-pierre-code"/);
-  expect(markup).not.toMatch(/senera-pierre-code__fallback/);
+  // Static rendering has no highlighter, so the plain-source layer must carry
+  // the content instead of an empty Pierre container.
+  expect(markup).toMatch(/senera-pierre-code__fallback/);
+  expect(markup).toMatch(/&lt;main&gt;/);
   expect(artifact.code).toContain("Hello");
 });
 

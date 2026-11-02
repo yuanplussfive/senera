@@ -4,20 +4,53 @@
   "id": "web-tools",
   "domain": "explore",
   "settingsSurface": "system-tools",
-  "version": "1.0.0",
-  "displayName": { "zh-CN": "网页工具", "en-US": "Web Tools" },
+  "usageExamples": [
+    {
+      "title": { "zh-CN": "查找可靠资料", "en-US": "Find source material" },
+      "prompt": {
+        "zh-CN": "帮我查一下这项技术的最新文档，附上来源。",
+        "en-US": "Find the latest documentation for this technology and include sources."
+      },
+      "outcome": {
+        "zh-CN": "搜索并读取网页，保留来源，便于你继续查阅。",
+        "en-US": "Search and read web pages while retaining sources for further reading."
+      }
+    }
+  ],
+  "documentation": {
+    "zh-CN": "### 从网页中寻找依据\n\n适合公开资料搜索、文档阅读和交叉核对。结果应保留来源，方便判断内容是否支持结论。\n\n- 按问题搜索信息，再读取相关页面。\n- 对照多个来源，区分发布日期和当前状态。\n- 给出可以继续访问的来源链接。\n\n如果任务需要登录、点击控件、下载或查看页面视觉布局，应改用受控浏览器；文本网页读取不提供完整浏览器交互。",
+    "en-US": "### Find evidence on the web\n\nSearch public information, read documentation and compare sources while retaining links.\n\n- Search for the question, then read relevant pages.\n- Compare sources and distinguish publication dates from current state.\n- Include links for further verification.\n\nUse the controlled browser for login, interactions, downloads or visual layout. Text fetching does not provide full browser interaction."
+  },
+  "displayName": {
+    "zh-CN": "网页工具",
+    "en-US": "Web Tools"
+  },
   "description": {
-    "zh-CN": "通过受控的搜索服务和网页读取能力获取外部信息，并保留可追溯引用。",
-    "en-US": "Retrieves external information through controlled search and page fetching with traceable citations."
+    "zh-CN": "搜索网络、读取网页，并保留信息来源。",
+    "en-US": "Search the web, read pages, and retain source references."
   },
   "priority": 90,
   "presentation": {
     "category": "web",
     "icon": "search",
-    "group": { "id": "web", "title": { "zh-CN": "网页研究", "en-US": "Web research" } },
-    "activity": { "action": { "zh-CN": "访问网页", "en-US": "Browse web" } }
+    "group": {
+      "id": "web",
+      "title": {
+        "zh-CN": "网页研究",
+        "en-US": "Web research"
+      }
+    },
+    "activity": {
+      "action": {
+        "zh-CN": "访问网页",
+        "en-US": "Browse web"
+      }
+    }
   },
-  "configuration": { "schema": "config.schema.json", "ui": "ui.schema.json" },
+  "configuration": {
+    "schema": "config.schema.json",
+    "ui": "ui.schema.json"
+  },
   "contributions": [
     {
       "kind": "hostTool",

@@ -1,37 +1,46 @@
-import type { AgentHostToolHandler } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
+import type {
+  AgentHostToolHandler,
+  AgentHostToolContractProjection,
+} from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import type { AgentToolProcessRunResult } from "../ToolRuntime/AgentToolProcessTypes.js";
 import { toolProcessFailureResult, toolProcessSuccessResult } from "../ToolRuntime/AgentToolProcessEnvelope.js";
 import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { ArtifactMemoryReadRequestLimitError } from "./AgentArtifactMemoryReader.js";
-import { ArtifactMemoryReadArgumentsSchema } from "./AgentArtifactMemoryTypes.js";
+import type { ArtifactMemoryReadArguments } from "./AgentArtifactMemoryTypes.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { readAgentArtifactMemoryContent } from "./AgentArtifactMemoryService.js";
+import { systemToolArguments } from "../SystemTools/AgentSystemToolDefinition.js";
+
+/** Old recorded calls remain executable; new model requests see only field selection. */
+export const ArtifactReadReplayContract: AgentHostToolContractProjection = {
+  projectRuntimeValidationSchema(_tool, schema) {
+    return {
+      anyOf: [
+        schema,
+        {
+          type: "object",
+          properties: {
+            artifactUris: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
+            view: { type: "string", enum: ["compact", "full"] },
+          },
+          required: ["artifactUris", "view"],
+          additionalProperties: false,
+        },
+      ],
+    };
+  },
+};
 
 export const readArtifactMemoryHostTool: AgentHostToolHandler = async (args, context) => {
-  const parsed = ArtifactMemoryReadArgumentsSchema.safeParse(args);
-  if (!parsed.success) {
-    return artifactMemoryFailure({
-      code: AgentExecutionErrorCodes.InvalidToolArguments,
-      message: `${context.tool.name} 参数无效。`,
-      details: {
-        phase: AgentToolProcessErrorPhases.RuntimeExecution,
-        issues: parsed.error.issues,
-        toolName: context.tool.name,
-      },
-      diagnostics: parsed.error.issues.map((issue) => ({
-        message: issue.message,
-        pointer: `/${issue.path.join("/")}`,
-        path: issue.path.map((entry) => (typeof entry === "number" ? entry : String(entry))),
-      })),
-    });
-  }
+  const input = systemToolArguments<ArtifactMemoryReadArguments>(args);
 
   try {
     throwIfAborted(context.signal);
-    const result = await readAgentArtifactMemoryContent(parsed.data, context);
+    const result = await readAgentArtifactMemoryContent(input, context);
     return toolProcessSuccessResult(result);
   } catch (error) {
+    throwIfAborted(context.signal);
     if (error instanceof ArtifactMemoryReadRequestLimitError) {
       return artifactMemoryFailure({
         code: AgentExecutionErrorCodes.InvalidToolArguments,
@@ -43,8 +52,8 @@ export const readArtifactMemoryHostTool: AgentHostToolHandler = async (args, con
         diagnostics: [
           {
             message: error.message,
-            pointer: "/artifactUris",
-            path: ["artifactUris"],
+            pointer: "/requests",
+            path: ["requests"],
           },
         ],
       });

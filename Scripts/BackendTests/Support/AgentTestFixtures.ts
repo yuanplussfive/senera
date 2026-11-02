@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { AgentDefaults } from "../../../Source/AgentSystem/Defaults/AgentDefaultCatalog.js";
 import type {
   ResolvedAgentActionPlannerConfig,
   ResolvedAgentModelProviderEndpointConfig,
@@ -86,7 +87,6 @@ export function createPlannerConfig(
       StalledStepLag: 2,
     },
     Client: { ...client },
-    PlanningClient: { ...client },
     ...overrides,
     FinalAnswerClient: { ...(overrides.FinalAnswerClient ?? client) },
   };
@@ -118,6 +118,7 @@ export function createModelProvider(
     RetryAfterMaxDelayMs: 60_000,
     Headers: {},
     ...overrides,
+    Capabilities: { ...AgentDefaults.ModelRuntime.Capabilities, ...overrides.Capabilities },
   };
 }
 

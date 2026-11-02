@@ -2,7 +2,7 @@ import { type ReactNode } from "react";
 import { cn } from "../../lib/util";
 
 export const menuSurfaceClassName =
-  "menu-surface z-50 min-w-[200px] max-w-[calc(100vw-16px)] overflow-hidden rounded-[var(--menu-surface-radius)] border border-line-subtle bg-surface-panel p-2 shadow-[var(--menu-surface-shadow)]";
+  "menu-surface min-w-[min(200px,var(--radix-popper-available-width))] max-w-[min(calc(100vw-16px),var(--radix-popper-available-width))] max-h-[var(--radix-popper-available-height)] overflow-y-auto overscroll-contain rounded-[var(--menu-surface-radius)] border border-line-subtle bg-surface-panel p-2 shadow-[var(--menu-surface-shadow)]";
 
 export function menuItemClassName({
   className,

@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { readMobileBridge } from "../../app/mobileBridge";
 import { toast } from "sonner";
+import type { SocketStatus } from "../../api/useAgentSocket";
+import { SocketConnectionNotice } from "./SocketConnectionNotice";
 import type { ConversationIdentity, ConversationProfileUpdate, UserProfile } from "../../store/sessionStore";
 import type { SettingsSectionId } from "../settings/types";
 import { cn } from "../../lib/util";
@@ -22,21 +25,17 @@ import {
   FormHint,
   FormLabel,
   Input,
-  SegmentedControl,
-  Slider,
   type FileDropZoneAccept,
 } from "../../shared/ui";
 import {
-  AVATAR_PREVIEW_SIZE,
-  MAX_AVATAR_SOURCE_BYTES,
-  normalizeAvatarCrop,
+  readAvatarCrop,
+  dataUrlToFile,
   renderAvatarCrop,
-  resolveAvatarCropGeometry,
   useLoadedAvatarImage,
   type AvatarCropState,
-  type LoadedAvatarImage,
-} from "./useAvatarCrop";
-import { ProfileIdentityAvatar, type ProfileIdentityKind } from "./ProfileAvatar";
+} from "../../shared/media/useAvatarCrop";
+import { AvatarCropper } from "../../shared/media/AvatarCropper";
+import { ProfileIdentityAvatar } from "./ProfileAvatar";
 import { saveProfileAvatar } from "../../api/profileAvatarClient";
 import { FrontendLocalePreferences, FrontendLocales, frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { useFrontendLocalePreference, useSetFrontendLocalePreference } from "../../i18n/useFrontendLocale";
@@ -45,6 +44,9 @@ import { type ThemeMode } from "../../shared/theme/themeModel";
 import { useAppearance, useSetAppearancePreference } from "../../shared/theme/useAppearance";
 
 const themeModeOptions = ["system", "light", "dark"] as const satisfies readonly ThemeMode[];
+const LazyDeviceConnectionsDialog = lazy(() =>
+  import("./DeviceConnectionsDialog").then((module) => ({ default: module.DeviceConnectionsDialog })),
+);
 
 const MAX_DISPLAY_NAME_LENGTH = 48;
 /** Start warning about the name limit this many characters before it truncates. */
@@ -61,6 +63,8 @@ export function UserFooter({
   collapsed = false,
   compactFrame = false,
   profile,
+  socketStatus,
+  onReconnectSocket,
   onUpdateProfile,
   onLogout,
   onSettingsIntent,
@@ -71,7 +75,8 @@ export function UserFooter({
   collapsed?: boolean;
   compactFrame?: boolean;
   profile: UserProfile;
-  socketStatus: string;
+  socketStatus: SocketStatus;
+  onReconnectSocket?: () => void;
   onUpdateProfile: (profile: ConversationProfileUpdate) => void;
   onLogout?: () => Promise<void>;
   onSettingsIntent?: () => void;
@@ -81,6 +86,7 @@ export function UserFooter({
 }): JSX.Element {
   const [open, setOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [devicesOpen, setDevicesOpen] = useState(false);
   const settingsTriggerRef = useRef<HTMLButtonElement | null>(null);
   const openProfileAfterMenuCloseRef = useRef(false);
   const localePreference = useFrontendLocalePreference();
@@ -94,7 +100,8 @@ export function UserFooter({
   }, [menuOpen]);
 
   return (
-    <>
+    <div className="mt-auto shrink-0">
+      <SocketConnectionNotice status={socketStatus} onReconnect={onReconnectSocket} collapsed={collapsed} />
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <div
           className={cn(
@@ -218,8 +225,40 @@ export function UserFooter({
           >
             {frontendMessage("profile.menu.settings")}
           </DropdownMenuItem>
+          {httpBaseUrl ? (
+            <DropdownMenuItem icon={<AppIcon icon="link" size={14} />} onSelect={() => setDevicesOpen(true)}>
+              {frontendMessage("mobile.connectPhone")}
+            </DropdownMenuItem>
+          ) : null}
+          {readMobileBridge() ? (
+            <DropdownMenuItem
+              icon={<AppIcon icon="server" size={14} />}
+              onSelect={() => {
+                void readMobileBridge()!.openConnections();
+              }}
+            >
+              {frontendMessage("mobile.switchComputer")}
+            </DropdownMenuItem>
+          ) : null}
+          {readMobileBridge()?.openBackgroundSettings ? (
+            <DropdownMenuItem
+              icon={<AppIcon icon="settings" size={14} />}
+              onSelect={() => {
+                void readMobileBridge()!.openBackgroundSettings!().catch((error: unknown) =>
+                  toast.error(error instanceof Error ? error.message : String(error)),
+                );
+              }}
+            >
+              {frontendMessage("mobile.backgroundSettings")}
+            </DropdownMenuItem>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
+      {devicesOpen && httpBaseUrl ? (
+        <Suspense fallback={null}>
+          <LazyDeviceConnectionsDialog open={devicesOpen} onOpenChange={setDevicesOpen} httpBaseUrl={httpBaseUrl} />
+        </Suspense>
+      ) : null}
       <ProfileDialog
         open={open}
         profile={profile}
@@ -243,13 +282,13 @@ export function UserFooter({
         }
         uploadAvatar={
           httpBaseUrl
-            ? async (file, identity) => {
-                return saveProfileAvatar(httpBaseUrl, identity, file, uploadCsrfToken);
+            ? async (file) => {
+                return saveProfileAvatar(httpBaseUrl, "user", file, uploadCsrfToken);
               }
             : undefined
         }
       />
-    </>
+    </div>
   );
 }
 
@@ -272,24 +311,22 @@ function ProfileDialog({
   onOpenChange: (open: boolean) => void;
   onSubmit: (profile: ConversationProfileUpdate) => void;
   onLogout?: () => Promise<void>;
-  uploadAvatar?: (file: File, identity: ProfileIdentityKind) => Promise<string>;
+  uploadAvatar?: (file: File) => Promise<string>;
 }): JSX.Element {
-  const [profileIdentity, setProfileIdentity] = useState<ProfileIdentityKind>("user");
   const [draftUser, setDraftUser] = useState<ConversationIdentity>(() => readProfileIdentity(profile));
-  const [draftAssistant, setDraftAssistant] = useState<ConversationIdentity>(() => profile.assistant);
-  const [crop, setCrop] = useState<(AvatarCropState & { identity: ProfileIdentityKind }) | null>(null);
+  const [crop, setCrop] = useState<AvatarCropState | null>(null);
   const [saving, setSaving] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const avatarButtonRef = useRef<HTMLButtonElement>(null);
   const cropWasActiveRef = useRef(false);
   const cropImage = useLoadedAvatarImage(crop?.source ?? null);
-  const activeIdentity = profileIdentity === "user" ? draftUser : draftAssistant;
+  const activeIdentity = draftUser;
   const activeIdentityName = activeIdentity.name.trim();
-  const namesMissing = draftUser.name.trim().length === 0 || draftAssistant.name.trim().length === 0;
+  const namesMissing = draftUser.name.trim().length === 0;
 
   useEffect(() => {
     if (open) nameInputRef.current?.focus({ preventScroll: true });
-  }, [open, profileIdentity]);
+  }, [open]);
 
   useEffect(() => {
     if (crop) {
@@ -302,56 +339,32 @@ function ProfileDialog({
   }, [crop, open]);
 
   const resetDraft = (): void => {
-    setProfileIdentity("user");
     setDraftUser(readProfileIdentity(profile));
-    setDraftAssistant(profile.assistant);
     setCrop(null);
     setSaving(false);
   };
 
   const updateActiveIdentity = (patch: Partial<ConversationIdentity>): void => {
-    if (profileIdentity === "user") {
-      setDraftUser((current) => ({ ...current, ...patch }));
-      return;
-    }
-    setDraftAssistant((current) => ({ ...current, ...patch }));
+    setDraftUser((current) => ({ ...current, ...patch }));
   };
 
   const readAvatarFile = (file: File): void => {
-    if (!file.type.startsWith("image/")) {
-      toast.error(frontendMessage("profile.imageRequired"));
-      return;
-    }
-    if (file.size > MAX_AVATAR_SOURCE_BYTES) {
-      toast.error(frontendMessage("profile.imageTooLarge"));
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = typeof reader.result === "string" ? reader.result : "";
-      if (result) {
-        setCrop({
-          source: result,
-          scale: 1,
-          offsetX: 0,
-          offsetY: 0,
-          identity: profileIdentity,
-        });
-      }
-    };
-    reader.onerror = () => toast.error(frontendMessage("profile.avatarReadFailed"));
-    reader.readAsDataURL(file);
+    void readAvatarCrop(file)
+      .then(setCrop)
+      .catch((error: unknown) => {
+        toast.error(error instanceof Error ? error.message : frontendMessage("profile.avatarReadFailed"));
+      });
   };
 
   const applyCrop = (): void => {
     if (!crop || !cropImage) return;
-    const avatarDataUrl = renderAvatarCrop(cropImage, crop);
-    if (crop.identity === "user") {
+    try {
+      const avatarDataUrl = renderAvatarCrop(cropImage, crop);
       setDraftUser((current) => ({ ...current, avatarDataUrl, avatarPath: null }));
-    } else {
-      setDraftAssistant((current) => ({ ...current, avatarDataUrl, avatarPath: null }));
+      setCrop(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : frontendMessage("profile.imageLoadFailed"));
     }
-    setCrop(null);
   };
 
   const updateCrop = useCallback<Dispatch<SetStateAction<AvatarCropState | null>>>((update) => {
@@ -359,31 +372,25 @@ function ProfileDialog({
       if (!current) return null;
       const next = typeof update === "function" ? update(current) : update;
       if (!next) return null;
-      const normalized = { ...next, identity: current.identity };
-      return normalized.source === current.source &&
-        normalized.scale === current.scale &&
-        normalized.offsetX === current.offsetX &&
-        normalized.offsetY === current.offsetY
+      return next.source === current.source &&
+        next.scale === current.scale &&
+        next.offsetX === current.offsetX &&
+        next.offsetY === current.offsetY
         ? current
-        : normalized;
+        : next;
     });
   }, []);
 
   const submitProfile = async (): Promise<void> => {
     const user = normalizeProfileIdentity(draftUser);
-    const assistant = normalizeProfileIdentity(draftAssistant);
-    if (!user || !assistant) {
+    if (!user) {
       toast.error(frontendMessage("profile.nameRequired"));
       return;
     }
 
     setSaving(true);
     try {
-      const [storedUser, storedAssistant] = await Promise.all([
-        persistAvatarResource(user, uploadAvatar, "user"),
-        persistAvatarResource(assistant, uploadAvatar, "assistant"),
-      ]);
-      onSubmit({ ...storedUser, assistant: storedAssistant });
+      onSubmit(await persistAvatarResource(user, uploadAvatar));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : frontendMessage("upload.failed"));
     } finally {
@@ -476,15 +483,6 @@ function ProfileDialog({
               void submitProfile();
             }}
           >
-            <SegmentedControl
-              ariaLabel={frontendMessage("profile.identitySelector")}
-              options={[
-                { value: "user", label: frontendMessage("profile.identity.user") },
-                { value: "assistant", label: frontendMessage("profile.identity.assistant") },
-              ]}
-              value={profileIdentity}
-              onChange={(next) => setProfileIdentity(next as ProfileIdentityKind)}
-            />
             <FileDropZone
               accept={avatarImageAccept}
               multiple={false}
@@ -518,7 +516,7 @@ function ProfileDialog({
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
                     )}
                   >
-                    <ProfileIdentityAvatar identity={activeIdentity} kind={profileIdentity} size="hero" />
+                    <ProfileIdentityAvatar identity={activeIdentity} kind="user" size="hero" />
                     <span
                       className={cn(
                         "pointer-events-none absolute inset-0 grid place-items-center rounded-full bg-ink-950/55 text-paper-50",
@@ -578,9 +576,7 @@ function ProfileDialog({
                 aria-describedby={!activeIdentityName ? "profile-name-error" : undefined}
                 value={activeIdentity.name}
                 maxLength={MAX_DISPLAY_NAME_LENGTH}
-                placeholder={frontendMessage(
-                  profileIdentity === "user" ? "profile.namePlaceholder" : "profile.assistantNamePlaceholder",
-                )}
+                placeholder={frontendMessage("profile.namePlaceholder")}
                 className="h-10 text-[13px]"
                 onChange={(event) => updateActiveIdentity({ name: event.target.value })}
               />
@@ -612,172 +608,10 @@ function normalizeProfileIdentity(identity: ConversationIdentity): ConversationI
 
 async function persistAvatarResource(
   identity: ConversationIdentity,
-  uploadAvatar: ((file: File, identity: ProfileIdentityKind) => Promise<string>) | undefined,
-  avatarIdentity: ProfileIdentityKind,
+  uploadAvatar: ((file: File) => Promise<string>) | undefined,
 ): Promise<ConversationIdentity> {
   if (!identity.avatarDataUrl?.startsWith("data:image/")) return identity;
   if (!uploadAvatar) return identity;
-  const resourcePath = await uploadAvatar(
-    dataUrlToFile(identity.avatarDataUrl, `profile-${avatarIdentity}`),
-    avatarIdentity,
-  );
+  const resourcePath = await uploadAvatar(dataUrlToFile(identity.avatarDataUrl, "profile-user"));
   return { ...identity, avatarDataUrl: null, avatarPath: resourcePath };
-}
-
-function dataUrlToFile(dataUrl: string, fileName: string): File {
-  const [header, encoded] = dataUrl.split(",", 2);
-  if (!header || !encoded) throw new Error(frontendMessage("upload.failed"));
-  const mime = /^data:([^;]+);base64$/i.exec(header)?.[1] ?? "image/jpeg";
-  const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
-  return new File([bytes], fileName, { type: mime });
-}
-
-function AvatarCropper({
-  crop,
-  image,
-  onCropChange,
-}: {
-  crop: AvatarCropState;
-  image: LoadedAvatarImage | null;
-  onCropChange: Dispatch<SetStateAction<AvatarCropState | null>>;
-}): JSX.Element {
-  const frameRef = useRef<HTMLDivElement>(null);
-  const frameFocusPendingRef = useRef(true);
-  const dragRef = useRef<{ pointerId: number; x: number; y: number; offsetX: number; offsetY: number } | null>(null);
-  const geometry = useMemo(
-    () => (image ? resolveAvatarCropGeometry(image, crop, AVATAR_PREVIEW_SIZE) : null),
-    [crop, image],
-  );
-
-  const nudge = (deltaX: number, deltaY: number): void => {
-    if (!image) return;
-    onCropChange((current) =>
-      current
-        ? normalizeAvatarCrop(
-            { ...current, offsetX: current.offsetX + deltaX, offsetY: current.offsetY + deltaY },
-            image,
-          )
-        : current,
-    );
-  };
-
-  useEffect(() => {
-    if (!image) return;
-    onCropChange((current) => (current ? normalizeAvatarCrop(current, image) : current));
-  }, [image, onCropChange]);
-
-  useEffect(() => {
-    if (!image || !frameFocusPendingRef.current) return;
-    frameFocusPendingRef.current = false;
-    frameRef.current?.focus({ preventScroll: true });
-  }, [image]);
-
-  useEffect(() => {
-    const frame = frameRef.current;
-    if (!frame || !image) return;
-    const handleWheel = (event: WheelEvent): void => {
-      event.preventDefault();
-      const delta = event.deltaY < 0 ? 0.05 : -0.05;
-      onCropChange((current) =>
-        current ? normalizeAvatarCrop({ ...current, scale: current.scale + delta }, image) : current,
-      );
-    };
-    frame.addEventListener("wheel", handleWheel, { passive: false });
-    return () => frame.removeEventListener("wheel", handleWheel);
-  }, [image, onCropChange]);
-
-  return (
-    <div className="flex flex-col items-center">
-      <div
-        ref={frameRef}
-        role="group"
-        tabIndex={0}
-        aria-label={frontendMessage("profile.cropPreview")}
-        className={cn(
-          "relative h-48 w-48 touch-none overflow-hidden rounded-full bg-ink-950 select-none",
-          "shadow-[var(--shadow-avatar-cropper)]",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
-          image ? "cursor-grab active:cursor-grabbing" : "cursor-default",
-        )}
-        onKeyDown={(event) => {
-          const step = event.shiftKey ? 16 : 4;
-          if (event.key === "ArrowLeft") nudge(-step, 0);
-          else if (event.key === "ArrowRight") nudge(step, 0);
-          else if (event.key === "ArrowUp") nudge(0, -step);
-          else if (event.key === "ArrowDown") nudge(0, step);
-          else return;
-          event.preventDefault();
-        }}
-        onPointerDown={(event) => {
-          if (!image) return;
-          event.currentTarget.setPointerCapture(event.pointerId);
-          dragRef.current = {
-            pointerId: event.pointerId,
-            x: event.clientX,
-            y: event.clientY,
-            offsetX: crop.offsetX,
-            offsetY: crop.offsetY,
-          };
-        }}
-        onPointerMove={(event) => {
-          if (!image || !dragRef.current) return;
-          const frame = frameRef.current;
-          if (!frame) return;
-          const unit = AVATAR_PREVIEW_SIZE / frame.clientWidth;
-          const next = {
-            ...crop,
-            offsetX: dragRef.current.offsetX + (event.clientX - dragRef.current.x) * unit,
-            offsetY: dragRef.current.offsetY + (event.clientY - dragRef.current.y) * unit,
-          };
-          onCropChange(normalizeAvatarCrop(next, image));
-        }}
-        onPointerUp={(event) => {
-          if (dragRef.current?.pointerId === event.pointerId) dragRef.current = null;
-        }}
-        onPointerCancel={() => {
-          dragRef.current = null;
-        }}
-      >
-        {geometry ? (
-          <img
-            src={crop.source}
-            alt=""
-            draggable={false}
-            className="absolute left-1/2 top-1/2 max-w-none"
-            style={{
-              width: geometry.width,
-              height: geometry.height,
-              transform: `translate(calc(-50% + ${geometry.offsetX}px), calc(-50% + ${geometry.offsetY}px))`,
-            }}
-          />
-        ) : (
-          <div className="grid h-full w-full place-items-center text-[12px] text-paper-50/70">
-            {frontendMessage("profile.loadingImage")}
-          </div>
-        )}
-        <div className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-paper-50/65" />
-      </div>
-
-      <div className="mt-4 w-full">
-        <div className="mb-2 flex items-center justify-between text-[12px] text-ink-500">
-          <span>{frontendMessage("profile.zoom")}</span>
-          <span className="tabular-nums">{Math.round(crop.scale * 100)}%</span>
-        </div>
-        <Slider
-          ariaLabel={frontendMessage("profile.zoom")}
-          size="compact"
-          variant="scrubber"
-          min={1}
-          max={3}
-          step={0.01}
-          value={crop.scale}
-          disabled={!image}
-          onValueChange={(scale) => {
-            if (!image) return;
-            onCropChange((current) => (current ? normalizeAvatarCrop({ ...current, scale }, image) : current));
-          }}
-        />
-      </div>
-    </div>
-  );
 }

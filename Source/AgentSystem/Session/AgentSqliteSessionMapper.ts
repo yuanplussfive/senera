@@ -1,19 +1,6 @@
-import { AgentConversationEntryKinds } from "../Conversation/AgentConversation.js";
 import { parseJsonObject } from "../SessionPersistence/AgentSessionCodec.js";
 import type { SessionRow } from "../SessionPersistence/AgentSessionSqlRows.js";
 import { AgentSessionStatuses, type AgentSession, type AgentSessionStatus } from "./AgentSession.js";
-import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
-
-export function deriveAgentSessionTitle(session: AgentSession): string {
-  const explicitTitle = readStoredTitle(session.metadata?.title);
-  if (explicitTitle) return explicitTitle;
-  const firstUser = session.conversation.find((entry) => entry.kind === AgentConversationEntryKinds.UserMessage);
-  if (firstUser?.kind === AgentConversationEntryKinds.UserMessage) {
-    const text = firstUser.content.replace(/\s+/g, " ").trim();
-    if (text) return text.length > 24 ? `${text.slice(0, 24)}…` : text;
-  }
-  return agentErrorMessage("session.defaultTitle");
-}
 
 export function rowToAgentSession(row: SessionRow): AgentSession {
   const metadata = parseJsonObject(row.metadata);
@@ -24,13 +11,14 @@ export function rowToAgentSession(row: SessionRow): AgentSession {
   const { activeRun: _abandonedActiveRun, ...durableMetadata } = metadata;
   return {
     id: row.id,
+    title: readStoredTitle(row.title),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     status,
     conversation: [],
     metadata: {
       ...durableMetadata,
-      title: readStoredTitle(row.title) ?? readStoredTitle(durableMetadata.title),
+      title: readStoredTitle(durableMetadata.title),
     },
   };
 }

@@ -7,10 +7,12 @@ import { isMissingFileError } from "../Core/AgentFs.js";
 import { openVerifiedArtifactFile } from "../Artifacts/AgentArtifactIntegrity.js";
 import { AgentArtifactManifestIndexCache } from "../Memory/AgentArtifactManifestIndexCache.js";
 import { AgentResourceAccessIntents } from "../Execution/SeneraResourceAccess.js";
+import type { AgentResourceAccessGrant } from "../Execution/SeneraResourceAccess.js";
 import { SeneraWorkspaceBoundary } from "../Execution/SeneraWorkspaceBoundary.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
 import { normalizeAgentResourceUri } from "./AgentResourceUri.js";
+import { findAgentResourceRecord } from "./AgentResourceRegistry.js";
 
 export const AgentResourceOrigins = {
   Upload: "upload",
@@ -30,7 +32,7 @@ export interface AgentResolvedResource {
   readonly origin: AgentResourceOrigin;
 }
 
-/** A workspace file authorized for a one-shot outbound media projection. */
+/** A local file authorized for a one-shot media projection. */
 export interface AgentResolvedWorkspaceResource {
   readonly filePath: string;
   readonly name: string;
@@ -42,7 +44,10 @@ export interface AgentResolvedWorkspaceResource {
 export interface AgentResourceResolverLike {
   resolve(resourceUri: string): Promise<AgentResolvedResource | undefined>;
   /** Resolves an absolute or workspace-relative path after boundary checks. */
-  resolveWorkspacePath?(filePath: string): Promise<AgentResolvedWorkspaceResource | undefined>;
+  resolveWorkspacePath?(
+    filePath: string,
+    resourceAccessGrant?: AgentResourceAccessGrant,
+  ): Promise<AgentResolvedWorkspaceResource | undefined>;
 }
 
 export interface AgentResourceResolverOptions {
@@ -70,16 +75,29 @@ export class AgentResourceResolver implements AgentResourceResolverLike {
   async resolve(resourceUri: string): Promise<AgentResolvedResource | undefined> {
     const normalizedUri = normalizeAgentResourceUri(resourceUri);
     if (!normalizedUri) return undefined;
+    const record = findAgentResourceRecord(this.workspaceRoot, normalizedUri);
+    if (record?.kind === "artifact" || record?.state === "deleted") return undefined;
 
     const upload = await this.resolveUpload(normalizedUri);
     if (upload) return upload;
     return this.resolveArtifact(normalizedUri);
   }
 
-  async resolveWorkspacePath(filePath: string): Promise<AgentResolvedWorkspaceResource | undefined> {
+  async resolveWorkspacePath(
+    filePath: string,
+    resourceAccessGrant?: AgentResourceAccessGrant,
+  ): Promise<AgentResolvedWorkspaceResource | undefined> {
+    const boundary = resourceAccessGrant
+      ? new SeneraWorkspaceBoundary({
+          workspaceRoot: this.workspaceRoot,
+          linkPolicy: "deny",
+          allowOutside: true,
+          resourceAccessGrant,
+        })
+      : this.workspaceBoundary;
     let opened: Awaited<ReturnType<SeneraWorkspaceBoundary["openFile"]>>;
     try {
-      opened = await this.workspaceBoundary.openFile(filePath, AgentResourceAccessIntents.Read);
+      opened = await boundary.openFile(filePath, AgentResourceAccessIntents.Read);
     } catch (error) {
       // Invalid, missing, outside-workspace, and link traversal references are
       // ordinary unresolved Markdown links from the channel's perspective.

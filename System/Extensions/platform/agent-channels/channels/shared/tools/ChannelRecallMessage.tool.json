@@ -1,0 +1,95 @@
+{
+  "name": "ChannelRecallMessage",
+  "loading": "Bootstrap",
+  "description": "Recall a message previously sent in this channel conversation, subject to the platform's native permissions and recall window. Use its exact returned message ID.",
+  "presentation": {
+    "category": "channel-message",
+    "icon": "undo",
+    "activity": {
+      "action": {
+        "zh-CN": "撤回 QQ 消息",
+        "en-US": "Recall QQ message"
+      },
+      "argumentPath": "/messageId"
+    },
+    "preview": {
+      "body": {
+        "pointer": "/messageId",
+        "from": "result"
+      }
+    }
+  },
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "messageId": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S"
+      }
+    },
+    "required": ["messageId"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "recalled": {
+        "type": "boolean"
+      },
+      "messageId": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": ["recalled", "messageId"],
+    "additionalProperties": false
+  },
+  "permissions": ["channel:recall"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "SelfManaged",
+    "Capabilities": {
+      "Cancellation": true
+    }
+  },
+  "resources": [],
+  "sources": [],
+  "surfaces": ["channel"],
+  "platforms": ["onebot11", "qq", "onebot"],
+  "search": {
+    "Summary": "撤回当前 QQ 渠道中已发送的指定消息，遵守平台权限与撤回时限。",
+    "Tags": ["QQ", "撤回"],
+    "Capabilities": [
+      {
+        "Id": "channel.recall",
+        "Title": "Recall current-channel message",
+        "Description": "Recall a sent message in the active channel using its native message ID.",
+        "Facets": {
+          "Actions": ["recall", "delete"],
+          "Targets": ["channel-message"],
+          "Inputs": ["message-id"],
+          "Outputs": ["recall-confirmation"],
+          "Effects": ["external-message-delete"]
+        },
+        "Aliases": ["撤回 QQ 消息", "recall channel message"],
+        "Risk": {
+          "SideEffect": "external-communication",
+          "Permission": "channel-recall"
+        }
+      }
+    ],
+    "UseCases": ["需要更正刚发送的 渠道 消息"],
+    "Examples": ["撤回指定消息 ID"],
+    "Avoid": ["没有明确消息 ID 时不要调用"]
+  },
+  "evidenceCapabilities": []
+}

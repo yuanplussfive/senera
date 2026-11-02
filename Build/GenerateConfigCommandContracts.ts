@@ -11,6 +11,15 @@ import { createAgentJsonMergePatchSchema } from "../Source/AgentSystem/Core/Agen
 import { readOptionalUtf8, synchronizeGeneratedFile } from "./GeneratedTextFile.js";
 import { sha256Hex } from "../Source/AgentSystem/Core/AgentHash.js";
 import { toPosixRelative } from "../Scripts/Support/FileWalk.js";
+import { canonicalizeAgentJsonSchema } from "../Source/AgentSystem/ToolContracts/AgentJsonSchemaCanonical.js";
+import { stringifyAgentCanonicalJson } from "../Source/AgentSystem/Core/AgentCanonicalJson.js";
+import { relativePathWithin } from "../Source/AgentSystem/Core/AgentPath.js";
+
+interface ConfigCommandSchemaSnapshot {
+  readonly formatVersion: number;
+  readonly version: number;
+  readonly operations: Readonly<Record<string, unknown>>;
+}
 
 interface ContractManifest {
   formatVersion?: unknown;
@@ -76,14 +85,26 @@ function synchronizeVersion(version: ContractVersion, latest: boolean): void {
   const snapshotChecksum = sha256Hex(snapshotSource);
   synchronizeImmutableChecksum(version, "snapshotSha256", snapshotChecksum, `version ${number} snapshot`);
   if (latest) {
-    const expected = `${JSON.stringify(projectSnapshot(number, definition), null, 2)}\n`;
-    if (snapshotSource !== expected) {
+    const expected = projectSnapshot(number, definition);
+    if (canonicalizeSnapshot(JSON.parse(snapshotSource)) !== canonicalizeSnapshot(expected)) {
       throw new Error(`Version ${number} schema changed after publication. Append a new command contract version.`);
     }
   }
 }
 
-function projectSnapshot(version: number, definition: AgentConfigCommandContractDefinition): object {
+function canonicalizeSnapshot(snapshot: ConfigCommandSchemaSnapshot): string {
+  return stringifyAgentCanonicalJson({
+    ...snapshot,
+    operations: Object.fromEntries(
+      Object.entries(snapshot.operations).map(([name, schema]) => [name, canonicalizeAgentJsonSchema(schema)]),
+    ),
+  });
+}
+
+function projectSnapshot(
+  version: number,
+  definition: AgentConfigCommandContractDefinition,
+): ConfigCommandSchemaSnapshot {
   return {
     formatVersion: 1,
     version,
@@ -146,8 +167,7 @@ function readDefinition(filePath: string): AgentConfigCommandContractDefinition 
 function resolveResource(value: unknown, label: string): string {
   if (typeof value !== "string" || !value) throw new Error(`${label} must be a relative path.`);
   const resolved = path.resolve(contractDirectory, value);
-  const inside = path.relative(contractDirectory, resolved);
-  if (!inside || inside.startsWith(`..${path.sep}`) || path.isAbsolute(inside)) {
+  if (path.isAbsolute(value) || !relativePathWithin(contractDirectory, resolved)) {
     throw new Error(`${label} escapes the command contract directory.`);
   }
   return resolved;

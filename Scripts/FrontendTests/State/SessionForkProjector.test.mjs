@@ -9,7 +9,7 @@ test("session.forked selects the authoritative target and inherits source model 
   state.sessions.fork = session("fork", "New chat");
   state.sessionOrder = ["fork", "source"];
   state.activeSessionId = "source";
-  state.modelProviders = [{ id: "provider-a", capabilities: { Chat: true } }];
+  state.modelProviders = [{ id: "provider-a", capabilities: { Chat: true }, toolPlanningMode: "baml", stream: true }];
   state.selectedModelProviderIdsBySession.source = "provider-a";
 
   applyEvent(
@@ -38,12 +38,12 @@ test("session.forked selects the authoritative target and inherits source model 
   expect(state.selectedModelProviderId).toBe("provider-a");
 });
 
-test("session snapshots synchronize the durable next-turn model preference", () => {
+test("session snapshots synchronize the server model without creating a local override", () => {
   const state = createTestState();
   state.sessions.session_test = session("session_test", "Conversation");
   state.sessionOrder = ["session_test"];
   state.activeSessionId = "session_test";
-  state.modelProviders = [{ id: "provider-b", capabilities: { Chat: true } }];
+  state.modelProviders = [{ id: "provider-b", capabilities: { Chat: true }, toolPlanningMode: "baml", stream: true }];
   state.defaultModelProviderId = "provider-b";
 
   applyEvent(
@@ -64,8 +64,37 @@ test("session snapshots synchronize the durable next-turn model preference", () 
     ),
   );
 
-  expect(state.selectedModelProviderIdsBySession.session_test).toBe("provider-b");
+  expect(state.sessions.session_test.modelProviderId).toBe("provider-b");
+  expect(state.selectedModelProviderIdsBySession.session_test).toBeUndefined();
   expect(state.selectedModelProviderId).toBe("provider-b");
+});
+
+test("an incoming session snapshot does not erase a pending user model selection", () => {
+  const state = createTestState();
+  state.sessions.session_test = session("session_test", "Conversation");
+  state.sessionOrder = ["session_test"];
+  state.activeSessionId = "session_test";
+  state.modelProviders = ["provider-a", "provider-b"].map((id) => ({
+    id,
+    capabilities: { Chat: true },
+    toolPlanningMode: "baml",
+    stream: true,
+  }));
+  state.selectedModelProviderIdsBySession.session_test = "provider-a";
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionSnapshot,
+      {
+        ...session("session_test", "Conversation"),
+        status: "idle",
+        modelProviderId: "provider-b",
+      },
+      { sessionId: "session_test", requestId: undefined, phase: "session" },
+    ),
+  );
+  expect(state.sessions.session_test.modelProviderId).toBe("provider-b");
+  expect(state.selectedModelProviderId).toBe("provider-a");
 });
 
 test.each(["session.fork", "session.message", "session.history"])(

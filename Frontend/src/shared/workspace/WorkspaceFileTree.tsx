@@ -17,6 +17,7 @@ import {
   relativeWorkspacePath,
 } from "./WorkspaceResourcePath";
 import { useWorkspaceFileChanges } from "./useWorkspaceFileChanges";
+import { WorkspaceFileTreeIcons } from "./workspaceFileIcons";
 
 function treePath(entry: WorkspaceTreeEntry, rootPath: string): string {
   const relative = relativeWorkspacePath(rootPath, entry.path);
@@ -80,7 +81,7 @@ export function WorkspaceFileTree({
   const { model } = useFileTree({
     paths: [],
     density: "compact",
-    icons: { set: "complete", colored: true },
+    icons: WorkspaceFileTreeIcons,
     initialExpansion,
     flattenEmptyDirectories: false,
     onSelectionChange: (paths) => {
@@ -96,7 +97,7 @@ export function WorkspaceFileTree({
   const { model: searchModel } = useFileTree({
     paths: [],
     density: "compact",
-    icons: { set: "complete", colored: true },
+    icons: WorkspaceFileTreeIcons,
     initialExpansion: "open",
     flattenEmptyDirectories: true,
     onSelectionChange: (paths) => {

@@ -7,6 +7,7 @@ export const SettingsDesktop: Story = () => <SettingsSurfaceLoading presentation
 
 export const SettingsEmbedded: Story = () => (
   <div className="h-[660px] w-full bg-surface-panel text-content-primary">
+    <h2 className="sr-only">设置弹窗内的加载状态</h2>
     <SettingsSurfaceLoading presentation="embedded" />
   </div>
 );

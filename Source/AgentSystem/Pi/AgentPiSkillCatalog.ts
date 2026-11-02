@@ -1,10 +1,14 @@
 import path from "node:path";
-import type { Skill as HarnessSkill } from "@earendil-works/pi-agent-core";
 import type { Skill as CodingAgentSkill } from "@earendil-works/pi-coding-agent";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import { agentSkillLogicalUri } from "../Skills/AgentSkillResourceUri.js";
 import type { RegisteredSkill } from "../Skills/AgentSkillTypes.js";
+
+export type AgentPiActivatedSkill = Pick<AgentActivatedSkill, "name" | "content" | "disableModelInvocation"> & {
+  readonly description: string;
+  readonly filePath: string;
+};
 
 export interface AgentPiSkillCatalog {
   readonly fingerprint: string;
@@ -59,7 +63,7 @@ export function projectAgentPiSkillCatalog(
   };
 }
 
-export function projectAgentPiActivatedSkills(activated: readonly AgentActivatedSkill[] = []): HarnessSkill[] {
+export function projectAgentPiActivatedSkills(activated: readonly AgentActivatedSkill[] = []): AgentPiActivatedSkill[] {
   return activated.map((skill) => ({
     name: skill.name,
     description: skill.summary,

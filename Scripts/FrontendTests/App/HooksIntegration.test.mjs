@@ -2,7 +2,6 @@ import React, { useEffect, useRef } from "react";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
-import { useConfigMutationController } from "../../../Frontend/src/app/useConfigMutationController.ts";
 import { useSandboxRuntimeStatus } from "../../../Frontend/src/app/useSandboxRuntimeStatus.ts";
 import { useSessionCatalogSync } from "../../../Frontend/src/app/useSessionCatalogSync.ts";
 import { useSettingsRuntime } from "../../../Frontend/src/app/useSettingsRuntime.ts";
@@ -350,170 +349,6 @@ test("useSocketErrorToasts keeps contextual tool failures out of global notifica
   expect(readTestToastCalls()).toEqual([]);
 });
 
-test("useConfigMutationController rolls back disconnected sends and records provider failures", async () => {
-  const send = vi.fn(() => false);
-  const handleRef = { current: null };
-
-  render(
-    React.createElement(ConfigMutationHarness, {
-      configSnapshot: createConfigSnapshot(),
-      send,
-      status: "open",
-      handleRef,
-    }),
-  );
-
-  let requestId = "not-run";
-  await act(async () => {
-    requestId = handleRef.current.saveConfig({ AgentLoop: {} });
-  });
-
-  expect(requestId).toBe(null);
-  expect(handleRef.current.configOperation).toBe(null);
-  expect(readTestToastCalls()).toContainEqual(
-    expect.objectContaining({
-      variant: "error",
-      title: "主配置保存失败，连接可能已断开",
-    }),
-  );
-
-  send.mockReturnValue(true);
-  await act(async () => {
-    handleRef.current.fetchProviderModels("openai", true, { Id: "openai", ApiKey: "secret" });
-  });
-  expect(handleRef.current.providerModelLoadingIds.openai).toBe(true);
-
-  await act(async () => {
-    expect(
-      handleRef.current.ingestConfigMutationEvent(
-        event(EventKinds.ProviderModelsFailed, "config", {
-          providerId: "openai",
-          message: "bad endpoint",
-          models: [],
-        }),
-      ),
-    ).toBe(true);
-  });
-
-  expect(handleRef.current.providerModelLoadingIds.openai).toBeUndefined();
-  expect(readTestToastCalls()).toContainEqual(
-    expect.objectContaining({
-      variant: "error",
-      title: "模型列表检测失败",
-      options: { description: "bad endpoint" },
-    }),
-  );
-});
-
-test("useConfigMutationController sends guarded provider endpoint commands and tracks provider state", async () => {
-  const send = vi.fn(() => true);
-  const handleRef = { current: null };
-  const configSnapshot = {
-    path: "Config.toml",
-    version: 7,
-    revision: 31,
-    value: {},
-    source: "sqlite",
-    diagnostics: [],
-    form: { version: 1, sections: [] },
-  };
-
-  render(
-    React.createElement(ConfigMutationHarness, {
-      configSnapshot,
-      send,
-      status: "open",
-      handleRef,
-    }),
-  );
-
-  let upsertRequestId;
-  let renameRequestId;
-  let deleteRequestId;
-  await act(async () => {
-    upsertRequestId = handleRef.current.upsertProviderEndpoint({
-      Id: "custom-openai",
-      Icon: "sparkles",
-      Kind: "OpenAICompatible",
-    });
-    renameRequestId = handleRef.current.renameProviderEndpoint("custom-old", "custom-new");
-    deleteRequestId = handleRef.current.deleteProviderEndpoint("custom-delete", {
-      cascadeModels: true,
-    });
-  });
-
-  expect(send.mock.calls.map(([request]) => request)).toEqual([
-    {
-      type: "provider.endpoint.upsert",
-      endpoint: {
-        Id: "custom-openai",
-        Icon: "sparkles",
-        Kind: "OpenAICompatible",
-      },
-      commandId: upsertRequestId,
-    },
-  ]);
-  expect(send.mock.calls.every(([request]) => request.type !== "config.update" && !("config" in request))).toBe(true);
-  expect(handleRef.current.providerEndpointOperations["custom-openai"]).toEqual(
-    expect.objectContaining({
-      commandId: upsertRequestId,
-      kind: "provider.endpoint.upsert",
-      status: "pending",
-    }),
-  );
-
-  await act(async () => {
-    handleRef.current.ingestConfigMutationEvent(
-      event(EventKinds.ConfigSnapshot, "config", {
-        ...configSnapshot,
-        revision: 32,
-        operation: {
-          commandId: upsertRequestId,
-          kind: "provider.endpoint.upsert",
-        },
-      }),
-    );
-    handleRef.current.ingestConfigMutationEvent(
-      event(EventKinds.ConfigFailed, "config", {
-        configPath: "Config.toml",
-        message: "stale revision",
-        operation: {
-          commandId: renameRequestId,
-          kind: "provider.endpoint.rename",
-        },
-      }),
-    );
-    handleRef.current.ingestConfigMutationEvent(
-      event(EventKinds.ConfigSnapshot, "config", {
-        ...configSnapshot,
-        operation: {
-          commandId: deleteRequestId,
-          kind: "provider.model.delete",
-        },
-      }),
-    );
-  });
-
-  expect(handleRef.current.providerEndpointOperations["custom-openai"].status).toBe("success");
-  expect(handleRef.current.providerEndpointOperations["custom-old"]).toEqual(
-    expect.objectContaining({
-      status: "error",
-      message: "stale revision",
-    }),
-  );
-  expect(handleRef.current.providerEndpointOperations["custom-delete"].status).toBe("pending");
-  expect(readTestToastCalls()).not.toContainEqual(
-    expect.objectContaining({ variant: "success", title: "供应商连接已保存" }),
-  );
-  expect(readTestToastCalls()).toContainEqual(
-    expect.objectContaining({
-      variant: "error",
-      title: "供应商重命名失败",
-      options: { description: "stale revision" },
-    }),
-  );
-});
-
 function SandboxHarness({ handleRef }) {
   const handle = useSandboxRuntimeStatus();
   useEffect(() => {
@@ -555,22 +390,6 @@ function SocketErrorToastHarness({ handleRef }) {
   return null;
 }
 
-function ConfigMutationHarness({ configSnapshot = null, send, status, handleRef }) {
-  const sendRef = useRef(send);
-  const statusRef = useRef(status);
-  sendRef.current = send;
-  statusRef.current = status;
-  const handle = useConfigMutationController({
-    configSnapshot,
-    sendRef,
-    statusRef,
-  });
-  useEffect(() => {
-    handleRef.current = handle;
-  });
-  return null;
-}
-
 function SettingsRuntimeHarness({ send, status, handleRef }) {
   const sendRef = useRef(send);
   const statusRef = useRef(status);
@@ -581,19 +400,6 @@ function SettingsRuntimeHarness({ send, status, handleRef }) {
     handleRef.current = handle;
   });
   return null;
-}
-
-function createConfigSnapshot(overrides = {}) {
-  return {
-    path: "Config.toml",
-    version: 1,
-    revision: 4,
-    value: {},
-    source: "sqlite",
-    diagnostics: [],
-    form: { version: 1, sections: [] },
-    ...overrides,
-  };
 }
 
 function event(kind, phase, data, overrides = {}) {

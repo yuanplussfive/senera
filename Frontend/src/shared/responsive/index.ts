@@ -22,10 +22,10 @@ export { readWindowControlsInsetWidth, readWindowControlsOverlapWidth } from "./
 export type { WindowControlsOverlayGeometry, WindowLayoutRect } from "./windowControlsLayout";
 export {
   clampWorkflowDockWidth,
-  DEFAULT_WORKFLOW_DOCK_WIDTH,
-  MAX_WORKFLOW_DOCK_WIDTH,
+  clampWorkflowDockWidthRatio,
+  DEFAULT_WORKFLOW_DOCK_WIDTH_RATIO,
   MIN_WORKFLOW_DOCK_WIDTH,
   MIN_WORKSPACE_MAIN_WIDTH,
-  readWorkflowDockWidthConstraints,
+  readWorkflowDockLayoutMetrics,
 } from "./workflowDock";
-export type { WorkflowDockWidthConstraints } from "./workflowDock";
+export type { WorkflowDockLayout, WorkflowDockLayoutQuery, WorkflowDockWidthConstraints } from "./workflowDock";

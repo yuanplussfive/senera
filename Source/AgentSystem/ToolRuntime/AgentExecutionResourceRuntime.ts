@@ -1,13 +1,9 @@
-import { z } from "zod";
+import { isTerminalResourceState } from "../ExecutionResources/AgentExecutionResourceTypes.js";
 import type { AgentExecutionResourceBroker } from "../ExecutionResources/AgentExecutionResourceBroker.js";
 import { AgentExecutionResourceError } from "../ExecutionResources/AgentExecutionResourceError.js";
-import {
-  AgentExecutionResourceSignals,
-  AgentExecutionResourceStates,
-} from "../ExecutionResources/AgentExecutionResourceTypes.js";
-import { SeneraShellCommandSpecSchema } from "../Execution/SeneraShellCommand.js";
-import { SeneraTerminalDimensionLimits } from "../Execution/SeneraTerminalTypes.js";
-import { AgentWorkspaceEffectSchema, AgentWorkspaceEffects } from "../Artifacts/AgentWorkspaceObservationIntent.js";
+import { type AgentExecutionResourceSignal } from "../ExecutionResources/AgentExecutionResourceTypes.js";
+import type { SeneraShellCommandSpec } from "../Execution/SeneraShellCommand.js";
+import { AgentWorkspaceEffects, type AgentWorkspaceEffect } from "../Artifacts/AgentWorkspaceObservationIntent.js";
 import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
 import type { AgentHostToolContext, AgentHostToolHandler } from "./AgentToolHostCapabilityRegistry.js";
 import { toolProcessFailureResult, toolProcessSuccessResult } from "./AgentToolProcessEnvelope.js";
@@ -25,76 +21,42 @@ import {
   projectAgentExecutionResourceCollection,
   projectAgentExecutionResourceResult,
 } from "./AgentExecutionResourceResultProjector.js";
+import { systemToolArguments } from "../SystemTools/AgentSystemToolDefinition.js";
 
-const ResourceIdSchema = z
-  .string()
-  .trim()
-  .regex(/^res_[a-f0-9]{32}$/i);
+/** All shapes below have already passed their respective package JSON Schema. */
+interface TerminalStartArguments extends SeneraShellCommandSpec {
+  readonly cwd?: string;
+  readonly workspaceEffect: AgentWorkspaceEffect;
+  readonly title?: string;
+  readonly columns?: number;
+  readonly rows?: number;
+}
 
-const TerminalStartArgumentsSchema = z
-  .object({
-    ...SeneraShellCommandSpecSchema.shape,
-    cwd: z.string().trim().min(1).optional(),
-    workspaceEffect: AgentWorkspaceEffectSchema,
-    title: z.string().trim().min(1).max(80).optional(),
-    columns: z.coerce
-      .number()
-      .int()
-      .min(SeneraTerminalDimensionLimits.minColumns)
-      .max(SeneraTerminalDimensionLimits.maxColumns)
-      .optional(),
-    rows: z.coerce
-      .number()
-      .int()
-      .min(SeneraTerminalDimensionLimits.minRows)
-      .max(SeneraTerminalDimensionLimits.maxRows)
-      .optional(),
-  })
-  .strict();
+interface ResourceInspectArguments {
+  readonly resourceId: string;
+  readonly cursor?: number;
+}
 
-const ResourceInspectArgumentsSchema = z
-  .object({
-    resourceId: ResourceIdSchema,
-    cursor: z.coerce.number().int().min(0).optional(),
-  })
-  .strict();
+interface ResourceWaitArguments extends ResourceInspectArguments {
+  readonly timeoutMs?: number;
+}
 
-const ResourceWaitArgumentsSchema = ResourceInspectArgumentsSchema.extend({
-  timeoutMs: z.coerce.number().int().min(0).optional(),
-}).strict();
+interface ResourceWriteArguments {
+  readonly resourceId: string;
+  readonly input: string;
+  readonly appendNewline?: boolean;
+}
 
-const ResourceWriteArgumentsSchema = z
-  .object({
-    resourceId: ResourceIdSchema,
-    input: z.string(),
-    appendNewline: z.boolean().optional(),
-  })
-  .strict();
+interface ResourceSignalArguments {
+  readonly resourceId: string;
+  readonly signal: AgentExecutionResourceSignal;
+}
 
-const ResourceSignalArgumentsSchema = z
-  .object({
-    resourceId: ResourceIdSchema,
-    signal: z.enum([
-      AgentExecutionResourceSignals.Interrupt,
-      AgentExecutionResourceSignals.Terminate,
-      AgentExecutionResourceSignals.Kill,
-    ]),
-  })
-  .strict();
-
-const ResourceListArgumentsSchema = z.object({}).strict();
-
-const ResourceResizeArgumentsSchema = z
-  .object({
-    resourceId: ResourceIdSchema,
-    columns: z.coerce
-      .number()
-      .int()
-      .min(SeneraTerminalDimensionLimits.minColumns)
-      .max(SeneraTerminalDimensionLimits.maxColumns),
-    rows: z.coerce.number().int().min(SeneraTerminalDimensionLimits.minRows).max(SeneraTerminalDimensionLimits.maxRows),
-  })
-  .strict();
+interface ResourceResizeArguments {
+  readonly resourceId: string;
+  readonly columns: number;
+  readonly rows: number;
+}
 
 export interface AgentExecutionResourceHostHandlers {
   startTerminal: AgentHostToolHandler;
@@ -118,8 +80,7 @@ export function createAgentExecutionResourceHostHandlers(
 ): AgentExecutionResourceHostHandlers {
   const cursors = new AgentExecutionResourceCursorLedger();
   return {
-    startTerminal: withValidatedArguments(
-      TerminalStartArgumentsSchema,
+    startTerminal: withResourceOperation<TerminalStartArguments, ResourceObservation>(
       async (args, context) => {
         const snapshot = await startTerminalResource(broker, args, context);
         cursors.record(resourceOwner(context), snapshot);
@@ -127,13 +88,11 @@ export function createAgentExecutionResourceHostHandlers(
       },
       (value, context) => resourceSnapshotResult(broker, value, context),
     ),
-    inspect: withValidatedArguments(
-      ResourceInspectArgumentsSchema,
+    inspect: withResourceOperation<ResourceInspectArguments, ResourceObservation>(
       (args, context) => inspectResource(broker, cursors, args.resourceId, args.cursor, context),
       (value, context) => resourceSnapshotResult(broker, value, context),
     ),
-    wait: withValidatedArguments(
-      ResourceWaitArgumentsSchema,
+    wait: withResourceOperation<ResourceWaitArguments, ResourceObservation>(
       (args, context) =>
         waitForResource(
           broker,
@@ -145,8 +104,7 @@ export function createAgentExecutionResourceHostHandlers(
         ),
       (value, context) => resourceSnapshotResult(broker, value, context),
     ),
-    write: withValidatedArguments(
-      ResourceWriteArgumentsSchema,
+    write: withResourceOperation<ResourceWriteArguments, ResourceObservation>(
       async (args, context) => {
         const input = args.appendNewline ? `${args.input}${process.platform === "win32" ? "\r\n" : "\n"}` : args.input;
         const snapshot = await broker.write(args.resourceId, resourceOwner(context), Buffer.from(input, "utf8"));
@@ -155,8 +113,7 @@ export function createAgentExecutionResourceHostHandlers(
       },
       (value, context) => resourceSnapshotResult(broker, value, context),
     ),
-    signal: withValidatedArguments(
-      ResourceSignalArgumentsSchema,
+    signal: withResourceOperation<ResourceSignalArguments, ResourceObservation>(
       async (args, context) => {
         const snapshot = await broker.signal(args.resourceId, resourceOwner(context), args.signal);
         cursors.record(resourceOwner(context), snapshot);
@@ -164,11 +121,12 @@ export function createAgentExecutionResourceHostHandlers(
       },
       (value, context) => resourceSnapshotResult(broker, value, context),
     ),
-    list: withValidatedArguments(ResourceListArgumentsSchema, (_args, context) => ({
-      resources: projectAgentExecutionResourceCollection(broker.list(resourceOwner(context))).resources,
-    })),
-    resize: withValidatedArguments(
-      ResourceResizeArgumentsSchema,
+    list: withResourceOperation<Record<string, never>, ReturnType<typeof projectAgentExecutionResourceCollection>>(
+      (_args, context) => ({
+        resources: projectAgentExecutionResourceCollection(broker.list(resourceOwner(context))).resources,
+      }),
+    ),
+    resize: withResourceOperation<ResourceResizeArguments, ResourceObservation>(
       async (args, context) => {
         const snapshot = await broker.resize(args.resourceId, resourceOwner(context), {
           columns: args.columns,
@@ -179,11 +137,13 @@ export function createAgentExecutionResourceHostHandlers(
       },
       (value, context) => resourceSnapshotResult(broker, value, context),
     ),
-    stopAll: withValidatedArguments(ResourceListArgumentsSchema, async (_args, context) => {
-      const snapshots = await broker.stopAll(resourceOwner(context));
-      snapshots.forEach((snapshot) => cursors.record(resourceOwner(context), snapshot));
-      return projectAgentExecutionResourceCollection(snapshots);
-    }),
+    stopAll: withResourceOperation<Record<string, never>, ReturnType<typeof projectAgentExecutionResourceCollection>>(
+      async (_args, context) => {
+        const snapshots = await broker.stopAll(resourceOwner(context));
+        snapshots.forEach((snapshot) => cursors.record(resourceOwner(context), snapshot));
+        return projectAgentExecutionResourceCollection(snapshots);
+      },
+    ),
   };
 }
 
@@ -225,16 +185,7 @@ function requireExecutionPlan(context: AgentHostToolContext) {
 
 async function startTerminalResource(
   broker: AgentExecutionResourceBroker,
-  args: {
-    mode: z.output<typeof SeneraShellCommandSpecSchema>["mode"];
-    dialect: z.output<typeof SeneraShellCommandSpecSchema>["dialect"];
-    script: z.output<typeof SeneraShellCommandSpecSchema>["script"];
-    cwd?: string;
-    workspaceEffect: z.output<typeof AgentWorkspaceEffectSchema>;
-    title?: string;
-    columns?: number;
-    rows?: number;
-  },
+  args: TerminalStartArguments,
   context: AgentHostToolContext,
 ) {
   const cwdResult = await context.executionEnv.canonicalPath(args.cwd ?? ".");
@@ -244,7 +195,7 @@ async function startTerminalResource(
     mode: args.mode,
     dialect: args.dialect,
     script: args.script,
-  } satisfies z.output<typeof SeneraShellCommandSpecSchema>;
+  } satisfies SeneraShellCommandSpec;
   const workspaceLease =
     args.workspaceEffect === AgentWorkspaceEffects.Mutate
       ? await context.workspaceObservation?.openResourceLease?.()
@@ -285,28 +236,16 @@ async function startTerminalResource(
   }
 }
 
-function withValidatedArguments<TSchema extends z.ZodType<Record<string, unknown>>, TResult>(
-  schema: TSchema,
-  execute: (args: z.output<TSchema>, context: AgentHostToolContext) => TResult | Promise<TResult>,
+function withResourceOperation<TArguments extends object, TResult>(
+  execute: (args: TArguments, context: AgentHostToolContext) => TResult | Promise<TResult>,
   projectResult: (
     result: TResult,
     context: AgentHostToolContext,
   ) => AgentToolProcessRunResult | Promise<AgentToolProcessRunResult> = (result) => toolProcessSuccessResult(result),
 ): AgentHostToolHandler {
   return async (args, context) => {
-    const parsed = schema.safeParse(args);
-    if (!parsed.success) {
-      return toolProcessFailureResult({
-        code: AgentExecutionErrorCodes.InvalidToolArguments,
-        message: `Invalid arguments for ${context.tool.name}.`,
-        details: {
-          phase: AgentToolProcessErrorPhases.RuntimeExecution,
-          issues: parsed.error.issues,
-        },
-      });
-    }
     try {
-      return await projectResult(await execute(parsed.data, context), context);
+      return await projectResult(await execute(systemToolArguments<TArguments>(args), context), context);
     } catch (error) {
       return toolProcessFailureResult({
         code: AgentExecutionErrorCodes.ToolExecutionError,
@@ -350,14 +289,6 @@ async function resourceSnapshotResult(
   );
   const outputCapture = broker.takeOutputCapture(observation.snapshot.resourceId, resourceOwner(context));
   return outputCapture ? { ...result, outputCapture } : result;
-}
-
-function isTerminalResourceState(state: AgentExecutionResourceSnapshot["state"]): boolean {
-  return (
-    state === AgentExecutionResourceStates.Completed ||
-    state === AgentExecutionResourceStates.Failed ||
-    state === AgentExecutionResourceStates.Cancelled
-  );
 }
 
 function resourceOwner(context: AgentHostToolContext): AgentExecutionResourceOwner {

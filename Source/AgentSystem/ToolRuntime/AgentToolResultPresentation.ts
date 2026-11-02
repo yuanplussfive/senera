@@ -27,7 +27,15 @@ export function projectAgentToolResultPresentation(result: ExecutedToolCallResul
   const rawFailure = readAgentToolFailure(result.outcome);
   const failure = rawFailure ? { ...rawFailure, message: projectPresentationText(rawFailure.message) } : undefined;
   const semanticText = readResultText(result.result);
-  const headline = failure?.message ?? evidence[0]?.display ?? changes[0]?.summary ?? semanticText ?? "";
+  // Adapter-declared evidence is already available in the completion event,
+  // before the recorder publishes its durable evidence identities.
+  const declaredHeadline = result.artifactPayload?.evidence?.[0]?.display;
+  const headline =
+    failure?.message ??
+    evidence[0]?.display ??
+    changes[0]?.summary ??
+    semanticText ??
+    (declaredHeadline ? projectPresentationText(declaredHeadline) : "");
   const summary = buildSummary(evidence, changes, semanticText, headline);
   const workspaceCheckpoint = result.artifact?.workspace?.checkpoint ?? result.workspaceCapture?.checkpoint;
   const workspaceObservation = projectWorkspaceObservation(result);
@@ -111,7 +119,7 @@ function projectResources(result: ExecutedToolCallResult): AgentResourceReferenc
     });
   }
 
-  for (const evidence of result.artifact?.evidence ?? []) {
+  for (const evidence of result.artifact?.evidence ?? result.artifactPayload?.evidence ?? []) {
     const metadata = readRecord(evidence.metadata);
     if (metadata?.contentType !== "resource") continue;
     const resourceUri =

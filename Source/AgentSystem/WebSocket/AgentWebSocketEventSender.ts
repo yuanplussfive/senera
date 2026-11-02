@@ -10,6 +10,7 @@ import type { AgentServerEventLogger } from "../Diagnostics/AgentServerEventLogg
 import { projectAgentRunEventForHistory } from "../Events/AgentRunEventHistoryPolicy.js";
 import type { AgentEventPersistenceState, AgentRunEventWriter } from "./AgentRunEventWriter.js";
 import { errorMessage } from "../Core/AgentErrors.js";
+import { AgentWebSocketDeliveryError, assertAgentWebSocketOpen } from "./AgentWebSocketDeliveryError.js";
 
 const DefaultPersistenceBatchSize = 128;
 const DefaultPersistenceQueueLimit = 8_192;
@@ -49,6 +50,7 @@ export class AgentWebSocketEventEnvelopeSender {
   private readonly sequencer = new AgentEventSequencer();
   private readonly persistenceQueues = new Map<string, PersistenceQueue>();
   private readonly socketSendQueues = new WeakMap<WebSocket, Promise<void>>();
+  private readonly socketFailures = new WeakMap<WebSocket, AgentWebSocketDeliveryError>();
   private readonly retiredQueueHealth = {
     pendingEvents: 0,
     failedEvents: 0,
@@ -145,23 +147,11 @@ export class AgentWebSocketEventEnvelopeSender {
   }
 
   private send(socket: WebSocket, payload: string): void {
-    if (socket.readyState !== socket.OPEN) {
-      return;
-    }
-
-    const maxBufferedBytes = this.options.maxBufferedBytes;
-    const pendingBytes = socket.bufferedAmount + Buffer.byteLength(payload);
-    if (maxBufferedBytes !== undefined && pendingBytes > maxBufferedBytes) {
-      this.options.logger.warn("WebSocket client exceeded the outbound buffer limit.", {
-        bufferedBytes: socket.bufferedAmount,
-        pendingBytes,
-        maxBufferedBytes,
-      });
-      socket.close(1013, "outbound_buffer_exceeded");
-      return;
-    }
-
-    socket.send(payload);
+    if (socket.readyState !== socket.OPEN) return;
+    void this.sendAndWait(socket, payload).catch((error: unknown) => {
+      if (!(error instanceof AgentWebSocketDeliveryError))
+        this.options.logger.error("websocket.delivery.failed", { error: errorMessage(error) });
+    });
   }
 
   /**
@@ -181,8 +171,10 @@ export class AgentWebSocketEventEnvelopeSender {
     return next;
   }
 
-  private sendAndWait(socket: WebSocket, payload: string): Promise<void> {
-    if (socket.readyState !== socket.OPEN) return Promise.resolve();
+  private async sendAndWait(socket: WebSocket, payload: string): Promise<void> {
+    const failure = this.socketFailures.get(socket);
+    if (failure) throw failure;
+    assertAgentWebSocketOpen(socket);
 
     const maxBufferedBytes = this.options.maxBufferedBytes;
     const pendingBytes = socket.bufferedAmount + Buffer.byteLength(payload);
@@ -193,26 +185,26 @@ export class AgentWebSocketEventEnvelopeSender {
         maxBufferedBytes,
       });
       socket.close(1013, "outbound_buffer_exceeded");
-      return Promise.resolve();
+      throw new AgentWebSocketDeliveryError("backpressure");
     }
 
-    // Lightweight socket fakes used by callers/tests do not expose a network
-    // transport or a send callback. Keep their delivery synchronous.
-    if (!(socket as WebSocket & { _socket?: unknown })._socket) {
-      socket.send(payload);
-      return Promise.resolve();
-    }
-
-    return new Promise<void>((resolve, reject) => {
-      try {
+    try {
+      await new Promise<void>((resolve, reject) => {
         socket.send(payload, (error?: Error) => {
           if (error) reject(error);
           else resolve();
         });
-      } catch (error) {
-        reject(error);
+      });
+    } catch (cause) {
+      let interruption = this.socketFailures.get(socket);
+      if (!interruption) {
+        interruption = new AgentWebSocketDeliveryError("send_failed", { cause });
+        this.socketFailures.set(socket, interruption);
+        this.options.logger.info("websocket.delivery.interrupted", { error: errorMessage(cause) });
+        socket.terminate();
       }
-    });
+      throw interruption;
+    }
   }
 
   private serialize(payload: unknown): string {

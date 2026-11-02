@@ -1,4 +1,5 @@
 import type { BrowserWindow } from "electron";
+import { AgentDevelopmentFrontendBase } from "../../Source/AgentSystem/WebSocket/AgentDevelopmentFrontend.js";
 
 export type DesktopFrontendSource =
   | {
@@ -12,28 +13,51 @@ export type DesktopFrontendSource =
 
 export function createDesktopFrontendSource({
   devServerUrl,
-  frontendIndexHtml,
+  serverUrl,
+  documentPath,
+  devServerPath = "/",
 }: {
   devServerUrl: string | undefined;
-  frontendIndexHtml: string;
+  /** The ready local service serves the workspace document from its own HTTP origin. */
+  serverUrl?: string;
+  documentPath: string;
+  /** Document the dev server serves for this source, relative to its root. */
+  devServerPath?: string;
 }): DesktopFrontendSource {
-  const trimmedUrl = devServerUrl?.trim();
+  const developmentUrl = devServerUrl?.trim();
+  const trimmedUrl = developmentUrl
+    ? resolveDesktopDevelopmentFrontendUrl(developmentUrl)
+    : serverUrl
+      ? new URL("/", serverUrl).href
+      : undefined;
   if (!trimmedUrl) {
     return {
       kind: "file",
-      filePath: frontendIndexHtml,
+      filePath: documentPath,
     };
   }
 
   const url = new URL(trimmedUrl);
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("SENERA_DESKTOP_FRONTEND_URL must use http or https.");
+    throw new Error("Desktop frontend URLs must use http or https.");
   }
 
   return {
     kind: "url",
-    url: url.toString(),
+    // Relative so a dev server mounted under a path keeps it, and the default
+    // root document stays exactly the configured URL.
+    url: new URL(devServerPath.replace(/^\/+/u, ""), url).toString(),
   };
+}
+
+/** Root development URLs resolve to Vite's declared base; explicit mounts keep their path. */
+export function resolveDesktopDevelopmentFrontendUrl(value: string): string {
+  const url = new URL(value);
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("Desktop frontend URLs must use http or https.");
+  }
+  if (url.pathname === "/") url.pathname = AgentDevelopmentFrontendBase;
+  return url.href;
 }
 
 export function resolveDesktopFrontendUrl({

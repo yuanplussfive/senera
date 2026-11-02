@@ -25,7 +25,7 @@ export const ComponentRecovery: Story = () => {
           <div>
             <h1 className="text-[18px] font-semibold text-content-strong">组件级错误恢复</h1>
             <p className="mt-1 text-[12.5px] leading-5 text-content-muted">
-              错误边界捕获子界面渲染错误，不影响外层操作。
+              错误边界捕获子界面渲染错误，不影响外层操作。复制按钮立即可用，悬停说明按需加载。
             </p>
           </div>
           <Button variant="outline" onClick={() => setFailed((value) => !value)}>

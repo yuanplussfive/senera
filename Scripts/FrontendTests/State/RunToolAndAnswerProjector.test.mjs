@@ -3,6 +3,134 @@ import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
 import { applyEvent } from "../../../Frontend/src/store/session/sessionProjector.ts";
 import { createEvent, createTestState, TestRequestId, TestSessionId } from "./sessionProjectorTestUtils.mjs";
 
+test.each(["live", "history", "scoped", "scoped-history"])(
+  "%s tool replay preserves the same arguments, failure, result, and measured timing",
+  (route) => {
+    const state = createTestState();
+    applyEvent(state, createEvent(EventKinds.RunStarted, { input: "打开网页" }));
+    const historical = route.includes("history");
+    const scoped = route.includes("scoped");
+    const identity = scoped
+      ? {
+          requestId: "child-request",
+          scope: { parentRequestId: TestRequestId, childRunId: "child-browser", role: "childAgent" },
+        }
+      : {};
+    const data = { index: 0, callId: "call-browser", toolName: "BrowserOpen" };
+    const events = [
+      createEvent(
+        EventKinds.ToolCallStarted,
+        { ...data, arguments: { url: "https://example.com" } },
+        { ...identity, sequence: 2, timestamp: "2026-10-28T10:00:00.000Z" },
+      ),
+      createEvent(
+        EventKinds.ToolCallFailed,
+        { ...data, message: "页面加载超时", durationMs: 12000 },
+        { ...identity, sequence: 3, timestamp: "2026-10-28T10:00:12.000Z" },
+      ),
+      createEvent(
+        EventKinds.ToolCallResultDetail,
+        { ...data, detailId: "detail-browser", value: { code: "Timeout" } },
+        { ...identity, sequence: 4 },
+      ),
+      // A late start must enrich the call without reverting its terminal state or losing its result.
+      createEvent(
+        EventKinds.ToolCallStarted,
+        { ...data, arguments: { url: "https://example.com" } },
+        { ...identity, sequence: 2, timestamp: "2026-10-28T10:00:00.000Z" },
+      ),
+      createEvent(
+        EventKinds.ToolCallsPlanned,
+        {
+          toolCount: 1,
+          calls: [{ ...data, modelContentIndex: 2 }],
+          tools: [data.toolName],
+          batchId: "batch-browser",
+          modelMessageIndex: 4,
+        },
+        { ...identity, sequence: 1, timestamp: "2026-10-28T09:59:59.000Z" },
+      ),
+      createEvent(
+        EventKinds.ToolCallCompleted,
+        { ...data, durationMs: 1 },
+        { ...identity, sequence: 5, timestamp: "2026-10-28T10:00:13.000Z" },
+      ),
+    ];
+    if (historical) {
+      applyEvent(state, createEvent(EventKinds.RunFailed, { message: "任务中断" }));
+      applyEvent(
+        state,
+        createEvent(EventKinds.SessionRunHistoryDetail, {
+          sessionId: TestSessionId,
+          requestId: TestRequestId,
+          events,
+          complete: true,
+        }),
+      );
+      expect(state.sessions[TestSessionId].runs[0].status).toBe("failed");
+      expect(state.sessions[TestSessionId].activeRequestId).toBeUndefined();
+      expect(state.runHistoryDetailStates[TestSessionId][TestRequestId]).toBe("loaded");
+    } else {
+      for (const event of events) applyEvent(state, event);
+    }
+    const steps = state.sessions[TestSessionId].runs[0].steps.filter((step) => step.callId === data.callId);
+    expect(steps).toHaveLength(1);
+    expect(steps[0]).toMatchObject({
+      status: "failed",
+      toolArgs: { url: "https://example.com" },
+      toolResult: { code: "Timeout" },
+      toolErrorMessage: "页面加载超时",
+      toolResultAvailability: "available",
+      durationMs: 12000,
+      completedSequence: 3,
+      startedAt: "2026-10-28T10:00:00.000Z",
+      endedAt: "2026-10-28T10:00:12.000Z",
+      modelMessageIndex: 4,
+      modelContentIndex: 2,
+      toolBatch: { id: "batch-browser", index: 0, size: 1 },
+    });
+  },
+);
+
+test("history recovers terminal events without their start and marks only genuinely absent results", () => {
+  const state = createTestState();
+  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "打开网页" }));
+  applyEvent(state, createEvent(EventKinds.RunFailed, { message: "任务中断" }));
+  const data = { index: 0, toolName: "BrowserOpen" };
+  applyEvent(
+    state,
+    createEvent(EventKinds.SessionRunHistoryDetail, {
+      sessionId: TestSessionId,
+      requestId: TestRequestId,
+      complete: true,
+      events: [
+        createEvent(EventKinds.ToolCallCompleted, { ...data, callId: "completed-without-result" }),
+        createEvent(EventKinds.ToolCallFailed, { ...data, callId: "failed-without-result", message: "页面关闭" }),
+        createEvent(EventKinds.ToolCallResultDetail, {
+          ...data,
+          callId: "void-result",
+          detailId: "void",
+          value: undefined,
+        }),
+      ],
+    }),
+  );
+  const steps = state.sessions[TestSessionId].runs[0].steps;
+  expect(steps.find((step) => step.callId === "completed-without-result")).toMatchObject({
+    status: "done",
+    toolResultAvailability: "unavailable",
+  });
+  expect(steps.find((step) => step.callId === "failed-without-result")).toMatchObject({
+    status: "failed",
+    toolResultAvailability: "unavailable",
+    toolErrorMessage: "页面关闭",
+  });
+  expect(steps.find((step) => step.callId === "void-result")).toMatchObject({
+    status: "done",
+    toolResultAvailability: "available",
+  });
+});
+
 test("tool preface and final answer remain separate assistant messages", () => {
   const state = createTestState();
 
@@ -31,8 +159,13 @@ test("tool preface and final answer remain separate assistant messages", () => {
 
   const session = state.sessions[TestSessionId];
   expect(session).toBeTruthy();
-  expect(session.messages.map((message) => message.kind)).toEqual(["AssistantToolPreface", "AssistantFinal"]);
+  expect(session.messages.map((message) => message.kind)).toEqual([
+    undefined,
+    "AssistantToolPreface",
+    "AssistantFinal",
+  ]);
   expect(session.messages.map((message) => message.content)).toEqual([
+    "查一下天气",
     "我先查北京和上海的天气。",
     "北京晴，上海多云。",
   ]);

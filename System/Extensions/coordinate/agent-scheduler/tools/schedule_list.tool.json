@@ -1,0 +1,84 @@
+{
+  "name": "schedule_list",
+  "loading": "Bootstrap",
+  "presentation": {
+    "category": "schedule-manage",
+    "icon": "list",
+    "activity": {
+      "action": {
+        "zh-CN": "管理",
+        "en-US": "Manage"
+      }
+    }
+  },
+  "description": "List schedules owned by this session without loading execution history.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "schedules": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        }
+      }
+    },
+    "required": ["schedules"],
+    "additionalProperties": false
+  },
+  "permissions": ["orchestration:schedule"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Persistent",
+    "ResultAssessment": "Unassessed",
+    "Scheduling": "SelfManaged",
+    "Capabilities": {
+      "Progress": true,
+      "Cancellation": true,
+      "ResumableEvents": true
+    }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "orchestration.scheduler",
+      "Title": "Agent task scheduling",
+      "Description": "Scheduled agent tasks managed by Senera."
+    }
+  ],
+  "search": {
+    "Summary": "List schedules owned by this session without loading execution history.",
+    "Tags": ["coordination"],
+    "Capabilities": [
+      {
+        "Id": "orchestration.schedule.list",
+        "Title": "schedule_list",
+        "Description": "List schedules owned by this session without loading execution history.",
+        "Facets": {
+          "Actions": ["schedule_list"],
+          "Targets": ["session-work"],
+          "Inputs": [],
+          "Outputs": ["schedules"],
+          "Effects": ["session-state"]
+        },
+        "Risk": {
+          "SideEffect": "session-state",
+          "Permission": "orchestration"
+        },
+        "Aliases": ["schedule_list"]
+      }
+    ],
+    "UseCases": ["Coordinate persistent work."],
+    "Avoid": ["Do not poll with empty messages."]
+  },
+  "evidenceCapabilities": []
+}

@@ -1,14 +1,16 @@
-import type { FileInfo } from "@earendil-works/pi-agent-core";
+import type { SeneraFileInfo as FileInfo } from "../Execution/SeneraFileSystemTypes.js";
 import path from "node:path";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
-import {
-  resolveWorkspacePath,
-  validateWorkspaceMutationPath,
-  workspaceRelativePath,
-} from "../Execution/SeneraWorkspacePath.js";
+import { validateWorkspaceMutationPath, workspaceRelativePath } from "../Execution/SeneraWorkspacePath.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
-import type { WorkspaceApplyPatchArguments, WorkspacePatchOperation } from "./AgentWorkspaceApplyPatchContract.js";
+import type {
+  WorkspaceApplyPatchArguments,
+  WorkspacePatchOperation,
+  WorkspacePatchOperationResult,
+} from "./AgentWorkspacePatchTypes.js";
 import { WorkspaceApplyPatchError } from "./AgentWorkspacePatchError.js";
+import { AgentResourceAccessIntents } from "../Execution/SeneraResourceAccess.js";
+import { relativePathWithin } from "../Core/AgentPath.js";
 import {
   addWorkspaceMissingPrecondition as addMissingPrecondition,
   captureWorkspaceFilePrecondition as captureExistingFilePrecondition,
@@ -28,15 +30,7 @@ interface PlannedFileDelete {
   readonly target: WorkspacePatchTarget;
 }
 
-export interface WorkspacePatchOperationSummary {
-  readonly kind: WorkspacePatchOperation["kind"];
-  readonly path?: string;
-  readonly source?: string;
-  readonly destination?: string;
-  /** Number of times the replaced fragment appeared in the baseline; 1 means a unique match. */
-  readonly matches?: number;
-  readonly changedPaths: string[];
-}
+export type WorkspacePatchOperationSummary = WorkspacePatchOperationResult;
 
 export interface WorkspacePatchPlan {
   readonly workspaceRoot: string;
@@ -110,7 +104,7 @@ async function planAdd(
   input: OperationPlanningInput<Extract<WorkspacePatchOperation, { kind: "add" }>>,
   pointer: string,
 ): Promise<void> {
-  const target = await resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
+  const target = await resolveTarget(input, input.operation.path, `${pointer}/path`);
   ensurePathUnused(input.plan, target, `${pointer}/path`);
   const existing = await fileInfoOrUndefined(input.files, target.relativePath, `${pointer}/path`);
   if (existing) {
@@ -129,7 +123,7 @@ async function planUpdate(
   input: OperationPlanningInput<Extract<WorkspacePatchOperation, { kind: "update" }>>,
   pointer: string,
 ): Promise<void> {
-  const target = await resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
+  const target = await resolveTarget(input, input.operation.path, `${pointer}/path`);
   const baseline = await baselineContent(input.files, input.plan, target, `${pointer}/path`);
   const replaced = replaceFirstMatch(baseline, input.operation.oldStr, input.operation.newStr);
   if (replaced.matches === 0) {
@@ -152,7 +146,7 @@ async function planWrite(
   input: OperationPlanningInput<Extract<WorkspacePatchOperation, { kind: "write" }>>,
   pointer: string,
 ): Promise<void> {
-  const target = await resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
+  const target = await resolveTarget(input, input.operation.path, `${pointer}/path`);
   ensurePathUnused(input.plan, target, `${pointer}/path`);
   const existing = await fileInfoOrUndefined(input.files, target.relativePath, `${pointer}/path`);
   if (existing) {
@@ -174,7 +168,7 @@ async function planDelete(
   input: OperationPlanningInput<Extract<WorkspacePatchOperation, { kind: "delete" }>>,
   pointer: string,
 ): Promise<void> {
-  const target = await resolveTarget(input.workspaceRoot, input.operation.path, `${pointer}/path`);
+  const target = await resolveTarget(input, input.operation.path, `${pointer}/path`);
   const pending = input.plan.pendingFiles.get(target.relativePath);
   if (pending === DeleteFile) {
     throw new WorkspaceApplyPatchError({
@@ -207,8 +201,8 @@ async function planMove(
   input: OperationPlanningInput<Extract<WorkspacePatchOperation, { kind: "move" }>>,
   pointer: string,
 ): Promise<void> {
-  const source = await resolveTarget(input.workspaceRoot, input.operation.source, `${pointer}/source`);
-  const destination = await resolveTarget(input.workspaceRoot, input.operation.destination, `${pointer}/destination`);
+  const source = await resolveTarget(input, input.operation.source, `${pointer}/source`);
+  const destination = await resolveTarget(input, input.operation.destination, `${pointer}/destination`);
   if (source.relativePath === destination.relativePath) {
     throw new WorkspaceApplyPatchError({
       message: agentErrorMessage("workspacePatch.moveSamePath", { path: source.relativePath }),
@@ -306,15 +300,32 @@ async function fileInfoOrUndefined(
   });
 }
 
-async function resolveTarget(workspaceRoot: string, value: string, pointer: string): Promise<WorkspacePatchTarget> {
+async function resolveTarget(
+  { workspaceRoot, files }: OperationPlanningInput,
+  value: string,
+  pointer: string,
+): Promise<WorkspacePatchTarget> {
   if (value.includes("\0")) {
     throw new WorkspaceApplyPatchError({ message: agentErrorMessage("workspacePatch.pathContainsNul"), pointer });
   }
-  const resolved = resolveWorkspacePath(workspaceRoot, value);
-  if (!resolved.ok) throw new WorkspaceApplyPatchError({ message: resolved.message, pointer });
-  const mutationPath = await validateWorkspaceMutationPath(workspaceRoot, resolved.absolutePath);
+  const addressed = path.resolve(workspaceRoot, value);
+  const intent =
+    relativePathWithin(workspaceRoot, addressed) === undefined
+      ? AgentResourceAccessIntents.Replace
+      : AgentResourceAccessIntents.Inspect;
+  const resolved = await files.resolveResourcePath(value, intent);
+  if (!resolved.ok) throw new WorkspaceApplyPatchError({ message: resolved.error.message, pointer });
+  const relative = relativePathWithin(workspaceRoot, resolved.value);
+  // Reject links along the addressed path, including within an approved external tree.
+  const mutationPath = await validateWorkspaceMutationPath(
+    relative === undefined ? path.parse(addressed).root : workspaceRoot,
+    addressed,
+  );
   if (!mutationPath.ok) throw new WorkspaceApplyPatchError({ message: mutationPath.message, pointer });
-  const relativePath = workspaceRelativePath(workspaceRoot, resolved.absolutePath);
+  const relativePath =
+    relative === undefined
+      ? resolved.value.split(path.sep).join("/")
+      : workspaceRelativePath(workspaceRoot, resolved.value);
   if (!relativePath || relativePath === ".") {
     throw new WorkspaceApplyPatchError({ message: agentErrorMessage("workspacePatch.pathCannotBeRoot"), pointer });
   }

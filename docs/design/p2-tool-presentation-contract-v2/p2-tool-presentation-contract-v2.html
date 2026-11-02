@@ -1725,7 +1725,7 @@ export interface ToolActivityInspection {
                   <ul>
                     <li>
                       <code>WorkspaceApplyPatch.tool.json</code> 落 5.2 的 v2 块；重跑
-                      <code>npm run generate.system-extension-contracts</code>（预期为 no-op，仅校验通过）。
+                      <code>npm run verify.system-extension-contracts</code>（只读校验包合同与能力绑定）。
                     </li>
                     <li>
                       随后接入表 7 中的
@@ -2101,7 +2101,9 @@ export interface ToolActivityInspection {
               <li>未声明 v2 的工具，其标签、分类、subjects、抽屉内容与改造前逐字一致。</li>
               <li>抽屉变更列表显示 <code>+N −M</code>；后端未提供行数时不显示该段。</li>
               <li>V1–V10 全部有对应的接受与拒绝测试用例，拒绝路径有明确错误信息。</li>
-              <li><code>generate.system-extension-contracts --check</code> 在 M2 之后保持绿（证明 v2 为透传）。</li>
+              <li>
+                <code>verify.system-extension-contracts</code> 在 M2 之后保持绿（证明 v2 包合同与运行时绑定一致）。
+              </li>
               <li>删除 <code>collectArgumentValues</code> 后全量测试仍绿（证明无工具依赖静默降级）。</li>
               <li>前端源码中不存在系统工具名字面量。</li>
             </ul>
@@ -2243,7 +2245,7 @@ export interface ToolActivityInspection {
               <code>Frontend/src/features/workflow/NodeDetailDrawer.tsx</code> — 变更列表渲染（丢弃行数）
             </li>
             <li id="cite-10">
-              <code>Build/GenerateSystemExtensionContracts.ts</code> — 契约生成对 <code>presentation</code> 原样透传
+              <code>Build/VerifySystemExtensionContracts.ts</code> — 契约验证保留并校验包内 <code>presentation</code>
             </li>
             <li id="cite-11">
               <code>System/Extensions/change/workspace-patch/tools/WorkspaceApplyPatch.tool.json</code> —

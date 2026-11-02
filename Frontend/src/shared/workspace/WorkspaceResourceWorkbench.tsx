@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useWorkspaceFileChanges } from "./useWorkspaceFileChanges";
 import { toast } from "sonner";
+import { downloadUrl } from "../../lib/download";
 import {
   createWorkspaceEntry,
   readWorkspaceResource,
   readWorkspaceResourceBlob,
+  buildWorkspaceResourceUrl,
   removeWorkspaceEntry,
   renameWorkspaceEntry,
   saveWorkspaceResource,
@@ -41,6 +43,7 @@ import {
 import { WorkspaceResourceExplorer, type WorkspaceExplorerAction } from "./WorkspaceResourceExplorer";
 import { joinWorkspacePath, parentWorkspacePath } from "./WorkspaceResourcePath";
 import type { WorkspaceResourceController } from "./WorkspaceResourceProvider";
+import { WorkspaceFileIcon, WorkspaceFileIconScope } from "./WorkspaceFileIcon";
 
 type LoadState =
   | { readonly status: "loading" }
@@ -49,18 +52,28 @@ type LoadState =
   | { readonly status: "ready"; readonly resource: WorkspaceResourceData };
 
 type SaveState = "idle" | "saving" | "saved" | "error";
+export type WorkspaceResourcePresentation = "dialog" | "dock";
+
 interface WorkspaceResourceWorkbenchProps {
   readonly controller: WorkspaceResourceController;
   readonly locator: WorkspaceResourceLocator;
   readonly onOpenChange: (open: boolean) => void;
   readonly open: boolean;
+  /** Docked surfaces fill the tool panel instead of opening the centered dialog. */
+  readonly presentation?: WorkspaceResourcePresentation;
+  /** Increments when the hosting tab requests a reload without changing the path. */
+  readonly reloadToken?: number;
+  /** Reports internal navigation so the hosting tab can track its current location. */
+  readonly onPathChange?: (path: string) => void;
 }
 
 export function WorkspaceResourceWorkbench(props: WorkspaceResourceWorkbenchProps): JSX.Element {
   return (
-    <WorkspaceSourceRuntime>
-      <WorkspaceResourceWorkbenchContent {...props} />
-    </WorkspaceSourceRuntime>
+    <WorkspaceFileIconScope>
+      <WorkspaceSourceRuntime>
+        <WorkspaceResourceWorkbenchContent {...props} />
+      </WorkspaceSourceRuntime>
+    </WorkspaceFileIconScope>
   );
 }
 
@@ -69,6 +82,9 @@ function WorkspaceResourceWorkbenchContent({
   locator,
   onOpenChange,
   open,
+  presentation: surface = "dialog",
+  reloadToken = 0,
+  onPathChange,
 }: WorkspaceResourceWorkbenchProps): JSX.Element {
   const [activePath, setActivePath] = useState(locator.path);
   const [loadRevision, setLoadRevision] = useState(0);
@@ -85,13 +101,25 @@ function WorkspaceResourceWorkbenchContent({
   const [pendingSelection, setPendingSelection] = useState<string>();
   const [editing, setEditing] = useState(false);
   const [pendingExitEdit, setPendingExitEdit] = useState(false);
-  const [explorerVisible, setExplorerVisible] = useState(true);
+  const [explorerVisible, setExplorerVisible] = useState(surface === "dialog");
   const [mobileExplorer, setMobileExplorer] = useState(false);
   const [selectedView, setSelectedView] = useState<{ path: string; view: WorkspaceTextView }>();
+  const initialReloadToken = useRef(reloadToken);
+  const onPathChangeRef = useRef(onPathChange);
+  onPathChangeRef.current = onPathChange;
 
   useEffect(() => {
     setActivePath(locator.path);
   }, [locator.path]);
+
+  useEffect(() => {
+    onPathChangeRef.current?.(activePath);
+  }, [activePath]);
+
+  useEffect(() => {
+    if (reloadToken === initialReloadToken.current) return;
+    setLoadRevision((value) => value + 1);
+  }, [reloadToken]);
 
   const activeLocator =
     activePath === locator.path ? locator : { ...locator, path: activePath, line: undefined, column: undefined };
@@ -344,17 +372,151 @@ function WorkspaceResourceWorkbenchContent({
   ) : undefined;
 
   return (
+    <WorkspaceResourceFrame
+      open={open}
+      surface={surface}
+      title={resource?.name ?? formatWorkspaceResourceLocation(activeLocator)}
+      onRequestClose={requestClose}
+    >
+      <ResourceHeader
+        dirty={dirty}
+        loading={loadState.status === "loading"}
+        locator={activeLocator}
+        resource={resource}
+        saveState={saveState}
+        presentation={presentation}
+        view={view}
+        onViewChange={(next) => {
+          if (resource) setSelectedView({ path: resource.path, view: next });
+        }}
+        editing={editing}
+        onEdit={() => setEditing(true)}
+        onCancelEdit={() => {
+          if (dirty) {
+            setPendingExitEdit(true);
+            setPendingSelection(undefined);
+            setCloseConfirmationOpen(true);
+          } else setEditing(false);
+        }}
+        onToggleExplorer={() => {
+          setExplorerVisible((value) => !value);
+          setMobileExplorer((value) => !value);
+        }}
+        canMutate={Boolean(activePath && activePath !== ".")}
+        onClose={requestClose}
+        onDelete={() => {
+          setExplorerAction(undefined);
+          setRenameName("");
+          setCloseConfirmationOpen(false);
+          setDeleteConfirmationOpen(true);
+        }}
+        onDownload={() => void downloadWorkspaceResource(controller.httpBaseUrl, activePath, resource?.name)}
+        onReload={() => {
+          if (!dirty) setLoadRevision((value) => value + 1);
+        }}
+        onRename={() => {
+          setExplorerAction(undefined);
+          setDeleteConfirmationOpen(false);
+          setCloseConfirmationOpen(false);
+          setRenameName(resource?.name ?? "");
+        }}
+        onSave={() => void save()}
+        onReference={() =>
+          void controller.referenceResource(activePath).then(
+            () => {
+              if (!dirty) onOpenChange(false);
+            },
+            (error: unknown) => toast.error(error instanceof Error ? error.message : String(error)),
+          )
+        }
+      />
+      {externallyChanged ? (
+        <div
+          role="status"
+          className="flex items-center gap-2 border-b border-line px-3 py-2 text-xs text-content-secondary"
+        >
+          <span className="min-w-0 flex-1">{frontendMessage("workspace.fileChanged")}</span>
+          <Button size="sm" variant="ghost" onClick={() => setLoadRevision((value) => value + 1)}>
+            {frontendMessage("workspace.discardAndReload")}
+          </Button>
+        </div>
+      ) : null}
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
+        <div
+          className={cn(
+            "absolute inset-0 z-10 flex bg-surface-panel sm:static sm:z-auto",
+            mobileExplorer ? "flex" : "hidden",
+            explorerVisible ? "sm:flex" : "sm:hidden",
+          )}
+        >
+          <WorkspaceResourceExplorer
+            activePath={resource?.path ?? ""}
+            httpBaseUrl={controller.httpBaseUrl}
+            revision={treeRevision}
+            onCreateEntry={beginExplorerAction}
+            onSelect={(path) => {
+              selectResource(path);
+              setMobileExplorer(false);
+            }}
+            onRefresh={refreshExplorer}
+          />
+        </div>
+        <main className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--theme-code-editor-bg)]">
+          {loadState.status === "loading" ? <ResourceLoading /> : null}
+          {loadState.status === "empty" ? <EmptyResourceSelection /> : null}
+          {loadState.status === "error" ? (
+            <ResourceError message={loadState.message} onRetry={() => setLoadRevision((value) => value + 1)} />
+          ) : null}
+          {resource ? (
+            <ResourceBody
+              httpBaseUrl={controller.httpBaseUrl}
+              locator={activeLocator}
+              resource={resource}
+              editing={editing}
+              presentation={presentation}
+              view={view}
+              onDraftChange={setDraft}
+            />
+          ) : null}
+        </main>
+        {interactionSurface ? <WorkspaceInteractionOverlay>{interactionSurface}</WorkspaceInteractionOverlay> : null}
+      </div>
+    </WorkspaceResourceFrame>
+  );
+}
+
+function WorkspaceResourceFrame({
+  children,
+  onRequestClose,
+  open,
+  surface,
+  title,
+}: {
+  readonly children: ReactNode;
+  readonly onRequestClose: () => void;
+  readonly open: boolean;
+  readonly surface: WorkspaceResourcePresentation;
+  readonly title: string;
+}): JSX.Element {
+  if (surface === "dock") {
+    return (
+      <div className="flex h-full min-h-0 flex-col" data-workspace-resource-workbench="dock">
+        {children}
+      </div>
+    );
+  }
+  return (
     <Dialog
       // The workbench contains Pierre's Shadow DOM scrollports. A modal
       // remove-scroll layer retargets their wheel events and blocks scrolling.
       modal={false}
       open={open}
       onOpenChange={(nextOpen) => {
-        if (!nextOpen) requestClose();
+        if (!nextOpen) onRequestClose();
       }}
     >
       <DialogContent
-        title={resource?.name ?? formatWorkspaceResourceLocation(activeLocator)}
+        title={title}
         showClose={false}
         showHeader={false}
         contentInitial={false}
@@ -363,109 +525,7 @@ function WorkspaceResourceWorkbenchContent({
         onFocusOutside={(event) => event.preventDefault()}
         onPointerDownOutside={(event) => event.preventDefault()}
       >
-        <ResourceHeader
-          dirty={dirty}
-          loading={loadState.status === "loading"}
-          locator={activeLocator}
-          resource={resource}
-          saveState={saveState}
-          presentation={presentation}
-          view={view}
-          onViewChange={(next) => {
-            if (resource) setSelectedView({ path: resource.path, view: next });
-          }}
-          editing={editing}
-          onEdit={() => setEditing(true)}
-          onCancelEdit={() => {
-            if (dirty) {
-              setPendingExitEdit(true);
-              setPendingSelection(undefined);
-              setCloseConfirmationOpen(true);
-            } else setEditing(false);
-          }}
-          onToggleExplorer={() => {
-            setExplorerVisible((value) => !value);
-            setMobileExplorer((value) => !value);
-          }}
-          canMutate={Boolean(activePath && activePath !== ".")}
-          onClose={requestClose}
-          onDelete={() => {
-            setExplorerAction(undefined);
-            setRenameName("");
-            setCloseConfirmationOpen(false);
-            setDeleteConfirmationOpen(true);
-          }}
-          onDownload={() => void downloadWorkspaceResource(controller.httpBaseUrl, activePath, resource?.name)}
-          onReload={() => {
-            if (!dirty) setLoadRevision((value) => value + 1);
-          }}
-          onRename={() => {
-            setExplorerAction(undefined);
-            setDeleteConfirmationOpen(false);
-            setCloseConfirmationOpen(false);
-            setRenameName(resource?.name ?? "");
-          }}
-          onSave={() => void save()}
-          onReference={() =>
-            void controller.referenceResource(activePath).then(
-              () => {
-                if (!dirty) onOpenChange(false);
-              },
-              (error: unknown) => toast.error(error instanceof Error ? error.message : String(error)),
-            )
-          }
-        />
-        {externallyChanged ? (
-          <div
-            role="status"
-            className="flex items-center gap-2 border-b border-line px-3 py-2 text-xs text-content-secondary"
-          >
-            <span className="min-w-0 flex-1">{frontendMessage("workspace.fileChanged")}</span>
-            <Button size="sm" variant="ghost" onClick={() => setLoadRevision((value) => value + 1)}>
-              {frontendMessage("workspace.discardAndReload")}
-            </Button>
-          </div>
-        ) : null}
-        <div className="relative flex min-h-0 flex-1 overflow-hidden">
-          <div
-            className={cn(
-              "absolute inset-0 z-10 flex bg-surface-panel sm:static sm:z-auto",
-              mobileExplorer ? "flex" : "hidden",
-              explorerVisible ? "sm:flex" : "sm:hidden",
-            )}
-          >
-            <WorkspaceResourceExplorer
-              activePath={resource?.path ?? ""}
-              httpBaseUrl={controller.httpBaseUrl}
-              revision={treeRevision}
-              onCreateEntry={beginExplorerAction}
-              onSelect={(path) => {
-                selectResource(path);
-                setMobileExplorer(false);
-              }}
-              onRefresh={refreshExplorer}
-            />
-          </div>
-          <main className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--theme-code-editor-bg)]">
-            {loadState.status === "loading" ? <ResourceLoading /> : null}
-            {loadState.status === "empty" ? <EmptyResourceSelection /> : null}
-            {loadState.status === "error" ? (
-              <ResourceError message={loadState.message} onRetry={() => setLoadRevision((value) => value + 1)} />
-            ) : null}
-            {resource ? (
-              <ResourceBody
-                httpBaseUrl={controller.httpBaseUrl}
-                locator={activeLocator}
-                resource={resource}
-                editing={editing}
-                presentation={presentation}
-                view={view}
-                onDraftChange={setDraft}
-              />
-            ) : null}
-          </main>
-          {interactionSurface ? <WorkspaceInteractionOverlay>{interactionSurface}</WorkspaceInteractionOverlay> : null}
-        </div>
+        {children}
       </DialogContent>
     </Dialog>
   );
@@ -529,9 +589,12 @@ function ResourceHeader({
       </IconButton>
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-[13px] font-medium text-content-strong" title={resource?.path}>
-            {resource?.name ?? locator.path.split("/").at(-1)}
-          </span>
+          <WorkspaceFileIcon path={resource?.path ?? locator.path} size={15} className="text-content-secondary" />
+          <Tooltip content={resource?.path}>
+            <span className="truncate text-[13px] font-medium text-content-strong">
+              {resource?.name ?? locator.path.split("/").at(-1)}
+            </span>
+          </Tooltip>
           {dirty ? (
             <span
               className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent-solid"
@@ -883,13 +946,10 @@ function UnsavedChangesBar({
 
 async function downloadWorkspaceResource(httpBaseUrl: string, path: string, name?: string): Promise<void> {
   try {
-    const blob = await readWorkspaceResourceBlob(httpBaseUrl, path);
-    const objectUrl = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = objectUrl;
-    anchor.download = name ?? path.split(/[\\/]/u).pop() ?? "resource";
-    anchor.click();
-    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+    await downloadUrl(
+      buildWorkspaceResourceUrl(httpBaseUrl, path, true),
+      name ?? path.split(/[\\/]/u).pop() ?? "resource",
+    );
   } catch (error) {
     toast.error(error instanceof Error ? error.message : frontendMessage("resource.downloadFailed"));
   }

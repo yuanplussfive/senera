@@ -5,8 +5,33 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { McpServersSection } from "../../../Frontend/src/features/settings/sections/McpServersSection.tsx";
 import { PluginsSection } from "../../../Frontend/src/features/settings/sections/PluginsSection.tsx";
 import { SystemToolsSection } from "../../../Frontend/src/features/settings/sections/SystemToolsSection.tsx";
+import { ChannelsSection } from "../../../Frontend/src/features/settings/sections/ChannelsSection.tsx";
 import { TooltipProvider } from "../../../Frontend/src/shared/ui/Tooltip.tsx";
+import { ServerAuthenticationContext } from "../../../Frontend/src/app/useServerAuthentication.ts";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
+
+const anonymousAuthentication = {
+  state: { status: "anonymous" },
+  login: vi.fn(),
+  logout: vi.fn(),
+  refresh: vi.fn(),
+  revalidate: vi.fn(),
+};
+
+const installedClientStatus = {
+  id: "onebot11",
+  installed: true,
+  manifest: {
+    protocol: 1,
+    id: "onebot11",
+    name: "Senera QQ",
+    version: "1.0.0",
+    revision: "a".repeat(64),
+    entry: "index.js",
+    source: { url: "https://example.test/client.zip", sha256: "b".repeat(64), bytes: 1 },
+    files: [{ path: "index.js", bytes: 1, sha256: "c".repeat(64) }],
+  },
+};
 
 const ExploreDomain = {
   id: "explore",
@@ -80,6 +105,76 @@ function createMcpSectionSystemConfig(overrides = {}) {
 }
 
 describe("plugin settings presentation", () => {
+  it("keeps documentation and skills distinct when switching channel details", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const openClient = vi.spyOn(window, "open").mockImplementation(() => null);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify(installedClientStatus), { status: 200 })),
+    );
+    try {
+      const user = userEvent.setup();
+      renderWithFrontendProviders(
+        React.createElement(
+          ServerAuthenticationContext.Provider,
+          { value: anonymousAuthentication },
+          React.createElement(ChannelsSection, {
+            draftState: {
+              draft: {},
+              saving: false,
+              dirty: false,
+              localError: null,
+              validationErrors: [],
+              updateDraft: vi.fn(),
+            },
+            systemConfig: {
+              socketStatus: "open",
+              configSnapshot: null,
+              channelStatuses: [{ kind: "onebot11", state: "connected", connected: true, enabled: true }],
+              workspaceId: "test-workspace",
+              oneBot11ClientUrl: "http://192.168.1.5:8787/api/channel-clients/onebot11/test-workspace/",
+              toolSettingsSynced: { systemTools: true },
+              systemExtensions: [
+                {
+                  id: "agent-channels",
+                  settingsSurface: "channels",
+                  skills: [{ name: "channel-messaging", title: "渠道消息规则", description: "使用当前渠道发送消息。" }],
+                  configuration: {
+                    sections: ["discord", "onebot11"].map((name) => ({
+                      name,
+                      label: name,
+                      description: "渠道说明",
+                      documentation: "渠道使用说明。",
+                      fields: [{ name: "enabled", path: [name, "enabled"], label: "启用", type: "boolean" }],
+                    })),
+                  },
+                },
+              ],
+            },
+          }),
+        ),
+      );
+      for (const name of ["Discord", "Senera QQ"]) {
+        await user.click(screen.getByText(name, { exact: true }));
+        expect(screen.getAllByText("渠道消息规则")).toHaveLength(1);
+        if (name === "Senera QQ") {
+          await user.click(await screen.findByRole("button", { name: "打开 Senera QQ" }));
+          expect(openClient).toHaveBeenCalledWith(
+            "http://192.168.1.5:8787/api/channel-clients/onebot11/test-workspace/",
+            "_blank",
+            "noopener,noreferrer",
+          );
+        }
+        await user.click(screen.getByRole("button", { name: "返回系统扩展" }));
+      }
+      expect(errors.mock.calls).toEqual([]);
+    } finally {
+      errors.mockRestore();
+      openClient.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("uses declared package identity marks and a stable default without inferring MCP transport icons", async () => {
     const user = userEvent.setup();
     const updateDraft = vi.fn();
@@ -100,7 +195,6 @@ describe("plugin settings presentation", () => {
               id: "git",
               settingsSurface: "system-tools",
               domain: ExecuteDomain,
-              version: "1.0.0",
               displayName: { "zh-CN": "Git 版本控制", "en-US": "Git Version Control" },
               description: { "zh-CN": "管理当前仓库。", "en-US": "Manage the current repository." },
               presentation: {
@@ -129,7 +223,7 @@ describe("plugin settings presentation", () => {
     );
 
     expect(container.querySelector('[data-plugin-brand-icon="git"]')).toBeInTheDocument();
-    expect(container.querySelector('[data-plugin-fallback-icon="server"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-plugin-fallback-icon="puzzle"]')).toBeInTheDocument();
     expect(container.querySelectorAll("[data-plugin-directory-item]")).toHaveLength(2);
     expect(screen.getByRole("radio", { name: "全部 2" })).toBeVisible();
     await user.click(screen.getByRole("switch", { name: "启用或停用 Imagen" }));
@@ -215,7 +309,6 @@ describe("plugin settings presentation", () => {
               id: "workspace-tools",
               settingsSurface: "system-tools",
               domain: ExploreDomain,
-              version: "1.0.0",
               displayName: { "zh-CN": "工作区工具", "en-US": "Workspace tools" },
               description: { "zh-CN": "读取、搜索和浏览当前工作区。", "en-US": "Read and search the workspace." },
               presentation: {
@@ -247,7 +340,6 @@ describe("plugin settings presentation", () => {
               id: "shell",
               settingsSurface: "system-tools",
               domain: ExecuteDomain,
-              version: "1.0.0",
               displayName: { "zh-CN": "命令执行", "en-US": "Shell Commands" },
               description: { "zh-CN": "在受控环境中运行命令。", "en-US": "Run commands in a governed environment." },
               presentation: ExecuteDomain.presentation,
@@ -275,7 +367,7 @@ describe("plugin settings presentation", () => {
     expect(container.querySelector("[data-settings-entity-group='explore']")).toHaveTextContent("探索与检索");
     expect(container.querySelector("[data-system-extension-tools]")).not.toBeInTheDocument();
     expect(container.querySelector("[data-extension-preview]")).toHaveTextContent("无需配置");
-    expect(container.querySelector("[data-settings-state='on']")).toHaveTextContent("ON");
+    expect(container.querySelector("[data-settings-state='on']")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "管理扩展开关" }));
     const extensionManager = screen.getByRole("dialog", { name: "管理扩展开关" });
     expect(extensionManager).toHaveAttribute("data-extension-bulk-manager");
@@ -285,10 +377,8 @@ describe("plugin settings presentation", () => {
     await waitFor(() => expect(container.querySelector("[data-system-extension-tools]")).toBeInTheDocument());
     expect(screen.getByText("WorkspaceRead")).toBeVisible();
     expect(container.querySelector('[data-system-extension-tool-icon="file-text"]')).toBeInTheDocument();
-    expect(screen.getByTestId("extension-metrics")).toHaveTextContent("工具");
-    await user.click(screen.getByRole("radio", { name: "配置" }));
-    expect(screen.getByText("无需配置")).toBeVisible();
-    expect(screen.getByText("该扩展没有公开配置字段。")).toBeVisible();
+    expect(screen.queryByRole("radio", { name: "配置" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "功能" })).not.toBeInTheDocument();
     expect(screen.queryByText("workspace-tools")).not.toBeInTheDocument();
     expect(screen.queryByText("system.tool.workspace-tools.WorkspaceRead")).not.toBeInTheDocument();
   });

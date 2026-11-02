@@ -1,0 +1,96 @@
+{
+  "name": "list_agents",
+  "loading": "Bootstrap",
+  "presentation": {
+    "category": "agent-input",
+    "icon": "users",
+    "activity": {
+      "action": {
+        "zh-CN": "查看子代理",
+        "en-US": "List subagents"
+      },
+      "argumentPath": "/scope"
+    }
+  },
+  "description": "List persistent children or all descendants in stable tree order, including parent IDs, depth, actual state and result/error availability. Read activation results with job_output. Inventory does not acknowledge completion notices or grant authority over descendants.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "scope": {
+        "type": "string",
+        "enum": ["children", "descendants"],
+        "default": "children"
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "self_id": {
+        "type": "string"
+      },
+      "parent_id": {
+        "type": ["string", "null"]
+      },
+      "agents": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        }
+      }
+    },
+    "required": ["self_id", "parent_id", "agents"],
+    "additionalProperties": false
+  },
+  "permissions": ["orchestration:manage"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ResultAssessment": "Unassessed",
+    "Scheduling": "SelfManaged",
+    "Capabilities": {
+      "Progress": true,
+      "ResumableEvents": true
+    }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "orchestration",
+      "Title": "Orchestration",
+      "Description": "Child-agent runs managed by Senera."
+    }
+  ],
+  "search": {
+    "Summary": "List persistent children or all descendants in stable tree order, including parent IDs, depth, actual state and result/error availability. Read activation results with job_output. Inventory does not acknowledge completion notices or grant authority over descendants.",
+    "Tags": ["agent", "协作"],
+    "Capabilities": [
+      {
+        "Id": "orchestration.list_agents",
+        "Title": "list_agents",
+        "Description": "List persistent children or all descendants in stable tree order, including parent IDs, depth, actual state and result/error availability. Read activation results with job_output. Inventory does not acknowledge completion notices or grant authority over descendants.",
+        "Facets": {
+          "Actions": ["list_agents"],
+          "Targets": ["agent-session"],
+          "Inputs": ["scope"],
+          "Outputs": ["self_id", "parent_id", "agents"],
+          "Effects": ["session-state"]
+        },
+        "Risk": {
+          "SideEffect": "session-state",
+          "Permission": "orchestration"
+        },
+        "Aliases": ["list_agents"]
+      }
+    ],
+    "UseCases": ["独立分工与持续协作"],
+    "Avoid": ["不要用空泛催促代替完成通知"]
+  },
+  "evidenceCapabilities": []
+}

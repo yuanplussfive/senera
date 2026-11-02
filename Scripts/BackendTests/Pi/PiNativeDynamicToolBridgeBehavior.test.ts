@@ -12,6 +12,12 @@ import { AgentToolExposureState } from "../../../Source/AgentSystem/ToolRuntime/
 import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
 import { projectToolDescription } from "../../../Source/AgentSystem/ToolSearch/AgentToolMetaToolProjector.js";
 import { createTool } from "../ToolSearch/ToolSearchTestFixtures.js";
+import { createAgentToolContractDelivery } from "../../../Source/AgentSystem/ToolSearch/AgentToolContractDelivery.js";
+import { createAgentPiToolObservation } from "../../../Source/AgentSystem/Pi/AgentPiToolObservation.js";
+import {
+  AgentToolDescriptionProtocol,
+  AgentToolPreparationProtocol,
+} from "../../../Source/AgentSystem/ToolSearch/AgentToolMetaToolProtocol.js";
 
 const contracts = new AgentJsonSchemaPromptContractProjector();
 const WeatherToolName = "WeatherTool";
@@ -154,6 +160,7 @@ describe("Pi native dynamic tool bridge", () => {
     const execute = vi.fn(async () => ({ content: [], details: { senera: { toolName: WeatherToolName } } }));
     const projector = createProjector(registry, "native", { execute } as unknown as AgentPiToolExecutionBridge);
     const grant = grantFor(WeatherToolName);
+    const toolExposure = confirmedExposure(grant, WeatherToolName, ContractDigest);
     const reusableCapabilities = [
       {
         toolName: WeatherToolName,
@@ -173,12 +180,13 @@ describe("Pi native dynamic tool bridge", () => {
       },
       grant,
       reusableCapabilities,
+      toolExposure,
     );
     expect(projection.event).toMatchObject({ toolName: WeatherToolName, input: { city: "上海" } });
 
     const bridge = projector
       .createToolSet(["ToolDescribe", "ToolSearch", WeatherToolName])
-      .materialize(() => ({ toolAccessGrant: grant, reusableCapabilities }))
+      .materialize(() => ({ toolAccessGrant: grant, toolExposure, reusableCapabilities }))
       .find((tool) => tool.name === AgentPiNativeToolBridgeName);
     if (!bridge) throw new Error("Expected the native ToolCall bridge.");
     await bridge.execute("call-reuse", { tool: WeatherToolName, arguments: {} });
@@ -254,7 +262,7 @@ describe("Pi native dynamic tool bridge", () => {
     );
   });
 
-  test("requires a current ToolDescribe contract before a non-reusable dynamic call", async () => {
+  test("returns the current contract before an unprepared dynamic call", async () => {
     const registry = toolRegistry();
     const execute = vi.fn();
     const projector = createProjector(registry, "native", { execute } as unknown as AgentPiToolExecutionBridge);
@@ -267,29 +275,48 @@ describe("Pi native dynamic tool bridge", () => {
     if (!bridge) throw new Error("Expected the native ToolCall bridge.");
 
     expect(() => bridge.execute("call-unconfirmed", { tool: WeatherToolName, arguments: { city: "上海" } })).toThrow(
-      /ToolDescribe/,
+      /not_started/,
     );
     expect(execute).not.toHaveBeenCalled();
   });
 
-  test("accepts a dynamic call confirmed earlier in the session via cross-request evidence lookup", async () => {
+  test("restores a delivered contract after restart without requiring a successful invocation", async () => {
     const registry = toolRegistry();
     const execute = vi.fn(async () => ({ content: [], details: { senera: { toolName: WeatherToolName } } }));
     const projector = createProjector(registry, "native", { execute } as unknown as AgentPiToolExecutionBridge);
     const grant = grantFor(WeatherToolName);
-    const crossRequestEvidence = (toolName: string) =>
-      toolName === WeatherToolName
-        ? {
-            toolName,
-            catalogRevision: "catalog-v1",
-            contractDigest: ContractDigest,
-            query: "weather in Shanghai",
-            arguments: { city: "上海" },
-            confirmedAt: 1,
-            lastUsedAt: 1,
-          }
-        : undefined;
-
+    const toolExposure = new AgentToolExposureState(grant);
+    const tool = registry.getTool(WeatherToolName)!;
+    const delivery = createAgentToolContractDelivery(tool, ["Local"]);
+    const context = {
+      messages: [
+        {
+          role: "toolResult" as const,
+          toolCallId: "earlier-description",
+          toolName: "ToolDescribe",
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                createAgentPiToolObservation({
+                  status: "success",
+                  execution_status: "completed",
+                  output_availability: "complete",
+                  detail: {
+                    evidence: [],
+                    result: { type: AgentToolDescriptionProtocol.type, tools: [delivery.description] },
+                  },
+                }),
+              ),
+            },
+          ],
+          details: { senera: { toolContractReceipts: [delivery.receipt] } },
+          isError: false,
+          timestamp: 1,
+        },
+      ],
+    };
+    projector.synchronizeContractEvidence(context, toolExposure);
     const projection = projector.projectPreflight(
       {
         toolCallId: "call-memory",
@@ -298,50 +325,61 @@ describe("Pi native dynamic tool bridge", () => {
       },
       grant,
       undefined,
-      undefined,
-      crossRequestEvidence,
+      toolExposure,
     );
-    expect(projection).toEqual({
-      bridged: true,
-      event: { toolCallId: "call-memory", toolName: WeatherToolName, input: { city: "上海" } },
-    });
-
+    expect(projection.event).toMatchObject({ toolName: WeatherToolName, input: { city: "上海" } });
     const bridge = projector
       .createToolSet(["ToolDescribe", "ToolSearch", WeatherToolName])
-      .materialize(() => ({ toolAccessGrant: grant, reusableCapabilityLookup: crossRequestEvidence }))
-      .find((tool) => tool.name === AgentPiNativeToolBridgeName);
-    if (!bridge) throw new Error("Expected the native ToolCall bridge.");
+      .materialize(() => ({ toolAccessGrant: grant, toolExposure }))
+      .find((candidate) => candidate.name === AgentPiNativeToolBridgeName)!;
     await bridge.execute("call-memory", { tool: WeatherToolName, arguments: { city: "上海" } });
+    expect(execute).toHaveBeenCalledOnce();
 
-    expect(execute).toHaveBeenCalledWith(expect.objectContaining({ params: { city: "上海" } }));
+    projector.synchronizeContractEvidence({ messages: [] }, toolExposure);
+    expect(() => bridge.execute("call-compacted", { tool: WeatherToolName, arguments: { city: "上海" } })).toThrow(
+      /not_started/,
+    );
+    expect(execute).toHaveBeenCalledOnce();
+
+    registry.replaceToolExtension(tool.owner, [{ ...tool, contract: { ...tool.contract!, digest: "replacement" } }]);
+    projector.synchronizeContractEvidence(context, toolExposure);
+    expect(() => bridge.execute("call-replaced", { tool: WeatherToolName, arguments: { city: "上海" } })).toThrow(
+      /not_started/,
+    );
+    expect(execute).toHaveBeenCalledOnce();
   });
 
-  test("rejects a dynamic call when cross-request evidence carries a stale contract digest", async () => {
+  test("returns schema-derived argument issues with the current contract without executing", async () => {
     const registry = toolRegistry();
     const execute = vi.fn();
     const projector = createProjector(registry, "native", { execute } as unknown as AgentPiToolExecutionBridge);
     const grant = grantFor(WeatherToolName);
-    const staleEvidence = (toolName: string) =>
-      toolName === WeatherToolName
-        ? {
-            toolName,
-            catalogRevision: "catalog-v1",
-            contractDigest: "weather-contract-stale",
-            query: "weather in Shanghai",
-            arguments: { city: "上海" },
-            confirmedAt: 1,
-            lastUsedAt: 1,
-          }
-        : undefined;
+    const toolExposure = confirmedExposure(grant, WeatherToolName, ContractDigest);
     const bridge = projector
       .createToolSet(["ToolDescribe", "ToolSearch", WeatherToolName])
-      .materialize(() => ({ toolAccessGrant: grant, reusableCapabilityLookup: staleEvidence }))
-      .find((tool) => tool.name === AgentPiNativeToolBridgeName);
-    if (!bridge) throw new Error("Expected the native ToolCall bridge.");
-
-    expect(() => bridge.execute("call-stale", { tool: WeatherToolName, arguments: { city: "上海" } })).toThrow(
-      /ToolDescribe/,
-    );
+      .materialize(() => ({ toolAccessGrant: grant, toolExposure }))
+      .find((candidate) => candidate.name === AgentPiNativeToolBridgeName)!;
+    let feedback: unknown;
+    try {
+      await bridge.execute("wrong-arguments", { tool: WeatherToolName, arguments: { ref: "@e5" } });
+    } catch (error) {
+      if (!(error instanceof Error)) throw error;
+      feedback = JSON.parse(error.message);
+    }
+    expect(feedback).toMatchObject({
+      execution_status: "not_started",
+      detail: {
+        result: {
+          type: AgentToolPreparationProtocol.type,
+          reason: "invalid_arguments",
+          contract: [WeatherToolName, WeatherToolName, expect.stringContaining("city: string")],
+          issues: expect.arrayContaining([
+            expect.objectContaining({ path: "/city", keyword: "required" }),
+            expect.objectContaining({ path: "/ref", keyword: "additionalProperties" }),
+          ]),
+        },
+      },
+    });
     expect(execute).not.toHaveBeenCalled();
   });
 });

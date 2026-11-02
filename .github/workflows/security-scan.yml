@@ -14,6 +14,10 @@ permissions:
   security-events: write
   pull-requests: read
 
+concurrency:
+  group: security-scan-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   dependency-review:
     name: Dependency Review
@@ -56,25 +60,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Generate Trivy SARIF report
+      - name: Scan filesystem once with Trivy
         uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: fs
           scan-ref: .
           ignore-unfixed: true
           exit-code: "0"
-          format: sarif
-          output: trivy-results.sarif
-      - name: Enforce Trivy severity gate
-        uses: aquasecurity/trivy-action@0.35.0
-        with:
-          scan-type: fs
-          scan-ref: .
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
-          format: table
+          format: json
+          output: trivy-results.json
+      - name: Generate Trivy SARIF and enforce severity gate from scan results
+        run: |
+          trivy convert --format sarif --exit-code 0 --output trivy-results.sarif trivy-results.json
+          trivy convert --format table --severity HIGH,CRITICAL --exit-code 1 trivy-results.json
       - uses: github/codeql-action/upload-sarif@v4
-        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        if: always() && hashFiles('trivy-results.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         with:
           sarif_file: trivy-results.sarif

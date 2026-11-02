@@ -35,38 +35,10 @@ test("compact provider navigation combines accurate search and add controls in o
   expect(
     screen.getByRole("textbox", { name: frontendMessage("settings.provider.searchPlaceholder") }),
   ).toBeInTheDocument();
-  expect(
-    screen.getByRole("switch", { name: frontendMessage("settings.provider.connectionToggle", { provider: "openai" }) }),
-  ).toBeChecked();
   expect(document.querySelector("[data-settings-state]")).toBeNull();
 });
 
-test("provider availability uses the shared switch and does not select the row", async () => {
-  const user = userEvent.setup();
-  const onEnabledChange = vi.fn();
-  const onSelect = vi.fn();
-  const provider = { Id: "openai", Enabled: true };
-  renderWithFrontendProviders(
-    React.createElement(
-      TooltipProvider,
-      { delayDuration: 0 },
-      React.createElement(ProviderConnectionList, createProps({ providers: [provider], onEnabledChange, onSelect })),
-    ),
-  );
-
-  await user.click(
-    screen.getByRole("switch", { name: frontendMessage("settings.provider.connectionToggle", { provider: "openai" }) }),
-  );
-
-  expect(onEnabledChange).toHaveBeenCalledWith(provider, false);
-  expect(onSelect).not.toHaveBeenCalled();
-  expect(screen.queryByText("ON")).not.toBeInTheDocument();
-  expect(screen.queryByText("OFF")).not.toBeInTheDocument();
-});
-
-test("provider availability remains immutable while its endpoint update is pending", async () => {
-  const user = userEvent.setup();
-  const onEnabledChange = vi.fn();
+test("provider list reports availability without an inline toggle", () => {
   renderWithFrontendProviders(
     React.createElement(
       TooltipProvider,
@@ -74,19 +46,54 @@ test("provider availability remains immutable while its endpoint update is pendi
       React.createElement(
         ProviderConnectionList,
         createProps({
-          onEnabledChange,
-          operations: { openai: { status: "pending" } },
+          providers: [
+            { Id: "openai", Enabled: true },
+            { Id: "anthropic", Enabled: false },
+          ],
+          selectedProviderId: null,
         }),
       ),
     ),
   );
 
-  const toggle = screen.getByRole("switch", {
-    name: frontendMessage("settings.provider.connectionToggle", { provider: "openai" }),
-  });
-  expect(toggle).toBeDisabled();
-  await user.click(toggle);
-  expect(onEnabledChange).not.toHaveBeenCalled();
+  expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+  for (const [provider, stateKey] of [
+    ["openai", "settings.provider.enabled"],
+    ["anthropic", "settings.provider.disabled"],
+  ]) {
+    expect(
+      screen.getByRole("button", {
+        name: frontendMessage("settings.provider.rowAria", {
+          provider,
+          state: frontendMessage(stateKey),
+          selected: "",
+        }),
+      }),
+    ).toBeInTheDocument();
+  }
+});
+
+test("provider hosting the default model shows a default tag and keeps the whole row selectable", async () => {
+  const user = userEvent.setup();
+  const reason = "该供应商提供当前默认模型，无法关闭";
+  const provider = { Id: "openai", Enabled: true };
+  const onSelect = vi.fn();
+  renderWithFrontendProviders(
+    React.createElement(
+      TooltipProvider,
+      { delayDuration: 0 },
+      React.createElement(
+        ProviderConnectionList,
+        createProps({ providers: [provider], providerDisableReason: () => reason, onSelect }),
+      ),
+    ),
+  );
+
+  const tag = screen.getByLabelText(`${frontendMessage("config.model.defaultBadge")} · ${reason}`);
+  expect(tag).toHaveTextContent(frontendMessage("config.model.defaultBadge"));
+
+  await user.click(tag);
+  expect(onSelect).toHaveBeenCalledWith(provider);
 });
 
 test("provider search keeps an explicit empty state when no provider matches", async () => {
@@ -104,20 +111,38 @@ test("provider search keeps an explicit empty state when no provider matches", a
   expect(screen.getByText(frontendMessage("settings.provider.searchEmpty"))).toBeInTheDocument();
 });
 
+test("provider list keeps the provider hosting the default model at the top", () => {
+  renderWithFrontendProviders(
+    React.createElement(
+      TooltipProvider,
+      { delayDuration: 0 },
+      React.createElement(
+        ProviderConnectionList,
+        createProps({
+          providers: [
+            { Id: "openai", Enabled: true },
+            { Id: "anthropic", Enabled: true },
+            { Id: "deepseek", Enabled: true },
+          ],
+          selectedProviderId: "openai",
+          defaultModelProviderId: "deepseek",
+        }),
+      ),
+    ),
+  );
+
+  const rowNames = Array.from(document.querySelectorAll("button[aria-pressed]")).map((row) => row.textContent);
+  expect(rowNames).toEqual(["deepseek", "anthropic", "openai"]);
+});
+
 function createProps(overrides = {}) {
   return {
     providers: [{ Id: "openai", Enabled: true }],
-    catalogs: {},
-    errors: {},
-    loadingProviderIds: {},
-    operations: {},
     selectedProviderId: "openai",
+    defaultModelProviderId: null,
     disabled: false,
     onRequestAdd: vi.fn(),
-    onEnabledChange: vi.fn(),
     onSelect: vi.fn(),
-    onRename: vi.fn(),
-    onDelete: vi.fn(),
     ...overrides,
   };
 }

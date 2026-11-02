@@ -55,6 +55,8 @@ const activityIcons: readonly { icon: AppIconName; label: string }[] = [
   { icon: "terminal", label: "命令" },
   { icon: "delegation", label: "委派" },
   { icon: "globe", label: "网页" },
+  { icon: "browser", label: "浏览器" },
+  { icon: "folder-open", label: "工作区文件" },
   { icon: "sparkles", label: "连续性" },
   { icon: "flag", label: "目标" },
   { icon: "map-pin", label: "位置" },
@@ -63,6 +65,16 @@ const activityIcons: readonly { icon: AppIconName; label: string }[] = [
 ];
 
 const controlIcons: readonly { icon: AppIconName; label: string }[] = [
+  { icon: "target", label: "模型职责" },
+  { icon: "vision", label: "图像理解" },
+  { icon: "image-output", label: "图像生成" },
+  { icon: "token-usage", label: "Token 用量" },
+  { icon: "context-window", label: "上下文容量" },
+  { icon: "pricing", label: "模型价格" },
+  { icon: "message-square", label: "消息渠道" },
+  { icon: "tools", label: "工具调用" },
+  { icon: "puzzle", label: "插件" },
+  { icon: "unlock", label: "完全访问" },
   { icon: "arrow-left", label: "上级目录" },
   { icon: "menu", label: "菜单" },
   { icon: "panel-left-open", label: "展开面板" },
@@ -74,7 +86,10 @@ const controlIcons: readonly { icon: AppIconName; label: string }[] = [
   { icon: "grip", label: "拖拽排序" },
   { icon: "file-json", label: "JSON 导出" },
   { icon: "file-code", label: "HTML 导出" },
-  { icon: "maximize", label: "打开查看器" },
+  { icon: "maximize", label: "窗口最大化" },
+  { icon: "zoom-in", label: "放大图片" },
+  { icon: "zoom-out", label: "缩小图片" },
+  { icon: "actual-size", label: "图片原始尺寸" },
 ];
 
 /** The two sizes that carry almost all icon usage. */

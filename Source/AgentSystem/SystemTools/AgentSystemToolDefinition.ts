@@ -1,22 +1,5 @@
-import { z } from "zod";
 import type { AgentHostToolContext } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
-import type {
-  AgentToolChildGrantMode,
-  AgentToolDiscoverySource,
-  ToolArtifactPolicyManifest,
-  ToolEvidenceCapabilityManifest,
-  ToolApprovalManifest,
-  ToolExecutionManifest,
-  ToolLoadingMode,
-  ToolResourceArgumentManifest,
-  ToolRuntimeManifest,
-  ToolSearchManifest,
-} from "../Types/AgentToolContractTypes.js";
-import type { AgentToolPerceptionDeclaration } from "../Types/AgentToolPerceptionTypes.js";
-import type { ConfigFormDocument } from "../Config/AgentConfigFormDocument.js";
-import type { AgentExtensionLocalizedText } from "../Extensions/AgentExtensionLocalization.js";
 import type { AgentToolArtifactPayload, AgentToolProcessError } from "../Types/ToolRuntimeTypes.js";
-import type { AgentSystemExtensionPlatform } from "./AgentSystemExtensionPlatform.js";
 
 const SystemToolExecutionResultMarker = Symbol("senera.system-tool-execution-result");
 
@@ -77,75 +60,39 @@ export function isSystemToolExecutionResult<TOutput>(
   );
 }
 
-export interface AgentSystemToolExtensionConfiguration {
-  readonly schema: z.ZodType<Record<string, unknown>>;
-  readonly ui: ConfigFormDocument<AgentExtensionLocalizedText>;
-}
-
-export interface AgentSystemToolExtensionMetadata {
-  readonly name: string;
-  readonly displayName: AgentExtensionLocalizedText;
-  readonly description: AgentExtensionLocalizedText;
-  readonly priority?: number;
-  readonly platforms?: readonly AgentSystemExtensionPlatform[];
-  readonly skills?: readonly string[];
-  /** Optional host projection rule for tools injected into child runs. */
-  readonly childGrant?: AgentToolChildGrantMode;
-  readonly configuration?: AgentSystemToolExtensionConfiguration;
-}
-
-export interface AgentSystemToolMetadata {
-  readonly description: string;
-  /**
-   * Provider-schema exposure is part of the package contract. System tools
-   * are Dynamic unless a protocol-critical definition opts into Bootstrap.
-   */
-  readonly loading?: ToolLoadingMode;
-  readonly permissions?: readonly string[];
-  readonly execution?: ToolExecutionManifest;
-  readonly runtime?: ToolRuntimeManifest;
-  readonly resources?: readonly ToolResourceArgumentManifest[];
-  readonly sources?: readonly AgentToolDiscoverySource[];
-  readonly search?: ToolSearchManifest;
-  readonly evidenceCapabilities?: readonly ToolEvidenceCapabilityManifest[];
-  readonly approval?: ToolApprovalManifest;
-  readonly artifacts?: ToolArtifactPolicyManifest;
-  /** Optional first-person perception narration for this tool's results. */
-  readonly perception?: AgentToolPerceptionDeclaration;
-}
-
-export interface AgentSystemToolDefinition<
-  TInput extends z.ZodType<Record<string, unknown>> = z.ZodType<Record<string, unknown>>,
-  TOutput extends z.ZodType = z.ZodType,
-> {
-  readonly extension: AgentSystemToolExtensionMetadata;
-  readonly metadata: AgentSystemToolMetadata;
-  readonly name: string;
-  readonly input: TInput;
-  readonly output: TOutput;
-  /**
-   * Optional projection for malformed model input. Most tools can use the
-   * catalog's generic Zod diagnostics; tools with a command envelope may
-   * provide a domain-aware repair message without weakening their schema.
-   */
-  readonly projectInvalidInput?: (
-    input: Record<string, unknown>,
-    error: z.ZodError,
-    context: AgentHostToolContext,
-  ) => AgentToolProcessError | Promise<AgentToolProcessError>;
-  execute(input: z.output<TInput>, context: AgentHostToolContext): Promise<z.input<TOutput>> | z.input<TOutput>;
+/**
+ * A code-owned implementation binding for one package-declared HostCapability.
+ *
+ * The extension package is the sole source for public tool identity, schemas,
+ * permissions, scheduling, discovery metadata, and presentation. This type
+ * deliberately contains none of those fields: it only connects an executable
+ * capability to the runtime after AgentToolRunner has validated its package
+ * contract.
+ */
+export interface AgentSystemToolDefinition<TOutput = unknown> {
+  readonly capability: string;
+  execute(input: Record<string, unknown>, context: AgentHostToolContext): Promise<TOutput> | TOutput;
   /**
    * Optional artifact-aware execution path. It preserves the public execute
    * return type used by existing host-tool callers and tests.
    */
   executeWithArtifacts?(
-    input: z.output<TInput>,
+    input: Record<string, unknown>,
     context: AgentHostToolContext,
-  ): Promise<AgentSystemToolExecutionResult<z.input<TOutput>>> | AgentSystemToolExecutionResult<z.input<TOutput>>;
+  ): Promise<AgentSystemToolExecutionResult<TOutput>> | AgentSystemToolExecutionResult<TOutput>;
 }
 
-export function defineSystemTool<TInput extends z.ZodType<Record<string, unknown>>, TOutput extends z.ZodType>(
-  definition: AgentSystemToolDefinition<TInput, TOutput>,
-): AgentSystemToolDefinition<TInput, TOutput> {
+export function defineSystemTool<TOutput>(
+  definition: AgentSystemToolDefinition<TOutput>,
+): AgentSystemToolDefinition<TOutput> {
   return Object.freeze(definition);
+}
+
+/**
+ * `AgentToolRunner` has already materialized and validated the package-owned
+ * JSON Schema before a HostCapability is invoked. This helper is a type-only
+ * boundary for implementation code; it neither parses nor changes arguments.
+ */
+export function systemToolArguments<T extends object>(arguments_: Record<string, unknown>): T {
+  return arguments_ as T;
 }

@@ -1,4 +1,4 @@
-import type { Skill } from "@earendil-works/pi-agent-core";
+import type { AgentPiActivatedSkill as Skill } from "./AgentPiSkillCatalog.js";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
 import type { AgentEventSink } from "../Events/AgentEvent.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
@@ -14,6 +14,9 @@ import type { AgentInteractionContext } from "../Interaction/AgentInteractionCon
 import type { AgentPiTurnState } from "./AgentPiTurnState.js";
 import type { AgentPiSkillCatalog } from "./AgentPiSkillCatalog.js";
 import type { Context } from "@earendil-works/pi-ai";
+import type { AgentPiMemoryBoundaryRefresh } from "./AgentPiMemoryBoundary.js";
+import { AgentPiContextInspection } from "./AgentPiContextInspection.js";
+import type { AgentToolCompositionState } from "../ToolRuntime/AgentToolComposition.js";
 
 export type AgentPiModelInputPreparer = (context: Context) => Promise<Context>;
 
@@ -29,13 +32,12 @@ export interface AgentPiCodingAgentSessionFrame {
   systemPrompt?: string;
   /** Frozen host context persisted with the user message for this turn. */
   turnContext?: string;
+  refreshMemoryBoundary?: AgentPiMemoryBoundaryRefresh;
+  inputBoundary?: import("./AgentPiInputBoundary.js").AgentPiInputBoundaryHandler;
+  onModelMemoryDelivered?: () => void;
   turnState?: AgentPiTurnState;
   activeSkills?: readonly AgentActivatedSkill[];
   personaActive?: boolean;
-  /** Explicit UI-controlled preface rewrite; independent from persona text. */
-  prefaceRewriteEnabled?: boolean;
-  /** Explicit UI-controlled final-answer rewrite; independent from persona text. */
-  finalResponseRewriteEnabled?: boolean;
   skillCatalog: AgentPiSkillCatalog;
   /** Stable model-facing Skill directory; package bodies remain on demand. */
   skillLibraryCatalog?: AgentSkillLibraryCatalog;
@@ -55,18 +57,23 @@ export interface AgentPiCodingAgentSessionFrame {
    * projection before a provider request is validated and sent.
    */
   prepareModelInput?: AgentPiModelInputPreparer;
+  synchronizeToolContracts?: (context: Context) => void;
+  compositionState?: AgentToolCompositionState;
   preflight(event: {
     toolCallId: string;
     toolName: string;
     input: Record<string, unknown>;
+    parentToolCallId?: string;
   }): Promise<{ block?: boolean; reason?: string } | undefined>;
 }
 
 export class AgentPiMutableSessionFrame {
+  readonly contextInspection = new AgentPiContextInspection();
   private value: AgentPiCodingAgentSessionFrame;
   private skills: readonly Skill[] = [];
   private modelInputPreparer: AgentPiModelInputPreparer | undefined;
   private updateRevision = 0;
+  private compositionState?: AgentToolCompositionState;
 
   constructor(value: AgentPiCodingAgentSessionFrame) {
     this.value = { ...value };
@@ -83,12 +90,25 @@ export class AgentPiMutableSessionFrame {
   snapshot(): AgentPiCodingAgentSessionFrame {
     return {
       ...this.value,
+      compositionState: this.compositionState,
       ...(this.modelInputPreparer ? { prepareModelInput: this.modelInputPreparer } : {}),
     };
   }
 
   setModelInputPreparer(preparer: AgentPiModelInputPreparer | undefined): void {
     this.modelInputPreparer = preparer;
+  }
+
+  setCompositionState(state: AgentToolCompositionState): void {
+    this.compositionState = state;
+  }
+
+  async refreshMemoryBoundary(boundary: { readonly id: string; readonly summary: string }): Promise<void> {
+    const current = this.value;
+    if (!current.refreshMemoryBoundary) return;
+    const systemPrompt = await current.refreshMemoryBoundary(boundary);
+    // A slow background boundary must not overwrite a newer leased turn.
+    if (this.value === current) this.value = { ...current, systemPrompt };
   }
 
   skillSnapshot(): readonly Skill[] {
@@ -118,8 +138,8 @@ export function projectAgentPiToolContext(frame: AgentPiCodingAgentSessionFrame)
     tokenBudget: frame.tokenBudget,
     thinkingLevel: frame.turnState?.context.thinkingLevel,
     reusableCapabilities: frame.turnState?.context.reusableCapabilities,
-    reusableCapabilityLookup: frame.turnState?.context.reusableCapabilityLookup,
     signal: frame.signal,
+    compositionState: frame.compositionState,
   };
 }
 

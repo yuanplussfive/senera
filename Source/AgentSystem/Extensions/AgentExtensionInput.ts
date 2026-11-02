@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { AgentDurationUnits } from "../Types/AgentDurationUnits.js";
+import { AgentConfigFormModelCapabilities } from "../Types/ConfigFormTypes.js";
 
 export const AgentExtensionInputTypes = {
   String: "string",
@@ -19,6 +21,19 @@ export const AgentExtensionInputValueSchema = z.union([
 
 export type AgentExtensionInputValue = z.infer<typeof AgentExtensionInputValueSchema>;
 
+export const AgentExtensionInputPresentationSchema = z
+  .object({
+    durationUnit: z.enum(AgentDurationUnits).optional(),
+    modelSelection: z
+      .object({
+        valueKind: z.enum(["model-name", "model-connection"]),
+        capability: z.enum(AgentConfigFormModelCapabilities),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
 export const AgentExtensionInputDefinitionSchema = z
   .object({
     id: z
@@ -36,9 +51,20 @@ export const AgentExtensionInputDefinitionSchema = z
     placeholder: z.string().optional(),
     min: z.number().finite().optional(),
     max: z.number().finite().optional(),
+    ...AgentExtensionInputPresentationSchema.shape,
   })
   .strict()
   .superRefine((input, context) => {
+    if (input.durationUnit && (input.type !== "number" || input.multiple)) {
+      context.addIssue({ code: "custom", path: ["durationUnit"], message: "Durations require a scalar number input." });
+    }
+    if (input.modelSelection && (input.type !== "string" || input.multiple || input.secret)) {
+      context.addIssue({
+        code: "custom",
+        path: ["modelSelection"],
+        message: "Model names require a non-secret scalar string input.",
+      });
+    }
     if (input.secret && input.type !== AgentExtensionInputTypes.String) {
       context.addIssue({ code: "custom", path: ["secret"], message: "Secret inputs must use the string type." });
     }

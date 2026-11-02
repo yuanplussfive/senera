@@ -7,7 +7,7 @@ import type {
 } from "../../../Source/AgentSystem/SelfService/AgentSelfApprovalTypes.js";
 import type { AgentSelfServicePort } from "../../../Source/AgentSystem/SelfService/AgentSelfServiceTypes.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
-import { resolveToolApprovalDisposition } from "../../../Source/AgentSystem/SystemTools/SeneraSelfSystemTool.js";
+import { resolveToolApprovalDisposition } from "../../../Source/AgentSystem/SelfService/AgentSelfModelExecutor.js";
 import { AgentExecutionApprovalModes } from "../../../Source/AgentSystem/Safety/AgentExecutionApprovalMode.js";
 import { createAgentSelfTestConfigPort, type AgentSelfTestConfigRevision } from "./AgentSelfTestHarness.js";
 
@@ -97,6 +97,7 @@ describe("senera self-service config update approval", () => {
     expect(output.approvalRequired).toMatchObject({
       approvalId: "a-1",
       reason: expect.any(String),
+      deadlineAt: "2026-09-09T08:00:00+08:00",
       command: { command: "config", action: "update", path: "Server.AccessControl.Mode", value: "disabled" },
     });
     expect(replaceCalls).toHaveLength(0);

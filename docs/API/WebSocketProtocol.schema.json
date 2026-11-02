@@ -8,6 +8,11 @@
           "type": "string",
           "const": "session.create"
         },
+        "agentId": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
         "sessionId": {
           "type": "string",
           "minLength": 1
@@ -24,6 +29,11 @@
         "type": {
           "type": "string",
           "const": "session.message"
+        },
+        "agentId": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
         },
         "sessionId": {
           "type": "string",
@@ -50,8 +60,7 @@
           ]
         },
         "input": {
-          "type": "string",
-          "minLength": 1
+          "type": "string"
         },
         "approvalMode": {
           "type": "string",
@@ -640,11 +649,38 @@
         },
         "initialWindow": {
           "type": "boolean"
+        },
+        "before": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "required": [
         "type",
         "sessionId"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "session.run_history"
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "sessionId",
+        "requestId"
       ],
       "additionalProperties": false
     },
@@ -900,8 +936,10 @@
           "type": "string",
           "enum": [
             "telegram",
+            "discord",
             "qq",
-            "discord"
+            "onebot11",
+            "onebot"
           ]
         }
       },
@@ -1135,7 +1173,7 @@
           "properties": {
             "ConfigVersion": {
               "type": "number",
-              "const": 38
+              "const": 45
             },
             "Defaults": {
               "type": "object",
@@ -1386,6 +1424,9 @@
                 "Todos": {
                   "type": "object",
                   "properties": {
+                    "AllowParallelInProgress": {
+                      "type": "boolean"
+                    },
                     "MaxItems": {
                       "type": "integer",
                       "exclusiveMinimum": 0,
@@ -1426,19 +1467,6 @@
                       "properties": {
                         "Enabled": {
                           "type": "boolean"
-                        }
-                      },
-                      "additionalProperties": false
-                    },
-                    "Tokenize": {
-                      "type": "object",
-                      "properties": {
-                        "Stopwords": {
-                          "type": "array",
-                          "items": {
-                            "type": "string",
-                            "minLength": 1
-                          }
                         }
                       },
                       "additionalProperties": false
@@ -1639,12 +1667,57 @@
                           "exclusiveMinimum": 0,
                           "maximum": 9007199254740991
                         },
-                        "DigestInputTokenBudget": {
+                        "RelevanceInputTokenBudget": {
                           "type": "integer",
                           "exclusiveMinimum": 0,
                           "maximum": 9007199254740991
                         },
-                        "DigestSummaryTokenLimit": {
+                        "FragmentSummaryTokenLimit": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "Diary": {
+                      "type": "object",
+                      "properties": {
+                        "InputTokenBudget": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 32768
+                        },
+                        "TurnPreviewTokens": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 32768
+                        },
+                        "MonthlyPreviewTokens": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 512
+                        },
+                        "RecentDays": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "TimeZone": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "Retention": {
+                      "type": "object",
+                      "properties": {
+                        "FactDays": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "ContextDays": {
                           "type": "integer",
                           "exclusiveMinimum": 0,
                           "maximum": 9007199254740991
@@ -1655,6 +1728,16 @@
                     "Recall": {
                       "type": "object",
                       "properties": {
+                        "FrozenBudgetRatio": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 1
+                        },
+                        "TaskBudgetRatio": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 1
+                        },
                         "PromptBudget": {
                           "type": "object",
                           "properties": {
@@ -1803,6 +1886,10 @@
                       "minimum": 1,
                       "maximum": 9007199254740991
                     },
+                    "IncompleteRetentionHours": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
                     "MaintenanceIntervalMinutes": {
                       "type": "integer",
                       "minimum": 1,
@@ -1836,38 +1923,6 @@
                     "Client": {
                       "type": "object",
                       "properties": {
-                        "ModelProviderId": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "Temperature": {
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 2
-                        },
-                        "MaxTokens": {
-                          "anyOf": [
-                            {
-                              "type": "number",
-                              "const": -1
-                            },
-                            {
-                              "type": "integer",
-                              "minimum": 1,
-                              "maximum": 9007199254740991
-                            }
-                          ]
-                        }
-                      },
-                      "additionalProperties": false
-                    },
-                    "PlanningClient": {
-                      "type": "object",
-                      "properties": {
-                        "ModelProviderId": {
-                          "type": "string",
-                          "minLength": 1
-                        },
                         "Temperature": {
                           "type": "number",
                           "minimum": 0,
@@ -2172,6 +2227,11 @@
                           "minimum": 128,
                           "maximum": 9007199254740991
                         },
+                        "DetailMaxConcurrentWrites": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
                         "ProjectionMaxBytes": {
                           "type": "integer",
                           "exclusiveMinimum": 0,
@@ -2181,6 +2241,10 @@
                           "type": "integer",
                           "exclusiveMinimum": 0,
                           "maximum": 9007199254740991
+                        },
+                        "MaintenanceIntervalMinutes": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
                         },
                         "QueryPageSize": {
                           "type": "integer",
@@ -2210,12 +2274,6 @@
                     "TimeZone": {
                       "type": "string",
                       "minLength": 1
-                    },
-                    "PrefaceRewrite": {
-                      "type": "boolean"
-                    },
-                    "FinalResponseRewrite": {
-                      "type": "boolean"
                     },
                     "BamlToolAttribution": {
                       "type": "boolean"
@@ -2702,6 +2760,50 @@
               "items": {
                 "type": "object",
                 "properties": {
+                  "ImageGeneration": {
+                    "type": "object",
+                    "properties": {
+                      "Api": {
+                        "type": "string",
+                        "enum": [
+                          "openrouter-images",
+                          "openai-images"
+                        ]
+                      },
+                      "Editing": {
+                        "type": "boolean"
+                      },
+                      "Mask": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "Api"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "Pricing": {
+                    "type": "object",
+                    "properties": {
+                      "input": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "output": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "cacheRead": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "cacheWrite": {
+                        "type": "number",
+                        "minimum": 0
+                      }
+                    },
+                    "additionalProperties": false
+                  },
                   "Id": {
                     "type": "string",
                     "minLength": 1
@@ -2737,6 +2839,38 @@
                       },
                       "ToolCalling": {
                         "type": "boolean"
+                      },
+                      "VisionInput": {
+                        "type": "object",
+                        "properties": {
+                          "SupportedMimeTypes": {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "pattern": "^image\\/[a-z0-9.+-]+$"
+                            }
+                          },
+                          "SupportedAnimatedMimeTypes": {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "pattern": "^image\\/[a-z0-9.+-]+$"
+                            }
+                          },
+                          "MaxBytes": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "MaxPixels": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "additionalProperties": false
                       }
                     },
                     "additionalProperties": false
@@ -3028,6 +3162,9 @@
             "Todos": {
               "type": "object",
               "properties": {
+                "AllowParallelInProgress": {
+                  "type": "boolean"
+                },
                 "MaxItems": {
                   "type": "integer",
                   "exclusiveMinimum": 0,
@@ -3068,19 +3205,6 @@
                   "properties": {
                     "Enabled": {
                       "type": "boolean"
-                    }
-                  },
-                  "additionalProperties": false
-                },
-                "Tokenize": {
-                  "type": "object",
-                  "properties": {
-                    "Stopwords": {
-                      "type": "array",
-                      "items": {
-                        "type": "string",
-                        "minLength": 1
-                      }
                     }
                   },
                   "additionalProperties": false
@@ -3281,12 +3405,57 @@
                       "exclusiveMinimum": 0,
                       "maximum": 9007199254740991
                     },
-                    "DigestInputTokenBudget": {
+                    "RelevanceInputTokenBudget": {
                       "type": "integer",
                       "exclusiveMinimum": 0,
                       "maximum": 9007199254740991
                     },
-                    "DigestSummaryTokenLimit": {
+                    "FragmentSummaryTokenLimit": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "Diary": {
+                  "type": "object",
+                  "properties": {
+                    "InputTokenBudget": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 32768
+                    },
+                    "TurnPreviewTokens": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 32768
+                    },
+                    "MonthlyPreviewTokens": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 512
+                    },
+                    "RecentDays": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "TimeZone": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "Retention": {
+                  "type": "object",
+                  "properties": {
+                    "FactDays": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "ContextDays": {
                       "type": "integer",
                       "exclusiveMinimum": 0,
                       "maximum": 9007199254740991
@@ -3297,6 +3466,16 @@
                 "Recall": {
                   "type": "object",
                   "properties": {
+                    "FrozenBudgetRatio": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 1
+                    },
+                    "TaskBudgetRatio": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 1
+                    },
                     "PromptBudget": {
                       "type": "object",
                       "properties": {
@@ -3445,6 +3624,10 @@
                   "minimum": 1,
                   "maximum": 9007199254740991
                 },
+                "IncompleteRetentionHours": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
                 "MaintenanceIntervalMinutes": {
                   "type": "integer",
                   "minimum": 1,
@@ -3478,38 +3661,6 @@
                 "Client": {
                   "type": "object",
                   "properties": {
-                    "ModelProviderId": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "Temperature": {
-                      "type": "number",
-                      "minimum": 0,
-                      "maximum": 2
-                    },
-                    "MaxTokens": {
-                      "anyOf": [
-                        {
-                          "type": "number",
-                          "const": -1
-                        },
-                        {
-                          "type": "integer",
-                          "minimum": 1,
-                          "maximum": 9007199254740991
-                        }
-                      ]
-                    }
-                  },
-                  "additionalProperties": false
-                },
-                "PlanningClient": {
-                  "type": "object",
-                  "properties": {
-                    "ModelProviderId": {
-                      "type": "string",
-                      "minLength": 1
-                    },
                     "Temperature": {
                       "type": "number",
                       "minimum": 0,
@@ -3814,6 +3965,11 @@
                       "minimum": 128,
                       "maximum": 9007199254740991
                     },
+                    "DetailMaxConcurrentWrites": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
                     "ProjectionMaxBytes": {
                       "type": "integer",
                       "exclusiveMinimum": 0,
@@ -3823,6 +3979,10 @@
                       "type": "integer",
                       "exclusiveMinimum": 0,
                       "maximum": 9007199254740991
+                    },
+                    "MaintenanceIntervalMinutes": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
                     },
                     "QueryPageSize": {
                       "type": "integer",
@@ -3852,12 +4012,6 @@
                 "TimeZone": {
                   "type": "string",
                   "minLength": 1
-                },
-                "PrefaceRewrite": {
-                  "type": "boolean"
-                },
-                "FinalResponseRewrite": {
-                  "type": "boolean"
                 },
                 "BamlToolAttribution": {
                   "type": "boolean"
@@ -4048,13 +4202,9 @@
               ]
             },
             "Enabled": {
-              "anyOf": [
-                {
-                  "type": "boolean"
-                },
-                {
-                  "type": "null"
-                }
+              "type": [
+                "boolean",
+                "null"
               ]
             },
             "Kind": {
@@ -4242,6 +4392,50 @@
         "model": {
           "type": "object",
           "properties": {
+            "ImageGeneration": {
+              "type": "object",
+              "properties": {
+                "Api": {
+                  "type": "string",
+                  "enum": [
+                    "openrouter-images",
+                    "openai-images"
+                  ]
+                },
+                "Editing": {
+                  "type": "boolean"
+                },
+                "Mask": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "Api"
+              ],
+              "additionalProperties": false
+            },
+            "Pricing": {
+              "type": "object",
+              "properties": {
+                "input": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "output": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "cacheRead": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "cacheWrite": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            },
             "Id": {
               "type": "string",
               "minLength": 1
@@ -4277,6 +4471,38 @@
                 },
                 "ToolCalling": {
                   "type": "boolean"
+                },
+                "VisionInput": {
+                  "type": "object",
+                  "properties": {
+                    "SupportedMimeTypes": {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^image\\/[a-z0-9.+-]+$"
+                      }
+                    },
+                    "SupportedAnimatedMimeTypes": {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^image\\/[a-z0-9.+-]+$"
+                      }
+                    },
+                    "MaxBytes": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "MaxPixels": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "additionalProperties": false
                 }
               },
               "additionalProperties": false
@@ -4528,6 +4754,50 @@
           "items": {
             "type": "object",
             "properties": {
+              "ImageGeneration": {
+                "type": "object",
+                "properties": {
+                  "Api": {
+                    "type": "string",
+                    "enum": [
+                      "openrouter-images",
+                      "openai-images"
+                    ]
+                  },
+                  "Editing": {
+                    "type": "boolean"
+                  },
+                  "Mask": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "Api"
+                ],
+                "additionalProperties": false
+              },
+              "Pricing": {
+                "type": "object",
+                "properties": {
+                  "input": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "output": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "cacheRead": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "cacheWrite": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              },
               "Id": {
                 "type": "string",
                 "minLength": 1
@@ -4563,6 +4833,38 @@
                   },
                   "ToolCalling": {
                     "type": "boolean"
+                  },
+                  "VisionInput": {
+                    "type": "object",
+                    "properties": {
+                      "SupportedMimeTypes": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^image\\/[a-z0-9.+-]+$"
+                        }
+                      },
+                      "SupportedAnimatedMimeTypes": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^image\\/[a-z0-9.+-]+$"
+                        }
+                      },
+                      "MaxBytes": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "MaxPixels": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "additionalProperties": false
                   }
                 },
                 "additionalProperties": false
@@ -4858,44 +5160,6 @@
                   "type": "null"
                 }
               ]
-            },
-            "assistant": {
-              "type": "object",
-              "properties": {
-                "name": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 48
-                },
-                "avatarDataUrl": {
-                  "anyOf": [
-                    {
-                      "type": "string",
-                      "maxLength": 524288,
-                      "pattern": "^data:image\\/(?:png|jpe?g|webp|gif);base64,[a-z0-9+/=\\s]+$"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "avatarPath": {
-                  "anyOf": [
-                    {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 512
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                }
-              },
-              "required": [
-                "name"
-              ],
-              "additionalProperties": false
             }
           },
           "required": [
@@ -5034,6 +5298,56 @@
         "type",
         "interactionId",
         "action"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "session.feedback"
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rating": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "positive",
+                "negative"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "task_result",
+            "instruction_following",
+            "product_interaction",
+            "service_stability",
+            "resource_cost",
+            "security_privacy",
+            "other"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "sessionId",
+        "requestId",
+        "rating"
       ],
       "additionalProperties": false
     },

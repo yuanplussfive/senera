@@ -65,6 +65,36 @@ test("MenuSelect keeps an empty-string option selectable", async () => {
   expect(screen.getByRole("menuitemradio", { name: "继承" })).toHaveAttribute("aria-checked", "true");
 });
 
+test("MenuSelect option actions invoke their own callback and keep the current choice", async () => {
+  const user = userEvent.setup();
+  const onChange = vi.fn();
+  const onAction = vi.fn();
+  renderWithFrontendProviders(
+    React.createElement(MenuSelect, {
+      value: "one",
+      placeholder: "选择终端",
+      ariaLabel: "终端",
+      options: [
+        { value: "one", label: "终端一" },
+        { value: "two", label: "终端二" },
+      ],
+      onChange,
+      getOptionAction: (option) => ({
+        label: `停止${option.label}`,
+        icon: React.createElement("span", { "aria-hidden": true }, "■"),
+        onSelect: () => onAction(option.value),
+      }),
+    }),
+  );
+  await user.click(screen.getByRole("button", { name: "终端: 终端一" }));
+  await user.click(screen.getByRole("menuitem", { name: "停止终端一" }));
+  expect(onAction).toHaveBeenCalledExactlyOnceWith("one");
+  expect(onChange).not.toHaveBeenCalled();
+  expect(screen.getByRole("menu")).toBeVisible();
+  await user.click(screen.getByRole("menuitemradio", { name: "终端二" }));
+  expect(onChange).toHaveBeenCalledExactlyOnceWith("two");
+});
+
 test("MenuMultiSelect keeps the menu open while toggling a checkbox", async () => {
   const user = userEvent.setup();
 

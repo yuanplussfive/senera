@@ -4,8 +4,10 @@ import { AgentMemOSEmbeddingRuntime } from "../../../Source/AgentSystem/Continui
 import { AgentMemOSRecallDedupe } from "../../../Source/AgentSystem/Continuity/AgentMemOSRecallDedupe.js";
 import { AgentContinuityMemoryService } from "../../../Source/AgentSystem/Continuity/AgentContinuityMemoryService.js";
 import { AgentContinuitySqliteStore } from "../../../Source/AgentSystem/Continuity/AgentContinuitySqliteStore.js";
-import { AgentMemOSTags } from "../../../Source/AgentSystem/Continuity/AgentMemOSSemanticTypes.js";
-import { agentMemOSReference } from "../../../Source/AgentSystem/Continuity/AgentMemOSReference.js";
+import {
+  AgentMemOSSchemaVersion,
+  AgentMemOSTags,
+} from "../../../Source/AgentSystem/Continuity/AgentMemOSSemanticTypes.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -54,24 +56,41 @@ async function fixture() {
     type: "preference" | "context" = "preference",
   ) => {
     vectors.set(`${summary}\n${summary}`, vector);
-    return (await sdk.store(summary, { summary, type, namespace: "test", tags: [AgentMemOSTags.semantic, ...tags] }))
-      .node;
+    return (
+      await sdk.store(summary, {
+        summary,
+        type,
+        namespace: "test",
+        tags: [AgentMemOSTags.semantic, ...tags],
+        metadata: {
+          senera_schema: AgentMemOSSchemaVersion,
+          senera_domain: "semantic",
+          senera_scope: type === "context" ? "session" : "workspace",
+          senera_operation_key: `test:${summary}`,
+          senera_episode_uri: `senera://episode/${summary}`,
+          senera_source_uris: [`senera://source/${summary}`],
+          senera_source_session_ids: ["source-session"],
+          senera_source_request_ids: ["source-request"],
+        },
+      })
+    ).node;
   };
   let preferred = "";
-  const search = async (_query?: string, options?: { readonly excludedKeys?: ReadonlySet<string> }) => {
+  const search = async (_query?: string) => {
     await index.synchronize();
     const matches = await sdk.search({ namespace: "test", tags: [AgentMemOSTags.semantic], limit: sdk.count });
     return matches.flatMap((memory) => {
-      const projected = index.project(
-        { ...memory, score: memory.node.id === preferred ? 1 : 0.9 },
-        options?.excludedKeys,
-      );
-      return projected ? [{ ...projected, memoryKey: agentMemOSReference(memory.node.id) }] : [];
+      return [{ ...index.project({ ...memory, score: memory.node.id === preferred ? 1 : 0.9 }) }];
     });
   };
   const port = {
     search,
-    searchRecent: (options?: { readonly excludedKeys?: ReadonlySet<string> }) => search(undefined, options),
+    searchRecent: () => search(),
+    recall: async ({ nodeIds }: { readonly nodeIds?: readonly string[] }) => {
+      const ids = new Set(nodeIds ?? []);
+      const matches = await sdk.search({ namespace: "test", tags: [AgentMemOSTags.semantic], limit: sdk.count });
+      return matches.filter(({ node }) => ids.has(node.id)).map((memory) => ({ memory }));
+    },
   };
   const createService = (
     memos = port,
@@ -81,6 +100,7 @@ async function fixture() {
       store,
       recallConfig: () => ({ PromptBudget: { MaxTokens: 16384 } }),
       memos,
+      assessRelevance: async ({ candidates }) => candidates,
       identityDisplayValues,
     });
   return {
@@ -160,31 +180,30 @@ describe("native non-destructive near-duplicate recall", () => {
     }
   });
 
-  test("covers Chinese paraphrases across ranking changes, new duplicate nodes, and updated versions", async () => {
+  test("freezes automatic-memory content while allowing a new snapshot after invalidation", async () => {
     const f = await fixture();
     const first = await f.add("用户喜欢吃牛肉。", [1, 0, 0]);
     const second = await f.add("用户爱吃牛肉。", [0.999, 0.01, 0]);
-    await f.add("用户每天喝咖啡。", [0, 0, 1]);
+    const coffee = await f.add("用户每天喝咖啡。", [0, 0, 1]);
     f.prefer(first.id);
     const service = f.createService();
     const before = await service.liveContext(input);
     expect(before.eventCandidates).toHaveLength(2);
-    expect(before.eventCandidates.map((entry) => entry.id)).toContain(first.id);
-    expect(service.commitLiveContextDelivery({ sessionId: input.sessionId, memory: before })).toBe(2);
+    // Exactly one of the two beef near-duplicates survives. Which one is kept follows
+    // the SDK's own tie order, so this assertion must not bind a specific node id.
+    expect(before.eventCandidates.map((entry) => entry.id)).toContain(coffee.id);
+    expect(before.eventCandidates.filter((entry) => entry.id === first.id || entry.id === second.id)).toHaveLength(1);
     f.prefer(second.id);
-    expect((await f.createService().liveContext(input)).eventCandidates).toHaveLength(0);
+    expect((await f.createService().liveContext(input)).eventCandidates).toHaveLength(2);
     await f.add("用户偏好牛肉料理。", [0.999, 0.02, 0]);
-    expect((await service.liveContext(input)).eventCandidates).toHaveLength(0);
+    expect((await service.liveContext(input)).eventCandidates.map((entry) => entry.id)).toEqual(
+      before.eventCandidates.map((entry) => entry.id),
+    );
     const updated = "用户喜欢牛肉，也喜欢鸡肉。";
     f.vectors.set(`${updated}\n${updated}`, [0.999, 0.02, 0]);
     await f.sdk.update(first.id, { content: updated, summary: updated });
     const next = await service.liveContext(input);
-    expect(next.eventCandidates.map((entry) => entry.id)).toEqual([first.id]);
-    expect(next.eventCandidates[0]?.revision).not.toEqual(
-      before.eventCandidates.find((entry) => entry.id === first.id)?.revision,
-    );
-    service.commitLiveContextDelivery({ sessionId: input.sessionId, memory: next });
-    expect((await service.liveContext(input)).eventCandidates).toHaveLength(0);
+    expect(next.eventCandidates).toEqual(before.eventCandidates);
     service.invalidateSessionContext(input.sessionId);
     expect((await service.liveContext(input)).eventCandidates).toHaveLength(2);
     expect(f.sdk.count).toBe(4);
@@ -211,7 +230,7 @@ describe("native non-destructive near-duplicate recall", () => {
     expect(f.sdk.count).toBe(3);
   });
 
-  test("keeps native types and calendar layers distinct even when vectors are identical", async () => {
+  test("keeps period summaries out of automatic system context even when vectors are identical", async () => {
     const f = await fixture();
     await f.add("喜欢牛肉。", [1, 0, 0]);
     await f.add("喜欢牛肉。", [1, 0, 0], [AgentMemOSTags.dailyDigest, "day:2026-10-07"], "context");
@@ -219,7 +238,6 @@ describe("native non-destructive near-duplicate recall", () => {
     await f.add("喜欢牛肉。", [1, 0, 0], [AgentMemOSTags.monthlyDigest, "month:2026-10"], "context");
     const result = await f.createService().liveContext(input);
     expect(result.eventCandidates).toHaveLength(1);
-    expect(result.periodDigests).toHaveLength(3);
     expect(f.sdk.count).toBe(4);
   });
 
@@ -235,11 +253,9 @@ describe("native non-destructive near-duplicate recall", () => {
     await expect(f.index.synchronize()).resolves.toBeUndefined();
   });
 
-  test("reselects after a compaction races with recall and rejects receipts for a deleted session", async () => {
+  test("reselects after a compaction races with automatic-memory selection", async () => {
     const f = await fixture();
     await f.add("用户喜欢牛肉。", [1, 0, 0]);
-    const previous = f.createService();
-    previous.commitLiveContextDelivery({ sessionId: input.sessionId, memory: await previous.liveContext(input) });
     let release!: () => void;
     let reached!: () => void;
     const paused = new Promise<void>((resolve) => {
@@ -251,8 +267,8 @@ describe("native non-destructive near-duplicate recall", () => {
     let calls = 0;
     const service = f.createService({
       ...f.port,
-      searchRecent: async (options) => {
-        const result = await f.port.searchRecent(options);
+      searchRecent: async () => {
+        const result = await f.port.searchRecent();
         if (++calls === 1) {
           reached();
           await paused;
@@ -260,15 +276,15 @@ describe("native non-destructive near-duplicate recall", () => {
         return result;
       },
     });
-    const pending = service.liveContext(input);
+    const sessionId = "racing-session";
+    const pending = service.liveContext({ ...input, sessionId });
     await read;
-    service.invalidateSessionContext(input.sessionId);
+    service.invalidateSessionContext(sessionId);
     release();
     const memory = await pending;
     expect(calls).toBe(2);
     expect(memory.eventCandidates).toHaveLength(1);
-    expect(service.commitLiveContextDelivery({ sessionId: input.sessionId, memory })).toBe(1);
-    service.deleteSession(input.sessionId);
-    expect(service.commitLiveContextDelivery({ sessionId: input.sessionId, memory })).toBe(0);
+    service.deleteSession(sessionId);
+    expect((await service.liveContext({ ...input, sessionId })).eventCandidates).toHaveLength(1);
   });
 });

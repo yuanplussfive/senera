@@ -4,6 +4,7 @@ import { AgentSessionStatuses, type AgentSession } from "./AgentSession.js";
 import type {
   AgentSessionCursorPage,
   AgentSessionCursorPageRequest,
+  AgentSessionRunEventPageRequest,
   AgentSessionRepository,
   AgentSessionHistoryView,
   AgentStepTraceCursor,
@@ -44,7 +45,8 @@ import {
   type AgentSessionWorkingSetPolicy,
 } from "./AgentSessionWorkingSetPolicy.js";
 import { clearAgentSessionRegenerationLineage } from "./AgentSessionLifecycleMetadata.js";
-import { resolveAgentSessionModelProviderId } from "../ModelEndpoints/AgentModelMetadata.js";
+import { projectAgentSessionSnapshot } from "./AgentSessionSnapshotProjection.js";
+import type { AgentSessionQueuedInput } from "./AgentSessionQueuedInput.js";
 import type {
   AgentEffectiveModelReceipt,
   AgentSessionModelPreference,
@@ -118,6 +120,42 @@ export class AgentSessionStore {
   constructor(options: AgentSessionStoreOptions = {}) {
     this.repository = options.repository ?? new InMemorySessionRepository();
     this.workingSetPolicy = resolveAgentSessionWorkingSetPolicy(options.workingSet);
+  }
+
+  saveQueuedInput(input: AgentSessionQueuedInput): void {
+    this.repository.saveQueuedInput(input);
+    const session = this.sessions.get(input.sessionId);
+    const existing = session?.conversation.find(
+      (entry) => entry.requestId === input.requestId && entry.kind === "user.message",
+    );
+    if (existing)
+      existing.metadata = {
+        ...existing.metadata,
+        queue: {
+          parentRequestId: input.parentRequestId,
+          mode: input.request.queueMode,
+          status: input.state,
+          ...(input.errorMessage ? { message: input.errorMessage } : {}),
+        },
+      };
+    if (existing?.metadata && input.parentRequestId === input.requestId && input.state !== "pending")
+      delete existing.metadata.queue;
+    if (session && !session.conversation.some((entry) => entry.requestId === input.requestId)) {
+      session.conversation.push(structuredClone(input.entry));
+      this.sequenceBySession.delete(input.sessionId);
+    }
+    if (session && input.createdAt > session.updatedAt) {
+      session.updatedAt = input.createdAt;
+      this.persistMetadata(session);
+    }
+  }
+
+  loadQueuedInput(sessionId: string, requestId: string): AgentSessionQueuedInput | undefined {
+    return this.repository.loadQueuedInput(sessionId, requestId);
+  }
+
+  listQueuedInputs(sessionId?: string): AgentSessionQueuedInput[] {
+    return this.repository.listQueuedInputs(sessionId);
   }
 
   retainWorkingSession(sessionId: string): () => void {
@@ -411,26 +449,13 @@ export class AgentSessionStore {
   getSessionSnapshot(sessionId: string): import("./AgentSession.js").AgentSessionSnapshot | undefined {
     const lookup = this.get(sessionId);
     if (lookup.kind === "missing") return undefined;
-    const session = lookup.session;
-    const modelProviderId = resolveAgentSessionModelProviderId(session.metadata);
-    const effectiveModel =
-      session.metadata?.activeRun?.receipt ??
-      session.activeRequest?.effectiveModel ??
-      session.metadata?.lastRun?.receipt;
-    return {
-      sessionId: session.id,
-      status: session.status,
-      createdAt: session.createdAt,
-      updatedAt: session.updatedAt,
-      entryCount: session.conversation.length,
-      messageCount: session.conversation.length,
-      turnCount: session.conversation.filter((entry) => entry.kind === "user.message").length,
-      activeRequestId: session.activeRequest?.requestId,
-      ...(session.metadata?.channel ? { channel: session.metadata.channel } : {}),
-      ...(modelProviderId ? { modelProviderId } : {}),
-      ...(effectiveModel ? { effectiveModel: structuredClone(effectiveModel) } : {}),
-      ...(session.metadata?.sessionModel ? { modelPreference: structuredClone(session.metadata.sessionModel) } : {}),
-    };
+    return projectAgentSessionSnapshot(lookup.session);
+  }
+
+  /** Resolves durable ownership without depending on a presentation snapshot. */
+  getSessionAgentId(sessionId: string): string | undefined {
+    const lookup = this.get(sessionId);
+    return lookup.kind === "found" ? lookup.session.metadata?.agentId : undefined;
   }
 
   hasPersistedSession(sessionId: string): boolean {
@@ -484,7 +509,26 @@ export class AgentSessionStore {
   }
 
   captureHistorySnapshot(sessionId: string): AgentSessionHistoryView | undefined {
-    return this.repository.captureHistorySnapshot(sessionId);
+    const snapshot = this.repository.captureHistorySnapshot(sessionId);
+    if (!snapshot) return undefined;
+    const live = this.sessions.get(sessionId);
+    if (!live) return snapshot;
+
+    // The persistent read intentionally does not materialize an active turn.
+    // Preserve the working-set authority so reconnecting clients recover the
+    // live stream, approvals, and input forms without waiting for completion.
+    return {
+      ...snapshot,
+      session: {
+        ...snapshot.session,
+        title: live.title ?? snapshot.session.title,
+        updatedAt: live.updatedAt,
+        status: live.status,
+        metadata: live.metadata ?? snapshot.session.metadata,
+        activeRequest: live.activeRequest,
+        conversation: [],
+      },
+    };
   }
 
   loadConversationPage(
@@ -492,6 +536,17 @@ export class AgentSessionStore {
     request: AgentSessionCursorPageRequest,
   ): AgentSessionCursorPage<AgentConversationEntry> {
     return this.repository.loadEntryPage(sessionId, request);
+  }
+
+  loadHistoryRequestPage(
+    sessionId: string,
+    request: import("./AgentSessionHistoryWindow.js").AgentSessionHistoryRequestPageInput,
+  ) {
+    return this.repository.loadHistoryRequestPage(sessionId, request);
+  }
+
+  loadStepTracesForRequests(sessionId: string, requestIds: readonly string[], throughRowId: number) {
+    return this.repository.loadStepTracesForRequests(sessionId, requestIds, throughRowId);
   }
 
   loadConversationEntriesForRequests(
@@ -509,7 +564,7 @@ export class AgentSessionStore {
 
   loadRunEventPage(
     sessionId: string,
-    request: AgentSessionCursorPageRequest,
+    request: AgentSessionRunEventPageRequest,
   ): AgentSessionCursorPage<AgentEventEnvelope> {
     return this.repository.loadRunEventPage(sessionId, request);
   }

@@ -18,6 +18,8 @@ import type { AgentSubagentRoleCatalogPort } from "./AgentSubagentRoleCatalog.js
 import type { AgentTodoService } from "../Todos/AgentTodoService.js";
 import type { AgentToolResourceClaimDeclaration } from "../ToolRuntime/AgentToolResourceClaimTypes.js";
 import type { AgentToolResourceLeaseCoordinator } from "../ToolRuntime/AgentToolResourceScheduler.js";
+import type { AgentResourceAccessGrant } from "../Execution/SeneraResourceAccess.js";
+import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 
 export const AgentDelegationExecutionModes = {
   Wait: "wait",
@@ -27,14 +29,34 @@ export const AgentDelegationExecutionModes = {
 export type AgentDelegationExecutionMode =
   (typeof AgentDelegationExecutionModes)[keyof typeof AgentDelegationExecutionModes];
 
+/**
+ * Model-facing lifecycle choice for a child assignment. The internal
+ * execution mode remains intentionally separate so persisted records retain
+ * the precise runtime contract without exposing implementation terminology to
+ * a tool caller.
+ */
+export const AgentSpawnModes = {
+  Wait: "wait",
+  Background: "background",
+} as const;
+
+export type AgentSpawnMode = (typeof AgentSpawnModes)[keyof typeof AgentSpawnModes];
+
 export type { AgentChildRunJoinGroup } from "./AgentChildRunTypes.js";
 
 export interface AgentSpawnRequest {
   readonly task: string;
+  readonly description?: string;
+  /** Required so the caller explicitly chooses whether this turn depends on the child result. */
+  readonly mode: AgentSpawnMode;
   readonly agent?: string;
   readonly forkContext?: boolean;
+  readonly modelProviderId?: string;
+  readonly thinking?: AgentDelegationRequest["thinking"];
   /** Stable logical identity for retries. Omit to derive it from the task contract. */
   readonly workItemId?: string;
+  /** Exact content of an in-progress parent Todo explicitly assigned to this child. */
+  readonly todo?: string;
   /** Optional capability-level claims used to reserve the assignment's scope. */
   readonly resources?: readonly AgentToolResourceClaimDeclaration[];
 }
@@ -42,11 +64,13 @@ export interface AgentSpawnRequest {
 export interface AgentDelegationRequest {
   readonly agent: string;
   readonly task: string;
+  readonly description?: string;
   /** Optional v2 graph identity. The host generates both values when omitted. */
   readonly ownerRunId?: string;
   readonly nodeId?: string;
   /** Stable logical identity for retries and duplicate submission convergence. */
   readonly workItemId?: string;
+  readonly todo?: string;
   readonly joinGroup?: AgentChildRunJoinGroup;
   readonly workspaceAccess: AgentChildWorkspaceAccessMode;
   readonly context?: AgentRunContextMode;
@@ -74,6 +98,7 @@ export interface AgentDelegationContext {
     readonly spawnCount: number;
   };
   readonly approvalMode: AgentExecutionApprovalMode;
+  readonly resourceAccessGrant?: AgentResourceAccessGrant;
   readonly authorizedToolNames: readonly string[];
   readonly activeSkills?: readonly AgentPinnedSkillReference[];
   readonly registry: AgentExtensionRegistryLike;
@@ -90,6 +115,7 @@ export interface AgentDelegationServiceOptions {
   readonly repository: AgentChildRunRepository;
   readonly dispatcher: AgentRunDispatchPort;
   readonly events: AgentOrchestrationEventRelay;
+  readonly logger?: Pick<AgentLogger, "warn">;
   /** Receives terminal detached runs without coupling execution to delivery. */
   readonly completion?: AgentDelegationCompletionPort;
   readonly preflight?: AgentSubagentPreflightPort;

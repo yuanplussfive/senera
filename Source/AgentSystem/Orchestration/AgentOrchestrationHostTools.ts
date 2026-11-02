@@ -1,492 +1,339 @@
-import { z } from "zod";
 import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprovalMode.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
 import type { AgentHostToolHandler } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import { toolProcessSuccessResult } from "../ToolRuntime/AgentToolProcessEnvelope.js";
-import {
-  AgentDelegationExecutionModes,
-  type AgentDelegationService,
-  type AgentSupervisorContactRequest,
-} from "./AgentDelegationService.js";
-import {
-  AgentChildRunMessageDirections,
-  AgentChildRunMessageKinds,
-  AgentChildRunProgressPhases,
-  AgentChildRunStatuses,
-  isAgentChildRunResultTerminal,
-  type AgentChildRunRecord,
-  type AgentChildRunProgressProjection,
-} from "./AgentChildRunTypes.js";
+import { systemToolArguments } from "../SystemTools/AgentSystemToolDefinition.js";
+import { AgentSpawnModes, type AgentDelegationService, type AgentSpawnRequest } from "./AgentDelegationService.js";
+import { projectAgentChildRunProgress, projectChildRunPublicState } from "./AgentChildRunProjection.js";
+import type { AgentBackgroundAgentJob } from "./AgentBackgroundAgentJobs.js";
 import type { AgentScheduleRuntime } from "./AgentScheduleRuntime.js";
+import type { AgentScheduledTaskRecord } from "./AgentScheduledTaskRunTypes.js";
+import { projectAgentExecutionResourceResult } from "../ToolRuntime/AgentExecutionResourceResultProjector.js";
+import type { AgentJobRuntime, AgentJobSnapshot } from "./AgentJobRuntime.js";
+import type { AgentModelCapabilityKey } from "../Core/AgentModelCapabilityContract.js";
 
-const NonEmptyString = z.string().trim().min(1);
-const RunIdSchema = NonEmptyString.describe("Child-run ID returned by AgentSpawn.");
-const ToolNamesSchema = z.array(NonEmptyString).min(1);
-const AgentSpawnResourceSchema = z
-  .object({
-    capability: NonEmptyString.describe(
-      "Registered resource capability ID. This is not a tool permission or authorization scope.",
-    ),
-    value: z.unknown().describe("Capability-specific resource value, usually a workspace path."),
-    intent: NonEmptyString.optional().describe("Capability-defined access intent, such as read or replace."),
-    parameters: z.record(z.string(), z.unknown()).optional().describe("Capability-specific parameters."),
-  })
-  .strict();
-export const AgentOrchestrationToolNames = Object.freeze({
-  Spawn: "AgentSpawn",
-  Wait: "AgentWait",
-  List: "AgentList",
-  Input: "AgentInput",
-  Stop: "AgentStop",
-  Resume: "AgentResume",
-  ContactSupervisor: "AgentContactSupervisor",
-  ScheduleManage: "AgentScheduleManage",
-});
-const ScheduleExpressionSchema = NonEmptyString.describe(
-  'Schedule syntax by type. once: prefer a relative delay such as "+30m", "+2h", or "+1d"; use an ISO 8601 timestamp with an explicit offset only for a fixed calendar time. interval: "30s", "5m", or "1h". cron: a 5/6-field cron expression. Do not use natural-language dates.',
-);
-
-export const AgentSpawnArgumentsSchema = z
-  .object({
-    task: NonEmptyString.describe("Self-contained task assigned to the child agent."),
-    agent: NonEmptyString.optional().describe(
-      "Optional role from the host role catalog. Omit it to use the catalog-declared default role.",
-    ),
-    forkContext: z
-      .boolean()
-      .optional()
-      .describe("True forks parent conversation context; false starts fresh; omission follows the role contract."),
-    workItemId: NonEmptyString.max(256)
-      .optional()
-      .describe(
-        "Stable logical task id for retries. Reuse only for the same assignment; use a different id for independent repeated work.",
-      ),
-    resources: z
-      .array(AgentSpawnResourceSchema)
-      .min(1)
-      .optional()
-      .describe(
-        "Capability-level resources reserved for this assignment. Choose capability IDs from the host-provided list; tool permissions are not resource capabilities. Declare files or directories when the child may modify them; omit only when the scope is genuinely unknown.",
-      ),
-  })
-  .strict();
-
-export const AgentWaitArgumentsSchema = z
-  .object({
-    targets: z.array(RunIdSchema).min(1).describe("Child runs to observe."),
-    mode: z
-      .enum(["any", "all"])
-      .default("any")
-      .describe("Resolve when any target settles, or only after all targets settle."),
-    timeoutMs: z
-      .number()
-      .int()
-      .min(0)
-      .max(Number.MAX_SAFE_INTEGER)
-      .optional()
-      .describe("Optional wait timeout. Timing out never stops a child run."),
-  })
-  .strict();
-
-export const AgentListArgumentsSchema = z
-  .object({
-    includeCompleted: z
-      .boolean()
-      .default(true)
-      .describe("Include terminal runs so a follow-up can report the final result after a restart."),
-  })
-  .strict();
-
-export const AgentInputArgumentsSchema = z
-  .object({
-    target: RunIdSchema,
-    message: NonEmptyString,
-    interrupt: z
-      .boolean()
-      .default(false)
-      .describe("True redirects active work; false queues a follow-up after the current assignment."),
-  })
-  .strict();
-
-export const AgentStopArgumentsSchema = z.object({ target: RunIdSchema }).strict();
-
-export const AgentResumeArgumentsSchema = z
-  .object({
-    target: RunIdSchema,
-    task: NonEmptyString.describe("New instruction executed in the persisted child session context."),
-  })
-  .strict();
-
-export const AgentContactSupervisorArgumentsSchema = z
-  .object({
-    reason: z.enum(["need_decision", "progress_update"]),
-    message: NonEmptyString,
-  })
-  .strict();
-
-const ScheduleCreateSchema = z
-  .object({
-    action: z.literal("create"),
-    name: NonEmptyString.optional(),
-    description: NonEmptyString.optional(),
-    prompt: NonEmptyString,
-    type: z.enum(["cron", "once", "interval"]),
-    schedule: ScheduleExpressionSchema,
-    executionMode: z
-      .enum(["at_due_time", "execute_now_deliver_at"])
-      .optional()
-      .describe(
-        "Run at the scheduled time, or execute a one-time task now and deliver its result at the scheduled time.",
-      ),
-    enabled: z.boolean().default(true),
-    modelProviderId: NonEmptyString.optional(),
-    allowedToolNames: ToolNamesSchema.optional(),
-    timeoutMs: z.number().int().positive().optional(),
-  })
-  .strict();
-
-const ScheduleUpdateSchema = z
-  .object({
-    action: z.literal("update"),
-    taskId: NonEmptyString,
-    name: NonEmptyString.optional(),
-    description: NonEmptyString.optional(),
-    prompt: NonEmptyString.optional(),
-    type: z.enum(["cron", "once", "interval"]).optional(),
-    schedule: ScheduleExpressionSchema.optional(),
-    enabled: z.boolean().optional(),
-    modelProviderId: NonEmptyString.optional(),
-    allowedToolNames: ToolNamesSchema.optional(),
-    timeoutMs: z.number().int().positive().optional(),
-  })
-  .strict();
-
-const ScheduleTaskActionSchema = z
-  .object({
-    action: z.enum(["get", "delete", "run_now"]),
-    taskId: NonEmptyString,
-  })
-  .strict();
-
-const ScheduleListActionSchema = z.object({ action: z.enum(["list", "status"]) }).strict();
-
-export const AgentScheduleManageArgumentsSchema = z.discriminatedUnion("action", [
-  ScheduleCreateSchema,
-  ScheduleUpdateSchema,
-  ScheduleTaskActionSchema,
-  ScheduleListActionSchema,
-]);
+import { AgentOrchestrationToolNames } from "./AgentOrchestrationToolNames.js";
+export { AgentOrchestrationToolNames } from "./AgentOrchestrationToolNames.js";
 
 export interface AgentOrchestrationHostRuntime {
+  readonly jobs?: AgentJobRuntime;
   readonly delegation: AgentDelegationService;
   readonly schedules: AgentScheduleRuntime;
 }
 
+interface ScheduleInput {
+  name?: string;
+  prompt: string;
+  rrule?: string;
+  at?: string;
+  time_zone?: string;
+  target?: "this_session" | "new_once" | "new";
+}
+
 export function createAgentOrchestrationHostHandlers(runtime: AgentOrchestrationHostRuntime): {
-  readonly spawn: AgentHostToolHandler;
-  readonly list: AgentHostToolHandler;
-  readonly wait: AgentHostToolHandler;
-  readonly input: AgentHostToolHandler;
-  readonly stop: AgentHostToolHandler;
-  readonly resume: AgentHostToolHandler;
-  readonly contactSupervisor: AgentHostToolHandler;
-  readonly scheduleManage: AgentHostToolHandler;
+  readonly subagent: AgentHostToolHandler;
+  readonly sendMessage: AgentHostToolHandler;
+  readonly listAgents: AgentHostToolHandler;
+  readonly listSubagentModels: AgentHostToolHandler;
+  readonly interruptAgent: AgentHostToolHandler;
+  readonly scheduleCreate: AgentHostToolHandler;
+  readonly scheduleList: AgentHostToolHandler;
+  readonly scheduleView: AgentHostToolHandler;
+  readonly scheduleEdit: AgentHostToolHandler;
+  readonly jobList: AgentHostToolHandler;
+  readonly jobOutput: AgentHostToolHandler;
+  readonly jobKill: AgentHostToolHandler;
 } {
   return {
-    spawn: async (args, context) => {
-      throwIfAborted(context.signal);
-      const input = AgentSpawnArgumentsSchema.parse(args);
-      const parent = requireRunContext(context.sessionId, context.requestId);
-      const result = await runtime.delegation.spawnWithOutcome(input, createDelegationContext(context, parent));
+    listSubagentModels: async (args, context) => {
+      const input = systemToolArguments<{
+        provider_id?: string;
+        model_id?: string;
+        capabilities?: AgentModelCapabilityKey[];
+      }>(args);
+      const { sessionId } = requireRunContext(context.sessionId, context.requestId);
       return toolProcessSuccessResult({
-        disposition: result.disposition,
-        run: projectAgentChildRunView(result.run, result.run.id),
+        ...runtime.delegation.discoverModels(
+          sessionId,
+          context.modelProviderId,
+          {
+            providerId: input.provider_id,
+            modelProviderId: input.model_id,
+            capabilities: input.capabilities,
+          },
+          context.authorizedToolNames?.includes(AgentOrchestrationToolNames.Subagent) ?? false,
+        ),
+        ...(runtime.jobs ? { delivery: runtime.jobs.deliveryPolicy(sessionId) } : {}),
       });
     },
-    list: async (args, context) => {
-      throwIfAborted(context.signal);
-      const input = AgentListArgumentsSchema.parse(args);
-      const parent = requireRunContext(context.sessionId, context.requestId);
-      const runs = runtime.delegation
-        .list(parent.sessionId)
-        .filter((run) => input.includeCompleted || !isAgentChildRunResultTerminal(run.status));
+    jobList: async (_args, context) => {
+      const { sessionId } = requireRunContext(context.sessionId, context.requestId);
+      if (!runtime.jobs) throw new Error("Background jobs are not connected.");
       return toolProcessSuccessResult({
-        runs: runs.map((run) => projectAgentChildRunView(run, run.id)),
+        jobs: runtime.jobs.list(sessionId).map(projectJobSummary),
+        delivery: runtime.jobs.deliveryPolicy(sessionId),
       });
     },
-    wait: async (args, context) => {
-      throwIfAborted(context.signal);
-      const input = AgentWaitArgumentsSchema.parse(args);
-      const parent = requireRunContext(context.sessionId, context.requestId);
-      const result =
-        input.mode === "all"
-          ? await runtime.delegation.waitAll(input.targets, parent.sessionId, input.timeoutMs, context.signal)
-          : await runtime.delegation.waitAny(input.targets, parent.sessionId, input.timeoutMs, context.signal);
-      const projectedRuns = input.targets.map((target, index) => {
-        const run = result.runs[index];
-        if (!run || !isAgentChildRunResultTerminal(run.status)) return projectAgentChildRunView(run, target);
-        const delivered = runtime.delegation.markParentResultDelivered(run.id, parent.sessionId);
-        return projectAgentChildRunView(delivered ?? run, target);
+    jobOutput: async (args, context) => {
+      const input = systemToolArguments<{
+        job_id: string;
+        cursor?: number;
+        wait?: boolean;
+        timeout_ms?: number | null;
+      }>(args);
+      const { sessionId } = requireRunContext(context.sessionId, context.requestId);
+      if (!runtime.jobs) throw new Error("Background jobs are not connected.");
+      const options = { wait: input.wait, timeoutMs: input.timeout_ms, signal: context.signal };
+      const waitBudget = runtime.jobs.outputWaitTimeoutMs(options);
+      if (waitBudget > 0 && context.deadline) {
+        // Reserve the wait separately from the ordinary tool processing budget.
+        context.deadline.extendTo?.(context.deadline.timeoutMs + waitBudget);
+      }
+      const result = await runtime.jobs.readOutput(input.job_id, sessionId, input.cursor, options, {
+        requestId: context.requestId,
+        toolCallId: context.toolCallId,
       });
       return toolProcessSuccessResult({
-        runs: projectedRuns,
-        waitTimedOut: result.timedOut,
+        ...(result.snapshot.kind === "agent"
+          ? projectAgentJob(result.snapshot)
+          : {
+              ...projectAgentExecutionResourceResult(result.snapshot, { fromCursor: input.cursor }),
+              ...(result.snapshot.interruption ? { interruption: result.snapshot.interruption } : {}),
+            }),
+        ...(result.waitReason ? { waitReason: result.waitReason } : {}),
+        delivery: runtime.jobs.deliveryPolicy(sessionId),
       });
     },
-    input: async (args, context) => {
-      throwIfAborted(context.signal);
-      const input = AgentInputArgumentsSchema.parse(args);
-      const parent = requireRunContext(context.sessionId, context.requestId);
-      const submission = await runtime.delegation.sendInput(
-        input.target,
-        parent.sessionId,
-        input.message,
-        input.interrupt,
-        createDelegationContext(context, parent),
+    jobKill: async (args, context) => {
+      const input = systemToolArguments<{ job_id: string }>(args);
+      const { sessionId } = requireRunContext(context.sessionId, context.requestId);
+      if (!runtime.jobs) throw new Error("Background jobs are not connected.");
+      const result = projectJobSummary(
+        await runtime.jobs.kill(input.job_id, sessionId, {
+          requestId: context.requestId,
+          toolCallId: context.toolCallId,
+        }),
       );
-      const current = submission?.run ?? runtime.delegation.get(input.target, parent.sessionId);
-      return toolProcessSuccessResult({
-        accepted: submission !== undefined,
-        run: projectAgentChildRunView(current, input.target),
-      });
+      return toolProcessSuccessResult({ job_id: result.job_id, state: result.state });
     },
-    stop: async (args, context) => {
-      throwIfAborted(context.signal);
-      const input = AgentStopArgumentsSchema.parse(args);
+    scheduleCreate: async (args, context) => {
+      const input = systemToolArguments<ScheduleInput>(args);
       const parent = requireRunContext(context.sessionId, context.requestId);
-      const previous = runtime.delegation.get(input.target, parent.sessionId);
-      const current = await runtime.delegation.stop(input.target, parent.sessionId, context.onEvent);
-      return toolProcessSuccessResult({
-        accepted: previous !== undefined && isStoppableChildRun(previous.status),
-        run: projectAgentChildRunView(current, input.target),
-      });
+      const task = await runtime.schedules.create(
+        {
+          name: input.name,
+          prompt: input.prompt,
+          type: input.at ? "once" : "cron",
+          schedule: input.at ?? input.rrule!,
+          timeZone: input.time_zone,
+          target: input.target,
+        },
+        {
+          ...parent,
+          modelProviderId: context.modelProviderId,
+          authorizedToolNames: context.authorizedToolNames ?? [],
+          registry: context.registry,
+        },
+      );
+      return toolProcessSuccessResult({ schedule: projectScheduleInstruction(task) });
     },
-    resume: async (args, context) => {
-      throwIfAborted(context.signal);
-      const input = AgentResumeArgumentsSchema.parse(args);
+    scheduleList: async (_args, context) => {
       const parent = requireRunContext(context.sessionId, context.requestId);
-      const record = await runtime.delegation.resume(
-        input.target,
-        parent.sessionId,
-        input.task,
-        createDelegationContext(context, parent),
-        AgentDelegationExecutionModes.Detach,
-      );
       return toolProcessSuccessResult({
-        accepted: record !== undefined,
-        run: projectAgentChildRunView(record, input.target),
+        schedules: (await runtime.schedules.list(parent.sessionId)).map(projectScheduleInstruction),
       });
     },
-    contactSupervisor: async (args, context) => {
-      throwIfAborted(context.signal);
-      const input = AgentContactSupervisorArgumentsSchema.parse(args) as AgentSupervisorContactRequest;
-      if (!context.sessionId || !context.requestId) throw new Error("Supervisor contact requires an active child run.");
-      const result = await runtime.delegation.contactSupervisor(
-        context.sessionId,
-        context.requestId,
-        input,
-        context.onEvent,
-      );
-      const control =
-        result.run.status === AgentChildRunStatuses.AwaitingSupervisor
+    scheduleView: async (args, context) => {
+      const { schedule_id, limit, before } = systemToolArguments<{
+        schedule_id: string;
+        limit?: number;
+        before?: string;
+      }>(args);
+      const parent = requireRunContext(context.sessionId, context.requestId);
+      const view = runtime.schedules.view(schedule_id, parent.sessionId, limit, before);
+      return toolProcessSuccessResult({
+        schedule: view
           ? {
-              kind: "SuspendChildRun" as const,
-              childRunId: result.run.id,
-              messageId: result.message.id,
-              message: result.message.content,
+              ...projectScheduleInstruction(view.task),
+              receipts: view.records.map((run) => ({
+                receipt_id: run.id,
+                scheduled_for: run.scheduledFor,
+                state: run.executionStatus,
+                delivery_state: run.deliveryStatus,
+                ...(run.instructionPrompt !== undefined
+                  ? { prompt: run.instructionPrompt }
+                  : { instruction_unavailable: true }),
+                ...(run.deliveredAt ? { admitted_at: run.deliveredAt } : {}),
+                ...(run.error ? { error: run.error } : {}),
+              })),
+              ...(view.nextBefore ? { next_before: view.nextBefore } : {}),
+              receiptMeaning: "instruction_admission",
             }
-          : undefined;
-      return toolProcessSuccessResult({
-        run: projectAgentChildRunView(result.run, result.run.id),
-        ...(control ? { control } : {}),
+          : null,
       });
     },
-    scheduleManage: async (args, context) => {
-      throwIfAborted(context.signal);
-      const input = AgentScheduleManageArgumentsSchema.parse(args);
-      const parent = requireRunContext(context.sessionId, context.requestId);
-      const scheduleContext = {
-        sessionId: parent.sessionId,
-        requestId: parent.requestId,
-        modelProviderId: context.modelProviderId,
-        authorizedToolNames: context.authorizedToolNames ?? [],
-        registry: context.registry,
-      };
-      switch (input.action) {
-        case "create":
-          return toolProcessSuccessResult({ task: await runtime.schedules.create(input, scheduleContext) });
-        case "update": {
-          const { action: _action, taskId, ...patch } = input;
-          return toolProcessSuccessResult({
-            task: (await runtime.schedules.update(taskId, patch, scheduleContext)) ?? null,
-          });
+    scheduleEdit: async (args, context) => {
+      const input = systemToolArguments<
+        Partial<ScheduleInput> & {
+          schedule_id: string;
+          operation: "update" | "pause" | "resume" | "delete" | "run_now";
         }
-        case "get":
-          return toolProcessSuccessResult({
-            task: (await runtime.schedules.get(input.taskId, parent.sessionId)) ?? null,
-          });
-        case "delete":
-          return toolProcessSuccessResult({
-            taskId: input.taskId,
-            deleted: await runtime.schedules.delete(input.taskId, parent.sessionId),
-          });
-        case "run_now":
-          return toolProcessSuccessResult({
-            task: (await runtime.schedules.runNow(input.taskId, parent.sessionId)) ?? null,
-          });
-        case "list":
-          return toolProcessSuccessResult({ tasks: await runtime.schedules.list(parent.sessionId) });
-        case "status":
-          return toolProcessSuccessResult({ status: await runtime.schedules.status() });
+      >(args);
+      const parent = requireRunContext(context.sessionId, context.requestId);
+      if (input.operation === "delete")
+        return toolProcessSuccessResult({
+          deleted: await runtime.schedules.delete(input.schedule_id, parent.sessionId),
+        });
+      if (input.operation === "run_now") {
+        const task = await runtime.schedules.runNow(input.schedule_id, parent.sessionId);
+        return toolProcessSuccessResult({ schedule: task ? projectScheduleInstruction(task) : null });
       }
+      const task = await runtime.schedules.update(
+        input.schedule_id,
+        {
+          name: input.name,
+          prompt: input.prompt,
+          timeZone: input.time_zone,
+          ...(input.rrule ? { type: "cron", schedule: input.rrule } : {}),
+          ...(input.at ? { type: "once", schedule: input.at } : {}),
+          ...(input.operation === "pause" ? { enabled: false } : input.operation === "resume" ? { enabled: true } : {}),
+        },
+        {
+          ...parent,
+          modelProviderId: context.modelProviderId,
+          authorizedToolNames: context.authorizedToolNames ?? [],
+          registry: context.registry,
+        },
+      );
+      return toolProcessSuccessResult({ schedule: task ? projectScheduleInstruction(task) : null });
+    },
+    subagent: async (args, context) => {
+      throwIfAborted(context.signal);
+      const input = systemToolArguments<{
+        description: string;
+        prompt: string;
+        agent?: string;
+        forkContext?: boolean;
+        workItemId?: string;
+        todo?: string;
+        resources?: AgentSpawnRequest["resources"];
+        modelProviderId?: AgentSpawnRequest["modelProviderId"];
+        thinking?: AgentSpawnRequest["thinking"];
+      }>(args);
+      const parent = requireRunContext(context.sessionId, context.requestId);
+      const result = await runtime.delegation.spawnWithOutcome(
+        {
+          task: input.prompt,
+          description: input.description,
+          modelProviderId: input.modelProviderId,
+          thinking: input.thinking,
+          agent: input.agent,
+          forkContext: input.forkContext,
+          workItemId: input.workItemId,
+          todo: input.todo,
+          resources: input.resources,
+          mode: AgentSpawnModes.Background,
+        },
+        createDelegationContext(context, parent),
+      );
+      return toolProcessSuccessResult({
+        agent_id: result.run.childSessionId,
+        job_id: result.run.childRequestId,
+        parent_id: parent.sessionId,
+        description: input.description,
+        status: result.run.status,
+        ...(runtime.jobs ? { delivery: runtime.jobs.deliveryPolicy(parent.sessionId) } : {}),
+      });
+    },
+    sendMessage: async (args, context) => {
+      throwIfAborted(context.signal);
+      const input = systemToolArguments<{ agent_id: string; message: string }>(args);
+      const parent = requireRunContext(context.sessionId, context.requestId);
+      const receipt = await runtime.delegation.sendMessage(
+        input.agent_id,
+        input.message,
+        createDelegationContext(context, parent),
+      );
+      return toolProcessSuccessResult({ accepted: true, message_id: receipt.messageId });
+    },
+    listAgents: async (args, context) => {
+      const input = systemToolArguments<{ scope?: "children" | "descendants" }>(args);
+      const parent = requireRunContext(context.sessionId, context.requestId);
+      return toolProcessSuccessResult({
+        self_id: parent.sessionId,
+        parent_id: runtime.delegation.agentParent(parent.sessionId) ?? null,
+        agents: runtime.delegation.listAgents(parent.sessionId, input.scope).map(({ run, depth }) => {
+          const progress = projectAgentChildRunProgress(run);
+          return {
+            agent_id: run.childSessionId,
+            job_id: run.childRequestId,
+            parent_id: run.parentSessionId,
+            depth,
+            status: run.status,
+            task: run.task,
+            ...(typeof run.launchContract.label === "string" ? { description: run.launchContract.label } : {}),
+            ...(progress ? { progress } : {}),
+            result_available: run.finalAnswer !== undefined,
+            error_available: run.error !== undefined,
+          };
+        }),
+      });
+    },
+    interruptAgent: async (args, context) => {
+      const input = systemToolArguments<{ agent_id: string }>(args);
+      const parent = requireRunContext(context.sessionId, context.requestId);
+      const result = await runtime.delegation.interruptAgent(input.agent_id, parent.sessionId, context.onEvent);
+      if (!result) throw new Error("The agent no longer exists.");
+      return toolProcessSuccessResult({ agent_id: input.agent_id, status: result.status });
     },
   };
 }
 
-export type AgentChildRunPublicState =
-  "not_found" | "queued" | "running" | "needs_input" | "stopping" | "completed" | "failed" | "cancelled";
-
-export interface AgentChildRunPublicView {
-  readonly runId: string;
-  readonly state: AgentChildRunPublicState;
-  readonly agent?: string;
-  readonly joinGroup?: { readonly id: string; readonly mode: "any" | "all"; readonly expectedCount: number };
-  readonly result?: { readonly content: string };
-  readonly error?: string;
-  readonly request?: { readonly id: string; readonly message: string };
-  readonly progress?: AgentChildRunProgressProjection;
-  readonly workItemId?: string;
-  readonly taskDigest?: string;
-  readonly resources?: {
-    readonly coverage: "declared" | "unscoped" | "unknown";
-    readonly claims: readonly {
-      readonly domainId: string;
-      readonly identity: string;
-      readonly access: "shared" | "exclusive";
-    }[];
-  };
-  readonly delivery?: { readonly parentResultDelivered: boolean };
-}
-
-export function projectAgentChildRunView(run: AgentChildRunRecord | undefined, runId: string): AgentChildRunPublicView {
-  if (!run) {
-    return {
-      runId,
-      state: "not_found",
-      resources: { coverage: "unknown", claims: [] },
-      delivery: { parentResultDelivered: false },
-    };
-  }
-  const supervisorRequest =
-    run.status === AgentChildRunStatuses.AwaitingSupervisor
-      ? [...run.messages]
-          .reverse()
-          .find(
-            (message) =>
-              message.direction === AgentChildRunMessageDirections.ChildToParent &&
-              message.kind === AgentChildRunMessageKinds.Decision,
-          )
-      : undefined;
-  const progress = projectAgentChildRunProgress(run);
+function projectAgentJob(run: AgentBackgroundAgentJob) {
+  const progress = run.progress;
   return {
-    runId: run.id,
+    job_id: run.childRequestId,
+    kind: "agent",
+    agent_id: run.childSessionId,
     state: projectChildRunPublicState(run.status),
-    agent: run.agentName,
-    ...(run.workItemId ? { workItemId: run.workItemId } : {}),
-    ...(run.taskDigest ? { taskDigest: run.taskDigest } : {}),
-    resources: {
-      coverage: run.executionContract.resourceCoverage ?? "unscoped",
-      claims: run.executionContract.resourceClaims ?? [],
-    },
-    delivery: { parentResultDelivered: run.parentResultDeliveredAt !== undefined },
-    ...(run.joinGroup ? { joinGroup: run.joinGroup } : {}),
-    ...(run.finalAnswer !== undefined ? { result: { content: run.finalAnswer } } : {}),
-    ...(run.error !== undefined ? { error: run.error } : {}),
-    ...(supervisorRequest ? { request: { id: supervisorRequest.id, message: supervisorRequest.content } } : {}),
+    ...(run.description ? { description: run.description } : {}),
     ...(progress ? { progress } : {}),
+    ...(run.finalAnswer !== undefined ? { result: run.finalAnswer } : {}),
+    ...(run.error !== undefined ? { error: run.error } : {}),
   };
 }
 
-function projectAgentChildRunProgress(run: AgentChildRunRecord): AgentChildRunProgressProjection | undefined {
-  if (isAgentChildRunResultTerminal(run.status)) return undefined;
-  if (!run.snapshot && !run.checkpoint) return undefined;
-
-  const snapshot = run.snapshot;
-  const activeTools = snapshot?.activeTools ?? [];
-  const phase = readAgentChildRunProgressPhase(run, activeTools);
-  return {
-    phase,
-    ...(snapshot?.lastActivityAt ? { lastActivityAt: snapshot.lastActivityAt } : {}),
-    activeTools,
-    toolCalls: snapshot?.toolCalls ?? { planned: 0, started: 0, completed: 0, failed: 0 },
-    checkpointAvailable: run.checkpoint !== undefined,
-    artifactCount: snapshot?.artifactUris.length ?? 0,
-  };
-}
-
-function readAgentChildRunProgressPhase(
-  run: AgentChildRunRecord,
-  activeTools: readonly string[],
-): AgentChildRunProgressProjection["phase"] {
-  switch (run.status) {
-    case AgentChildRunStatuses.Queued:
-      return AgentChildRunProgressPhases.Queued;
-    case AgentChildRunStatuses.AwaitingSupervisor:
-      return AgentChildRunProgressPhases.AwaitingSupervisor;
-    case AgentChildRunStatuses.WrappingUp:
-      return AgentChildRunProgressPhases.WrappingUp;
-    case AgentChildRunStatuses.Cancelling:
-      return AgentChildRunProgressPhases.Cancelling;
-    case AgentChildRunStatuses.Completed:
-    case AgentChildRunStatuses.PartialCompleted:
-      return AgentChildRunProgressPhases.Completed;
-    case AgentChildRunStatuses.Failed:
-    case AgentChildRunStatuses.Interrupted:
-    case AgentChildRunStatuses.TimedOut:
-      return AgentChildRunProgressPhases.Failed;
-    case AgentChildRunStatuses.Cancelled:
-      return AgentChildRunProgressPhases.Cancelled;
-    case AgentChildRunStatuses.Running:
-      if (activeTools.length > 0) return AgentChildRunProgressPhases.ToolExecution;
-      if (run.snapshot && run.snapshot.lastModelOutputAt === run.snapshot.lastActivityAt) {
-        return AgentChildRunProgressPhases.ModelOutput;
+function projectJobSummary(job: AgentJobSnapshot) {
+  return job.kind === "agent"
+    ? {
+        job_id: job.childRequestId,
+        kind: job.kind,
+        agent_id: job.childSessionId,
+        state: projectChildRunPublicState(job.status),
+        ...(job.description ? { description: job.description } : {}),
       }
-      return AgentChildRunProgressPhases.Starting;
-  }
+    : {
+        job_id: job.resourceId,
+        kind: job.kind,
+        state: job.state,
+        command: job.command,
+        exit_code: job.exitCode,
+        ...(job.interruption ? { interruption: job.interruption } : {}),
+      };
 }
 
-function projectChildRunPublicState(status: AgentChildRunRecord["status"]): AgentChildRunPublicState {
-  switch (status) {
-    case AgentChildRunStatuses.Queued:
-      return "queued";
-    case AgentChildRunStatuses.Running:
-    case AgentChildRunStatuses.WrappingUp:
-      return "running";
-    case AgentChildRunStatuses.AwaitingSupervisor:
-      return "needs_input";
-    case AgentChildRunStatuses.Cancelling:
-      return "stopping";
-    case AgentChildRunStatuses.Completed:
-    case AgentChildRunStatuses.PartialCompleted:
-      return "completed";
-    case AgentChildRunStatuses.Interrupted:
-    case AgentChildRunStatuses.TimedOut:
-    case AgentChildRunStatuses.Failed:
-      return "failed";
-    case AgentChildRunStatuses.Cancelled:
-      return "cancelled";
-  }
-}
-
-function isStoppableChildRun(status: AgentChildRunRecord["status"]): boolean {
-  const stoppableStatuses: readonly AgentChildRunRecord["status"][] = [
-    AgentChildRunStatuses.Queued,
-    AgentChildRunStatuses.Running,
-    AgentChildRunStatuses.WrappingUp,
-    AgentChildRunStatuses.Cancelling,
-    AgentChildRunStatuses.AwaitingSupervisor,
-  ];
-  return stoppableStatuses.includes(status);
+function projectScheduleInstruction(task: AgentScheduledTaskRecord) {
+  return {
+    schedule_id: task.id,
+    ...(task.name ? { name: task.name } : {}),
+    prompt: task.prompt,
+    ...(task.type === "once" ? { at: task.schedule } : { recurrence: task.schedule }),
+    time_zone: task.timeZone,
+    target: task.target ?? "this_session",
+    enabled: task.enabled,
+    ...(task.nextRunAt ? { next_run_at: task.nextRunAt } : {}),
+    admissions: task.runCount,
+  };
 }
 
 function createDelegationContext(
@@ -511,6 +358,7 @@ function createDelegationContext(
     parentThinkingLevel: context.thinkingLevel,
     ...(parentToolBatch ? { parentToolBatch } : {}),
     approvalMode: requireApprovalMode(context.approvalMode),
+    resourceAccessGrant: context.resourceAccessGrant,
     authorizedToolNames: context.authorizedToolNames ?? [],
     activeSkills: context.activeSkills?.map((skill) => ({ name: skill.name, revision: skill.revision })),
     registry: context.registry,
@@ -523,7 +371,8 @@ function projectParentToolBatch(
   context: Parameters<AgentHostToolHandler>[1],
 ): { readonly id: string; readonly spawnCount: number } | undefined {
   const id = context.batchId?.trim();
-  const spawnCount = context.batchToolNames?.filter((name) => name === AgentOrchestrationToolNames.Spawn).length ?? 0;
+  const spawnCount =
+    context.batchToolNames?.filter((name) => name === AgentOrchestrationToolNames.Subagent).length ?? 0;
   return id && spawnCount > 0 ? { id, spawnCount } : undefined;
 }
 

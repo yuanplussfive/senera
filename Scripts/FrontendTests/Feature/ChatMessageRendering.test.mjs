@@ -1,8 +1,9 @@
 import React from "react";
-import { cleanup, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
+import { WorkspaceResourceProvider } from "../../../Frontend/src/shared/workspace/WorkspaceResourceProvider.tsx";
 
 vi.mock("../../../Frontend/src/shared/ui/Tooltip.tsx", () => ({
   TooltipProvider: ({ children }) => React.createElement(React.Fragment, null, children),
@@ -14,11 +15,61 @@ const { AssistantTurnRow } = await import("../../../Frontend/src/features/chat/A
 const { MessageRow } = await import("../../../Frontend/src/features/chat/MessageRow.tsx");
 const { RunThinkingPresentation } = await import("../../../Frontend/src/features/chat/ModelThinkingDisclosure.tsx");
 const { StreamingRow } = await import("../../../Frontend/src/features/chat/StreamingRow.tsx");
+const { preloadMarkdownRenderer } = await import("../../../Frontend/src/shared/code/LazyMarkdownRenderer.tsx");
+
+// The lazy Markdown chunk is shared per worker. Resolve it during file setup so
+// assertions never race a cold, contended module transform in the full suite.
+await preloadMarkdownRenderer();
 
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   vi.restoreAllMocks();
+});
+
+test.each([
+  [{ actorName: "用户", targetName: "玉米" }, "用户 戳了戳 玉米"],
+  [{}, "user-1 戳了戳 agent-1"],
+  [{ actorName: "<b>用户</b>", targetName: "**玉米**" }, "<b>用户</b> 戳了戳 **玉米**"],
+])("native poke events render as events without an empty editable user bubble: %j", (names, expected) => {
+  const onClickBubble = vi.fn();
+  renderWithFrontendProviders(
+    React.createElement(MessageRow, {
+      message: {
+        id: "poke-user",
+        role: "user",
+        content: "",
+        createdAt: "2026-10-25T03:46:37.000Z",
+        requestId: "poke-request",
+        metadata: {
+          channelEvent: {
+            id: "poke-1",
+            type: "poke",
+            actorId: "user-1",
+            targetId: "agent-1",
+            sentAt: "2026-10-25T03:46:37.000Z",
+            ...names,
+          },
+        },
+      },
+      uploadUrl: "",
+      userProfile: {},
+      showInlineActions: true,
+      onClickBubble,
+      onFork: vi.fn(),
+      onRegenerate: vi.fn(),
+      onDelete: vi.fn(),
+      onViewWorkflow: vi.fn(),
+    }),
+  );
+  expect(screen.getByText(expected)).toBeVisible();
+  expect(document.querySelector('[data-channel-event="poke"]')).toBeInTheDocument();
+  expect(document.querySelector("[data-user-message-bubble]")).not.toBeInTheDocument();
+  expect(document.querySelector('[data-message-avatar="user"]')).not.toBeInTheDocument();
+  expect(screen.queryByText(/0 tokens/)).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "复制" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByText(expected));
+  expect(onClickBubble).not.toHaveBeenCalled();
 });
 
 test("tool preface keeps its progress text without rendering a redundant badge", () => {
@@ -126,7 +177,7 @@ test("streaming Markdown updates with each new complete construct and remains pa
     }),
   );
 
-  expect(await screen.findByRole("link", { name: "查看来源：example.test" })).toHaveAttribute(
+  expect(await screen.findByRole("link", { name: "查看来源：example.test/senera" })).toHaveAttribute(
     "href",
     "https://example.test/senera",
   );
@@ -139,7 +190,104 @@ test("streaming Markdown updates with each new complete construct and remains pa
       },
     }),
   );
-  expect(await screen.findByRole("link", { name: "查看来源：example.test" })).toBeInTheDocument();
+  expect(await screen.findByRole("link", { name: "查看来源：example.test/senera" })).toBeInTheDocument();
+});
+
+test("streaming Markdown keeps settled blocks and its live plain-text node mounted while the tail advances", async () => {
+  const initialContent = "## 已确认\n\n正在整理结果";
+  const nextContent = `${initialContent}，准备输出结论`;
+  const user = userEvent.setup();
+
+  function StreamHarness() {
+    const [content, setContent] = React.useState(initialContent);
+    return React.createElement(
+      React.Fragment,
+      null,
+      React.createElement("button", { type: "button", onClick: () => setContent(nextContent) }, "追加流内容"),
+      React.createElement(AssistantMessageBody, {
+        message: { kind: "AssistantFinal", content },
+        streaming: true,
+      }),
+    );
+  }
+
+  renderWithFrontendProviders(React.createElement(StreamHarness));
+
+  await screen.findByRole("heading", { level: 2, name: "已确认" });
+  const prefix = document.querySelector("[data-streaming-markdown-prefix]");
+  expect(prefix).toHaveTextContent("已确认");
+  expect(document.querySelector("[data-streaming-markdown-tail]")).toHaveTextContent("正在整理结果");
+  const liveText = document.querySelector("[data-streaming-markdown-live-text]");
+  expect(liveText).toHaveTextContent("正在整理结果");
+
+  await user.click(screen.getByRole("button", { name: "追加流内容" }));
+
+  await waitFor(() =>
+    expect(document.querySelector("[data-streaming-markdown-tail]")).toHaveTextContent("正在整理结果，准备输出结论"),
+  );
+  const updatedLiveText = document.querySelector("[data-streaming-markdown-live-text]");
+  expect(updatedLiveText).toBe(liveText);
+  expect(updatedLiveText).toHaveTextContent("正在整理结果，准备输出结论");
+  expect(prefix).not.toContainElement(updatedLiveText);
+});
+
+test("streaming Markdown does not settle a fenced block before its closing fence arrives", async () => {
+  const initialContent = "```ts\nconst answer = 42;";
+  const nextContent = `${initialContent}\n\`\`\`\n\n结论已准备好。`;
+  const user = userEvent.setup();
+
+  function StreamHarness() {
+    const [content, setContent] = React.useState(initialContent);
+    return React.createElement(
+      React.Fragment,
+      null,
+      React.createElement("button", { type: "button", onClick: () => setContent(nextContent) }, "闭合代码块"),
+      React.createElement(AssistantMessageBody, {
+        message: { kind: "AssistantFinal", content },
+        streaming: true,
+      }),
+    );
+  }
+
+  renderWithFrontendProviders(React.createElement(StreamHarness));
+  expect(document.querySelector("[data-streaming-markdown-prefix]")).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "闭合代码块" }));
+
+  await waitFor(() =>
+    expect(document.querySelector("[data-streaming-markdown-prefix]")).toHaveTextContent("const answer = 42;"),
+  );
+  expect(document.querySelector("[data-streaming-markdown-tail]")).toHaveTextContent("结论已准备好。");
+});
+
+test("streaming Markdown keeps ambiguous list continuations in the active tail", async () => {
+  const initialContent = "- 第一项\n\n  这仍是第一项的说明。";
+  const nextContent = `${initialContent}\n\n## 下一节\n\n独立内容。`;
+  const user = userEvent.setup();
+
+  function StreamHarness() {
+    const [content, setContent] = React.useState(initialContent);
+    return React.createElement(
+      React.Fragment,
+      null,
+      React.createElement("button", { type: "button", onClick: () => setContent(nextContent) }, "追加独立章节"),
+      React.createElement(AssistantMessageBody, {
+        message: { kind: "AssistantFinal", content },
+        streaming: true,
+      }),
+    );
+  }
+
+  renderWithFrontendProviders(React.createElement(StreamHarness));
+  expect(document.querySelector("[data-streaming-markdown-prefix]")).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "追加独立章节" }));
+
+  await waitFor(() =>
+    expect(document.querySelector("[data-streaming-markdown-prefix]")).toHaveTextContent("这仍是第一项的说明。"),
+  );
+  expect(document.querySelector("[data-streaming-markdown-prefix]")).toHaveTextContent("下一节");
+  expect(document.querySelector("[data-streaming-markdown-tail]")).toHaveTextContent("独立内容。");
 });
 
 test("Markdown image previews can download the authenticated image source", async () => {
@@ -159,16 +307,20 @@ test("Markdown image previews can download the authenticated image source", asyn
   const user = userEvent.setup();
 
   renderWithFrontendProviders(
-    React.createElement(AssistantMessageBody, {
-      message: {
-        kind: "AssistantFinal",
-        content: "![diagram.png](https://example.test/diagram.png)",
-      },
-    }),
+    React.createElement(
+      WorkspaceResourceProvider,
+      { httpBaseUrl: "https://example.test" },
+      React.createElement(AssistantMessageBody, {
+        message: {
+          kind: "AssistantFinal",
+          content: "![diagram.png](https://example.test/diagram.png)",
+        },
+      }),
+    ),
   );
 
   await user.click(await screen.findByRole("button", { name: "查看图片：diagram.png" }));
-  await user.click(screen.getByRole("button", { name: "下载原图" }));
+  await user.click(await screen.findByRole("button", { name: "下载文件" }));
 
   await waitFor(() =>
     expect(fetch).toHaveBeenCalledWith("https://example.test/diagram.png", { credentials: "include" }),
@@ -294,7 +446,7 @@ test("a pending tool without presentation metadata keeps the live status visible
   expect(liveStatus).toHaveTextContent("Thinking");
 });
 
-test("a response-stage waiting execution owns the only Thinking placeholder", async () => {
+test("an empty response stage delegates its only Thinking placeholder to the current model stage", async () => {
   const requestId = "request-response-stage-waiting";
   const startedAt = "2026-01-01T00:00:01.000Z";
 
@@ -339,6 +491,52 @@ test("a response-stage waiting execution owns the only Thinking placeholder", as
   );
   expect(screen.getAllByText("Thinking")).toHaveLength(1);
   expect(document.querySelectorAll("[data-live-activity-status]")).toHaveLength(1);
+  expect(document.querySelector("[data-live-activity-fallback]")).not.toBeInTheDocument();
+});
+
+test("an empty current response keeps a foreground runtime activity visible without a waiting duplicate", async () => {
+  const requestId = "request-empty-foreground-activity";
+  const startedAt = "2026-01-01T00:00:01.000Z";
+
+  renderWithFrontendProviders(
+    React.createElement(AssistantTurnRow, {
+      sessionId: "session-empty-foreground-activity",
+      turn: {
+        __assistantTurn: true,
+        key: `assistant-turn:${requestId}:0`,
+        requestId,
+        createdAt: startedAt,
+        messages: [],
+        run: createRun({
+          requestId,
+          liveActivity: "compacting_context",
+          activeModelRequest: { agentStep: 0, modelMessageIndex: 0, eventSequence: 1 },
+          steps: [
+            {
+              id: `${requestId}-model-0-0`,
+              kind: "model",
+              title: "运行模型",
+              status: "running",
+              startedAt,
+              agentStep: 0,
+              modelMessageIndex: 0,
+              eventSequence: 1,
+            },
+          ],
+        }),
+        streaming: true,
+      },
+      showInlineActions: false,
+      onForkFromMessage: () => undefined,
+      onRegenerate: () => undefined,
+      onDeleteFromMessage: () => undefined,
+      onViewWorkflow: () => undefined,
+    }),
+  );
+
+  await waitFor(() => expect(document.querySelector("[data-execution-stage-feed]")).toBeInTheDocument());
+  expect(document.querySelector("[data-initial-thinking]")).not.toBeInTheDocument();
+  expect(document.querySelectorAll("[data-live-activity-status]")).toHaveLength(0);
 });
 
 test("current visible turn text suppresses placeholder thinking", async () => {
@@ -437,7 +635,7 @@ test("a visible current response suppresses a stale Thinking placeholder", () =>
   expect(document.querySelector("[data-initial-thinking]")).not.toBeInTheDocument();
 });
 
-test("provider target text does not remove the placeholder before the display ticker paints", () => {
+test("provider target text does not remove the placeholder before a displayable projection arrives", () => {
   const requestId = "request-target-before-display";
   const run = createRun({
     requestId,
@@ -602,7 +800,6 @@ test("live thinking exposes an expanded readable transcript with a concise statu
           status: "streaming",
         },
       ],
-      current: true,
     }),
   );
 
@@ -642,7 +839,6 @@ test("thinking follows the latest reasoning line and collapses after the model r
   const view = renderWithFrontendProviders(
     React.createElement(RunThinkingPresentation, {
       blocks,
-      current: true,
     }),
   );
 
@@ -656,7 +852,6 @@ test("thinking follows the latest reasoning line and collapses after the model r
   view.rerender(
     React.createElement(RunThinkingPresentation, {
       blocks: blocks.map((block) => ({ ...block, status: "complete" })),
-      current: false,
     }),
   );
 
@@ -666,8 +861,274 @@ test("thinking follows the latest reasoning line and collapses after the model r
       "false",
     ),
   );
-  expect(readDisclosure().querySelector("[data-model-thinking-transcript]")).toBeNull();
+  expect(readDisclosure().querySelector("[data-model-thinking-transcript]")).toBeInTheDocument();
+  expect(readDisclosure().querySelector("[data-motion-disclosure-state]")).toHaveAttribute(
+    "data-motion-disclosure-state",
+    "closed",
+  );
   expect(readDisclosure()).toHaveTextContent("已完成思考");
+});
+
+test("a manual thinking collapse is preserved for later deltas from the same reasoning block", async () => {
+  const user = userEvent.setup();
+  const blocks = [
+    {
+      id: "thinking-live",
+      step: 1,
+      messageIndex: 0,
+      contentIndex: 0,
+      content: "先检查现有状态。",
+      status: "streaming",
+    },
+  ];
+  function ThinkingHarness() {
+    const [activeBlocks, setActiveBlocks] = React.useState(blocks);
+    return React.createElement(
+      React.Fragment,
+      null,
+      React.createElement(
+        "button",
+        {
+          type: "button",
+          onClick: () => setActiveBlocks([{ ...blocks[0], content: "先检查现有状态。\n接着读取关联记录。" }]),
+        },
+        "继续同一思考",
+      ),
+      React.createElement(RunThinkingPresentation, { blocks: activeBlocks }),
+    );
+  }
+
+  renderWithFrontendProviders(React.createElement(ThinkingHarness));
+  const toggle = document.querySelector("[data-model-thinking-toggle-row]");
+
+  await user.click(toggle);
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+  await user.click(screen.getByRole("button", { name: "继续同一思考" }));
+
+  expect(document.querySelector("[data-model-thinking-toggle-row]")).toHaveAttribute("aria-expanded", "false");
+});
+
+test("a new thinking block resumes the disclosure after the prior block was manually collapsed", async () => {
+  const user = userEvent.setup();
+  const firstBlock = {
+    id: "thinking-first",
+    step: 1,
+    messageIndex: 0,
+    contentIndex: 0,
+    content: "先确认第一个问题。",
+    status: "streaming",
+  };
+  function ThinkingHarness() {
+    const [activeBlocks, setActiveBlocks] = React.useState([firstBlock]);
+    return React.createElement(
+      React.Fragment,
+      null,
+      React.createElement(
+        "button",
+        {
+          type: "button",
+          onClick: () =>
+            setActiveBlocks([
+              { ...firstBlock, status: "complete" },
+              {
+                id: "thinking-second",
+                step: 2,
+                messageIndex: 0,
+                contentIndex: 0,
+                content: "开始处理下一步。",
+                status: "streaming",
+              },
+            ]),
+        },
+        "开始下一次思考",
+      ),
+      React.createElement(RunThinkingPresentation, { blocks: activeBlocks }),
+    );
+  }
+
+  renderWithFrontendProviders(React.createElement(ThinkingHarness));
+
+  await user.click(document.querySelector("[data-model-thinking-toggle-row]"));
+  expect(document.querySelector("[data-model-thinking-toggle-row]")).toHaveAttribute("aria-expanded", "false");
+
+  await user.click(screen.getByRole("button", { name: "开始下一次思考" }));
+
+  await waitFor(() =>
+    expect(document.querySelector("[data-model-thinking-toggle-row]")).toHaveAttribute("aria-expanded", "true"),
+  );
+});
+
+test("a completed turn contracts its existing thinking process before showing the final response", async () => {
+  const user = userEvent.setup();
+  const requestId = "request-thinking-terminal-transition";
+  const startedAt = "2026-01-01T00:00:00.000Z";
+  const finalMessage = {
+    id: "thinking-terminal-answer",
+    requestId,
+    role: "assistant",
+    kind: "AssistantFinal",
+    content: "整理完成后的最终答复。",
+    createdAt: "2026-01-01T00:00:08.000Z",
+  };
+  const modelStep = {
+    id: `${requestId}-model-0-0`,
+    kind: "model",
+    title: "调用模型",
+    status: "running",
+    startedAt,
+    agentStep: 0,
+    modelMessageIndex: 0,
+    eventSequence: 1,
+  };
+  const liveRun = createRun({
+    requestId,
+    activeModelRequest: { agentStep: 0, modelMessageIndex: 0, eventSequence: 1 },
+    steps: [modelStep],
+    thinkingBlocks: [
+      {
+        id: "thinking-terminal-block",
+        step: 0,
+        messageIndex: 0,
+        contentIndex: 0,
+        content: "先整理最终答复的要点。",
+        status: "streaming",
+        eventSequence: 1,
+      },
+    ],
+  });
+  const renderTurn = (run, messages, streaming) =>
+    React.createElement(AssistantTurnRow, {
+      sessionId: "session-thinking-terminal-transition",
+      turn: {
+        __assistantTurn: true,
+        key: `assistant-turn:${requestId}:0`,
+        requestId,
+        createdAt: startedAt,
+        messages,
+        run,
+        streaming,
+      },
+      showInlineActions: false,
+      onForkFromMessage: () => undefined,
+      onRegenerate: () => undefined,
+      onDeleteFromMessage: () => undefined,
+      onViewWorkflow: () => undefined,
+    });
+
+  function TurnHarness() {
+    const [completed, setCompleted] = React.useState(false);
+    return React.createElement(
+      React.Fragment,
+      null,
+      React.createElement("button", { type: "button", onClick: () => setCompleted(true) }, "完成思考回合"),
+      completed ? renderTurn(completedRun, [finalMessage], false) : renderTurn(liveRun, [], true),
+    );
+  }
+
+  const completedRun = {
+    ...liveRun,
+    status: "completed",
+    endedAt: finalMessage.createdAt,
+    activeModelRequest: undefined,
+    steps: [
+      { ...modelStep, status: "done", endedAt: finalMessage.createdAt },
+      {
+        id: `${requestId}-assistant-message-${finalMessage.id}`,
+        kind: "answer",
+        title: finalMessage.content,
+        status: "done",
+        startedAt: finalMessage.createdAt,
+        endedAt: finalMessage.createdAt,
+        agentStep: 0,
+        modelMessageIndex: 0,
+        modelContentIndex: 1,
+        eventSequence: 2,
+      },
+    ],
+    thinkingBlocks: liveRun.thinkingBlocks.map((block) => ({ ...block, status: "complete" })),
+  };
+
+  renderWithFrontendProviders(React.createElement(TurnHarness));
+  const transcript = await waitFor(() => {
+    const node = document.querySelector("[data-model-thinking-transcript]");
+    expect(node).toBeInTheDocument();
+    return node;
+  });
+
+  await user.click(screen.getByRole("button", { name: "完成思考回合" }));
+
+  await waitFor(() =>
+    expect(document.querySelector("[data-model-thinking-toggle-row]")).toHaveAttribute("aria-expanded", "false"),
+  );
+  expect(document.querySelector("[data-model-thinking-transcript]")).toBe(transcript);
+  expect(document.querySelector("[data-settled-turn-toggle]")).toBeInTheDocument();
+  expect(screen.getByText(finalMessage.content)).toBeInTheDocument();
+});
+
+test("live thinking follows its tail again after markdown changes the transcript layout", async () => {
+  const originalResizeObserver = globalThis.ResizeObserver;
+  const observers = [];
+  class TestResizeObserver {
+    constructor(callback) {
+      this.callback = callback;
+      observers.push(this);
+    }
+
+    observe() {}
+
+    disconnect() {}
+  }
+
+  Object.defineProperty(globalThis, "ResizeObserver", {
+    configurable: true,
+    writable: true,
+    value: TestResizeObserver,
+  });
+
+  try {
+    renderWithFrontendProviders(
+      React.createElement(RunThinkingPresentation, {
+        blocks: [
+          {
+            id: "thinking-overflow",
+            step: 1,
+            messageIndex: 0,
+            contentIndex: 0,
+            content: "正在持续整理很长的推理内容。",
+            status: "streaming",
+          },
+        ],
+      }),
+    );
+
+    const transcript = await waitFor(() => {
+      const node = document.querySelector("[data-model-thinking-transcript]");
+      expect(node).toBeInTheDocument();
+      return node;
+    });
+    Object.defineProperties(transcript, {
+      clientHeight: { configurable: true, value: 240 },
+      scrollHeight: { configurable: true, value: 960 },
+      scrollTop: { configurable: true, writable: true, value: 0 },
+    });
+
+    await waitFor(() => expect(observers).not.toHaveLength(0));
+    observers.forEach((observer) => observer.callback());
+
+    await waitFor(() => expect(transcript.scrollTop).toBe(720));
+
+    transcript.scrollTop = 96;
+    fireEvent.scroll(transcript);
+    Object.defineProperty(transcript, "scrollHeight", { configurable: true, value: 1200 });
+    observers.forEach((observer) => observer.callback());
+
+    await new Promise((resolve) => window.requestAnimationFrame(resolve));
+    expect(transcript.scrollTop).toBe(96);
+  } finally {
+    if (originalResizeObserver === undefined) delete globalThis.ResizeObserver;
+    else globalThis.ResizeObserver = originalResizeObserver;
+  }
 });
 
 test("live tool preface follows its execution status inside one assistant turn", async () => {
@@ -824,8 +1285,6 @@ function createRun(overrides = {}) {
     startedAt: "2026-01-01T00:00:00.000Z",
     steps: [],
     displayText: "",
-    displayTarget: "",
-    displayedChars: 0,
     expectedOutputMode: "open",
     ...overrides,
   };

@@ -1,11 +1,14 @@
 import type Database from "better-sqlite3";
+import { z } from "zod";
+import { randomUUID } from "node:crypto";
 import { AgentSqliteDatabaseKernel } from "../Database/AgentSqliteDatabaseKernel.js";
 import { AgentMemoryDatabaseContract } from "../Memory/AgentMemorySqlSchema.js";
 import type { AgentUpgradeSession } from "../Upgrade/AgentUpgradeSession.js";
+import { AgentMemoryRecallEntrySchema } from "./AgentMemoryRecallContract.js";
 
 /**
- * Session delivery receipts kept beside MemOS. Semantic knowledge and its
- * graph, validity, and embeddings belong to MemOS.
+ * Immutable automatic-memory snapshots kept beside MemOS. Semantic knowledge
+ * and its graph, validity, and embeddings belong to MemOS.
  */
 export class AgentContinuitySqliteStore {
   private readonly kernel: AgentSqliteDatabaseKernel;
@@ -25,48 +28,100 @@ export class AgentContinuitySqliteStore {
     this.db = this.kernel.connection;
   }
 
-  listMemoryDeliveryKeys(sessionId: string, contextEpoch = "active"): readonly string[] {
-    return this.db
-      .prepare<[string, string], { memory_key: string }>(
-        `SELECT memory_key
-           FROM continuity_memory_delivery
-          WHERE session_id = ? AND context_epoch = ?
-          ORDER BY delivered_at ASC, memory_key ASC`,
+  readMemorySnapshot(sessionId: string, subjectId?: string): AgentContinuityMemorySnapshot | undefined {
+    const row = this.db
+      .prepare<[string, string | null, string | null], { entries_json: string; diary_index: string }>(
+        `SELECT v.entries_json,v.diary_index FROM continuity_memory_snapshot_versions v
+         JOIN continuity_memory_boundaries b USING(session_id,generation) WHERE v.session_id = ? AND (? IS NULL OR b.subject_id=?)`,
       )
-      .all(sessionId, contextEpoch)
-      .map((row) => row.memory_key);
+      .get(sessionId, subjectId ?? null, subjectId ?? null);
+    return row
+      ? { entries: MemorySnapshotEntriesSchema.parse(JSON.parse(row.entries_json)), diaryIndex: row.diary_index }
+      : undefined;
   }
 
-  recordMemoryDelivery(
+  createMemorySnapshot(
     sessionId: string,
-    memoryKeys: readonly string[],
-    deliveredAt: string,
-    contextEpoch = "active",
-  ): number {
-    const keys = [...new Set(memoryKeys.map((key) => key.trim()).filter(Boolean))];
-    if (keys.length === 0) return 0;
-    const insert = this.db.prepare<[string, string, string, string]>(
-      `INSERT INTO continuity_memory_delivery(session_id, context_epoch, memory_key, delivered_at)
-       VALUES (?, ?, ?, ?)
-       ON CONFLICT(session_id, context_epoch, memory_key) DO UPDATE SET delivered_at = excluded.delivered_at`,
-    );
-    const transaction = this.db.transaction(() => {
-      for (const key of keys) insert.run(sessionId, contextEpoch, key, deliveredAt);
-    });
-    transaction();
-    return keys.length;
+    snapshot: AgentContinuityMemorySnapshot,
+    now: string,
+  ): AgentContinuityMemorySnapshot {
+    const normalized = {
+      entries: MemorySnapshotEntriesSchema.parse(snapshot.entries),
+      diaryIndex: z.string().parse(snapshot.diaryIndex),
+    };
+    this.db
+      .prepare(
+        "INSERT INTO continuity_memory_boundaries(session_id,generation,boundary_key) VALUES(?,0,'initial') ON CONFLICT DO NOTHING",
+      )
+      .run(sessionId);
+    this.db
+      .prepare(
+        `INSERT INTO continuity_memory_snapshot_versions(session_id,generation,entries_json,diary_index,created_at)
+         SELECT session_id,generation,?,?,? FROM continuity_memory_boundaries WHERE session_id=?
+         ON CONFLICT(session_id,generation) DO NOTHING`,
+      )
+      .run(JSON.stringify(normalized.entries), normalized.diaryIndex, now, sessionId);
+    return this.readMemorySnapshot(sessionId) ?? normalized;
   }
 
-  clearMemoryDelivery(sessionId: string): number {
-    return this.db.prepare<[string]>("DELETE FROM continuity_memory_delivery WHERE session_id = ?").run(sessionId)
-      .changes;
+  clearMemorySnapshot(sessionId: string, boundaryKey: string = randomUUID()): number {
+    return this.db
+      .prepare(
+        `INSERT INTO continuity_memory_boundaries(session_id,generation,boundary_key) VALUES(?,1,?)
+      ON CONFLICT(session_id) DO UPDATE SET generation=generation+1,boundary_key=excluded.boundary_key
+      WHERE boundary_key<>excluded.boundary_key`,
+      )
+      .run(sessionId, boundaryKey).changes;
+  }
+
+  snapshotGeneration(sessionId: string): number {
+    return (
+      this.db
+        .prepare<[string], { generation: number }>(
+          "SELECT generation FROM continuity_memory_boundaries WHERE session_id=?",
+        )
+        .get(sessionId)?.generation ?? 0
+    );
+  }
+
+  prepareSnapshotSubject(sessionId: string, subjectId: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO continuity_memory_boundaries(session_id,generation,boundary_key,subject_id) VALUES(?,0,'initial',?)
+      ON CONFLICT(session_id) DO UPDATE SET generation=generation+1,subject_id=excluded.subject_id,boundary_key='subject:' || excluded.subject_id
+      WHERE subject_id<>excluded.subject_id`,
+      )
+      .run(sessionId, subjectId);
+  }
+
+  clearAllMemorySnapshots(): void {
+    this.db.transaction(() => {
+      this.db.prepare("DELETE FROM continuity_memory_snapshot_versions").run();
+      this.db.prepare("UPDATE continuity_memory_boundaries SET generation=generation+1").run();
+    })();
   }
 
   deleteSession(sessionId: string): void {
-    this.clearMemoryDelivery(sessionId);
+    this.db.prepare("DELETE FROM continuity_memory_snapshot_versions WHERE session_id=?").run(sessionId);
+    this.db.prepare("DELETE FROM continuity_memory_boundaries WHERE session_id=?").run(sessionId);
   }
 
   close(): void {
     if (this.ownsKernel) this.kernel.close();
   }
 }
+
+export type AgentContinuityMemorySnapshotEntry = import("zod").z.infer<typeof MemorySnapshotEntrySchema>;
+
+export interface AgentContinuityMemorySnapshot {
+  readonly entries: readonly AgentContinuityMemorySnapshotEntry[];
+  readonly diaryIndex: string;
+}
+
+const MemorySnapshotEntrySchema = AgentMemoryRecallEntrySchema.omit({ uri: true });
+
+const MemorySnapshotEntriesSchema = z.array(MemorySnapshotEntrySchema).superRefine((entries, context) => {
+  if (new Set(entries.map((entry) => entry.id)).size !== entries.length) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Memory snapshot contains duplicate node IDs." });
+  }
+});

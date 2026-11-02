@@ -225,8 +225,11 @@ export function prepareAgentChildRunSqlStatements(database: Database.Database): 
     ),
     markResumed: database.prepare(
       agentSql`UPDATE child_runs
-               SET status = 'queued', child_request_id = @child_request_id, error = NULL,
+                 SET status = 'queued', child_request_id = @child_request_id, error = NULL,
+                     started_at = NULL, snapshot_json = NULL, usage_json = NULL,
                    final_answer = NULL, completed_at = NULL, parent_result_delivered_at = NULL,
+                   launch_contract_json = CASE WHEN @execution_mode IS NULL THEN launch_contract_json
+                     ELSE json_set(launch_contract_json, '$.executionMode', @execution_mode) END,
                    updated_at = @updated_at, revision = revision + 1
                WHERE id = @id AND status IN ('awaiting_supervisor', 'partial_completed', 'interrupted', 'failed', 'timed_out', 'completed', 'cancelled')`,
     ),

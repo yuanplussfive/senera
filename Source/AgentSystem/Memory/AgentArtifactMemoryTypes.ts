@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { AgentToolExecutionOutcomeSchema } from "../ToolRuntime/AgentToolResultOutcome.js";
-import { type AgentArtifactFileNames, parseAgentArtifactUri } from "../Artifacts/AgentArtifactLocator.js";
+import type { AgentArtifactFileNames } from "../Artifacts/AgentArtifactLocator.js";
 
 export const ReadableArtifactRefs = [
   "summary",
@@ -34,28 +34,39 @@ export const ReadableArtifactRefDefinitions = {
   stderr: { file: "stderr", mediaType: "text/plain" },
 } as const satisfies Record<ReadableArtifactRef, { file: keyof typeof AgentArtifactFileNames; mediaType: string }>;
 
-export const ArtifactMemoryReadArgumentsSchema = z
-  .object({
-    artifactUris: z
-      .array(
-        z
-          .string()
-          .trim()
-          .min(1)
-          .refine((uri) => parseAgentArtifactUri(uri) !== undefined, "Expected a valid Senera Artifact URI."),
-      )
-      .min(1)
-      .describe("Canonical artifact URIs, for example senera://artifact/art_1234567890abcdef12345678."),
-    view: z
-      .enum(["compact", "full"])
-      .describe(
-        "compact returns a saved LLM summary when available, otherwise a deterministic summary; full returns the raw result.",
-      ),
-  })
-  .strict();
+/** Runtime input after the package-owned ArtifactMemoryReadTool contract has been validated. */
+export interface LegacyArtifactMemoryReadArguments {
+  readonly artifactUris: readonly string[];
+  readonly view: "compact" | "full";
+}
 
-export type ArtifactMemoryReadArguments = z.infer<typeof ArtifactMemoryReadArgumentsSchema>;
-export type ArtifactMemoryReadView = ArtifactMemoryReadArguments["view"];
+export const ArtifactReadParts = [
+  "result",
+  "source",
+  "summary",
+  "process",
+  "outcome",
+  "stdout",
+  "stderr",
+  "changes",
+  "assets",
+] as const;
+export const ArtifactReadResultProtocol = "senera.artifact-read/v1";
+export const ArtifactReadViews = ["structure", "content"] as const;
+export type ArtifactReadPart = (typeof ArtifactReadParts)[number];
+export interface ArtifactReadRequest {
+  readonly uri: string;
+  readonly part?: ArtifactReadPart;
+  readonly paths?: readonly string[];
+  readonly view?: (typeof ArtifactReadViews)[number];
+}
+export type ArtifactMemoryReadArguments =
+  LegacyArtifactMemoryReadArguments | { readonly requests: readonly ArtifactReadRequest[] };
+export function artifactReadRequests(args: ArtifactMemoryReadArguments): readonly ArtifactReadRequest[] {
+  return "requests" in args ? args.requests : args.artifactUris.map((uri) => ({ uri }));
+}
+
+export type ArtifactMemoryReadView = "compact" | "full" | "structure" | "selected";
 
 const ArtifactSha256Schema = z.string().regex(/^[a-f0-9]{64}$/u);
 
@@ -129,6 +140,7 @@ export const ArtifactManifestRecordSchema = z
 export type ArtifactManifestRecord = z.infer<typeof ArtifactManifestRecordSchema>;
 
 export interface ArtifactMemoryReadResultItem {
+  requestedUri: string;
   artifactUri: string;
   artifactId: string;
   status: "found" | "not_found" | "invalid" | "failed";
@@ -138,4 +150,6 @@ export interface ArtifactMemoryReadResultItem {
   compressionMethod?: "mechanical" | "llm";
   sourceSha256?: string;
   content?: unknown;
+  part?: ArtifactReadPart;
+  availableParts?: readonly ArtifactReadPart[];
 }

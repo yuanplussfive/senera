@@ -1,5 +1,6 @@
 import React from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, screen } from "@testing-library/react";
+import { renderWithFrontendProviders as render } from "../renderWithFrontendProviders.mjs";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { PillExpandNavbar } from "../../../Frontend/src/shared/ui/PillExpandNavbar.tsx";

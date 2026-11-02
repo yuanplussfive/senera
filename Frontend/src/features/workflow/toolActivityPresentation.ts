@@ -113,7 +113,7 @@ export function projectToolActivityInspection(input: ToolActivityInput): ToolAct
       readStringsAtPointer(input.arguments, pointer),
     ),
   );
-  const argumentPreviewParts = readActivityArgumentPreviewParts({ command, subjects, arguments: input.arguments });
+  const argumentPreviewParts = readActivityArgumentPreviewParts({ command, subjects });
   const argumentPreview = compactArgumentValues(argumentPreviewParts);
   const action = variant?.action ?? activity?.action;
   const invocationName = variant?.invocationName ?? activity?.invocationName;
@@ -430,68 +430,17 @@ function appendArgumentPreview(label: string, argumentPreview: string | undefine
 function readActivityArgumentPreviewParts({
   command,
   subjects,
-  arguments: value,
 }: {
   readonly command?: string;
   readonly subjects: readonly string[];
-  readonly arguments?: unknown;
 }): readonly string[] {
   const supplemental = command ? subjects.filter((subject) => subject !== command) : subjects;
-  // A legacy truncation envelope carries no readable arguments, and enumerating
-  // it prints the marker itself (`__truncated=true · preview=…`). Treat it as
-  // "arguments unavailable" so the label falls back to the declared action.
-  const readable = readLegacyTruncatedEnvelope(value) ? undefined : value;
-  const values = [
-    ...(command ? [command] : []),
-    ...(supplemental.length > 0
-      ? supplemental
-      : !command && subjects.length === 0
-        ? collectArgumentValues(readable)
-        : []),
-  ];
+  // Only producer-declared targets belong in compact activity rows. Complete
+  // arguments remain available in the inspector, including technical cursors.
+  const values = [...(command ? [command] : []), ...supplemental];
   const normalized = [...new Set(values.map(compactPreview).filter(Boolean))].slice(0, 3);
   const joined = normalized.join(" · ");
   return joined && compactPreview(joined) !== joined ? [compactPreview(joined)] : normalized;
-}
-
-function collectArgumentValues(value: unknown): string[] {
-  const entries: string[] = [];
-  const visit = (current: unknown, path: string[], depth: number): void => {
-    if (entries.length >= 3 || depth > 2 || current === null || current === undefined) return;
-    if (typeof current === "string" || typeof current === "number" || typeof current === "boolean") {
-      const text = String(current).trim();
-      if (text) entries.push(path.length > 0 ? `${path.join(".")}=${text}` : text);
-      return;
-    }
-    if (Array.isArray(current)) {
-      current.slice(0, 2).forEach((entry, index) => visit(entry, [...path, String(index + 1)], depth + 1));
-      return;
-    }
-    if (!isRecord(current)) return;
-    Object.entries(current).forEach(([key, entry]) => {
-      if (!isSensitiveArgumentKey(key)) visit(entry, [...path, key], depth + 1);
-    });
-  };
-  visit(value, [], 0);
-  return entries;
-}
-
-/** The legacy byte-slice envelope, written by builds before shape-preserving projection. */
-const LegacyTruncationEnvelopeKey = "__truncated";
-
-/**
- * Recognizes the retired `{ __truncated, preview }` marker. Only historical
- * step traces contain it; new writes never do. It must be identified rather
- * than enumerated, because the envelope is dead data that merely resembles a
- * record — flattening it is what once put raw JSON on the row.
- */
-export function readLegacyTruncatedEnvelope(value: unknown): { readonly preview: string } | undefined {
-  if (!isRecord(value) || value[LegacyTruncationEnvelopeKey] !== true) return undefined;
-  return { preview: typeof value.preview === "string" ? value.preview : "" };
-}
-
-function isSensitiveArgumentKey(key: string): boolean {
-  return /authorization|credential|cookie|password|secret|token|api[-_]?key/iu.test(key);
 }
 
 function uniqueStrings(values: readonly string[]): string[] {

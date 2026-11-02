@@ -12,7 +12,7 @@ export function createAgentPiPlanningModelAdapter(
       const plannerConfig = resolveActionPlannerConfig(config, modelProvider.Id);
       return new AgentPiPlanningCompiler({
         modelProvider,
-        client: new AgentActionPlannerModelClient(modelProvider, plannerConfig.PlanningClient, {
+        client: new AgentActionPlannerModelClient(modelProvider, plannerConfig.Client, {
           maxRepairAttempts: plannerConfig.MaxRepairAttempts,
           usageSink: sinks.usageSink,
           timingSink: sinks.timingSink,

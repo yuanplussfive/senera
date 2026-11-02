@@ -2,6 +2,7 @@ import { AgentCancellationError, readAbortMessage } from "../Core/AgentCancellat
 import type { AgentChildRunDeadlinePolicy, AgentChildRunRecord } from "./AgentChildRunTypes.js";
 import type { AgentChildRunCheckpoint } from "./AgentChildRunTypes.js";
 import { AgentPromptWireEncodings, renderAgentPromptWireBlocks } from "../Prompt/AgentPromptContextWireRenderer.js";
+import { formatAgentTimeOffsetMillisecond } from "../Time/AgentTime.js";
 import {
   parseAgentSubagentCapabilityCeiling,
   parseAgentSubagentLaunchContract,
@@ -68,7 +69,7 @@ export function renderSupervisorResponsePrompt(message: string, checkpoint?: Age
         {
           id: "checkpoint",
           value: {
-            capturedAt: checkpoint.capturedAt,
+            capturedAt: formatAgentTimeOffsetMillisecond(checkpoint.capturedAt),
             source: checkpoint.source,
             complete: checkpoint.complete,
             ...(checkpoint.content ? { content: checkpoint.content } : {}),

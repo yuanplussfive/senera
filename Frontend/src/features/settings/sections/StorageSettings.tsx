@@ -1,3 +1,4 @@
+import { Tooltip } from "../../../shared/ui/Tooltip";
 import { useEffect, useState, type ReactNode } from "react";
 import { buildHttpApiUrl } from "../../../api/httpApiUrl";
 import type { WorkspaceControllerHandle } from "../../../app/useWorkspaceController";
@@ -50,18 +51,18 @@ function StorageFacts({ items }: { items: readonly StorageFact[] }): JSX.Element
   return (
     <dl className="flex flex-wrap items-center text-[11px]">
       {items.map((item, index) => (
-        <div
-          key={item.label}
-          title={item.title}
-          className={
-            index === 0
-              ? "inline-flex items-baseline gap-1"
-              : "ml-3 inline-flex items-baseline gap-1 border-l border-line pl-3"
-          }
-        >
-          <dt className="text-[10px] text-content-muted">{item.label}</dt>
-          <dd className="text-[11px] font-semibold tabular-nums text-content-primary">{item.value}</dd>
-        </div>
+        <Tooltip content={item.title} key={item.label}>
+          <div
+            className={
+              index === 0
+                ? "inline-flex items-baseline gap-1"
+                : "ml-3 inline-flex items-baseline gap-1 border-l border-line pl-3"
+            }
+          >
+            <dt className="text-[10px] text-content-muted">{item.label}</dt>
+            <dd className="text-[11px] font-semibold tabular-nums text-content-primary">{item.value}</dd>
+          </div>
+        </Tooltip>
       ))}
     </dl>
   );
@@ -74,9 +75,9 @@ function PathLine({ label, path }: { label: string; path: string }): JSX.Element
   return (
     <div className="flex min-w-0 items-center gap-2">
       <span className="shrink-0 whitespace-nowrap text-[11px] text-content-muted">{label}</span>
-      <code className="min-w-0 truncate font-mono text-[11.5px] text-content-secondary" title={path}>
-        {path}
-      </code>
+      <Tooltip content={path}>
+        <code className="min-w-0 truncate font-mono text-[11.5px] text-content-secondary">{path}</code>
+      </Tooltip>
       <IconButton
         className="shrink-0"
         label={copyLabel}
@@ -157,7 +158,8 @@ function WorkspaceUsageRow({
         <span className="flex min-w-0 items-center gap-2">
           <span className="min-w-0 truncate">{entry.name}</span>
           {isCurrent ? (
-            <span className="shrink-0 rounded-md border border-accent-border bg-accent-surface px-1.5 text-[10.5px] font-medium text-accent-content">
+            <span className="inline-flex shrink-0 items-center gap-1.5 text-[10.5px] font-normal text-content-muted">
+              <span className="h-1 w-1 rounded-full bg-content-secondary" aria-hidden="true" />
               {frontendMessage("settings.storage.currentWorkspace")}
             </span>
           ) : null}

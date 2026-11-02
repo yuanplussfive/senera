@@ -18,6 +18,7 @@ import {
   readProviderEndpoints,
 } from "../chat/modelConfigData";
 import { namespaceRuntimeModelAssignmentSections } from "./sections/runtimeModelAssignments";
+import { modelSelectOption, type ModelSelectOption } from "../../shared/models/ModelSelect";
 
 export interface SystemExtensionRuntimeModelAssignmentSection {
   readonly extensionId: string;
@@ -26,9 +27,54 @@ export interface SystemExtensionRuntimeModelAssignmentSection {
   readonly section: ConfigFormSectionData;
 }
 
-interface ModelOption {
-  readonly value: string;
-  readonly label: string;
+type ModelOption = ModelSelectOption;
+
+export function readConfiguredModelConnectionOptions(
+  snapshot: ConfigSnapshotData | null,
+  capability: ConfigFormModelCapability,
+): ModelSelectOption[] {
+  return [...createModelOptionsReader(snapshot)(capability)];
+}
+
+/** Names are suggestions only: selecting one never changes the field's endpoint or credentials. */
+export function readConfiguredModelNameOptions(
+  snapshot: ConfigSnapshotData | null,
+  capability?: ConfigFormModelCapability,
+): ModelSelectOption[] {
+  const section = snapshot?.form.sections.find((candidate) => candidate.name === "models");
+  const endpoints = new Map(
+    readProviderEndpoints(findTopField(section, "ModelProviderEndpoints")?.effectiveValue).map((endpoint) => [
+      endpoint.Id,
+      endpoint,
+    ]),
+  );
+  const names = new Map<string, string[]>();
+  const icons = new Map<string, string | undefined>();
+  const template = findTopField(section, "ModelProviders")?.defaultItem ?? {};
+  for (const model of readModelProviders(findTopField(section, "ModelProviders")?.effectiveValue)) {
+    const endpoint = endpoints.get(model.ProviderId);
+    if (!model.Model || !endpoint || !providerEnabled(endpoint)) continue;
+    if (capability && !readModelCapabilities(model, template)[capability]) continue;
+    const providers = names.get(model.Model) ?? [];
+    if (!providers.includes(model.ProviderId)) providers.push(model.ProviderId);
+    names.set(model.Model, providers);
+    if (!icons.has(model.Model))
+      icons.set(
+        model.Model,
+        modelSelectOption({
+          id: model.Id,
+          model: model.Model,
+          providerId: model.ProviderId,
+          icon: model.Icon ?? endpoint.Icon,
+        }).icon,
+      );
+  }
+  return [...names].map(([value, providers]) => ({
+    value,
+    label: value,
+    description: providers.join(" · "),
+    icon: icons.get(value),
+  }));
 }
 
 export function projectSystemExtensionConfigurationSections(options: {
@@ -41,6 +87,9 @@ export function projectSystemExtensionConfigurationSections(options: {
     ...section,
     label: resolveFrontendLocalizedText(section.label, options.locale),
     description: section.description ? resolveFrontendLocalizedText(section.description, options.locale) : undefined,
+    documentation: section.documentation
+      ? resolveFrontendLocalizedText(section.documentation, options.locale)
+      : undefined,
     fields: section.fields.map((field) => projectField(field, options.locale, modelOptions)),
   }));
 }
@@ -76,7 +125,6 @@ function projectField(
   readModelOptions: (capability: ConfigFormModelCapability) => readonly ModelOption[],
 ): ConfigFormFieldData {
   const options = field.modelSelection ? readModelOptions(field.modelSelection.capability) : undefined;
-  const configuredModelId = typeof field.effectiveValue === "string" ? field.effectiveValue.trim() : "";
   const projectedOptions = options ? [...options] : undefined;
   const localizedOptionLabels = field.optionLabels
     ? Object.fromEntries(
@@ -86,9 +134,6 @@ function projectField(
         ]),
       )
     : undefined;
-  if (configuredModelId && projectedOptions && !projectedOptions.some((option) => option.value === configuredModelId)) {
-    projectedOptions.push({ value: configuredModelId, label: configuredModelId });
-  }
   return {
     ...field,
     label: resolveFrontendLocalizedText(field.label, locale),
@@ -99,6 +144,7 @@ function projectField(
       ? {
           options: projectedOptions.map((option) => option.value),
           optionLabels: Object.fromEntries(projectedOptions.map((option) => [option.value, option.label])),
+          modelOptions: projectedOptions,
         }
       : {}),
     itemFields: field.itemFields?.map((item) => projectField(item, locale, readModelOptions)),
@@ -128,7 +174,14 @@ function createModelOptionsReader(
           model.Id && endpoint && providerEnabled(endpoint) && readModelCapabilities(model, template)[capability],
         );
       })
-      .map((model) => ({ value: model.Id, label: `${model.Model || model.Id} · ${model.ProviderId}` }))
+      .map((model) => ({
+        ...modelSelectOption({
+          id: model.Id,
+          model: model.Model,
+          providerId: model.ProviderId,
+          icon: model.Icon ?? endpoints.get(model.ProviderId)?.Icon,
+        }),
+      }))
       .sort((left, right) => left.label.localeCompare(right.label));
     cache.set(capability, projected);
     return projected;

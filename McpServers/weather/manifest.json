@@ -1,7 +1,10 @@
 {
   "manifest_version": "0.3",
   "name": "weather",
-  "display_name": { "zh-CN": "天气", "en-US": "Weather" },
+  "display_name": {
+    "zh-CN": "天气",
+    "en-US": "Weather"
+  },
   "version": "1.0.0",
   "description": {
     "zh-CN": "通过和风天气获取当前天气和预报。",
@@ -51,7 +54,27 @@
   },
   "_meta": {
     "ai.senera/presentation": {
-      "icon": "cloud-sun"
+      "icon": "cloud-sun",
+      "usageExamples": [
+        {
+          "title": {
+            "zh-CN": "查看天气",
+            "en-US": "Check the weather"
+          },
+          "prompt": {
+            "zh-CN": "上海明天适合出门吗？",
+            "en-US": "Will the weather in Shanghai be suitable for going out tomorrow?"
+          },
+          "outcome": {
+            "zh-CN": "查询天气资料，结合温度和降水给出建议；使用前需配置和风天气。",
+            "en-US": "Query weather data and consider temperature and rainfall. Configure QWeather first."
+          }
+        }
+      ],
+      "documentation": {
+        "zh-CN": "### 查看天气\n\n告诉模型城市和关注的时间，可以查询天气并据此安排出行。结果取决于天气数据源覆盖范围和更新时间。\n\n### 开始使用\n\n启用后直接在对话中询问，例如「明天杭州适合骑行吗？」。如果城市存在重名，补充省份或国家可以减少歧义。",
+        "en-US": "### Check the weather\n\nSpecify a city and time to retrieve weather and plan activities. Coverage and freshness depend on the weather data source.\n\n### Get started\n\nEnable the package and ask, for example, whether tomorrow is suitable for cycling in Hangzhou. Include a region or country when city names are ambiguous."
+      }
     },
     "ai.senera/execution": {
       "targets": ["local", "sandbox"],

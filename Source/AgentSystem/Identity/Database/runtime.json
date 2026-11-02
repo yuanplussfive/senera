@@ -1,0 +1,15 @@
+{
+  "formatVersion": 1,
+  "id": "entity-references",
+  "dataClass": "authoritative",
+  "versions": [
+    {
+      "version": 1,
+      "name": "entity-references",
+      "sql": "CREATE TABLE entity_references (\n  domain TEXT NOT NULL,\n  reference TEXT NOT NULL,\n  entity_id TEXT NOT NULL,\n  PRIMARY KEY(domain, reference),\n  UNIQUE(domain, entity_id)\n) STRICT;\n\nCREATE TABLE entity_reference_aliases (\n  domain TEXT NOT NULL,\n  alias TEXT NOT NULL,\n  reference TEXT NOT NULL,\n  PRIMARY KEY(domain, alias),\n  FOREIGN KEY(domain, reference) REFERENCES entity_references(domain, reference)\n) STRICT;\n",
+      "checksum": "b472fda2998cd27fff666f53e84e460f3a4d3796ebd02984cf0d0b582b4a8dc4",
+      "snapshot": "-- table: entity_reference_aliases\ncreate table entity_reference_aliases ( domain text not null , alias text not null , reference text not null , primary key ( domain , alias ) , foreign key ( domain , reference ) references entity_references ( domain , reference ) ) strict;\n\n-- table: entity_references\ncreate table entity_references ( domain text not null , reference text not null , entity_id text not null , primary key ( domain , reference ) , unique ( domain , entity_id ) ) strict;\n",
+      "snapshotChecksum": "a3f41277e3496072b9c53e6e2068a968ef412817f4d300cb2dc7da00505b54aa"
+    }
+  ]
+}

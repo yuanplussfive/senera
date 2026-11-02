@@ -264,7 +264,7 @@ function CanvasArea({
           className={cn("!overflow-hidden !rounded-lg !border !border-line-subtle !bg-surface-raised !shadow-panel")}
         />
       </ReactFlow>
-      <NodeDetailDrawer step={selectedStep} onClose={() => setSelectedStepId(null)} />
+      <NodeDetailDrawer step={selectedStep} relatedSteps={run.steps} onClose={() => setSelectedStepId(null)} />
     </div>
   );
 }

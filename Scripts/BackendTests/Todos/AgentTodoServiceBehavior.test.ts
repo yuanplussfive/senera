@@ -41,6 +41,10 @@ describe("Todo service", () => {
         "待处理",
         "处理中",
       ]);
+      expect(fixture.service.promptContext("session-1").items[0]).toMatchObject({
+        createdAt: "2026-09-01T08:00:00.000+08:00",
+        updatedAt: "2026-09-01T08:00:00.000+08:00",
+      });
       expect(fixture.service.read("other-session").items).toEqual([]);
     } finally {
       fixture.close();

@@ -102,17 +102,19 @@ export function createSeneraWorkspaceRuntimeSnapshot(input: {
 }) {
   return () => {
     const snapshot = input.configService.snapshot();
+    const config = input.projectConfig(snapshot.value);
     return {
       version: snapshot.version,
       revision: snapshot.revision,
       sourceRevisions: {
+        modelPricing: JSON.stringify(config.ModelProviders.map((model) => [model.Id, model.Pricing])),
         mcpPackages: AgentMcpPackageScanner.sourceRevision(path.join(input.resourceRoot, "McpServers")),
         workspaceMcp: AgentMcpPackageScanner.sourceRevision(input.workspaceLayout.mcpRoot),
         systemSkills: AgentSkillScanner.sourceRevision(path.join(input.resourceRoot, "System", "Skills")),
         workspaceSkills: AgentSkillScanner.sourceRevision(input.workspaceLayout.skillRoot),
         mcpInputs: input.mcpInputsRevision(),
       },
-      config: input.projectConfig(snapshot.value),
+      config,
     };
   };
 }

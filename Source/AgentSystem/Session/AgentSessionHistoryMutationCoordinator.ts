@@ -17,12 +17,19 @@ import {
 import type { AgentSessionStore } from "./AgentSessionStore.js";
 import type { AgentMemoryService } from "../Memory/AgentMemoryService.js";
 import type { AgentSessionArtifactLifecycle } from "./AgentSessionArtifactLifecycle.js";
+import { releaseAgentLifecycleResources, type AgentLifecycleResource } from "../Core/AgentLifecycleResource.js";
+
+export type AgentSessionHistoryResource = AgentLifecycleResource<{
+  readonly sessionId: string;
+  readonly requestIds: readonly string[];
+}>;
 
 export interface AgentSessionHistoryMutationCoordinatorOptions {
   readonly store: AgentSessionStore;
   readonly piSessions?: AgentPiSessionMutationPort;
   readonly memory?: Pick<AgentMemoryService, "deleteFromSessionRequest">;
   readonly artifacts?: Pick<AgentSessionArtifactLifecycle, "removeSessionArtifactsFromRequests">;
+  readonly resources?: readonly AgentSessionHistoryResource[];
 }
 
 export interface AgentSessionHistoryMutationResult {
@@ -138,6 +145,15 @@ export class AgentSessionHistoryMutationCoordinator {
     requestIds: readonly string[],
   ): Promise<void> {
     if (requestIds.length === 0) return;
+    const failures = await releaseAgentLifecycleResources(this.options.resources ?? [], {
+      sessionId: mutation.sessionId,
+      requestIds,
+    });
+    if (failures.length)
+      throw new AggregateError(
+        failures.map((failure) => failure.error),
+        "Session history resource cleanup failed.",
+      );
     await this.options.artifacts?.removeSessionArtifactsFromRequests(mutation.sessionId, requestIds);
     this.options.memory?.deleteFromSessionRequest(mutation.sessionId, mutation.fromRequestId);
   }

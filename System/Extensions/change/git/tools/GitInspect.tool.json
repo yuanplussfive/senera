@@ -29,8 +29,8 @@
         "properties": {
           "operation": { "type": "string", "const": "diff" },
           "repository": { "type": "string", "minLength": 1 },
-          "scope": { "default": "working", "type": "string", "enum": ["working", "staged"] },
-          "paths": { "default": [], "maxItems": 256, "type": "array", "items": { "type": "string", "minLength": 1 } }
+          "scope": { "type": "string", "enum": ["working", "staged"] },
+          "paths": { "maxItems": 256, "type": "array", "items": { "type": "string", "minLength": 1 } }
         },
         "required": ["operation", "repository"],
         "additionalProperties": false
@@ -40,8 +40,8 @@
         "properties": {
           "operation": { "type": "string", "const": "log" },
           "repository": { "type": "string", "minLength": 1 },
-          "revision": { "default": "HEAD", "type": "string", "minLength": 1 },
-          "limit": { "default": 20, "type": "integer", "minimum": 1, "maximum": 200 }
+          "revision": { "type": "string", "minLength": 1 },
+          "limit": { "type": "integer", "minimum": 1, "maximum": 200 }
         },
         "required": ["operation", "repository"],
         "additionalProperties": false
@@ -51,7 +51,7 @@
         "properties": {
           "operation": { "type": "string", "const": "show" },
           "repository": { "type": "string", "minLength": 1 },
-          "revision": { "default": "HEAD", "type": "string", "minLength": 1 },
+          "revision": { "type": "string", "minLength": 1 },
           "path": { "type": "string", "minLength": 1 }
         },
         "required": ["operation", "repository"],
@@ -65,6 +65,32 @@
         },
         "required": ["operation", "repository"],
         "additionalProperties": false
+      }
+    ],
+    "allOf": [
+      {
+        "if": { "type": "object", "properties": { "operation": { "const": "diff" } }, "required": ["operation"] },
+        "then": {
+          "type": "object",
+          "properties": {
+            "scope": { "default": "working" },
+            "paths": { "default": [] }
+          }
+        }
+      },
+      {
+        "if": { "type": "object", "properties": { "operation": { "const": "log" } }, "required": ["operation"] },
+        "then": {
+          "type": "object",
+          "properties": {
+            "revision": { "default": "HEAD" },
+            "limit": { "default": 20 }
+          }
+        }
+      },
+      {
+        "if": { "type": "object", "properties": { "operation": { "const": "show" } }, "required": ["operation"] },
+        "then": { "type": "object", "properties": { "revision": { "default": "HEAD" } } }
       }
     ],
     "type": "object"
@@ -109,7 +135,6 @@
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
   "runtime": {
     "Lifecycle": "OneShot",
-    "ProtocolVersion": 2,
     "ResultAssessment": "ProcessExit",
     "Scheduling": "ResourceClaims",
     "Capabilities": { "OutputStreaming": true, "Cancellation": true }

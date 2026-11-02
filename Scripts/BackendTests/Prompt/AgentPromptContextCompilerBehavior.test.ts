@@ -21,7 +21,7 @@ describe("agent prompt context compiler", () => {
     expect(compile().ContextLayers).toEqual([
       { name: "kernel", source: "runtime", stability: "stable", included: true },
       { name: "persona", source: "runtime", stability: "stable", included: false },
-      { name: "memory", source: "continuity", stability: "turn", included: false },
+      { name: "memory", source: "continuity", stability: "stable", included: false },
       { name: "workflow", source: "runtime", stability: "turn", included: false },
       { name: "task", source: "request", stability: "turn", included: false },
     ]);
@@ -33,7 +33,7 @@ describe("agent prompt context compiler", () => {
     expect(second.ContextRevisions.context).toBe(first.ContextRevisions.context);
     expect(second.ContextRevisions.volatile).not.toBe(first.ContextRevisions.volatile);
   });
-  test("native memory is selected for turn context without altering the stable provider prefix", () => {
+  test("memory remains a separately versioned stable layer without invalidating the static template cache", () => {
     const first = compile();
     const memory = {
       ...EmptyAgentContinuityMemoryPromptContext,

@@ -1,0 +1,119 @@
+{
+  "name": "ChannelReadArchive",
+  "loading": "Dynamic",
+  "description": "Read older persisted messages and notices in this conversation, including before you joined. Pages are chronological; before pages backwards. Archive cursors are separate from live inbox sequences and do not acknowledge or wake it.",
+  "presentation": {
+    "category": "channel-message",
+    "icon": "archive",
+    "activity": {
+      "action": {
+        "zh-CN": "查阅群聊记录",
+        "en-US": "Read conversation archive"
+      }
+    },
+    "preview": {
+      "body": {
+        "pointer": "/entries",
+        "from": "result"
+      }
+    }
+  },
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 200,
+        "default": 40
+      },
+      "before": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Exclusive archive sequence returned by the previous archive page. Omit for the latest page."
+      }
+    },
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "entries": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "sequence": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "key": {
+              "type": "string",
+              "minLength": 1
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "required": ["sequence", "key", "payload"],
+          "additionalProperties": false
+        }
+      },
+      "before": {
+        "type": ["integer", "null"],
+        "minimum": 1
+      }
+    },
+    "required": ["entries", "before"],
+    "additionalProperties": false
+  },
+  "permissions": ["channel:read"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ResultAssessment": "ProcessExit",
+    "DeadlinePolicy": "ModelAware",
+    "Scheduling": "SelfManaged",
+    "Capabilities": {
+      "Cancellation": true
+    }
+  },
+  "resources": [],
+  "sources": [],
+  "surfaces": ["channel"],
+  "platforms": ["onebot11", "onebot"],
+  "search": {
+    "Summary": "查阅当前 QQ 私聊或群聊的完整持久化原始消息与事件，包括加入前和旧版本中的聊天记录。",
+    "Tags": ["OneBot", "群聊", "历史", "存档"],
+    "Capabilities": [
+      {
+        "Id": "channel.archive",
+        "Title": "Read conversation archive",
+        "Description": "Page through original OneBot messages and notices without changing the live inbox cursor.",
+        "Facets": {
+          "Actions": ["read"],
+          "Targets": ["current-onebot-conversation-archive"],
+          "Inputs": ["limit", "before"],
+          "Outputs": ["native-timeline"],
+          "Effects": ["read-only"]
+        },
+        "Aliases": ["查阅 QQ 旧消息", "read onebot archive"],
+        "Risk": {
+          "SideEffect": "read-only",
+          "Permission": "channel-read"
+        }
+      }
+    ],
+    "UseCases": ["需要查阅当前对话较早的原始消息或平台事件"],
+    "Examples": ["查阅加入群聊前的讨论"],
+    "Avoid": ["新消息使用 ChannelReadHistory；不要混用两种记录的游标"]
+  },
+  "evidenceCapabilities": []
+}

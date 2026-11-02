@@ -1,6 +1,7 @@
 import path from "node:path";
 import { resolveAgentWorkspaceLayout } from "../Core/AgentWorkspaceLayout.js";
 import { normalizeAgentResourceUri } from "../Resources/AgentResourceUri.js";
+import { findAgentResourceRecord } from "../Resources/AgentResourceRegistry.js";
 import { AgentArtifactManifestSqliteStore, type IndexedManifestAsset } from "./AgentArtifactManifestSqliteStore.js";
 import type { ArtifactManifestRecord } from "./AgentArtifactMemoryTypes.js";
 
@@ -75,10 +76,18 @@ export class AgentArtifactManifestIndexCache {
     const entry = this.getEntry(input.artifactRoot, input.workspaceRoot);
     try {
       if (input.refresh) await this.synchronize(entry, input.artifactRoot, input.workspaceRoot);
-      let checkpoint = entry.store.findCheckpoint(input.artifactRoot, input);
+      const resolveCheckpoint = () => {
+        const resource = input.artifactId ? findAgentResourceRecord(input.workspaceRoot, input.artifactId) : undefined;
+        if (resource?.state === "deleted") return undefined;
+        return entry.store.findCheckpoint(input.artifactRoot, {
+          ...input,
+          artifactId: resource?.kind === "artifact" ? resource.entity_id : input.artifactId,
+        });
+      };
+      let checkpoint = resolveCheckpoint();
       if (!checkpoint) {
         await this.synchronize(entry, input.artifactRoot, input.workspaceRoot);
-        checkpoint = entry.store.findCheckpoint(input.artifactRoot, input);
+        checkpoint = resolveCheckpoint();
       }
       return checkpoint;
     } finally {

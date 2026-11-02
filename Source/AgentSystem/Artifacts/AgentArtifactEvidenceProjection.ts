@@ -38,7 +38,9 @@ export function collectArtifactEvidence(
 
   for (const candidate of candidates) {
     const record = projectEvidenceCandidate(candidate, artifactId);
-    if (record && !evidence.has(record.key)) {
+    if (!record) continue;
+    const existing = evidence.get(record.key);
+    if (!existing || (existing.origin === "result" && record.origin === "supplement")) {
       evidence.set(record.key, record);
     }
   }
@@ -80,6 +82,7 @@ function projectEvidenceCandidate(
   const source = readNonBlank(candidate.source) ?? "Tool result";
   const confidence = normalizeConfidence(candidate.confidence);
   return {
+    origin: candidate.origin === "result" ? "result" : "supplement",
     key,
     evidenceUri: createAgentEvidenceUri({ artifactId, evidenceKey: key }),
     kind,
@@ -155,6 +158,7 @@ function projectScopedEvidenceRule(root: unknown, rule: ToolArtifactEvidenceMani
 
     return [
       {
+        origin: "result",
         key,
         evidenceUri: "",
         kind: rule.Kind,

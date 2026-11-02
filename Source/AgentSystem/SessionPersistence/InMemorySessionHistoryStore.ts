@@ -6,6 +6,7 @@ import type { AgentSession } from "../Session/AgentSession.js";
 import type {
   AgentSessionCursorPage,
   AgentSessionCursorPageRequest,
+  AgentSessionRunEventPageRequest,
   AgentSessionForkHistory,
   AgentSessionForkSnapshot,
   AgentSessionHistoryView,
@@ -18,6 +19,8 @@ import type {
 import { InMemorySessionEntryStore } from "./InMemorySessionEntryStore.js";
 import { InMemorySessionRunHistoryStore } from "./InMemorySessionRunHistoryStore.js";
 import { InMemorySessionTraceStore } from "./InMemorySessionTraceStore.js";
+import { selectAgentSessionHistoryRequestPage } from "../Session/AgentSessionHistoryWindow.js";
+import { assertAgentSessionRepositoryPageSize } from "../Session/AgentSessionHistoryPaging.js";
 
 export class InMemorySessionHistoryStore {
   private readonly entries = new InMemorySessionEntryStore();
@@ -42,6 +45,23 @@ export class InMemorySessionHistoryStore {
       runSnapshotHighWaterMark: this.runs.snapshotHighWaterMark(session.id),
       runEventHighWaterMark: this.runs.eventHighWaterMark(session.id),
     };
+  }
+
+  loadHistoryRequestPage(
+    sessionId: string,
+    request: import("../Session/AgentSessionHistoryWindow.js").AgentSessionHistoryRequestPageInput,
+  ) {
+    assertAgentSessionRepositoryPageSize(request.pageSize);
+    const summaries = new Map(
+      this.entries.requestSummaries(sessionId, request.entryHighWaterMark ?? -1).map((item) => [item.requestId, item]),
+    );
+    for (const summary of this.runs.requestSummaries(sessionId, request.runSnapshotHighWaterMark ?? -1))
+      summaries.set(summary.requestId, summary);
+    return selectAgentSessionHistoryRequestPage([...summaries.values()], request);
+  }
+
+  loadStepTracesForRequests(sessionId: string, requestIds: readonly string[], throughRowId: number) {
+    return this.traces.loadForRequests(sessionId, requestIds, throughRowId);
   }
 
   hasRequest(sessionId: string, requestId: string): boolean {
@@ -225,7 +245,7 @@ export class InMemorySessionHistoryStore {
 
   loadRunEventPage(
     sessionId: string,
-    request: AgentSessionCursorPageRequest,
+    request: AgentSessionRunEventPageRequest,
   ): AgentSessionCursorPage<AgentEventEnvelope> {
     return this.runs.loadEventPage(sessionId, request);
   }

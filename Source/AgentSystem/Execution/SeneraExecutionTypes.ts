@@ -1,14 +1,10 @@
 import type {
-  Context,
-  ExecutionEnv,
-  ExecutionError,
-  FileError,
-  FileInfo,
-  Result,
-  ShellExecOptions,
-  ShellExecResult,
-  ShellOutputUpdate,
-} from "@earendil-works/pi-agent-core";
+  SeneraOperationContext as Context,
+  SeneraFileError as FileError,
+  SeneraFileInfo as FileInfo,
+  SeneraOperationResult as Result,
+} from "./SeneraFileSystemTypes.js";
+import type { TruncationResult } from "@earendil-works/pi-coding-agent";
 import type { SeneraProcessExecutionProfile } from "./SeneraExecutionProfile.js";
 import type {
   AgentResourceAccessAuthority,
@@ -113,46 +109,35 @@ export interface SeneraTextLineReader {
 
 export type SeneraExecutionContext = Context | AbortSignal | undefined;
 
-export interface SeneraShellExecOptions extends Partial<ShellExecOptions> {
+export interface SeneraShellOutputMetadata {
+  readonly truncation: Omit<TruncationResult, "content">;
+  readonly spillPath?: string;
+}
+
+export interface SeneraShellExecOptions {
+  readonly cwd?: string;
+  readonly env?: NodeJS.ProcessEnv;
+  /** Timeout in seconds. */
+  readonly timeout?: number;
+  readonly capture?: { readonly limits: { readonly maxBytes?: number; readonly maxLines?: number } };
   readonly abortSignal?: AbortSignal;
   readonly onStdout?: (chunk: string) => void;
   readonly onStderr?: (chunk: string) => void;
-  readonly onUpdate?: (update: ShellOutputUpdate, context: Context) => void;
+  readonly onUpdate?: (
+    update: { readonly kind: "replace"; readonly output: SeneraShellOutputMetadata & { readonly text: string } },
+    context: Context,
+  ) => void;
 }
 
-export interface SeneraShellExecResult extends ShellExecResult {
+export interface SeneraShellExecResult extends SeneraShellOutputMetadata {
+  readonly exitCode: number;
   readonly stdout: string;
   readonly stderr: string;
 }
 
-/**
- * Senera's resource-aware environment keeps the Pi 0.87 execution contract
- * while accepting the pre-0.87 convenience calls used by host-owned tools.
- * The implementation normalizes both forms at the boundary; there is only
- * one filesystem and process implementation underneath.
- */
-export interface SeneraExecutionEnv extends Omit<
-  ExecutionEnv,
-  | "absolutePath"
-  | "joinPath"
-  | "readTextFile"
-  | "openTextLineReader"
-  | "readTextLines"
-  | "readBinaryFile"
-  | "writeFile"
-  | "appendFile"
-  | "renameFile"
-  | "fileInfo"
-  | "listDir"
-  | "canonicalPath"
-  | "exists"
-  | "createDir"
-  | "remove"
-  | "createTempDir"
-  | "createTempFile"
-  | "cleanup"
-  | "exec"
-> {
+/** Host-owned resource and execution contract; Pi tools use explicit operation adapters. */
+export interface SeneraExecutionEnv {
+  readonly cwd: string;
   readonly workspaceRoot: string;
   readonly capabilities: SeneraExecutionRuntimeCapabilities;
   absolutePath(value: string, context?: SeneraExecutionContext): Promise<Result<string, FileError>>;
@@ -181,6 +166,8 @@ export interface SeneraExecutionEnv extends Omit<
     context?: SeneraExecutionContext,
   ): Promise<Result<void, FileError>>;
   fileInfo(value: string, context?: Context): Promise<Result<FileInfo, FileError>>;
+  /** Enumerate names without reading metadata or following individual children. */
+  readDirectoryNames(value: string, context?: SeneraExecutionContext): Promise<Result<string[], FileError>>;
   listDir(value: string, context?: SeneraExecutionContext): Promise<Result<FileInfo[], FileError>>;
   canonicalPath(value: string, context?: SeneraExecutionContext): Promise<Result<string, FileError>>;
   exists(value: string, context?: Context): Promise<Result<boolean, FileError>>;
@@ -204,7 +191,7 @@ export interface SeneraExecutionEnv extends Omit<
     command: string,
     options?: SeneraShellExecOptions,
     context?: Context,
-  ): Promise<Result<SeneraShellExecResult, ExecutionError>>;
+  ): Promise<Result<SeneraShellExecResult, SeneraExecutionError>>;
   resolveResourcePath(value: string, intent: AgentResourceAccessIntent): Promise<Result<string, FileError>>;
   inspectResourcePath(
     value: string,

@@ -11,12 +11,18 @@ import {
 } from "../../../Source/AgentSystem/Continuity/AgentContinuityLedger.js";
 import { SeneraLocalExecutionEnv } from "../../../Source/AgentSystem/Execution/SeneraLocalExecutionEnv.js";
 import type { AgentHostToolContext } from "../../../Source/AgentSystem/ToolRuntime/AgentToolHostCapabilityRegistry.js";
+import { AgentToolHostCapabilityRegistry } from "../../../Source/AgentSystem/ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import { restoreWorkspaceCheckpointHostTool } from "../../../Source/AgentSystem/ToolRuntime/AgentWorkspaceCheckpointRuntime.js";
+import { AgentToolRunner } from "../../../Source/AgentSystem/ToolRuntime/AgentToolRunner.js";
+import { AgentJsonSchemaPromptContractProjector } from "../../../Source/AgentSystem/ToolContracts/AgentJsonSchemaPromptContractProjector.js";
 import type {
   ToolWorkspaceChange,
   ToolWorkspaceFileSnapshot,
   ToolWorkspaceSnapshot,
 } from "../../../Source/AgentSystem/Types/ToolRuntimeTypes.js";
+import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
+import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
+import { loadSystemToolContractByName } from "../SystemTools/SystemToolContractTestSupport.js";
 
 const temporaryRoots: string[] = [];
 
@@ -37,7 +43,14 @@ describe("WorkspaceRestoreCheckpoint host tool", () => {
       },
       createContext(fixture.workspaceRoot),
     );
-    expect(afterResult.response).toMatchObject({ ok: true, result: { target: "after", restoredPaths: ["src.txt"] } });
+    expect(afterResult.response).toMatchObject({
+      ok: true,
+      result: {
+        target: "after",
+        restoredPaths: ["src.txt"],
+        checkpoint: { capturedAt: "2026-09-12T08:00:00.000+08:00" },
+      },
+    });
     await expect(fs.readFile(path.join(fixture.workspaceRoot, "src.txt"), "utf8")).resolves.toBe("new");
 
     const beforeResult = await restoreWorkspaceCheckpointHostTool(
@@ -120,10 +133,10 @@ describe("WorkspaceRestoreCheckpoint host tool", () => {
 
   test("reports invalid arguments without touching the workspace", async () => {
     const fixture = await createFixture();
-    const result = await restoreWorkspaceCheckpointHostTool(
-      { artifactUri: fixture.artifactUri, currentRevision: "" },
-      createContext(fixture.workspaceRoot),
-    );
+    const result = await runPackageValidatedRestore(fixture.workspaceRoot, {
+      artifactUri: fixture.artifactUri,
+      currentRevision: "",
+    });
 
     expect(result.response).toMatchObject({ ok: false, error: { code: "InvalidToolArguments" } });
   });
@@ -220,9 +233,64 @@ function snapshot(workspaceRoot: string, text: string): ToolWorkspaceSnapshot {
 function createContext(workspaceRoot: string): AgentHostToolContext {
   return {
     workspaceRoot,
-    tool: { name: "WorkspaceRestoreCheckpoint", runtime: { Lifecycle: "Immediate", ProtocolVersion: 2 } },
+    tool: { name: "WorkspaceRestoreCheckpoint", runtime: { Lifecycle: "Immediate" } },
     config: {},
     registry: { getTool: () => undefined },
     executionEnv: new SeneraLocalExecutionEnv({ workspaceRoot }),
   } as unknown as AgentHostToolContext;
+}
+
+const toolContracts = new AgentJsonSchemaPromptContractProjector();
+
+function workspaceRestoreTool(): RegisteredTool {
+  const published = loadSystemToolContractByName("WorkspaceRestoreCheckpoint");
+  return {
+    owner: {
+      kind: "system",
+      name: "workspace-patch",
+      title: "Workspace patch",
+      rootPath: process.cwd(),
+      revision: "test",
+      trusted: true,
+      requiresApproval: false,
+    },
+    name: published.contract.name,
+    loading: published.contract.loading,
+    contract: {
+      digest: "WorkspaceRestoreCheckpoint.package-contract",
+      arguments: toolContracts.project(published.contract.inputSchema),
+      outputSchema: published.contract.outputSchema,
+    },
+    permissions: [...published.contract.permissions],
+    handler: {
+      kind: "HostCapability",
+      capability: published.contribution.capability,
+      ...(published.contract.resources.length > 0 ? { resources: published.contract.resources } : {}),
+    },
+    execution: published.contract.execution,
+    runtime: published.contract.runtime,
+    sources: published.contract.sources,
+    childGrant: "inherit",
+    evidenceCapabilities: published.contract.evidenceCapabilities,
+  };
+}
+
+async function runPackageValidatedRestore(workspaceRoot: string, arguments_: Record<string, unknown>) {
+  const tool = workspaceRestoreTool();
+  const capabilities = new AgentToolHostCapabilityRegistry().register(
+    tool.handler.kind === "HostCapability" ? tool.handler.capability : "",
+    restoreWorkspaceCheckpointHostTool,
+  );
+  const runner = new AgentToolRunner(
+    {} as AgentSystemConfig,
+    workspaceRoot,
+    capabilities,
+    { getTool: () => tool },
+    new SeneraLocalExecutionEnv({ workspaceRoot }),
+  );
+  try {
+    return await runner.run(tool, arguments_);
+  } finally {
+    await runner.close();
+  }
 }

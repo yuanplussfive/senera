@@ -5,6 +5,7 @@ import type { AgentExtensionOwner } from "./AgentExtensionRuntimeTypes.js";
 import type { AgentToolPerceptionDeclaration } from "./AgentToolPerceptionTypes.js";
 import type { AgentToolPresentation } from "./AgentToolPresentationTypes.js";
 import type { AgentInteractionSurface } from "../Interaction/AgentInteractionContext.js";
+import type { AgentChannelKind } from "../Channels/AgentChannelTypes.js";
 import type {
   AgentToolDiscoverySource,
   ToolApprovalManifest,
@@ -34,6 +35,7 @@ export type RegisteredToolHandler =
     };
 
 export interface RegisteredToolContract {
+  /** Invocation schemas, instructions and calling boundaries; independent of handler and UI revisions. */
   readonly digest: string;
   readonly arguments?: AgentPromptContractView;
   readonly outputSchema?: Readonly<Record<string, unknown>>;
@@ -43,6 +45,8 @@ export interface RegisteredTool {
   availability?: AgentToolAvailability;
   owner: AgentExtensionOwner;
   name: string;
+  /** Producer-owned invocation instructions; search summaries are discovery metadata. */
+  description?: string;
   loading: ToolLoadingMode;
   /** Omitted means the tool's contract is portable across all planner protocols. */
   planningModes?: readonly ToolPlanningMode[];
@@ -63,6 +67,8 @@ export interface RegisteredTool {
   artifactPolicy?: ToolArtifactPolicyManifest;
   /** Explicit UI/runtime surfaces for which this tool may be exposed. Omitted means all surfaces. */
   interactionSurfaces?: readonly AgentInteractionSurface[];
+  /** Optional platform restriction for channel-scoped tools. */
+  interactionPlatforms?: readonly AgentChannelKind[];
 }
 
 /**

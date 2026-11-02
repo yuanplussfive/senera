@@ -1,5 +1,36 @@
 import type { EventEnvelope, StepTraceDto } from "../../api/eventTypes";
 import type { TimelineStep } from "./types";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+
+export function scopedStepId(env: EventEnvelope, slot: string, detail?: string | number): string {
+  return [
+    env.scope?.workflowName,
+    env.scope?.role,
+    env.scope?.jobId,
+    env.scope?.childRunId,
+    env.requestId,
+    env.step ?? 0,
+    slot,
+    detail,
+  ]
+    .filter((value) => value !== undefined && value !== "")
+    .join(":");
+}
+
+export function scopedStepTitle(env: EventEnvelope, title: string): string {
+  const owner = env.scope?.role === "merge" ? frontendMessage("workflow.scope.merge") : env.scope?.agentName;
+  return owner ? `${owner} · ${title}` : title;
+}
+
+export function scopedStepDescription(env: EventEnvelope, description?: string): string | undefined {
+  const workflowName = env.scope?.workflowName;
+  if (!workflowName) return description;
+  return description ? `${workflowName} · ${description}` : workflowName;
+}
+
+export function toolCallStepId(env: EventEnvelope, callId: string): string {
+  return env.scope?.parentRequestId ? scopedStepId(env, "tool", callId) : `tool-${callId}`;
+}
 
 /**
  * Returns the semantic identity used when tool records are projected into

@@ -5,6 +5,38 @@ import {
 } from "../../../Source/AgentSystem/Extensions/AgentExtensionInput.js";
 
 describe("MCP input definitions", () => {
+  test("validates declared model capabilities and duration presentation against input types", () => {
+    const model = {
+      id: "model",
+      title: "Image model",
+      type: "string",
+      modelSelection: { valueKind: "model-name", capability: "ImageOutput" },
+    };
+    expect(AgentExtensionInputDefinitionSchema.parse(model).modelSelection?.capability).toBe("ImageOutput");
+    expect(AgentExtensionInputDefinitionSchema.safeParse({ ...model, secret: true }).success).toBe(false);
+    expect(
+      AgentExtensionInputDefinitionSchema.safeParse({
+        ...model,
+        modelSelection: { valueKind: "model-name", capability: "unknown" },
+      }).success,
+    ).toBe(false);
+    expect(
+      AgentExtensionInputDefinitionSchema.parse({
+        id: "timeout",
+        title: "Timeout",
+        type: "number",
+        durationUnit: "milliseconds",
+      }).durationUnit,
+    ).toBe("milliseconds");
+    expect(
+      AgentExtensionInputDefinitionSchema.safeParse({
+        id: "timeout",
+        title: "Timeout",
+        type: "string",
+        durationUnit: "milliseconds",
+      }).success,
+    ).toBe(false);
+  });
   test("validates multiple choices as unique scalar values", () => {
     const definition = AgentExtensionInputDefinitionSchema.parse({
       id: "regions",

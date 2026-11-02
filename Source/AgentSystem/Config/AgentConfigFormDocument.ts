@@ -8,9 +8,16 @@ import {
   AgentExtensionLocalizedTextSchema,
   type AgentExtensionLocalizedText,
 } from "../Extensions/AgentExtensionLocalization.js";
-import { AgentConfigFormOptionCatalogs, AgentConfigFormVersion } from "../Types/ConfigFormTypes.js";
+import {
+  AgentConfigFormOptionCatalogs,
+  AgentConfigFormVersion,
+  AgentConfigFormModelCapabilities,
+  type AgentConfigFormInputBounds,
+  type AgentConfigFormFieldPresence,
+} from "../Types/ConfigFormTypes.js";
 import { listAgentConfigLeafPaths, readAgentConfigFieldContract } from "./AgentConfigFieldContractCatalog.js";
 import { parseJsonText } from "../Core/AgentJsonParsing.js";
+import { AgentDurationUnits } from "../Types/AgentDurationUnits.js";
 
 const FormSchemaPath = path.join(moduleDirPath(import.meta.url), "AgentSystemConfig.form.json");
 
@@ -56,7 +63,7 @@ const ConfigFormModelInheritanceSchema = z
 const ConfigFormModelSelectionSchema = z
   .object({
     id: z.string().min(1),
-    capability: z.enum(["Chat", "Vision", "ImageOutput", "Reasoning", "DeveloperRole", "StreamingUsage"]),
+    capability: z.enum(AgentConfigFormModelCapabilities),
     valueKind: z.enum(["model-id"]),
     mutation: z.enum(["config", "default-model"]),
     presentation: z.enum(["assignment", "inline"]).optional(),
@@ -89,41 +96,40 @@ const ConfigFormModelSelectionSchema = z
     }
   });
 
-export type ConfigFormFieldDefinition<TText = string> = {
-  path: string[];
-  label: TText;
-  description?: TText;
-  placeholder?: TText;
-  type: z.infer<typeof ConfigFormFieldTypeSchema>;
-  required: boolean;
-  essential: boolean;
-  itemType?: z.infer<typeof ConfigFormFieldTypeSchema>;
-  options?: Array<z.infer<typeof ConfigFormFieldOptionValueSchema>>;
-  optionLabels?: Record<string, TText>;
-  optionSource?: z.infer<typeof ConfigFormOptionSourceSchema>;
-  min?: number;
-  max?: number;
-  minLength?: number;
-  maxLength?: number;
-  step?: number;
-  secret?: boolean;
-  multiline?: boolean;
-  level?: z.infer<typeof ConfigFormFieldLevelSchema>;
-  addLabel?: string;
-  itemLabelPath?: string[];
-  itemFields?: ConfigFormFieldDefinition<TText>[];
-  defaultValue?: unknown;
-  defaultItem?: Record<string, unknown>;
-  keyPlaceholder?: string;
-  valuePlaceholder?: string;
-  modelSelection?: z.infer<typeof ConfigFormModelSelectionSchema>;
-  visibleWhen?: z.infer<typeof ConfigFormVisibilityConditionSchema>;
-};
+export type ConfigFormFieldDefinition<TText = string> = AgentConfigFormInputBounds &
+  AgentConfigFormFieldPresence & {
+    path: string[];
+    label: TText;
+    description?: TText;
+    placeholder?: TText;
+    type: z.infer<typeof ConfigFormFieldTypeSchema>;
+    required: boolean;
+    essential: boolean;
+    itemType?: z.infer<typeof ConfigFormFieldTypeSchema>;
+    options?: Array<z.infer<typeof ConfigFormFieldOptionValueSchema>>;
+    optionLabels?: Record<string, TText>;
+    optionSource?: z.infer<typeof ConfigFormOptionSourceSchema>;
+    step?: number;
+    durationUnit?: (typeof AgentDurationUnits)[number];
+    secret?: boolean;
+    multiline?: boolean;
+    level?: z.infer<typeof ConfigFormFieldLevelSchema>;
+    addLabel?: string;
+    itemLabelPath?: string[];
+    itemFields?: ConfigFormFieldDefinition<TText>[];
+    defaultValue?: unknown;
+    defaultItem?: Record<string, unknown>;
+    keyPlaceholder?: string;
+    valuePlaceholder?: string;
+    modelSelection?: z.infer<typeof ConfigFormModelSelectionSchema>;
+    visibleWhen?: z.infer<typeof ConfigFormVisibilityConditionSchema>;
+  };
 
 export type ConfigFormSectionDefinition<TText = string> = {
   id: string;
   label: TText;
   description?: TText;
+  documentation?: TText;
   icon?: string;
   level?: z.infer<typeof ConfigFormFieldLevelSchema>;
   fields?: ConfigFormFieldDefinition<TText>[];
@@ -146,9 +152,12 @@ function createConfigFormFieldSchema<TText>(textSchema: z.ZodType<TText>): z.Zod
         optionSource: ConfigFormOptionSourceSchema.optional(),
         min: z.number().optional(),
         max: z.number().optional(),
+        minExclusive: z.boolean().optional(),
+        maxExclusive: z.boolean().optional(),
         minLength: z.number().int().min(0).optional(),
         maxLength: z.number().int().min(1).optional(),
         step: z.number().optional(),
+        durationUnit: z.enum(AgentDurationUnits).optional(),
         secret: z.boolean().optional(),
         multiline: z.boolean().optional(),
         level: ConfigFormFieldLevelSchema.optional(),
@@ -162,7 +171,18 @@ function createConfigFormFieldSchema<TText>(textSchema: z.ZodType<TText>): z.Zod
         modelSelection: ConfigFormModelSelectionSchema.optional(),
         visibleWhen: ConfigFormVisibilityConditionSchema.optional(),
       })
-      .strict(),
+      .strict()
+      .superRefine((field, context) => {
+        if (field.minExclusive && field.min === undefined) {
+          context.addIssue({ code: "custom", path: ["min"], message: "An exclusive minimum needs a lower bound." });
+        }
+        if (field.maxExclusive && field.max === undefined) {
+          context.addIssue({ code: "custom", path: ["max"], message: "An exclusive maximum needs an upper bound." });
+        }
+        if (field.durationUnit && field.type !== "number") {
+          context.addIssue({ code: "custom", path: ["durationUnit"], message: "Durations require a number field." });
+        }
+      }),
   );
   return fieldSchema;
 }
@@ -176,6 +196,7 @@ function createConfigFormSectionSchema<TText>(
       id: z.string().min(1),
       label: textSchema,
       description: textSchema.optional(),
+      documentation: textSchema.optional(),
       icon: z.string().min(1).optional(),
       level: ConfigFormFieldLevelSchema.optional(),
       fields: z.array(fieldSchema).optional(),
@@ -242,9 +263,9 @@ export function readConfigFormDocument(): ConfigFormDocument {
     });
   }
 
-  assertConfigFormRequiredDeclarations(result.data);
-  assertConfigFormCoverage(result.data);
-  cachedDocument = result.data;
+  const document = bindConfigFormSchemaContracts(result.data);
+  assertConfigFormCoverage(document);
+  cachedDocument = document;
   return cachedDocument;
 }
 
@@ -300,15 +321,22 @@ function renderPath(path: readonly string[]): string {
   return path.join(".");
 }
 
-function assertConfigFormRequiredDeclarations(document: ConfigFormDocument): void {
-  for (const section of document.form.sections ?? []) {
-    for (const field of section.fields ?? []) {
-      assertFieldRequiredDeclaration(field, []);
-    }
-  }
+function bindConfigFormSchemaContracts(document: ConfigFormDocument): ConfigFormDocument {
+  return {
+    form: {
+      ...document.form,
+      sections: document.form.sections?.map((section) => ({
+        ...section,
+        fields: section.fields?.map((field) => bindFieldSchemaContract(field, [])),
+      })),
+    },
+  };
 }
 
-function assertFieldRequiredDeclaration(field: ConfigFormFieldDefinition, basePath: readonly string[]): void {
+function bindFieldSchemaContract(
+  field: ConfigFormFieldDefinition,
+  basePath: readonly string[],
+): ConfigFormFieldDefinition {
   const path = [...basePath, ...field.path];
   const contract = readAgentConfigFieldContract(path);
   if (field.required !== contract.required) {
@@ -319,10 +347,18 @@ function assertFieldRequiredDeclaration(field: ConfigFormFieldDefinition, basePa
   if (contract.options && !sameOptions(field.options, contract.options)) {
     throw new Error(`Agent config form options do not match AgentSystemConfigSchema: ${path.join(".")}.`);
   }
-  assertModelSelectionFieldType(field, path);
-  for (const itemField of field.itemFields ?? []) {
-    assertFieldRequiredDeclaration(itemField, path);
+  for (const key of ["min", "max", "minExclusive", "maxExclusive", "minLength", "maxLength"] as const) {
+    if (field[key] !== undefined) {
+      throw new Error(`Agent config form ${key} must come from AgentSystemConfigSchema: ${path.join(".")}.`);
+    }
   }
+  assertModelSelectionFieldType(field, path);
+  return {
+    ...field,
+    ...contract.inputBounds,
+    optionalParents: contract.optionalParents,
+    itemFields: field.itemFields?.map((itemField) => bindFieldSchemaContract(itemField, path)),
+  };
 }
 
 function assertModelSelectionFieldType(field: ConfigFormFieldDefinition, path: readonly string[]): void {

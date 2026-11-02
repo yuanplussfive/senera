@@ -11,7 +11,6 @@ import {
 
 export interface AgentToolRuntimeCapabilities {
   lifecycle: "immediate" | "one-shot" | "persistent" | "remote-job";
-  protocolVersion?: ToolRuntimeManifest["ProtocolVersion"];
   progress: boolean;
   outputStreaming: boolean;
   interactiveInput: boolean;
@@ -32,7 +31,6 @@ export function resolveAgentToolRuntimeCapabilities(tool: RegisteredTool): Agent
   const capabilities = runtime.Capabilities ?? {};
   return {
     lifecycle: LifecycleProjection[runtime.Lifecycle],
-    protocolVersion: runtime.ProtocolVersion,
     progress: enabled(capabilities, "Progress"),
     outputStreaming: enabled(capabilities, "OutputStreaming"),
     interactiveInput: enabled(capabilities, "InteractiveInput"),
@@ -52,7 +50,6 @@ export function explainUnsupportedAgentToolRuntime(tool: RegisteredTool): string
     ...inspectAgentToolRuntimeContract({
       handlerKind: tool.handler.kind,
       lifecycle: tool.runtime.Lifecycle,
-      protocolVersion: tool.runtime.ProtocolVersion,
     }),
     ...inspectAgentToolRuntimeCapabilityContract({
       handlerKind: tool.handler.kind,

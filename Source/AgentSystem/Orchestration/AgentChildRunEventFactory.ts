@@ -115,12 +115,16 @@ function createAgentChildRunEventContext(record: AgentChildRunRecord) {
 }
 
 function createAgentChildRunEventIdentity(record: AgentChildRunRecord) {
+  const label = record.launchContract.label;
   return {
     childRunId: record.id,
     ownerRunId: record.ownerRunId,
     nodeId: record.nodeId,
     ...(record.workItemId ? { workItemId: record.workItemId } : {}),
     ...(record.taskDigest ? { taskDigest: record.taskDigest } : {}),
+    ...(typeof label === "string" && label.trim() ? { taskLabel: label.trim() } : {}),
+    startedAt: record.startedAt ?? record.createdAt,
+    ...(record.completedAt ? { completedAt: record.completedAt } : {}),
     childSessionId: record.childSessionId,
     agentName: record.agentName,
     status: record.status,

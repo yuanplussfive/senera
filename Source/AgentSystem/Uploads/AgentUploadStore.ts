@@ -5,11 +5,9 @@ import path from "node:path";
 import { Readable, Transform, type TransformCallback } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { extension as mimeExtension } from "mime-types";
-import type { AgentErrorMessageKey } from "../I18n/AgentMessageCatalog.js";
 import type { ResolvedAgentUploadsConfig } from "../Types/AgentConfigTypes.js";
 import {
   AgentUploadFileNames,
-  createAgentUploadId,
   resolveAgentUploadDir,
   resolveAgentUploadFile,
   resolveAgentUploadRoot,
@@ -20,15 +18,15 @@ import {
   parseAgentResourceId,
 } from "../Resources/AgentResourceUri.js";
 import { detectAgentUploadMime } from "./AgentUploadMime.js";
-import { parseJsonText } from "../Core/AgentJsonParsing.js";
-import { AgentBaseError } from "../Core/AgentBaseError.js";
-import { removeAgentPathWithRetry } from "../Core/AgentFs.js";
-import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
+import { allocateAgentResourceId } from "../Resources/AgentResourceIdAllocator.js";
+import { isMissingFileError, removeAgentPathWithRetry, writeFileAtomic } from "../Core/AgentFs.js";
 import {
   type AgentUploadAttachment,
+  type AgentUploadImageAnalysisAsset,
   type AgentUploadManifest,
-  AgentUploadManifestSchema,
+  AgentUploadImageAnalysisMimeSchema,
   AgentUploadStatus,
+  createAgentUploadImageAnalysisFileName,
   type AgentResolvedUpload,
 } from "./AgentUploadTypes.js";
 import type {
@@ -37,91 +35,40 @@ import type {
   AgentResourcePublishInput,
   AgentResourcePublisher,
 } from "../Resources/AgentResourcePublisher.js";
-import { throwIfAborted } from "../Core/AgentCancellation.js";
+import { awaitWithAbortSignal, throwIfAborted } from "../Core/AgentCancellation.js";
+import {
+  AgentImageNormalizationPolicyRevision,
+  createAgentImageNormalizationPolicyKey,
+  matchesAgentImageInputCapabilities,
+  type AgentImageInputCapabilities,
+  type AgentNormalizedImage,
+} from "../Images/AgentImageNormalizationService.js";
+
+import { AgentUploadError, AgentUploadFailureKinds } from "./AgentUploadErrors.js";
+export {
+  AgentUploadError,
+  AgentUploadFailureKinds,
+  AgentUploadIntegrityError,
+  type AgentUploadFailureKind,
+} from "./AgentUploadErrors.js";
+export type { AgentUploadMaintenanceResult } from "./AgentUploadPersistence.js";
+import {
+  verifyUploadFileIntegrity,
+  totalStoredPathBytes,
+  storedPathByteLength,
+  removeNonFilePath,
+  manifestByteLength,
+  serializedManifestByteLength,
+  scanUploadRoot,
+  findPersistentOwnedUploadUris,
+  directorySize,
+  resolveStoredUpload,
+  serializeUploadManifest,
+  type AgentUploadMaintenanceResult,
+} from "./AgentUploadPersistence.js";
 
 const MILLISECONDS_PER_HOUR = 60 * 60 * 1_000;
 const MILLISECONDS_PER_MINUTE = 60 * 1_000;
-const INCOMPLETE_UPLOAD_GRACE_MS = MILLISECONDS_PER_HOUR;
-
-export const AgentUploadFailureKinds = {
-  Aborted: "Aborted",
-  ConcurrencyExceeded: "ConcurrencyExceeded",
-  FileCountExceeded: "FileCountExceeded",
-  FileMissing: "FileMissing",
-  FileTooLarge: "FileTooLarge",
-  RequestTooLarge: "RequestTooLarge",
-  StorageQuotaExceeded: "StorageQuotaExceeded",
-} as const;
-
-export type AgentUploadFailureKind = (typeof AgentUploadFailureKinds)[keyof typeof AgentUploadFailureKinds];
-
-interface AgentUploadFailureDefinition {
-  code: string;
-  messageKey: AgentErrorMessageKey;
-  statusCode: number;
-}
-
-const AgentUploadFailureDefinitions = {
-  [AgentUploadFailureKinds.Aborted]: {
-    code: "upload_aborted",
-    messageKey: "upload.aborted",
-    statusCode: 499,
-  },
-  [AgentUploadFailureKinds.ConcurrencyExceeded]: {
-    code: "upload_concurrency_exceeded",
-    messageKey: "upload.concurrencyExceeded",
-    statusCode: 429,
-  },
-  [AgentUploadFailureKinds.FileCountExceeded]: {
-    code: "upload_file_count_exceeded",
-    messageKey: "upload.fileCountExceeded",
-    statusCode: 413,
-  },
-  [AgentUploadFailureKinds.FileMissing]: {
-    code: "upload_file_missing",
-    messageKey: "upload.fileMissing",
-    statusCode: 400,
-  },
-  [AgentUploadFailureKinds.FileTooLarge]: {
-    code: "upload_too_large",
-    messageKey: "upload.fileTooLarge",
-    statusCode: 413,
-  },
-  [AgentUploadFailureKinds.RequestTooLarge]: {
-    code: "upload_request_too_large",
-    messageKey: "upload.requestTooLarge",
-    statusCode: 413,
-  },
-  [AgentUploadFailureKinds.StorageQuotaExceeded]: {
-    code: "upload_storage_quota_exceeded",
-    messageKey: "upload.storageQuotaExceeded",
-    statusCode: 507,
-  },
-} as const satisfies Record<AgentUploadFailureKind, AgentUploadFailureDefinition>;
-
-export class AgentUploadError extends AgentLocalizedError {
-  constructor(
-    messageKey: AgentUploadFailureDefinition["messageKey"],
-    readonly code: string,
-    readonly statusCode: number,
-  ) {
-    super(messageKey);
-  }
-
-  static from(kind: AgentUploadFailureKind): AgentUploadError {
-    const failure = AgentUploadFailureDefinitions[kind];
-    return new AgentUploadError(failure.messageKey, failure.code, failure.statusCode);
-  }
-}
-
-export class AgentUploadIntegrityError extends AgentBaseError {
-  constructor(
-    readonly resourceUri: string,
-    readonly reason: "not_a_file" | "size_mismatch" | "sha256_mismatch",
-  ) {
-    super(`Resource integrity verification failed for ${resourceUri}: ${reason}.`);
-  }
-}
 
 export interface AgentUploadStoreOptions {
   workspaceRoot: string;
@@ -134,12 +81,33 @@ export interface AgentUploadSaveInput {
   originalName: string;
   declaredMime?: string;
   signal?: AbortSignal;
+  retention?: AgentResourcePublishInput["retention"];
+  owner?: AgentResourcePublishInput["owner"];
 }
 
-export interface AgentUploadMaintenanceResult {
-  retainedBytes: number;
-  removedBytes: number;
-  removedUploads: number;
+export interface AgentUploadImageNormalizer {
+  normalize(input: {
+    bytes: Uint8Array;
+    mime: string;
+    sourceSha256: string;
+    target: AgentImageInputCapabilities;
+    transferSource?: boolean;
+    signal?: AbortSignal;
+  }): Promise<AgentNormalizedImage>;
+}
+
+export interface AgentResolvedUploadImage {
+  readonly resourceUri: string;
+  readonly name: string;
+  readonly mime: string;
+  readonly size: number;
+  readonly sha256: string;
+  readonly width?: number;
+  readonly height?: number;
+  /** Whether the delivered bytes contain more than one display frame. */
+  readonly animated: boolean;
+  readonly bytes: Buffer;
+  readonly derived: boolean;
 }
 
 interface AgentUploadRootState {
@@ -153,6 +121,7 @@ interface AgentUploadRootState {
 
 export class AgentUploadStore implements AgentResourcePublisher {
   private readonly rootStates = new Map<string, AgentUploadRootState>();
+  private readonly imageProjectionFlights = new Map<string, Promise<AgentResolvedUploadImage | undefined>>();
   private readonly now: () => Date;
 
   constructor(private readonly options: AgentUploadStoreOptions) {
@@ -184,7 +153,7 @@ export class AgentUploadStore implements AgentResourcePublisher {
     filePath: string;
   }> {
     const config = this.config();
-    const resourceId = createAgentUploadId();
+    const resourceId = allocateAgentResourceId(this.options.workspaceRoot);
     const resourceUri = createAgentResourceUri(resourceId);
     const uploadRoot = this.resolveRoot(config);
     const state = this.rootState(uploadRoot);
@@ -235,6 +204,8 @@ export class AgentUploadStore implements AgentResourcePublisher {
         size: meter.byteLength,
         sha256: meter.sha256(),
         createdAt: this.now().toISOString(),
+        ...(input.retention ? { retention: input.retention } : {}),
+        ...(input.owner ? { owner: input.owner } : {}),
         storage: {
           fileName: storageFileName,
         },
@@ -276,6 +247,8 @@ export class AgentUploadStore implements AgentResourcePublisher {
       stream: Readable.from([bytes]),
       originalName: input.name,
       declaredMime: input.mime,
+      retention: input.retention,
+      owner: input.owner,
       signal: input.signal,
     });
     return { ...saved.attachment, localPath: this.localPathFor(saved.filePath) };
@@ -296,57 +269,50 @@ export class AgentUploadStore implements AgentResourcePublisher {
   }
 
   async resolve(resourceUri: string): Promise<AgentResolvedUpload | undefined> {
-    const normalizedUri = normalizeAgentResourceUri(resourceUri);
-    if (!normalizedUri) {
-      return undefined;
-    }
+    const upload = await resolveStoredUpload(this.resolveRoot(this.config()), resourceUri);
+    if (!upload) return undefined;
+    await verifyUploadFileIntegrity(upload.filePath, upload.manifest);
+    return upload;
+  }
 
-    const resourceId = parseAgentResourceId(normalizedUri);
-    if (!resourceId) {
-      return undefined;
-    }
-
-    const uploadRoot = this.resolveRoot(this.config());
-    const uploadDir = resolveAgentUploadDir(uploadRoot, resourceId);
-    const manifestPath = resolveAgentUploadFile(uploadRoot, resourceId, AgentUploadFileNames.Manifest);
-    const manifest = AgentUploadManifestSchema.parse(
-      parseJsonText(await fsp.readFile(manifestPath, "utf8"), "Upload manifest"),
-    );
-    if (manifest.resourceUri !== normalizedUri || manifest.resourceId !== resourceId) {
-      return undefined;
-    }
-
-    const filePath = resolveAgentUploadFile(uploadRoot, resourceId, manifest.storage.fileName);
-    await verifyUploadFileIntegrity(filePath, manifest);
-    return {
-      manifest,
-      uploadDir,
-      filePath,
-    };
+  /** Resolves prompt references without hashing bytes; byte readers must use resolve(). */
+  async resolvePath(resourceUri: string): Promise<string | undefined> {
+    const upload = await resolveStoredUpload(this.resolveRoot(this.config()), resourceUri);
+    if (!upload) return undefined;
+    const stat = await fsp.stat(upload.filePath);
+    return stat.isFile() && stat.size === upload.manifest.size ? upload.filePath : undefined;
   }
 
   /**
-   * Resolves an upload's local path without re-hashing the entire file. This
-   * is intended for request-local prompt references; consumers that read the
-   * bytes should continue using resolve(), which performs integrity checks.
+   * Resolves a model-facing image form without replacing the original upload.
+   * Verified derivatives are cache entries under this upload's directory,
+   * keyed by the normalizer policy that produced them.
    */
-  async resolvePath(resourceUri: string): Promise<string | undefined> {
-    const normalizedUri = normalizeAgentResourceUri(resourceUri);
-    if (!normalizedUri) return undefined;
+  async resolveImageForModel(input: {
+    resourceUri: string;
+    target: AgentImageInputCapabilities;
+    normalizer: AgentUploadImageNormalizer;
+    signal?: AbortSignal;
+  }): Promise<AgentResolvedUploadImage | undefined> {
+    throwIfAborted(input.signal);
+    const policyKey = createAgentImageNormalizationPolicyKey(input.target);
+    const flightKey = `${input.resourceUri}\u0000${policyKey}`;
+    const active = this.imageProjectionFlights.get(flightKey);
+    if (active) return awaitWithAbortSignal(active, input.signal);
 
-    const resourceId = parseAgentResourceId(normalizedUri);
-    if (!resourceId) return undefined;
-
-    const uploadRoot = this.resolveRoot(this.config());
-    const manifestPath = resolveAgentUploadFile(uploadRoot, resourceId, AgentUploadFileNames.Manifest);
-    const manifest = AgentUploadManifestSchema.parse(
-      parseJsonText(await fsp.readFile(manifestPath, "utf8"), "Upload manifest"),
-    );
-    if (manifest.resourceUri !== normalizedUri || manifest.resourceId !== resourceId) return undefined;
-
-    const filePath = resolveAgentUploadFile(uploadRoot, resourceId, manifest.storage.fileName);
-    const stat = await fsp.stat(filePath);
-    return stat.isFile() && stat.size === manifest.size ? filePath : undefined;
+    // The flight populates a reusable, verified cache entry. It must not be
+    // owned by whichever turn happened to request it first: cancelling that
+    // turn must not discard work other consumers are already awaiting.
+    const flight = this.resolveImageForModelUncached({
+      resourceUri: input.resourceUri,
+      target: input.target,
+      normalizer: input.normalizer,
+      policyKey,
+    }).finally(() => {
+      if (this.imageProjectionFlights.get(flightKey) === flight) this.imageProjectionFlights.delete(flightKey);
+    });
+    this.imageProjectionFlights.set(flightKey, flight);
+    return awaitWithAbortSignal(flight, input.signal);
   }
 
   async delete(resourceUri: string): Promise<boolean> {
@@ -373,11 +339,170 @@ export class AgentUploadStore implements AgentResourcePublisher {
     await Promise.all(resourceUris.map((resourceUri) => this.delete(resourceUri)));
   }
 
+  /** Removes durable inspection records together with the session history that owns them. */
+  async deletePersistentOwned(input: { sessionId: string; requestIds?: readonly string[] }): Promise<void> {
+    const config = this.config();
+    const uploadRoot = this.resolveRoot(config);
+    const state = this.rootState(uploadRoot);
+    const resourceUris = await this.withRootLock(state, () => findPersistentOwnedUploadUris(uploadRoot, input));
+    await this.deleteMany(resourceUris);
+  }
+
   async maintain(): Promise<AgentUploadMaintenanceResult> {
     const config = this.config();
     const uploadRoot = this.resolveRoot(config);
     const state = this.rootState(uploadRoot);
     return this.withRootLock(state, () => this.refreshRootState(uploadRoot, state, config, true));
+  }
+
+  private async resolveImageForModelUncached(input: {
+    resourceUri: string;
+    target: AgentImageInputCapabilities;
+    normalizer: AgentUploadImageNormalizer;
+    policyKey: string;
+  }): Promise<AgentResolvedUploadImage | undefined> {
+    // Canonical resource URIs may identify an Artifact rather than an upload.
+    // Those have no upload directory, so a missing manifest means "not an
+    // upload image" and the caller falls back to the artifact bytes.
+    const upload = await this.resolve(input.resourceUri).catch((error: unknown) => {
+      if (isMissingFileError(error)) return undefined;
+      throw error;
+    });
+    if (!upload || !upload.manifest.mime.startsWith("image/")) return undefined;
+
+    const cached = await this.readCachedImageAnalysis(upload, input.policyKey, input.target);
+    if (cached) return cached;
+
+    const sourceBytes = await fsp.readFile(upload.filePath);
+    const normalized = await input.normalizer.normalize({
+      bytes: sourceBytes,
+      mime: upload.manifest.mime,
+      sourceSha256: upload.manifest.sha256,
+      target: input.target,
+      transferSource: true,
+    });
+    assertNormalizedImageMatchesUpload(normalized, upload.manifest, input.policyKey, input.target);
+    if (!normalized.derived) return imageProjectionFromOriginal(upload, normalized);
+
+    return this.storeImageAnalysis(upload, normalized, input.policyKey, input.target);
+  }
+
+  private async readCachedImageAnalysis(
+    upload: AgentResolvedUpload,
+    policyKey: string,
+    target: AgentImageInputCapabilities,
+  ): Promise<AgentResolvedUploadImage | undefined> {
+    const asset = upload.manifest.imageAnalysis?.find(
+      (candidate) =>
+        candidate.policyRevision === AgentImageNormalizationPolicyRevision &&
+        candidate.policyKey === policyKey &&
+        candidate.sourceSha256 === upload.manifest.sha256 &&
+        isImageAnalysisAssetCompatible(candidate, target),
+    );
+    if (!asset) return undefined;
+    const filePath = resolveAgentUploadFile(
+      this.resolveRoot(this.config()),
+      upload.manifest.resourceId,
+      asset.fileName,
+    );
+    // A derivative is a rebuildable cache, unlike the canonical original.
+    // Invalid cache bytes are deliberately re-derived under the same policy.
+    const bytes = await readVerifiedAnalysisAsset(filePath, asset).catch(() => undefined);
+    if (!bytes) return undefined;
+    return {
+      resourceUri: upload.manifest.resourceUri,
+      name: upload.manifest.name,
+      mime: asset.mime,
+      size: asset.size,
+      sha256: asset.sha256,
+      ...(asset.width === undefined ? {} : { width: asset.width }),
+      ...(asset.height === undefined ? {} : { height: asset.height }),
+      animated: false,
+      bytes,
+      derived: true,
+    };
+  }
+
+  private async storeImageAnalysis(
+    upload: AgentResolvedUpload,
+    normalized: AgentNormalizedImage,
+    policyKey: string,
+    target: AgentImageInputCapabilities,
+  ): Promise<AgentResolvedUploadImage> {
+    if (normalized.animated) {
+      throw new Error("Animated images must remain verified originals and cannot be stored as analysis derivatives.");
+    }
+    const config = this.config();
+    const uploadRoot = this.resolveRoot(config);
+    const state = this.rootState(uploadRoot);
+    const mime = AgentUploadImageAnalysisMimeSchema.parse(normalized.mime);
+    const sha256 = sha256Hex(normalized.bytes);
+    const asset: AgentUploadImageAnalysisAsset = {
+      policyRevision: AgentImageNormalizationPolicyRevision,
+      policyKey,
+      sourceSha256: upload.manifest.sha256,
+      fileName: createAgentUploadImageAnalysisFileName({ policyKey, sha256, mime }),
+      mime,
+      size: normalized.bytes.byteLength,
+      sha256,
+      ...(normalized.width === undefined ? {} : { width: normalized.width }),
+      ...(normalized.height === undefined ? {} : { height: normalized.height }),
+    };
+
+    return this.withRootLock(state, async () => {
+      const current = await this.resolve(upload.manifest.resourceUri);
+      if (!current) return imageProjectionFromNormalized(upload.manifest, normalized, asset);
+      const existing = await this.readCachedImageAnalysis(current, policyKey, target);
+      if (existing) return existing;
+
+      const currentManifestBytes = await manifestByteLength(current.uploadDir);
+      const previousDirectoryBytes = await directorySize(current.uploadDir);
+      const existingAssets = current.manifest.imageAnalysis ?? [];
+      const retainsCurrentAsset = (candidate: AgentUploadImageAnalysisAsset): boolean =>
+        candidate.policyRevision === AgentImageNormalizationPolicyRevision &&
+        candidate.policyKey !== policyKey &&
+        candidate.sourceSha256 === current.manifest.sha256;
+      const retainedAssets = existingAssets.filter(retainsCurrentAsset);
+      const obsoleteAssets = existingAssets.filter((candidate) => !retainsCurrentAsset(candidate));
+      const manifest: AgentUploadManifest = {
+        ...current.manifest,
+        imageAnalysis: [...retainedAssets, asset],
+      };
+      const filePath = resolveAgentUploadFile(uploadRoot, current.manifest.resourceId, asset.fileName);
+      const obsoletePaths = uniqueAnalysisAssetPaths(uploadRoot, current.manifest.resourceId, obsoleteAssets).filter(
+        (candidate) => candidate !== filePath,
+      );
+      const [previousTargetBytes, obsoleteBytes] = await Promise.all([
+        storedPathByteLength(filePath),
+        totalStoredPathBytes(obsoletePaths),
+      ]);
+      const addedBytes =
+        normalized.bytes.byteLength -
+        previousTargetBytes -
+        obsoleteBytes +
+        serializedManifestByteLength(manifest) -
+        currentManifestBytes;
+      await this.refreshRootState(uploadRoot, state, config, false);
+      if ((state.usageBytes ?? 0) + state.reservedBytes + Math.max(0, addedBytes) > config.MaxStoredBytes) {
+        return imageProjectionFromNormalized(current.manifest, normalized, asset);
+      }
+
+      await removeNonFilePath(filePath);
+      await writeFileAtomic(filePath, normalized.bytes);
+      try {
+        await this.writeManifest(current.uploadDir, manifest);
+      } catch (error) {
+        await removeAgentPathWithRetry(filePath).catch(() => undefined);
+        throw error;
+      }
+      // Old cache entries are no longer reachable once the manifest has moved.
+      // A locked file here is harmless: upload retention eventually removes the
+      // complete directory, while the live manifest remains valid.
+      await Promise.allSettled(obsoletePaths.map((candidate) => removeAgentPathWithRetry(candidate)));
+      const nextDirectoryBytes = await directorySize(current.uploadDir);
+      state.usageBytes = Math.max(0, (state.usageBytes ?? 0) + nextDirectoryBytes - previousDirectoryBytes);
+      return imageProjectionFromNormalized(manifest, normalized, asset);
+    });
   }
 
   private config(): ResolvedAgentUploadsConfig {
@@ -453,6 +578,7 @@ export class AgentUploadStore implements AgentResourcePublisher {
       activeUploadIds: state.activeUploadIds,
       now,
       retentionMs: config.RetentionHours * MILLISECONDS_PER_HOUR,
+      incompleteRetentionMs: config.IncompleteRetentionHours * MILLISECONDS_PER_HOUR,
     });
     state.usageBytes = result.retainedBytes;
     state.lastScanAt = now;
@@ -460,86 +586,115 @@ export class AgentUploadStore implements AgentResourcePublisher {
   }
 
   private async writeManifest(uploadDir: string, manifest: AgentUploadManifest): Promise<void> {
-    await fsp.writeFile(
-      path.join(uploadDir, AgentUploadFileNames.Manifest),
-      `${JSON.stringify(manifest, null, 2)}\n`,
-      "utf8",
-    );
+    await writeFileAtomic(path.join(uploadDir, AgentUploadFileNames.Manifest), serializeUploadManifest(manifest));
   }
 }
 
-async function verifyUploadFileIntegrity(filePath: string, manifest: AgentUploadManifest): Promise<void> {
-  const stat = await fsp.stat(filePath);
-  if (!stat.isFile()) throw new AgentUploadIntegrityError(manifest.resourceUri, "not_a_file");
-  if (stat.size !== manifest.size) throw new AgentUploadIntegrityError(manifest.resourceUri, "size_mismatch");
-  const hash = crypto.createHash("sha256");
-  for await (const chunk of fs.createReadStream(filePath)) hash.update(chunk);
-  if (hash.digest("hex") !== manifest.sha256) {
-    throw new AgentUploadIntegrityError(manifest.resourceUri, "sha256_mismatch");
-  }
+async function readVerifiedAnalysisAsset(filePath: string, asset: AgentUploadImageAnalysisAsset): Promise<Buffer> {
+  const stat = await fsp.lstat(filePath);
+  if (!stat.isFile() || stat.size !== asset.size)
+    throw new Error(`Cached image analysis asset is invalid: ${asset.fileName}`);
+  const bytes = await fsp.readFile(filePath);
+  if (sha256Hex(bytes) !== asset.sha256) throw new Error(`Cached image analysis asset is invalid: ${asset.fileName}`);
+  return bytes;
 }
 
-interface ScanUploadRootOptions {
-  uploadRoot: string;
-  activeUploadIds: ReadonlySet<string>;
-  now: number;
-  retentionMs: number;
-}
-
-async function scanUploadRoot(options: ScanUploadRootOptions): Promise<AgentUploadMaintenanceResult> {
-  const entries = await fsp.readdir(options.uploadRoot, { withFileTypes: true }).catch((error: unknown) => {
-    if (isFileSystemError(error, "ENOENT")) return [];
-    throw error;
-  });
-  const result: AgentUploadMaintenanceResult = { retainedBytes: 0, removedBytes: 0, removedUploads: 0 };
-
-  for (const entry of entries) {
-    if (!entry.isDirectory() || options.activeUploadIds.has(entry.name)) continue;
-    const uploadDir = resolveAgentUploadDir(options.uploadRoot, entry.name);
-    const storedBytes = await directorySize(uploadDir);
-    const manifest = await readManifest(uploadDir);
-    const createdAt = manifest ? Date.parse(manifest.createdAt) : await directoryModifiedAt(uploadDir);
-    const retentionMs = manifest ? options.retentionMs : INCOMPLETE_UPLOAD_GRACE_MS;
-    if (Number.isFinite(createdAt) && options.now - createdAt >= retentionMs) {
-      await removeAgentPathWithRetry(uploadDir, { recursive: true });
-      result.removedBytes += storedBytes;
-      result.removedUploads += 1;
-      continue;
-    }
-    result.retainedBytes += storedBytes;
-  }
-  return result;
-}
-
-async function readManifest(uploadDir: string): Promise<AgentUploadManifest | undefined> {
-  return fsp
-    .readFile(path.join(uploadDir, AgentUploadFileNames.Manifest), "utf8")
-    .then((value) => AgentUploadManifestSchema.parse(parseJsonText(value, "Upload manifest")))
-    .catch(() => undefined);
-}
-
-async function directoryModifiedAt(uploadDir: string): Promise<number> {
-  return fsp
-    .stat(uploadDir)
-    .then((stat) => stat.mtimeMs)
-    .catch(() => Date.now());
-}
-
-async function directorySize(directory: string): Promise<number> {
-  const entries = await fsp.readdir(directory, { withFileTypes: true });
-  const sizes = await Promise.all(
-    entries.map(async (entry) => {
-      const entryPath = path.join(directory, entry.name);
-      if (entry.isDirectory()) return directorySize(entryPath);
-      if (!entry.isFile()) return 0;
-      return fsp.stat(entryPath).then((stat) => stat.size);
-    }),
+function isImageAnalysisAssetCompatible(
+  asset: AgentUploadImageAnalysisAsset,
+  target: AgentImageInputCapabilities,
+): boolean {
+  // Analysis assets are generated only through the static local codecs listed
+  // in AgentUploadImageAnalysisMimeSchema. Dynamic media is always retained
+  // as a verified original rather than cached as a derivative.
+  return matchesAgentImageInputCapabilities(
+    {
+      mime: asset.mime,
+      byteLength: asset.size,
+      width: asset.width,
+      height: asset.height,
+      animated: false,
+    },
+    target,
   );
-  return sizes.reduce((total, size) => total + size, 0);
 }
 
-function isFileSystemError(error: unknown, code: string): error is NodeJS.ErrnoException {
-  return error instanceof Error && "code" in error && error.code === code;
+function uniqueAnalysisAssetPaths(
+  uploadRoot: string,
+  resourceId: string,
+  assets: readonly AgentUploadImageAnalysisAsset[],
+): string[] {
+  return [...new Set(assets.map((asset) => resolveAgentUploadFile(uploadRoot, resourceId, asset.fileName)))];
+}
+
+function assertNormalizedImageMatchesUpload(
+  normalized: AgentNormalizedImage,
+  manifest: AgentUploadManifest,
+  policyKey: string,
+  target: AgentImageInputCapabilities,
+): void {
+  if (normalized.sourceSha256 !== manifest.sha256 || normalized.policyKey !== policyKey) {
+    throw new Error("Image normalizer returned media for a different source or policy.");
+  }
+  if (
+    !matchesAgentImageInputCapabilities(
+      {
+        mime: normalized.mime,
+        byteLength: normalized.bytes.byteLength,
+        width: normalized.width,
+        height: normalized.height,
+        animated: normalized.animated,
+      },
+      target,
+    )
+  ) {
+    throw new Error("Image normalizer returned media outside the requested model input contract.");
+  }
+  if (!normalized.derived) {
+    if (normalized.bytes.byteLength !== manifest.size || sha256Hex(normalized.bytes) !== manifest.sha256) {
+      throw new Error("Image normalizer returned unverified source media.");
+    }
+  }
+}
+
+function imageProjectionFromOriginal(
+  upload: AgentResolvedUpload,
+  normalized: AgentNormalizedImage,
+): AgentResolvedUploadImage {
+  return {
+    resourceUri: upload.manifest.resourceUri,
+    name: upload.manifest.name,
+    mime: normalized.mime,
+    size: normalized.bytes.byteLength,
+    sha256: normalized.sourceSha256,
+    ...(normalized.width === undefined ? {} : { width: normalized.width }),
+    ...(normalized.height === undefined ? {} : { height: normalized.height }),
+    animated: normalized.animated,
+    bytes: normalized.bytes,
+    derived: false,
+  };
+}
+
+function imageProjectionFromNormalized(
+  manifest: AgentUploadManifest,
+  normalized: AgentNormalizedImage,
+  asset: AgentUploadImageAnalysisAsset,
+): AgentResolvedUploadImage {
+  return {
+    resourceUri: manifest.resourceUri,
+    name: manifest.name,
+    mime: asset.mime,
+    size: asset.size,
+    sha256: asset.sha256,
+    ...(asset.width === undefined ? {} : { width: asset.width }),
+    ...(asset.height === undefined ? {} : { height: asset.height }),
+    animated: false,
+    bytes: normalized.bytes,
+    derived: true,
+  };
+}
+
+function sha256Hex(bytes: Uint8Array): string {
+  return crypto.createHash("sha256").update(bytes).digest("hex");
 }
 
 export function manifestToAttachment(manifest: AgentUploadManifest): AgentUploadAttachment {

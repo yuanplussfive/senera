@@ -1,5 +1,3 @@
-import { z } from "zod";
-
 /**
  * Describes whether a tool call can change workspace content. The declaration
  * is part of the tool input contract so the host can avoid starting a
@@ -11,10 +9,6 @@ export const AgentWorkspaceEffects = Object.freeze({
 } as const);
 
 export type AgentWorkspaceEffect = (typeof AgentWorkspaceEffects)[keyof typeof AgentWorkspaceEffects];
-
-export const AgentWorkspaceEffectSchema = z
-  .enum([AgentWorkspaceEffects.Read, AgentWorkspaceEffects.Mutate])
-  .describe("Whether the command only reads the workspace or may change workspace content.");
 
 export interface AgentWorkspaceObservationIntentOptions {
   /** Declarative tool-contract metadata, not model-provided input. */

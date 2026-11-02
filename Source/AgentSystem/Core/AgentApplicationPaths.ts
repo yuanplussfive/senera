@@ -11,6 +11,8 @@ export interface AgentApplicationPaths {
   readonly stateRoot: string;
   readonly configPath: string;
   readonly desktopRoot: string;
+  /** Optional client builds, installed once for all workspaces on this host. */
+  readonly clientExtensionsRoot: string;
   /** Senera-managed persistent browser profiles, shared by workspaces on this host. */
   readonly browserProfilesRoot: string;
   /** Master keys for every secret domain; shared by all workspaces on this host. */
@@ -34,6 +36,7 @@ export function resolveAgentApplicationPaths(root = process.env.SENERA_DATA_ROOT
     stateRoot: layout.stateRoot,
     configPath: layout.configFile,
     desktopRoot: layout.desktopRuntimeRoot,
+    clientExtensionsRoot: path.join(layout.stateRoot, "client-extensions"),
     browserProfilesRoot: path.join(layout.stateRoot, "browser", "profiles"),
     secretKeysRoot: path.join(layout.stateRoot, "keys"),
     legacyWorkspacesRoot,

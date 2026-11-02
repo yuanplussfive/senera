@@ -69,7 +69,7 @@ describe("agent delegation completion delivery", () => {
     database.close();
   });
 
-  test("automatically wakes a delayed retry while the runtime stays alive", async () => {
+  test("retries a delayed completion delivery while the runtime stays alive", async () => {
     vi.useFakeTimers();
     try {
       const database = openDelegationTestDatabase();
@@ -171,6 +171,101 @@ describe("agent delegation completion delivery", () => {
         .prepare("SELECT 1 AS present FROM child_run_completion_deliveries WHERE child_run_id = ?")
         .get(terminal.id),
     ).toBeUndefined();
+    await delivery.stop();
+    database.close();
+  });
+
+  test("does not accept synchronous wait results into background completion delivery", async () => {
+    const database = openDelegationTestDatabase();
+    const repository = new AgentSqliteChildRunRepository(database);
+    const delivery = new AgentDelegationCompletionDelivery({ database, repository, retryDelaysMs: [0] });
+    const record = createTerminalChild(repository, "child-wait-result");
+
+    await expect(
+      delivery.completed({
+        ...record,
+        launchContract: { executionMode: "wait" },
+      }),
+    ).rejects.toThrow("terminal detached child run");
+    expect(
+      database.connection
+        .prepare("SELECT 1 AS present FROM child_run_completion_deliveries WHERE child_run_id = ?")
+        .get(record.id),
+    ).toBeUndefined();
+    await delivery.stop();
+    database.close();
+  });
+
+  test("retires unresolved delivery rows without altering completed audit records", async () => {
+    const database = openDelegationTestDatabase();
+    const repository = new AgentSqliteChildRunRepository(database);
+    const records = [
+      createTerminalChild(repository, "child-retired-port-pending"),
+      createTerminalChild(repository, "child-retired-port-claimed"),
+      createTerminalChild(repository, "child-retired-port-delivered"),
+    ];
+    const delivery = new AgentDelegationCompletionDelivery({ database, repository, retryDelaysMs: [0] });
+    const portId = "senera.session-wake";
+    const timestamp = "2026-10-22T00:00:00.000Z";
+    const insert = database.connection.prepare(
+      `INSERT INTO child_run_completion_deliveries (
+        id, child_run_id, child_request_id, port_id, delivery_status, attempt, available_at, claim_id, claim_until, created_at, updated_at, delivered_at
+      ) VALUES (
+        @id, @child_run_id, @child_request_id, @port_id, @delivery_status, 1, @available_at, @claim_id, @claim_until, @created_at, @updated_at, @delivered_at
+      )`,
+    );
+    for (const [status, record] of [
+      ["pending", records[0]],
+      ["claimed", records[1]],
+      ["delivered", records[2]],
+    ] as const) {
+      insert.run({
+        id: `${record!.id}-${status}`,
+        child_run_id: record!.id,
+        child_request_id: record!.childRequestId,
+        port_id: portId,
+        delivery_status: status,
+        available_at: timestamp,
+        claim_id: status === "claimed" ? "claim" : null,
+        claim_until: status === "claimed" ? timestamp : null,
+        created_at: timestamp,
+        updated_at: timestamp,
+        delivered_at: status === "delivered" ? timestamp : null,
+      });
+    }
+
+    expect(delivery.retirePort(portId, "The automatic parent wake route was retired.")).toBe(2);
+    const rows = database.connection
+      .prepare(
+        "SELECT id, delivery_status, claim_id, claim_until, last_error FROM child_run_completion_deliveries WHERE port_id = ? ORDER BY id",
+      )
+      .all(portId) as Array<{
+      id: string;
+      delivery_status: string;
+      claim_id: string | null;
+      claim_until: string | null;
+      last_error: string | null;
+    }>;
+    expect(rows).toEqual([
+      expect.objectContaining({
+        id: `${records[1]!.id}-claimed`,
+        delivery_status: "dropped",
+        claim_id: null,
+        claim_until: null,
+        last_error: "The automatic parent wake route was retired.",
+      }),
+      expect.objectContaining({
+        id: `${records[2]!.id}-delivered`,
+        delivery_status: "delivered",
+      }),
+      expect.objectContaining({
+        id: `${records[0]!.id}-pending`,
+        delivery_status: "dropped",
+        claim_id: null,
+        claim_until: null,
+        last_error: "The automatic parent wake route was retired.",
+      }),
+    ]);
     await delivery.stop();
     database.close();
   });

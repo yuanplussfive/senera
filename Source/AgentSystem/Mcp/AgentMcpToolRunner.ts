@@ -76,6 +76,7 @@ export class AgentMcpToolRunner {
     }
     const server = handler.server;
     const toolExecution = resolveToolExecutionConfig(this.options.config);
+    const requestTimeoutMs = context.deadline?.timeoutMs ?? toolExecution.TimeoutMs;
     try {
       const executionPlan = requireExecutionPlan(tool, context);
       const executionProfile = createAgentMcpExecutionProfile({
@@ -91,7 +92,7 @@ export class AgentMcpToolRunner {
       }
       const connection = {
         server,
-        requestTimeoutMs: toolExecution.TimeoutMs,
+        requestTimeoutMs,
         spawnPersistentProcess: executionEnv.spawnPersistentProcess,
         executionProfile,
         terminationGraceMs: toolExecution.Resources.TerminationGraceMs,
@@ -175,7 +176,7 @@ export class AgentMcpToolRunner {
           serverId: server.id,
           mcpToolName: handler.tool,
         },
-        { signal: context.signal, timeoutMs: toolExecution.TimeoutMs },
+        { signal: context.signal, timeoutMs: requestTimeoutMs },
       );
     }
   }

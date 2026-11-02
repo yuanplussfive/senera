@@ -6,10 +6,12 @@ import {
   uploadFile,
 } from "../../../Frontend/src/api/uploadClient.ts";
 import { frontendMessage } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
+import { parseResourceId, resolveResourceContentUrl } from "@senera/resource-links";
 
 afterEach(() => {
   vi.unstubAllGlobals();
   TestXmlHttpRequest.reset();
+  vi.useRealTimers();
 });
 
 test("upload client projects secure WebSocket URLs and reports upload progress", async () => {
@@ -43,12 +45,45 @@ test("upload client projects secure WebSocket URLs and reports upload progress",
   expect(request.method).toBe("POST");
   expect(request.url).toBe(uploadUrl);
   expect(request.withCredentials).toBe(true);
-  expect(request.timeout).toBe(DEFAULT_UPLOAD_TIMEOUT_MS);
+  expect(request.timeout).toBe(0);
   expect(request.body).toBeInstanceOf(FormData);
   expect(progress.mock.calls.map(([value]) => value)).toEqual([
     { loaded: 2, total: 5, ratio: 0.4 },
     { loaded: 5, total: 5, ratio: 1 },
   ]);
+});
+
+test("active upload progress renews the inactivity deadline instead of aborting a long transfer", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("XMLHttpRequest", TestXmlHttpRequest);
+  const promise = uploadFile("/api/resources", new File(["file"], "file.txt"));
+  const request = TestXmlHttpRequest.instances[0];
+  for (let i = 0; i < 3; i++) {
+    await vi.advanceTimersByTimeAsync(DEFAULT_UPLOAD_TIMEOUT_MS - 1);
+    request.reportProgress(i + 1, 4);
+  }
+  request.respond(200, {
+    ok: true,
+    resources: [
+      { resourceUri: "senera://resource/t1m2e3", name: "file.txt", mime: "text/plain", size: 4, status: "uploaded" },
+    ],
+  });
+  await expect(promise).resolves.toMatchObject({ name: "file.txt" });
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+test("background suspension pauses the upload deadline; a real foreground stall aborts and cleans up", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("XMLHttpRequest", TestXmlHttpRequest);
+  const promise = uploadFile("/api/resources", new File(["file"], "file.txt"), { idleTimeoutMs: 1000 });
+  const failure = expect(promise).rejects.toThrow(frontendMessage("upload.timeout"));
+  await vi.advanceTimersByTimeAsync(500);
+  window.dispatchEvent(new Event("senera:pause"));
+  await vi.advanceTimersByTimeAsync(60_000);
+  window.dispatchEvent(new Event("senera:resume"));
+  await vi.advanceTimersByTimeAsync(1000);
+  await failure;
+  expect(vi.getTimerCount()).toBe(0);
 });
 
 test("resource client builds credential-free content URLs from opaque resource references", () => {
@@ -63,6 +98,37 @@ test("resource client builds credential-free content URLs from opaque resource r
   );
 });
 
+test("uploads and both frontends resolve internal resource references without browser support for custom URL schemes", async () => {
+  const BrowserURL = globalThis.URL;
+  vi.stubGlobal(
+    "URL",
+    new Proxy(BrowserURL, {
+      construct(target, args) {
+        if (String(args[0]).startsWith("senera:")) throw new TypeError("Unsupported URL scheme");
+        return Reflect.construct(target, args);
+      },
+    }),
+  );
+  vi.stubGlobal("XMLHttpRequest", TestXmlHttpRequest);
+  const reference = "senera://resource/h1y44m";
+  const promise = uploadFile("http://computer.test/api/resources", new File(["image"], "phone.jpg"));
+  TestXmlHttpRequest.instances.at(-1).respond(200, {
+    ok: true,
+    resources: [{ resourceUri: reference, name: "phone.jpg", mime: "image/jpeg", size: 5, status: "uploaded" }],
+  });
+  await expect(promise).resolves.toMatchObject({ resourceUri: reference });
+  expect(parseResourceId(reference)).toBe("h1y44m");
+  const base = "http://computer.test/?workspaceId=workspace-one";
+  const contentUrl = "http://computer.test/api/resources/h1y44m?workspaceId=workspace-one";
+  expect(buildResourceContentUrl(base, reference)).toBe(contentUrl);
+  expect(resolveResourceContentUrl(base, reference)).toBe(contentUrl);
+});
+
+test.each(["h1y44m", "res_81d17d10efa400099ecfeec4e2754fa1", "A_b-c.d~e", "x".repeat(256)])(
+  "accepts the canonical resource identity %s",
+  (id) => expect(parseResourceId(`senera://resource/${id}`)).toBe(id),
+);
+
 test.each([
   "https://example.test/file",
   "senera://upload/upl_fixture",
@@ -71,6 +137,16 @@ test.each([
   "senera://resource/a/b",
   "senera://resource/..%2Foutside",
   "senera://resource/upl_fixture?token=secret",
+  "senera://user@resource/h1y44m",
+  "senera://resource:80/h1y44m",
+  "senera://resource/h1y44m#fragment",
+  "senera://resource/%68%31y44m",
+  "senera://resource/../h1y44m",
+  "senera://resource//h1y44m",
+  "senera://resource/h1y44m/",
+  "senera://resource/h1y44m\n",
+  "senera://resource/h1y44m\u0000",
+  `senera://resource/${"x".repeat(257)}`,
 ])("upload client rejects invalid upload reference %s", (resourceUri) => {
   expect(buildResourceContentUrl("https://agent.example.test/api/resources", resourceUri)).toBeUndefined();
 });
@@ -122,7 +198,25 @@ test("upload client rejects malformed, failed, and empty success responses", asy
 
   const invalidUpload = uploadFile("http://agent.test/api/resources", file);
   TestXmlHttpRequest.instances.at(-1).respond(200, { ok: true, resources: [{}] });
-  await expect(invalidUpload).rejects.toThrow(frontendMessage("upload.emptyResponse"));
+  await expect(invalidUpload).rejects.toThrow("resourceUri, name, mime, size, status");
+});
+
+test("distinguishes an invalid resource URI from an empty upload without exposing response data", async () => {
+  vi.stubGlobal("XMLHttpRequest", TestXmlHttpRequest);
+  const promise = uploadFile("http://agent.test/api/resources", new File(["x"], "x.txt"));
+  TestXmlHttpRequest.instances.at(-1).respond(200, {
+    ok: true,
+    resources: [
+      {
+        resourceUri: "senera://other/private-reference",
+        name: "x.txt",
+        mime: "text/plain",
+        size: 1,
+        status: "uploaded",
+      },
+    ],
+  });
+  await expect(promise).rejects.toThrow(frontendMessage("upload.invalidAttachmentResponse", { fields: "resourceUri" }));
 });
 
 test("forwards caller-provided CSRF headers without exposing cookie values", async () => {
@@ -146,6 +240,23 @@ test("forwards caller-provided CSRF headers without exposing cookie values", asy
 
   await expect(promise).resolves.toMatchObject({ name: "x.txt" });
   expect(request.headers).toMatchObject({ "X-Senera-Csrf": "csrf-token" });
+});
+
+test("upload cancellation aborts the request and releases its signal listener", async () => {
+  vi.stubGlobal("XMLHttpRequest", TestXmlHttpRequest);
+  const controller = new AbortController();
+  const remove = vi.spyOn(controller.signal, "removeEventListener");
+  const promise = uploadFile("http://agent.test/api/resources", new File(["x"], "x.txt"), {
+    signal: controller.signal,
+  });
+  controller.abort();
+  await expect(promise).rejects.toThrow(frontendMessage("upload.aborted"));
+  expect(remove).toHaveBeenCalledWith("abort", expect.any(Function));
+  const count = TestXmlHttpRequest.instances.length;
+  await expect(
+    uploadFile("http://agent.test/api/resources", new File(["x"], "x.txt"), { signal: controller.signal }),
+  ).rejects.toThrow(frontendMessage("upload.aborted"));
+  expect(TestXmlHttpRequest.instances).toHaveLength(count);
 });
 
 class TestXmlHttpRequest {
@@ -177,6 +288,10 @@ class TestXmlHttpRequest {
 
   send(body) {
     this.body = body;
+  }
+
+  abort() {
+    this.emit("abort");
   }
 
   setRequestHeader(name, value) {

@@ -7,6 +7,8 @@ on:
   workflow_run:
     workflows:
       - Verify
+    branches:
+      - main
     types:
       - completed
   workflow_dispatch:
@@ -64,111 +66,22 @@ jobs:
             test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$RECOVERY_SHA"
           fi
 
-  recovery-core:
+  recovery-verify:
     name: Reverify Release Source
-    needs:
-      - recovery-source
+    needs: recovery-source
     if: github.event_name == 'workflow_dispatch' && inputs.recovery_sha != ''
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.recovery_sha }}
-          fetch-depth: 0
-      - uses: ./.github/actions/setup-node
-      - run: npm run policy.verify
-      - run: npm run quality.baml
-      - run: npm run build
-      - run: npm run quality.lint
-      - run: npm run quality.format.full
-      - run: npm run test.frontend.static
-      - run: npm run test.integration
-      - run: npm run verify.suite -- workspace core integration e2e release
-
-  recovery-browser-e2e:
-    name: Reverify Release Chromium E2E
-    needs:
-      - recovery-source
-    if: github.event_name == 'workflow_dispatch' && inputs.recovery_sha != ''
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.recovery_sha }}
-      - uses: ./.github/actions/setup-node
-      - id: playwright
-        name: Resolve Playwright version
-        shell: bash
-        run: node -p "'version=' + require('@playwright/test/package.json').version" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v5
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-chromium-${{ steps.playwright.outputs.version }}
-      - name: Install cached Chromium
-        run: npm run test.e2e.web.setup
-        timeout-minutes: 8
-      - run: npm run test.e2e.web
-      - name: Upload browser diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v6
-        with:
-          name: recovery-chromium-e2e-diagnostics
-          path: |
-            .cache/playwright-results
-            .cache/playwright-report
-          if-no-files-found: ignore
-
-  recovery-windows:
-    name: Reverify Release Windows Platform
-    needs:
-      - recovery-source
-    if: github.event_name == 'workflow_dispatch' && inputs.recovery_sha != ''
-    runs-on: windows-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.recovery_sha }}
-      - uses: ./.github/actions/setup-node
-        with:
-          install-electron: "true"
-      - run: npm run build
-      - run: npm --workspace senera-frontend run build
-      - run: npm run test.e2e.desktop.run
-      - run: npm run verify.suite -- platform
-
-  recovery-coverage:
-    name: Reverify Release Coverage
-    needs:
-      - recovery-source
-    if: github.event_name == 'workflow_dispatch' && inputs.recovery_sha != ''
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.recovery_sha }}
-      - uses: ./.github/actions/setup-node
-      - run: npm run test.coverage.frontend
-      - run: npm run test.coverage.backend
-      - run: npm run quality.coverage.ratchet
+    uses: ./.github/workflows/verify.yml
+    with:
+      source_ref: ${{ inputs.recovery_sha }}
+      full_suite: true
 
   recovery-tag:
     name: Recover Verified Release Tag
-    needs:
-      - recovery-core
-      - recovery-browser-e2e
-      - recovery-windows
-      - recovery-coverage
+    needs: recovery-verify
     if: >-
       github.event_name == 'workflow_dispatch' &&
       inputs.recovery_sha != '' &&
-      needs.recovery-core.result == 'success' &&
-      needs.recovery-browser-e2e.result == 'success' &&
-      needs.recovery-windows.result == 'success' &&
-      needs.recovery-coverage.result == 'success'
+      needs.recovery-verify.result == 'success'
     runs-on: ubuntu-latest
     outputs:
       tag_name: ${{ steps.recovery.outputs.tag_name }}
@@ -401,11 +314,87 @@ jobs:
           SENERA_VERIFY_WORKFLOW: verify.yml
         run: npx tsx Scripts/VerifyProductReleaseSource.ts
 
+  clients:
+    name: Build Optional Clients
+    needs: metadata
+    if: always() && needs.metadata.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.metadata.outputs.tag }}
+      - uses: ./.github/actions/setup-node
+      - run: npm --workspace senera-frontend run build
+      - run: npm run client.qq.pack
+      - uses: actions/upload-artifact@v6
+        with:
+          name: release-web
+          include-hidden-files: true
+          path: Frontend/dist
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@v6
+        with:
+          name: release-qq-client
+          compression-level: 0
+          path: |
+            Release/SeneraQQ-*.zip
+            Release/SeneraQQ-*.json
+            Release/SeneraQQ-*-source.tar.gz
+          if-no-files-found: error
+
+  android:
+    name: Build Signed Android Release
+    needs:
+      - metadata
+      - clients
+    if: always() && needs.clients.result == 'success' && vars.SENERA_ANDROID_RELEASE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.metadata.outputs.tag }}
+      - uses: ./.github/actions/setup-node
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-web
+          path: Frontend/dist
+      - name: Build with the configured Android signing identity
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.SENERA_ANDROID_KEYSTORE_BASE64 }}
+          SENERA_ANDROID_KEYSTORE: ${{ runner.temp }}/senera-release.keystore
+          SENERA_ANDROID_STORE_PASSWORD: ${{ secrets.SENERA_ANDROID_STORE_PASSWORD }}
+          SENERA_ANDROID_KEY_ALIAS: ${{ secrets.SENERA_ANDROID_KEY_ALIAS }}
+          SENERA_ANDROID_KEY_PASSWORD: ${{ secrets.SENERA_ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          trap 'rm -f "$SENERA_ANDROID_KEYSTORE"' EXIT
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$SENERA_ANDROID_KEYSTORE"
+          chmod +x Apps/Mobile/android/gradlew
+          npm run mobile.android.from-build -- --release
+      - uses: actions/upload-artifact@v6
+        with:
+          name: release-android-apk
+          compression-level: 0
+          path: Release/Senera-*-android-*-release.apk
+          if-no-files-found: error
+
   desktop:
     name: Build Windows Installer
     needs:
       - metadata
-    if: always() && needs.metadata.result == 'success'
+      - clients
+    if: always() && needs.metadata.result == 'success' && needs.clients.result == 'success'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
@@ -414,7 +403,13 @@ jobs:
       - uses: ./.github/actions/setup-node
         with:
           install-electron: "true"
-      - run: npm run desktop.pack
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-web
+          path: Frontend/dist
+      # `desktop.pack` also launches the packaged build (`npm run desktop.smoke`), so a
+      # packaged build that cannot start fails this job before anything is uploaded.
+      - run: npm run desktop.pack -- --frontend-built
       - name: Verify differential update assets
         shell: pwsh
         env:
@@ -602,6 +597,8 @@ jobs:
     name: Publish Verified Release
     needs:
       - metadata
+      - clients
+      - android
       - desktop
       - container-build
       - sandbox-runtime-build
@@ -610,6 +607,8 @@ jobs:
       always() &&
       needs.metadata.result == 'success' &&
       needs.desktop.result == 'success' &&
+      needs.clients.result == 'success' &&
+      (needs.android.result == 'success' || needs.android.result == 'skipped') &&
       needs.container-build.result == 'success' &&
       needs.sandbox-runtime-build.result == 'success' &&
       needs.container-smoke.result == 'success'
@@ -642,6 +641,27 @@ jobs:
             exit 1
           fi
           gh release upload "$RELEASE_TAG" "${release_assets[@]}" --repo "$REPOSITORY" --clobber
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-qq-client
+          path: ${{ runner.temp }}/client-assets
+      - if: needs.android.result == 'success'
+        uses: actions/download-artifact@v7
+        with:
+          name: release-android-apk
+          path: ${{ runner.temp }}/client-assets
+      - name: Attach verified optional clients
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+          CLIENT_ASSET_ROOT: ${{ runner.temp }}/client-assets
+        run: |
+          set -euo pipefail
+          mapfile -d '' client_assets < <(find "$CLIENT_ASSET_ROOT" -type f -print0)
+          test "${#client_assets[@]}" -ge 3
+          gh release upload "$RELEASE_TAG" "${client_assets[@]}" --repo "$REPOSITORY" --clobber
       - id: image
         uses: docker/metadata-action@v5
         with:

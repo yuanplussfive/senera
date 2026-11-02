@@ -1,4 +1,3 @@
-import type { ModelCapabilitiesDraft } from "./modelConfigTypes";
 import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
 
 export type ModelCatalogMatchKind = "prefix" | "includes" | "exact";
@@ -15,7 +14,6 @@ interface ModelCatalogRule {
   icon?: string;
   match: ModelCatalogMatchKind;
   values: readonly string[];
-  capabilities?: Partial<ModelCapabilitiesDraft>;
   labelKey?: FrontendMessageKey;
 }
 
@@ -39,7 +37,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "grok",
     match: "prefix",
     values: ["grok-", "grok"],
-    capabilities: { Chat: true, ToolCalling: true },
   },
   {
     id: "openai",
@@ -47,7 +44,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "openai",
     match: "prefix",
     values: ["gpt-", "o1", "o3", "o4", "dall-e", "gpt-image"],
-    capabilities: { Chat: true },
   },
   {
     id: "anthropic",
@@ -55,7 +51,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "anthropic",
     match: "prefix",
     values: ["claude-"],
-    capabilities: { Chat: true, Vision: true, ToolCalling: true },
   },
   {
     id: "gemini",
@@ -63,7 +58,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "gemini",
     match: "prefix",
     values: ["gemini"],
-    capabilities: { Chat: true, Vision: true, ToolCalling: true },
   },
   {
     id: "gemma",
@@ -71,7 +65,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "gemma",
     match: "prefix",
     values: ["gemma-"],
-    capabilities: { Chat: true, ToolCalling: true },
   },
   {
     id: "deepseek",
@@ -79,7 +72,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "deepseek",
     match: "prefix",
     values: ["deepseek"],
-    capabilities: { Chat: true, ToolCalling: true },
   },
   {
     id: "qwen",
@@ -87,7 +79,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "qwen",
     match: "prefix",
     values: ["qwen", "qwq"],
-    capabilities: { Chat: true, ToolCalling: true },
   },
   {
     id: "mistral",
@@ -95,7 +86,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "mistral",
     match: "prefix",
     values: ["mistral", "mixtral", "codestral", "devstral", "pixtral", "ministral"],
-    capabilities: { Chat: true, ToolCalling: true },
   },
   {
     id: "llama",
@@ -103,7 +93,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "meta",
     match: "includes",
     values: ["llama"],
-    capabilities: { Chat: true, ToolCalling: true },
   },
   {
     id: "moonshot",
@@ -111,7 +100,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "moonshot",
     match: "includes",
     values: ["moonshot", "kimi"],
-    capabilities: { Chat: true, Vision: true, ToolCalling: true },
   },
   {
     id: "zhipu",
@@ -119,7 +107,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "zhipu",
     match: "includes",
     values: ["glm-", "chatglm", "zhipu"],
-    capabilities: { Chat: true, Vision: true, ToolCalling: true },
   },
   {
     id: "minimax",
@@ -127,7 +114,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "minimax",
     match: "prefix",
     values: ["minimax"],
-    capabilities: { Chat: true, ToolCalling: true },
   },
   {
     id: "doubao",
@@ -135,7 +121,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "doubao",
     match: "includes",
     values: ["doubao", "seed-"],
-    capabilities: { Chat: true, Vision: true, ToolCalling: true },
   },
   {
     id: "baichuan",
@@ -143,7 +128,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "baichuan",
     match: "prefix",
     values: ["baichuan"],
-    capabilities: { Chat: true, ToolCalling: true },
   },
   {
     id: "hunyuan",
@@ -151,7 +135,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "hunyuan",
     match: "prefix",
     values: ["hunyuan", "hunyuan-"],
-    capabilities: { Chat: true, Vision: true, ToolCalling: true },
   },
   {
     id: "internlm",
@@ -159,7 +142,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "internlm",
     match: "prefix",
     values: ["internlm"],
-    capabilities: { Chat: true, ToolCalling: true },
   },
   {
     id: "yi",
@@ -167,7 +149,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "yi",
     match: "prefix",
     values: ["yi-", "yi"],
-    capabilities: { Chat: true, ToolCalling: true },
   },
   {
     id: "cohere",
@@ -175,7 +156,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "cohere",
     match: "prefix",
     values: ["command", "cohere"],
-    capabilities: { Chat: true, ToolCalling: true },
   },
   {
     id: "ai21",
@@ -183,7 +163,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "ai21",
     match: "prefix",
     values: ["jamba-", "jamba"],
-    capabilities: { Chat: true, ToolCalling: true },
   },
   {
     id: "amazon-nova",
@@ -191,7 +170,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "nova",
     match: "prefix",
     values: ["nova-"],
-    capabilities: { Chat: true, Vision: true, ToolCalling: true },
   },
   {
     id: "llava",
@@ -199,7 +177,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "llava",
     match: "prefix",
     values: ["llava"],
-    capabilities: { Chat: true, Vision: true },
   },
   {
     id: "microsoft",
@@ -207,7 +184,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "microsoft",
     match: "prefix",
     values: ["phi-", "phi"],
-    capabilities: { Chat: true, ToolCalling: true },
   },
   {
     id: "rwkv",
@@ -215,7 +191,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "rwkv",
     match: "prefix",
     values: ["rwkv"],
-    capabilities: { Chat: true },
   },
   {
     id: "yuanbao",
@@ -223,7 +198,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "yuanbao",
     match: "prefix",
     values: ["yuanbao"],
-    capabilities: { Chat: true, Vision: true, ToolCalling: true },
   },
   {
     id: "jina",
@@ -266,7 +240,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "perplexity",
     match: "prefix",
     values: ["sonar-", "perplexity/"],
-    capabilities: { Chat: true, ToolCalling: true },
   },
   {
     id: "groq",
@@ -288,7 +261,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "gemini",
     match: "includes",
     values: ["vision", "-vl", "_vl", "llava", "internvl", "minicpm-v", "pixtral", "omni"],
-    capabilities: { Vision: true, Chat: true },
   },
   {
     id: "image-generation",
@@ -296,7 +268,6 @@ const MODEL_CATALOG: readonly ModelCatalogRule[] = [
     icon: "google",
     match: "includes",
     values: ["dall-e", "gpt-image", "imagen", "flux", "stable-diffusion", "sdxl", "cogview", "ideogram"],
-    capabilities: { ImageOutput: true },
   },
 ];
 
@@ -413,64 +384,6 @@ function resolveCatalogLabel(rule: { label?: string; labelKey?: FrontendMessageK
   return rule.labelKey ? frontendMessage(rule.labelKey) : (rule.label ?? "");
 }
 
-export function inferModelCatalogCapabilities(
-  modelName?: string,
-  _providerHint?: string,
-): Partial<ModelCapabilitiesDraft> {
-  const modelRule = inferModelCatalogRule(modelName);
-  const capabilities: Partial<ModelCapabilitiesDraft> = { ...(modelRule?.capabilities ?? {}) };
-  const source = normalizeModelCatalogValue(modelName);
-  const setTrue = (key: keyof ModelCapabilitiesDraft): void => {
-    capabilities[key] = true;
-  };
-
-  if (
-    matchesAny(source, [
-      "gemini",
-      "gemma-3",
-      "claude-3",
-      "claude-sonnet-4",
-      "claude-opus-4",
-      "claude-haiku-4",
-      "gpt-4o",
-      "gpt-4.1",
-      "grok-2-vision",
-      "grok-vision",
-      "o1",
-      "o3",
-      "o4",
-      "qwen-vl",
-      "qwen2-vl",
-      "qwen2.5-vl",
-      "qwen3-vl",
-      "qwen-omni",
-      "kimi-vl",
-      "glm-4v",
-      "llava",
-      "internvl",
-      "minicpm-v",
-      "pixtral",
-      "vision",
-      "-vl",
-      "_vl",
-      "omni",
-    ])
-  ) {
-    setTrue("Vision");
-  }
-  if (
-    matchesAny(source, ["dall-e", "gpt-image", "imagen", "flux", "stable-diffusion", "sdxl", "cogview", "ideogram"])
-  ) {
-    setTrue("ImageOutput");
-  }
-  if (
-    matchesAny(source, ["o1", "o3", "o4", "deepseek-reasoner", "deepseek-r1", "qwq", "thinking", "reasoning", "-r1"])
-  ) {
-    setTrue("Reasoning");
-  }
-  return capabilities;
-}
-
 function modelCatalogRuleMatches(match: ModelCatalogMatchKind, source: string, values: readonly string[]): boolean {
   return values.some((value) => {
     const normalized = normalizeModelCatalogValue(value);
@@ -478,8 +391,4 @@ function modelCatalogRuleMatches(match: ModelCatalogMatchKind, source: string, v
     if (match === "prefix") return source.startsWith(normalized);
     return source.includes(normalized);
   });
-}
-
-function matchesAny(source: string, values: readonly string[]): boolean {
-  return values.some((value) => source.includes(normalizeModelCatalogValue(value)));
 }

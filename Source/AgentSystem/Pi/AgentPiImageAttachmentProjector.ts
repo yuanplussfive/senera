@@ -1,8 +1,11 @@
-import fs from "node:fs/promises";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
-import { isAgentInlineImageMime } from "../Uploads/AgentUploadMime.js";
 import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
+import type {
+  AgentImageInputCapabilities,
+  AgentImageNormalizationService,
+} from "../Images/AgentImageNormalizationService.js";
+import { isAgentNormalizableRasterImageMime } from "../Images/AgentImageNormalizationService.js";
 
 export interface AgentPiImageModelInput {
   readonly input: readonly string[];
@@ -11,7 +14,9 @@ export interface AgentPiImageModelInput {
 export interface AgentPiImageAttachmentProjectionOptions {
   readonly attachments?: readonly AgentUploadAttachment[];
   readonly model?: AgentPiImageModelInput;
-  readonly uploadStore?: Pick<AgentUploadStore, "resolve">;
+  readonly uploadStore?: Partial<Pick<AgentUploadStore, "resolveImageForModel">>;
+  readonly imageNormalization?: Pick<AgentImageNormalizationService, "normalize">;
+  readonly imageInputCapabilities?: AgentImageInputCapabilities;
   readonly signal?: AbortSignal;
 }
 
@@ -25,30 +30,37 @@ export interface AgentPiImageAttachmentProjectionOptions {
 export async function projectAgentPiImageAttachments(
   options: AgentPiImageAttachmentProjectionOptions,
 ): Promise<ImageContent[]> {
-  if (!options.model || !canProjectImages(options.model) || !options.uploadStore || !options.attachments?.length) {
+  if (!options.model || !canProjectImages(options.model) || !options.attachments?.length) {
     return [];
+  }
+  if (!options.uploadStore?.resolveImageForModel || !options.imageNormalization || !options.imageInputCapabilities) {
+    throw new Error("Vision attachment projection requires the shared image normalization runtime.");
   }
 
   const images: ImageContent[] = [];
   for (const attachment of options.attachments) {
-    if (!isAgentInlineImageMime(attachment.mime)) continue;
+    if (!isNormalizableRasterAttachment(attachment)) continue;
 
-    const upload = await options.uploadStore.resolve(attachment.resourceUri);
-    if (!upload) {
+    const image = await options.uploadStore.resolveImageForModel({
+      resourceUri: attachment.resourceUri,
+      target: options.imageInputCapabilities,
+      normalizer: options.imageNormalization,
+      signal: options.signal,
+    });
+    if (!image) {
       throw new Error(`Image attachment resource is unavailable: ${attachment.resourceUri}`);
     }
-
-    const mimeType = upload.manifest.mime;
-    if (!isAgentInlineImageMime(mimeType)) continue;
-
-    const bytes = await fs.readFile(upload.filePath, { signal: options.signal });
     images.push({
       type: "image",
-      data: bytes.toString("base64"),
-      mimeType,
+      data: image.bytes.toString("base64"),
+      mimeType: image.mime,
     });
   }
   return images;
+}
+
+function isNormalizableRasterAttachment(attachment: AgentUploadAttachment): boolean {
+  return isAgentNormalizableRasterImageMime(attachment.mime);
 }
 
 function canProjectImages(model: AgentPiImageModelInput): boolean {

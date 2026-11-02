@@ -1,5 +1,4 @@
-import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
-import { AgentJsonSchemaPromptContractProjector } from "../ToolContracts/AgentJsonSchemaPromptContractProjector.js";
+import { createAgentToolContract } from "../ToolContracts/AgentToolContractIdentity.js";
 import {
   AgentToolChildGrantModes,
   ToolLoadingModes,
@@ -20,8 +19,6 @@ import type { ToolSearchCapabilityManifest } from "../Types/AgentToolSearchContr
 import { projectAgentMcpToolRuntime } from "../Mcp/AgentMcpToolRuntimeMetadata.js";
 import { resolveMcpToolLocalization, validateMcpToolLocalization } from "./AgentMcpToolLocalization.js";
 
-const contractProjector = new AgentJsonSchemaPromptContractProjector();
-
 export function projectAgentMcpPackageTools(
   package_: AgentMcpPackage,
   server: AgentMcpPackageServer,
@@ -34,12 +31,11 @@ export function projectAgentMcpPackageTools(
     server.toolLocalization,
     declarations.map((declaration) => declaration.name),
   );
-  return declarations.map((declaration) => projectMcpTool(owner, package_, server, declaration, execution, endpoint));
+  return declarations.map((declaration) => projectMcpTool(owner, server, declaration, execution, endpoint));
 }
 
 function projectMcpTool(
   owner: AgentExtensionOwner,
-  package_: AgentMcpPackage,
   server: AgentMcpPackageServer,
   declaration: AgentMcpToolDeclaration,
   execution: AgentMcpPackageExecutionPolicy,
@@ -51,23 +47,12 @@ function projectMcpTool(
   const readOnly = declaration.annotations?.readOnlyHint === true;
   const runtimePolicy = projectAgentMcpToolRuntime(declaration);
 
-  return {
+  const tool: RegisteredTool = {
     availability: endpoint.transport === "unresolved" ? endpoint.availability : { status: "ready" },
     owner,
     name: agentMcpPackageToolName(server.name, declaration.name),
+    description,
     loading: ToolLoadingModes.Dynamic,
-    contract: {
-      digest: sha256HexOfCanonicalJson({
-        package: package_.name,
-        revision: package_.revision,
-        server: server.name,
-        tool: declaration.name,
-        inputSchema: declaration.inputSchema,
-        outputSchema: declaration.outputSchema,
-      }),
-      arguments: contractProjector.project(declaration.inputSchema),
-      outputSchema: declaration.outputSchema,
-    },
     permissions: [],
     handler: {
       kind: "McpTool" as const,
@@ -83,6 +68,8 @@ function projectMcpTool(
     runtime: {
       Lifecycle: "Persistent" as const,
       ResultAssessment: ToolResultAssessmentPolicies.ProcessExit,
+      ...(runtimePolicy.deadlinePolicy === undefined ? {} : { DeadlinePolicy: runtimePolicy.deadlinePolicy }),
+      ...(runtimePolicy.deadlineMs === undefined ? {} : { DeadlineMs: runtimePolicy.deadlineMs }),
       Scheduling: runtimePolicy.scheduling,
       ...(runtimePolicy.maxConcurrency === undefined ? {} : { MaxConcurrency: runtimePolicy.maxConcurrency }),
       Capabilities: { Cancellation: true },
@@ -105,6 +92,7 @@ function projectMcpTool(
       ? { Mode: "ask" as const, Reason: "MCP tool declares a destructive side effect." }
       : undefined,
   };
+  return { ...tool, contract: createAgentToolContract(tool, declaration.inputSchema, declaration.outputSchema) };
 }
 
 function projectMcpCapability(

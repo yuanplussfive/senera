@@ -9,6 +9,9 @@ export type AgentBrowserScreenshotFormat = (typeof AgentBrowserScreenshotFormatV
 export const AgentBrowserContextValues = ["persistent", "temporary"] as const;
 export type AgentBrowserContext = (typeof AgentBrowserContextValues)[number];
 
+export const AgentBrowserSelectionValues = ["auto", "bundled", "chrome", "edge", "brave", "chromium"] as const;
+export type AgentBrowserSelection = (typeof AgentBrowserSelectionValues)[number];
+
 export const AgentBrowserLoadStateValues = ["domcontentloaded", "load", "networkidle"] as const;
 export type AgentBrowserLoadState = (typeof AgentBrowserLoadStateValues)[number];
 export const AgentBrowserMaximumUrlLength = 65_536;
@@ -16,15 +19,14 @@ export const AgentBrowserMaximumUrlLength = 65_536;
 export const DefaultAgentBrowserConfiguration = {
   runtime: {
     context: "persistent" as const,
+    browser: "auto" as const,
     headed: false,
     requestTimeoutMs: 180_000,
-    maxOperationTimeoutMs: 900_000,
     idleTimeoutMs: 900_000,
     outputMaxChars: 96_000,
     maxUrlLength: 8_192,
     maxSelectorLength: 4_096,
     maxTextChars: 120_000,
-    maxWaitMs: 900_000,
   },
   network: {
     blockedDomains: [] as string[],
@@ -60,6 +62,7 @@ export const AgentBrowserConfigurationSchema = z
     runtime: z
       .object({
         context: z.enum(AgentBrowserContextValues).default(DefaultAgentBrowserConfiguration.runtime.context),
+        browser: z.enum(AgentBrowserSelectionValues).default(DefaultAgentBrowserConfiguration.runtime.browser),
         headed: z.boolean().default(DefaultAgentBrowserConfiguration.runtime.headed),
         executablePath: z.string().trim().min(1).max(32_768).optional(),
         controllerPath: z.string().trim().min(1).max(32_768).optional(),
@@ -69,12 +72,6 @@ export const AgentBrowserConfigurationSchema = z
           .min(5_000)
           .max(60 * 60 * 1_000)
           .default(DefaultAgentBrowserConfiguration.runtime.requestTimeoutMs),
-        maxOperationTimeoutMs: z
-          .number()
-          .int()
-          .min(5_000)
-          .max(60 * 60 * 1_000)
-          .default(DefaultAgentBrowserConfiguration.runtime.maxOperationTimeoutMs),
         idleTimeoutMs: z
           .number()
           .int()
@@ -105,23 +102,8 @@ export const AgentBrowserConfigurationSchema = z
           .min(1_024)
           .max(2_000_000)
           .default(DefaultAgentBrowserConfiguration.runtime.maxTextChars),
-        maxWaitMs: z
-          .number()
-          .int()
-          .min(1)
-          .max(60 * 60 * 1_000)
-          .default(DefaultAgentBrowserConfiguration.runtime.maxWaitMs),
       })
       .strict()
-      .superRefine((runtime, context) => {
-        if (runtime.maxOperationTimeoutMs < runtime.requestTimeoutMs) {
-          context.addIssue({
-            code: "custom",
-            path: ["maxOperationTimeoutMs"],
-            message: "Maximum operation timeout must not be lower than the default operation timeout.",
-          });
-        }
-      })
       .default(DefaultAgentBrowserConfiguration.runtime),
     network: AgentBrowserNetworkConfigurationSchema.default(DefaultAgentBrowserConfiguration.network),
     capture: z
@@ -180,6 +162,28 @@ export const AgentBrowserConfigurationUi = {
             essential: true,
           },
           {
+            path: ["runtime", "browser"],
+            label: { "zh-CN": "浏览器", "en-US": "Browser" },
+            description: {
+              "zh-CN":
+                "自动检测本机安装的 Chrome、Edge、Brave 或 Chromium，并使用 Senera 专属资料目录启动。未检测到时使用 Senera 自带浏览器；填写浏览器可执行文件路径时始终以该路径为准。",
+              "en-US":
+                "Detects installed Chrome, Edge, Brave, or Chromium and launches it with the Senera-only profile. Falls back to the Senera-managed browser when none is found. A configured executable path always takes precedence.",
+            },
+            type: "string",
+            options: [...AgentBrowserSelectionValues],
+            optionLabels: {
+              auto: { "zh-CN": "自动检测（推荐）", "en-US": "Auto-detect (recommended)" },
+              bundled: { "zh-CN": "Senera 自带浏览器", "en-US": "Senera-managed browser" },
+              chrome: { "zh-CN": "Google Chrome", "en-US": "Google Chrome" },
+              edge: { "zh-CN": "Microsoft Edge", "en-US": "Microsoft Edge" },
+              brave: { "zh-CN": "Brave", "en-US": "Brave" },
+              chromium: { "zh-CN": "Chromium", "en-US": "Chromium" },
+            },
+            required: true,
+            essential: true,
+          },
+          {
             path: ["runtime", "headed"],
             label: { "zh-CN": "显示浏览器窗口", "en-US": "Show browser window" },
             type: "boolean",
@@ -190,9 +194,9 @@ export const AgentBrowserConfigurationUi = {
             path: ["runtime", "executablePath"],
             label: { "zh-CN": "浏览器可执行文件", "en-US": "Browser executable" },
             description: {
-              "zh-CN": "留空时由 agent-browser 发现系统浏览器或其已下载的浏览器；仅在需要固定版本时填写。",
+              "zh-CN": "留空时使用上面的浏览器选择；需要固定某个安装路径时填写。",
               "en-US":
-                "Leave empty for agent-browser to discover a system or managed browser. Set only when a fixed executable is required.",
+                "Leave empty to use the browser selection above. Set only when a fixed executable path is required.",
             },
             type: "string",
             required: false,
@@ -212,39 +216,27 @@ export const AgentBrowserConfigurationUi = {
           },
           {
             path: ["runtime", "requestTimeoutMs"],
-            label: { "zh-CN": "默认操作超时（毫秒）", "en-US": "Default operation timeout (ms)" },
+            label: { "zh-CN": "浏览器操作超时", "en-US": "Browser operation timeout" },
             description: {
-              "zh-CN": "模型未提供 timeoutMs 时使用。",
-              "en-US": "Used when the model does not provide timeoutMs.",
+              "zh-CN": "单次操作的总时间，包含启动浏览器、执行和读取结果。修改后在新会话中生效。",
+              "en-US": "Total time for startup, execution and result reads. Changes apply to new sessions.",
             },
             type: "number",
             min: 5_000,
             max: 3_600_000,
             step: 1_000,
-            required: true,
-            essential: false,
-          },
-          {
-            path: ["runtime", "maxOperationTimeoutMs"],
-            label: { "zh-CN": "模型操作超时上限（毫秒）", "en-US": "Model operation timeout limit (ms)" },
-            description: {
-              "zh-CN": "模型可在单次浏览器调用中使用 timeoutMs，但不能超过此值。",
-              "en-US": "The model may set timeoutMs per browser call, up to this value.",
-            },
-            type: "number",
-            min: 5_000,
-            max: 3_600_000,
-            step: 1_000,
+            durationUnit: "milliseconds",
             required: true,
             essential: false,
           },
           {
             path: ["runtime", "idleTimeoutMs"],
-            label: { "zh-CN": "空闲会话回收（毫秒）", "en-US": "Idle session cleanup (ms)" },
+            label: { "zh-CN": "空闲会话回收", "en-US": "Idle session cleanup" },
             type: "number",
             min: 10_000,
             max: 86_400_000,
             step: 10_000,
+            durationUnit: "milliseconds",
             required: true,
             essential: false,
           },
@@ -285,16 +277,6 @@ export const AgentBrowserConfigurationUi = {
             min: 1_024,
             max: 2_000_000,
             step: 1_024,
-            required: true,
-            essential: false,
-          },
-          {
-            path: ["runtime", "maxWaitMs"],
-            label: { "zh-CN": "模型等待上限（毫秒）", "en-US": "Model wait limit (ms)" },
-            type: "number",
-            min: 1,
-            max: 3_600_000,
-            step: 1_000,
             required: true,
             essential: false,
           },

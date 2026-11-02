@@ -14,7 +14,27 @@ interface AgentProviderModelGroupAssignment {
 export function cloneModelProviderConfig(model: AgentModelProviderConfig): AgentModelProviderConfig {
   return {
     ...model,
-    ...(model.Capabilities ? { Capabilities: { ...model.Capabilities } } : {}),
+    ...(model.Pricing ? { Pricing: { ...model.Pricing } } : {}),
+    ...(model.Capabilities
+      ? {
+          Capabilities: {
+            ...model.Capabilities,
+            ...(model.Capabilities.VisionInput
+              ? {
+                  VisionInput: {
+                    ...model.Capabilities.VisionInput,
+                    ...(model.Capabilities.VisionInput.SupportedMimeTypes
+                      ? { SupportedMimeTypes: [...model.Capabilities.VisionInput.SupportedMimeTypes] }
+                      : {}),
+                    ...(model.Capabilities.VisionInput.SupportedAnimatedMimeTypes
+                      ? { SupportedAnimatedMimeTypes: [...model.Capabilities.VisionInput.SupportedAnimatedMimeTypes] }
+                      : {}),
+                  },
+                }
+              : {}),
+          },
+        }
+      : {}),
     ...(model.ThinkingProfiles ? { ThinkingProfiles: model.ThinkingProfiles.map((profile) => ({ ...profile })) } : {}),
   };
 }
@@ -161,8 +181,6 @@ function remapActionPlannerModelIds(
 ): NonNullable<AgentSystemConfig["ActionPlanner"]> {
   return {
     ...planner,
-    Client: remapPlannerClientModelId(planner.Client, remap),
-    PlanningClient: remapPlannerClientModelId(planner.PlanningClient, remap),
     FinalAnswerClient: remapPlannerClientModelId(planner.FinalAnswerClient, remap),
   };
 }

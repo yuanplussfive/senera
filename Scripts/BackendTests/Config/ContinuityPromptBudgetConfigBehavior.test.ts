@@ -7,6 +7,23 @@ import { createModelProvider } from "../Support/AgentTestFixtures.js";
 import { migrateAgentConfigPayload } from "../../../Source/AgentSystem/Config/AgentConfigMigration.js";
 
 describe("continuity prompt budget configuration", () => {
+  test("retention defaults and recall reservations share resolved configuration and reject an overcommitted budget", () => {
+    expect(resolveContinuityLearningConfig(config()).Retention).toEqual({ FactDays: 7, ContextDays: 1 });
+    const resolved = resolveContinuityLearningConfig(
+      config({
+        Defaults: { ContinuityLearning: { Retention: { FactDays: 14 }, Recall: { FrozenBudgetRatio: 0.2 } } },
+        ContinuityLearning: { Retention: { ContextDays: 2 }, Recall: { TaskBudgetRatio: 0.6 } },
+      }),
+    );
+    expect(resolved.Retention).toEqual({ FactDays: 14, ContextDays: 2 });
+    expect(resolved.Recall).toMatchObject({ FrozenBudgetRatio: 0.2, TaskBudgetRatio: 0.6 });
+    expect(() =>
+      resolveContinuityLearningConfig(
+        config({ ContinuityLearning: { Recall: { FrozenBudgetRatio: 0.7, TaskBudgetRatio: 0.5 } } }),
+      ),
+    ).toThrow("sum to at most one");
+  });
+
   test("uses one configured budget in runtime and form projections", () => {
     const input = config({
       ContinuityLearning: { Recall: { PromptBudget: { MaxTokens: 8_000 } } },

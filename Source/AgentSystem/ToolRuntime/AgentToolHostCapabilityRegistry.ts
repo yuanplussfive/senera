@@ -1,4 +1,5 @@
 import type { AgentToolProcessRunResult } from "./AgentToolProcessTypes.js";
+import type { AgentToolComposition } from "./AgentToolComposition.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
 import type { AgentExtensionRegistryLike } from "../Types/ToolRuntimeTypes.js";
@@ -25,8 +26,12 @@ import type { AgentWorkspaceObservationPort } from "../Artifacts/AgentWorkspaceC
 import type { AgentToolAccessGrant } from "./AgentToolAccessGrant.js";
 import type { AgentArtifactManifestIndexCache } from "../Memory/AgentArtifactManifestIndexCache.js";
 import type { AgentToolDeadlineScope } from "./AgentToolDeadline.js";
+import type { AgentResourceAccessGrant } from "../Execution/SeneraResourceAccess.js";
+import type { AgentResourcePublisher } from "../Resources/AgentResourcePublisher.js";
 
 export interface AgentHostToolContext {
+  resourcePublisher?: AgentResourcePublisher;
+  composition?: AgentToolComposition;
   artifactManifestIndex?: AgentArtifactManifestIndexCache;
   toolAccessGrant?: AgentToolAccessGrant;
   interaction?: AgentInteractionContext;
@@ -38,7 +43,8 @@ export interface AgentHostToolContext {
   identityDisplayValues?: () => AgentIdentityDisplayValues;
   registry: AgentExtensionRegistryLike;
   executionEnv: SeneraExecutionEnv;
-  uploadStore?: Pick<AgentUploadStore, "resolve">;
+  resourceAccessGrant?: AgentResourceAccessGrant;
+  uploadStore?: Pick<AgentUploadStore, "resolve"> & Partial<Pick<AgentUploadStore, "resolveImageForModel">>;
   resourceResolver?: AgentResourceResolverLike;
   sessionId?: string;
   /** Stable logical lane for session-scoped capability evidence. */
@@ -134,6 +140,16 @@ export class AgentToolHostCapabilityRegistry {
 
   get(capability: string): AgentHostToolHandler | undefined {
     return this.handlers.get(capability);
+  }
+
+  /**
+   * Returns a snapshot of capabilities that have an executable handler in
+   * this runtime. Package publication must be checked against this set rather
+   * than a separate list of names, so a model-visible tool cannot outlive its
+   * implementation binding.
+   */
+  capabilities(): ReadonlySet<string> {
+    return new Set(this.handlers.keys());
   }
 
   projectInvocationSchema(tool: RegisteredTool, schema: Readonly<Record<string, unknown>>): Record<string, unknown> {

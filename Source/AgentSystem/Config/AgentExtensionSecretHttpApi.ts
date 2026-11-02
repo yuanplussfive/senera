@@ -1,7 +1,12 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { applyCredentialedCors, writeCorsPreflight } from "../Auth/AgentCredentialedCors.js";
+import {
+  acceptAgentPrivateJsonGet,
+  sendAgentPrivateJson,
+  sendAgentPrivateJsonError,
+} from "../Web/AgentPrivateJsonHttp.js";
 import type { AgentSystemExtensionSettingsItem } from "../SystemTools/AgentSystemToolSource.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
+import type { AgentConfigFormField } from "../Types/ConfigFormTypes.js";
 import { carriesAgentSecretScheme } from "../Security/AgentSecretEnvelopeCodec.js";
 
 export const AgentExtensionSecretHttpRoute = "/api/extension-secrets";
@@ -29,66 +34,52 @@ export class AgentExtensionSecretHttpApi {
   }
 
   handle(request: IncomingMessage, response: ServerResponse): void {
-    if (
-      !applyCredentialedCors(request, response, {
-        allowedMethods: ["GET", "OPTIONS"],
-        isOriginAllowed: (origin, corsRequest) => this.options.isOriginAllowed?.(origin, corsRequest) ?? false,
-      })
-    ) {
-      this.sendError(response, 403, "forbidden_origin", "The request origin is not allowed.");
-      return;
-    }
-    if (request.method === "OPTIONS") {
-      writeCorsPreflight(response);
-      return;
-    }
-    if (request.method !== "GET") {
-      this.sendError(response, 405, "method_not_allowed", "Use GET.");
-      return;
-    }
+    if (!acceptAgentPrivateJsonGet(request, response, this.options.isOriginAllowed)) return;
 
     const query = new URL(request.url ?? "/", "http://senera.local").searchParams;
     const extensionId = query.get("extensionId")?.trim();
     const path = query.getAll("path");
     if (!extensionId || path.length === 0 || path.some((part) => part.length === 0)) {
-      this.sendError(response, 400, "extension_secret_path_required", "An extension id and field path are required.");
+      sendAgentPrivateJsonError(
+        response,
+        400,
+        "extension_secret_path_required",
+        "An extension id and field path are required.",
+      );
       return;
     }
 
     const extension = this.options.systemExtensions().find((candidate) => candidate.id === extensionId);
     const field = extension?.configuration?.sections
-      .flatMap((section) => flattenFields(section.fields))
-      .find((candidate) => samePath(candidate.path, path));
+      .map((section) => findField(section.fields, path))
+      .find((candidate) => candidate !== undefined);
     if (!field?.secret || field.type !== "string") {
-      this.sendError(response, 404, "extension_secret_not_found", "The requested extension secret was not found.");
+      sendAgentPrivateJsonError(
+        response,
+        404,
+        "extension_secret_not_found",
+        "The requested extension secret was not found.",
+      );
       return;
     }
 
     const configuration = readExtensionConfiguration(this.options.configSnapshot(), extensionId);
     const value = readPath(configuration, path);
-    this.sendJson(response, 200, {
+    if (typeof value === "string" && carriesAgentSecretScheme(value)) {
+      sendAgentPrivateJsonError(
+        response,
+        409,
+        "secret_unresolved",
+        "This host cannot decrypt the saved secret, so it cannot be revealed. Enter it again.",
+      );
+      return;
+    }
+    sendAgentPrivateJson(response, 200, {
       ok: true,
       extensionId,
       path,
-      value: typeof value === "string" && !carriesAgentSecretScheme(value) ? value : "",
+      value: typeof value === "string" ? value : "",
     });
-  }
-
-  private sendJson(response: ServerResponse, statusCode: number, value: unknown): void {
-    const body = JSON.stringify(value);
-    response.writeHead(statusCode, {
-      "Cache-Control": "private, no-store, max-age=0",
-      "Content-Length": Buffer.byteLength(body),
-      "Content-Security-Policy": "default-src 'none'",
-      "Content-Type": "application/json; charset=utf-8",
-      Pragma: "no-cache",
-      "X-Content-Type-Options": "nosniff",
-    });
-    response.end(body);
-  }
-
-  private sendError(response: ServerResponse, statusCode: number, code: string, message: string): void {
-    this.sendJson(response, statusCode, { ok: false, error: { code, message } });
   }
 }
 
@@ -102,18 +93,27 @@ function readExtensionConfiguration(config: AgentSystemConfig, extensionId: stri
 function readPath(source: unknown, path: readonly string[]): unknown {
   let current = source;
   for (const part of path) {
-    if (!isRecord(current)) return undefined;
+    if (!isRecord(current) || !Object.hasOwn(current, part)) return undefined;
     current = current[part];
   }
   return current;
 }
 
-function samePath(left: readonly string[], right: readonly string[]): boolean {
-  return left.length === right.length && left.every((part, index) => part === right[index]);
-}
-
-function flattenFields<T extends { readonly itemFields?: readonly T[] }>(fields: readonly T[]): readonly T[] {
-  return fields.flatMap((field) => [field, ...flattenFields(field.itemFields ?? [])]);
+function findField<TText>(
+  fields: readonly AgentConfigFormField<TText>[],
+  path: readonly string[],
+  parentPath: readonly string[] = [],
+): AgentConfigFormField<TText> | undefined {
+  for (const field of fields) {
+    const relativePath = field.path.slice(parentPath.length);
+    if (relativePath.length > path.length || !relativePath.every((part, index) => part === path[index])) continue;
+    const remaining = path.slice(relativePath.length);
+    if (remaining.length === 0) return field;
+    const itemPath = field.type === "record" || field.type === "array" ? remaining.slice(1) : remaining;
+    const child = findField(field.itemFields ?? [], itemPath, field.path);
+    if (child) return child;
+  }
+  return undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

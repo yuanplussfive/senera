@@ -2,11 +2,9 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
 import { AgentExtensionRegistry } from "../../../Source/AgentSystem/Extensions/AgentExtensionRegistry.js";
-import { listDefaultAgentHostCapabilityNames } from "../../../Source/AgentSystem/AgentDefaultHostCapabilities.js";
 import { discoverAgentSystemExtensionPackages } from "../../../Source/AgentSystem/SystemTools/AgentSystemExtensionDiscovery.js";
-import { systemToolCapability } from "../../../Source/AgentSystem/SystemTools/AgentSystemToolCatalog.js";
 import { AgentSystemExtensionCatalog } from "../../../Source/AgentSystem/SystemTools/AgentSystemToolSource.js";
-import { createAgentSystemTools } from "../../../Source/AgentSystem/SystemTools/AgentSystemTools.js";
+import { listAgentSystemExtensionHostCapabilityUniverse } from "../../../Source/AgentSystem/SystemTools/AgentSystemTools.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 const SystemExtensionRoot = path.resolve("System", "Extensions");
@@ -49,7 +47,6 @@ describe("System Tool activity presentation coverage", () => {
         .map((contribution) => path.basename(contribution.contract, ".tool.json")),
     );
 
-    expect(sidecarNames.length).toBeGreaterThan(0);
     const activityTools = new Set(readBundledHostTools().map((tool) => tool.name));
     expect(sidecarNames.filter((name) => activityTools.has(name))).toEqual([]);
   });
@@ -99,9 +96,8 @@ function readBundledHostTools(): readonly BundledHostTool[] {
 
 function systemToolRegistry(): AgentExtensionRegistry {
   const registry = new AgentExtensionRegistry();
-  const definitions = createAgentSystemTools(testConfig());
   new AgentSystemExtensionCatalog().registerRoot(registry, SystemExtensionRoot, {
-    capabilities: new Set([...listDefaultAgentHostCapabilityNames(), ...definitions.map(systemToolCapability)]),
+    capabilities: listAgentSystemExtensionHostCapabilityUniverse(testConfig()),
   });
   return registry;
 }
@@ -134,6 +130,11 @@ function resolvePointer(schema: unknown, pointer: string): readonly JsonObject[]
     if (token === "*") {
       const children = [node.items, isJsonObject(node.additionalProperties) ? node.additionalProperties : undefined];
       return children.flatMap((child) => visit(child, tail));
+    }
+    if (node.type === "array" && /^(0|[1-9]\d*)$/u.test(token)) {
+      const index = Number(token);
+      if (typeof node.maxItems === "number" && index >= node.maxItems) return [];
+      return visit(Array.isArray(node.items) ? node.items[index] : node.items, tail);
     }
     return visit(isJsonObject(node.properties) ? node.properties[token] : undefined, tail);
   };

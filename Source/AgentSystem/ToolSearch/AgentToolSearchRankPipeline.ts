@@ -53,14 +53,13 @@ export class AgentToolSearchRankPipeline {
   }
 
   rank(options: AgentToolSearchRankInput): AgentToolSearchRankPipelineResult {
-    const stopwords = new Set(this.config.Tokenize.Stopwords);
     // Rank only on content-bearing terms. This is the same token view used by
     // lexical-completeness checks and avoids function words or segmentation
     // fragments becoming accidental cross-domain ranking evidence.
     const retrievalQuery = options.retrievalQuery;
     const queryTokens = this.tokenizer
       .tokenizeContent(retrievalQuery)
-      .filter((token) => this.tokenizer.isIndependentContentToken(token) && !stopwords.has(token));
+      .filter((token) => this.tokenizer.isIndependentContentToken(token));
     const lexicalQuery = queryTokens.join(" ");
     const authorized = options.authorizedToolNames ? new Set(options.authorizedToolNames) : undefined;
     // Visibility is presentation state, not an authorization boundary. A

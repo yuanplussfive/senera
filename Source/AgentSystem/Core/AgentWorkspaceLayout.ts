@@ -30,6 +30,8 @@ const WorkspaceLayout = {
     memory: ["memory", "memory.sqlite"],
     orchestration: ["orchestration", "orchestration.sqlite"],
     channels: ["channels", "channels.sqlite"],
+    resources: ["resources", "identities.sqlite"],
+    identities: ["identities", "references.sqlite"],
     memos: ["memos", "memos.sqlite"],
     artifactManifestIndex: ["artifacts", "manifest-index.sqlite"],
     workspaceObserver: ["workspace-observer", "workspace-observer.sqlite"],
@@ -106,6 +108,10 @@ export interface AgentWorkspaceLayout {
     readonly memory: string;
     readonly orchestration: string;
     readonly channels: string;
+    /** Authoritative resource ID reservations; retained after resource deletion. */
+    readonly resources: string;
+    /** Domain-scoped public identities; retained after entity deletion. */
+    readonly identities: string;
     /** MemOS graph database; semantic memory is isolated from the physical memory catalog. */
     readonly memos: string;
     /** Derived Artifact manifest lookup index; raw manifests remain canonical files. */

@@ -6,9 +6,10 @@ import {
   type SessionHistoryStartedData,
   type SessionHistoryStepsData,
   type SessionRunHistoryChunkData,
+  type SessionRunHistoryDetailData,
 } from "../../api/eventTypes";
 import {
-  hydrateRunUsageFromMessages,
+  hydrateRunMetadataFromMessages,
   mergeHistoryMessages,
   projectEntryToMessage,
   rebuildRunFromHistory,
@@ -18,6 +19,14 @@ import { syncRunActiveFlags, touchRun } from "./sessionRunProjection";
 import { mergeToolResultPresentation } from "./toolResultPresentation";
 import { assistantTerminalStepKey, isAssistantMessageStep } from "./timelineProjection";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import {
+  finalizeRunHistoryDetail,
+  projectRunHistoryDetail,
+  projectRunHistoryDiagnostics,
+} from "./runHistoryDetailProjection";
+import { completeRunHistoryDetailLoad } from "./runHistoryDetailState";
+import { forgetRequestEventReceipts } from "./eventReceiptLedger";
+import { compareModelThinkingBlocks } from "./modelThinkingBlocks";
 import type {
   ChatMessage,
   HistoryActiveStreamSnapshot,
@@ -48,12 +57,32 @@ export function projectSessionHistoryEvent(context: SessionHistoryProjectionCont
 
 type SessionHistoryEventHandler = (context: SessionHistoryProjectionContext) => void;
 
+/** Only live run events may advance the stream protected from historical replay. */
+export function captureLiveStreamDuringHistory(state: StoreState, env: EventEnvelope): void {
+  const sessionId = env.sessionId;
+  if (!sessionId) return;
+  const progress = state.historyHydration?.[sessionId];
+  if (!progress || env.requestId !== progress.activeRequestId) return;
+  progress.activeStream = captureActiveStream(state, sessionId, progress.activeRequestId);
+}
+
 const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], SessionHistoryEventHandler>> = {
   [EventKinds.SessionHistoryStarted]: ({ state, env }) => {
     const sessionId = env.sessionId;
     if (!sessionId) return;
     const data = env.data as SessionHistoryStartedData;
     const session = ensureSession(state, sessionId);
+    session.pendingHistoryWindow = data.window
+      ? {
+          window: data.window,
+          previousRequestIds: [
+            ...new Set([
+              ...session.runs.map((run) => run.requestId),
+              ...session.messages.flatMap((message) => (message.requestId ? [message.requestId] : [])),
+            ]),
+          ],
+        }
+      : undefined;
     const hasLocalConversation = session.messages.length > 0 || session.runs.length > 0;
     if (!data.refresh && !hasLocalConversation) {
       session.messages = [];
@@ -134,18 +163,35 @@ const sessionHistoryEventHandlers: Partial<Record<EventEnvelope["kind"], Session
     runEventBuffers[sessionId] = eventPages;
     const page: EventEnvelope[] = [];
     for (const event of data.events) {
-      const restoredRequestId = event.scope?.parentRequestId ?? event.requestId;
+      const restoredRequestId = historyEventRunRequestId(event);
       if (restoredRequestId && isHistoryRequestSuppressed(state, sessionId, restoredRequestId)) continue;
-      if (event.kind === EventKinds.RunStarted && event.requestId) {
-        eventRunIds[event.requestId] = true;
-      }
-      if (restoredRequestId && !eventRunIds[restoredRequestId]) continue;
+      // A failed or interrupted run can lose its early lifecycle records when
+      // persistence is interrupted. A result-detail event is still useful in
+      // that case, so its owning run is recoverable on its own. Do not make
+      // `run.started` an implicit admission token for every later event.
+      if (restoredRequestId) eventRunIds[restoredRequestId] = true;
+      if (event.kind !== EventKinds.FeedbackRecorded && !restoredRequestId) continue;
       page.push({
         ...event,
         sessionId: event.sessionId ?? sessionId,
       });
     }
     if (page.length > 0) eventPages.push(page);
+  },
+
+  [EventKinds.SessionRunHistoryDetail]: ({ state, env }) => {
+    const sessionId = env.sessionId;
+    if (!sessionId) return;
+    const data = env.data as SessionRunHistoryDetailData;
+    if (data.sessionId !== sessionId || data.requestId !== env.requestId) return;
+    const run = state.sessions[sessionId]?.runs.find((candidate) => candidate.requestId === data.requestId);
+    // A detail response can arrive after its archived window was released.
+    // Do not revive a "loaded" receipt for a run that no longer holds details.
+    if (!run) return;
+    projectRunHistoryDetail(run, data.events);
+    projectRunHistoryDiagnostics(state, run, data.events);
+    if (data.complete) finalizeRunHistoryDetail(run);
+    if (data.complete) completeRunHistoryDetailLoad(state, sessionId, data.requestId);
   },
 
   [EventKinds.SessionHistoryCompleted]: ({ state, env, applyEvent }) => {
@@ -225,7 +271,7 @@ export function advanceSessionHistoryHydration(
       const start = progress.stepItemIndex;
       const end = Math.min(page.length, start + remaining);
       if (end > start) {
-        reconcileHistoryStepRuns(session, page.slice(start, end), false);
+        reconcileHistoryStepRuns(session, page.slice(start, end), false, state.historyEventRunIds[sessionId] ?? {});
         const requestIds = page.slice(start, end).map((run) => run.requestId);
         for (const requestId of requestIds) progress.recoveredRequestIds[requestId] = true;
         progress.stepItemIndex = end;
@@ -268,6 +314,9 @@ export function advanceSessionHistoryHydration(
     }
   }
 
+  // Historical model-start events reset transient output while projecting.
+  // Restore the live stream before yielding so no stale frame is painted.
+  restoreHydrationActiveStream(state, session, progress);
   return true;
 }
 
@@ -278,6 +327,13 @@ function createHistoryHydrationProgress(
 ): HistoryHydrationProgress {
   const stepPages = state.historyStepBuffers[sessionId] ?? [];
   const eventRunIds = state.historyEventRunIds[sessionId] ?? {};
+  // History includes transcript thinking as well as recoverable execution.
+  // Materialize matching durable snapshots first so content can attach even
+  // when the compact replay intentionally omits `run.started`.
+  const eventRunSnapshots = stepPages.flatMap((page) => page.filter((run) => eventRunIds[run.requestId] === true));
+  if (eventRunSnapshots.length > 0) {
+    reconcileHistoryStepRuns(state.sessions[sessionId], eventRunSnapshots, false, eventRunIds);
+  }
   const completedRequestIds: Record<string, boolean> = {};
   const recoveredRequestIds: Record<string, boolean> = { ...eventRunIds };
   for (const page of stepPages) {
@@ -322,20 +378,56 @@ function finalizeHistoryHydration(state: StoreState, sessionId: string, progress
 
   session.messages.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
   session.runs.sort((left, right) => left.startedAt.localeCompare(right.startedAt));
-  const activeRequestId = resolveHydrationActiveRequestId(session, progress);
-  if (progress.activeStream && activeRequestId === progress.activeStream.requestId) {
-    restoreActiveStream(state, sessionId, progress.activeStream);
-  }
+  const activeRequestId = restoreHydrationActiveStream(state, session, progress);
   closeRecoveredRunningRuns(
     session,
     progress.completedAt,
     new Set(Object.keys(progress.recoveredRequestIds)),
     activeRequestId,
   );
-  hydrateRunUsageFromMessages(session);
+  hydrateRunMetadataFromMessages(session);
+  commitHistoryWindow(state, session);
   clearHistoryLoadingState(state, sessionId);
   state.historyLoadedIds[sessionId] = true;
   syncSessionCountsFromLoadedMessages(session);
+}
+
+/** Only evict the old window after a complete replay; a failed refresh leaves it usable. */
+function commitHistoryWindow(state: StoreState, session: SessionRecord): void {
+  const pending = session.pendingHistoryWindow;
+  if (!pending) return;
+  const { window, previousRequestIds } = pending;
+  if (window.mode === "replace") {
+    const retained = new Set(window.requestIds);
+    if (session.activeRequestId) retained.add(session.activeRequestId);
+    for (const run of session.runs) {
+      if (run.status === "running" || run.status === "cancelling") retained.add(run.requestId);
+    }
+    for (const message of session.messages) {
+      if (message.requestId && message.queueAdmission) retained.add(message.requestId);
+    }
+    // Requests that arrived after history.started belong to the live stream.
+    const discarded = new Set(previousRequestIds.filter((id) => !retained.has(id)));
+    session.messages = session.messages.filter((message) => !message.requestId || !discarded.has(message.requestId));
+    session.runs = session.runs.filter((run) => !discarded.has(run.requestId));
+    const details = state.runHistoryDetailStates?.[session.sessionId];
+    if (details) for (const id of discarded) delete details[id];
+    forgetRequestEventReceipts(state, session.sessionId, discarded);
+  }
+  session.historyWindow = window;
+  delete session.pendingHistoryWindow;
+}
+
+function restoreHydrationActiveStream(
+  state: StoreState,
+  session: SessionRecord,
+  progress: HistoryHydrationProgress,
+): string | undefined {
+  const activeRequestId = resolveHydrationActiveRequestId(session, progress);
+  if (progress.activeStream && activeRequestId === progress.activeStream.requestId) {
+    restoreActiveStream(state, session.sessionId, progress.activeStream);
+  }
+  return activeRequestId;
 }
 
 function resolveHydrationActiveRequestId(
@@ -417,7 +509,12 @@ function restoreActiveStream(state: StoreState, sessionId: string, snapshot: His
   const session = state.sessions[sessionId];
   const run = session?.runs.find((entry) => entry.requestId === snapshot.requestId);
   if (!session || !run) return;
+  // Live output wins for matching blocks, while earlier durable thinking
+  // recovered during replay must not be erased by a partial live snapshot.
+  const thinkingBlocks = new Map((run.thinkingBlocks ?? []).map((block) => [block.id, block]));
+  for (const block of snapshot.thinkingBlocks ?? []) thinkingBlocks.set(block.id, block);
   Object.assign(run, snapshot);
+  run.thinkingBlocks = [...thinkingBlocks.values()].sort(compareModelThinkingBlocks);
   session.activeRequestId = snapshot.requestId;
 }
 
@@ -425,12 +522,15 @@ function reconcileHistoryStepRuns(
   session: SessionRecord,
   snapshots: SessionHistoryStepsData["runs"],
   sort = true,
+  eventRecoveredRequestIds: Readonly<Record<string, boolean>> = {},
 ): void {
   if (snapshots.length === 0) return;
 
   const runsByRequestId = new Map(session.runs.map((run) => [run.requestId, run] as const));
   for (const snapshot of snapshots) {
     const recovered = rebuildRunFromHistory(snapshot);
+    const hasRecoveredEventFlow = eventRecoveredRequestIds[snapshot.requestId] === true;
+    if (hasRecoveredEventFlow) removeSyntheticHistoryFallbackSteps(recovered);
     const existing = runsByRequestId.get(snapshot.requestId);
     if (!existing) {
       session.runs.push(recovered);
@@ -453,8 +553,9 @@ function reconcileHistoryStepRuns(
       existing.recoverySource = undefined;
     }
 
-    const existingSteps = new Map(existing.steps.map((step) => [step.id, step]));
+    const existingSteps = new Map(existing.steps.map((step) => [step.id, step] as const));
     for (const recoveredStep of recovered.steps) {
+      if (hasRecoveredEventFlow && isSyntheticHistoryFallbackStep(recoveredStep)) continue;
       const existingStep =
         existingSteps.get(recoveredStep.id) ?? findLiveAssistantTerminalStep(existing.steps, recoveredStep);
       if (!existingStep) {
@@ -465,9 +566,19 @@ function reconcileHistoryStepRuns(
       existingSteps.set(recoveredStep.id, existingStep);
       enrichStepFromHistory(existingStep, recoveredStep);
     }
+    if (hasRecoveredEventFlow) removeSyntheticHistoryFallbackSteps(existing);
     touchRun(existing);
   }
   if (sort) session.runs.sort((left, right) => left.startedAt.localeCompare(right.startedAt));
+}
+
+function removeSyntheticHistoryFallbackSteps(run: Pick<SessionRecord["runs"][number], "steps">): void {
+  const fallbackIndex = run.steps.findIndex(isSyntheticHistoryFallbackStep);
+  if (fallbackIndex >= 0) run.steps.splice(fallbackIndex, 1);
+}
+
+function isSyntheticHistoryFallbackStep(step: TimelineStep): boolean {
+  return step.historyFallback === "missing_reply";
 }
 
 function findLiveAssistantTerminalStep(
@@ -480,9 +591,8 @@ function findLiveAssistantTerminalStep(
 }
 
 /**
- * Run-event replay intentionally excludes raw result-detail payloads. The
- * bounded step trace is their durable source, so enrich an event-built step
- * instead of replacing it and losing live output, timing, or progress.
+ * Compact traces and retained event details describe the same call. Enrich
+ * its record instead of replacing it and losing output, timing, or progress.
  */
 function enrichStepFromHistory(existing: TimelineStep, recovered: TimelineStep): void {
   if (existing.status === "pending" || existing.status === "running") {
@@ -537,6 +647,11 @@ function clearHistoryLoadingState(state: StoreState, sessionId: string): void {
   if (state.historySuppressedRequestIds) delete state.historySuppressedRequestIds[sessionId];
   delete state.historyFailedIds[sessionId];
   delete state.missingOnServerIds[sessionId];
+}
+
+function historyEventRunRequestId(event: EventEnvelope): string | undefined {
+  const requestId = event.scope?.parentRequestId ?? event.requestId;
+  return requestId?.trim() || undefined;
 }
 
 export function isHistoryRequestSuppressed(state: StoreState, sessionId: string, requestId: string): boolean {

@@ -11,11 +11,16 @@ interface CommandInvocation {
 
 const steps = [
   command("npm", ["run", "build"]),
-  command("npm", ["--workspace", "senera-frontend", "run", "build"]),
+  ...(process.argv.includes("--frontend-built")
+    ? []
+    : [command("npm", ["--workspace", "senera-frontend", "run", "build"])]),
   command("npm", ["run", "desktop.prepare-native"]),
   command("npm", ["run", "desktop.prepare-mcp-runtime"]),
   // Stable release publication is gated in the release workflow after all smoke checks.
   command("electron-builder", ["--publish", "never"]),
+  // The installer build also leaves `Release/win-unpacked` behind, so the smoke launches
+  // the exact files the installer ships. Development runs never exercise these paths.
+  command("npm", ["run", "desktop.smoke"]),
 ];
 
 if (isMainModule(import.meta.url)) {

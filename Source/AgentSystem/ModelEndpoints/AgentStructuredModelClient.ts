@@ -25,12 +25,11 @@ import { attachAgentModelRequestImages } from "./AgentPiModelRequestProjection.j
 export type AgentAuxiliaryBamlFunction =
   | "RewriteStateCard"
   | "ExtractMemOSFragment"
-  | "SummarizeMemOSPeriod"
+  | "AssessMemoryRetention"
+  | "AssessMemoryRelevance"
+  | "WriteMemoryDiary"
   | "CompressToolObservation"
-  | "ChannelFinalDelivery"
-  | "AnalyzeImage"
-  | "SummarizePiContext"
-  | "ProjectResidentSpeech";
+  | "SummarizePiContext";
 
 export interface AgentStructuredModelContract<T> {
   readonly name: string;

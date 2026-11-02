@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { Tooltip } from "../../../shared/ui/Tooltip";
+import { useCallback, useEffect, useState, type CSSProperties, type FormEvent } from "react";
 import { toast } from "sonner";
 import {
   createWorkspaceEntry,
   readWorkspaceResource,
   saveWorkspaceResource,
-  WorkspaceResourceClientError,
   type WorkspaceResourceData,
   type WorkspaceTreeEntry,
 } from "../../../api/workspaceResourceClient";
@@ -18,7 +18,6 @@ import {
   PopoverContent,
   PopoverTrigger,
   Spinner,
-  Switch,
 } from "../../../shared/ui";
 import {
   useWorkspaceResourceController,
@@ -30,10 +29,6 @@ import { WorkspaceTextSurface } from "../../../shared/workspace/WorkspaceTextSur
 import {
   AgentPromptPresetFileExtension,
   AgentPromptPresetDirectoryPath,
-  AgentPromptPresetManifestVersion,
-  AgentPromptPresetStatePath,
-  parseAgentPromptPresetManifest,
-  type AgentPromptPresetManifest,
 } from "../../../../../Source/AgentSystem/Core/AgentPromptPresetContract";
 
 type PromptLoadState =
@@ -61,15 +56,14 @@ export function PromptPresetSection(): JSX.Element {
       </div>
     );
   }
-  return <PromptPresetEditor resources={resources} />;
+  return <PromptPresetEditor key={resources.httpBaseUrl} resources={resources} />;
 }
 
 function PromptPresetEditor({ resources }: { resources: WorkspaceResourceController }): JSX.Element {
   const [activePath, setActivePath] = useState<string>();
-  const [presetEnabled, setPresetEnabled] = useState(false);
   const [resource, setResource] = useState<WorkspaceResourceData>();
   const [draft, setDraft] = useState("");
-  const [loadState, setLoadState] = useState<PromptLoadState>({ status: "loading" });
+  const [loadState, setLoadState] = useState<PromptLoadState>({ status: "empty" });
   const [revision, setRevision] = useState(0);
   const [editorRevision, setEditorRevision] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -79,12 +73,10 @@ function PromptPresetEditor({ resources }: { resources: WorkspaceResourceControl
   const [newFileName, setNewFileName] = useState("");
   const [creatingFile, setCreatingFile] = useState(false);
   const [createError, setCreateError] = useState<string>();
-  const [showFileBrowser, setShowFileBrowser] = useState(false);
+  const [showFileBrowser, setShowFileBrowser] = useState(true);
 
   const dirty = resource?.content !== undefined && draft !== resource.content;
   const busy = saving || creatingFile || loadState.status === "loading";
-  const dirtyRef = useRef(false);
-  dirtyRef.current = dirty;
 
   const entryFilter = useCallback((entry: WorkspaceTreeEntry): boolean => {
     if (entry.kind === "directory") return !entry.name.startsWith(".");
@@ -102,48 +94,19 @@ function PromptPresetEditor({ resources }: { resources: WorkspaceResourceControl
     [resources.httpBaseUrl],
   );
 
-  const writeManifest = useCallback(
-    async (manifest: AgentPromptPresetManifest): Promise<void> => {
-      const content = JSON.stringify(manifest, null, 2);
-      try {
-        const current = await readWorkspaceResource(resources.httpBaseUrl, AgentPromptPresetStatePath);
-        await saveWorkspaceResource(
-          resources.httpBaseUrl,
-          AgentPromptPresetStatePath,
-          content,
-          current.etag,
-          resources.csrfToken,
-        );
-      } catch (reason) {
-        if (!(reason instanceof WorkspaceResourceClientError) || reason.status !== 404) throw reason;
-        await createWorkspaceEntry(
-          resources.httpBaseUrl,
-          AgentPromptPresetStatePath,
-          "file",
-          content,
-          resources.csrfToken,
-        );
-      }
-    },
-    [resources.csrfToken, resources.httpBaseUrl],
-  );
-
-  const applyPreset = useCallback(
+  const openPreset = useCallback(
     async (path: string): Promise<void> => {
       setSaving(true);
       setLoadState({ status: "loading" });
       try {
         const next = await readPreset(path);
-        await writeManifest({ version: AgentPromptPresetManifestVersion, activePath: path, enabled: true });
         setActivePath(path);
-        setPresetEnabled(true);
         setResource(next);
         setDraft(next.content ?? "");
         setEditorRevision((value) => value + 1);
         setLoadState({ status: "ready", resource: next });
         setShowFileBrowser(false);
         setPendingPath(undefined);
-        toast.success(frontendMessage("settings.prompt.saved"));
       } catch (reason) {
         setLoadState({ status: "error", message: reason instanceof Error ? reason.message : String(reason) });
         toast.error(reason instanceof Error ? reason.message : String(reason));
@@ -151,82 +114,8 @@ function PromptPresetEditor({ resources }: { resources: WorkspaceResourceControl
         setSaving(false);
       }
     },
-    [readPreset, writeManifest],
+    [readPreset],
   );
-
-  const loadActivePreset = useCallback(async (): Promise<void> => {
-    if (dirtyRef.current) return;
-    setLoadState({ status: "loading" });
-    let state: WorkspaceResourceData;
-    try {
-      state = await readWorkspaceResource(resources.httpBaseUrl, AgentPromptPresetStatePath);
-    } catch (reason) {
-      if (reason instanceof WorkspaceResourceClientError && reason.status === 404) {
-        setActivePath(undefined);
-        setPresetEnabled(false);
-        setResource(undefined);
-        setLoadState({ status: "empty" });
-        setShowFileBrowser(true);
-      } else {
-        setLoadState({ status: "error", message: reason instanceof Error ? reason.message : String(reason) });
-      }
-      return;
-    }
-    const manifest = parseManifest(state.content);
-    if (!manifest) {
-      setActivePath(undefined);
-      setPresetEnabled(false);
-      setResource(undefined);
-      setLoadState({ status: "error", message: frontendMessage("settings.prompt.invalidState") });
-      setShowFileBrowser(true);
-      return;
-    }
-    try {
-      const next = await readPreset(manifest.activePath);
-      setActivePath(manifest.activePath);
-      setPresetEnabled(manifest.enabled);
-      setResource(next);
-      setDraft(next.content ?? "");
-      setEditorRevision((value) => value + 1);
-      setLoadState({ status: "ready", resource: next });
-      setShowFileBrowser(false);
-    } catch (reason) {
-      setActivePath(manifest.activePath);
-      setPresetEnabled(manifest.enabled);
-      setResource(undefined);
-      setLoadState({
-        status: "error",
-        message:
-          reason instanceof WorkspaceResourceClientError && reason.status === 404
-            ? frontendMessage("settings.prompt.missing")
-            : reason instanceof Error
-              ? reason.message
-              : String(reason),
-      });
-      setShowFileBrowser(true);
-    }
-  }, [readPreset, resources.httpBaseUrl]);
-
-  const togglePreset = useCallback(
-    async (enabled: boolean): Promise<void> => {
-      if (!activePath || saving || loadState.status === "loading") return;
-      setSaving(true);
-      try {
-        await writeManifest({ version: AgentPromptPresetManifestVersion, activePath, enabled });
-        setPresetEnabled(enabled);
-        toast.success(frontendMessage(enabled ? "settings.prompt.enabled" : "settings.prompt.disabled"));
-      } catch (reason) {
-        toast.error(reason instanceof Error ? reason.message : frontendMessage("settings.prompt.toggleFailed"));
-      } finally {
-        setSaving(false);
-      }
-    },
-    [activePath, loadState.status, saving, writeManifest],
-  );
-
-  useEffect(() => {
-    void loadActivePreset();
-  }, [loadActivePreset]);
 
   const selectPreset = useCallback(
     (path: string): void => {
@@ -238,9 +127,9 @@ function PromptPresetEditor({ resources }: { resources: WorkspaceResourceControl
         setPendingPath(path);
         return;
       }
-      void applyPreset(path);
+      void openPreset(path);
     },
-    [activePath, applyPreset, dirty],
+    [activePath, openPreset, dirty],
   );
 
   const discardAndSwitch = useCallback((): void => {
@@ -249,8 +138,8 @@ function PromptPresetEditor({ resources }: { resources: WorkspaceResourceControl
     if (!nextPath || !resource) return;
     setDraft(resource.content ?? "");
     setEditorRevision((value) => value + 1);
-    void applyPreset(nextPath);
-  }, [applyPreset, pendingPath, resource]);
+    void openPreset(nextPath);
+  }, [openPreset, pendingPath, resource]);
 
   const save = useCallback(async (): Promise<void> => {
     if (!resource?.editable || !dirty || saving) return;
@@ -303,7 +192,7 @@ function PromptPresetEditor({ resources }: { resources: WorkspaceResourceControl
         setNewFileName("");
         setCreating(false);
         setRevision((value) => value + 1);
-        await applyPreset(entry.path);
+        await openPreset(entry.path);
       } catch (reason) {
         const message = reason instanceof Error ? reason.message : String(reason);
         setCreateError(message);
@@ -312,7 +201,7 @@ function PromptPresetEditor({ resources }: { resources: WorkspaceResourceControl
         setCreatingFile(false);
       }
     },
-    [applyPreset, creatingFile, dirty, newFileName, resources.csrfToken, resources.httpBaseUrl],
+    [openPreset, creatingFile, dirty, newFileName, resources.csrfToken, resources.httpBaseUrl],
   );
 
   const fileBrowser = (
@@ -480,14 +369,6 @@ function PromptPresetEditor({ resources }: { resources: WorkspaceResourceControl
             <AppIcon icon="folder" size={15} aria-hidden="true" />
           </IconButton>
         )}
-        <div className="flex shrink-0 items-center gap-2" data-prompt-preset-toggle>
-          <Switch
-            checked={presetEnabled}
-            disabled={!activePath || busy || loadState.status === "error"}
-            ariaLabel={frontendMessage(presetEnabled ? "settings.prompt.disable" : "settings.prompt.enable")}
-            onCheckedChange={(enabled) => void togglePreset(enabled)}
-          />
-        </div>
         {saveState === "saved" ? (
           <span className="text-[11px] text-content-muted">{frontendMessage("resource.savedState")}</span>
         ) : null}
@@ -499,7 +380,7 @@ function PromptPresetEditor({ resources }: { resources: WorkspaceResourceControl
           disabled={busy || dirty}
           onClick={() => {
             setRevision((value) => value + 1);
-            void loadActivePreset();
+            if (activePath && !showFileBrowser) void openPreset(activePath);
           }}
         >
           <AppIcon icon="refresh" size={15} aria-hidden="true" />
@@ -520,12 +401,14 @@ function PromptPresetEditor({ resources }: { resources: WorkspaceResourceControl
       {showFileBrowser ? (
         fileBrowser
       ) : (
-        <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--theme-config-stage-bg)]">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--theme-config-stage-bg)]">
           <div className="flex h-10 shrink-0 items-center gap-2 border-b border-line-subtle bg-[var(--theme-config-toolbar-bg)] px-4">
             <AppIcon icon="file-code" size={15} className="text-content-muted" aria-hidden="true" />
-            <span className="min-w-0 flex-1 truncate text-[11px] text-content-secondary" title={activePath}>
-              {activePath ?? frontendMessage("settings.prompt.empty")}
-            </span>
+            <Tooltip content={activePath}>
+              <span className="min-w-0 flex-1 truncate text-[11px] text-content-secondary">
+                {activePath ?? frontendMessage("settings.prompt.empty")}
+              </span>
+            </Tooltip>
             {dirty ? (
               <span
                 className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent-solid"
@@ -609,24 +492,6 @@ function PromptPresetSourceSurface({
       />
     </WorkspaceSourceRuntime>
   );
-}
-
-function parseManifest(content: string | undefined): AgentPromptPresetManifest | undefined {
-  if (!content) return undefined;
-  try {
-    const value: unknown = JSON.parse(content);
-    const manifest = parseAgentPromptPresetManifest(value);
-    if (!manifest) return undefined;
-    const activePath = manifest.activePath.trim().replace(/\\/gu, "/");
-    if (!activePath || activePath.startsWith("/") || /^[a-z]:/iu.test(activePath)) return undefined;
-    const segments = activePath.split("/");
-    if (segments.some((segment) => segment === ".." || segment.length === 0)) return undefined;
-    if (!activePath.toLocaleLowerCase().endsWith(AgentPromptPresetFileExtension)) return undefined;
-    if (!activePath.startsWith(`${AgentPromptPresetDirectoryPath}/`)) return undefined;
-    return { version: AgentPromptPresetManifestVersion, activePath, enabled: manifest.enabled };
-  } catch {
-    return undefined;
-  }
 }
 
 function normalizePromptPresetFileName(value: string): string | undefined {

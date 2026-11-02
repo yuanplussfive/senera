@@ -1,10 +1,12 @@
 import {
-  computeNextRunAt,
   resolveScheduledTaskDefinition,
+  nextAgentScheduleOccurrence,
   type ScheduledTask,
   type ScheduledTaskCreateInput,
   type ScheduledTaskUpdate,
-} from "@amaster.ai/pi-task-scheduler";
+} from "./AgentScheduleDefinition.js";
+import PQueue from "p-queue";
+import { DefaultAgentTimeZone } from "../Time/AgentTime.js";
 import { createOpaqueId, createRequestId } from "../Core/AgentIds.js";
 import { resolveModelProviderConfig } from "../Defaults/AgentModelProviderDefaults.js";
 import { AgentEventKinds, withEventContext, type AgentDomainEvent } from "../Events/AgentEvent.js";
@@ -17,6 +19,7 @@ import { AgentRunContextModes, type AgentRunDispatchPort } from "./AgentRunDispa
 import type { AgentSqliteScheduledTaskStore } from "./AgentSqliteScheduledTaskStore.js";
 import {
   AgentScheduledTaskExecutionModes,
+  AgentScheduledInstructionGateway,
   resolveAgentScheduledTaskExecutionMode,
   type AgentScheduledTaskExecutionSessionPort,
   type AgentScheduledTaskExecutionMode,
@@ -26,10 +29,11 @@ import {
   type AgentScheduledTaskSourceContextPort,
 } from "./AgentScheduledTaskRunTypes.js";
 
-const OrchestrationCapabilityNamespace = "orchestration.";
 const DefaultClaimBatchSize = 16;
 
 export interface AgentScheduleCreateRequest {
+  readonly timeZone?: string;
+  readonly target?: "this_session" | "new_once" | "new";
   readonly name?: string;
   readonly description?: string;
   readonly prompt: string;
@@ -43,6 +47,7 @@ export interface AgentScheduleCreateRequest {
 }
 
 export interface AgentScheduleUpdateRequest {
+  readonly timeZone?: string;
   readonly name?: string;
   readonly description?: string;
   readonly prompt?: string;
@@ -84,9 +89,13 @@ export class AgentScheduleRuntime {
   private readonly claimBatchSize: number;
   private acceptingWork = true;
   private active = false;
-  private ticking = false;
+  private tickPromise?: Promise<void>;
+  private readonly admissions = new Set<Promise<void>>();
   private pollTimer?: NodeJS.Timeout;
+  private startPromise?: Promise<void>;
   private stopPromise?: Promise<void>;
+  private readonly instructions = new AgentScheduledInstructionGateway();
+  private readonly runnable: PQueue;
 
   constructor(private readonly options: AgentScheduleRuntimeOptions) {
     assertPositiveSafeInteger(options.pollIntervalMs, "Scheduler poll interval");
@@ -94,17 +103,30 @@ export class AgentScheduleRuntime {
     this.claimBatchSize = options.claimBatchSize ?? DefaultClaimBatchSize;
     assertPositiveSafeInteger(this.claimBatchSize, "Scheduled-task claim batch size");
     this.now = options.now ?? (() => new Date());
+    this.runnable = new PQueue({ concurrency: this.claimBatchSize });
+  }
+
+  bindInstructions(port: import("./AgentScheduledTaskRunTypes.js").AgentScheduledInstructionPort): () => void {
+    return this.instructions.bind(port);
   }
 
   async start(): Promise<void> {
     this.assertAcceptingWork();
+    if (this.startPromise) return this.startPromise;
     if (this.active) return;
+    return (this.startPromise = this.startRuntime().finally(() => {
+      this.startPromise = undefined;
+    }));
+  }
+
+  private async startRuntime(): Promise<void> {
     await this.reconcileOwnerSessions();
+    if (!this.acceptingWork) return;
     this.active = true;
     this.pollTimer = setInterval(() => void this.tick(), this.options.pollIntervalMs);
     this.pollTimer.unref();
     await this.tick();
-    await this.emitSchedulerStatus();
+    if (this.active) await this.emitSchedulerStatus();
   }
 
   stop(): Promise<void> {
@@ -117,7 +139,12 @@ export class AgentScheduleRuntime {
     if (this.retiringOwnerSessions.has(context.sessionId)) {
       throw new Error(`Session ${context.sessionId} is closing and cannot own a scheduled task.`);
     }
-    const definition = resolveScheduledTaskDefinition(request);
+    const definition = resolveScheduledTaskDefinition({
+      ...request,
+      schedule: request.schedule,
+      timeZone: request.timeZone,
+      now: this.timestamp(),
+    });
     const executionMode = request.executionMode ?? AgentScheduledTaskExecutionModes.AtDueTime;
     if (executionMode === AgentScheduledTaskExecutionModes.ExecuteNowDeliverAt && definition.type !== "once") {
       throw new Error("Immediate execution with deferred delivery requires a one-time schedule.");
@@ -133,6 +160,9 @@ export class AgentScheduleRuntime {
       sessionId: context.sessionId,
       sourceRequestId: context.requestId,
       executionMode,
+      timeZone: request.timeZone ?? DefaultAgentTimeZone,
+      target: request.target ?? "this_session",
+      ...(request.target === "new_once" ? { targetSessionId: createOpaqueId("scheduled_session") } : {}),
       ...(request.name ? { name: request.name } : {}),
       ...(request.description ? { description: request.description } : {}),
       prompt: request.prompt,
@@ -148,14 +178,15 @@ export class AgentScheduleRuntime {
       ...(request.timeoutMs ? { timeoutMs: request.timeoutMs } : {}),
       createdAt,
       updatedAt: createdAt,
-      nextRunAt: resolveNextRunAt({ ...definition, enabled }, createdAt),
+      nextRunAt: resolveNextRunAt({ ...definition, timeZone: request.timeZone, enabled }, createdAt),
       runCount: 0,
       runHistory: [],
     };
-    const task = await this.options.store.create(
+    if (candidate.enabled && !candidate.nextRunAt) throw new Error("The schedule has no future occurrence.");
+    const task = await this.options.store.createAuthorized(
       candidate satisfies ScheduledTaskCreateInput & AgentScheduledTaskRecord,
+      resolveToolCeiling(request.allowedToolNames, context),
     );
-    this.options.store.setAllowedToolNames(task.id, resolveToolCeiling(request.allowedToolNames, context), createdAt);
     if (executionMode === AgentScheduledTaskExecutionModes.ExecuteNowDeliverAt) {
       if (!task.nextRunAt) throw new Error(`Scheduled task ${task.id} has no delivery time.`);
       this.options.store.enqueueImmediate(task.id, createdAt, task.nextRunAt);
@@ -171,49 +202,60 @@ export class AgentScheduleRuntime {
     context: AgentScheduleToolContext,
   ): Promise<ScheduledTask | undefined> {
     this.assertAcceptingWork();
-    const current = await this.getOwned(taskId, context.sessionId);
-    if (!current) return undefined;
-    const model = request.modelProviderId
-      ? resolveConfiguredModel(this.options.config(), request.modelProviderId)
-      : undefined;
-    const scheduleDefinition =
-      request.type || request.schedule
-        ? resolveScheduledTaskDefinition({
-            type: request.type ?? current.type,
-            schedule: request.schedule ?? current.schedule,
-          })
-        : undefined;
-    const executionMode = resolveAgentScheduledTaskExecutionMode(current);
-    if (
-      executionMode === AgentScheduledTaskExecutionModes.ExecuteNowDeliverAt &&
-      (scheduleDefinition?.type ?? current.type) !== "once"
-    ) {
-      throw new Error("Immediate execution with deferred delivery requires a one-time schedule.");
-    }
-    if (
-      executionMode === AgentScheduledTaskExecutionModes.ExecuteNowDeliverAt &&
-      request.enabled === true &&
-      !current.enabled
-    ) {
-      throw new Error("A deferred task cannot be re-enabled after it has been stopped. Create a new task instead.");
-    }
-    const updatedAt = this.timestamp();
-    const patch: ScheduledTaskUpdate = {
-      ...(request.name !== undefined ? { name: request.name } : {}),
-      ...(request.description !== undefined ? { description: request.description } : {}),
-      ...(request.prompt !== undefined ? { prompt: request.prompt } : {}),
-      ...(scheduleDefinition ?? {}),
-      ...(request.enabled !== undefined ? { enabled: request.enabled } : {}),
-      ...(model ? { model: { provider: model.Id, model: model.Model, reasoning: model.Capabilities?.Reasoning } } : {}),
-      ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
-    };
-    const candidate = { ...current, ...patch, updatedAt } as AgentScheduledTaskRecord;
-    const reschedule = scheduleDefinition !== undefined || request.enabled !== undefined;
-    const next = reschedule ? { ...candidate, nextRunAt: resolveNextRunAt(candidate, updatedAt) } : candidate;
-    if (request.allowedToolNames) {
-      this.options.store.setAllowedToolNames(taskId, resolveToolCeiling(request.allowedToolNames, context), updatedAt);
-    }
-    const updated = await this.options.store.update(taskId, next);
+    const tools =
+      request.allowedToolNames === undefined ? undefined : resolveToolCeiling(request.allowedToolNames, context);
+    const updated = this.options.store.editAuthorized(
+      taskId,
+      context.sessionId,
+      (current) => {
+        const model = request.modelProviderId
+          ? resolveConfiguredModel(this.options.config(), request.modelProviderId)
+          : undefined;
+        const requestedType = request.type ?? current.type;
+        const scheduleDefinition =
+          request.type || request.schedule || request.timeZone
+            ? resolveScheduledTaskDefinition({
+                type: requestedType,
+                schedule: request.schedule ?? current.schedule,
+                timeZone: request.timeZone ?? current.timeZone,
+                now: this.timestamp(),
+              })
+            : undefined;
+        const executionMode = resolveAgentScheduledTaskExecutionMode(current);
+        if (
+          executionMode === AgentScheduledTaskExecutionModes.ExecuteNowDeliverAt &&
+          (scheduleDefinition?.type ?? current.type) !== "once"
+        ) {
+          throw new Error("Immediate execution with deferred delivery requires a one-time schedule.");
+        }
+        if (
+          executionMode === AgentScheduledTaskExecutionModes.ExecuteNowDeliverAt &&
+          request.enabled === true &&
+          !current.enabled
+        ) {
+          throw new Error("A deferred task cannot be re-enabled after it has been stopped. Create a new task instead.");
+        }
+        const updatedAt = this.timestamp();
+        const patch: ScheduledTaskUpdate = {
+          ...(request.name !== undefined ? { name: request.name } : {}),
+          ...(request.description !== undefined ? { description: request.description } : {}),
+          ...(request.prompt !== undefined ? { prompt: request.prompt } : {}),
+          ...(request.timeZone ? { timeZone: request.timeZone } : {}),
+          ...(scheduleDefinition ?? {}),
+          ...(request.enabled !== undefined ? { enabled: request.enabled } : {}),
+          ...(model
+            ? { model: { provider: model.Id, model: model.Model, reasoning: model.Capabilities?.Reasoning } }
+            : {}),
+          ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
+        };
+        const candidate = { ...current, ...patch, updatedAt } as AgentScheduledTaskRecord;
+        const reschedule = scheduleDefinition !== undefined || request.enabled !== undefined;
+        const next = reschedule ? { ...candidate, nextRunAt: resolveNextRunAt(candidate, updatedAt) } : candidate;
+        if (reschedule && next.enabled && !next.nextRunAt) throw new Error("The schedule has no future occurrence.");
+        return next;
+      },
+      tools,
+    );
     if (!updated) return undefined;
     await this.emitTaskChanged("updated", updated);
     void this.tick();
@@ -222,7 +264,7 @@ export class AgentScheduleRuntime {
 
   async delete(taskId: string, ownerSessionId: string): Promise<boolean> {
     this.assertAcceptingWork();
-    const current = await this.getOwned(taskId, ownerSessionId);
+    const current = this.getOwned(taskId, ownerSessionId);
     if (!current) return false;
     const removed = await this.options.store.delete(taskId);
     if (removed) {
@@ -245,7 +287,7 @@ export class AgentScheduleRuntime {
 
   async runNow(taskId: string, ownerSessionId: string): Promise<ScheduledTask | undefined> {
     this.assertAcceptingWork();
-    const current = await this.getOwned(taskId, ownerSessionId);
+    const current = this.getOwned(taskId, ownerSessionId);
     if (!current) return undefined;
     if (resolveAgentScheduledTaskExecutionMode(current) === AgentScheduledTaskExecutionModes.ExecuteNowDeliverAt) {
       if (this.options.store.hasOutstandingRun(current.id)) {
@@ -281,7 +323,13 @@ export class AgentScheduleRuntime {
   }
 
   get(taskId: string, ownerSessionId: string): Promise<AgentScheduledTaskRecord | undefined> {
-    return this.getOwned(taskId, ownerSessionId);
+    return Promise.resolve(this.getOwned(taskId, ownerSessionId));
+  }
+
+  view(taskId: string, ownerSessionId: string, limit = 20, before?: string) {
+    const task = this.options.store.definition(taskId);
+    if (!task || task.sessionId !== ownerSessionId) return undefined;
+    return { task, ...this.options.store.receiptHistory(taskId, ownerSessionId, limit, before) };
   }
 
   async status(): Promise<{
@@ -301,9 +349,14 @@ export class AgentScheduleRuntime {
     };
   }
 
-  private async tick(): Promise<void> {
-    if (!this.active || this.ticking) return;
-    this.ticking = true;
+  private tick(): Promise<void> {
+    return (this.tickPromise ??= this.runTick().finally(() => {
+      this.tickPromise = undefined;
+    }));
+  }
+
+  private async runTick(): Promise<void> {
+    if (!this.active) return;
     try {
       const now = this.timestamp();
       const claims = this.options.store.claimDue({
@@ -313,7 +366,25 @@ export class AgentScheduleRuntime {
         nextRunAt: resolveNextRunAt,
       });
       for (const claim of claims) {
-        void this.executeClaim(claim);
+        const admission = this.runnable
+          .add(() => this.executeClaim(claim))
+          .catch(async (error: unknown) => {
+            await this.options.events.emit({
+              kind: AgentEventKinds.SchedulerStatusSnapshot,
+              context: {},
+              data: {
+                active: this.active,
+                taskCount: (await this.options.store.list()).length,
+                runningTaskIds: [...this.activeRuns.values()].map((run) => run.taskId),
+                recoveryMode: "database_claim",
+                error: error instanceof Error ? error.message : String(error),
+              },
+            });
+          })
+          .finally(() => {
+            this.admissions.delete(admission);
+          });
+        this.admissions.add(admission);
       }
       await this.deliverCompletedRuns();
     } catch (error) {
@@ -328,8 +399,6 @@ export class AgentScheduleRuntime {
           error: error instanceof Error ? error.message : String(error),
         },
       });
-    } finally {
-      this.ticking = false;
     }
   }
 
@@ -340,7 +409,54 @@ export class AgentScheduleRuntime {
     this.options.store.enqueueImmediate(task.id, now, now);
   }
 
+  private async deliverInstruction(claim: AgentScheduledTaskRunClaim): Promise<void> {
+    const { task, run } = claim;
+    if (!run.claimId) return;
+    try {
+      const tools = this.options.store.allowedToolNames(task.id);
+      if (!tools) throw new Error("Scheduled instructions require a persisted tool authorization ceiling.");
+      const instruction = run.instructionPrompt === undefined ? task : { ...task, prompt: run.instructionPrompt };
+      const outcome = await this.instructions.admit(instruction, run, tools);
+      if (outcome === "missing") {
+        this.options.store.completeFailure(
+          run.id,
+          run.claimId,
+          "Scheduled instruction owner session no longer exists.",
+          this.timestamp(),
+        );
+        return;
+      }
+      if (!this.options.store.definition(task.id)) return;
+      this.options.store.completeAdmission(run.id, run.claimId, this.timestamp());
+      await this.emitTaskRun(
+        AgentEventKinds.ScheduledTaskRunCompleted,
+        task,
+        run.id,
+        task.target === "new_once"
+          ? task.targetSessionId!
+          : task.target === "new"
+            ? run.executionSessionId
+            : task.sessionId,
+        "success",
+      );
+    } catch (error) {
+      // An unacknowledged claim remains retryable. The session inbox deduplicates
+      // run.id if a crash separated durable admission from this receipt.
+      this.options.store.releaseExecutionClaim(run.id, run.claimId, this.timestamp());
+      throw error;
+    }
+  }
+
   private async executeClaim(claim: AgentScheduledTaskRunClaim): Promise<void> {
+    if (!this.active || !this.acceptingWork) {
+      if (claim.run.claimId)
+        this.options.store.releaseExecutionClaim(claim.run.id, claim.run.claimId, this.timestamp());
+      return;
+    }
+    if (resolveAgentScheduledTaskExecutionMode(claim.task) === AgentScheduledTaskExecutionModes.AtDueTime) {
+      await this.deliverInstruction(claim);
+      return;
+    }
     if (this.retiringOwnerSessions.has(claim.task.sessionId)) {
       await this.options.store.delete(claim.task.id);
       return;
@@ -395,7 +511,7 @@ export class AgentScheduleRuntime {
       const result = await this.options.dispatcher.dispatch({
         sessionId: marked.executionSessionId,
         requestId: createRequestId(),
-        input: claim.task.prompt,
+        input: run.instructionPrompt ?? claim.task.prompt,
         approvalMode: AgentExecutionApprovalModes.Agent,
         modelProviderId: claim.task.model.provider,
         allowedToolNames: this.options.store.allowedToolNames(claim.task.id),
@@ -421,7 +537,7 @@ export class AgentScheduleRuntime {
           "success",
         );
       }
-      if (completed) void this.deliverCompletedRuns();
+      if (completed) void this.tick();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (isRecoverableClaimInterruption(controller.signal)) {
@@ -556,8 +672,8 @@ export class AgentScheduleRuntime {
     });
   }
 
-  private async getOwned(taskId: string, ownerSessionId: string): Promise<AgentScheduledTaskRecord | undefined> {
-    const task = await this.options.store.get(taskId);
+  private getOwned(taskId: string, ownerSessionId: string): AgentScheduledTaskRecord | undefined {
+    const task = this.options.store.definition(taskId);
     return task?.sessionId === ownerSessionId ? task : undefined;
   }
 
@@ -613,6 +729,9 @@ export class AgentScheduleRuntime {
   private async stopRuntime(): Promise<void> {
     this.active = false;
     if (this.pollTimer) clearInterval(this.pollTimer);
+    this.pollTimer = undefined;
+    // Shutdown owns cleanup; startup and tick callers retain their original failures.
+    await Promise.allSettled([this.startPromise, this.tickPromise]);
     const active = [...this.activeRuns.values()];
     for (const run of active)
       run.controller.abort(new AgentScheduledTaskRecoveryInterruption("Scheduler is shutting down."));
@@ -620,6 +739,8 @@ export class AgentScheduleRuntime {
       active.map((run) => this.options.dispatcher.cancel(run.sessionId, (event) => this.options.events.emit(event))),
     );
     await Promise.all(active.map((run) => run.completion));
+    await this.runnable.onIdle();
+    await Promise.allSettled(this.admissions);
     await this.emitSchedulerStatus();
   }
 
@@ -651,10 +772,7 @@ function resolveConfiguredModel(config: AgentSystemConfig, modelProviderId: stri
 }
 
 function resolveToolCeiling(requested: readonly string[] | undefined, context: AgentScheduleToolContext): string[] {
-  const authorized = context.authorizedToolNames.filter((name) => {
-    const handler = context.registry.getTool(name)?.handler;
-    return handler?.kind !== "HostCapability" || !handler.capability.startsWith(OrchestrationCapabilityNamespace);
-  });
+  const authorized = context.authorizedToolNames.filter((name) => context.registry.getTool(name));
   if (!requested) return authorized;
   const authorizedSet = new Set(authorized);
   const unavailable = requested.filter((name) => !authorizedSet.has(name));
@@ -663,27 +781,11 @@ function resolveToolCeiling(requested: readonly string[] | undefined, context: A
 }
 
 function resolveNextRunAt(
-  task: Pick<ScheduledTask, "type" | "schedule" | "intervalSeconds" | "enabled">,
+  task: Pick<ScheduledTask, "type" | "schedule" | "intervalSeconds" | "enabled"> & Pick<ScheduledTask, "timeZone">,
   now: string,
 ): string | undefined {
   if (!task.enabled) return undefined;
-  if (task.type === "once") {
-    const scheduledAt = new Date(task.schedule);
-    if (Number.isNaN(scheduledAt.getTime())) throw new Error(`Invalid one-time schedule: ${task.schedule}.`);
-    return scheduledAt.toISOString();
-  }
-  if (task.type === "interval") return new Date(new Date(now).getTime() + task.intervalSeconds * 1_000).toISOString();
-  return computeNextRunAt({
-    ...task,
-    id: "schedule-projection",
-    sessionId: "schedule-projection",
-    prompt: "schedule-projection",
-    model: { provider: "system", model: "system" },
-    toolPolicyProfile: "system",
-    createdAt: now,
-    updatedAt: now,
-    runCount: 0,
-  });
+  return nextAgentScheduleOccurrence(task, now);
 }
 
 function assertPositiveSafeInteger(value: number, label: string): void {

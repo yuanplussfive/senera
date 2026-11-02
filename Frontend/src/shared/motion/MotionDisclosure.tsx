@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, type MotionProps } from "framer-motion";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { cn } from "../../lib/util";
 import { useMotionLevel } from "./MotionProvider";
 import { readDisclosureTransition, readDisclosureVariants } from "./presets";
@@ -13,6 +13,7 @@ export function MotionDisclosure({
   open,
   layout,
   strategy = "animated",
+  lazyMount = false,
 }: {
   children: ReactNode;
   className?: string;
@@ -20,9 +21,13 @@ export function MotionDisclosure({
   open: boolean;
   layout?: MotionProps["layout"];
   strategy?: MotionDisclosureStrategy;
+  /** Defer initially closed details until first opened, then retain their state for collapse transitions. */
+  lazyMount?: boolean;
 }): JSX.Element {
   const { disableMotion, level, reduceMotion } = useMotionLevel();
   const effectiveLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
+  const [hasOpened, setHasOpened] = useState(open);
+  if (lazyMount && open && !hasOpened) setHasOpened(true);
 
   if (strategy === "stable") {
     return (
@@ -34,9 +39,10 @@ export function MotionDisclosure({
           className,
         )}
         aria-hidden={!open}
+        inert={!open}
         data-motion-disclosure-state={open ? "open" : "closed"}
       >
-        <div className="motion-disclosure--stable__inner">{children}</div>
+        <div className="motion-disclosure--stable__inner">{!lazyMount || open || hasOpened ? children : null}</div>
       </div>
     );
   }

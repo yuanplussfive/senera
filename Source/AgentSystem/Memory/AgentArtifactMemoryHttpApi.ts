@@ -1,11 +1,63 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { z } from "zod";
 import { applyCredentialedCors, writeCorsPreflight } from "../Auth/AgentCredentialedCors.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { AgentResourceHttpRoutes } from "../Resources/AgentResourceContract.js";
 import { errorMessage } from "../Core/AgentErrors.js";
-import { ArtifactMemoryReadArgumentsSchema } from "./AgentArtifactMemoryTypes.js";
+import { parseAgentArtifactUri } from "../Artifacts/AgentArtifactLocator.js";
+import type { ArtifactMemoryReadArguments } from "./AgentArtifactMemoryTypes.js";
+import { ArtifactReadParts, ArtifactReadViews } from "./AgentArtifactMemoryTypes.js";
 import { readAgentArtifactMemoryContent } from "./AgentArtifactMemoryService.js";
 import type { AgentArtifactManifestIndexCache } from "./AgentArtifactManifestIndexCache.js";
+
+/**
+ * The HTTP route has its own transport parser. It is deliberately not exported
+ * as the host-tool contract: the public model-facing shape remains owned by
+ * ArtifactMemoryReadTool.tool.json and is validated by AgentToolRunner.
+ */
+const LegacyArtifactMemoryHttpRequestSchema = z
+  .object({
+    artifactUris: z
+      .array(
+        z
+          .string()
+          .trim()
+          .min(1)
+          .refine((uri) => parseAgentArtifactUri(uri) !== undefined, "Expected a valid Senera Artifact URI."),
+      )
+      .min(1)
+      .describe("Canonical artifact URIs, for example senera://artifact/art_1234567890abcdef12345678."),
+    view: z
+      .enum(["compact", "full"])
+      .describe(
+        "compact returns a saved LLM summary when available, otherwise a deterministic summary; full returns the raw result.",
+      ),
+  })
+  .strict();
+const ArtifactMemoryHttpRequestSchema = z.union([
+  z
+    .object({
+      requests: z
+        .array(
+          z
+            .object({
+              uri: z
+                .string()
+                .refine((uri) => parseAgentArtifactUri(uri) !== undefined, "Expected a Senera resource URI."),
+              part: z.enum(ArtifactReadParts).optional(),
+              view: z.enum(ArtifactReadViews).optional(),
+              paths: z
+                .array(z.string().regex(/^(?:\/(?:[^~]|~[01])*)*$/u))
+                .min(1)
+                .optional(),
+            })
+            .strict(),
+        )
+        .min(1),
+    })
+    .strict(),
+  LegacyArtifactMemoryHttpRequestSchema,
+]);
 
 export interface AgentArtifactMemoryHttpApiOptions {
   readonly artifactManifestIndex?: AgentArtifactManifestIndexCache;
@@ -43,8 +95,12 @@ export class AgentArtifactMemoryHttpApi {
       return;
     }
 
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    request.once("aborted", abort);
+    response.once("close", abort);
     try {
-      const parsed = ArtifactMemoryReadArgumentsSchema.safeParse(
+      const parsed = ArtifactMemoryHttpRequestSchema.safeParse(
         await readJsonBody(request, this.options.maxRequestBytes),
       );
       if (!parsed.success) {
@@ -59,16 +115,22 @@ export class AgentArtifactMemoryHttpApi {
         return;
       }
 
-      const result = await readAgentArtifactMemoryContent(parsed.data, {
+      const input: ArtifactMemoryReadArguments = parsed.data;
+      const result = await readAgentArtifactMemoryContent(input, {
         artifactManifestIndex: this.options.artifactManifestIndex,
         workspaceRoot: this.options.workspaceRoot,
         config: this.options.configSnapshot(),
+        signal: controller.signal,
       });
       this.send(response, 200, { ok: true, ...result });
     } catch (error) {
+      if (controller.signal.aborted) return;
       const status = error instanceof ArtifactMemoryHttpError ? error.status : 500;
       const code = error instanceof ArtifactMemoryHttpError ? error.code : "artifact_read_failed";
       this.send(response, status, { ok: false, error: { code, message: errorMessage(error) } });
+    } finally {
+      request.off("aborted", abort);
+      response.off("close", abort);
     }
   }
 

@@ -29,6 +29,7 @@ import {
 } from "../Execution/SeneraOutputSpool.js";
 
 export interface AgentProcessExecutionResourceOptions {
+  onSettled?: () => void;
   id: string;
   owner: AgentExecutionResourceOwner;
   correlation: AgentExecutionResourceCorrelation;
@@ -83,12 +84,14 @@ export class AgentProcessExecutionResource implements AgentExecutionResourceHand
   private outputCaptureClaimed = false;
   private outputCaptureFailed = false;
   private finalization: Promise<void> | undefined;
+  private readonly onSettled: (() => void) | undefined;
 
   constructor(
     options: AgentProcessExecutionResourceOptions,
     private readonly transport = options.transport,
   ) {
     this.id = options.id;
+    this.onSettled = options.onSettled;
     this.owner = options.owner;
     this.kind = transport.kind;
     this.retention = options.retention;
@@ -444,6 +447,7 @@ export class AgentProcessExecutionResource implements AgentExecutionResourceHand
       }
     }
     this.resourceClosed = true;
+    this.onSettled?.();
     if (this.outputCaptureFailed) {
       if (this.outputSpool) {
         await updateSeneraOutputSpoolState(this.outputSpool.descriptor, "failed").catch(() => undefined);

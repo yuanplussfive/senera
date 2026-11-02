@@ -97,6 +97,10 @@ OPA 只负责给出 `allow`、`deny` 或 `requires-approval` 策略决定；需�
 
 活动运行同样由服务端判定。`session.list.snapshot` 为每个实时运行的会话携带 `activeRequestId`；历史回放可以恢复旧的 `run.started`，但回放收尾只保留与该权威 ID 一致的 running run，其余没有终止事件的历史运行按中断收口。前端的 `waiting_for_approval` 只是一种由未解决审批投影出来的展示状态，不是新的后端运行状态机。
 
+会话标题由 `AgentSessionTitleProjector` 统一提供给 SQLite 展示列、会话列表、会话快照和 `run.started`。`metadata.title` 只记录显式命名；持久化的展示标题不会反向变成用户命名。未命名且没有文本的会话显示“新对话”；本地 OneBot 11 会话记录适配器提供的聊天名称，并用会话创建时刻生成 `聊天名称 · MM/DD HH:mm`（上海时间），后续消息不改变标题中的时间。历史会话没有聊天名称时，下一次渠道提交会记录真实名称，不从正文猜测。用户手动命名始终优先。
+
+前端只挂载当前会话的对话区；侧栏订阅标题、渠道和运行状态的稳定摘要，不订阅消息和思考流。不同会话的增量更新仍按各自的 `sessionId` / `requestId` 入库与投影。完成回合通过渠道工具发出消息后可以没有最终正文，界面依然根据已持久化的执行记录保留该回合，并沿用流式阶段的行身份；不创建虚假的回复文本。
+
 模型端点的 `TimeoutSeconds` 约束单次模型网络请求，`MaxRequestSeconds` 才约束完整 Pi prompt/工具循环。流式响应在首个有效增量之后还会使用由现有 `MaxRequestSeconds - FirstTokenTimeoutSeconds` 推导出的 idle watchdog，并在每个后续文本、思考或工具参数增量到达时重置；推导值最低为 60 秒，不增加新的配置字段。`MaxRequestSeconds` 设为禁用值时，完整回合仍不设总上限，但流式连接在连续 60 秒没有新增量时会中止。人工审批等待可能跨越多次网络调用，因此不能用单次网络超时包住；当 `MaxRequestSeconds` 设为禁用值时，审批等待只受取消信号和审批自身过期策略控制。
 
 ## OPA 策略产物

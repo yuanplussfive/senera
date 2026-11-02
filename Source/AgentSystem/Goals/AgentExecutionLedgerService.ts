@@ -10,12 +10,14 @@ import {
   type AgentExecutionPromptContext,
   type AgentExecutionSyncResult,
 } from "./AgentExecutionLedgerTypes.js";
+import { projectAgentExecutionEventData } from "./AgentExecutionEventTypes.js";
 
 const NativeObservedPlanId = "native-observed";
 
 export interface AgentExecutionObservedToolInput {
   readonly sessionId: string;
   readonly requestId: string;
+  /** Authored request text; structured triggers may legitimately have none. */
   readonly objective: string;
   readonly toolName: string;
   readonly callId: string;
@@ -141,7 +143,7 @@ export class AgentExecutionLedgerService {
     onEvent: AgentEventSink,
   ): Promise<void> {
     for (const event of result.events) {
-      await emitAgentEvent(onEvent, projectExecutionEvent(event, sessionId, requestId, result.snapshot));
+      await emitAgentEvent(onEvent, projectExecutionEvent(event, sessionId, requestId));
     }
   }
 }
@@ -163,20 +165,11 @@ function projectObservedStatus(
   }
 }
 
-function projectExecutionEvent(
-  event: AgentExecutionEventRecord,
-  sessionId: string,
-  requestId: string,
-  snapshot: AgentExecutionLedgerSnapshot,
-) {
+function projectExecutionEvent(event: AgentExecutionEventRecord, sessionId: string, requestId: string) {
   return {
     kind: event.kind,
     context: { sessionId, requestId },
-    data: {
-      snapshot,
-      execution: event.execution,
-      ...(event.step ? { step: event.step } : {}),
-    },
+    data: projectAgentExecutionEventData(event),
   } as const;
 }
 

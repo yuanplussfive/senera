@@ -1,4 +1,5 @@
 import path from "node:path";
+import { registerAgentArtifactResource } from "../Resources/AgentResourceRegistry.js";
 import { updateSeneraOutputSpoolState } from "../Execution/SeneraOutputSpool.js";
 import { removeAgentPathWithRetry } from "../Core/AgentFs.js";
 import { ReadableArtifactRefDefinitions, ReadableArtifactRefs } from "../Memory/AgentArtifactMemoryTypes.js";
@@ -122,6 +123,11 @@ export async function publishToolArtifactFiles(input: PublishToolArtifactFilesIn
   }
 
   await input.fileWriter.publishJson(input.artifact.files.manifest, buildArtifactManifest(input, receipts));
+  registerAgentArtifactResource(input.workspaceRoot, {
+    artifactId: input.artifact.artifactId,
+    artifactUri: input.artifact.artifactUri,
+    manifestPath: input.artifact.files.manifest,
+  });
 }
 
 export class AgentArtifactPublicationSession {

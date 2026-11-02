@@ -20,6 +20,7 @@ import { assertAgentSessionRepositoryPageSize, normalizeAgentSessionRequestIds }
 import type {
   AgentSessionCursorPage,
   AgentSessionCursorPageRequest,
+  AgentSessionRunEventPageRequest,
   AgentSessionForkHistory,
   AgentSessionForkSnapshot,
   AgentSessionHistoryView,
@@ -37,6 +38,21 @@ export type AgentSqliteSessionEntryDecodeIssueSink = (
 
 export class AgentSqliteSessionHistoryStore {
   private readonly traces: AgentSqliteSessionTraceStore;
+  private readonly requestSummaries: Database.Statement<
+    {
+      sessionId: string;
+      entryHighWaterMark: number;
+      runSnapshotHighWaterMark: number;
+      fromRequestId: string | null;
+      before: string | null;
+      limit: number;
+    },
+    { request_id: string; position: number }
+  >;
+  private readonly requestTraces: Database.Statement<
+    [string, number, string],
+    { request_id: string; turn_sequence: number; data: string }
+  >;
 
   constructor(
     private readonly db: Database.Database,
@@ -44,6 +60,38 @@ export class AgentSqliteSessionHistoryStore {
     private readonly onDecodeIssue?: AgentSqliteSessionEntryDecodeIssueSink,
   ) {
     this.traces = new AgentSqliteSessionTraceStore(db, stmts);
+    this.requestSummaries = db.prepare(`
+      WITH entry_requests AS (
+        SELECT request_id, MIN(timestamp) AS started_at FROM conversation_entries
+        WHERE session_id = @sessionId AND sequence <= @entryHighWaterMark GROUP BY request_id
+      ), latest_revisions AS (
+        SELECT request_id, MAX(revision_id) AS revision_id FROM run_snapshot_revisions
+        WHERE session_id = @sessionId AND revision_id <= @runSnapshotHighWaterMark GROUP BY request_id
+      ), snapshot_requests AS (
+        SELECT r.request_id, r.started_at FROM run_snapshot_revisions r
+        JOIN latest_revisions latest ON latest.revision_id = r.revision_id
+        WHERE r.deleted = 0
+      ), requests AS (
+        SELECT request_id, started_at FROM snapshot_requests
+        UNION ALL
+        SELECT e.request_id, e.started_at FROM entry_requests e
+        WHERE NOT EXISTS (SELECT 1 FROM snapshot_requests r WHERE r.request_id = e.request_id)
+      ), ordered AS (
+        SELECT request_id, ROW_NUMBER() OVER (ORDER BY started_at, request_id) AS position FROM requests
+      ), page AS (
+        SELECT request_id, position FROM ordered
+        WHERE position >= COALESCE((SELECT position FROM ordered WHERE request_id = @fromRequestId), 1)
+          AND position < CASE WHEN @before IS NULL THEN (SELECT COUNT(*) + 1 FROM ordered)
+            ELSE COALESCE((SELECT position FROM ordered WHERE request_id = @before), 0) END
+        ORDER BY position DESC LIMIT @limit
+      )
+      SELECT request_id, position FROM page ORDER BY position ASC
+    `);
+    this.requestTraces = db.prepare(`
+      SELECT request_id, turn_sequence, data FROM step_traces
+      WHERE session_id = ? AND rowid <= ? AND request_id IN (SELECT value FROM json_each(?))
+      ORDER BY turn_sequence, step, seq
+    `);
   }
 
   captureSnapshot(sessionId: string): AgentSessionHistoryView | undefined {
@@ -58,6 +106,47 @@ export class AgentSqliteSessionHistoryStore {
       runSnapshotHighWaterMark: row.run_snapshot_high_water_mark ?? undefined,
       runEventHighWaterMark: row.run_event_high_water_mark ?? undefined,
     };
+  }
+
+  loadHistoryRequestPage(
+    sessionId: string,
+    request: import("./AgentSessionHistoryWindow.js").AgentSessionHistoryRequestPageInput,
+  ): import("./AgentSessionHistoryWindow.js").AgentSessionHistoryRequestPage {
+    assertAgentSessionRepositoryPageSize(request.pageSize);
+    const rows = this.requestSummaries.all({
+      sessionId,
+      entryHighWaterMark: request.entryHighWaterMark ?? -1,
+      runSnapshotHighWaterMark: request.runSnapshotHighWaterMark ?? -1,
+      fromRequestId: request.fromRequestId ?? null,
+      before: request.before ?? null,
+      limit: request.pageSize,
+    });
+    const first = rows[0];
+    return {
+      requestIds: rows.map((row) => row.request_id),
+      before: first && first.position > 1 ? first.request_id : undefined,
+    };
+  }
+
+  loadStepTracesForRequests(
+    sessionId: string,
+    requestIds: readonly string[],
+    throughRowId: number,
+  ): StoredStepTraceRun[] {
+    const ids = normalizeAgentSessionRequestIds(requestIds);
+    if (ids.length === 0) return [];
+    const rows = this.requestTraces.all(sessionId, throughRowId, JSON.stringify(ids));
+    const runs = new Map<string, StoredStepTraceRun>();
+    for (const row of rows) {
+      const run = runs.get(row.request_id) ?? {
+        requestId: row.request_id,
+        turnSequence: row.turn_sequence,
+        traces: [],
+      };
+      run.traces.push(parseJsonText(row.data, "Step trace") as StepTrace);
+      runs.set(row.request_id, run);
+    }
+    return [...runs.values()];
   }
 
   hasRequest(sessionId: string, requestId: string): boolean {
@@ -330,19 +419,21 @@ export class AgentSqliteSessionHistoryStore {
 
   loadRunEventPage(
     sessionId: string,
-    request: AgentSessionCursorPageRequest,
+    request: AgentSessionRunEventPageRequest,
   ): AgentSessionCursorPage<AgentEventEnvelope> {
     const pageSize = assertAgentSessionRepositoryPageSize(request.pageSize);
     const items: AgentEventEnvelope[] = [];
     let consumedRows = 0;
     let lastConsumedId: number | undefined;
     let nextCursor: number | undefined;
-    for (const row of this.stmts.selectRunEventPage.iterate(
+    for (const row of this.stmts.selectRunEventPage.iterate({
       sessionId,
-      request.after ?? 0,
-      request.through,
-      pageSize + 1,
-    )) {
+      after: request.after ?? 0,
+      through: request.through,
+      pageSize: pageSize + 1,
+      requestIds: request.requestIds === undefined ? null : JSON.stringify(request.requestIds),
+      kinds: request.kinds === undefined ? null : JSON.stringify(request.kinds),
+    })) {
       if (consumedRows >= pageSize) {
         nextCursor = lastConsumedId;
         break;

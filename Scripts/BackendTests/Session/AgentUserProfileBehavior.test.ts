@@ -5,8 +5,21 @@ import { AgentProfileAvatarStore } from "../../../Source/AgentSystem/Session/Age
 import { AgentUserProfileManager } from "../../../Source/AgentSystem/Session/AgentUserProfile.js";
 import { InMemorySessionRepository } from "../../../Source/AgentSystem/SessionPersistence/InMemorySessionRepository.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
+import { AgentUserProfileUpdateSchema } from "../../../Source/AgentSystem/Core/AgentProfileContract.js";
+import { createTestAgentDirectory } from "../Support/AgentDirectoryTestFixture.js";
 
 describe("agent user profile avatar persistence", () => {
+  test("personal writes cannot change Agent identity and always project the current directory name", async () => {
+    const repository = new InMemorySessionRepository();
+    const directory = createTestAgentDirectory("Managed Bot");
+    const manager = new AgentUserProfileManager(repository, undefined, directory);
+    expect(AgentUserProfileUpdateSchema.safeParse({ name: "Human", assistant: { name: "Injected Bot" } }).success).toBe(
+      false,
+    );
+    await manager.updateProfile({ profile: { name: "Human", avatarPath: null } });
+    expect(directory.get().name).toBe("Managed Bot");
+    expect(repository.loadUserProfile()).toMatchObject({ name: "Human", assistant: { name: "Managed Bot" } });
+  });
   test("moves legacy data URLs into the workspace profile resource and persists only its path", async () => {
     const workspaceRoot = createTemporaryDirectory("senera-profile");
     try {
@@ -18,7 +31,6 @@ describe("agent user profile avatar persistence", () => {
         profile: {
           name: "Ada",
           avatarDataUrl: "data:image/png;base64,aGVsbG8=",
-          assistant: { name: "Senera", avatarDataUrl: null },
         },
         onEvent: (event) => {
           events.push(event);

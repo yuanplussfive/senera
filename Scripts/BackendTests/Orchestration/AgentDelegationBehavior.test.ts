@@ -18,8 +18,11 @@ import {
 import { AgentExecutionApprovalModes } from "../../../Source/AgentSystem/Safety/AgentExecutionApprovalMode.js";
 import { AgentEventKinds, type AgentDomainEvent } from "../../../Source/AgentSystem/Events/AgentEvent.js";
 import type { AgentSubagentPreflightPort } from "../../../Source/AgentSystem/Orchestration/AgentSubagentPreflight.js";
-import { AgentSpawnArgumentsSchema } from "../../../Source/AgentSystem/Orchestration/AgentOrchestrationHostTools.js";
 import { AgentDelegationCompletionGateway } from "../../../Source/AgentSystem/Orchestration/AgentDelegationRuntimeContracts.js";
+import {
+  loadSystemToolContractByName,
+  materializeSystemToolArguments,
+} from "../SystemTools/SystemToolContractTestSupport.js";
 import type { AgentChildRunRecord } from "../../../Source/AgentSystem/Orchestration/AgentChildRunTypes.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { AgentTodoAddInput, AgentTodoService } from "../../../Source/AgentSystem/Todos/AgentTodoService.js";
@@ -101,7 +104,7 @@ describe("agent delegation", () => {
     expect(qqAdapter).toHaveBeenCalledOnce();
   });
 
-  test("marks a child partial when the required model Todo plan is missing", async () => {
+  test("allows completion without an optional Todo plan", async () => {
     const database = openDatabase();
     const todo = createTodoDouble();
     const service = new AgentDelegationService({
@@ -145,7 +148,7 @@ describe("agent delegation", () => {
     );
 
     expect(result).toMatchObject({
-      status: AgentChildRunStatuses.PartialCompleted,
+      status: AgentChildRunStatuses.Completed,
       finalAnswer: "returned without a plan",
     });
     expect(result.snapshot?.control?.todo.planObserved).toBe(false);
@@ -288,18 +291,28 @@ describe("agent delegation", () => {
       },
     );
 
-    expect(Object.keys(AgentSpawnArgumentsSchema.shape)).toEqual([
-      "task",
+    const agentSpawnContract = loadSystemToolContractByName("subagent");
+    const properties = agentSpawnContract.contract.inputSchema.properties as Record<string, unknown>;
+    expect(Object.keys(properties)).toEqual([
+      "description",
+      "prompt",
       "agent",
       "forkContext",
       "workItemId",
+      "todo",
       "resources",
+      "modelProviderId",
+      "thinking",
     ]);
-    expect(Object.keys(AgentSpawnArgumentsSchema.shape)).not.toEqual(
-      expect.arrayContaining(["workspaceAccess", "modelProviderId", "skills", "thinking", "action"]),
-    );
-    expect(AgentSpawnArgumentsSchema.parse({ task: "Review the change." })).toEqual({
-      task: "Review the change.",
+    expect(Object.keys(properties)).not.toEqual(expect.arrayContaining(["workspaceAccess", "skills", "action"]));
+    expect(materializeSystemToolArguments(agentSpawnContract, { prompt: "Review the change." })).toMatchObject({
+      ok: false,
+    });
+    expect(
+      materializeSystemToolArguments(agentSpawnContract, { description: "Review", prompt: "Review the change." }),
+    ).toEqual({
+      ok: true,
+      value: { description: "Review", prompt: "Review the change." },
     });
     expect(preflight).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -389,7 +402,7 @@ describe("agent delegation", () => {
       expect.objectContaining({
         approvalMode: AgentExecutionApprovalModes.AlwaysAsk,
         modelProviderId: "main",
-        systemPromptLayer: { mode: "replace", content: "Reviewer role prompt" },
+        systemPromptLayer: { mode: "replace", content: expect.stringContaining("Reviewer role prompt") },
         allowedToolNames: ["ShellCommandTool"],
         parent: { sessionId: "parent-session", requestId: "parent-request" },
         scope: expect.objectContaining({
@@ -1009,11 +1022,12 @@ describe("agent delegation", () => {
     });
     expect(completed).not.toHaveProperty("structuredResult");
     expect(
-      AgentSpawnArgumentsSchema.safeParse({
+      materializeSystemToolArguments(loadSystemToolContractByName("subagent"), {
         task: "Return a decision.",
+        mode: "wait",
         outputSchema: { type: "object" },
-      }).success,
-    ).toBe(false);
+      }),
+    ).toMatchObject({ ok: false });
     database.close();
   });
 });

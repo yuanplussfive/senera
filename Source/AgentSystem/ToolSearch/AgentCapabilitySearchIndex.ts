@@ -116,6 +116,13 @@ class AgentEmbeddingPreparationPreemptedError extends Error {
   }
 }
 
+export class AgentCapabilityIndexClosedError extends Error {
+  constructor() {
+    super("Capability search index is closed.");
+    this.name = "AgentCapabilityIndexClosedError";
+  }
+}
+
 const SearchFields = [
   "name",
   "title",
@@ -137,6 +144,7 @@ const LexicalFieldBoosts = {
 } as const;
 
 export class AgentCapabilitySearchIndex {
+  private closed = false;
   private readonly documentsByKind: ReadonlyMap<
     AgentCapabilityKind,
     ReadonlyMap<string, AgentCapabilitySearchDocument>
@@ -353,6 +361,7 @@ export class AgentCapabilitySearchIndex {
   }
 
   private async ensureDocumentEmbeddings(request: AgentEmbeddingPreparationRequest): Promise<void> {
+    if (this.closed) throw new AgentCapabilityIndexClosedError();
     const model = this.options.embedding?.model ?? "disabled";
     const missing = this.missingEmbeddingInputs(model, request.inputSelector, request.kind, request.allowedNames);
     if (missing.length === 0) return;
@@ -545,9 +554,10 @@ export class AgentCapabilitySearchIndex {
   }
 
   async close(): Promise<void> {
+    this.closed = true;
     const preparation = this.embeddingPreparation;
     if (!preparation) return;
-    preparation.controller.abort("Capability search index is closing.");
+    preparation.controller.abort(new AgentCapabilityIndexClosedError());
     await preparation.promise.catch(() => undefined);
   }
 }

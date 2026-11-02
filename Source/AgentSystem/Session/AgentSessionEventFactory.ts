@@ -1,8 +1,8 @@
 import { AgentEventKinds, type AgentDomainEvent } from "../Events/AgentEvent.js";
-import type { AgentSession, AgentSessionSnapshot } from "./AgentSession.js";
+import type { AgentSession } from "./AgentSession.js";
 import { projectAgentMessage } from "../I18n/AgentMessageProjection.js";
 import type { AgentSessionOperation } from "./AgentSessionOperation.js";
-import { resolveAgentSessionModelProviderId } from "../ModelEndpoints/AgentModelMetadata.js";
+import { projectAgentSessionSnapshot } from "./AgentSessionSnapshotProjection.js";
 
 export class AgentSessionEventFactory {
   created(session: AgentSession): AgentDomainEvent {
@@ -11,7 +11,7 @@ export class AgentSessionEventFactory {
       context: {
         sessionId: session.id,
       },
-      data: this.snapshotData(session),
+      data: projectAgentSessionSnapshot(session),
     };
   }
 
@@ -22,7 +22,7 @@ export class AgentSessionEventFactory {
         sessionId: session.id,
         requestId: session.activeRequest?.requestId,
       },
-      data: this.snapshotData(session),
+      data: projectAgentSessionSnapshot(session),
     };
   }
 
@@ -32,7 +32,7 @@ export class AgentSessionEventFactory {
       context: {
         sessionId: session.id,
       },
-      data: this.snapshotData(session),
+      data: projectAgentSessionSnapshot(session),
     };
   }
 
@@ -57,39 +57,18 @@ export class AgentSessionEventFactory {
     };
   }
 
-  notFound(sessionId: string, operation: AgentSessionOperation): AgentDomainEvent {
+  notFound(sessionId: string, operation: AgentSessionOperation, requestId?: string): AgentDomainEvent {
     return {
       kind: AgentEventKinds.SessionNotFound,
       context: {
         sessionId,
+        ...(requestId ? { requestId } : {}),
       },
       data: {
         sessionId,
         operation,
         ...projectAgentMessage("session.notFound"),
       },
-    };
-  }
-
-  private snapshotData(session: AgentSession): AgentSessionSnapshot {
-    const modelProviderId = resolveAgentSessionModelProviderId(session.metadata);
-    const effectiveModel =
-      session.metadata?.activeRun?.receipt ??
-      session.activeRequest?.effectiveModel ??
-      session.metadata?.lastRun?.receipt;
-    return {
-      sessionId: session.id,
-      status: session.status,
-      createdAt: session.createdAt,
-      updatedAt: session.updatedAt,
-      entryCount: session.conversation.length,
-      messageCount: session.conversation.length,
-      turnCount: session.conversation.filter((entry) => entry.kind === "user.message").length,
-      activeRequestId: session.activeRequest?.requestId,
-      ...(session.metadata?.channel ? { channel: session.metadata.channel } : {}),
-      ...(modelProviderId ? { modelProviderId } : {}),
-      ...(effectiveModel ? { effectiveModel: structuredClone(effectiveModel) } : {}),
-      ...(session.metadata?.sessionModel ? { modelPreference: structuredClone(session.metadata.sessionModel) } : {}),
     };
   }
 }

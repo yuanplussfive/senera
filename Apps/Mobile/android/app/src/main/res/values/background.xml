@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="floating_background">#FFFDF8</color>
+    <string name="background_settings_title">Background and floating shortcut</string>
+    <string name="background_heading">Stay close to your computer</string>
+    <string name="background_mode_enabled">Background mode is on</string>
+    <string name="background_mode_disabled">Background mode is off</string>
+    <string name="background_permissions">System permissions</string>
+    <string name="background_notifications">Notifications</string>
+    <string name="background_notifications_hint">View or stop the background service.</string>
+    <string name="background_battery">Battery use</string>
+    <string name="background_battery_hint">Allow network access while idle.</string>
+    <string name="background_allowed">Allowed</string>
+    <string name="background_not_allowed">Not allowed</string>
+    <string name="background_battery_unrestricted">Unrestricted</string>
+    <string name="background_battery_optimized">Optimized</string>
+    <string name="background_floating_requires_connection">Turn on the background connection first.</string>
+    <string name="background_startup_hint">Manage startup and background activity on your device.</string>
+    <string name="background_enable">Keep the connection in the background</string>
+    <string name="background_enable_hint">Keep Senera available while using other apps. A persistent notification lets you stop it at any time.</string>
+    <string name="background_notification_permission">Allow notifications to see and stop the background connection.</string>
+    <string name="background_floating">Floating shortcut</string>
+    <string name="background_floating_hint">Show a shortcut over other apps. Drag to move it; tap to return to Senera.</string>
+    <string name="background_overlay_denied">Display over other apps was not allowed. The floating shortcut remains off.</string>
+    <string name="background_application_settings">App and startup settings</string>
+    <string name="background_system_hint">Background mode uses more battery. Android may still pause the app; computer tasks continue, and results sync when you return.</string>
+    <string name="background_channel">Paired computer connection</string>
+    <string name="background_notification_title">Senera background connection</string>
+    <string name="background_notification_body">Client process retained. Tap to return to your computer.</string>
+    <string name="background_network_lost">Network unavailable. Return to Senera to check the connection.</string>
+    <string name="background_stop">Stop background connection</string>
+    <string name="background_return">Return to Senera</string>
+    <string name="background_start_failed">Unable to enable the background connection: %1$s</string>
+    <string name="background_floating_failed">Unable to display the floating entry: %1$s</string>
+</resources>

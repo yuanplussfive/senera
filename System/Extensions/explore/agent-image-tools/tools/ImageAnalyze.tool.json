@@ -1,14 +1,13 @@
 {
   "name": "ImageAnalyze",
   "loading": "Bootstrap",
-  "description": "Analyze one or more workspace-relative or absolute local paths, canonical Senera resources, or public HTTP(S) image URLs together for visible evidence, OCR, or a specific question. Prefer an attachment's local_path when present; use its resource_uri as the stable fallback.",
+  "description": "Inspect one or more images together. Provide a self-contained prompt with the user's goal, relevant context, exact questions, and desired output; the visual model does not receive the conversation. Supports canonical Senera resources, authorized local image paths and public HTTP(S) image URLs. Use exact references from tool results.",
   "presentation": {
     "category": "image-analyze",
     "icon": "image",
     "activity": {
       "action": { "zh-CN": "分析", "en-US": "Analyze" },
-      "argumentPath": "/task",
-      "detailPaths": ["/question"]
+      "argumentPath": "/prompt"
     },
     "preview": { "body": { "pointer": "/answer", "from": "result" } }
   },
@@ -30,6 +29,11 @@
                   "type": "string",
                   "pattern": "^senera:\\/\\/resource\\/[A-Za-z0-9][A-Za-z0-9._~-]{0,255}$",
                   "description": "Canonical Senera resource identity."
+                },
+                "path": {
+                  "description": "Workspace-relative path of the stored resource. Read it directly instead of resolving the URI again.",
+                  "type": "string",
+                  "minLength": 1
                 }
               },
               "required": ["kind", "uri"],
@@ -42,7 +46,7 @@
                 "path": {
                   "type": "string",
                   "minLength": 1,
-                  "description": "Workspace-relative or absolute local path inside the active workspace."
+                  "description": "Workspace-relative or absolute local path subject to the active resource access policy."
                 }
               },
               "required": ["kind", "path"],
@@ -65,8 +69,12 @@
         },
         "description": "Images to analyze together, in the supplied order."
       },
-      "task": { "default": "describe", "type": "string", "enum": ["describe", "ocr", "question"] },
-      "question": { "type": "string", "minLength": 1 },
+      "prompt": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S",
+        "description": "Self-contained analysis request. Include the current goal, useful context, what to inspect or transcribe, and requested language/format. Refer to images by their 1-based order."
+      },
       "timeoutMs": {
         "description": "Optional per-call image download timeout in milliseconds.",
         "type": "integer",
@@ -74,11 +82,12 @@
         "maximum": 900000
       }
     },
-    "required": ["images"],
+    "required": ["images", "prompt"],
     "additionalProperties": false
   },
   "outputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
+    "x-senera-model-output": { "omit": ["/prompt", "/model", "/images/*/sha256"] },
     "type": "object",
     "properties": {
       "images": {
@@ -97,6 +106,11 @@
                       "type": "string",
                       "pattern": "^senera:\\/\\/resource\\/[A-Za-z0-9][A-Za-z0-9._~-]{0,255}$",
                       "description": "Canonical Senera resource identity."
+                    },
+                    "path": {
+                      "description": "Workspace-relative path of the stored resource. Read it directly instead of resolving the URI again.",
+                      "type": "string",
+                      "minLength": 1
                     }
                   },
                   "required": ["kind", "uri"],
@@ -109,7 +123,7 @@
                     "path": {
                       "type": "string",
                       "minLength": 1,
-                      "description": "Workspace-relative or absolute local path inside the active workspace."
+                      "description": "Workspace-relative or absolute local path subject to the active resource access policy."
                     }
                   },
                   "required": ["kind", "path"],
@@ -139,24 +153,22 @@
           "additionalProperties": false
         }
       },
-      "task": { "type": "string", "enum": ["describe", "ocr", "question"] },
-      "question": { "type": "string" },
+      "prompt": { "type": "string" },
       "answer": { "type": "string" },
       "model": { "type": "string" }
     },
-    "required": ["images", "task", "answer", "model"],
+    "required": ["images", "prompt", "answer", "model"],
     "additionalProperties": false
   },
   "permissions": ["resources:read", "model:vision"],
   "execution": { "Targets": ["Local"], "Network": "Allow", "Workspace": "ReadOnly" },
   "runtime": {
     "Lifecycle": "Immediate",
-    "ProtocolVersion": 2,
     "ResultAssessment": "ProcessExit",
     "Scheduling": "Parallel",
     "DeadlinePolicy": "ModelAware"
   },
-  "resources": [],
+  "resources": [{ "Capability": "senera.resource.source", "Pointer": "/images" }],
   "sources": [],
   "search": {
     "Summary": "一起分析一张或多张图片，读取画面、文字和与当前问题有关的可见证据。",
@@ -169,7 +181,7 @@
         "Facets": {
           "Actions": ["describe", "ocr", "answer"],
           "Targets": ["workspace-image-path", "image-resource", "public-image-url"],
-          "Inputs": ["images", "task", "question"],
+          "Inputs": ["images", "prompt"],
           "Outputs": ["description", "ocr-text", "answer", "image-metadata"],
           "Effects": ["none"]
         },

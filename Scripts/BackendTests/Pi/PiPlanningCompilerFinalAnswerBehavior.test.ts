@@ -15,6 +15,7 @@ import { createAgentToolAccessGrant } from "../../../Source/AgentSystem/ToolRunt
 import { AgentToolExposureState } from "../../../Source/AgentSystem/ToolRuntime/AgentToolExposureState.js";
 import { projectSeneraModelProviderToPi } from "../../../Source/AgentSystem/Pi/AgentPiModelProjector.js";
 import { AgentTurnTokenBudget } from "../../../Source/AgentSystem/Text/AgentTurnTokenBudget.js";
+import { loadSystemToolContractByName } from "../SystemTools/SystemToolContractTestSupport.js";
 
 describe("Pi assistant controller compilation", () => {
   test("sends Pi compaction prompts through the plain-text boundary", async () => {
@@ -254,21 +255,15 @@ describe("Pi assistant controller compilation", () => {
     ]);
     client.supportsVisualInput = true;
     client.argumentResults.set("ImageAnalyze", {
-      arguments: { resourceUri: "senera://resource/upl_image", task: "question", question: "What error is shown?" },
+      arguments: {
+        images: [{ kind: "senera_resource", uri: "senera://resource/k7m4p9" }],
+        prompt: "What error is shown?",
+      },
       missingInputs: [],
       assumptions: [],
     });
     const request = planningRequest("What error is shown in this screenshot?", [
-      tool("ImageAnalyze", {
-        type: "object",
-        properties: {
-          resourceUri: { type: "string" },
-          task: { type: "string" },
-          question: { type: "string" },
-        },
-        required: ["resourceUri"],
-        additionalProperties: false,
-      }),
+      tool("ImageAnalyze", loadSystemToolContractByName("ImageAnalyze").contract.inputSchema),
     ]);
     const image = { type: "image" as const, data: "aW1hZ2U=", mimeType: "image/png" };
 

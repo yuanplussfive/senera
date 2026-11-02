@@ -165,7 +165,7 @@ function createTool(): RegisteredTool {
     permissions: [],
     sources: [],
     handler: { kind: "HostCapability", capability: AgentHostCapabilityNames.ShellRun },
-    runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, ResultAssessment: "ProcessExit" },
+    runtime: { Lifecycle: "Immediate", ResultAssessment: "ProcessExit" },
     execution: DefaultExecution,
     childGrant: "inherit",
     evidenceCapabilities: [],

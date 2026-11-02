@@ -12,7 +12,7 @@ import {
 } from "../Browser/AgentBrowserConfiguration.js";
 import {
   assertAgentBrowserWindowModeSupported,
-  resolveAgentBrowserExecutable,
+  resolveAgentBrowserExecutableSelection,
 } from "../Browser/AgentBrowserExecutableResolver.js";
 import { AgentRuntimeDependencyCatalog, findAgentRuntimeDependency } from "./AgentRuntimeDependencyCatalog.js";
 import type {
@@ -232,7 +232,7 @@ export class AgentRuntimeDependencyManager implements AgentRuntimeDependencyServ
     descriptor: AgentRuntimeDependencyDescriptor,
     checkedAt: string,
   ): Promise<AgentRuntimeDependencySnapshot> {
-    // Keep discovery delegated to agent-browser; offline/quick skips its live launch test.
+    // Offline/quick keeps the snapshot cheap; the live launch test belongs to the health check.
     return this.inspectBrowserWithDoctor(descriptor, checkedAt, ["doctor", "--offline", "--quick"], "inspection");
   }
 
@@ -250,6 +250,7 @@ export class AgentRuntimeDependencyManager implements AgentRuntimeDependencyServ
     mode: "inspection" | "health-check",
   ): Promise<AgentRuntimeDependencySnapshot> {
     let controller: string;
+    let executable: string | undefined;
     try {
       const configuration = this.currentBrowserConfiguration();
       controller = resolveAgentBrowserController({
@@ -257,6 +258,11 @@ export class AgentRuntimeDependencyManager implements AgentRuntimeDependencyServ
         workspaceRoot: this.workspaceRoot,
         resourcesPath: this.resourcesPath,
         environment: process.env,
+      });
+      executable = resolveAgentBrowserExecutableSelection({
+        selection: configuration.runtime.browser,
+        configuredPath: configuration.runtime.executablePath,
+        workspaceRoot: this.workspaceRoot,
       });
     } catch (error) {
       return { ...descriptor, status: "unavailable", message: errorMessage(error), checkedAt };
@@ -266,14 +272,14 @@ export class AgentRuntimeDependencyManager implements AgentRuntimeDependencyServ
     try {
       await this.run(
         controller,
-        this.browserCommand(command, { mode }),
+        this.browserCommand(command, { mode, executable }),
         (line) => {
           report ??= parseDoctorReport(line);
         },
         this.healthTimeoutMs(),
       );
       if (!report) throw new Error("agent-browser returned no structured dependency report.");
-      return projectDoctorSnapshot(descriptor, checkedAt, report, mode === "health-check");
+      return projectDoctorSnapshot(descriptor, checkedAt, report, mode === "health-check", executable);
     } catch (error) {
       return { ...descriptor, status: "unavailable", message: errorMessage(error), checkedAt };
     }
@@ -318,7 +324,7 @@ export class AgentRuntimeDependencyManager implements AgentRuntimeDependencyServ
             message: line,
           });
         },
-        configuration.runtime.maxOperationTimeoutMs,
+        configuration.runtime.requestTimeoutMs,
       );
       emit({ status: "checking", phase: "health-check" });
       const fingerprint = this.configurationFingerprint();
@@ -339,19 +345,13 @@ export class AgentRuntimeDependencyManager implements AgentRuntimeDependencyServ
 
   private browserCommand(
     command: readonly string[],
-    options: { readonly mode: "inspection" | "health-check" },
+    options: { readonly mode: "inspection" | "health-check"; readonly executable?: string },
   ): string[] {
     const configuration = this.currentBrowserConfiguration();
     const headed = options.mode === "health-check" ? this.healthCheckPolicy.headed : false;
     assertAgentBrowserWindowModeSupported({ headed, environment: process.env });
     const args = ["--json"];
-    const configuredExecutable = configuration.runtime.executablePath?.trim();
-    if (configuredExecutable) {
-      args.push(
-        "--executable-path",
-        resolveAgentBrowserExecutable({ configuredPath: configuredExecutable, workspaceRoot: this.workspaceRoot }),
-      );
-    }
+    if (options.executable) args.push("--executable-path", options.executable);
     if (headed) args.push("--headed");
     args.push(
       "--idle-timeout",
@@ -369,7 +369,7 @@ export class AgentRuntimeDependencyManager implements AgentRuntimeDependencyServ
     controller: string,
     args: readonly string[],
     onLine?: (line: string) => void,
-    timeoutMs = this.currentBrowserConfiguration().runtime.maxOperationTimeoutMs,
+    timeoutMs = this.currentBrowserConfiguration().runtime.requestTimeoutMs,
     settleOnLine?: (line: string) => boolean,
   ): Promise<void> {
     const operation = new Promise<void>((resolve, reject) => {
@@ -449,6 +449,8 @@ export class AgentRuntimeDependencyManager implements AgentRuntimeDependencyServ
     const fingerprint = JSON.stringify({
       controllerPath: configuration.runtime.controllerPath ?? null,
       executablePath: configuration.runtime.executablePath ?? null,
+      browserSelection: configuration.runtime.browser,
+      resolvedExecutable: this.resolvedExecutableFingerprint(),
       resourcesPath: this.resourcesPath ?? null,
       controllerPackageVersion: readAgentBrowserPackageVersion() ?? null,
       healthCheckHeaded: this.healthCheckPolicy.headed,
@@ -474,6 +476,21 @@ export class AgentRuntimeDependencyManager implements AgentRuntimeDependencyServ
 
   private currentBrowserConfiguration(): AgentBrowserConfiguration {
     return typeof this.browserConfiguration === "function" ? this.browserConfiguration() : this.browserConfiguration;
+  }
+
+  private resolvedExecutableFingerprint(): string | null {
+    try {
+      const configuration = this.currentBrowserConfiguration();
+      return (
+        resolveAgentBrowserExecutableSelection({
+          selection: configuration.runtime.browser,
+          configuredPath: configuration.runtime.executablePath,
+          workspaceRoot: this.workspaceRoot,
+        }) ?? null
+      );
+    } catch (error) {
+      return `unresolved:${errorMessage(error)}`;
+    }
   }
 }
 
@@ -513,16 +530,28 @@ function projectDoctorSnapshot(
   checkedAt: string,
   report: AgentBrowserDoctorReport,
   activeHealthCheck: boolean,
+  selectedExecutable?: string,
 ): AgentRuntimeDependencySnapshot {
   const installed = findDoctorCheck(report, "chrome.installed");
   const cache = findDoctorCheck(report, "chrome.cache_dir");
-  const browserPath = readInstalledBrowserPath(installed?.message);
-  const browserVersion = readInstalledBrowserVersion(installed?.message);
+  const reportedPath = readInstalledBrowserPath(installed?.message);
+  const browserPath = selectedExecutable ?? reportedPath;
+  const browserVersion =
+    selectedExecutable && selectedExecutable !== reportedPath
+      ? undefined
+      : readInstalledBrowserVersion(installed?.message);
   const cachePath = readCachePath(cache?.message);
   const cacheStatus = cachePath ? (fs.existsSync(cachePath) ? "available" : "missing") : "unknown";
-  const hasBrowser = installed?.status === "pass" && Boolean(browserPath);
-  const reportHealthy = report.success === true;
-  const ready = activeHealthCheck ? reportHealthy && hasBrowser : hasBrowser;
+  const launch = findDoctorCheck(report, "launch.elapsed");
+  // A selected system browser makes the managed Chrome check irrelevant to readiness.
+  const hasBrowser = selectedExecutable ? true : installed?.status === "pass" && Boolean(reportedPath);
+  const ready = selectedExecutable
+    ? activeHealthCheck
+      ? launch?.status === "pass"
+      : true
+    : activeHealthCheck
+      ? report.success === true && hasBrowser
+      : hasBrowser;
   const message = ready ? undefined : doctorFailureMessage(report, installed, cache);
 
   return {
@@ -560,7 +589,10 @@ function doctorFailureMessage(
   installed: AgentBrowserDoctorCheck | undefined,
   cache: AgentBrowserDoctorCheck | undefined,
 ): string {
-  const failed = report.checks.find((check) => check.status === "fail" || check.status === "error");
+  const failed =
+    report.checks.find(
+      (check) => (check.status === "fail" || check.status === "error") && String(check.id).startsWith("launch."),
+    ) ?? report.checks.find((check) => check.status === "fail" || check.status === "error");
   if (typeof failed?.message === "string") return failed.message;
   if (typeof installed?.message === "string" && installed.status !== "pass") return installed.message;
   if (typeof cache?.message === "string" && cache.status === "fail") return cache.message;

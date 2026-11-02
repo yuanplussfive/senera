@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 
 export type ClipboardWriter = Pick<Clipboard, "writeText">;
@@ -67,20 +66,23 @@ export function useClipboardCopy({
 
   const copyText = useCallback(
     async (text: string): Promise<boolean> => {
-      try {
-        await writeClipboardText(text, clipboard);
+      // Start the browser write in the click handler's activation context.
+      // Notification UI is loaded on demand and does not decide whether copying succeeded.
+      const [write, notification] = await Promise.allSettled([writeClipboardText(text, clipboard), import("sonner")]);
+      const succeeded = write.status === "fulfilled";
+      if (succeeded) {
         setCopied(true);
-        toast.success(successMessage);
         clearResetTimer();
         resetTimerRef.current = window.setTimeout(() => {
           setCopied(false);
           resetTimerRef.current = undefined;
         }, resetDelayMs);
-        return true;
-      } catch {
-        toast.error(errorMessage);
-        return false;
       }
+      if (notification.status === "fulfilled") {
+        if (succeeded) notification.value.toast.success(successMessage);
+        else notification.value.toast.error(errorMessage);
+      }
+      return succeeded;
     },
     [clearResetTimer, clipboard, errorMessage, resetDelayMs, successMessage],
   );

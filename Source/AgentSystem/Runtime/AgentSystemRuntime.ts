@@ -1,4 +1,5 @@
 import path from "node:path";
+import { AgentCancellationError } from "../Core/AgentCancellation.js";
 import type { AgentApprovalRuntime } from "../Approvals/AgentApprovalRuntime.js";
 import { AgentConfigLoader } from "../Config/AgentConfigLoader.js";
 import { AgentConfigSecretCodec } from "../Config/AgentConfigSecretProtection.js";
@@ -60,8 +61,12 @@ import type { AgentToolResourceLeaseCoordinator } from "../ToolRuntime/AgentTool
 import type { AgentMcpHostCapabilitySnapshot } from "../McpPackages/AgentMcpHostRequirements.js";
 import type { AgentContinuityMemOSRuntime } from "../Continuity/AgentContinuityMemOSRuntime.js";
 import type { AgentMcpActivationCatalogEntry } from "../McpPackages/AgentMcpPackageTypes.js";
+import type { AgentStateCardHistoryTurn } from "../StateCard/AgentStateCardTypes.js";
+import type { AgentBackgroundLearningRequestLedger } from "../Memory/AgentBackgroundLearningRequestLedger.js";
+import type { AgentChannelToolPort } from "../Channels/AgentChannelToolPort.js";
 
 export interface AgentSystemRuntimeSharedOptions {
+  activeAgent?: import("../Core/AgentDirectoryContract.js").WorkspaceAgent;
   modelProviderId?: string;
   runtimeModules?: readonly AgentRuntimeModule[];
   logger?: AgentLogger;
@@ -71,6 +76,8 @@ export interface AgentSystemRuntimeSharedOptions {
   interactionInput?: AgentInteractionInputRuntime;
   piSessionRegistry?: AgentPiActiveSessionRegistry;
   resourcesPath?: string;
+  /** Application-level location for Senera-managed browser profiles. */
+  browserProfilesRoot?: string;
   executionResources?: AgentExecutionResourceBroker;
   toolSearchScenarioSource?: AgentToolSearchScenarioSource;
   mcpInputs?: AgentExtensionValueResolver;
@@ -81,6 +88,7 @@ export interface AgentSystemRuntimeSharedOptions {
   continuityLifecycle?: AgentContinuityLifecyclePort;
   continuityRecall?: AgentContinuityRecallService;
   continuityMemOS?: AgentContinuityMemOSRuntime;
+  stateCardHistory?: (sessionId: string, excludedRequestId?: string) => readonly AgentStateCardHistoryTurn[];
   executionLedger?: AgentExecutionLedgerService;
   todos?: AgentTodoService;
   inferenceBudget?: AgentInferenceBudgetPort;
@@ -90,12 +98,14 @@ export interface AgentSystemRuntimeSharedOptions {
   /** Loaded plugin host; its tools/skills are applied per runtime composition. */
   pluginHost?: AgentPluginHost;
   resourceCoordinator?: AgentToolResourceLeaseCoordinator;
+  learningRequests?: AgentBackgroundLearningRequestLedger;
   /** Logger for derived-context work; kept out of the foreground conversation stream. */
   learningLogger?: AgentLogger;
   mcpHostCapabilities?: AgentMcpHostCapabilitySnapshot;
   /** Shared management projection so composer and execution validate one catalog. */
   mcpActivationEntries?: () => readonly AgentMcpActivationCatalogEntry[];
   systemActivationEntries?: () => readonly AgentActivationCatalogEntryData[];
+  channelTools?: AgentChannelToolPort;
 }
 
 export interface AgentSystemRuntimeLoadOptions extends AgentSystemRuntimeSharedOptions {
@@ -214,6 +224,10 @@ export class AgentSystemRuntime {
 
   get uploadStore() {
     return this.composition.infrastructure.uploadStore;
+  }
+
+  get imageNormalization() {
+    return this.composition.infrastructure.imageNormalization;
   }
 
   get resourceResolver() {
@@ -485,7 +499,7 @@ export class AgentSystemRuntime {
     try {
       await this.toolSearch.prewarm(signal);
     } catch (error) {
-      if (signal.aborted) return;
+      if (signal.aborted || error instanceof AgentCancellationError) return;
       this.logger?.warn("routing.embedding.prewarm_failed", {
         message: error instanceof Error ? error.message : String(error),
       });
@@ -499,6 +513,7 @@ export class AgentSystemRuntime {
       () => this.piSubstrate.close(),
       () => this.toolCallExecutor.close(),
       () => infrastructure.browserRuntime.close(),
+      ...(infrastructure.ownsImageNormalization ? [() => infrastructure.imageNormalization.close()] : []),
       ...(infrastructure.ownsMcpClientPool ? [() => infrastructure.mcpClientPool.close()] : []),
       () => this.toolSearch.close(),
       ...(infrastructure.ownsInteractionInput ? [() => this.interactionInput.close()] : []),

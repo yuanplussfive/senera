@@ -1,7 +1,7 @@
 {
   "name": "BrowserDownload",
   "loading": "Dynamic",
-  "description": "Activate a visible page control that starts a file download and return the downloaded file as an Artifact-backed resource. Use a fresh snapshot reference or CSS selector; arbitrary filesystem paths are not accepted.",
+  "description": "Save a file through the controlled browser session. Supply exactly one of selector (activate a visible download control, using a fresh snapshot reference or CSS selector) or url (save an observed file/image URL even when the browser would display it). Returns an Artifact-backed resource and workspace-relative path. Never put a URL in selector. Arbitrary filesystem paths are not accepted.",
   "presentation": {
     "category": "browser-download",
     "icon": "download",
@@ -12,15 +12,20 @@
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
     "properties": {
-      "selector": { "type": "string", "minLength": 1, "maxLength": 4096 },
-      "timeoutMs": {
-        "description": "Optional per-call operation timeout in milliseconds.",
-        "type": "integer",
-        "minimum": 1000,
-        "maximum": 900000
+      "selector": {
+        "description": "Visible download control; use url instead to save a known URL.",
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+      },
+      "url": {
+        "description": "Observed file or image URL, resolved against the current page. Uses the browser's authenticated session without navigating the page.",
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 16384
       }
     },
-    "required": ["selector"],
+    "oneOf": [{ "required": ["selector"] }, { "required": ["url"] }],
     "additionalProperties": false
   },
   "outputSchema": {
@@ -43,7 +48,12 @@
         "properties": {
           "assetId": { "type": "string", "minLength": 1 },
           "mediaType": { "type": "string", "minLength": 1 },
-          "markdown": { "type": "string", "minLength": 1 }
+          "markdown": { "type": "string", "minLength": 1 },
+          "workspacePath": {
+            "description": "Workspace-relative path of the recorded asset. Read it with WorkspaceRead when the image itself is needed.",
+            "type": "string",
+            "minLength": 1
+          }
         },
         "required": ["assetId", "mediaType", "markdown"],
         "additionalProperties": false
@@ -54,7 +64,12 @@
           "assetId": { "type": "string", "minLength": 1 },
           "fileName": { "type": "string", "minLength": 1 },
           "mediaType": { "type": "string", "minLength": 1 },
-          "markdown": { "type": "string", "minLength": 1 }
+          "markdown": { "type": "string", "minLength": 1 },
+          "workspacePath": {
+            "description": "Workspace-relative path of the recorded asset. Read it with WorkspaceRead when the file itself is needed.",
+            "type": "string",
+            "minLength": 1
+          }
         },
         "required": ["assetId", "fileName", "mediaType", "markdown"],
         "additionalProperties": false
@@ -67,9 +82,9 @@
   "execution": { "Targets": ["Local"], "Network": "Allow", "Workspace": "ReadOnly" },
   "runtime": {
     "Lifecycle": "Persistent",
-    "ProtocolVersion": 2,
     "ResultAssessment": "ProcessExit",
     "Scheduling": "SelfManaged",
+    "DeadlinePolicy": "ToolAware",
     "Capabilities": { "Progress": true, "Cancellation": true }
   },
   "resources": [],

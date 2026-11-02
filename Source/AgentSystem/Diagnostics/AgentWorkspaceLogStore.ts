@@ -2,7 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { createOpaqueId } from "../Core/AgentIds.js";
 import { isFileExistsError } from "../Core/AgentFs.js";
+import { formatAgentTimeOffsetMillisecond } from "../Time/AgentTime.js";
 import { serializeError } from "./AgentErrorSerializer.js";
+import { AgentArtifactFileWriter } from "../Artifacts/AgentArtifactFileWriter.js";
 import {
   AgentWorkspaceLogSchemaVersion,
   AgentWorkspaceLogStreamNames,
@@ -37,6 +39,7 @@ export interface AgentWorkspaceLogPolicy {
   readonly detailMaxBytes: number;
   readonly projectionMaxBytes: number;
   readonly retentionHours: number;
+  readonly maintenanceIntervalMinutes: number;
   readonly queryPageSize: number;
   readonly tailLineCount: number;
 }
@@ -89,6 +92,9 @@ export type AgentWorkspaceLogDetailResult =
   | { readonly status: "missing"; readonly detailId: string; readonly error: string }
   | { readonly status: "rejected"; readonly detailId: string; readonly error: string };
 
+export type AgentWorkspaceLogDetailPublication =
+  { readonly status: "saved"; readonly detailId: string } | { readonly status: "disabled" | "budget" };
+
 export interface AgentWorkspaceLogHealth {
   readonly enabled: boolean;
   readonly root: string;
@@ -124,6 +130,7 @@ export class AgentWorkspaceLogStore {
   private lastError: string | undefined;
   private initialized = false;
   private initializedRetentionHours: number | undefined;
+  private maintenanceTimer: NodeJS.Timeout | undefined;
 
   constructor(options: AgentWorkspaceLogStoreOptions) {
     this.root = path.resolve(options.root);
@@ -133,6 +140,22 @@ export class AgentWorkspaceLogStore {
     const policy = options.policy;
     this.policySource = typeof policy === "function" ? policy : () => policy;
     this.ensureInitialized();
+  }
+
+  /** Starts bounded background maintenance for expired projections and details. */
+  start(): void {
+    if (this.maintenanceTimer) return;
+    const policy = this.readPolicy();
+    if (!policy) return;
+    this.maintenanceTimer = setInterval(() => this.runMaintenance(), policy.maintenanceIntervalMinutes * 60_000);
+    this.maintenanceTimer.unref();
+    this.runMaintenance();
+  }
+
+  close(): void {
+    if (!this.maintenanceTimer) return;
+    clearInterval(this.maintenanceTimer);
+    this.maintenanceTimer = undefined;
   }
 
   append(record: AgentWorkspaceLogRecord): void {
@@ -159,6 +182,7 @@ export class AgentWorkspaceLogStore {
         schemaVersion: AgentWorkspaceLogSchemaVersion,
         ...record,
         recordId,
+        timestamp: projectLogTimestamp(record.timestamp),
         stream: stream === AgentWorkspaceLogStreamNames.foreground ? undefined : stream,
         ...(detailId ? { detailId } : {}),
       };
@@ -167,6 +191,27 @@ export class AgentWorkspaceLogStore {
       this.lastError = undefined;
     } catch (error) {
       this.lastError = errorMessage(error);
+    }
+  }
+
+  /** Bounded asynchronous publication shared by provider traces and log detail lookup/retention. */
+  async publishDetail(value: unknown): Promise<AgentWorkspaceLogDetailPublication> {
+    const policy = this.readPolicy();
+    if (policy && !policy.enabled) return { status: "disabled" };
+    if (!policy || !this.ensureInitialized(policy)) throw new Error(this.unavailableMessage());
+    try {
+      const redacted = redactLogValue(value);
+      const serialized = JSON.stringify(redacted);
+      if (serialized === undefined) throw new TypeError("Log detail must be JSON serializable.");
+      if (Buffer.byteLength(serialized) + 1 > policy.detailMaxBytes) return { status: "budget" };
+      const detailId = createOpaqueId("detail");
+      const target = path.join(this.detailRoot, `${detailId}.json`);
+      const writer = new AgentArtifactFileWriter(this.root);
+      await writer.publishJson(target, redacted);
+      return { status: "saved", detailId };
+    } catch (error) {
+      this.rememberError(errorMessage(error));
+      throw error;
     }
   }
 
@@ -339,7 +384,14 @@ export class AgentWorkspaceLogStore {
     try {
       fs.writeFileSync(
         manifestPath,
-        `${JSON.stringify({ schemaVersion: AgentWorkspaceLogSchemaVersion, createdAt: new Date().toISOString() }, null, 2)}\n`,
+        `${JSON.stringify(
+          {
+            schemaVersion: AgentWorkspaceLogSchemaVersion,
+            createdAt: formatAgentTimeOffsetMillisecond(new Date().toISOString()),
+          },
+          null,
+          2,
+        )}\n`,
         { encoding: "utf8", flag: "wx", mode: 0o600 },
       );
     } catch (error) {
@@ -362,6 +414,21 @@ export class AgentWorkspaceLogStore {
     } catch (error) {
       this.rememberError(`日志存储初始化失败: ${errorMessage(error)}`);
       return false;
+    }
+  }
+
+  private runMaintenance(): void {
+    const policy = this.readPolicy();
+    if (!policy?.enabled) return;
+    try {
+      if (!this.initialized) {
+        this.ensureInitialized(policy);
+        return;
+      }
+      this.pruneExpiredFiles(policy);
+      this.initializedRetentionHours = policy.retentionHours;
+    } catch (error) {
+      this.rememberError(`日志维护失败: ${errorMessage(error)}`);
     }
   }
 
@@ -404,7 +471,10 @@ export class AgentWorkspaceLogStore {
     if (size < policy.projectionMaxBytes) return;
     const rotated = path.join(
       path.dirname(projectionPath),
-      `${path.basename(projectionPath, ".jsonl")}-${new Date().toISOString().replace(/[:.]/gu, "-")}-${createOpaqueId("segment")}.jsonl`,
+      `${path.basename(projectionPath, ".jsonl")}-${formatAgentTimeOffsetMillisecond(new Date().toISOString()).replace(
+        /[:.]/gu,
+        "-",
+      )}-${createOpaqueId("segment")}.jsonl`,
     );
     fs.renameSync(projectionPath, rotated);
   }
@@ -413,12 +483,52 @@ export class AgentWorkspaceLogStore {
     const before = Date.now() - policy.retentionHours * 60 * 60 * 1_000;
     for (const file of listFilesRecursively(this.root, (error) => this.rememberError(error))) {
       if (path.basename(file.relativePath) === "manifest.json") continue;
-      if (new Date(file.updatedAt ?? 0).getTime() >= before) continue;
-      try {
-        fs.rmSync(file.absolutePath, { force: true });
-      } catch (error) {
-        this.lastError = errorMessage(error);
+      if (new Date(file.updatedAt ?? 0).getTime() < before) {
+        try {
+          fs.rmSync(file.absolutePath, { force: true });
+        } catch (error) {
+          this.lastError = errorMessage(error);
+        }
+        continue;
+      }
+      if (file.relativePath.endsWith(".jsonl")) {
+        this.pruneExpiredProjection(file.absolutePath, before);
       }
     }
+  }
+
+  private pruneExpiredProjection(projectionPath: string, before: number): void {
+    const retained: string[] = [];
+    let changed = false;
+    let readFailed = false;
+    for (const line of readLines(projectionPath, (error) => {
+      readFailed = true;
+      this.rememberError(error);
+    })) {
+      const record = parseRecord(line, (error) => this.rememberError(error));
+      if (!record) {
+        retained.push(line);
+        continue;
+      }
+      const timestamp = Date.parse(record.timestamp);
+      if (!Number.isFinite(timestamp) || timestamp >= before) retained.push(line);
+      else changed = true;
+    }
+    if (readFailed || !changed) return;
+    if (retained.length === 0) {
+      fs.rmSync(projectionPath, { force: true });
+      return;
+    }
+    const staging = `${projectionPath}.${createOpaqueId("pending")}`;
+    fs.writeFileSync(staging, `${retained.join("\n")}\n`, { encoding: "utf8", mode: 0o600 });
+    fs.renameSync(staging, projectionPath);
+  }
+}
+
+function projectLogTimestamp(timestamp: string): string {
+  try {
+    return formatAgentTimeOffsetMillisecond(timestamp);
+  } catch {
+    return timestamp;
   }
 }

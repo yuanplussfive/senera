@@ -11,11 +11,16 @@ export class AgentSpawnHostContractProjection {
   constructor(
     private readonly snapshot: () => AgentSubagentRoleCatalogSnapshot,
     private readonly resourceCapabilityIds: () => readonly string[],
+    private readonly modelCatalog?: () => { readonly inheritParent: boolean },
   ) {}
 
   createProjection(): AgentHostToolContractProjection {
     return {
       projectInvocationSchema: (_tool, schema) => this.projectInvocationSchema(schema),
+      // The role catalog owns the dynamic default and valid resource
+      // capability IDs. Apply the same projection before generic contract
+      // materialization so model-visible and executed contracts stay equal.
+      projectRuntimeValidationSchema: (_tool, schema) => this.projectInvocationSchema(schema),
       projectDescription: (_tool, description) => this.projectDescription(description),
     };
   }
@@ -86,7 +91,11 @@ export class AgentSpawnHostContractProjection {
           `- ${role.id}${role.id === snapshot.defaultRoleId ? " (default)" : ""} [${role.workspaceAccess}]: ${role.description}`,
       )
       .join("\n");
-    return [description, roles ? `Available host-managed roles:\n${roles}` : undefined]
+    const models = this.modelCatalog?.();
+    const modelSelection = models
+      ? `Use list_subagent_models to discover authorized model routes, capabilities, reasoning levels and delegation limits. Choose a modelProviderId suited to the assignment; omission uses the host role default. ${models.inheritParent ? "The current parent model is allowed. " : ""}The host validates explicit selections against the same pool used by discovery.`
+      : undefined;
+    return [description, roles ? `Available host-managed roles:\n${roles}` : undefined, modelSelection]
       .filter((section): section is string => Boolean(section))
       .join("\n\n");
   }

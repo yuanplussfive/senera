@@ -25,7 +25,7 @@ const iconVendorPackages = [
 const iconAdapterPaths = new Set([
   "Frontend/src/shared/ui/AppIcon.tsx",
   "Frontend/src/shared/workspace/AgentToolPresentationIcon.tsx",
-  "Frontend/src/features/settings/sections/PluginIdentityIcon.tsx",
+  "Frontend/src/shared/ui/BrandIcon.tsx",
 ]);
 
 test(
@@ -127,10 +127,17 @@ test("shared UI primitives stay domain-neutral", () => {
     /\bTimelineStep\b/,
     /\bsessionId\b/,
     /\brequestId\b/,
-    /\bworkflow\b/i,
   ];
 
-  expect(scanPatterns([sharedUiRoot].filter(existsSync), forbidden, "leaks feature or session semantics")).toEqual([]);
+  const violations = sourceFiles(sharedUiRoot).flatMap((file) =>
+    matchPatterns(
+      file,
+      // Icon adapters may name their glyphs; they still cannot import domain types or state.
+      iconAdapterPaths.has(relativePath(file)) ? forbidden : [...forbidden, /\bworkflow\b/i],
+      "leaks feature or session semantics",
+    ),
+  );
+  expect(violations).toEqual([]);
 });
 
 test("loading motion uses the shared semantic classes", () => {

@@ -64,7 +64,16 @@ export const AgentToolChildGrantModes = {
 
 export type AgentToolChildGrantMode = (typeof AgentToolChildGrantModes)[keyof typeof AgentToolChildGrantModes];
 
-export const AgentHostToolProtocolVersion = 2 as const;
+/**
+ * Product-owned protocol for in-process HostCapability execution. It is
+ * deliberately not repeated by individual Tool contracts: packaged tools and
+ * their executor ship together, while the projected contract digest includes
+ * this protocol identity.
+ */
+export const AgentHostCapabilityProtocol = {
+  id: "senera.host-capability",
+  version: 2,
+} as const;
 
 export const ToolResultAssessmentPolicies = {
   ProcessExit: "ProcessExit",
@@ -83,13 +92,14 @@ export const ToolSchedulingModes = {
 export type ToolSchedulingMode = (typeof ToolSchedulingModes)[keyof typeof ToolSchedulingModes];
 
 /**
- * Declares how the host deadline is owned by a tool. Model-aware tools may
- * extend the initial host budget after resolving the request budget they
- * actually use; all other tools remain bounded by ToolExecution.Timeout.
+ * Declares how the host deadline is owned by a tool. Model-aware host tools
+ * and explicitly configured tool-aware integrations may extend the initial
+ * host budget; all other tools remain bounded by ToolExecution.Timeout.
  */
 export const ToolDeadlinePolicies = {
   Configured: "Configured",
   ModelAware: "ModelAware",
+  ToolAware: "ToolAware",
 } as const;
 
 export type ToolDeadlinePolicy = (typeof ToolDeadlinePolicies)[keyof typeof ToolDeadlinePolicies];
@@ -107,14 +117,17 @@ export type ToolResultStorageMode = (typeof ToolResultStorageModes)[keyof typeof
 
 export interface ToolRuntimeManifest {
   Lifecycle: "Immediate" | "OneShot" | "Persistent" | "RemoteJob";
-  ProtocolVersion?: typeof AgentHostToolProtocolVersion;
   ResultAssessment: ToolResultAssessmentPolicy;
-  /** Optional request-aware deadline policy for host-owned execution. */
+  /** Optional request-aware deadline policy for host and MCP execution. */
   DeadlinePolicy?: ToolDeadlinePolicy;
+  /** Tool-owned deadline in milliseconds, published only with ToolAware. */
+  DeadlineMs?: number;
   /** Omitted means the tool publishes a new durable Artifact. */
   ResultStorage?: ToolResultStorageMode;
   Scheduling?: ToolSchedulingMode;
   MaxConcurrency?: number;
+  /** Controls programmatic composition independently of model visibility and authorization. */
+  Composition?: "callable" | "model-only" | "orchestrator";
   Capabilities?: ToolRuntimeCapabilitiesManifest;
 }
 

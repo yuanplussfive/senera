@@ -28,13 +28,13 @@ export function parseAgentSelfCliCommand(args: readonly string[]): AgentSelfCliC
 
   const exact = candidates.find((spec) => (spec.action ?? undefined) === (action ?? undefined));
   const alias = candidates.find((spec) => spec.actionAliases?.includes(action ?? ""));
-  const spec = exact ?? alias;
+  const spec = exact ?? alias ?? candidates.find((candidate) => candidate.action === undefined);
   if (!spec) {
     const kind = candidates.some((candidate) => candidate.action === undefined) ? "argument" : "action";
     throw new Error(`Unknown ${root} ${kind}: ${action ?? "(none)"}`);
   }
 
-  const values = parsePositionalValues(spec, rest);
+  const values = parsePositionalValues(spec, spec.action ? rest : args.slice(1));
   return AgentSelfCommandSchema.parse({
     command: spec.command,
     ...(spec.action ? { action: spec.action } : {}),

@@ -193,17 +193,35 @@ describe("continuity learning configuration migration", () => {
       migratedPaths: [
         "ContinuityLearning.MemOS.DigestSummaryTokenLimit",
         "Defaults.ContinuityLearning.MemOS.DigestSummaryTokenLimit",
+        "ContinuityLearning.MemOS.FragmentSummaryTokenLimit",
+        "Defaults.ContinuityLearning.MemOS.FragmentSummaryTokenLimit",
         "ConfigVersion",
       ],
       removedPaths: [
         "ContinuityLearning.MemOS.DigestSummaryCharacterLimit",
         "Defaults.ContinuityLearning.MemOS.DigestSummaryCharacterLimit",
+        "ContinuityLearning.MemOS.DigestSummaryTokenLimit",
+        "Defaults.ContinuityLearning.MemOS.DigestSummaryTokenLimit",
       ],
       config: {
         ConfigVersion: CurrentAgentConfigVersion,
-        ContinuityLearning: { MemOS: { DigestSummaryTokenLimit: 50 } },
-        Defaults: { ContinuityLearning: { MemOS: { DigestSummaryTokenLimit: 64 } } },
+        ContinuityLearning: { MemOS: { FragmentSummaryTokenLimit: 50 } },
+        Defaults: { ContinuityLearning: { MemOS: { FragmentSummaryTokenLimit: 64 } } },
       },
     });
+  });
+
+  test("separates legacy digest tuning from file diaries in both configuration scopes", () => {
+    const result = migrateAgentConfigPayload({
+      ConfigVersion: 42,
+      ContinuityLearning: { MemOS: { DigestInputTokenBudget: 9000, DigestSummaryTokenLimit: 120 } },
+      Defaults: { ContinuityLearning: { MemOS: { DigestInputTokenBudget: 4096 }, Diary: { RecentDays: 7 } } },
+    });
+    if (!result) throw new Error("Expected a configuration migration.");
+    expect(result.config).toMatchObject({
+      ContinuityLearning: { MemOS: { RelevanceInputTokenBudget: 9000, FragmentSummaryTokenLimit: 120 } },
+      Defaults: { ContinuityLearning: { MemOS: { RelevanceInputTokenBudget: 4096 }, Diary: { RecentDays: 7 } } },
+    });
+    expect(JSON.stringify(result.config)).not.toContain("DigestInputTokenBudget");
   });
 });

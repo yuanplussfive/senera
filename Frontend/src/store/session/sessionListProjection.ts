@@ -1,6 +1,8 @@
 import type { SessionListItem } from "../../api/eventTypes";
 import type { SessionRecord, StoreState } from "./types";
+import { DEFAULT_SESSION_TITLE } from "./defaults";
 import { forgetSessionEventReceiptsForSessions } from "./eventReceiptLedger";
+import { clearRunHistoryDetailState } from "./runHistoryDetailState";
 
 export function ingestSessionList(state: StoreState, items: readonly SessionListItem[]): void {
   const serverIds = new Set(items.map((item) => item.sessionId));
@@ -144,6 +146,7 @@ export function deleteSessionRuntimeStates(state: StoreState, sessionIds: readon
     if (state.historyRunEventBuffers) delete state.historyRunEventBuffers[sessionId];
     if (state.historyPreviewedIds) delete state.historyPreviewedIds[sessionId];
     if (state.historyHydration) delete state.historyHydration[sessionId];
+    clearRunHistoryDetailState(state, sessionId);
     delete state.viewedRunIdBySession[sessionId];
     delete state.missingOnServerIds[sessionId];
     delete state.selectedModelProviderIdsBySession[sessionId];
@@ -161,7 +164,7 @@ export function deleteSessionRuntimeStates(state: StoreState, sessionIds: readon
 function projectSessionListItem(state: StoreState, item: SessionListItem): void {
   const existing = state.sessions[item.sessionId];
   if (existing) {
-    existing.title = item.title;
+    existing.title = item.title.trim() || DEFAULT_SESSION_TITLE;
     existing.status = item.status === "running" ? "ready" : (item.status as SessionRecord["status"]);
     existing.updatedAt = item.updatedAt;
     existing.createdAt = item.createdAt;
@@ -169,14 +172,13 @@ function projectSessionListItem(state: StoreState, item: SessionListItem): void 
     existing.messageCount = item.messageCount;
     existing.activeRequestId = item.activeRequestId;
     existing.channel = item.channel;
+    existing.agentId = item.agentId;
+    existing.modelProviderId = item.modelProviderId;
     if (item.effectiveModel) existing.effectiveModel = item.effectiveModel;
-    if (item.modelPreference) existing.modelPreference = item.modelPreference;
+    existing.modelPreference = item.modelPreference;
     if (!existing.runtimeSnapshot) {
       const persistedRuntimeSnapshot = state.runtimeSnapshotsBySession[item.sessionId];
       if (persistedRuntimeSnapshot) existing.runtimeSnapshot = persistedRuntimeSnapshot;
-    }
-    if (item.modelProviderId) {
-      state.selectedModelProviderIdsBySession[item.sessionId] = item.modelProviderId;
     }
     if (state.historyLoadingIds[item.sessionId]) {
       state.historyActiveRequestIds[item.sessionId] = item.activeRequestId ?? null;
@@ -187,7 +189,7 @@ function projectSessionListItem(state: StoreState, item: SessionListItem): void 
 
   const session: SessionRecord = {
     sessionId: item.sessionId,
-    title: item.title,
+    title: item.title.trim() || DEFAULT_SESSION_TITLE,
     status: "ready",
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
@@ -200,17 +202,17 @@ function projectSessionListItem(state: StoreState, item: SessionListItem): void 
       : {}),
     activeRequestId: item.activeRequestId,
     channel: item.channel,
+    agentId: item.agentId,
+    modelProviderId: item.modelProviderId,
     ...(item.effectiveModel ? { effectiveModel: item.effectiveModel } : {}),
     ...(item.modelPreference ? { modelPreference: item.modelPreference } : {}),
   };
-  if (item.modelProviderId) {
-    state.selectedModelProviderIdsBySession[item.sessionId] = item.modelProviderId;
-  }
   state.sessions[item.sessionId] = session;
   settleStaleHistoryLoading(state, session);
 }
 
 function settleStaleHistoryLoading(state: StoreState, session: SessionRecord): void {
+  if (session.pendingHistoryWindow) return;
   if (!state.historyLoadingIds[session.sessionId]) {
     return;
   }

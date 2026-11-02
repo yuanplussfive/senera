@@ -2,13 +2,25 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { AgentCancellationError } from "../../../Source/AgentSystem/Core/AgentCancellation.js";
+import { AgentJobWaiter } from "../../../Source/AgentSystem/Orchestration/AgentJobWaiter.js";
+import { AgentSqliteDatabaseKernel } from "../../../Source/AgentSystem/Database/AgentSqliteDatabaseKernel.js";
+import { AgentMemoryDatabaseContract } from "../../../Source/AgentSystem/Memory/AgentMemorySqlSchema.js";
+import { AgentTodoService } from "../../../Source/AgentSystem/Todos/AgentTodoService.js";
+import { AgentTodoSqliteStore } from "../../../Source/AgentSystem/Todos/AgentTodoSqliteStore.js";
+import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 import {
   AgentEventKinds,
   type AgentDomainEvent,
   type AgentEventSink,
 } from "../../../Source/AgentSystem/Events/AgentEvent.js";
+import { createAgentOrchestrationHostHandlers } from "../../../Source/AgentSystem/Orchestration/AgentOrchestrationHostTools.js";
+import { projectAgentChildRunView } from "../../../Source/AgentSystem/Orchestration/AgentChildRunProjection.js";
 import { AgentDelegationService } from "../../../Source/AgentSystem/Orchestration/AgentDelegationService.js";
-import { projectAgentChildRunView } from "../../../Source/AgentSystem/Orchestration/AgentOrchestrationHostTools.js";
+import {
+  AgentSubagentPreflight,
+  type AgentSubagentPreflightPort,
+} from "../../../Source/AgentSystem/Orchestration/AgentSubagentPreflight.js";
+import type { AgentDelegationCompletionPort } from "../../../Source/AgentSystem/Orchestration/AgentDelegationRuntimeContracts.js";
 import { AgentOrchestrationEventRelay } from "../../../Source/AgentSystem/Orchestration/AgentOrchestrationEventRelay.js";
 import { AgentSqliteChildRunRepository } from "../../../Source/AgentSystem/Orchestration/AgentSqliteChildRunRepository.js";
 import {
@@ -24,16 +36,161 @@ import { AgentExecutionApprovalModes } from "../../../Source/AgentSystem/Safety/
 import { AgentSessionRunDispatcher } from "../../../Source/AgentSystem/Session/AgentSessionRunDispatcher.js";
 import { AgentSkillScanner } from "../../../Source/AgentSystem/Skills/AgentSkillScanner.js";
 import { validateToolContractValue } from "../../../Source/AgentSystem/ToolRuntime/AgentToolSignatureArgumentValidator.js";
+import type { AgentHostToolHandler } from "../../../Source/AgentSystem/ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import { cleanupDelegationTestRoots, modelConfig, openDelegationTestDatabase } from "./AgentDelegationTestSupport.js";
+import { createDeferred } from "../Support/AsyncTestFixtures.js";
 
 afterEach(() => cleanupDelegationTestRoots());
 
 describe("agent lifecycle", () => {
-  test("projects an unknown run ID to a schema-valid AgentWait result", () => {
+  test("waits through the short-read interval and releases one event-driven read on completion or cancellation", async () => {
+    vi.useFakeTimers();
+    const waiter = new AgentJobWaiter({ maximumWaitMs: () => 120_000, defaultWaitMs: () => 30_000 });
+    let completed = false;
+    try {
+      const delivered = vi.fn();
+      const result = waiter.read(
+        "job",
+        "parent",
+        () => ({ completed }),
+        (value) => value.completed,
+        {
+          wait: true,
+          timeoutMs: null,
+        },
+      );
+      void result.then(delivered);
+      await vi.advanceTimersByTimeAsync(30_001);
+      expect(delivered).not.toHaveBeenCalled();
+      completed = true;
+      waiter.changed("job");
+      await expect(result).resolves.toEqual({ snapshot: { completed: true }, waitReason: "completed" });
+
+      completed = false;
+      const controller = new AbortController();
+      const cancelled = waiter.read(
+        "job",
+        "parent",
+        () => ({ completed }),
+        (value) => value.completed,
+        {
+          wait: true,
+          timeoutMs: null,
+          signal: controller.signal,
+        },
+      );
+      const assertion = expect(cancelled).rejects.toThrow("reader stopped");
+      controller.abort(new Error("reader stopped"));
+      await assertion;
+      expect(completed).toBe(false);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      waiter.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  test.each([false, true])(
+    "completes an explicitly linked parent Todo without changing a replacement plan (%s)",
+    async (replace) => {
+      const todo = createTodoFixture();
+      const preflight = new AgentSubagentPreflight();
+      const resolve = preflight.resolve.bind(preflight);
+      const secondAdmission = createDeferred<void>();
+      vi.spyOn(preflight, "resolve").mockImplementation(async (input) => {
+        if (input.task === "Build CSS") await secondAdmission.promise;
+        return resolve(input);
+      });
+      const harness = createHarness(undefined, todo.service, preflight);
+      const events: AgentDomainEvent[] = [];
+      harness.events.setSink((event) => {
+        events.push(event);
+      });
+      try {
+        const todos = [{ content: "Build the page", status: "in_progress" as const }];
+        todo.service.write({ sessionId: "parent-session", todos });
+        const first = await harness.service.spawn(
+          { task: "Build HTML", mode: "background", todo: "Build the page" },
+          parentContext(),
+        );
+        const pendingSecond = harness.service.spawn(
+          { task: "Build CSS", mode: "background", todo: "Build the page" },
+          parentContext(),
+        );
+        await harness.dispatcher.waitForDispatches(1);
+        harness.dispatcher.complete(first.childSessionId, "HTML ready");
+        await harness.service.wait(first.id, "parent-session");
+        expect(todo.service.read("parent-session").counts.inProgress).toBe(1);
+        secondAdmission.resolve();
+        const second = await pendingSecond;
+        await harness.dispatcher.waitForDispatches(2);
+        expect(todo.service.read("parent-session").counts.inProgress).toBe(1);
+        if (replace) {
+          todo.service.write({ sessionId: "parent-session", todos: [] });
+          todo.service.write({ sessionId: "parent-session", todos });
+        }
+        harness.dispatcher.complete(second.childSessionId, "CSS ready");
+        await harness.service.wait(second.id, "parent-session");
+        expect(todo.service.read("parent-session").items[0]?.status).toBe(replace ? "in_progress" : "completed");
+        const repeated = await harness.service.spawn(
+          { task: "Build CSS", mode: "background", todo: "Build the page" },
+          parentContext(),
+        );
+        if (replace) {
+          expect(repeated.id).not.toBe(second.id);
+          await harness.dispatcher.waitForDispatches(3);
+          harness.dispatcher.complete(repeated.childSessionId, "New plan CSS ready");
+          await harness.service.wait(repeated.id, "parent-session");
+        } else {
+          expect(repeated.id).toBe(second.id);
+        }
+        expect(todo.service.read("parent-session").counts.completed).toBe(1);
+        expect(events).toContainEqual(
+          expect.objectContaining({
+            kind: AgentEventKinds.TodoListWritten,
+            data: expect.objectContaining({ source: "host" }),
+          }),
+        );
+      } finally {
+        secondAdmission.resolve();
+        await harness.service.shutdown();
+        harness.close();
+        todo.close();
+      }
+    },
+  );
+
+  test("recovers parent Todo synchronization without changing a successful child into a failure", async () => {
+    const todo = createTodoFixture();
+    const harness = createHarness(undefined, todo.service);
+    try {
+      todo.service.write({ sessionId: "parent-session", todos: [{ content: "Build", status: "pending" }] });
+      await expect(
+        harness.service.spawn({ task: "Build", mode: "background", todo: "Build" }, parentContext()),
+      ).rejects.toThrow("in_progress");
+      todo.service.write({ sessionId: "parent-session", todos: [{ content: "Build", status: "in_progress" }] });
+      const run = await harness.service.spawn({ task: "Build", mode: "background", todo: "Build" }, parentContext());
+      await harness.dispatcher.waitForDispatches(1);
+      vi.spyOn(todo.service, "update").mockImplementationOnce(() => {
+        throw new Error("Temporary storage failure");
+      });
+      harness.dispatcher.complete(run.childSessionId, "Built");
+      await expect(harness.service.wait(run.id, "parent-session")).resolves.toMatchObject({ status: "completed" });
+      expect(todo.service.read("parent-session").counts.inProgress).toBe(1);
+      harness.service.bindTodoService(todo.service);
+      expect(todo.service.read("parent-session").counts.completed).toBe(1);
+    } finally {
+      await harness.service.shutdown();
+      harness.close();
+      todo.close();
+    }
+  });
+
+  test("projects an unknown run ID to a schema-valid agent list", () => {
     const run = projectAgentChildRunView(undefined, "missing-run");
     const contract = JSON.parse(
       readFileSync(
-        path.resolve("System", "Extensions", "coordinate", "agent-delegation", "tools", "AgentWait.tool.json"),
+        path.resolve("System", "Extensions", "coordinate", "agent-delegation", "tools", "list_agents.tool.json"),
         "utf8",
       ),
     ) as { outputSchema: Record<string, unknown> };
@@ -47,14 +204,86 @@ describe("agent lifecycle", () => {
     expect(
       validateToolContractValue({
         schema: contract.outputSchema,
-        value: { runs: [run], waitTimedOut: false },
+        value: { self_id: "parent-session", parent_id: null, agents: [] },
       }),
     ).toEqual([]);
   });
 
+  test("launches background work immediately and reads without consuming its completion", async () => {
+    const completion = {
+      id: "test.completion",
+      completed: vi.fn(async () => undefined),
+    } satisfies AgentDelegationCompletionPort;
+    const harness = createHarness(completion);
+    try {
+      const handlers = createAgentOrchestrationHostHandlers({ delegation: harness.service, schedules: {} as never });
+      const context = hostToolContext();
+      const result = await handlers.subagent(
+        { description: "Collect", prompt: "Collect independent evidence." },
+        context,
+      );
+      const child = harness.service.list("parent-session")[0]!;
+      expect(result).toMatchObject({
+        response: { ok: true, result: { agent_id: child.childSessionId, parent_id: "parent-session" } },
+      });
+      await harness.dispatcher.waitForDispatches(1);
+      harness.dispatcher.complete(child.childSessionId, "Independent evidence is ready.");
+      await vi.waitFor(() => expect(completion.completed).toHaveBeenCalledOnce());
+      await expect(handlers.listAgents({}, context)).resolves.toMatchObject({
+        response: {
+          ok: true,
+          result: {
+            self_id: "parent-session",
+            agents: [
+              expect.objectContaining({
+                agent_id: child.childSessionId,
+                result_available: true,
+                error_available: false,
+              }),
+            ],
+          },
+        },
+      });
+      expect(harness.repository.get(child.id)?.parentResultDeliveredAt).toBeUndefined();
+    } finally {
+      harness.close();
+    }
+  });
+
+  test("starts independent children in one native tool batch", async () => {
+    const harness = createHarness();
+    const handlers = createAgentOrchestrationHostHandlers({
+      delegation: harness.service,
+      schedules: {} as never,
+    });
+    const batch = {
+      ...hostToolContext(),
+      batchId: "native-tool-batch",
+      batchToolNames: ["subagent", "subagent"],
+    };
+
+    const first = handlers.subagent({ description: "Implementation", prompt: "Inspect the implementation." }, batch);
+    const second = handlers.subagent({ description: "Tests", prompt: "Inspect the test coverage." }, batch);
+    await harness.dispatcher.waitForDispatches(2);
+
+    const [firstRun, secondRun] = harness.service.list("parent-session");
+    expect(firstRun?.joinGroup).toEqual(secondRun?.joinGroup);
+    expect(firstRun?.joinGroup).toMatchObject({ mode: "all", expectedCount: 2 });
+
+    harness.dispatcher.complete(firstRun!.childSessionId, "Implementation evidence is ready.");
+    harness.dispatcher.complete(secondRun!.childSessionId, "Test evidence is ready.");
+    await expect(Promise.all([first, second])).resolves.toHaveLength(2);
+    await harness.service.wait(firstRun!.id, "parent-session");
+    await harness.service.wait(secondRun!.id, "parent-session");
+    harness.close();
+  });
+
   test("spawns asynchronously with the package-declared default role and host-owned workspace policy", async () => {
     const harness = createHarness();
-    const run = await harness.service.spawn({ task: "Inspect and improve the assigned scope." }, parentContext());
+    const run = await harness.service.spawn(
+      { task: "Inspect and improve the assigned scope.", mode: "background" },
+      parentContext(),
+    );
 
     expect(run).toMatchObject({
       agentName: "delegate",
@@ -92,14 +321,18 @@ describe("agent lifecycle", () => {
       resources: { coverage: "unscoped", claims: [] },
       delivery: { parentResultDelivered: false },
       result: { content: "Default child completed." },
+      progress: expect.objectContaining({ phase: "completed", activeTools: [], todo: expect.any(Object) }),
     });
     harness.close();
   });
 
   test("waits for whichever child settles first and never cancels work on wait timeout", async () => {
     const harness = createHarness();
-    const first = await harness.service.spawn({ task: "First independent task." }, parentContext());
-    const second = await harness.service.spawn({ task: "Second independent task." }, parentContext());
+    const first = await harness.service.spawn({ task: "First independent task.", mode: "background" }, parentContext());
+    const second = await harness.service.spawn(
+      { task: "Second independent task.", mode: "background" },
+      parentContext(),
+    );
     await harness.dispatcher.waitForDispatches(2);
 
     await expect(harness.service.waitAny([first.id, second.id], "parent-session", 0)).resolves.toMatchObject({
@@ -129,7 +362,7 @@ describe("agent lifecycle", () => {
 
   test("projects live progress without exposing the persisted snapshot body", async () => {
     const harness = createHarness();
-    const run = await harness.service.spawn({ task: "Inspect one subsystem." }, parentContext());
+    const run = await harness.service.spawn({ task: "Inspect one subsystem.", mode: "background" }, parentContext());
     await harness.dispatcher.waitForDispatches(1);
 
     harness.repository.recordSnapshot(
@@ -163,7 +396,7 @@ describe("agent lifecycle", () => {
       state: "running",
       progress: {
         phase: "tool_execution",
-        lastActivityAt: "2026-07-11T00:00:01.000Z",
+        lastActivityAt: "2026-07-11T08:00:01.000+08:00",
         activeTools: ["WorkspaceRead", "WorkspaceGrep"],
         toolCalls: { planned: 4, started: 3, completed: 2, failed: 0 },
         checkpointAvailable: true,
@@ -177,7 +410,7 @@ describe("agent lifecycle", () => {
 
   test("wakes when a child requests supervisor input without exposing snapshot cursors", async () => {
     const harness = createHarness();
-    const run = await harness.service.spawn({ task: "Inspect one subsystem." }, parentContext());
+    const run = await harness.service.spawn({ task: "Inspect one subsystem.", mode: "background" }, parentContext());
     await harness.dispatcher.waitForDispatches(1);
     expect(harness.service.get(run.id, "parent-session")?.status).toBe(AgentChildRunStatuses.Running);
 
@@ -207,7 +440,7 @@ describe("agent lifecycle", () => {
   test("routes queued input through follow-up and immediate redirection through Pi steering", async () => {
     const harness = createHarness();
     const context = parentContext();
-    const run = await harness.service.spawn({ task: "Collect evidence." }, context);
+    const run = await harness.service.spawn({ task: "Collect evidence.", mode: "background" }, context);
     await harness.dispatcher.waitForDispatches(1);
 
     const followUp = await harness.service.sendInput(
@@ -229,11 +462,17 @@ describe("agent lifecycle", () => {
       run.childSessionId,
       "After the current task, compare the two alternatives.",
       undefined,
+      expect.any(String),
+      expect.objectContaining({ hostInput: expect.objectContaining({ kind: "agent_message" }) }),
+      "follow_up",
     );
-    expect(harness.dispatcher.steer).toHaveBeenCalledWith(
+    expect(harness.dispatcher.followUp).toHaveBeenCalledWith(
       run.childSessionId,
       "Stop the broad scan and focus on the failing contract.",
       undefined,
+      expect.any(String),
+      expect.objectContaining({ hostInput: expect.objectContaining({ kind: "agent_message" }) }),
+      "steer",
     );
     expect(followUp?.message.kind).toBe("follow_up");
     expect(steering?.message.kind).toBe("steering");
@@ -246,7 +485,7 @@ describe("agent lifecycle", () => {
   test("treats input at the child turn boundary as a settled lifecycle result", async () => {
     const harness = createHarness();
     const context = parentContext();
-    const run = await harness.service.spawn({ task: "Finish the evidence scan." }, context);
+    const run = await harness.service.spawn({ task: "Finish the evidence scan.", mode: "background" }, context);
     await harness.dispatcher.waitForDispatches(1);
 
     harness.dispatcher.complete(run.childSessionId, "Evidence scan completed.");
@@ -264,9 +503,9 @@ describe("agent lifecycle", () => {
   test("returns a terminal result when the dispatcher observes a settled child boundary", async () => {
     const harness = createHarness();
     const context = parentContext();
-    const run = await harness.service.spawn({ task: "Collect one fact." }, context);
+    const run = await harness.service.spawn({ task: "Collect one fact.", mode: "background" }, context);
     await harness.dispatcher.waitForDispatches(1);
-    harness.dispatcher.steer.mockResolvedValueOnce(false);
+    harness.dispatcher.followUp.mockResolvedValueOnce(false);
 
     await expect(
       harness.service.sendInput(run.id, context.parentSessionId, "Stop and summarize.", true, context),
@@ -280,9 +519,12 @@ describe("agent lifecycle", () => {
 
   test("acknowledges recursive cancellation without waiting for active child settlement", async () => {
     const harness = createHarness();
-    const root = await harness.service.spawn({ task: "Coordinate one nested task." }, parentContext());
+    const root = await harness.service.spawn(
+      { task: "Coordinate one nested task.", mode: "background" },
+      parentContext(),
+    );
     const child = await harness.service.spawn(
-      { task: "Nested task." },
+      { task: "Nested task.", mode: "background" },
       parentContext(root.childSessionId, root.childRequestId),
     );
     await harness.dispatcher.waitForDispatches(2);
@@ -341,7 +583,7 @@ describe("agent lifecycle", () => {
     });
 
     try {
-      const run = await service.spawn({ task: "Remain active until cancelled." }, parentContext());
+      const run = await service.spawn({ task: "Remain active until cancelled.", mode: "background" }, parentContext());
       await vi.waitFor(() => expect(sessions.submitMessage).toHaveBeenCalledOnce());
 
       await expect(service.stop(run.id, "parent-session")).resolves.toMatchObject({
@@ -387,7 +629,10 @@ describe("agent lifecycle", () => {
     });
 
     try {
-      const run = await service.spawn({ task: "Stop cleanly." }, { ...parentContext(), onEvent: parentSink });
+      const run = await service.spawn(
+        { task: "Stop cleanly.", mode: "background" },
+        { ...parentContext(), onEvent: parentSink },
+      );
       await dispatcher.waitForDispatches(1);
 
       await service.stop(run.id, "parent-session");
@@ -407,24 +652,23 @@ describe("agent lifecycle", () => {
     }
   });
 
-  test("propagates parent cancellation to a detached child execution", async () => {
+  test("keeps detached child execution alive when its parent turn is cancelled", async () => {
     const harness = createHarness();
     const parent = new AbortController();
     const run = await harness.service.spawn(
-      { task: "Stop when the parent is cancelled." },
+      { task: "Stop when the parent is cancelled.", mode: "background" },
       { ...parentContext(), signal: parent.signal },
     );
     await harness.dispatcher.waitForDispatches(1);
 
     parent.abort(new AgentCancellationError("Parent stopped."));
-    await vi.waitFor(() =>
-      expect(harness.dispatcher.requestCancellation).toHaveBeenCalledWith(run.childSessionId, undefined),
-    );
-    expect(harness.service.get(run.id, "parent-session")?.status).toBe(AgentChildRunStatuses.Cancelling);
+    await Promise.resolve();
+    expect(harness.dispatcher.requestCancellation).not.toHaveBeenCalled();
+    expect(harness.service.get(run.id, "parent-session")?.status).toBe(AgentChildRunStatuses.Running);
 
     harness.dispatcher.complete(run.childSessionId, "late completion");
     await expect(harness.service.wait(run.id, "parent-session")).resolves.toMatchObject({
-      status: AgentChildRunStatuses.Cancelled,
+      status: AgentChildRunStatuses.Completed,
     });
     harness.close();
   });
@@ -454,22 +698,63 @@ function testRegistry() {
   };
 }
 
-function createHarness() {
+function createHarness(
+  completion?: AgentDelegationCompletionPort,
+  todoService?: AgentTodoService,
+  preflight?: AgentSubagentPreflightPort,
+) {
   const database = openDelegationTestDatabase();
   const dispatcher = new ControlledDispatcher();
   const repository = new AgentSqliteChildRunRepository(database);
+  const events = new AgentOrchestrationEventRelay();
   const service = new AgentDelegationService({
     workspaceRoot: process.cwd(),
-    configuration: () => ({ config: modelConfig() }),
+    configuration: () => ({ config: modelConfig(null) }),
     repository,
     dispatcher,
-    events: new AgentOrchestrationEventRelay(),
+    events,
+    todoService,
+    preflight,
+    ...(completion ? { completion } : {}),
   });
   return {
     service,
     dispatcher,
     repository,
+    events,
     close: () => database.close(),
+  };
+}
+
+function createTodoFixture() {
+  const root = createTemporaryDirectory("senera-linked-todo");
+  const database = new AgentSqliteDatabaseKernel({
+    databasePath: path.join(root, "memory.sqlite"),
+    contract: AgentMemoryDatabaseContract,
+  });
+  return {
+    service: new AgentTodoService({
+      store: new AgentTodoSqliteStore(database),
+      policy: { maxItems: 16, maxContentCharacters: 1_000, maxResultCharacters: 16_000 },
+    }),
+    close: () => {
+      database.close();
+      removeDirectory(root);
+    },
+  };
+}
+
+function hostToolContext(): Parameters<AgentHostToolHandler>[1] {
+  return {
+    tool: {} as never,
+    config: modelConfig(),
+    workspaceRoot: process.cwd(),
+    registry: testRegistry(),
+    executionEnv: {} as never,
+    sessionId: "parent-session",
+    requestId: "parent-request",
+    approvalMode: AgentExecutionApprovalModes.Agent,
+    authorizedToolNames: [],
   };
 }
 

@@ -2,6 +2,28 @@ import { expect, test } from "vitest";
 import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
 import { applyEvent } from "../../../Frontend/src/store/session/sessionProjector.ts";
 import { createEvent, createTestState, TestRequestId, TestSessionId } from "./sessionProjectorTestUtils.mjs";
+import { readRunInputLabel } from "../../../Frontend/src/store/session/runInputLabel.ts";
+
+test("attachment-only channel runs retain the real input and show a media summary", () => {
+  const state = createTestState();
+  const attachments = [
+    { resourceUri: "senera://resource/aB3cD4", name: "photo.webp", mime: "image/webp", size: 42, status: "uploaded" },
+    {
+      resourceUri: "senera://resource/aB3cD5",
+      name: "notes.pdf",
+      mime: "application/pdf",
+      size: 32,
+      status: "uploaded",
+    },
+  ];
+  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "", attachments }, { scope: { channel: "onebot11" } }));
+  const run = state.sessions[TestSessionId].runs[0];
+  expect(run.input).toBe("");
+  expect(run.inputAttachments).toEqual(attachments);
+  expect(readRunInputLabel(run)).toBe("1 张图片 · 1 个文件");
+  expect(state.sessions[TestSessionId].messages[0].content).toBe("");
+  expect(readRunInputLabel({ ...run, input: "请查看这些文件" })).toBe("请查看这些文件");
+});
 
 test("projects a connector channel from the scoped run event", () => {
   const state = createTestState();
@@ -43,7 +65,7 @@ test("projects a connector channel from the scoped run event", () => {
   expect(state.sessions[TestSessionId].messages).toHaveLength(1);
 });
 
-test("does not project console or internal run starts as user messages", () => {
+test("projects live input for every origin but never internal run starts as user messages", () => {
   const state = createTestState();
 
   applyEvent(state, createEvent(EventKinds.RunStarted, { input: "主控台消息" }));
@@ -56,7 +78,9 @@ test("does not project console or internal run starts as user messages", () => {
     ),
   );
 
-  expect(state.sessions[TestSessionId].messages).toEqual([]);
+  expect(state.sessions[TestSessionId].messages).toEqual([
+    expect.objectContaining({ id: `${TestRequestId}-user`, role: "user", content: "主控台消息" }),
+  ]);
 });
 
 test("keeps the initial user step anchored to the run start sequence", () => {
@@ -258,6 +282,7 @@ test("complete tool-assisted run projects chat messages, approvals, tool details
   expect(session).toBeTruthy();
   expect(session.activeRequestId).toBe(undefined);
   expect(session.messages.map((message) => [message.kind, message.content])).toEqual([
+    [undefined, "查北京天气"],
     ["AssistantToolPreface", "我先查询北京天气。"],
     ["AssistantFinal", "北京现在 28C，天气晴。"],
   ]);

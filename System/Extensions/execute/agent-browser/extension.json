@@ -4,20 +4,53 @@
   "id": "agent-browser",
   "domain": "execute",
   "settingsSurface": "system-tools",
-  "version": "1.0.0",
-  "displayName": { "zh-CN": "受控浏览器", "en-US": "Controlled Browser" },
+  "usageExamples": [
+    {
+      "title": { "zh-CN": "操作真实网页", "en-US": "Use a browser" },
+      "prompt": {
+        "zh-CN": "打开项目文档，找到安装方法并保存页面截图。",
+        "en-US": "Open the project docs, find the installation steps, and save a screenshot."
+      },
+      "outcome": {
+        "zh-CN": "浏览和操作页面，按需下载文件、截图，并提供可查看的产物。",
+        "en-US": "Navigate and interact with pages, download files or capture screenshots, and provide viewable artifacts."
+      }
+    }
+  ],
+  "documentation": {
+    "zh-CN": "### 在真实网页上操作\n\n用于需要登录状态、页面交互或下载的任务。操作对象是受控浏览器里的页面，与只抓取网页文本的工具不同。\n\n- 打开网址，查看页面状态，选择和填写页面中的控件。\n- 保存截图，下载页面提供的文件。\n- 在继续操作前读取页面反馈，确认动作是否完成。\n\n需要先找公开资料、动漫、Cosplay、素材或攻略时，选择“网页资源目录” Skill；它会先给出适合的公开来源，再交给浏览器访问。\n\n**开始使用**：先确认“运行时依赖”中的浏览器可用。提供目标网址和具体目的即可；登录、验证码或敏感操作仍可能需要你参与。\n\n下载完成应以工具返回的文件产物为准，不以点击过下载按钮作为成功依据。",
+    "en-US": "### Work with real web pages\n\nUse the controlled browser for authenticated pages, interactions and downloads rather than only fetching page text.\n\n- Navigate, inspect page state and interact with controls.\n- Save screenshots and download offered files.\n- Verify page feedback before proceeding.\n\nWhen a task first needs public resources, anime, cosplay, materials, or guides, select the Web Resource Catalog Skill. It selects an appropriate public source before handing the page to the browser.\n\nCheck browser availability in Runtime Dependencies first. Supply a URL and goal; login, verification or sensitive actions may need your involvement. Verify downloads from returned artifacts."
+  },
+  "displayName": {
+    "zh-CN": "受控浏览器",
+    "en-US": "Controlled Browser"
+  },
   "description": {
-    "zh-CN": "通过 Senera 管理的浏览器会话读取和操作网页；私有网络和本地文件在完全权限模式下可直接访问，其他模式需要审批。",
-    "en-US": "Reads and operates web pages through Senera-managed browser sessions. Private-network and local-file targets require approval outside Full Access mode."
+    "zh-CN": "打开网页、操作页面、下载文件与截图。",
+    "en-US": "Open and interact with web pages, download files, and capture screenshots."
   },
   "priority": 91,
   "presentation": {
     "category": "browser",
-    "icon": "globe",
-    "group": { "id": "browser", "title": { "zh-CN": "控制浏览器", "en-US": "Control browser" } },
-    "activity": { "action": { "zh-CN": "操作浏览器", "en-US": "Use browser" } }
+    "icon": "browser",
+    "group": {
+      "id": "browser",
+      "title": {
+        "zh-CN": "控制浏览器",
+        "en-US": "Control browser"
+      }
+    },
+    "activity": {
+      "action": {
+        "zh-CN": "操作浏览器",
+        "en-US": "Use browser"
+      }
+    }
   },
-  "configuration": { "schema": "config.schema.json", "ui": "ui.schema.json" },
+  "configuration": {
+    "schema": "config.schema.json",
+    "ui": "ui.schema.json"
+  },
   "contributions": [
     {
       "kind": "hostTool",
@@ -107,6 +140,18 @@
       "kind": "hostTool",
       "contract": "tools/BrowserWaitForLoad.tool.json",
       "capability": "system.tool.agent-browser.BrowserWaitForLoad",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserWaitForUrl.tool.json",
+      "capability": "system.tool.agent-browser.BrowserWaitForUrl",
+      "recommendedForSkills": ["browser-automation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/BrowserWaitForFunction.tool.json",
+      "capability": "system.tool.agent-browser.BrowserWaitForFunction",
       "recommendedForSkills": ["browser-automation"]
     },
     {

@@ -132,6 +132,7 @@ const SessionNotFoundOperations = new Set<SessionNotFoundData["operation"]>([
   "session.message",
   "session.close",
   "session.history",
+  "session.run_history",
   "session.fork",
   "session.compact",
   "session.runtime_status",
@@ -159,6 +160,7 @@ const SessionNotFoundRecoveryPolicies = {
   // showing a warning here only makes the user think the selected session is
   // broken, even when another session is already active.
   "session.history": ({ sessionId }) => ({ kind: "mark_missing", sessionId }),
+  "session.run_history": ({ sessionId }) => ({ kind: "mark_missing", sessionId }),
   "session.compact": ({ sessionId }) => missingSessionPlan(sessionId),
   "session.runtime_status": ({ sessionId }) => missingSessionPlan(sessionId),
   "session.export": ({ sessionId }) => missingSessionPlan(sessionId),

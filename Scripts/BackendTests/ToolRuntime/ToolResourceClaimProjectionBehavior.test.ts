@@ -12,9 +12,7 @@ import { resourceRequestsConflict } from "../../../Source/AgentSystem/ToolRuntim
 
 describe("tool resource claim projection", () => {
   test("advertises only registered capabilities that can produce a scheduling claim", () => {
-    const executionEnv: Pick<SeneraExecutionEnv, "resolveResourcePath"> = {
-      resolveResourcePath: async (value) => ({ ok: true, value: path.resolve("E:/workspace", value) }),
-    };
+    const executionEnv = workspaceExecutionEnv();
     const capabilities = new AgentToolResourceCapabilityRegistry()
       .register(new AgentToolUrlResourceCapability())
       .register(new AgentToolWorkspacePathResourceCapability(executionEnv));
@@ -151,37 +149,39 @@ describe("tool resource claim projection", () => {
 });
 
 function workspaceClaimProjector(): AgentToolResourceClaimProjector {
-  const executionEnv: Pick<SeneraExecutionEnv, "resolveResourcePath"> = {
-    resolveResourcePath: async (value) => ({
-      ok: true,
-      value: path.resolve("E:/workspace", value),
-    }),
-  };
+  const executionEnv = workspaceExecutionEnv();
   const capabilities = new AgentToolResourceCapabilityRegistry()
     .register(new AgentToolWorkspacePathResourceCapability(executionEnv))
     .register(
       new AgentToolWorkspaceRootResourceCapability({
         workspaceRoot: "E:/workspace",
-        inspectResourcePath: async (value, intent) => ({
-          addressedPath: value,
-          canonicalPath: path.resolve("E:/workspace", value),
-          intent,
-          recursive: true,
-          facts: {
-            scope: "workspace",
-            intent,
-            authority: "tool",
-            domain: "workspace-content",
-            domainRoot: true,
-            relativePath: ".",
-            containment: "inside",
-            linkTraversal: "none",
-            finalEntry: "directory",
-          },
-        }),
+        inspectResourcePath: executionEnv.inspectResourcePath,
       }),
     );
   return new AgentToolResourceClaimProjector(capabilities);
+}
+
+function workspaceExecutionEnv(): Pick<SeneraExecutionEnv, "resolveResourcePath" | "inspectResourcePath"> {
+  return {
+    resolveResourcePath: async (value) => ({ ok: true, value: path.resolve("E:/workspace", value) }),
+    inspectResourcePath: async (value, intent) => ({
+      addressedPath: value,
+      canonicalPath: path.resolve("E:/workspace", value),
+      intent,
+      recursive: true,
+      facts: {
+        scope: "workspace",
+        intent,
+        authority: "tool",
+        domain: "workspace-content",
+        domainRoot: true,
+        relativePath: ".",
+        containment: "inside",
+        linkTraversal: "none",
+        finalEntry: "directory",
+      },
+    }),
+  };
 }
 
 function workspaceResource(intent: "read" | "replace"): ToolResourceArgumentManifest {

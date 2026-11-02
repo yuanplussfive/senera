@@ -34,8 +34,8 @@ describe("shared structured model execution", () => {
   test.each(["native", "baml"] as const)(
     "uses %s output with conversation images and constructor telemetry",
     async (mode) => {
-      const provider = createModelProvider({ ToolPlanningMode: mode });
-      const value = { topicRelation: "continue", standaloneRequest: "杭州天气" };
+      const provider = createModelProvider({ ToolPlanningMode: mode, Capabilities: { Vision: true } });
+      const value = { topicRelation: "continue", standaloneRequest: "杭州天气", resumeRequestId: null };
       const stream = vi.fn((_model: unknown, _context: Context) =>
         completedTestPiStream(
           testPiAssistantMessage(

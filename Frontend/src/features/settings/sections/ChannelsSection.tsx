@@ -1,20 +1,24 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
+import { Tooltip } from "../../../shared/ui/Tooltip";
+import { useCallback, useEffect, useMemo, useState, type JSX } from "react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import { useFrontendLocale } from "../../../i18n/useFrontendLocale";
 import { cn } from "../../../lib/util";
 import { JsonConfigSettingsView } from "../../../shared/config/JsonConfigForm";
 import { isJsonConfigObject } from "../../../shared/config/JsonConfigValue";
-import { FluidHoverHighlight, useFluidHover, useMotionLevel } from "../../../shared/motion";
-import { AppIcon, Button, IconButton, InlineError, ScrollArea, StateView, Switch } from "../../../shared/ui";
+import { AppIcon, IconButton, InlineError, ScrollArea, StateView, Switch, useClipboardCopy } from "../../../shared/ui";
 import type { SettingsSystemConfigHandle } from "../SettingsContracts";
 import { projectSystemExtensionConfigurationSections } from "../systemExtensionConfigurationPresentation";
 import { readSettingsExtensionDraft, writeSettingsExtensionDraft } from "./SystemToolsSection";
 import type { ConfigSettingsDraftState, ConfigDraftSaveMode } from "./configSettingsDraftState";
 import { projectSectionConfigFields } from "./runtimeModelAssignments";
 import { AgentSystemExtensionSettingsSurfaces } from "../../../../../Source/AgentSystem/Types/AgentSystemExtensionSettingsSurface";
+import { ClientExtensionSettings } from "./ClientExtensionSettings";
+import { PluginIdentityIcon, PluginIdentityTile } from "./PluginIdentityIcon";
+import { PluginDocumentation } from "./PluginDocumentation";
+import { PluginSkills } from "./PluginSkills";
 import { SettingsSectionLoading } from "../SettingsLoading";
 
-const ChannelSectionIds = ["telegram", "qq", "discord"] as const;
+const ChannelSectionIds = ["telegram", "qq", "discord", "onebot11", "onebot"] as const;
 
 type ChannelSectionId = (typeof ChannelSectionIds)[number];
 
@@ -24,27 +28,28 @@ const ChannelEntryMarks: Record<ChannelSectionId, string> = {
   telegram: "Telegram",
   qq: "QQ",
   discord: "Discord",
+  onebot11: "Senera QQ",
+  onebot: "OneBot 11",
 };
 
 const ChannelStatusPresentation = {
-  stopped: { label: "settings.channels.disconnected", text: "text-content-muted", dot: "bg-ink-300" },
-  connecting: { label: "settings.channels.connecting", text: "text-umber-600", dot: "bg-umber-500" },
-  connected: { label: "settings.channels.connected", text: "text-moss-600", dot: "bg-moss-500" },
-  reconnecting: { label: "settings.channels.reconnecting", text: "text-umber-600", dot: "bg-umber-500" },
-  degraded: { label: "settings.channels.degraded", text: "text-brick-600", dot: "bg-brick-500" },
+  stopped: { label: "settings.channels.disconnected", text: "text-content-muted", icon: "wifi-off" },
+  connecting: { label: "settings.channels.connecting", text: "text-umber-600", icon: "loading" },
+  connected: { label: "settings.channels.connected", text: "text-moss-600", icon: "wifi" },
+  reconnecting: { label: "settings.channels.reconnecting", text: "text-umber-600", icon: "loading" },
+  degraded: { label: "settings.channels.degraded", text: "text-brick-600", icon: "alert" },
 } as const;
 
-function channelEntryIcon(entryId: ChannelEntryId): "sliders" | "send" | "users" | "server" {
-  switch (entryId) {
-    case "general":
-      return "sliders";
-    case "telegram":
-      return "send";
-    case "qq":
-      return "users";
-    case "discord":
-      return "server";
-  }
+function ChannelIdentity({ id }: { id: ChannelEntryId }): JSX.Element {
+  return (
+    <PluginIdentityTile>
+      {id === "general" ? (
+        <AppIcon icon="sliders" size={24} />
+      ) : (
+        <PluginIdentityIcon brandIcon={id === "onebot11" || id === "onebot" ? "qq" : id} size={28} />
+      )}
+    </PluginIdentityTile>
+  );
 }
 
 /**
@@ -71,13 +76,6 @@ export function ChannelsSection({
   const [selectedId, setSelectedId] = useState<ChannelEntryId | null>(null);
   const [connectAfterSave, setConnectAfterSave] = useState<ChannelSectionId | null>(null);
   const [connectingId, setConnectingId] = useState<ChannelSectionId | null>(null);
-  const { disableMotion } = useMotionLevel();
-  const channelListRef = useRef<HTMLDivElement>(null);
-  const channelHover = useFluidHover(channelListRef, {
-    axis: "y",
-    gapClick: false,
-    isItemDisabled: (element) => element.querySelector("button:disabled") !== null,
-  });
 
   const connectChannel = systemConfig?.connectChannel;
   const requestConnection = useCallback(
@@ -140,7 +138,7 @@ export function ChannelsSection({
   }, [channelExtension]);
 
   if (!systemConfig || !systemConfig.toolSettingsSynced.systemTools) {
-    return <SettingsSectionLoading variant="split" />;
+    return <SettingsSectionLoading variant="directory" />;
   }
 
   const refreshButton = (
@@ -206,18 +204,16 @@ export function ChannelsSection({
             <InlineError className="mx-auto mt-4 max-w-[900px] px-6 lg:px-8">{draftState.localError}</InlineError>
           ) : null}
           <div className="mx-auto w-full max-w-[900px] px-6 py-5 lg:px-8">
-            <p className="mb-5 text-[11.5px] leading-5 text-content-muted">
-              {frontendMessage("settings.channels.connectionHint")}
-            </p>
-            <div ref={channelListRef} className="relative" {...channelHover.handlers}>
-              <FluidHoverHighlight hover={channelHover} hidden={disableMotion} className="rounded-md" />
-              {(["general", ...ChannelSectionIds] as ChannelEntryId[]).map((entryId, index) => {
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,320px),1fr))] gap-x-8 gap-y-1">
+              {(["general", ...ChannelSectionIds] as ChannelEntryId[]).map((entryId) => {
                 const section = entryId === "general" ? general : sections.find((other) => other.name === entryId);
                 if (!section) return null;
                 const mark =
                   entryId === "general"
                     ? frontendMessage("settings.channels.generalTitle")
-                    : ChannelEntryMarks[entryId as ChannelSectionId];
+                    : entryId === "onebot11"
+                      ? frontendMessage("settings.channels.localName")
+                      : ChannelEntryMarks[entryId];
                 const channelValue = isJsonConfigObject(configuration[entryId]) ? configuration[entryId] : {};
                 const rowEnabled =
                   entryId === "general"
@@ -232,8 +228,6 @@ export function ChannelsSection({
                 return (
                   <ChannelRow
                     key={entryId}
-                    itemRef={channelHover.getItemRef(index)}
-                    fluidHoverEnabled={!disableMotion}
                     entryId={entryId}
                     mark={mark}
                     description={section.description ?? ""}
@@ -262,7 +256,9 @@ export function ChannelsSection({
   const mark =
     entryId === "general"
       ? frontendMessage("settings.channels.generalTitle")
-      : ChannelEntryMarks[entryId as ChannelSectionId];
+      : entryId === "onebot11"
+        ? frontendMessage("settings.channels.localName")
+        : ChannelEntryMarks[entryId];
   const channelValue = isJsonConfigObject(configuration[entryId]) ? configuration[entryId] : {};
   const currentEnabled =
     entryId === "general" ? enabled : typeof channelValue.enabled === "boolean" ? channelValue.enabled : false;
@@ -288,8 +284,8 @@ export function ChannelsSection({
       data-channels-detail
       data-channels-detail-id={entryId}
     >
-      <div className="mx-auto flex w-full max-w-[900px] shrink-0 items-start justify-between gap-4 border-b border-line px-6 py-4 lg:px-8">
-        <div className="flex min-w-0 items-start gap-3">
+      <div className="mx-auto flex w-full max-w-[924px] shrink-0 flex-wrap items-center justify-between gap-3 border-b border-line-subtle px-5 py-4 sm:px-8">
+        <div className="flex min-w-0 items-center gap-3">
           <IconButton
             label={frontendMessage("settings.tools.backToExtensions")}
             size="sm"
@@ -298,19 +294,25 @@ export function ChannelsSection({
           >
             <AppIcon icon="arrow-left" size={16} />
           </IconButton>
+          <ChannelIdentity id={entryId} />
           <div className="min-w-0">
-            <h3 className="flex items-center gap-2 truncate text-[17px] font-semibold tracking-[-0.01em] text-content-primary">
+            <h3 className="flex items-center gap-2 text-[18px] font-semibold tracking-[-0.01em] text-content-primary">
+              {channelKind ? <ChannelStatusGlyph status={channelStatus} /> : null}
               {mark}
-              <span className="text-[11px] font-normal text-content-muted">{section.label}</span>
             </h3>
-            <p className="mt-1 max-w-[560px] text-[12px] leading-5 text-content-secondary">{section.description}</p>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">
           {channelKind ? (
-            <Button
-              size="sm"
-              variant="outline"
+            <IconButton
+              label={frontendMessage(
+                channelStatus?.state === "connected" ? "settings.channels.reconnect" : "settings.channels.connect",
+              )}
+              tooltip={frontendMessage(
+                channelStatus?.state === "connected" ? "settings.channels.reconnect" : "settings.channels.connect",
+              )}
+              tone="muted"
+              touchSafe
               loading={connectionPending}
               disabled={!connected || !enabled || !currentEnabled || draftState.validationErrors.length > 0}
               onClick={() => {
@@ -322,13 +324,10 @@ export function ChannelsSection({
                 requestConnection(channelKind);
               }}
             >
-              <AppIcon icon="refresh" size={14} aria-hidden="true" />
-              {frontendMessage(
-                channelStatus?.state === "connected" ? "settings.channels.reconnect" : "settings.channels.connect",
-              )}
-            </Button>
+              <AppIcon icon="refresh" size={16} aria-hidden="true" />
+            </IconButton>
           ) : null}
-          <span className="grid place-items-center">
+          <span className="grid shrink-0 justify-items-center gap-2 self-start pt-1">
             <Switch
               checked={currentEnabled}
               size="sm"
@@ -346,23 +345,40 @@ export function ChannelsSection({
         {draftState.localError ? (
           <InlineError className="mx-auto mt-4 max-w-[900px] px-6 lg:px-8">{draftState.localError}</InlineError>
         ) : null}
-        <div className="mx-auto w-full max-w-[820px] px-6 py-6 lg:px-8">
-          {channelKind ? <ChannelConnectionStatus status={channelStatus} /> : null}
-          <JsonConfigSettingsView
-            layoutMode="embedded"
-            sections={[withoutEnabled]}
-            value={entryId === "general" ? configuration : channelValue}
-            disabled={!connected}
-            readSecret={readSecret}
-            onChange={(next, mode) => {
-              if (entryId === "general") {
-                updateExtension(enabled, stripUndefined(next), mode ?? "debounced");
-              } else {
-                updateChannel(entryId as ChannelSectionId, next, mode ?? "debounced");
-              }
-            }}
-            onCommit={draftState.flushSave}
+        <div className="mx-auto w-full max-w-[924px] px-5 py-5 sm:px-8">
+          {channelKind === "onebot11" && systemConfig.oneBot11ClientUrl && systemConfig.workspaceId ? (
+            <ClientExtensionSettings
+              key={systemConfig.workspaceId}
+              url={systemConfig.oneBot11ClientUrl}
+              workspaceId={systemConfig.workspaceId}
+              connected={channelStatus?.state === "connected"}
+            />
+          ) : null}
+          <PluginDocumentation
+            key={`documentation:${entryId}`}
+            content={section.documentation}
+            summary={section.description}
           />
+          <PluginSkills key={`skills:${entryId}`} skills={channelExtension.skills} />
+          {channelKind ? <ChannelConnectionStatus status={channelStatus} /> : null}
+          {withoutEnabled.fields.length > 0 ? (
+            <JsonConfigSettingsView
+              layoutMode="embedded"
+              showSectionHeading={false}
+              sections={[withoutEnabled]}
+              value={entryId === "general" ? configuration : channelValue}
+              disabled={!connected}
+              readSecret={readSecret}
+              onChange={(next, mode) => {
+                if (entryId === "general") {
+                  updateExtension(enabled, stripUndefined(next), mode ?? "debounced");
+                } else {
+                  updateChannel(entryId as ChannelSectionId, next, mode ?? "debounced");
+                }
+              }}
+              onCommit={draftState.flushSave}
+            />
+          ) : null}
         </div>
       </ScrollArea>
     </section>
@@ -386,8 +402,6 @@ function ChannelsHeader({ refreshButton }: { refreshButton: JSX.Element }): JSX.
 }
 
 function ChannelRow({
-  itemRef,
-  fluidHoverEnabled,
   entryId,
   mark,
   description,
@@ -397,8 +411,6 @@ function ChannelRow({
   onToggle,
   onSelect,
 }: {
-  itemRef: (element: HTMLElement | null) => void;
-  fluidHoverEnabled: boolean;
   entryId: ChannelEntryId;
   mark: string;
   description: string;
@@ -408,27 +420,31 @@ function ChannelRow({
   onToggle: (next: boolean) => void;
   onSelect: () => void;
 }): JSX.Element {
-  const icon = channelEntryIcon(entryId);
   return (
     <div
-      ref={itemRef}
       className={cn(
-        "relative z-10 flex min-h-[68px] w-full min-w-0 items-center gap-3 border-b border-line px-1 py-3 text-left transition-colors",
-        fluidHoverEnabled ? "hover:bg-transparent" : "hover:bg-surface-hover",
+        "group flex w-full min-w-0 items-start gap-3 border-b border-line-subtle py-5 text-left",
+        entryId === "general" && "col-span-full mb-1",
       )}
       data-channels-entry={entryId}
     >
-      <button type="button" onClick={onSelect} className="flex w-0 min-w-0 flex-1 items-center gap-3 text-left">
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-surface-subtle text-content-secondary">
-          <AppIcon icon={icon} size={20} aria-hidden="true" />
-        </span>
-        <span className="min-w-0">
-          <span className="block truncate text-[12.5px] font-semibold text-content-primary">{mark}</span>
-          <span className="mt-0.5 line-clamp-2 text-[10.5px] leading-4 text-content-muted">{description}</span>
+      <button
+        type="button"
+        onClick={onSelect}
+        className="flex w-0 min-w-0 flex-1 items-start gap-3.5 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
+      >
+        <ChannelIdentity id={entryId} />
+        <span className="min-w-0 flex-1">
+          <span className="flex h-6 items-center gap-2">
+            {entryId !== "general" ? <ChannelStatusGlyph status={status} /> : null}
+            <span className="truncate text-[13px] font-medium text-content-primary group-hover:text-content-strong">
+              {mark}
+            </span>
+          </span>
+          <span className="mt-1 line-clamp-2 text-xs leading-5 text-content-secondary">{description}</span>
         </span>
       </button>
-      {entryId !== "general" ? <ChannelStatusBadge status={status} /> : null}
-      <span className="shrink-0">
+      <span className="grid shrink-0 justify-items-center gap-2 pt-1">
         <Switch
           checked={enabled}
           size="sm"
@@ -441,18 +457,26 @@ function ChannelRow({
   );
 }
 
-function ChannelStatusBadge({
+function ChannelStatusGlyph({
   status,
 }: {
-  status?: SettingsSystemConfigHandle["channelStatuses"][number];
+  status?: Pick<SettingsSystemConfigHandle["channelStatuses"][number], "state">;
 }): JSX.Element | null {
   if (!status) return null;
   const presentation = ChannelStatusPresentation[status.state];
+  const label = frontendMessage(presentation.label);
   return (
-    <span className={`inline-flex shrink-0 items-center gap-1.5 text-[10.5px] ${presentation.text}`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${presentation.dot}`} />
-      {frontendMessage(presentation.label)}
-    </span>
+    <Tooltip content={label}>
+      <span
+        role="img"
+        aria-label={label}
+
+        data-channel-connection-state={status.state}
+        className={cn("grid h-4 w-4 place-items-center", presentation.text)}
+      >
+        <AppIcon icon={presentation.icon} size={14} />
+      </span>
+    </Tooltip>
   );
 }
 
@@ -461,11 +485,30 @@ function ChannelConnectionStatus({
 }: {
   status?: SettingsSystemConfigHandle["channelStatuses"][number];
 }): JSX.Element | null {
+  const { copied, copyText } = useClipboardCopy({ successMessage: frontendMessage("settings.action.copied") });
   if (!status) return null;
   return (
-    <div className="mb-5 rounded-lg border border-line bg-surface-subtle px-3 py-2.5">
-      <ChannelStatusBadge status={status} />
+    <div className="mb-3">
       {status.error ? <p className="mt-1.5 text-[11px] leading-4 text-brick-600">{status.error}</p> : null}
+      {status.connection?.endpoint ? (
+        <div className="mt-2 flex min-w-0 items-start gap-1.5 text-[11px] leading-4 text-content-secondary">
+          <div className="min-w-0 flex-1">
+            <span className="mr-1 text-content-muted">
+              {status.connection.accountId ? `#${status.connection.accountId}` : ""}
+            </span>
+            <code className="select-text break-all font-mono text-content-primary">{status.connection.endpoint}</code>
+          </div>
+          <IconButton
+            label={frontendMessage("settings.action.copy")}
+            tooltip={copied ? frontendMessage("settings.action.copied") : frontendMessage("settings.action.copy")}
+            size="sm"
+            tone="muted"
+            onClick={() => void copyText(status.connection!.endpoint!)}
+          >
+            <AppIcon icon={copied ? "check" : "copy"} size={13} aria-hidden="true" />
+          </IconButton>
+        </div>
+      ) : null}
     </div>
   );
 }

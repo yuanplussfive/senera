@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { openDesktopSettings, openExternalUrl, readDesktopBridge } from "../../../Frontend/src/app/desktopBridge.ts";
+import {
+  openDesktopSettings,
+  openExternalUrl,
+  readDesktopBridge,
+  supportsNativeWorkspaceWebview,
+} from "../../../Frontend/src/app/desktopBridge.ts";
 import { isTrustedDesktopNavigation, resolveExternalHttpUrl } from "../../../Apps/Desktop/DesktopNavigationPolicy.ts";
 import { DesktopClosePolicy } from "../../../Apps/Desktop/DesktopClosePolicy.ts";
 
@@ -22,8 +27,7 @@ describe("openExternalUrl", () => {
   });
 
   it("opens validated web URLs with opener isolation", async () => {
-    const opened = {};
-    const openWindow = vi.fn(() => opened);
+    const openWindow = vi.fn(() => null);
 
     await expect(openExternalUrl("http://127.0.0.1:8787/callback", { bridge: undefined, openWindow })).resolves.toBe(
       "web",
@@ -41,6 +45,15 @@ describe("openExternalUrl", () => {
       openExternalUrl("https://user:secret@accounts.example.com/login", { bridge: undefined, openWindow }),
     ).resolves.toBe("blocked");
     expect(openWindow).not.toHaveBeenCalled();
+  });
+});
+
+describe("desktop workspace webview capability", () => {
+  it("requires both a desktop surface and the native webview flag", () => {
+    expect(supportsNativeWorkspaceWebview({ isDesktop: true, nativeWebview: true })).toBe(true);
+    expect(supportsNativeWorkspaceWebview({ isDesktop: true })).toBe(false);
+    expect(supportsNativeWorkspaceWebview({ isDesktop: false, nativeWebview: true })).toBe(false);
+    expect(supportsNativeWorkspaceWebview(undefined)).toBe(false);
   });
 });
 

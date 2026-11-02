@@ -1,14 +1,16 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useState } from "react";
 import { motion } from "framer-motion";
 import { cn } from "../../lib/util";
-import { ListTree, Maximize2, PanelRightClose } from "lucide-react";
-import { readActiveRun, useStore, type RunRecord } from "../../store/sessionStore";
+import type { RunRecord } from "../../store/sessionStore";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { Dialog, DialogContent, IconButton, Spinner } from "../../shared/ui";
+import { AppIcon, Dialog, DialogContent, IconButton, Spinner } from "../../shared/ui";
 import { summarizeRun } from "./runSummary";
 import { shouldLoadWorkflowCanvas } from "./canvasLoadPolicy";
 import { RunSelector, RunSummaryStrip } from "./WorkflowRunControls";
+import { readRunTaskGroups, WorkflowTaskProgress } from "./WorkflowTaskProgress";
+import { useViewedRun } from "./useViewedRun";
 import { motionSprings, motionTimings, readFocusPanelVariants, useMotionLevel } from "../../shared/motion";
+import { useResponsiveMode } from "../../shared/responsive";
 import type { WorkflowLayoutDirection } from "./layout";
 
 const LazyThinkingTimelineCanvas = lazy(() =>
@@ -43,34 +45,12 @@ function ThinkingPanel({
   hidePanelTitle: boolean;
   onClosePanel?: () => void;
 }): JSX.Element {
-  const activeId = useStore((s) => s.activeSessionId);
-  const session = useStore((s) => (activeId ? s.sessions[activeId] : null));
-  const viewedRunId = useStore((s) => (activeId ? s.viewedRunIdBySession[activeId] : undefined));
-  const setViewedRun = useStore((s) => s.setViewedRun);
+  const { runs, run, pinnedToHistory, selectRun, followLatest } = useViewedRun();
   const [focusOpen, setFocusOpen] = useState(false);
-
-  const runs = useMemo(() => session?.runs ?? [], [session?.runs]);
-  const latestRun = runs[runs.length - 1];
-  const activeRun = readActiveRun(session ?? undefined);
-  const defaultRun = activeRun ?? latestRun;
-  const selectedRun = useMemo(() => {
-    if (!viewedRunId) return undefined;
-    return runs.find((r) => r.requestId === viewedRunId);
-  }, [runs, viewedRunId]);
-  const isPinnedToHistory = !!selectedRun && selectedRun.requestId !== defaultRun?.requestId;
-  const run = isPinnedToHistory ? selectedRun : defaultRun;
-
-  useEffect(() => {
-    if (!activeId) return;
-    if (!viewedRunId) return;
-    if (!selectedRun) {
-      setViewedRun(activeId, undefined);
-      return;
-    }
-    if (selectedRun.requestId === defaultRun?.requestId) {
-      setViewedRun(activeId, undefined);
-    }
-  }, [activeId, viewedRunId, selectedRun, defaultRun?.requestId, setViewedRun]);
+  const responsiveMode = useResponsiveMode();
+  // 手机全屏聚焦时横向图会被裁切，改成纵向堆叠更易读。
+  const focusLayoutDirection: WorkflowLayoutDirection =
+    responsiveMode.viewport === "mobile" ? "vertical" : "horizontal";
 
   const toggleFocus = useCallback(() => {
     setFocusOpen((value) => !value);
@@ -90,13 +70,14 @@ function ThinkingPanel({
           run={run}
           runs={runs}
           currentRunId={run?.requestId}
-          pinnedToHistory={isPinnedToHistory}
+          pinnedToHistory={pinnedToHistory}
           hideTitle={hidePanelTitle}
           presentation={presentation}
-          onSelect={(rid) => activeId && setViewedRun(activeId, rid)}
-          onFollowLatest={() => activeId && setViewedRun(activeId, undefined)}
+          onSelect={selectRun}
+          onFollowLatest={followLatest}
           onClosePanel={onClosePanel}
         />
+        {run ? <WorkflowTaskProgress key={run.requestId} groups={readRunTaskGroups(run)} /> : null}
         <CanvasArea run={run} compact={presentation === "dock"} focusOpen={focusOpen} onToggleFocus={toggleFocus} />
       </aside>
       <TimelineFocusDialog
@@ -104,10 +85,11 @@ function ThinkingPanel({
         run={run}
         runs={runs}
         currentRunId={run?.requestId}
-        pinnedToHistory={isPinnedToHistory}
+        pinnedToHistory={pinnedToHistory}
+        layoutDirection={focusLayoutDirection}
         onOpenChange={setFocusOpen}
-        onSelect={(rid) => activeId && setViewedRun(activeId, rid)}
-        onFollowLatest={() => activeId && setViewedRun(activeId, undefined)}
+        onSelect={selectRun}
+        onFollowLatest={followLatest}
       />
     </>
   );
@@ -127,7 +109,7 @@ function TopBar({
   onClosePanel,
 }: {
   run?: RunRecord;
-  runs: RunRecord[];
+  runs: readonly RunRecord[];
   currentRunId?: string;
   pinnedToHistory: boolean;
   hideTitle?: boolean;
@@ -155,7 +137,7 @@ function TopBar({
               data-workspace-tool-dock
               data-workflow-panel-title
             >
-              <ListTree className="h-4 w-4 shrink-0 text-content-secondary" />
+              <AppIcon icon="list-tree" className="h-4 w-4 shrink-0 text-content-secondary" />
               <span className="truncate text-[13px] font-medium text-content-primary">
                 {frontendMessage("workflow.panel.title")}
               </span>
@@ -170,7 +152,7 @@ function TopBar({
                 tooltipSide="bottom"
                 onClick={onClosePanel}
               >
-                <PanelRightClose className="h-4 w-4" />
+                <AppIcon icon="panel-right-close" className="h-4 w-4" />
               </IconButton>
             </div>
           ) : null}
@@ -212,15 +194,17 @@ function TimelineFocusDialog({
   runs,
   currentRunId,
   pinnedToHistory,
+  layoutDirection,
   onOpenChange,
   onSelect,
   onFollowLatest,
 }: {
   open: boolean;
   run?: RunRecord;
-  runs: RunRecord[];
+  runs: readonly RunRecord[];
   currentRunId?: string;
   pinnedToHistory: boolean;
+  layoutDirection: WorkflowLayoutDirection;
   onOpenChange: (open: boolean) => void;
   onSelect: (requestId: string) => void;
   onFollowLatest: () => void;
@@ -277,7 +261,7 @@ function TimelineFocusDialog({
               </div>
             </div>
           ) : null}
-          <CanvasArea run={run} focusVersion={open ? 1 : 0} layoutDirection="horizontal" />
+          <CanvasArea run={run} focusVersion={open ? 1 : 0} layoutDirection={layoutDirection} />
         </motion.div>
       </DialogContent>
     </Dialog>
@@ -353,7 +337,7 @@ function CanvasFocusAction({
       className="absolute right-3 top-3 z-20 border border-line-subtle bg-surface-raised shadow-sm"
       data-workflow-focus-action
     >
-      <Maximize2 className="h-4 w-4" />
+      <AppIcon icon="maximize" className="h-4 w-4" />
     </IconButton>
   );
 }
@@ -380,7 +364,7 @@ function EmptyCanvas(): JSX.Element {
       transition={disableMotion ? { duration: 0 } : reduceMotion ? motionTimings.base : motionSprings.soft}
       className="flex max-w-[320px] flex-col items-center px-6 text-center"
     >
-      <ListTree className="h-5 w-5 text-content-muted" />
+      <AppIcon icon="list-tree" className="h-5 w-5 text-content-muted" />
       <p className="mt-4 text-[13px] font-semibold text-content-primary">
         {frontendMessage("workflow.panel.emptyTitle")}
       </p>

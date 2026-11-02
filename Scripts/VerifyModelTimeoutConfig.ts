@@ -88,7 +88,6 @@ assert.equal(
   resolveModelProviderConfig(configuredDefaults).Endpoint,
 );
 assert.equal(resolveActionPlannerConfig(configuredDefaults).Client.Temperature, 0.3);
-assert.equal(resolveActionPlannerConfig(configuredDefaults).PlanningClient.Model, "test-model");
 assert.equal(resolveFrontendConfig(configuredDefaults).DevServer.Port, 5174);
 assert.equal(resolveFrontendConfig(configuredDefaults).PreviewServer.Port, 4174);
 assert.equal(resolveFrontendConfig(configuredDefaults).Client.WebSocketUrl, "ws://127.0.0.1:8787");
@@ -135,7 +134,7 @@ assert.equal(configured.RetryBaseDelayMs, 500);
 assert.equal(configured.RetryMaxDelayMs, 12000);
 assert.equal(configured.RetryAfterMaxDelayMs, 45000);
 
-const splitPlanner = resolveActionPlannerConfig(
+const splitFinalAnswer = resolveActionPlannerConfig(
   parseConfig({
     ...baseConfig,
     DefaultModelProviderId: "gpt-planner",
@@ -154,7 +153,7 @@ const splitPlanner = resolveActionPlannerConfig(
       },
     ],
     ActionPlanner: {
-      PlanningClient: {
+      FinalAnswerClient: {
         ModelProviderId: "gpt-planner",
         Temperature: 0.1,
         MaxTokens: 4096,
@@ -162,9 +161,9 @@ const splitPlanner = resolveActionPlannerConfig(
     },
   }),
 );
-assert.equal(splitPlanner.PlanningClient.ModelProvider.Endpoint, "Responses");
-assert.equal(splitPlanner.PlanningClient.Model, "gpt-planner-model");
-assert.equal(splitPlanner.PlanningClient.MaxTokens, 4096);
+assert.equal(splitFinalAnswer.FinalAnswerClient.ModelProvider.Endpoint, "Responses");
+assert.equal(splitFinalAnswer.FinalAnswerClient.Model, "gpt-planner-model");
+assert.equal(splitFinalAnswer.FinalAnswerClient.MaxTokens, 4096);
 
 assert.throws(() =>
   parseConfig({

@@ -13,6 +13,7 @@ export type {
   AgentModelProviderEndpointConfig,
   AgentModelProviderListItem,
   AgentModelRuntimeDefaultsConfig,
+  ResolvedAgentModelCapabilitiesConfig,
   ResolvedAgentModelProviderConfig,
   ResolvedAgentModelProviderEndpointConfig,
 } from "./AgentModelConfigTypes.js";
@@ -20,6 +21,7 @@ export type {
   AgentActionPlannerClientConfig,
   AgentActionPlannerConfig,
   AgentActionPlannerEvidenceConfig,
+  AgentActionPlannerTuningClientConfig,
   ResolvedAgentActionPlannerClientConfig,
   ResolvedAgentActionPlannerConfig,
 } from "./AgentPlannerConfigTypes.js";

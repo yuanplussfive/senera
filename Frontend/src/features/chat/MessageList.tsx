@@ -1,37 +1,43 @@
 import {
   lazy,
-  startTransition,
+  memo,
   Suspense,
+  startTransition,
   useCallback,
   useDeferredValue,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
+import type { AgentSessionHistoryWindow } from "../../../../Source/AgentSystem/Session/AgentSessionHistoryWindow";
 import type { InteractionInputAction, InteractionInputContent } from "../../api/eventTypes";
+import type { FeedbackCategory, FeedbackRating } from "../../api/feedbackEventTypes";
 import type { ChatMessage, ConversationIdentity, RunRecord, UserProfile } from "../../store/sessionStore";
 import type { CalculateViewLocation } from "react-virtuoso";
-import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { isSupersededFailure, readSupersededFailureIds } from "../../store/session/runRecoveryProjection";
 import { useResponsiveMode } from "../../shared/responsive";
 import { useMotionLevel } from "../../shared/motion";
 import { PerformanceMonitor } from "../../app/PerformanceMonitor";
 import { AssistantTurnRow } from "./AssistantTurnRow";
-import { ChatLoadingSurface } from "./ChatLoadingSurface";
 import { DeleteMessageDialog } from "./DeleteMessageDialog";
 import { MessageRow } from "./MessageRow";
 import { MotionMessageItem } from "./MotionMessageItem";
+import { ChatLoadingSurface } from "./ChatLoadingSurface";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { ScrollToBottomButton } from "./ScrollToBottomButton";
 import {
   isAssistantTurnListItem,
   projectAssistantTurns,
   readAssistantTurnAnchorId,
+  readProjectedMessageListItemKeys,
   type ProjectedMessageListItem,
 } from "./assistantTurnProjection";
 import { useMessageHeightObserver } from "./useMessageHeightObserver";
-import { useStreamingDisplayTicker } from "./useStreamingDisplayTicker";
-import { useVirtuosoAutoStickToBottom } from "./useVirtuosoAutoStickToBottom";
+import { ChatHistoryNavigation } from "./ChatHistoryNavigation";
+import type { ChatNavigationActions } from "./ChatPanelContracts";
+import { shouldAutoscrollForListHeightChange, useVirtuosoAutoStickToBottom } from "./useVirtuosoAutoStickToBottom";
 import { scheduleIdleTask } from "../../shared/scheduling/scheduleIdleTask";
 import {
   ConversationEventRail,
@@ -44,6 +50,12 @@ interface MessageListProps {
   sessionId: string;
   uploadUrl: string;
   historyHydrating?: boolean;
+  historyLoading?: boolean;
+  historyWindow?: AgentSessionHistoryWindow;
+  historyWindowLoading?: boolean;
+  historyWindowFailed?: boolean;
+  historyWindowDisabled?: boolean;
+  onLoadHistory?: NonNullable<ChatNavigationActions["onLoadHistory"]>;
   messages: ChatMessage[];
   runs: RunRecord[];
   currentRun?: RunRecord;
@@ -61,6 +73,12 @@ interface MessageListProps {
     action: InteractionInputAction,
     content?: InteractionInputContent,
   ) => void;
+  onRecordMessageFeedback?: (
+    sessionId: string,
+    requestId: string,
+    rating: FeedbackRating | null,
+    category?: FeedbackCategory,
+  ) => void;
 }
 
 const MESSAGE_LIST_BOTTOM_THRESHOLD = 80;
@@ -70,6 +88,11 @@ const MESSAGE_LIST_REVERSE_OVERSCAN_PX = 96;
 // The rail is navigational chrome, so update it after the message layout settles instead
 // of competing with image decoding and inertial scrolling on every ResizeObserver entry.
 const EVENT_RAIL_HEIGHT_SAMPLE_MS = 160;
+
+const messageListComponents = {
+  Header: () => <div className="h-4" />,
+  Footer: () => <div className="h-5" data-message-list-end-spacer />,
+};
 
 const forceCenterEventLocation: CalculateViewLocation = ({ locationParams }) => ({
   ...locationParams,
@@ -106,10 +129,16 @@ export function scrollConversationAnchorIntoView(scroller: HTMLElement, anchor: 
   scroller.scrollTo({ top: targetTop, behavior: "auto" });
 }
 
-export function MessageList({
+export const MessageList = memo(function MessageList({
   sessionId,
   uploadUrl,
   historyHydrating = false,
+  historyLoading = false,
+  historyWindow,
+  historyWindowLoading = false,
+  historyWindowFailed = false,
+  historyWindowDisabled = false,
+  onLoadHistory,
   messages,
   runs,
   currentRun,
@@ -123,6 +152,7 @@ export function MessageList({
   onDeleteFromMessage,
   onViewWorkflow,
   onResolveInteractionInput,
+  onRecordMessageFeedback,
 }: MessageListProps): JSX.Element {
   const { reduceMotion, disableMotion } = useMotionLevel();
   const { prefersCompactControls, supportsHover } = useResponsiveMode();
@@ -134,8 +164,8 @@ export function MessageList({
     const superseded = readSupersededFailureIds({ runs });
     return new Set(messages.filter((message) => isSupersededFailure(message, superseded)).map((message) => message.id));
   });
-  const supersededFailures = useMemo(() => readSupersededFailureIds({ runs }), [runs]);
   const [isAtBottom, setIsAtBottom] = useState(true);
+  const [isAtTop, setIsAtTop] = useState(false);
   const measuredHeightsRef = useRef<Map<string, number>>(new Map());
   const [eventMeasuredHeights, setEventMeasuredHeights] = useState<ReadonlyMap<string, number>>(new Map());
   const eventHeightSampleTimerRef = useRef<number | null>(null);
@@ -146,28 +176,25 @@ export function MessageList({
   const chatScrollerRef = useRef<HTMLElement | null>(null);
   const [chatScroller, setChatScroller] = useState<HTMLElement | null>(null);
   const [activeEventIndex, setActiveEventIndex] = useState(0);
-  const [eventRailReady, setEventRailReady] = useState(!historyHydrating);
-  const runsByRequestId = useMemo(() => {
-    const map = new Map<string, RunRecord>();
-    for (const run of runs) map.set(run.requestId, run);
-    return map;
-  }, [runs]);
+  const [eventRailReady, setEventRailReady] = useState(false);
+  const eventSourceItemsRef = useRef<readonly ConversationEventSourceItem[]>([]);
   const streamingRun = currentRun?.status === "running" || currentRun?.status === "cancelling" ? currentRun : undefined;
-  const displayedMessages = useMemo(
-    () =>
-      messages.filter(
-        (message) =>
-          !(
-            isSupersededFailure(message, supersededFailures) &&
-            (historyHydrating || dismissedFailures.has(message.id))
-          ) && !(streamingRun && shouldDeferTerminalMessage(message, streamingRun)),
-      ),
-    [messages, streamingRun, supersededFailures, dismissedFailures, historyHydrating],
-  );
-  const displayedMessageIds = useMemo(
-    () => new Set(displayedMessages.map((message) => message.id)),
-    [displayedMessages],
-  );
+  const streamingRequestId = streamingRun?.requestId;
+  const supersededFailureIds = useMemo(() => [...readSupersededFailureIds({ runs })].sort(), [runs]);
+  const supersededFailures = useMemo(() => new Set(supersededFailureIds), [supersededFailureIds]);
+  const deferredTerminalMessageId = readDeferredTerminalMessageId(streamingRun);
+  const displayedMessages = useMemo(() => {
+    const visible = messages.filter(
+      (message) =>
+        !(
+          isSupersededFailure(message, supersededFailures) &&
+          (historyHydrating || dismissedFailures.has(message.id))
+        ) && message.id !== deferredTerminalMessageId,
+    );
+    // Preserve immutable source identity so revisiting an unchanged conversation
+    // reuses its turn and stage projections instead of rebuilding the history.
+    return visible.length === messages.length ? messages : visible;
+  }, [deferredTerminalMessageId, dismissedFailures, historyHydrating, messages, supersededFailures]);
   const deferredMessages = useDeferredValue(displayedMessages);
   const deferredRuns = useDeferredValue(runs);
   const deferredStreamingRun = useDeferredValue(streamingRun);
@@ -177,7 +204,7 @@ export function MessageList({
   // the short hand-off frame after streamingRun becomes undefined.
   const activeRequestId = streamingRun?.requestId ?? deferredStreamingRun?.requestId;
   const projectedMessages = useMemo(() => {
-    if (!activeRequestId) return deferredMessages;
+    if (!activeRequestId || displayedMessages === deferredMessages) return deferredMessages;
     const knownIds = new Set(deferredMessages.map((message) => message.id));
     const activeMessages = displayedMessages.filter(
       (message) => message.requestId === activeRequestId && !knownIds.has(message.id),
@@ -185,6 +212,10 @@ export function MessageList({
     return activeMessages.length > 0 ? [...deferredMessages, ...activeMessages] : deferredMessages;
   }, [activeRequestId, deferredMessages, displayedMessages]);
   const projectedRuns = useMemo(() => {
+    // The active run is supplied independently to the conversation projection.
+    // Do not rebuild a historical run list on every streamed frame merely to
+    // replace that same item again below.
+    if (streamingRun) return deferredRuns;
     if (!activeRequestId) return deferredRuns;
     const latestRun = runs.find((run) => run.requestId === activeRequestId) ?? streamingRun ?? deferredStreamingRun;
     if (!latestRun) return deferredRuns;
@@ -202,6 +233,18 @@ export function MessageList({
   // being committed. React can paint the previous window first and reconcile
   // the new list at lower priority without changing the durable session state.
   const renderedItems = items;
+  const eventRuns = useMemo(
+    () => (streamingRequestId ? projectedRuns.filter((run) => run.requestId !== streamingRequestId) : projectedRuns),
+    [projectedRuns, streamingRequestId],
+  );
+  const staticRunsByRequestId = useMemo(() => {
+    const map = new Map<string, RunRecord>();
+    for (const run of eventRuns) map.set(run.requestId, run);
+    return map;
+  }, [eventRuns]);
+  // The rail follows durable conversation landmarks. Its own projection does
+  // not include the live run, so thought and prose deltas cannot rebuild the
+  // navigation source for the entire history.
   useEffect(() => {
     if (historyHydrating) {
       setEventRailReady(false);
@@ -210,13 +253,20 @@ export function MessageList({
     return scheduleIdleTask(() => setEventRailReady(true), { priority: "user-visible" });
   }, [historyHydrating]);
   const shouldRenderEventRail = !historyHydrating && eventRailReady;
-  const itemKeys = useMemo(
-    () => (shouldRenderEventRail ? renderedItems.map((item, index) => readMessageListItemKey(item, index)) : []),
-    [renderedItems, shouldRenderEventRail],
+  const eventItems = useMemo(
+    () =>
+      shouldRenderEventRail ? projectAssistantTurns(projectedMessages, eventRuns, undefined, { scope: "event" }) : [],
+    [eventRuns, projectedMessages, shouldRenderEventRail],
   );
-  const eventSourceItems = useMemo<ConversationEventSourceItem[]>(() => {
-    if (!shouldRenderEventRail) return [];
-    return renderedItems.flatMap((item, index): ConversationEventSourceItem[] => {
+  const itemKeys = useMemo(() => {
+    return shouldRenderEventRail ? readProjectedMessageListItemKeys(renderedItems) : [];
+  }, [renderedItems, shouldRenderEventRail]);
+  const eventSourceItems = useMemo(() => {
+    if (!shouldRenderEventRail) {
+      eventSourceItemsRef.current = [];
+      return [];
+    }
+    const next = eventItems.flatMap((item, index): ConversationEventSourceItem[] => {
       if (!isAssistantTurnListItem(item)) {
         return [
           {
@@ -238,25 +288,12 @@ export function MessageList({
         itemProgress: readTurnEventProgress(messageIndex, item.messages.length, message.kind),
         anchorId: readAssistantTurnAnchorId(message),
       }));
-      const transientKind = item.run
-        ? readStreamingConversationEventKind(
-            item.run,
-            item.run.displayMessageId !== undefined && displayedMessageIds.has(item.run.displayMessageId),
-          )
-        : null;
-      if (item.streaming && transientKind) {
-        sources.push({
-          key: `${item.key}:streaming`,
-          requestId: item.requestId,
-          eventKind: transientKind,
-          content: item.run?.displayText ?? "",
-          itemIndex: index,
-          itemProgress: 0.82,
-        });
-      }
       return sources;
     });
-  }, [displayedMessageIds, renderedItems, shouldRenderEventRail]);
+    const stable = retainEqualConversationEventSources(eventSourceItemsRef.current, next);
+    eventSourceItemsRef.current = stable;
+    return stable;
+  }, [eventItems, shouldRenderEventRail]);
   const conversationEvents = useMemo(() => projectConversationEvents(eventSourceItems), [eventSourceItems]);
   const autoScroll = useVirtuosoAutoStickToBottom({
     itemCount: renderedItems.length,
@@ -266,8 +303,60 @@ export function MessageList({
   const setAutoScrollScroller = autoScroll.scrollerRef;
   const beginManualScroll = autoScroll.beginManualScroll;
   const endManualScroll = autoScroll.endManualScroll;
-
-  useStreamingDisplayTicker(sessionId, runs);
+  const requestDynamicHeightAutoscroll = autoScroll.requestDynamicHeightAutoscroll;
+  const historyVirtualizerRef = autoScroll.ref;
+  const scrollHistoryToBottom = autoScroll.scrollToBottom;
+  const historyAnchorRef = useRef<{
+    sessionId: string;
+    key: string;
+    offset: number;
+    window?: AgentSessionHistoryWindow;
+  } | null>(null);
+  useLayoutEffect(() => {
+    const scroller = chatScrollerRef.current;
+    if (!scroller) return;
+    if (historyAnchorRef.current?.sessionId !== sessionId) historyAnchorRef.current = null;
+    if (historyLoading && !historyAnchorRef.current) {
+      const top = scroller.getBoundingClientRect().top;
+      const anchor = [...scroller.querySelectorAll<HTMLElement>(".chat-message-item[data-message-key]")].find(
+        (element) => element.getBoundingClientRect().bottom > top,
+      );
+      if (anchor?.dataset.messageKey) {
+        historyAnchorRef.current = {
+          sessionId,
+          key: anchor.dataset.messageKey,
+          offset: anchor.getBoundingClientRect().top - top,
+          window: historyWindow,
+        };
+        beginManualScroll();
+      }
+    }
+    const anchor = historyAnchorRef.current;
+    if (!anchor) return;
+    const index = renderedItems.findIndex((item) => readMessageListItemKey(item) === anchor.key);
+    if (index >= 0 && (historyLoading || historyWindow?.mode === "prepend")) {
+      historyVirtualizerRef.current?.scrollIntoView({
+        index,
+        align: "start",
+        behavior: "auto",
+        calculateViewLocation: ({ locationParams }) => ({ ...locationParams, align: "start", offset: -anchor.offset }),
+      });
+    }
+    if (!historyLoading) {
+      historyAnchorRef.current = null;
+      endManualScroll();
+      if (historyWindow && historyWindow !== anchor.window && historyWindow.mode === "replace") scrollHistoryToBottom();
+    }
+  }, [
+    historyVirtualizerRef,
+    scrollHistoryToBottom,
+    beginManualScroll,
+    endManualScroll,
+    historyLoading,
+    historyWindow,
+    renderedItems,
+    sessionId,
+  ]);
 
   // 清理旧会话的高度缓存
   useEffect(() => {
@@ -291,11 +380,15 @@ export function MessageList({
 
   const handleHeightMeasured = useCallback(
     (key: string, height: number) => {
-      if (measuredHeightsRef.current.get(key) === height) return;
+      const previousHeight = measuredHeightsRef.current.get(key) ?? null;
+      if (previousHeight === height) return;
       measuredHeightsRef.current.set(key, height);
+      if (shouldAutoscrollForListHeightChange(previousHeight, height)) {
+        requestDynamicHeightAutoscroll();
+      }
       scheduleEventHeightSnapshot();
     },
-    [scheduleEventHeightSnapshot],
+    [requestDynamicHeightAutoscroll, scheduleEventHeightSnapshot],
   );
 
   useEffect(
@@ -318,8 +411,13 @@ export function MessageList({
       if (field === "offsetHeight") {
         const itemKey = readMeasuredMessageKey(element);
         if (itemKey && size > 0) {
-          if (measuredHeightsRef.current.get(itemKey) !== size) {
+          const previousHeight = measuredHeightsRef.current.get(itemKey) ?? null;
+          if (previousHeight !== size) {
             measuredHeightsRef.current.set(itemKey, size);
+            // `itemSize` is Virtuoso's measurement path. It may run while the
+            // virtualizer is reconciling its own layout, so it only refreshes
+            // the cache here. The ResizeObserver path owns live-edge
+            // scrolling after the browser has committed the new geometry.
             scheduleEventHeightSnapshot();
           }
         } else if (itemKey) {
@@ -455,6 +553,8 @@ export function MessageList({
               autoScroll.atBottomStateChange(atBottom);
               setIsAtBottom(atBottom);
             }}
+            atTopStateChange={setIsAtTop}
+            atTopThreshold={64}
             defaultItemHeight={MESSAGE_ITEM_DEFAULT_HEIGHT}
             initialTopMostItemIndex={{ index: Math.max(0, renderedItems.length - 1), align: "end" }}
             atBottomThreshold={MESSAGE_LIST_BOTTOM_THRESHOLD}
@@ -488,6 +588,7 @@ export function MessageList({
                         onDeleteFromMessage={setDeleting}
                         onViewWorkflow={onViewWorkflow}
                         onResolveInteractionInput={onResolveInteractionInput}
+                        onRecordMessageFeedback={onRecordMessageFeedback}
                       />
                     </MotionMessageItem>
                   </div>
@@ -503,7 +604,13 @@ export function MessageList({
                   <MotionMessageItem motionKey={item.id} animateOnMount={shouldAnimateMount}>
                     <MessageRow
                       message={item}
-                      run={item.requestId ? runsByRequestId.get(item.requestId) : undefined}
+                      run={
+                        item.requestId === streamingRun?.requestId
+                          ? streamingRun
+                          : item.requestId
+                            ? staticRunsByRequestId.get(item.requestId)
+                            : undefined
+                      }
                       uploadUrl={uploadUrl}
                       onClickBubble={() => {
                         if (item.role !== "user") return;
@@ -538,10 +645,7 @@ export function MessageList({
                 </div>
               );
             }}
-            components={{
-              Header: () => <div className="h-4" />,
-              Footer: () => <div className="h-5" data-message-list-end-spacer />,
-            }}
+            components={messageListComponents}
           />
         </Suspense>
         <ConversationEventRail
@@ -555,6 +659,17 @@ export function MessageList({
           onNavigate={navigateToEvent}
         />
         <ScrollToBottomButton visible={showScrollButton} onClick={scrollToBottom} />
+        {historyWindow && onLoadHistory ? (
+          <ChatHistoryNavigation
+            sessionId={sessionId}
+            window={historyWindow}
+            atTop={isAtTop}
+            loading={historyWindowLoading}
+            failed={historyWindowFailed}
+            disabled={historyWindowDisabled}
+            onLoad={onLoadHistory}
+          />
+        ) : null}
         <DeleteMessageDialog
           open={!!deleting}
           message={deleting}
@@ -569,7 +684,7 @@ export function MessageList({
       </div>
     </PerformanceMonitor>
   );
-}
+});
 
 const LazyMessageListVirtualizer = lazy(() =>
   import("./MessageListVirtualizer").then((module) => ({ default: module.MessageListVirtualizer })),
@@ -583,13 +698,13 @@ function MessageListVirtualizerLoadingState(): JSX.Element {
   );
 }
 
-function shouldDeferTerminalMessage(message: ChatMessage, run: RunRecord): boolean {
-  return (
-    message.id === run.displayMessageId &&
+function readDeferredTerminalMessageId(run: RunRecord | undefined): string | undefined {
+  return run?.displayMessageId &&
     run.outputState !== "available" &&
     run.outputState !== "committed" &&
     (run.visibleKind === "final_answer" || run.visibleKind === "ask_user")
-  );
+    ? run.displayMessageId
+    : undefined;
 }
 
 function readMessageConversationEventKind(message: ChatMessage): ConversationEventKind | null {
@@ -609,28 +724,33 @@ function readMessageConversationEventKind(message: ChatMessage): ConversationEve
   }
 }
 
-function readStreamingConversationEventKind(
-  run: RunRecord,
-  hasVisibleDisplayMessage: boolean,
-): ConversationEventKind | null {
-  if (hasVisibleDisplayMessage) return null;
-  switch (run.visibleKind) {
-    case "tool_preface":
-      return null;
-    case "final_answer":
-      return "assistant_final";
-    case "ask_user":
-      return "assistant_ask";
-    case "unknown":
-    case "tool_calls":
-      return null;
-  }
-}
-
 function readTurnEventProgress(messageIndex: number, messageCount: number, kind: ChatMessage["kind"]): number {
   if (kind === "AssistantFinal" || kind === "AssistantAsk" || kind === "Error") {
     // Keep multiple terminal landmarks inside one virtual row strictly ordered.
     return 0.7 + (0.24 * (messageIndex + 1)) / (messageCount + 1);
   }
   return (messageIndex + 1) / (messageCount + 1);
+}
+
+function retainEqualConversationEventSources(
+  previous: readonly ConversationEventSourceItem[],
+  next: readonly ConversationEventSourceItem[],
+): readonly ConversationEventSourceItem[] {
+  if (previous.length !== next.length) return next;
+  for (let index = 0; index < next.length; index += 1) {
+    const left = previous[index];
+    const right = next[index];
+    if (
+      left?.key !== right?.key ||
+      left?.requestId !== right?.requestId ||
+      left?.eventKind !== right?.eventKind ||
+      left?.content !== right?.content ||
+      left?.itemIndex !== right?.itemIndex ||
+      left?.itemProgress !== right?.itemProgress ||
+      left?.anchorId !== right?.anchorId
+    ) {
+      return next;
+    }
+  }
+  return previous;
 }

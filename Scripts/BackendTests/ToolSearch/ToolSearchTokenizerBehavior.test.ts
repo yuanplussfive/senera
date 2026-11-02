@@ -44,6 +44,17 @@ describe("ToolSearch tokenizer and query shapes", () => {
     );
   });
 
+  test("drops curated stopwords without collapsing negation or intent", () => {
+    const tokenizer = new AgentToolSearchTokenizer();
+
+    expect(tokenizer.tokenizeContent("read the file, not the cache")).toEqual(
+      expect.arrayContaining(["read", "file", "not", "cache"]),
+    );
+    expect(tokenizer.tokenizeContent("read the file, not the cache")).not.toContain("the");
+    expect(tokenizer.tokenizeContent("已经 完成 部署")).toEqual(expect.arrayContaining(["完成", "部署"]));
+    expect(tokenizer.tokenizeContent("已经 完成 部署")).not.toContain("已经");
+  });
+
   test("keeps Han search fragments out of lexical-intent anchors", () => {
     const tokenizer = new AgentToolSearchTokenizer();
 

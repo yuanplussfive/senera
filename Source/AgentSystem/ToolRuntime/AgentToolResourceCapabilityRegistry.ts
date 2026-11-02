@@ -130,22 +130,12 @@ export class AgentToolResourceCapabilityRegistry implements AgentToolResourceDis
   }
 
   async claimDeclaration(declaration: AgentToolResourceClaimDeclaration): Promise<readonly AgentToolResourceClaim[]> {
-    const parameters = declaration.parameters ? { ...declaration.parameters } : {};
-    if (declaration.intent !== undefined) {
-      const existingIntent = parameters.Intent;
-      if (existingIntent !== undefined && existingIntent !== declaration.intent) {
-        throw new TypeError(
-          `Resource declaration intent conflicts with its capability parameters: ${declaration.capability}.`,
-        );
-      }
-      parameters.Intent = declaration.intent;
-    }
-    const resource: ToolResourceArgumentManifest = {
-      Capability: declaration.capability,
-      Pointer: "/value",
-      ...(Object.keys(parameters).length > 0 ? { Parameters: parameters } : {}),
-    };
+    const resource = resourceManifestForDeclaration(declaration);
     return (await this.claim(resource, declaration.value, { value: declaration.value })) ?? [];
+  }
+
+  inspectDeclaration(declaration: AgentToolResourceClaimDeclaration): Promise<readonly AgentResourceAccessRequest[]> {
+    return this.inspect(resourceManifestForDeclaration(declaration), declaration.value, { value: declaration.value });
   }
 
   async inspect(
@@ -162,4 +152,20 @@ export class AgentToolResourceCapabilityRegistry implements AgentToolResourceDis
     if (!capability) throw new Error(`Tool resource capability is not available: ${capabilityId}`);
     return capability;
   }
+}
+
+function resourceManifestForDeclaration(declaration: AgentToolResourceClaimDeclaration): ToolResourceArgumentManifest {
+  const parameters = { ...declaration.parameters };
+  if (declaration.intent !== undefined) {
+    if (parameters.Intent !== undefined && parameters.Intent !== declaration.intent)
+      throw new TypeError(
+        `Resource declaration intent conflicts with its capability parameters: ${declaration.capability}.`,
+      );
+    parameters.Intent = declaration.intent;
+  }
+  return {
+    Capability: declaration.capability,
+    Pointer: "/value",
+    ...(Object.keys(parameters).length ? { Parameters: parameters } : {}),
+  };
 }

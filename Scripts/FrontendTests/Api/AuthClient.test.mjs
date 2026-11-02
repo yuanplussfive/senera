@@ -4,9 +4,9 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   ServerAuthenticationError,
   buildServerApiUrl,
+  initializeServerAuthentication,
   loginServerAuthentication,
   logoutServerAuthentication,
-  readServerAuthentication,
 } from "../../../Frontend/src/api/authClient.ts";
 
 afterEach(() => {
@@ -20,14 +20,14 @@ describe("server authentication API", () => {
     );
   });
 
-  test("reads an anonymous session probe as normal server state", async () => {
+  test("initializes an anonymous session probe as normal server state", async () => {
     const fetch = vi.fn().mockResolvedValue(jsonResponse({ ok: true, session: { state: "anonymous" } }));
     vi.stubGlobal("fetch", fetch);
 
-    await expect(readServerAuthentication("http://agent.test")).resolves.toEqual({ state: "anonymous" });
+    await expect(initializeServerAuthentication("http://agent.test")).resolves.toEqual({ state: "anonymous" });
     expect(fetch).toHaveBeenCalledWith(
       "http://agent.test/api/auth/session",
-      expect.objectContaining({ credentials: "include" }),
+      expect.objectContaining({ method: "POST", credentials: "include" }),
     );
   });
 
@@ -37,6 +37,7 @@ describe("server authentication API", () => {
         ok: true,
         session: {
           state: "authenticated",
+          method: "account",
           account: { id: "account", loginName: "owner", displayName: "Owner", role: "owner" },
           csrfToken: "csrf",
           expiresAt: "2026-07-25T00:00:00.000Z",
@@ -86,7 +87,7 @@ describe("server authentication API", () => {
     ).rejects.toEqual(expect.objectContaining({ name: ServerAuthenticationError.name, status: 403 }));
 
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ ok: true, session: { state: "unknown" } })));
-    await expect(readServerAuthentication("http://agent.test")).rejects.toMatchObject({
+    await expect(initializeServerAuthentication("http://agent.test")).rejects.toMatchObject({
       name: ServerAuthenticationError.name,
       status: 200,
     });

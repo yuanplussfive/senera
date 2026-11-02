@@ -5,7 +5,10 @@ import { cn } from "../lib/util";
 import {
   cloneElement,
   isValidElement,
+  lazy,
+  Suspense,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
@@ -17,11 +20,14 @@ import { AppIcon, IconButton, PillExpandNavbar, Sheet, SheetContent, Tabs, TabsC
 import { motionTimings, useMotionLevel } from "../shared/motion";
 import { useStore } from "../store/sessionStore";
 import { WorkspaceContextMenu } from "./WorkspaceContextMenu";
+import type { TerminalPanelRenderProps } from "./BottomTerminalPanel";
+import { createRecoverableModuleLoader } from "../lib/createRecoverableModuleLoader";
 import {
   clampWorkflowDockWidth,
-  readWorkflowDockWidthConstraints,
+  readWorkflowDockLayoutMetrics,
   useViewportSize,
   type ResponsiveMode,
+  type WorkflowDockLayout,
 } from "../shared/responsive";
 
 const SESSION_PANEL_HORIZONTAL_INSET = 32;
@@ -39,6 +45,7 @@ const WORKFLOW_DOCK_GUTTER_WIDTH = 64;
 const WORKFLOW_DOCK_KEYBOARD_STEP = 16;
 const SESSION_DRAWER_WIDTH = "w-[min(360px,calc(100vw-24px))]";
 const WORKFLOW_DRAWER_WIDTH = "w-[min(560px,calc(100vw-24px))]";
+const loadBottomTerminalPanel = createRecoverableModuleLoader(() => import("./BottomTerminalPanel"));
 
 interface AppShellProps {
   sessionPanel: ReactNode;
@@ -46,9 +53,11 @@ interface AppShellProps {
   chatPanel: ReactNode;
   workflowPanel: ReactNode;
   workflowDrawer: ReactNode;
-  terminalPanel: ReactNode;
+  workspacePanel?: ReactNode;
+  terminalPanel: (props: TerminalPanelRenderProps) => ReactNode;
   eventPanel: ReactNode;
   statePanel?: ReactNode;
+  agentsPanel?: ReactNode;
   workflowDockTool: WorkflowDockTool;
   onWorkflowDockToolChange: (tool: WorkflowDockTool) => void;
   sessionDrawerOpen: boolean;
@@ -77,28 +86,33 @@ interface ResponsiveDrawerProps {
 
 type AppShellSurface = "drawer" | "persistent";
 type WorkflowPanelLayout = "drawer" | "overlay" | "inline";
-export type WorkflowDockTool = "execution" | "terminal" | "events" | "state";
+export type WorkflowDockTool = "execution" | "workspace" | "agents" | "events" | "state";
 
 const WORKFLOW_DOCK_ITEMS = [
   {
     id: "execution",
     messageKey: "workflow.dock.execution",
-    icon: "list-tree",
+    icon: "workflow",
   },
   {
-    id: "terminal",
-    messageKey: "workflow.dock.terminal",
-    icon: "terminal",
+    id: "workspace",
+    messageKey: "resource.workspace",
+    icon: "folder-open",
+  },
+  {
+    id: "agents",
+    messageKey: "workflow.dock.agents",
+    icon: "users",
   },
   {
     id: "events",
     messageKey: "workflow.dock.events",
-    icon: "activity",
+    icon: "insights",
   },
   {
     id: "state",
     messageKey: "workflow.dock.state",
-    icon: "book-open",
+    icon: "notebook-pen",
   },
 ] as const;
 
@@ -174,9 +188,11 @@ export function AppShell({
   chatPanel,
   workflowPanel,
   workflowDrawer,
+  workspacePanel,
   terminalPanel,
   eventPanel,
   statePanel,
+  agentsPanel,
   workflowDockTool,
   onWorkflowDockToolChange,
   sessionDrawerOpen,
@@ -193,10 +209,20 @@ export function AppShell({
   const locale = useFrontendLocale();
   const sidebarCollapsed = useStore((state) => state.sidebarCollapsed);
   const rightPanelCollapsed = useStore((state) => state.rightPanelCollapsed);
-  const workflowDockWidth = useStore((state) => state.workflowDockWidth);
+  const terminalPanelOpen = useStore((state) => state.terminalPanelOpen);
+  const [terminalPanelMounted, setTerminalPanelMounted] = useState(terminalPanelOpen);
+  const BottomTerminalPanel = useMemo(
+    () => lazy(() => loadBottomTerminalPanel().then((module) => ({ default: module.BottomTerminalPanel }))),
+    [],
+  );
+  const setTerminalPanelOpen = useStore((state) => state.setTerminalPanelOpen);
+  useEffect(() => {
+    if (terminalPanelOpen) setTerminalPanelMounted(true);
+  }, [terminalPanelOpen]);
+  const workflowDockWidthRatio = useStore((state) => state.workflowDockWidthRatio);
   const setSidebarCollapsed = useStore((state) => state.setSidebarCollapsed);
   const setRightPanelCollapsed = useStore((state) => state.setRightPanelCollapsed);
-  const setWorkflowDockWidth = useStore((state) => state.setWorkflowDockWidth);
+  const setWorkflowDockWidthRatio = useStore((state) => state.setWorkflowDockWidthRatio);
   const { reduceMotion, disableMotion } = useMotionLevel();
   const viewport = useViewportSize();
   const renderPlan = readAppShellRenderPlan(responsiveMode);
@@ -204,14 +230,30 @@ export function AppShell({
   const [sessionPanelResizing, setSessionPanelResizing] = useState(false);
   const sessionPanelWidthUserSetRef = useRef(false);
   const fluidSessionPanelWidthRef = useRef(false);
-  const workflowDockWidthConstraints = readWorkflowDockWidthConstraints(
-    viewport.width,
-    sidebarCollapsed ? SESSION_PANEL_COLLAPSED_FRAME_WIDTH : sessionPanelWidth,
-  );
-  const workflowPanelWidth = clampWorkflowDockWidth(workflowDockWidth, workflowDockWidthConstraints);
+  const dockLayout: WorkflowDockLayout = renderPlan.workflowPanelLayout === "inline" ? "inline" : "overlay";
+  const dockMetrics = readWorkflowDockLayoutMetrics({
+    viewportWidth: viewport.width,
+    sessionPanelWidth: renderPlan.showSessionPersistentPanel
+      ? sidebarCollapsed
+        ? SESSION_PANEL_COLLAPSED_FRAME_WIDTH
+        : sessionPanelWidth
+      : 0,
+    layout: dockLayout,
+    widthRatio: workflowDockWidthRatio,
+  });
+  const workflowDockWidthConstraints = dockMetrics.constraints;
+  const [resizedDockWidth, setResizedDockWidth] = useState<number | null>(null);
+  const workflowPanelWidth = resizedDockWidth ?? dockMetrics.width;
   const responsiveLayoutKey = `${renderPlan.showSessionPersistentPanel ? "persistent" : "drawer"}:${renderPlan.workflowPanelLayout}`;
   const previousResponsiveLayoutKeyRef = useRef<string | null>(null);
-  const workflowDockResizeRef = useRef<{ pointerId: number; startWidth: number; startX: number } | null>(null);
+  const previousPersistentWorkflowPanelRef = useRef(false);
+  const workflowDockResizeRef = useRef<{
+    pointerId: number;
+    startWidth: number;
+    startX: number;
+    width: number;
+    availableWidth: number;
+  } | null>(null);
   const sessionPanelResizeRef = useRef<{ pointerId: number; startWidth: number; startX: number } | null>(null);
   const [workflowDockResizing, setWorkflowDockResizing] = useState(false);
 
@@ -247,11 +289,13 @@ export function AppShell({
   useEffect(() => {
     if (previousResponsiveLayoutKeyRef.current === responsiveLayoutKey) return;
     previousResponsiveLayoutKeyRef.current = responsiveLayoutKey;
+    const hadPersistentWorkflowPanel = previousPersistentWorkflowPanelRef.current;
+    previousPersistentWorkflowPanelRef.current = responsiveMode.hasPersistentWorkflowPanel;
     const entryPlan = readAppShellResponsiveEntryPlan(responsiveMode);
     if (entryPlan.sidebarCollapsed !== null) {
       setSidebarCollapsed(entryPlan.sidebarCollapsed);
     }
-    if (entryPlan.rightPanelCollapsed !== null) {
+    if (entryPlan.rightPanelCollapsed !== null && !hadPersistentWorkflowPanel) {
       setRightPanelCollapsed(entryPlan.rightPanelCollapsed);
     }
   }, [responsiveLayoutKey, responsiveMode, setRightPanelCollapsed, setSidebarCollapsed]);
@@ -274,28 +318,35 @@ export function AppShell({
     setRightPanelCollapsed(false);
   };
   const handleWorkflowDockResizeStart = (event: PointerEvent<HTMLDivElement>): void => {
+    if (event.button !== 0 || dockMetrics.availableWidth <= 0) return;
     event.preventDefault();
     workflowDockResizeRef.current = {
       pointerId: event.pointerId,
       startWidth: workflowPanelWidth,
       startX: event.clientX,
+      width: workflowPanelWidth,
+      availableWidth: dockMetrics.availableWidth,
     };
     event.currentTarget.setPointerCapture?.(event.pointerId);
     setWorkflowDockResizing(true);
+    setResizedDockWidth(workflowPanelWidth);
   };
   const handleWorkflowDockResizeMove = (event: PointerEvent<HTMLDivElement>): void => {
     const resize = workflowDockResizeRef.current;
     if (!resize || resize.pointerId !== event.pointerId) return;
     const nextWidth = resize.startWidth + resize.startX - event.clientX;
-    setWorkflowDockWidth(clampWorkflowDockWidth(nextWidth, workflowDockWidthConstraints));
+    resize.width = clampWorkflowDockWidth(nextWidth, workflowDockWidthConstraints);
+    setResizedDockWidth(resize.width);
   };
   const handleWorkflowDockResizeEnd = (event: PointerEvent<HTMLDivElement>): void => {
     const resize = workflowDockResizeRef.current;
     if (!resize || resize.pointerId !== event.pointerId) return;
+    workflowDockResizeRef.current = null;
+    if (event.type !== "pointercancel") setWorkflowDockWidthRatio(resize.width / resize.availableWidth);
+    setResizedDockWidth(null);
     if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
-    workflowDockResizeRef.current = null;
     setWorkflowDockResizing(false);
   };
   const handleWorkflowDockResizeKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
@@ -309,9 +360,11 @@ export function AppShell({
             : event.key === "End"
               ? workflowDockWidthConstraints.max
               : null;
-    if (nextWidth === null) return;
+    if (nextWidth === null || dockMetrics.availableWidth <= 0) return;
     event.preventDefault();
-    setWorkflowDockWidth(clampWorkflowDockWidth(nextWidth, workflowDockWidthConstraints));
+    setWorkflowDockWidthRatio(
+      clampWorkflowDockWidth(nextWidth, workflowDockWidthConstraints) / dockMetrics.availableWidth,
+    );
   };
   const handleSessionPanelResizeStart = (event: PointerEvent<HTMLDivElement>): void => {
     if (sidebarCollapsed) return;
@@ -365,23 +418,36 @@ export function AppShell({
     return cloneElement(panel as ReactElement<WorkflowDockPanelProps>, workflowPanelProps);
   };
 
-  const renderTerminalContent = (presentation: "dock" | "drawer"): ReactNode => {
-    return (
-      <aside className="flex h-full min-h-0 flex-col bg-transparent" data-terminal-dock={presentation}>
-        {terminalPanel}
-      </aside>
-    );
-  };
+  const renderTerminalToggle = (presentation: "capsule" | "toolbar"): ReactNode => (
+    <IconButton
+      label={frontendMessage("terminal.panel.open")}
+      tooltip={frontendMessage("terminal.panel.open")}
+      tone="muted"
+      aria-expanded={terminalPanelOpen}
+      aria-controls="workspace-terminal-panel"
+      onClick={() => {
+        setTerminalPanelOpen(!terminalPanelOpen);
+        if (workflowDrawerOpen) onWorkflowDrawerOpenChange(false);
+      }}
+      className={presentation === "capsule" ? "h-8 w-8 rounded-full" : "shrink-0"}
+      data-terminal-panel-toggle
+      data-workflow-dock-tool="terminal"
+    >
+      <AppIcon icon="terminal" className="h-4 w-4" />
+    </IconButton>
+  );
 
   const renderWorkflowDockSurface = (presentation: "dock" | "drawer", executionPanel: ReactNode): ReactNode => {
+    const items = WORKFLOW_DOCK_ITEMS;
+    const selectedTool = items.some((item) => item.id === workflowDockTool) ? workflowDockTool : "execution";
     const handleValueChange = (value: string): void => {
-      const nextTool = WORKFLOW_DOCK_ITEMS.find((item) => item.id === value)?.id;
+      const nextTool = items.find((item) => item.id === value)?.id;
       if (nextTool) handleWorkflowDockTool(nextTool);
     };
 
     return (
       <Tabs
-        value={workflowDockTool}
+        value={selectedTool}
         onValueChange={handleValueChange}
         className="flex h-full min-h-0 min-w-0 w-full flex-col"
         data-workflow-dock={presentation === "drawer" ? "" : undefined}
@@ -402,10 +468,10 @@ export function AppShell({
           <div className="min-w-0 flex-1">
             <PillExpandNavbar
               mode="tabs"
-              value={workflowDockTool}
+              value={selectedTool}
               label={frontendMessage("workflow.dock.tabs")}
               attributes={{ "data-workflow-dock-tabs": "", "data-workflow-dock-tabs-list": "" }}
-              items={WORKFLOW_DOCK_ITEMS.map(({ id, messageKey, icon }) => ({
+              items={items.map(({ id, messageKey, icon }) => ({
                 id,
                 label: frontendMessage(messageKey, {}, locale),
                 icon: <AppIcon icon={icon} size={16} />,
@@ -413,6 +479,7 @@ export function AppShell({
               }))}
             />
           </div>
+          {renderTerminalToggle("toolbar")}
           {presentation === "dock" ? (
             <IconButton
               label={frontendMessage("workflow.panel.collapse")}
@@ -430,8 +497,11 @@ export function AppShell({
         <TabsContent value="execution" className="min-h-0 flex-1 overflow-hidden">
           {renderWorkflowPanel(executionPanel)}
         </TabsContent>
-        <TabsContent value="terminal" className="min-h-0 flex-1 overflow-hidden">
-          {renderTerminalContent(presentation)}
+        <TabsContent value="workspace" className="min-h-0 flex-1 overflow-hidden">
+          {workspacePanel}
+        </TabsContent>
+        <TabsContent value="agents" className="min-h-0 flex-1 overflow-hidden">
+          {agentsPanel}
         </TabsContent>
         <TabsContent value="events" className="min-h-0 flex-1 overflow-hidden">
           {eventPanel}
@@ -492,117 +562,129 @@ export function AppShell({
           </motion.div>
         ) : null}
 
-        <div
-          className="workspace-main relative flex min-w-0 flex-1 overflow-hidden"
-          data-workspace-main
-          data-window-controls-scope={renderPlan.workflowPanelLayout === "inline" ? "contained" : "viewport"}
-        >
-          {chatPanel}
-        </div>
-
-        {renderPlan.showWorkflowPersistentPanel ? (
-          <>
-            <motion.div
-              initial={false}
-              animate={{
-                width: workflowPanelInline && !rightPanelCollapsed ? workflowPanelWidth : WORKFLOW_DOCK_GUTTER_WIDTH,
-              }}
-              transition={workflowPanelTransition}
-              className="h-full shrink-0"
-              style={{ willChange: "width" }}
-              aria-hidden="true"
-              data-workflow-dock-gutter
-            />
-
-            <motion.div
-              initial={false}
-              animate={{ width: rightPanelCollapsed ? WORKFLOW_DOCK_CAPSULE_WIDTH : workflowPanelWidth }}
-              transition={workflowPanelTransition}
-              className="pointer-events-none absolute inset-y-0 z-30"
-              style={{ right: rightPanelCollapsed ? 16 : 0, willChange: "width" }}
-              data-workflow-dock
-              data-workflow-dock-layout={renderPlan.workflowPanelLayout}
-              data-open={!rightPanelCollapsed}
-              data-testid="workflow-dock"
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-workspace-body>
+          <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden" data-workspace-upper>
+            <div
+              className="workspace-main relative flex min-w-0 flex-1 overflow-hidden"
+              data-workspace-main
+              data-window-controls-scope={renderPlan.workflowPanelLayout === "inline" ? "contained" : "viewport"}
             >
-              {!rightPanelCollapsed ? (
+              {chatPanel}
+            </div>
+
+            {renderPlan.showWorkflowPersistentPanel ? (
+              <>
                 <motion.div
                   initial={false}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={workflowPanelTransition}
-                  className={cn(
-                    "pointer-events-auto absolute inset-y-0 right-0 min-w-0 w-full overflow-hidden",
-                    renderPlan.workflowPanelLayout === "overlay"
-                      ? "border-l border-line-subtle bg-surface-panel [box-shadow:var(--theme-overlay-shadow)]"
-                      : "border-l border-line-subtle bg-surface-canvas [background-image:var(--theme-bg-image)]",
-                  )}
-                  style={{ willChange: "opacity, transform" }}
-                  data-workflow-panel-surface
-                  data-workflow-panel-layout={renderPlan.workflowPanelLayout}
-                >
-                  <div
-                    role="separator"
-                    aria-label={frontendMessage("workflow.dock.resize")}
-                    aria-orientation="vertical"
-                    aria-valuemin={workflowDockWidthConstraints.min}
-                    aria-valuemax={workflowDockWidthConstraints.max}
-                    aria-valuenow={workflowPanelWidth}
-                    tabIndex={0}
-                    className="group absolute inset-y-0 left-0 z-30 w-2 cursor-col-resize touch-none outline-none"
-                    onPointerDown={handleWorkflowDockResizeStart}
-                    onPointerMove={handleWorkflowDockResizeMove}
-                    onPointerUp={handleWorkflowDockResizeEnd}
-                    onPointerCancel={handleWorkflowDockResizeEnd}
-                    onKeyDown={handleWorkflowDockResizeKeyDown}
-                    data-workflow-dock-resize
-                  >
-                    <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors group-hover:bg-accent-border-strong group-focus-visible:bg-accent-solid" />
-                  </div>
-                  <div className="h-full min-w-0 w-full" data-workflow-dock-content>
-                    {renderWorkflowDockSurface("dock", workflowPanel)}
-                  </div>
-                </motion.div>
-              ) : null}
-
-              {rightPanelCollapsed ? (
-                <motion.nav
-                  initial={disableMotion || reduceMotion ? false : { opacity: 0, scale: 0.96 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={workflowPanelTransition}
-                  className="pointer-events-auto absolute right-0 flex flex-col items-center gap-1 rounded-full border border-ink-900/[0.08] bg-paper-50/85 p-1.5 shadow-[0_1px_2px_rgb(var(--color-ink-950)_/_0.05),0_6px_16px_-6px_rgb(var(--color-ink-950)_/_0.12)] backdrop-blur-[10px]"
-                  style={{
-                    top: "calc(var(--senera-top-chrome-height) + var(--senera-top-rail-gap))",
-                    width: WORKFLOW_DOCK_CAPSULE_WIDTH,
-                    willChange: "opacity, transform",
+                  animate={{
+                    width:
+                      workflowPanelInline && !rightPanelCollapsed ? workflowPanelWidth : WORKFLOW_DOCK_GUTTER_WIDTH,
                   }}
-                  aria-label={frontendMessage("workflow.dock.label")}
-                  data-workflow-dock-capsule
-                  data-testid="workflow-dock-capsule"
+                  transition={workflowPanelTransition}
+                  className="h-full shrink-0"
+                  style={{ willChange: "width" }}
+                  aria-hidden="true"
+                  data-workflow-dock-gutter
+                />
+
+                <motion.div
+                  initial={false}
+                  animate={{ width: rightPanelCollapsed ? WORKFLOW_DOCK_CAPSULE_WIDTH : workflowPanelWidth }}
+                  transition={workflowPanelTransition}
+                  className="pointer-events-none absolute inset-y-0 z-30"
+                  style={{ right: rightPanelCollapsed ? 16 : 0, willChange: "width" }}
+                  data-workflow-dock
+                  data-workflow-dock-layout={renderPlan.workflowPanelLayout}
+                  data-open={!rightPanelCollapsed}
+                  data-testid="workflow-dock"
                 >
-                  {WORKFLOW_DOCK_ITEMS.map(({ id, messageKey, icon }) => {
-                    const label = frontendMessage(messageKey, {}, locale);
-                    return (
-                      <IconButton
-                        key={id}
-                        label={label}
-                        tooltip={label}
-                        tooltipSide="bottom"
-                        tone="muted"
-                        aria-expanded={false}
-                        onClick={() => handleWorkflowDockTool(id)}
-                        className="h-8 w-8 rounded-full"
-                        data-workflow-dock-toggle={id === "execution" ? "" : undefined}
-                        data-workflow-dock-tool={id}
+                  {!rightPanelCollapsed ? (
+                    <motion.div
+                      initial={false}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={workflowPanelTransition}
+                      className={cn(
+                        "pointer-events-auto absolute inset-y-0 right-0 min-w-0 w-full overflow-hidden",
+                        renderPlan.workflowPanelLayout === "overlay"
+                          ? "border-l border-line-subtle bg-surface-panel [box-shadow:var(--theme-overlay-shadow)]"
+                          : "border-l border-line-subtle bg-surface-canvas [background-image:var(--theme-bg-image)]",
+                      )}
+                      style={{ willChange: "opacity, transform" }}
+                      data-workflow-panel-surface
+                      data-workflow-panel-layout={renderPlan.workflowPanelLayout}
+                    >
+                      <div
+                        role="separator"
+                        aria-label={frontendMessage("workflow.dock.resize")}
+                        aria-orientation="vertical"
+                        aria-valuemin={workflowDockWidthConstraints.min}
+                        aria-valuemax={workflowDockWidthConstraints.max}
+                        aria-valuenow={workflowPanelWidth}
+                        tabIndex={0}
+                        className="group absolute inset-y-0 left-0 z-30 w-2 cursor-col-resize touch-none outline-none"
+                        onPointerDown={handleWorkflowDockResizeStart}
+                        onPointerMove={handleWorkflowDockResizeMove}
+                        onPointerUp={handleWorkflowDockResizeEnd}
+                        onPointerCancel={handleWorkflowDockResizeEnd}
+                        onLostPointerCapture={handleWorkflowDockResizeEnd}
+                        onKeyDown={handleWorkflowDockResizeKeyDown}
+                        data-workflow-dock-resize
                       >
-                        <AppIcon icon={icon} className="h-4 w-4" />
-                      </IconButton>
-                    );
-                  })}
-                </motion.nav>
-              ) : null}
-            </motion.div>
-          </>
-        ) : null}
+                        <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors group-hover:bg-accent-border-strong group-focus-visible:bg-accent-solid" />
+                      </div>
+                      <div className="h-full min-w-0 w-full" data-workflow-dock-content>
+                        {renderWorkflowDockSurface("dock", workflowPanel)}
+                      </div>
+                    </motion.div>
+                  ) : null}
+
+                  {rightPanelCollapsed ? (
+                    <motion.nav
+                      initial={disableMotion || reduceMotion ? false : { opacity: 0, scale: 0.96 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={workflowPanelTransition}
+                      className="pointer-events-auto absolute right-0 flex flex-col items-center gap-1 rounded-full border border-ink-900/[0.08] bg-paper-50/85 p-1.5 shadow-[0_1px_2px_rgb(var(--color-ink-950)_/_0.05),0_6px_16px_-6px_rgb(var(--color-ink-950)_/_0.12)] backdrop-blur-[10px]"
+                      style={{
+                        top: "calc(var(--senera-top-chrome-height) + var(--senera-top-rail-gap))",
+                        width: WORKFLOW_DOCK_CAPSULE_WIDTH,
+                        willChange: "opacity, transform",
+                      }}
+                      aria-label={frontendMessage("workflow.dock.label")}
+                      data-workflow-dock-capsule
+                      data-testid="workflow-dock-capsule"
+                    >
+                      {WORKFLOW_DOCK_ITEMS.map(({ id, messageKey, icon }) => {
+                        const label = frontendMessage(messageKey, {}, locale);
+                        return (
+                          <IconButton
+                            key={id}
+                            label={label}
+                            tooltip={label}
+                            tooltipSide="bottom"
+                            tone="muted"
+                            aria-expanded={false}
+                            onClick={() => handleWorkflowDockTool(id)}
+                            className="h-8 w-8 rounded-full"
+                            data-workflow-dock-toggle={id === "execution" ? "" : undefined}
+                            data-workflow-dock-tool={id}
+                          >
+                            <AppIcon icon={icon} className="h-4 w-4" />
+                          </IconButton>
+                        );
+                      })}
+                      {renderTerminalToggle("capsule")}
+                    </motion.nav>
+                  ) : null}
+                </motion.div>
+              </>
+            ) : null}
+          </div>
+          {terminalPanelOpen || terminalPanelMounted ? (
+            <Suspense fallback={null}>
+              <BottomTerminalPanel viewportHeight={viewport.height} renderPanel={terminalPanel} />
+            </Suspense>
+          ) : null}
+        </div>
 
         {renderPlan.showSessionDrawer ? (
           <ResponsiveDrawer

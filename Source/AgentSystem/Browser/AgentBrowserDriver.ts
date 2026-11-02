@@ -20,6 +20,8 @@ export interface AgentBrowserDriverSessionOptions {
 export interface AgentBrowserDriverOperationOptions {
   readonly timeoutMs: number;
   readonly signal?: AbortSignal;
+  /** Host-owned absolute deadline, shared by nested browser operations. */
+  readonly deadlineAt?: number;
   /** Internal render operations may force a headless session without changing user-facing browser settings. */
   readonly headed?: boolean;
 }
@@ -38,6 +40,14 @@ export interface AgentBrowserDriverDownload {
   readonly url?: string;
 }
 
+/**
+ * Navigation reached a page target, but the native browser command could not
+ * wait for its terminal load state within its own transport deadline.
+ */
+export interface AgentBrowserDriverPendingNavigation {
+  readonly status: "pending";
+}
+
 export interface AgentBrowserDriverOperationResult {
   readonly content?: string;
   readonly page?: {
@@ -46,6 +56,7 @@ export interface AgentBrowserDriverOperationResult {
   };
   readonly screenshot?: AgentBrowserDriverScreenshot;
   readonly download?: AgentBrowserDriverDownload;
+  readonly navigation?: AgentBrowserDriverPendingNavigation;
 }
 
 export interface AgentBrowserDriverSession {

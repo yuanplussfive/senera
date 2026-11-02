@@ -66,6 +66,9 @@ export const ScrollArea = forwardRef<HTMLDivElement, ScrollAreaProps>(
 
     const viewportClass = cn(
       "h-full w-full rounded-[inherit]",
+      // Radix's measuring table grows to the longest unbroken row. Vertical
+      // lists must keep their available width so flex truncation can work.
+      orientation === "vertical" && "[&>div]:!block",
       isCoarsePointer && orientation === "vertical" && "overflow-y-auto",
       isCoarsePointer && orientation === "horizontal" && "overflow-x-auto",
       isCoarsePointer && orientation === "both" && "overflow-auto",

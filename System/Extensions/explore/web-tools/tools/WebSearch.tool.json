@@ -58,6 +58,7 @@
   },
   "outputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
+    "x-senera-model-output": { "omit": ["/query"] },
     "type": "object",
     "properties": {
       "query": { "type": "string" },
@@ -85,7 +86,6 @@
   "execution": { "Targets": ["Local"], "Network": "Allow", "Workspace": "ReadOnly" },
   "runtime": {
     "Lifecycle": "Immediate",
-    "ProtocolVersion": 2,
     "ResultAssessment": "ProcessExit",
     "Scheduling": "Parallel",
     "Capabilities": { "Cancellation": true }

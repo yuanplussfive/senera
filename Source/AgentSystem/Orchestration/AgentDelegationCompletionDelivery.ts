@@ -5,7 +5,7 @@ import { agentSql } from "../Database/AgentSql.js";
 import type { AgentOrchestrationDatabase } from "./AgentOrchestrationDatabase.js";
 import {
   AgentChildRunStatuses,
-  isAgentChildRunBackgroundDeliverable,
+  isAgentChildRunBackgroundCompletionDeliverable,
   type AgentChildRunRecord,
   type AgentChildRunRepository,
 } from "./AgentChildRunTypes.js";
@@ -16,6 +16,15 @@ export const AgentDelegationCompletionDeliveryDefaults = Object.freeze({
   maxAttempts: 8,
   retryDelaysMs: Object.freeze([2_000, 5_000, 10_000, 30_000, 60_000, 5 * 60_000, 15 * 60_000]),
   batchSize: 16,
+});
+
+/**
+ * Stable identifiers for delivery routes that have been retired from the
+ * runtime. A delivery id is persisted data, so retiring a route is a data
+ * lifecycle operation rather than an unbound in-memory callback.
+ */
+export const AgentDelegationRetiredCompletionPorts = Object.freeze({
+  AutomaticParentWake: "senera.session-wake",
 });
 
 export interface AgentDelegationCompletionDeliveryOptions {
@@ -32,6 +41,8 @@ export interface AgentDelegationCompletionDeliveryOptions {
 interface CompletionDeliveryRow {
   readonly id: string;
   readonly child_run_id: string;
+  readonly child_request_id: string;
+  readonly record_json: string | null;
   readonly port_id: string;
   readonly delivery_status: "pending" | "claimed" | "delivered" | "dropped";
   readonly attempt: number;
@@ -60,6 +71,7 @@ interface CompletionDeliveryStatements {
   readonly markDelivered: Database.Statement;
   readonly release: Database.Statement;
   readonly drop: Database.Statement;
+  readonly retirePort: Database.Statement;
 }
 
 /**
@@ -153,17 +165,35 @@ export class AgentDelegationCompletionDelivery {
 
   async completed(record: AgentChildRunRecord): Promise<void> {
     this.assertAcceptingWork();
-    if (!isAgentChildRunBackgroundDeliverable(record.status)) {
+    if (!isAgentChildRunBackgroundCompletionDeliverable(record)) {
       if (record.status === AgentChildRunStatuses.Cancelled) return;
-      throw new Error(`Completion delivery requires a terminal child run: ${record.id}/${record.status}`);
+      throw new Error(`Completion delivery requires a terminal detached child run: ${record.id}/${record.status}`);
     }
     const ports = [...this.ports.values()];
-    await Promise.all(ports.map((port) => this.enqueue(port.id, record.id)));
+    await Promise.all(ports.map((port) => this.enqueue(port.id, record)));
   }
 
   async replay(): Promise<void> {
     this.assertAcceptingWork();
     await Promise.all([...this.ports.keys()].map((portId) => this.pump(portId)));
+  }
+
+  /**
+   * Retires all unresolved deliveries for a durable endpoint that the host no
+   * longer supports. Completed rows remain immutable audit records; only work
+   * which could still be claimed is made terminal.
+   */
+  retirePort(portId: string, reason: string): number {
+    this.assertAcceptingWork();
+    const normalizedPortId = normalizePortId(portId);
+    const normalizedReason = reason.trim();
+    if (!normalizedReason) throw new Error("Completion retirement reason must be a non-empty string.");
+    this.clearRetryTimer(normalizedPortId);
+    return this.statements.retirePort.run({
+      port_id: normalizedPortId,
+      error: normalizedReason,
+      updated_at: this.isoNow(),
+    }).changes;
   }
 
   async stop(): Promise<void> {
@@ -172,11 +202,13 @@ export class AgentDelegationCompletionDelivery {
     await Promise.allSettled([...this.pumps.values()]);
   }
 
-  private async enqueue(portId: string, childRunId: string): Promise<void> {
+  private async enqueue(portId: string, record: AgentChildRunRecord): Promise<void> {
     const now = this.isoNow();
     this.statements.enqueue.run({
-      id: createCompletionDeliveryId(childRunId, portId),
-      child_run_id: childRunId,
+      id: createCompletionDeliveryId(record.id, `${record.childRequestId}:${portId}`),
+      child_run_id: record.id,
+      child_request_id: record.childRequestId,
+      record_json: JSON.stringify(record),
       port_id: normalizePortId(portId),
       available_at: now,
       created_at: now,
@@ -219,7 +251,9 @@ export class AgentDelegationCompletionDelivery {
           return;
         }
         processed += 1;
-        const record = this.options.repository.get(claim.child_run_id);
+        const record = claim.record_json
+          ? (JSON.parse(claim.record_json) as AgentChildRunRecord)
+          : this.options.repository.get(claim.child_run_id);
         if (!record) {
           this.statements.drop.run({
             id: claim.id,
@@ -229,7 +263,7 @@ export class AgentDelegationCompletionDelivery {
           });
           continue;
         }
-        if (!isAgentChildRunBackgroundDeliverable(record.status)) {
+        if (!isAgentChildRunBackgroundCompletionDeliverable(record)) {
           this.statements.markDelivered.run({
             id: claim.id,
             claim_id: claim.claim_id,
@@ -357,12 +391,12 @@ function prepareStatements(database: Database.Database): CompletionDeliveryState
   return {
     enqueue: database.prepare(
       agentSql`INSERT INTO child_run_completion_deliveries (
-        id, child_run_id, port_id, delivery_status, attempt, available_at, created_at, updated_at
-      ) VALUES (@id, @child_run_id, @port_id, 'pending', 0, @available_at, @created_at, @updated_at)
-      ON CONFLICT (child_run_id, port_id) DO NOTHING`,
+        id, child_run_id, child_request_id, record_json, port_id, delivery_status, attempt, available_at, created_at, updated_at
+      ) VALUES (@id, @child_run_id, @child_request_id, @record_json, @port_id, 'pending', 0, @available_at, @created_at, @updated_at)
+      ON CONFLICT (child_run_id, child_request_id, port_id) DO NOTHING`,
     ),
     selectDue: database.prepare(
-      agentSql`SELECT id, child_run_id, port_id, delivery_status, attempt, available_at,
+      agentSql`SELECT id, child_run_id, child_request_id, record_json, port_id, delivery_status, attempt, available_at,
         claim_id, claim_until, last_error, created_at, updated_at, delivered_at
       FROM child_run_completion_deliveries
       WHERE port_id = ?
@@ -412,6 +446,12 @@ function prepareStatements(database: Database.Database): CompletionDeliveryState
       SET delivery_status = 'dropped', claim_id = NULL, claim_until = NULL,
         last_error = @error, updated_at = @updated_at
       WHERE id = @id AND claim_id = @claim_id AND delivery_status = 'claimed'`,
+    ),
+    retirePort: database.prepare(
+      agentSql`UPDATE child_run_completion_deliveries
+      SET delivery_status = 'dropped', claim_id = NULL, claim_until = NULL,
+        last_error = @error, updated_at = @updated_at
+      WHERE port_id = @port_id AND delivery_status IN ('pending', 'claimed')`,
     ),
   };
 }

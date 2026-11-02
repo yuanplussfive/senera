@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AgentModelThinkingLevels } from "../ModelEndpoints/AgentModelThinking.js";
 
 export const AgentSubagentLaunchContractVersion = 2 as const;
 export const AgentSubagentCapabilityCeilingVersion = 2 as const;
@@ -29,6 +30,7 @@ export const AgentSubagentLaunchContractSchema = z
   .object({
     version: z.literal(AgentSubagentLaunchContractVersion),
     runId: z.string().trim().min(1),
+    label: z.string().trim().min(1).optional(),
     role: z
       .object({
         id: z.string().trim().min(1),
@@ -44,7 +46,7 @@ export const AgentSubagentLaunchContractSchema = z
     executionMode: z.enum(["wait", "detach"]).optional(),
     model: z.string().trim().min(1).optional(),
     modelCandidates: z.array(z.string().trim().min(1)),
-    thinking: z.enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"]).optional(),
+    thinking: z.enum(AgentModelThinkingLevels).optional(),
     systemPromptMode: z.enum(["append", "replace"]),
     inheritProjectContext: z.boolean(),
     inheritSkills: z.boolean(),

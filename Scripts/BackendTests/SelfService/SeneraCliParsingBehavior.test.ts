@@ -80,9 +80,27 @@ describe("senera CLI self-service command parsing", () => {
     expect(() => parseSeneraSelfCommand(["logs", "tail", "agent.log", "abc"])).toThrow(/1-2000/);
   });
 
+  test("logs range accepts Shanghai calendar days and offset timestamps", () => {
+    expect(parseSeneraSelfCommand(["logs", "range", "2026-10-20", "2026-10-21"])).toEqual({
+      command: "logs",
+      action: "range",
+      from: "2026-10-20",
+      to: "2026-10-21",
+    });
+    expect(
+      parseSeneraSelfCommand(["logs", "range", "2026-10-20T08:00:00+08:00", "2026-10-20T09:00:00+08:00"]),
+    ).toMatchObject({
+      command: "logs",
+      action: "range",
+      from: "2026-10-20T08:00:00+08:00",
+      to: "2026-10-20T09:00:00+08:00",
+    });
+    expect(() => parseSeneraSelfCommand(["logs", "range", "yesterday", "2026-10-21"])).toThrow(/上海时区自然日/u);
+  });
+
   test("status parses without action and rejects extra arguments", () => {
     expect(parseSeneraSelfCommand(["status"])).toEqual({ command: "status" });
-    expect(() => parseSeneraSelfCommand(["status", "extra"])).toThrow(/Unknown status argument/);
+    expect(() => parseSeneraSelfCommand(["status", "extra"])).toThrow(/Unexpected arguments for senera status/);
   });
 
   test("new roots reachable through full invocation", () => {
@@ -107,6 +125,10 @@ describe("senera CLI self-service command parsing", () => {
 
   test("capabilities parses as a root command without an action", () => {
     expect(parseSeneraSelfCommand(["capabilities"])).toEqual({ command: "capabilities" });
-    expect(() => parseSeneraSelfCommand(["capabilities", "list"])).toThrow(/Unknown capabilities argument/);
+    expect(parseSeneraSelfCommand(["capabilities", "config", "update"])).toEqual({
+      command: "capabilities",
+      domain: "config",
+      operation: "update",
+    });
   });
 });

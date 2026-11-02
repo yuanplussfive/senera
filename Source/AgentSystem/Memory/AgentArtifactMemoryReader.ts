@@ -1,9 +1,5 @@
 import path from "node:path";
-import {
-  assertInsideRoot,
-  normalizeAgentArtifactUri,
-  parseAgentArtifactUri,
-} from "../Artifacts/AgentArtifactLocator.js";
+import { assertInsideRoot, parseAgentArtifactUri } from "../Artifacts/AgentArtifactLocator.js";
 import { AgentArtifactCompactViewStore } from "../Artifacts/AgentArtifactCompactViewStore.js";
 import { openVerifiedArtifactFile } from "../Artifacts/AgentArtifactIntegrity.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
@@ -12,6 +8,14 @@ import { errorMessage } from "../Core/AgentErrors.js";
 import { SeneraWorkspaceBoundary } from "../Execution/SeneraWorkspaceBoundary.js";
 import { AgentResourceAccessIntents } from "../Safety/AgentResourceAccessPolicy.js";
 import { ReadableArtifactRefDefinitions } from "./AgentArtifactMemoryTypes.js";
+import {
+  ArtifactReadResultProtocol,
+  artifactReadRequests,
+  type ArtifactReadRequest,
+  type ArtifactReadPart,
+} from "./AgentArtifactMemoryTypes.js";
+import { AgentArtifactResultView, selectAgentArtifactValue } from "../Artifacts/AgentArtifactResultView.js";
+import { registerAgentArtifactResource } from "../Resources/AgentResourceRegistry.js";
 import type {
   ArtifactMemoryReadArguments,
   ArtifactMemoryReadResultItem,
@@ -27,6 +31,8 @@ export interface AgentArtifactMemoryReadOptions {
   readonly maxArtifacts: number;
   readonly maxConcurrency: number;
   readonly signal?: AbortSignal;
+  readonly model?: string;
+  readonly tokenLimit?: number;
 }
 
 type ArtifactMemoryReadContext = AgentArtifactMemoryReadOptions & {
@@ -48,7 +54,7 @@ export class ArtifactMemoryReadRequestLimitError extends AgentBaseError {
     readonly actual: number,
     readonly limit: number,
   ) {
-    super(`artifactUris contains ${actual} entries; the configured limit is ${limit}.`);
+    super(`Artifact read contains ${actual} requests; the configured limit is ${limit}.`);
   }
 }
 
@@ -59,8 +65,9 @@ export function assertArtifactMemoryReadRequestWithinLimits(
   if (!Number.isSafeInteger(limits.maxArtifacts) || limits.maxArtifacts < 1) {
     throw new RangeError("maxArtifacts must be a positive safe integer.");
   }
-  if (args.artifactUris.length > limits.maxArtifacts) {
-    throw new ArtifactMemoryReadRequestLimitError(args.artifactUris.length, limits.maxArtifacts);
+  const count = artifactReadRequests(args).length;
+  if (count > limits.maxArtifacts) {
+    throw new ArtifactMemoryReadRequestLimitError(count, limits.maxArtifacts);
   }
 }
 
@@ -68,7 +75,7 @@ export async function readArtifactMemories(
   args: ArtifactMemoryReadArguments,
   manifests: ReadonlyMap<string, ArtifactManifestRecord>,
   options: AgentArtifactMemoryReadOptions,
-): Promise<{ artifacts: { item: ArtifactMemoryReadResultItem[] } }> {
+): Promise<{ type: typeof ArtifactReadResultProtocol; artifacts: { item: ArtifactMemoryReadResultItem[] } }> {
   assertArtifactMemoryReadRequestWithinLimits(args, options);
   assertPositiveSafeInteger(options.maxConcurrency, "maxConcurrency");
   const context: ArtifactMemoryReadContext = {
@@ -76,26 +83,48 @@ export async function readArtifactMemories(
     boundary: new SeneraWorkspaceBoundary({ workspaceRoot: options.workspaceRoot, linkPolicy: "deny" }),
     compactViews: new AgentArtifactCompactViewStore(options.workspaceRoot),
   };
-  const artifacts = await readArtifactsWithBoundedConcurrency(args.artifactUris, args.view, manifests, context);
-  return { artifacts: { item: artifacts } };
+  const requests = artifactReadRequests(args);
+  const artifacts = await readArtifactsWithBoundedConcurrency(
+    requests,
+    "view" in args ? args.view : undefined,
+    manifests,
+    context,
+  );
+  return { type: ArtifactReadResultProtocol, artifacts: { item: artifacts } };
 }
 
 async function readArtifactsWithBoundedConcurrency(
-  artifactUris: readonly string[],
-  view: ArtifactMemoryReadView,
+  requests: readonly ArtifactReadRequest[],
+  view: ArtifactMemoryReadView | undefined,
   manifests: ReadonlyMap<string, ArtifactManifestRecord>,
   context: ArtifactMemoryReadContext,
 ): Promise<ArtifactMemoryReadResultItem[]> {
-  const results = new Array<ArtifactMemoryReadResultItem>(artifactUris.length);
+  const results = new Array<ArtifactMemoryReadResultItem>(requests.length);
   let nextIndex = 0;
-  const workerCount = Math.min(context.maxConcurrency, artifactUris.length);
+  const workerCount = Math.min(context.maxConcurrency, requests.length);
   await Promise.all(
     Array.from({ length: workerCount }, async () => {
       for (;;) {
         throwIfAborted(context.signal);
         const index = nextIndex++;
-        if (index >= artifactUris.length) return;
-        results[index] = await readArtifactMemory(artifactUris[index], view, manifests, context);
+        if (index >= requests.length) return;
+        const request = requests[index];
+        results[index] = await readArtifactMemory(
+          request,
+          view ??
+            (request.view === "structure"
+              ? "structure"
+              : request.view === "content" || request.paths?.length
+                ? "selected"
+                : "structure"),
+          manifests,
+          {
+            ...context,
+            ...(context.tokenLimit === undefined
+              ? {}
+              : { tokenLimit: Math.floor(context.tokenLimit / requests.length) }),
+          },
+        );
       }
     }),
   );
@@ -103,21 +132,21 @@ async function readArtifactsWithBoundedConcurrency(
 }
 
 async function readArtifactMemory(
-  requestedUri: string,
+  request: ArtifactReadRequest,
   view: ArtifactMemoryReadView,
   manifests: ReadonlyMap<string, ArtifactManifestRecord>,
   options: ArtifactMemoryReadContext,
 ): Promise<ArtifactMemoryReadResultItem> {
+  const requestedUri = request.uri;
   const artifactId = parseAgentArtifactUri(requestedUri);
   if (!artifactId) {
     return emptyArtifactResult(requestedUri, "", view, "invalid", "artifactUri is not a valid Senera artifact URI.");
   }
 
-  const artifactUri = normalizeAgentArtifactUri(requestedUri) ?? requestedUri;
   const manifest = manifests.get(artifactId);
   if (!manifest) {
     return emptyArtifactResult(
-      artifactUri,
+      requestedUri,
       artifactId,
       view,
       "not_found",
@@ -126,27 +155,112 @@ async function readArtifactMemory(
   }
 
   try {
-    assertManifestIdentity(manifest, artifactId);
+    assertManifestIdentity(manifest, manifest.artifactId);
+    const artifactUri = registerAgentArtifactResource(options.workspaceRoot, {
+      artifactId: manifest.artifactId,
+      artifactUri: manifest.artifactUri,
+      manifestPath: manifest.files.manifest,
+    });
+    if (artifactId !== manifest.artifactId && artifactId !== parseAgentArtifactUri(artifactUri)) {
+      throw new Error("The requested resource does not match the loaded Artifact manifest.");
+    }
     throwIfAborted(options.signal);
     const content =
       view === "full"
         ? await readRawResult(manifest, options)
-        : await readCompactResult(artifactUri, manifest, options);
+        : view === "compact"
+          ? await readCompactResult(manifest.artifactUri, manifest, options)
+          : await readSelectedResult(request, manifest, options);
+    throwIfAborted(options.signal);
     return {
+      requestedUri,
       artifactUri,
-      artifactId,
+      artifactId: manifest.artifactId,
       status: "found",
       view,
-      message: view === "full" ? "Original artifact result loaded." : "Compact artifact result loaded.",
+      message: `Artifact ${view} view loaded.`,
       ...(content.artifactRefs ? { artifactRefs: [...content.artifactRefs] } : {}),
       ...(content.sourceSha256 ? { sourceSha256: content.sourceSha256 } : {}),
       ...(content.compressionMethod ? { compressionMethod: content.compressionMethod } : {}),
       content: content.value,
+      ...(view === "structure" || view === "selected"
+        ? { part: request.part ?? "result", availableParts: availableParts(manifest) }
+        : {}),
     };
   } catch (error) {
     throwIfAborted(options.signal);
-    return emptyArtifactResult(artifactUri, artifactId, view, "failed", errorMessage(error));
+    return {
+      ...emptyArtifactResult(requestedUri, artifactId, view, "failed", errorMessage(error)),
+      part: request.part ?? "result",
+      availableParts: availableParts(manifest),
+    };
   }
+}
+
+const PartRefs: Readonly<Partial<Record<ArtifactReadPart, ReadableArtifactRef>>> = {
+  result: "raw",
+  source: "rawResponse",
+  summary: "summary",
+  stdout: "stdout",
+  stderr: "stderr",
+  changes: "workspaceDiff",
+};
+
+function availableParts(manifest: ArtifactManifestRecord): ArtifactReadPart[] {
+  const refs = new Set(manifest.contents?.map((entry) => entry.ref));
+  return [
+    ...Object.entries(PartRefs).flatMap(([part, ref]) => (refs.has(ref) ? [part as ArtifactReadPart] : [])),
+    ...(manifest.process ? ["process" as const] : []),
+    ...(manifest.outcome ? ["outcome" as const] : []),
+    ...(Array.isArray(manifest.assets) && manifest.assets.length ? ["assets" as const] : []),
+  ];
+}
+
+async function readSelectedResult(
+  request: ArtifactReadRequest,
+  manifest: ArtifactManifestRecord,
+  options: ArtifactMemoryReadContext,
+): Promise<ArtifactMemoryContent> {
+  const part = request.part ?? "result";
+  const process = part === "process" ? await readProcessResult(manifest, options) : undefined;
+  const metadata: Partial<Record<ArtifactReadPart, unknown>> = {
+    process: manifest.process ? process?.value : undefined,
+    outcome: manifest.outcome,
+    assets: manifest.assets ?? [],
+  };
+  const ref = PartRefs[part];
+  if (!ref && metadata[part] === undefined) throw new Error(`Artifact does not contain ${part} metadata.`);
+  const source = ref ? await readArtifactFile(ref, manifest, options) : undefined;
+  const value: unknown =
+    source && ref
+      ? ReadableArtifactRefDefinitions[ref].mediaType === "application/json"
+        ? (JSON.parse(source.text) as unknown)
+        : source.text
+      : metadata[part];
+  const structure = new AgentArtifactResultView(options.model ?? "");
+  const paths = request.paths?.length ? request.paths : request.view === "content" ? [""] : undefined;
+  const content = paths?.length
+    ? {
+        selections: paths.map((pointer) => {
+          const selection = selectAgentArtifactValue(value, pointer);
+          if (selection.status !== "found" || request.view !== "structure") return selection;
+          const projected = structure.structure(
+            selection.value,
+            Math.floor((options.tokenLimit ?? 0) / paths.length),
+            pointer,
+          );
+          return { ...selection, value: projected.outline, representation: "structure", complete: projected.complete };
+        }),
+      }
+    : {
+        representation: "structure",
+        ...structure.structure(value, options.tokenLimit ?? 0),
+      };
+  return {
+    value: content,
+    artifactRefs: ref ? [ref] : (process?.artifactRefs ?? []),
+    ...(source ? { sourceSha256: source.identity.sha256 } : {}),
+  };
 }
 
 async function readRawResult(
@@ -156,27 +270,34 @@ async function readRawResult(
   const raw = await readArtifactFile("raw", manifest, options);
   const result = JSON.parse(raw.text) as unknown;
   const rawResponse = await readOptionalArtifactFile("rawResponse", manifest, options);
-  const process: Record<string, unknown> = {
-    ...(manifest.process?.exitCode === undefined ? {} : { exitCode: manifest.process.exitCode }),
-    ...(manifest.process?.signal === undefined ? {} : { signal: manifest.process.signal }),
-  };
-  const artifactRefs = ["raw", ...(rawResponse ? ["rawResponse"] : [])];
+  const process = await readProcessResult(manifest, options);
+  const artifactRefs = ["raw", ...(rawResponse ? ["rawResponse"] : []), ...process.artifactRefs];
   const rawResponseValue = rawResponse ? (JSON.parse(rawResponse.text) as unknown) : undefined;
-  for (const { ref } of manifest.process?.streams ?? []) {
-    throwIfAborted(options.signal);
-    process[ref] = (await readArtifactFile(ref, manifest, options)).text;
-    artifactRefs.push(ref);
-  }
   return {
     value: {
       result,
-      ...(Object.keys(process).length > 0 ? { process } : {}),
+      ...(Object.keys(process.value).length > 0 ? { process: process.value } : {}),
       ...(manifest.outcome ? { outcome: manifest.outcome } : {}),
       ...(rawResponse ? { rawResponse: rawResponseValue } : {}),
     },
     sourceSha256: raw.identity.sha256,
     artifactRefs: [...new Set(artifactRefs)],
   };
+}
+
+async function readProcessResult(manifest: ArtifactManifestRecord, options: ArtifactMemoryReadContext) {
+  const value: Record<string, unknown> = {
+    ...(manifest.process?.exitCode === undefined ? {} : { exitCode: manifest.process.exitCode }),
+    ...(manifest.process?.signal === undefined ? {} : { signal: manifest.process.signal }),
+    ...(manifest.process?.streams ? { stdout: "", stderr: "" } : {}),
+  };
+  const artifactRefs: string[] = [];
+  for (const { ref } of manifest.process?.streams ?? []) {
+    throwIfAborted(options.signal);
+    value[ref] = (await readArtifactFile(ref, manifest, options)).text;
+    artifactRefs.push(ref);
+  }
+  return { value, artifactRefs };
 }
 
 async function readCompactResult(
@@ -276,7 +397,7 @@ function emptyArtifactResult(
   status: ArtifactMemoryReadResultItem["status"],
   message: string,
 ): ArtifactMemoryReadResultItem {
-  return { artifactUri, artifactId, status, view, message };
+  return { requestedUri: artifactUri, artifactUri, artifactId, status, view, message };
 }
 
 function assertPositiveSafeInteger(value: number, label: string): void {

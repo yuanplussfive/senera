@@ -20,4 +20,18 @@ export class AgentOrchestrationDatabase {
   close(): void {
     this.kernel.close();
   }
+
+  /** Call only after owned tasks have settled; foreign keys remove their messages, nodes and receipts. */
+  removeSessions(sessionIds: ReadonlySet<string>): void {
+    this.connection.transaction(() => {
+      const removeWorkflows = this.connection.prepare("DELETE FROM agent_workflows WHERE parent_session_id=?");
+      const removeChildren = this.connection.prepare(
+        "DELETE FROM child_runs WHERE parent_session_id=? OR child_session_id=?",
+      );
+      for (const id of sessionIds) {
+        removeWorkflows.run(id);
+        removeChildren.run(id, id);
+      }
+    })();
+  }
 }

@@ -17,8 +17,10 @@ export interface AgentEventWriterConfig {
 export interface AgentLogsConfig {
   Enabled?: boolean;
   DetailMaxBytes?: number;
+  DetailMaxConcurrentWrites?: number;
   ProjectionMaxBytes?: number;
   RetentionHours?: number;
+  MaintenanceIntervalMinutes?: number;
   QueryPageSize?: number;
   TailLineCount?: number;
   CaptureHiddenEvents?: boolean;
@@ -27,8 +29,10 @@ export interface AgentLogsConfig {
 export interface ResolvedAgentLogsConfig {
   Enabled: boolean;
   DetailMaxBytes: number;
+  DetailMaxConcurrentWrites: number;
   ProjectionMaxBytes: number;
   RetentionHours: number;
+  MaintenanceIntervalMinutes: number;
   QueryPageSize: number;
   TailLineCount: number;
   CaptureHiddenEvents: boolean;
@@ -70,6 +74,7 @@ export interface ResolvedAgentLoopConfig {
 }
 
 export interface AgentTodosConfig {
+  AllowParallelInProgress?: boolean;
   MaxItems?: number;
   MaxContentCharacters?: number;
   MaxResultCharacters?: number;
@@ -240,6 +245,7 @@ export interface AgentUploadsConfig {
   MaxConcurrentUploads?: number;
   MaxStoredBytes?: number;
   RetentionHours?: number;
+  IncompleteRetentionHours?: number;
   MaintenanceIntervalMinutes?: number;
 }
 
@@ -251,6 +257,7 @@ export interface ResolvedAgentUploadsConfig {
   MaxConcurrentUploads: number;
   MaxStoredBytes: number;
   RetentionHours: number;
+  IncompleteRetentionHours: number;
   MaintenanceIntervalMinutes: number;
 }
 
@@ -268,10 +275,6 @@ export interface AgentPromptConfig {
   UserMessageEnvelope?: boolean;
   /** Request-local timezone rendered inside the envelope. */
   TimeZone?: string;
-  /** Rewrite the short preface shown before tool execution; independent of persona text. */
-  PrefaceRewrite?: boolean;
-  /** Rewrite the settled final answer independently of persona text (polish tier when no card). */
-  FinalResponseRewrite?: boolean;
   /** Wrap BAML tool observations with attribution="tool" at the projection exit. */
   BamlToolAttribution?: boolean;
 }
@@ -279,10 +282,6 @@ export interface AgentPromptConfig {
 export interface ResolvedAgentPromptConfig {
   UserMessageEnvelope: boolean;
   TimeZone: string;
-  /** Optional for backwards-compatible embedders; resolver always supplies false/true. */
-  PrefaceRewrite?: boolean;
-  /** Optional for backwards-compatible embedders; resolver always supplies false/true. */
-  FinalResponseRewrite?: boolean;
   BamlToolAttribution: boolean;
 }
 

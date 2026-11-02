@@ -6,6 +6,9 @@
     "node_modules/**",
     "Frontend/src/generated/**",
     "Frontend/src/api/generated*.ts",
+    "Apps/Mobile/android/**/build/**",
+    "Apps/Mobile/android/app/src/main/assets/public/**",
+    "Apps/Mobile/android/capacitor-cordova-android-plugins/**",
     "Source/AgentSystem/BamlClient/**"
   ],
   "lineBudget": {
@@ -45,7 +48,7 @@
     },
     {
       "path": "Scripts/BackendTests/ToolSearch/ToolSearchCore.test.ts",
-      "baselineLines": 1775,
+      "baselineLines": 1774,
       "owner": "tool-routing-runtime",
       "splitTarget": "Split tokenizer and query-shape, confidence-curve, and resource-admission scenarios into focused test files."
     },
@@ -54,12 +57,6 @@
       "baselineLines": 997,
       "owner": "channel-runtime",
       "splitTarget": "Split adapter lifecycle and protocol coverage into one focused test file per channel."
-    },
-    {
-      "path": "Scripts/BackendTests/Channels/AgentChannelCoreBehavior.test.ts",
-      "baselineLines": 1159,
-      "owner": "channel-runtime",
-      "splitTarget": "Split renderer, delivery, and session mapping coverage into focused test files."
     },
     {
       "path": "Scripts/BackendTests/Orchestration/AgentDelegationBehavior.test.ts",
@@ -81,7 +78,7 @@
     },
     {
       "path": "Scripts/BackendTests/Session/SessionManagerBehavior.test.ts",
-      "baselineLines": 1014,
+      "baselineLines": 816,
       "owner": "session-runtime",
       "splitTarget": "Split session admission, cancellation, and persistence coverage into focused test files."
     },
@@ -105,7 +102,7 @@
     },
     {
       "path": "Frontend/src/store/session/scopedRunProjector.ts",
-      "baselineLines": 884,
+      "baselineLines": 878,
       "owner": "frontend-platform",
       "splitTarget": "Split scoped run state projection from child-run and resource reconciliation helpers."
     },
@@ -114,12 +111,6 @@
       "baselineLines": 804,
       "owner": "execution-runtime",
       "splitTarget": "Split lease admission, release, and process-resource scenarios into focused test files."
-    },
-    {
-      "path": "Scripts/BackendTests/Pi/PiNativeToolProviderBehavior.test.ts",
-      "baselineLines": 930,
-      "owner": "pi-runtime",
-      "splitTarget": "Split native provider request projection, compaction, and stream lifecycle scenarios."
     },
     {
       "path": "Scripts/FrontendTests/Feature/ChatAssistantTurnStages.test.mjs",
@@ -170,12 +161,6 @@
       "splitTarget": "Extract process environment projection and worker lifecycle helpers."
     },
     {
-      "path": "Frontend/src/features/chat/ChatComposer.tsx",
-      "baselineLines": 899,
-      "owner": "frontend-platform",
-      "splitTarget": "Extract command palette, attachment handling, and submission orchestration into focused composer modules."
-    },
-    {
       "path": "Frontend/src/features/observability/runtimeDiagnosticProjection.ts",
       "baselineLines": 972,
       "owner": "frontend-platform",
@@ -219,21 +204,9 @@
     },
     {
       "path": "Source/AgentSystem/ToolSearch/AgentToolSearchRuntime.ts",
-      "baselineLines": 880,
+      "baselineLines": 855,
       "owner": "tool-routing-runtime",
       "splitTarget": "Extract catalog admission, semantic retrieval, and usage learning into focused tool-routing modules."
-    },
-    {
-      "path": "Frontend/src/features/chat/AssistantTurnRow.tsx",
-      "baselineLines": 819,
-      "owner": "frontend-platform",
-      "splitTarget": "Extract terminal chronology and transient stage projection into focused assistant-turn modules."
-    },
-    {
-      "path": "Frontend/src/features/settings/sections/McpServersSection.tsx",
-      "baselineLines": 870,
-      "owner": "frontend-platform",
-      "splitTarget": "Extract MCP input draft synchronization and server navigation into focused settings modules."
     },
     {
       "path": "Scripts/FrontendTests/Feature/ChatMessageRendering.test.mjs",

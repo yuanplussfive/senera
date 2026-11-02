@@ -4,20 +4,27 @@ import "react-json-view-lite/dist/index.css";
 import JsonWorker from "./WorkspaceJson.worker?worker";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { StateView } from "../ui";
+import { workspaceWorkerError } from "./workspaceWorkerError";
 
 type JsonResult = { ok: true; data: unknown } | { ok: false; error: string };
 
 export function WorkspaceJsonSurface({ content }: { content: string }): JSX.Element {
   const [result, setResult] = useState<{ content: string; result: JsonResult }>();
   useEffect(() => {
-    const worker = new JsonWorker();
+    let worker: Worker;
+    try {
+      worker = new JsonWorker();
+    } catch (error) {
+      setResult({ content, result: { ok: false, error: workspaceWorkerError(error) } });
+      return;
+    }
     worker.onmessage = (event: MessageEvent<JsonResult>) => {
       setResult({ content, result: event.data });
       worker.terminate();
     };
     worker.onerror = (event) => {
       event.preventDefault();
-      setResult({ content, result: { ok: false, error: event.message } });
+      setResult({ content, result: { ok: false, error: workspaceWorkerError(event) } });
       worker.terminate();
     };
     worker.postMessage(content);

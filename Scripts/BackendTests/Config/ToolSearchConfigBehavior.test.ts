@@ -41,7 +41,6 @@ describe("tool search configuration", () => {
     const resolved = resolveToolSearchConfig(config());
 
     expect(resolved.Embedding).toEqual({ Enabled: true });
-    expect(resolved.Tokenize.Stopwords.length).toBeGreaterThan(0);
     expect(resolved.Ranking.ChannelWeights).toMatchObject({
       bm25: 1,
       exact: 0.9,
@@ -229,6 +228,25 @@ describe("tool search configuration", () => {
         "Defaults.ToolSearch.Ranking.MemoryExpansion",
         "Defaults.ToolSearch.Rerank.CandidateLimit",
       ],
+    });
+  });
+
+  test("removes the retired retrieval stopword setting from runtime and default settings", () => {
+    const migrated = migrateAgentConfigPayload({
+      ConfigVersion: 43,
+      ToolSearch: { Tokenize: { Stopwords: ["the"] }, Fuzzy: { Enabled: true } },
+      Defaults: { ToolSearch: { Tokenize: { Stopwords: ["a"] } } },
+    });
+
+    expect(migrated).toMatchObject({
+      sourceVersion: 43,
+      targetVersion: CurrentAgentConfigVersion,
+      removedPaths: ["ToolSearch.Tokenize", "Defaults.ToolSearch.Tokenize"],
+      config: {
+        ConfigVersion: CurrentAgentConfigVersion,
+        ToolSearch: { Fuzzy: { Enabled: true } },
+        Defaults: { ToolSearch: {} },
+      },
     });
   });
 

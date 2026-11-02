@@ -2,8 +2,22 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { projectDesktopRuntimeConfig } from "../Apps/Desktop/DesktopRuntimeConfig.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
+import { resolveServerConfig } from "../Source/AgentSystem/AgentDefaults.js";
+import {
+  AgentServerAccessProfiles,
+  resolveAgentServerAccessPolicy,
+} from "../Source/AgentSystem/Auth/AgentServerAccessPolicy.js";
 
 const sourceConfig: AgentSystemConfig = {
+  Server: {
+    Host: "0.0.0.0",
+    Port: 8787,
+    AccessControl: {
+      Mode: "required",
+      AccountFile: ".senera/access/admin-account.json",
+      AllowedOrigins: ["https://remote.example"],
+    },
+  },
   ModelProviderEndpoints: [
     {
       Id: "default",
@@ -27,6 +41,11 @@ assert.deepEqual(projected.SandboxRuntime, {
   Provider: "auto",
   BaseDir: path.join("C:/Users/test/workspace", ".senera", "desktop"),
 });
+assert.equal(projected.Server, sourceConfig.Server);
+const accessPolicy = resolveAgentServerAccessPolicy(resolveServerConfig(projected), AgentServerAccessProfiles.Desktop);
+assert.equal(accessPolicy.server.Host, "127.0.0.1");
+assert.equal(accessPolicy.server.AccessControl.Mode, sourceConfig.Server?.AccessControl?.Mode);
+assert.equal(accessPolicy.authenticationRequired, false);
 assert.equal(projected.ModelProviders[0].Model, "model-a");
 
 const projectedServerPort = projectDesktopRuntimeConfig(

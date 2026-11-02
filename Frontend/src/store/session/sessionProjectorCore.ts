@@ -68,8 +68,25 @@ export function upsertStep(run: RunRecord, step: TimelineStep): void {
   touchRun(run);
 }
 
+/** Earlier plan/start metadata can enrich a call without undoing its observed outcome. */
+export function upsertStartedStep(run: RunRecord, step: TimelineStep): void {
+  const existing = run.steps.find((candidate) => candidate.id === step.id);
+  if (!existing || existing.status === "pending") {
+    upsertStep(run, step);
+    return;
+  }
+  upsertStep(run, {
+    ...step,
+    status: existing.status,
+    completedSequence: existing.completedSequence,
+    endedAt: existing.endedAt,
+  });
+}
+
 export function syncSessionCountsFromLoadedMessages(session: SessionRecord): void {
-  session.messageCount = session.messages.length;
+  session.messageCount = session.historyWindow
+    ? Math.max(session.messageCount, session.messages.length)
+    : session.messages.length;
 }
 
 export function bumpSessionMessageCount(session: SessionRecord): void {

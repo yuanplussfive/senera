@@ -1,11 +1,11 @@
 import path from "node:path";
-import { AgentResourceResolver } from "../Resources/AgentResourceResolver.js";
+import { relativePathWithin } from "../Core/AgentPath.js";
+import { AgentResourceAccessIntents } from "../Execution/SeneraResourceAccess.js";
+import { AgentResourceResolver, type AgentResourceOrigin } from "../Resources/AgentResourceResolver.js";
 import type { AgentLocalResourceSource } from "../Resources/AgentResourceSource.js";
 import type { AgentHostToolContext } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
 
-export interface AgentResolvedSystemLocalResource {
-  readonly source: AgentLocalResourceSource;
-  readonly resourceUri?: string;
+interface AgentResolvedSystemLocalResourceFields {
   readonly filePath: string;
   readonly name: string;
   readonly mime: string;
@@ -14,9 +14,24 @@ export interface AgentResolvedSystemLocalResource {
   readonly sha256: string;
 }
 
+/** A canonical resource together with the storage that actually owns its bytes. */
+export interface AgentResolvedSystemResource extends AgentResolvedSystemLocalResourceFields {
+  readonly source: Extract<AgentLocalResourceSource, { kind: "senera_resource" }>;
+  readonly resourceUri: string;
+  readonly origin: AgentResourceOrigin;
+}
+
+export interface AgentResolvedSystemWorkspaceResource extends AgentResolvedSystemLocalResourceFields {
+  readonly source: Extract<AgentLocalResourceSource, { kind: "local_path" }>;
+  readonly resourceUri?: undefined;
+  readonly origin?: undefined;
+}
+
+export type AgentResolvedSystemLocalResource = AgentResolvedSystemResource | AgentResolvedSystemWorkspaceResource;
+
 type AgentSystemResourceContext = Pick<
   AgentHostToolContext,
-  "config" | "workspaceRoot" | "uploadStore" | "resourceResolver"
+  "config" | "workspaceRoot" | "uploadStore" | "resourceResolver" | "executionEnv" | "resourceAccessGrant"
 >;
 
 export async function resolveAgentSystemLocalResource(
@@ -26,8 +41,13 @@ export async function resolveAgentSystemLocalResource(
   if (source.kind === "senera_resource") {
     const resource = await resolveAgentSystemResource(context, source.uri);
     return {
-      source: { kind: "senera_resource", uri: resource.resourceUri },
+      source: {
+        kind: "senera_resource",
+        uri: resource.resourceUri,
+        ...workspaceRelativePath(context, resource.filePath),
+      },
       resourceUri: resource.resourceUri,
+      origin: resource.origin,
       filePath: resource.filePath,
       name: resource.name,
       mime: resource.mime,
@@ -37,16 +57,35 @@ export async function resolveAgentSystemLocalResource(
     };
   }
 
-  const resolved = await createResourceResolver(context).resolveWorkspacePath?.(source.path);
-  if (!resolved) throw new Error("Local resource path is missing or outside the workspace.");
+  const authorizedPath = await context.executionEnv.resolveResourcePath(source.path, AgentResourceAccessIntents.Read);
+  if (!authorizedPath.ok) throw authorizedPath.error;
+  const resolved = await createResourceResolver(context).resolveWorkspacePath?.(
+    authorizedPath.value,
+    context.resourceAccessGrant,
+  );
+  if (!resolved) throw new Error(`Local resource was not found: ${source.path}`);
+  const relativePath = relativePathWithin(context.workspaceRoot, resolved.filePath);
   return {
-    source: { kind: "local_path", path: resolveAgentWorkspaceRelativePath(context.workspaceRoot, resolved.filePath) },
+    source: { kind: "local_path", path: (relativePath ?? resolved.filePath).split(path.sep).join("/") },
     filePath: resolved.filePath,
     name: resolved.name,
     mime: resolved.mime,
     size: resolved.size,
     sha256: resolved.sha256,
   };
+}
+
+/**
+ * Senera resources live in the workspace artifact or upload directories, so the
+ * model can usually be handed the file itself. An external upload store is the
+ * exception, and there the URI stays the only usable identity.
+ */
+function workspaceRelativePath(
+  context: AgentSystemResourceContext,
+  filePath: string,
+): { path: string } | Record<never, never> {
+  const relativePath = relativePathWithin(context.workspaceRoot, filePath);
+  return relativePath ? { path: relativePath.split(path.sep).join("/") } : {};
 }
 
 export function resolveAgentWorkspaceRelativePath(workspaceRoot: string, absolutePath: string): string {

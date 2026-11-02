@@ -31,6 +31,8 @@ import {
   type AgentPiSessionRuntimeStatus,
 } from "./AgentPiSessionManagement.js";
 import { AgentPiDiagnosticSources, emitAgentPiDiagnostic } from "./AgentPiDiagnostics.js";
+import { aggregateAgentModelCosts, type AgentPricedPiUsage } from "../ModelEndpoints/AgentModelPricing.js";
+import { readAgentPiWorkspaceTurnContext } from "./AgentPiWorkspaceContext.js";
 
 const AgentPiSessionLeasePhases = {
   Queue: "queue",
@@ -122,6 +124,21 @@ export class AgentPiCodingAgentSessionPool {
         error: errorMessage(error),
       });
       throw error;
+    }
+  }
+
+  /** Metadata reads do not construct or activate a model session. */
+  async workspaceTurnContext(sessionId: string, signal?: AbortSignal) {
+    const finishOperation = this.lifecycle.beginOperation();
+    let release: (() => void) | undefined;
+    try {
+      release = await this.leases.acquire(sessionId, signal);
+      this.lifecycle.assertOpen();
+      const manager = this.sessions.get(sessionId)?.sessionManager ?? (await this.openExistingSession(sessionId));
+      return manager ? readAgentPiWorkspaceTurnContext(manager) : undefined;
+    } finally {
+      release?.();
+      finishOperation();
     }
   }
 
@@ -318,7 +335,23 @@ export class AgentPiCodingAgentSessionPool {
     return {
       sessionId,
       cached: this.sessions.get(sessionId) === pooled,
-      stats,
+      stats: {
+        ...stats,
+        cost: aggregateAgentModelCosts(
+          pooled.sessionManager.getEntries().flatMap((entry) => {
+            const usage = (
+              entry.type === "usage" || entry.type === "branch_summary" || entry.type === "compaction"
+                ? entry.usage
+                : entry.type === "message" &&
+                    (entry.message.role === "assistant" || entry.message.role === "toolResult")
+                  ? entry.message.usage
+                  : undefined
+            ) as AgentPricedPiUsage | undefined;
+            if (!usage) return [];
+            return [usage.seneraCost ?? (usage.totalTokens === 0 ? { currency: "USD" as const, total: 0 } : undefined)];
+          }),
+        ).total,
+      },
       contextUsage: pooled.session.getContextUsage(),
     };
   }

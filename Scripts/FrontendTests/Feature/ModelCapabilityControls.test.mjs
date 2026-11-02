@@ -113,10 +113,11 @@ describe("model capability controls", () => {
 
     expect(container.querySelectorAll("[data-model-capability-toggle]")).toHaveLength(1);
     expect(screen.getByRole("switch", { name: "对话" })).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByRole("radio", { name: "原生工具调用" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("button", { name: /原生工具调用/ })).toBeVisible();
 
     await user.click(screen.getByRole("switch", { name: "对话" }));
-    await user.click(screen.getByRole("radio", { name: "BAML 规划" }));
+    await user.click(screen.getByRole("button", { name: /原生工具调用/ }));
+    await user.click(screen.getByRole("menuitemradio", { name: "BAML 规划" }));
 
     expect(onCapabilityChange).toHaveBeenCalledWith(false);
     expect(onPlanningModeChange).toHaveBeenCalledWith("baml");

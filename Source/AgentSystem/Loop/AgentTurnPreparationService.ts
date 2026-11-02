@@ -35,6 +35,7 @@ export class AgentTurnPreparationService {
 
   async prepare(input: {
     requestId: string;
+    conversationRequestId?: string;
     turnIndex?: number;
     userInput: string;
     sessionId?: string;
@@ -46,8 +47,21 @@ export class AgentTurnPreparationService {
     explicitActivations?: readonly AgentExplicitActivationReference[];
     signal?: AbortSignal;
   }): Promise<AgentPreparedTurn> {
+    // Resolve conversational referents before any request-sensitive retrieval.
+    // This makes a correction after cancellation use the durable user message
+    // it refers to, instead of letting skill/scenario recall reinterpret it.
+    const resolvedStateCard = await this.runtime.services.retrieval.resolveStateCard({
+      requestId: input.requestId,
+      conversationRequestId: input.conversationRequestId,
+      currentRequest: input.userInput,
+      turnIndex: input.turnIndex,
+      sessionId: input.sessionId,
+      logicalCacheScope: input.logicalCacheScope,
+      interaction: input.interaction,
+      ...(input.signal ? { signal: input.signal } : {}),
+    });
     const activeSkills = await this.runtime.services.promptContext.activateSkills({
-      input: input.userInput,
+      input: resolvedStateCard.standaloneRequest,
       availableToolNames: uniqueToolNames([
         ...input.loadedToolNames,
         ...(this.runtime.services.promptContext.interactionToolNames?.(input.interaction) ?? []),
@@ -56,24 +70,19 @@ export class AgentTurnPreparationService {
       explicitActivations: input.explicitActivations,
       signal: input.signal,
     });
+    const stateCard: AgentStateCard = {
+      ...resolvedStateCard,
+      activeSkills: activeSkills.map((skill) => skill.name),
+    };
     const recommendedToolRouting = this.runtime.services.promptContext.recommendedSkillToolRouting(
       activeSkills,
       input.explicitActivations,
     );
-    const stateCard = await this.runtime.services.retrieval.resolveStateCard({
-      requestId: input.requestId,
-      currentRequest: input.userInput,
-      turnIndex: input.turnIndex,
-      sessionId: input.sessionId,
-      logicalCacheScope: input.logicalCacheScope,
-      activeSkills,
-      ...(input.signal ? { signal: input.signal } : {}),
-    });
     const reusableCapabilities = input.sessionId
       ? (this.runtime.services.retrieval.reusableCapabilities?.({
           sessionId: input.sessionId,
           logicalCacheScope: input.logicalCacheScope,
-          query: input.userInput,
+          query: stateCard.standaloneRequest,
           authorizedToolNames: input.allowedToolNames,
           ...(input.interaction ? { interaction: input.interaction } : {}),
         }) ?? [])
@@ -86,7 +95,7 @@ export class AgentTurnPreparationService {
       ...(this.runtime.services.promptContext.interactionToolNames?.(input.interaction) ?? []),
     ]);
     const resolvedToolNames = await this.resolveLoadedTools({
-      input: input.userInput,
+      input: stateCard.standaloneRequest,
       currentLoadedTools,
       currentSetPolicy: AgentToolSearchCurrentSetPolicies.Retain,
       preferredTools: recommendedToolRouting.dynamicToolNames,

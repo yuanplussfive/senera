@@ -1,7 +1,11 @@
 import { describe, expect, test } from "vitest";
 import { AgentModelUsageLedger } from "../../../Source/AgentSystem/ModelEndpoints/AgentModelUsage.js";
 import { AgentPiTerminalToolObservationProjector } from "../../../Source/AgentSystem/Pi/AgentPiTerminalToolObservation.js";
-import { readAgentPiToolObservation } from "../../../Source/AgentSystem/Pi/AgentPiToolObservation.js";
+import {
+  createAgentPiToolObservation,
+  readAgentPiToolObservation,
+} from "../../../Source/AgentSystem/Pi/AgentPiToolObservation.js";
+import { escapeXml } from "../../../Source/AgentSystem/Prompt/AgentTurnRequestComposer.js";
 import { AgentPiToolPlanCoordinator } from "../../../Source/AgentSystem/PiShared/AgentPiToolPlanCoordinator.js";
 import { AgentPiTurnState } from "../../../Source/AgentSystem/Pi/AgentPiTurnState.js";
 import { AgentTurnTokenBudget } from "../../../Source/AgentSystem/Text/AgentTurnTokenBudget.js";
@@ -43,6 +47,46 @@ describe("Pi terminal tool observations", () => {
       error: { code: "pi_tool_call_rejected", source: "pi" },
     });
     expect(() => turnState.context.tokenBudget.validateModelInput({ messages: [replacement] })).not.toThrow();
+  });
+
+  test("keeps a Senera failure observation that arrived inside the attribution envelope", async () => {
+    const turnState = createTurnState();
+    turnState.registerToolBatch("batch-close", [{ toolCallId: "call-close", toolName: "BrowserClose", input: {} }]);
+    const projector = new AgentPiTerminalToolObservationProjector(createTestToolObservationCompressor(), 2_048);
+    const observation = createAgentPiToolObservation({
+      status: "failure",
+      execution_status: "completed",
+      output_availability: "none",
+      compression_method: "verbatim",
+      error: {
+        code: "ToolExecutionError",
+        message: 'Invalid response: EOF while parsing "value" at line 1 column 0',
+        details: { phase: "runtime_execution", toolName: "BrowserClose" },
+        kind: "execution",
+        source: "host",
+        retryable: false,
+      },
+      detail: { evidence: [] },
+    });
+    const wrapped = `<observation attribution="tool">${escapeXml(JSON.stringify(observation))}</observation>`;
+
+    await projector.settle(turnState, {
+      toolCallId: "call-close",
+      toolName: "BrowserClose",
+      result: { content: [{ type: "text", text: wrapped }] },
+      isError: true,
+    });
+    const replacement = projector.replaceMessage({
+      role: "toolResult",
+      toolCallId: "call-close",
+      toolName: "BrowserClose",
+      content: [{ type: "text", text: wrapped }],
+      details: {},
+      isError: true,
+      timestamp: Date.now(),
+    });
+
+    expect(replacement).toBeUndefined();
   });
 });
 

@@ -1,0 +1,77 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "jobs",
+  "domain": "coordinate",
+  "settingsSurface": "system-tools",
+  "presentation": {
+    "category": "jobs",
+    "icon": "terminal",
+    "group": {
+      "id": "jobs",
+      "title": {
+        "zh-CN": "后台任务",
+        "en-US": "Background jobs"
+      }
+    },
+    "activity": {
+      "action": {
+        "zh-CN": "管理后台任务",
+        "en-US": "Manage background jobs"
+      }
+    }
+  },
+  "usageExamples": [
+    {
+      "title": {
+        "zh-CN": "查看后台进程",
+        "en-US": "Inspect background work"
+      },
+      "prompt": {
+        "zh-CN": "查看本会话的后台任务和输出，停止不需要的任务。",
+        "en-US": "Inspect this session’s background jobs and output; stop work that is no longer needed."
+      },
+      "outcome": {
+        "zh-CN": "查询任务实际状态，按需读取输出；完成通知通过持久会话收件箱送达。",
+        "en-US": "Inspect actual task state and output. Completion enters the durable session inbox."
+      }
+    }
+  ],
+  "documentation": {
+    "zh-CN": "### 管理后台任务\n\njob_list、job_output、job_kill 统一管理本会话的后台命令、终端和子代理执行。命令通过 ShellCommandTool 启动；子代理返回稳定的 agent_id 和每次执行独立的 job_id。\n\njob_output 可按游标读取进程输出，也可在配置的时限内等待任务结束。用户插话、等待超时或取消读取都不会停止后台任务。旧 job_id 不会误停代理的新执行。\n\n完成通知支持唤醒或静默送达，可限制连续唤醒轮数；用户输入会重置预算。短结果随通知送达，大结果通过 job_output 读取。成功读取或停止的工具结果提交到 Pi 历史后才确认通知，取消读取保留通知。\n\n结果和通知回执持久保存。宿主重启后未完成进程标为失败，不会自动重跑。",
+    "en-US": "### Manage background jobs\n\njob_list, job_output and job_kill share one interface for session-owned commands, PTYs and child-agent activations. ShellCommandTool starts commands; subagent returns a stable agent_id and an activation-specific job_id.\n\nRead bounded process output by cursor or wait within configured limits. Human steering, read cancellation and wait timeout leave the producer running. An older job_id cannot stop a newer activation.\n\nCompletion supports wakeup or quiet delivery with an optional consecutive wake budget, reset by human input. Small results accompany notices; use job_output for larger results. Successful read or stop results acknowledge notifications only after committing to Pi history; cancelled reads preserve notifications.\n\nResults and notification receipts persist. Unfinished processes are marked failed after host restart and never rerun automatically."
+  },
+  "displayName": {
+    "zh-CN": "后台任务",
+    "en-US": "Background jobs"
+  },
+  "description": {
+    "zh-CN": "查询、等待或停止后台命令、终端与子代理执行。",
+    "en-US": "Inspect, wait for or stop commands, PTYs and agent activations."
+  },
+  "priority": 3,
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/job_list.tool.json",
+      "capability": "orchestration.job.list",
+      "recommendedForSkills": ["agent-orchestration"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/job_output.tool.json",
+      "capability": "orchestration.job.output",
+      "recommendedForSkills": ["agent-orchestration"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/job_kill.tool.json",
+      "capability": "orchestration.job.kill",
+      "recommendedForSkills": ["agent-orchestration"]
+    }
+  ],
+  "configuration": {
+    "schema": "config.schema.json",
+    "ui": "ui.schema.json"
+  }
+}

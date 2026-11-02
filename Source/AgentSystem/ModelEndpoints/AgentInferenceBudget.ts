@@ -1,5 +1,6 @@
 import { createOpaqueId } from "../Core/AgentIds.js";
 import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
+import { formatAgentTimeOffset } from "../Time/AgentTime.js";
 
 export const AgentInferenceLaneIds = Object.freeze({
   Foreground: "foreground",
@@ -228,7 +229,9 @@ export class AgentInferenceBudgetExceededError extends Error {
     readonly retryAtMs: number,
     readonly reason: NonNullable<AgentInferenceBudgetDecision["reason"]>,
   ) {
-    super(`Background inference budget exceeded (${reason}); retry at ${new Date(retryAtMs).toISOString()}.`);
+    super(
+      `Background inference budget exceeded (${reason}); retry at ${formatAgentTimeOffset(new Date(retryAtMs).toISOString())}.`,
+    );
     this.name = "AgentInferenceBudgetExceededError";
   }
 }

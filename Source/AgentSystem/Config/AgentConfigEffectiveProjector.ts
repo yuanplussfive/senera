@@ -1,4 +1,8 @@
-import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
+import type {
+  AgentActionPlannerClientConfig,
+  AgentActionPlannerTuningClientConfig,
+  AgentSystemConfig,
+} from "../Types/AgentConfigTypes.js";
 import {
   AgentDefaults,
   resolveAgentDefaults,
@@ -87,20 +91,21 @@ function projectResolvedActionPlanner(config: AgentSystemConfig): NonNullable<Ag
     MaxRepairAttempts: configured?.MaxRepairAttempts ?? defaults.MaxRepairAttempts,
     Evidence: { ...defaults.Evidence, ...configured?.Evidence },
     Client: projectResolvedPlannerClient(sharedClient),
-    PlanningClient: projectResolvedPlannerClient(
-      mergeActionPlannerClientConfig(sharedClient, configured?.PlanningClient),
-    ),
-    FinalAnswerClient: projectResolvedPlannerClient(
-      mergeActionPlannerClientConfig(sharedClient, configured?.FinalAnswerClient),
-    ),
+    FinalAnswerClient: projectResolvedFinalAnswerClient({ ...sharedClient, ...configured?.FinalAnswerClient }),
   };
 }
 
-function projectResolvedPlannerClient(client: ReturnType<typeof mergeActionPlannerClientConfig>) {
+function projectResolvedPlannerClient(client: AgentActionPlannerTuningClientConfig) {
   return {
-    ModelProviderId: client.ModelProviderId,
     Temperature: client.Temperature ?? AgentDefaults.ActionPlanner.Client.Temperature,
     MaxTokens: client.MaxTokens ?? AgentDefaults.ActionPlanner.Client.MaxTokens,
+  };
+}
+
+function projectResolvedFinalAnswerClient(client: AgentActionPlannerClientConfig) {
+  return {
+    ModelProviderId: client.ModelProviderId,
+    ...projectResolvedPlannerClient(client),
   };
 }
 
@@ -127,6 +132,7 @@ function projectResolvedContinuityLearning(
     },
     Recall: {
       ...defaults.Recall,
+      ...configured?.Recall,
       PromptBudget: {
         ...defaults.Recall.PromptBudget,
         ...configured?.Recall?.PromptBudget,
@@ -136,6 +142,7 @@ function projectResolvedContinuityLearning(
       ...defaults.MemOS,
       ...configured?.MemOS,
     },
+    Retention: { ...defaults.Retention, ...configured?.Retention },
     Client: projectResolvedContinuityClient({ ...defaults.Client, ...configured?.Client }),
   };
 }

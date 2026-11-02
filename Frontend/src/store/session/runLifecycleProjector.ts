@@ -5,6 +5,7 @@ import {
   type RunCompletedData,
   type RunFailedData,
   type RunStartedData,
+  type SessionMessageQueuedData,
   type SessionBusyData,
 } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
@@ -17,11 +18,12 @@ import {
   upsertStep,
 } from "./sessionProjectorCore";
 import { createRunRecord, touchRun } from "./sessionRunProjection";
+import { readRunInputLabel } from "./runInputLabel";
 import { truncate } from "./sessionPresentation";
 import { upsertMessageByRequestId } from "./historyRunProjection";
-import { DEFAULT_SESSION_TITLE } from "./defaults";
 import { rejectRunRecovery } from "./runRecoveryProjection";
 import { readCurrentRun, type RunEventHandlerMap } from "./runEventProjectionTypes";
+import { clearQueuedMessageAdmission, confirmQueuedMessage, rejectQueuedMessage } from "./queuedMessageProjection";
 import type { RunRecord, SessionRecord, StoreState, TimelineStepStatus } from "./types";
 
 export const runLifecycleEventHandlers = {
@@ -31,17 +33,21 @@ export const runLifecycleEventHandlers = {
     const session = ensureSession(state, sessionId);
     projectSessionChannel(session, env.scope?.channel);
     const data = env.data as RunStartedData;
-    projectChannelUserMessage(session, env, data);
-    projectRecoveryUserMessage(session, env, data);
+    const replaying = env.requestId && state.historyEventRunIds[sessionId]?.[env.requestId];
+    if (!replaying && data.title?.trim()) session.title = data.title.trim();
+    projectRunUserMessage(session, env, data);
+    clearQueuedMessageAdmission(session, env.requestId);
     let run = currentRun(session, env.requestId);
+    const recoveredHistoryRun = Boolean(replaying && run);
     if (!run) {
       run = createRunRecord({
         requestId: env.requestId ?? "unknown",
         startedAt: env.timestamp,
         input: data.displayInput ?? data.input,
+        inputAttachments: data.attachments,
       });
       session.runs.push(run);
-    } else {
+    } else if (!recoveredHistoryRun) {
       run.status = "running";
       run.outputState = "pending";
       run.liveActivity = undefined;
@@ -53,6 +59,10 @@ export const runLifecycleEventHandlers = {
       run.activeModelRequest = undefined;
     }
     run.recovery = data.recovery;
+    if (data.metadata?.hostInput) run.hostInput = data.metadata.hostInput;
+    if (data.attachments !== undefined && (!recoveredHistoryRun || run.inputAttachments === undefined)) {
+      run.inputAttachments = data.attachments;
+    }
     if (data.recovery) {
       const source = currentRun(session, data.recovery.sourceRequestId);
       if (source) source.recoveryAttempt = undefined;
@@ -61,13 +71,15 @@ export const runLifecycleEventHandlers = {
       id: `${run.requestId}-understand`,
       kind: "understand",
       title: frontendMessage("workflow.projection.understandUser"),
-      description: data.internal ? undefined : truncate(data.displayInput ?? data.input, 60),
+      description: data.internal ? undefined : truncate(readRunInputLabel(run), 60),
       status: "done",
       startedAt: env.timestamp,
       endedAt: env.timestamp,
       eventSequence: env.sequence,
     });
-    session.activeRequestId = run.requestId;
+    if (!recoveredHistoryRun || run.status === "running" || run.status === "cancelling") {
+      session.activeRequestId = run.requestId;
+    }
     session.updatedAt = env.timestamp;
     delete state.viewedRunIdBySession[sessionId];
   },
@@ -138,8 +150,11 @@ export const runLifecycleEventHandlers = {
         // alive; its step snapshot will reconstruct the terminal run.
         return;
       }
-      session.messages = [];
-      session.runs = [];
+      if (!session.historyWindow && !session.pendingHistoryWindow) {
+        session.messages = [];
+        session.runs = [];
+      }
+      delete session.pendingHistoryWindow;
       state.historyLoadingIds[sessionId] = false;
       state.historyFailedIds[sessionId] = true;
       delete state.historyReplayBuffers[sessionId];
@@ -156,16 +171,7 @@ export const runLifecycleEventHandlers = {
     run.recoveryModes = data.recoveryModes;
     settleRunExecution(run, "failed", env.timestamp);
     run.endedAt = env.timestamp;
-    upsertStep(run, {
-      id: `${run.requestId}-error`,
-      kind: "error",
-      title: frontendMessage("workflow.projection.runFailed"),
-      description: message,
-      status: "failed",
-      startedAt: env.timestamp,
-      endedAt: env.timestamp,
-      errorMessage: message,
-    });
+    projectRunFailureStep(run, env, data);
     session.messages.push({
       id: `${env.requestId ?? "run"}-error`,
       role: "system",
@@ -187,6 +193,10 @@ export const runLifecycleEventHandlers = {
     const data = env.data as SessionBusyData;
     const message = resolveBackendMessage(data) ?? data.message;
     const rejectedRequestId = data.rejectedRequestId || env.requestId;
+    if (rejectQueuedMessage(session, rejectedRequestId, message)) {
+      session.updatedAt = env.timestamp;
+      return;
+    }
     if (rejectRunRecovery(session, rejectedRequestId, message)) return;
     if (!rejectedRequestId || rejectedRequestId === data.activeRequestId) return;
     const run = session.runs.find((item) => item.requestId === rejectedRequestId);
@@ -207,6 +217,38 @@ export const runLifecycleEventHandlers = {
     }
     if (session.activeRequestId === rejectedRequestId) {
       session.activeRequestId = data.activeRequestId || undefined;
+    }
+  },
+
+  [EventKinds.SessionMessageQueued]: (state, env) => {
+    const sessionId = env.sessionId;
+    if (!sessionId) return;
+    const data = env.data as SessionMessageQueuedData;
+    const session = data.entry ? ensureSession(state, sessionId) : state.sessions[sessionId];
+    if (!session) return;
+    if (data.entry) {
+      const entry = data.entry;
+      const inserted = upsertMessageByRequestId(session, {
+        id: entry.id,
+        requestId: entry.requestId,
+        role: "user",
+        content: entry.content,
+        createdAt: entry.timestamp,
+        attachments: entry.attachments,
+        metadata: entry.metadata,
+      });
+      if (inserted) bumpSessionMessageCount(session);
+    }
+    if (
+      confirmQueuedMessage(session, {
+        requestId: data.requestId,
+        parentRequestId: data.parentRequestId,
+        mode: data.mode,
+        status: data.status,
+        message: data.message,
+      })
+    ) {
+      session.updatedAt = env.timestamp;
     }
   },
 
@@ -241,46 +283,42 @@ export const runLifecycleEventHandlers = {
   },
 } satisfies RunEventHandlerMap;
 
-function projectChannelUserMessage(session: SessionRecord, env: EventEnvelope, data: RunStartedData): void {
-  const channel = env.scope?.channel;
-  if (!channel || channel === "console" || data.internal || !env.requestId || typeof data.input !== "string") return;
+function projectRunUserMessage(session: SessionRecord, env: EventEnvelope, data: RunStartedData): void {
+  // Live run starts reach every device, so each one projects the sender's input.
+  // Recovery is the exception: the server reuses the durable user entry, and
+  // projecting another bubble would duplicate the original prompt everywhere.
+  if (data.internal || data.recovery || !env.requestId || typeof data.input !== "string") return;
 
-  const hadMessages = session.messages.length > 0;
   const inserted = upsertMessageByRequestId(session, {
     id: `${env.requestId}-user`,
     role: "user",
-    content: data.input,
+    content: data.displayInput ?? data.input,
     createdAt: env.timestamp,
     requestId: env.requestId,
     ...(data.attachments?.length ? { attachments: data.attachments } : {}),
+    ...(data.metadata ? { metadata: data.metadata } : {}),
   });
   if (!inserted) return;
 
-  if (!hadMessages && session.title === DEFAULT_SESSION_TITLE) {
-    session.title = truncate(data.input, 24);
-  }
   session.messages.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
   bumpSessionMessageCount(session);
 }
 
-function projectRecoveryUserMessage(session: SessionRecord, env: EventEnvelope, data: RunStartedData): void {
-  if (data.recovery?.mode !== "continue" || !env.requestId) return;
-  const inserted = upsertMessageByRequestId(session, {
-    id: `${env.requestId}-user`,
-    role: "user",
-    content: data.input,
-    createdAt: env.timestamp,
-    requestId: env.requestId,
-    metadata: {
-      recovery: data.recovery,
-    },
+export function projectRunFailureStep(run: RunRecord, env: EventEnvelope, data: RunFailedData): void {
+  const message = resolveBackendMessage(data) ?? data.message;
+  upsertStep(run, {
+    id: `${run.requestId}-error`,
+    kind: "error",
+    title: frontendMessage("workflow.projection.runFailed"),
+    description: message,
+    status: "failed",
+    startedAt: env.timestamp,
+    endedAt: env.timestamp,
+    errorMessage: message,
   });
-  if (!inserted) return;
-  session.messages.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
-  bumpSessionMessageCount(session);
 }
 
-function settleRunExecution(
+export function settleRunExecution(
   run: RunRecord,
   status: Extract<TimelineStepStatus, "done" | "failed" | "cancelled">,
   endedAt: string,
@@ -295,10 +333,7 @@ function settleRunExecution(
     activity.endedAt = endedAt;
   }
   for (const step of run.steps) {
-    const shouldSettle =
-      step.status === "running" ||
-      step.status === "cancelling" ||
-      (status === "cancelled" && step.status === "pending");
+    const shouldSettle = step.status === "running" || step.status === "cancelling" || step.status === "pending";
     if (!shouldSettle) continue;
     step.status = status;
     step.endedAt = endedAt;

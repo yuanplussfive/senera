@@ -137,7 +137,7 @@ function registeredMcpTool(): RegisteredTool {
       readOnly: false,
     },
     execution: { Targets: ["Local"], Network: "Allow", Workspace: "ReadOnly" },
-    runtime: { Lifecycle: "Persistent", ProtocolVersion: 2, ResultAssessment: "ProcessExit" },
+    runtime: { Lifecycle: "Persistent", ResultAssessment: "ProcessExit" },
     sources: [],
     childGrant: "inherit",
     evidenceCapabilities: [],

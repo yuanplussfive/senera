@@ -232,7 +232,7 @@ function createToolFixture(name: string): RegisteredTool {
       Network: "Deny",
       Workspace: "ReadOnly",
     },
-    runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, ResultAssessment: "ProcessExit" },
+    runtime: { Lifecycle: "Immediate", ResultAssessment: "ProcessExit" },
   };
 }
 

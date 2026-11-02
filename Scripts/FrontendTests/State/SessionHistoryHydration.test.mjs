@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
 import { advanceHistoryHydration, applyEvent } from "../../../Frontend/src/store/session/sessionProjector.ts";
+import { HistoryHydrationPolicy } from "../../../Frontend/src/store/session/sessionHistoryProjector.ts";
 import { createEvent, createTestState, TestSessionId, TestTimestamp } from "./sessionProjectorTestUtils.mjs";
 
 test("history replay renders the optional recent preview before completion", () => {
@@ -152,3 +153,70 @@ test("background hydration does not overwrite a live request started after repla
   expect(state.sessions[TestSessionId]?.activeRequestId).toBe(liveRequestId);
   expect(state.sessions[TestSessionId]?.runs.find((run) => run.requestId === liveRequestId)?.status).toBe("running");
 });
+
+test.each(["running", "completed", "cancelled"])(
+  "live output survives history slices when the run becomes %s",
+  (status) => {
+    const state = createTestState();
+    applyEvent(state, createEvent(EventKinds.RunStarted, { input: "继续" }));
+    applyEvent(state, createEvent(EventKinds.ModelDelta, { text: "当前正文" }));
+    applyEvent(
+      state,
+      createEvent(EventKinds.ModelThinkingDelta, { messageIndex: 1, contentIndex: 0, delta: "当前思考" }, { step: 1 }),
+    );
+    const entries = Array.from({ length: HistoryHydrationPolicy.maxSynchronousItems + 1 }, (_, index) => ({
+      entry: {
+        id: `entry-${index}`,
+        requestId: `old-${index}`,
+        timestamp: TestTimestamp,
+        kind: "user.message",
+        content: "历史",
+      },
+    }));
+    applyEvent(
+      state,
+      createEvent(EventKinds.SessionHistoryStarted, {
+        sessionId: TestSessionId,
+        totalEntries: entries.length,
+        refresh: true,
+      }),
+    );
+    applyEvent(state, createEvent(EventKinds.SessionHistoryChunk, { sessionId: TestSessionId, entries }));
+    applyEvent(
+      state,
+      createEvent(EventKinds.SessionRunHistoryChunk, {
+        sessionId: TestSessionId,
+        events: [
+          createEvent(EventKinds.ModelStarted, { messageIndex: 0, model: "model" }),
+          createEvent(
+            EventKinds.ModelThinkingCompleted,
+            { messageIndex: 0, contentIndex: 0, content: "早前思考", status: "complete" },
+            { step: 1 },
+          ),
+        ],
+      }),
+    );
+    applyEvent(state, createEvent(EventKinds.SessionHistoryCompleted, { sessionId: TestSessionId, refresh: true }));
+    const append = (text) => {
+      applyEvent(state, createEvent(EventKinds.ModelDelta, { text }));
+      applyEvent(
+        state,
+        createEvent(EventKinds.ModelThinkingDelta, { messageIndex: 1, contentIndex: 0, delta: text }, { step: 1 }),
+      );
+    };
+    append("新增一");
+    expect(advanceHistoryHydration(state, TestSessionId)).toBe(true);
+    expect(state.sessions[TestSessionId].runs[0].streamingRaw).toBe("当前正文新增一");
+    append("新增二");
+    if (status !== "running") {
+      applyEvent(state, createEvent(status === "completed" ? EventKinds.RunCompleted : EventKinds.RunCancelled, {}));
+    }
+    while (advanceHistoryHydration(state, TestSessionId)) {
+      /* Drain history slices. */
+    }
+    const run = state.sessions[TestSessionId].runs[0];
+    expect(run.streamingRaw).toBe("当前正文新增一新增二");
+    expect(run.thinkingBlocks.map((block) => block.content)).toEqual(["早前思考", "当前思考新增一新增二"]);
+    expect(run.status).toBe(status);
+  },
+);

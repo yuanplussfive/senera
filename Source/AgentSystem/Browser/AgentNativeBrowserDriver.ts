@@ -1,41 +1,105 @@
-import { spawn, type ChildProcessByStdio } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import {
+  acquireAgentManagedBrowserProfile,
+  managedBrowserOwnerSessionId,
+  serializeManagedBrowserTabMutation,
+  type AgentManagedBrowserProfileLease,
+} from "./AgentManagedBrowserProfile.js";
+import {
+  AgentNativeBrowserCommandError,
+  executeAgentBrowserCommand,
+  type AgentNativeBrowserCommandExecutor,
+} from "./AgentNativeBrowserCommand.js";
+
+export {
+  AgentNativeBrowserCommandError,
+  agentBrowserCliEnvironment,
+  agentBrowserCommandEnvironment,
+  type AgentNativeBrowserCommandExecutor,
+  type AgentNativeBrowserCommandRequest,
+} from "./AgentNativeBrowserCommand.js";
+
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { Readable } from "node:stream";
 import { fileTypeFromBuffer } from "file-type";
 import { resolveAgentBrowserController } from "./AgentBrowserControllerResolver.js";
 import { removeAgentPathWithRetry } from "../Core/AgentFs.js";
-import { sha256Hex } from "../Core/AgentHash.js";
 import type { AgentBrowserConfiguration, AgentBrowserContext } from "./AgentBrowserConfiguration.js";
+import { probeAgentBrowserCdpEndpoint } from "./AgentBrowserCdpEndpoint.js";
+import {
+  downloadAgentBrowserFile,
+  type AgentBrowserCdpDownloader,
+  type AgentBrowserCdpDownloadRequest,
+  type AgentBrowserCdpDownloadResult,
+} from "./AgentBrowserCdpDownload.js";
 import {
   assertAgentBrowserWindowModeSupported,
-  resolveAgentBrowserExecutable,
+  resolveAgentBrowserExecutableSelection,
 } from "./AgentBrowserExecutableResolver.js";
 import type {
   AgentBrowserDriver,
   AgentBrowserDriverDownload,
   AgentBrowserDriverOperationOptions,
   AgentBrowserDriverOperationResult,
-  AgentBrowserDriverScreenshot,
   AgentBrowserDriverSession,
   AgentBrowserDriverSessionOptions,
 } from "./AgentBrowserDriver.js";
+import type { AgentBrowserOperation } from "./AgentBrowserTypes.js";
+import { withAgentBrowserOperationDeadline } from "./AgentBrowserOperationDeadline.js";
 import {
-  AgentBrowserComputerActionTypes,
-  type AgentBrowserComputerAction,
-  type AgentBrowserOperation,
-} from "./AgentBrowserTypes.js";
+  captureAgentBrowserScreenshot,
+  screenshotBox,
+  type AgentBrowserCdpScreenshotRequest,
+  type AgentBrowserCdpScreenshotter,
+  type AgentBrowserScreenshotAnnotation,
+  type AgentBrowserScreenshotBox,
+} from "./AgentBrowserCdpScreenshot.js";
 
-interface AgentBrowserCommandEnvelope {
-  readonly success?: boolean;
-  readonly data?: unknown;
-  readonly error?: unknown;
-  readonly code?: unknown;
-}
+import {
+  readBrowserCdpUrl,
+  isUncertainBrowserNavigation,
+  navigationBudgetError,
+  isBrowserTabGoneFailure,
+  isBrowserDaemonResponseLoss,
+  isRetryableBrowserWaitFailure,
+  isRetryableBrowserReadFailure,
+  browserNavigationCommitted,
+  snapshotArguments,
+  clickArguments,
+  agentBrowserRoutePattern,
+  pageFromData,
+  pageDescription,
+  browserTargetId,
+  browserTabs,
+  onlyNewBrowserTabTarget,
+  browserTabMatches,
+  tabListContent,
+  validateComputerAction,
+  assertNoModifiers,
+  requiredString,
+  requiredPositiveNumber,
+  requiredPositiveInteger,
+  requiredStringArray,
+  optionalString,
+  optionalBoolean,
+  optionalNumber,
+  recordValue,
+  stringValue,
+  renderedHtmlSignature,
+  type AgentBrowserTab,
+} from "./AgentNativeBrowserProtocol.js";
 
 const ManagedBrowserProfileDirectoryName = "managed";
+
+const AgentBrowserNavigationPollMs = 500;
+
+type AgentBrowserTabBinding = "pin" | "unpin";
+
+interface AgentBrowserNavigationOutcome {
+  readonly data: unknown;
+  /** The target URL was observed after an uncertain native navigation response. */
+  readonly pending: boolean;
+}
 
 interface AgentNativeBrowserDriverOptions {
   readonly workspaceRoot: string;
@@ -43,31 +107,13 @@ interface AgentNativeBrowserDriverOptions {
   readonly browserProfilesRoot?: string;
   readonly resourcesPath?: string;
   readonly configuration: AgentBrowserConfiguration;
-  readonly resolveExecutable?: () => string;
+  readonly resolveExecutable?: () => string | undefined;
   readonly resolveController?: () => string;
   readonly environment?: NodeJS.ProcessEnv;
   readonly executeCommand?: AgentNativeBrowserCommandExecutor;
-}
-
-export interface AgentNativeBrowserCommandRequest {
-  readonly controller: string;
-  readonly command: readonly string[];
-  readonly cwd: string;
-  readonly environment?: NodeJS.ProcessEnv;
-  readonly options: AgentBrowserDriverOperationOptions;
-}
-
-export type AgentNativeBrowserCommandExecutor = (request: AgentNativeBrowserCommandRequest) => Promise<unknown>;
-
-export class AgentNativeBrowserCommandError extends Error {
-  override name = "AgentNativeBrowserCommandError";
-
-  constructor(
-    message: string,
-    readonly commandCode?: string,
-  ) {
-    super(sanitizeAgentBrowserErrorMessage(message));
-  }
+  readonly probeCdpEndpoint?: (cdpUrl: string) => Promise<boolean>;
+  readonly downloader?: AgentBrowserCdpDownloader;
+  readonly screenshotter?: AgentBrowserCdpScreenshotter;
 }
 
 /**
@@ -84,11 +130,18 @@ export class AgentNativeBrowserDriver implements AgentBrowserDriver {
   private controllerPath: string | undefined;
   private readonly networkPolicySessions = new Set<string>();
   private readonly sessionContexts = new Map<string, AgentBrowserContext>();
+  private readonly sessionCdpEndpoints = new Map<string, string>();
   private readonly commandExecutor: AgentNativeBrowserCommandExecutor;
+  private readonly downloader: AgentBrowserCdpDownloader;
+  private readonly screenshotter: AgentBrowserCdpScreenshotter;
   private managedProfile: Promise<AgentManagedBrowserProfileLease> | undefined;
+  private browserExecutableResolved = false;
+  private browserExecutablePath: string | undefined;
 
   constructor(private readonly options: AgentNativeBrowserDriverOptions) {
     this.commandExecutor = options.executeCommand ?? executeAgentBrowserCommand;
+    this.downloader = options.downloader ?? downloadAgentBrowserFile;
+    this.screenshotter = options.screenshotter ?? captureAgentBrowserScreenshot;
   }
 
   async createSession(options: AgentBrowserDriverSessionOptions): Promise<AgentBrowserDriverSession> {
@@ -99,12 +152,70 @@ export class AgentNativeBrowserDriver implements AgentBrowserDriver {
     return session;
   }
 
-  async run(sessionId: string, args: readonly string[], options: AgentBrowserDriverOperationOptions): Promise<unknown> {
+  async run(
+    sessionId: string,
+    args: readonly string[],
+    options: AgentBrowserDriverOperationOptions,
+    tabBinding: AgentBrowserTabBinding = "pin",
+    input?: string,
+  ): Promise<unknown> {
     if (this.closed) throw new Error("The controlled browser driver is closed.");
-    const sessionArguments = await this.sessionArguments(sessionId, options);
+    const sessionArguments = await this.sessionArguments(sessionId, options, tabBinding);
     await this.ensureNetworkPolicy(sessionId, sessionArguments, options);
     const command = [...sessionArguments, ...args];
-    return this.executeCommand(command, options);
+    if (args[0] === "wait" || args[0] === "read") {
+      command.push("--timeout", String(options.timeoutMs));
+    }
+    return this.executeCommand(command, options, input);
+  }
+
+  async screenshotWithCdp(
+    sessionId: string,
+    request: Omit<AgentBrowserCdpScreenshotRequest, "cdpUrl">,
+  ): Promise<AgentBrowserDriverOperationResult> {
+    const cdpUrl = await this.sessionCdpUrl(sessionId, request.options);
+    return this.screenshotter({ ...request, cdpUrl });
+  }
+
+  async preparePersistentSession(sessionId: string, options: AgentBrowserDriverOperationOptions): Promise<boolean> {
+    if ((this.sessionContexts.get(sessionId) ?? "temporary") !== "persistent") return false;
+    const profile = await this.managedProfileLease(options);
+    const endpoint = await profile.endpoint();
+    return this.bindSessionEndpoint(sessionId, endpoint.cdpUrl);
+  }
+
+  async downloadWithCdp(
+    sessionId: string,
+    directory: string,
+    options: AgentBrowserDriverOperationOptions,
+    targetId: string,
+    maxBytes: number,
+    source: AgentBrowserCdpDownloadRequest["source"],
+    assertRequestPermitted: (url: string) => Promise<void>,
+  ): Promise<AgentBrowserCdpDownloadResult> {
+    const download = async () => {
+      const cdpUrl = await this.sessionCdpUrl(sessionId, options);
+      return this.downloader({
+        cdpUrl,
+        directory,
+        timeoutMs: options.timeoutMs,
+        signal: options.signal,
+        targetId,
+        maxBytes,
+        source,
+        assertRequestPermitted,
+      });
+    };
+    return (this.sessionContexts.get(sessionId) ?? "temporary") === "persistent"
+      ? serializeManagedBrowserTabMutation(this.managedProfileDirectory(), download)
+      : download();
+  }
+
+  private async sessionCdpUrl(sessionId: string, options: AgentBrowserDriverOperationOptions): Promise<string> {
+    if ((this.sessionContexts.get(sessionId) ?? "temporary") === "temporary") {
+      return readBrowserCdpUrl(await this.run(sessionId, ["get", "cdp-url"], options));
+    }
+    return (await (await this.managedProfileLease(options)).endpoint()).cdpUrl;
   }
 
   close(): Promise<void> {
@@ -119,6 +230,7 @@ export class AgentNativeBrowserDriver implements AgentBrowserDriver {
     this.sessions.delete(session);
     this.networkPolicySessions.delete(session.sessionId);
     this.sessionContexts.delete(session.sessionId);
+    this.sessionCdpEndpoints.delete(session.sessionId);
   }
 
   async withPersistentTabMutation<TValue>(sessionId: string, operation: () => Promise<TValue>): Promise<TValue> {
@@ -152,13 +264,25 @@ export class AgentNativeBrowserDriver implements AgentBrowserDriver {
     this.networkPolicySessions.add(sessionId);
   }
 
-  private executeCommand(command: readonly string[], options: AgentBrowserDriverOperationOptions): Promise<unknown> {
+  private executeCommand(
+    command: readonly string[],
+    options: AgentBrowserDriverOperationOptions,
+    input?: string,
+  ): Promise<unknown> {
+    options.signal?.throwIfAborted();
+    const timeoutMs = Math.min(
+      options.timeoutMs,
+      options.deadlineAt === undefined ? options.timeoutMs : options.deadlineAt - Date.now(),
+    );
+    if (timeoutMs <= 0) throw new DOMException("Browser operation timed out.", "TimeoutError");
     return this.commandExecutor({
       controller: this.controller(),
       command,
       cwd: this.options.workspaceRoot,
       environment: this.options.environment,
-      options,
+      defaultTimeoutMs: this.options.configuration.runtime.requestTimeoutMs,
+      ...(input === undefined ? {} : { input }),
+      options: { ...options, timeoutMs },
     });
   }
 
@@ -177,39 +301,48 @@ export class AgentNativeBrowserDriver implements AgentBrowserDriver {
   private async sessionArguments(
     sessionId: string,
     options: AgentBrowserDriverOperationOptions,
+    tabBinding: AgentBrowserTabBinding,
   ): Promise<readonly string[]> {
     if ((this.sessionContexts.get(sessionId) ?? "temporary") === "temporary") {
-      return this.launchArguments(sessionId, { headed: options.headed });
+      return this.launchArguments(sessionId, { headed: options.headed, tabBinding });
     }
     const profile = await this.managedProfileLease(options);
-    return this.connectionArguments(sessionId, profile.cdpUrl);
+    const endpoint = await profile.endpoint();
+    this.bindSessionEndpoint(sessionId, endpoint.cdpUrl);
+    return this.connectionArguments(sessionId, endpoint.cdpUrl, tabBinding);
+  }
+
+  private bindSessionEndpoint(sessionId: string, cdpUrl: string): boolean {
+    const previous = this.sessionCdpEndpoints.get(sessionId);
+    this.sessionCdpEndpoints.set(sessionId, cdpUrl);
+    if (previous === undefined || previous === cdpUrl) return false;
+    // A different browser now serves this profile. Session route rules were
+    // attached to the old connection, so the next command reapplies them.
+    this.networkPolicySessions.delete(sessionId);
+    return true;
   }
 
   private launchArguments(
     sessionId: string,
-    options: { readonly headed?: boolean; readonly idleTimeoutMs?: number } = {},
+    options: {
+      readonly headed?: boolean;
+      readonly idleTimeoutMs?: number;
+      readonly tabBinding?: AgentBrowserTabBinding;
+    } = {},
   ): string[] {
     const args = ["--json", "--session", sessionId];
     const environment = this.options.environment ?? process.env;
     const headed = options.headed ?? this.options.configuration.runtime.headed;
     assertAgentBrowserWindowModeSupported({ headed, environment });
-    const configuredExecutable = this.options.configuration.runtime.executablePath?.trim();
-    if (configuredExecutable) {
-      const executable =
-        this.options.resolveExecutable?.() ??
-        resolveAgentBrowserExecutable({
-          configuredPath: configuredExecutable,
-          workspaceRoot: this.options.workspaceRoot,
-        });
-      args.push("--executable-path", executable);
-    }
+    const executable = this.browserExecutable();
+    if (executable) args.push("--executable-path", executable);
     if (headed) args.push("--headed");
     args.push(
       "--idle-timeout",
       String(options.idleTimeoutMs ?? this.options.configuration.runtime.idleTimeoutMs),
       "--max-output",
       String(this.options.configuration.runtime.outputMaxChars),
-      "--pin-tab",
+      options.tabBinding === "unpin" ? "--no-pin-tab" : "--pin-tab",
     );
     if (environment.SENERA_CONTAINER === "1") {
       args.push("--args", `--disable-dev-shm-usage${process.getuid?.() === 0 ? ",--no-sandbox" : ""}`);
@@ -217,7 +350,7 @@ export class AgentNativeBrowserDriver implements AgentBrowserDriver {
     return args;
   }
 
-  private connectionArguments(sessionId: string, cdpUrl: string): string[] {
+  private connectionArguments(sessionId: string, cdpUrl: string, tabBinding: AgentBrowserTabBinding = "pin"): string[] {
     return [
       "--json",
       "--session",
@@ -228,7 +361,7 @@ export class AgentNativeBrowserDriver implements AgentBrowserDriver {
       String(this.options.configuration.runtime.idleTimeoutMs),
       "--max-output",
       String(this.options.configuration.runtime.outputMaxChars),
-      "--pin-tab",
+      tabBinding === "unpin" ? "--no-pin-tab" : "--pin-tab",
     ];
   }
 
@@ -240,6 +373,7 @@ export class AgentNativeBrowserDriver implements AgentBrowserDriver {
       acquireAgentManagedBrowserProfile({
         profileDirectory: this.managedProfileDirectory(),
         launchIdentity: this.managedProfileLaunchIdentity(),
+        probe: this.options.probeCdpEndpoint ?? probeAgentBrowserCdpEndpoint,
         open: async () => {
           const ownerSessionId = managedBrowserOwnerSessionId(this.managedProfileDirectory());
           const launch = [
@@ -263,7 +397,7 @@ export class AgentNativeBrowserDriver implements AgentBrowserDriver {
             ],
             options,
           );
-          return readManagedBrowserCdpUrl(endpoint);
+          return readBrowserCdpUrl(endpoint);
         },
         close: async () => {
           const ownerSessionId = managedBrowserOwnerSessionId(this.managedProfileDirectory());
@@ -294,152 +428,31 @@ export class AgentNativeBrowserDriver implements AgentBrowserDriver {
   }
 
   private managedProfileLaunchIdentity(): string {
-    const executable = this.options.configuration.runtime.executablePath?.trim();
-    const resolvedExecutable = executable
-      ? (this.options.resolveExecutable?.() ??
-        resolveAgentBrowserExecutable({ configuredPath: executable, workspaceRoot: this.options.workspaceRoot }))
-      : undefined;
     const environment = this.options.environment ?? process.env;
     return JSON.stringify({
       controller: this.controller(),
-      executable: resolvedExecutable ?? null,
+      browser: this.options.configuration.runtime.browser,
+      executable: this.browserExecutable() ?? null,
       headed: this.options.configuration.runtime.headed,
+      requestTimeoutMs: this.options.configuration.runtime.requestTimeoutMs,
       container: environment.SENERA_CONTAINER === "1",
     });
   }
-}
 
-interface AgentManagedBrowserProfileLease {
-  readonly cdpUrl: string;
-  release(): Promise<void>;
-}
-
-interface AgentManagedBrowserProfileOptions {
-  readonly profileDirectory: string;
-  readonly launchIdentity: string;
-  open(): Promise<string>;
-  close(): Promise<void>;
-}
-
-/**
- * One coordinator lives for each application-owned profile path in this host
- * process. Retaining an inactive coordinator prevents a new launch racing an
- * in-flight close against Chromium's profile lock.
- */
-const managedBrowserProfiles = new Map<string, AgentManagedBrowserProfile>();
-const managedBrowserTabMutations = new Map<string, Promise<void>>();
-
-class AgentManagedBrowserProfile {
-  private opening: Promise<string> | undefined;
-  private cdpUrl: string | undefined;
-  private references = 0;
-  private closing: Promise<void> | undefined;
-
-  constructor(private options: AgentManagedBrowserProfileOptions) {}
-
-  async acquire(candidate: AgentManagedBrowserProfileOptions): Promise<AgentManagedBrowserProfileLease> {
-    if (this.closing) await this.closing;
-    if (this.references === 0 && !this.cdpUrl && !this.opening) this.options = candidate;
-    if (candidate.launchIdentity !== this.options.launchIdentity) {
-      throw new Error(
-        "The Senera browser that remembers sign-ins is already active with different launch settings. Close its active sessions before changing browser launch settings.",
-      );
+  private browserExecutable(): string | undefined {
+    if (!this.browserExecutableResolved) {
+      this.browserExecutablePath =
+        this.options.resolveExecutable?.() ??
+        resolveAgentBrowserExecutableSelection({
+          selection: this.options.configuration.runtime.browser,
+          configuredPath: this.options.configuration.runtime.executablePath,
+          workspaceRoot: this.options.workspaceRoot,
+          environment: this.options.environment,
+        });
+      this.browserExecutableResolved = true;
     }
-    this.references += 1;
-    try {
-      const cdpUrl = await this.endpoint();
-      let released = false;
-      return {
-        cdpUrl,
-        release: async () => {
-          if (released) return;
-          released = true;
-          await this.release();
-        },
-      };
-    } catch (error) {
-      await this.release();
-      throw error;
-    }
+    return this.browserExecutablePath;
   }
-
-  private endpoint(): Promise<string> {
-    if (this.cdpUrl) return Promise.resolve(this.cdpUrl);
-    const opening = this.opening ?? this.options.open();
-    this.opening = opening;
-    return opening.then(
-      (cdpUrl) => {
-        this.cdpUrl = cdpUrl;
-        return cdpUrl;
-      },
-      (error) => {
-        if (this.opening === opening) this.opening = undefined;
-        throw error;
-      },
-    );
-  }
-
-  private async release(): Promise<void> {
-    this.references = Math.max(0, this.references - 1);
-    if (this.references > 0) return;
-    if (!this.cdpUrl && !this.opening) return;
-    const closing = this.closing ?? this.options.close();
-    this.closing = closing;
-    try {
-      await closing;
-    } finally {
-      if (this.closing === closing) {
-        this.cdpUrl = undefined;
-        this.opening = undefined;
-        this.closing = undefined;
-      }
-    }
-  }
-}
-
-function acquireAgentManagedBrowserProfile(
-  options: AgentManagedBrowserProfileOptions,
-): Promise<AgentManagedBrowserProfileLease> {
-  const key = path.resolve(options.profileDirectory);
-  let profile = managedBrowserProfiles.get(key);
-  if (!profile) {
-    profile = new AgentManagedBrowserProfile(options);
-    managedBrowserProfiles.set(key, profile);
-  }
-  return profile.acquire(options);
-}
-
-async function serializeManagedBrowserTabMutation<TValue>(
-  profileDirectory: string,
-  operation: () => Promise<TValue>,
-): Promise<TValue> {
-  const key = path.resolve(profileDirectory);
-  const predecessor = managedBrowserTabMutations.get(key) ?? Promise.resolve();
-  let release!: () => void;
-  const completion = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const queued = predecessor.catch(() => undefined).then(() => completion);
-  managedBrowserTabMutations.set(key, queued);
-  try {
-    await predecessor.catch(() => undefined);
-    return await operation();
-  } finally {
-    release();
-    if (managedBrowserTabMutations.get(key) === queued) managedBrowserTabMutations.delete(key);
-  }
-}
-
-function managedBrowserOwnerSessionId(profileDirectory: string): string {
-  return `senera-managed-browser-${sha256Hex(path.resolve(profileDirectory)).slice(0, 32)}`;
-}
-
-function readManagedBrowserCdpUrl(value: unknown): string {
-  const cdpUrl = recordValue(value, "cdpUrl");
-  if (typeof cdpUrl !== "string" || !cdpUrl.trim()) {
-    throw new Error("agent-browser did not return the managed browser CDP endpoint.");
-  }
-  return cdpUrl.trim();
 }
 
 class AgentNativeBrowserSession implements AgentBrowserDriverSession {
@@ -448,6 +461,7 @@ class AgentNativeBrowserSession implements AgentBrowserDriverSession {
   private closed = false;
   private currentPersistentTabTargetId: string | undefined;
   private persistentTabInitialized = false;
+  private lastKnownUrl: string | undefined;
 
   constructor(
     private readonly driver: AgentNativeBrowserDriver,
@@ -463,12 +477,53 @@ class AgentNativeBrowserSession implements AgentBrowserDriverSession {
     input: Readonly<Record<string, unknown>>,
     options: AgentBrowserDriverOperationOptions,
   ): Promise<AgentBrowserDriverOperationResult> {
+    return withAgentBrowserOperationDeadline(options, (bounded) =>
+      this.executeWithinDeadline(operation, input, bounded),
+    );
+  }
+
+  private async executeWithinDeadline(
+    operation: AgentBrowserOperation,
+    input: Readonly<Record<string, unknown>>,
+    options: AgentBrowserDriverOperationOptions,
+  ): Promise<AgentBrowserDriverOperationResult> {
     if (this.closed) throw new Error("The controlled browser session is closed.");
-    if (operation !== "close") await this.ensurePersistentTab(options);
+    try {
+      if (operation !== "close") {
+        if (await this.driver.preparePersistentSession(this.options.sessionId, options))
+          await this.rebindSessionTab(options);
+        await this.ensurePersistentTab(options);
+      }
+      return await this.completeOperation(operation, input, options);
+    } catch (error) {
+      if (operation === "close" || !isBrowserTabGoneFailure(error)) throw error;
+      await this.rebindSessionTab(options);
+      if (operation !== "open" && operation !== "tab_new") {
+        throw new AgentNativeBrowserCommandError(
+          "The browser tab bound to this session closed. The session now points at a fresh tab; open the page again to continue.",
+          "tab_gone",
+        );
+      }
+      return this.completeOperation(operation, input, options);
+    }
+  }
+
+  private async completeOperation(
+    operation: AgentBrowserOperation,
+    input: Readonly<Record<string, unknown>>,
+    options: AgentBrowserDriverOperationOptions,
+  ): Promise<AgentBrowserDriverOperationResult> {
     const result = await this.executeOperation(operation, input, options);
     if (operation === "close" || operation === "tab_list" || operation === "read" || operation === "render_html")
       return result;
+    // The URL is already confirmed for a recovered navigation. Querying the
+    // page again would turn a usable in-flight navigation back into a failure.
+    if (result.navigation?.status === "pending") return result;
     if (operation === "tab_close" && !result.page) return result;
+    if (result.screenshot && result.page) {
+      this.lastKnownUrl = result.page.url;
+      return result;
+    }
     return { ...result, page: await this.pageState(options) };
   }
 
@@ -477,7 +532,11 @@ class AgentNativeBrowserSession implements AgentBrowserDriverSession {
     this.closed = true;
     try {
       await this.closeOwnedPersistentTabs();
-      await this.driver.run(this.options.sessionId, ["close"], { timeoutMs: this.options.requestTimeoutMs });
+      try {
+        await this.driver.run(this.options.sessionId, ["close"], { timeoutMs: this.options.requestTimeoutMs });
+      } catch (error) {
+        if (!isBrowserDaemonResponseLoss(error)) throw error;
+      }
     } finally {
       this.driver.forget(this);
       const directory = await this.tempDirectoryPromise;
@@ -494,9 +553,12 @@ class AgentNativeBrowserSession implements AgentBrowserDriverSession {
       case "open": {
         const url = requiredString(input, "url");
         await this.options.assertRequestPermitted(url, "navigation");
-        const data = await this.run(["open", url], options);
-        this.rememberOwnedTab(data, false, true);
-        return { content: pageDescription(data), page: pageFromData(data) };
+        const navigation = await this.runNavigationWithRecovery(["open", url], options, {
+          targetUrl: url,
+          previousUrl: this.lastKnownUrl,
+        });
+        this.rememberOwnedTab(navigation.data, false, true);
+        return this.navigationOperationResult(navigation, pageDescription);
       }
       case "render_html":
         return this.renderHtml(input, options);
@@ -559,19 +621,45 @@ class AgentNativeBrowserSession implements AgentBrowserDriverSession {
         const amount = optionalNumber(input, "amount") ?? 600;
         return { content: stringValue(await this.run(["scroll", direction, String(amount)], options), "scrolled") };
       }
-      case "wait_ms":
-        return {
-          content: stringValue(await this.run(["wait", String(optionalNumber(input, "ms") ?? 0)], options), "waited"),
-        };
+      case "wait_ms": {
+        const ms = Math.max(0, Math.floor(optionalNumber(input, "ms") ?? 0));
+        await this.waitLocally(ms, options);
+        return { content: `Waited ${ms}ms.` };
+      }
       case "wait_for_selector":
-        return { content: stringValue(await this.run(["wait", requiredString(input, "selector")], options), "waited") };
+        return {
+          content: stringValue(
+            await this.waitForCondition(["wait", requiredString(input, "selector")], options),
+            "waited",
+          ),
+        };
       case "wait_for_text":
         return {
-          content: stringValue(await this.run(["wait", "--text", requiredString(input, "text")], options), "waited"),
+          content: stringValue(
+            await this.waitForCondition(["wait", "--text", requiredString(input, "text")], options),
+            "waited",
+          ),
         };
       case "wait_for_load":
         return {
-          content: stringValue(await this.run(["wait", "--load", requiredString(input, "state")], options), "waited"),
+          content: stringValue(
+            await this.waitForCondition(["wait", "--load", requiredString(input, "state")], options),
+            "waited",
+          ),
+        };
+      case "wait_for_url":
+        return {
+          content: stringValue(
+            await this.waitForCondition(["wait", "--url", requiredString(input, "urlPattern")], options),
+            "waited",
+          ),
+        };
+      case "wait_for_function":
+        return {
+          content: stringValue(
+            await this.waitForCondition(["wait", "--fn", requiredString(input, "expression")], options),
+            "waited",
+          ),
         };
       case "screenshot":
         return this.screenshot(input, options);
@@ -586,9 +674,13 @@ class AgentNativeBrowserSession implements AgentBrowserDriverSession {
       case "close":
         return { content: "Controlled browser session closed." };
       case "back":
-      case "forward":
+      case "forward": {
+        const previousUrl = this.lastKnownUrl;
+        const navigation = await this.runNavigationWithRecovery([operation], options, { previousUrl });
+        return this.navigationOperationResult(navigation, (data) => stringValue(data, operation));
+      }
       case "reload":
-        return { content: stringValue(await this.run([operation], options), operation) };
+        return this.reloadPage(options);
       case "tab_new": {
         const args = ["tab", "new"];
         const label = optionalString(input, "label");
@@ -598,12 +690,26 @@ class AgentNativeBrowserSession implements AgentBrowserDriverSession {
           await this.options.assertRequestPermitted(url, "navigation");
           args.push(url);
         }
-        const data = await this.driver.withPersistentTabMutation(this.options.sessionId, async () => {
-          const created = await this.run(args, options);
-          this.rememberOwnedTab(created, false, true);
+        const navigation = await this.driver.withPersistentTabMutation(this.options.sessionId, async () => {
+          const before =
+            this.options.context === "persistent"
+              ? new Set((await this.listBrowserTabs(options)).map((tab) => tab.targetId))
+              : undefined;
+          const created = url
+            ? await this.runNavigationWithRecovery(args, options, { targetUrl: url, previousUrl: this.lastKnownUrl })
+            : { data: await this.run(args, options), pending: false };
+          if (created.pending) {
+            const createdTargetId = await this.recoverOpenedTabTargetId(before, options);
+            if (createdTargetId) {
+              this.ownedTabTargetIds.add(createdTargetId);
+              this.currentPersistentTabTargetId = createdTargetId;
+            }
+          } else {
+            this.rememberOwnedTab(created.data, false, true);
+          }
           return created;
         });
-        return { content: stringValue(data, "tab") };
+        return this.navigationOperationResult(navigation, (data) => stringValue(data, "tab"));
       }
       case "tab_list": {
         const tabs = await this.listAccessibleTabs(options);
@@ -626,10 +732,21 @@ class AgentNativeBrowserSession implements AgentBrowserDriverSession {
         return { content: stringValue(data, "tab") };
       }
       case "download":
-        return this.download(requiredString(input, "selector"), options);
+        return this.download(input, options);
       case "computer":
         return this.computer(input, options);
     }
+  }
+
+  private async rebindSessionTab(options: AgentBrowserDriverOperationOptions): Promise<void> {
+    // The daemon still pins a tab that no longer exists. `tab new` alone leaves
+    // that stale strict pin in place, so clear the pin in the same command or
+    // every later operation keeps failing with tab_gone.
+    const data = await this.runUnpinned(["tab", "new", "about:blank"], options);
+    this.ownedTabTargetIds.clear();
+    this.currentPersistentTabTargetId = undefined;
+    this.persistentTabInitialized = true;
+    this.rememberOwnedTab(data, false, true);
   }
 
   private async ensurePersistentTab(options: AgentBrowserDriverOperationOptions): Promise<void> {
@@ -718,25 +835,20 @@ class AgentNativeBrowserSession implements AgentBrowserDriverSession {
     const operationDeadline = Date.now() + renderOptions.timeoutMs;
     const url = requiredString(input, "url");
     await this.options.assertRequestPermitted(url, "navigation");
-    const opened = await this.runWithRemaining(["open", url], renderOptions, operationDeadline);
+    const { data: opened } = await this.runNavigationWithRecovery(["open", url], renderOptions, {
+      targetUrl: url,
+      previousUrl: this.lastKnownUrl,
+    });
     const settleTimeoutMs = requiredPositiveNumber(input, "settleTimeoutMs");
     const pollMs = requiredPositiveNumber(input, "settlePollMs");
     const stableSamples = requiredPositiveInteger(input, "stableSamples");
     const deadline = Math.min(operationDeadline, Date.now() + settleTimeoutMs);
-    await this.runWithRemaining(
-      ["wait", String(Math.min(pollMs, Math.max(1, deadline - Date.now())))],
-      renderOptions,
-      deadline,
-    );
+    await waitForBrowserDelay(Math.min(pollMs, Math.max(1, deadline - Date.now())), renderOptions.signal);
     let html = await this.readHtml(renderOptions, deadline);
     let signature = renderedHtmlSignature(html);
     let stable = 1;
     while (stable < stableSamples && Date.now() < deadline) {
-      await this.runWithRemaining(
-        ["wait", String(Math.min(pollMs, Math.max(1, deadline - Date.now())))],
-        renderOptions,
-        deadline,
-      );
+      await waitForBrowserDelay(Math.min(pollMs, Math.max(1, deadline - Date.now())), renderOptions.signal);
       const next = await this.readHtml(renderOptions, deadline);
       const nextSignature = renderedHtmlSignature(next);
       if (nextSignature === signature) stable += 1;
@@ -761,6 +873,7 @@ class AgentNativeBrowserSession implements AgentBrowserDriverSession {
       this.runWithRemaining(["get", "url"], options, deadline).then((data) => stringValue(data, "url")),
       this.runWithRemaining(["get", "title"], options, deadline).then((data) => stringValue(data, "title")),
     ]);
+    this.lastKnownUrl = url;
     return { url, title };
   }
 
@@ -774,51 +887,308 @@ class AgentNativeBrowserSession implements AgentBrowserDriverSession {
     return this.run(args, { ...options, timeoutMs: Math.min(options.timeoutMs, remaining) });
   }
 
+  /**
+   * Native navigation has an internal load timeout. The page can keep loading, so recover
+   * the pending navigation from page state instead of resending the command.
+   */
+  private async runNavigationWithRecovery(
+    args: readonly string[],
+    options: AgentBrowserDriverOperationOptions,
+    expectation: { readonly targetUrl?: string; readonly previousUrl?: string },
+  ): Promise<AgentBrowserNavigationOutcome> {
+    const deadline = Date.now() + options.timeoutMs;
+    try {
+      return {
+        data: await this.run(args, options),
+        pending: false,
+      };
+    } catch (error) {
+      if (!isUncertainBrowserNavigation(error)) throw error;
+      if (Date.now() >= deadline) throw navigationBudgetError();
+      return {
+        data: await this.settlePendingNavigation(options, deadline, expectation),
+        pending: true,
+      };
+    }
+  }
+
+  private async settlePendingNavigation(
+    options: AgentBrowserDriverOperationOptions,
+    deadline: number,
+    expectation: { readonly targetUrl?: string; readonly previousUrl?: string },
+  ): Promise<{ url: string; title: string }> {
+    const previousUrl = expectation.previousUrl ?? "about:blank";
+    while (Date.now() < deadline) {
+      let currentUrl: string;
+      try {
+        currentUrl = stringValue(await this.runWithRemaining(["get", "url"], options, deadline), "url");
+      } catch (error) {
+        if (Date.now() >= deadline) break;
+        if (!isRetryableBrowserReadFailure(error) || options.signal?.aborted) throw error;
+        await this.waitDuringNavigation(deadline, options.signal);
+        continue;
+      }
+      if (browserNavigationCommitted(currentUrl, expectation.targetUrl, previousUrl)) {
+        this.lastKnownUrl = currentUrl;
+        return this.observedPageState(options, deadline, currentUrl);
+      }
+      await this.waitDuringNavigation(deadline, options.signal);
+    }
+    throw navigationBudgetError();
+  }
+
+  private async reloadPage(options: AgentBrowserDriverOperationOptions): Promise<AgentBrowserDriverOperationResult> {
+    const deadline = Date.now() + options.timeoutMs;
+    const marker = await this.readPerformanceTimeOrigin(options, deadline);
+    try {
+      return {
+        content: stringValue(await this.run(["reload"], options), "reload"),
+      };
+    } catch (error) {
+      if (!isUncertainBrowserNavigation(error) || marker === undefined) throw error;
+      const settled = await this.settlePendingReload(options, deadline, marker);
+      return {
+        content: pendingNavigationContent(settled.url),
+        page: settled,
+        navigation: { status: "pending" },
+      };
+    }
+  }
+
+  private async settlePendingReload(
+    options: AgentBrowserDriverOperationOptions,
+    deadline: number,
+    marker: string,
+  ): Promise<{ url: string; title: string }> {
+    while (Date.now() < deadline) {
+      let current: string | undefined;
+      try {
+        current = await this.readPerformanceTimeOrigin(options, deadline);
+      } catch (error) {
+        if (!isRetryableBrowserReadFailure(error) || options.signal?.aborted) throw error;
+      }
+      if (current !== undefined && current !== marker) {
+        return this.observedPageState(options, deadline, this.lastKnownUrl);
+      }
+      await this.waitDuringNavigation(deadline, options.signal);
+    }
+    throw navigationBudgetError();
+  }
+
+  private async readPerformanceTimeOrigin(
+    options: AgentBrowserDriverOperationOptions,
+    deadline: number,
+  ): Promise<string | undefined> {
+    try {
+      const data = await this.runWithRemaining(["eval", "performance.timeOrigin"], options, deadline);
+      const result = recordValue(data, "result");
+      return typeof result === "number" || typeof result === "string" ? String(result) : undefined;
+    } catch (error) {
+      if (options.signal?.aborted) throw error;
+      return undefined;
+    }
+  }
+
+  /**
+   * The URL is the authoritative signal that a navigation was submitted.
+   * Title is ancillary metadata, so a transient read failure must not undo a
+   * confirmed navigation or cause an unsafe second navigation attempt.
+   */
+  private async observedPageState(
+    options: AgentBrowserDriverOperationOptions,
+    deadline: number,
+    knownUrl: string | undefined,
+  ): Promise<{ url: string; title: string }> {
+    const url = knownUrl ?? stringValue(await this.runWithRemaining(["get", "url"], options, deadline), "url");
+    this.lastKnownUrl = url;
+    try {
+      const title = stringValue(await this.runWithRemaining(["get", "title"], options, deadline), "title");
+      return { url, title };
+    } catch (error) {
+      if (!isRetryableBrowserReadFailure(error) || options.signal?.aborted) throw error;
+      return { url, title: "" };
+    }
+  }
+
+  private navigationOperationResult(
+    navigation: AgentBrowserNavigationOutcome,
+    settledContent: (data: unknown) => string,
+  ): AgentBrowserDriverOperationResult {
+    const page = pageFromData(navigation.data);
+    if (!navigation.pending) {
+      return { content: settledContent(navigation.data), ...(page ? { page } : {}) };
+    }
+    return {
+      content: pendingNavigationContent(page?.url),
+      ...(page ? { page } : {}),
+      navigation: { status: "pending" },
+    };
+  }
+
+  private async waitForCondition(
+    args: readonly string[],
+    options: AgentBrowserDriverOperationOptions,
+  ): Promise<unknown> {
+    const deadline = Date.now() + options.timeoutMs;
+    while (true) {
+      assertBrowserOperationActive(options.signal);
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        throw new AgentNativeBrowserCommandError(
+          `The browser wait expired after ${options.timeoutMs}ms without observing its condition.`,
+          "timeout",
+        );
+      }
+      try {
+        return await this.run(args, options);
+      } catch (error) {
+        if (!isRetryableBrowserWaitFailure(error) || options.signal?.aborted) throw error;
+        await waitForBrowserDelay(
+          Math.min(AgentBrowserNavigationPollMs, Math.max(1, deadline - Date.now())),
+          options.signal,
+        );
+      }
+    }
+  }
+
+  private async waitLocally(ms: number, options: AgentBrowserDriverOperationOptions): Promise<void> {
+    const requestedMs = Math.max(0, Math.floor(ms));
+    const budgetMs = Math.max(0, Math.floor(options.timeoutMs));
+    await waitForBrowserDelay(Math.min(requestedMs, budgetMs), options.signal);
+    if (requestedMs > budgetMs) {
+      throw new AgentNativeBrowserCommandError(
+        `Browser wait of ${requestedMs}ms exceeds the remaining ${budgetMs}ms operation budget. Increase the browser operation timeout in settings to wait longer.`,
+        "timeout",
+      );
+    }
+  }
+
+  private async waitDuringNavigation(deadline: number, signal?: AbortSignal): Promise<void> {
+    await waitForBrowserDelay(Math.min(AgentBrowserNavigationPollMs, Math.max(1, deadline - Date.now())), signal);
+  }
+
+  private async recoverOpenedTabTargetId(
+    previousTargetIds: ReadonlySet<string> | undefined,
+    options: AgentBrowserDriverOperationOptions,
+  ): Promise<string | undefined> {
+    if (this.options.context !== "persistent" || !previousTargetIds) return undefined;
+    const tabs = await this.listBrowserTabs(options);
+    return onlyNewBrowserTabTarget(previousTargetIds, tabs) ?? tabs.find((tab) => tab.active)?.targetId;
+  }
+
   private async screenshot(
     input: Readonly<Record<string, unknown>>,
     options: AgentBrowserDriverOperationOptions,
   ): Promise<AgentBrowserDriverOperationResult> {
-    const directory = await this.tempDirectoryPromise;
     const format = optionalString(input, "format") === "jpeg" ? "jpeg" : "png";
-    const output = path.join(directory, `screenshot-${Date.now()}.${format === "jpeg" ? "jpg" : "png"}`);
-    const args = ["screenshot"];
     const selector = optionalString(input, "selector");
-    if (selector) args.push(selector);
-    args.push(output);
-    if (optionalBoolean(input, "fullPage")) args.push("--full");
-    if (optionalBoolean(input, "annotate")) args.push("--annotate");
-    args.push("--screenshot-format", format);
-    await this.run(args, options);
-    const data = await fs.readFile(output);
-    const screenshot: AgentBrowserDriverScreenshot = {
-      data,
-      mediaType: format === "jpeg" ? "image/jpeg" : "image/png",
-    };
-    return { content: "Captured browser screenshot.", screenshot };
+    const selectorBox = selector ? screenshotBox(await this.run(["get", "box", selector], options)) : undefined;
+    const annotations = optionalBoolean(input, "annotate")
+      ? await this.screenshotAnnotations(options, selectorBox)
+      : [];
+    const targetId =
+      this.currentPersistentTabTargetId ?? (await this.listBrowserTabs(options)).find((tab) => tab.active)?.targetId;
+    if (!targetId) throw new Error("The browser did not identify this session's screenshot tab.");
+    return this.driver.screenshotWithCdp(this.options.sessionId, {
+      targetId,
+      format,
+      fullPage: input.fullPage === true,
+      ...(selectorBox ? { selectorBox } : {}),
+      annotations,
+      options,
+    });
+  }
+
+  private async screenshotAnnotations(
+    options: AgentBrowserDriverOperationOptions,
+    selection?: AgentBrowserScreenshotBox,
+  ): Promise<readonly AgentBrowserScreenshotAnnotation[]> {
+    const snapshot = await this.run(["snapshot", "-i"], options);
+    const refs = recordValue(snapshot, "refs");
+    if (!refs || typeof refs !== "object" || Array.isArray(refs))
+      throw new Error("The browser did not return screenshot annotation references.");
+    const references = Object.keys(refs).map((ref) => `@${ref}`);
+    if (!references.length) return [];
+    const results = await this.driver.run(
+      this.options.sessionId,
+      ["batch"],
+      options,
+      "pin",
+      JSON.stringify(references.map((ref) => ["get", "box", ref])),
+    );
+    if (!Array.isArray(results) || results.length !== references.length)
+      throw new Error("The browser returned an incomplete annotation batch.");
+    return results.flatMap((result: unknown, index) => {
+      if (recordValue(result, "success") !== true)
+        throw new AgentNativeBrowserCommandError(
+          String(recordValue(result, "error") ?? "Could not resolve the screenshot annotation."),
+          typeof recordValue(result, "code") === "string" ? String(recordValue(result, "code")) : undefined,
+        );
+      const data = recordValue(result, "data");
+      if (recordValue(data, "width") === 0 || recordValue(data, "height") === 0) return [];
+      const box = screenshotBox(data);
+      if (
+        selection &&
+        (box.x + box.width <= selection.x ||
+          box.y + box.height <= selection.y ||
+          box.x >= selection.x + selection.width ||
+          box.y >= selection.y + selection.height)
+      )
+        return [];
+      return [{ ref: references[index]!, box }];
+    });
   }
 
   private async download(
-    selector: string,
+    input: Readonly<Record<string, unknown>>,
     options: AgentBrowserDriverOperationOptions,
   ): Promise<AgentBrowserDriverOperationResult> {
-    const directory = await this.tempDirectoryPromise;
-    const output = path.join(directory, `download-${randomUUID()}`);
-    const sourcePage = await this.currentPageUrl(options);
-    const href = await this.attribute(selector, "href", options);
-    const declaredFileName = await this.attribute(selector, "download", options);
-    const sourceUrl = resolveDirectDownloadTarget(href, sourcePage);
-    if (sourceUrl) await this.options.assertRequestPermitted(sourceUrl, "subresource", sourcePage);
-    await this.run(["download", selector, output], options);
-    const data = await readBrowserDownload(output, this.options.maxDownloadBytes);
-    const detected = await fileTypeFromBuffer(data);
-    const fileName = resolveDownloadFileName(declaredFileName, detected?.ext);
-    const download: AgentBrowserDriverDownload = {
-      data,
-      fileName,
-      ...(detected ? { mediaType: detected.mime } : {}),
-      ...(sourceUrl ? { url: sourceUrl } : {}),
-    };
-    return { content: `Downloaded ${fileName}.`, download };
+    const root = await this.tempDirectoryPromise;
+    const directory = await fs.mkdtemp(path.join(root, "download-"));
+    try {
+      const selector = optionalString(input, "selector");
+      const url = optionalString(input, "url");
+      if (Boolean(selector) === Boolean(url))
+        throw new Error("BrowserDownload requires exactly one of selector or url.");
+      const sourcePage = await this.currentPageUrl(options);
+      const href = selector ? await this.attribute(selector, "href", options) : url;
+      const sourceUrl = resolveDirectDownloadTarget(href, sourcePage);
+      if (url && !sourceUrl) throw new Error("BrowserDownload url must be an HTTP, HTTPS, or authorized file URL.");
+      if (sourceUrl) await this.options.assertRequestPermitted(sourceUrl, "subresource", sourcePage);
+      const targetId =
+        this.currentPersistentTabTargetId ?? (await this.listBrowserTabs(options)).find((tab) => tab.active)?.targetId;
+      if (!targetId) throw new Error("The browser did not identify this session's active tab.");
+
+      const downloaded = await this.driver.downloadWithCdp(
+        this.options.sessionId,
+        directory,
+        options,
+        targetId,
+        this.options.maxDownloadBytes,
+        selector
+          ? {
+              activate: async (signal) => {
+                await this.run(["click", selector], { ...options, signal });
+              },
+            }
+          : { url: sourceUrl! },
+        (target) => this.options.assertRequestPermitted(target, "subresource", sourcePage),
+      );
+      assertBrowserDownloadPath(directory, downloaded.filePath);
+      const data = await readBrowserDownload(downloaded.filePath, this.options.maxDownloadBytes);
+      const detected = await fileTypeFromBuffer(data);
+      const fileName = resolveDownloadFileName(downloaded.suggestedFilename, detected?.ext);
+      const downloadedUrl = resolveDirectDownloadTarget(downloaded.url, sourcePage) ?? sourceUrl;
+      const download: AgentBrowserDriverDownload = {
+        data,
+        fileName,
+        ...(detected ? { mediaType: detected.mime } : {}),
+        ...(downloadedUrl ? { url: downloadedUrl } : {}),
+      };
+      return { content: `Downloaded ${fileName}.`, download };
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true }).catch(() => undefined);
+    }
   }
 
   private async attribute(
@@ -879,7 +1249,7 @@ class AgentNativeBrowserSession implements AgentBrowserDriverSession {
           await this.runSequential(action.keys, (key) => ["press", key], options);
           break;
         case "wait":
-          await this.run(["wait", String(action.ms)], options);
+          await this.waitLocally(action.ms, options);
           break;
         case "screenshot":
           latest = await this.screenshot({}, options);
@@ -891,6 +1261,10 @@ class AgentNativeBrowserSession implements AgentBrowserDriverSession {
 
   private async run(args: readonly string[], options: AgentBrowserDriverOperationOptions): Promise<unknown> {
     return this.driver.run(this.options.sessionId, args, options);
+  }
+
+  private async runUnpinned(args: readonly string[], options: AgentBrowserDriverOperationOptions): Promise<unknown> {
+    return this.driver.run(this.options.sessionId, args, options, "unpin");
   }
 
   private async runSequential(
@@ -908,118 +1282,39 @@ class AgentNativeBrowserSession implements AgentBrowserDriverSession {
       this.run(["get", "url"], options).then((data) => stringValue(data, "url")),
       this.run(["get", "title"], options).then((data) => stringValue(data, "title")),
     ]);
+    this.lastKnownUrl = url;
     return { url, title };
   }
 }
 
-async function executeAgentBrowserCommand({
-  controller,
-  command,
-  cwd,
-  environment,
-  options,
-}: AgentNativeBrowserCommandRequest): Promise<unknown> {
-  const child = spawn(controller, command, {
-    cwd,
-    env: environment ?? process.env,
-    stdio: ["ignore", "pipe", "pipe"],
-    windowsHide: true,
-  });
-  const output = await collectChildOutput(child, options);
-  const envelope = parseEnvelope(output.stdout);
-  if (envelope.success === false) {
-    const message = typeof envelope.error === "string" ? envelope.error : JSON.stringify(envelope.error);
-    throw new AgentNativeBrowserCommandError(
-      message || "agent-browser command failed.",
-      stringValue(envelope.code, "code"),
-    );
-  }
-  return envelope.data;
+function assertBrowserOperationActive(signal: AbortSignal | undefined): void {
+  if (!signal?.aborted) return;
+  throw signal.reason ?? new Error("The browser operation was cancelled.");
 }
 
-function collectChildOutput(
-  child: ChildProcessByStdio<null, Readable, Readable>,
-  options: AgentBrowserDriverOperationOptions,
-): Promise<{ stdout: string; stderr: string }> {
+function waitForBrowserDelay(ms: number, signal?: AbortSignal): Promise<void> {
+  if (ms <= 0) return Promise.resolve();
   return new Promise((resolve, reject) => {
-    let stdout = "";
-    let stderr = "";
-    let settled = false;
-    const timer = setTimeout(() => {
-      child.kill();
-      finish(() => reject(new AgentNativeBrowserCommandError("agent-browser command timed out.", "timeout")));
-    }, options.timeoutMs);
-    const finish = (callback: () => void) => {
-      if (settled) return;
-      settled = true;
-      if (timer) clearTimeout(timer);
-      options.signal?.removeEventListener("abort", abort);
-      callback();
-    };
-    const abort = () => {
-      child.kill();
-      finish(() => reject(options.signal?.reason ?? new Error("agent-browser command was cancelled.")));
-    };
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => {
-      stdout += chunk;
-      if (stdout.split(/\r?\n/gu).some((line) => isJsonEnvelopeLine(line))) {
-        child.kill();
-        finish(() => resolve({ stdout, stderr }));
-      }
-    });
-    child.stderr.on("data", (chunk: string) => (stderr += chunk));
-    child.once("error", (error) => finish(() => reject(error)));
-    child.once("close", (code) => {
-      if (code !== 0) {
-        finish(() =>
-          reject(
-            new AgentNativeBrowserCommandError(stderr.trim() || `agent-browser exited with code ${code}.`, undefined),
-          ),
-        );
-        return;
-      }
-      finish(() => resolve({ stdout, stderr }));
-    });
-    if (options.signal) {
-      if (options.signal.aborted) abort();
-      else options.signal.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) {
+      reject(signal.reason ?? new Error("The browser operation was cancelled."));
+      return;
     }
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      reject(signal?.reason ?? new Error("The browser operation was cancelled."));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    timer.unref();
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
 }
 
-function parseEnvelope(stdout: string): AgentBrowserCommandEnvelope {
-  const lines = stdout
-    .split(/\r?\n/gu)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const line = lines.at(-1);
-  if (!line) throw new AgentNativeBrowserCommandError("agent-browser returned no JSON response.");
-  try {
-    const value = JSON.parse(line) as unknown;
-    if (!value || typeof value !== "object") throw new Error("response is not an object");
-    return value as AgentBrowserCommandEnvelope;
-  } catch (error) {
-    throw new AgentNativeBrowserCommandError(
-      `agent-browser returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-}
-
-function sanitizeAgentBrowserErrorMessage(value: string): string {
-  return value.replace(/\b(?:ws|wss):\/\/[^\s"'`]+/giu, "[internal browser endpoint]");
-}
-
-function isJsonEnvelopeLine(line: string): boolean {
-  const candidate = line.trim();
-  if (!candidate.startsWith("{") || !candidate.endsWith("}")) return false;
-  try {
-    const value = JSON.parse(candidate) as unknown;
-    return Boolean(value && typeof value === "object" && ("success" in value || "error" in value));
-  } catch {
-    return false;
-  }
+function pendingNavigationContent(url: string | undefined): string {
+  const target = url ? `The browser reached ${url}` : "The browser reached the requested page";
+  return `${target}, but it may still be loading. Use BrowserWaitForLoad or wait for a specific page condition before interacting.`;
 }
 
 function resolveDirectDownloadTarget(href: string | undefined, sourcePage: string): string | undefined {
@@ -1040,6 +1335,13 @@ function resolveDownloadFileName(declaredFileName: string | undefined, detectedE
   return detectedExtension ? `download.${detectedExtension}` : "download";
 }
 
+function assertBrowserDownloadPath(directory: string, filePath: string): void {
+  const relative = path.relative(path.resolve(directory), path.resolve(filePath));
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error("The browser reported a download file outside the controlled download directory.");
+  }
+}
+
 async function readBrowserDownload(output: string, maxBytes: number): Promise<Uint8Array> {
   const file = await fs.open(output, "r");
   try {
@@ -1051,168 +1353,4 @@ async function readBrowserDownload(output: string, maxBytes: number): Promise<Ui
   } finally {
     await file.close();
   }
-}
-
-function snapshotArguments(input: Readonly<Record<string, unknown>>): string[] {
-  const args: string[] = [];
-  if (input.interactive === true) args.push("-i");
-  if (input.includeUrls === true) args.push("--urls");
-  if (input.compact === true) args.push("-c");
-  if (typeof input.depth === "number") args.push("-d", String(input.depth));
-  if (typeof input.selector === "string" && input.selector) args.push("-s", input.selector);
-  return args;
-}
-
-function clickArguments(input: Readonly<Record<string, unknown>>): string[] {
-  const args = ["click", requiredString(input, "selector")];
-  if (input.newTab === true) args.push("--new-tab");
-  return args;
-}
-
-function agentBrowserRoutePattern(domainPattern: string): string {
-  const hostPattern = domainPattern === "*" ? "**" : domainPattern;
-  return `**://${hostPattern}/**`;
-}
-
-function pageFromData(value: unknown): { url: string; title: string } | undefined {
-  const url = recordValue(value, "url");
-  const title = recordValue(value, "title");
-  return typeof url === "string" && typeof title === "string" ? { url, title } : undefined;
-}
-
-function pageDescription(value: unknown): string {
-  const page = pageFromData(value);
-  return page ? `${page.title}\n${page.url}` : "Opened browser page.";
-}
-
-interface AgentBrowserTab {
-  readonly targetId: string;
-  readonly tabId?: string;
-  readonly label?: string;
-  readonly active: boolean;
-  readonly title?: string;
-  readonly url?: string;
-}
-
-function browserTargetId(value: unknown): string | undefined {
-  const targetId = recordValue(value, "targetId");
-  return typeof targetId === "string" && targetId ? targetId : undefined;
-}
-
-function browserTabs(value: unknown): readonly AgentBrowserTab[] {
-  const entries = recordValue(value, "tabs");
-  if (!Array.isArray(entries)) return [];
-  return entries.flatMap((entry) => {
-    const targetId = browserTargetId(entry);
-    if (!targetId) return [];
-    const record = asRecord(entry);
-    return [
-      {
-        targetId,
-        ...(typeof record.tabId === "string" && record.tabId ? { tabId: record.tabId } : {}),
-        ...(typeof record.label === "string" && record.label ? { label: record.label } : {}),
-        active: record.active === true,
-        ...(typeof record.title === "string" ? { title: record.title } : {}),
-        ...(typeof record.url === "string" ? { url: record.url } : {}),
-      },
-    ];
-  });
-}
-
-function onlyNewBrowserTabTarget(
-  previousTargetIds: ReadonlySet<string>,
-  tabs: readonly AgentBrowserTab[],
-): string | undefined {
-  const candidates = tabs.filter((tab) => !previousTargetIds.has(tab.targetId));
-  return candidates.length === 1 ? candidates[0]!.targetId : undefined;
-}
-
-function browserTabMatches(tab: AgentBrowserTab, reference: string): boolean {
-  return reference === tab.targetId || reference === tab.tabId || reference === tab.label;
-}
-
-function tabListContent(value: unknown): string {
-  const tabs = recordValue(value, "tabs");
-  if (!Array.isArray(tabs)) return "No controlled browser tabs are open.";
-  return tabs
-    .map((tab) => {
-      const entry = asRecord(tab);
-      const active = entry.active === true ? "* " : "";
-      return `${active}${String(entry.tabId ?? entry.targetId ?? "tab")}: ${String(entry.title ?? "")} ${String(entry.url ?? "")}`.trim();
-    })
-    .join("\n");
-}
-
-function validateComputerAction(value: unknown): AgentBrowserComputerAction {
-  if (!value || typeof value !== "object") throw new Error("Computer action must be an object.");
-  const type = (value as { type?: unknown }).type;
-  if (typeof type !== "string" || !AgentBrowserComputerActionTypes.includes(type as never)) {
-    throw new Error(`Unsupported browser computer action: ${String(type)}.`);
-  }
-  return value as AgentBrowserComputerAction;
-}
-
-function assertNoModifiers(action: { readonly modifiers?: readonly string[] }): void {
-  if (action.modifiers?.length)
-    throw new Error("agent-browser mouse actions do not support modifier keys in this operation.");
-}
-
-function requiredString(input: Readonly<Record<string, unknown>>, key: string): string {
-  const value = input[key];
-  if (typeof value !== "string" || !value) throw new Error(`Browser operation requires ${key}.`);
-  return value;
-}
-
-function requiredPositiveNumber(input: Readonly<Record<string, unknown>>, key: string): number {
-  const value = input[key];
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    throw new Error(`Browser operation requires ${key} as a positive number.`);
-  }
-  return value;
-}
-
-function requiredPositiveInteger(input: Readonly<Record<string, unknown>>, key: string): number {
-  const value = requiredPositiveNumber(input, key);
-  if (!Number.isInteger(value)) throw new Error(`Browser operation requires ${key} as a positive integer.`);
-  return value;
-}
-
-function requiredStringArray(input: Readonly<Record<string, unknown>>, key: string): string[] {
-  const value = input[key];
-  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string"))
-    throw new Error(`Browser operation requires ${key} as strings.`);
-  return value as string[];
-}
-
-function optionalString(input: Readonly<Record<string, unknown>>, key: string): string | undefined {
-  const value = input[key];
-  return typeof value === "string" && value ? value : undefined;
-}
-
-function optionalBoolean(input: Readonly<Record<string, unknown>>, key: string): boolean | undefined {
-  return typeof input[key] === "boolean" ? (input[key] as boolean) : undefined;
-}
-
-function optionalNumber(input: Readonly<Record<string, unknown>>, key: string): number | undefined {
-  return typeof input[key] === "number" && Number.isFinite(input[key]) ? (input[key] as number) : undefined;
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
-}
-
-function recordValue(value: unknown, key: string): unknown {
-  return asRecord(value)[key];
-}
-
-function stringValue(value: unknown, key: string): string {
-  const candidate = recordValue(value, key);
-  if (typeof candidate === "string") return candidate;
-  if (candidate !== undefined) return JSON.stringify(candidate);
-  if (typeof value === "string") return value;
-  return "Browser operation completed.";
-}
-
-function renderedHtmlSignature(value: string): string {
-  return sha256Hex(value.replace(/\s+/gu, " ").trim());
 }

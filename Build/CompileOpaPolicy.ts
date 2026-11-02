@@ -83,10 +83,10 @@ try {
   if (verifyOnly) {
     const committed = readAgentToolApprovalPolicyArtifact(policyDir);
     if (!committed.wasm.equals(wasm)) {
-      throw new Error("OPA policy WASM is stale. Run npm run compileopapolicy with the pinned compiler.");
+      throw new Error("OPA policy WASM is stale. Run npm run policy.compile with the pinned compiler.");
     }
     if (JSON.stringify(committed.manifest) !== JSON.stringify(manifest)) {
-      throw new Error("OPA policy artifact manifest is stale. Run npm run compileopapolicy.");
+      throw new Error("OPA policy artifact manifest is stale. Run npm run policy.compile.");
     }
     process.stdout.write(
       `OPA policy artifact verified (${Object.values(entrypoints).join(", ")}, OPA ${compilerVersion}).\n`,

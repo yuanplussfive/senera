@@ -1,25 +1,26 @@
 import { listAgentSelfCommandSpecs } from "./AgentSelfCommandRegistry.js";
 
 export interface AgentSelfHarnessDisclosure {
-  readonly protocol: "senera.harness/v1";
-  readonly tool: "SeneraCommand";
+  readonly protocol: "senera.harness/v2";
+  readonly tool: "ShellCommandTool";
+  readonly command: "senera";
+  readonly executionTarget: "Local";
   readonly domains: readonly string[];
-  readonly discovery: "capabilities";
+  readonly discovery: "capabilities DOMAIN [ACTION] --json";
+  readonly skillRead: "senera skills read NAME SKILL.md";
   readonly workflow: "read -> smallest command -> verify";
 }
 
-/**
- * Small, runtime-derived disclosure for prompt context. The command registry
- * remains the source of truth; this projection only tells the model where to
- * look next and never duplicates argument contracts.
- */
+/** Only the entry point is resident. Commands and schemas are read on demand. */
 export function projectAgentSelfHarnessDisclosure(): AgentSelfHarnessDisclosure {
-  const domains = new Set(listAgentSelfCommandSpecs().map((spec) => spec.command));
   return {
-    protocol: "senera.harness/v1",
-    tool: "SeneraCommand",
-    domains: [...domains].sort(),
-    discovery: "capabilities",
+    protocol: "senera.harness/v2",
+    tool: "ShellCommandTool",
+    command: "senera",
+    executionTarget: "Local",
+    domains: [...new Set(listAgentSelfCommandSpecs().map((spec) => spec.command))].sort(),
+    discovery: "capabilities DOMAIN [ACTION] --json",
+    skillRead: "senera skills read NAME SKILL.md",
     workflow: "read -> smallest command -> verify",
   };
 }

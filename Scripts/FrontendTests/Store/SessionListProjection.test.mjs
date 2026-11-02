@@ -268,6 +268,7 @@ function createState(overrides = {}) {
     historyStepBuffers: {},
     historyEventRunIds: {},
     historyActiveRequestIds: {},
+    runHistoryDetailStates: {},
     processedEventIds: {},
     processedEventIdOrder: [],
     missingOnServerIds: {},

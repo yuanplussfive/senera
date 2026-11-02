@@ -106,6 +106,7 @@ function uploadConfig(): ResolvedAgentUploadsConfig {
     MaxConcurrentUploads: 2,
     MaxStoredBytes: 16_384,
     RetentionHours: 24,
+    IncompleteRetentionHours: 1,
     MaintenanceIntervalMinutes: 15,
   };
 }

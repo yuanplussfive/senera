@@ -1,21 +1,4 @@
-export interface ExecutionSnapshotData {
-  active: ExecutionData | null;
-  executions: ExecutionData[];
-}
-
-export interface ExecutionData {
-  id: string;
-  uri: string;
-  sessionId: string;
-  requestId: string;
-  objective: string;
-  status: "active" | "paused" | "blocked" | "completed" | "cancelled";
-  reason?: string;
-  steps: ExecutionStepData[];
-  createdAt: string;
-  updatedAt: string;
-  completedAt?: string;
-}
+import type { AgentMemoryRecallSnapshot } from "../../../Source/AgentSystem/Continuity/AgentMemoryRecallContract";
 
 export interface TodoData {
   id: string;
@@ -39,75 +22,13 @@ export interface TodoSnapshotData {
   counts: TodoCountsData;
 }
 
-export interface ExecutionStepData {
-  id: string;
-  nodeId: string;
-  planId: string;
-  planRevision: number;
-  index: number;
-  title: string;
-  detail: string;
-  status: "planned" | "running" | "completed" | "failed" | "blocked";
-  dependencyIds: string[];
-  callId?: string;
-  failure?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
 /** MemOS context actually injected into a turn. */
-export interface ContinuitySnapshotData {
-  enabled: boolean;
-  query?: string;
-  periodDigests: Array<{
-    id: string;
-    uri: string;
-    revision: string;
-    granularity: "day" | "month";
-    periodStart: string;
-    periodEnd: string;
-    summary: string;
-    score: number;
-    matchedBy: string[];
-    scores?: {
-      keyword?: number;
-      semantic?: number;
-      hybrid?: number;
-    };
-  }>;
-  eventCandidates: Array<{
-    id: string;
-    uri: string;
-    revision: string;
-    type: "fact" | "preference" | "relationship" | "context" | "entity" | "custom";
-    summary: string;
-    occurredAt: string;
-    score: number;
-    matchedBy: string[];
-    scores?: {
-      keyword?: number;
-      semantic?: number;
-      hybrid?: number;
-    };
-  }>;
-  selection: {
-    digests: ContinuitySelectionCountData;
-    events: ContinuitySelectionCountData;
-    usedTokens: number;
-    maxTokens: number;
-  };
-}
+export type ContinuitySnapshotData = AgentMemoryRecallSnapshot;
 
 export interface ContinuitySelectionCountData {
   available: number;
   matched: number;
   selected: number;
-}
-
-export interface ExecutionEventData {
-  snapshot: ExecutionSnapshotData;
-  execution: ExecutionData;
-  step?: ExecutionStepData;
 }
 
 /** Three-tier prompt harness composition report for one turn. */

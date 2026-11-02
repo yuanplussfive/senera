@@ -19,6 +19,7 @@ import type { SeneraServerHandle, SeneraServerOptions, SeneraWorkspaceHandle } f
 import type { AgentWebSocketTransport } from "../Source/AgentSystem/WebSocket/AgentWebSocketTransport.js";
 import type { AgentWorkspaceSwitchResult } from "../Source/AgentSystem/WebSocket/AgentWebSocketTypes.js";
 import type { AgentLogger } from "../Source/AgentSystem/Diagnostics/AgentLogger.js";
+import { AgentClientExtensionStore } from "../Source/AgentSystem/Channels/Client/AgentClientExtensionStore.js";
 
 export interface SeneraWorkspaceSwitchOutcome {
   runtime: SeneraWorkspaceHandle;
@@ -32,6 +33,7 @@ export interface SeneraWorkspaceHost {
   readonly configSource: AgentConfigSourceOptions;
   readonly configPath: string;
   readonly paths: SeneraServerHostPaths;
+  readonly clientExtensions: AgentClientExtensionStore;
   readonly transport: AgentWebSocketTransport;
   readonly initialWorkspaceRoot: string;
   resolveConfigSource(root: string): AgentConfigSourceOptions;
@@ -94,6 +96,7 @@ export function createSeneraWorkspaceHost(input: SeneraWorkspaceHostInput): Sene
     configSource: input.configSource,
     configPath: input.configPath,
     paths: input.paths,
+    clientExtensions: new AgentClientExtensionStore(input.paths.clientExtensionsRoot),
     transport: input.transport,
     resolveConfigSource: (root) =>
       resolveWorkspaceServerConfigSource(root, input.configSource, input.initialWorkspaceRoot),

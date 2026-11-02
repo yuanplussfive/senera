@@ -1,4 +1,5 @@
 import type { AgentSelfServicePort } from "./AgentSelfServiceTypes.js";
+import { formatAgentTimeDisplay } from "../Time/AgentTime.js";
 
 export interface AgentSelfStatusReport {
   readonly workspaceRoot: string;
@@ -39,7 +40,7 @@ export function projectAgentSelfStatus(port: AgentSelfServicePort): AgentSelfSta
     manifest: {
       available: manifest !== undefined,
       pid: manifest?.pid,
-      startedAt: manifest?.startedAt,
+      startedAt: manifest?.startedAt ? formatAgentTimeDisplay(manifest.startedAt) : undefined,
       host: manifest?.host,
       port: manifest?.port,
       protocol: manifest?.protocol,
@@ -54,7 +55,7 @@ export function describeAgentSelfStatus(report: AgentSelfStatusReport): string {
   ];
   if (report.manifest.available) {
     lines.push(
-      `服务: pid ${report.manifest.pid} · 启动于 ${report.manifest.startedAt} · ${report.manifest.host}:${report.manifest.port} · 协议 v${report.manifest.protocol}`,
+      `服务: pid ${report.manifest.pid} · 启动于 ${formatAgentTimeDisplay(report.manifest.startedAt)} · ${report.manifest.host}:${report.manifest.port} · 协议 v${report.manifest.protocol}`,
     );
   } else {
     lines.push("服务: 运行清单不可用（主机未绑定 manifest 存储）");

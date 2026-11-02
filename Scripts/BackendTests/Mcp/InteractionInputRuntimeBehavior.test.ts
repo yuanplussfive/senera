@@ -1,4 +1,6 @@
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, expectTypeOf, test, vi } from "vitest";
+import type { InteractionInputEventPayload } from "../../../Frontend/src/api/interactionInputEventTypes.js";
+import type { AgentInteractionInputEventPayload } from "../../../Source/AgentSystem/Core/AgentInteractionInputContract.js";
 import { AgentEventKinds, type AgentDomainEvent } from "../../../Source/AgentSystem/Events/AgentEvent.js";
 import {
   AgentInteractionInputRuntime,
@@ -8,6 +10,9 @@ import { AgentInteractionInputActions } from "../../../Source/AgentSystem/Intera
 import { resolveAgentExternalUrl } from "../../../Source/AgentSystem/Interaction/AgentExternalUrlPolicy.js";
 
 describe("interactive input runtime", () => {
+  test("keeps frontend and backend input payloads on the same contract", () => {
+    expectTypeOf<AgentInteractionInputEventPayload>().toEqualTypeOf<InteractionInputEventPayload>();
+  });
   test("keeps an invalid response pending and resolves a later valid form submission", async () => {
     const runtime = new AgentInteractionInputRuntime();
     const events: AgentDomainEvent[] = [];
@@ -55,6 +60,12 @@ describe("interactive input runtime", () => {
       AgentEventKinds.InteractionInputResolved,
     ]);
     expect(globalSink).not.toHaveBeenCalled();
+    const event = events[0]!;
+    if (event.kind !== AgentEventKinds.InteractionInputRequested || event.data.mode !== "form") {
+      throw new Error("Expected a form interaction event.");
+    }
+    expect(event.data.schema).toEqual(request.mode === "form" ? request.schema : undefined);
+    expect(event.data.toolCallId).toBe("call-form");
     expect(runtime.listPending()).toEqual([]);
   });
 
@@ -84,6 +95,12 @@ describe("interactive input runtime", () => {
     await expect(runtime.completeExternal("oauth-login")).resolves.toBe(true);
     expect(runtime.listPending()).toEqual([]);
     expect(interactionStatuses(events)).toEqual(["pending", "external_pending", "resolved"]);
+    const event = events[0]!;
+    if (event.kind !== AgentEventKinds.InteractionInputRequested || event.data.mode !== "url") {
+      throw new Error("Expected a URL interaction event.");
+    }
+    expect(event.data.url).toBe("https://accounts.example.com/oauth/authorize?client=senera");
+    expect(event.data.hostname).toBe("accounts.example.com");
   });
 
   test("applies a declarative external URL policy before asking the user", () => {

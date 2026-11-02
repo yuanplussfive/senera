@@ -24,7 +24,7 @@
                 "type": { "type": "string", "const": "click" },
                 "x": { "type": "number", "minimum": 0 },
                 "y": { "type": "number", "minimum": 0 },
-                "button": { "default": "left", "type": "string", "enum": ["left", "middle", "right"] },
+                "button": { "type": "string", "enum": ["left", "middle", "right"] },
                 "modifiers": {
                   "minItems": 1,
                   "maxItems": 8,
@@ -42,7 +42,7 @@
                 "type": { "type": "string", "const": "double_click" },
                 "x": { "type": "number", "minimum": 0 },
                 "y": { "type": "number", "minimum": 0 },
-                "button": { "default": "left", "type": "string", "enum": ["left", "middle", "right"] },
+                "button": { "type": "string", "enum": ["left", "middle", "right"] },
                 "modifiers": {
                   "minItems": 1,
                   "maxItems": 8,
@@ -77,8 +77,8 @@
                 "type": { "type": "string", "const": "scroll" },
                 "x": { "type": "number", "minimum": 0 },
                 "y": { "type": "number", "minimum": 0 },
-                "scrollX": { "default": 0, "type": "number" },
-                "scrollY": { "default": 0, "type": "number" },
+                "scrollX": { "type": "number" },
+                "scrollY": { "type": "number" },
                 "modifiers": {
                   "minItems": 1,
                   "maxItems": 8,
@@ -155,14 +155,28 @@
               "required": ["type"],
               "additionalProperties": false
             }
+          ],
+          "allOf": [
+            {
+              "if": { "type": "object", "properties": { "type": { "const": "click" } }, "required": ["type"] },
+              "then": { "type": "object", "properties": { "button": { "default": "left" } } }
+            },
+            {
+              "if": { "type": "object", "properties": { "type": { "const": "double_click" } }, "required": ["type"] },
+              "then": { "type": "object", "properties": { "button": { "default": "left" } } }
+            },
+            {
+              "if": { "type": "object", "properties": { "type": { "const": "scroll" } }, "required": ["type"] },
+              "then": {
+                "type": "object",
+                "properties": {
+                  "scrollX": { "default": 0 },
+                  "scrollY": { "default": 0 }
+                }
+              }
+            }
           ]
         }
-      },
-      "timeoutMs": {
-        "description": "Optional per-call operation timeout in milliseconds.",
-        "type": "integer",
-        "minimum": 1000,
-        "maximum": 900000
       }
     },
     "required": ["actions"],
@@ -188,7 +202,12 @@
         "properties": {
           "assetId": { "type": "string", "minLength": 1 },
           "mediaType": { "type": "string", "minLength": 1 },
-          "markdown": { "type": "string", "minLength": 1 }
+          "markdown": { "type": "string", "minLength": 1 },
+          "workspacePath": {
+            "description": "Workspace-relative path of the recorded asset. Read it with WorkspaceRead when the image itself is needed.",
+            "type": "string",
+            "minLength": 1
+          }
         },
         "required": ["assetId", "mediaType", "markdown"],
         "additionalProperties": false
@@ -199,7 +218,12 @@
           "assetId": { "type": "string", "minLength": 1 },
           "fileName": { "type": "string", "minLength": 1 },
           "mediaType": { "type": "string", "minLength": 1 },
-          "markdown": { "type": "string", "minLength": 1 }
+          "markdown": { "type": "string", "minLength": 1 },
+          "workspacePath": {
+            "description": "Workspace-relative path of the recorded asset. Read it with WorkspaceRead when the file itself is needed.",
+            "type": "string",
+            "minLength": 1
+          }
         },
         "required": ["assetId", "fileName", "mediaType", "markdown"],
         "additionalProperties": false
@@ -213,9 +237,9 @@
   "execution": { "Targets": ["Local"], "Network": "Allow", "Workspace": "ReadOnly" },
   "runtime": {
     "Lifecycle": "Persistent",
-    "ProtocolVersion": 2,
     "ResultAssessment": "ProcessExit",
     "Scheduling": "SelfManaged",
+    "DeadlinePolicy": "ToolAware",
     "Capabilities": { "Progress": true, "Cancellation": true }
   },
   "resources": [],

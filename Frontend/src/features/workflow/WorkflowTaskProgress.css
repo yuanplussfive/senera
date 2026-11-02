@@ -1,0 +1,111 @@
+.workflow-task-progress {
+  display: flex;
+  max-height: min(24dvh, 13rem);
+  flex: none;
+  flex-direction: column;
+  overflow: hidden;
+  border-bottom: 1px solid var(--line-subtle);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.workflow-task-progress > .workflow-section-header {
+  flex: none;
+  min-height: 0;
+  padding: 0;
+}
+
+.workflow-task-progress__toggle {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: 32px minmax(0, 1fr) auto 11px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  color: var(--content-muted);
+  text-align: left;
+}
+
+.workflow-task-progress__toggle:hover {
+  background: var(--surface-hover);
+}
+
+.workflow-task-progress__toggle:focus-visible {
+  outline: 1px solid var(--accent-solid);
+  outline-offset: -1px;
+}
+
+.workflow-task-progress__toggle > .workflow-section-header__icon {
+  justify-self: center;
+}
+
+.workflow-task-progress__toggle > .workflow-section-header__title {
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.workflow-task-progress__toggle > .workflow-section-header__meta {
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.workflow-task-progress__list {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 0 12px 8px;
+}
+
+.workflow-task-progress__list[hidden] {
+  display: none;
+}
+
+.workflow-task-progress__group + .workflow-task-progress__group {
+  margin-top: 6px;
+}
+
+.workflow-task-progress__owner {
+  padding: 2px 0 3px 40px;
+  color: var(--content-muted);
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.workflow-task-progress__items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workflow-task-progress__row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: start;
+  column-gap: 8px;
+  padding-block: 4px;
+  color: var(--content-secondary);
+}
+
+.workflow-task-progress__row[data-todo-item="in_progress"] {
+  color: var(--content-primary);
+  font-weight: 500;
+}
+
+.workflow-task-progress__row[data-todo-item="cancelled"] {
+  color: var(--content-muted);
+  text-decoration: line-through;
+}
+
+.workflow-task-progress__status-icon {
+  justify-self: center;
+  margin-top: 2.5px;
+}
+
+.workflow-task-progress__label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}

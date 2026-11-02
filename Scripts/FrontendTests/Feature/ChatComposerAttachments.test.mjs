@@ -1,10 +1,13 @@
 import React from "react";
+import "fake-indexeddb/auto";
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { renderHook } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
+import { frontendMessage } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
 import { clearTestToastCalls, readTestToastCalls } from "../mocks/sonner.mjs";
+import { WorkspaceResourceProvider } from "../../../Frontend/src/shared/workspace/WorkspaceResourceProvider.tsx";
 
 const { uploadFileMock } = vi.hoisted(() => ({
   uploadFileMock: vi.fn(),
@@ -28,6 +31,7 @@ afterEach(() => {
 });
 
 test("workspace attachment uploads finish after unmount and restore only in their original workspace", async () => {
+  installPreviewUrlApi();
   let finish;
   uploadFileMock.mockImplementation(
     () =>
@@ -42,14 +46,15 @@ test("workspace attachment uploads finish after unmount and restore only in thei
   };
   const wrapper = ({ children }) => React.createElement(UploadPreviewProvider, null, children);
   const a = renderHook(() => useComposerAttachments(options), { wrapper });
-  act(() => a.result.current.enqueueFiles([new File(["hello"], "hello.txt", { type: "text/plain" })]));
+  await act(async () => a.result.current.enqueueFiles([new File(["hello"], "hello.txt", { type: "text/plain" })]));
+  await waitFor(() => expect(uploadFileMock).toHaveBeenCalledTimes(1));
   a.unmount();
   const b = renderHook(() => useComposerAttachments({ ...options, draftKey: "workspace-attachment-b" }), { wrapper });
   const attachment = { resourceUri: "senera://resource/upload-a", name: "hello.txt", mime: "text/plain", size: 5 };
   await act(async () => finish(attachment));
   expect(b.result.current.pendingAttachments).toEqual([]);
   const restored = renderHook(() => useComposerAttachments(options), { wrapper });
-  expect(restored.result.current.collectUploadedAttachments()).toEqual([attachment]);
+  await waitFor(() => expect(restored.result.current.collectUploadedAttachments()).toEqual([attachment]));
   act(() => restored.result.current.removeAttachment(restored.result.current.pendingAttachments[0].id));
 });
 
@@ -81,7 +86,10 @@ test("chat composer waits for an attachment upload and sends the uploaded refere
   const fileInput = document.querySelector("input[type='file']");
   await user.upload(fileInput, new File(["report"], "report.txt", { type: "text/plain" }));
   await waitFor(() => expect(screen.getByText("report.txt")).toBeVisible());
-  await user.type(screen.getByRole("textbox"), "Analyze this report");
+  await user.type(
+    screen.getByRole("combobox", { name: frontendMessage("chat.composer.inputMessage") }),
+    "Analyze this report",
+  );
   await user.click(screen.getByRole("button", { name: "send" }));
 
   expect(uploadFileMock).toHaveBeenCalledWith(
@@ -94,6 +102,41 @@ test("chat composer waits for an attachment upload and sends the uploaded refere
   );
   expect(onSend).toHaveBeenCalledWith("Analyze this report", [attachment], undefined);
   await waitFor(() => expect(screen.queryByText("report.txt")).not.toBeInTheDocument());
+});
+
+test("attachment-only messages retain their draft until acceptance and retry without uploading twice", async () => {
+  installPreviewUrlApi();
+  const attachment = {
+    resourceUri: "senera://resource/a1b2c3",
+    name: "photo.png",
+    mime: "image/png",
+    size: 5,
+    status: "uploaded",
+  };
+  uploadFileMock.mockResolvedValue(attachment);
+  let acknowledge;
+  const onSend = vi.fn(
+    () =>
+      new Promise((resolve) => {
+        acknowledge = resolve;
+      }),
+  );
+  const user = userEvent.setup();
+  renderComposer(createComposerProps({ onSend }));
+  await user.upload(
+    document.querySelector("input[type='file']"),
+    new File(["photo"], "photo.png", { type: "image/png" }),
+  );
+  await waitFor(() => expect(screen.getByRole("button", { name: "send" })).toBeEnabled());
+  await user.click(screen.getByRole("button", { name: "send" }));
+  expect(onSend).toHaveBeenCalledWith("", [attachment], undefined);
+  expect(screen.getByAltText("photo.png")).toBeVisible();
+  await act(async () => acknowledge(false));
+  expect(screen.getByAltText("photo.png")).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "send" }));
+  await act(async () => acknowledge(true));
+  await waitFor(() => expect(screen.queryByAltText("photo.png")).not.toBeInTheDocument());
+  expect(uploadFileMock).toHaveBeenCalledTimes(1);
 });
 
 test("chat composer preserves failed attachments and exposes inline recovery without a duplicate toast", async () => {
@@ -110,6 +153,37 @@ test("chat composer preserves failed attachments and exposes inline recovery wit
   expect(readTestToastCalls()).toEqual([]);
   await user.click(screen.getByRole("button", { name: "移除附件" }));
   await waitFor(() => expect(screen.queryByText("broken.txt")).not.toBeInTheDocument());
+});
+
+test("failed image uploads block button and keyboard sends until a retry succeeds", async () => {
+  const attachment = {
+    resourceUri: "senera://resource/phone1",
+    name: "phone.png",
+    mime: "image/png",
+    size: 5,
+    status: "uploaded",
+  };
+  uploadFileMock.mockRejectedValueOnce(new Error("Network request failed")).mockResolvedValueOnce(attachment);
+  const user = userEvent.setup();
+  const onSend = vi.fn();
+  renderComposer(createComposerProps({ onSend }));
+  await user.upload(
+    document.querySelector("input[type='file']"),
+    new File(["image"], "phone.png", { type: "image/png" }),
+  );
+  expect(await screen.findByRole("alert")).toHaveTextContent("Network request failed");
+  const input = screen.getByRole("combobox", { name: frontendMessage("chat.composer.inputMessage") });
+  await user.type(input, "Describe this image");
+  const send = screen.getByRole("button", { name: "send" });
+  expect(send).toBeDisabled();
+  await user.click(send);
+  await user.keyboard("{Enter}");
+  expect(onSend).not.toHaveBeenCalled();
+  expect(screen.getByText("Network request failed")).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "重试" }));
+  await waitFor(() => expect(send).toBeEnabled());
+  await user.click(send);
+  expect(onSend).toHaveBeenCalledWith("Describe this image", [attachment], undefined);
 });
 
 test("chat composer prevents disabled and running file drops without uploading", () => {
@@ -148,10 +222,12 @@ test("chat composer keeps uploaded attachments when sending is rejected", async 
     new File(["retry"], "retry.txt", { type: "text/plain" }),
   );
   await waitFor(() => expect(screen.getByText("retry.txt")).toBeVisible());
-  await user.type(screen.getByRole("textbox"), "Try again");
+  await user.type(screen.getByRole("combobox", { name: frontendMessage("chat.composer.inputMessage") }), "Try again");
   await user.click(screen.getByRole("button", { name: "send" }));
 
-  expect(screen.getByRole("textbox")).toHaveValue("Try again");
+  expect(screen.getByRole("combobox", { name: frontendMessage("chat.composer.inputMessage") })).toHaveValue(
+    "Try again",
+  );
   expect(screen.getByText("retry.txt")).toBeVisible();
 });
 
@@ -188,7 +264,10 @@ test("chat composer previews an original image and transfers its ownership after
   expect(await screen.findByText("50%")).toBeVisible();
 
   await act(async () => resolveUpload(attachment));
-  await user.type(screen.getByRole("textbox"), "Inspect this image");
+  await user.type(
+    screen.getByRole("combobox", { name: frontendMessage("chat.composer.inputMessage") }),
+    "Inspect this image",
+  );
   await user.click(screen.getByRole("button", { name: "send" }));
 
   expect(onSend).toHaveBeenCalledWith("Inspect this image", [attachment], undefined);
@@ -210,8 +289,11 @@ test("chat composer previews a pending text attachment before sending", async ()
   );
 
   await user.click(screen.getByRole("button", { name: "查看文件：notes.txt" }));
-  const dialog = await screen.findByRole("dialog", { name: "查看文件：notes.txt" });
-  expect(within(dialog).getByText((_, element) => element?.tagName === "PRE")).toHaveTextContent(/line one\s+line two/);
+  await act(async () => vi.dynamicImportSettled());
+  const dialog = await screen.findByRole("dialog", { name: frontendMessage("resource.workspace") });
+  expect(await within(dialog).findByText((_, element) => element?.tagName === "PRE")).toHaveTextContent(
+    /line one\s+line two/,
+  );
 });
 
 test("chat composer releases pending image previews when it unmounts", async () => {
@@ -277,7 +359,11 @@ function createComposerProps(overrides = {}) {
 
 function renderComposer(props) {
   return renderWithFrontendProviders(
-    React.createElement(UploadPreviewProvider, null, React.createElement(ChatComposer, props)),
+    React.createElement(
+      WorkspaceResourceProvider,
+      { httpBaseUrl: "http://127.0.0.1" },
+      React.createElement(UploadPreviewProvider, null, React.createElement(ChatComposer, props)),
+    ),
   );
 }
 

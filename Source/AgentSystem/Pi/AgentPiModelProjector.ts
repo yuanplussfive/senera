@@ -1,5 +1,6 @@
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
-import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
+import { AgentModelPlanningRequirements } from "../Core/AgentModelCapabilityContract.js";
+import { assertAgentModelRequirements } from "../ModelEndpoints/AgentModelRequirements.js";
 import {
   projectAgentNativeToolModel,
   resolveAgentModelMaxTokens,
@@ -7,12 +8,7 @@ import {
 import { resolveAgentModelToolPlanningMode } from "../ModelEndpoints/AgentModelToolPlanning.js";
 import type { AgentPiModelApi, AgentPiProviderProjection } from "./AgentPiTypes.js";
 
-const FreeCostModel = {
-  input: 0,
-  output: 0,
-  cacheRead: 0,
-  cacheWrite: 0,
-} as const;
+import { projectAgentPiModelPrices } from "../ModelEndpoints/AgentModelPricing.js";
 
 const SeneraPiPlanningApi: AgentPiModelApi = "senera-planning";
 const SeneraPiPlanningProviderId = "senera";
@@ -20,12 +16,7 @@ const SeneraPiPlanningProviderId = "senera";
 export function projectSeneraModelProviderToPi(provider: ResolvedAgentModelProviderConfig): AgentPiProviderProjection {
   const capabilities = provider.Capabilities ?? {};
   const toolPlanningMode = resolveAgentModelToolPlanningMode(provider);
-  if (toolPlanningMode === "native" && capabilities.ToolCalling === false) {
-    throw new AgentLocalizedError("config.nativeToolCallingCapabilityRequired", { modelId: provider.Id });
-  }
-  if (toolPlanningMode === "native" && provider.Stream === false) {
-    throw new AgentLocalizedError("config.nativeToolCallingStreamingRequired", { modelId: provider.Id });
-  }
+  assertAgentModelRequirements(provider, AgentModelPlanningRequirements[toolPlanningMode]);
   if (toolPlanningMode === "native") {
     return projectNativeModelProvider(provider, toolPlanningMode);
   }
@@ -41,7 +32,7 @@ export function projectSeneraModelProviderToPi(provider: ResolvedAgentModelProvi
     // message attachments. A vision-capable planner still receives images via
     // the endpoint's native multimodal input representation.
     input: capabilities.Vision === true ? ["text", "image"] : ["text"],
-    cost: { ...FreeCostModel },
+    cost: projectAgentPiModelPrices(provider.Pricing),
     contextWindow: provider.ContextWindowTokens,
     maxTokens: resolveAgentModelMaxTokens(provider),
   } satisfies AgentPiProviderProjection["model"];

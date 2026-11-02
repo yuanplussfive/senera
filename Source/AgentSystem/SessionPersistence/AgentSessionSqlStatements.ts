@@ -1,4 +1,13 @@
 import type Database from "better-sqlite3";
+
+interface RunEventPageParameters {
+  sessionId: string;
+  after: number;
+  through: number;
+  pageSize: number;
+  requestIds: string | null;
+  kinds: string | null;
+}
 import type {
   AppSettingRow,
   EntryRow,
@@ -48,7 +57,7 @@ export interface AgentSessionSqlStatements {
   selectRunEventsForRequest: Database.Statement<[string, string], RunEventRow>;
   selectRunEvent: Database.Statement<[string, string, string], RunEventRow>;
   selectRunEventsThroughSequence: Database.Statement<[string, string, number], RunEventRow>;
-  selectRunEventPage: Database.Statement<[string, number, number, number], RunEventRow>;
+  selectRunEventPage: Database.Statement<[RunEventPageParameters], RunEventRow>;
   selectSetting: Database.Statement<[string], AppSettingRow>;
   upsertSetting: Database.Statement;
   appendStepTrace: Database.Statement;
@@ -95,7 +104,9 @@ export function prepareAgentSessionSqlStatements(db: Database.Database): AgentSe
         metadata          = excluded.metadata
     `),
     renameSession: db.prepare(`
-      UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?
+      UPDATE sessions SET title = @title, updated_at = @updated_at,
+        metadata = json_set(metadata, '$.title', @title)
+      WHERE id = @id
     `),
     deleteSession: db.prepare(`DELETE FROM sessions WHERE id = ?`),
     appendEntry: db.prepare(`
@@ -204,6 +215,7 @@ export function prepareAgentSessionSqlStatements(db: Database.Database): AgentSe
       SELECT id, session_id, request_id, kind, timestamp, sequence, data
       FROM conversation_entries
       WHERE session_id = ? AND kind = 'user.message'
+        AND json_extract(data, '$.metadata.hostInput') IS NULL
       ORDER BY sequence ASC
       LIMIT 1
     `),
@@ -256,7 +268,7 @@ export function prepareAgentSessionSqlStatements(db: Database.Database): AgentSe
       SELECT id, session_id, request_id, kind, timestamp, event_sequence, step, detail_id, event_id, event_json
       FROM run_events
       WHERE session_id = ? AND request_id = ? AND kind = ?
-      ORDER BY id ASC
+      ORDER BY id DESC
       LIMIT 1
     `),
     selectRunEventsThroughSequence: db.prepare<[string, string, number], RunEventRow>(`
@@ -270,12 +282,14 @@ export function prepareAgentSessionSqlStatements(db: Database.Database): AgentSe
         )
       ORDER BY r.id ASC
     `),
-    selectRunEventPage: db.prepare<[string, number, number, number], RunEventRow>(`
+    selectRunEventPage: db.prepare<[RunEventPageParameters], RunEventRow>(`
       SELECT id, session_id, request_id, kind, timestamp, event_sequence, step, detail_id, event_id, event_json
       FROM run_events
-      WHERE session_id = ? AND id > ? AND id <= ?
+      WHERE session_id = @sessionId AND id > @after AND id <= @through
+        AND (@requestIds IS NULL OR request_id IN (SELECT value FROM json_each(@requestIds)))
+        AND (@kinds IS NULL OR kind IN (SELECT value FROM json_each(@kinds)))
       ORDER BY id ASC
-      LIMIT ?
+      LIMIT @pageSize
     `),
     selectSetting: db.prepare<[string], AppSettingRow>(`
       SELECT key, value, updated_at

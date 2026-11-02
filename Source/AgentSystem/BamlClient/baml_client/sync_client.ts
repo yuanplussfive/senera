@@ -22,7 +22,7 @@ import type { BamlRuntime, FunctionResult, BamlCtxManager, Image, Audio, Pdf, Vi
 import { toBamlError, BamlAbortError, ClientRegistry, type HTTPRequest } from "@boundaryml/baml"
 import type { Checked, Check, RecursivePartialNull as MovedRecursivePartialNull } from "./types.js"
 import type * as types from "./types.js"
-import type {ActionPlanInput, ActionRunState, AuxiliaryImageAnalysis, AuxiliarySummary, ChannelCodePart, ChannelDelivery, ChannelResourcePart, ChannelTextPart, DirectDecision, DirectDecisionKind, EvidenceSlot, ExecuteDecision, ExecuteDecisionKind, ExecutionDeltaOp, MemOSFragment, PiToolArgumentsDraft, PlanFragment, PlannedToolCall, PlannerActiveSkill, PlannerCurrentUserTurn, PlannerEvidenceMemoryItem, PlannerEvidenceRequirement, PlannerEvidenceStateItem, PlannerJournalItem, PlannerTimelineTurn, PlannerToolCallStateItem, ProgressSignals, RepeatedCallWarning, ResidentSpeechProjection, StateCardRewrite, ToolCallArgumentValue, ToolCallStatus, ToolCapabilityFacets, ToolCapabilityItem, ToolCapabilityRisk, ToolCatalogItem, ToolCatalogSummaryItem, ToolEvidenceCapabilityItem, ToolRiskAudit, ToolRiskAuditDecision, ToolRiskLevel} from "./types.js"
+import type {ActionPlanInput, ActionRunState, AuxiliarySummary, DirectDecision, DirectDecisionKind, EvidenceSlot, ExecuteDecision, ExecuteDecisionKind, ExecutionDeltaOp, MemOSFragment, MemOSMemoryAssessment, MemOSSkipDecision, MemoryDiary, MemoryRelevanceAssessment, MemoryRelevanceRecord, MemoryRetention, PiToolArgumentsDraft, PlanFragment, PlannedToolCall, PlannerActiveSkill, PlannerCurrentUserTurn, PlannerEvidenceMemoryItem, PlannerEvidenceRequirement, PlannerEvidenceStateItem, PlannerJournalItem, PlannerTimelineTurn, PlannerToolCallStateItem, ProgressSignals, RepeatedCallWarning, StateCardRewrite, ToolCallArgumentValue, ToolCallStatus, ToolCapabilityFacets, ToolCapabilityItem, ToolCapabilityRisk, ToolCatalogItem, ToolCatalogSummaryItem, ToolEvidenceCapabilityItem, ToolRiskAudit, ToolRiskAuditDecision, ToolRiskLevel} from "./types.js"
 import type TypeBuilder from "./type_builder.js"
 import { HttpRequest, HttpStreamRequest } from "./sync_request.js"
 import { LlmResponseParser, LlmStreamParser } from "./parser.js"
@@ -97,10 +97,10 @@ export class BamlSyncClient {
   }
 
   
-  AnalyzeImage(
+  AssessMemoryRelevance(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
-  ): types.AuxiliaryImageAnalysis {
+  ): types.MemoryRelevanceAssessment {
     try {
       const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
       const __signal__ = __options__.signal;
@@ -128,7 +128,7 @@ export class BamlSyncClient {
       }
 
       const __raw__ = this.runtime.callFunctionSync(
-        "AnalyzeImage",
+        "AssessMemoryRelevance",
         {
           "promptJson": promptJson
         },
@@ -141,7 +141,57 @@ export class BamlSyncClient {
         __signal__,
         __options__.watchers,
       )
-      return __raw__.parsed(false) as types.AuxiliaryImageAnalysis
+      return __raw__.parsed(false) as types.MemoryRelevanceAssessment
+    } catch (error: any) {
+      throw toBamlError(error);
+    }
+  }
+  
+  AssessMemoryRetention(
+      promptJson: string,
+      __baml_options__?: BamlCallOptions<never>
+  ): types.MemoryRetention {
+    try {
+      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+      const __signal__ = __options__.signal;
+
+      if (__signal__?.aborted) {
+        throw new BamlAbortError('Operation was aborted', __signal__.reason);
+      }
+
+      // Check if onTick is provided and reject for sync operations
+      if (__options__.onTick) {
+        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
+      }
+
+      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __options__.clientRegistry;
+      if (__options__.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__options__.client);
+      }
+
+      const __raw__ = this.runtime.callFunctionSync(
+        "AssessMemoryRetention",
+        {
+          "promptJson": promptJson
+        },
+        this.ctxManager.cloneContext(),
+        __options__.tb?.__tb(),
+        __clientRegistry__,
+        __collector__,
+        __options__.tags || {},
+        __env__,
+        __signal__,
+        __options__.watchers,
+      )
+      return __raw__.parsed(false) as types.MemoryRetention
     } catch (error: any) {
       throw toBamlError(error);
     }
@@ -192,56 +242,6 @@ export class BamlSyncClient {
         __options__.watchers,
       )
       return __raw__.parsed(false) as types.ToolRiskAudit
-    } catch (error: any) {
-      throw toBamlError(error);
-    }
-  }
-  
-  ChannelFinalDelivery(
-      promptJson: string,
-      __baml_options__?: BamlCallOptions<never>
-  ): types.ChannelDelivery {
-    try {
-      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
-      const __signal__ = __options__.signal;
-
-      if (__signal__?.aborted) {
-        throw new BamlAbortError('Operation was aborted', __signal__.reason);
-      }
-
-      // Check if onTick is provided and reject for sync operations
-      if (__options__.onTick) {
-        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
-      }
-
-      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-
-      // Resolve client option to clientRegistry (client takes precedence)
-      let __clientRegistry__ = __options__.clientRegistry;
-      if (__options__.client) {
-        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-        __clientRegistry__.setPrimary(__options__.client);
-      }
-
-      const __raw__ = this.runtime.callFunctionSync(
-        "ChannelFinalDelivery",
-        {
-          "promptJson": promptJson
-        },
-        this.ctxManager.cloneContext(),
-        __options__.tb?.__tb(),
-        __clientRegistry__,
-        __collector__,
-        __options__.tags || {},
-        __env__,
-        __signal__,
-        __options__.watchers,
-      )
-      return __raw__.parsed(false) as types.ChannelDelivery
     } catch (error: any) {
       throw toBamlError(error);
     }
@@ -350,7 +350,7 @@ export class BamlSyncClient {
   ExtractMemOSFragment(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
-  ): types.MemOSFragment {
+  ): types.MemOSFragment | types.MemOSSkipDecision {
     try {
       const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
       const __signal__ = __options__.signal;
@@ -391,7 +391,7 @@ export class BamlSyncClient {
         __signal__,
         __options__.watchers,
       )
-      return __raw__.parsed(false) as types.MemOSFragment
+      return __raw__.parsed(false) as types.MemOSFragment | types.MemOSSkipDecision
     } catch (error: any) {
       throw toBamlError(error);
     }
@@ -442,56 +442,6 @@ export class BamlSyncClient {
         __options__.watchers,
       )
       return __raw__.parsed(false) as types.PiToolArgumentsDraft
-    } catch (error: any) {
-      throw toBamlError(error);
-    }
-  }
-  
-  ProjectResidentSpeech(
-      promptJson: string,
-      __baml_options__?: BamlCallOptions<never>
-  ): types.ResidentSpeechProjection {
-    try {
-      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
-      const __signal__ = __options__.signal;
-
-      if (__signal__?.aborted) {
-        throw new BamlAbortError('Operation was aborted', __signal__.reason);
-      }
-
-      // Check if onTick is provided and reject for sync operations
-      if (__options__.onTick) {
-        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
-      }
-
-      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-
-      // Resolve client option to clientRegistry (client takes precedence)
-      let __clientRegistry__ = __options__.clientRegistry;
-      if (__options__.client) {
-        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-        __clientRegistry__.setPrimary(__options__.client);
-      }
-
-      const __raw__ = this.runtime.callFunctionSync(
-        "ProjectResidentSpeech",
-        {
-          "promptJson": promptJson
-        },
-        this.ctxManager.cloneContext(),
-        __options__.tb?.__tb(),
-        __clientRegistry__,
-        __collector__,
-        __options__.tags || {},
-        __env__,
-        __signal__,
-        __options__.watchers,
-      )
-      return __raw__.parsed(false) as types.ResidentSpeechProjection
     } catch (error: any) {
       throw toBamlError(error);
     }
@@ -697,56 +647,6 @@ export class BamlSyncClient {
     }
   }
   
-  SummarizeMemOSPeriod(
-      promptJson: string,
-      __baml_options__?: BamlCallOptions<never>
-  ): types.AuxiliarySummary {
-    try {
-      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
-      const __signal__ = __options__.signal;
-
-      if (__signal__?.aborted) {
-        throw new BamlAbortError('Operation was aborted', __signal__.reason);
-      }
-
-      // Check if onTick is provided and reject for sync operations
-      if (__options__.onTick) {
-        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
-      }
-
-      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
-      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
-      const __env__: Record<string, string> = Object.fromEntries(
-        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
-      );
-
-      // Resolve client option to clientRegistry (client takes precedence)
-      let __clientRegistry__ = __options__.clientRegistry;
-      if (__options__.client) {
-        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
-        __clientRegistry__.setPrimary(__options__.client);
-      }
-
-      const __raw__ = this.runtime.callFunctionSync(
-        "SummarizeMemOSPeriod",
-        {
-          "promptJson": promptJson
-        },
-        this.ctxManager.cloneContext(),
-        __options__.tb?.__tb(),
-        __clientRegistry__,
-        __collector__,
-        __options__.tags || {},
-        __env__,
-        __signal__,
-        __options__.watchers,
-      )
-      return __raw__.parsed(false) as types.AuxiliarySummary
-    } catch (error: any) {
-      throw toBamlError(error);
-    }
-  }
-  
   SummarizePiContext(
       promptJson: string,
       __baml_options__?: BamlCallOptions<never>
@@ -792,6 +692,56 @@ export class BamlSyncClient {
         __options__.watchers,
       )
       return __raw__.parsed(false) as types.AuxiliarySummary
+    } catch (error: any) {
+      throw toBamlError(error);
+    }
+  }
+  
+  WriteMemoryDiary(
+      promptJson: string,
+      __baml_options__?: BamlCallOptions<never>
+  ): types.MemoryDiary {
+    try {
+      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+      const __signal__ = __options__.signal;
+
+      if (__signal__?.aborted) {
+        throw new BamlAbortError('Operation was aborted', __signal__.reason);
+      }
+
+      // Check if onTick is provided and reject for sync operations
+      if (__options__.onTick) {
+        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
+      }
+
+      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __options__.clientRegistry;
+      if (__options__.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__options__.client);
+      }
+
+      const __raw__ = this.runtime.callFunctionSync(
+        "WriteMemoryDiary",
+        {
+          "promptJson": promptJson
+        },
+        this.ctxManager.cloneContext(),
+        __options__.tb?.__tb(),
+        __clientRegistry__,
+        __collector__,
+        __options__.tags || {},
+        __env__,
+        __signal__,
+        __options__.watchers,
+      )
+      return __raw__.parsed(false) as types.MemoryDiary
     } catch (error: any) {
       throw toBamlError(error);
     }

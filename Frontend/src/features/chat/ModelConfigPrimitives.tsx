@@ -1,16 +1,15 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { ReactNode } from "react";
-import { AlertTriangle, Check, ChevronDown, Search } from "lucide-react";
 import type {
   ModelsDevModelMetadata,
   ProviderModelsFailedData,
   ProviderModelsSnapshotData,
 } from "../../api/eventTypes";
 import { cn, formatShortTime } from "../../lib/util";
-import { AppIcon, Spinner, StateView, Switch, Tooltip } from "../../shared/ui";
+import { AppIcon, DurationInput, Spinner, StateView, Switch, Tooltip } from "../../shared/ui";
 import { ModelsDevCapabilityStrip } from "./ModelsDevCapabilityIcons";
 import { readModelsDevCapabilityKeys } from "./modelsDevCapabilities";
-import { ModelProviderIcon } from "./ModelProviderIcon";
+import { ModelProviderIcon } from "../../shared/models/ModelProviderIcon";
 
 export function ListHeader({
   title,
@@ -57,19 +56,30 @@ export function DetailTitle({
   );
 }
 
-export function SectionLabel({ icon, title }: { icon: ReactNode; title: string }): JSX.Element {
+export function SectionLabel({
+  icon,
+  title,
+  description,
+}: {
+  icon: ReactNode;
+  title: string;
+  description?: string;
+}): JSX.Element {
   return (
-    <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold text-ink-900">
-      <span className="text-ink-500">{icon}</span>
-      {title}
+    <div className="mb-2">
+      <div className="flex items-center gap-2 text-[13px] font-semibold text-ink-900">
+        <span className="grid h-4 w-4 shrink-0 place-items-center text-content-muted">{icon}</span>
+        {title}
+      </div>
+      {description ? <p className="mt-1 pl-6 text-[11.5px] leading-4 text-ink-500">{description}</p> : null}
     </div>
   );
 }
 
 export function SettingsTable({ children }: { children: ReactNode }): JSX.Element {
   return (
-    <div className="overflow-hidden rounded-md border border-ink-200/65 bg-paper-100/65">
-      <div className="divide-y divide-ink-200/70">{children}</div>
+    <div className="min-w-0">
+      <div className="divide-y divide-line-subtle">{children}</div>
     </div>
   );
 }
@@ -77,27 +87,25 @@ export function SettingsTable({ children }: { children: ReactNode }): JSX.Elemen
 export function TextRow({
   icon,
   label,
+  description,
   value,
   disabled,
   placeholder,
-  secret,
-  trailing,
   onChange,
 }: {
-  icon: ReactNode;
+  icon?: ReactNode;
   label: string;
+  description?: string;
   value: string;
   disabled: boolean;
   placeholder?: string;
-  secret?: boolean;
-  trailing?: ReactNode;
   onChange?: (value: string) => void;
 }): JSX.Element {
   return (
-    <SettingRow icon={icon} label={label}>
-      <div className="flex min-w-0 overflow-hidden rounded-md border border-ink-200 bg-paper-50">
+    <SettingRow icon={icon} label={label} description={description}>
+      <div className="flex w-full min-w-0 overflow-hidden rounded-md border border-ink-200 bg-paper-50">
         <input
-          type={secret ? "password" : "text"}
+          type="text"
           value={value}
           placeholder={placeholder}
           disabled={disabled}
@@ -105,7 +113,6 @@ export function TextRow({
           className={inputClassName}
           onChange={(event) => onChange?.(event.currentTarget.value)}
         />
-        {trailing}
       </div>
     </SettingRow>
   );
@@ -117,7 +124,7 @@ export function MenuRow({
   description,
   children,
 }: {
-  icon: ReactNode;
+  icon?: ReactNode;
   label: string;
   description?: string;
   children: ReactNode;
@@ -131,68 +138,88 @@ export function MenuRow({
 
 export function NumberRow({
   label,
+  description,
   value,
   min,
   max,
   step,
   disabled,
   placeholder,
+  durationUnit,
   onChange,
 }: {
   label: string;
+  description?: string;
   value?: number;
   min?: number;
   max?: number;
   step?: number;
   disabled: boolean;
   placeholder?: string;
+  durationUnit?: import("../../../../Source/AgentSystem/Types/AgentDurationUnits").AgentDurationUnit;
   onChange: (value: number | undefined) => void;
 }): JSX.Element {
   return (
-    <SettingRow icon={<ChevronDown className="h-3.5 w-3.5 rotate-[-90deg]" />} label={label}>
-      <input
-        type="number"
-        value={value ?? ""}
-        min={min}
-        max={max}
-        step={step}
-        placeholder={placeholder}
-        disabled={disabled}
-        className={cn(inputClassName, "rounded-md border border-ink-200 bg-paper-50")}
-        onChange={(event) => {
-          const next = event.currentTarget.value;
-          onChange(next === "" ? undefined : Number(next));
-        }}
-        onBlur={() => {
-          // HTML min/max do not constrain typed values; normalize on blur so the
-          // draft the save queue submits stays inside the backend schema bounds.
-          if (value === undefined || !Number.isFinite(value)) {
-            if (value !== undefined) onChange(undefined);
-            return;
-          }
-          let next = step === 1 ? Math.round(value) : value;
-          if (min !== undefined && next < min) next = min;
-          if (max !== undefined && next > max) next = max;
-          if (next !== value) onChange(next);
-        }}
-      />
+    <SettingRow label={label} description={description}>
+      {durationUnit ? (
+        <DurationInput
+          value={value}
+          storageUnit={durationUnit}
+          min={min}
+          max={max}
+          step={step}
+          disabled={disabled}
+          ariaLabel={label}
+          onChange={onChange}
+        />
+      ) : (
+        <input
+          type="number"
+          aria-label={label}
+          value={value ?? ""}
+          min={min}
+          max={max}
+          step={step}
+          placeholder={placeholder}
+          disabled={disabled}
+          className={cn(inputClassName, "w-full rounded-md border border-ink-200 bg-paper-50")}
+          onChange={(event) => {
+            const next = event.currentTarget.value;
+            onChange(next === "" ? undefined : Number(next));
+          }}
+          onBlur={() => {
+            // HTML min/max do not constrain typed values; normalize on blur so the
+            // draft the save queue submits stays inside the backend schema bounds.
+            if (value === undefined || !Number.isFinite(value)) {
+              if (value !== undefined) onChange(undefined);
+              return;
+            }
+            let next = step === 1 ? Math.round(value) : value;
+            if (min !== undefined && next < min) next = min;
+            if (max !== undefined && next > max) next = max;
+            if (next !== value) onChange(next);
+          }}
+        />
+      )}
     </SettingRow>
   );
 }
 
 export function ToggleRow({
   label,
+  description,
   enabled,
   disabled,
   onChange,
 }: {
   label: string;
+  description?: string;
   enabled?: boolean;
   disabled: boolean;
   onChange: (enabled: boolean) => void;
 }): JSX.Element {
   return (
-    <SettingRow icon={<ChevronDown className="h-3.5 w-3.5 rotate-[-90deg]" />} label={label}>
+    <SettingRow label={label} description={description}>
       <Switch
         checked={Boolean(enabled)}
         disabled={disabled}
@@ -209,21 +236,26 @@ export function SettingRow({
   description,
   children,
 }: {
-  icon: ReactNode;
+  icon?: ReactNode;
   label: string;
   description?: string;
   children: ReactNode;
 }): JSX.Element {
   return (
-    <div className="grid min-w-0 gap-3 bg-paper-50 px-3 py-3 sm:grid-cols-[150px_minmax(0,1fr)] sm:items-start">
+    <div
+      className="grid min-w-0 gap-x-6 gap-y-2 py-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,280px)] sm:items-start"
+      data-model-setting-row
+    >
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-1.5 text-[12.5px] font-medium text-ink-800">
-          <span className="text-ink-400">{icon}</span>
-          <span className="truncate">{label}</span>
+          {icon ? <span className="text-ink-400">{icon}</span> : null}
+          <span>{label}</span>
         </div>
-        {description ? <div className="mt-1 text-[11px] leading-4 text-ink-500">{description}</div> : null}
+        {description ? (
+          <div className={cn("mt-1 text-[11px] leading-4 text-ink-500", icon && "pl-6")}>{description}</div>
+        ) : null}
       </div>
-      <div className="min-w-0">{children}</div>
+      <div className="flex w-full min-w-0 items-center justify-end">{children}</div>
     </div>
   );
 }
@@ -251,7 +283,7 @@ export function SearchInput({
         className,
       )}
     >
-      <Search className="h-3.5 w-3.5 shrink-0 text-ink-350" />
+      <AppIcon icon="search" className="h-3.5 w-3.5 shrink-0 text-ink-350" />
       <input
         value={value}
         disabled={disabled}
@@ -263,27 +295,6 @@ export function SearchInput({
       />
     </div>
   );
-}
-
-export function ProviderStatusIcon({
-  loading,
-  catalog,
-  error,
-}: {
-  loading?: boolean;
-  catalog?: ProviderModelsSnapshotData;
-  error?: ProviderModelsFailedData;
-}): JSX.Element {
-  if (loading) {
-    return <Spinner size="sm" className="text-ink-500" />;
-  }
-  if (error) {
-    return <AlertTriangle className="h-3.5 w-3.5 text-brick-600" />;
-  }
-  if (catalog) {
-    return <Check className="h-3.5 w-3.5 text-moss-600" />;
-  }
-  return <AppIcon icon="refresh" size={14} className="text-ink-350" aria-hidden="true" />;
 }
 
 export function ProviderCatalogStatus({
@@ -301,13 +312,13 @@ export function ProviderCatalogStatus({
 }): JSX.Element {
   const tone = disabled ? "neutral" : error ? "error" : catalog ? "success" : loading ? "info" : "neutral";
   const icon = disabled ? (
-    <AlertTriangle className="h-3.5 w-3.5" />
+    <AppIcon icon="warning" className="h-3.5 w-3.5" />
   ) : loading ? (
     <Spinner size="sm" />
   ) : error ? (
-    <AlertTriangle className="h-3.5 w-3.5" />
+    <AppIcon icon="warning" className="h-3.5 w-3.5" />
   ) : catalog ? (
-    <Check className="h-3.5 w-3.5" />
+    <AppIcon icon="checkmark" className="h-3.5 w-3.5" />
   ) : (
     <AppIcon icon="refresh" size={14} aria-hidden="true" />
   );

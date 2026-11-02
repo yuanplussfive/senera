@@ -7,6 +7,7 @@ import {
 import type {
   AgentSessionCursorPage,
   AgentSessionCursorPageRequest,
+  AgentSessionRunEventPageRequest,
   StoredRunSnapshot,
 } from "../Session/AgentSessionRepository.js";
 
@@ -139,6 +140,18 @@ export class InMemorySessionRunHistoryStore {
     };
   }
 
+  requestSummaries(
+    sessionId: string,
+    through: number,
+  ): import("../Session/AgentSessionHistoryWindow.js").AgentSessionHistoryRequestSummary[] {
+    return [...(this.snapshotRevisions.get(sessionId)?.values() ?? [])].flatMap((revisions) => {
+      const revision = findSnapshotRevision(revisions, through);
+      return revision && !revision.deleted
+        ? [{ requestId: revision.snapshot.requestId, startedAt: revision.snapshot.startedAt }]
+        : [];
+    });
+  }
+
   loadRunningSnapshots(): StoredRunSnapshot[] {
     const running: StoredRunSnapshot[] = [];
     for (const snapshots of this.snapshots.values()) {
@@ -225,20 +238,41 @@ export class InMemorySessionRunHistoryStore {
   }
 
   loadEvent(sessionId: string, requestId: string, kind: string): AgentEventEnvelope | undefined {
-    return this.eventsByRequest
-      .get(sessionId)
-      ?.get(requestId)
-      ?.find((event) => event.kind === kind);
+    const events = this.eventsByRequest.get(sessionId)?.get(requestId);
+    if (!events) return undefined;
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+      const event = events[index];
+      if (event?.kind === kind) return event;
+    }
+    return undefined;
   }
 
-  loadEventPage(sessionId: string, request: AgentSessionCursorPageRequest): AgentSessionCursorPage<AgentEventEnvelope> {
+  loadEventPage(
+    sessionId: string,
+    request: AgentSessionRunEventPageRequest,
+  ): AgentSessionCursorPage<AgentEventEnvelope> {
     const pageSize = assertAgentSessionRepositoryPageSize(request.pageSize);
     const start = request.after ?? 0;
     const events = this.events.get(sessionId) ?? [];
-    const rows = events.slice(start, Math.min(request.through, start + pageSize + 1));
+    const requestIds = request.requestIds === undefined ? undefined : new Set(request.requestIds);
+    const kinds = request.kinds === undefined ? undefined : new Set(request.kinds);
+    const items: AgentEventEnvelope[] = [];
+    let lastConsumedId = start;
+    let nextCursor: number | undefined;
+    for (let index = start; index < Math.min(request.through, events.length); index += 1) {
+      const event = events[index]!;
+      if (requestIds && (!event.requestId || !requestIds.has(event.requestId))) continue;
+      if (kinds && !kinds.has(event.kind)) continue;
+      if (items.length === pageSize) {
+        nextCursor = lastConsumedId;
+        break;
+      }
+      items.push(event);
+      lastConsumedId = index + 1;
+    }
     return {
-      items: rows.slice(0, pageSize),
-      nextCursor: rows.length > pageSize ? start + pageSize : undefined,
+      items,
+      nextCursor,
     };
   }
 

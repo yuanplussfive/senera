@@ -65,7 +65,8 @@ export class AgentMcpPackagePatchPreflight {
       assertUniqueAgentMcpServerNames(packages);
       for (const package_ of packages) {
         for (const server of package_.servers) {
-          createAgentMcpPackageEndpoint(package_, server, PreflightMcpInputResolver, this.workspaceRoot);
+          // Preflight validates declaration structure. Model availability and credentials are checked at launch.
+          createAgentMcpPackageEndpoint(package_, server, PreflightMcpInputResolver, this.workspaceRoot, (id) => id);
         }
       }
       return candidates.flatMap((candidate) =>

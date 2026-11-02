@@ -1,8 +1,8 @@
 import { lazy, Suspense } from "react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { WebSettingsController } from "../../app/useWebSettingsController";
-import { SettingsSurfaceLoading } from "../../app/SurfaceLoading";
 import { AppIcon, Dialog, DialogContent, IconButton } from "../../shared/ui";
+import { SettingsSurfaceLoading } from "../../app/SurfaceLoading";
 import { DiscardDraftDialog } from "./DiscardDraftDialog";
 import type { SettingsWorkbenchProps } from "./SettingsWorkbenchContracts";
 

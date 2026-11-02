@@ -15,7 +15,7 @@ import { useStore } from "../store/sessionStore";
 import { resolveRuntimeHttpBaseUrl, resolveRuntimeWebSocketUrl } from "../config/runtimeConfig";
 import { resolveWorkspaceScopedHttpBaseUrl } from "../config/workspaceRuntimeConfig";
 import { useRuntimeUpdate } from "./runtimeUpdate";
-import { WorkspaceResourceProvider } from "../shared/workspace/WorkspaceResourceProvider";
+import { WorkspaceRuntimeProvider } from "../shared/workspace/WorkspaceResourceProvider";
 
 const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
 const HTTP_BASE_URL = resolveRuntimeHttpBaseUrl(WS_URL);
@@ -132,9 +132,9 @@ export function DesktopSettingsRuntimeSurface({
       <AppAppearanceProvider motionLevel={motionLevel}>
         <TooltipProvider delayDuration={300}>
           {workspaceReady ? (
-            <WorkspaceResourceProvider key={workspaceId} httpBaseUrl={scopedHttpBaseUrl} csrfToken={csrfToken}>
+            <WorkspaceRuntimeProvider key={workspaceId} httpBaseUrl={scopedHttpBaseUrl} csrfToken={csrfToken}>
               {settingsContent}
-            </WorkspaceResourceProvider>
+            </WorkspaceRuntimeProvider>
           ) : (
             settingsContent
           )}

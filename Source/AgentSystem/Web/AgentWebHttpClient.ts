@@ -3,6 +3,8 @@ import iconv from "iconv-lite";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
 import { assertSafeWebUrl, type AgentWebAddressResolver, type AgentWebUrlPolicyOptions } from "./AgentWebUrlPolicy.js";
 import type { AgentWebFetchTransfer } from "./AgentWebTypes.js";
+import { isAgentWebRedirect, projectAgentWebRedirectHeaders } from "./AgentWebRedirectPolicy.js";
+import { readBoundedWebBody } from "./AgentWebResponseBody.js";
 
 export interface AgentWebHttpClientOptions extends AgentWebUrlPolicyOptions {
   readonly maxRedirects: number;
@@ -59,6 +61,7 @@ export async function requestWebResource(
   let current: string | URL = inputUrl;
   let redirectCount = 0;
   let method = request.method ?? "GET";
+  let headers = request.headers;
   let requestBody = request.body;
 
   try {
@@ -77,7 +80,7 @@ export async function requestWebResource(
           headers: {
             Accept: "text/html,application/xhtml+xml,text/plain,application/json;q=0.9,*/*;q=0.1",
             "User-Agent": options.userAgent,
-            ...request.headers,
+            ...headers,
           },
           ...(requestBody === undefined
             ? {}
@@ -94,7 +97,8 @@ export async function requestWebResource(
         );
       }
 
-      if (isRedirect(response.status)) {
+      if (isAgentWebRedirect(response.status)) {
+        await response.body?.cancel();
         const location = response.headers.get("location");
         if (!location) {
           throw new AgentWebHttpError(
@@ -111,11 +115,21 @@ export async function requestWebResource(
             maxRedirects: options.maxRedirects,
           });
         }
-        current = await waitForAbort(
+        const target: URL = await waitForAbort(
           assertSafeWebUrl(new URL(location, current), options, options.resolveHostAddresses),
           requestControl.signal,
         );
-        if (response.status === 301 || response.status === 302 || response.status === 303) {
+        const dropBody = response.status === 301 || response.status === 302 || response.status === 303;
+        const source = new URL(current);
+        if (!dropBody && requestBody !== undefined && source.origin !== target.origin) {
+          throw new AgentWebHttpError("request_failed", "A cross-origin redirect cannot replay a request body.", {
+            url: current.toString(),
+            status: response.status,
+          });
+        }
+        headers = projectAgentWebRedirectHeaders(headers, source, target, dropBody);
+        current = target;
+        if (dropBody) {
           method = "GET";
           requestBody = undefined;
         }
@@ -123,7 +137,7 @@ export async function requestWebResource(
         continue;
       }
 
-      const responseBody = await readBoundedBody(response, options.responseMaxBytes, requestControl.signal);
+      const responseBody = await readBoundedWebBody(response, options.responseMaxBytes, requestControl.signal);
       if (!response.ok) {
         throw new AgentWebHttpError("http_error", `Web server returned HTTP ${response.status}.`, {
           url: current.toString(),
@@ -222,84 +236,4 @@ export function decodeWebBody(body: Uint8Array, contentType: string, maxChars?: 
     ? iconv.decode(Buffer.from(body), detected)
     : new TextDecoder("utf-8", { fatal: false }).decode(body);
   return maxChars === undefined ? decoded : Array.from(decoded).slice(0, maxChars).join("");
-}
-
-async function readBoundedBody(
-  response: Response,
-  maxBytes: number,
-  signal?: AbortSignal,
-): Promise<{ readonly body: Uint8Array; readonly transfer: AgentWebFetchTransfer }> {
-  const declaredContentLength = parseContentLength(response.headers.get("content-length"));
-  if (!response.body) {
-    const body = new Uint8Array(await response.arrayBuffer());
-    const retained = body.subarray(0, maxBytes);
-    return {
-      body: retained,
-      transfer: {
-        maxBytes,
-        receivedBytes: retained.byteLength,
-        ...(declaredContentLength === undefined ? {} : { declaredContentLength }),
-        truncated: body.byteLength > maxBytes,
-      },
-    };
-  }
-
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  let truncated = false;
-  try {
-    while (true) {
-      if (signal?.aborted) throw signal.reason ?? new DOMException("The operation was aborted.", "AbortError");
-      const next = await reader.read();
-      if (next.done) break;
-      const remaining = maxBytes - total;
-      if (remaining <= 0) {
-        truncated = true;
-        await reader.cancel("response limit exceeded").catch(() => undefined);
-        break;
-      }
-      if (next.value.byteLength <= remaining) {
-        chunks.push(next.value);
-        total += next.value.byteLength;
-        continue;
-      }
-      chunks.push(next.value.subarray(0, remaining));
-      total += remaining;
-      truncated = true;
-      await reader.cancel("response limit exceeded").catch(() => undefined);
-      break;
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  return {
-    body: concatBytes(chunks, total),
-    transfer: {
-      maxBytes,
-      receivedBytes: total,
-      ...(declaredContentLength === undefined ? {} : { declaredContentLength }),
-      truncated,
-    },
-  };
-}
-
-function parseContentLength(value: string | null): number | undefined {
-  if (value === null) return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
-}
-
-function concatBytes(chunks: readonly Uint8Array[], total: number): Uint8Array {
-  const result = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    result.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return result;
-}
-
-function isRedirect(status: number): boolean {
-  return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
 }

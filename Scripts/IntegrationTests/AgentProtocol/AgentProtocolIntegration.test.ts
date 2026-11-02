@@ -164,7 +164,6 @@ describe("agent protocol integration", () => {
         AgentEventKinds.SessionHistoryStarted,
         AgentEventKinds.SessionHistoryChunk,
         AgentEventKinds.SessionHistorySteps,
-        AgentEventKinds.SessionRunHistoryChunk,
         AgentEventKinds.SessionHistoryCompleted,
       ],
       { afterSequence: finalAnswer.sequence },
@@ -175,6 +174,12 @@ describe("agent protocol integration", () => {
       { afterSequence: finalAnswer.sequence },
     );
     expect(readDataRecord(historyChunk).entries).toEqual(expect.any(Array));
+    harness.client.send({ type: "session.run_history", sessionId, requestId });
+    await harness.client.waitForEvent(
+      AgentEventKinds.SessionRunHistoryDetail,
+      (event) => event.sessionId === sessionId && event.requestId === requestId,
+      { afterSequence: historyChunk.sequence },
+    );
   });
 
   test("provider model changes notify sibling clients to refresh the chat model catalog", async () => {

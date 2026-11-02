@@ -17,6 +17,7 @@ test("execution resources are hidden immediately when the active session changes
       activeSessionId: "session-one",
       send,
       handleRef,
+      ensureInteractiveTerminal: true,
     }),
   );
 
@@ -29,17 +30,19 @@ test("execution resources are hidden immediately when the active session changes
     );
   });
   expect(handleRef.current.resources.map((resource) => resource.resourceId)).toEqual(["terminal-one"]);
+  expect(send.mock.calls.filter(([request]) => request.type === "execution.resource.start_terminal")).toHaveLength(0);
 
   view.rerender(
     React.createElement(ExecutionResourceHarness, {
       activeSessionId: "session-two",
       send,
       handleRef,
+      ensureInteractiveTerminal: true,
     }),
   );
 
   expect(handleRef.current.resources).toEqual([]);
-  expect(handleRef.current.outputs).toEqual({});
+  expect(handleRef.current.outputStore.read("terminal-one")).toBeUndefined();
   expect(
     handleRef.current.handleEvent(
       event(EventKinds.ExecutionResourceCreated, "session-one", {
@@ -47,6 +50,70 @@ test("execution resources are hidden immediately when the active session changes
       }),
     ),
   ).toBe(false);
+  expect(send.mock.calls.filter(([request]) => request.type === "execution.resource.start_terminal")).toHaveLength(0);
+  act(() => {
+    handleRef.current.handleEvent(
+      event(EventKinds.ExecutionResourceSnapshot, "session-two", { operation: "list", resources: [] }),
+    );
+  });
+  expect(send.mock.calls.filter(([request]) => request.type === "execution.resource.start_terminal")).toHaveLength(1);
+  act(() => {
+    handleRef.current.handleEvent(
+      event(EventKinds.ExecutionResourceSnapshot, "session-two", { operation: "list", resources: [] }),
+    );
+    handleRef.current.startTerminal();
+  });
+  expect(send.mock.calls.filter(([request]) => request.type === "execution.resource.start_terminal")).toHaveLength(1);
+  act(() => {
+    handleRef.current.handleEvent(
+      event(EventKinds.ExecutionResourceSnapshot, "session-two", {
+        operation: "start_terminal",
+        resources: [terminalResource("terminal-two")],
+      }),
+    );
+  });
+  expect(handleRef.current.resources.map((resource) => resource.resourceId)).toEqual(["terminal-two"]);
+});
+
+test("a state received during reconnect cannot skip missing prompt output", () => {
+  const send = vi.fn(() => true);
+  const handleRef = { current: null };
+  render(React.createElement(ExecutionResourceHarness, { activeSessionId: "session-one", send, handleRef }));
+  send.mockClear();
+  act(() =>
+    handleRef.current.handleEvent(
+      event(EventKinds.ExecutionResourceState, "session-one", {
+        resourceId: "terminal-one",
+        cursor: 3,
+        state: "running",
+      }),
+    ),
+  );
+  expect(handleRef.current.outputStore.cursorOf("terminal-one")).toBe(0);
+  expect(send).toHaveBeenCalledWith({
+    type: "execution.resource.inspect",
+    sessionId: "session-one",
+    resourceId: "terminal-one",
+    cursor: 0,
+  });
+  act(() =>
+    handleRef.current.handleEvent(
+      event(EventKinds.ExecutionResourceSnapshot, "session-one", {
+        operation: "inspect",
+        resources: [
+          {
+            ...terminalResource("terminal-one", [
+              { cursor: 1, kind: "state", state: "starting" },
+              resourceOutput(2, "PS E:\\workspace> "),
+              { cursor: 3, kind: "state", state: "running" },
+            ]),
+            cursor: 3,
+          },
+        ],
+      }),
+    ),
+  );
+  expect(handleRef.current.outputStore.read("terminal-one")).toMatchObject({ cursor: 3, text: "PS E:\\workspace> " });
 });
 
 test("terminal output gaps wait for an inspect snapshot and recover in cursor order", () => {
@@ -64,7 +131,7 @@ test("terminal output gaps wait for an inspect snapshot and recover in cursor or
   act(() => {
     handleRef.current.handleEvent(outputEvent("session-one", 1, 1, "one\r\n"));
   });
-  expect(handleRef.current.outputs["terminal-one"].text).toBe("one\r\n");
+  expect(handleRef.current.outputStore.read("terminal-one").text).toBe("one\r\n");
 
   act(() => {
     handleRef.current.handleEvent(outputEvent("session-one", 3, 3, "three\r\n"));
@@ -78,7 +145,7 @@ test("terminal output gaps wait for an inspect snapshot and recover in cursor or
     resourceId: "terminal-one",
     cursor: 1,
   });
-  expect(handleRef.current.outputs["terminal-one"].text).toBe("one\r\n");
+  expect(handleRef.current.outputStore.read("terminal-one").text).toBe("one\r\n");
 
   act(() => {
     handleRef.current.handleEvent(
@@ -96,7 +163,7 @@ test("terminal output gaps wait for an inspect snapshot and recover in cursor or
     handleRef.current.handleEvent(outputEvent("session-one", 5, 5, "five\r\n"));
   });
 
-  expect(handleRef.current.outputs["terminal-one"]).toMatchObject({
+  expect(handleRef.current.outputStore.read("terminal-one")).toMatchObject({
     cursor: 5,
     text: "one\r\ntwo\r\nthree\r\nfour\r\nfive\r\n",
   });
@@ -117,7 +184,7 @@ test("a delayed truncated inspect snapshot cannot replace newer terminal input",
     handleRef.current.handleEvent(outputEvent("session-one", 1, 1, "PS E:\\workspace> "));
     handleRef.current.handleEvent(outputEvent("session-one", 2, 2, "111"));
   });
-  expect(handleRef.current.outputs["terminal-one"].text).toBe("PS E:\\workspace> 111");
+  expect(handleRef.current.outputStore.read("terminal-one").text).toBe("PS E:\\workspace> 111");
 
   act(() => {
     handleRef.current.handleEvent(
@@ -133,7 +200,7 @@ test("a delayed truncated inspect snapshot cannot replace newer terminal input",
     );
   });
 
-  expect(handleRef.current.outputs["terminal-one"]).toMatchObject({
+  expect(handleRef.current.outputStore.read("terminal-one")).toMatchObject({
     cursor: 2,
     generation: 0,
     text: "PS E:\\workspace> 111",
@@ -183,11 +250,11 @@ test("terminal recovery follows output that arrives while an inspect snapshot is
       }),
     );
   });
-  expect(handleRef.current.outputs["terminal-one"].text).toBe("one\r\ntwo\r\nthree\r\nfour\r\n");
+  expect(handleRef.current.outputStore.read("terminal-one").text).toBe("one\r\ntwo\r\nthree\r\nfour\r\n");
 });
 
-function ExecutionResourceHarness({ activeSessionId, send, handleRef }) {
-  const handle = useExecutionResourceCommands({ activeSessionId, send, status: "open" });
+function ExecutionResourceHarness({ activeSessionId, send, handleRef, ensureInteractiveTerminal = false }) {
+  const handle = useExecutionResourceCommands({ activeSessionId, send, status: "open", ensureInteractiveTerminal });
   useEffect(() => {
     handleRef.current = handle;
   });

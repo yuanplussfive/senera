@@ -2,6 +2,10 @@ import type { ChatMessage, ModelThinkingBlock, RunRecord, TimelineStep } from ".
 import { timelineToolExecutionKey } from "../../store/session/timelineProjection";
 import type { AssistantTurnListItem } from "./assistantTurnProjection";
 
+const assistantTurnStageCache = new WeakMap<AssistantTurnListItem, AssistantTurnStage[]>();
+const modelResponseStepIndexCache = new WeakMap<readonly TimelineStep[], ModelResponseStepIndex>();
+const timelineStepIdIndexCache = new WeakMap<readonly TimelineStep[], ReadonlyMap<string, number>>();
+
 export interface AssistantTurnStage {
   id: string;
   kind: "execution" | "final";
@@ -13,7 +17,6 @@ export interface AssistantTurnStage {
   modelMessageIndex?: number;
   agentStep?: number;
   responseItems?: AssistantTurnResponseItem[];
-  liveActivityItemId?: string;
 }
 
 interface AssistantTurnResponseItemOrder {
@@ -36,8 +39,10 @@ interface StageBoundary {
 }
 
 export function projectAssistantTurnStages(turn: AssistantTurnListItem): AssistantTurnStage[] {
+  const cached = assistantTurnStageCache.get(turn);
+  if (cached) return cached;
   const responseStages = projectModelResponseStages(turn);
-  if (responseStages) return responseStages;
+  if (responseStages) return rememberAssistantTurnStages(turn, responseStages);
 
   const run = turn.run;
   const messages = turn.messages;
@@ -64,7 +69,7 @@ export function projectAssistantTurnStages(turn: AssistantTurnListItem): Assista
         transientKind: run.visibleKind === "ask_user" ? "AssistantAsk" : "AssistantFinal",
       });
     }
-    return stages;
+    return rememberAssistantTurnStages(turn, stages);
   }
 
   const leadingBoundary = messages.length > 0 ? readLeadingExecutionBoundary(run, messages, markerIndexes) : undefined;
@@ -88,7 +93,7 @@ export function projectAssistantTurnStages(turn: AssistantTurnListItem): Assista
     });
   }
 
-  if (!turn.streaming) return stages;
+  if (!turn.streaming) return rememberAssistantTurnStages(turn, stages);
 
   const activeKind = run?.visibleKind === "final_answer" || run?.visibleKind === "ask_user" ? "final" : "execution";
   const displayedStage = run?.displayMessageId
@@ -123,77 +128,16 @@ export function projectAssistantTurnStages(turn: AssistantTurnListItem): Assista
     activeStage.run = projectStageRun(run, boundary, true);
   }
 
-  return stages;
+  return rememberAssistantTurnStages(turn, stages);
 }
 
 function projectModelResponseStages(turn: AssistantTurnListItem): AssistantTurnStage[] | undefined {
   const run = turn.run;
-  if (
-    !run ||
-    (!run.steps.some((step) => step.modelMessageIndex !== undefined) &&
-      !run.thinkingBlocks?.length &&
-      !run.activeModelRequest)
-  ) {
-    return undefined;
-  }
-  if (
-    run.steps.some(
-      (step) =>
-        isRootModelResponseStep(step) &&
-        isStageExecutionStep(step) &&
-        (step.agentStep === undefined || step.modelMessageIndex === undefined),
-    )
-  ) {
-    return undefined;
-  }
+  const responseData = run ? collectModelResponseProjectionData(run, turn.messages) : undefined;
+  if (!run || !responseData) return undefined;
 
-  const markerIndexes = readMessageStepIndexes(run, turn.messages);
-  const messagesByResponse = new Map<string, ChatMessage[]>();
-  const identities = new Map<string, ResponseIdentity>();
-  const registerIdentity = (identity: ResponseIdentity): void => {
-    const key = readResponseKey(identity.agentStep, identity.modelMessageIndex);
-    const current = identities.get(key);
-    identities.set(key, {
-      ...identity,
-      firstSequence: Math.min(current?.firstSequence ?? Number.MAX_SAFE_INTEGER, identity.firstSequence),
-    });
-  };
-  for (const message of turn.messages) {
-    const markerIndex = markerIndexes.get(message.id);
-    const marker = markerIndex === undefined ? undefined : run.steps[markerIndex];
-    const modelMessageIndex = marker?.modelMessageIndex;
-    if (modelMessageIndex === undefined) return undefined;
-    const agentStep = marker?.agentStep ?? 0;
-    const key = readResponseKey(agentStep, modelMessageIndex);
-    registerIdentity({ agentStep, modelMessageIndex, firstSequence: marker?.eventSequence ?? Number.MAX_SAFE_INTEGER });
-    const responseMessages = messagesByResponse.get(key) ?? [];
-    responseMessages.push(message);
-    messagesByResponse.set(key, responseMessages);
-  }
-
-  for (const step of run.steps) {
-    if (!isRootModelResponseStep(step) || step.modelMessageIndex === undefined) continue;
-    registerIdentity({
-      agentStep: step.agentStep ?? 0,
-      modelMessageIndex: step.modelMessageIndex,
-      firstSequence: step.startedSequence ?? step.eventSequence ?? Number.MAX_SAFE_INTEGER,
-    });
-  }
-  for (const block of run.thinkingBlocks ?? []) {
-    registerIdentity({
-      agentStep: block.step,
-      modelMessageIndex: block.messageIndex,
-      firstSequence: block.eventSequence ?? Number.MAX_SAFE_INTEGER,
-    });
-  }
-  if (run.activeModelRequest) {
-    registerIdentity({
-      agentStep: run.activeModelRequest.agentStep,
-      modelMessageIndex: run.activeModelRequest.modelMessageIndex,
-      firstSequence: run.activeModelRequest.eventSequence,
-    });
-  }
-
+  const { identities, messagesByResponse, messageMarkersById, responseStepsByResponse, thinkingBlocksByResponse } =
+    responseData;
   const orderedResponses = [...identities.values()].sort(compareResponseIdentities);
   const activeResponse = run.activeModelRequest
     ? readResponseKey(run.activeModelRequest.agentStep, run.activeModelRequest.modelMessageIndex)
@@ -202,29 +146,8 @@ function projectModelResponseStages(turn: AssistantTurnListItem): AssistantTurnS
   const stages: AssistantTurnStage[] = orderedResponses.map(({ agentStep, modelMessageIndex }) => {
     const responseKey = readResponseKey(agentStep, modelMessageIndex);
     const responseMessages = messagesByResponse.get(responseKey) ?? [];
-    const childRunIds = new Set(
-      run.steps
-        .filter(
-          (step) =>
-            step.kind === "delegation" &&
-            step.childRun &&
-            step.scope?.parentAgentStep === agentStep &&
-            step.scope.parentModelMessageIndex === modelMessageIndex,
-        )
-        .map((step) => step.childRun!.id),
-    );
-    const responseSteps = run.steps
-      .filter((step) => {
-        const belongsToParentResponse =
-          step.agentStep === agentStep && step.modelMessageIndex === modelMessageIndex && isRootModelResponseStep(step);
-        const belongsToChildRun = step.scope?.childRunId && childRunIds.has(step.scope.childRunId);
-        return isStageExecutionStep(step) && (belongsToParentResponse || belongsToChildRun);
-      })
-      .sort(compareResponseSteps);
-    const blocks = [...(run.thinkingBlocks ?? [])]
-      .filter((block) => block.step === agentStep && block.messageIndex === modelMessageIndex && block.content.trim())
-      .sort((left, right) => left.contentIndex - right.contentIndex || left.id.localeCompare(right.id));
-    const hasVisibleResponseContent = responseMessages.length > 0 || blocks.length > 0;
+    const responseSteps = responseStepsByResponse.get(responseKey) ?? [];
+    const blocks = thinkingBlocksByResponse.get(responseKey) ?? [];
     const live = turn.streaming && responseKey === activeResponse;
     const responseItems = coalesceAdjacentThinkingItems(
       [
@@ -236,8 +159,7 @@ function projectModelResponseStages(turn: AssistantTurnListItem): AssistantTurnS
           blocks: [block],
         })),
         ...responseMessages.map((message) => {
-          const markerIndex = markerIndexes.get(message.id);
-          const marker = markerIndex === undefined ? undefined : run.steps[markerIndex];
+          const marker = messageMarkersById.get(message.id);
           return {
             id: `message:${message.id}`,
             kind: "message" as const,
@@ -246,14 +168,7 @@ function projectModelResponseStages(turn: AssistantTurnListItem): AssistantTurnS
             message,
           };
         }),
-        ...projectResponseExecutionItems(
-          run,
-          agentStep,
-          modelMessageIndex,
-          responseSteps,
-          live,
-          hasVisibleResponseContent,
-        ),
+        ...projectResponseExecutionItems(run, agentStep, modelMessageIndex, responseSteps, blocks, live),
       ].sort(compareResponseItems),
     );
     const message = responseMessages.at(-1);
@@ -261,7 +176,7 @@ function projectModelResponseStages(turn: AssistantTurnListItem): AssistantTurnS
     const kind = message?.kind === "AssistantToolPreface" || (!message && execution) ? "execution" : "final";
     const stageRun =
       responseSteps.length > 0 || live
-        ? projectModelResponseRun(run, agentStep, modelMessageIndex, responseSteps, live)
+        ? projectModelResponseRun(run, agentStep, modelMessageIndex, responseSteps, blocks, live)
         : undefined;
 
     return {
@@ -276,16 +191,157 @@ function projectModelResponseStages(turn: AssistantTurnListItem): AssistantTurnS
     };
   });
 
-  const activeIndex = stages.findIndex((stage) => stage.current);
-  const activeStage = stages[activeIndex];
-  if (activeStage?.responseItems?.length === 0) {
-    const previousStage = [...stages.slice(0, activeIndex)]
-      .reverse()
-      .find((stage) => (stage.responseItems?.length ?? 0) > 0);
-    const previousItem = previousStage?.responseItems?.at(-1);
-    if (previousStage && previousItem) previousStage.liveActivityItemId = previousItem.id;
+  return stages;
+}
+
+interface ModelResponseProjectionData {
+  readonly identities: ReadonlyMap<string, ResponseIdentity>;
+  readonly messagesByResponse: ReadonlyMap<string, ChatMessage[]>;
+  readonly messageMarkersById: ReadonlyMap<string, TimelineStep>;
+  readonly responseStepsByResponse: ReadonlyMap<string, TimelineStep[]>;
+  readonly thinkingBlocksByResponse: ReadonlyMap<string, ModelThinkingBlock[]>;
+}
+
+interface ModelResponseStepIndex {
+  readonly valid: boolean;
+  readonly hasDeclaredModelResponse: boolean;
+  readonly identities: ReadonlyMap<string, ResponseIdentity>;
+  readonly responseStepsByResponse: ReadonlyMap<string, TimelineStep[]>;
+}
+
+function collectModelResponseProjectionData(
+  run: RunRecord,
+  messages: readonly ChatMessage[],
+): ModelResponseProjectionData | undefined {
+  const stepIndex = readModelResponseStepIndex(run.steps);
+  if (!stepIndex.valid) return undefined;
+  if (!stepIndex.hasDeclaredModelResponse && !run.thinkingBlocks?.length && !run.activeModelRequest) return undefined;
+
+  const markerIndexes = readMessageStepIndexes(run, messages);
+  const identities = new Map(stepIndex.identities);
+  const messagesByResponse = new Map<string, ChatMessage[]>();
+  const messageMarkersById = new Map<string, TimelineStep>();
+  const thinkingBlocksByResponse = new Map<string, ModelThinkingBlock[]>();
+
+  for (const message of messages) {
+    const markerIndex = markerIndexes.get(message.id);
+    const marker = markerIndex === undefined ? undefined : run.steps[markerIndex];
+    const modelMessageIndex = marker?.modelMessageIndex;
+    if (!marker || modelMessageIndex === undefined) return undefined;
+    messageMarkersById.set(message.id, marker);
+    const agentStep = marker?.agentStep ?? 0;
+    const responseKey = readResponseKey(agentStep, modelMessageIndex);
+    registerResponseIdentity(identities, {
+      agentStep,
+      modelMessageIndex,
+      firstSequence: marker?.eventSequence ?? Number.MAX_SAFE_INTEGER,
+    });
+    appendProjectionItem(messagesByResponse, responseKey, message);
   }
 
+  for (const block of run.thinkingBlocks ?? []) {
+    const responseKey = readResponseKey(block.step, block.messageIndex);
+    registerResponseIdentity(identities, {
+      agentStep: block.step,
+      modelMessageIndex: block.messageIndex,
+      firstSequence: block.eventSequence ?? Number.MAX_SAFE_INTEGER,
+    });
+    if (block.content.trim()) appendProjectionItem(thinkingBlocksByResponse, responseKey, block);
+  }
+  if (run.activeModelRequest) {
+    registerResponseIdentity(identities, {
+      agentStep: run.activeModelRequest.agentStep,
+      modelMessageIndex: run.activeModelRequest.modelMessageIndex,
+      firstSequence: run.activeModelRequest.eventSequence,
+    });
+  }
+
+  const responseStepsByResponse = new Map(stepIndex.responseStepsByResponse);
+  for (const responseKey of identities.keys())
+    responseStepsByResponse.set(responseKey, responseStepsByResponse.get(responseKey) ?? []);
+
+  return { identities, messagesByResponse, messageMarkersById, responseStepsByResponse, thinkingBlocksByResponse };
+}
+
+function readModelResponseStepIndex(steps: readonly TimelineStep[]): ModelResponseStepIndex {
+  const cached = modelResponseStepIndexCache.get(steps);
+  if (cached) return cached;
+
+  const identities = new Map<string, ResponseIdentity>();
+  const rootStepsByResponse = new Map<string, TimelineStep[]>();
+  const childRunIdsByResponse = new Map<string, Set<string>>();
+  const childStepsByRunId = new Map<string, TimelineStep[]>();
+  let valid = true;
+  let hasDeclaredModelResponse = false;
+
+  for (const step of steps) {
+    hasDeclaredModelResponse ||= step.modelMessageIndex !== undefined;
+    const rootResponse = isRootModelResponseStep(step);
+    if (
+      rootResponse &&
+      isStageExecutionStep(step) &&
+      (step.agentStep === undefined || step.modelMessageIndex === undefined)
+    ) {
+      valid = false;
+      continue;
+    }
+    if (
+      step.kind === "delegation" &&
+      step.childRun &&
+      step.scope?.parentAgentStep !== undefined &&
+      step.scope.parentModelMessageIndex !== undefined
+    ) {
+      const parentKey = readResponseKey(step.scope.parentAgentStep, step.scope.parentModelMessageIndex);
+      const childRunIds = childRunIdsByResponse.get(parentKey) ?? new Set<string>();
+      childRunIds.add(step.childRun.id);
+      childRunIdsByResponse.set(parentKey, childRunIds);
+    }
+    const childRunId = step.scope?.childRunId;
+    if (childRunId && isStageExecutionStep(step)) appendProjectionItem(childStepsByRunId, childRunId, step);
+    if (!rootResponse || step.modelMessageIndex === undefined) continue;
+
+    const agentStep = step.agentStep ?? 0;
+    const responseKey = readResponseKey(agentStep, step.modelMessageIndex);
+    registerResponseIdentity(identities, {
+      agentStep,
+      modelMessageIndex: step.modelMessageIndex,
+      firstSequence: step.startedSequence ?? step.eventSequence ?? Number.MAX_SAFE_INTEGER,
+    });
+    if (isStageExecutionStep(step)) appendProjectionItem(rootStepsByResponse, responseKey, step);
+  }
+
+  const responseStepsByResponse = new Map<string, TimelineStep[]>();
+  for (const responseKey of identities.keys()) {
+    const responseSteps = [...(rootStepsByResponse.get(responseKey) ?? [])];
+    for (const childRunId of childRunIdsByResponse.get(responseKey) ?? []) {
+      responseSteps.push(...(childStepsByRunId.get(childRunId) ?? []));
+    }
+    if (responseSteps.length > 1) responseSteps.sort(compareResponseSteps);
+    responseStepsByResponse.set(responseKey, responseSteps);
+  }
+
+  const index = { valid, hasDeclaredModelResponse, identities, responseStepsByResponse };
+  modelResponseStepIndexCache.set(steps, index);
+  return index;
+}
+
+function appendProjectionItem<T>(groups: Map<string, T[]>, key: string, item: T): void {
+  const items = groups.get(key) ?? [];
+  items.push(item);
+  groups.set(key, items);
+}
+
+function registerResponseIdentity(identities: Map<string, ResponseIdentity>, identity: ResponseIdentity): void {
+  const key = readResponseKey(identity.agentStep, identity.modelMessageIndex);
+  const current = identities.get(key);
+  identities.set(key, {
+    ...identity,
+    firstSequence: Math.min(current?.firstSequence ?? Number.MAX_SAFE_INTEGER, identity.firstSequence),
+  });
+}
+
+function rememberAssistantTurnStages(turn: AssistantTurnListItem, stages: AssistantTurnStage[]): AssistantTurnStage[] {
+  assistantTurnStageCache.set(turn, stages);
   return stages;
 }
 
@@ -337,8 +393,8 @@ function projectResponseExecutionItems(
   agentStep: number,
   modelMessageIndex: number,
   steps: readonly TimelineStep[],
+  thinkingBlocks: ModelThinkingBlock[],
   live: boolean,
-  hasVisibleResponseContent: boolean,
 ): AssistantTurnResponseItem[] {
   const parentSteps = steps.filter((step) => !step.scope?.childRunId || (step.kind === "delegation" && step.childRun));
   const childSteps = steps.filter((step) => Boolean(step.scope?.childRunId));
@@ -358,6 +414,7 @@ function projectResponseExecutionItems(
         agentStep,
         modelMessageIndex,
         relatedSteps,
+        thinkingBlocks,
         live,
         delegation.modelContentIndex ?? delegation.scope?.parentModelContentIndex,
       ),
@@ -374,17 +431,14 @@ function projectResponseExecutionItems(
   }
   for (const batchSteps of toolBatches.values()) {
     for (const step of batchSteps) consumed.add(step.id);
-    projected.push(createExecutionResponseItem(run, agentStep, modelMessageIndex, batchSteps, live));
+    projected.push(createExecutionResponseItem(run, agentStep, modelMessageIndex, batchSteps, thinkingBlocks, live));
   }
 
   for (const step of parentSteps) {
     if (consumed.has(step.id) || (step.kind === "tool" && !step.toolName)) continue;
-    projected.push(createExecutionResponseItem(run, agentStep, modelMessageIndex, [step], live));
+    projected.push(createExecutionResponseItem(run, agentStep, modelMessageIndex, [step], thinkingBlocks, live));
   }
 
-  if (live && projected.length === 0 && !hasVisibleResponseContent && (run.liveActivity || steps.length > 0)) {
-    projected.push(createExecutionResponseItem(run, agentStep, modelMessageIndex, [], live, Number.MAX_SAFE_INTEGER));
-  }
   return projected;
 }
 
@@ -393,6 +447,7 @@ function createExecutionResponseItem(
   agentStep: number,
   modelMessageIndex: number,
   steps: TimelineStep[],
+  thinkingBlocks: ModelThinkingBlock[],
   live: boolean,
   explicitContentIndex?: number,
 ): AssistantTurnResponseItem {
@@ -415,7 +470,7 @@ function createExecutionResponseItem(
     kind: "execution",
     modelContentIndex: contentIndex,
     eventSequence: firstSequence,
-    run: projectModelResponseRun(run, agentStep, modelMessageIndex, orderedSteps, live),
+    run: projectModelResponseRun(run, agentStep, modelMessageIndex, orderedSteps, thinkingBlocks, live),
   };
 }
 
@@ -434,6 +489,7 @@ function projectModelResponseRun(
   agentStep: number,
   modelMessageIndex: number,
   steps: TimelineStep[],
+  thinkingBlocks: ModelThinkingBlock[],
   live: boolean,
 ): RunRecord {
   return {
@@ -458,9 +514,7 @@ function projectModelResponseRun(
       run.activeModelRequest.modelMessageIndex === modelMessageIndex
         ? run.activeModelRequest
         : undefined,
-    thinkingBlocks: run.thinkingBlocks?.filter(
-      (block) => block.step === agentStep && block.messageIndex === modelMessageIndex,
-    ),
+    thinkingBlocks,
   };
 }
 
@@ -521,11 +575,15 @@ function readMessageStepIndexes(run: RunRecord | undefined, messages: readonly C
   const result = new Map<string, number>();
   if (!run) return result;
 
+  const indexesById = readTimelineStepIdIndexes(run.steps);
   let searchStart = 0;
   for (const message of messages) {
     const exactId = `${run.requestId}-assistant-message-${message.id}`;
-    const exactIndex = run.steps.findIndex((step, index) => index >= searchStart && step.id === exactId);
-    const index = exactIndex >= 0 ? exactIndex : findCompatibleMarkerIndex(run, message, searchStart);
+    const exactIndex = indexesById.get(exactId);
+    const index =
+      exactIndex !== undefined && exactIndex >= searchStart
+        ? exactIndex
+        : findCompatibleMarkerIndex(run, message, searchStart);
     if (index === undefined) continue;
     result.set(message.id, index);
     searchStart = index + 1;
@@ -533,24 +591,36 @@ function readMessageStepIndexes(run: RunRecord | undefined, messages: readonly C
   return result;
 }
 
+function readTimelineStepIdIndexes(steps: readonly TimelineStep[]): ReadonlyMap<string, number> {
+  const cached = timelineStepIdIndexCache.get(steps);
+  if (cached) return cached;
+  const indexes = new Map<string, number>();
+  for (let index = 0; index < steps.length; index += 1) indexes.set(steps[index]!.id, index);
+  timelineStepIdIndexCache.set(steps, indexes);
+  return indexes;
+}
+
 function findCompatibleMarkerIndex(run: RunRecord, message: ChatMessage, searchStart: number): number | undefined {
   const expectedKind = message.kind === "AssistantToolPreface" ? "decision" : "answer";
-  const candidates = run.steps
-    .map((step, index) => ({ step, index }))
-    .filter(({ step, index }) => index >= searchStart && step.kind === expectedKind)
-    .filter(({ step }) => message.kind !== "AssistantFinal" || step.decisionKind !== "ask_user")
-    .filter(({ step }) => message.kind !== "AssistantAsk" || step.decisionKind === "ask_user");
-  if (candidates.length === 0) return undefined;
-
   const messageTime = Date.parse(message.createdAt);
-  if (!Number.isFinite(messageTime)) return candidates[0]?.index;
-  return candidates.reduce((best, candidate) => {
-    const bestTime = Date.parse(best.step.startedAt);
-    const candidateTime = Date.parse(candidate.step.startedAt);
-    if (!Number.isFinite(bestTime)) return candidate;
-    if (!Number.isFinite(candidateTime)) return best;
-    return Math.abs(candidateTime - messageTime) < Math.abs(bestTime - messageTime) ? candidate : best;
-  }).index;
+  let firstMatch: number | undefined;
+  let closestMatch: number | undefined;
+  let closestDistance = Number.POSITIVE_INFINITY;
+  for (let index = searchStart; index < run.steps.length; index += 1) {
+    const step = run.steps[index]!;
+    if (step.kind !== expectedKind) continue;
+    if (message.kind === "AssistantFinal" && step.decisionKind === "ask_user") continue;
+    if (message.kind === "AssistantAsk" && step.decisionKind !== "ask_user") continue;
+    firstMatch ??= index;
+    if (!Number.isFinite(messageTime)) continue;
+    const candidateTime = Date.parse(step.startedAt);
+    if (!Number.isFinite(candidateTime)) continue;
+    const distance = Math.abs(candidateTime - messageTime);
+    if (distance >= closestDistance) continue;
+    closestDistance = distance;
+    closestMatch = index;
+  }
+  return closestMatch ?? firstMatch;
 }
 
 function emptyHistoricalBoundary(run: RunRecord | undefined, startedAt?: string): StageBoundary {

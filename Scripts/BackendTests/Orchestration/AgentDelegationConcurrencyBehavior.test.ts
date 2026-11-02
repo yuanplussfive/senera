@@ -11,6 +11,7 @@ import { AgentSqliteChildRunRepository } from "../../../Source/AgentSystem/Orche
 import {
   AgentChildRunModelSelectionSources,
   AgentChildWorkspaceAccessModes,
+  type AgentChildRunRepository,
 } from "../../../Source/AgentSystem/Orchestration/AgentChildRunTypes.js";
 import {
   AgentRunContextModes,
@@ -34,11 +35,22 @@ afterEach(() => {
 });
 
 describe("agent delegation concurrency and nesting", () => {
-  test("defaults orchestration quotas to unlimited while preserving explicit nullable configuration", async () => {
+  test("bounds depth and active tree size while allowing explicit nullable concurrency", async () => {
     const defaults = resolveAgentDelegationConfiguration(modelConfig());
     expect(defaults.concurrency).toEqual({});
-    expect(defaults.execution.maxDepth).toBeUndefined();
+    expect(defaults.execution.maxDepth).toBe(1);
+    expect(defaults.execution.maxActivePerTree).toBe(8);
     expect(defaults.workflows).toEqual({});
+    expect(defaults.execution.deadline).toMatchObject({
+      softTimeoutMs: 900_000,
+      wrapUpTimeoutMs: 180_000,
+      snapshotIntervalMs: 5_000,
+      activityExtension: {
+        recentActivityWindowMs: 30_000,
+        stepMs: 60_000,
+        maximumMs: 120_000,
+      },
+    });
 
     const gate = new AgentRunConcurrencyGate({
       maxConcurrentRuns: null,
@@ -206,8 +218,8 @@ describe("agent delegation concurrency and nesting", () => {
       authorizedToolNames: ["WorkspaceRead"],
       registry: { getTool: () => undefined },
     };
-    const first = await service.spawnWithOutcome({ task: "One logical assignment." }, context);
-    const second = await service.spawnWithOutcome({ task: "One logical assignment." }, context);
+    const first = await service.spawnWithOutcome({ task: "One logical assignment.", mode: "background" }, context);
+    const second = await service.spawnWithOutcome({ task: "One logical assignment.", mode: "background" }, context);
 
     expect(first.disposition).toBe("created");
     expect(second.disposition).toBe("reused");
@@ -217,6 +229,92 @@ describe("agent delegation concurrency and nesting", () => {
     release.resolve();
     await service.wait(first.run.id, context.parentSessionId);
     database.close();
+  });
+
+  test("returns promptly when a background submission loses the durable work-item insertion race", async () => {
+    const database = openDelegationTestDatabase();
+    const release = new Deferred<void>();
+    const dispatch = vi.fn(async (request: AgentRunDispatchRequest): Promise<AgentRunDispatchResult> => {
+      await release.promise;
+      return { sessionId: request.sessionId, requestId: request.requestId, finalAnswer: "Completed once." };
+    });
+    const repository = new AgentSqliteChildRunRepository(database);
+    const create = vi.spyOn(repository, "create");
+    let concealedIdentityLookups = 0;
+    const racingRepository = new Proxy(repository, {
+      get(target, property, receiver) {
+        if (property === "getByWorkItem") {
+          return (...args: Parameters<AgentSqliteChildRunRepository["getByWorkItem"]>) => {
+            if (concealedIdentityLookups > 0) {
+              concealedIdentityLookups -= 1;
+              return undefined;
+            }
+            return target.getByWorkItem(...args);
+          };
+        }
+        if (property === "getByOwnerNode") {
+          return (...args: Parameters<AgentSqliteChildRunRepository["getByOwnerNode"]>) => {
+            if (concealedIdentityLookups > 0) {
+              concealedIdentityLookups -= 1;
+              return undefined;
+            }
+            return target.getByOwnerNode(...args);
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as unknown as AgentChildRunRepository;
+    const service = new AgentDelegationService({
+      workspaceRoot: process.cwd(),
+      configuration: () => ({ config: modelConfig() }),
+      repository: racingRepository,
+      dispatcher: {
+        dispatch,
+        requestFinalAnswer: vi.fn(async () => true),
+        requestCancellation: vi.fn(async () => true),
+        cancel: vi.fn(async () => true),
+      },
+      events: new AgentOrchestrationEventRelay(),
+      preflight: {
+        resolve: vi.fn(async (input) =>
+          delegationPlan("main", [], AgentChildRunModelSelectionSources.Parent, input.workspaceAccess),
+        ),
+      } as unknown as AgentSubagentPreflightPort,
+    });
+    const context = {
+      parentSessionId: "parent-session",
+      parentRequestId: "parent-request",
+      approvalMode: AgentExecutionApprovalModes.Agent,
+      authorizedToolNames: ["WorkspaceRead"],
+      registry: { getTool: () => undefined },
+    };
+    const request = {
+      task: "Review one racing background assignment.",
+      mode: "background" as const,
+      workItemId: "racing-background-assignment",
+    };
+    const first = await service.spawnWithOutcome(request, context);
+
+    try {
+      await vi.waitFor(() => expect(dispatch).toHaveBeenCalledOnce());
+      // Simulate an independent runtime inserting the same identity after this
+      // service has checked both lookup indexes but before it calls INSERT.
+      concealedIdentityLookups = 2;
+      const reused = await settleWithin(service.spawnWithOutcome(request, context), 250);
+
+      expect(first.disposition).toBe("created");
+      expect(reused.disposition).toBe("reused");
+      expect(reused.run.id).toBe(first.run.id);
+      expect(concealedIdentityLookups).toBe(0);
+      expect(create).toHaveBeenCalledTimes(2);
+      expect(dispatch).toHaveBeenCalledOnce();
+    } finally {
+      release.resolve();
+      await service.wait(first.run.id, context.parentSessionId);
+      await vi.waitFor(() => expect(service.snapshot().activeRunIds).toEqual([]));
+      database.close();
+    }
   });
 
   test("runs read-only child sessions concurrently", async () => {
@@ -366,7 +464,7 @@ describe("agent delegation concurrency and nesting", () => {
       database.close();
     }
     expect(maximumActiveWriters).toBe(1);
-    expect(dispatch).toHaveBeenCalledTimes(2);
+    expect(dispatch).toHaveBeenCalledTimes(1);
   });
 
   test("prevents a read-only child session from delegating a workspace writer", async () => {
@@ -398,7 +496,7 @@ describe("agent delegation concurrency and nesting", () => {
     const preflight = vi.fn(async () => delegationPlan());
     const service = new AgentDelegationService({
       workspaceRoot: process.cwd(),
-      configuration: () => ({ config: modelConfig() }),
+      configuration: () => ({ config: modelConfig(null) }),
       repository,
       dispatcher: {
         dispatch: vi.fn(),
@@ -548,6 +646,7 @@ describe("agent delegation concurrency and nesting", () => {
       {
         agent: "worker",
         task: "Edit the shared file.",
+        mode: "background",
         workItemId: "first",
         resources: [{ capability: "test.workspace", value: "Source/shared.ts", intent: "replace" }],
       },
@@ -558,6 +657,7 @@ describe("agent delegation concurrency and nesting", () => {
       {
         agent: "worker",
         task: "Review the shared file.",
+        mode: "background",
         workItemId: "second",
         resources: [{ capability: "test.workspace", value: "Source/shared.ts", intent: "replace" }],
       },
@@ -580,3 +680,14 @@ describe("agent delegation concurrency and nesting", () => {
     database.close();
   });
 });
+
+function settleWithin<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Promise did not settle within ${timeoutMs}ms.`)), timeoutMs);
+    timer.unref();
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}

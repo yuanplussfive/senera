@@ -136,7 +136,7 @@ describe("Workspace canonical boundary", () => {
         executionEnv,
         tool: {
           name: "WorkspaceApplyPatch",
-          runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, Capabilities: { Progress: true } },
+          runtime: { Lifecycle: "Immediate", Capabilities: { Progress: true } },
         },
         config: {},
         registry: { getTool: () => undefined },

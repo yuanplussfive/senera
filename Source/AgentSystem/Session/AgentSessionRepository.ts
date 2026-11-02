@@ -1,9 +1,11 @@
 import type { AgentEventEnvelope } from "../Events/AgentEventBase.js";
+import type { AgentDirectoryRepository } from "../Core/AgentDirectoryContract.js";
 import type { StepTrace } from "../Core/AgentStepTrace.js";
 import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import type { AgentUserProfileRepository } from "../Session/AgentUserProfile.js";
 import type { AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { AgentSession } from "./AgentSession.js";
+import type { AgentSessionInputRepository } from "./AgentSessionQueuedInput.js";
 import type { AgentTurnPreparationSnapshot } from "../Loop/AgentTurnPreparationSnapshot.js";
 import type { AgentSessionHistoryMutation } from "./AgentSessionHistoryMutation.js";
 import type { AgentSessionForkMutation } from "./AgentSessionForkMutation.js";
@@ -75,6 +77,12 @@ export interface AgentSessionCursorPageRequest {
   readonly pageSize: number;
 }
 
+/** Filters are applied before paging and decoding durable event payloads. */
+export interface AgentSessionRunEventPageRequest extends AgentSessionCursorPageRequest {
+  readonly requestIds?: readonly string[];
+  readonly kinds?: readonly AgentEventEnvelope["kind"][];
+}
+
 export interface AgentSessionCursorPage<T, TCursor = number> {
   readonly items: readonly T[];
   readonly nextCursor?: TCursor;
@@ -108,6 +116,15 @@ export interface AgentSessionCatalogReader {
 }
 
 export interface AgentSessionPagedHistoryReader {
+  loadHistoryRequestPage(
+    sessionId: string,
+    request: import("./AgentSessionHistoryWindow.js").AgentSessionHistoryRequestPageInput,
+  ): import("./AgentSessionHistoryWindow.js").AgentSessionHistoryRequestPage;
+  loadStepTracesForRequests(
+    sessionId: string,
+    requestIds: readonly string[],
+    throughRowId: number,
+  ): StoredStepTraceRun[];
   captureHistorySnapshot(sessionId: string): AgentSessionHistoryView | undefined;
   loadStepTracePage(
     sessionId: string,
@@ -135,9 +152,9 @@ export interface AgentSessionPagedHistoryReader {
   ): AgentConversationEntry[];
   loadRunEventPage(
     sessionId: string,
-    request: AgentSessionCursorPageRequest,
+    request: AgentSessionRunEventPageRequest,
   ): AgentSessionCursorPage<AgentEventEnvelope>;
-  /** Loads one durable event detail without materializing the request history. */
+  /** Loads the latest durable event of a kind without materializing the request history. */
   loadRunEvent(sessionId: string, requestId: string, kind: string): AgentEventEnvelope | undefined;
 }
 
@@ -151,10 +168,12 @@ export interface AgentSessionFullHistoryReader {
 export interface AgentSessionRepository
   extends
     AgentUserProfileRepository,
+    AgentDirectoryRepository,
     AgentSessionMetadataReader,
     AgentSessionCatalogReader,
     AgentSessionPagedHistoryReader,
-    AgentSessionFullHistoryReader {
+    AgentSessionFullHistoryReader,
+    AgentSessionInputRepository {
   listPendingHistoryMutations(): AgentSessionHistoryMutation[];
   loadPendingHistoryMutation(sessionId: string): AgentSessionHistoryMutation | undefined;
   stageHistoryMutation(mutation: AgentSessionHistoryMutation): void;

@@ -103,41 +103,8 @@ export interface ActionRunState {
   
 }
 
-export interface AuxiliaryImageAnalysis {
-  analysis: string
-  
-}
-
 export interface AuxiliarySummary {
   summary: string
-  
-}
-
-export interface ChannelCodePart {
-  kind: "code"
-  language?: string | null
-  code: string
-  
-}
-
-export interface ChannelDelivery {
-  parts: (ChannelTextPart | ChannelResourcePart | ChannelCodePart)[]
-  
-}
-
-export interface ChannelResourcePart {
-  kind: "resource"
-  uri: string
-  alt?: string | null
-  mediaKind?: "image" | "video" | "audio" | "file" | null
-  mime?: string | null
-  fileName?: string | null
-  
-}
-
-export interface ChannelTextPart {
-  kind: "text"
-  text: string
   
 }
 
@@ -162,9 +129,46 @@ export interface ExecuteDecision {
 export interface MemOSFragment {
   topic: string
   summary: string
-  type: "fact" | "preference" | "relationship" | "context" | "entity" | "custom"
+  type: "fact" | "preference" | "relationship" | "context"
+  assessments: MemOSMemoryAssessment[]
   
   [key: string]: any;
+}
+
+export interface MemOSMemoryAssessment {
+  candidate: number
+  usefulness: "helpful" | "unhelpful" | "unused" | "uncertain"
+  reason: string
+  
+}
+
+export interface MemOSSkipDecision {
+  action: "skip"
+  assessments: MemOSMemoryAssessment[]
+  
+}
+
+export interface MemoryDiary {
+  title: string
+  body: string
+  
+}
+
+export interface MemoryRelevanceAssessment {
+  records: MemoryRelevanceRecord[]
+  
+}
+
+export interface MemoryRelevanceRecord {
+  recordId: number
+  relevant: boolean
+  score: number
+  
+}
+
+export interface MemoryRetention {
+  days: number
+  
 }
 
 export interface PiToolArgumentsDraft {
@@ -297,14 +301,10 @@ export interface RepeatedCallWarning {
   
 }
 
-export interface ResidentSpeechProjection {
-  utterance: string
-  
-}
-
 export interface StateCardRewrite {
   topicRelation: "continue" | "new_topic"
   standaloneRequest: string
+  resumeRequestId?: string | null
   
 }
 

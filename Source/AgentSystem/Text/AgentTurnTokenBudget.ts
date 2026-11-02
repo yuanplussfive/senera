@@ -1,6 +1,6 @@
 import { AgentModelTokenEstimator } from "./AgentTextBudget.js";
 import { estimateAgentModelInputTokens } from "./AgentMultimodalTokenBudget.js";
-import { calculateContextTokens, estimateTokens } from "@earendil-works/pi-agent-core";
+import { calculateContextTokens, estimateTokens } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 
 export interface AgentTurnTokenBudgetOptions {

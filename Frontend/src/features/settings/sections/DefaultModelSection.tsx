@@ -1,15 +1,13 @@
+import { Tooltip } from "../../../shared/ui/Tooltip";
 import { useId, useMemo, useState } from "react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import type { ConfigFormFieldData, ConfigFormSectionData } from "../../../api/eventTypes";
 import { MotionDisclosure } from "../../../shared/motion";
-import { AppIcon, type AppIconName, IconButton, MenuSelect, Spinner, Switch } from "../../../shared/ui";
+import { AppIcon, type AppIconName, IconButton, Spinner, Switch } from "../../../shared/ui";
 import { AgentToolPresentationIcon } from "../../../shared/workspace/AgentToolPresentationIcon";
 import { findTopField } from "../../chat/modelConfigData";
-import {
-  inferModelProviderEndpointIcon,
-  inferModelProviderIcon,
-  ModelProviderIcon,
-} from "../../chat/ModelProviderIcon";
+import { ModelProviderIcon } from "../../../shared/models/ModelProviderIcon";
+import { ModelSelect, modelSelectOption, resolveModelIcon } from "../../../shared/models/ModelSelect";
 import { ConfigFieldRequirementLabel } from "../../../shared/config/ConfigFieldVisibility";
 import { cn } from "../../../lib/util";
 import { useFrontendLocale } from "../../../i18n/useFrontendLocale";
@@ -331,9 +329,6 @@ function ModelAssignmentRow({
     defaultModelId,
     draft: draftState.draft,
   });
-  const selectedCandidate = selection.inherited
-    ? candidates.find((candidate) => candidate.model.Id === defaultModelId)
-    : candidates.find((candidate) => candidate.model.Id === selection.value);
   const operation =
     field.modelSelection.mutation === "default-model" && pendingModelId
       ? systemConfig.providerModelOperations[pendingModelId]
@@ -343,6 +338,7 @@ function ModelAssignmentRow({
       ? [
           {
             value: `inherit:${field.modelSelection.id}`,
+            icon: readCandidateIcon(candidates.find((candidate) => candidate.model.Id === defaultModelId)),
             label: frontendMessage("settings.model.inheritDefault", {
               model:
                 candidates.find((candidate) => candidate.model.Id === defaultModelId)?.model.Model ?? defaultModelId,
@@ -353,11 +349,14 @@ function ModelAssignmentRow({
     ...(selection.unavailableLabel
       ? [{ value: selection.value, label: selection.unavailableLabel, disabled: true }]
       : []),
-    ...candidates.map(({ model, provider }) => ({
-      value: model.Id,
-      label: model.Model,
-      description: provider.Id,
-    })),
+    ...candidates.map(({ model, provider }) =>
+      modelSelectOption({
+        id: model.Id,
+        model: model.Model,
+        providerId: provider.Id,
+        icon: model.Icon ?? provider.Icon,
+      }),
+    ),
   ];
 
   const selectCandidate = (modelId: string): void => {
@@ -383,7 +382,7 @@ function ModelAssignmentRow({
       <AssignmentLabel field={field} />
 
       <div className="min-w-0">
-        <MenuSelect
+        <ModelSelect
           value={selection.value}
           placeholder={field.placeholder ?? frontendMessage("settings.model.defaultPlaceholder")}
           ariaLabel={field.label}
@@ -397,22 +396,6 @@ function ModelAssignmentRow({
               <AppIcon icon="checkmark" size={14} className="text-moss-600" />
             ) : undefined
           }
-          renderValue={(value, option) => (
-            <AssignmentOption
-              label={option?.label ?? value}
-              providerId={selectedCandidate?.provider.Id}
-              icon={readCandidateIcon(selectedCandidate)}
-              unavailable={Boolean(selection.unavailableLabel)}
-            />
-          )}
-          renderOption={(option) => (
-            <AssignmentOption
-              label={option.label}
-              providerId={option.description}
-              icon={readCandidateIcon(candidates.find((candidate) => candidate.model.Id === option.value))}
-              unavailable={option.disabled}
-            />
-          )}
           onChange={selectCandidate}
         />
         {candidates.length === 0 || selection.unavailableLabel || operation?.status === "error" ? (
@@ -539,26 +522,21 @@ function ModelPoolAssignmentRow({
         })}
 
         <div className="py-2">
-          <MenuSelect
+          <ModelSelect
             value=""
             placeholder={field.placeholder ?? frontendMessage("settings.model.poolAdd")}
             ariaLabel={frontendMessage("settings.model.poolAdd")}
-            options={availableCandidates.map(({ model, provider }) => ({
-              value: model.Id,
-              label: model.Model,
-              description: provider.Id,
-            }))}
+            options={availableCandidates.map(({ model, provider }) =>
+              modelSelectOption({
+                id: model.Id,
+                model: model.Model,
+                providerId: provider.Id,
+                icon: model.Icon ?? provider.Icon,
+              }),
+            )}
             disabled={availableCandidates.length === 0}
             emptyState={frontendMessage("settings.model.poolNoAdditionalCandidates")}
-            leading={<AppIcon icon="plus" size={14} />}
             triggerClassName="border-0 bg-transparent px-0 hover:border-transparent focus-visible:border-transparent focus-visible:ring-0"
-            renderOption={(option) => (
-              <AssignmentOption
-                label={option.label}
-                providerId={option.description}
-                icon={readCandidateIcon(candidatesById.get(option.value))}
-              />
-            )}
             onChange={addModel}
           />
           {selection.modelIds.some((modelId) => !candidatesById.has(modelId)) ? (
@@ -583,13 +561,14 @@ function PoolCandidateLabel({
 }): JSX.Element {
   const icon = readCandidateIcon(candidate);
   return (
-    <div className={cn("flex min-w-0 flex-1 items-center gap-2.5", unavailable && "text-umber-600")}>
-      {icon ? <ModelProviderIcon icon={icon} size={15} /> : null}
-      <div className="min-w-0">
-        <div className="truncate text-[12.5px] font-medium text-ink-850">{candidate?.model.Model ?? modelId}</div>
-        {candidate ? <div className="mt-0.5 truncate text-[10.5px] text-ink-450">{candidate.provider.Id}</div> : null}
+    <Tooltip content={candidate?.provider.Id}>
+      <div className={cn("flex min-w-0 flex-1 items-center gap-2.5", unavailable && "text-umber-600")}>
+        {icon ? <ModelProviderIcon icon={icon} size={15} /> : null}
+        <div className="min-w-0">
+          <div className="truncate text-[12.5px] font-medium text-ink-850">{candidate?.model.Model ?? modelId}</div>
+        </div>
       </div>
-    </div>
+    </Tooltip>
   );
 }
 
@@ -612,42 +591,17 @@ function AssignmentLabel({ field }: { field: RuntimeModelAssignmentField }): JSX
   );
 }
 
-function AssignmentOption({
-  label,
-  providerId,
-  icon,
-  unavailable,
-}: {
-  label: string;
-  providerId?: string;
-  icon?: string;
-  unavailable?: boolean;
-}): JSX.Element {
-  return (
-    <span className={cn("flex min-w-0 items-center gap-2 leading-5", unavailable && "text-umber-600")}>
-      {icon ? <ModelProviderIcon icon={icon} size={14} /> : null}
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      {providerId ? <span className="shrink-0 text-[10.5px] text-content-muted">{providerId}</span> : null}
-    </span>
-  );
-}
-
 function readCandidateIcon(candidate?: RuntimeModelAssignmentCandidate): string | undefined {
   if (!candidate) return undefined;
-  return (
-    candidate.model.Icon ??
-    inferModelProviderIcon(candidate.model.Model, false) ??
-    inferModelProviderEndpointIcon(candidate.provider.Id, false) ??
-    candidate.provider.Icon ??
-    inferModelProviderIcon(candidate.model.Model)
-  );
+  return resolveModelIcon({
+    model: candidate.model.Model,
+    providerId: candidate.provider.Id,
+    icon: candidate.model.Icon ?? candidate.provider.Icon,
+  });
 }
 
 const assignmentRoleIcons: Readonly<Record<string, AppIconName>> = {
   assistant: "target",
-  planner: "list-tree",
-  "planner-base": "list-tree",
-  "action-planner": "delegation",
   "final-answer": "answer",
   "state-card": "state-card",
   "continuity-learning": "stack",

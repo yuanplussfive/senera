@@ -5,12 +5,22 @@ const TrivyAction = "aquasecurity/trivy-action@0.35.0";
 const PullRequestSecurityJobs = ["dependency-audit", "codeql", "trivy-filesystem"] as const;
 const TrivyStepPolicies = [
   {
-    name: "Generate Trivy SARIF report",
-    terms: [TrivyAction, 'exit-code: "0"', "format: sarif", "output: trivy-results.sarif"],
+    name: "Scan filesystem once with Trivy",
+    terms: [
+      TrivyAction,
+      "scan-type: fs",
+      "ignore-unfixed: true",
+      'exit-code: "0"',
+      "format: json",
+      "output: trivy-results.json",
+    ],
   },
   {
-    name: "Enforce Trivy severity gate",
-    terms: [TrivyAction, "severity: HIGH,CRITICAL", "ignore-unfixed: true", 'exit-code: "1"', "format: table"],
+    name: "Generate Trivy SARIF and enforce severity gate from scan results",
+    terms: [
+      "trivy convert --format sarif --exit-code 0 --output trivy-results.sarif trivy-results.json",
+      "trivy convert --format table --severity HIGH,CRITICAL --exit-code 1 trivy-results.json",
+    ],
   },
 ] as const;
 
@@ -18,6 +28,8 @@ export function inspectSecurityScanWorkflow(workflow: string): string[] {
   const violations = inspectTextIncludes(workflow, SecurityScanWorkflowLabel, [
     "name: Security Scan",
     "pull_request:",
+    "group: security-scan-${{ github.event.pull_request.number || github.ref }}",
+    "cancel-in-progress: true",
     "github/codeql-action/init@v4",
     "queries: security-extended,security-and-quality",
     "actions/dependency-review-action@v5",
@@ -25,6 +37,7 @@ export function inspectSecurityScanWorkflow(workflow: string): string[] {
     "github/codeql-action/upload-sarif@v4",
     "actions/setup-node@v5",
     "npm run quality.security",
+    "always() && hashFiles('trivy-results.sarif') != ''",
   ]);
   const auditJob = workflowJobBlock(workflow, "dependency-audit");
   if (auditJob?.includes("./.github/actions/setup-node")) {
@@ -32,6 +45,9 @@ export function inspectSecurityScanWorkflow(workflow: string): string[] {
   }
   const trivyJob = workflowJobBlock(workflow, "trivy-filesystem");
   if (trivyJob) {
+    if (trivyJob.split(`uses: ${TrivyAction}`).length !== 2) {
+      violations.push(`${SecurityScanWorkflowLabel} must produce the Trivy report and gate in one scan.`);
+    }
     for (const policy of TrivyStepPolicies) {
       violations.push(...inspectWorkflowNamedStep(trivyJob, SecurityScanWorkflowLabel, policy.name, policy.terms));
     }

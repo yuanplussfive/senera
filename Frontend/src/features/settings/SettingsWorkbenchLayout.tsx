@@ -1,6 +1,7 @@
 import { useCallback, useRef, type MutableRefObject, type ReactNode, type Ref } from "react";
 import { motion } from "framer-motion";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { DesktopReleaseChannelBadge } from "../../app/DesktopReleaseChannelBadge";
 import { cn } from "../../lib/util";
 import { FluidHoverHighlight, motionTimings, useFluidHover, useMotionLevel } from "../../shared/motion";
 import { AppIcon, IconButton, ScrollArea, Sheet, SheetContent } from "../../shared/ui";
@@ -57,8 +58,9 @@ export function SettingsWorkbenchLayout({
           >
             <AppIcon icon="menu" size={16} aria-hidden="true" />
           </IconButton>
-          <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
             <div className="truncate text-[13px] font-semibold text-content-strong">{activeSection.label}</div>
+            <DesktopReleaseChannelBadge />
           </div>
           {shellActions}
         </header>
@@ -78,6 +80,7 @@ export function SettingsWorkbenchLayout({
                 <span className="min-w-0 truncate pl-2.5 text-[13px] font-semibold text-content-primary">
                   {frontendMessage("settings.header.title")}
                 </span>
+                <DesktopReleaseChannelBadge />
                 {shellActions}
               </div>
             </div>

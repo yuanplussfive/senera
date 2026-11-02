@@ -12,6 +12,12 @@
 .markdown-renderer > :last-child {
   margin-bottom: 0;
 }
+.streaming-markdown > [data-streaming-markdown-prefix] + .streaming-markdown__tail {
+  margin-block-start: 0.7em;
+}
+.streaming-markdown--compact > [data-streaming-markdown-prefix] + .streaming-markdown__tail {
+  margin-block-start: 0.55em;
+}
 .markdown-renderer p,
 .markdown-renderer ul,
 .markdown-renderer ol,
@@ -126,6 +132,18 @@
   border-radius: 2px;
   box-shadow: 0 0 0 2px var(--accent-focus-ring);
 }
+
+/* User-authored URLs stay part of the message's reading flow. The underline
+ * and focus treatment still expose the link without turning a whole sentence
+ * into an accent-colored block. */
+[data-user-message-bubble] .markdown-renderer__link {
+  color: inherit;
+  text-decoration-color: color-mix(in srgb, currentColor 52%, transparent);
+}
+[data-user-message-bubble] .markdown-renderer__link:hover {
+  color: inherit;
+  text-decoration-color: currentColor;
+}
 .markdown-renderer__link-icon {
   display: inline;
   width: 0.82em;
@@ -135,7 +153,7 @@
 }
 .markdown-renderer__citation {
   display: inline-flex;
-  max-width: min(18ch, 100%);
+  max-width: min(34ch, 100%);
   align-items: baseline;
   margin-inline-start: 0.25em;
   border: 1px solid color-mix(in srgb, var(--line-subtle) 82%, transparent);

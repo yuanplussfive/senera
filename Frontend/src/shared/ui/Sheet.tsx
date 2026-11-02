@@ -1,4 +1,5 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { OverlayPortalScope } from "./overlayPortalScope";
 import {
   forwardRef,
   useLayoutEffect,
@@ -114,6 +115,7 @@ const SheetContentFrame = forwardRef<HTMLDivElement, SheetContentFrameProps>(
     },
     ref,
   ) => {
+    const [portalContainer, setPortalContainer] = useState<HTMLDivElement | null>(null);
     const { reduceMotion, disableMotion } = useMotionLevel();
     const shouldDeferContentMount = deferContentMount && !reduceMotion && !disableMotion;
     const [contentReady, setContentReady] = useState(dataState !== "closed");
@@ -154,7 +156,7 @@ const SheetContentFrame = forwardRef<HTMLDivElement, SheetContentFrameProps>(
         side={content.side}
         className={cn(
           "dialog-presence",
-          "fixed top-0 z-50 flex h-full w-[min(360px,calc(100vw-24px))] flex-col overflow-hidden",
+          "fixed top-0 z-50 flex h-full w-[min(360px,calc(100vw-24px))] flex-col",
           "border-ink-200 bg-paper-50 outline-none",
           sideClasses[content.side],
           content.className,
@@ -167,45 +169,52 @@ const SheetContentFrame = forwardRef<HTMLDivElement, SheetContentFrameProps>(
         style={mergeSheetPresenceStyle(style)}
         {...props}
       >
-        {content.showHeader && (content.title || content.showClose) ? (
-          <div className="flex min-h-14 items-start gap-3 border-b border-ink-200/70 bg-paper-50 px-4 py-3.5">
-            <div className="min-w-0 flex-1">
-              {content.title ? (
-                <DialogPrimitive.Title className="truncate text-[13.5px] font-medium text-ink-900">
-                  {content.title}
-                </DialogPrimitive.Title>
-              ) : null}
-              {content.description ? (
-                <DialogPrimitive.Description className="mt-0.5 truncate text-[12px] text-ink-500">
-                  {content.description}
-                </DialogPrimitive.Description>
-              ) : null}
-            </div>
-            {content.showClose ? (
-              <DialogPrimitive.Close asChild>
-                <button
-                  type="button"
-                  className={cn(
-                    "grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-[var(--overlay-radius)] text-content-muted transition-colors duration-[var(--menu-item-dur)]",
-                    "hover:bg-surface-hover hover:text-content-primary",
-                    "focus:outline-none",
-                  )}
-                  aria-label={frontendMessage("ui.close")}
-                >
-                  <AppIcon icon="close" size={16} aria-hidden="true" />
-                </button>
-              </DialogPrimitive.Close>
-            ) : null}
+        <div ref={setPortalContainer} className="contents" />
+        <OverlayPortalScope.Provider value={portalContainer}>
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[inherit]">
+            {content.showHeader && (content.title || content.showClose) ? (
+              <div className="flex min-h-14 items-start gap-3 border-b border-ink-200/70 bg-paper-50 px-4 py-3.5">
+                <div className="min-w-0 flex-1">
+                  {content.title ? (
+                    <DialogPrimitive.Title className="truncate text-[13.5px] font-medium text-ink-900">
+                      {content.title}
+                    </DialogPrimitive.Title>
+                  ) : null}
+                  {content.description ? (
+                    <DialogPrimitive.Description className="mt-0.5 truncate text-[12px] text-ink-500">
+                      {content.description}
+                    </DialogPrimitive.Description>
+                  ) : null}
+                </div>
+                {content.showClose ? (
+                  <DialogPrimitive.Close asChild>
+                    <button
+                      type="button"
+                      className={cn(
+                        "grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-[var(--overlay-radius)] text-content-muted transition-colors duration-[var(--menu-item-dur)]",
+                        "hover:bg-surface-hover hover:text-content-primary",
+                        "focus:outline-none",
+                      )}
+                      aria-label={frontendMessage("ui.close")}
+                    >
+                      <AppIcon icon="close" size={16} aria-hidden="true" />
+                    </button>
+                  </DialogPrimitive.Close>
+                ) : null}
+              </div>
+            ) : (
+              <>
+                {content.title ? (
+                  <DialogPrimitive.Title className="sr-only">{content.title}</DialogPrimitive.Title>
+                ) : null}
+                {content.description ? (
+                  <DialogPrimitive.Description className="sr-only">{content.description}</DialogPrimitive.Description>
+                ) : null}
+              </>
+            )}
+            {keepHeavyChildrenMounted ? content.children : null}
           </div>
-        ) : (
-          <>
-            {content.title ? <DialogPrimitive.Title className="sr-only">{content.title}</DialogPrimitive.Title> : null}
-            {content.description ? (
-              <DialogPrimitive.Description className="sr-only">{content.description}</DialogPrimitive.Description>
-            ) : null}
-          </>
-        )}
-        {keepHeavyChildrenMounted ? content.children : null}
+        </OverlayPortalScope.Provider>
       </MotionSheetContent>
     );
   },

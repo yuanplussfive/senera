@@ -52,7 +52,7 @@ test("model editor stays open after a failed save so the draft can be retried", 
   expect(screen.getByRole("dialog")).toBeInTheDocument();
 });
 
-test("model tool planning defaults to native and keeps native prerequisites consistent", async () => {
+test("model tool planning defaults to native without rewriting declared capabilities", async () => {
   const user = userEvent.setup();
   const model = {
     Id: "openai/gpt-4.1",
@@ -66,12 +66,7 @@ test("model tool planning defaults to native and keeps native prerequisites cons
 
   await user.click(screen.getByRole("button", { name: frontendMessage("chat.model.configure") }));
   const dialog = screen.getByRole("dialog");
-  const nativeMode = within(dialog).getByRole("radio", {
-    name: frontendMessage("config.model.toolPlanning.native"),
-  });
-  const bamlMode = within(dialog).getByRole("radio", {
-    name: frontendMessage("config.model.toolPlanning.baml"),
-  });
+  const planningMode = () => within(dialog).getByRole("button", { name: /^工具规划:/ });
   const toolCalling = within(dialog).getByRole("switch", {
     name: frontendMessage("config.model.capability.toolCalling"),
   });
@@ -79,21 +74,26 @@ test("model tool planning defaults to native and keeps native prerequisites cons
     name: frontendMessage("config.model.streaming"),
   });
 
-  expect(nativeMode).toHaveAttribute("aria-checked", "true");
+  expect(planningMode()).toHaveAccessibleName(/原生工具调用/);
   expect(toolCalling).toHaveAttribute("aria-checked", "true");
   expect(streaming).toHaveAttribute("aria-checked", "true");
 
   await user.click(toolCalling);
-  expect(bamlMode).toHaveAttribute("aria-checked", "true");
+  expect(planningMode()).toHaveAccessibleName(/原生工具调用/);
   expect(toolCalling).toHaveAttribute("aria-checked", "false");
 
-  await user.click(nativeMode);
-  expect(nativeMode).toHaveAttribute("aria-checked", "true");
-  expect(toolCalling).toHaveAttribute("aria-checked", "true");
+  await user.click(planningMode());
+  await user.click(screen.getByRole("menuitemradio", { name: frontendMessage("config.model.toolPlanning.baml") }));
+  expect(planningMode()).toHaveAccessibleName(/BAML 规划/);
+  expect(toolCalling).toHaveAttribute("aria-checked", "false");
+  await user.click(planningMode());
+  await user.click(screen.getByRole("menuitemradio", { name: frontendMessage("config.model.toolPlanning.native") }));
+  expect(planningMode()).toHaveAccessibleName(/原生工具调用/);
+  expect(toolCalling).toHaveAttribute("aria-checked", "false");
   expect(streaming).toHaveAttribute("aria-checked", "true");
 
   await user.click(streaming);
-  expect(bamlMode).toHaveAttribute("aria-checked", "true");
+  expect(planningMode()).toHaveAccessibleName(/原生工具调用/);
   expect(streaming).toHaveAttribute("aria-checked", "false");
 });
 
@@ -310,7 +310,7 @@ test("manual model add uses the compact form without groups and keeps advanced c
   expect(dialog.querySelector("[data-radix-scroll-area-viewport]")).not.toBeNull();
 
   await user.type(
-    within(dialog).getByRole("textbox", { name: frontendMessage("settings.modelManagement.modelIdLabel") }),
+    within(dialog).getByRole("combobox", { name: frontendMessage("settings.modelManagement.modelIdLabel") }),
     "gpt-5.5",
   );
   await user.type(within(dialog).getByRole("textbox", { name: frontendMessage("config.model.modelName") }), "GPT-5.5");

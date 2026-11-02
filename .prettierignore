@@ -6,7 +6,7 @@ coverage/
 Dist/
 Frontend/dist/
 node_modules/
-Release/
+Release*/
 Source/AgentSystem/BamlClient/baml_client/
 Source/AgentSystem/**/Database/contract.json
 Source/AgentSystem/**/Database/runtime.json
@@ -23,5 +23,6 @@ prompts/
 tmp/
 
 package-lock.json
+Frontend/qq/client/
 CHANGELOG.md
 *.wasm

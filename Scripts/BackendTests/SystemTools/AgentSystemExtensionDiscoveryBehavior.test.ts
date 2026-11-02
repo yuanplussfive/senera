@@ -99,7 +99,6 @@ function writePackage(domainRoot: string, directoryParts: readonly string[], id:
     id,
     domain,
     settingsSurface: "system-tools",
-    version: "1.0.0",
     displayName: localized(`${id} extension`),
     description: localized(`${id} extension description.`),
   });

@@ -1,0 +1,201 @@
+{
+  "name": "ChannelSendMessage",
+  "loading": "Bootstrap",
+  "description": "Send literal text here as an ordered messages array. Markdown links and CQ-looking strings remain text. Normally send one message; use up to three only for distinct useful content. Send in its own tool batch. Native mentions apply only to the first item. Use ChannelSendMedia for attachments. Console answers are not delivered. messageIds lists confirmed sends; needs_review or failed stops the remainder. Review the receipt and inbox before continuing; never resend confirmed or uncertain deliveries.",
+  "presentation": {
+    "category": "channel-message",
+    "icon": "arrow-right",
+    "activity": {
+      "action": {
+        "zh-CN": "发送 QQ 消息",
+        "en-US": "Send QQ message"
+      },
+      "argumentPath": "/messages/0"
+    },
+    "preview": {
+      "body": {
+        "pointer": "/status",
+        "from": "result"
+      }
+    }
+  },
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "taskId": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Durable task ID from conversation_tasks or ChannelUpdateConversation; scope review/wait to its verified participants."
+      },
+      "allowUnread": {
+        "type": "boolean",
+        "default": false,
+        "description": "Deliberately send despite unread activity only when the contribution remains valid independently of it. Otherwise the batch stops with needs_review before its next message."
+      },
+      "mentionIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "minItems": 1,
+        "uniqueItems": true,
+        "description": "Verified participant IDs on channels supporting native mentions; applies only to the first message."
+      },
+      "messages": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "minItems": 1,
+        "maxItems": 3,
+        "description": "Literal messages in delivery order. Default to one coherent message; do not split each sentence or bypass the limit with repeated or parallel calls."
+      }
+    },
+    "required": ["messages"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "oneOf": [
+      {
+        "type": "object",
+        "properties": {
+          "status": {
+            "const": "sent"
+          },
+          "messageIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "maxItems": 3,
+            "description": "Confirmed deliveries in input order. Check status and code before retrying any unconfirmed item.",
+            "minItems": 1
+          }
+        },
+        "required": ["status", "messageIds"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "status": {
+            "const": "needs_review"
+          },
+          "inbox": {
+            "type": "object",
+            "properties": {
+              "afterSequence": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "throughSequence": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "hasMore": {
+                "type": "boolean"
+              },
+              "entries": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            },
+            "required": ["afterSequence", "throughSequence", "hasMore", "entries"],
+            "additionalProperties": false
+          },
+          "messageIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "maxItems": 3,
+            "description": "Confirmed deliveries in input order. Check status and code before retrying any unconfirmed item."
+          }
+        },
+        "required": ["status", "messageIds", "inbox"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "status": {
+            "const": "failed"
+          },
+          "messageIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "maxItems": 3,
+            "description": "Confirmed deliveries in input order. Check status and code before retrying any unconfirmed item."
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": ["status", "messageIds", "code", "error"],
+        "additionalProperties": false
+      }
+    ]
+  },
+  "permissions": ["channel:send"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "SelfManaged",
+    "Capabilities": {
+      "Cancellation": true
+    }
+  },
+  "resources": [],
+  "sources": [],
+  "surfaces": ["channel"],
+  "platforms": ["onebot11", "qq", "onebot"],
+  "search": {
+    "Summary": "向当前 QQ 渠道会话发送模型明确选择的消息。",
+    "Tags": ["QQ", "发送", "消息"],
+    "Capabilities": [
+      {
+        "Id": "channel.send",
+        "Title": "Send current-channel message",
+        "Description": "Send text to the active channel lane.",
+        "Facets": {
+          "Actions": ["send"],
+          "Targets": ["current-channel-lane"],
+          "Inputs": ["message-text-array"],
+          "Outputs": ["message-ids"],
+          "Effects": ["external-message-send"]
+        },
+        "Aliases": ["发送 QQ 消息", "send channel message"],
+        "Risk": {
+          "SideEffect": "external-communication",
+          "Permission": "channel-send"
+        }
+      }
+    ],
+    "UseCases": ["用户要求在当前渠道对话中发送明确内容"],
+    "Examples": ["向当前渠道对话发送处理结果"],
+    "Avoid": ["不要把主控台回答自动复制到 QQ；仅在决定外发时调用"]
+  },
+  "evidenceCapabilities": []
+}

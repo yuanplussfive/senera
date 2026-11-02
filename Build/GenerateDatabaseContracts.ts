@@ -7,6 +7,7 @@ import { errorMessage } from "../Source/AgentSystem/Core/AgentErrors.js";
 import { sha256Hex } from "../Source/AgentSystem/Core/AgentHash.js";
 import { toPosixRelative, walkFiles } from "../Scripts/Support/FileWalk.js";
 import { loadAgentSqliteVec } from "../Source/AgentSystem/Database/AgentSqliteVecExtension.js";
+import { relativePathWithin } from "../Source/AgentSystem/Core/AgentPath.js";
 
 interface ContractManifest {
   id?: unknown;
@@ -186,8 +187,7 @@ function resolveResource(directory: string, value: unknown, label: string): stri
   const relative = readNonEmptyString(value, label);
   if (path.isAbsolute(relative)) throw new Error(`${label} must be relative.`);
   const resolved = path.resolve(directory, relative);
-  const inside = path.relative(directory, resolved);
-  if (inside === "" || inside.startsWith(`..${path.sep}`) || path.isAbsolute(inside)) {
+  if (!relativePathWithin(directory, resolved)) {
     throw new Error(`${label} escapes its contract directory.`);
   }
   return resolved;

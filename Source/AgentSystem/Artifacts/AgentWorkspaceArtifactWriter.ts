@@ -1,6 +1,7 @@
 import path from "node:path";
 import { createTwoFilesPatch, FILE_HEADERS_ONLY } from "diff";
-import { createAgentResourceId, createAgentResourceUri } from "../Resources/AgentResourceUri.js";
+import { createAgentResourceUri } from "../Resources/AgentResourceUri.js";
+import { allocateAgentResourceId } from "../Resources/AgentResourceIdAllocator.js";
 import type { ToolArtifactWorkspaceManifest } from "../Types/AgentToolContractTypes.js";
 import type {
   AgentToolArtifactAssetReference,
@@ -136,7 +137,9 @@ export class AgentWorkspaceArtifactWriter {
       path.resolve(rootDir, relativePath),
       `workspace artifact 内容路径超出目录：${entry.path}`,
     );
-    await this.options.fileWriter.writeText(artifactPath, entry.content.text, Number.MAX_SAFE_INTEGER);
+    if (entry.content.encoding === "base64")
+      await this.options.fileWriter.writeBase64(artifactPath, entry.content.text);
+    else await this.options.fileWriter.writeText(artifactPath, entry.content.text, Number.MAX_SAFE_INTEGER);
 
     return {
       ...entry,
@@ -264,7 +267,9 @@ function createWorkspacePatchAsset(input: {
   const workspacePath = toPosixPath(path.relative(input.workspaceRoot, input.patchPath));
   return {
     id: "workspace.patch",
-    resourceUri: createAgentResourceUri(createAgentResourceId(`${input.artifactId}\u0000workspace.patch`)),
+    resourceUri: createAgentResourceUri(
+      allocateAgentResourceId(input.workspaceRoot, JSON.stringify([input.artifactId, "workspace.patch"])),
+    ),
     fileName: "workspace.patch",
     mediaType: "text/x-diff",
     relativePath,
@@ -275,7 +280,7 @@ function createWorkspacePatchAsset(input: {
 }
 
 function readPatchableText(entry: ToolWorkspaceFileSnapshot | undefined): string | undefined {
-  return entry?.content?.state === "captured" ? entry.content.text : undefined;
+  return entry?.content?.state === "captured" && entry.content.encoding === "utf8" ? entry.content.text : undefined;
 }
 
 function withoutInlineText(entry: ToolWorkspaceFileSnapshot): ToolWorkspaceFileSnapshot {

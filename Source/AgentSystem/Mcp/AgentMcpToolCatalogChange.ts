@@ -39,7 +39,9 @@ export function createAgentMcpToolListChangedHandlers(options: {
           return;
         }
         if (!declarations) return;
-        void Promise.resolve(onToolsChanged({ server: options.server, declarations })).catch(options.onError);
+        void Promise.resolve()
+          .then(() => onToolsChanged({ server: options.server, declarations }))
+          .catch(options.onError);
       },
     },
   };

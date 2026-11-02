@@ -1,5 +1,6 @@
 import path from "node:path";
-import { createAgentResourceId, createAgentResourceUri } from "../Resources/AgentResourceUri.js";
+import { createAgentResourceUri } from "../Resources/AgentResourceUri.js";
+import { allocateAgentResourceId } from "../Resources/AgentResourceIdAllocator.js";
 import { extension as mimeExtension } from "mime-types";
 import { AgentKeyedLeaseQueue } from "../Core/AgentKeyedLeaseQueue.js";
 import { projectAgentToolResultPresentation } from "../ToolRuntime/AgentToolResultPresentation.js";
@@ -46,6 +47,11 @@ import {
   assertAgentToolSourceViewReferences,
 } from "./AgentToolSourceView.js";
 import { isAgentToolResultSourceView } from "../Types/ToolRuntimeTypes.js";
+import { projectArtifactAssetLinks } from "./AgentToolArtifactAssetProjection.js";
+import {
+  normalizeAgentToolInlineMedia,
+  projectUnpublishedAgentToolInlineMedia,
+} from "./AgentToolInlineMediaNormalization.js";
 
 export { AgentArtifactPublicationConflictError } from "./AgentArtifactPublicationRecovery.js";
 
@@ -79,9 +85,13 @@ export class AgentToolExecutionArtifactRecorder {
     const previousEvidence = new Set<string>();
     const recorded: ExecutedToolCallResult[] = [];
     for (const [index, result] of input.results.entries()) {
+      const normalized = isAgentToolResultSourceView(result)
+        ? { result, generatedAssetIds: [] }
+        : normalizeAgentToolInlineMedia(result);
+      const normalizedResult = normalized.result;
       try {
-        if (isAgentToolResultSourceView(result)) {
-          recorded.push(await this.recordSourceView(result));
+        if (isAgentToolResultSourceView(normalizedResult)) {
+          recorded.push(await this.recordSourceView(normalizedResult));
           continue;
         }
         const artifact = await this.recordOne({
@@ -89,14 +99,14 @@ export class AgentToolExecutionArtifactRecorder {
           requestId: input.requestId,
           step: input.step,
           callIndex: index + 1,
-          result,
+          result: normalizedResult,
           previousEvidence,
         });
         artifact.evidence.forEach((entry) => previousEvidence.add(entry.key));
-        const resultWithoutPayload = projectArtifactBackedExecution(result);
+        const resultWithoutPayload = projectArtifactBackedExecution(normalizedResult);
         const artifactBackedResult = {
           ...resultWithoutPayload,
-          result: projectArtifactAssetLinks(result.result, artifact.assets),
+          result: projectArtifactAssetLinks(normalizedResult.result, artifact.assets),
           artifact,
         };
         const presentation = projectAgentToolResultPresentation(artifactBackedResult);
@@ -111,13 +121,17 @@ export class AgentToolExecutionArtifactRecorder {
       } catch (error) {
         if (error instanceof AgentCancellationError || error instanceof AgentToolSourceViewInvariantError) throw error;
         this.options.logger?.warn("tool.artifact.recording_failed", {
-          toolName: result.name,
-          toolCallId: result.callId,
+          toolName: normalizedResult.name,
+          toolCallId: normalizedResult.callId,
           requestId: input.requestId,
           step: input.step,
           message: errorMessage(error),
         });
-        recorded.push(markAgentToolArtifactUnavailable(result));
+        recorded.push(
+          markAgentToolArtifactUnavailable(
+            projectUnpublishedAgentToolInlineMedia(normalizedResult, normalized.generatedAssetIds),
+          ),
+        );
       }
     }
     return recorded;
@@ -239,13 +253,16 @@ export class AgentToolExecutionArtifactRecorder {
           ...(materializedPayload?.assets ?? []),
           ...(workspaceArtifacts?.patchAsset ? [workspaceArtifacts.patchAsset] : []),
         ];
+        const publishedRaw = projectArtifactAssetLinks(redactedRaw, assets);
+        const publishedRawResponse =
+          redactedRawResponse === undefined ? undefined : projectArtifactAssetLinks(redactedRawResponse, assets);
         const evidence = collectArtifactEvidence(
-          redactedRaw,
+          publishedRaw,
           policy,
           locator.artifactId,
           projectAgentToolArtifactEvidenceCandidates({
             result: input.result,
-            redactedResult: redactedRaw,
+            redactedResult: publishedRaw,
             policy,
             assets,
           }),
@@ -271,7 +288,7 @@ export class AgentToolExecutionArtifactRecorder {
           toolName: input.result.name,
           callId: input.result.callId,
           args: redactedInput,
-          result: redactedRaw,
+          result: publishedRaw,
           evidence,
           delta,
           policy,
@@ -290,7 +307,7 @@ export class AgentToolExecutionArtifactRecorder {
           failure: readAgentToolFailure(redactedOutcome),
           artifactUri: locator.artifactUri,
           deterministicSummary,
-          result: redactedRaw,
+          result: publishedRaw,
           evidence,
           delta,
           workspace: workspaceProjection,
@@ -317,7 +334,7 @@ export class AgentToolExecutionArtifactRecorder {
             toolName: input.result.name,
             callId: input.result.callId,
             args: redactedInput,
-            result: redactedRaw,
+            result: publishedRaw,
             policy,
           }),
         };
@@ -335,8 +352,8 @@ export class AgentToolExecutionArtifactRecorder {
           payloadHash,
           redactionPolicySha256,
           redactedInput,
-          redactedRaw,
-          redactedRawResponse,
+          redactedRaw: publishedRaw,
+          redactedRawResponse: publishedRawResponse,
           redactedOutcome,
           workspaceRoot: locator.workspaceRoot,
           rootDir: locator.rootDir,
@@ -452,7 +469,9 @@ function createArtifactAssetReference(input: {
   locator: ReturnType<typeof createAgentArtifactLocator>;
 }): AgentToolArtifactAssetReference {
   const relative = toPosixPath(input.relativePath);
-  const resourceUri = createAgentResourceUri(createAgentResourceId(`${input.locator.artifactId}\u0000${input.id}`));
+  const resourceUri = createAgentResourceUri(
+    allocateAgentResourceId(input.locator.workspaceRoot, JSON.stringify([input.locator.artifactId, input.id])),
+  );
   return {
     id: input.id,
     resourceUri,
@@ -463,32 +482,6 @@ function createArtifactAssetReference(input: {
     byteLength: input.receipt.byteLength,
     sha256: input.receipt.sha256,
   };
-}
-
-function projectArtifactAssetLinks(
-  value: unknown,
-  assets: readonly AgentToolArtifactAssetReference[] | undefined,
-): unknown {
-  if (!assets || assets.length === 0) return value;
-  const links = new Map(
-    assets.map((asset) => [createAgentResourceUri(createAgentResourceId(asset.id)), asset.resourceUri]),
-  );
-  return replaceArtifactAssetLinks(value, links);
-}
-
-function replaceArtifactAssetLinks(value: unknown, links: ReadonlyMap<string, string>): unknown {
-  if (typeof value === "string") {
-    let result = value;
-    for (const [placeholder, link] of links) result = result.replaceAll(placeholder, link);
-    return result;
-  }
-  if (Array.isArray(value)) return value.map((entry) => replaceArtifactAssetLinks(entry, links));
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, entry]) => [key, replaceArtifactAssetLinks(entry, links)]),
-    );
-  }
-  return value;
 }
 
 function assetExtension(mediaType: string, fileName: string): string {

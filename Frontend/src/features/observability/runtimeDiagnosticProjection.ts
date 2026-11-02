@@ -106,7 +106,7 @@ export interface RuntimeSessionUsage {
     readonly cacheWrite: number;
     readonly total: number;
   };
-  readonly cost: number;
+  readonly cost?: number;
 }
 
 export interface RuntimeUsageSnapshot {
@@ -702,7 +702,7 @@ function readSessionUsageValue(value: unknown): RuntimeSessionUsage | undefined 
       cacheWrite: readNonNegativeNumber(tokens.cacheWrite),
       total: readNonNegativeNumber(tokens.total),
     },
-    cost: readNonNegativeNumber(value.cost),
+    cost: typeof value.cost === "number" && Number.isFinite(value.cost) && value.cost >= 0 ? value.cost : undefined,
   };
 }
 

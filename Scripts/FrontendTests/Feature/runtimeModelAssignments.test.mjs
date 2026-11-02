@@ -15,7 +15,9 @@ describe("runtime model assignments", () => {
     const planning = projectSectionConfigFields(sections[0], sections);
 
     expect(planning.fields.map((field) => field.key)).toEqual(["Enabled"]);
-    expect(readRuntimeModelAssignmentFields(sections).map((field) => field.modelSelection.id)).toEqual(["planner"]);
+    expect(readRuntimeModelAssignmentFields(sections).map((field) => field.modelSelection.id)).toEqual([
+      "final-answer",
+    ]);
   });
 
   it("filters candidates by declared capability and enabled provider", () => {
@@ -46,7 +48,7 @@ describe("runtime model assignments", () => {
         defaultModelId: "default-chat",
         draft: {},
       }),
-    ).toEqual({ value: "missing:planner:default-chat", unavailableLabel: "default-chat" });
+    ).toEqual({ value: "missing:final-answer:default-chat", unavailableLabel: "default-chat" });
   });
 
   it("namespaces extension model pools and writes inheritance with ordered candidates", () => {
@@ -116,8 +118,8 @@ function createSections() {
   return [
     createSection("planning", [
       createField(["ActionPlanner", "Enabled"], "Enabled"),
-      createField(["ActionPlanner", "Client", "ModelProviderId"], "ModelProviderId", {
-        id: "planner",
+      createField(["ActionPlanner", "FinalAnswerClient", "ModelProviderId"], "ModelProviderId", {
+        id: "final-answer",
         capability: "Chat",
         valueKind: "model-id",
         mutation: "config",

@@ -7,6 +7,7 @@ import { ResourcePathSystemTool } from "../../../Source/AgentSystem/SystemTools/
 import type { AgentHostToolContext } from "../../../Source/AgentSystem/ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import { AgentUploadStore } from "../../../Source/AgentSystem/Uploads/AgentUploadStore.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
+import { loadSystemToolContractByCapability } from "./SystemToolContractTestSupport.js";
 
 describe("ResourcePath system tool", () => {
   const temporaryDirectories: string[] = [];
@@ -38,7 +39,7 @@ describe("ResourcePath system tool", () => {
     expect(result).toMatchObject({
       source: {
         kind: "local_path",
-        path: expect.stringMatching(/^\.senera\/uploads\/upl_[a-f0-9]{32}\/original\.json$/u),
+        path: expect.stringMatching(/^\.senera\/uploads\/[0-9a-hjkmnp-tv-z]{6}\/original\.json$/u),
       },
       name: "result.json",
       mime: "application/json",
@@ -50,7 +51,8 @@ describe("ResourcePath system tool", () => {
   });
 
   it("is exposed as a bootstrap resource capability", () => {
-    expect(ResourcePathSystemTool.metadata.loading).toBe("Bootstrap");
-    expect(ResourcePathSystemTool.metadata.permissions).toContain("resources:read");
+    const contract = loadSystemToolContractByCapability(ResourcePathSystemTool.capability).contract;
+    expect(contract.loading).toBe("Bootstrap");
+    expect(contract.permissions).toContain("resources:read");
   });
 });

@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { registerAgentArtifactResource } from "../Resources/AgentResourceRegistry.js";
 import { z } from "zod";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
 import { parseJsonText } from "../Core/AgentJsonParsing.js";
@@ -17,6 +18,7 @@ import { collectArtifactEvidence } from "./AgentArtifactEvidenceProjection.js";
 import { buildArtifactSummary } from "./AgentArtifactTemplateProjection.js";
 import type { AgentToolResultSummaryCompiler } from "./AgentToolResultSummaryCompiler.js";
 import { projectAgentToolArtifactEvidenceCandidates } from "./AgentToolArtifactEvidenceCandidates.js";
+import { projectArtifactAssetLinks } from "./AgentToolArtifactAssetProjection.js";
 
 export interface RestorePublishedArtifactInput {
   readonly locator: ReturnType<typeof createAgentArtifactLocator>;
@@ -64,19 +66,25 @@ export class AgentArtifactPublicationRecovery {
       );
     }
     manifest = await this.ensureOwner(manifest, input.sessionId, input.locator.files.manifest);
+    registerAgentArtifactResource(input.locator.workspaceRoot, {
+      artifactId: manifest.artifactId,
+      artifactUri: manifest.artifactUri,
+      manifestPath: input.locator.files.manifest,
+    });
 
     const [summary, projection] = await Promise.all([
       this.readPublishedText(input.locator.files.summary, manifest.contents, "summary"),
       this.readPublishedText(input.locator.files.projection, manifest.contents, "projection"),
     ]);
     const artifactAssets = readArtifactAssetReferences(manifest.assets);
+    const publishedRaw = projectArtifactAssetLinks(input.redactedRaw, artifactAssets);
     const evidence = collectArtifactEvidence(
-      input.redactedRaw,
+      publishedRaw,
       input.policy,
       input.locator.artifactId,
       projectAgentToolArtifactEvidenceCandidates({
         result: input.result,
-        redactedResult: input.redactedRaw,
+        redactedResult: publishedRaw,
         policy: input.policy,
         assets: artifactAssets,
       }),
@@ -91,7 +99,7 @@ export class AgentArtifactPublicationRecovery {
       toolName: input.result.name,
       callId: input.result.callId,
       args: input.redactedInput,
-      result: input.redactedRaw,
+      result: publishedRaw,
       evidence,
       delta,
       policy: input.policy,
@@ -120,7 +128,7 @@ export class AgentArtifactPublicationRecovery {
         failure: readAgentToolFailure(input.redactedOutcome),
         artifactUri: input.locator.artifactUri,
         deterministicSummary,
-        result: input.redactedRaw,
+        result: publishedRaw,
         evidence,
         delta,
         workspace,

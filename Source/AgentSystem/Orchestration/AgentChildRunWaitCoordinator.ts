@@ -106,8 +106,12 @@ export class AgentChildRunWaitCoordinator {
       };
       const onAbort = (): void => finish(() => reject(signal.reason));
       const onChange = (): void => {
-        if (isSatisfied(ids.map((id) => this.options.getRun(id, parentSessionId)))) {
-          finish(resolve);
+        try {
+          if (isSatisfied(ids.map((id) => this.options.getRun(id, parentSessionId)))) {
+            finish(resolve);
+          }
+        } catch (error) {
+          finish(() => reject(error));
         }
       };
       signal.addEventListener("abort", onAbort, { once: true });

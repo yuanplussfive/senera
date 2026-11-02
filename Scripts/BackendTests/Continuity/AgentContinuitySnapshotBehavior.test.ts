@@ -15,7 +15,6 @@ describe("native MemOS snapshots", () => {
     ...EmptyAgentContinuityMemoryPromptContext,
     enabled: true,
     query: "用户偏好",
-    deliveryEpoch: 7,
     eventCandidates: [
       {
         id: "knowledge-1",
@@ -27,22 +26,43 @@ describe("native MemOS snapshots", () => {
         score: 0.92,
         matchedBy: ["memos", "semantic"],
         scores: { keyword: 0.72, semantic: 0.91, hybrid: 0.82 },
+        dedupeKeys: ["memos:knowledge-1", "memos:knowledge-1@v1"],
       },
     ],
   };
-  test("retains native identity and excludes internal delivery state", () => {
+  test("retains native identity and excludes internal deduplication state", () => {
     const snapshot = projectAgentContinuitySnapshot(memory);
     expect(snapshot).toEqual({
       enabled: true,
       query: memory.query,
-      eventCandidates: memory.eventCandidates,
-      periodDigests: [],
+      eventCandidates: [
+        expect.objectContaining({
+          id: "knowledge-1",
+          matchedBy: memory.eventCandidates[0]!.matchedBy,
+          scores: memory.eventCandidates[0]!.scores,
+        }),
+      ],
       selection: memory.selection,
+      metrics: { ranking: { count: 1, average: 0.92, max: 0.92 }, relevance: { count: 0 } },
     });
-    expect(snapshot).not.toHaveProperty("deliveryEpoch");
+    expect(snapshot.eventCandidates[0]).not.toHaveProperty("dedupeKeys");
     expect(snapshot.eventCandidates).not.toBe(memory.eventCandidates);
     expect(snapshot.eventCandidates[0]?.matchedBy).not.toBe(memory.eventCandidates[0]?.matchedBy);
     expect(snapshot.eventCandidates[0]?.scores).not.toBe(memory.eventCandidates[0]?.scores);
+  });
+  test("summarizes ranking independently and never substitutes it for missing relevance", () => {
+    const preference = { ...memory.eventCandidates[0]!, score: 0.5, scores: undefined };
+    const task = { ...preference, id: "task", type: "context" as const, score: 0.7, scores: { relevance: 0 } };
+    const fact = { ...preference, id: "fact", type: "fact" as const, score: 0.3, scores: { relevance: 0.9 } };
+    const snapshot = projectAgentContinuitySnapshot({
+      ...memory,
+      eventCandidates: [preference, fact],
+      taskCandidates: [task],
+    });
+    expect(snapshot.metrics?.ranking).toEqual({ count: 3, average: 0.5, max: 0.7 });
+    expect(snapshot.metrics?.relevance).toEqual({ count: 2, average: 0.45, max: 0.9 });
+    const empty = projectAgentContinuitySnapshot(EmptyAgentContinuityMemoryPromptContext);
+    expect(empty.metrics).toEqual({ ranking: { count: 0 }, relevance: { count: 0 } });
   });
   test("emits and preserves exactly the selected native records for history replay", () => {
     const events = new AgentLoopPromptEventFactory().promptRendered("request-1", 1, "prompt", 2, memory);

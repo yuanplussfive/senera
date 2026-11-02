@@ -4,6 +4,8 @@ import { AgentToolUploadReadResourceManifestValidator } from "./AgentToolUploadR
 import { AgentToolUrlResourceManifestValidator } from "./AgentToolUrlResourceCapability.js";
 import { AgentToolWorkspacePathResourceManifestValidator } from "./AgentToolWorkspacePathResourceCapability.js";
 import { AgentToolWorkspaceRootResourceManifestValidator } from "./AgentToolWorkspaceRootResourceCapability.js";
+import { AgentToolResourceDeclarationsManifestValidator } from "./AgentToolResourceDeclarationsCapability.js";
+import { AgentToolResourceSourceManifestValidator } from "./AgentToolResourceSourceCapability.js";
 
 /**
  * Validates bundled package metadata with the validators owned by the same
@@ -13,6 +15,8 @@ const DefaultResourceManifestValidators = new AgentToolResourceManifestValidator
   .register(AgentToolUrlResourceManifestValidator)
   .register(AgentToolWorkspacePathResourceManifestValidator)
   .register(AgentToolWorkspaceRootResourceManifestValidator)
+  .register(AgentToolResourceDeclarationsManifestValidator)
+  .register(AgentToolResourceSourceManifestValidator)
   .register(AgentToolUploadReadResourceManifestValidator);
 
 export function validateAgentToolResourceManifests(resources: readonly ToolResourceArgumentManifest[]): void {

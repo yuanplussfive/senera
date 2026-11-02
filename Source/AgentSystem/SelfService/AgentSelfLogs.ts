@@ -1,3 +1,4 @@
+import { formatAgentTimeOffsetMillisecond } from "../Time/AgentTime.js";
 import type {
   AgentSelfCommand,
   AgentSelfLogDetailResult,
@@ -39,7 +40,7 @@ export function listAgentSelfLogs(port: AgentSelfServicePort): {
     return { ok: true, text: `日志目录暂无文件: ${port.logs.root()}`, data: { root: port.logs.root(), files } };
   }
   const text = files
-    .map((file) => `${file.name} · ${formatBytes(file.sizeBytes)} · ${file.updatedAt ?? ""}`)
+    .map((file) => `${file.name} · ${formatBytes(file.sizeBytes)} · ${projectLogDisplayTime(file.updatedAt)}`)
     .join("\n");
   return { ok: true, text, data: { root: port.logs.root(), files } };
 }
@@ -67,10 +68,11 @@ export function readAgentSelfLogTail(
   if (disabled) return disabled;
   const result = port.logs.read(name, lines);
   if (result.status === "found") {
+    const content = projectLogProjection(result.content);
     return {
       ok: true,
-      text: result.content,
-      data: { name, ...(lines === undefined ? {} : { lines }), content: result.content },
+      text: content,
+      data: { name, ...(lines === undefined ? {} : { lines }), content },
     };
   }
   return {
@@ -239,7 +241,7 @@ function describeLogQuery(result: AgentSelfLogQueryResult, query: AgentSelfLogQu
   }
   const lines = result.items.map((item) => {
     const identity = [item.stream, item.kind, item.requestId, item.detailId].filter(Boolean).join(" · ");
-    return `${item.timestamp} ${item.level} ${item.message}${identity ? ` · ${identity}` : ""}`;
+    return `${projectLogDisplayTime(item.timestamp)} ${item.level} ${item.message}${identity ? ` · ${identity}` : ""}`;
   });
   return [
     ...lines,
@@ -257,6 +259,33 @@ function logsDisabled(
     return { ok: false, text: `当前工作区日志不可用: ${health.lastError}`, error: "logs_degraded" };
   }
   return { ok: false, text: "当前工作区日志已关闭，请先启用 Persistence.Logs.Enabled。", error: "logs_disabled" };
+}
+
+function projectLogDisplayTime(value: string | undefined): string {
+  if (!value) return "";
+  try {
+    return formatAgentTimeOffsetMillisecond(value);
+  } catch {
+    return value;
+  }
+}
+
+function projectLogProjection(content: string): string {
+  return content
+    .split(/\r?\n/u)
+    .map((line) => {
+      if (!line) return line;
+      try {
+        const value: unknown = JSON.parse(line);
+        if (!value || typeof value !== "object" || Array.isArray(value)) return line;
+        const record = value as Record<string, unknown>;
+        if (typeof record.timestamp !== "string") return line;
+        return JSON.stringify({ ...record, timestamp: projectLogDisplayTime(record.timestamp) });
+      } catch {
+        return line;
+      }
+    })
+    .join("\n");
 }
 
 function formatBytes(bytes: number): string {

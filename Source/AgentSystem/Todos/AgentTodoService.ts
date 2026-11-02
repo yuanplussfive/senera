@@ -4,6 +4,7 @@ import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import { emitAgentEvent } from "../Events/AgentEvent.js";
 import { AgentEventKinds } from "../Events/AgentEventCatalog.js";
 import { AgentTodoSqliteStore } from "./AgentTodoSqliteStore.js";
+import { formatAgentTimeOffsetMillisecond } from "../Time/AgentTime.js";
 import {
   AgentTodoChangeSources,
   AgentTodoStatuses,
@@ -44,6 +45,11 @@ export interface AgentTodoUpdateInput extends AgentTodoMutationContext {
   readonly now?: Date;
 }
 
+export interface AgentTodoWriteInput extends AgentTodoMutationContext {
+  readonly todos: readonly { readonly content: string; readonly status: AgentTodoItem["status"] }[];
+  readonly now?: Date;
+}
+
 export class AgentTodoService {
   private readonly policy: AgentTodoPolicy;
 
@@ -54,6 +60,30 @@ export class AgentTodoService {
 
   read(sessionId: string): AgentTodoSnapshot {
     return this.snapshot(this.options.store.list(sessionId));
+  }
+
+  /** Replace the plan atomically; matching content retains its durable identity. */
+  write(input: AgentTodoWriteInput): AgentTodoSnapshot {
+    const sessionId = requireText(input.sessionId, "Todo session id");
+    const current = new Map(this.options.store.list(sessionId).map((item) => [item.content, item]));
+    const timestamp = (input.now ?? new Date()).toISOString();
+    const contents = new Set<string>();
+    const items = input.todos.map((todo, order) => {
+      const content = requireText(todo.content, "Todo content");
+      if (contents.has(content)) throw new Error("Todo content must be unique within a plan.");
+      contents.add(content);
+      if (!Object.values(AgentTodoStatuses).includes(todo.status)) throw new Error("Invalid Todo status.");
+      const previous = current.get(content);
+      return {
+        id: previous?.id ?? randomUUID(),
+        content,
+        status: todo.status,
+        order,
+        createdAt: previous?.createdAt ?? timestamp,
+        updatedAt: previous?.status === todo.status ? previous.updatedAt : timestamp,
+      };
+    });
+    return this.commit(sessionId, items, input);
   }
 
   /** Snapshot fingerprint used by orchestration to detect a model plan change. */
@@ -99,7 +129,7 @@ export class AgentTodoService {
       seen.add(id);
 
       const previous = byId.get(id);
-      if (!previous) throw new Error(`Todo ${id} does not exist. Use ${AgentTodoToolNames.Add} to create it.`);
+      if (!previous) throw new Error(`Todo ${id} does not exist. Use ${AgentTodoToolNames.Write} to replace the plan.`);
 
       const content = update.content === undefined ? previous.content : requireText(update.content, "Todo content");
       const status = update.status ?? previous.status;
@@ -128,9 +158,9 @@ export class AgentTodoService {
     if (!sessionId) return EmptyAgentTodoPromptContext;
     const snapshot = this.read(sessionId);
     return {
-      items: snapshot.items.filter(
-        (item) => item.status === AgentTodoStatuses.Pending || item.status === AgentTodoStatuses.InProgress,
-      ),
+      items: snapshot.items
+        .filter((item) => item.status === AgentTodoStatuses.Pending || item.status === AgentTodoStatuses.InProgress)
+        .map(projectAgentTodoDisplayItem),
       counts: snapshot.counts,
     };
   }
@@ -166,9 +196,21 @@ function taskReferences(items: readonly AgentTodoTaskReference[]): AgentTodoTask
   return items.map(({ id, status }) => ({ id, status }));
 }
 
+/** Projects persisted UTC instants into model-facing local timestamps. */
+export function projectAgentTodoDisplayItem(item: AgentTodoItem): AgentTodoItem {
+  return {
+    ...item,
+    createdAt: formatAgentTimeOffsetMillisecond(item.createdAt),
+    updatedAt: formatAgentTimeOffsetMillisecond(item.updatedAt),
+  };
+}
+
 function validateItems(items: readonly AgentTodoItem[], policy: AgentTodoPolicy): void {
   if (items.length > policy.maxItems) throw new Error(`Todo list exceeds ${policy.maxItems} items.`);
-  if (items.filter((item) => item.status === AgentTodoStatuses.InProgress).length > 1) {
+  if (
+    !policy.allowParallelInProgress &&
+    items.filter((item) => item.status === AgentTodoStatuses.InProgress).length > 1
+  ) {
     throw new Error("At most one Todo may be in_progress.");
   }
 
@@ -200,6 +242,7 @@ function requireText(value: string | undefined, label: string): string {
 
 function validatePolicy(policy: AgentTodoPolicy): void {
   for (const [name, value] of Object.entries(policy)) {
+    if (name === "allowParallelInProgress") continue;
     if (!Number.isSafeInteger(value) || value <= 0) {
       throw new Error(`Todo ${name} policy must be a positive safe integer.`);
     }

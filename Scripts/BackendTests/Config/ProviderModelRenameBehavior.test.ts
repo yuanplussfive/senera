@@ -28,11 +28,8 @@ describe("provider model rename behavior", () => {
       Values: ["renamed/chat", "stable-model-id"],
       Strategies: [{ Match: "exact", Values: ["renamed/chat"] }],
     });
-    expect(renamed.ActionPlanner?.Client?.ModelProviderId).toBe("renamed/chat");
-    expect(renamed.ActionPlanner?.PlanningClient?.ModelProviderId).toBe("stable-model-id");
     expect(renamed.ActionPlanner?.FinalAnswerClient?.ModelProviderId).toBe("renamed/chat");
     expect(renamed.StateCard?.Client?.ModelProviderId).toBe("renamed/chat");
-    expect(renamed.Defaults?.ActionPlanner?.Client?.ModelProviderId).toBe("renamed/chat");
     expect(renamed.Defaults?.StateCard?.Client?.ModelProviderId).toBe("renamed/chat");
 
     expect(resolveModelProviderConfig(renamed, "custom/chat").Id).toBe("renamed/chat");
@@ -99,13 +96,11 @@ function renameConfig(): AgentSystemConfig {
       },
     ],
     ActionPlanner: {
-      Client: { ModelProviderId: "custom/chat" },
-      PlanningClient: { ModelProviderId: "stable-model-id" },
+      Client: { Temperature: 0.1 },
       FinalAnswerClient: { ModelProviderId: "custom/chat" },
     },
     StateCard: { Client: { ModelProviderId: "custom/chat" } },
     Defaults: {
-      ActionPlanner: { Client: { ModelProviderId: "custom/chat" } },
       StateCard: { Client: { ModelProviderId: "custom/chat" } },
     },
   };

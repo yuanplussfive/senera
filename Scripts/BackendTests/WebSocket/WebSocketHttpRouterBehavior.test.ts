@@ -7,6 +7,7 @@ import type { AgentStaticFrontendHttpApi } from "../../../Source/AgentSystem/Web
 import { AgentWebSocketHttpRouter } from "../../../Source/AgentSystem/WebSocket/AgentWebSocketHttpRouter.js";
 import type { AgentHealthHttpApi } from "../../../Source/AgentSystem/WebSocket/AgentHealthHttpApi.js";
 import type { AgentWorkspaceResourceHttpApi } from "../../../Source/AgentSystem/WorkspaceResources/AgentWorkspaceResourceHttpApi.js";
+import type { AgentWorkspaceCheckpointHttpApi } from "../../../Source/AgentSystem/WorkspaceResources/AgentWorkspaceCheckpointHttpApi.js";
 import type { AgentProviderCredentialHttpApi } from "../../../Source/AgentSystem/Config/AgentProviderCredentialHttpApi.js";
 import type { AgentSelfHttpApi } from "../../../Source/AgentSystem/SelfService/AgentSelfHttpApi.js";
 import type { AgentArtifactMemoryHttpApi } from "../../../Source/AgentSystem/Memory/AgentArtifactMemoryHttpApi.js";
@@ -96,6 +97,15 @@ describe("WebSocket HTTP router", () => {
     expect(writeFixture.workspaceResource.handle).toHaveBeenCalledTimes(1);
   });
 
+  test("requires CSRF before routing a checkpoint undo", async () => {
+    const fixture = createRouterFixture({ workspaceCheckpoint: true });
+
+    await fixture.router.handle(request("POST", "/api/workspace/checkpoints/undo"), fixture.response.value);
+
+    expect(fixture.authorizeHttp).toHaveBeenCalledWith(expect.anything(), { requireCsrf: true });
+    expect(fixture.workspaceCheckpoint.handle).toHaveBeenCalledTimes(1);
+  });
+
   test("authorizes provider credential reads without CSRF", async () => {
     const fixture = createRouterFixture({ providerCredential: true });
 
@@ -146,6 +156,7 @@ function createRouterFixture(
     upload?: boolean;
     staticFrontend?: boolean;
     workspaceResource?: boolean;
+    workspaceCheckpoint?: boolean;
     providerCredential?: boolean;
     self?: boolean;
     artifactMemory?: boolean;
@@ -157,6 +168,7 @@ function createRouterFixture(
   const upload = createApi(options.upload ?? false);
   const staticFrontend = createApi(options.staticFrontend ?? false);
   const workspaceResource = createApi(options.workspaceResource ?? false);
+  const workspaceCheckpoint = createApi(options.workspaceCheckpoint ?? false);
   const providerCredential = createApi(options.providerCredential ?? false);
   const self = createApi(options.self ?? false);
   const artifactMemory = createApi(options.artifactMemory ?? false);
@@ -168,6 +180,7 @@ function createRouterFixture(
     upload,
     staticFrontend,
     workspaceResource,
+    workspaceCheckpoint,
     providerCredential,
     self,
     artifactMemory,
@@ -179,6 +192,7 @@ function createRouterFixture(
       uploadApi: upload as unknown as AgentUploadHttpApi,
       providerCredentialApi: providerCredential as unknown as AgentProviderCredentialHttpApi,
       workspaceResourceApi: workspaceResource as unknown as AgentWorkspaceResourceHttpApi,
+      workspaceCheckpointApi: workspaceCheckpoint as unknown as AgentWorkspaceCheckpointHttpApi,
       staticFrontendApi: staticFrontend as unknown as AgentStaticFrontendHttpApi,
       selfApi: self as unknown as AgentSelfHttpApi,
       artifactMemoryApi: artifactMemory as unknown as AgentArtifactMemoryHttpApi,

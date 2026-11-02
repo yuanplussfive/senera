@@ -1,0 +1,95 @@
+{
+  "name": "job_output",
+  "loading": "Bootstrap",
+  "presentation": {
+    "category": "jobs",
+    "icon": "terminal",
+    "activity": {
+      "action": {
+        "zh-CN": "查看任务输出",
+        "en-US": "Read task output"
+      },
+      "argumentPath": "/job_id"
+    }
+  },
+  "description": "Read a command, PTY or agent activation result. Output cursors are independent. Optional waiting ends on settlement, deadline or human steering without stopping the producer. A successful committed terminal result acknowledges its completion notice; cancelled reads do not.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "job_id": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Activation or resource ID returned by subagent, shell execution, list_agents or job_list."
+      },
+      "cursor": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Independent process-output cursor; does not apply to agent result snapshots."
+      },
+      "wait": {
+        "type": "boolean",
+        "default": false,
+        "description": "Wait for settlement, user steering or the configured deadline. Waiting never cancels the producer."
+      },
+      "timeout_ms": {
+        "type": ["integer", "null"],
+        "minimum": 0,
+        "description": "Wait bound in milliseconds. Set null with wait:true to reserve the configured maximum for one event-driven completion wait instead of repeated short reads. Omission uses the configured default; numeric values are clamped to the jobs maximum. Human steering and cancellation still end the read."
+      }
+    },
+    "required": ["job_id"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "type": "object"
+  },
+  "permissions": ["orchestration:jobs"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "DeadlinePolicy": "ToolAware",
+    "ResultAssessment": "Unassessed",
+    "Scheduling": "SelfManaged",
+    "Capabilities": {
+      "Cancellation": true
+    }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "orchestration.jobs",
+      "Title": "Background jobs",
+      "Description": "Session-owned command, PTY and agent activation control."
+    }
+  ],
+  "search": {
+    "Summary": "Read a command, PTY or agent activation result. Output cursors are independent. Optional waiting ends on settlement, deadline or human steering without stopping the producer. A successful committed terminal result acknowledges its completion notice; cancelled reads do not.",
+    "Tags": ["coordination"],
+    "Capabilities": [
+      {
+        "Id": "orchestration.job.output",
+        "Title": "job_output",
+        "Description": "Read a command, PTY or agent activation result. Output cursors are independent. Optional waiting ends on settlement, deadline or human steering without stopping the producer. A successful committed terminal result acknowledges its completion notice; cancelled reads do not.",
+        "Facets": {
+          "Actions": ["job_output"],
+          "Targets": ["session-work"],
+          "Inputs": ["job_id"],
+          "Outputs": [],
+          "Effects": ["session-state"]
+        },
+        "Risk": {
+          "SideEffect": "session-state",
+          "Permission": "orchestration"
+        },
+        "Aliases": ["job_output"]
+      }
+    ],
+    "UseCases": ["Coordinate persistent work."],
+    "Avoid": ["Do not poll with empty messages."]
+  },
+  "evidenceCapabilities": []
+}

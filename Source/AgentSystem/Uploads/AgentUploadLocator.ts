@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import path from "node:path";
 import { assertInsideRoot } from "../Artifacts/AgentArtifactLocator.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
@@ -8,11 +7,8 @@ export const DefaultAgentUploadRootDir = ".senera/uploads";
 export const AgentUploadFileNames = {
   Original: "original",
   Manifest: "manifest.json",
+  AnalysisDirectory: "analysis",
 } as const;
-
-export function createAgentUploadId(): string {
-  return `upl_${crypto.randomBytes(16).toString("hex")}`;
-}
 
 export function resolveAgentUploadRoot(workspaceRoot: string, rootDir: string): string {
   return assertInsideRoot(

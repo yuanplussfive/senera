@@ -1,15 +1,25 @@
 import type { StopReason } from "@earendil-works/pi-ai";
+import { projectAgentPiAssistantUsage } from "../ModelEndpoints/AgentPiModelUsage.js";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { readAgentUnknownRecord as readRecord } from "../Core/AgentUnknownValue.js";
-import { AgentEventKinds, emitAgentEvent, type AgentDomainEvent, type AgentEventSink } from "../Events/AgentEvent.js";
-import { AgentLoopEventFactory } from "../Loop/AgentLoopEventFactory.js";
-import { DefaultAgentToolArgumentProjection, projectAgentToolArguments } from "../Core/AgentToolArgumentProjection.js";
-import type { StepTrace } from "../Core/AgentStepTrace.js";
 import {
-  collectAgentToolPresentationArgumentPointers,
-  collectAgentToolPresentationResultPointers,
-} from "../SystemTools/AgentSystemToolPresentation.js";
-import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
+  AgentEventKinds,
+  emitAgentEvent,
+  withEventContext,
+  type AgentDomainEvent,
+  type AgentEventSink,
+} from "../Events/AgentEvent.js";
+import { AgentLoopEventFactory } from "../Loop/AgentLoopEventFactory.js";
+import {
+  DefaultAgentToolArgumentProjection,
+  projectAgentToolArguments,
+  projectAgentToolResultForDisplay,
+} from "../Core/AgentToolArgumentProjection.js";
+import type { StepTrace } from "../Core/AgentStepTrace.js";
+import { collectAgentToolPresentationArgumentPointers } from "../SystemTools/AgentSystemToolPresentation.js";
+import { projectAgentToolResultForHistory, type ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
+import { redactArtifactSecrets } from "../Artifacts/AgentArtifactRedaction.js";
+import { sanitizeAgentPiToolResultMedia } from "./AgentPiToolResultMediaSanitizer.js";
 import { projectAgentToolResultPresentation } from "../ToolRuntime/AgentToolResultPresentation.js";
 import type { AgentPiTurnState } from "./AgentPiTurnState.js";
 import {
@@ -168,7 +178,11 @@ export class AgentPiRunCollector {
         break;
       case "tool_execution_end":
         for (const projected of this.toolExecutionEnded(event)) {
-          await this.emit(projected);
+          await this.emit(
+            event.parentToolCallId
+              ? withEventContext(projected, { scope: { parentToolCallId: event.parentToolCallId } })
+              : projected,
+          );
         }
         await this.observeToolExecutionEnd(event);
         break;
@@ -187,6 +201,7 @@ export class AgentPiRunCollector {
       context: { requestId: this.options.requestId, step: this.options.step },
       data: {
         model: event.message.model,
+        contextSnapshot: await this.options.turnState.modelContexts.get(this.assistantMessageIndex),
         ...(this.options.modelProvider ? { provider: this.options.modelProvider } : {}),
         messageIndex: this.assistantMessageIndex,
       },
@@ -208,6 +223,14 @@ export class AgentPiRunCollector {
       context: { requestId: this.options.requestId, step: this.options.step },
       data: {
         text: "",
+        usage: projectAgentPiAssistantUsage(event.message),
+        errorMessage: event.message.errorMessage,
+        outcome:
+          event.message.stopReason === "error"
+            ? "failed"
+            : event.message.stopReason === "aborted"
+              ? "cancelled"
+              : "completed",
         ...(this.options.modelProvider ? { provider: this.options.modelProvider } : {}),
         messageIndex: this.assistantMessageIndex,
       },
@@ -271,9 +294,14 @@ export class AgentPiRunCollector {
       captured?.presentation ?? (captured ? projectAgentToolResultPresentation(captured) : undefined);
     const executed = captured && presentation ? { ...captured, presentation } : captured;
     if (executed) {
-      this.executedTools.push(executed);
+      this.executedTools.push(projectAgentToolResultForHistory(executed));
     }
-    const resultValue = projectAgentPiToolResultContentForDisplay(event.result.content);
+    // The executor already owns the authoritative, schema-validated tool
+    // result. Pi's observation is deliberately compressed for the model and
+    // cannot be used as a UI data source without dropping fields that a tool
+    // contract declared for its result preview. Keep the durable event detail
+    // on the same bounded projection used by step traces, preserving result fields.
+    const resultValue = projectToolResultForDisplay(executed, event.result.content);
     const trace = this.buildToolTrace(active, event, executed, resultValue);
     this.traces.push(trace);
     const lifecycleTiming =
@@ -451,15 +479,13 @@ export class AgentPiRunCollector {
       toolOrigin: executed?.origin,
       callId: event.toolCallId,
       batchId: this.batchIdFor(event.toolCallId),
+      ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
       purpose: this.options.turnState.toolCallPurpose(event.toolCallId),
       toolArgs: args.value,
       ...(args.omissions.length > 0 ? { toolArgsOmissions: args.omissions } : {}),
       toolPreview: executed?.presentation?.headline,
       toolPresentation: executed?.presentation,
-      toolResult: projectAgentToolArguments(resultValue, {
-        keepPointers: collectAgentToolPresentationResultPointers(presentation),
-        ...DefaultAgentToolArgumentProjection,
-      }).value,
+      toolResult: resultValue,
       toolErrorMessage: event.isError ? readToolErrorMessage(event.result) : undefined,
     };
   }
@@ -471,6 +497,15 @@ export class AgentPiRunCollector {
   private async emit(event: AgentDomainEvent): Promise<void> {
     await emitAgentEvent(this.options.onEvent, event);
   }
+}
+
+function projectToolResultForDisplay(
+  executed: ExecutedToolCallResult | undefined,
+  modelObservation: Parameters<typeof projectAgentPiToolResultContentForDisplay>[0],
+): unknown {
+  if (!executed) return projectAgentPiToolResultContentForDisplay(modelObservation);
+  const result = sanitizeAgentPiToolResultMedia(redactArtifactSecrets(executed.result, executed.artifactPolicy)).result;
+  return projectAgentToolResultForDisplay(result).value;
 }
 
 function readToolErrorMessage(value: unknown): string {

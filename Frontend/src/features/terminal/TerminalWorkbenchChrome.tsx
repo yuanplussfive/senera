@@ -1,5 +1,6 @@
-import { useRef, type KeyboardEvent } from "react";
-import type { ExecutionResourceSnapshotData } from "../../api/eventTypes";
+import { useRef, useState, type ReactNode } from "react";
+import type { ISearchResultChangeEvent } from "@xterm/addon-search";
+import type { ExecutionResourceSnapshotData, ExecutionResourceState } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
 import { cn } from "../../lib/util";
@@ -7,309 +8,289 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
   AppIcon,
-  FluidSegmentedLayers,
   IconButton,
+  Input,
   Tooltip,
-  useFluidSegmentedSurface,
 } from "../../shared/ui";
-import { useMotionLevel } from "../../shared/motion";
 import {
   isTerminalState,
   supportsTerminalCapability,
-  terminalStatusIndicatorClass,
+  terminalConnectionPresentation,
   terminalStatusLabel,
-  terminalTabLabel,
   terminalPurposeLabel,
+  terminalSelectionOptions,
 } from "./terminalPresentation";
-import { TerminalSurfaceStyle } from "./terminalTheme";
+import { TerminalOverlayStyle } from "./terminalTheme";
+import type { TerminalRendererState } from "./TerminalRenderer";
 
 type TerminalSignal = "interrupt" | "terminate" | "kill";
 
-export interface TerminalTitlebarProps {
+export interface TerminalToolbarProps {
   resources: readonly ExecutionResourceSnapshotData[];
   selected?: ExecutionResourceSnapshotData;
-  searchOpen: boolean;
   onStartTerminal: () => void;
-  onSelect: (resourceId: string) => void;
-  onSearchOpenChange: (open: boolean) => void;
+  onSearchOpen: () => void;
+  onSplit?: () => void;
   onRefresh: () => void;
   onSignal: (resourceId: string, signal: TerminalSignal) => void;
-  onClose: (resourceId: string) => void;
   onStopAll: () => void;
+  onClose: (resourceId: string) => void;
+  renderer?: TerminalRendererState;
+  panelActions?: ReactNode;
 }
 
-export function TerminalTitlebar(props: TerminalTitlebarProps): JSX.Element {
-  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const { disableMotion } = useMotionLevel();
-  const tabSurface = useFluidSegmentedSurface(props.selected?.resourceId);
+export function TerminalToolbar(props: TerminalToolbarProps): JSX.Element {
   const selectedIsActive = Boolean(props.selected && !isTerminalState(props.selected.state));
-  const canSignal = Boolean(props.selected && supportsTerminalCapability(props.selected, "signals"));
-
-  const focusTab = (index: number): void => {
-    const resource = props.resources.at(index);
-    if (!resource) return;
-    props.onSelect(resource.resourceId);
-    tabRefs.current.at(index)?.focus();
-  };
-
-  const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number): void => {
-    const lastIndex = props.resources.length - 1;
-    const destination = resolveTabDestination(event.key, index, lastIndex);
-    if (destination === undefined) return;
-    event.preventDefault();
-    focusTab(destination);
-  };
-
+  const canSignal = Boolean(
+    props.selected && (props.selected.kind === "process" || supportsTerminalCapability(props.selected, "signals")),
+  );
   return (
-    <div className="flex h-full min-w-0 items-stretch">
-      <div className="flex min-w-0 flex-1 items-stretch">
-        <div
-          className="grid w-7 shrink-0 place-items-center text-[var(--terminal-subtle)]"
-          aria-label={frontendMessage("terminal.panel.title")}
-        >
-          <AppIcon icon="terminal" size={14} strokeWidth={1.5} aria-hidden="true" />
-        </div>
-        {props.resources.length > 0 ? (
-          <div
-            ref={tabSurface.containerRef}
-            role="tablist"
-            aria-label={frontendMessage("terminal.resource.select")}
-            className="relative flex min-w-0 flex-1 items-stretch overflow-x-auto"
-            data-terminal-tablist
-            onPointerLeave={tabSurface.onItemPointerLeave}
-          >
-            <FluidSegmentedLayers
-              surface={tabSurface}
-              selectionClassName="rounded-none border-0 bg-[var(--terminal-canvas)] shadow-none after:absolute after:inset-x-2 after:bottom-0 after:h-px after:bg-[var(--terminal-accent)]"
-              hoverClassName="rounded-none bg-[var(--terminal-hover)]"
-              hideHover={disableMotion}
-            />
-            {props.resources.map((resource, index) => {
-              const selected = resource.resourceId === props.selected?.resourceId;
-              const label = terminalTabLabel(resource);
-              return (
-                <div
-                  ref={(element) => tabSurface.registerItem(resource.resourceId, element)}
-                  key={resource.resourceId}
-                  role="presentation"
-                  className={cn(
-                    "group relative z-10 flex h-full min-w-0 items-center",
-                    props.resources.length === 1 ? "flex-1" : "w-[148px] shrink-0",
-                  )}
-                  onPointerEnter={(event) => tabSurface.onItemPointerEnter(resource.resourceId, event)}
-                  onPointerLeave={tabSurface.onItemPointerLeave}
-                >
-                  <Tooltip content={resource.command} side="bottom">
-                    <button
-                      ref={(element) => {
-                        tabRefs.current[index] = element;
-                      }}
-                      type="button"
-                      id={`terminal-tab-${resource.resourceId}`}
-                      role="tab"
-                      aria-controls={`terminal-panel-${resource.resourceId}`}
-                      aria-selected={selected}
-                      aria-label={label}
-                      tabIndex={selected ? 0 : -1}
-                      onClick={() => props.onSelect(resource.resourceId)}
-                      onKeyDown={(event) => handleTabKeyDown(event, index)}
-                      className={cn(
-                        "flex h-full min-w-0 flex-1 items-center gap-2 px-2 text-left text-[11.5px] outline-none",
-                        "text-[var(--terminal-muted)] transition-colors hover:text-[var(--terminal-foreground)]",
-                        disableMotion && "hover:bg-[var(--terminal-hover)]",
-                        "focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--terminal-accent)]",
-                        selected && "text-[var(--terminal-foreground)]",
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "h-1.5 w-1.5 shrink-0 rounded-full",
-                          terminalStatusIndicatorClass(resource.state),
-                        )}
-                        aria-hidden="true"
-                      />
-                      <span className="min-w-0 truncate">{label}</span>
-                    </button>
-                  </Tooltip>
-                  <IconButton
-                    label={frontendFeatureMessage("terminal.resource.close")}
-                    tooltip={frontendFeatureMessage("terminal.resource.close")}
-                    size="sm"
-                    data-terminal-tab-close
-                    className={cn(
-                      "mr-1 h-6 w-6 shrink-0 text-[var(--terminal-subtle)]",
-                      "hover:bg-[var(--terminal-hover)] hover:text-[var(--terminal-foreground)]",
-                    )}
-                    disabled={resource.state === "stopping"}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      props.onClose(resource.resourceId);
-                    }}
-                  >
-                    <AppIcon icon="close" size={12} />
-                  </IconButton>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <span className="flex min-w-0 flex-1 items-center truncate px-1 text-[11.5px] font-medium text-[var(--terminal-muted)]">
-            {frontendMessage("terminal.panel.title")}
-          </span>
-        )}
-      </div>
-
-      <div className="flex shrink-0 items-center" data-workbench-interactive>
-        <IconButton
-          label={frontendFeatureMessage("terminal.resource.create")}
-          tooltip={frontendFeatureMessage("terminal.resource.create")}
-          size="sm"
-          onClick={() => props.onStartTerminal()}
-          className={terminalToolbarButtonClassName(false)}
-        >
-          <AppIcon icon="plus" size={14} />
-        </IconButton>
-        <IconButton
-          label={frontendMessage("terminal.search.open")}
-          tooltip={frontendMessage("terminal.search.open")}
-          tooltipShortcut="Ctrl F"
-          size="sm"
-          onClick={() => props.onSearchOpenChange(!props.searchOpen)}
-          disabled={!props.selected}
-          className={terminalToolbarButtonClassName(props.searchOpen)}
-        >
-          <AppIcon icon="search" size={14} />
-        </IconButton>
-        <IconButton
-          label={frontendMessage("terminal.resource.interrupt")}
-          tooltip={frontendMessage("terminal.resource.interrupt")}
-          size="sm"
-          onClick={() => props.selected && props.onSignal(props.selected.resourceId, "interrupt")}
-          disabled={!props.selected || !selectedIsActive || !canSignal}
-          className={cn(terminalToolbarButtonClassName(false), "hidden sm:grid")}
-        >
-          <AppIcon icon="square" size={12} />
-        </IconButton>
-        <TerminalActionsMenu {...props} selectedIsActive={selectedIsActive} canSignal={canSignal} />
-      </div>
+    <div className="flex h-full shrink-0 items-center gap-0.5 px-1" data-workbench-interactive>
+      <IconButton
+        label={frontendFeatureMessage("terminal.resource.create")}
+        tooltip={frontendFeatureMessage("terminal.resource.create")}
+        size="sm"
+        onClick={props.onStartTerminal}
+        className={terminalToolbarButtonClassName(false)}
+      >
+        <AppIcon icon="plus" size={14} />
+      </IconButton>
+      <IconButton
+        label={frontendMessage("terminal.search.open")}
+        tooltip={frontendMessage("terminal.search.open")}
+        tooltipShortcut="Ctrl F"
+        size="sm"
+        onClick={props.onSearchOpen}
+        disabled={!props.selected}
+        className={terminalToolbarButtonClassName(false)}
+      >
+        <AppIcon icon="search" size={14} />
+      </IconButton>
+      <TerminalActionsMenu {...props} selectedIsActive={selectedIsActive} canSignal={canSignal} />
+      {props.panelActions}
     </div>
   );
 }
 
 function TerminalActionsMenu(
-  props: TerminalTitlebarProps & { selectedIsActive: boolean; canSignal: boolean },
+  props: TerminalToolbarProps & { selectedIsActive: boolean; canSignal: boolean },
 ): JSX.Element {
-  const runningResources = props.resources.filter((resource) => !isTerminalState(resource.state));
+  const [infoOpen, setInfoOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const requestedInfo = useRef(false);
   const selected = props.selected;
-
+  const hasRunningResources = props.resources.some((resource) => !isTerminalState(resource.state));
+  const label = terminalSelectionOptions(props.resources).find(
+    (option) => option.value === selected?.resourceId,
+  )?.label;
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <IconButton
-          label={frontendMessage("terminal.actions.open")}
-          tooltip={frontendMessage("terminal.actions.open")}
-          size="sm"
-          className={terminalToolbarButtonClassName(false)}
+    <Popover open={infoOpen && Boolean(selected)} onOpenChange={setInfoOpen}>
+      <DropdownMenu>
+        <PopoverAnchor asChild>
+          <DropdownMenuTrigger asChild>
+            <IconButton
+              ref={trigger}
+              label={frontendMessage("terminal.actions.open")}
+              tooltip={frontendMessage("terminal.actions.open")}
+              size="sm"
+              className={terminalToolbarButtonClassName(false)}
+            >
+              <AppIcon icon="more" size={16} />
+            </IconButton>
+          </DropdownMenuTrigger>
+        </PopoverAnchor>
+        <DropdownMenuContent
+          align="end"
+          sideOffset={6}
+          style={TerminalOverlayStyle}
+          className="w-56 border-[var(--terminal-border)] text-[var(--terminal-foreground)]"
+          onCloseAutoFocus={(event) => {
+            if (requestedInfo.current) {
+              event.preventDefault();
+              requestedInfo.current = false;
+              setInfoOpen(true);
+            }
+          }}
         >
-          <AppIcon icon="more" size={16} />
-        </IconButton>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="end"
-        sideOffset={8}
-        style={TerminalSurfaceStyle}
-        className="w-64 border-[var(--terminal-border)] bg-[var(--terminal-elevated)] text-[var(--terminal-foreground)] shadow-2xl"
-      >
-        <DropdownMenuItem
-          icon={<AppIcon icon="refresh" size={14} aria-hidden="true" />}
-          onSelect={props.onRefresh}
-          className={terminalMenuItemClassName}
+          <DropdownMenuItem
+            icon={<AppIcon icon="refresh" size={14} />}
+            onSelect={props.onRefresh}
+            className={terminalMenuItemClassName}
+          >
+            {frontendMessage("terminal.resource.refresh")}
+          </DropdownMenuItem>
+          {props.onSplit ? (
+            <DropdownMenuItem onSelect={props.onSplit} className={terminalMenuItemClassName}>
+              {frontendFeatureMessage("terminal.layout.split")}
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuItem
+            icon={<AppIcon icon="info" size={14} />}
+            onSelect={() => {
+              requestedInfo.current = true;
+            }}
+            disabled={!selected}
+            className={terminalMenuItemClassName}
+          >
+            {frontendMessage("terminal.info.title")}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator className="bg-[var(--terminal-separator)]" />
+          <DropdownMenuItem
+            icon={<AppIcon icon="square" size={12} />}
+            onSelect={() => selected && props.onSignal(selected.resourceId, "interrupt")}
+            disabled={!selected || !props.selectedIsActive || !props.canSignal}
+            className={terminalMenuItemClassName}
+          >
+            {frontendMessage("terminal.resource.interrupt")}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            icon={<AppIcon icon="stop-circle" size={14} />}
+            onSelect={() => selected && props.onSignal(selected.resourceId, "terminate")}
+            disabled={!selected || !props.selectedIsActive || !props.canSignal}
+            destructive
+            className={terminalDestructiveMenuItemClassName}
+          >
+            {frontendMessage("terminal.resource.stop")}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            icon={<AppIcon icon="close" size={14} />}
+            onSelect={() => selected && props.onClose(selected.resourceId)}
+            disabled={!selected}
+            className={terminalMenuItemClassName}
+          >
+            {frontendFeatureMessage("terminal.resource.close")}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator className="bg-[var(--terminal-separator)]" />
+          <DropdownMenuItem
+            icon={<AppIcon icon="stop-circle" size={14} />}
+            onSelect={props.onStopAll}
+            disabled={!hasRunningResources}
+            destructive
+            className={terminalDestructiveMenuItemClassName}
+          >
+            {frontendMessage("terminal.resource.stopAll")}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {selected ? (
+        <PopoverContent
+          align="end"
+          sideOffset={6}
+          style={TerminalOverlayStyle}
+          aria-label={frontendMessage("terminal.info.title")}
+          className="w-[min(320px,calc(100vw-24px))] border-[var(--terminal-border)] bg-[var(--terminal-elevated)] p-4 text-[var(--terminal-foreground)]"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            trigger.current?.focus();
+          }}
         >
-          {frontendMessage("terminal.resource.refresh")}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          icon={<AppIcon icon="search" size={14} />}
-          onSelect={() => props.onSearchOpenChange(true)}
-          disabled={!selected}
-          shortcut="Ctrl F"
-          className={terminalMenuItemClassName}
-        >
-          {frontendMessage("terminal.search.open")}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator className="bg-[var(--terminal-separator)]" />
-        <DropdownMenuItem
-          icon={<AppIcon icon="square" size={12} />}
-          onSelect={() => selected && props.onSignal(selected.resourceId, "interrupt")}
-          disabled={!selected || !props.selectedIsActive || !props.canSignal}
-          className={terminalMenuItemClassName}
-        >
-          {frontendMessage("terminal.resource.interrupt")}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          icon={<AppIcon icon="stop-circle" size={14} />}
-          onSelect={() => selected && props.onSignal(selected.resourceId, "terminate")}
-          disabled={!selected || !props.selectedIsActive || !props.canSignal}
-          destructive
-          className={terminalDestructiveMenuItemClassName}
-        >
-          {frontendMessage("terminal.resource.stop")}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          icon={<AppIcon icon="stop-circle" size={14} />}
-          onSelect={props.onStopAll}
-          disabled={runningResources.length === 0}
-          destructive
-          className={terminalDestructiveMenuItemClassName}
-        >
-          {frontendMessage("terminal.resource.stopAll")}
-        </DropdownMenuItem>
-        {selected ? (
-          <>
-            <DropdownMenuSeparator className="bg-[var(--terminal-separator)]" />
-            <DropdownMenuLabel className="flex items-center gap-2 px-2.5 pb-1 pt-1.5 text-[10px] text-[var(--terminal-muted)]">
-              <AppIcon icon="info" size={12} aria-hidden="true" />
-              {frontendMessage("terminal.info.title")}
-            </DropdownMenuLabel>
-            <TerminalDetails resource={selected} />
-          </>
-        ) : null}
-      </DropdownMenuContent>
-    </DropdownMenu>
+          <TerminalDetails
+            resource={selected}
+            label={label}
+            renderer={props.renderer}
+            onClose={() => setInfoOpen(false)}
+          />
+        </PopoverContent>
+      ) : null}
+    </Popover>
   );
 }
 
-function TerminalDetails({ resource }: { resource: ExecutionResourceSnapshotData }): JSX.Element {
-  const details = resource.terminal
-    ? [
-        [frontendMessage("terminal.info.shell"), resource.terminal.shellDialect],
-        [frontendFeatureMessage("terminal.info.purpose"), terminalPurposeLabel(resource)],
-        [frontendMessage("terminal.info.backend"), resource.terminal.backend],
-        [frontendMessage("terminal.info.boundary"), resource.terminal.effectiveBoundary],
-        [frontendMessage("terminal.info.dimensions"), `${resource.terminal.columns}x${resource.terminal.rows}`],
-      ]
-    : [[frontendMessage("terminal.info.kind"), frontendMessage("terminal.kind.process")]];
-
+function TerminalDetails({
+  resource,
+  label,
+  renderer,
+  onClose,
+}: {
+  resource: ExecutionResourceSnapshotData;
+  label?: string;
+  renderer?: TerminalRendererState;
+  onClose: () => void;
+}): JSX.Element {
+  const terminal = resource.terminal;
+  const details = [
+    ...(terminal
+      ? [
+          [frontendMessage("terminal.info.shell"), terminal.shellDialect],
+          [frontendMessage("terminal.info.backend"), terminal.backend],
+          [frontendMessage("terminal.info.boundary"), terminal.effectiveBoundary],
+        ]
+      : []),
+    [frontendFeatureMessage("terminal.info.command"), resource.command],
+  ];
   return (
-    <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 px-2.5 pb-2 font-mono text-[10px]">
-      {details.map(([label, value]) => (
-        <div key={label} className="contents">
-          <dt className="text-[var(--terminal-subtle)]">{label}</dt>
-          <Tooltip content={value} side="top">
-            <dd className="truncate text-right text-[var(--terminal-muted)]">{value}</dd>
-          </Tooltip>
+    <div className="select-text">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="break-words text-[13px] font-semibold">{label}</h2>
+          <p className="mt-1 text-[11px] text-[var(--terminal-muted)]">
+            {terminalPurposeLabel(resource)} · {terminalStatusLabel(resource.state)}
+          </p>
         </div>
-      ))}
-    </dl>
+        <IconButton
+          label={frontendMessage("ui.close")}
+          size="sm"
+          onClick={onClose}
+          className="-mr-1 -mt-1 h-6 w-6 text-[var(--terminal-muted)]"
+        >
+          <AppIcon icon="close" size={13} />
+        </IconButton>
+      </div>
+      <dl className="mt-4 space-y-3 text-[12px]">
+        <div>
+          <dt className="text-[10px] text-[var(--terminal-subtle)]">
+            {frontendFeatureMessage("terminal.info.directory")}
+          </dt>
+          <dd className="mt-1 break-all font-mono leading-5">{resource.cwd}</dd>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          {terminal ? (
+            <div>
+              <dt className="text-[10px] text-[var(--terminal-subtle)]">
+                {frontendMessage("terminal.info.dimensions")}
+              </dt>
+              <dd className="mt-1 tabular-nums">
+                {terminal.columns} × {terminal.rows}
+              </dd>
+            </div>
+          ) : null}
+          {renderer ? (
+            <div>
+              <dt className="text-[10px] text-[var(--terminal-subtle)]">
+                {frontendFeatureMessage("terminal.renderer.info")}
+              </dt>
+              <dd className="mt-1 break-words">{terminalRendererDescription(renderer)}</dd>
+            </div>
+          ) : null}
+        </div>
+      </dl>
+      <details className="group mt-4 border-t border-[var(--terminal-separator)] pt-3">
+        <summary className="flex cursor-pointer list-none items-center justify-between text-[11px] text-[var(--terminal-muted)] outline-none focus-visible:underline [&::-webkit-details-marker]:hidden">
+          {frontendFeatureMessage("terminal.info.runtime")}
+          <AppIcon icon="chevron-down" size={12} className="transition-transform group-open:rotate-180" />
+        </summary>
+        <dl className="mt-3 grid grid-cols-[64px_minmax(0,1fr)] gap-x-3 gap-y-2 text-[11px] leading-5">
+          {details.map(([name, value]) => (
+            <div key={name} className="contents">
+              <dt className="text-[var(--terminal-subtle)]">{name}</dt>
+              <dd className="break-all font-mono text-[var(--terminal-muted)]">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </details>
+    </div>
   );
 }
 
 export function TerminalSearchOverlay(props: {
   query: string;
+  result?: ISearchResultChangeEvent;
   onQueryChange: (query: string) => void;
   onRunSearch: (direction: "next" | "previous") => void;
   onClose: () => void;
@@ -320,7 +301,7 @@ export function TerminalSearchOverlay(props: {
       className="absolute right-2 top-2 z-20 flex h-9 w-[min(320px,calc(100%-16px))] items-center gap-1 rounded border border-[var(--terminal-border)] bg-[var(--terminal-elevated)] px-2 shadow-soft"
     >
       <AppIcon icon="search" size={14} className="shrink-0 text-[var(--terminal-subtle)]" aria-hidden="true" />
-      <input
+      <Input
         value={props.query}
         onChange={(event) => props.onQueryChange(event.target.value)}
         onKeyDown={(event) => {
@@ -334,8 +315,18 @@ export function TerminalSearchOverlay(props: {
         placeholder={frontendMessage("terminal.search.placeholder")}
         aria-label={frontendMessage("terminal.search.placeholder")}
         autoFocus
-        className="h-full min-w-0 flex-1 border-0 bg-transparent font-mono text-[11px] text-[var(--terminal-foreground)] outline-none placeholder:text-[var(--terminal-subtle)]"
+        className="h-full min-w-0 flex-1 rounded-none border-0 bg-transparent px-0 py-0 font-mono text-[11px] text-[var(--terminal-foreground)] shadow-none outline-none focus-visible:ring-0 placeholder:text-[var(--terminal-subtle)]"
       />
+      {props.query && props.result ? (
+        <span role="status" className="shrink-0 text-[10px] tabular-nums text-[var(--terminal-muted)]">
+          {props.result.resultCount === 0
+            ? frontendFeatureMessage("terminal.search.noMatches")
+            : frontendFeatureMessage("terminal.search.count", {
+                index: Math.max(0, props.result.resultIndex + 1),
+                count: props.result.resultCount,
+              })}
+        </span>
+      ) : null}
       <IconButton
         label={frontendMessage("terminal.search.previous")}
         tooltip={frontendMessage("terminal.search.previous")}
@@ -369,36 +360,27 @@ export function TerminalSearchOverlay(props: {
   );
 }
 
-export function TerminalStatusBar({ resource }: { resource: ExecutionResourceSnapshotData }): JSX.Element {
+export function TerminalConnectionIcon({ state }: { state: ExecutionResourceState }): JSX.Element {
+  const { icon, className } = terminalConnectionPresentation(state);
+  const label = terminalStatusLabel(state);
   return (
-    <div className="flex h-6 shrink-0 items-center gap-2 border-t border-[var(--terminal-separator)] bg-[var(--terminal-chrome)] px-2.5 text-[10px]">
-      <span
-        className={cn("h-1.5 w-1.5 shrink-0 rounded-full", terminalStatusIndicatorClass(resource.state))}
-        aria-hidden="true"
-      />
-      <span className="shrink-0 text-[var(--terminal-muted)]">{terminalStatusLabel(resource.state)}</span>
-      <Tooltip content={resource.cwd} side="top">
-        <span className="min-w-0 flex-1 truncate font-mono text-[var(--terminal-subtle)]">{resource.cwd}</span>
-      </Tooltip>
-      {resource.terminal ? (
-        <span className="shrink-0 font-mono text-[var(--terminal-subtle)]">
-          <span className="hidden sm:inline">{resource.terminal.shellDialect} · </span>
-          {resource.terminal.columns}x{resource.terminal.rows}
-        </span>
-      ) : (
-        <span className="shrink-0 text-[var(--terminal-subtle)]">{frontendMessage("terminal.kind.process")}</span>
-      )}
-    </div>
+    <Tooltip content={label}>
+      <span role="img" aria-label={label} className={cn("inline-flex shrink-0 items-center", className)}>
+        <AppIcon icon={icon} size={14} />
+      </span>
+    </Tooltip>
   );
 }
 
-function resolveTabDestination(key: string, currentIndex: number, lastIndex: number): number | undefined {
-  if (lastIndex < 0) return undefined;
-  if (key === "Home") return 0;
-  if (key === "End") return lastIndex;
-  if (key === "ArrowRight") return currentIndex === lastIndex ? 0 : currentIndex + 1;
-  if (key === "ArrowLeft") return currentIndex === 0 ? lastIndex : currentIndex - 1;
-  return undefined;
+function terminalRendererDescription(renderer: TerminalRendererState): string {
+  if (renderer.kind === "webgl") return frontendFeatureMessage("terminal.renderer.webgl");
+  const descriptions = {
+    inactive: "terminal.renderer.inactive",
+    unavailable: "terminal.renderer.unavailable",
+    "context-lost": "terminal.renderer.contextLost",
+  } as const;
+  const description = frontendFeatureMessage(descriptions[renderer.reason]);
+  return renderer.detail ? `${description}: ${renderer.detail}` : description;
 }
 
 function terminalToolbarButtonClassName(active: boolean): string {

@@ -11,16 +11,8 @@ export type ChildRunStatus =
   | "failed"
   | "cancelled";
 
-export interface ChildRunEventIdentityData {
-  childRunId: string;
-  ownerRunId: string;
-  nodeId: string;
-  workItemId?: string;
-  taskDigest?: string;
-  childSessionId: string;
-  agentName: string;
-  status: ChildRunStatus;
-}
+export type ChildRunEventIdentityData =
+  import("../../../Source/AgentSystem/Orchestration/AgentOrchestrationEventTypes").AgentChildRunEventIdentity;
 
 export type ChildRunMessageDirection = "child_to_parent" | "parent_to_child";
 

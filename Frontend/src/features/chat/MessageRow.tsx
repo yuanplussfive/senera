@@ -1,8 +1,7 @@
 import type { ChatMessage, ConversationIdentity, RunRecord, UserProfile } from "../../store/sessionStore";
 import { DEFAULT_ASSISTANT_PROFILE } from "../../store/session/userProfile";
-import { cn } from "../../lib/util";
 import { ConversationFrame } from "../../shared/ui";
-import { AssistantMessageAvatar, MessageMeta } from "./MessageChrome";
+import { AssistantMessageAvatar, MessageFooter, MessageMeta } from "./MessageChrome";
 import { MessageActions } from "./MessageActions";
 import { readAssistantDisplayContent } from "./messagePresentation";
 import { AssistantMessageBody } from "./AssistantMessageBody";
@@ -114,12 +113,7 @@ export function MessageRow({
             />
           ) : null}
           <AssistantMessageBody message={{ ...message, content: displayContent }} streaming={isStreamingPreface} />
-          <div
-            className={cn(
-              "mt-3 flex min-h-6 min-w-0 items-center gap-3 overflow-hidden opacity-0 pointer-events-none transition-opacity group-hover/msg:opacity-100 group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto",
-              showInlineActions && "opacity-100 pointer-events-auto",
-            )}
-          >
+          <MessageFooter visible={showInlineActions}>
             <MessageMetrics
               role="assistant"
               usage={run?.usage ?? message.metadata?.run?.usage}
@@ -139,7 +133,7 @@ export function MessageRow({
                 onViewWorkflow={onViewWorkflow}
               />
             </div>
-          </div>
+          </MessageFooter>
         </div>
       </div>
     </ConversationFrame>

@@ -10,6 +10,8 @@ import {
   AgentPiNativeToolBridgeName,
 } from "../../../Source/AgentSystem/Pi/AgentPiNativeToolBridge.js";
 import { isAgentToolAuthorized } from "../../../Source/AgentSystem/ToolRuntime/AgentToolAccessGrant.js";
+import { confirmAgentPiDeliveredToolContracts } from "../../../Source/AgentSystem/Pi/AgentPiToolContractDelivery.js";
+import { createAgentPiToolObservation } from "../../../Source/AgentSystem/Pi/AgentPiToolObservation.js";
 
 const temporaryRoots: string[] = [];
 // These cases intentionally exercise real stdio MCP lifecycles, including
@@ -104,8 +106,44 @@ describe("MCP package runtime discovery", () => {
           },
         );
         expect(description.response.ok).toBe(true);
+        expect(exposure.hasConfirmedContract(weatherTool!.name, weatherTool!.contract?.digest)).toBe(false);
+        confirmAgentPiDeliveredToolContracts(
+          {
+            messages: [
+              {
+                role: "toolResult",
+                toolCallId: "describe-forecast",
+                toolName: "ToolDescribe",
+                content: [
+                  {
+                    type: "text",
+                    text: JSON.stringify(
+                      createAgentPiToolObservation({
+                        status: "success",
+                        execution_status: "completed",
+                        output_availability: "complete",
+                        detail: { evidence: [], result: description.response.result },
+                      }),
+                    ),
+                  },
+                ],
+                details: { senera: { toolContractReceipts: [...(description.toolContractReceipts ?? [])] } },
+                isError: false,
+                timestamp: Date.now(),
+              },
+            ],
+          },
+          runtime.registry,
+          exposure,
+          weatherTool!.execution.Targets,
+        );
         expect(exposure.hasConfirmedContract(weatherTool!.name, weatherTool!.contract?.digest)).toBe(true);
-        const bridge = new AgentPiNativeToolBridge(runtime.registry, {} as never, "native");
+        const bridge = new AgentPiNativeToolBridge(
+          runtime.registry,
+          {} as never,
+          "native",
+          () => weatherTool!.execution.Targets,
+        );
         expect(
           bridge.projectPreflight(
             {

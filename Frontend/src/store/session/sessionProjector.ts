@@ -1,4 +1,5 @@
 import { DEFAULT_SESSION_TITLE } from "./defaults";
+import { AgentDirectorySnapshotSchema } from "../../../../Source/AgentSystem/Core/AgentDirectoryContract";
 import { normalizeUserProfile, UserProfileSyncStates } from "./userProfile";
 import {
   EventKinds,
@@ -20,9 +21,15 @@ import {
   type ChannelStatusSnapshotData,
 } from "../../api/eventTypes";
 import { readEventSessionId } from "../../api/eventCorrelation";
+import { readFeedbackRecordedData } from "../../api/feedbackEventTypes";
 import { projectRunEvent } from "./runEventProjector";
+import { projectContextBoundary } from "./contextBoundaryProjection";
 import { applyScopedRunEvent } from "./scopedRunProjector";
-import { advanceSessionHistoryHydration, projectSessionHistoryEvent } from "./sessionHistoryProjector";
+import {
+  advanceSessionHistoryHydration,
+  captureLiveStreamDuringHistory,
+  projectSessionHistoryEvent,
+} from "./sessionHistoryProjector";
 import {
   deleteSessionRuntimeState,
   ingestSessionList,
@@ -37,10 +44,13 @@ import type { SessionRecord, StoreState } from "./types";
 import { projectAgentEventOnce } from "./eventReceiptLedger";
 import { rejectRunRecovery } from "./runRecoveryProjection";
 import { resolveBackendMessage } from "../../i18n/backendMessage";
+import { rejectQueuedMessage } from "./queuedMessageProjection";
+import { projectAgentDirectory } from "./agentDirectoryProjection";
+import { clearRunHistoryDetailState } from "./runHistoryDetailState";
 
 export { normalizeUserProfile } from "./userProfile";
 export { friendlyDecisionKind, truncate } from "./sessionPresentation";
-export { advanceRunDisplayText, createRunRecord } from "./sessionRunProjection";
+export { createRunRecord } from "./sessionRunProjection";
 export { bumpSessionMessageCount } from "./sessionProjectorCore";
 export { deleteSessionRuntimeState } from "./sessionListProjection";
 export { deleteSessionRuntimeStates } from "./sessionListProjection";
@@ -52,14 +62,18 @@ export { invalidateSessionHistoryCache } from "./sessionListProjection";
 // =========================
 
 export function applyEvent(state: StoreState, env: EventEnvelope): boolean {
-  return projectAgentEventOnce(state, env, (event) => applyEventProjection(state, event));
+  return projectAgentEventOnce(state, env, (event) => applyEventProjection(state, event, "live"));
+}
+
+function applyHistoryEvent(state: StoreState, env: EventEnvelope): boolean {
+  return projectAgentEventOnce(state, env, (event) => applyEventProjection(state, event, "history"));
 }
 
 export function advanceHistoryHydration(state: StoreState, sessionId: string): boolean {
-  return advanceSessionHistoryHydration(state, sessionId, applyEvent);
+  return advanceSessionHistoryHydration(state, sessionId, applyHistoryEvent);
 }
 
-function applyEventProjection(state: StoreState, env: EventEnvelope): void {
+function applyEventProjection(state: StoreState, env: EventEnvelope, origin: "live" | "history"): void {
   const sessionId = env.sessionId;
 
   if (sessionId && state.pendingDeletedSessionIds[sessionId] && isSessionCloseFailure(env)) {
@@ -75,18 +89,37 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
     return;
   }
 
-  if (projectSessionHistoryEvent({ state, env, applyEvent })) {
+  if (projectSessionHistoryEvent({ state, env, applyEvent: applyHistoryEvent })) {
     return;
   }
 
   if (projectRunEvent(state, env)) {
+    if (origin === "live") captureLiveStreamDuringHistory(state, env);
     return;
   }
 
   switch (env.kind) {
+    case EventKinds.SessionCompacted: {
+      const session = sessionId ? state.sessions[sessionId] : undefined;
+      if (session) session.historyInvalidated = true;
+      const owner = env.scope?.parentSessionId ? state.sessions[env.scope.parentSessionId] : session;
+      const requestId = env.scope?.parentRequestId ?? env.requestId;
+      const run = requestId ? owner?.runs.find((entry) => entry.requestId === requestId) : undefined;
+      if (run) projectContextBoundary(run, env);
+      return;
+    }
+    case EventKinds.AgentDirectorySnapshot: {
+      const snapshot = AgentDirectorySnapshotSchema.parse(env.data);
+      projectAgentDirectory(state, snapshot);
+      return;
+    }
     case EventKinds.RequestInvalid: {
       const data = env.data as RequestInvalidData;
       const session = env.sessionId ? state.sessions[env.sessionId] : undefined;
+      if (session && rejectQueuedMessage(session, env.requestId, resolveBackendMessage(data) ?? data.message)) {
+        session.updatedAt = env.timestamp;
+        return;
+      }
       if (session && rejectRunRecovery(session, env.requestId, resolveBackendMessage(data) ?? data.message)) return;
       const details = data.details;
       const readDetail = (key: string): unknown =>
@@ -124,6 +157,28 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
       }
       return;
     }
+    case EventKinds.FeedbackRecorded: {
+      const session = sessionId ? state.sessions[sessionId] : undefined;
+      if (!session) return;
+      const record = readFeedbackRecordedData(env.data);
+      if (!record || record.sessionId !== sessionId || record.requestId !== env.requestId) return;
+      const revisions = (session.messageFeedbackRevisions ??= {});
+      const revision = { updatedAt: Date.parse(record.updatedAt), sequence: env.sequence };
+      const previous = revisions[record.requestId];
+      if (
+        previous &&
+        (previous.updatedAt > revision.updatedAt ||
+          (previous.updatedAt === revision.updatedAt && previous.sequence >= revision.sequence))
+      )
+        return;
+      revisions[record.requestId] = revision;
+      const feedback = (session.messageFeedback ??= {});
+      // Retraction removes the entry so "not rated" has exactly one shape.
+      if (record.rating === null) delete feedback[record.requestId];
+      else feedback[record.requestId] = record;
+      return;
+    }
+
     case EventKinds.ModelListSnapshot: {
       applyModelListSnapshotSelection(state, env.data as ModelListSnapshotData);
       return;
@@ -186,6 +241,7 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
     case EventKinds.ProfileSnapshot: {
       if (state.userProfile.syncState === UserProfileSyncStates.Pending) return;
       state.userProfile = normalizeUserProfile(env.data as UserProfileData);
+      if (state.agentDirectory) projectAgentDirectory(state, state.agentDirectory);
       return;
     }
 
@@ -193,9 +249,6 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
     case EventKinds.SessionSnapshot: {
       if (!sessionId) return;
       const data = env.data as SessionSnapshotData;
-      if (data.modelProviderId) {
-        state.selectedModelProviderIdsBySession[sessionId] = data.modelProviderId;
-      }
       delete state.pendingCreatedSessionIds[sessionId];
       if (state.pendingDeletedSessionIds[sessionId]) return;
       const channel =
@@ -203,25 +256,28 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
         (env.scope?.channel && env.scope.channel !== "console" ? { platform: env.scope.channel } : undefined);
       const existing = state.sessions[sessionId];
       if (existing) {
+        existing.title = data.title?.trim() || existing.title.trim() || DEFAULT_SESSION_TITLE;
         existing.status = "ready";
         existing.updatedAt = data.updatedAt ?? nowIso();
         existing.entryCount = data.entryCount;
         existing.messageCount = data.messageCount;
         existing.activeRequestId = data.activeRequestId;
+        existing.agentId = data.agentId;
         if (!existing.runtimeSnapshot) {
           const persistedRuntimeSnapshot = state.runtimeSnapshotsBySession[sessionId];
           if (persistedRuntimeSnapshot) existing.runtimeSnapshot = persistedRuntimeSnapshot;
         }
         if (channel) existing.channel = channel;
+        existing.modelProviderId = data.modelProviderId;
         if (data.effectiveModel) existing.effectiveModel = data.effectiveModel;
-        if (data.modelPreference) existing.modelPreference = data.modelPreference;
+        existing.modelPreference = data.modelPreference;
         if (state.historyLoadingIds[sessionId]) {
           state.historyActiveRequestIds[sessionId] = data.activeRequestId ?? null;
         }
       } else {
         state.sessions[sessionId] = {
           sessionId,
-          title: DEFAULT_SESSION_TITLE,
+          title: data.title?.trim() || DEFAULT_SESSION_TITLE,
           status: "ready",
           createdAt: data.createdAt ?? nowIso(),
           updatedAt: data.updatedAt ?? nowIso(),
@@ -233,7 +289,9 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
             ? { runtimeSnapshot: state.runtimeSnapshotsBySession[sessionId] }
             : {}),
           activeRequestId: data.activeRequestId,
+          agentId: data.agentId,
           ...(channel ? { channel } : {}),
+          modelProviderId: data.modelProviderId,
           ...(data.effectiveModel ? { effectiveModel: data.effectiveModel } : {}),
           ...(data.modelPreference ? { modelPreference: data.modelPreference } : {}),
         };
@@ -276,7 +334,7 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
       const data = env.data as SessionForkedData;
       const session = state.sessions[sessionId];
       if (!session) return;
-      session.title = data.title || session.title;
+      session.title = data.title?.trim() || session.title.trim() || DEFAULT_SESSION_TITLE;
       session.createdAt = data.createdAt || session.createdAt;
       session.updatedAt = env.timestamp;
       session.forkOrigin = {
@@ -335,6 +393,7 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
 const SessionNotFoundProjectionPolicies = {
   "session.close": "remove",
   "session.history": "mark_missing",
+  "session.run_history": "mark_missing",
   "session.message": "mark_missing",
   "session.fork": "mark_missing",
   "session.compact": "mark_missing",
@@ -353,6 +412,7 @@ function projectSessionNotFound(state: StoreState, sessionId: string, data: Sess
       return;
     case "mark_missing":
       delete state.pendingCreatedSessionIds[sessionId];
+      clearRunHistoryDetailState(state, sessionId);
       state.missingOnServerIds[sessionId] = true;
       delete state.historyLoadedIds[sessionId];
       if (state.sessions[sessionId]) {
@@ -390,6 +450,9 @@ export function truncateSessionFromRequest(
   const session = state.sessions[sessionId];
   if (!session) return;
   const suppressed = collectTruncatedRequestIds(session, fromRequestId);
+  for (const requestId of suppressed) {
+    if (requestId !== options.retainedRequestId) clearRunHistoryDetailState(state, sessionId, requestId);
+  }
   rememberSuppressedRequestIds(state, sessionId, suppressed, options.retainedRequestId);
   const retainedMessages = options.retainedRequestId
     ? session.messages.filter((message) => message.requestId === options.retainedRequestId)

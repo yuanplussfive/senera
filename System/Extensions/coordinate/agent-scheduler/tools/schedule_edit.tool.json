@@ -1,0 +1,118 @@
+{
+  "name": "schedule_edit",
+  "loading": "Bootstrap",
+  "presentation": {
+    "category": "schedule-manage",
+    "icon": "pencil",
+    "activity": {
+      "action": {
+        "zh-CN": "管理",
+        "en-US": "Manage"
+      },
+      "argumentPath": "/schedule_id",
+      "detailPaths": ["/operation", "/name"]
+    }
+  },
+  "description": "Update, pause, resume, delete, or deliver an owned schedule immediately.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "schedule_id": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Schedule ID returned by schedule_create or schedule_list."
+      },
+      "operation": {
+        "type": "string",
+        "enum": ["update", "pause", "resume", "delete", "run_now"]
+      },
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Short label."
+      },
+      "prompt": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Instructions to deliver."
+      },
+      "rrule": {
+        "type": "string",
+        "minLength": 1,
+        "description": "RFC 5545 RRULE, for example RRULE:FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0."
+      },
+      "at": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Replacement one-time timestamp or relative duration. Offsetless values use the schedule timezone."
+      },
+      "time_zone": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Optional IANA timezone. Omission uses Senera’s shared default timezone; specify only when the user requests another timezone."
+      }
+    },
+    "required": ["schedule_id", "operation"],
+    "additionalProperties": false,
+    "not": {
+      "required": ["rrule", "at"]
+    }
+  },
+  "outputSchema": {
+    "type": "object"
+  },
+  "permissions": ["orchestration:schedule"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Persistent",
+    "ResultAssessment": "Unassessed",
+    "Scheduling": "SelfManaged",
+    "Capabilities": {
+      "Progress": true,
+      "Cancellation": true,
+      "ResumableEvents": true
+    }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "orchestration.scheduler",
+      "Title": "Agent task scheduling",
+      "Description": "Scheduled agent tasks managed by Senera."
+    }
+  ],
+  "search": {
+    "Summary": "Update, pause, resume, delete, or deliver an owned schedule immediately.",
+    "Tags": ["coordination"],
+    "Capabilities": [
+      {
+        "Id": "orchestration.schedule.edit",
+        "Title": "schedule_edit",
+        "Description": "Update, pause, resume, delete, or deliver an owned schedule immediately.",
+        "Facets": {
+          "Actions": ["schedule_edit"],
+          "Targets": ["session-work"],
+          "Inputs": ["schedule_id", "operation"],
+          "Outputs": [],
+          "Effects": ["session-state"]
+        },
+        "Risk": {
+          "SideEffect": "session-state",
+          "Permission": "orchestration"
+        },
+        "Aliases": ["schedule_edit"]
+      }
+    ],
+    "UseCases": ["Coordinate persistent work."],
+    "Avoid": ["Do not poll with empty messages."]
+  },
+  "evidenceCapabilities": [],
+  "approval": {
+    "Mode": "ask",
+    "Reason": "创建或修改会在未来自动运行的持久任务。"
+  }
+}

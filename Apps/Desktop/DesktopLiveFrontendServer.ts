@@ -1,9 +1,9 @@
 import http from "node:http";
 import { errorMessage } from "../../Source/AgentSystem/Core/AgentErrors.js";
+import { AgentDevelopmentFrontendBase } from "../../Source/AgentSystem/WebSocket/AgentDevelopmentFrontend.js";
+import { resolveDesktopDevelopmentFrontendUrl } from "./DesktopFrontendSource.js";
 
-const ViteClientEntry = 'src="/@vite/client"';
-const RuntimeConfigEntry = 'src="/senera-runtime-config.js"';
-const MainEntry = 'src="/src/main.tsx"';
+const FrontendScriptEntries = ["@vite/client", "senera-runtime-config.js", "src/main.tsx"] as const;
 
 export type DesktopLiveFrontendProbe =
   { kind: "ready" } | { kind: "unavailable"; message: string } | { kind: "invalid"; message: string };
@@ -19,7 +19,7 @@ export function probeDesktopLiveFrontend(url: string, timeoutMs = 2_000): Promis
 
     let request: http.ClientRequest;
     try {
-      request = http.get(url, (response) => {
+      request = http.get(resolveDesktopDevelopmentFrontendUrl(url), (response) => {
         const statusCode = response.statusCode ?? 0;
         if (statusCode < 200 || statusCode >= 300) {
           response.resume();
@@ -88,5 +88,5 @@ export function probeDesktopLiveFrontend(url: string, timeoutMs = 2_000): Promis
 }
 
 export function isSeneraViteEntry(html: string): boolean {
-  return html.includes(ViteClientEntry) && html.includes(RuntimeConfigEntry) && html.includes(MainEntry);
+  return FrontendScriptEntries.every((entry) => html.includes(`src="${AgentDevelopmentFrontendBase}${entry}"`));
 }

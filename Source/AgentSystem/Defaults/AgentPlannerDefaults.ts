@@ -1,5 +1,6 @@
 import type {
   AgentActionPlannerClientConfig,
+  AgentActionPlannerTuningClientConfig,
   AgentSystemConfig,
   ResolvedAgentActionPlannerClientConfig,
   ResolvedAgentActionPlannerConfig,
@@ -17,11 +18,10 @@ export function resolveActionPlannerConfig(
   const provider = resolveModelProviderConfig(config, providerId);
   const configured = config.ActionPlanner;
   const sharedClientConfig = mergeActionPlannerClientConfig(defaults.ActionPlanner.Client, configured?.Client);
-  const sharedClient = resolveActionPlannerClientConfig({
-    config,
-    baseProvider: provider,
-    configuredClient: sharedClientConfig,
-  });
+  const finalAnswerClientConfig: AgentActionPlannerClientConfig = {
+    ...sharedClientConfig,
+    ...configured?.FinalAnswerClient,
+  };
 
   return {
     ...defaults.ActionPlanner,
@@ -30,16 +30,15 @@ export function resolveActionPlannerConfig(
       ...defaults.ActionPlanner.Evidence,
       ...configured?.Evidence,
     },
-    Client: sharedClient,
-    PlanningClient: resolveActionPlannerClientConfig({
+    Client: resolveActionPlannerClientConfig({
       config,
       baseProvider: provider,
-      configuredClient: mergeActionPlannerClientConfig(sharedClientConfig, configured?.PlanningClient),
+      configuredClient: sharedClientConfig,
     }),
     FinalAnswerClient: resolveActionPlannerClientConfig({
       config,
       baseProvider: provider,
-      configuredClient: mergeActionPlannerClientConfig(sharedClientConfig, configured?.FinalAnswerClient),
+      configuredClient: finalAnswerClientConfig,
     }),
   };
 }
@@ -64,9 +63,9 @@ export function resolveActionPlannerClientConfig(options: {
 }
 
 export function mergeActionPlannerClientConfig(
-  base: AgentActionPlannerClientConfig,
-  patch: AgentActionPlannerClientConfig | undefined,
-): AgentActionPlannerClientConfig {
+  base: AgentActionPlannerTuningClientConfig,
+  patch: AgentActionPlannerTuningClientConfig | undefined,
+): AgentActionPlannerTuningClientConfig {
   return {
     ...base,
     ...patch,

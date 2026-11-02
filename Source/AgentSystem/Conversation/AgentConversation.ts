@@ -23,6 +23,13 @@ export type AgentConversationEntry =
       xml: string;
     });
 
+/** A provider's user role also carries host events; authorship comes from trusted metadata. */
+export function isAgentHumanUserMessage(
+  entry: AgentConversationEntry | undefined,
+): entry is Extract<AgentConversationEntry, { kind: "user.message" }> {
+  return entry?.kind === AgentConversationEntryKinds.UserMessage && !entry.metadata?.hostInput;
+}
+
 export function createConversationEntryId(
   requestId: string,
   slot: "user" | "assistant",

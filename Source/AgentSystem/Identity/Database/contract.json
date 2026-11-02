@@ -1,0 +1,14 @@
+{
+  "id": "entity-references",
+  "dataClass": "authoritative",
+  "versions": [
+    {
+      "version": 1,
+      "name": "entity-references",
+      "migration": "migrations/0001-entity-references.sql",
+      "snapshot": "snapshots/0001.schema.sql",
+      "migrationSha256": "b472fda2998cd27fff666f53e84e460f3a4d3796ebd02984cf0d0b582b4a8dc4",
+      "snapshotSha256": "a3f41277e3496072b9c53e6e2068a968ef412817f4d300cb2dc7da00505b54aa"
+    }
+  ]
+}

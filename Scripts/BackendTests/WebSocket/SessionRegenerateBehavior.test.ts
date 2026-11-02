@@ -1,6 +1,9 @@
 import { describe, expect, test, vi } from "vitest";
 import { AgentWebSocketRequestSchema } from "../../../Source/AgentSystem/WebSocket/AgentWebSocketProtocol.js";
-import { projectAgentWebSocketRequestFailure } from "../../../Source/AgentSystem/WebSocket/AgentWebSocketRequestFailures.js";
+import {
+  projectAgentWebSocketParseFailure,
+  projectAgentWebSocketRequestFailure,
+} from "../../../Source/AgentSystem/WebSocket/AgentWebSocketRequestFailures.js";
 import { AgentWebSocketSessionRequestHandlers } from "../../../Source/AgentSystem/WebSocket/AgentWebSocketRequestHandlers.js";
 import type { AgentWebSocketRequestContext } from "../../../Source/AgentSystem/WebSocket/AgentWebSocketTypes.js";
 import { AgentWebSocketMessageRouter } from "../../../Source/AgentSystem/WebSocket/AgentWebSocketMessageRouter.js";
@@ -221,6 +224,52 @@ describe("Session regeneration WebSocket behavior", () => {
     );
   });
 
+  test("keeps queued-message failures out of the run lifecycle", () => {
+    const failure = projectAgentWebSocketRequestFailure(
+      {
+        type: "session.message",
+        approvalMode: "agent",
+        sessionId: "session-a",
+        requestId: "request-queued",
+        input: "Change direction",
+        queueMode: "steer",
+      },
+      new Error("queue unavailable"),
+      {} as AgentWebSocketRequestContext,
+    );
+
+    expect(failure).toEqual(
+      expect.objectContaining({
+        kind: "request.invalid",
+        context: expect.objectContaining({ sessionId: "session-a", requestId: "request-queued" }),
+      }),
+    );
+  });
+
+  test("correlates a queued schema failure with its pending user message", () => {
+    const failure = projectAgentWebSocketParseFailure(
+      {
+        type: "session.message",
+        approvalMode: "agent",
+        sessionId: "session-a",
+        requestId: "request-queued",
+        input: "Change direction",
+        queueMode: "steer",
+        unsupportedField: true,
+      },
+      [{ code: "unrecognized_keys", keys: ["unsupportedField"] }],
+      {} as AgentWebSocketRequestContext,
+    );
+
+    expect(failure).toEqual(
+      expect.objectContaining({
+        kind: "request.invalid",
+        context: { sessionId: "session-a", requestId: "request-queued" },
+        data: expect.objectContaining({ code: "request_parse_failed" }),
+      }),
+    );
+  });
+
   test("projects session close failures as a session-scoped structured request error", () => {
     const failure = projectAgentWebSocketRequestFailure(
       { type: "session.close", sessionId: "session-a" },
@@ -263,7 +312,7 @@ describe("Session regeneration WebSocket behavior", () => {
     });
 
     await router.handleMessage(
-      {} as WebSocket,
+      { OPEN: 1, readyState: 1 } as WebSocket,
       Buffer.from(
         JSON.stringify({
           type: "session.regenerate",

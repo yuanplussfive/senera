@@ -114,10 +114,7 @@ export class AgentPromptContextBuilder {
   interactionToolNames(interaction?: AgentInteractionContext): string[] {
     if (!interaction) return [];
     return this.availableTools()
-      .filter(
-        (tool) =>
-          isAgentToolDirectlyInvocable(tool) && isAgentToolScopedToInteractionSurface(tool, interaction.surface),
-      )
+      .filter((tool) => isAgentToolDirectlyInvocable(tool) && isAgentToolScopedToInteractionSurface(tool, interaction))
       .map((tool) => tool.name);
   }
 

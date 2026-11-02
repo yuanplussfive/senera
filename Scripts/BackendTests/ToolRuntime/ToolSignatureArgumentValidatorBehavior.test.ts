@@ -4,7 +4,6 @@ import {
   assertToolContractSchema,
   projectAgentToolContractDiagnostics,
   validateToolContractValue,
-  validateToolSignatureArguments,
 } from "../../../Source/AgentSystem/ToolRuntime/AgentToolSignatureArgumentValidator.js";
 
 describe("tool signature argument validator", () => {
@@ -24,9 +23,9 @@ describe("tool signature argument validator", () => {
       required: ["location"],
       additionalProperties: false,
     });
-    const issues = validateToolSignatureArguments({
-      contract,
-      args: { location: { city: 42, province: "上海" } },
+    const issues = validateToolContractValue({
+      schema: contract.jsonSchema,
+      value: { location: { city: 42, province: "上海" } },
     });
     const diagnostics = projectAgentToolContractDiagnostics(issues, contract);
 

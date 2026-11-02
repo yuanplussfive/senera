@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { markAgentResourceDeleted } from "../Resources/AgentResourceRegistry.js";
 import path from "node:path";
 import type { ResolvedAgentArtifactsConfig } from "../Types/AgentRuntimeConfigTypes.js";
 import { SeneraOutputSpoolMarkerFileName, type SeneraOutputSpoolState } from "../Execution/SeneraOutputSpool.js";
@@ -165,7 +166,11 @@ export class AgentArtifactRetentionService {
 
     const remove = async (candidate: ArtifactCandidate, incomplete: boolean): Promise<void> => {
       if (removed.has(candidate.directory)) return;
-      if (!dryRun) await removeArtifactDirectory(this.boundary, artifactRoot, candidate.directory);
+      if (!dryRun) {
+        await removeArtifactDirectory(this.boundary, artifactRoot, candidate.directory);
+        const uri = candidate.manifest?.artifactUri;
+        if (typeof uri === "string") markAgentResourceDeleted(this.workspaceRoot, uri);
+      }
       removed.add(candidate.directory);
       removedBytes += candidate.bytes;
       if (incomplete) removedIncompleteDirectories += 1;

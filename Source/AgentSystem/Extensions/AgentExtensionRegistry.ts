@@ -16,6 +16,7 @@ import {
   resolveAgentToolSearchSources,
 } from "../ToolSearch/AgentToolSearchDocumentBuilder.js";
 import { ToolSearchSchema } from "../Schemas/AgentToolSearchContractSchema.js";
+import { validateAgentToolModelOutput } from "../ToolContracts/AgentToolModelOutput.js";
 
 export class AgentExtensionRegistry {
   private readonly tools = new Map<string, RegisteredTool>();
@@ -185,6 +186,7 @@ export class AgentExtensionRegistry {
       validateAgentToolInvocationRouting(tool);
       validateAgentToolResourceManifests(tool.handler.resources ?? []);
       validateDynamicToolDeclaration(tool);
+      if (tool.contract?.outputSchema) validateAgentToolModelOutput(tool.contract.outputSchema);
     }
     const ownerIdentity = toolOwnerIdentity(owner);
     const previous = this.toolExtensions.get(ownerIdentity);

@@ -31,7 +31,7 @@ export interface AgentPiSessionStats {
     readonly cacheWrite: number;
     readonly total: number;
   };
-  readonly cost: number;
+  readonly cost?: number;
 }
 
 export interface AgentPiSessionContextUsage {

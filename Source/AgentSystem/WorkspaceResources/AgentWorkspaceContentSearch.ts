@@ -45,17 +45,20 @@ export async function searchWorkspaceContent(input: {
   const { request } = input;
   request.signal?.throwIfAborted();
   const isDirectory = await input.operations.isDirectory(request.searchPath);
-  const workspaceRelativeSearchPath = relativePathWithin(input.workspaceRoot, request.searchPath);
-  if (workspaceRelativeSearchPath === undefined) {
-    throw new Error(`Workspace content search path is outside the workspace: ${request.searchPath}`);
-  }
-  const searchArgument = workspaceRelativeSearchPath || ".";
+  // The caller has authorized searchPath through its execution environment.
+  const searchRoot =
+    relativePathWithin(input.workspaceRoot, request.searchPath) !== undefined
+      ? input.workspaceRoot
+      : isDirectory
+        ? request.searchPath
+        : path.dirname(request.searchPath);
+  const searchArgument = path.relative(searchRoot, request.searchPath) || ".";
   const contextLines = request.context && request.context > 0 ? request.context : 0;
   const limit = Math.max(1, request.limit ?? DefaultWorkspaceGrepMatchLimit);
   const formatPath = (filePath: string): string => {
     if (isDirectory) {
-      const relative = path.relative(request.searchPath, filePath);
-      if (relative && !relative.startsWith("..")) return relative.replaceAll("\\", "/");
+      const relative = relativePathWithin(request.searchPath, filePath);
+      if (relative) return relative.replaceAll("\\", "/");
     }
     return path.basename(filePath);
   };
@@ -63,15 +66,15 @@ export async function searchWorkspaceContent(input: {
   if (request.ignoreCase) args.push("--ignore-case");
   if (request.literal) args.push("--fixed-strings");
   if (request.glob?.trim()) args.push("--glob", request.glob);
-  args.push(...workspaceContentExclusionArguments(input.workspaceRoot, input.workspaceRoot));
+  args.push(...workspaceContentExclusionArguments(input.workspaceRoot, searchRoot));
   args.push("--", request.pattern, searchArgument);
 
   const matches = await collectMatches({
     executable: input.ripgrepPath,
     args,
     limit,
-    cwd: input.workspaceRoot,
-    workspaceRoot: input.workspaceRoot,
+    cwd: searchRoot,
+    workspaceRoot: searchRoot,
     signal: request.signal,
   });
   if (!matches.items.length) return textResult("No matches found");

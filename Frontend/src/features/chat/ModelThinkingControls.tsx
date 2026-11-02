@@ -1,4 +1,5 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { v4 as uuidv4 } from "uuid";
 import { AppIcon, Button, MenuSelect } from "../../shared/ui";
 import type { ModelThinkingLevel, ModelThinkingProfileConfig } from "../../api/eventTypes";
 import { ModelThinkingLevels } from "./modelThinking";
@@ -43,7 +44,7 @@ export function ModelThinkingControls({
   };
 
   const addProfile = (): void => {
-    const id = `profile-${crypto.randomUUID()}`;
+    const id = `profile-${uuidv4()}`;
     const level = model.DefaultThinkingLevel ?? profiles[0]?.Level ?? availableLevels[0] ?? "off";
     onChange({
       ThinkingProfiles: [
@@ -54,16 +55,15 @@ export function ModelThinkingControls({
   };
 
   return (
-    <div className="mt-3 border-t border-ink-200/75 pt-3" data-model-thinking-controls>
+    <section data-model-thinking-controls>
       <SectionLabel
-        icon={<AppIcon icon="lightbulb" size={16} />}
+        icon={<AppIcon icon="thinking" size={16} />}
         title={frontendMessage("config.model.thinking.title")}
+        description={frontendMessage("config.model.thinking.description")}
       />
-      <p className="mb-3 text-[11px] leading-4 text-ink-500">{frontendMessage("config.model.thinking.description")}</p>
 
       <SettingsTable>
         <SettingRow
-          icon={<AppIcon icon="lightbulb" size={14} />}
           label={frontendMessage("config.model.thinking.default")}
           description={frontendMessage("config.model.thinking.defaultDescription")}
         >
@@ -78,21 +78,16 @@ export function ModelThinkingControls({
         </SettingRow>
       </SettingsTable>
 
-      <div className="mt-4 flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-[12.5px] font-medium text-ink-800">
-            {frontendMessage("config.model.thinking.profilesTitle")}
-          </div>
-          <div className="mt-0.5 text-[11px] leading-4 text-ink-500">
-            {frontendMessage("config.model.thinking.profilesDescription")}
-          </div>
-        </div>
-        <Button size="sm" variant="outline" disabled={disabled} onClick={addProfile} className="shrink-0">
+      <SettingRow
+        label={frontendMessage("config.model.thinking.profilesTitle")}
+        description={frontendMessage("config.model.thinking.profilesDescription")}
+      >
+        <Button size="sm" variant="ghost" disabled={disabled} onClick={addProfile} className="shrink-0">
           <AppIcon icon="plus" size={14} className="mr-1.5" />
           {frontendMessage("config.model.thinking.addProfile")}
         </Button>
-      </div>
-      <div className="mt-2 overflow-hidden rounded-md border border-ink-200/65 bg-paper-100/65">
+      </SettingRow>
+      <div className="mt-1 overflow-hidden rounded-md border border-line-subtle">
         {profiles.length > 0 ? (
           <div className="divide-y divide-ink-200/70">
             {profiles.map((profile, index) => (
@@ -140,6 +135,6 @@ export function ModelThinkingControls({
           </div>
         )}
       </div>
-    </div>
+    </section>
   );
 }

@@ -7,6 +7,7 @@ import {
   AgentInteractionInputActions,
   AgentInteractionInputModes,
   type AgentInteractionInputContent,
+  type AgentInteractionInputEventPayload,
   type AgentExternalInteractionCompletion,
   type AgentExternalInteractionHandle,
   type AgentInteractionInputRequest,
@@ -365,11 +366,10 @@ function interactionContext(request: AgentInteractionInputRequest) {
   return { sessionId: request.sessionId, requestId: request.requestId, step: request.step };
 }
 
-function interactionData(request: AgentInteractionInputRequest) {
+function interactionData(request: AgentInteractionInputRequest): AgentInteractionInputEventPayload {
   const common = {
     interactionId: request.interactionId,
     message: request.message,
-    mode: request.mode,
     toolName: request.toolName,
     toolCallId: request.toolCallId,
     batchId: request.batchId,
@@ -377,9 +377,10 @@ function interactionData(request: AgentInteractionInputRequest) {
     deadlineAt: request.deadlineAt,
   };
   return request.mode === AgentInteractionInputModes.Form
-    ? { ...common, schema: request.schema }
+    ? { ...common, mode: request.mode, schema: request.schema }
     : {
         ...common,
+        mode: request.mode,
         externalId: request.externalId,
         url: request.url,
         hostname: request.hostname,

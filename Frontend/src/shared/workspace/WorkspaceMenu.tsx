@@ -1,3 +1,4 @@
+import { Tooltip } from "../ui/Tooltip";
 import { createContext, lazy, Suspense, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { z } from "zod/mini";
 import { toast } from "sonner";
@@ -161,7 +162,7 @@ export function WorkspaceMenuProvider({
         <DialogContent
           title={frontendMessage("resource.workspace")}
           showHeader={false}
-          className="h-[min(26rem,calc(100dvh-2rem))] w-[min(20rem,calc(100vw-2rem))]"
+          className="h-[min(30rem,calc(100dvh-2rem))] w-[min(24rem,calc(100vw-2rem))]"
           bodyClassName="flex min-h-0 flex-1 flex-col p-0"
           onFocusOutside={(event) => event.preventDefault()}
         >
@@ -240,9 +241,9 @@ export function WorkspaceMenuProvider({
                 onClick={() => navigate(entry.path)}
               >
                 <AppIcon icon="folder" size={15} />
-                <span className="min-w-0 flex-1 truncate text-left" title={entry.path}>
-                  {entry.name}
-                </span>
+                <Tooltip content={entry.path}>
+                  <span className="min-w-0 flex-1 truncate text-left">{entry.name}</span>
+                </Tooltip>
                 <AppIcon icon="chevron-right" size={13} className="text-content-muted" />
               </Button>
             ))}
@@ -296,23 +297,28 @@ export function WorkspaceMenu({ onClose }: { onClose: () => void }): JSX.Element
     return (
       <DropdownMenuItem
         icon={<AppIcon icon="folder" size={15} />}
+        aria-label={label}
+        trailing={<span className="max-w-28 truncate text-xs text-content-muted">{active?.name}</span>}
         data-workspace-menu-trigger
         onSelect={() => {
           menu.openPanel();
           onClose();
         }}
       >
-        {label}
+        {frontendMessage("resource.workspace")}
       </DropdownMenuItem>
     );
   }
   return (
     <DropdownMenuSub open={open} onOpenChange={setOpen}>
-      <DropdownMenuSubTrigger icon={<AppIcon icon="folder" size={15} />} data-workspace-menu-trigger>
-        {label}
+      <DropdownMenuSubTrigger icon={<AppIcon icon="folder" size={15} />} aria-label={label} data-workspace-menu-trigger>
+        <span className="flex min-w-0 items-center justify-between gap-4">
+          <span className="shrink-0">{frontendMessage("resource.workspace")}</span>
+          <span className="truncate text-xs text-content-muted">{active?.name}</span>
+        </span>
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent
-        className="h-[min(26rem,calc(100dvh-6rem))] w-80 max-w-[calc(100vw-2rem)] overflow-hidden p-0"
+        className="h-[min(30rem,calc(100dvh-6rem))] w-96 max-w-[calc(100vw-2rem)] overflow-hidden p-0"
         onFocusOutside={(event) => event.preventDefault()}
         onKeyDown={(event) => {
           if (event.key !== "Escape") event.stopPropagation();
@@ -339,6 +345,7 @@ function WorkspaceMenuPanel({ onClose }: { onClose: () => void }): JSX.Element |
   if (!menu || !resources) return null;
   const { workspace, select, forgetWorkspace, openFolder, error } = menu;
   const snapshot = workspace.snapshot;
+  const activeWorkspace = snapshot?.workspaces.find((entry) => entry.id === snapshot.workspaceId);
   const locked = !snapshot || !workspace.connected || workspace.phase === "switching";
   const chooseWorkspaceFolder = readDesktopBridge()?.chooseWorkspaceFolder;
   const folderLabel = chooseWorkspaceFolder
@@ -347,14 +354,28 @@ function WorkspaceMenuPanel({ onClose }: { onClose: () => void }): JSX.Element |
   return (
     <>
       <Tabs defaultValue="files" className="flex h-full min-h-0 flex-col" data-workspace-menu>
-        <div className="shrink-0 border-b border-line-subtle p-2">
-          <TabsList className="w-full" aria-label={frontendMessage("resource.workspace")}>
-            <TabsTrigger value="files">{frontendMessage("workspace.menuFiles")}</TabsTrigger>
-            <TabsTrigger value="switch">{frontendMessage("workspace.menuSwitch")}</TabsTrigger>
+        <div className="shrink-0 px-4 pt-4">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <AppIcon icon="folder" size={20} className="text-content-secondary" />
+            <span className="min-w-0 truncate text-[14px] font-semibold text-content-strong">
+              {activeWorkspace?.name}
+            </span>
+          </div>
+          <Tooltip content={snapshot?.workspaceRoot}>
+            <p className="mt-1.5 truncate text-[11px] text-content-muted">{snapshot?.workspaceRoot}</p>
+          </Tooltip>
+          <TabsList
+            variant="underline"
+            className="mt-2 flex w-full justify-start border-b border-line-subtle"
+            aria-label={frontendMessage("resource.workspace")}
+          >
+            <TabsTrigger value="files" className="h-9 flex-none rounded-none px-0">
+              {frontendMessage("workspace.menuFiles")}
+            </TabsTrigger>
+            <TabsTrigger value="switch" className="h-9 flex-none rounded-none px-0">
+              {frontendMessage("workspace.menuSwitch")}
+            </TabsTrigger>
           </TabsList>
-          <p className="mt-2 truncate px-1 font-mono text-[11px] text-content-muted" title={snapshot?.workspaceRoot}>
-            {snapshot?.workspaceRoot}
-          </p>
         </div>
         <TabsContent value="files" className="min-h-0 flex-1 overflow-hidden">
           <Suspense fallback={<StateView status="loading" />}>
@@ -368,31 +389,34 @@ function WorkspaceMenuPanel({ onClose }: { onClose: () => void }): JSX.Element |
           </Suspense>
         </TabsContent>
         <TabsContent value="switch" className="flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
-          <ScrollArea className="min-h-0 flex-1 p-1">
+          <ScrollArea className="min-h-0 flex-1 px-2 py-2">
             {snapshot?.workspaces.map((entry) => {
               const active = entry.id === snapshot.workspaceId;
               const protectedEntry = active || entry.id === snapshot.defaultWorkspaceId;
               return (
                 <div
                   key={entry.id}
-                  className="group flex min-w-0 items-center rounded-md hover:bg-surface-hover"
+                  className="group flex min-w-0 items-center rounded-md transition-colors hover:bg-surface-hover"
+                  data-active={active || undefined}
                   data-workspace-entry={entry.id}
                 >
                   <Button
                     variant="ghost"
                     disabled={locked}
                     aria-current={active ? "true" : undefined}
-                    className="h-auto min-w-0 flex-1 justify-start py-2 text-left"
+                    className="h-auto min-w-0 flex-1 justify-start gap-3 px-2 py-3 text-left"
                     onClick={() => select(entry.root)}
                   >
                     <AppIcon icon="folder" size={15} className="shrink-0 text-content-muted" />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate">{entry.name}</span>
-                      <span className="block truncate text-[11px] font-normal text-content-muted" title={entry.root}>
-                        {entry.root}
-                      </span>
+                      <span className="block truncate text-[13px]">{entry.name}</span>
+                      <Tooltip content={entry.root}>
+                        <span className="mt-0.5 block truncate text-[11px] font-normal text-content-muted">
+                          {entry.root}
+                        </span>
+                      </Tooltip>
                     </span>
-                    {active ? <AppIcon icon="check" size={15} className="shrink-0" /> : null}
+                    {active ? <AppIcon icon="checkmark" size={16} className="shrink-0 text-content-secondary" /> : null}
                   </Button>
                   <IconButton
                     label={frontendMessage("workspace.forget")}
@@ -404,7 +428,7 @@ function WorkspaceMenuPanel({ onClose }: { onClose: () => void }): JSX.Element |
                     tone="danger"
                     size="sm"
                     disabled={locked || protectedEntry}
-                    className="mr-1 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-30"
+                    className="mr-1 opacity-60 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 disabled:opacity-30 [@media(hover:hover)]:opacity-0"
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();

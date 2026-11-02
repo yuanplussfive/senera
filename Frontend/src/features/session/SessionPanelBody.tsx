@@ -1,25 +1,22 @@
-import { LayoutGroup } from "framer-motion";
-import { useRef } from "react";
 import { AppIcon, IconButton, ScrollArea, StateView } from "../../shared/ui";
-import { FluidHoverHighlight, MotionList, MotionListItem, useFluidHover, useMotionLevel } from "../../shared/motion";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
-import { readActiveRun, type SessionRecord } from "../../store/sessionStore";
-import { EmptyState, SessionRow } from "./SessionRows";
+import type { SessionListEntry } from "../../store/selectors/chatSelectors";
+import { EmptyState } from "./SessionRows";
+import { SessionChannelList } from "./SessionChannelList";
 
 interface SessionPanelBodyProps {
   compactFrame?: boolean;
-  sessions: readonly SessionRecord[];
+  sessions: readonly SessionListEntry[];
   totalSessionCount: number;
   catalogSynced: boolean;
   query: string;
   onQueryChange: (query: string) => void;
   activeSessionId: string | null;
-  historyLoadingIds: Readonly<Record<string, boolean>>;
   onNewSession: () => void;
   onSelectSession: (sessionId: string) => void;
-  onRenameSession: (session: SessionRecord, returnFocus: HTMLElement | null) => void;
-  onDeleteSession: (session: SessionRecord, returnFocus: HTMLElement | null) => void;
+  onRenameSession: (session: SessionListEntry, returnFocus: HTMLElement | null) => void;
+  onDeleteSession: (session: SessionListEntry, returnFocus: HTMLElement | null) => void;
   selectionMode: boolean;
   selectedSessionIds: ReadonlySet<string>;
   selectedSessionCount: number;
@@ -37,7 +34,6 @@ export function SessionPanelBody({
   query,
   onQueryChange,
   activeSessionId,
-  historyLoadingIds,
   onNewSession,
   onSelectSession,
   onRenameSession,
@@ -50,13 +46,6 @@ export function SessionPanelBody({
   onToggleVisibleSelection,
   onDeleteSelected,
 }: SessionPanelBodyProps): JSX.Element {
-  const { disableMotion } = useMotionLevel();
-  const sessionListRef = useRef<HTMLDivElement>(null);
-  const sessionHover = useFluidHover(sessionListRef, { axis: "y" });
-  // The active row already paints an opaque selection surface; the hover layer
-  // must not run a second animation for the same rect underneath it.
-  const selectedSessionIndex = sessions.findIndex((session) => session.sessionId === activeSessionId);
-
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col", compactFrame ? "px-0 pb-0" : "px-2 pb-2")}>
       <div className="mb-3 flex min-w-0 shrink-0 items-center gap-1.5">
@@ -142,54 +131,27 @@ export function SessionPanelBody({
             ) : (
               <StateView status="loading" className="min-h-[200px] px-4" />
             )
-          ) : sessions.length === 0 ? (
-            <StateView
-              status="empty"
-              className="min-h-[120px] px-3"
-              description={frontendMessage("session.searchEmpty")}
-            />
           ) : (
-            <div ref={sessionListRef} className="relative" data-session-list {...sessionHover.handlers}>
-              <FluidHoverHighlight
-                hover={sessionHover}
-                hidden={disableMotion || sessionHover.activeIndex === selectedSessionIndex}
-                className="rounded-[10px]"
-                data-session-fluid-hover
+            <>
+              {sessions.length === 0 ? (
+                <StateView
+                  status="empty"
+                  className="min-h-[120px] px-3"
+                  description={frontendMessage("session.searchEmpty")}
+                />
+              ) : null}
+              <SessionChannelList
+                sessions={sessions}
+                activeSessionId={activeSessionId}
+                revealAll={Boolean(query.trim()) || selectionMode}
+                selectionMode={selectionMode}
+                selectedSessionIds={selectedSessionIds}
+                onSelectSession={onSelectSession}
+                onToggleSessionSelection={onToggleSessionSelection}
+                onRenameSession={onRenameSession}
+                onDeleteSession={onDeleteSession}
               />
-              <LayoutGroup id="session-list-selection">
-                <MotionList className="flex flex-col gap-1 pt-0">
-                  {sessions.map((session, index) => {
-                    const isActive = session.sessionId === activeSessionId;
-                    const activeRun = readActiveRun(session);
-                    const lastRun = session.runs[session.runs.length - 1];
-                    const isRunning = activeRun !== undefined;
-                    const hasFailed = !activeRun && lastRun?.status === "failed";
-                    const isHistoryLoading = !!historyLoadingIds[session.sessionId];
-
-                    return (
-                      <MotionListItem key={session.sessionId} initial={false}>
-                        <SessionRow
-                          index={index}
-                          registerItem={sessionHover.registerItem}
-                          fluidHoverEnabled={!disableMotion}
-                          active={isActive}
-                          sessionId={session.sessionId}
-                          title={session.title}
-                          accent={isHistoryLoading || isRunning ? "running" : hasFailed ? "failed" : "idle"}
-                          selectionMode={selectionMode}
-                          selected={selectedSessionIds.has(session.sessionId)}
-                          onClick={() => onSelectSession(session.sessionId)}
-                          onToggleSelected={() => onToggleSessionSelection(session.sessionId)}
-                          onRename={(returnFocus) => onRenameSession(session, returnFocus)}
-                          onClose={(returnFocus) => onDeleteSession(session, returnFocus)}
-                          onFocus={() => sessionHover.setActiveIndex(index)}
-                        />
-                      </MotionListItem>
-                    );
-                  })}
-                </MotionList>
-              </LayoutGroup>
-            </div>
+            </>
           )}
         </div>
       </ScrollArea>

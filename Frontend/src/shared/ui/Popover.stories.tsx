@@ -1,3 +1,4 @@
+import { OverlayScrollFixture } from "../../dev/OverlayScrollFixture";
 import type { Story } from "@ladle/react";
 import { ChevronDown } from "lucide-react";
 import { Button } from "./Button";
@@ -21,3 +22,5 @@ export const ToolDetails: Story = () => (
     </Popover>
   </div>
 );
+
+export const ModalScrolling: Story = () => <OverlayScrollFixture />;

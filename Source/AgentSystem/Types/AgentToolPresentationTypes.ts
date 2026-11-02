@@ -24,8 +24,10 @@ export const AgentToolPresentationIconNames = [
   "cloud-sun",
   "computer-desktop",
   "image",
+  "image-output",
   "message-question",
   "globe",
+  "browser",
   "alert",
   "answer",
   "archive",
@@ -50,6 +52,7 @@ export const AgentToolPresentationIconNames = [
   "file-search",
   "flag",
   "folder",
+  "folder-open",
   "gauge",
   "history",
   "info",
@@ -95,7 +98,7 @@ export type AgentToolPresentationIcon = (typeof AgentToolPresentationIconNames)[
  * vocabulary. Packages opt into a reviewed, locally bundled brand mark; the
  * frontend never infers a logo from an extension id, name, or package name.
  */
-export const AgentPluginBrandIconNames = ["git"] as const;
+export const AgentPluginBrandIconNames = ["git", "telegram", "discord", "qq"] as const;
 
 export type AgentPluginBrandIcon = (typeof AgentPluginBrandIconNames)[number];
 
@@ -108,6 +111,12 @@ export type AgentPluginBrandIcon = (typeof AgentPluginBrandIconNames)[number];
 export interface AgentPluginIdentityPresentation {
   readonly icon?: AgentToolPresentationIcon;
   readonly brandIcon?: AgentPluginBrandIcon;
+}
+
+/** Package settings documentation, separate from runtime tool presentation. */
+export interface AgentPluginPresentation extends AgentPluginIdentityPresentation {
+  readonly documentation?: AgentExtensionLocalizedText;
+  readonly usageExamples?: readonly import("../Extensions/AgentPluginUsageExamples.js").AgentPluginUsageExample[];
 }
 
 /**

@@ -16,9 +16,7 @@ export type AgentPiPromptCachePhase =
   | "baml-planning"
   | "baml-compaction"
   | "tool-scenario"
-  | "state-card"
-  | "resident-speech-action-preface"
-  | "resident-speech-final-response";
+  | "state-card";
 
 export interface AgentPiPromptCacheModelIdentity {
   readonly provider: string;

@@ -3,6 +3,7 @@ import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/re
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
+import { WorkspaceResourceProvider } from "../../../Frontend/src/shared/workspace/WorkspaceResourceProvider.tsx";
 
 const { MessageAttachments } = await import("../../../Frontend/src/features/chat/MessageAttachments.tsx");
 const { UploadPreviewProvider, useUploadPreviewRegistry } =
@@ -14,7 +15,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test("sent images use authenticated content URLs and open the full-image dialog", async () => {
+test("sent images use authenticated content URLs and open in the workspace", async () => {
   const user = userEvent.setup();
   renderAttachments({
     uploadUrl: "http://agent.test/api/resources",
@@ -30,17 +31,17 @@ test("sent images use authenticated content URLs and open the full-image dialog"
 
   await user.click(screen.getByRole("button", { name: "查看图片：first.png" }));
 
-  const dialog = screen.getByRole("dialog", { name: "查看图片：first.png" });
+  const dialog = await screen.findByRole("dialog", { name: "工作区" });
+  const dialogImage = await within(dialog).findByRole("img", { name: "first.png" });
   expect(dialog).toBeVisible();
   expect(screen.getByRole("button", { name: "缩小" })).toBeEnabled();
   expect(screen.getByRole("button", { name: "适合窗口" })).toBeEnabled();
   expect(screen.getByRole("button", { name: "放大" })).toBeEnabled();
   expect(screen.getByRole("button", { name: "实际尺寸" })).toBeEnabled();
-  expect(screen.getByRole("button", { name: "下载原图" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "下载文件" })).toBeEnabled();
   expect(screen.getByRole("button", { name: "关闭" })).toBeEnabled();
   expect(screen.queryByRole("button", { name: "在新窗口打开原图" })).not.toBeInTheDocument();
 
-  const dialogImage = within(dialog).getByRole("img", { name: "first.png" });
   const canvas = within(dialog).getByRole("region", { name: "first.png" });
   const viewer = canvas.closest("[data-image-canvas-viewer]");
   expect(dialogImage).toHaveAttribute("data-native-context-menu");
@@ -64,7 +65,7 @@ test("sent images use authenticated content URLs and open the full-image dialog"
   expect(viewer).toHaveAttribute("data-image-view-mode", "fit");
 
   await user.click(screen.getByRole("button", { name: "关闭" }));
-  await waitFor(() => expect(screen.queryByRole("dialog", { name: "查看图片：first.png" })).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "工作区" })).not.toBeInTheDocument());
 });
 
 test("failed image rendering becomes an explicit file attachment state", () => {
@@ -79,6 +80,27 @@ test("failed image rendering becomes an explicit file attachment state", () => {
   expect(screen.getByText("broken.png")).toBeVisible();
   expect(screen.getByText("图片预览不可用")).toBeVisible();
   expect(document.querySelector("[data-attachment-preview-unavailable='true']")).not.toBeNull();
+});
+
+test("retries the image at the new paired origin or workspace after an earlier URL failed", () => {
+  const props = { uploadUrl: "http://agent.test/api/resources", attachments: [imageAttachment("changing")] };
+  const { rerender } = renderAttachments(props);
+  fireEvent.error(screen.getByRole("img", { name: "changing.png" }));
+  expect(screen.queryByRole("img", { name: "changing.png" })).not.toBeInTheDocument();
+  rerender(
+    React.createElement(
+      UploadPreviewProvider,
+      null,
+      React.createElement(MessageAttachments, {
+        ...props,
+        uploadUrl: "http://phone.test/api/resources?workspaceId=paired",
+      }),
+    ),
+  );
+  expect(screen.getByRole("img", { name: "changing.png" })).toHaveAttribute(
+    "src",
+    "http://phone.test/api/resources/changing?workspaceId=paired",
+  );
 });
 
 test("image download reads the authenticated original without navigating the workspace", async () => {
@@ -104,7 +126,7 @@ test("image download reads the authenticated original without navigating the wor
   });
 
   await user.click(screen.getByRole("button", { name: "查看图片：download.png" }));
-  await user.click(screen.getByRole("button", { name: "下载原图" }));
+  await user.click(await screen.findByRole("button", { name: "下载文件" }));
 
   await waitFor(() =>
     expect(fetchMock).toHaveBeenCalledWith("http://agent.test/api/resources/download", {
@@ -131,7 +153,7 @@ test("non-image attachments retain the compact file presentation", () => {
   });
 
   expect(screen.getByText("notes.txt")).toBeVisible();
-  expect(screen.getByText("text/plain · 4B")).toBeVisible();
+  expect(screen.getByText("text/plain · 4 B")).toBeVisible();
   expect(document.querySelector("[data-message-image-gallery]")).toBeNull();
 });
 
@@ -159,8 +181,10 @@ test("text attachments open a content preview from the authenticated resource", 
 
   await user.click(screen.getByRole("button", { name: "查看文件：notes.txt" }));
 
-  const dialog = await screen.findByRole("dialog", { name: "查看文件：notes.txt" });
-  expect(within(dialog).getByText((_, element) => element?.tagName === "PRE")).toHaveTextContent(/line one\s+line two/);
+  const dialog = await screen.findByRole("dialog", { name: "工作区" });
+  expect(await within(dialog).findByText((_, element) => element?.tagName === "PRE")).toHaveTextContent(
+    /line one\s+line two/,
+  );
   expect(fetch).toHaveBeenCalledWith("http://agent.test/api/resources/notes-preview", {
     credentials: "include",
     signal: expect.any(AbortSignal),
@@ -250,7 +274,11 @@ function imageAttachment(id) {
 
 function renderAttachments(props) {
   return renderWithFrontendProviders(
-    React.createElement(UploadPreviewProvider, null, React.createElement(MessageAttachments, props)),
+    React.createElement(
+      WorkspaceResourceProvider,
+      { httpBaseUrl: "http://agent.test" },
+      React.createElement(UploadPreviewProvider, null, React.createElement(MessageAttachments, props)),
+    ),
   );
 }
 

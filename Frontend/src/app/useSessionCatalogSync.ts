@@ -26,8 +26,8 @@ export function buildConnectionOpenSyncRequests(userProfile: UserProfile): WsReq
   ];
 
   if (userProfile.syncState === UserProfileSyncStates.Pending) {
-    const { name, avatarDataUrl, avatarPath, assistant } = userProfile;
-    requests.push({ type: "profile.update", profile: { name, avatarDataUrl, avatarPath, assistant } });
+    const { name, avatarDataUrl, avatarPath } = userProfile;
+    requests.push({ type: "profile.update", profile: { name, avatarDataUrl, avatarPath } });
   } else {
     requests.push({ type: "profile.get" });
   }

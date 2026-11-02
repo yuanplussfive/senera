@@ -15,6 +15,7 @@
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
 | `GET` | `/api/auth/session` | 获取 `disabled`、`anonymous` 或 `authenticated` 会话状态；未登录是正常的 200 响应。 |
+| `POST` | `/api/auth/session` | 初始化访问会话：受信任的本机访问自动建立或复用 owner 会话；远程访问只检查已有会话，不自动授权。新建会话设置 HttpOnly Cookie，并返回已认证会话及 CSRF token。 |
 | `POST` | `/api/auth/login` | 提交 `{ loginName, password }`，成功后设置 HttpOnly session Cookie，并返回已认证会话及内存 CSRF token。 |
 | `POST` | `/api/auth/logout` | 需要 `X-Senera-Csrf`，撤销当前会话并清除 Cookie。 |
 
@@ -77,6 +78,7 @@
 | `session.compact` | 使用 Pi 会话压缩器压缩指定会话的当前上下文分支。 |
 | `session.create` | 创建会话；可选指定会话和模型提供方。 |
 | `session.export` | 将指定 Pi 会话的当前分支导出为 JSONL 或 HTML。 |
+| `session.feedback` | 记录或撤回当前用户对某个已完成轮次的评价；rating 为 null 表示撤回。 |
 | `session.fork` | 复制指定请求及之前的完整可重放状态，创建独立会话分支。 |
 | `session.history` | 拉取指定会话的可重放历史；`refresh` 用于主动重新同步。 |
 | `session.list` | 获取服务端当前可用会话的摘要列表。 |
@@ -84,6 +86,7 @@
 | `session.regenerate` | 从指定请求起截断旧分支，并按声明的执行批准模式提交替代输入。 |
 | `session.rename` | 更新会话显示标题。 |
 | `session.retry` | 恢复一个已失败或取消的运行；retry 重放原始用户输入，continue 复用当前 Pi transcript 继续执行，不创建新的用户消息。 |
+| `session.run_history` | 按需拉取某一已完成运行的原始诊断轨迹，用于展开工作流细节。 |
 | `session.runtime_status` | 获取指定 Pi 会话的上下文占用、消息、工具调用和 token 统计。 |
 | `session.truncate_from` | 从指定请求起截断会话历史。 |
 | `systemTool.list` | 获取常驻系统工具目录。 |
@@ -173,12 +176,14 @@
 | `session.snapshot` | `snapshot` | `session` | [会话事件类型](../../Source/AgentSystem/Session/AgentSessionEventTypes.ts) |
 | `session.closed` | `terminal` | `session` | [会话事件类型](../../Source/AgentSystem/Session/AgentSessionEventTypes.ts) |
 | `session.busy` | `error` | `session` | [会话事件类型](../../Source/AgentSystem/Session/AgentSessionEventTypes.ts) |
+| `session.message.queued` | `progress` | `session` | [会话事件类型](../../Source/AgentSystem/Session/AgentSessionEventTypes.ts) |
 | `session.not_found` | `error` | `session` | [会话事件类型](../../Source/AgentSystem/Session/AgentSessionEventTypes.ts) |
 | `session.list.snapshot` | `snapshot` | `session` | [会话事件类型](../../Source/AgentSystem/Session/AgentSessionEventTypes.ts) |
 | `session.history.started` | `snapshot` | `session` | [会话事件类型](../../Source/AgentSystem/Session/AgentSessionEventTypes.ts) |
 | `session.history.chunk` | `snapshot` | `session` | [会话事件类型](../../Source/AgentSystem/Session/AgentSessionEventTypes.ts) |
 | `session.history.steps` | `snapshot` | `session` | [会话事件类型](../../Source/AgentSystem/Session/AgentSessionEventTypes.ts) |
 | `session.run_history.chunk` | `snapshot` | `session` | [会话事件类型](../../Source/AgentSystem/Session/AgentSessionEventTypes.ts) |
+| `session.run_history.detail` | `snapshot` | `session` | [会话事件类型](../../Source/AgentSystem/Session/AgentSessionEventTypes.ts) |
 | `session.history.completed` | `snapshot` | `session` | [会话事件类型](../../Source/AgentSystem/Session/AgentSessionEventTypes.ts) |
 | `session.truncated` | `snapshot` | `session` | [会话事件类型](../../Source/AgentSystem/Session/AgentSessionEventTypes.ts) |
 | `session.forked` | `snapshot` | `session` | [会话事件类型](../../Source/AgentSystem/Session/AgentSessionEventTypes.ts) |
@@ -216,6 +221,7 @@
 | `approval.resolved` | `progress` | `approval` | [审批事件类型](../../Source/AgentSystem/Approvals/AgentApprovalEventTypes.ts) |
 | `interaction.input.requested` | `progress` | `tool` | [交互输入事件类型](../../Source/AgentSystem/Interaction/AgentInteractionInputEventTypes.ts) |
 | `interaction.input.resolved` | `progress` | `tool` | [交互输入事件类型](../../Source/AgentSystem/Interaction/AgentInteractionInputEventTypes.ts) |
+| `feedback.recorded` | `snapshot` | `session` | [反馈事件类型](../../Source/AgentSystem/Interaction/AgentFeedbackEventTypes.ts) |
 | `execution.resource.created` | `snapshot` | `tool` | [工具事件类型](../../Source/AgentSystem/ToolRuntime/AgentToolEventTypes.ts) |
 | `execution.resource.output` | `progress` | `tool` | [工具事件类型](../../Source/AgentSystem/ToolRuntime/AgentToolEventTypes.ts) |
 | `execution.resource.resized` | `snapshot` | `tool` | [工具事件类型](../../Source/AgentSystem/ToolRuntime/AgentToolEventTypes.ts) |
@@ -263,6 +269,7 @@
 | `provider.models.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
 | `provider.models.failed` | `error` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
 | `profile.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
+| `agents.snapshot` | `snapshot` | `session` | [会话事件类型](../../Source/AgentSystem/Session/AgentSessionEventTypes.ts) |
 | `system_tool.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
 | `mcp_server.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |
 | `channel.status.snapshot` | `snapshot` | `config` | [配置事件类型](../../Source/AgentSystem/Config/AgentConfigEventTypes.ts) |

@@ -25,7 +25,7 @@
     "properties": {
       "tools": {
         "type": "array",
-        "items": { "type": "string" },
+        "items": { "type": "string", "minLength": 1, "pattern": "\\S" },
         "minItems": 1,
         "maxItems": 12,
         "description": "需要从当前会话移除的准确工具名。"
@@ -33,6 +33,7 @@
       "catalogRevision": {
         "type": "string",
         "minLength": 1,
+        "pattern": "\\S",
         "description": "来自 ToolSearch 的目录 revision；不匹配时不会改变当前会话。"
       }
     },
@@ -133,7 +134,6 @@
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
   "runtime": {
     "Lifecycle": "Immediate",
-    "ProtocolVersion": 2,
     "ResultAssessment": "ProcessExit",
     "Scheduling": "Parallel",
     "Capabilities": { "Cancellation": true }

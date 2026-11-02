@@ -387,17 +387,15 @@ function migrateLegacyContainer(
   if (!isRecord(actionPlanner)) {
     return;
   }
-  for (const clientKey of ["Client", "PlanningClient", "FinalAnswerClient"] as const) {
-    const client = actionPlanner[clientKey];
-    if (isRecord(client)) {
-      migratePlannerClientProvider(
-        client,
-        `${prefix}ActionPlanner.${clientKey}`,
-        modelProviderIds,
-        migratedPaths,
-        removedPaths,
-      );
-    }
+  const finalAnswerClient = actionPlanner.FinalAnswerClient;
+  if (isRecord(finalAnswerClient)) {
+    migratePlannerClientProvider(
+      finalAnswerClient,
+      `${prefix}ActionPlanner.FinalAnswerClient`,
+      modelProviderIds,
+      migratedPaths,
+      removedPaths,
+    );
   }
 }
 

@@ -31,6 +31,7 @@ export function projectAgentConfigForm(config: AgentSystemConfig): AgentConfigFo
           name: section.id,
           label: section.label,
           description: section.description,
+          ...(section.documentation ? { documentation: section.documentation } : {}),
           icon: section.icon,
           keyCount: fields.length,
           fields,

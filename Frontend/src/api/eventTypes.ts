@@ -9,9 +9,12 @@ import type {
   RunActivityState,
 } from "./generatedEventCatalog";
 import type { ProviderModelConfigOperationKind } from "./providerModelCommandTypes";
+import type { UploadAttachmentData } from "./uploadTypes";
+export type { UploadAttachmentData } from "./uploadTypes";
 import type { BackendLocalizedMessage } from "../i18n/backendMessage";
 import type { AgentRuntimeDependencySnapshot } from "../../../Source/AgentSystem/Runtime/AgentRuntimeDependencyTypes";
-import type { ModelThinkingLevel, ModelThinkingProfile } from "./modelThinkingTypes";
+import type { AgentChannelConnectionInfo } from "../../../Source/AgentSystem/Channels/AgentChannelTypes";
+import type { ModelProviderMetadata } from "./modelCatalogEventTypes";
 import type { ConfigFormSnapshotData } from "./configFormEventTypes";
 import type {
   AgentExplicitActivationReference,
@@ -78,6 +81,8 @@ export type {
 
 export type { RequestInvalidData, RunCancellationProgressData } from "./runControlEventTypes";
 
+export type { FeedbackRecordedData } from "./feedbackEventTypes";
+
 export type {
   ContinuitySelectionCountData,
   ContinuitySnapshotData,
@@ -87,10 +92,6 @@ export type {
   ContinuityRecallLocalMatchData,
   ContinuityRecallLocalPlanData,
   ContinuityRecallLocalRelationData,
-  ExecutionData,
-  ExecutionEventData,
-  ExecutionSnapshotData,
-  ExecutionStepData,
   TodoCountsData,
   TodoData,
   TodoSnapshotData,
@@ -169,7 +170,8 @@ export interface EventEnvelope<TKind extends string = EventKind, TData = unknown
   data: TData;
 }
 
-export type EventSourceChannel = "console" | "qq" | "telegram" | "discord";
+export type EventSourceChannel =
+  "console" | import("../../../Source/AgentSystem/Channels/AgentChannelTypes").AgentChannelKind;
 
 export interface EventScope {
   channel?: EventSourceChannel;
@@ -190,17 +192,19 @@ export interface SessionChannelMetadata {
   platform: Exclude<EventSourceChannel, "console">;
   chatType?: "direct" | "group" | "channel" | "thread";
   chatId?: string;
+  chatName?: string;
   userId?: string;
   messageId?: string;
 }
 
 export type ChannelStatusItem = {
-  kind: "telegram" | "qq" | "discord";
+  kind: import("../../../Source/AgentSystem/Channels/AgentChannelTypes").AgentChannelKind;
   enabled: boolean;
   connected: boolean;
   state: "stopped" | "connecting" | "connected" | "reconnecting" | "degraded";
   mode?: string;
   error?: string;
+  connection?: AgentChannelConnectionInfo;
 };
 
 export interface ChannelStatusSnapshotData {
@@ -210,6 +214,8 @@ export interface ChannelStatusSnapshotData {
 // --- 各 kind 的 data 形状（只列前端会读的字段） ---
 
 export interface SessionSnapshotData {
+  title?: string;
+  agentId?: string;
   sessionId: string;
   status: string;
   createdAt: string;
@@ -227,7 +233,7 @@ export interface SessionSnapshotData {
     model: string;
     endpoint: string;
     baseUrl: string;
-    source: "request" | "session_preference" | "default" | "channel";
+    source: "request" | "session_preference" | "default" | "channel" | "agent";
     effectiveAt: string;
     logicalCacheScope?: string;
     physicalPiSessionId?: string;
@@ -241,6 +247,7 @@ export interface SessionSnapshotData {
 }
 
 export interface SessionListItem {
+  agentId?: string;
   sessionId: string;
   title: string;
   status: string;
@@ -265,6 +272,7 @@ export interface SessionNotFoundData {
     | "session.message"
     | "session.close"
     | "session.history"
+    | "session.run_history"
     | "session.fork"
     | "session.compact"
     | "session.runtime_status"
@@ -285,6 +293,7 @@ export interface SessionCompactedData {
   sessionId: string;
   tokensBefore: number;
   estimatedTokensAfter?: number;
+  boundaryId?: string;
 }
 
 export interface SessionRuntimeStatusData {
@@ -306,7 +315,7 @@ export interface SessionRuntimeStatusData {
         cacheWrite: number;
         total: number;
       };
-      cost: number;
+      cost?: number;
       contextUsage?: SessionContextUsage;
     };
     contextUsage?: SessionContextUsage;
@@ -332,6 +341,16 @@ export interface SessionBusyData {
   operation: "session.message" | "session.close";
   message: string;
   localizedMessage?: BackendLocalizedMessage;
+}
+
+export interface SessionMessageQueuedData {
+  sessionId: string;
+  requestId: string;
+  parentRequestId: string;
+  mode: "steer" | "follow_up";
+  status?: import("../../../Source/AgentSystem/Core/AgentSessionInputContract").AgentSessionInputState;
+  message?: string;
+  entry?: Extract<ConversationEntryDto, { kind: "user.message" }>;
 }
 
 export type ConversationEntryDto =
@@ -366,6 +385,7 @@ export interface SessionHistoryStartedData {
   totalEntries: number;
   messageCount: number;
   refresh?: boolean;
+  window?: import("../../../Source/AgentSystem/Session/AgentSessionHistoryWindow").AgentSessionHistoryWindow;
 }
 
 export interface SessionHistoryChunkData {
@@ -381,6 +401,14 @@ export interface SessionHistoryChunkData {
 export interface SessionRunHistoryChunkData {
   sessionId: string;
   events: EventEnvelope[];
+}
+
+/** Diagnostic detail for one completed run, requested only when it is opened. */
+export interface SessionRunHistoryDetailData {
+  sessionId: string;
+  requestId: string;
+  events: EventEnvelope[];
+  complete: boolean;
 }
 
 export interface SessionHistoryCompletedData {
@@ -404,6 +432,7 @@ export interface StepTraceDto {
   toolName?: string;
   toolOrigin?: ToolEventOrigin;
   callId?: string;
+  parentToolCallId?: string;
   batchId?: string;
   purpose?: string;
   status: "done" | "failed";
@@ -419,6 +448,8 @@ export interface StepTraceDto {
   toolErrorMessage?: string;
   errorMessage?: string;
   retryCode?: string;
+  /** Explicitly marks a UI-only terminal fallback when durable run data is unavailable. */
+  historyFallback?: "missing_reply";
 }
 
 export interface SessionHistoryStepsData {
@@ -435,121 +466,21 @@ export interface SessionHistoryStepsData {
   }>;
 }
 
-export interface ModelProviderMetadata {
-  id: string;
-  /** Configured supplier identity; `id` identifies the model configuration. */
-  providerId?: string;
-  kind: string;
-  endpoint: string;
-  baseUrl: string;
-  model: string;
-}
-
-export interface ModelProviderListItem {
-  id: string;
-  providerId?: string;
-  icon?: string;
-  capabilities: ModelCapabilitiesData;
-  kind: string;
-  endpoint: string;
-  baseUrl: string;
-  model: string;
-  isDefault: boolean;
-  modelsDev?: ModelsDevModelMetadata;
-  thinkingLevels?: ModelThinkingLevel[];
-  thinkingProfiles?: ModelThinkingProfile[];
-  defaultThinkingLevel?: ModelThinkingLevel;
-}
-
-export type ModelToolPlanningMode = "native" | "baml";
-
-export interface ModelCapabilitiesData {
-  Chat?: boolean;
-  Vision?: boolean;
-  ImageOutput?: boolean;
-  Reasoning?: boolean;
-  ToolCalling?: boolean;
-  DeveloperRole?: boolean;
-  StreamingUsage?: boolean;
-}
-
-export interface ModelListSnapshotData {
-  models: ModelProviderListItem[];
-  modelsDev?: ModelsDevCatalogStatus;
-  defaultModelProviderId: string;
-}
-
-export interface ProviderModelInfo {
-  id: string;
-  ownedBy?: string;
-  modelsDev?: ModelsDevModelMetadata;
-}
-
-export interface ModelsDevPricing {
-  input?: number;
-  output?: number;
-  cacheRead?: number;
-  cacheWrite?: number;
-}
-
-export interface ModelsDevLink {
-  label: string;
-  url: string;
-  type?: string;
-}
-
-export interface ModelsDevModelMetadata {
-  id: string;
-  sourceModelId: string;
-  providerId?: string;
-  name?: string;
-  description?: string;
-  family?: string;
-  knowledge?: string;
-  releaseDate?: string;
-  lastUpdated?: string;
-  attachment?: boolean;
-  reasoning?: boolean;
-  toolCall?: boolean;
-  structuredOutput?: boolean;
-  temperature?: boolean;
-  contextLimit?: number;
-  inputLimit?: number;
-  outputLimit?: number;
-  inputModalities: string[];
-  outputModalities: string[];
-  openWeights?: boolean;
-  license?: string;
-  pricing?: ModelsDevPricing;
-  links?: ModelsDevLink[];
-}
-
-export interface ModelsDevCatalogStatus {
-  source: "models.dev";
-  state: "ready" | "stale" | "unavailable";
-  sourceKind: "cache" | "network";
-  fetchedAt?: string;
-  checkedAt?: string;
-  modelCount: number;
-  providerCount: number;
-  error?: string;
-}
-
-export interface ProviderModelsSnapshotData {
-  providerId: string;
-  baseUrl: string;
-  fetchedAt: string;
-  source: "cache" | "network";
-  modelsDev?: ModelsDevCatalogStatus;
-  models: ProviderModelInfo[];
-}
-
-export interface ProviderModelsFailedData {
-  providerId: string;
-  message: string;
-  localizedMessage?: BackendLocalizedMessage;
-  details?: unknown;
-}
+export type {
+  ModelProviderMetadata,
+  ModelProviderListItem,
+  ModelToolPlanningMode,
+  ModelCapabilitiesData,
+  ModelVisionInputData,
+  ModelListSnapshotData,
+  ProviderModelInfo,
+  ModelsDevPricing,
+  ModelsDevLink,
+  ModelsDevModelMetadata,
+  ModelsDevCatalogStatus,
+  ProviderModelsSnapshotData,
+  ProviderModelsFailedData,
+} from "./modelCatalogEventTypes";
 
 export type {
   SandboxDependencySnapshotData,
@@ -631,6 +562,7 @@ export interface UserProfileData extends ConversationIdentityData {
 }
 
 export interface ModelUsageMetadata {
+  cost?: { currency: "USD"; input?: number; output?: number; cacheRead?: number; cacheWrite?: number; total?: number };
   source: "provider_reported" | "mixed" | "local_estimate" | "unavailable";
   inputTokens?: number;
   outputTokens?: number;
@@ -648,9 +580,11 @@ export interface ModelUsageMetadata {
 }
 
 export interface ConversationEntryMetadata {
+  hostInput?: import("../../../Source/AgentSystem/ModelEndpoints/AgentModelMetadata").AgentConversationEntryMetadata["hostInput"];
   /** Durable user turn answered by an assistant entry. */
   sourceRequestId?: string;
   channel?: SessionChannelMetadata;
+  channelEvent?: ChannelEventData;
   run?: {
     modelProvider: ModelProviderMetadata;
     usage?: ModelUsageMetadata;
@@ -659,6 +593,7 @@ export interface ConversationEntryMetadata {
     taskId: string;
     runId: string;
   };
+  /** Legacy automatic child-completion entry, retained only to hide old persisted internal input. */
   backgroundTask?: {
     taskId: string;
     runId: string;
@@ -666,6 +601,8 @@ export interface ConversationEntryMetadata {
   queue?: {
     parentRequestId: string;
     mode: "steer" | "follow_up";
+    status?: import("../../../Source/AgentSystem/Core/AgentSessionInputContract").AgentSessionInputState;
+    message?: string;
   };
   recovery?: {
     mode: "retry" | "continue";
@@ -674,13 +611,15 @@ export interface ConversationEntryMetadata {
   activation?: ExplicitActivationSet;
 }
 
-export interface UploadAttachmentData {
-  resourceUri: string;
-  name: string;
-  mime: string;
-  size: number;
-  sha256?: string;
-  status: "uploaded";
+export interface ChannelEventData {
+  id: string;
+  type: string;
+  actorId: string;
+  actorName?: string;
+  targetId?: string;
+  targetName?: string;
+  messageId?: string;
+  sentAt: string;
 }
 
 export interface SessionTruncatedData {
@@ -693,8 +632,10 @@ export interface SessionTruncatedData {
 
 export interface RunStartedData {
   input: string;
+  title?: string;
   approvalMode?: import("./executionApprovalMode").ExecutionApprovalMode;
   attachments?: UploadAttachmentData[];
+  metadata?: ConversationEntryMetadata;
   internal?: boolean;
   displayInput?: string;
   recovery?: {
@@ -743,6 +684,7 @@ export interface ModelThinkingCompletedData {
 
 export interface ModelStartedData {
   model: string;
+  contextSnapshot?: import("../../../Source/AgentSystem/Events/AgentModelContextSnapshot").AgentModelContextSnapshot;
   provider?: ModelProviderMetadata;
   messageIndex?: number;
 }
@@ -752,6 +694,8 @@ export interface ModelCompletedData {
   provider?: ModelProviderMetadata;
   usage?: ModelUsageMetadata;
   messageIndex?: number;
+  outcome?: "completed" | "failed" | "cancelled";
+  errorMessage?: string;
 }
 
 export type {

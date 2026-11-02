@@ -1,5 +1,6 @@
 import type { ModelProviderListItem, ModelThinkingLevel } from "../../api/eventTypes";
 import type { StoreState } from "./types";
+import { readConversationDefaultModelId } from "./sessionAgentSelection";
 
 const Off: ModelThinkingLevel = "off";
 
@@ -20,15 +21,13 @@ export function syncActiveSessionThinkingSelection(state: StoreState): void {
     : (state.selectedThinkingLevel ?? undefined);
   const next = normalizeThinkingLevel(selected, remembered);
   state.selectedThinkingLevel = selected ? next : null;
-  if (sessionId && selected) {
-    (state.selectedThinkingLevelsBySession ??= {})[sessionId] = next;
-  }
 }
 
 function readSelectedModel(state: StoreState): ModelProviderListItem | undefined {
   const selectedId = state.selectedModelProviderId;
   return (
     state.modelProviders.find((model) => model.id === selectedId) ??
+    state.modelProviders.find((model) => model.id === readConversationDefaultModelId(state)) ??
     state.modelProviders.find((model) => model.isDefault)
   );
 }

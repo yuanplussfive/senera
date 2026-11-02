@@ -1,10 +1,11 @@
-import type { PromptTemplate } from "@earendil-works/pi-agent-core";
 import { readRegularTextFileSnapshotSync, type AgentRegularTextFileSnapshot } from "../Core/AgentFs.js";
 import type { AgentExtensionRegistry } from "../Extensions/AgentExtensionRegistry.js";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
 import type { RegisteredTemplate } from "../Types/AgentToolRuntimeTypes.js";
 import { AgentPiResourceSelector, type AgentPiResourceSelection } from "./AgentPiResourceSelector.js";
+
+export type AgentPiPromptTemplate = Pick<RegisteredTemplate, "name" | "description"> & { readonly content: string };
 
 export interface AgentPiPromptTemplateProjectionInput {
   input?: string;
@@ -13,7 +14,7 @@ export interface AgentPiPromptTemplateProjectionInput {
 }
 
 export interface AgentPiPromptTemplateProjection {
-  promptTemplates: PromptTemplate[];
+  promptTemplates: AgentPiPromptTemplate[];
   selection: AgentPiResourceSelection;
 }
 
@@ -37,7 +38,7 @@ export class AgentPiPromptTemplateProjector {
     };
   }
 
-  projectPromptTemplate(template: RegisteredTemplate): PromptTemplate {
+  projectPromptTemplate(template: RegisteredTemplate): AgentPiPromptTemplate {
     const content = this.readTextFile(template.path);
     const cached = this.promptTemplateByName.get(template.name);
     if (
@@ -73,5 +74,5 @@ interface CachedPromptTemplate {
   readonly path: string;
   readonly description?: string;
   readonly content: string;
-  readonly value: PromptTemplate;
+  readonly value: AgentPiPromptTemplate;
 }

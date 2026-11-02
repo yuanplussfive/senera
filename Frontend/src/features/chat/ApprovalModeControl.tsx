@@ -1,22 +1,34 @@
-import { Check, ChevronDown, LockOpen, ShieldCheck, ShieldQuestion } from "lucide-react";
 import { ExecutionApprovalModes, type ExecutionApprovalMode } from "../../api/executionApprovalMode";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { MotionButton } from "../../shared/motion";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Tooltip } from "../../shared/ui";
+import { composerControlClassName } from "./composerControls";
+import {
+  AppIcon,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+  Tooltip,
+} from "../../shared/ui";
 
 const ApprovalModePresentation = {
   [ExecutionApprovalModes.AlwaysAsk]: {
     labelKey: "chat.approvalMode.alwaysAsk",
-    icon: ShieldQuestion,
+    icon: "shield-alert",
+    descriptionKey: "chat.approvalMode.alwaysAskDescription",
   },
   [ExecutionApprovalModes.Agent]: {
     labelKey: "chat.approvalMode.agent",
-    icon: ShieldCheck,
+    icon: "shield",
+    descriptionKey: "chat.approvalMode.agentDescription",
   },
   [ExecutionApprovalModes.FullAccess]: {
     labelKey: "chat.approvalMode.fullAccess",
-    icon: LockOpen,
+    icon: "unlock",
+    descriptionKey: "chat.approvalMode.fullAccessDescription",
   },
 } as const;
 
@@ -34,7 +46,6 @@ function ApprovalModeControl({
   prefersCompactControls,
 }: ApprovalModeControlProps): JSX.Element {
   const selected = ApprovalModePresentation[mode];
-  const SelectedIcon = selected.icon;
   const selectedLabel = frontendMessage(selected.labelKey);
 
   return (
@@ -43,37 +54,50 @@ function ApprovalModeControl({
         <DropdownMenuTrigger asChild disabled={disabled}>
           <MotionButton
             className={cn(
-              "inline-flex h-9 min-w-0 items-center gap-1.5 rounded-md px-2 text-[11px] text-content-secondary transition hover:bg-surface-hover hover:text-content-primary sm:h-7",
+              "inline-flex min-w-0 items-center gap-1.5 rounded-lg px-2 text-xs leading-5 text-content-secondary transition hover:bg-surface-hover hover:text-content-primary",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
-              prefersCompactControls && "min-h-11 min-w-11 justify-center",
+              composerControlClassName(prefersCompactControls),
+              prefersCompactControls && "min-w-11 justify-center",
               disabled && "pointer-events-none opacity-55",
             )}
             aria-label={selectedLabel}
           >
-            <SelectedIcon className="h-3.5 w-3.5 shrink-0" />
+            <AppIcon icon={selected.icon} size={16} />
             {!prefersCompactControls ? <span className="max-w-24 truncate">{selectedLabel}</span> : null}
-            {!prefersCompactControls ? <ChevronDown className="h-3 w-3 shrink-0 text-content-muted" /> : null}
+            {!prefersCompactControls ? <AppIcon icon="chevron-down" size={12} className="text-content-muted" /> : null}
           </MotionButton>
         </DropdownMenuTrigger>
       </Tooltip>
-      <DropdownMenuContent align="end" side="top" className="w-[min(230px,calc(100vw-24px))]">
-        {(Object.keys(ApprovalModePresentation) as ExecutionApprovalMode[]).map((candidate) => {
-          const presentation = ApprovalModePresentation[candidate];
-          const ModeIcon = presentation.icon;
-          const active = candidate === mode;
-          return (
-            <DropdownMenuItem
-              key={candidate}
-              onSelect={() => onSelect(candidate)}
-              icon={<ModeIcon className="h-3.5 w-3.5" />}
-            >
-              <span className="flex min-w-0 items-center justify-between gap-3">
-                <span className="truncate">{frontendMessage(presentation.labelKey)}</span>
-                {active ? <Check className="h-3.5 w-3.5 shrink-0 text-accent-content" /> : null}
-              </span>
-            </DropdownMenuItem>
-          );
-        })}
+      <DropdownMenuContent align="start" side="top" className="w-[min(340px,calc(100vw-24px))] p-1.5">
+        <DropdownMenuLabel className="pb-2.5 font-normal normal-case tracking-normal">
+          {frontendMessage("chat.approvalMode.heading")}
+        </DropdownMenuLabel>
+        <DropdownMenuRadioGroup value={mode} onValueChange={(value) => onSelect(value as ExecutionApprovalMode)}>
+          {(Object.keys(ApprovalModePresentation) as ExecutionApprovalMode[]).map((candidate) => {
+            const presentation = ApprovalModePresentation[candidate];
+            return (
+              <DropdownMenuRadioItem
+                key={candidate}
+                value={candidate}
+                className="min-h-14 py-2.5"
+                icon={
+                  <AppIcon
+                    icon={presentation.icon}
+                    size={17}
+                    className={candidate === ExecutionApprovalModes.FullAccess ? "text-umber-600" : undefined}
+                  />
+                }
+              >
+                <span className="block text-[13px] font-medium leading-5">
+                  {frontendMessage(presentation.labelKey)}
+                </span>
+                <span className="mt-0.5 block whitespace-normal text-xs font-normal leading-5 text-content-muted">
+                  {frontendMessage(presentation.descriptionKey)}
+                </span>
+              </DropdownMenuRadioItem>
+            );
+          })}
+        </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );

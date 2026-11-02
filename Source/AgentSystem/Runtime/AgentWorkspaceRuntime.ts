@@ -11,12 +11,15 @@ import type {
 import { AgentWorkspaceEmbeddingRuntime } from "../ToolSearch/AgentWorkspaceEmbeddingRuntime.js";
 import { resolveAgentWorkspaceLayout, type AgentWorkspaceLayout } from "../Core/AgentWorkspaceLayout.js";
 import { AgentArtifactManifestIndexCache } from "../Memory/AgentArtifactManifestIndexCache.js";
+import { AgentImageNormalizationService } from "../Images/AgentImageNormalizationService.js";
 
 export interface AgentWorkspaceRuntimeServices {
   readonly artifactManifestIndex?: AgentArtifactManifestIndexCache;
   readonly layout?: AgentWorkspaceLayout;
   readonly mcpClientPool: AgentMcpToolClientPool;
   readonly uploadStore: AgentUploadStore;
+  /** Shared static-image normalization worker for all model runtimes in this workspace. */
+  readonly imageNormalization?: AgentImageNormalizationService;
   readonly workspaceChangeObserver: AgentWorkspaceChangeObserverPort & { close(): Promise<void> };
   readonly embedding: AgentWorkspaceEmbeddingRuntime;
 }
@@ -25,6 +28,7 @@ export interface AgentWorkspaceRuntimeOptions {
   readonly layout?: AgentWorkspaceLayout;
   readonly mcpClientPool?: AgentMcpToolClientPool;
   readonly uploadStore?: AgentUploadStore;
+  readonly imageNormalization?: AgentImageNormalizationService;
   readonly workspaceRoot: string;
   readonly uploads: ResolvedAgentUploadsConfig | (() => ResolvedAgentUploadsConfig);
   readonly artifacts: () => ResolvedAgentArtifactsConfig;
@@ -42,10 +46,12 @@ export class AgentWorkspaceRuntime implements AgentWorkspaceRuntimeServices {
   readonly layout: AgentWorkspaceLayout;
   readonly mcpClientPool: AgentMcpToolClientPool;
   readonly uploadStore: AgentUploadStore;
+  readonly imageNormalization: AgentImageNormalizationService;
   readonly workspaceChangeObserver: AgentWorkspaceChangeObserverPort & { close(): Promise<void> };
   readonly embedding: AgentWorkspaceEmbeddingRuntime;
   private closePromise?: Promise<void>;
   private readonly ownsEmbedding: boolean;
+  private readonly ownsImageNormalization: boolean;
 
   constructor(options: AgentWorkspaceRuntimeOptions) {
     this.layout = options.layout ?? resolveAgentWorkspaceLayout(options.workspaceRoot);
@@ -70,6 +76,8 @@ export class AgentWorkspaceRuntime implements AgentWorkspaceRuntimeServices {
       });
     this.uploadStore =
       options.uploadStore ?? new AgentUploadStore({ workspaceRoot: options.workspaceRoot, config: options.uploads });
+    this.imageNormalization = options.imageNormalization ?? new AgentImageNormalizationService();
+    this.ownsImageNormalization = options.imageNormalization === undefined;
     this.workspaceChangeObserver =
       options.workspaceChangeObserver ??
       new AgentWorkspaceChangeObserverProcess({
@@ -87,6 +95,7 @@ export class AgentWorkspaceRuntime implements AgentWorkspaceRuntimeServices {
       this.workspaceChangeObserver.close(),
       this.mcpClientPool.close(),
       ...(this.ownsEmbedding ? [this.embedding.close()] : []),
+      ...(this.ownsImageNormalization ? [this.imageNormalization.close()] : []),
     ]).then(() => undefined));
   }
 }

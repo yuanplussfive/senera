@@ -9,6 +9,7 @@ import { JsonConfigSettingsView } from "../../../shared/config/JsonConfigForm";
 import { isJsonConfigObject } from "../../../shared/config/JsonConfigValue";
 import {
   AppIcon,
+  Button,
   Dialog,
   DialogContent,
   IconButton,
@@ -21,14 +22,15 @@ import {
 import { AgentToolPresentationIcon } from "../../../shared/workspace/AgentToolPresentationIcon";
 import { AgentSystemExtensionSettingsSurfaces } from "../../../../../Source/AgentSystem/Types/AgentSystemExtensionSettingsSurface";
 import type { SettingsSystemConfigHandle } from "../SettingsContracts";
+import { SettingsSectionLoading } from "../SettingsLoading";
 import { projectSystemExtensionConfigurationSections } from "../systemExtensionConfigurationPresentation";
 import type { ConfigSettingsDraftState, ConfigDraftSaveMode } from "./configSettingsDraftState";
 import { projectSectionConfigFields } from "./runtimeModelAssignments";
-import { SettingsSectionLoading } from "../SettingsLoading";
 import { SettingsEntityNavigator } from "./SettingsEntityNavigator";
-import { SettingsEntityMetrics } from "./SettingsEntityMetrics";
-import { SettingsBinaryStateToken } from "./SettingsBinaryStateToken";
-import { PluginIdentityFrame, PluginIdentityIcon } from "./PluginIdentityIcon";
+import { PluginIdentityFrame, PluginIdentityIcon, PluginIdentityTile } from "./PluginIdentityIcon";
+import { PluginUsageExamples } from "./PluginUsageExamples";
+import { PluginDocumentation } from "./PluginDocumentation";
+import { PluginSkills } from "./PluginSkills";
 
 const EmptyExtensions: readonly SystemExtensionSettingsItem[] = [];
 type ExtensionStatusFilter = "all" | "enabled" | "disabled";
@@ -121,7 +123,7 @@ export function SystemToolsSection({
   }, [layout]);
 
   if (!systemConfig || !systemConfig.toolSettingsSynced.systemTools) {
-    return <SettingsSectionLoading variant="split" />;
+    return <SettingsSectionLoading variant={detailExtensionId ? "form" : "split"} />;
   }
 
   const updateExtension = (
@@ -361,9 +363,6 @@ function ExtensionBulkManager({
                         <span className="min-w-0 flex-1">
                           <span className="flex min-w-0 items-baseline gap-1.5">
                             <span className="truncate text-[12px] font-medium text-content-primary">{name}</span>
-                            <span className="shrink-0 text-[10px] tabular-nums text-content-muted">
-                              v{extension.version}
-                            </span>
                           </span>
                           <span className="mt-0.5 block truncate text-[10.5px] text-content-muted">
                             {configurationFieldCounts.get(extension.id) === 0
@@ -437,7 +436,6 @@ function ExtensionNavigatorRow({
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-baseline gap-1.5">
             <span className="truncate text-[12px] font-medium">{displayName}</span>
-            <span className="shrink-0 text-[10px] tabular-nums text-content-muted">v{extension.version}</span>
           </span>
           <span className="mt-0.5 block truncate text-[10.5px] text-content-muted" data-extension-preview>
             {configurationFieldCount === 0
@@ -446,11 +444,9 @@ function ExtensionNavigatorRow({
           </span>
         </span>
       </button>
-      <SettingsBinaryStateToken
-        state={enabled ? "on" : "off"}
-        className="shrink-0"
-        ariaLabel={frontendMessage(`settings.tools.status.${enabled ? "enabled" : "disabled"}`)}
-      />
+      <span className="shrink-0 text-[11px] text-content-muted">
+        {frontendMessage(`settings.tools.status.${enabled ? "enabled" : "disabled"}`)}
+      </span>
     </div>
   );
 }
@@ -487,25 +483,26 @@ function ExtensionDetail({
 
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden bg-surface-canvas font-sans">
-      <header className="shrink-0 border-b border-line-subtle/70 px-6 py-5 sm:px-8">
+      <header className="shrink-0 px-5 pt-5 sm:px-8">
         <div className="mx-auto flex w-full max-w-[860px] items-start justify-between gap-5">
           <div className="flex min-w-0 items-start gap-3">
-            <PluginIdentityFrame className="mt-0.5">
+            <PluginIdentityTile className="mt-0.5">
               <PluginIdentityIcon
                 brandIcon={selected.presentation?.brandIcon}
                 icon={selected.presentation?.icon}
-                size={22}
+                size={28}
               />
-            </PluginIdentityFrame>
+            </PluginIdentityTile>
             <div className="min-w-0">
               <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                <h3 className="truncate text-[17px] font-semibold text-content-primary">{displayName}</h3>
-                <span className="text-[11px] tabular-nums text-content-muted">v{selected.version}</span>
+                <h3 className="text-[18px] font-semibold leading-7 tracking-[-0.02em] text-content-strong">
+                  {displayName}
+                </h3>
               </div>
-              <p className="mt-1 max-w-[620px] text-[12px] leading-5 text-content-secondary">{description}</p>
+              <p className="mt-1 max-w-[64ch] text-[13px] leading-6 text-content-secondary">{description}</p>
             </div>
           </div>
-          <div className="flex shrink-0 items-center">
+          <div className="flex h-8 shrink-0 items-center">
             <Switch
               checked={enabled}
               size="sm"
@@ -515,23 +512,30 @@ function ExtensionDetail({
             />
           </div>
         </div>
-        <div className="mx-auto mt-4 w-full max-w-[860px]">
-          <SegmentedControl
-            ariaLabel={frontendMessage("settings.tools.detailView")}
-            options={[
-              { value: "contributions", label: frontendMessage("settings.tools.viewContributions") },
-              { value: "configuration", label: frontendMessage("settings.tools.viewConfiguration") },
-            ]}
-            value={detailView}
-            onChange={setDetailView}
-          />
-        </div>
+        {hasConfiguration ? (
+          <div className="mx-auto mt-5 w-full max-w-[860px] border-b border-line-subtle">
+            <SegmentedControl
+              variant="underline"
+              ariaLabel={frontendMessage("settings.tools.detailView")}
+              options={[
+                { value: "contributions", label: frontendMessage("settings.tools.viewContributions") },
+                { value: "configuration", label: frontendMessage("settings.tools.viewConfiguration") },
+              ]}
+              value={detailView}
+              onChange={setDetailView}
+            />
+          </div>
+        ) : null}
       </header>
       <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full">
         {error ? <InlineError className="mx-auto mt-4 max-w-[860px] px-6 sm:px-8">{error}</InlineError> : null}
-        <div className="mx-auto w-full max-w-[860px] px-6 py-6 sm:px-8">
-          {detailView === "contributions" ? (
-            <ExtensionContributions selected={selected} locale={locale} />
+        <div className="mx-auto w-full max-w-[924px] px-5 py-5 sm:px-8">
+          {!hasConfiguration || detailView === "contributions" ? (
+            <>
+              <ExtensionContributions selected={selected} locale={locale} />
+              <PluginDocumentation content={selected.documentation} />
+              <PluginUsageExamples examples={selected.usageExamples} />
+            </>
           ) : (
             <ExtensionConfiguration
               selected={selected}
@@ -539,7 +543,6 @@ function ExtensionDetail({
               enabled={enabled}
               configuration={configuration}
               configurationSections={configurationSections}
-              hasConfiguration={hasConfiguration}
               readSecret={readSecret}
               onChange={onChange}
               onCommit={onCommit}
@@ -560,20 +563,17 @@ function ExtensionContributions({
 }): JSX.Element {
   return (
     <>
-      <SettingsEntityMetrics
-        dataTestId="extension-metrics"
-        items={[
-          { label: frontendMessage("settings.entitySummary.tools"), value: selected.tools.length },
-          { label: frontendMessage("settings.entitySummary.skills"), value: selected.skillCount },
-          { label: frontendMessage("settings.entitySummary.mcpServers"), value: selected.mcpServerCount },
-        ]}
-      />
+      <PluginSkills key={selected.id} skills={selected.skills} />
       {selected.tools.length > 0 ? (
-        <ExtensionToolList className="mt-5" tools={selected.tools} locale={locale} />
+        <section className="mb-7">
+          <h4 className="mb-3 flex items-baseline gap-2 text-[14px] font-semibold text-content-primary">
+            {frontendMessage("settings.plugins.capabilities")}
+            <span className="text-xs font-normal text-content-muted">{selected.tools.length}</span>
+          </h4>
+          <ExtensionToolList key={selected.id} tools={selected.tools} locale={locale} />
+        </section>
       ) : (
-        <p className="border-y border-line-subtle py-7 text-[12px] text-content-muted">
-          {frontendMessage("settings.tools.noTools")}
-        </p>
+        <p className="py-7 text-[12px] text-content-muted">{frontendMessage("settings.tools.noTools")}</p>
       )}
     </>
   );
@@ -585,7 +585,6 @@ function ExtensionConfiguration({
   enabled,
   configuration,
   configurationSections,
-  hasConfiguration,
   readSecret,
   onChange,
   onCommit,
@@ -595,24 +594,10 @@ function ExtensionConfiguration({
   enabled: boolean;
   configuration: Record<string, unknown>;
   configurationSections: ReturnType<typeof projectSectionConfigFields>[];
-  hasConfiguration: boolean;
   readSecret: ((field: import("../../../api/eventTypes").ConfigFormFieldData) => Promise<string>) | undefined;
   onChange: (enabled: boolean, configuration: Record<string, unknown>, mode: ConfigDraftSaveMode) => void;
   onCommit: () => void;
 }): JSX.Element {
-  if (!hasConfiguration) {
-    return (
-      <div className="border-y border-line-subtle py-7">
-        <p className="text-[13px] font-medium text-content-primary">
-          {frontendMessage("settings.entityPreview.noConfiguration")}
-        </p>
-        <p className="mt-1 text-[12px] leading-5 text-content-muted">
-          {frontendMessage("settings.tools.noConfiguration")}
-        </p>
-      </div>
-    );
-  }
-
   return (
     <JsonConfigSettingsView
       key={selected.id}
@@ -636,28 +621,49 @@ function ExtensionToolList({
   tools: SystemExtensionSettingsItem["tools"];
   locale: FrontendLocale;
 }): JSX.Element {
+  const [expanded, setExpanded] = useState(false);
+  const visibleTools = expanded ? tools : tools.slice(0, 4);
   return (
     <section className={className} data-system-extension-tools>
-      <div className="divide-y divide-line-subtle border-y border-line-subtle">
-        {tools.map((tool) => (
-          <div key={tool.name} className="flex min-w-0 gap-3 py-4">
-            <PluginIdentityFrame data-system-extension-tool-icon={tool.presentation.icon}>
-              <AgentToolPresentationIcon icon={tool.presentation.icon} size={17} aria-hidden="true" />
-            </PluginIdentityFrame>
-            <div className="min-w-0">
-              <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-                <div className="truncate text-[12.5px] font-semibold text-content-primary">
+      <div className="space-y-1">
+        {visibleTools.map((tool) => (
+          <details key={tool.name} className="group/tool min-w-0" data-extension-tool={tool.name}>
+            <summary className="flex min-w-0 cursor-pointer list-none items-center gap-3 rounded-md py-2.5 outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-accent-focus [&::-webkit-details-marker]:hidden">
+              <PluginIdentityFrame data-system-extension-tool-icon={tool.presentation.icon}>
+                <AgentToolPresentationIcon icon={tool.presentation.icon} size={18} aria-hidden="true" />
+              </PluginIdentityFrame>
+              <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                <span className="text-[13px] font-medium text-content-primary">
                   {resolveFrontendLocalizedText(tool.presentation.activity.action, locale)}
-                </div>
-                <code className="truncate text-[10.5px] text-content-muted">{tool.name}</code>
-              </div>
-              <p className="mt-1.5 max-w-[680px] text-[12px] leading-5 text-content-secondary">
-                {resolveFrontendLocalizedText(tool.description, locale)}
-              </p>
-            </div>
-          </div>
+                </span>
+                <code className="break-all text-[11px] text-content-muted">{tool.name}</code>
+              </span>
+              <AppIcon
+                icon="chevron-right"
+                size={14}
+                className="mr-2 text-content-muted transition-transform group-open/tool:rotate-90 motion-reduce:transition-none"
+              />
+            </summary>
+            <p className="pb-4 pl-11 pr-5 text-[12px] leading-6 text-content-secondary [overflow-wrap:anywhere]">
+              {resolveFrontendLocalizedText(tool.description, locale)}
+            </p>
+          </details>
         ))}
       </div>
+      {tools.length > 4 ? (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="mt-2"
+          aria-expanded={expanded}
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded
+            ? frontendMessage("settings.plugins.collapse")
+            : frontendMessage("settings.plugins.showAll", { count: tools.length })}
+          <AppIcon icon="chevron-down" size={14} className={expanded ? "rotate-180" : undefined} />
+        </Button>
+      ) : null}
     </section>
   );
 }

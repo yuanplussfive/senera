@@ -14,6 +14,8 @@ import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentC
 import { createAgentSelfTestConfigPort, createAgentTestSnapshot } from "./AgentSelfTestHarness.js";
 import { AgentSessionStore } from "../../../Source/AgentSystem/Session/AgentSessionStore.js";
 import { createAgentSelfPromptPresetsPort } from "../../../Source/AgentSystem/SelfService/AgentSelfPromptPresets.js";
+import { createTestAgentDirectory } from "../Support/AgentDirectoryTestFixture.js";
+import { workspaceAgentInput } from "../../../Source/AgentSystem/Core/AgentDirectoryContract.js";
 
 const temporaryRoots: string[] = [];
 
@@ -214,7 +216,7 @@ describe("senera self-service prompt presets", () => {
     fs.writeFileSync(path.join(root, "prompts", "nested", "brief.md"), "# Brief\n");
     const port: AgentSelfServicePort = {
       ...workspacePort(root),
-      promptPresets: createAgentSelfPromptPresetsPort(root, 1_024),
+      promptPresets: createAgentSelfPromptPresetsPort(root, 1_024, createTestAgentDirectory()),
     };
 
     const listed = await executeAgentSelfCommand({ command: "preset", action: "list" }, port);
@@ -237,6 +239,50 @@ describe("senera self-service prompt presets", () => {
     const disabled = await executeAgentSelfCommand({ command: "preset", action: "disable" }, port);
     expect(disabled).toMatchObject({ ok: true, data: { status: "disabled", enabled: false } });
   });
+
+  test("Agent preset activation is isolated and shared document edits do not change bindings", async () => {
+    const root = temporaryWorkspace();
+    fs.mkdirSync(path.join(root, "prompts"), { recursive: true });
+    fs.writeFileSync(path.join(root, "prompts", "shared.md"), "# {{assistant}}\n");
+    const directory = createTestAgentDirectory();
+    const first = directory.get();
+    const created = directory.execute({
+      type: "agent.create",
+      revision: directory.snapshot().revision,
+      agent: { ...workspaceAgentInput(first), name: "Second", enabled: false },
+    });
+    const second = created.agents.find((agent) => agent.id !== first.id)!;
+    const presets = createAgentSelfPromptPresetsPort(root, 1_024, directory);
+    const snapshots: number[] = [];
+    directory.subscribe(() => snapshots.push(directory.snapshot().revision));
+    expect(await presets.enable("prompts/shared.md", second.id)).toMatchObject({
+      status: "enabled",
+      agentId: second.id,
+    });
+    expect(await presets.status(first.id)).toMatchObject({ agentId: first.id, enabled: false });
+    expect(await presets.status(second.id)).toMatchObject({
+      agentId: second.id,
+      enabled: true,
+      activePath: "prompts/shared.md",
+    });
+    fs.writeFileSync(path.join(root, "prompts", "shared.md"), "Updated content");
+    expect(await presets.read("prompts/shared.md")).toMatchObject({ content: "Updated content" });
+    expect(directory.get(second.id)).toMatchObject({
+      presetEnabled: true,
+      presetPath: "prompts/shared.md",
+      enabled: false,
+    });
+    expect(await presets.disable(second.id)).toMatchObject({
+      status: "disabled",
+      agentId: second.id,
+      activePath: "prompts/shared.md",
+    });
+    expect(directory.get(first.id)).toMatchObject({ presetEnabled: false, presetPath: null });
+    expect(snapshots).toHaveLength(2);
+    expect(fs.existsSync(path.join(root, ".senera", "prompt-preset.json"))).toBe(false);
+    expect((await presets.enable("prompts/missing.md", first.id)).status).toBe("missing");
+    expect(directory.get(first.id).presetPath).toBeNull();
+  });
 });
 
 describe("senera self-service session model", () => {
@@ -250,6 +296,7 @@ describe("senera self-service session model", () => {
         getModelRuntime: (sessionId) => store.getSessionModelRuntime(sessionId),
         setModelPreference: (sessionId, modelProviderId, source) =>
           store.setSessionModelPreference(sessionId, modelProviderId, source),
+        resolveAgentId: (sessionId) => store.getSessionAgentId(sessionId),
         snapshot: (sessionId) => store.getSessionSnapshot(sessionId),
       },
     };
@@ -272,6 +319,10 @@ describe("senera self-service session model", () => {
       source: "agent",
     });
 
+    const updatedPreference = (updated.data as { preference: { updatedAt: string } }).preference;
+    expect(updatedPreference.updatedAt).toMatch(/\+08:00$/u);
+    expect(updatedPreference.updatedAt).not.toContain("Z");
+
     const repeated = await executeAgentSelfCommand(
       { command: "session", action: "model", operation: "set", sessionId: "session-model", modelProviderId: "gpt-5.6" },
       port,
@@ -283,6 +334,9 @@ describe("senera self-service session model", () => {
       port,
     );
     expect(read).toMatchObject({ ok: true, data: { preference: { modelProviderId: "gpt-5.6" } } });
+    const readPreference = (read.data as { preference: { updatedAt: string } }).preference;
+    expect(readPreference.updatedAt).toBe(updatedPreference.updatedAt);
+    expect(readPreference.updatedAt).toMatch(/\+08:00$/u);
   });
 
   test("rejects unknown model ids and missing sessions explicitly", async () => {

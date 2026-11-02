@@ -14,6 +14,7 @@ import type { AgentWorkflowService } from "../Source/AgentSystem/Orchestration/A
 import type { AgentScheduleRuntime } from "../Source/AgentSystem/Orchestration/AgentScheduleRuntime.js";
 import type { AgentSystemRuntimeCache } from "../Source/AgentSystem/Runtime/AgentSystemRuntimeCache.js";
 import type { AgentWorkspaceRuntime } from "../Source/AgentSystem/Runtime/AgentWorkspaceRuntime.js";
+import type { AgentWorkspaceLogStore } from "../Source/AgentSystem/Diagnostics/AgentWorkspaceLogStore.js";
 import type { AgentRuntimeDependencyService } from "../Source/AgentSystem/Runtime/AgentRuntimeDependencyTypes.js";
 import type { SeneraServerRuntimePlatform } from "./ServerRuntimePlatform.js";
 
@@ -37,11 +38,14 @@ export interface SeneraServerRuntimeShutdownInput {
   readonly interactionInput: AgentInteractionInputRuntime;
   readonly mcpInputs: AgentMcpInputService;
   readonly artifactRetention: AgentArtifactRetentionService;
+  readonly logStore: AgentWorkspaceLogStore;
   readonly sandboxRuntimeService: AgentSandboxRuntimeService;
-  readonly continuityRuntime: AgentContinuityRuntime;
+  readonly continuityRuntime: Pick<AgentContinuityRuntime, "close">;
   readonly repository: AgentSessionRepository;
   readonly orchestrationDatabase: AgentOrchestrationDatabase;
   readonly channelsDatabase: { close(): void };
+  readonly oneBot11MessageStore: { close(): void };
+  readonly entityReferences: { close(): void };
   readonly configService?: AgentConfigService;
 }
 
@@ -75,6 +79,7 @@ export function createSeneraServerRuntimeStop(input: SeneraServerRuntimeShutdown
             input.interactionInput.close(),
             input.mcpInputs.close(),
             input.artifactRetention.close(),
+            Promise.resolve().then(() => input.logStore.close()),
             input.sandboxRuntimeService.close(),
             input.configService ? Promise.resolve().then(() => input.configService!.close()) : Promise.resolve(),
           ]),
@@ -85,6 +90,8 @@ export function createSeneraServerRuntimeStop(input: SeneraServerRuntimeShutdown
           () => input.repository.close(),
           () => input.orchestrationDatabase.close(),
           () => input.channelsDatabase.close(),
+          () => input.oneBot11MessageStore.close(),
+          () => input.entityReferences.close(),
         ]) {
           try {
             close();

@@ -113,7 +113,6 @@
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadWrite" },
   "runtime": {
     "Lifecycle": "Immediate",
-    "ProtocolVersion": 2,
     "ResultAssessment": "ProcessExit",
     "Scheduling": "Parallel",
     "MaxConcurrency": 1

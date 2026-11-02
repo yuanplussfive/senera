@@ -14,16 +14,9 @@ export function SettingsEntityMetrics({
   dataTestId?: string;
 }): JSX.Element {
   return (
-    <dl className="mt-4 flex flex-wrap items-center text-[11px]" data-testid={dataTestId}>
-      {items.map((item, index) => (
-        <div
-          key={item.label}
-          className={
-            index === 0
-              ? "inline-flex items-baseline gap-1 pr-3"
-              : "inline-flex items-baseline gap-1 border-l border-line px-3"
-          }
-        >
+    <dl className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[11px]" data-testid={dataTestId}>
+      {items.map((item) => (
+        <div key={item.label} className="inline-flex items-baseline gap-1.5">
           <dt className="text-[10px] text-content-muted">{item.label}</dt>
           <dd className="text-[11px] font-semibold tabular-nums text-content-primary">{item.value}</dd>
         </div>

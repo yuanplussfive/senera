@@ -11,7 +11,12 @@ import type {
   AgentSelfCommand,
   AgentSelfCommandOutput,
 } from "../Source/AgentSystem/SelfService/AgentSelfServiceTypes.js";
-import { executeSeneraSelfCommandViaHttp, SeneraSelfServiceOfflineError } from "./SeneraCliHttpClient.js";
+import { executeSeneraSelfCommandViaHttp } from "./SeneraCliHttpClient.js";
+import { AgentSelfInvocationSchema } from "../Source/AgentSystem/SelfService/AgentSelfCommandSchema.js";
+import {
+  AgentSelfCliConnectionEnvironment,
+  AgentSelfCommandMaximumBytes,
+} from "../Source/AgentSystem/SelfService/AgentSelfCliConnection.js";
 import { renderAgentSelfCliHelp } from "../Source/AgentSystem/SelfService/AgentSelfCommandRegistry.js";
 import {
   parseAgentSelfCliCommand,
@@ -42,26 +47,47 @@ export type SeneraCliInvocation =
     }
   | {
       command: "self";
-      self: SeneraCliSelfCommand;
+      self?: SeneraCliSelfCommand;
       workspaceRoot: string;
       json: boolean;
       yes: boolean;
       no: boolean;
     }
-  | { command: "help" };
+  | { command: "help"; domain?: string; action?: string };
 
 export function parseSeneraCliInvocation(
   args: readonly string[],
   environment: NodeJS.ProcessEnv = process.env,
   cwd = process.cwd(),
 ): SeneraCliInvocation {
-  if (args.length === 0 || args.includes("--help") || args.includes("-h")) return { command: "help" };
+  if (args.length === 0) return { command: "help" };
+  if (args.includes("--help") || args.includes("-h")) {
+    return {
+      command: "help",
+      ...(args[0]?.startsWith("-") ? {} : { domain: args[0], action: args[1]?.startsWith("-") ? undefined : args[1] }),
+    };
+  }
   const command = args[0];
   const subcommand = args[1];
   const workspaceRoot = path.resolve(readOption(args, "--workspace") ?? environment.SENERA_WORKSPACE_ROOT ?? cwd);
   const stateRootValue = readOption(args, "--state-root");
   const stateRoot = stateRootValue ? path.resolve(workspaceRoot, stateRootValue) : undefined;
   const json = args.includes("--json");
+  const yes = args.includes("--yes");
+  const no = args.includes("--no");
+  if (yes && no) throw new Error("--yes and --no cannot be used together.");
+  const scoped = environment[AgentSelfCliConnectionEnvironment] !== undefined;
+  if (scoped && (args.includes("--yes") || args.includes("--no") || command === "rollback" || command === "upgrade")) {
+    throw new Error(
+      "Model CLI commands use the current session's approvals; offline maintenance and self-approval flags are unavailable.",
+    );
+  }
+  const input = readOption(args, "--input");
+  if (input !== undefined) {
+    if (input !== "-") throw new Error("--input accepts '-' to read a JSON command from standard input.");
+    assertKnownArguments(args, ["--input", "--workspace"], ["--json", "--yes", "--no"]);
+    return { command: "self", workspaceRoot, json, yes, no };
+  }
 
   if (command === "upgrade" && subcommand === "status") {
     assertKnownArguments(args.slice(2), ["--workspace", "--state-root"], ["--json"]);
@@ -88,9 +114,6 @@ export function parseSeneraCliInvocation(
   // live service resolves against its plugin registry — a typo or a
   // plugin-less command fails there with a deterministic error.
   const self = parseSeneraSelfCommand(stripCliOptions(args));
-  const yes = args.includes("--yes");
-  const no = args.includes("--no");
-  if (yes && no) throw new Error("--yes and --no cannot be used together.");
   return { command: "self", self, workspaceRoot, json, yes, no };
 }
 
@@ -122,13 +145,16 @@ export function parseSeneraSelfCommand(args: readonly string[]): SeneraCliSelfCo
 
 export function runSeneraCli(invocation: SeneraCliInvocation): void {
   if (invocation.command === "help") {
+    const showMaintenance = !invocation.domain && process.env[AgentSelfCliConnectionEnvironment] === undefined;
     process.stdout.write(
-      [
-        "Local upgrade commands:",
-        "  senera upgrade status [--workspace PATH] [--state-root PATH] [--json]",
-        "  senera rollback --yes [--upgrade ID] [--workspace PATH] [--state-root PATH] [--data-root PATH] [--json]",
-        "",
-      ].join("\n") + renderAgentSelfCliHelp(),
+      (showMaintenance
+        ? [
+            "Local upgrade commands:",
+            "  senera upgrade status [--workspace PATH] [--state-root PATH] [--json]",
+            "  senera rollback --yes [--upgrade ID] [--workspace PATH] [--state-root PATH] [--data-root PATH] [--json]",
+            "",
+          ].join("\n")
+        : "") + renderAgentSelfCliHelp(invocation.domain, invocation.action),
     );
     return;
   }
@@ -174,15 +200,16 @@ export function runSeneraCli(invocation: SeneraCliInvocation): void {
 
 async function runSeneraSelfCommand(invocation: Extract<SeneraCliInvocation, { command: "self" }>): Promise<void> {
   try {
-    let output = await executeSeneraSelfCommandViaHttp(invocation.workspaceRoot, invocation.self);
+    const command = invocation.self ?? AgentSelfInvocationSchema.parse(JSON.parse(await readCommandStdin()));
+    let output = await executeSeneraSelfCommandViaHttp(invocation.workspaceRoot, command);
     if (output.approvalRequired) {
       const decision = await decideSeneraApproval(invocation, output.approvalRequired);
       if (decision === "skip") {
         writeResult(
           {
+            ...output,
             ok: false,
             error: "approval_required",
-            approvalRequired: output.approvalRequired,
           },
           true,
         );
@@ -191,7 +218,15 @@ async function runSeneraSelfCommand(invocation: Extract<SeneraCliInvocation, { c
       }
       if (decision === "deny") {
         if (invocation.json) {
-          writeResult({ ok: false, error: "approval_denied", approvalId: output.approvalRequired.approvalId }, true);
+          writeResult(
+            {
+              ok: false,
+              error: "approval_denied",
+              text: "该操作未获批准。",
+              approvalId: output.approvalRequired.approvalId,
+            },
+            true,
+          );
         } else {
           process.stdout.write("已拒绝该操作，命令未执行。\n");
         }
@@ -206,25 +241,16 @@ async function runSeneraSelfCommand(invocation: Extract<SeneraCliInvocation, { c
       });
     }
     if (invocation.json) {
-      writeResult(
-        {
-          ok: output.ok,
-          ...(output.data !== undefined ? { data: output.data } : {}),
-          ...(output.error ? { error: output.error } : {}),
-        },
-        true,
-      );
+      writeResult(output, true);
+      if (!output.ok) process.exitCode = 1;
       return;
     }
     process.stdout.write(`${output.text}\n`);
     if (!output.ok) process.exitCode = 1;
   } catch (error) {
-    if (error instanceof SeneraSelfServiceOfflineError) {
-      process.stderr.write(`${error.message}\n`);
-      process.exitCode = 1;
-      return;
-    }
-    process.stderr.write(`${errorMessage(error)}\n`);
+    const text = errorMessage(error);
+    if (invocation.json) writeResult({ ok: false, error: "cli_failed", text }, true);
+    else process.stderr.write(`${text}\n`);
     process.exitCode = 1;
   }
 }
@@ -233,6 +259,7 @@ async function decideSeneraApproval(
   invocation: Extract<SeneraCliInvocation, { command: "self" }>,
   required: NonNullable<AgentSelfCommandOutput["approvalRequired"]>,
 ): Promise<"approve" | "deny" | "skip"> {
+  if (process.env[AgentSelfCliConnectionEnvironment] !== undefined) return "skip";
   if (invocation.yes) return "approve";
   if (invocation.no) return "deny";
   if (invocation.json) return "skip";
@@ -246,6 +273,21 @@ async function decideSeneraApproval(
   if (answer === "n" || answer === "no") return "deny";
   if (answer === "" || answer === "y" || answer === "yes") return "approve";
   throw new Error(`无法识别的确认输入: "${answer}"（请输入 y 或 n）。`);
+}
+
+async function readCommandStdin(): Promise<string> {
+  if (process.stdin.isTTY) throw new Error("--input - requires a JSON command on standard input.");
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  for await (const chunk of process.stdin) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    bytes += buffer.byteLength;
+    if (bytes > AgentSelfCommandMaximumBytes) throw new Error("Senera command exceeds the input size limit.");
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks)
+    .toString("utf8")
+    .replace(/^\uFEFF/u, "");
 }
 
 function describeApprovalCommand(required: NonNullable<AgentSelfCommandOutput["approvalRequired"]>): string {
@@ -333,7 +375,9 @@ if (isMainModule(import.meta.url)) {
   try {
     runSeneraCli(parseSeneraCliInvocation(process.argv.slice(2)));
   } catch (error) {
-    process.stderr.write(`${errorMessage(error)}\n`);
+    const text = errorMessage(error);
+    if (process.argv.includes("--json")) writeResult({ ok: false, error: "invalid_command", text }, true);
+    else process.stderr.write(`${text}\n`);
     process.exitCode = 1;
   }
 }

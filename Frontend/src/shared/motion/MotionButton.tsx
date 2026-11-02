@@ -15,12 +15,14 @@ export const MotionButton = forwardRef<
 >(({ children, className, type = "button", "data-overlay-anchor": overlayAnchor, whileTap, ...props }, ref) => {
   const { level, reduceMotion, disableMotion } = useMotionLevel();
   const tapScale = readTapScale(disableMotion || reduceMotion ? "reduced" : level);
+  // Menus own Enter/Space activation; Motion's synthetic pointer events would activate them again.
+  const menuItem = props.role?.startsWith("menuitem");
   return (
     <motion.button
       ref={ref}
       type={type}
       data-overlay-anchor={overlayAnchor}
-      whileTap={overlayAnchor ? undefined : (whileTap ?? (tapScale ? { scale: tapScale } : undefined))}
+      whileTap={overlayAnchor || menuItem ? undefined : (whileTap ?? (tapScale ? { scale: tapScale } : undefined))}
       transition={motionTimings.fast}
       className={cn(className)}
       {...props}

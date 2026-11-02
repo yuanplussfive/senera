@@ -110,6 +110,7 @@ export function projectToolStagePresentation(run: {
         origin: headlineStep.toolOrigin,
         arguments: headlineStep.toolArgs,
         result: headlineStep.toolPresentation,
+        rawResult: headlineStep.toolResult,
         durationMs: headlineStep.durationMs,
         status: readToolActivityStatus(headlineStep.status),
       })
@@ -169,6 +170,7 @@ function projectStageActivity(group: PresentationGroup, steps: readonly Timeline
       origin: action.representative.toolOrigin,
       arguments: action.representative.toolArgs,
       result: action.representative.toolPresentation,
+      rawResult: action.representative.toolResult,
       durationMs: action.representative.durationMs,
       status: readToolActivityStatus(action.representative.status),
     });
@@ -190,6 +192,7 @@ function projectStageActivity(group: PresentationGroup, steps: readonly Timeline
         origin: singleToolStep.toolOrigin,
         arguments: singleToolStep.toolArgs,
         result: singleToolStep.toolPresentation,
+        rawResult: singleToolStep.toolResult,
         durationMs: singleToolStep.durationMs,
         status: readToolActivityStatus(status),
       })
@@ -249,6 +252,7 @@ function resolveStepCategory(step: TimelineStep): string {
     origin: step.toolOrigin,
     arguments: step.toolArgs,
     result: step.toolPresentation,
+    rawResult: step.toolResult,
     durationMs: step.durationMs,
     status: readToolActivityStatus(step.status),
   }).category;

@@ -50,6 +50,14 @@ export const EventSpecs = {
       projectionPointers: ["/data/code"],
     },
   },
+  "session.message.queued": {
+    layer: "progress",
+    phase: "session",
+    observation: {
+      retention: "projection",
+      projectionPointers: ["/data/parentRequestId", "/data/mode"],
+    },
+  },
   "session.not_found": {
     layer: "error",
     phase: "session",
@@ -98,6 +106,14 @@ export const EventSpecs = {
       projectionPointers: ["/data/count", "/data/hasMore"],
     },
   },
+  "session.run_history.detail": {
+    layer: "snapshot",
+    phase: "session",
+    observation: {
+      retention: "projection",
+      projectionPointers: ["/data/requestId", "/data/count", "/data/complete"],
+    },
+  },
   "session.history.completed": {
     layer: "snapshot",
     phase: "session",
@@ -127,7 +143,7 @@ export const EventSpecs = {
     phase: "session",
     observation: {
       retention: "projection",
-      projectionPointers: ["/data/removedEntryCount", "/data/summaryEntryCount"],
+      projectionPointers: ["/data/tokensBefore", "/data/estimatedTokensAfter", "/data/boundaryId"],
     },
   },
   "session.runtime_status": {
@@ -223,8 +239,11 @@ export const EventSpecs = {
       projectionPointers: [
         "/data/enabled",
         "/data/query",
-        "/data/periodDigests",
         "/data/eventCandidates",
+        "/data/taskCandidates",
+        "/data/relatedCandidates",
+        "/data/snapshotGeneration",
+        "/data/diagnostics",
         "/data/selection",
       ],
     },
@@ -270,7 +289,7 @@ export const EventSpecs = {
     phase: "run",
     observation: {
       retention: "projection",
-      projectionPointers: ["/data/snapshot/active", "/data/execution"],
+      projectionPointers: ["/data/execution"],
     },
   },
   "execution.step.started": {
@@ -278,7 +297,7 @@ export const EventSpecs = {
     phase: "run",
     observation: {
       retention: "projection",
-      projectionPointers: ["/data/snapshot/active", "/data/execution", "/data/step"],
+      projectionPointers: ["/data/execution", "/data/step"],
     },
   },
   "execution.step.completed": {
@@ -286,7 +305,7 @@ export const EventSpecs = {
     phase: "run",
     observation: {
       retention: "projection",
-      projectionPointers: ["/data/snapshot/active", "/data/execution", "/data/step"],
+      projectionPointers: ["/data/execution", "/data/step"],
     },
   },
   "execution.blocked": {
@@ -294,7 +313,7 @@ export const EventSpecs = {
     phase: "run",
     observation: {
       retention: "projection",
-      projectionPointers: ["/data/snapshot/active", "/data/execution", "/data/step"],
+      projectionPointers: ["/data/execution", "/data/step"],
     },
   },
   "execution.completed": {
@@ -302,7 +321,7 @@ export const EventSpecs = {
     phase: "run",
     observation: {
       retention: "projection",
-      projectionPointers: ["/data/snapshot/active", "/data/execution"],
+      projectionPointers: ["/data/execution"],
     },
   },
   "model.started": {
@@ -528,6 +547,14 @@ export const EventSpecs = {
     observation: {
       retention: "projection",
       projectionPointers: ["/data/interactionId", "/data/toolName", "/data/callId", "/data/action"],
+    },
+  },
+  "feedback.recorded": {
+    layer: "snapshot",
+    phase: "session",
+    observation: {
+      retention: "projection",
+      projectionPointers: ["/data/requestId", "/data/rating", "/data/category"],
     },
   },
   "execution.resource.created": {
@@ -1072,6 +1099,14 @@ export const EventSpecs = {
   "profile.snapshot": {
     layer: "snapshot",
     phase: "config",
+    observation: {
+      retention: "metadata",
+      projectionPointers: [],
+    },
+  },
+  "agents.snapshot": {
+    layer: "snapshot",
+    phase: "session",
     observation: {
       retention: "metadata",
       projectionPointers: [],

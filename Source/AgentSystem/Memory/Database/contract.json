@@ -25,6 +25,62 @@
       "snapshot": "snapshots/0003.schema.sql",
       "migrationSha256": "33b34eeae8cf9b06ef5c11e7d45e9a92ecb18d42b47bf33d6f17992f8d55878a",
       "snapshotSha256": "711715b4ca4bf332e8cff707595736637b2f09f70beecbf4d1e3fe78e6674bf2"
+    },
+    {
+      "version": 4,
+      "name": "memory-provenance-and-snapshots",
+      "migration": "migrations/0004-memory-provenance-and-snapshots.sql",
+      "snapshot": "snapshots/0004.schema.sql",
+      "migrationSha256": "392a4289b7c70dbb81d5a8b2c1e17664782f59c7a0f61bfe9c81fc6642cc160c",
+      "snapshotSha256": "0a6e424736b28be310c566c3ec86556c79f99a4a05ece803e001f360c1c3b063"
+    },
+    {
+      "version": 5,
+      "name": "retire-memory-delivery-receipts",
+      "migration": "migrations/0005-retire-memory-delivery-receipts.sql",
+      "snapshot": "snapshots/0005.schema.sql",
+      "migrationSha256": "014400c7ca0959bd64604c6c32bdb939c313df92ab4a950443e0fa5ae95a84ce",
+      "snapshotSha256": "0cf7731c6e75559e863e6301523d31d0260be219189f9a4d0bfa080aca69800f"
+    },
+    {
+      "version": 6,
+      "name": "memory-evidence-and-context-boundaries",
+      "migration": "migrations/0006-memory-evidence-and-context-boundaries.sql",
+      "snapshot": "snapshots/0006.schema.sql",
+      "migrationSha256": "6c1e24107004b4b3e5a4769902077c3170c3e6328fcf437703229fa14f58e261",
+      "snapshotSha256": "48550a9cddfe870329321c97d861d906f4862b222d009ec343982a822f1b7af3"
+    },
+    {
+      "version": 7,
+      "name": "frozen-diary-index",
+      "migration": "migrations/0007-frozen-diary-index.sql",
+      "snapshot": "snapshots/0007.schema.sql",
+      "migrationSha256": "1d16c6f8aa3afb834d23aec18dd7bc0e9424e66ac9648136901cf03062bb23ca",
+      "snapshotSha256": "6beeffe015999a4b8dba10a50c183fbdd5763f3f26ba841622baca4395bafb49"
+    },
+    {
+      "version": 8,
+      "name": "memory-recall-settlements",
+      "migration": "migrations/0008-memory-recall-settlements.sql",
+      "snapshot": "snapshots/0008.schema.sql",
+      "migrationSha256": "752843dc9bbb2e7373c93a23529f2241a95565fe68550b0173ec2fa95d1bae4c",
+      "snapshotSha256": "0cee2ebbcf8267eccb3b0433ebdf375c1ccdc068f64cc3934a81aefbc511e55e"
+    },
+    {
+      "version": 9,
+      "name": "memory-task-utility",
+      "migration": "migrations/0009-memory-task-utility.sql",
+      "snapshot": "snapshots/0009.schema.sql",
+      "migrationSha256": "34b53fe2eac8c75f104b66664ba65270f332455972d4b58dc81d4033584774b8",
+      "snapshotSha256": "e943767cb2216bb805257739ad6b7e764dfcd66692c0115d533c46c72a801298"
+    },
+    {
+      "version": 10,
+      "name": "memory-dynamic-recall",
+      "migration": "migrations/0010-memory-dynamic-recall.sql",
+      "snapshot": "snapshots/0010.schema.sql",
+      "migrationSha256": "44d87ed59b261af6f24ab06de7b92c17113f00786e8bd342243cd31b82edb71c",
+      "snapshotSha256": "e943767cb2216bb805257739ad6b7e764dfcd66692c0115d533c46c72a801298"
     }
   ]
 }

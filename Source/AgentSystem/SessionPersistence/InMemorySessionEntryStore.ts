@@ -73,6 +73,18 @@ export class InMemorySessionEntryStore {
     };
   }
 
+  requestSummaries(
+    sessionId: string,
+    through: number,
+  ): import("../Session/AgentSessionHistoryWindow.js").AgentSessionHistoryRequestSummary[] {
+    const entries = this.entries.get(sessionId) ?? [];
+    return [...(this.indexesByRequest.get(sessionId)?.entries() ?? [])].flatMap(([requestId, indexes]) => {
+      const sequence = indexes[0]!;
+      const entry = entries[sequence];
+      return sequence <= through && entry ? [{ requestId, startedAt: entry.timestamp }] : [];
+    });
+  }
+
   loadForRequests(sessionId: string, requestIds: readonly string[], throughSequence: number): AgentConversationEntry[] {
     const selected = new Set(normalizeAgentSessionRequestIds(requestIds));
     if (selected.size === 0) return [];

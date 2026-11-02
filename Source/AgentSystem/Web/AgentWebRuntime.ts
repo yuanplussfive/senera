@@ -111,7 +111,12 @@ export class DefaultAgentWebRuntime implements AgentWebRuntime {
     );
     const source = decodeResponseBody(response.body, response.contentType);
     const extracted = extractWebContent(this.configuration, input, source, response.contentType, response.url);
-    const assessment = assessAgentWebDocument(source, extracted.markdown, this.configuration.fetch.render.detection);
+    const assessment = assessAgentWebDocument(
+      source,
+      extracted.markdown,
+      this.configuration.fetch.render.detection,
+      response.contentType,
+    );
     const renderStrategy = input.renderStrategy ?? this.configuration.fetch.render.strategy;
     let selectedFinalUrl = response.url;
     let selectedExtracted = extracted;
@@ -152,7 +157,6 @@ export class DefaultAgentWebRuntime implements AgentWebRuntime {
             "render_html",
             {
               url: response.url,
-              timeoutMs: Math.min(remainingTimeoutMs, this.browserRuntime.configuration.runtime.maxOperationTimeoutMs),
               settleTimeoutMs: Math.min(remainingTimeoutMs, this.configuration.fetch.render.browser.settleTimeoutMs),
               settlePollMs: this.configuration.fetch.render.browser.settlePollMs,
               stableSamples: this.configuration.fetch.render.browser.stableSamples,
@@ -162,6 +166,7 @@ export class DefaultAgentWebRuntime implements AgentWebRuntime {
               ),
             },
             browserContext,
+            remainingTimeoutMs,
           );
           const renderedSource = rendered.result.content ?? "";
           const renderedFinalUrl = rendered.result.page?.url ?? response.url;

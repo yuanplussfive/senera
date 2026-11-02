@@ -17,6 +17,7 @@ import { motionTimings, useMotionLevel, type MotionLevel } from "../../shared/mo
 import type { ChatPanelProps } from "./ChatPanelContracts";
 import { blocksSessionInput } from "../../store/session/sessionHydration";
 import { projectRuntimeUsageFromSessionSnapshot } from "../observability/runtimeDiagnosticProjection";
+import { readConversationAgent, readConversationDefaultModelId } from "../../store/session/sessionAgentSelection";
 
 export function ChatPanel({
   userProfile,
@@ -26,12 +27,21 @@ export function ChatPanel({
   navigationActions,
 }: ChatPanelProps): JSX.Element {
   const activeId = useStore((s) => s.activeSessionId);
-  const draftKey = JSON.stringify([runtime.workspaceId, activeId]);
+  const activeAgent = useStore(readConversationAgent);
+  const conversationDefaultModelId = useStore(readConversationDefaultModelId);
+  const draftKey = JSON.stringify([runtime.uploadUrl, runtime.workspaceId, activeId ?? activeAgent?.id]);
   const [composerValue, setComposerValue] = useComposerDraft(draftKey);
   const approvalMode = useStore((s) => s.executionApprovalMode);
   const activationCatalog = useStore((s) => s.activationCatalog);
   const setApprovalMode = useStore((s) => s.setExecutionApprovalMode);
-  const { session, historyFailed, historyHydrating, hydrationState } = useChatState(activeId);
+  const { session, historyFailed, historyLoading, historyHydrating, hydrationState } = useChatState(activeId);
+  const assistantProfile = useMemo(
+    () =>
+      activeAgent
+        ? { name: activeAgent.name, avatarPath: activeAgent.avatarPath, avatarDataUrl: null }
+        : userProfile.assistant,
+    [activeAgent, userProfile.assistant],
+  );
   const { level, reduceMotion, disableMotion } = useMotionLevel();
   const effectiveMotionLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
   const messages = session?.messages ?? [];
@@ -41,6 +51,23 @@ export function ChatPanel({
   const runtimeUsage = useMemo(
     () => projectRuntimeUsageFromSessionSnapshot(session?.runtimeSnapshot),
     [session?.runtimeSnapshot],
+  );
+  const composerModelConfig = useMemo(
+    () => ({ ...modelConfig, defaultModelProviderId: conversationDefaultModelId }),
+    [modelConfig, conversationDefaultModelId],
+  );
+  const composerApprovalConfig = useMemo(
+    () => ({ mode: approvalMode, onSelectMode: setApprovalMode }),
+    [approvalMode, setApprovalMode],
+  );
+  const composerRuntime = useMemo(
+    () => ({
+      draftKey,
+      socketStatus: runtime.socketStatus,
+      uploadUrl: runtime.uploadUrl,
+      uploadCsrfToken: runtime.uploadCsrfToken,
+    }),
+    [draftKey, runtime.socketStatus, runtime.uploadUrl, runtime.uploadCsrfToken],
   );
   const isRunning = currentRun?.status === "running";
   const isSettling = isRunning && (currentRun.outputState === "available" || currentRun.outputState === "committed");
@@ -103,11 +130,17 @@ export function ChatPanel({
                   sessionId={session?.sessionId ?? activeId ?? ""}
                   uploadUrl={runtime.uploadUrl}
                   historyHydrating={historyHydrating}
+                  historyLoading={historyLoading || historyHydrating}
+                  historyWindow={session?.historyWindow}
+                  historyWindowLoading={historyLoading}
+                  historyWindowFailed={historyFailed}
+                  historyWindowDisabled={runtime.socketStatus !== "open"}
+                  onLoadHistory={navigationActions?.onLoadHistory}
                   messages={messages}
                   runs={runs}
                   currentRun={isActive ? currentRun : undefined}
                   userProfile={userProfile}
-                  assistantProfile={userProfile.assistant}
+                  assistantProfile={assistantProfile}
                   onForkFromMessage={messageActions.onForkFromMessage}
                   onRegenerate={messageActions.onRegenerate}
                   onRetryRun={messageActions.onRetryRun}
@@ -116,6 +149,7 @@ export function ChatPanel({
                   onDeleteFromMessage={messageActions.onDeleteFromMessage}
                   onViewWorkflow={messageActions.onViewWorkflow}
                   onResolveInteractionInput={messageActions.onResolveInteractionInput}
+                  onRecordMessageFeedback={messageActions.onRecordMessageFeedback}
                 />
               </ErrorBoundary>
             </ChatContentMotion>
@@ -136,19 +170,15 @@ export function ChatPanel({
           cancelling={!!isCancelling}
           value={composerValue}
           onValueChange={setComposerValue}
-          modelConfig={modelConfig}
-          approvalConfig={{ mode: approvalMode, onSelectMode: setApprovalMode }}
-          runtime={{
-            draftKey,
-            socketStatus: runtime.socketStatus,
-            uploadUrl: runtime.uploadUrl,
-            uploadCsrfToken: runtime.uploadCsrfToken,
-          }}
+          modelConfig={composerModelConfig}
+          approvalConfig={composerApprovalConfig}
+          runtime={composerRuntime}
           runtimeUsage={runtimeUsage}
           activationCatalog={activationCatalog}
           onSend={messageActions.onSend}
           onCancel={messageActions.onCancel}
           onOpenSettings={navigationActions?.onOpenSettings}
+          onOpenLocalClient={navigationActions?.onOpenLocalClient}
         />
       </main>
     </UploadPreviewProvider>

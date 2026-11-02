@@ -8,6 +8,9 @@ import type { AgentContinuityPromptBudgetConfig } from "../Types/AgentToolAndMem
 import { resolveAgentDefaults } from "./AgentDefaultResolver.js";
 import { resolveModelProviderConfig } from "./AgentModelProviderDefaults.js";
 import { resolveActionPlannerClientConfig } from "./AgentPlannerDefaults.js";
+import { AgentMemoryDiaryConfigSchema } from "../Continuity/AgentMemoryDiaryContract.js";
+import { AgentMemoryRetentionPolicySchema } from "../Continuity/AgentMemoryRetention.js";
+import { resolveAgentContinuityRecallBudgetRatios } from "../Continuity/AgentContinuityRecallDefaults.js";
 
 export function resolveToolSearchConfig(config: AgentSystemConfig): ResolvedAgentToolSearchConfig {
   const defaults = resolveAgentDefaults(config);
@@ -19,10 +22,6 @@ export function resolveToolSearchConfig(config: AgentSystemConfig): ResolvedAgen
     Embedding: {
       ...defaults.ToolSearch.Embedding,
       ...config.ToolSearch?.Embedding,
-    },
-    Tokenize: {
-      ...defaults.ToolSearch.Tokenize,
-      ...config.ToolSearch?.Tokenize,
     },
     Memory: {
       ...defaults.ToolSearch.Memory,
@@ -89,14 +88,27 @@ export function resolveContinuityLearningConfig(config: AgentSystemConfig): Reso
   };
   validateContinuityRuntime(runtime);
   validateMemOSConfig(memos);
+  const recallRatios = resolveAgentContinuityRecallBudgetRatios({
+    ...defaults.ContinuityLearning.Recall,
+    ...configuredRecall,
+  });
   const provider = resolveModelProviderConfig(config, configuredClient.ModelProviderId);
   return {
     ...defaults.ContinuityLearning,
     ...config.ContinuityLearning,
     MemOS: memos,
+    Diary: AgentMemoryDiaryConfigSchema.parse({
+      ...defaults.ContinuityLearning.Diary,
+      ...config.ContinuityLearning?.Diary,
+    }),
+    Retention: AgentMemoryRetentionPolicySchema.parse({
+      ...defaults.ContinuityLearning.Retention,
+      ...config.ContinuityLearning?.Retention,
+    }),
     Recall: {
       ...defaults.ContinuityLearning.Recall,
       ...configuredRecall,
+      ...recallRatios,
       PromptBudget: resolveContinuityPromptBudget(
         defaults.ContinuityLearning.Recall.PromptBudget,
         configuredRecall?.PromptBudget,
@@ -119,8 +131,8 @@ function validateMemOSConfig(config: {
   FragmentHistoryTurns: number;
   KnowledgeCandidateLimit: number;
   AssistantPreviewTokens: number;
-  DigestInputTokenBudget: number;
-  DigestSummaryTokenLimit: number;
+  RelevanceInputTokenBudget: number;
+  FragmentSummaryTokenLimit: number;
 }): void {
   const { AutoLinkThreshold, RecallDedupeThreshold, ...integerSettings } = config;
   for (const [name, value] of Object.entries({ AutoLinkThreshold, RecallDedupeThreshold })) {

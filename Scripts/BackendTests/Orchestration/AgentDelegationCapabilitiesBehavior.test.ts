@@ -15,9 +15,13 @@ import {
 } from "../../../Source/AgentSystem/Orchestration/AgentSubagentToolGrantProjector.js";
 import { systemToolCapability } from "../../../Source/AgentSystem/SystemTools/AgentSystemToolCatalog.js";
 import { AgentSystemExtensionCatalog } from "../../../Source/AgentSystem/SystemTools/AgentSystemToolSource.js";
-import { createAgentSystemTools } from "../../../Source/AgentSystem/SystemTools/AgentSystemTools.js";
+import {
+  createAgentSystemTools,
+  listAgentSystemExtensionHostCapabilityUniverse,
+} from "../../../Source/AgentSystem/SystemTools/AgentSystemTools.js";
 import { AgentSkillScanner } from "../../../Source/AgentSystem/Skills/AgentSkillScanner.js";
 import { AgentTodoToolNames } from "../../../Source/AgentSystem/Todos/AgentTodoTypes.js";
+import type { AgentTodoService } from "../../../Source/AgentSystem/Todos/AgentTodoService.js";
 import { modelConfig, registeredTool } from "./AgentDelegationTestSupport.js";
 
 describe("agent delegation capability resolution", () => {
@@ -60,16 +64,11 @@ describe("agent delegation capability resolution", () => {
       WorkspaceApplyPatch: registeredTool("WorkspaceApplyPatch", "workspace.apply-patch", "ReadWrite"),
       GitInspect: registeredTool("GitInspect", "repository.git.inspect", "ReadOnly"),
       GitMutate: registeredTool("GitMutate", "repository.git.mutate", "ReadWrite"),
-      AgentSpawn: registeredTool("AgentSpawn", "orchestration.agent-spawn", "ReadOnly", "delegation"),
-      AgentContactSupervisor: registeredTool(
-        "AgentContactSupervisor",
-        "orchestration.agent-contact-supervisor",
-        "ReadOnly",
-        "internal",
-      ),
+      subagent: registeredTool("subagent", "orchestration.agent-spawn", "ReadOnly", "delegation"),
+      send_message: registeredTool("send_message", "orchestration.agent-contact-supervisor", "ReadOnly", "internal"),
     };
     const registry = toolRegistry(tools);
-    const authorizedToolNames = Object.keys(tools).filter((name) => name !== "AgentContactSupervisor");
+    const authorizedToolNames = Object.keys(tools).filter((name) => name !== "send_message");
     const preflight = new AgentSubagentPreflight();
     const common = {
       workspaceRoot: process.cwd(),
@@ -101,9 +100,9 @@ describe("agent delegation capability resolution", () => {
       "WorkspaceApplyPatch",
       "GitInspect",
       "GitMutate",
-      "AgentContactSupervisor",
+      "send_message",
     ]);
-    expect(worker.allowedToolNames).not.toContain("AgentSpawn");
+    expect(worker.allowedToolNames).not.toContain("subagent");
     expect(worker.capabilityCeiling.allowedAgents).toEqual([]);
 
     const delegate = await preflight.resolve({
@@ -115,7 +114,7 @@ describe("agent delegation capability resolution", () => {
       configuredThinkingLevel: "medium",
     });
     expect(delegate.launchContract.role).toMatchObject({ id: "delegate", canDelegate: true });
-    expect(delegate.allowedToolNames).toContain("AgentSpawn");
+    expect(delegate.allowedToolNames).toContain("subagent");
     expect(delegate.capabilityCeiling.allowedAgents).toContain("reviewer");
     expect(delegate.model.thinkingLevel).toBe("medium");
 
@@ -143,12 +142,12 @@ describe("agent delegation capability resolution", () => {
       "WorkspaceFind",
       "WorkspaceList",
       "GitInspect",
-      "AgentContactSupervisor",
+      "send_message",
     ]);
     expect(reviewer.allowedToolNames).not.toContain("ShellCommandTool");
     expect(reviewer.allowedToolNames).not.toContain("WorkspaceApplyPatch");
     expect(reviewer.allowedToolNames).not.toContain("GitMutate");
-    expect(reviewer.allowedToolNames).not.toContain("AgentSpawn");
+    expect(reviewer.allowedToolNames).not.toContain("subagent");
   });
 
   test("monotonically narrows exact Tool and role identities for nested children", async () => {
@@ -156,12 +155,7 @@ describe("agent delegation capability resolution", () => {
       WorkspaceRead: registeredTool("WorkspaceRead", "workspace.file.read", "ReadOnly"),
       WorkspaceGrep: registeredTool("WorkspaceGrep", "workspace.content.search", "ReadOnly"),
       GitInspect: registeredTool("GitInspect", "repository.git.inspect", "ReadOnly"),
-      AgentContactSupervisor: registeredTool(
-        "AgentContactSupervisor",
-        "orchestration.agent-contact-supervisor",
-        "ReadOnly",
-        "internal",
-      ),
+      send_message: registeredTool("send_message", "orchestration.agent-contact-supervisor", "ReadOnly", "internal"),
     };
     const registry = toolRegistry(tools);
     const inheritedCapabilityCeiling = {
@@ -204,9 +198,12 @@ describe("agent delegation capability resolution", () => {
 
   test("loads every built-in role against the real extension catalog with concrete Tool grants", async () => {
     const registry = new AgentExtensionRegistry();
-    const definitions = createAgentSystemTools(modelConfig());
+    const definitions = createAgentSystemTools(modelConfig(), undefined, {
+      todos: {} as AgentTodoService,
+    });
     new AgentSystemExtensionCatalog().registerRoot(registry, path.resolve("System", "Extensions"), {
       capabilities: new Set([...listDefaultAgentHostCapabilityNames(), ...definitions.map(systemToolCapability)]),
+      capabilityUniverse: listAgentSystemExtensionHostCapabilityUniverse(modelConfig()),
     });
     const authorizedToolNames = registry
       .listTools()
@@ -215,11 +212,11 @@ describe("agent delegation capability resolution", () => {
     const roleCatalog = new AgentSubagentRoleCatalog();
     const preflight = new AgentSubagentPreflight({ roleCatalog });
 
-    expect(registry.getTool("AgentSpawn")).toMatchObject({
-      handler: { kind: "HostCapability", capability: AgentHostCapabilityNames.AgentSpawn },
+    expect(registry.getTool("subagent")).toMatchObject({
+      handler: { kind: "HostCapability", capability: AgentHostCapabilityNames.Subagent },
       childGrant: "delegation",
     });
-    expect(registry.getTool("AgentContactSupervisor")).toMatchObject({ childGrant: "internal" });
+    expect(registry.getTool("send_message")).toMatchObject({ childGrant: "internal" });
     for (const name of Object.values(AgentTodoToolNames)) {
       expect(registry.getTool(name), name).toMatchObject({
         childGrant: "internal",
@@ -242,7 +239,7 @@ describe("agent delegation capability resolution", () => {
       const definition = roleCatalog.resolve(process.cwd(), role.id);
       expect(plan.launchContract.role).toMatchObject({ id: role.id, canDelegate: role.canDelegate });
       expect(plan.pinnedSkills.map((skill) => skill.name)).toEqual([...definition.skills]);
-      expect(plan.allowedToolNames).toContain("AgentContactSupervisor");
+      expect(plan.allowedToolNames).toContain("send_message");
       expect(plan.allowedToolNames).toEqual(expect.arrayContaining(Object.values(AgentTodoToolNames)));
       expect(plan.allowedToolNames).toContain("GitInspect");
       expect(plan.allowedToolNames).not.toEqual(expect.arrayContaining(["read", "grep", "git", "bash"]));
@@ -254,8 +251,8 @@ describe("agent delegation capability resolution", () => {
       } else {
         expect(plan.allowedToolNames).toContain("GitMutate");
       }
-      if (role.canDelegate) expect(plan.allowedToolNames).toContain("AgentSpawn");
-      else expect(plan.allowedToolNames).not.toContain("AgentSpawn");
+      if (role.canDelegate) expect(plan.allowedToolNames).toContain("subagent");
+      else expect(plan.allowedToolNames).not.toContain("subagent");
     }
   });
 });

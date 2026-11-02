@@ -1,130 +1,115 @@
-import { useMemo, useState } from "react";
-import type { WsRequest } from "../../api/eventTypes";
-import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
-import { cn } from "../../lib/util";
-import { AppIcon, Tabs, TabsContent, TabsList, TabsTrigger, type AppIconName } from "../../shared/ui";
-import { useStore, type RunRecord } from "../../store/sessionStore";
-import { ContinuityOverviewView } from "./ContinuityOverviewView";
-import { ContinuityRecallView } from "./ContinuityRecallView";
+import "../observability/insights.css";
+import { useCallback, useRef, useState } from "react";
+import { frontendFeatureMessage as t } from "../../i18n/frontendFeatureMessageCatalog";
+import { useStore } from "../../store/sessionStore";
+import { AppIcon, Dialog, DialogContent, IconButton, MenuSelect } from "../../shared/ui";
+import { ContinuityOverviewView, createContinuityInspectionState } from "./ContinuityOverviewView";
 
-export interface ContinuityPanelProps {
-  send: (request: WsRequest) => boolean;
-  connected: boolean;
-}
-
-type ContinuityPanelTab = "overview" | "knowledge";
-
-const ContinuityPanelTabs: readonly {
-  readonly id: ContinuityPanelTab;
-  readonly label: FrontendMessageKey;
-  readonly icon: AppIconName;
-}[] = [
-  { id: "overview", label: "continuity.tab.overview", icon: "book-open" },
-  { id: "knowledge", label: "continuity.tab.knowledge", icon: "archive" },
-];
-
-export function ContinuityPanel(_props: ContinuityPanelProps): JSX.Element {
-  const activeSessionId = useStore((state) => state.activeSessionId);
-  const session = useStore((state) => (activeSessionId ? state.sessions[activeSessionId] : undefined));
-  const viewedRunId = useStore((state) => (activeSessionId ? state.viewedRunIdBySession[activeSessionId] : undefined));
-  const run = useMemo(() => selectRun(session?.runs ?? [], viewedRunId), [session?.runs, viewedRunId]);
-  const [requestedTab, setRequestedTab] = useState<ContinuityPanelTab>("overview");
-
-  if (!run?.continuity) {
-    return <ContinuityEmpty hasHistory={Boolean(session?.runs.length)} />;
-  }
-
-  const availableTabs = ContinuityPanelTabs;
-  const selectedTab = availableTabs.find((tab) => tab.id === requestedTab) ?? availableTabs[0];
-
-  return (
-    <Tabs
-      value={selectedTab.id}
-      onValueChange={(value) => setRequestedTab(value as ContinuityPanelTab)}
-      className="flex h-full min-h-0 flex-col bg-surface-panel"
-      data-continuity-panel
-      data-testid="continuity-panel"
-    >
-      <header className="shrink-0 border-b border-line-subtle bg-surface-panel">
-        <div className="flex items-center justify-between gap-3 px-5 pb-3 pt-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="grid h-8 w-8 shrink-0 place-items-center text-content-secondary">
-              <AppIcon icon="clock" size={16} aria-hidden="true" />
-            </span>
-            <div className="min-w-0">
-              <p className="truncate text-[11px] font-medium leading-4 text-content-muted">
-                {frontendMessage("continuity.label")}
-              </p>
-              <h2 className="truncate text-[15px] font-semibold leading-5 text-content-primary">
-                {frontendMessage("continuity.title")}
-              </h2>
-            </div>
-          </div>
-          <span className="flex shrink-0 items-center gap-2 text-[11px] leading-4 text-content-secondary">
-            <span
-              className={cn("h-2 w-2 rounded-full", run?.continuity?.enabled ? "bg-moss-500" : "bg-ink-300")}
-              aria-hidden="true"
-            />
-            {frontendMessage("continuity.currentTurn")}
+export function ContinuityPanel(): JSX.Element {
+  const sessionId = useStore((state) => state.activeSessionId);
+  const session = useStore((state) => (sessionId ? state.sessions[sessionId] : undefined));
+  const viewedRunId = useStore((state) => (sessionId ? state.viewedRunIdBySession[sessionId] : undefined));
+  const setViewedRun = useStore((state) => state.setViewedRun);
+  const runs = session?.runs ?? [];
+  const run = viewedRunId ? runs.find((item) => item.requestId === viewedRunId) : runs.at(-1);
+  const loading = useStore((state) =>
+    sessionId && run ? state.runHistoryDetailStates[sessionId]?.[run.requestId] === "loading" : false,
+  );
+  const key = JSON.stringify([sessionId, run?.requestId]);
+  const [inspection, setInspection] = useState(() => ({ key, state: createContinuityInspectionState() }));
+  const state = inspection.key === key ? inspection.state : createContinuityInspectionState();
+  const [expanded, setExpanded] = useState(false);
+  const scrollPosition = useRef({ key, top: 0 });
+  const restoreScrollPosition = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (node) node.scrollTop = scrollPosition.current.key === key ? scrollPosition.current.top : 0;
+    },
+    [key],
+  );
+  const memory = run?.continuity;
+  const status = memory
+    ? t(memory.enabled ? "continuity.status.ready" : "continuity.status.paused")
+    : t("continuity.status.waiting");
+  const body = (
+    <section className="session-insights" data-testid={expanded ? "continuity-panel-dialog" : "continuity-panel"}>
+      <header className="insights-header">
+        <div>
+          <h2>{t("continuity.title")}</h2>
+          <span className="insights-header-caption">
+            {memory ? status : t(loading ? "insights.historyLoading" : "continuity.status.waiting")}
           </span>
         </div>
-        <TabsList
-          variant="underline"
-          aria-label={frontendMessage("continuity.title")}
-          className="grid min-h-12 w-full min-w-0 grid-cols-2 border-t border-line-subtle px-2"
+        <IconButton
+          size="sm"
+          tone="muted"
+          label={t(expanded ? "continuity.collapse" : "continuity.expand")}
+          onClick={() => setExpanded(!expanded)}
         >
-          {availableTabs.map((tab) => {
-            return (
-              <TabsTrigger
-                key={tab.id}
-                value={tab.id}
-                className={cn(
-                  "h-auto min-h-12 min-w-0 gap-2 rounded-none px-1 text-[12px]",
-                  "data-[state=active]:text-accent-content",
-                )}
-              >
-                <AppIcon icon={tab.icon} size={16} aria-hidden="true" />
-                <span className="truncate">{frontendMessage(tab.label)}</span>
-              </TabsTrigger>
-            );
-          })}
-        </TabsList>
+          <AppIcon icon={expanded ? "restore" : "maximize"} size={14} />
+        </IconButton>
       </header>
-
-      <TabsContent value="overview" className="min-h-0 flex-1 overflow-y-auto" data-continuity-tab="overview">
-        <ContinuityOverviewView run={run} />
-      </TabsContent>
-      <TabsContent value="knowledge" className="min-h-0 flex-1 overflow-y-auto" data-continuity-tab="knowledge">
-        <ContinuityRecallView run={run} />
-      </TabsContent>
-    </Tabs>
-  );
-}
-
-function selectRun(runs: readonly RunRecord[], viewedRunId: string | undefined): RunRecord | undefined {
-  if (viewedRunId) {
-    const viewedRun = runs.find((run) => run.requestId === viewedRunId);
-    if (viewedRun) return viewedRun;
-  }
-  return runs.at(-1);
-}
-
-function ContinuityEmpty({ hasHistory }: { hasHistory: boolean }): JSX.Element {
-  return (
-    <section
-      className="flex h-full min-h-0 flex-col bg-surface-panel px-5 pt-6"
-      data-continuity-panel
-      data-continuity-empty
-      data-testid="continuity-empty"
-    >
-      <p className="text-[11px] font-medium text-accent-content">{frontendMessage("continuity.label")}</p>
-      <h2 className="mt-2 text-[16px] font-semibold leading-6 text-content-primary">
-        {frontendMessage("continuity.empty.title")}
-      </h2>
-      <p className="mt-1 max-w-[34rem] text-[13px] leading-6 text-content-secondary">
-        {frontendMessage(hasHistory ? "continuity.empty.history" : "continuity.empty.newRun")}
-      </p>
-      <span className="mt-5 block h-px w-10 bg-accent-solid" aria-hidden="true" />
+      <div className="insights-toolbar">
+        <MenuSelect
+          value={viewedRunId ?? "latest"}
+          ariaLabel={t("insights.selectTurn")}
+          placeholder={t("insights.noTurns")}
+          triggerClassName="w-full"
+          options={[
+            { value: "latest", label: t("insights.latest"), description: runs.at(-1)?.input },
+            ...runs
+              .map((item, index) => ({
+                value: item.requestId,
+                label: t("insights.turn", { index: index + 1 }),
+                description: item.input,
+              }))
+              .reverse(),
+          ]}
+          onChange={(value) => {
+            if (sessionId) setViewedRun(sessionId, value === "latest" ? undefined : value);
+          }}
+        />
+      </div>
+      {run ? <p className="insights-selected-input">{run.input}</p> : null}
+      <div
+        ref={restoreScrollPosition}
+        className="insights-scroll insights-dashboard continuity-scroll"
+        onScroll={(event) => {
+          scrollPosition.current = { key, top: event.currentTarget.scrollTop };
+        }}
+      >
+        {run && !(loading && !run.continuity) ? (
+          <ContinuityOverviewView
+            run={run}
+            state={state}
+            onStateChange={(patch) =>
+              setInspection((current) => ({
+                key,
+                state: { ...(current.key === key ? current.state : createContinuityInspectionState()), ...patch },
+              }))
+            }
+          />
+        ) : (
+          <p className="insights-empty" data-testid="continuity-empty">
+            {t(loading ? "insights.historyLoading" : "continuity.empty.newRun")}
+          </p>
+        )}
+      </div>
     </section>
+  );
+  return (
+    <>
+      {!expanded ? body : <div className="session-insights" />}
+      <Dialog open={expanded} onOpenChange={setExpanded}>
+        <DialogContent
+          title={t("continuity.title")}
+          showHeader={false}
+          showClose={false}
+          className="h-[min(880px,calc(100dvh_-_24px))] w-[min(1120px,calc(100vw_-_24px))] max-h-none max-w-none"
+          bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden"
+        >
+          {expanded ? body : null}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

@@ -40,7 +40,7 @@ export interface AgentLoggerOptions {
   output?: NodeJS.WriteStream;
   sink?: AgentLoggerSink;
   stream?: string;
-  /** Human-facing display zone; persisted timestamps remain UTC instants. */
+  /** Console display zone; durable records keep UTC instants and are projected to Shanghai by the log store. */
   timeZone?: string | (() => string);
 }
 
@@ -69,6 +69,15 @@ export class AgentLogger {
 
   scoped(stream: string): AgentLogger {
     return new AgentLogger({ ...this.options, stream, output: this.output });
+  }
+
+  /** A single indexed diagnostic record; external details are never printed inline. */
+  diagnostic(
+    message: string,
+    record: Pick<AgentLoggerRecord, "sessionId" | "requestId" | "step" | "detailId" | "details" | "tokens">,
+  ): void {
+    this.clearTransient();
+    this.line("info", AgentConsoleTheme.brand, message, {}, [...(record.tokens ?? [])], record);
   }
 
   banner(title: string, details: Record<string, unknown> = {}): void {

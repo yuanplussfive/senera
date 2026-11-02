@@ -38,10 +38,13 @@
       "script": {
         "type": "string",
         "minLength": 1,
+        "pattern": "\\S",
         "description": "要启动的终端命令脚本。"
       },
       "cwd": {
-        "type": "string"
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S"
       },
       "workspaceEffect": {
         "type": "string",
@@ -51,14 +54,19 @@
       "title": {
         "type": "string",
         "minLength": 1,
+        "pattern": "\\S",
         "maxLength": 80,
         "description": "用于终端标签的简短任务标题，不要重复完整命令。"
       },
       "columns": {
-        "type": "number"
+        "type": "integer",
+        "minimum": 20,
+        "maximum": 500
       },
       "rows": {
-        "type": "number"
+        "type": "integer",
+        "minimum": 5,
+        "maximum": 200
       }
     },
     "required": ["mode", "dialect", "script", "workspaceEffect"],
@@ -73,7 +81,6 @@
   },
   "runtime": {
     "Lifecycle": "Persistent",
-    "ProtocolVersion": 2,
     "ResultAssessment": "ProcessExit",
     "Scheduling": "SelfManaged",
     "Capabilities": {
@@ -129,6 +136,7 @@
   },
   "outputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
+    "x-senera-model-output": { "omit": ["/command"] },
     "type": "object",
     "properties": {
       "resourceId": {

@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
-import { Dialog, DialogActionButton, DialogActions, DialogContent, MenuSelect } from "../../../shared/ui";
-import { IconOption } from "../../chat/ModelConfigPrimitives";
-import { inferModelProviderIcon } from "../../chat/ModelProviderIcon";
+import { Dialog, DialogActionButton, DialogActions, DialogContent } from "../../../shared/ui";
+import { ModelSelect, modelSelectOption } from "../../../shared/models/ModelSelect";
 import type { ModelProviderDraft, ProviderEndpointDraft } from "../../chat/modelConfigTypes";
 
 export interface DefaultModelCandidate {
@@ -258,52 +257,21 @@ function ReplacementControl({
       <span className="text-[12px] font-medium text-ink-800">
         {frontendMessage("settings.modelLifecycle.replacement.label")}
       </span>
-      <MenuSelect
+      <ModelSelect
+        ariaLabel={frontendMessage("settings.modelLifecycle.replacement.label")}
         value={value}
         placeholder={frontendMessage("settings.modelLifecycle.replacement.placeholder")}
         disabled={disabled || candidateModels.length === 0}
-        options={candidateModels.map(({ model, provider }) => ({
-          value: model.Id,
-          label: `${model.Model} · ${provider.Id}`,
-        }))}
-        renderValue={(selected, option) => {
-          const candidate = candidateModels.find(({ model }) => model.Id === selected);
-          return candidate ? (
-            <IconOption
-              value={candidate.model.Icon ?? inferModelProviderIcon(candidate.model.Model) ?? "openai"}
-              label={option?.label ?? selected}
-              size={16}
-            />
-          ) : null;
-        }}
-        renderOption={(option) => {
-          const candidate = candidateModels.find(({ model }) => model.Id === option.value);
-          return candidate ? (
-            <IconOption
-              value={candidate.model.Icon ?? inferModelProviderIcon(candidate.model.Model) ?? "openai"}
-              label={option.label}
-              size={16}
-            />
-          ) : (
-            option.label
-          );
-        }}
+        options={candidateModels.map(({ model, provider }) =>
+          modelSelectOption({
+            id: model.Id,
+            model: model.Model,
+            providerId: provider.Id,
+            icon: model.Icon ?? provider.Icon,
+          }),
+        )}
         onChange={onChange}
       />
-      <select
-        className="sr-only"
-        value={value}
-        disabled={disabled || candidateModels.length === 0}
-        aria-label={frontendMessage("settings.modelLifecycle.replacement.label")}
-        onChange={(event) => onChange(event.currentTarget.value)}
-      >
-        <option value="">{frontendMessage("settings.modelLifecycle.replacement.placeholder")}</option>
-        {candidateModels.map(({ model, provider }) => (
-          <option key={model.Id} value={model.Id}>
-            {model.Model} · {provider.Id}
-          </option>
-        ))}
-      </select>
       {candidateModels.length === 0 ? (
         <p className="rounded-md border border-ink-200 bg-paper-100 px-3 py-2 text-[12px] leading-5 text-ink-700">
           {frontendMessage("settings.modelLifecycle.noReplacement")}

@@ -7,6 +7,10 @@ import {
 } from "./AgentMemorySourceRepository.js";
 
 export type { AgentMemoryCompletedTurnInput } from "./AgentMemorySourceRepository.js";
+export type AgentMemorySessionPort = Pick<
+  AgentMemoryService,
+  "recordCompletedTurn" | "deleteSession" | "deleteFromSessionRequest"
+>;
 
 export interface AgentMemoryDeletionSink {
   deleteSession?(sessionId: string): void;

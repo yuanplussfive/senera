@@ -12,10 +12,21 @@ const schemaOptions = {
   allowUnionTypes: true,
 } as const;
 
+const defaultingSchemaOptions = {
+  ...schemaOptions,
+  useDefaults: true,
+} as const;
+
 const schemaValidators = {
   "draft-07": new Ajv(schemaOptions),
   "2019-09": new Ajv2019(schemaOptions),
   "2020-12": new Ajv2020(schemaOptions),
+} as const;
+
+const defaultingSchemaValidators = {
+  "draft-07": new Ajv(defaultingSchemaOptions),
+  "2019-09": new Ajv2019(defaultingSchemaOptions),
+  "2020-12": new Ajv2020(defaultingSchemaOptions),
 } as const;
 
 const schemaDialectDefinitions = [
@@ -29,6 +40,7 @@ const schemaDialectDefinitions = [
       "https://json-schema.org/draft-07/schema#",
     ],
     validator: schemaValidators["draft-07"],
+    defaultingValidator: defaultingSchemaValidators["draft-07"],
   },
   {
     dialect: "2019-09" as const,
@@ -40,6 +52,7 @@ const schemaDialectDefinitions = [
       "https://json-schema.org/draft/2019-09/schema#",
     ],
     validator: schemaValidators["2019-09"],
+    defaultingValidator: defaultingSchemaValidators["2019-09"],
   },
   {
     dialect: "2020-12" as const,
@@ -51,6 +64,7 @@ const schemaDialectDefinitions = [
       "https://json-schema.org/draft/2020-12/schema#",
     ],
     validator: schemaValidators["2020-12"],
+    defaultingValidator: defaultingSchemaValidators["2020-12"],
   },
 ] as const;
 
@@ -59,6 +73,7 @@ const schemaDialectAliases = new Map<string, (typeof schemaDialectDefinitions)[n
 );
 
 const validators = new WeakMap<object, ValidateFunction>();
+const defaultingValidators = new WeakMap<object, ValidateFunction>();
 
 export interface AgentToolContractValidationIssue {
   readonly keyword: string;
@@ -69,14 +84,24 @@ export interface AgentToolContractValidationIssue {
   readonly parameters: Readonly<Record<string, unknown>>;
 }
 
-export function validateToolSignatureArguments(input: {
-  contract: AgentPromptContractView;
-  args: Record<string, unknown>;
-}): AgentToolContractValidationIssue[] {
-  return validateToolContractValue({
-    schema: input.contract.jsonSchema,
-    value: input.args,
-  });
+export type AgentToolContractArgumentMaterialization =
+  | { readonly ok: true; readonly value: Record<string, unknown> }
+  | { readonly ok: false; readonly issues: readonly AgentToolContractValidationIssue[] };
+
+/**
+ * Materializes JSON Schema defaults on an isolated invocation copy before
+ * passing arguments to a tool implementation. Tool packages therefore own
+ * both their public defaults and their validation; implementations never need
+ * a second schema merely to turn omitted optional fields into values.
+ */
+export function materializeToolContractArguments(input: {
+  schema: Readonly<Record<string, unknown>>;
+  args: Readonly<Record<string, unknown>>;
+}): AgentToolContractArgumentMaterialization {
+  const value = structuredClone(input.args) as Record<string, unknown>;
+  const validate = defaultingValidatorFor(input.schema);
+  if (validate(value)) return { ok: true, value };
+  return { ok: false, issues: (validate.errors ?? []).map(projectAjvIssue) };
 }
 
 export function validateToolContractValue(input: {
@@ -137,6 +162,20 @@ function validatorFor(schema: Readonly<Record<string, unknown>>): ValidateFuncti
       : schema;
   const validate = dialect.validator.compile(schemaForCompilation);
   validators.set(schema, validate);
+  return validate;
+}
+
+function defaultingValidatorFor(schema: Readonly<Record<string, unknown>>): ValidateFunction {
+  const cached = defaultingValidators.get(schema);
+  if (cached) return cached;
+  const dialect = schemaDialectFor(schema);
+  const declaredDialect = schema.$schema;
+  const schemaForCompilation =
+    typeof declaredDialect === "string" && declaredDialect !== dialect.canonicalUri
+      ? { ...schema, $schema: dialect.canonicalUri }
+      : schema;
+  const validate = dialect.defaultingValidator.compile(schemaForCompilation);
+  defaultingValidators.set(schema, validate);
   return validate;
 }
 

@@ -24,7 +24,7 @@
     "properties": {
       "tools": {
         "type": "array",
-        "items": { "type": "string" },
+        "items": { "type": "string", "minLength": 1, "pattern": "\\S" },
         "minItems": 1,
         "maxItems": 12,
         "description": "需要加载的准确工具名。"
@@ -32,6 +32,7 @@
       "catalogRevision": {
         "type": "string",
         "minLength": 1,
+        "pattern": "\\S",
         "description": "来自 ToolSearch 的目录 revision；不匹配时不会改变当前会话。"
       }
     },
@@ -132,7 +133,6 @@
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
   "runtime": {
     "Lifecycle": "Immediate",
-    "ProtocolVersion": 2,
     "ResultAssessment": "ProcessExit",
     "Scheduling": "Parallel",
     "Capabilities": { "Cancellation": true }
@@ -163,7 +163,7 @@
         "Risk": { "SideEffect": "context-load", "Permission": "none" }
       }
     ],
-    "UseCases": ["当前规划协议要求显式加载，且已经通过 ToolDescribe 确认工具契约时。"],
+    "UseCases": ["当前规划协议要求显式加载，且已经从搜索 contracts、ToolDescribe 或准备反馈取得当前契约时。"],
     "Tags": ["工具加载", "会话工具", "按需加载"]
   },
   "evidenceCapabilities": []

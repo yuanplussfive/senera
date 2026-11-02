@@ -12,7 +12,8 @@ interface VerifySuitesConfig {
 
 interface VerifySuiteDefinition {
   description: string;
-  patterns: string[];
+  includes?: string[];
+  patterns?: string[];
 }
 
 const workspaceRoot = process.cwd();
@@ -20,7 +21,8 @@ const configPath = path.join(workspaceRoot, "Scripts", "VerifySuites.json");
 const distScriptsRoot = path.join(workspaceRoot, "Dist", "Scripts");
 const commandArguments = process.argv.slice(2);
 const shouldListSuites = commandArguments.includes("--list");
-const suiteNames = commandArguments.filter((argument) => argument !== "--list");
+const shouldListScripts = commandArguments.includes("--list-scripts");
+const suiteNames = commandArguments.filter((argument) => argument !== "--list" && argument !== "--list-scripts");
 const config = readConfig();
 const selectedSuites = suiteNames.length > 0 ? suiteNames : [config.defaultSuite];
 
@@ -42,6 +44,11 @@ async function main(): Promise<void> {
 
   const scripts = resolveSuiteScripts(selectedSuites);
   assert.ok(scripts.length > 0, `No verification scripts matched suites: ${selectedSuites.join(", ")}`);
+
+  if (shouldListScripts) {
+    for (const script of scripts) console.log(toPosixRelative(workspaceRoot, script));
+    return;
+  }
 
   for (const script of scripts) {
     await runScript(script);
@@ -66,14 +73,18 @@ function listSuites(): void {
   }
 }
 
-function resolveSuiteScripts(names: readonly string[]): string[] {
+function resolveSuiteScripts(names: readonly string[], ancestors: readonly string[] = []): string[] {
   const scripts: string[] = [];
   const seen = new Set<string>();
 
   for (const name of names) {
+    assert.ok(!ancestors.includes(name), `Circular verification suites: ${[...ancestors, name].join(" -> ")}`);
     const suite = config.suites[name];
     assert.ok(suite, `Unknown verification suite: ${name}`);
-    for (const script of resolveSuiteDefinition(name, suite)) {
+    assert.ok(suite.includes?.length || suite.patterns?.length, `Verification suite ${name} must not be empty.`);
+    const included = resolveSuiteScripts(suite.includes ?? [], [...ancestors, name]);
+    const matched = suite.patterns ? resolveSuiteDefinition(name, suite.patterns) : [];
+    for (const script of [...included, ...matched]) {
       if (seen.has(script)) {
         continue;
       }
@@ -85,11 +96,11 @@ function resolveSuiteScripts(names: readonly string[]): string[] {
   return scripts;
 }
 
-function resolveSuiteDefinition(name: string, suite: VerifySuiteDefinition): string[] {
-  assert.ok(Array.isArray(suite.patterns), `Verification suite ${name} must define patterns.`);
+function resolveSuiteDefinition(name: string, patterns: readonly string[]): string[] {
+  assert.ok(Array.isArray(patterns), `Verification suite ${name} must define patterns.`);
 
-  const includePatterns = suite.patterns.filter((pattern) => !pattern.startsWith("!"));
-  const excludePatterns = suite.patterns.filter((pattern) => pattern.startsWith("!"));
+  const includePatterns = patterns.filter((pattern) => !pattern.startsWith("!"));
+  const excludePatterns = patterns.filter((pattern) => pattern.startsWith("!"));
   assert.ok(includePatterns.length > 0, `Verification suite ${name} must include at least one script pattern.`);
 
   const scripts: string[] = [];

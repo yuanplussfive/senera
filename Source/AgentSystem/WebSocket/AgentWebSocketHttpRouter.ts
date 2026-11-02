@@ -13,14 +13,19 @@ import type { AgentChannelWebhookApi } from "../Channels/AgentChannelWebhookApi.
 import type { AgentSelfHttpApi } from "../SelfService/AgentSelfHttpApi.js";
 import type { AgentArtifactMemoryHttpApi } from "../Memory/AgentArtifactMemoryHttpApi.js";
 import type { AgentProfileAvatarHttpApi } from "../Session/AgentProfileAvatarHttpApi.js";
+import type { AgentWorkspaceCheckpointHttpApi } from "../WorkspaceResources/AgentWorkspaceCheckpointHttpApi.js";
+import type { AgentOneBot11ClientHttpApi } from "../Channels/Client/AgentOneBot11ClientHttpApi.js";
+import type { AgentSessionInsightsHttpApi } from "../Session/AgentSessionInsightsHttpApi.js";
 
 export class AgentWebSocketHttpRouter {
   constructor(
     private readonly options: {
       uploadApi: AgentUploadHttpApi;
+      sessionInsightsApi?: AgentSessionInsightsHttpApi;
       providerCredentialApi?: AgentProviderCredentialHttpApi;
       extensionSecretApi?: AgentExtensionSecretHttpApi;
       workspaceResourceApi?: AgentWorkspaceResourceHttpApi;
+      workspaceCheckpointApi?: AgentWorkspaceCheckpointHttpApi;
       profileAvatarApi?: AgentProfileAvatarHttpApi;
       staticFrontendApi?: AgentStaticFrontendHttpApi;
       authenticationApi?: AgentAuthenticationHttpApi;
@@ -30,10 +35,27 @@ export class AgentWebSocketHttpRouter {
       selfApi?: AgentSelfHttpApi;
       artifactMemoryApi?: AgentArtifactMemoryHttpApi;
       accessGuard?: AgentServerAccessGuard;
+      channelClientApi?: AgentOneBot11ClientHttpApi;
+      agentDirectoryApi?: import("../Profile/AgentDirectoryHttpApi.js").AgentDirectoryHttpApi;
     },
   ) {}
 
   async handle(request: http.IncomingMessage, response: http.ServerResponse): Promise<void> {
+    if (this.options.sessionInsightsApi?.canHandle(request)) {
+      if (request.method !== "OPTIONS" && !this.authorize(request, response)) return;
+      await this.options.sessionInsightsApi.handle(request, response);
+      return;
+    }
+    if (this.options.agentDirectoryApi?.canHandle(request)) {
+      if (request.method !== "OPTIONS" && !this.authorize(request, response)) return;
+      await this.options.agentDirectoryApi.handle(request, response);
+      return;
+    }
+    if (this.options.channelClientApi?.canHandle(request)) {
+      if (!this.authorize(request, response)) return;
+      await this.options.channelClientApi.handle(request, response);
+      return;
+    }
     // Channel webhooks are authenticated by platform secrets, not browser
     // sessions. They must run outside the CSRF guard.
     if (this.options.channelWebhookApi?.canHandle(request)) {
@@ -87,6 +109,14 @@ export class AgentWebSocketHttpRouter {
         return;
       }
       await this.options.workspaceResourceApi.handle(request, response);
+      return;
+    }
+
+    if (this.options.workspaceCheckpointApi?.canHandle(request)) {
+      if (request.method !== "OPTIONS" && !this.authorize(request, response)) {
+        return;
+      }
+      await this.options.workspaceCheckpointApi.handle(request, response);
       return;
     }
 

@@ -168,7 +168,10 @@ export function OrganicTimelineRail({
             observeGeometryTargets(resizeObserver);
             measure();
           });
-    mutationObserver?.observe(root, { characterData: true, childList: true, subtree: true });
+    // Text changes that alter geometry are already reported by ResizeObserver.
+    // Watching character data as well turns every streamed token into a full
+    // node query and rect read even when the rope topology has not changed.
+    mutationObserver?.observe(root, { childList: true, subtree: true });
     root.addEventListener("scroll", measure, { capture: true, passive: true });
     measure();
     void document.fonts?.ready.then(measure);

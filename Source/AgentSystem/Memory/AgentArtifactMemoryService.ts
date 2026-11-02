@@ -7,6 +7,8 @@ import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { AgentArtifactManifestIndexCache } from "./AgentArtifactManifestIndexCache.js";
 import { assertArtifactMemoryReadRequestWithinLimits, readArtifactMemories } from "./AgentArtifactMemoryReader.js";
 import type { ArtifactMemoryReadArguments } from "./AgentArtifactMemoryTypes.js";
+import { artifactReadRequests } from "./AgentArtifactMemoryTypes.js";
+import type { AgentToolTokenBudget } from "../Text/AgentTurnTokenBudget.js";
 
 const ArtifactManifestIndexes = new AgentArtifactManifestIndexCache();
 
@@ -17,6 +19,7 @@ export async function readAgentArtifactMemoryContent(
     readonly workspaceRoot: string;
     readonly artifactManifestIndex?: AgentArtifactManifestIndexCache;
     readonly signal?: AbortSignal;
+    readonly tokenBudget?: AgentToolTokenBudget;
   },
 ) {
   const artifacts = resolveArtifactsConfig(options.config);
@@ -25,7 +28,7 @@ export async function readAgentArtifactMemoryContent(
   const manifests = await (options.artifactManifestIndex ?? ArtifactManifestIndexes).load({
     artifactRoot,
     workspaceRoot: options.workspaceRoot,
-    requiredArtifactIds: args.artifactUris.flatMap((uri) => parseAgentArtifactUri(uri) ?? []),
+    requiredArtifactIds: artifactReadRequests(args).flatMap(({ uri }) => parseAgentArtifactUri(uri) ?? []),
   });
   return readArtifactMemories(args, manifests, {
     workspaceRoot: options.workspaceRoot,
@@ -33,6 +36,9 @@ export async function readAgentArtifactMemoryContent(
     maxArtifacts: artifacts.MemoryReadMaxArtifacts,
     maxConcurrency: artifacts.MemoryReadMaxConcurrency,
     signal: options.signal,
+    model: options.tokenBudget?.model,
+    tokenLimit:
+      options.tokenBudget?.availableTokens(artifacts.ToolObservationMaxTokens) ?? artifacts.ToolObservationMaxTokens,
   });
 }
 

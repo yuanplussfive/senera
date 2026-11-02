@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -25,6 +26,7 @@ import scrollbarStyles from "../../styles/scrollbar.css?inline";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { useAppearance } from "../theme/useAppearance";
 import { StateView } from "../ui";
+import { workspaceWorkerError } from "./workspaceWorkerError";
 
 const themes: ThemesType = { light: "github-light", dark: "github-dark-dimmed" };
 const poolOptions = {
@@ -47,6 +49,7 @@ const HighlightRuntimeContext = createContext<
   | {
       state: HighlightState;
       retry: () => void;
+      activate: () => void;
     }
   | undefined
 >(undefined);
@@ -62,7 +65,10 @@ interface WorkspaceSourceProps {
 export function WorkspaceSourceRuntime({ children }: { children: ReactNode }): JSX.Element {
   const [state, setState] = useState<HighlightState>({ status: "loading" });
   const [revision, setRevision] = useState(0);
+  const [enabled, setEnabled] = useState(false);
+  const activate = useCallback(() => setEnabled(true), []);
   useEffect(() => {
+    if (!enabled) return;
     let active = true;
     let pool: WorkerPoolManager;
     setState({ status: "loading" });
@@ -70,7 +76,7 @@ export function WorkspaceSourceRuntime({ children }: { children: ReactNode }): J
     try {
       pool = new WorkerPoolManager(poolOptions, highlighterOptions);
     } catch (error: unknown) {
-      if (active) setState({ status: "error", error: error instanceof Error ? error.message : String(error) });
+      if (active) setState({ status: "error", error: workspaceWorkerError(error) });
       return () => {
         active = false;
       };
@@ -80,17 +86,17 @@ export function WorkspaceSourceRuntime({ children }: { children: ReactNode }): J
         if (active) setState({ status: "ready", pool });
       },
       (error: unknown) => {
-        if (active) setState({ status: "error", error: error instanceof Error ? error.message : String(error) });
+        if (active) setState({ status: "error", error: workspaceWorkerError(error) });
       },
     );
     return () => {
       active = false;
       pool.terminate();
     };
-  }, [revision]);
+  }, [enabled, revision]);
   return (
     <WorkerPoolContext.Provider value={state.status === "ready" ? state.pool : undefined}>
-      <HighlightRuntimeContext.Provider value={{ state, retry: () => setRevision((value) => value + 1) }}>
+      <HighlightRuntimeContext.Provider value={{ state, retry: () => setRevision((value) => value + 1), activate }}>
         {children}
       </HighlightRuntimeContext.Provider>
     </WorkerPoolContext.Provider>
@@ -99,6 +105,8 @@ export function WorkspaceSourceRuntime({ children }: { children: ReactNode }): J
 
 export function WorkspaceSourceView(props: WorkspaceSourceProps): JSX.Element {
   const runtime = useContext(HighlightRuntimeContext);
+  const activate = runtime?.activate;
+  useEffect(() => activate?.(), [activate]);
   if (!runtime) throw new Error("WorkspaceSourceView requires WorkspaceSourceRuntime.");
   if (runtime.state.status === "loading") return <StateView status="loading" />;
   if (runtime.state.status === "error")

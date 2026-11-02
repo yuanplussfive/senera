@@ -139,7 +139,8 @@
       "MaxFilesPerRequest": 8,
       "MaxConcurrentUploads": 4,
       "MaxStoredBytes": 2147483648,
-      "RetentionHours": 720,
+      "RetentionHours": 72,
+      "IncompleteRetentionHours": 1,
       "MaintenanceIntervalMinutes": 15
     },
     "Frontend": {
@@ -208,6 +209,16 @@
         "CloseTimeoutMs": 5000,
         "DrainBatchSize": 256,
         "CommittedRetentionMs": 604800000
+      },
+      "Logs": {
+        "Enabled": true,
+        "DetailMaxBytes": 1048576,
+        "ProjectionMaxBytes": 268435456,
+        "RetentionHours": 24,
+        "MaintenanceIntervalMinutes": 15,
+        "QueryPageSize": 120,
+        "TailLineCount": 200,
+        "CaptureHiddenEvents": false
       }
     },
     "ConfigStore": {
@@ -251,13 +262,15 @@
       "Enabled": true,
       "Configuration": {
         "enabled": true,
-        "finalResponseRewrite": false,
         "qq": {
           "enabled": false,
           "appId": "your-qq-bot-app-id",
           "appSecret": "your-qq-bot-app-secret",
           "mode": "websocket",
           "allowAllUsers": true
+        },
+        "onebot11": {
+          "enabled": false
         },
         "telegram": {
           "enabled": false,

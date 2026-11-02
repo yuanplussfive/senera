@@ -2,6 +2,10 @@ import { AgentDefaults, resolveModelProviderEndpointConfigs } from "../AgentDefa
 import type { AgentModelProviderConfig, AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { AgentProviderModelConfigCommandError } from "./AgentProviderModelConfigCommandTypes.js";
 import { resolveAgentModelToolPlanningMode } from "../ModelEndpoints/AgentModelToolPlanning.js";
+import { resolveAgentDefaults } from "../Defaults/AgentDefaultResolver.js";
+import { resolveModelProviderRuntimeDefaults } from "../Defaults/AgentModelProviderDefaults.js";
+import { AgentModelPlanningRequirements } from "../Core/AgentModelCapabilityContract.js";
+import { assertAgentModelRequirements } from "../ModelEndpoints/AgentModelRequirements.js";
 
 const ProtectedProviderIds = new Set(AgentDefaults.ModelProviderEndpoints.map((endpoint) => endpoint.Id));
 
@@ -11,7 +15,6 @@ export function validateProviderModelInvariants(config: AgentSystemConfig): Agen
   assertModelProvidersReferenceExistingEndpoints(config);
   assertDefaultModelProviderIdValid(config);
   assertModelProviderIdAliasesValid(config);
-  assertModelToolPlanningModes(config.ModelProviders);
   return config;
 }
 
@@ -189,6 +192,8 @@ export function assertModelProviderCanBeSelected(config: AgentSystemConfig, mode
       { modelId: model.Id, providerId: endpoint.Id },
     );
   }
+  const runtime = resolveModelProviderRuntimeDefaults(resolveAgentDefaults(config).ModelRuntime, model);
+  assertAgentModelRequirements(runtime, AgentModelPlanningRequirements[resolveAgentModelToolPlanningMode(runtime)]);
 }
 
 export function readCurrentDefaultModelId(config: AgentSystemConfig): string | undefined {
@@ -279,26 +284,6 @@ function assertModelProvidersReferenceExistingEndpoints(config: AgentSystemConfi
         providerId: model.ProviderId,
         modelId: model.Id,
       });
-    }
-  }
-}
-
-function assertModelToolPlanningModes(models: readonly AgentModelProviderConfig[]): void {
-  for (const model of models) {
-    if (resolveAgentModelToolPlanningMode(model) !== "native") continue;
-    if (model.Capabilities?.ToolCalling === false) {
-      throw new AgentProviderModelConfigCommandError(
-        "config.nativeToolCallingCapabilityRequired",
-        "native_tool_calling_capability_required",
-        { modelId: model.Id },
-      );
-    }
-    if (model.Stream === false) {
-      throw new AgentProviderModelConfigCommandError(
-        "config.nativeToolCallingStreamingRequired",
-        "native_tool_calling_streaming_required",
-        { modelId: model.Id },
-      );
     }
   }
 }

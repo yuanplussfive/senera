@@ -9,26 +9,75 @@
     "icon": "calendar-clock",
     "group": {
       "id": "schedule",
-      "title": { "zh-CN": "定时任务", "en-US": "Scheduled tasks" }
+      "title": {
+        "zh-CN": "定时任务",
+        "en-US": "Scheduled tasks"
+      }
     },
     "activity": {
-      "action": { "zh-CN": "管理定时任务", "en-US": "Manage schedule" }
+      "action": {
+        "zh-CN": "管理定时任务",
+        "en-US": "Manage schedule"
+      }
     }
   },
-  "version": "1.0.0",
-  "displayName": { "zh-CN": "任务调度", "en-US": "Task Scheduler" },
+  "usageExamples": [
+    {
+      "title": {
+        "zh-CN": "安排后续任务",
+        "en-US": "Schedule a task"
+      },
+      "prompt": {
+        "zh-CN": "明天上午九点提醒我检查项目进展。",
+        "en-US": "Remind me tomorrow at 9 a.m. to check project progress."
+      },
+      "outcome": {
+        "zh-CN": "按你的时间安排任务，并可查看、修改或取消计划。",
+        "en-US": "Schedule the requested task, then inspect, update, or cancel the plan."
+      }
+    }
+  ],
+  "documentation": {
+    "zh-CN": "### 把“之后再做”变成计划\n\n一次性提醒与重复任务都由调度工具管理。时间应包含明确的日期或频率；有歧义时再确认时区和执行范围。\n\n- 创建计划，并保存需要执行的任务说明。\n- 查看现有计划和执行记录。\n- 修改时间、暂停或删除不再需要的计划。\n\n创建后可以继续询问“有哪些计划还在运行”。不要把普通对话中的口头答应当成已经创建成功的计划。",
+    "en-US": "### Schedule work for later\n\nManage one-time reminders and recurring tasks with explicit dates or frequencies. Clarify timezone and scope when ambiguous.\n\n- Create a schedule and its task instructions.\n- Inspect existing schedules and execution records.\n- Change, pause or delete plans.\n\nAsk which plans remain active after creation. A conversational promise is not a successfully created schedule."
+  },
+  "displayName": {
+    "zh-CN": "任务调度",
+    "en-US": "Task Scheduler"
+  },
   "description": {
-    "zh-CN": "创建和管理由 SQLite 持久化、Senera 会话运行时执行的定时代理任务。",
-    "en-US": "Creates and manages SQLite-persisted scheduled agent tasks executed by the Senera session runtime."
+    "zh-CN": "安排定时任务，查看计划与执行记录。",
+    "en-US": "Schedule tasks and review plans and execution history."
   },
   "priority": 3,
-  "configuration": { "schema": "config.schema.json", "ui": "ui.schema.json" },
+  "configuration": {
+    "schema": "config.schema.json",
+    "ui": "ui.schema.json"
+  },
   "contributions": [
     {
       "kind": "hostTool",
-      "contract": "tools/AgentScheduleManage.tool.json",
-      "capability": "orchestration.schedule.manage",
-      "recommendedForSkills": []
+      "contract": "tools/schedule_create.tool.json",
+      "capability": "orchestration.schedule.create",
+      "recommendedForSkills": ["agent-orchestration"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/schedule_list.tool.json",
+      "capability": "orchestration.schedule.list",
+      "recommendedForSkills": ["agent-orchestration"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/schedule_view.tool.json",
+      "capability": "orchestration.schedule.view",
+      "recommendedForSkills": ["agent-orchestration"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/schedule_edit.tool.json",
+      "capability": "orchestration.schedule.edit",
+      "recommendedForSkills": ["agent-orchestration"]
     }
   ]
 }

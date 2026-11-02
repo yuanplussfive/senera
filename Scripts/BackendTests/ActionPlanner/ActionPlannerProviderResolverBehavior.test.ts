@@ -18,7 +18,7 @@ describe("action planner provider resolution", () => {
       ContextWindowTokens: 1_000_000,
       MaxModelOutputTokens: 16_384,
     });
-    const client = createPlannerConfig().PlanningClient;
+    const client = createPlannerConfig().Client;
 
     const resolved = resolvePlannerProvider({
       ...client,

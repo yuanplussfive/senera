@@ -62,7 +62,9 @@ export class AgentPiToolObservationSummaryClient {
       messages: [{ role: "user", content: [{ type: "text", text: "" }], timestamp: 0 }],
       tools: [SummaryTool],
     }).tokenCount;
-    let resultBudget = Math.max(1, Math.min(request.tokenBudget, inputCapacity - fixedInput));
+    // Input capacity and requested summary length are independent. The model
+    // must see the selected source before reducing it to the output budget.
+    let resultBudget = Math.max(1, inputCapacity - fixedInput);
     let userPrompt: string;
 
     for (;;) {

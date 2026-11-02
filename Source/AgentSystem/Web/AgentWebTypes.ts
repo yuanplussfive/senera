@@ -65,8 +65,11 @@ export interface AgentWebFetchTransfer {
 export interface AgentWebFetchOutput {
   readonly title: string;
   readonly finalUrl: string;
+  /** A relevance-selected excerpt of `content`. It survives only in the raw
+   * response the artifact keeps; the model reads the page itself rather than
+   * the same Markdown twice. */
   readonly markdownSummary: string;
-  /** Extracted Markdown is retained in the tool artifact and omitted from the normal observation. */
+  /** The extracted Markdown the model reads. */
   readonly content: string;
   readonly links: readonly AgentWebFetchLink[];
   readonly citationId: string;

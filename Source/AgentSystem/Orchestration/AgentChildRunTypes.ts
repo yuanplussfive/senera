@@ -68,6 +68,22 @@ export function isAgentChildRunBackgroundDeliverable(status: AgentChildRunStatus
   return AgentChildRunBackgroundDeliveryByStatus[status] === true;
 }
 
+/**
+ * Detached execution is the persisted contract for work that may outlive the
+ * parent tool call. It is intentionally distinct from a terminal status: a
+ * synchronous child can also finish, but it must never enter background
+ * delivery infrastructure.
+ */
+export function isAgentChildRunDetached(record: Pick<AgentChildRunRecord, "launchContract">): boolean {
+  return record.launchContract.executionMode === "detach";
+}
+
+export function isAgentChildRunBackgroundCompletionDeliverable(
+  record: Pick<AgentChildRunRecord, "launchContract" | "status">,
+): boolean {
+  return isAgentChildRunDetached(record) && isAgentChildRunBackgroundDeliverable(record.status);
+}
+
 export function isAgentChildRunSettled(status: AgentChildRunStatus): boolean {
   return AgentChildRunLifecycleClassificationByStatus[status] !== "active";
 }
@@ -171,6 +187,8 @@ export interface AgentChildRunExecutionContract {
   readonly resourceCoverage?: AgentChildRunResourceCoverage;
   /** Resolved claim summary for observability; overlap functions are host-owned and never persisted. */
   readonly resourceClaims?: readonly AgentChildRunResourceClaimSummary[];
+  /** Explicit external paths approved at admission; independent of scheduling claims. */
+  readonly resourceAccessScope?: import("../Execution/SeneraResourceAccess.js").AgentResourceAccessScope;
   readonly deadline: AgentChildRunDeadlinePolicy;
   /** Optional for records created before the control contract was introduced. */
   readonly control?: AgentChildRunControlPolicy;
@@ -249,6 +267,7 @@ export interface AgentChildRunProgressProjection {
   };
   readonly checkpointAvailable: boolean;
   readonly artifactCount: number;
+  readonly todo?: AgentChildRunControlSnapshot["todo"];
 }
 
 export const AgentChildRunCheckpointSources = {
@@ -390,7 +409,12 @@ export interface AgentChildRunRepository {
   markWrappingUp(id: string, updatedAt?: string): AgentChildRunRecord | undefined;
   markCancelling(id: string, updatedAt?: string): AgentChildRunRecord | undefined;
   markAwaitingSupervisor(id: string, updatedAt?: string): AgentChildRunRecord | undefined;
-  markResumed(id: string, childRequestId: string, updatedAt?: string): AgentChildRunRecord | undefined;
+  markResumed(
+    id: string,
+    childRequestId: string,
+    updatedAt?: string,
+    executionMode?: "wait" | "detach",
+  ): AgentChildRunRecord | undefined;
   recordSnapshot(
     id: string,
     snapshot: AgentChildRunSnapshot,

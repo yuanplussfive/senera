@@ -24,6 +24,7 @@ export type { AgentPromptPresetManifest } from "../Core/AgentPromptPresetContrac
 
 export interface AgentMarkdownPromptPresetReadResult {
   readonly context: AgentPersonaContext;
+  readonly selection?: Pick<AgentPromptPresetManifest, "activePath" | "enabled">;
   readonly path?: string;
   readonly error?: string;
 }
@@ -32,22 +33,26 @@ export interface AgentMarkdownPromptPresetReadResult {
 export function readAgentMarkdownPromptPreset(
   workspaceRoot: string,
   maxBytes: number,
+  selection?: Pick<AgentPromptPresetManifest, "activePath" | "enabled"> | null,
 ): AgentMarkdownPromptPresetReadResult {
   const layout = resolveAgentWorkspaceLayout(workspaceRoot);
-  let manifest: AgentPromptPresetManifest;
-  try {
-    const parsed: unknown = JSON.parse(
-      readRegularFileSync(layout.promptPresetStateFile, "Prompt preset state", { maxBytes }).toString("utf8"),
-    );
-    const normalized = parseAgentPromptPresetManifest(parsed);
-    if (!normalized) {
-      return { context: EmptyAgentPersonaContext, error: describeInvalidPresetState(parsed) };
+  if (selection === null) return { context: EmptyAgentPersonaContext };
+  let manifest: Pick<AgentPromptPresetManifest, "activePath" | "enabled">;
+  if (selection !== undefined) manifest = selection;
+  else
+    try {
+      const parsed: unknown = JSON.parse(
+        readRegularFileSync(layout.promptPresetStateFile, "Prompt preset state", { maxBytes }).toString("utf8"),
+      );
+      const normalized = parseAgentPromptPresetManifest(parsed);
+      if (!normalized) {
+        return { context: EmptyAgentPersonaContext, error: describeInvalidPresetState(parsed) };
+      }
+      manifest = normalized;
+    } catch (error) {
+      if (isMissingFileError(error)) return { context: EmptyAgentPersonaContext };
+      return { context: EmptyAgentPersonaContext, error: errorMessage(error) };
     }
-    manifest = normalized;
-  } catch (error) {
-    if (isMissingFileError(error)) return { context: EmptyAgentPersonaContext };
-    return { context: EmptyAgentPersonaContext, error: errorMessage(error) };
-  }
 
   const activePath = normalizeAgentPromptPresetPath(manifest.activePath);
   if (!activePath || path.extname(activePath).toLocaleLowerCase() !== AgentPromptPresetFileExtension) {
@@ -62,7 +67,7 @@ export function readAgentMarkdownPromptPreset(
     };
   }
 
-  if (!manifest.enabled) return { context: EmptyAgentPersonaContext, path: activePath };
+  if (!manifest.enabled) return { context: EmptyAgentPersonaContext, path: activePath, selection: manifest };
 
   try {
     const canonicalPath = fs.realpathSync.native(absolutePath);
@@ -82,7 +87,7 @@ export function readAgentMarkdownPromptPreset(
       };
     }
     const markdown = readRegularFileSync(absolutePath, "Prompt preset", { maxBytes }).toString("utf8");
-    return { context: createAgentPersonaContext(markdown, activePath), path: activePath };
+    return { context: createAgentPersonaContext(markdown, activePath), path: activePath, selection: manifest };
   } catch (error) {
     return { context: EmptyAgentPersonaContext, path: activePath, error: errorMessage(error) };
   }

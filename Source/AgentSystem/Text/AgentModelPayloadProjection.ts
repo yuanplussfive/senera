@@ -54,6 +54,20 @@ export function projectAgentModelText(
   policy: AgentModelPayloadProjectionPolicy = AgentModelPayloadProjectionDefaults,
   path = "$",
 ): AgentTextPreview & { signals: readonly AgentModelPayloadSignal[] } {
+  const content = projectAgentModelTextContent(value, path);
+  const signals = [...content.signals];
+  const preview = projectAgentTextPreview(content.text, policy.maxStringCharacters);
+  if (preview.truncated) {
+    signals.push({ kind: "string_limit", path, originalCharacters: preview.originalChars });
+  }
+  return { ...preview, signals };
+}
+
+/** Media normalization without applying a preview limit to an assembled protocol. */
+export function projectAgentModelTextContent(
+  value: string,
+  path = "$",
+): { readonly text: string; readonly signals: readonly AgentModelPayloadSignal[] } {
   const signals: AgentModelPayloadSignal[] = [];
   const sanitized = projectInlineDataUris(value, path, signals);
   const encoded = sanitized.replace(EncodedRunPattern, (match, prefix: string, run: string) => {
@@ -62,11 +76,7 @@ export function projectAgentModelText(
     const digest = crypto.createHash("sha256").update(run).digest("hex").slice(0, 16);
     return `${prefix}[encoded payload omitted characters=${run.length} sha256=${digest}]`;
   });
-  const preview = projectAgentTextPreview(encoded, policy.maxStringCharacters);
-  if (preview.truncated) {
-    signals.push({ kind: "string_limit", path, originalCharacters: preview.originalChars });
-  }
-  return { ...preview, signals };
+  return { text: encoded, signals };
 }
 
 function projectInlineDataUris(value: string, path: string, signals: AgentModelPayloadSignal[]): string {

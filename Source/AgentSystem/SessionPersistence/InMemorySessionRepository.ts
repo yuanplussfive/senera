@@ -19,6 +19,7 @@ import type { AgentSessionHistoryMutation } from "../Session/AgentSessionHistory
 import type {
   AgentSessionCursorPage,
   AgentSessionCursorPageRequest,
+  AgentSessionRunEventPageRequest,
   AgentSessionForkHistory,
   AgentSessionForkSnapshot,
   AgentSessionHistoryView,
@@ -32,6 +33,7 @@ import type {
 import type { AgentTurnPreparationSnapshot } from "../Loop/AgentTurnPreparationSnapshot.js";
 import type { StepTrace } from "../Core/AgentStepTrace.js";
 import { InMemorySessionHistoryStore } from "./InMemorySessionHistoryStore.js";
+import { assertMatchingQueuedInput, type AgentSessionQueuedInput } from "../Session/AgentSessionQueuedInput.js";
 
 export class InMemorySessionRepository implements AgentSessionRepository {
   private readonly sessions = new Map<string, AgentSession>();
@@ -39,7 +41,46 @@ export class InMemorySessionRepository implements AgentSessionRepository {
   private readonly historyMutations = new Map<string, AgentSessionHistoryMutation>();
   private readonly forkMutations = new Map<string, AgentSessionForkMutation>();
   private readonly commands = new Map<string, Map<string, AgentSessionCommandRecord>>();
+  private readonly inputs = new Map<string, Map<string, AgentSessionQueuedInput>>();
   private userProfile = createDefaultAgentUserProfile();
+
+  saveQueuedInput(input: AgentSessionQueuedInput): void {
+    const rows = this.inputs.get(input.sessionId) ?? new Map<string, AgentSessionQueuedInput>();
+    const existing = rows.get(input.requestId);
+    if (existing) assertMatchingQueuedInput(existing, input);
+    rows.set(input.requestId, structuredClone(input));
+    this.inputs.set(input.sessionId, rows);
+    if (!this.hasRequest(input.sessionId, input.requestId))
+      this.history.appendEntry(input.sessionId, structuredClone(input.entry));
+    const entry = this.history
+      .loadEntries(input.sessionId)
+      .find((item) => item.requestId === input.requestId && item.kind === "user.message");
+    if (entry)
+      entry.metadata = {
+        ...entry.metadata,
+        queue: {
+          parentRequestId: input.parentRequestId,
+          mode: input.request.queueMode,
+          status: input.state,
+          ...(input.errorMessage ? { message: input.errorMessage } : {}),
+        },
+      };
+    if (entry?.metadata && input.parentRequestId === input.requestId && input.state !== "pending")
+      delete entry.metadata.queue;
+  }
+
+  loadQueuedInput(sessionId: string, requestId: string): AgentSessionQueuedInput | undefined {
+    const input = this.inputs.get(sessionId)?.get(requestId);
+    return input ? structuredClone(input) : undefined;
+  }
+
+  listQueuedInputs(sessionId?: string): AgentSessionQueuedInput[] {
+    return structuredClone(
+      sessionId === undefined
+        ? [...this.inputs.values()].flatMap((rows) => [...rows.values()])
+        : [...(this.inputs.get(sessionId)?.values() ?? [])],
+    ).filter((input) => input.state === "pending" || input.state === "delivered");
+  }
 
   listSessions(): Array<AgentSession & { entryCount: number; messageCount: number }> {
     return Array.from(this.sessions.values())
@@ -70,6 +111,17 @@ export class InMemorySessionRepository implements AgentSessionRepository {
   captureHistorySnapshot(sessionId: string): AgentSessionHistoryView | undefined {
     const session = this.sessions.get(sessionId);
     return session ? this.history.captureSnapshot(session) : undefined;
+  }
+
+  loadHistoryRequestPage(
+    sessionId: string,
+    request: import("../Session/AgentSessionHistoryWindow.js").AgentSessionHistoryRequestPageInput,
+  ) {
+    return this.history.loadHistoryRequestPage(sessionId, request);
+  }
+
+  loadStepTracesForRequests(sessionId: string, requestIds: readonly string[], throughRowId: number) {
+    return this.history.loadStepTracesForRequests(sessionId, requestIds, throughRowId);
   }
 
   listPendingHistoryMutations(): AgentSessionHistoryMutation[] {
@@ -345,6 +397,7 @@ export class InMemorySessionRepository implements AgentSessionRepository {
     this.history.deleteSession(sessionId);
     this.historyMutations.delete(sessionId);
     this.commands.delete(sessionId);
+    this.inputs.delete(sessionId);
     return had;
   }
 
@@ -366,7 +419,7 @@ export class InMemorySessionRepository implements AgentSessionRepository {
 
   loadRunEventPage(
     sessionId: string,
-    request: AgentSessionCursorPageRequest,
+    request: AgentSessionRunEventPageRequest,
   ): AgentSessionCursorPage<AgentEventEnvelope> {
     return this.history.loadRunEventPage(sessionId, request);
   }
@@ -390,6 +443,16 @@ export class InMemorySessionRepository implements AgentSessionRepository {
     return this.userProfile;
   }
 
+  private agentDirectory: unknown;
+
+  loadAgentDirectory(): unknown {
+    return structuredClone(this.agentDirectory);
+  }
+
+  saveAgentDirectory(snapshot: import("../Core/AgentDirectoryContract.js").AgentDirectorySnapshot): void {
+    this.agentDirectory = structuredClone(snapshot);
+  }
+
   saveUserProfile(profile: AgentUserProfileInput): AgentUserProfile {
     this.userProfile = createAgentUserProfile(profile);
     return this.userProfile;
@@ -408,6 +471,10 @@ export class InMemorySessionRepository implements AgentSessionRepository {
   private deleteCommandsForRequests(sessionId: string, requestIds: readonly string[]): void {
     if (requestIds.length === 0) return;
     const selected = new Set(requestIds);
+    const inputs = this.inputs.get(sessionId);
+    for (const input of inputs?.values() ?? []) {
+      if (selected.has(input.requestId) || selected.has(input.parentRequestId)) inputs!.delete(input.requestId);
+    }
     const commands = this.commands.get(sessionId);
     if (!commands) return;
     for (const command of commands.values()) {

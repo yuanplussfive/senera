@@ -38,7 +38,13 @@ import { AgentPiTurnState } from "./AgentPiTurnState.js";
 import { resolveAgentPiCompactionSettings } from "./AgentPiCompactionSettings.js";
 import { projectAgentPiImageAttachments } from "./AgentPiImageAttachmentProjector.js";
 import type { ImageContent } from "@earendil-works/pi-ai";
+import type { AgentResourcePublisher } from "../Resources/AgentResourcePublisher.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
+import { resolveAgentModelVisionInputCapabilities } from "../ModelEndpoints/AgentModelVisionInputCapabilities.js";
+import type {
+  AgentImageInputCapabilities,
+  AgentImageNormalizationService,
+} from "../Images/AgentImageNormalizationService.js";
 
 type AgentPiTurnRuntimeService = Pick<
   AgentPiRuntimeService,
@@ -61,7 +67,8 @@ export interface AgentPiTurnRuntimePort {
   };
   logger?: AgentLogger;
   piDiagnostics?: AgentPiDiagnosticSink;
-  uploadStore?: AgentTurnAttachmentUploadStore;
+  uploadStore?: AgentTurnAttachmentUploadStore & Partial<AgentResourcePublisher>;
+  imageNormalization?: AgentImageNormalizationService;
   promptConfig: () => import("../Types/AgentConfigTypes.js").ResolvedAgentPromptConfig;
 }
 
@@ -92,6 +99,7 @@ export class AgentPiTurnExecutor {
 
   async run(command: AgentPiTurnRequest, onEvent?: AgentEventSink, signal?: AbortSignal): Promise<AgentPiTurnResult> {
     const model = this.options.runtime.services.pi.model();
+    const imageInputCapabilities = resolveAgentModelVisionInputCapabilities(this.options.runtime.modelProviderConfig);
     const modelProvider = createModelProviderMetadata(this.options.runtime.modelProviderConfig);
     const activities = new AgentRunActivityReporter({
       sessionId: command.sessionId,
@@ -104,6 +112,8 @@ export class AgentPiTurnExecutor {
         attachments: command.attachments,
         model,
         uploadStore: this.options.runtime.uploadStore,
+        imageNormalization: this.options.runtime.imageNormalization,
+        imageInputCapabilities,
         signal,
       }),
     );
@@ -142,7 +152,9 @@ export class AgentPiTurnExecutor {
         executionLedger.syncPlan(input);
       });
     };
+    const publisher = this.options.runtime.uploadStore;
     const turnState = new AgentPiTurnState({
+      contextPublisher: publisher?.publishBytes ? { publishBytes: publisher.publishBytes.bind(publisher) } : undefined,
       sessionId: command.sessionId,
       systemPrompt: command.prompt,
       userMessage: command.input,
@@ -157,7 +169,6 @@ export class AgentPiTurnExecutor {
       toolExposure,
       activeSkills: projectAgentPiPlanningSkills(command.activeSkills),
       reusableCapabilities: command.reusableCapabilities,
-      reusableCapabilityLookup: command.reusableCapabilityLookup,
       usageLedger,
       toolPlan: new AgentPiToolPlanCoordinator({ onChanged: onToolPlanChanged }),
       tokenBudget,
@@ -199,6 +210,7 @@ export class AgentPiTurnExecutor {
         collector,
         modelProvider,
         images,
+        imageInputCapabilities,
         turnState,
         usageLedger,
         toolExposure,
@@ -219,6 +231,7 @@ export class AgentPiTurnExecutor {
     collector: AgentPiRunCollector,
     modelProvider: ReturnType<typeof createModelProviderMetadata>,
     images: readonly ImageContent[],
+    imageInputCapabilities: AgentImageInputCapabilities,
     turnState: AgentPiTurnState,
     usageLedger: AgentModelUsageLedger,
     toolExposure: AgentToolExposureState,
@@ -260,6 +273,9 @@ export class AgentPiTurnExecutor {
               input: command.input,
               systemPrompt: command.prompt,
               turnContext: command.turnContext,
+              refreshMemoryBoundary: command.refreshMemoryBoundary,
+              onModelMemoryDelivered: command.onModelMemoryDelivered,
+              inputBoundary: command.inputBoundary,
               interaction: command.interaction,
               visibleToolNames: command.loadedToolNames,
               toolAccessGrant: command.toolAccessGrant,
@@ -270,8 +286,6 @@ export class AgentPiTurnExecutor {
               turnState,
               activeSkills: command.activeSkills,
               personaActive: command.personaActive,
-              prefaceRewriteEnabled: command.prefaceRewriteEnabled,
-              finalResponseRewriteEnabled: command.finalResponseRewriteEnabled,
               rootCommand: command.rootCommand,
               approvalMode: command.approvalMode,
               tokenBudget,
@@ -290,6 +304,8 @@ export class AgentPiTurnExecutor {
             requestId: command.requestId,
             step: command.step,
             session: activeSession,
+            imageInputCapabilities,
+            tokenBudget,
           })
         : undefined;
       await this.emitDiagnostic(command, PiTurnTraceEvents.SessionLeaseCompleted, {
@@ -300,7 +316,7 @@ export class AgentPiTurnExecutor {
       unsubscribe = activeSession.subscribe((event) => collector.collect(event));
       throwIfAborted(signal);
       if (command.continueFromTranscript) {
-        activeSession.prepareContinuation(command.continuationSourceRequestId);
+        await activeSession.prepareContinuation(command.continuationSourceRequestId);
       }
       const piBranchBoundaryId = await activeSession.markTurnBoundary(command.requestId);
       await command.onPiBranchBoundary?.(piBranchBoundaryId);
@@ -309,6 +325,7 @@ export class AgentPiTurnExecutor {
         ? command.input
         : composeAgentTurnRequest({
             userInput: command.input,
+            hostInput: command.hostInput,
             attachments: command.attachments,
             attachmentReferences: await resolveAgentTurnAttachmentReferences(
               command.attachments,

@@ -70,7 +70,6 @@ export interface ProviderConnectionActions {
   discardAndSelectProvider: (provider: ProviderEndpointDraft) => void;
   updateDraftProvider: (patch: Partial<ProviderEndpointDraft>) => void;
   getProviderDisableReason: (provider: ProviderEndpointDraft) => string | null;
-  setProviderEnabled: (provider: ProviderEndpointDraft, enabled: boolean) => void;
   resetDraft: () => void;
   confirmDraft: (patch?: Partial<ProviderEndpointDraft>) => void;
   addProvider: (provider: ProviderEndpointDraft) => void;
@@ -316,19 +315,6 @@ export function useProviderConnectionActions({
     });
   };
 
-  const setProviderEnabled = (provider: ProviderEndpointDraft, enabled: boolean): void => {
-    const entry = draftQueue.read(provider);
-    const error = defaultModelProviderDisableMessage(provider, enabled);
-    if (error) {
-      notifyError({
-        title: frontendMessage("settings.provider.defaultModelProviderDisableBlocked"),
-        description: error,
-      });
-      return;
-    }
-    draftQueue.confirm(provider, entry.draft, { Enabled: enabled });
-  };
-
   const getProviderDisableReason = (provider: ProviderEndpointDraft): string | null =>
     providerEnabled(provider) ? defaultModelProviderDisableMessage(provider, false) : null;
 
@@ -472,7 +458,6 @@ export function useProviderConnectionActions({
     discardAndSelectProvider,
     updateDraftProvider,
     getProviderDisableReason,
-    setProviderEnabled,
     resetDraft,
     confirmDraft,
     addProvider,

@@ -73,7 +73,7 @@ export function LazyMarkdownRenderer({
   );
 }
 
-function isPlainTextMarkdown(value: string): boolean {
+export function isPlainTextMarkdown(value: string): boolean {
   return !/(^|\n)\s{0,3}(```|#{1,6}\s|[-*+]\s|\d+\.\s|>\s|[-*_]{3,}\s*$)|https?:\/\/|www\.|[*_~`[\]<|]/.test(value);
 }
 

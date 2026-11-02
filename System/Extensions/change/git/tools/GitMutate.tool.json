@@ -51,7 +51,7 @@
           "operation": { "type": "string", "const": "create_branch" },
           "repository": { "type": "string", "minLength": 1 },
           "branch": { "type": "string", "minLength": 1 },
-          "startPoint": { "default": "HEAD", "type": "string", "minLength": 1 }
+          "startPoint": { "type": "string", "minLength": 1 }
         },
         "required": ["operation", "repository", "branch"],
         "additionalProperties": false
@@ -65,6 +65,16 @@
         },
         "required": ["operation", "repository", "branch"],
         "additionalProperties": false
+      }
+    ],
+    "allOf": [
+      {
+        "if": {
+          "type": "object",
+          "properties": { "operation": { "const": "create_branch" } },
+          "required": ["operation"]
+        },
+        "then": { "type": "object", "properties": { "startPoint": { "default": "HEAD" } } }
       }
     ],
     "type": "object"
@@ -109,7 +119,6 @@
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadWrite" },
   "runtime": {
     "Lifecycle": "OneShot",
-    "ProtocolVersion": 2,
     "ResultAssessment": "ProcessExit",
     "Scheduling": "ResourceClaims",
     "Capabilities": { "OutputStreaming": true, "Cancellation": true }

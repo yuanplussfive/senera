@@ -1,4 +1,5 @@
 import type {
+  AgentConversationEntryMetadata,
   AgentEffectiveModelReceipt,
   AgentModelProviderMetadata,
   AgentModelUsage,
@@ -16,6 +17,7 @@ import type { AgentToolResourceLeaseOwner } from "../ToolRuntime/AgentToolResour
 import type { AgentToolCapabilityCacheEntry } from "../ToolSearch/AgentToolCapabilitySessionCache.js";
 import type { AgentStateCard } from "../StateCard/AgentStateCardTypes.js";
 import type { AgentToolSearchObservation } from "../ToolSearch/AgentToolSearchUsageMemory.js";
+import type { AgentPiMemoryBoundaryRefresh } from "./AgentPiMemoryBoundary.js";
 
 export interface AgentPiTurnRequest {
   sessionId?: string;
@@ -24,6 +26,7 @@ export interface AgentPiTurnRequest {
   requestId: string;
   step: number;
   input: string;
+  hostInput?: AgentConversationEntryMetadata["hostInput"];
   /** Resume the existing Pi transcript instead of appending a new prompt. */
   continueFromTranscript?: boolean;
   /** Identifies the durable turn whose Pi transcript should be resumed. */
@@ -32,6 +35,9 @@ export interface AgentPiTurnRequest {
   interaction?: AgentInteractionContext;
   prompt: string;
   turnContext?: string;
+  refreshMemoryBoundary?: AgentPiMemoryBoundaryRefresh;
+  inputBoundary?: import("./AgentPiInputBoundary.js").AgentPiInputBoundaryHandler;
+  onModelMemoryDelivered?: () => void;
   rootCommand: AgentRootCommand;
   approvalMode: AgentExecutionApprovalMode;
   toolAccessGrant: AgentToolAccessGrant;
@@ -42,13 +48,7 @@ export interface AgentPiTurnRequest {
   stateCard?: AgentStateCard;
   /** Host-confirmed dynamic capabilities prepared for this turn. */
   reusableCapabilities?: readonly AgentToolCapabilityCacheEntry[];
-  /** Cross-request lookup used by the execution bridge to accept a dynamic
-   * tool whose contract was confirmed earlier in the session. */
-  reusableCapabilityLookup?: (toolName: string) => AgentToolCapabilityCacheEntry | undefined;
   personaActive?: boolean;
-  prefaceRewriteEnabled?: boolean;
-  /** Explicit UI-controlled final-answer rewrite; independent from persona text. */
-  finalResponseRewriteEnabled?: boolean;
   onPiBranchBoundary?: (entryId: string) => void | Promise<void>;
   /** Full text of the final assistant message emitted by the Pi session. */
   onFinalResponseAvailable?: (content: string, messageIndex: number, contentIndex?: number) => void | Promise<void>;

@@ -31,7 +31,9 @@ const requestDescriptions = {
   "session.export": "将指定 Pi 会话的当前分支导出为 JSONL 或 HTML。",
   "session.list": "获取服务端当前可用会话的摘要列表。",
   "session.history": "拉取指定会话的可重放历史；`refresh` 用于主动重新同步。",
+  "session.run_history": "按需拉取某一已完成运行的原始诊断轨迹，用于展开工作流细节。",
   "session.rename": "更新会话显示标题。",
+  "session.feedback": "记录或撤回当前用户对某个已完成轮次的评价；rating 为 null 表示撤回。",
   "model.list": "获取已配置模型提供方及默认模型。",
   "provider.models.fetch": "从指定模型端点刷新可用模型列表。",
   "config.get": "获取当前有效系统配置及表单投影。",
@@ -143,6 +145,10 @@ const eventPayloadSourceOverrides: Partial<Record<AgentEventKind, { label: strin
     label: "交互输入事件类型",
     path: "../../Source/AgentSystem/Interaction/AgentInteractionInputEventTypes.ts",
   },
+  [AgentEventKinds.FeedbackRecorded]: {
+    label: "反馈事件类型",
+    path: "../../Source/AgentSystem/Interaction/AgentFeedbackEventTypes.ts",
+  },
 };
 
 export function renderWebSocketProtocolReference(): string {
@@ -173,6 +179,7 @@ export function renderWebSocketProtocolReference(): string {
     "| 方法 | 路径 | 用途 |",
     "| --- | --- | --- |",
     `| \`GET\` | \`${AgentAuthenticationHttpRoutes.Session}\` | 获取 \`disabled\`、\`anonymous\` 或 \`authenticated\` 会话状态；未登录是正常的 200 响应。 |`,
+    `| \`POST\` | \`${AgentAuthenticationHttpRoutes.Session}\` | 初始化访问会话：受信任的本机访问自动建立或复用 owner 会话；远程访问只检查已有会话，不自动授权。新建会话设置 HttpOnly Cookie，并返回已认证会话及 CSRF token。 |`,
     `| \`POST\` | \`${AgentAuthenticationHttpRoutes.Login}\` | 提交 \`{ loginName, password }\`，成功后设置 HttpOnly session Cookie，并返回已认证会话及内存 CSRF token。 |`,
     `| \`POST\` | \`${AgentAuthenticationHttpRoutes.Logout}\` | 需要 \`X-Senera-Csrf\`，撤销当前会话并清除 Cookie。 |`,
     "",

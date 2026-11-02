@@ -170,4 +170,7 @@ export const accentTokens = {
       "--color-accent-contrast": "24 25 28",
     },
   },
-} as const satisfies Record<AccentColor, ThemeTokenSet>;
+} as const satisfies Record<
+  AccentColor,
+  ThemeTokenSet<`--color-accent-${50 | 100 | 200 | 300 | 400 | 500 | 600 | 700 | "contrast"}`>
+>;

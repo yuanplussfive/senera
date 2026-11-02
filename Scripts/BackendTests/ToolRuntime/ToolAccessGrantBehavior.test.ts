@@ -12,6 +12,8 @@ import type { AgentToolRunnerLike } from "../../../Source/AgentSystem/ToolRuntim
 import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
 import { createXmlProtocolSpec } from "../../../Source/AgentSystem/Xml/AgentXmlPolicy.js";
 import { AgentToolExposureState } from "../../../Source/AgentSystem/ToolRuntime/AgentToolExposureState.js";
+import { createAgentToolExecutionDigest } from "../../../Source/AgentSystem/ToolContracts/AgentToolContractIdentity.js";
+import { createTool } from "../ToolSearch/ToolSearchTestFixtures.js";
 
 describe("authoritative tool access grant behavior", () => {
   test("enforces subset invariants, deep immutability, and stable preference ordering", () => {
@@ -171,12 +173,21 @@ describe("authoritative tool access grant behavior", () => {
     expect(run).not.toHaveBeenCalled();
   });
 
-  test("executor rejects a tool whose contract changed after the turn snapshot", async () => {
+  test("executor rejects changed execution policy even when the invocation contract is unchanged", async () => {
     const run = vi.fn();
-    const registeredTool = {
+    const original = createTool({
       name: "ToolA",
-      contract: { digest: "new-digest" },
-    } as RegisteredTool;
+      title: "Tool A",
+      summary: "Test tool",
+      tags: ["test"],
+      actions: ["execute"],
+      targets: ["test"],
+      priority: 1,
+    });
+    const registeredTool = {
+      ...original,
+      runtime: { ...original.runtime, MaxConcurrency: 2 },
+    };
     const registry = {
       getTool: (name: string) => (name === registeredTool.name ? registeredTool : undefined),
     } as unknown as AgentExtensionRegistry;
@@ -190,7 +201,7 @@ describe("authoritative tool access grant behavior", () => {
 
     await expect(
       executor.execute(
-        { name: "ToolA", expectedContractDigest: "old-digest" },
+        { name: "ToolA", expectedExecutionDigest: createAgentToolExecutionDigest(original) },
         {
           requestId: "request-stale-contract",
           toolAccessGrant: createAgentToolAccessGrant({

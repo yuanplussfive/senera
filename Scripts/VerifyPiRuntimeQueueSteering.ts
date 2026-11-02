@@ -71,7 +71,8 @@ async function main(): Promise<void> {
   const lookup = store.get(sessionId);
   assert.equal(lookup.kind, "found");
   assert.equal(lookup.kind === "found" ? lookup.session.status : undefined, AgentSessionStatuses.Idle);
-  assert.deepEqual(fakeLoop.session.steers, ["补充说明 Pi 是否真正接管运行中消息"]);
+  assert.equal(fakeLoop.session.steers.length, 1);
+  assert.ok(fakeLoop.session.steers[0]?.includes("补充说明 Pi 是否真正接管运行中消息"));
   assert.equal(piSessions.get(sessionId), undefined);
   assert.equal(
     events.some((event) => event.kind === AgentEventKinds.SessionBusy),
@@ -138,6 +139,8 @@ class QueueAwareFakeLoop {
     this.resolveStarted();
     try {
       await this.finishPromise;
+      await request.inputBoundary?.({ phase: "steer", committedInputs: new Set() });
+      await request.inputBoundary?.({ phase: "observe", committedInputs: new Set(this.session.steers) });
       return {
         terminal: {
           kind: "FinalAnswer",
@@ -169,7 +172,7 @@ class QueueAwareFakePiSession implements AgentPiSession {
 
   async prompt(): Promise<void> {}
 
-  prepareContinuation(): void {}
+  async prepareContinuation(): Promise<void> {}
 
   async continue(): Promise<void> {}
 

@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState, type AriaRole, type ReactNode } from "react";
+import { useId, useMemo, useState, type AriaRole, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
@@ -30,7 +30,7 @@ import { ToolActivityGroup } from "./ToolActivityGroup";
 import { ToolActivityLabel } from "./ToolActivityLabel";
 import { projectToolBatchActivities, ToolBatchActivityList } from "./ToolBatchActivity";
 import { ChildRunActivity } from "./ChildRunCard";
-import { LiveActivityStatus } from "./LiveActivityStatus";
+import { useLiveNow } from "../../shared/scheduling/useLiveNow";
 
 type FeedStatus = FeedItem["status"];
 
@@ -132,7 +132,7 @@ export function AgentExecutionStageFeed({
   if (!presentation && !hasChildRuns) {
     const headline = projectWaitingHeadline(run, model.headline);
     if (!showWaitingActivity && isGenericWaitingHeadline(headline)) {
-      return liveRun ? <LiveActivityStatus dataFallback /> : null;
+      return null;
     }
     return liveRun || model.headline.kind === "activity" ? (
       <div className="relative min-w-0" data-execution-stage-feed>
@@ -146,7 +146,7 @@ export function AgentExecutionStageFeed({
   ) {
     const headline = projectWaitingHeadline(run, model.headline);
     if (!showWaitingActivity && isGenericWaitingHeadline(headline)) {
-      return liveRun ? <LiveActivityStatus dataFallback /> : null;
+      return null;
     }
     return liveRun || model.headline.kind === "activity" ? (
       <div className="relative min-w-0" data-execution-stage-feed>
@@ -326,12 +326,7 @@ function ChildRunActivityList({ entries }: { entries: readonly StageChildRunEntr
   return (
     <div className="flex min-w-0 flex-col gap-1" data-stage-child-run-activities data-stage-child-run-cards>
       {entries.map((entry) => (
-        <ChildRunActivity
-          key={entry.childRun.id}
-          childRun={entry.childRun}
-          agentName={entry.agentName}
-          childToolSteps={entry.childToolSteps}
-        />
+        <ChildRunActivity key={entry.childRun.id} childRun={entry.childRun} agentName={entry.agentName} />
       ))}
     </div>
   );
@@ -361,11 +356,7 @@ function FeedTimelineGroup({
           <AppIcon icon="delegation" size={14} aria-hidden="true" />
         </TimelineMarker>
         <div className="execution-feed-item__body min-w-0">
-          <ChildRunActivity
-            childRun={group.childRun}
-            agentName={group.agentName}
-            childToolSteps={group.childToolSteps}
-          />
+          <ChildRunActivity childRun={group.childRun} agentName={group.agentName} />
         </div>
       </div>
     );
@@ -790,18 +781,6 @@ function formatFeedElapsed(milliseconds: number): string {
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   return frontendFeatureMessage("workflow.feed.elapsed.hours", { hours, minutes, seconds });
-}
-
-function useLiveNow(live: boolean): number {
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (!live) return undefined;
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [live]);
-
-  return now;
 }
 
 function readRunElapsedMs(run: RunRecord, nowEpoch: number): number | undefined {

@@ -11,6 +11,16 @@ import type {
 import { terminalText } from "./AgentMemoryTerminalText.js";
 import type { ToolArtifactEvidenceRecord } from "../Types/ToolRuntimeTypes.js";
 
+function currentUserEvidence(input: AgentMemoryCompletedTurnInput): string {
+  if (!input.interaction || input.interaction.surface === "console") return input.userEntry.content;
+  if (!input.interaction.message?.senderId || input.interaction.message.senderKind === "agent") return "";
+  // Only the actual triggering person's message is independent evidence. The
+  // surrounding channel inbox can contain peers, quotes, and agent speech.
+  return (input.interaction.message.segments ?? [])
+    .flatMap((segment) => (segment.type === "text" && typeof segment.data.text === "string" ? [segment.data.text] : []))
+    .join("\n");
+}
+
 const MemorySourceTextLimits = {
   textContentChars: 4_000,
   summaryChars: 2_000,
@@ -28,8 +38,8 @@ export function buildSources(
       sourceKind: "user_message",
       role: "user",
       key: input.userEntry.id,
-      textContent: input.userEntry.content,
-      summary: input.userEntry.content,
+      textContent: currentUserEvidence(input),
+      summary: currentUserEvidence(input),
       conversationEntryId: input.userEntry.id,
       createdAt: input.userEntry.timestamp,
     }),

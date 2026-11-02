@@ -20,9 +20,9 @@ import { createAgentDefaultToolResourceCapabilities } from "./AgentToolResourceC
 import { updateSeneraOutputSpoolState } from "../Execution/SeneraOutputSpool.js";
 import {
   formatAgentToolContractValidationIssue,
+  materializeToolContractArguments,
   projectAgentToolContractDiagnostics,
   validateToolContractValue,
-  validateToolSignatureArguments,
 } from "./AgentToolSignatureArgumentValidator.js";
 import type { AgentSourceDiagnostic } from "../Diagnostics/AgentSourceDiagnostic.js";
 import {
@@ -70,6 +70,7 @@ export interface AgentToolRunnerLike {
 }
 
 export interface AgentToolRunnerContext {
+  composition?: import("./AgentToolComposition.js").AgentToolComposition;
   interaction?: AgentInteractionContext;
   sessionId?: string;
   logicalCacheScope?: string;
@@ -152,8 +153,12 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     }
     const deadline = openAgentToolDeadline(this.config, context.signal, {
       allowExtension:
-        tool.handler.kind === "HostCapability" && tool.runtime.DeadlinePolicy === ToolDeadlinePolicies.ModelAware,
+        (tool.handler.kind === "HostCapability" && tool.runtime.DeadlinePolicy === ToolDeadlinePolicies.ModelAware) ||
+        tool.runtime.DeadlinePolicy === ToolDeadlinePolicies.ToolAware,
     });
+    if (tool.runtime.DeadlinePolicy === ToolDeadlinePolicies.ToolAware && tool.runtime.DeadlineMs !== undefined) {
+      deadline.extendTo?.(tool.runtime.DeadlineMs);
+    }
     const scopedContext = { ...context, signal: deadline.signal, deadline };
     try {
       const result = await this.runInvocation(tool, args, scopedContext);
@@ -196,11 +201,12 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     const argumentContract = tool.contract?.arguments;
     if (argumentContract) {
       const validationSchema = this.hostCapabilities.projectRuntimeValidationSchema(tool, argumentContract.jsonSchema);
-      const issues = validateToolSignatureArguments({
-        contract: { ...argumentContract, jsonSchema: validationSchema },
+      const materialized = materializeToolContractArguments({
+        schema: validationSchema,
         args: invocation.arguments,
       });
-      if (issues.length > 0) {
+      if (!materialized.ok) {
+        const issues = materialized.issues;
         return this.failure(
           issues.map((issue) => formatAgentToolContractValidationIssue(issue, tool.name)).join("; "),
           { toolName: tool.name, issues },
@@ -209,6 +215,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
           projectAgentToolContractDiagnostics(issues, argumentContract),
         );
       }
+      invocation = { ...invocation, arguments: materialized.value };
     }
     const unsupportedRuntime = explainUnsupportedAgentToolRuntime(tool);
     if (unsupportedRuntime.length > 0) {
@@ -385,6 +392,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
     }
 
     return handler(args, {
+      resourcePublisher: this.uploadStore,
       tool,
       config: this.config,
       configPath: context.configPath,
@@ -393,6 +401,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       identityDisplayValues: this.identityDisplayValues,
       registry: this.registry,
       executionEnv,
+      resourceAccessGrant: context.resourceAccessGrant,
       uploadStore: this.uploadStore,
       resourceResolver: this.resourceResolver,
       interaction: context.interaction,
@@ -423,6 +432,7 @@ export class AgentToolRunner implements AgentToolRunnerLike {
       thinkingLevel: context.thinkingLevel,
       todoService: this.todoService,
       workspaceObservation: context.workspaceObservation,
+      composition: context.composition,
     });
   }
 

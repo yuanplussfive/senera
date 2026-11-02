@@ -1,45 +1,66 @@
 class StateCardRewrite {
   topicRelation "continue" | "new_topic"
   standaloneRequest string
+  resumeRequestId string?
 }
 
 class MemOSFragment {
   topic string
   summary string
-  type "fact" | "preference" | "relationship" | "context" | "entity" | "custom"
+  type "fact" | "preference" | "relationship" | "context"
+  assessments MemOSMemoryAssessment[]
   @@dynamic
+}
+
+class MemOSSkipDecision {
+  action "skip"
+  assessments MemOSMemoryAssessment[]
+}
+
+class MemOSMemoryAssessment {
+  candidate int
+  usefulness "helpful" | "unhelpful" | "unused" | "uncertain"
+  reason string
 }
 
 class AuxiliarySummary {
   summary string
 }
 
-class AuxiliaryImageAnalysis {
-  analysis string
+class MemoryRelevanceRecord {
+  recordId int
+  relevant bool
+  score float
 }
 
-class ChannelTextPart {
-  kind "text"
-  text string
+class MemoryRelevanceAssessment {
+  records MemoryRelevanceRecord[]
 }
 
-class ChannelResourcePart {
-  kind "resource"
-  uri string
-  alt string?
-  mediaKind "image" | "video" | "audio" | "file"?
-  mime string?
-  fileName string?
+class MemoryRetention {
+  days int
 }
 
-class ChannelCodePart {
-  kind "code"
-  language string?
-  code string
+function AssessMemoryRetention(promptJson: string) -> MemoryRetention {
+  client SeneraActionPlannerPromptBuilder
+  prompt #"
+    {{ _.role("system") }}
+    Return the requested memory retention in days.
+    {{ ctx.output_format }}
+    {{ _.role("user") }}
+    {{ promptJson }}
+  "#
 }
 
-class ChannelDelivery {
-  parts (ChannelTextPart | ChannelResourcePart | ChannelCodePart)[]
+function AssessMemoryRelevance(promptJson: string) -> MemoryRelevanceAssessment {
+  client SeneraActionPlannerPromptBuilder
+  prompt #"
+    {{ _.role("system") }}
+    Return the relevance assessment for every supplied memory reference.
+    {{ ctx.output_format }}
+    {{ _.role("user") }}
+    {{ promptJson }}
+  "#
 }
 
 function RewriteStateCard(promptJson: string) -> StateCardRewrite {
@@ -53,7 +74,7 @@ function RewriteStateCard(promptJson: string) -> StateCardRewrite {
   "#
 }
 
-function ExtractMemOSFragment(promptJson: string) -> MemOSFragment {
+function ExtractMemOSFragment(promptJson: string) -> MemOSFragment | MemOSSkipDecision {
   client SeneraActionPlannerPromptBuilder
   prompt #"
     {{ _.role("system") }}
@@ -64,11 +85,16 @@ function ExtractMemOSFragment(promptJson: string) -> MemOSFragment {
   "#
 }
 
-function SummarizeMemOSPeriod(promptJson: string) -> AuxiliarySummary {
+class MemoryDiary {
+  title string
+  body string
+}
+
+function WriteMemoryDiary(promptJson: string) -> MemoryDiary {
   client SeneraActionPlannerPromptBuilder
   prompt #"
     {{ _.role("system") }}
-    Return only the requested period summary.
+    Return the requested diary title and complete Markdown body.
     {{ ctx.output_format }}
     {{ _.role("user") }}
     {{ promptJson }}
@@ -80,28 +106,6 @@ function CompressToolObservation(promptJson: string) -> AuxiliarySummary {
   prompt #"
     {{ _.role("system") }}
     Return only the grounded tool observation summary.
-    {{ ctx.output_format }}
-    {{ _.role("user") }}
-    {{ promptJson }}
-  "#
-}
-
-function ChannelFinalDelivery(promptJson: string) -> ChannelDelivery {
-  client SeneraActionPlannerPromptBuilder
-  prompt #"
-    {{ _.role("system") }}
-    Return the ordered channel parts, preserving the supplied answer and resource manifest.
-    {{ ctx.output_format }}
-    {{ _.role("user") }}
-    {{ promptJson }}
-  "#
-}
-
-function AnalyzeImage(promptJson: string) -> AuxiliaryImageAnalysis {
-  client SeneraActionPlannerPromptBuilder
-  prompt #"
-    {{ _.role("system") }}
-    Analyze the supplied image evidence for the request. Return only the grounded analysis.
     {{ ctx.output_format }}
     {{ _.role("user") }}
     {{ promptJson }}

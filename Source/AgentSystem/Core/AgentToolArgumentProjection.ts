@@ -19,6 +19,8 @@ export interface AgentToolArgumentProjectionPolicy {
   readonly maxLeafBytes: number;
   /** Maximum array entries kept when a pointer fans out with `*`. */
   readonly maxArrayEntries: number;
+  /** Maximum object members kept when no presentation pointer declares a path. */
+  readonly maxObjectEntries: number;
 }
 
 export interface AgentToolArgumentProjection {
@@ -31,6 +33,7 @@ export const DefaultAgentToolArgumentProjection: Omit<AgentToolArgumentProjectio
   maxBytes: 65536,
   maxLeafBytes: 2048,
   maxArrayEntries: 64,
+  maxObjectEntries: 64,
 };
 
 /** Trailer appended to a shrunk leaf, so the value reads as incomplete. */
@@ -67,11 +70,7 @@ export function projectAgentToolArguments(
 
   const patterns = patternSet(policy.keepPointers);
   if (patterns.length === 0) {
-    // No declared pointers (results, opaque payloads): shrink leaves but keep
-    // the shape, mirroring the result-side projection's per-field policy.
-    const terminalState = createState(policy);
-    const projected = projectTerminalLeaf(value, terminalState, policy, []);
-    return { value: projected, omissions: terminalState.omissions };
+    return projectUnaddressedValue(value, policy);
   }
 
   let state = createState(policy);
@@ -89,13 +88,85 @@ export function projectAgentToolArguments(
   return { value: projected, omissions: state.omissions };
 }
 
-function createState(policy: AgentToolArgumentProjectionPolicy): ProjectionState {
+/**
+ * Tool results do not have presentation-declared pointers. Preserve their
+ * JSON shape while enforcing the same aggregate limit promised by the policy.
+ * This is intentionally separate from pointer-aware argument projection:
+ * declared argument paths may override collection limits, whereas opaque
+ * result payloads must never make a history event unbounded.
+ */
+export function projectAgentToolResultForDisplay(value: unknown): AgentToolArgumentProjection {
+  return projectAgentToolArguments(value, {
+    keepPointers: [],
+    ...DefaultAgentToolArgumentProjection,
+  });
+}
+
+interface UnaddressedProjectionLimits {
+  readonly maxLeafBytes: number;
+  readonly maxArrayEntries: number;
+  readonly maxObjectEntries: number;
+  readonly maxNodes: number;
+}
+
+function projectUnaddressedValue(
+  value: unknown,
+  policy: AgentToolArgumentProjectionPolicy,
+): AgentToolArgumentProjection {
+  let limits: UnaddressedProjectionLimits = {
+    maxLeafBytes: policy.maxLeafBytes,
+    maxArrayEntries: policy.maxArrayEntries,
+    maxObjectEntries: policy.maxObjectEntries,
+    maxNodes: defaultProjectionNodeLimit(policy),
+  };
+
+  for (;;) {
+    const effectivePolicy = { ...policy, ...limits };
+    const state = createState(effectivePolicy, limits.maxNodes);
+    const projected = projectUnaddressedNode(value, state, effectivePolicy, []);
+    if (utf8ByteLength(tryStringify(projected)) <= policy.maxBytes) {
+      return { value: projected, omissions: state.omissions };
+    }
+
+    const next = tightenUnaddressedProjectionLimits(limits);
+    if (!next) {
+      throw new RangeError("Tool result projection cannot fit the configured byte limit.");
+    }
+    limits = next;
+  }
+}
+
+function tightenUnaddressedProjectionLimits(
+  limits: UnaddressedProjectionLimits,
+): UnaddressedProjectionLimits | undefined {
+  if (limits.maxLeafBytes > LeafByteFloor) {
+    return { ...limits, maxLeafBytes: Math.max(LeafByteFloor, Math.floor(limits.maxLeafBytes / 2)) };
+  }
+  if (limits.maxArrayEntries > 1 || limits.maxObjectEntries > 1) {
+    return {
+      ...limits,
+      maxArrayEntries: Math.max(1, Math.floor(limits.maxArrayEntries / 2)),
+      maxObjectEntries: Math.max(1, Math.floor(limits.maxObjectEntries / 2)),
+    };
+  }
+  if (limits.maxNodes > 1) return { ...limits, maxNodes: Math.max(1, Math.floor(limits.maxNodes / 2)) };
+  return undefined;
+}
+
+function createState(
+  policy: AgentToolArgumentProjectionPolicy,
+  maxNodes = defaultProjectionNodeLimit(policy),
+): ProjectionState {
   return {
     omissions: [],
     ancestors: new WeakSet<object>(),
     visitedNodes: 0,
-    maxNodes: Math.max(256, policy.maxArrayEntries * 32),
+    maxNodes,
   };
+}
+
+function defaultProjectionNodeLimit(policy: AgentToolArgumentProjectionPolicy): number {
+  return Math.max(256, Math.max(policy.maxArrayEntries, policy.maxObjectEntries) * 32);
 }
 
 /** Only the remaining path segments matter once we are inside the value. */
@@ -186,6 +257,79 @@ function projectTerminalLeaf(
   } finally {
     state.ancestors.delete(source as object);
   }
+}
+
+function projectUnaddressedNode(
+  source: unknown,
+  state: ProjectionState,
+  policy: AgentToolArgumentProjectionPolicy,
+  path: readonly string[],
+): unknown {
+  state.visitedNodes += 1;
+  if (state.visitedNodes > state.maxNodes) {
+    recordOmission(state, path, "branch_limit");
+    return containerSkeleton(source);
+  }
+  if (typeof source === "string") {
+    const shrunk = truncateUtf8(source, policy.maxLeafBytes);
+    if (shrunk.truncated) recordOmission(state, path, "token_limit");
+    return shrunk.text;
+  }
+  if (typeof source === "bigint") {
+    const shrunk = truncateUtf8(String(source), policy.maxLeafBytes);
+    if (shrunk.truncated) recordOmission(state, path, "token_limit");
+    return shrunk.text;
+  }
+  if (source === null || typeof source === "boolean") return source;
+  if (typeof source === "number") {
+    if (Number.isFinite(source)) return source;
+    recordOmission(state, path, "unsupported_value");
+    return null;
+  }
+  if (source === undefined || typeof source === "function" || typeof source === "symbol") {
+    recordOmission(state, path, "unsupported_value");
+    return null;
+  }
+  if (state.ancestors.has(source as object)) {
+    recordOmission(state, path, "cycle");
+    return containerSkeleton(source);
+  }
+
+  state.ancestors.add(source as object);
+  try {
+    if (Array.isArray(source)) {
+      const limit = Math.min(source.length, policy.maxArrayEntries);
+      if (limit < source.length) recordOmission(state, path, "branch_limit", source.length - limit);
+      return Array.from({ length: limit }, (_, index) =>
+        projectUnaddressedNode(source[index], state, policy, [...path, String(index)]),
+      );
+    }
+
+    const entries = Object.entries(source as Record<string, unknown>);
+    const limit = Math.min(entries.length, policy.maxObjectEntries);
+    if (limit < entries.length) recordOmission(state, path, "branch_limit", entries.length - limit);
+    const result: Record<string, unknown> = {};
+    for (const [key, entry] of entries.slice(0, limit)) {
+      const projectedKey = reserveProjectedRecordKey(key, result, policy.maxLeafBytes);
+      if (projectedKey !== key) recordOmission(state, [...path, key], "token_limit");
+      result[projectedKey] = projectUnaddressedNode(entry, state, policy, [...path, key]);
+    }
+    return result;
+  } finally {
+    state.ancestors.delete(source as object);
+  }
+}
+
+function reserveProjectedRecordKey(source: string, result: Record<string, unknown>, maxBytes: number): string {
+  const base = truncateUtf8(source, maxBytes).text;
+  if (!Object.hasOwn(result, base)) return base;
+  let suffix = 2;
+  let candidate = `${base}#${suffix}`;
+  while (Object.hasOwn(result, candidate)) {
+    suffix += 1;
+    candidate = `${base}#${suffix}`;
+  }
+  return candidate;
 }
 
 function projectArray(

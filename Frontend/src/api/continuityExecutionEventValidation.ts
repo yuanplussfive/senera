@@ -1,50 +1,14 @@
 import { z } from "zod";
+import { AgentMemoryRecallArchiveSnapshotSchema } from "../../../Source/AgentSystem/Continuity/AgentMemoryRecallArchiveContract";
 import type {
   ContinuityRecallQueryData,
   ContinuityRecallSettledData,
   ContinuitySnapshotData,
-  ExecutionEventData,
   PromptHarnessComposedData,
   TodoSnapshotData,
 } from "./eventTypes";
 
 const NonNegativeIntegerSchema = z.number().int().nonnegative();
-
-const SelectionCountSchema = z.object({
-  available: NonNegativeIntegerSchema,
-  matched: NonNegativeIntegerSchema,
-  selected: NonNegativeIntegerSchema,
-});
-
-const ExecutionStepSchema = z.object({
-  id: z.string(),
-  nodeId: z.string(),
-  planId: z.string(),
-  planRevision: NonNegativeIntegerSchema,
-  index: NonNegativeIntegerSchema,
-  title: z.string(),
-  detail: z.string(),
-  status: z.enum(["planned", "running", "completed", "failed", "blocked"]),
-  dependencyIds: z.array(z.string()),
-  callId: z.string().optional(),
-  failure: z.string().optional(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-});
-
-const ExecutionSchema = z.object({
-  id: z.string(),
-  uri: z.string(),
-  sessionId: z.string(),
-  requestId: z.string(),
-  objective: z.string(),
-  status: z.enum(["active", "paused", "blocked", "completed", "cancelled"]),
-  reason: z.string().optional(),
-  steps: z.array(ExecutionStepSchema),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  completedAt: z.string().optional(),
-});
 
 const TodoSchema = z.object({
   id: z.string(),
@@ -63,81 +27,9 @@ const TodoCountsSchema = z.object({
   cancelled: NonNegativeIntegerSchema,
 });
 
-const ExecutionSnapshotSchema = z.object({ active: ExecutionSchema.nullable(), executions: z.array(ExecutionSchema) });
 const TodoSnapshotSchema = z.object({ items: z.array(TodoSchema), counts: TodoCountsSchema });
-const ContinuitySnapshotSchema: z.ZodType<ContinuitySnapshotData> = z
-  .object({
-    enabled: z.boolean(),
-    query: z.string().optional(),
-    periodDigests: z.array(
-      z
-        .object({
-          id: z.string(),
-          uri: z.string(),
-          revision: z.string(),
-          granularity: z.enum(["day", "month"]),
-          periodStart: z.string(),
-          periodEnd: z.string(),
-          summary: z.string(),
-          score: z.number(),
-          matchedBy: z.array(z.string()),
-          scores: z
-            .object({
-              keyword: z.number().optional(),
-              semantic: z.number().optional(),
-              hybrid: z.number().optional(),
-            })
-            .strict()
-            .optional(),
-        })
-        .strict(),
-    ),
-    eventCandidates: z.array(
-      z
-        .object({
-          id: z.string(),
-          uri: z.string(),
-          revision: z.string(),
-          type: z.enum(["fact", "preference", "relationship", "context", "entity", "custom"]),
-          summary: z.string(),
-          occurredAt: z.string(),
-          score: z.number(),
-          matchedBy: z.array(z.string()),
-          scores: z
-            .object({
-              keyword: z.number().optional(),
-              semantic: z.number().optional(),
-              hybrid: z.number().optional(),
-            })
-            .strict()
-            .optional(),
-        })
-        .strict(),
-    ),
-    selection: z
-      .object({
-        digests: SelectionCountSchema,
-        events: SelectionCountSchema,
-        usedTokens: NonNegativeIntegerSchema,
-        maxTokens: NonNegativeIntegerSchema,
-      })
-      .strict(),
-  })
-  .strict();
-
 export function readContinuitySnapshotData(value: unknown): ContinuitySnapshotData | undefined {
-  const parsed = ContinuitySnapshotSchema.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
-}
-
-export function readExecutionEventData(value: unknown): ExecutionEventData | undefined {
-  const parsed = z
-    .object({
-      snapshot: ExecutionSnapshotSchema,
-      execution: ExecutionSchema,
-      step: ExecutionStepSchema.optional(),
-    })
-    .safeParse(value);
+  const parsed = AgentMemoryRecallArchiveSnapshotSchema.safeParse(value);
   return parsed.success ? parsed.data : undefined;
 }
 

@@ -1,4 +1,5 @@
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
+import { resolveAgentConfiguredModelThinking } from "../ModelEndpoints/AgentModelThinking.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import type { AgentExtensionRegistryLike } from "../Types/ToolRuntimeTypes.js";
 import type { AgentPinnedSkillReference } from "../Skills/AgentSkillActivation.js";
@@ -71,8 +72,7 @@ export class AgentSubagentPreflight implements AgentSubagentPreflightPort {
     const role = this.roleCatalog.resolve(input.workspaceRoot, input.agent);
     assertRoleAllowed(role, input.inheritedCapabilityCeiling);
     const model = resolveModel(role, input);
-    const thinking =
-      input.requestedThinking ?? role.thinking ?? input.configuredThinkingLevel ?? input.parentThinkingLevel;
+    const thinking = resolveThinking(input, role, model.selectedModelProviderId);
     const allowedAgentNames = intersectAllowedAgentNames(
       this.roleCatalog.snapshot(input.workspaceRoot).roles.map((candidate) => candidate.id),
       input.inheritedCapabilityCeiling?.allowedAgents,
@@ -131,6 +131,29 @@ export class AgentSubagentPreflight implements AgentSubagentPreflightPort {
       workspaceAccess: input.workspaceAccess,
     });
   }
+}
+
+function resolveThinking(
+  input: AgentSubagentPreflightInput,
+  role: AgentSubagentRoleDefinition,
+  modelId: string | undefined,
+): ModelThinkingLevel | undefined {
+  const model = input.modelPool.providers.find((provider) => provider.Id === modelId);
+  if (!model)
+    throw new AgentSubagentPreflightError("model_not_allowed", "The selected model is outside the authorized pool.");
+  const thinking = resolveAgentConfiguredModelThinking(model);
+  const explicit = input.requestedThinking ?? role.thinking ?? input.configuredThinkingLevel;
+  if (explicit && !thinking.levels.includes(explicit))
+    throw new AgentSubagentPreflightError(
+      "thinking_not_supported",
+      `Model '${model.Id}' supports thinking levels: ${thinking.levels.join(", ")}.`,
+    );
+  return (
+    explicit ??
+    (input.parentThinkingLevel && thinking.levels.includes(input.parentThinkingLevel)
+      ? input.parentThinkingLevel
+      : thinking.defaultLevel)
+  );
 }
 
 function intersectAllowedAgentNames(

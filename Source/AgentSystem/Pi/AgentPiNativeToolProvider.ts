@@ -27,6 +27,8 @@ import {
   normalizeModelHttpError,
 } from "../ModelEndpoints/ModelHttpErrors.js";
 import { AgentModelUsageSources, type AgentModelUsageValue } from "../ModelEndpoints/AgentModelUsage.js";
+import { priceAgentPiUsage, type AgentPricedPiUsage } from "../ModelEndpoints/AgentModelPricing.js";
+import { projectAgentPiAssistantUsage } from "../ModelEndpoints/AgentPiModelUsage.js";
 import type { AgentPiMutableSessionFrame } from "./AgentPiCodingAgentSessionFrame.js";
 import { registerAgentPiToolCallBatch } from "./AgentPiToolCallBatchProjector.js";
 import type { AgentPiTurnState } from "./AgentPiTurnState.js";
@@ -35,13 +37,12 @@ import {
   AgentNativeToolApiStreams,
   type AgentNativeToolApiStreams as AgentNativeToolApiStreamMap,
 } from "../ModelEndpoints/AgentNativeToolApiStreams.js";
-import type {
-  AgentResidentSpeechNativeContinuation,
-  AgentResidentSpeechProjector,
-} from "../ResidentSpeech/AgentResidentSpeechTypes.js";
-import { inspectAgentResidentSpeechFocus } from "../ResidentSpeech/AgentResidentSpeechPromptProjector.js";
-import { resolveAgentResidentSpeechProjection } from "../PiShared/AgentPiResidentSpeechProjection.js";
 import { AgentPiDiagnosticSources, emitAgentPiDiagnostic } from "./AgentPiDiagnostics.js";
+import {
+  collectAgentProviderDiagnosticSecrets,
+  startAgentProviderStreamCapture,
+} from "../Diagnostics/AgentProviderStreamDiagnostics.js";
+import type { AgentProviderStreamRequestStatus } from "../PiShared/AgentPiDiagnosticsTypes.js";
 import {
   createAgentPiLogicalCacheScope,
   createAgentPiPromptCacheOptions,
@@ -55,7 +56,7 @@ import {
   resolveAgentPromptCacheObservation,
   resolveAgentPromptCacheStrategy,
 } from "../ModelEndpoints/AgentPromptWireSnapshot.js";
-import { AgentPiNativeToolBridgeName, projectAgentPiNativeToolCallDisplay } from "./AgentPiNativeToolBridge.js";
+import { projectAgentPiNativeToolCallDisplay } from "./AgentPiNativeToolBridge.js";
 import { exposeAgentPiContextProvider, type AgentPiContextProvider } from "./AgentPiProviderCompatibility.js";
 import { restrictAgentPiNativeTools } from "./AgentPiNativeToolContext.js";
 import {
@@ -73,7 +74,6 @@ export interface AgentPiNativeToolProviderOptions {
   readonly projection: AgentPiProviderProjection;
   readonly modelProvider: ResolvedAgentModelProviderConfig;
   readonly frame: AgentPiMutableSessionFrame;
-  readonly residentSpeech?: AgentResidentSpeechProjector;
   readonly apiStreams?: AgentNativeToolApiStreamMap;
 }
 
@@ -138,6 +138,25 @@ export class AgentPiNativeToolProvider {
       this.fail(output, model, new Error("Senera native tool provider requires an active turn state."));
       return;
     }
+    const compactionRequest = isPiCompactionRequest(options);
+    // Input preparation can fail before the vendor stream starts. Its error
+    // message still belongs to this request and must keep the original cause.
+    const modelMessageIndex = compactionRequest ? undefined : turnState.beginModelRequest();
+    const streamDiagnostic = startAgentProviderStreamCapture(
+      {
+        context: { sessionId: frame.sessionId, requestId: frame.requestId, step: frame.step, modelMessageIndex },
+        providerId: this.options.modelProvider.Id,
+        stage: compactionRequest ? "pi.native.compaction" : "pi.native.conversation",
+        model,
+        secrets: collectAgentProviderDiagnosticSecrets({
+          apiKeys: [this.options.modelProvider.ApiKey, options?.apiKey],
+          headers: [model.headers, options?.headers],
+        }),
+      },
+      frame.diagnostics,
+    );
+    let diagnosticStatus: AgentProviderStreamRequestStatus = "incomplete";
+    let diagnosticError: unknown;
     const firstTokenController = new AbortController();
     const maxRequestController = new AbortController();
     const streamIdleController = new AbortController();
@@ -166,16 +185,25 @@ export class AgentPiNativeToolProvider {
     const callerAborted = (): boolean => signal.aborted && deadlineFailure() === undefined;
     let started = false;
     try {
-      const compactionRequest = isPiCompactionRequest(options);
       const sourceRequest = this.requestContext(context, compactionRequest ? [] : frame.nativeProviderToolNames);
-      const preparedRequest = frame.prepareModelInput ? await frame.prepareModelInput(sourceRequest) : sourceRequest;
+      const preparedRequest =
+        !compactionRequest && frame.prepareModelInput ? await frame.prepareModelInput(sourceRequest) : sourceRequest;
       // ModelRuntime already gives this provider Pi's normalized transcript.
       // Keep it intact; normalizeContext only handles the optional preparer
       // compatibility path and is a no-op for an existing transcript.
       const request = normalizeContext(preparedRequest);
-      // Pi consumes compaction summaries directly; they never enter the
-      // Senera run collector, so they must not reserve a model-message index.
-      const modelMessageIndex = compactionRequest ? undefined : turnState.beginModelRequest();
+      if (!compactionRequest) frame.synchronizeToolContracts?.(request);
+      if (modelMessageIndex !== undefined) {
+        turnState.modelContexts.set(
+          modelMessageIndex,
+          this.options.frame.contextInspection.capture({
+            context: request,
+            model: model.id,
+            scope: "native",
+            state: turnState,
+          }),
+        );
+      }
       const stableTools = getCurrentTools(request.messages).map(({ name, description, parameters }) => ({
         name,
         description,
@@ -219,33 +247,34 @@ export class AgentPiNativeToolProvider {
         sessionId: cache.scope,
         cacheRetention,
         onPayload: wireCapture.onPayload,
+        onProviderStreamEvent: (data, actualModel) => {
+          streamDiagnostic?.onProviderStreamEvent(data, actualModel);
+          return options?.onProviderStreamEvent?.(data, actualModel);
+        },
         temperature: this.options.modelProvider.Temperature,
         timeoutMs: this.options.modelProvider.TimeoutMs,
         maxRetries: 0,
         maxRetryDelayMs: this.options.modelProvider.RetryAfterMaxDelayMs,
       };
       const source = this.delegate(model, request, requestOptions, simple);
+      let memoryAcknowledged = false;
       for await (const event of source) {
+        streamDiagnostic?.observe(event);
+        if (!compactionRequest && !memoryAcknowledged && event.type !== "error" && isFirstTokenEvent(event)) {
+          frame.onModelMemoryDelivered?.();
+          memoryAcknowledged = true;
+        }
         if (isFirstTokenEvent(event)) firstTokenTimer?.clear();
         if (isAgentStreamActivityEvent(event)) streamIdleWatchdog.reset();
         if (event.type === "start") started = true;
         if (event.type === "done") {
+          diagnosticStatus = "completed";
           this.recordUsage(turnState, event.message.usage);
           turnState.context.tokenBudget.recordProviderUsage(event.message.usage, event.message);
           firstTokenTimer?.clear();
           maxRequestTimer?.clear();
           streamIdleWatchdog.clear();
-          const message = await this.projectResidentSpeech(
-            request,
-            event.message,
-            options?.signal,
-            frame,
-            turnState,
-            model,
-            requestOptions,
-            logicalCacheScope,
-            options,
-          );
+          const message = event.message;
           await this.emitPromptCacheObservation(frame, model, cache, wireCapture, {
             sessionId: requireAgentPiPromptCacheSessionId(frame.sessionId),
             logicalCacheScope,
@@ -258,6 +287,7 @@ export class AgentPiNativeToolProvider {
             modelMessageIndex,
             projectDisplayCall: projectAgentPiNativeToolCallDisplay,
           });
+          streamDiagnostic?.finish(diagnosticStatus);
           output.push({ ...event, message });
           output.end(message);
           return;
@@ -265,6 +295,11 @@ export class AgentPiNativeToolProvider {
         if (event.type === "error") {
           const timeoutFailure = deadlineFailure();
           const callerCancelled = callerAborted();
+          diagnosticStatus = callerCancelled ? "aborted" : "failed";
+          diagnosticError = signal.reason ?? event.error.errorMessage;
+          const reportedUsage = projectAgentPiAssistantUsage(event.error) ? event.error.usage : undefined;
+          if (reportedUsage) this.recordUsage(turnState, reportedUsage);
+          streamDiagnostic?.finish(diagnosticStatus, diagnosticError);
           this.fail(
             output,
             model,
@@ -273,6 +308,7 @@ export class AgentPiNativeToolProvider {
               : (timeoutFailure ?? new Error(event.error.errorMessage ?? "Pi native provider request failed.")),
             started,
             callerCancelled,
+            reportedUsage,
           );
           await this.emitPromptCacheObservation(frame, model, cache, wireCapture, {
             sessionId: requireAgentPiPromptCacheSessionId(frame.sessionId),
@@ -291,11 +327,15 @@ export class AgentPiNativeToolProvider {
       const timeoutFailure = deadlineFailure();
       const cancelled = callerAborted();
       const failure = cancelled ? (signal.reason ?? error) : (timeoutFailure ?? error);
+      diagnosticStatus = cancelled ? "aborted" : "failed";
+      diagnosticError = failure;
+      streamDiagnostic?.finish(diagnosticStatus, diagnosticError);
       this.fail(output, model, failure, started, cancelled);
     } finally {
       firstTokenTimer?.clear();
       maxRequestTimer?.clear();
       streamIdleWatchdog.clear();
+      streamDiagnostic?.finish(diagnosticStatus, diagnosticError);
     }
   }
 
@@ -321,121 +361,10 @@ export class AgentPiNativeToolProvider {
     return restrictAgentPiNativeTools(context, providerToolNames);
   }
 
-  private async projectResidentSpeech(
-    context: Context,
-    message: AssistantMessage,
-    signal: AbortSignal | undefined,
-    frame: ReturnType<AgentPiMutableSessionFrame["snapshot"]>,
-    turnState: AgentPiTurnState,
-    model: NativeModel,
-    requestOptions: NativeStreamOptions,
-    logicalCacheScope: string,
-    sourceOptions: StreamOptions | SimpleStreamOptions | undefined,
-  ): Promise<AssistantMessage> {
-    const focus = inspectAgentResidentSpeechFocus(message);
-    if (!focus) return message;
-    const projection = resolveAgentResidentSpeechProjection({
-      focus,
-      prefaceRewriteEnabled: frame.prefaceRewriteEnabled,
-      personaActive: frame.personaActive,
-      finalResponseRewriteEnabled: frame.finalResponseRewriteEnabled,
-      hasRegisteredToolCalls: turnState.hasRegisteredToolCalls(),
-    });
-    if (!projection) return message;
-    if (!this.options.residentSpeech) {
-      throw new Error("Active persona speech projection requires the resident-speech sidecar.");
-    }
-    const bridge = getCurrentTools(context.messages).find((tool) => tool.name === AgentPiNativeToolBridgeName);
-    if (!bridge) {
-      throw new Error(`Resident speech continuation requires the ${AgentPiNativeToolBridgeName} bridge tool.`);
-    }
-    const sidecarCache = createAgentPiPromptCacheOptions({
-      phase: focus.mode === "action_preface" ? "resident-speech-action-preface" : "resident-speech-final-response",
-      sessionId: requireAgentPiPromptCacheSessionId(frame.sessionId),
-      logicalCacheScope,
-      model: { provider: model.provider, api: model.api, model: model.id },
-      stablePrefix: {
-        systemPrompt: getCurrentSystemPrompt(context.messages),
-        tools: [{ name: bridge.name, description: bridge.description, parameters: bridge.parameters }],
-      },
-    });
-    const sidecarStrategy = resolveAgentPromptCacheStrategy(model.api);
-    const sidecarRetention = projectAgentPromptCacheRetention(sidecarStrategy, sidecarCache.retention);
-    const sidecarWireCapture = createAgentPromptWireCapture({
-      onPayload: sourceOptions?.onPayload,
-    });
-    const sidecarRequestOptions: NativeStreamOptions = {
-      ...requestOptions,
-      sessionId: sidecarCache.scope,
-      cacheRetention: sidecarRetention,
-      onPayload: sidecarWireCapture.onPayload,
-    };
-    const sidecarUsage = turnState.context.usageLedger.fork();
-    const continuation: AgentResidentSpeechNativeContinuation = {
-      stream: ({
-        context: continuationContext,
-        requiredToolName,
-        toolChoice = "required",
-        signal: continuationSignal,
-      }) =>
-        this.delegate(
-          model,
-          continuationContext,
-          {
-            ...sidecarRequestOptions,
-            signal: continuationSignal,
-            toolChoice:
-              toolChoice === "required" ? projectAgentNativeRequiredToolChoice(model.api, requiredToolName) : "auto",
-          },
-          true,
-        ),
-    };
-    let projected: AssistantMessage;
-    try {
-      projected = await this.options.residentSpeech.project({
-        context,
-        message,
-        focus,
-        spokenUtterances: turnState.residentSpeechHistory(),
-        projectionTier: projection.tier,
-        enabled: true,
-        signal,
-        sessionId: requireAgentPiPromptCacheSessionId(frame.sessionId),
-        logicalCacheScope,
-        nativeContinuation: continuation,
-        usageSink: (usage) => {
-          sidecarUsage.record(usage);
-        },
-        timingSink: (timing) =>
-          emitAgentPiDiagnostic(frame.diagnostics, {
-            context: { sessionId: frame.sessionId, requestId: frame.requestId, step: frame.step },
-            source: AgentPiDiagnosticSources.Provider,
-            name: "model_timing",
-            details: timing,
-          }),
-      });
-    } finally {
-      const usage = sidecarUsage.aggregate();
-      await this.emitPromptCacheObservation(frame, model, sidecarCache, sidecarWireCapture, {
-        sessionId: requireAgentPiPromptCacheSessionId(frame.sessionId),
-        logicalCacheScope,
-        retention: sidecarRetention,
-        stablePrefixRevision: sidecarCache.stablePrefixRevision ?? "",
-        stablePrefixBytes: sidecarCache.stablePrefixBytes ?? 0,
-        usage: {
-          cacheRead: usage?.cacheReadTokens ?? 0,
-          cacheWrite: usage?.cacheWriteTokens ?? 0,
-        },
-      });
-    }
-    const projectedFocus = inspectAgentResidentSpeechFocus(projected);
-    if (!projectedFocus) throw new Error("Resident speech projection returned no visible utterance.");
-    turnState.recordResidentSpeech({ mode: focus.mode, content: projectedFocus.draft });
-    return projected;
-  }
-
   private recordUsage(turnState: AgentPiTurnState, usage: AssistantMessage["usage"]): void {
+    priceAgentPiUsage(usage, this.options.modelProvider.Pricing);
     const value: AgentModelUsageValue = {
+      cost: (usage as AgentPricedPiUsage).seneraCost,
       source: AgentModelUsageSources.ProviderReported,
       inputTokens: usage.input,
       outputTokens: usage.output,
@@ -487,9 +416,11 @@ export class AgentPiNativeToolProvider {
     error: unknown,
     started = false,
     aborted = false,
+    usage?: AssistantMessage["usage"],
   ): void {
     const normalized = aborted ? error : normalizeModelHttpError(this.options.modelProvider, error);
     const failed = createFailureMessage(model, normalized, aborted);
+    failed.usage = usage ?? ({ ...failed.usage, seneraCost: { currency: "USD" } } as AgentPricedPiUsage);
     if (!started) output.push({ type: "start", partial: { ...failed, stopReason: "pending" } });
     output.push({ type: "error", reason: failed.stopReason === "aborted" ? "aborted" : "error", error: failed });
     output.end(failed);

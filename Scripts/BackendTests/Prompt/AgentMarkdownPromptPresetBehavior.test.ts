@@ -32,6 +32,7 @@ describe("workspace Markdown prompt presets", () => {
         card: { markdown: "# Review\n\nBe direct.", sourcePath: "prompts/reviewer.md" },
       },
       path: "prompts/reviewer.md",
+      selection: { version: 1, activePath: "prompts/reviewer.md", enabled: true },
     });
   });
 
@@ -76,6 +77,7 @@ describe("workspace Markdown prompt presets", () => {
     expect(readAgentMarkdownPromptPreset(workspaceRoot, 1024)).toEqual({
       context: { enabled: false, card: { markdown: "" } },
       path: "prompts/disabled.md",
+      selection: { version: 1, activePath: "prompts/disabled.md", enabled: false },
     });
   });
 

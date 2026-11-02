@@ -1,17 +1,18 @@
 // @vitest-environment jsdom
 
 import React from "react";
-import { readFileSync } from "node:fs";
 import path from "node:path";
+import { readFileSync } from "node:fs";
+import { resolveWorkspaceRoot } from "../../WorkspaceRoot.ts";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test } from "vitest";
-import { resolveWorkspaceRoot } from "../../../Scripts/WorkspaceRoot.ts";
 import { CodeArtifactSourceView } from "../../../Frontend/src/shared/code/CodeArtifactSourceView.tsx";
 import { MarkdownRenderer } from "../../../Frontend/src/shared/code/MarkdownRenderer.tsx";
 import { TooltipProvider } from "../../../Frontend/src/shared/ui/Tooltip.tsx";
 import { WorkspaceMarkdownImage } from "../../../Frontend/src/shared/workspace/WorkspaceMarkdownImage.tsx";
 import { WorkspaceResourceProvider } from "../../../Frontend/src/shared/workspace/WorkspaceResourceProvider.tsx";
+import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
 
 afterEach(cleanup);
 
@@ -53,7 +54,7 @@ test("renders fenced code through Pierre without a second content layer", async 
   );
 
   await screen.findByRole("button", { name: "复制 powershell 代码" });
-  expect(container.querySelector("diffs-container")).toBeInTheDocument();
+  await waitFor(() => expect(container.querySelector("diffs-container")).toBeInTheDocument(), { timeout: 4_000 });
   expect(container.querySelector(".senera-pierre-code__fallback")).toBeNull();
 });
 
@@ -67,7 +68,7 @@ test("renders chat external links as compact citation sources", async () => {
     ),
   );
 
-  const link = screen.getByRole("link", { name: /^(?:查看来源：|View source: )example\.com$/u });
+  const link = screen.getByRole("link", { name: /^(?:查看来源：|View source: )example\.com\/docs$/u });
   expect(link).toHaveAttribute("data-link-kind", "external-citation");
   expect(link).toHaveTextContent("example.com");
   expect(link).toHaveAttribute("target", "_blank");
@@ -125,13 +126,17 @@ test("keeps markdown tables content-sized and long links line-breakable", () => 
   );
 });
 
-test("bounds markdown images and opens the shared image preview", async () => {
+test("bounds markdown images and opens them in the workspace", async () => {
   const user = userEvent.setup();
-  render(
+  renderWithFrontendProviders(
     React.createElement(
-      TooltipProvider,
-      { delayDuration: 0 },
-      React.createElement(MarkdownRenderer, null, "![Architecture](https://example.test/architecture.png)"),
+      WorkspaceResourceProvider,
+      { httpBaseUrl: "http://agent.example.test" },
+      React.createElement(
+        TooltipProvider,
+        { delayDuration: 0 },
+        React.createElement(MarkdownRenderer, null, "![Architecture](https://example.test/architecture.png)"),
+      ),
     ),
   );
 
@@ -144,21 +149,20 @@ test("bounds markdown images and opens the shared image preview", async () => {
 
   await user.click(screen.getByRole("button", { name: "查看图片：Architecture" }));
 
-  const dialog = screen.getByRole("dialog", { name: "查看图片：Architecture" });
-  expect(dialog).toHaveAttribute("data-image-preview-dialog");
-  expect(within(dialog).getByRole("img", { name: "Architecture" })).toHaveAttribute(
+  const dialog = await screen.findByRole("dialog", { name: "工作区" });
+  expect(await within(dialog).findByRole("img", { name: "Architecture.png" })).toHaveAttribute(
     "src",
     "https://example.test/architecture.png",
   );
   expect(within(dialog).getByRole("button", { name: "放大" })).toBeEnabled();
 
   await user.click(within(dialog).getByRole("button", { name: "关闭" }));
-  await waitFor(() => expect(screen.queryByRole("dialog", { name: "查看图片：Architecture" })).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "工作区" })).not.toBeInTheDocument());
 });
 
 test("maps senera resource images through the resource content route and keeps the shared preview", async () => {
   const user = userEvent.setup();
-  render(
+  renderWithFrontendProviders(
     React.createElement(
       WorkspaceResourceProvider,
       { httpBaseUrl: "ws://agent.example.test/socket" },
@@ -179,7 +183,7 @@ test("maps senera resource images through the resource content route and keeps t
   await user.click(screen.getByRole("button", { name: "查看图片：Upload" }));
 
   expect(
-    within(screen.getByRole("dialog", { name: "查看图片：Upload" })).getByRole("img", { name: "Upload" }),
+    await within(await screen.findByRole("dialog", { name: "工作区" })).findByRole("img", { name: "Upload.png" }),
   ).toHaveAttribute("src", "http://agent.example.test/api/resources/photo_01");
 });
 
@@ -191,7 +195,7 @@ test("routes source code through the shared Pierre renderer", async () => {
     }),
   );
 
-  expect(container.querySelector("diffs-container")).toBeInTheDocument();
+  await waitFor(() => expect(container.querySelector("diffs-container")).toBeInTheDocument(), { timeout: 4_000 });
   expect(container.querySelector(".senera-pierre-code__fallback")).toBeNull();
 });
 

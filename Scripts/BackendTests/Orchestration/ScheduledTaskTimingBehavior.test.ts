@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import type { ScheduledTask } from "@amaster.ai/pi-task-scheduler";
+import type { ScheduledTask } from "../../../Source/AgentSystem/Orchestration/AgentScheduleDefinition.js";
 import { AgentEventKinds, type AgentDomainEvent } from "../../../Source/AgentSystem/Events/AgentEvent.js";
 import { AgentOrchestrationEventRelay } from "../../../Source/AgentSystem/Orchestration/AgentOrchestrationEventRelay.js";
 import { AgentScheduledTaskToolPolicyProtocol } from "../../../Source/AgentSystem/Orchestration/AgentOrchestrationProtocols.js";
@@ -18,6 +18,8 @@ import {
   type AgentRunDispatchRequest,
 } from "../../../Source/AgentSystem/Orchestration/AgentRunDispatchPort.js";
 import { AgentExecutionApprovalModes } from "../../../Source/AgentSystem/Safety/AgentExecutionApprovalMode.js";
+import { formatAgentTimeOffset } from "../../../Source/AgentSystem/Time/AgentTime.js";
+import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 const roots: string[] = [];
 const ImmediateAt = "2026-08-05T00:00:00.000Z";
@@ -206,6 +208,75 @@ describe("scheduled task timing", () => {
       database.close();
     }
   });
+
+  test("interprets offsetless one-time and cron schedules in Shanghai time", async () => {
+    const database = openDatabase();
+    try {
+      const store = new AgentSqliteScheduledTaskStore(database);
+      const runtime = new AgentScheduleRuntime({
+        workspaceRoot: "E:/workspace",
+        config: () => modelConfig(),
+        store,
+        dispatcher: {
+          dispatch: async () => {
+            throw new Error("Unexpected scheduled dispatch.");
+          },
+          requestFinalAnswer: async () => false,
+          requestCancellation: async () => false,
+          cancel: async () => false,
+        },
+        delivery: { deliver: async () => "delivered" as const },
+        sourceContext: {
+          sessionExists: async () => true,
+          resolveForkBoundary: async () => "owner-request",
+        },
+        executionSessions: { dispose: async () => undefined },
+        events: new AgentOrchestrationEventRelay(),
+        pollIntervalMs: 1_000,
+        claimDurationMs: 5_000,
+        now: () => new Date(ImmediateAt),
+      });
+      const context = {
+        sessionId: "owner-session",
+        requestId: "request-schedule",
+        authorizedToolNames: [],
+        registry: { getTool: () => undefined },
+      };
+
+      const once = await runtime.create(
+        { prompt: "Review.", type: "once", schedule: "2099-01-02", modelProviderId: "deepseek-chat" },
+        context,
+      );
+      expect(once.schedule).toBe("2099-01-01T16:00:00.000Z");
+      expect(once.nextRunAt).toBe("2099-01-01T16:00:00.000Z");
+
+      const explicit = await runtime.create(
+        {
+          prompt: "Review.",
+          type: "once",
+          schedule: "2099-01-02T09:00:00+08:00",
+          modelProviderId: "deepseek-chat",
+        },
+        context,
+      );
+      expect(explicit.nextRunAt).toBe("2099-01-02T01:00:00.000Z");
+
+      const cron = await runtime.create(
+        { prompt: "Review.", type: "cron", schedule: "0 9 * * *", modelProviderId: "deepseek-chat" },
+        context,
+      );
+      expect(formatAgentTimeOffset(cron.nextRunAt!)).toMatch(/T09:00:00\+08:00$/u);
+
+      await expect(
+        runtime.create(
+          { prompt: "Review.", type: "once", schedule: "2000-01-02", modelProviderId: "deepseek-chat" },
+          context,
+        ),
+      ).rejects.toThrow("One-time schedules must specify a future instant.");
+    } finally {
+      database.close();
+    }
+  });
 });
 
 function deferredTask(id: string): AgentScheduledTaskRecord {
@@ -247,6 +318,16 @@ function scheduledTask(): ScheduledTask {
 
 function openDatabase(): AgentOrchestrationDatabase {
   return new AgentOrchestrationDatabase(createDatabasePath());
+}
+
+function modelConfig(): AgentSystemConfig {
+  return {
+    DefaultModelProviderId: "deepseek-chat",
+    ModelProviderEndpoints: [{ Id: "deepseek", Enabled: true, ApiKey: "test-key" }],
+    ModelProviders: [
+      { Id: "deepseek-chat", ProviderId: "deepseek", Endpoint: "ChatCompletions", Model: "deepseek-chat" },
+    ],
+  };
 }
 
 function createDatabasePath(): string {

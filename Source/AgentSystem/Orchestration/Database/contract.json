@@ -169,6 +169,54 @@
       "snapshot": "snapshots/0021.schema.sql",
       "migrationSha256": "6844c49f24c026cc7d25fc08342e587f6fbb33baa327be3a071e82a4e18d7ee7",
       "snapshotSha256": "5b22ca0ec8b1f02a95d6771428d708f0a8a40265e3f09268845f8def8770ec44"
+    },
+    {
+      "version": 22,
+      "name": "completion-activation-identities",
+      "migration": "migrations/0022-completion-activation-identities.sql",
+      "snapshot": "snapshots/0022.schema.sql",
+      "migrationSha256": "24b59e553ceeef199a5c916897160be641d8b5b60edaeb87fdddaba00caa75ed",
+      "snapshotSha256": "29dfd92e6b87c8e2ebcd7afea1b5a582d5e3aec1367325ca11ba700adede260c"
+    },
+    {
+      "version": 23,
+      "name": "scheduled-instruction-targets",
+      "migration": "migrations/0023-scheduled-instruction-targets.sql",
+      "snapshot": "snapshots/0023.schema.sql",
+      "migrationSha256": "64a0ccfe236bd898ae3fdb6be5b1e28187d3f32df9cd96fe37c6f999fb91acf4",
+      "snapshotSha256": "177e28713bb213558be5ef957d24e4a0dcf923c62e16cd0b2dc4fbce08926b6e"
+    },
+    {
+      "version": 24,
+      "name": "background-job-receipts",
+      "migration": "migrations/0024-background-job-receipts.sql",
+      "snapshot": "snapshots/0024.schema.sql",
+      "migrationSha256": "6f2194a0b80fb7f995aa428f12646f77c8eea65f2efba4f623a8638a5580af45",
+      "snapshotSha256": "0d8ba73393fd272d3469c0bf1b8c76d48e7e6177cdf2a174ce8a7d2368eabeab"
+    },
+    {
+      "version": 25,
+      "name": "scheduled-instruction-snapshots",
+      "migration": "migrations/0025-scheduled-instruction-snapshots.sql",
+      "snapshot": "snapshots/0025.schema.sql",
+      "migrationSha256": "e7344db864aab47b2d53a79ac05098b49d85883747fb638324790f6aaf306f82",
+      "snapshotSha256": "9471c089073f225f5145eba1d7e97e7feb3d7e19997de2c3f7519c60e1b7c607"
+    },
+    {
+      "version": 26,
+      "name": "agent-job-activations",
+      "migration": "migrations/0026-agent-job-activations.sql",
+      "snapshot": "snapshots/0026.schema.sql",
+      "migrationSha256": "b102de4945bc79093399a9f9e8ca9e1a817100f3e5621f06c318240d58f49547",
+      "snapshotSha256": "75076745f85d097d30b4ee0a95a886fa0473cf630b9c2bfbdc5bc067b8822b9d"
+    },
+    {
+      "version": 27,
+      "name": "job-notification-observations",
+      "migration": "migrations/0027-job-notification-observations.sql",
+      "snapshot": "snapshots/0027.schema.sql",
+      "migrationSha256": "01130699d382a737ddbed3844a06434ef0c6c9f2214e60f84aa118aae623c52b",
+      "snapshotSha256": "c31da87695e3075d3b8b702062e1bbad5a92e9375bf95a9f81db42674ea0864a"
     }
   ]
 }

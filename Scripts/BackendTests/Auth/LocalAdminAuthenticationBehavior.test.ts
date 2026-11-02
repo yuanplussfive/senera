@@ -1,3 +1,4 @@
+import { AgentServerAccessProfiles } from "../../../Source/AgentSystem/Auth/AgentServerAccessPolicy.js";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -336,6 +337,31 @@ describe("server access guard", () => {
     });
     guard.unregisterConnection(socket);
   });
+
+  test("background heartbeat loss keeps authentication valid; revoked credentials remain a permanent failure", async () => {
+    let now = Date.now();
+    const { guard } = await createRequiredGuard(() => now);
+    const login = await guard.login(request({ origin: "http://app.test" }), {
+      loginName: "owner",
+      password: "a long administrator password",
+    });
+    if (!login.ok) throw new Error("Expected administrator login to succeed.");
+    const access = guard.authorizeWebSocket(
+      request({ origin: "http://app.test", cookie: `senera_local_session=${login.token}` }),
+    );
+    if (!access.ok) throw new Error("Expected WebSocket authorization to succeed.");
+    const socket = {} as never;
+    guard.registerConnection(socket, access.access);
+    now += guard.idleSocketTimeoutMs + 1;
+    expect(guard.connectionFailure(socket)).toEqual({ code: 4000, reason: "heartbeat_timeout" });
+    expect(guard.authorizeMessage(socket).ok).toBe(true);
+    guard.recordPong(socket);
+    expect(guard.connectionFailure(socket)).toBeUndefined();
+    guard.revoke(login.token);
+    now += guard.idleSocketTimeoutMs + 1;
+    expect(guard.connectionFailure(socket)).toEqual({ code: 4401, reason: "authentication_required" });
+    guard.unregisterConnection(socket);
+  });
 });
 
 function createAccountStore(): AgentLocalAdminAccountStore {
@@ -352,7 +378,7 @@ function createSessionStore(now: () => number = () => 0): AgentAdminSessionStore
   });
 }
 
-async function createRequiredGuard(): Promise<{
+async function createRequiredGuard(now?: () => number): Promise<{
   guard: AgentServerAccessGuard;
   store: AgentLocalAdminAccountStore;
 }> {
@@ -365,6 +391,7 @@ async function createRequiredGuard(): Promise<{
   });
   const guard = new AgentServerAccessGuard({
     workspaceRoot: root,
+    now,
     server: resolveServerConfig({
       ...minimalConfig(),
       Server: {
@@ -435,7 +462,7 @@ async function createAutoOriginGuard(): Promise<{
         },
       },
     }),
-    automaticLoopbackHttp: true,
+    accessProfile: AgentServerAccessProfiles.Container,
   });
   return { guard, store };
 }

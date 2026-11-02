@@ -1,0 +1,89 @@
+{
+  "name": "interrupt_agent",
+  "loading": "Bootstrap",
+  "presentation": {
+    "category": "agent-input",
+    "icon": "square",
+    "activity": {
+      "action": {
+        "zh-CN": "中断代理",
+        "en-US": "Interrupt agent"
+      },
+      "argumentPath": "/agent_id"
+    }
+  },
+  "description": "Interrupt one descendant agent current turn. Only an ancestor can interrupt it. The session and queued inputs survive for explicit send_message continuation; descendants continue independently.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "agent_id": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": ["agent_id"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "agent_id": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": ["agent_id", "status"],
+    "additionalProperties": false
+  },
+  "permissions": ["orchestration:manage"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ResultAssessment": "Unassessed",
+    "Scheduling": "SelfManaged",
+    "Capabilities": {
+      "Progress": true,
+      "ResumableEvents": true
+    }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "orchestration",
+      "Title": "Orchestration",
+      "Description": "Child-agent runs managed by Senera."
+    }
+  ],
+  "search": {
+    "Summary": "Interrupt one descendant agent current turn. Only an ancestor can interrupt it. The session and queued inputs survive for explicit send_message continuation; descendants continue independently.",
+    "Tags": ["agent", "协作"],
+    "Capabilities": [
+      {
+        "Id": "orchestration.interrupt_agent",
+        "Title": "interrupt_agent",
+        "Description": "Interrupt one descendant agent current turn. Only an ancestor can interrupt it. The session and queued inputs survive for explicit send_message continuation; descendants continue independently.",
+        "Facets": {
+          "Actions": ["interrupt_agent"],
+          "Targets": ["agent-session"],
+          "Inputs": ["agent_id"],
+          "Outputs": ["agent_id", "status"],
+          "Effects": ["session-state"]
+        },
+        "Risk": {
+          "SideEffect": "session-state",
+          "Permission": "orchestration"
+        },
+        "Aliases": ["interrupt_agent"]
+      }
+    ],
+    "UseCases": ["独立分工与持续协作"],
+    "Avoid": ["不要用空泛催促代替完成通知"]
+  },
+  "evidenceCapabilities": []
+}

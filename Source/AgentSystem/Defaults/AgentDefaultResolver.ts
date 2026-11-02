@@ -86,10 +86,6 @@ export function resolveAgentDefaults(
         ...AgentDefaults.ToolSearch.Memory,
         ...defaults?.ToolSearch?.Memory,
       },
-      Tokenize: {
-        ...AgentDefaults.ToolSearch.Tokenize,
-        ...defaults?.ToolSearch?.Tokenize,
-      },
       Ranking: {
         ...AgentDefaults.ToolSearch.Ranking,
         ...defaults?.ToolSearch?.Ranking,
@@ -137,8 +133,17 @@ export function resolveAgentDefaults(
         ...AgentDefaults.ContinuityLearning.MemOS,
         ...defaults?.ContinuityLearning?.MemOS,
       },
+      Diary: {
+        ...AgentDefaults.ContinuityLearning.Diary,
+        ...defaults?.ContinuityLearning?.Diary,
+      },
+      Retention: {
+        ...AgentDefaults.ContinuityLearning.Retention,
+        ...defaults?.ContinuityLearning?.Retention,
+      },
       Recall: {
         ...AgentDefaults.ContinuityLearning.Recall,
+        ...defaults?.ContinuityLearning?.Recall,
         PromptBudget: {
           ...AgentDefaults.ContinuityLearning.Recall.PromptBudget,
           ...defaults?.ContinuityLearning?.Recall?.PromptBudget,
@@ -155,10 +160,6 @@ export function resolveAgentDefaults(
       Client: {
         ...AgentDefaults.ActionPlanner.Client,
         ...defaults?.ActionPlanner?.Client,
-      },
-      PlanningClient: {
-        ...AgentDefaults.ActionPlanner.PlanningClient,
-        ...defaults?.ActionPlanner?.PlanningClient,
       },
       FinalAnswerClient: {
         ...AgentDefaults.ActionPlanner.FinalAnswerClient,

@@ -35,13 +35,15 @@ function inspectVerifyWorkflow(workflow: string): string[] {
       "GITHUB_PR_TITLE: ${{ github.event.pull_request.title }}",
       "node --import tsx Scripts/VerifyPullRequestTitle.ts",
       "Restore ESLint cache",
-      "key: ${{ runner.os }}-eslint-${{ hashFiles('package-lock.json') }}",
+      "key: ${{ runner.os }}-eslint-${{ hashFiles('package-lock.json') }}-${{ inputs.source_ref || github.sha }}",
+      "restore-keys: |\n            ${{ runner.os }}-eslint-${{ hashFiles('package-lock.json') }}-",
       "actions/upload-artifact@v6",
       "actions/download-artifact@v7",
       "verification-build",
       "npm run test.e2e.web.run",
       "npm run quality.format -- ${{ steps.range.outputs.arguments }}",
-      "npm run test.frontend.static",
+      "npm run test.frontend.governance",
+      "npm run quality.docs",
       "npm run test.integration",
       "npm run verify.suite -- workspace core integration e2e release",
       "npm run verify.suite -- platform",
@@ -49,6 +51,11 @@ function inspectVerifyWorkflow(workflow: string): string[] {
       "npm run test.coverage.frontend",
       "npm run test.coverage.backend",
       "inputs.full_suite",
+      "workflow_call:",
+      "source_ref:",
+      "run: npm run quality.format.full",
+      "if: inputs.full_suite || steps.range.outputs.arguments == ''",
+      "if: ${{ !inputs.full_suite && steps.range.outputs.arguments != '' }}",
     ]),
     ...inspectPullRequestJobGate(workflow, "coverage"),
   ];
@@ -58,10 +65,26 @@ function inspectVerifyWorkflow(workflow: string): string[] {
   const windowsJob = workflowJobBlock(workflow, "platform-windows");
   const coverageJob = workflowJobBlock(workflow, "coverage");
 
+  for (const jobName of [
+    "commit-messages",
+    "build-artifacts",
+    "android",
+    "fast",
+    "browser-e2e",
+    "platform-windows",
+    "coverage",
+  ]) {
+    const job = workflowJobBlock(workflow, jobName);
+    if (!job?.includes("ref: ${{ inputs.source_ref || github.sha }}")) {
+      violations.push(`${VerifyWorkflowPath} ${jobName} must check out the requested verification source.`);
+    }
+  }
+
   if (!buildJob) {
     violations.push(`${VerifyWorkflowPath} must define the build-artifacts job.`);
   }
   for (const [jobName, job] of [
+    ["android", workflowJobBlock(workflow, "android")],
     ["fast", fastJob],
     ["browser-e2e", browserJob],
     ["platform-windows", windowsJob],
@@ -69,14 +92,27 @@ function inspectVerifyWorkflow(workflow: string): string[] {
     if (job && !job.includes("needs: build-artifacts")) {
       violations.push(`${VerifyWorkflowPath} ${jobName} must consume build-artifacts.`);
     }
+    for (const command of ["npm run build", "npm --workspace senera-frontend run build", "npm run test.e2e.web"]) {
+      if (job?.includes(`run: ${command}\n`)) {
+        violations.push(`${VerifyWorkflowPath} ${jobName} must reuse the verification build instead of ${command}.`);
+      }
+    }
   }
 
   if (fastJob) {
-    for (const duplicate of ["npm run check.types", "npm run test.backend", "npm run test.frontend"]) {
+    for (const duplicate of [
+      "npm run check.types",
+      "npm run test.backend",
+      "npm run test.frontend",
+      "npm run test.frontend.static",
+    ]) {
       if (fastJob.includes(`- run: ${duplicate}\n`)) {
         violations.push(`${VerifyWorkflowPath} Fast Gate must not duplicate ${duplicate}.`);
       }
     }
+  }
+  if (workflow.includes("npm run verify.all")) {
+    violations.push(`${VerifyWorkflowPath} must not rerun the local suites after the CI gates.`);
   }
   for (const [jobName, job] of [["coverage", coverageJob]] as const) {
     if (job?.includes("\n    needs:")) {
