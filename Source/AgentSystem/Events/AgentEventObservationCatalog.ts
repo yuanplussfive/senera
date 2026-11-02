@@ -232,7 +232,12 @@ export const AgentEventObservationSpecTable = {
   [AgentEventKinds.ModelDelta]: metadata(),
   [AgentEventKinds.ModelThinkingDelta]: metadata(),
   [AgentEventKinds.ModelThinkingCompleted]: projection("/data/messageIndex", "/data/contentIndex", "/data/status"),
-  [AgentEventKinds.ModelCompleted]: projection("/data/provider", "/data/usage", "/data/messageIndex"),
+  [AgentEventKinds.ModelCompleted]: projection(
+    "/data/provider",
+    "/data/responseModel",
+    "/data/usage",
+    "/data/messageIndex",
+  ),
   [AgentEventKinds.ToolCallsPlanned]: projection(
     "/data/toolCount",
     "/data/tools",

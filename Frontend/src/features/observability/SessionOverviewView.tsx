@@ -1,7 +1,7 @@
 import { useDeferredValue, useMemo, useState } from "react";
 import { frontendFeatureMessage as t } from "../../i18n/frontendFeatureMessageCatalog";
 import { formatDurationMs, formatInteger } from "../../lib/util";
-import { formatModelCost } from "../../lib/modelCost";
+import { formatModelCharge } from "../../lib/modelCost";
 import type { RunRecord, TimelineStep } from "../../store/session/types";
 import { Button, Input, MenuSelect, Tooltip } from "../../shared/ui";
 import { readWorkflowStepDurationMs } from "../workflow/workflowPresentationProjection";
@@ -82,7 +82,7 @@ export function SessionOverviewView({
             label={t("insights.process.tokens")}
             value={totals.tokens.value === undefined ? "—" : formatInteger(totals.tokens.value)}
           />
-          <Metric label={t("insights.process.cost")} value={formatModelCost(totals.cost)} />
+          <Metric label={t("insights.process.cost")} value={formatModelCharge(totals.charge)} />
         </dl>
         <p className="insights-note">
           {t("insights.stats.coverage", {

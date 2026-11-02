@@ -224,6 +224,7 @@ export class AgentPiRunCollector {
       data: {
         text: "",
         usage: projectAgentPiAssistantUsage(event.message),
+        ...(event.message.responseModel ? { responseModel: event.message.responseModel } : {}),
         errorMessage: event.message.errorMessage,
         outcome:
           event.message.stopReason === "error"

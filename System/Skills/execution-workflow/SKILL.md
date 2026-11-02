@@ -22,10 +22,11 @@ Use ToolSearch to discover repository, patch, shell, and verification tools when
 Use Codemode when several tool calls, a batch query or result filtering can be
 expressed clearly in one JavaScript body. Reuse a known current contract.
 For unknown tools, use `await searchTools(query, { limit?, namespace? })` for
-the host's normal retrieval and current declarations, or
+the host's normal retrieval and compact tool summaries, then
 `await describeTool(name)` for exact input/output schemas. Discovery returns
 producer namespaces; `await describeNamespace(name)` lists their callable
-tools. `ALL_TOOLS` also lists the callable declarations. Do not read source
+tools. `ALL_TOOLS` lists callable names and summaries; use `describeTool` for
+the declaration and full schemas. Do not read source
 files just to learn a tool contract. Call the named tool through `tools`; do
 not wrap it in ToolCall or bypass it with shell commands. The callable catalog
 is fixed for that script. Script search stays within that catalog; newly

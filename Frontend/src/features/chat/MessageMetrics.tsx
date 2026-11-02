@@ -1,9 +1,10 @@
 import { countTokens } from "gpt-tokenizer";
 import type { ModelProviderMetadata, ModelUsageMetadata } from "../../api/eventTypes";
-import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { frontendChatMessage, type FrontendChatMessageKey } from "../../i18n/frontendChatMessageCatalog";
 import { getFrontendLocale } from "../../i18n/frontendLocaleStore";
 import { cn, formatInteger } from "../../lib/util";
-import { formatModelCost } from "../../lib/modelCost";
+import { formatModelCharge } from "../../lib/modelCost";
 import type { RunRecord, TimelineStep } from "../../store/sessionStore";
 import { AppIcon, Tooltip } from "../../shared/ui";
 
@@ -27,7 +28,7 @@ const usageFieldLabels = {
   reasoningTokens: "chat.metrics.reasoning",
 } as const satisfies Record<
   "inputTokens" | "outputTokens" | "totalTokens" | "cacheReadTokens" | "cacheWriteTokens" | "reasoningTokens",
-  FrontendMessageKey
+  FrontendChatMessageKey
 >;
 
 const usageFieldNames = {
@@ -37,14 +38,14 @@ const usageFieldNames = {
   cacheReadTokens: "chat.metrics.field.cacheReadTokens",
   cacheWriteTokens: "chat.metrics.field.cacheWriteTokens",
   reasoningTokens: "chat.metrics.field.reasoningTokens",
-} as const satisfies Record<keyof typeof usageFieldLabels, FrontendMessageKey>;
+} as const satisfies Record<keyof typeof usageFieldLabels, FrontendChatMessageKey>;
 
 const sourceLabels = {
   provider_reported: "chat.metrics.source.provider",
   mixed: "chat.metrics.source.mixed",
   local_estimate: "chat.metrics.source.localEstimate",
   unavailable: "chat.metrics.source.unavailable",
-} as const satisfies Record<ModelUsageMetadata["source"], FrontendMessageKey>;
+} as const satisfies Record<ModelUsageMetadata["source"], FrontendChatMessageKey>;
 
 const usageFields = Object.keys(usageFieldLabels) as Array<keyof typeof usageFieldLabels>;
 
@@ -71,7 +72,9 @@ export function MessageMetrics({
       : usage !== undefined && (run === undefined || run.status === "completed");
 
   if (!shouldReserveSlot) return null;
-  const modelName = role === "assistant" ? readModelName(modelProvider, run) : undefined;
+  const modelStep = role === "assistant" ? readLatestModelStep(run) : undefined;
+  const modelName = role === "assistant" ? modelProvider?.model.trim() || modelStep?.modelName?.trim() : undefined;
+  const responseModel = modelStep?.responseModel;
   const providerName = role === "assistant" ? readProviderName(modelProvider) : undefined;
   const modelDurationMs = role === "assistant" ? readModelDurationMs(run) : undefined;
   const throughput =
@@ -96,7 +99,16 @@ export function MessageMetrics({
         <Tooltip
           side="top"
           align={align === "right" ? "end" : "start"}
-          content={usage ? <UsageDetails usage={usage} modelName={modelName} providerName={providerName} /> : null}
+          content={
+            usage ? (
+              <UsageDetails
+                usage={usage}
+                modelName={modelName}
+                responseModel={responseModel}
+                providerName={providerName}
+              />
+            ) : null
+          }
         >
           <span
             className="inline-flex min-w-0 items-center gap-[0.8em] rounded-md px-[0.35em] py-[0.2em] text-content-muted outline-none transition-colors hover:bg-surface-muted hover:text-content-primary focus-visible:bg-surface-muted focus-visible:text-content-primary"
@@ -114,7 +126,7 @@ export function MessageMetrics({
               <span className="inline-flex min-w-0 items-center gap-[0.35em]" data-message-metrics-throughput>
                 <AppIcon icon="gauge" size="1.25em" strokeWidth={1.65} />
                 <span className="whitespace-nowrap">
-                  {frontendMessage("chat.metrics.throughputCompact", { rate: formatRate(throughput) })}
+                  {frontendChatMessage("chat.metrics.throughputCompact", { rate: formatRate(throughput) })}
                 </span>
               </span>
             ) : null}
@@ -147,13 +159,13 @@ function readUserMessageTokens(text?: string): number | undefined {
   return text === undefined ? undefined : countTokens(text);
 }
 
-function readModelName(provider?: ModelProviderMetadata, run?: RunRecord): string | undefined {
-  const providerName = provider?.model.trim();
-  if (providerName) return providerName;
-  return [...(run?.steps ?? [])]
-    .reverse()
-    .find((step) => step.kind === "model" && step.modelName?.trim())
-    ?.modelName?.trim();
+function readLatestModelStep(run?: RunRecord) {
+  if (!run) return undefined;
+  for (let index = run.steps.length - 1; index >= 0; index--) {
+    const step = run.steps[index];
+    if (step.kind === "model" && step.scope?.role !== "childAgent") return step;
+  }
+  return undefined;
 }
 
 function readProviderName(provider?: ModelProviderMetadata): string | undefined {
@@ -202,7 +214,7 @@ function readAssistantMetricsLabel(totalTokens?: number, throughput?: number): s
     totalTokens === undefined ? undefined : readCompactTokenLabel(totalTokens),
     throughput === undefined
       ? undefined
-      : frontendMessage("chat.metrics.throughputCompact", { rate: formatRate(throughput) }),
+      : frontendChatMessage("chat.metrics.throughputCompact", { rate: formatRate(throughput) }),
   ]
     .filter((value): value is string => value !== undefined)
     .join(", ");
@@ -211,51 +223,59 @@ function readAssistantMetricsLabel(totalTokens?: number, throughput?: number): s
 function UsageDetails({
   usage,
   modelName,
+  responseModel = usage.responseModel,
   providerName,
 }: {
   usage: ModelUsageMetadata;
   modelName?: string;
+  responseModel?: string;
   providerName?: string;
 }): JSX.Element {
   const rows = usageFields.flatMap((field) => {
     const value = usage[field];
     return typeof value === "number" && Number.isFinite(value)
-      ? [frontendMessage(usageFieldLabels[field], { count: formatInteger(value) })]
+      ? [frontendChatMessage(usageFieldLabels[field], { count: formatInteger(value) })]
       : [];
   });
-  const estimated = usage.estimatedFields?.map((field) => frontendMessage(usageFieldNames[field])).join(", ");
-  const source = frontendMessage(sourceLabels[usage.source]);
+  const estimated = usage.estimatedFields?.map((field) => frontendChatMessage(usageFieldNames[field])).join(", ");
+  const source = frontendChatMessage(sourceLabels[usage.source]);
 
   return (
     <span className="flex max-w-[min(24rem,calc(100vw-2rem))] flex-col gap-0.5">
       {providerName ? (
         <span data-message-metrics-provider>
-          {frontendMessage("chat.metrics.provider", { provider: providerName })}
+          {frontendChatMessage("chat.metrics.provider", { provider: providerName })}
         </span>
       ) : null}
       {modelName ? (
-        <span data-message-metrics-model>{frontendMessage("chat.metrics.model", { model: modelName })}</span>
+        <span data-message-metrics-model>{frontendChatMessage("chat.metrics.model", { model: modelName })}</span>
+      ) : null}
+      {responseModel ? (
+        <span>{frontendChatMessage("chat.metrics.responseModel", { model: responseModel })}</span>
       ) : null}
       {rows.map((row) => (
         <span key={row}>{row}</span>
       ))}
       {usage.cost ? (
         <span>
-          {frontendMessage("observability.diagnostic.usage.cost")}: {formatModelCost(usage.cost.total)}
+          {frontendMessage("observability.diagnostic.usage.cost")}: {formatModelCharge(usage.cost)}
+          {usage.cost.total !== undefined
+            ? ` · ${frontendChatMessage(usage.cost.totalFromProvider === true ? "chat.metrics.costReported" : "chat.metrics.costEstimated")}`
+            : ""}
         </span>
       ) : null}
-      {!providerName ? <span>{frontendMessage("chat.metrics.source", { source })}</span> : null}
-      {estimated ? <span>{frontendMessage("chat.metrics.estimated", { fields: estimated })}</span> : null}
+      {!providerName ? <span>{frontendChatMessage("chat.metrics.source", { source })}</span> : null}
+      {estimated ? <span>{frontendChatMessage("chat.metrics.estimated", { fields: estimated })}</span> : null}
     </span>
   );
 }
 
 function readTokenLabel(value: number): string {
-  return frontendMessage("chat.metrics.tokens", { count: formatInteger(value) });
+  return frontendChatMessage("chat.metrics.tokens", { count: formatInteger(value) });
 }
 
 function readCompactTokenLabel(value: number): string {
-  return frontendMessage("chat.metrics.tokens", { count: formatCompactTokenCount(value) });
+  return frontendChatMessage("chat.metrics.tokens", { count: formatCompactTokenCount(value) });
 }
 
 function formatCompactTokenCount(value: number): string {

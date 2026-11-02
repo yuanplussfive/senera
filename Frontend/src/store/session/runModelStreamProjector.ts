@@ -106,6 +106,7 @@ export const runModelStreamEventHandlers = {
     if (step) {
       step.status = data.outcome === "failed" ? "failed" : data.outcome === "cancelled" ? "cancelled" : "done";
       step.modelUsage = data.usage;
+      step.responseModel = data.responseModel;
       step.errorMessage = data.errorMessage;
       step.endedAt = env.timestamp;
       step.completedSequence = env.sequence;

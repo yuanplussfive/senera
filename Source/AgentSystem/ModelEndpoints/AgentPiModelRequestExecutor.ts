@@ -171,6 +171,7 @@ export class AgentPiModelRequestExecutor {
             requestId: input.requestId,
             providerId: this.configuration.Id,
             model: this.configuration.Model,
+            ...(message?.responseModel ? { responseModel: message.responseModel } : {}),
             status,
             firstTokenMs,
             durationMs: Math.max(0, Math.round(performance.now() - startedAt)),

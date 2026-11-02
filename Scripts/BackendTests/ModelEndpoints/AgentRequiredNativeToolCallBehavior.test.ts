@@ -1,4 +1,5 @@
-import { Type, createAssistantMessageEventStream, type Context, type Tool } from "@earendil-works/pi-ai";
+import { createAssistantMessageEventStream, type Context, type Tool } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createModelProvider } from "../Support/AgentTestFixtures.js";
 import { completedTestPiStream, testPiAssistantMessage } from "../Support/AgentPiModelTestStream.js";

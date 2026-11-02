@@ -160,6 +160,7 @@ class ProviderStreamCapture implements AgentProviderStreamCapture {
   private stopReason?: string;
   private rawStopReason?: string;
   private usage?: unknown;
+  private responseModel?: string;
   private providerTerminal = false;
   private projectionFailures = 0;
 
@@ -232,6 +233,8 @@ class ProviderStreamCapture implements AgentProviderStreamCapture {
       const message = event.type === "done" ? event.message : event.error;
       this.stopReason = message.stopReason;
       this.rawStopReason = message.rawStopReason;
+      this.responseModel = message.responseModel;
+      if (message.responseModel) this.actual = { ...this.actual, model: message.responseModel };
       this.usage = sanitizeDiagnosticDetails(message.usage);
       // A streamed name/ID may be incomplete at toolcall_start. The terminal message is authoritative.
       this.tools.clear();
@@ -263,11 +266,17 @@ class ProviderStreamCapture implements AgentProviderStreamCapture {
       providerId: this.metadata(this.input.providerId),
       stage: this.metadata(this.input.stage),
       invocationId: this.input.invocationId ? this.metadata(this.input.invocationId) : undefined,
+      requested: {
+        provider: this.metadata(this.input.model.provider),
+        api: this.metadata(this.input.model.api),
+        model: this.metadata(this.input.model.id),
+      },
       actual: {
         provider: this.metadata(this.actual.provider),
         api: this.metadata(this.actual.api),
         model: this.metadata(this.actual.model),
       },
+      ...(this.responseModel ? { responseModel: this.metadata(this.responseModel) } : {}),
       startedAt: this.startedAt,
       durationMs: this.elapsed(),
       firstEventMs: this.firstEventMs,

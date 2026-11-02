@@ -269,7 +269,7 @@ export class AgentPiNativeToolProvider {
         if (event.type === "start") started = true;
         if (event.type === "done") {
           diagnosticStatus = "completed";
-          this.recordUsage(turnState, event.message.usage);
+          this.recordUsage(turnState, event.message);
           turnState.context.tokenBudget.recordProviderUsage(event.message.usage, event.message);
           firstTokenTimer?.clear();
           maxRequestTimer?.clear();
@@ -298,7 +298,7 @@ export class AgentPiNativeToolProvider {
           diagnosticStatus = callerCancelled ? "aborted" : "failed";
           diagnosticError = signal.reason ?? event.error.errorMessage;
           const reportedUsage = projectAgentPiAssistantUsage(event.error) ? event.error.usage : undefined;
-          if (reportedUsage) this.recordUsage(turnState, reportedUsage);
+          if (reportedUsage) this.recordUsage(turnState, event.error);
           streamDiagnostic?.finish(diagnosticStatus, diagnosticError);
           this.fail(
             output,
@@ -308,7 +308,7 @@ export class AgentPiNativeToolProvider {
               : (timeoutFailure ?? new Error(event.error.errorMessage ?? "Pi native provider request failed.")),
             started,
             callerCancelled,
-            reportedUsage,
+            event.error,
           );
           await this.emitPromptCacheObservation(frame, model, cache, wireCapture, {
             sessionId: requireAgentPiPromptCacheSessionId(frame.sessionId),
@@ -361,7 +361,8 @@ export class AgentPiNativeToolProvider {
     return restrictAgentPiNativeTools(context, providerToolNames);
   }
 
-  private recordUsage(turnState: AgentPiTurnState, usage: AssistantMessage["usage"]): void {
+  private recordUsage(turnState: AgentPiTurnState, message: AssistantMessage): void {
+    const usage = message.usage;
     priceAgentPiUsage(usage, this.options.modelProvider.Pricing);
     const value: AgentModelUsageValue = {
       cost: (usage as AgentPricedPiUsage).seneraCost,
@@ -372,6 +373,7 @@ export class AgentPiNativeToolProvider {
       cacheReadTokens: usage.cacheRead,
       cacheWriteTokens: usage.cacheWrite,
       reasoningTokens: usage.reasoning,
+      ...(message.responseModel ? { responseModel: message.responseModel } : {}),
     };
     turnState.context.usageLedger.record({ stage: "pi.native.tool_calling", usage: value });
   }
@@ -416,11 +418,13 @@ export class AgentPiNativeToolProvider {
     error: unknown,
     started = false,
     aborted = false,
-    usage?: AssistantMessage["usage"],
+    terminal?: AssistantMessage,
   ): void {
     const normalized = aborted ? error : normalizeModelHttpError(this.options.modelProvider, error);
     const failed = createFailureMessage(model, normalized, aborted);
-    failed.usage = usage ?? ({ ...failed.usage, seneraCost: { currency: "USD" } } as AgentPricedPiUsage);
+    failed.usage = terminal?.usage ?? ({ ...failed.usage, seneraCost: { currency: "USD" } } as AgentPricedPiUsage);
+    if (terminal?.responseModel) failed.responseModel = terminal.responseModel;
+    if (terminal?.rawStopReason) failed.rawStopReason = terminal.rawStopReason;
     if (!started) output.push({ type: "start", partial: { ...failed, stopReason: "pending" } });
     output.push({ type: "error", reason: failed.stopReason === "aborted" ? "aborted" : "error", error: failed });
     output.end(failed);

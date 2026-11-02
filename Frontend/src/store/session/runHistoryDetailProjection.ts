@@ -182,6 +182,10 @@ function projectHistoryModelCompleted(run: RunRecord, event: EventEnvelope): boo
     changed = true;
   }
   if (existing) {
+    if (data.responseModel !== undefined && existing.responseModel !== data.responseModel) {
+      existing.responseModel = data.responseModel;
+      changed = true;
+    }
     if (data.errorMessage && existing.errorMessage !== data.errorMessage) {
       existing.errorMessage = data.errorMessage;
       changed = true;
@@ -210,6 +214,7 @@ function projectHistoryModelCompleted(run: RunRecord, event: EventEnvelope): boo
     endedAt: event.timestamp,
     modelName: data.provider?.model,
     modelUsage: data.usage,
+    responseModel: data.responseModel,
     errorMessage: data.errorMessage,
     scope: timelineScopeFromEvent(event),
   });

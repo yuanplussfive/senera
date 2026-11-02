@@ -1,4 +1,5 @@
 import { frontendFeatureMessage as t } from "../../i18n/frontendFeatureMessageCatalog";
+import { frontendChatMessage } from "../../i18n/frontendChatMessageCatalog";
 import { formatDurationMs, formatInteger } from "../../lib/util";
 import { ActivityStatusIcon, AppIcon, Button, IconButton } from "../../shared/ui";
 import { ToolStepInspector } from "../workflow/ToolStepInspector";
@@ -183,6 +184,11 @@ export function ExecutionInspectionDetail({
         ) : (
           <>
             {step.modelName ? <p className="insights-note">{step.modelName}</p> : null}
+            {step.responseModel ? (
+              <p className="insights-note">
+                {frontendChatMessage("chat.metrics.responseModel", { model: step.responseModel })}
+              </p>
+            ) : null}
             {step.description ? <p>{step.description}</p> : null}
             {step.kind === "model" ? (
               <Button variant="ghost" size="sm" onClick={() => onInspectRequest(step.id)}>

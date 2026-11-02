@@ -561,23 +561,7 @@ export interface UserProfileData extends ConversationIdentityData {
   updatedAt: string;
 }
 
-export interface ModelUsageMetadata {
-  cost?: { currency: "USD"; input?: number; output?: number; cacheRead?: number; cacheWrite?: number; total?: number };
-  source: "provider_reported" | "mixed" | "local_estimate" | "unavailable";
-  inputTokens?: number;
-  outputTokens?: number;
-  totalTokens?: number;
-  cacheReadTokens?: number;
-  cacheWriteTokens?: number;
-  reasoningTokens?: number;
-  estimatedFields?: Array<
-    "inputTokens" | "outputTokens" | "totalTokens" | "cacheReadTokens" | "cacheWriteTokens" | "reasoningTokens"
-  >;
-  calls?: Array<{
-    stage: string;
-    usage: Omit<ModelUsageMetadata, "calls">;
-  }>;
-}
+export type ModelUsageMetadata = import("../../../Source/AgentSystem/ModelEndpoints/AgentModelUsage").AgentModelUsage;
 
 export interface ConversationEntryMetadata {
   hostInput?: import("../../../Source/AgentSystem/ModelEndpoints/AgentModelMetadata").AgentConversationEntryMetadata["hostInput"];
@@ -691,6 +675,7 @@ export interface ModelStartedData {
 
 export interface ModelCompletedData {
   text: string;
+  responseModel?: string;
   provider?: ModelProviderMetadata;
   usage?: ModelUsageMetadata;
   messageIndex?: number;

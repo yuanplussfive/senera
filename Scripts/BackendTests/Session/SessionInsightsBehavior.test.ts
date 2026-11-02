@@ -37,8 +37,13 @@ test("compact observations paginate a stable SQLite snapshot and survive reopeni
         "session",
         event(index, AgentEventKinds.ModelCompleted, {
           messageIndex: index,
+          responseModel: "reported-serving-model",
           text: "PRIVATE BODY",
-          usage: { source: "provider_reported", totalTokens: index },
+          usage: {
+            source: "provider_reported",
+            totalTokens: index,
+            cost: { currency: "USD", total: 0.01, totalFromProvider: true },
+          },
         }),
       );
     store.persistRunEvent(
@@ -88,6 +93,10 @@ test("compact observations paginate a stable SQLite snapshot and survive reopeni
       after = page!.nextCursor;
     }
     expect(events).toHaveLength(302);
+    expect(events[0]?.data).toMatchObject({
+      responseModel: "reported-serving-model",
+      usage: { cost: { totalFromProvider: true } },
+    });
     expect(new Set(events.map((item) => item.sequence)).size).toBe(302);
     expect(events.find((item) => item.sequence === 301)?.data).toMatchObject({
       message: "Permission denied",

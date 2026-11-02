@@ -162,7 +162,7 @@ export class AgentImageGenerationClient {
         if (usage)
           recordActiveAgentModelUsage({
             stage: "image.generate",
-            usage: { ...usage, cost: calculateAgentModelCost(result.usage, configuration.Pricing) },
+            usage: { ...usage, cost: calculateAgentModelCost(result.usage, configuration.Pricing, result.usage.cost) },
           });
       }
       throwAbortReason(signal);
