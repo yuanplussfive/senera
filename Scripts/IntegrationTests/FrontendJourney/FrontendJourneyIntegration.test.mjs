@@ -102,7 +102,9 @@ test("switching recovered sessions keeps each server-owned conversation isolated
   await waitFor(() => {
     expect(useStore.getState().sessionOrder).toEqual(expect.arrayContaining(["session_alpha", "session_beta"]));
   });
-  await user.click(screen.getByRole("button", { name: frontendMessage("session.headerExpand") }));
+  await user.click(
+    await screen.findByRole("button", { name: frontendMessage("session.headerExpand") }, integrationWaitOptions),
+  );
   await user.click(await screen.findByRole("button", { name: "打开会话：alpha only" }, integrationWaitOptions));
   await waitFor(() => {
     expectVisibleText("E2E response: alpha only");
@@ -112,7 +114,9 @@ test("switching recovered sessions keeps each server-owned conversation isolated
     expect(useStore.getState().historyLoadedIds.session_alpha).toBe(true);
   });
 
-  await user.click(screen.getByRole("button", { name: frontendMessage("session.headerExpand") }));
+  await user.click(
+    await screen.findByRole("button", { name: frontendMessage("session.headerExpand") }, integrationWaitOptions),
+  );
   await user.click(await screen.findByRole("button", { name: "打开会话：beta only" }, integrationWaitOptions));
   await waitFor(() => {
     expectVisibleText("E2E response: beta only");
