@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import semver from "semver";
+import { resolveAndroidApkArtifact } from "../Apps/Mobile/AndroidBuildContract.js";
 import { isMainModule } from "../Source/AgentSystem/Core/AgentPath.js";
 import {
   readAgentSandboxDistributionContract,
@@ -18,6 +19,8 @@ export interface ProductReleaseInfo {
   releaseName: string;
   desktopArtifactName: string;
   desktopArtifactPath: string;
+  androidArtifactName: string;
+  androidArtifactPath: string;
   containerVersionTag: string;
   containerMinorTag: string;
   sandboxRuntimeSourceImage: string;
@@ -53,6 +56,7 @@ export function createProductReleaseInfo(input: {
   const parsedVersion = semver.parse(version);
   assert.ok(parsedVersion, `Unable to parse normalized product version: ${version}`);
   const tag = `v${version}`;
+  const androidArtifact = resolveAndroidApkArtifact(version, "release");
   const sandboxDistribution = readAgentSandboxDistributionContract();
   const sandboxTarget = resolveAgentSandboxDistributionTarget(sandboxDistribution);
 
@@ -70,6 +74,8 @@ export function createProductReleaseInfo(input: {
     releaseName: `Senera v${version}`,
     desktopArtifactName: `SeneraSetup-${version}.exe`,
     desktopArtifactPath: `Release/SeneraSetup-${version}.exe`,
+    androidArtifactName: androidArtifact.name,
+    androidArtifactPath: androidArtifact.path,
     containerVersionTag: version,
     containerMinorTag: `${parsedVersion.major}.${parsedVersion.minor}`,
     sandboxRuntimeSourceImage: sandboxTarget.sourceImage,
@@ -100,6 +106,8 @@ export function writeGitHubOutputs(info: ProductReleaseInfo, env: NodeJS.Process
     release_name: info.releaseName,
     desktop_artifact_name: info.desktopArtifactName,
     desktop_artifact_path: info.desktopArtifactPath,
+    android_artifact_name: info.androidArtifactName,
+    android_artifact_path: info.androidArtifactPath,
     container_version_tag: info.containerVersionTag,
     container_minor_tag: info.containerMinorTag,
     sandbox_runtime_source_image: info.sandboxRuntimeSourceImage,

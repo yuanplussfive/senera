@@ -53,7 +53,9 @@ PR 新建、追加提交、重新打开或编辑后，Verify 自动构建基础 
 
 正式发布自动上传 QQ ZIP、描述文件和对应源码包。发行版安装地址从产品更新源与当前产品版本推导，支持自定义仓库和下载 URL 模板。网络、校验或协议版本不兼容时返回错误，原来的安装保持有效。尚未发布的 PR 版本使用导入 ZIP。
 
-正式 Android 发布由仓库变量 `SENERA_ANDROID_RELEASE_ENABLED=true` 显式启用。在仓库 secrets 中配置 `SENERA_ANDROID_KEYSTORE_BASE64`（签名库的 Base64）及上述密码、别名三个 secrets；CI 临时解码签名库并在步骤结束删除。未启用时不发布正式 APK；启用后签名或 Android 构建失败会阻止发布。PR 不读取这些 secrets。
+正式发版同步构建并上传同版本的 Android APK、桌面安装包和 QQ 扩展。Android 复用本次前端构建，APK 文件名由打包脚本和发布元数据共用的契约生成；发布前检查必需产物的名称与非空内容。
+
+在仓库 secrets 中配置 `SENERA_ANDROID_KEYSTORE_BASE64`（签名库的 Base64）及上述密码、别名三个 secrets。发布流程在各产品开始构建前集中检查配置，缺失时列出变量名并停止；签名、构建或 APK 上传失败同样阻止发布。CI 临时解码签名库并在步骤结束删除，PR 不读取这些 secrets。后续版本沿用同一签名身份，才能覆盖升级已有正式安装。
 
 ## 包与安装
 

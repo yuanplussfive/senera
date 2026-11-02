@@ -3,6 +3,8 @@ import { inspectTextIncludes, workflowJobBlock } from "./Support/WorkflowGoverna
 const ReleaseWorkflowLabel = ".github/workflows/release.yml";
 
 export function inspectContainerReleasePipeline(workflow: string): string[] {
+  const metadataJob = workflowJobBlock(workflow, "metadata");
+  const androidJob = workflowJobBlock(workflow, "android");
   const desktopJob = workflowJobBlock(workflow, "desktop");
   const buildJob = workflowJobBlock(workflow, "container-build");
   const sandboxRuntimeBuildJob = workflowJobBlock(workflow, "sandbox-runtime-build");
@@ -10,6 +12,27 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
   const publishJob = workflowJobBlock(workflow, "container");
   const retiredPublishJob = workflowJobBlock(workflow, "publish");
   const violations: string[] = [];
+
+  if (!metadataJob?.includes("npx tsx Build/VerifyAndroidReleaseSigning.ts")) {
+    violations.push(`${ReleaseWorkflowLabel} must validate Android signing before starting product builds.`);
+  }
+  if (!androidJob) {
+    violations.push(`${ReleaseWorkflowLabel} must define the Android release job.`);
+  } else {
+    violations.push(
+      ...inspectTextIncludes(androidJob, `${ReleaseWorkflowLabel} job android`, [
+        "needs.metadata.result == 'success'",
+        "name: release-web",
+        "npm run mobile.android.from-build -- --release",
+        "name: ${{ needs.metadata.outputs.android_artifact_name }}",
+        "path: ${{ needs.metadata.outputs.android_artifact_path }}",
+        "if-no-files-found: error",
+      ]),
+    );
+    if (androidJob.includes("SENERA_ANDROID_RELEASE_ENABLED")) {
+      violations.push(`${ReleaseWorkflowLabel} must build Android for every product release.`);
+    }
+  }
 
   if (!desktopJob) {
     violations.push(`${ReleaseWorkflowLabel} must define the desktop job.`);
@@ -121,6 +144,11 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
       ...inspectTextIncludes(publishJob, `${ReleaseWorkflowLabel} job container`, [
         "name: Publish Verified Release",
         "- desktop",
+        "- android",
+        "needs.android.result == 'success'",
+        "name: ${{ needs.metadata.outputs.android_artifact_name }}",
+        '"$ANDROID_ARTIFACT_NAME"',
+        "Required release asset is missing or empty",
         "- container-build",
         "- sandbox-runtime-build",
         "- container-smoke",
@@ -140,6 +168,9 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
         'docker buildx imagetools create "${tag_arguments[@]}" "$SOURCE_IMAGE"',
       ]),
     );
+    if (publishJob.includes("needs.android.result == 'skipped'")) {
+      violations.push(`${ReleaseWorkflowLabel} must not publish a release without its Android APK.`);
+    }
     if (publishJob.includes("docker/build-push-action")) {
       violations.push(
         `${ReleaseWorkflowLabel} job container must promote the verified digest without rebuilding the image.`,

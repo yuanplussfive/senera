@@ -22,6 +22,8 @@ assert.deepEqual(release, {
   releaseName: "Senera v1.2.3",
   desktopArtifactName: "SeneraSetup-1.2.3.exe",
   desktopArtifactPath: "Release/SeneraSetup-1.2.3.exe",
+  androidArtifactName: "Senera-1.2.3-android-universal-release.apk",
+  androidArtifactPath: "Release/Senera-1.2.3-android-universal-release.apk",
   containerVersionTag: "1.2.3",
   containerMinorTag: "1.2",
   sandboxRuntimeSourceImage:
@@ -68,6 +70,8 @@ try {
   assert.equal(outputs.version, "2.4.6");
   assert.equal(outputs.tag, "v2.4.6");
   assert.equal(outputs.desktop_artifact_name, "SeneraSetup-2.4.6.exe");
+  assert.equal(outputs.android_artifact_name, "Senera-2.4.6-android-universal-release.apk");
+  assert.equal(outputs.android_artifact_path, "Release/Senera-2.4.6-android-universal-release.apk");
   assert.equal(outputs.container_minor_tag, "2.4");
   assert.equal(
     outputs.sandbox_runtime_source_image,
