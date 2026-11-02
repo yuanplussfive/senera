@@ -320,7 +320,7 @@ jobs:
         env:
           SENERA_ANDROID_KEYSTORE_BASE64: ${{ secrets.SENERA_ANDROID_KEYSTORE_BASE64 }}
           SENERA_ANDROID_STORE_PASSWORD: ${{ secrets.SENERA_ANDROID_STORE_PASSWORD }}
-          SENERA_ANDROID_KEY_ALIAS: ${{ secrets.SENERA_ANDROID_KEY_ALIAS }}
+          SENERA_ANDROID_KEY_ALIAS: ${{ vars.SENERA_ANDROID_KEY_ALIAS }}
           SENERA_ANDROID_KEY_PASSWORD: ${{ secrets.SENERA_ANDROID_KEY_PASSWORD }}
         run: npx tsx Build/VerifyAndroidReleaseSigning.ts
 
@@ -385,7 +385,7 @@ jobs:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.SENERA_ANDROID_KEYSTORE_BASE64 }}
           SENERA_ANDROID_KEYSTORE: ${{ runner.temp }}/senera-release.keystore
           SENERA_ANDROID_STORE_PASSWORD: ${{ secrets.SENERA_ANDROID_STORE_PASSWORD }}
-          SENERA_ANDROID_KEY_ALIAS: ${{ secrets.SENERA_ANDROID_KEY_ALIAS }}
+          SENERA_ANDROID_KEY_ALIAS: ${{ vars.SENERA_ANDROID_KEY_ALIAS }}
           SENERA_ANDROID_KEY_PASSWORD: ${{ secrets.SENERA_ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail

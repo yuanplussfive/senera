@@ -55,7 +55,7 @@ PR 新建、追加提交、重新打开或编辑后，Verify 自动构建基础 
 
 正式发版同步构建并上传同版本的 Android APK、桌面安装包和 QQ 扩展。Android 复用本次前端构建，APK 文件名由打包脚本和发布元数据共用的契约生成；发布前检查必需产物的名称与非空内容。
 
-在仓库 secrets 中配置 `SENERA_ANDROID_KEYSTORE_BASE64`（签名库的 Base64）及上述密码、别名三个 secrets。发布流程在各产品开始构建前集中检查配置，缺失时列出变量名并停止；签名、构建或 APK 上传失败同样阻止发布。CI 临时解码签名库并在步骤结束删除，PR 不读取这些 secrets。后续版本沿用同一签名身份，才能覆盖升级已有正式安装。
+在仓库 Actions secrets 中配置 `SENERA_ANDROID_KEYSTORE_BASE64`（签名库的 Base64）、`SENERA_ANDROID_STORE_PASSWORD` 和 `SENERA_ANDROID_KEY_PASSWORD`；公开的签名别名 `SENERA_ANDROID_KEY_ALIAS` 配置为 Actions variable。不要把别名同时存成 secret：GitHub 会将包含别名的公开发布元数据误判为密钥并丢弃任务输出，例如镜像身份标识。发布流程在各产品开始构建前集中检查配置，缺失时列出变量名并停止；签名、构建或 APK 上传失败同样阻止发布。CI 临时解码签名库并在步骤结束删除，PR 不读取这些 secrets。后续版本沿用同一签名身份，才能覆盖升级已有正式安装。
 
 ## 包与安装
 

@@ -15,7 +15,7 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: security-scan-${{ github.event.pull_request.number || github.ref }}
+  group: security-scan-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
