@@ -2,6 +2,13 @@
 
 这里记录 Senera 每个正式版本中的新增功能、问题修复和兼容性变化。
 
+## [1.21.2](https://github.com/yuanplussfive/senera/compare/v1.21.1...v1.21.2) (2026-11-02)
+
+
+### 问题修复
+
+* **release:** require signed Android APKs in product releases ([#159](https://github.com/yuanplussfive/senera/issues/159)) ([a21ccb5](https://github.com/yuanplussfive/senera/commit/a21ccb581fcb424ce82262006ee8240f25a7191b))
+
 ## [1.21.1](https://github.com/yuanplussfive/senera/compare/v1.21.0...v1.21.1) (2026-11-02)
 
 
