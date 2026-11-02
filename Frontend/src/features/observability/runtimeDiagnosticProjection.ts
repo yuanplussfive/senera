@@ -4,152 +4,25 @@ import type { EventJournalRecord } from "./eventJournalStore";
 import { readJsonPointer } from "./eventJournalProjection";
 import { readEventTitle } from "./eventPresentation";
 import type { ToolEventOrigin } from "../../api/eventTypes";
-import type {
-  ModelThinkingBlock,
-  RunRecord,
-  SessionRuntimeSnapshot,
-  TimelineStep,
-  TimelineStepKind,
-} from "../../store/sessionStore";
+import type { ModelThinkingBlock, RunRecord, TimelineStep, TimelineStepKind } from "../../store/sessionStore";
 import { assistantTerminalStepKey, isAssistantMessageStep } from "../../store/session/timelineProjection";
 
-export const RuntimeDiagnosticLanes = {
-  Context: "context",
-  Runtime: "runtime",
-  Model: "model",
-  Tools: "tools",
-  Response: "response",
-} as const;
-
-export type RuntimeDiagnosticLane = (typeof RuntimeDiagnosticLanes)[keyof typeof RuntimeDiagnosticLanes];
-
-export const RuntimeDiagnosticLaneOrder: readonly RuntimeDiagnosticLane[] = [
-  RuntimeDiagnosticLanes.Context,
-  RuntimeDiagnosticLanes.Runtime,
-  RuntimeDiagnosticLanes.Model,
-  RuntimeDiagnosticLanes.Tools,
-  RuntimeDiagnosticLanes.Response,
-];
-
-export type RuntimeDiagnosticSpanStatus = "running" | "completed" | "failed" | "cancelled";
-export type RuntimeDiagnosticSpanSource = "activity" | "tool" | "step";
-
-export interface RuntimeDiagnosticSpan {
-  readonly id: string;
-  readonly source: RuntimeDiagnosticSpanSource;
-  readonly lane: RuntimeDiagnosticLane;
-  readonly kind?: TimelineStepKind;
-  /** Original journal kind when the span comes from the session-wide event stream. */
-  readonly eventKind?: string;
-  /** Source-local sequence retained for diagnostics; it is not a global timeline clock. */
-  readonly eventSequence?: number;
-  readonly description?: string;
-  readonly purpose?: string;
-  readonly isThinking?: boolean;
-  readonly status: RuntimeDiagnosticSpanStatus;
-  readonly operation?: RunActivity;
-  readonly label?: string;
-  readonly modelName?: string;
-  readonly responseModel?: string;
-  readonly toolName?: string;
-  readonly toolOrigin?: ToolEventOrigin;
-  readonly toolArguments?: unknown;
-  readonly toolResult?: unknown;
-  readonly toolPresentation?: import("../../api/eventTypes").ToolResultPresentation;
-  readonly toolPreview?: string;
-  readonly toolErrorMessage?: string;
-  readonly callId?: string;
-  readonly requestId: string;
-  readonly step?: number;
-  readonly startedAt: string;
-  readonly startedAtEpoch: number;
-  readonly endedAtEpoch?: number;
-  readonly durationMs?: number;
-  readonly track?: number;
-}
-
-export interface RuntimeDiagnosticLaneModel {
-  readonly lane: RuntimeDiagnosticLane;
-  readonly spans: readonly RuntimeDiagnosticSpan[];
-  readonly trackCount: number;
-}
-
-export interface RuntimeDiagnosticModel {
-  readonly requestId?: string;
-  readonly sessionId?: string;
-  readonly spans: readonly RuntimeDiagnosticSpan[];
-  readonly lanes: readonly RuntimeDiagnosticLaneModel[];
-  readonly startedAtEpoch?: number;
-  readonly endAtEpoch?: number;
-  readonly nowEpoch: number;
-  readonly current?: RuntimeDiagnosticSpan;
-  readonly connection: RuntimeDiagnosticHealth;
-  readonly contextUsage?: RuntimeContextUsage;
-  readonly sessionUsage?: RuntimeSessionUsage;
-}
-
-export interface RuntimeContextUsage {
-  readonly tokens: number | null;
-  readonly contextWindow: number;
-  readonly percent: number | null;
-}
-
-export interface RuntimeSessionUsage {
-  readonly userMessages: number;
-  readonly assistantMessages: number;
-  readonly toolCalls: number;
-  readonly toolResults: number;
-  readonly totalMessages: number;
-  readonly tokens: {
-    readonly input: number;
-    readonly output: number;
-    readonly cacheRead: number;
-    readonly cacheWrite: number;
-    readonly total: number;
-  };
-  readonly cost?: number;
-}
-
-export interface RuntimeUsageSnapshot {
-  readonly contextUsage?: RuntimeContextUsage;
-  readonly sessionUsage?: RuntimeSessionUsage;
-}
-
-export function projectRuntimeUsageFromSessionSnapshot(
-  snapshot: SessionRuntimeSnapshot | undefined,
-): RuntimeUsageSnapshot {
-  const runtime = snapshot?.runtime;
-  if (!runtime) return {};
-
-  return {
-    contextUsage: readContextUsageValue(runtime.contextUsage),
-    sessionUsage: readSessionUsageValue(runtime.stats),
-  };
-}
-
-export function mergeRuntimeUsageSnapshots(
-  current: RuntimeUsageSnapshot,
-  retained: RuntimeUsageSnapshot,
-): RuntimeUsageSnapshot {
-  const currentContext = current.contextUsage;
-  const retainedContext = retained.contextUsage;
-  const contextUsage =
-    retainedContext &&
-    (!currentContext ||
-      (currentContext.tokens === null &&
-        currentContext.percent === null &&
-        currentContext.contextWindow === retainedContext.contextWindow))
-      ? retainedContext
-      : currentContext;
-  const sessionUsage = current.sessionUsage ?? retained.sessionUsage;
-
-  return {
-    ...(contextUsage ? { contextUsage } : {}),
-    ...(sessionUsage ? { sessionUsage } : {}),
-  };
-}
-
-export type RuntimeDiagnosticHealth = "healthy" | "active" | "failed" | "cancelled" | "unknown";
+import {
+  RuntimeDiagnosticLanes,
+  RuntimeDiagnosticLaneOrder,
+  type RuntimeDiagnosticLane,
+  type RuntimeDiagnosticSpanStatus,
+  type RuntimeDiagnosticSpanSource,
+  type RuntimeDiagnosticSpan,
+  type RuntimeDiagnosticLaneModel,
+  type RuntimeDiagnosticModel,
+  type RuntimeContextUsage,
+  type RuntimeSessionUsage,
+  type RuntimeDiagnosticHealth,
+} from "./runtimeDiagnosticTypes";
+import { readLatestSessionUsage, readLatestContextUsage } from "./runtimeDiagnosticUsage";
+export * from "./runtimeDiagnosticTypes";
+export { projectRuntimeUsageFromSessionSnapshot, mergeRuntimeUsageSnapshots } from "./runtimeDiagnosticUsage";
 
 const LaneByActivityCategory = {
   context: RuntimeDiagnosticLanes.Context,
@@ -651,63 +524,6 @@ function readTimelineDuration(value: Pick<TimelineStep, "startedAt" | "endedAt" 
     : undefined;
 }
 
-function readLatestSessionUsage(records: readonly EventJournalRecord[]): RuntimeSessionUsage | undefined {
-  for (let index = records.length - 1; index >= 0; index -= 1) {
-    const record = records[index];
-    if (record.kind !== EventKinds.SessionRuntimeStatus) continue;
-    const usage = readSessionUsageValue(readJsonPointer(record.projection, "/data/runtime/stats"));
-    if (usage) return usage;
-  }
-  return undefined;
-}
-
-function readLatestContextUsage(records: readonly EventJournalRecord[]): RuntimeContextUsage | undefined {
-  let unknown: RuntimeContextUsage | undefined;
-  for (let index = records.length - 1; index >= 0; index -= 1) {
-    const record = records[index];
-    if (record.kind !== EventKinds.SessionRuntimeStatus) continue;
-    const value = readContextUsageValue(readJsonPointer(record.projection, "/data/runtime/contextUsage"));
-    if (!value) continue;
-    if (value.tokens !== null || value.percent !== null) {
-      if (!unknown || unknown.contextWindow === value.contextWindow) return value;
-      return unknown;
-    }
-    unknown ??= value;
-  }
-  return unknown;
-}
-
-function readContextUsageValue(value: unknown): RuntimeContextUsage | undefined {
-  if (!isRecord(value)) return undefined;
-  const contextWindow = readFiniteNumber(value.contextWindow);
-  if (contextWindow === undefined || contextWindow <= 0) return undefined;
-  return {
-    tokens: readNullableFiniteNumber(value.tokens),
-    contextWindow,
-    percent: readNullableFiniteNumber(value.percent),
-  };
-}
-
-function readSessionUsageValue(value: unknown): RuntimeSessionUsage | undefined {
-  if (!isRecord(value) || !isRecord(value.tokens)) return undefined;
-  const tokens = value.tokens;
-  return {
-    userMessages: readNonNegativeNumber(value.userMessages),
-    assistantMessages: readNonNegativeNumber(value.assistantMessages),
-    toolCalls: readNonNegativeNumber(value.toolCalls),
-    toolResults: readNonNegativeNumber(value.toolResults),
-    totalMessages: readNonNegativeNumber(value.totalMessages),
-    tokens: {
-      input: readNonNegativeNumber(tokens.input),
-      output: readNonNegativeNumber(tokens.output),
-      cacheRead: readNonNegativeNumber(tokens.cacheRead),
-      cacheWrite: readNonNegativeNumber(tokens.cacheWrite),
-      total: readNonNegativeNumber(tokens.total),
-    },
-    cost: typeof value.cost === "number" && Number.isFinite(value.cost) && value.cost >= 0 ? value.cost : undefined,
-  };
-}
-
 function projectSpans(
   records: readonly EventJournalRecord[],
   requestId: string | undefined,
@@ -909,19 +725,6 @@ function readDuration(value: unknown): number | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function readFiniteNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-function readNullableFiniteNumber(value: unknown): number | null {
-  return value === null ? null : (readFiniteNumber(value) ?? null);
-}
-
-function readNonNegativeNumber(value: unknown): number {
-  const number = readFiniteNumber(value);
-  return number === undefined ? 0 : Math.max(0, number);
 }
 
 function readString(value: unknown): string | undefined {

@@ -615,7 +615,12 @@ class ScriptedPiSession implements AgentPiSession {
         role: "assistant",
         content: [{ type: "text", text: "The workspace" }],
       },
-      assistantMessageEvent: {},
+      assistantMessageEvent: {
+        type: "text_delta",
+        contentIndex: 0,
+        delta: "The workspace",
+        partial: assistantMessage,
+      },
     } as unknown as AgentSessionEvent);
     await this.emit({
       type: "message_update",
@@ -623,7 +628,12 @@ class ScriptedPiSession implements AgentPiSession {
         role: "assistant",
         content: [{ type: "text", text: "The workspace inspection is complete." }],
       },
-      assistantMessageEvent: {},
+      assistantMessageEvent: {
+        type: "text_delta",
+        contentIndex: 0,
+        delta: " inspection is complete.",
+        partial: assistantMessage,
+      },
     } as unknown as AgentSessionEvent);
     await this.emit({ type: "message_end", message: assistantMessage });
     if (this.behavior.deferCompaction) {

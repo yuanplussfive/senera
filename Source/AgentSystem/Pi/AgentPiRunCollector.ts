@@ -98,7 +98,7 @@ export class AgentPiRunCollector {
   private readonly activeThinkingBlocks = new Map<string, ActiveThinkingBlock>();
   private readonly executedTools: ExecutedToolCallResult[] = [];
   private pending = Promise.resolve();
-  private textDelta = "";
+  private readonly textBlockLengths = new Map<number, number>();
   private assistantMessageIndex = -1;
   private activeAssistantResponse?: AgentRunActivityHandle;
   private finalResponsePublished = false;
@@ -195,7 +195,7 @@ export class AgentPiRunCollector {
       throw new Error("Pi emitted overlapping assistant message lifecycles.");
     }
     this.assistantMessageIndex = this.options.turnState.claimModelMessageIndex();
-    this.textDelta = "";
+    this.textBlockLengths.clear();
     await emitAgentEvent(this.options.onEvent, {
       kind: AgentEventKinds.ModelStarted,
       context: { requestId: this.options.requestId, step: this.options.step },
@@ -412,21 +412,21 @@ export class AgentPiRunCollector {
       }
     }
 
-    if (this.options.streamModelDeltas === false) {
-      const text = extractText(event.message);
-      this.textDelta = text;
-      return projected;
-    }
+    if (this.options.streamModelDeltas === false) return projected;
 
-    const text = extractText(event.message);
-    if (text.length <= this.textDelta.length || !text.startsWith(this.textDelta)) {
-      this.textDelta = text;
-      return projected;
+    // Pi's partial message is shared and may already contain later updates when
+    // this queued event is delivered. Consume immutable deltas, never diff it.
+    let delta = "";
+    if (streamEvent.type === "text_delta") {
+      delta = streamEvent.delta;
+      const length = this.textBlockLengths.get(streamEvent.contentIndex) ?? 0;
+      this.textBlockLengths.set(streamEvent.contentIndex, length + delta.length);
+    } else if (streamEvent.type === "text_end") {
+      const length = this.textBlockLengths.get(streamEvent.contentIndex) ?? 0;
+      delta = streamEvent.content.slice(length);
+      this.textBlockLengths.set(streamEvent.contentIndex, streamEvent.content.length);
     }
-
-    const delta = text.slice(this.textDelta.length);
-    this.textDelta = text;
-    if (delta.length > 0) {
+    if (delta) {
       projected.push({
         kind: AgentEventKinds.ModelDelta,
         context: {

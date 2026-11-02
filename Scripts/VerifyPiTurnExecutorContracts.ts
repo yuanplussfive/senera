@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { AgentEventKinds } from "../Source/AgentSystem/Events/AgentEvent.js";
 import type { AgentDomainEvent } from "../Source/AgentSystem/Events/AgentEvent.js";
@@ -176,7 +177,6 @@ async function verifyAbortCleansContext(command: AgentPiTurnRequest): Promise<vo
   await assert.rejects(runPromise, /verification abort/);
   assert.equal(abortingPi.session.abortCount, 1);
   assert.equal(abortingPi.session.disposed, true);
-  assert.equal(abortingPi.session.disposed, true);
 }
 
 async function verifyAbortDuringSessionCreate(command: AgentPiTurnRequest): Promise<void> {
@@ -191,8 +191,9 @@ async function verifyAbortDuringSessionCreate(command: AgentPiTurnRequest): Prom
   const turnState = abortingPi.lastSessionOptions?.turnState;
   assert.equal(turnState?.context.rootCommand, command.rootCommand);
   controller.abort("verification create abort");
-  await assert.rejects(runPromise, /verification create abort/);
+  const rejected = assert.rejects(runPromise, /verification create abort/);
   await abortingPi.finishCreate();
+  await rejected;
   assert.equal(abortingPi.session.disposed, true);
 }
 
@@ -430,32 +431,32 @@ class FakePiSession {
     this.turnState?.registerToolBatch("verification-batch", [
       { toolCallId: "call_echo", toolName: "SeneraEchoTool", input: { text: "检查当前工作区" } },
     ]);
-    await this.emit({
-      type: "message_update",
-      message: {
-        role: "assistant",
-        content: [
-          {
-            type: "text",
-            text: "工具",
-          },
-        ],
+    const text = { type: "text" as const, text: "" };
+    const partial: AssistantMessage = {
+      role: "assistant",
+      api: "senera-planning",
+      provider: modelProviderConfig.ProviderId,
+      model: modelProviderConfig.Model,
+      content: [text],
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
       },
-      assistantMessageEvent: {},
-    } as unknown as AgentSessionEvent);
-    await this.emit({
-      type: "message_update",
-      message: {
-        role: "assistant",
-        content: [
-          {
-            type: "text",
-            text: "工具检查完成。",
-          },
-        ],
-      },
-      assistantMessageEvent: {},
-    } as unknown as AgentSessionEvent);
+      stopReason: "pending",
+      timestamp: Date.now(),
+    };
+    for (const delta of ["工具", "检查完成。"]) {
+      text.text += delta;
+      await this.emit({
+        type: "message_update",
+        message: partial,
+        assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta, partial },
+      });
+    }
     await this.emit({
       type: "tool_execution_start",
       toolCallId: "call_echo",
@@ -654,7 +655,7 @@ function assertDiagnostic(events: readonly AgentPiDiagnosticEvent[], name: strin
   );
 }
 
-main().catch((error: unknown) => {
+await main().catch((error: unknown) => {
   console.error(error);
   process.exitCode = 1;
 });

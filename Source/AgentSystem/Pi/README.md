@@ -94,6 +94,8 @@ try {
 
 `message_update` 只投影为 `model.delta`，不额外创建 Pi trace。其他 Pi trace 的字符串、数组、对象属性和递归深度必须受限，再发送到 WebSocket 或写入 run history。属性上限必须在读取属性值前生效，因为 `Object.entries(payload).slice(...)` 会先遍历并分配整个宽对象，不满足内存边界。
 
+文本流直接消费 Pi 的 `text_delta`，按内容块记录已交付长度，在 `text_end` 补齐尚未交付的尾部。Pi 的 `partial` 是共享可变对象，不是事件快照；排队交付不得通过重扫和比较该对象生成增量。工具参数和思考事件不会触发整段回答的重复扫描。
+
 工具 observation 在执行桥中只编译一次：完整原始结果进入 Artifact，严格 Observation v3 进入 Pi JSONL。后续规划只验证协议并选择完整回合，不再维护 batch digest cache，也不根据 `result`、`content` 或任意 payload 字段重新猜测或二次裁剪。批次中的每个 call 都先获得显式 token reservation；执行成功、执行失败和 Pi 在执行前产生的校验/预检失败都会幂等结算。Pi 自身生成的纯文本失败在写入历史前编译为同一 v3 协议，不会留下占用预算但无法被规划器读取的终态。
 
 ## 会话复用
@@ -138,7 +140,7 @@ Dynamic 工具以 Pi `deferred` 注册，不增加 Native 常驻 schema，也不
 交互工具默认不参与；`model-only` 用于挂起推理等控制工具，`orchestrator` 用于组合入口。
 子调用仍经过参数与契约校验、权限审批、资源租约、执行器和 Artifact 发布。
 
-`ALL_TOOLS` 和 `searchTools` 只提供名称、说明和生产者命名空间；完整输入输出 schema 与
+`ALL_TOOLS` 提供可调用名称和说明，`searchTools` 另提供生产者命名空间；完整输入输出 schema 与
 Pi 生成的调用声明通过 `describeTool` 按需读取。声明复用 Pi 的联合类型摘要，不在工具说明
 中再嵌入一份完整声明；发现辅助函数的输出类型从同一 Zod schema 生成。
 
