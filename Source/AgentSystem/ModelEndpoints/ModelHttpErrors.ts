@@ -25,7 +25,10 @@ export function findModelRequestTimeoutError(error: unknown): ModelRequestTimeou
   );
 }
 
-export function normalizeModelHttpError(config: ResolvedAgentModelProviderConfig, error: unknown): Error {
+export function normalizeModelHttpError(
+  config: Pick<ResolvedAgentModelProviderConfig, "Model" | "BaseUrl"> & { readonly Endpoint: string },
+  error: unknown,
+): Error {
   if (error instanceof ModelProviderHttpError) {
     return new AgentLocalizedError(
       "model.requestFailedWithStatus",

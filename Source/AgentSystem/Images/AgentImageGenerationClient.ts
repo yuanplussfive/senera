@@ -95,10 +95,13 @@ export class AgentImageGenerationClient {
     const signal = AbortSignal.any(signals);
     const timeout =
       configuration.MaxRequestMs > 0
-        ? setTimeout(
-            () => controller.abort(normalizeModelHttpError(configuration, new ModelRequestTimeoutError("max_request"))),
-            configuration.MaxRequestMs,
-          )
+        ? setTimeout(() => {
+            const error = normalizeModelHttpError(
+              { Model: model.id, BaseUrl: model.baseUrl, Endpoint: model.api },
+              new ModelRequestTimeoutError("max_request"),
+            );
+            controller.abort(error);
+          }, configuration.MaxRequestMs)
         : undefined;
     let status: "completed" | "failed" | "aborted" = "failed";
     let failure: unknown;
