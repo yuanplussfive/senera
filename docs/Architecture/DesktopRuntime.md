@@ -31,13 +31,12 @@ Electron 主进程负责窗口、托盘、IPC 和更新；工作区服务运行�
 
 `desktop.live` 按源码与构建状态判断是否需要增量编译；诊断 GPU 开关通过 `SENERA_DESKTOP_DIAGNOSTIC_GPU` 显式开启。开发版有独立标记，正式版不展示。
 
-`npm run desktop.pack` 完成后调用 `desktop.smoke`，在临时工作区启动 `Release/win-unpacked/Senera.exe`，检查真实窗口、preload、WebSocket、SQLite 配置初始化、设置窗口、渲染进程恢复与干净退出标记。该检查针对 Windows 打包产物；仅构建源码不能替代此检查。
+`npm run desktop.pack` 编译源码和前端、准备原生模块与 MCP 运行时，再通过 `electron-builder` 生成安装包。发布流程检查安装包、差分更新文件与更新清单后上传产物。
 
 | 检查                   | 入口                                                                             |
 | ---------------------- | -------------------------------------------------------------------------------- |
 | 模块锚点、缓存和产物   | `Scripts/VerifyDesktopServerBundle.ts`                                           |
 | 启动页主题与品牌资产   | `Scripts/VerifyDesktopStartupSurface.ts`                                         |
 | 原有路径与前端加载契约 | `Scripts/VerifyDesktopRuntimePaths.ts`、`Scripts/VerifyDesktopFrontendSource.ts` |
-| 真实安装包冒烟         | `npm run desktop.smoke`                                                          |
 
 相关说明：[工作区宿主](./WorkspaceHost.md)、[部署与运维](../Operations.md)、[浏览器端到端测试](../Development/BrowserE2ETesting.md)。

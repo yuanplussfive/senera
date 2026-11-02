@@ -10,7 +10,7 @@ import {
   type AgentUpgradeManifest,
   type AgentUpgradeParticipant,
 } from "./AgentUpgradeContract.js";
-import { AgentUpgradeJournal, assertInside, resolveInside } from "./AgentUpgradeJournal.js";
+import { AgentUpgradeJournal, resolveInside } from "./AgentUpgradeJournal.js";
 import { acquireAgentUpgradeLock } from "./AgentUpgradeLock.js";
 import {
   migrateAgentSqliteStore,
@@ -19,7 +19,8 @@ import {
 import type { AgentSqliteStoreContract } from "../Database/AgentSqliteStoreContract.js";
 import { listAgentSqliteDatabaseFamilyPaths } from "../Database/AgentSqliteDatabaseLifecycle.js";
 import { errorMessage } from "../Core/AgentErrors.js";
-import { removeAgentPathSync } from "../Core/AgentFs.js";
+import { removeAgentPathSync, resolveCanonicalPathSync } from "../Core/AgentFs.js";
+import { isPathWithin } from "../Core/AgentPath.js";
 import { resolveAgentWorkspaceLayout } from "../Core/AgentWorkspaceLayout.js";
 
 export interface AgentUpgradeSessionOptions {
@@ -64,11 +65,11 @@ export class AgentUpgradeSession {
   private startupHealthy = false;
 
   constructor(private readonly options: AgentUpgradeSessionOptions) {
-    const workspaceRoot = path.resolve(options.workspaceRoot);
+    const workspaceRoot = resolveCanonicalPathSync(options.workspaceRoot);
     this.journal = new AgentUpgradeJournal(options.stateRoot ?? resolveAgentWorkspaceLayout(workspaceRoot).stateRoot);
     this.allowedDataRoots = Object.freeze([
       workspaceRoot,
-      ...(options.allowedDataRoots ?? []).map((root) => path.resolve(root)),
+      ...(options.allowedDataRoots ?? []).map((root) => resolveCanonicalPathSync(root)),
     ]);
     this.now = options.now ?? (() => new Date());
     this.operationId = options.operationId ?? (() => `${compactTimestamp(this.now())}-${randomUUID()}`);
@@ -411,8 +412,8 @@ export class AgentUpgradeSession {
   }
 
   private assertAllowedDataPath(value: string): string {
-    const candidate = path.resolve(value);
-    if (!this.allowedDataRoots.some((root) => isInside(root, candidate))) {
+    const candidate = resolveCanonicalPathSync(value);
+    if (!this.allowedDataRoots.some((root) => isPathWithin(root, candidate))) {
       throw new Error(`Upgrade data path is outside the declared data roots: ${candidate}`);
     }
     return candidate;
@@ -546,13 +547,4 @@ function compactTimestamp(date: Date): string {
 function normalizedOptional(value: string | undefined): string | undefined {
   const normalized = value?.trim();
   return normalized ? normalized : undefined;
-}
-
-function isInside(root: string, candidate: string): boolean {
-  try {
-    assertInside(root, candidate, "Upgrade data path");
-    return true;
-  } catch {
-    return false;
-  }
 }
