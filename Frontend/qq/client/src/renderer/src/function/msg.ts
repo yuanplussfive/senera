@@ -51,7 +51,7 @@ import { NotifyInfo } from './elements/system'
 import { Notify } from './notify'
 import {
     addDownloadTask,
-} from '@renderer/components/FileManager.vue'
+} from '@renderer/runtime/fileTransfers'
 import { getOneBotResponseError } from './utils/fileTransferUtil'
 import { refreshFavicon } from './favicon'
 import { Img } from './model/img'

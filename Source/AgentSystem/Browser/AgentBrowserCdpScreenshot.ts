@@ -67,11 +67,11 @@ export async function captureAgentBrowserScreenshot(
           ref,
           box: { ...box, x: box.x + scrollX, y: box.y + scrollY },
         }));
-        await evaluateScreenshotScript(
-          connection,
-          pageSession,
-          `(${installScreenshotOverlay.toString()})(${JSON.stringify(overlayId)},${JSON.stringify(annotations)},${options.timeoutMs})`,
-        );
+        await callScreenshotFunction(connection, pageSession, installScreenshotOverlay.toString(), [
+          overlayId,
+          annotations,
+          options.timeoutMs,
+        ]);
       }
       const captured = await connection.send(
         "Page.captureScreenshot",
@@ -114,13 +114,30 @@ export function screenshotBox(value: unknown): AgentBrowserScreenshotBox {
   return { x: box.x!, y: box.y!, width: box.width!, height: box.height! };
 }
 
-async function evaluateScreenshotScript(
+async function callScreenshotFunction(
   connection: AgentBrowserCdpConnection,
   sessionId: string,
-  expression: string,
+  functionDeclaration: string,
+  args: readonly unknown[],
 ): Promise<void> {
-  const result = await connection.send("Runtime.evaluate", { expression, returnByValue: true }, sessionId);
-  if (result.exceptionDetails) throw new Error("The browser could not update screenshot annotations.");
+  const context = await connection.send("Runtime.evaluate", { expression: "globalThis" }, sessionId);
+  const objectId = (context.result as { objectId?: string } | undefined)?.objectId;
+  if (!objectId) throw new Error("The browser did not provide a screenshot execution context.");
+  try {
+    const result = await connection.send(
+      "Runtime.callFunctionOn",
+      {
+        objectId,
+        functionDeclaration,
+        arguments: args.map((value) => ({ value })),
+        returnByValue: true,
+      },
+      sessionId,
+    );
+    if (result.exceptionDetails) throw new Error("The browser could not update screenshot annotations.");
+  } finally {
+    await connection.send("Runtime.releaseObject", { objectId }, sessionId);
+  }
 }
 
 /** This function executes in the page; its closed shadow root isolates annotation styles. */
@@ -160,14 +177,18 @@ async function removeScreenshotOverlay(request: AgentBrowserCdpScreenshotRequest
   try {
     const attached = await cleanup.send("Target.attachToTarget", { targetId: request.targetId, flatten: true });
     if (typeof attached.sessionId !== "string") return;
-    await evaluateScreenshotScript(
-      cleanup,
-      attached.sessionId,
-      `(() => { const host = document.getElementById(${JSON.stringify(id)}); if (host) { clearTimeout(Number(host.dataset.cleanupTimer)); host.remove(); } })()`,
-    );
+    await callScreenshotFunction(cleanup, attached.sessionId, removePageScreenshotOverlay.toString(), [id]);
   } catch {
     // The target may have closed; the page-owned timer also removes a surviving overlay.
   } finally {
     cleanup.close();
+  }
+}
+
+function removePageScreenshotOverlay(id: string): void {
+  const host = document.getElementById(id);
+  if (host) {
+    clearTimeout(Number(host.dataset.cleanupTimer));
+    host.remove();
   }
 }

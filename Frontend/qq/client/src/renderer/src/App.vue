@@ -46,7 +46,7 @@
                 <div class="side-bar-space" />
                 <li v-if="tags.currentMusic"
                     :class="['music-entry', {
-                        'active': tags.showMusicPlayer,
+                        'active': musicPanelVisible,
                     }]"
                     @click="toggleMusicPlayer(undefined)">
                     <img class="music-entry-cover"
@@ -57,7 +57,7 @@
                     <font-awesome-icon v-else :icon="['fas', 'pause']"
                         :class="['music-entry-status', { light: tags.currentMusic.coverLight }]" />
                 </li>
-                <li v-if="showFileManagerEntry" :class="{ 'active': tags.showFileManager }"
+                <li v-if="showFileManagerEntry" :class="{ 'active': panelVisible }"
                     @click="toggleFileManager(undefined)">
                     <font-awesome-icon :icon="['fas', 'arrow-down']" />
                     <span>{{ $t('传输') }}</span>
@@ -68,7 +68,7 @@
                 </li>
                 <li v-if="tags.currentMusic"
                     :class="['music-entry-small', {
-                        'active': tags.showMusicPlayer,
+                        'active': musicPanelVisible,
                     }]"
                     @click="toggleMusicPlayer(undefined)">
                     <img class="music-entry-cover"
@@ -117,7 +117,7 @@
             </div>
         </TransitionGroup>
         <Transition name="music-player-float">
-            <div v-show="tags.showMusicPlayer" class="global-music-player ss-card">
+            <div v-show="musicPanelVisible" class="global-music-player ss-card">
                 <MusicPlayer
                     @open-panel="toggleMusicPlayer"
                     @update-lyric="updateMusicLyric"
@@ -125,8 +125,8 @@
             </div>
         </Transition>
         <Transition name="music-player-float">
-            <div v-show="tags.showFileManager" class="global-music-player ss-card">
-                <FileManager @open-panel="toggleFileManager" />
+            <div v-show="panelVisible" class="global-music-player ss-card">
+                <FileManager />
             </div>
         </Transition>
         <Transition name="modal">
@@ -213,8 +213,10 @@ import Options from '@renderer/pages/Options.vue'
 import Friends from '@renderer/pages/Friends.vue'
 import Messages from '@renderer/pages/Messages.vue'
 import Qzone from '@renderer/pages/Qzone.vue'
-import MusicPlayer, { getCurrentMusic } from './components/MusicPlayer.vue'
-import FileManager, { panelVisible, closePanel, getDownloadTasks } from './components/FileManager.vue'
+import MusicPlayer from './components/MusicPlayer.vue'
+import { getCurrentMusic, musicPanelVisible } from '@renderer/runtime/musicPlayer'
+import FileManager from './components/FileManager.vue'
+import { panelVisible, getDownloadTasks } from '@renderer/runtime/fileTransfers'
 import GlobalSessionSearchBar from './components/GlobalSessionSearchBar.vue'
 import NtViewer from './components/ViewerCom.vue'
 import Tooltips from './components/tooltip/Tooltips.vue'
@@ -259,8 +261,6 @@ const reloadClient = () => window.location.reload()
 const tags = shallowReactive({
     page: 'Home',
     showChat: false,
-    showMusicPlayer: false,
-    showFileManager: false,
     currentMusic: null as null | { title: string, cover: string, coverLight: boolean },
     musicPlaying: false,
     musicLyric: '',
@@ -284,26 +284,12 @@ function updateLayoutState() {
     isNarrowLayout.value = window.innerWidth <= 500
 }
 
-function toggleMusicPlayer(open: boolean | undefined) {
-    if(open != undefined ) {
-        tags.showMusicPlayer = open
-    } else {
-        tags.showMusicPlayer = !tags.showMusicPlayer
-    }
+function toggleMusicPlayer(open?: boolean) {
+    musicPanelVisible.value = open ?? !musicPanelVisible.value
     refreshCurrentMusic()
 }
-function toggleFileManager(open: boolean | undefined) {
-    if(open != undefined) {
-        tags.showFileManager = open
-    } else {
-        tags.showFileManager = !tags.showFileManager
-    }
-    // 同步状态到 FileManager 模块
-    if (tags.showFileManager) {
-        panelVisible.value = true
-    } else {
-        closePanel()
-    }
+function toggleFileManager(open?: boolean) {
+    panelVisible.value = open ?? !panelVisible.value
 }
 function updateMusicLyric(lyric: string) {
     tags.musicLyric = lyric
@@ -483,9 +469,8 @@ onMounted(() => {
     refreshCurrentMusic()
     musicSyncTimer = window.setInterval(refreshCurrentMusic, 1000)
 
-    watch(() => panelVisible.value, val => { tags.showFileManager = val })
     watch(showFileManagerEntry, val => {
-        if (!val && tags.showFileManager) toggleFileManager(false)
+        if (!val && panelVisible.value) toggleFileManager(false)
     }, { immediate: true })
 
     const initialize = async () => {

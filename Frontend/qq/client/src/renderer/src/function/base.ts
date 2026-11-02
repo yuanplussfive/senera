@@ -134,46 +134,14 @@ export class Logger {
             }
         }
 
-        const { message, styles } = this.buildLogParams(typeStr, args, hidden, type, from)
-        this.logOutput(message, styles, data)
-    }
-
-    private buildLogParams(
-        typeStr: string,
-        args: string,
-        hidden: boolean,
-        type: LogType,
-        from?: string
-    ): { message: string; styles: string[] } {
-        const hasFrom = !hidden && from;
-        if (hasFrom) {
-            return {
-                message: `%c${typeStr}%c${from}%c\n${args}`,
-                styles: [
-                    `background:#${this.logTypeInfo[type][0]};color:#${this.logTypeInfo[type][1]};border-radius:7px 0 0 7px;padding:2px 4px 2px 7px;margin-bottom:7px;`,
-                    'background:#e3e8ec;color:#000;padding:2px 7px 4px 4px;border-radius:0 7px 7px 0;margin-bottom:7px;',
-                    ''
-                ]
-            }
+        const [background, foreground] = this.logTypeInfo[type]
+        const badge = `background:#${background};color:#${foreground};border-radius:7px;padding:2px 4px 2px 7px;`
+        const clean = (value: string) => value.replace(/[\r\n\u2028\u2029]/g, ' ')
+        if (!hidden && from) {
+            console.log('%c%s%c%s%c\n%s', badge, clean(typeStr),
+                'background:#e3e8ec;color:#000;padding:2px 7px 4px 4px;', clean(from), '', clean(args), data)
         } else {
-            return {
-                message: `%c${typeStr}%c ${args}`,
-                styles: [
-                    `background:#${this.logTypeInfo[type][0]};color:#${this.logTypeInfo[type][1]};border-radius:7px;padding:2px 4px 2px 7px;margin-bottom:7px;`,
-                    '',
-                    ''
-                ]
-            }
-        }
-    }
-
-    private logOutput(message: string, styles: string[], data: any, useStyles = true) {
-        if (useStyles) {
-            // eslint-disable-next-line no-console
-            console.log(message, ...styles, data)
-        } else {
-            // eslint-disable-next-line no-console
-            console.log(message, data)
+            console.log('%c%s%c %s', badge, clean(typeStr), '', clean(args), data)
         }
     }
 }

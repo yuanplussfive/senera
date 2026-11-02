@@ -1,10 +1,10 @@
-import { copyFile, mkdir, readFile, stat } from "node:fs/promises";
+import { copyFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { extension } from "mime-types";
 import { fileTypeFromBuffer } from "file-type";
 import type { CommonTypes } from "onebots";
-import { writeFileAtomic } from "../../Core/AgentFs.js";
+import { readRegularFile, writeFileAtomic } from "../../Core/AgentFs.js";
 import { decodeBase64Attachment } from "../AgentChannelAttachmentIngestor.js";
 import { AgentChannelOutboundMediaDefaults } from "../AgentChannelOutboundMedia.js";
 import type { AgentChannelAttachment, AgentChannelMedia } from "../AgentChannelTypes.js";
@@ -87,11 +87,9 @@ export class AgentOneBot11MediaStore {
         const name = this.ownedName(attachment.url);
         if (!name) return attachment;
         const target = path.join(this.directory, name);
-        const info = await stat(target);
-        if (!info.isFile() || info.size > AgentChannelOutboundMediaDefaults.maxInlineBytes) {
-          throw new Error("The local OneBot attachment is not a readable media file within the upload limit.");
-        }
-        const bytes = await readFile(target);
+        const bytes = await readRegularFile(target, "Local OneBot attachment", {
+          maxBytes: AgentChannelOutboundMediaDefaults.maxInlineBytes,
+        });
         return {
           ...attachment,
           url: undefined,

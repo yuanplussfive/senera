@@ -337,12 +337,12 @@ function registerDesktopIpc(): void {
     return desktopHostIntegrations?.getCapabilities();
   });
   ipcMain.handle("senera:host.reveal-workspace", async (event) => {
-    if (!resolveManagedWindow(event)) return desktopHostIntegrationFailure("unavailable");
-    return desktopHostIntegrations?.revealWorkspace() ?? desktopHostIntegrationFailure("unavailable");
+    if (!resolveManagedWindow(event) || !desktopHostIntegrations) return desktopHostIntegrationFailure("unavailable");
+    return desktopHostIntegrations.revealWorkspace();
   });
   ipcMain.handle("senera:host.open-terminal", async (event) => {
-    if (!resolveManagedWindow(event)) return desktopHostIntegrationFailure("unavailable");
-    return desktopHostIntegrations?.openExternalTerminal() ?? desktopHostIntegrationFailure("unavailable");
+    if (!resolveManagedWindow(event) || !desktopHostIntegrations) return desktopHostIntegrationFailure("unavailable");
+    return desktopHostIntegrations.openExternalTerminal();
   });
   ipcMain.handle("senera:qq-client.open", async (event, workspaceId: string): Promise<{ ok: boolean }> => {
     if (!resolveManagedWindow(event)) return { ok: false };

@@ -2,7 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { Temporal } from "@js-temporal/polyfill";
 import { z } from "zod";
-import { isMissingFileError, listDirectoryNamesSync, writeFileAtomicSync } from "../Core/AgentFs.js";
+import {
+  isMissingFileError,
+  listDirectoryNamesSync,
+  readRegularTextFileSync,
+  writeFileAtomicSync,
+} from "../Core/AgentFs.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import {
   AgentMemoryDiaryDocumentSchema,
@@ -208,8 +213,7 @@ export function renderAgentMemoryDiaryIndex(entries: readonly AgentMemoryDiaryEn
 
 function readOptional(file: string): string | undefined {
   try {
-    if (fs.lstatSync(file).isSymbolicLink()) throw new Error(`Diary files may not be symbolic links: ${file}`);
-    return fs.readFileSync(file, "utf8");
+    return readRegularTextFileSync(file, "Diary file");
   } catch (error) {
     if (isMissingFileError(error)) return undefined;
     throw error;

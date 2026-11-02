@@ -34,4 +34,4 @@ declare module '@renderer/assets/img/qq-face/public/assets/qq_emoji/_index.json'
         }[]
     }[]
     export default content
-}[]
+}

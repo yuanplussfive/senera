@@ -1,3 +1,4 @@
+import { parseCqSegments, stringifyCqSegments } from './cqCode'
 import jp from 'jsonpath'
 import app from '@renderer/main'
 import anime from 'animejs'
@@ -342,21 +343,8 @@ export function getMsgRawTxt(data: any): string {
  * @param data
  * @returns CQCode 字符串
  */
-export function parseJSONCQCode(data: any) {
-    let back = ''
-    data.forEach((item: any) => {
-        if (item.type != 'text') {
-            let body = '[CQ:' + item.type + ','
-            Object.keys(item).forEach((key: any) => {
-                body += `${key}=${item[key]},`
-            })
-            body = body.substring(0, body.length - 1) + ']'
-            back += body
-        } else {
-            back += item.text
-        }
-    })
-    return back
+export function parseJSONCQCode(data: Parameters<typeof stringifyCqSegments>[0]) {
+    return stringifyCqSegments(data)
 }
 
 /**
@@ -365,62 +353,11 @@ export function parseJSONCQCode(data: any) {
  * @returns 消息对象
  */
 export function parseCQ(data: any) {
-    let msg = data.message as string
-    // 将纯文本也处理为 CQCode 格式
-    // PS：这儿不用担心方括号本身，go-cqhttp 会把它转义掉
-    let reg = /^[^\]]+?\[|\].+\[|\][^[]+$|^[^[\]]+$/g
-    const textList = msg.match(reg)
-    if (textList !== null) {
-        textList.forEach((item) => {
-            item = item.replace(']', '').replace('[', '')
-            msg = msg.replace(item, `[CQ:text,text=${item}]`)
-        })
-    }
-    // 拆分 CQCode
-    reg = /\[.+?\]/g
-    msg = msg.replaceAll('\n', '\\n')
-    const list = msg.match(reg)
-    // 处理为 object
-    const back: { [ket: string]: any }[] = []
-    reg = /\[CQ:([^,]+),(.*)\]/g
-    if (list !== null) {
-        list.forEach((item) => {
-            if (item.match(reg) !== null) {
-                const info: { [key: string]: any } = { type: RegExp.$1 }
-                RegExp.$2.split(',').forEach((key: string) => {
-                    const kv = [] as string[]
-                    kv.push(key.substring(0, key.indexOf('=')))
-                    // 对 html 转义字符进行反转义
-                    const a = document.createElement('a')
-                    a.innerHTML = key.substring(key.indexOf('=') + 1)
-                    kv.push(a.innerText)
-                    info[kv[0]] = kv[1]
-                })
-                // 对文本消息特殊处理
-                if (info.type == 'text') {
-                    info.text = RegExp.$2
-                        .substring(RegExp.$2.lastIndexOf('=') + 1)
-                        .replaceAll('\\n', '\n')
-                    // 对 html 转义字符进行反转义
-                    const a = document.createElement('a')
-                    a.innerHTML = info.text
-                    info.text = a.innerText
-                }
-                // 对回复消息进行特殊处理
-                if (info.type == 'reply') {
-                    data.source = {
-                        user_id: info.user_id,
-                        seq: info.seq,
-                        message: info.message,
-                    }
-                } else {
-                    back.push(info)
-                }
-            }
-        })
-    }
-    logger.debug('解析 CQ 消息结果: ' + JSON.stringify(back))
-    data.message = back
+    data.message = parseCqSegments(data.message).filter(info => {
+        if (info.type !== 'reply') return true
+        data.source = { user_id: info.user_id, seq: info.seq, message: info.message }
+        return false
+    })
     return data
 }
 
@@ -511,7 +448,7 @@ export function sendMsgRaw(
     // 检查消息体是否需要处理
     if (uiStore.msgType == BotMsgType.Array) {
         if (msg && typeof msg != 'string') {
-            const newMsg = [] as any
+            const newMsg: any[] = []
             msg.forEach((item) => {
                 const newResult = {} as { [key: string]: any }
                 const { type: segmentType, ...data } = item
@@ -527,7 +464,7 @@ export function sendMsgRaw(
             msg = newMsg
         }
     }
-    if (msg !== undefined && msg.length > 0) {
+    if (msg.length > 0) {
         if (acknowledged) {
             const [userId, groupId] = String(id).split('/')
             const action = type === 'group' ? authStore.jsonMap.message_list.name_group_send

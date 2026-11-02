@@ -4,6 +4,7 @@ import { applyCredentialedCors, writeCorsPreflight } from "../Auth/AgentCredenti
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { AgentResourceHttpRoutes } from "../Resources/AgentResourceContract.js";
 import { errorMessage } from "../Core/AgentErrors.js";
+import { isAgentJsonPointer } from "../Core/AgentJsonPointerOperations.js";
 import { parseAgentArtifactUri } from "../Artifacts/AgentArtifactLocator.js";
 import type { ArtifactMemoryReadArguments } from "./AgentArtifactMemoryTypes.js";
 import { ArtifactReadParts, ArtifactReadViews } from "./AgentArtifactMemoryTypes.js";
@@ -47,7 +48,7 @@ const ArtifactMemoryHttpRequestSchema = z.union([
               part: z.enum(ArtifactReadParts).optional(),
               view: z.enum(ArtifactReadViews).optional(),
               paths: z
-                .array(z.string().regex(/^(?:\/(?:[^~]|~[01])*)*$/u))
+                .array(z.string().refine(isAgentJsonPointer, "Expected an RFC 6901 JSON Pointer."))
                 .min(1)
                 .optional(),
             })

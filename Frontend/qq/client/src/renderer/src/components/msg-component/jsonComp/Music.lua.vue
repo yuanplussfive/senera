@@ -25,7 +25,7 @@
 import * as z from 'zod'
 
 import { ref } from 'vue'
-import { addMusic } from '@renderer/components/MusicPlayer.vue'
+import { addMusic } from '@renderer/runtime/musicPlayer'
 import { Logger } from '@renderer/function/base'
 import { openLink } from '@renderer/function/utils/appUtil'
 import { getForegroundToneGridFromImageUrl } from '@renderer/function/utils/systemUtil'

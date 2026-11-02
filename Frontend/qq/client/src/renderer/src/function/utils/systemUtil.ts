@@ -73,15 +73,10 @@ export function getPortableFileLang(name: string) {
  * @returns 处理完成的字符串
  */
 export function escape2Html(str: string): string {
-    let s = ''
-    if (str.length === 0) return ''
-    s = str.replace(/&amp;/g, '&')
-    s = s.replace(/&lt;/g, '<')
-    s = s.replace(/&gt;/g, '>')
-    s = s.replace(/&nbsp;/g, ' ')
-    s = s.replace(/&#39;/g, '\'')
-    s = s.replace(/&quot;/g, '"')
-    return s
+    const entities: Record<string, string> = {
+        '&amp;': '&', '&lt;': '<', '&gt;': '>', '&nbsp;': ' ', '&#39;': "'", '&quot;': '"',
+    }
+    return str.replace(/&(?:amp|lt|gt|nbsp|#39|quot);/g, entity => entities[entity])
 }
 
 /**

@@ -39,7 +39,7 @@ describe("workspace resource identity authority", () => {
     const file = resolveAgentWorkspaceLayout(workspace()).databases.identities;
     let registry = new AgentEntityReferenceRegistry(file);
     try {
-      const random = vi.spyOn(crypto, "randomBytes").mockImplementation(() => Buffer.alloc(6));
+      const random = vi.spyOn(crypto, "randomInt").mockImplementation(() => 0);
       const user = registry.allocate(AgentIdentityDomains.User, "user-uuid");
       const agent = registry.allocate(AgentIdentityDomains.Agent, "agent-uuid");
       expect(user).toBe("000000");
@@ -126,26 +126,27 @@ describe("workspace resource identity authority", () => {
   });
   test("reserves colliding candidates atomically and retains immutable publication identities after reopening", () => {
     const root = workspace();
-    const random = vi.spyOn(crypto, "randomBytes");
-    random
-      .mockImplementationOnce(() => Buffer.alloc(6))
-      .mockImplementationOnce(() => Buffer.alloc(6))
-      .mockImplementationOnce(() => Buffer.alloc(6, 1));
+    const random = vi.spyOn(crypto, "randomInt");
+    for (const digit of [...Array<number>(12).fill(0), ...Array<number>(6).fill(1)]) {
+      random.mockImplementationOnce(() => digit);
+    }
     expect(allocateAgentResourceId(root, "publication:first")).toBe("000000");
     expect(allocateAgentResourceId(root, "publication:second")).toBe("111111");
     expect(allocateAgentResourceId(root, "publication:first")).toBe("000000");
-    expect(random).toHaveBeenCalledTimes(3);
+    expect(random).toHaveBeenCalledTimes(18);
   });
 
   test("uploads share the authority and deleting bytes cannot release an allocated ID", async () => {
     const root = workspace();
     const store = new AgentUploadStore({ workspaceRoot: root, config: resolveUploadsConfig({ ModelProviders: [] }) });
-    const random = vi.spyOn(crypto, "randomBytes");
-    random.mockImplementationOnce(() => Buffer.alloc(6));
+    const random = vi.spyOn(crypto, "randomInt");
+    for (let index = 0; index < 6; index++) random.mockImplementationOnce(() => 0);
     const first = await store.publishBytes({ bytes: Buffer.from("first"), name: "first.txt", mime: "text/plain" });
     expect(first.resourceUri).toBe(createAgentResourceUri("000000"));
     expect(await store.delete(first.resourceUri)).toBe(true);
-    random.mockImplementationOnce(() => Buffer.alloc(6)).mockImplementationOnce(() => Buffer.alloc(6, 2));
+    for (const digit of [...Array<number>(6).fill(0), ...Array<number>(6).fill(2)]) {
+      random.mockImplementationOnce(() => digit);
+    }
     expect(allocateAgentResourceId(root, "artifact:second")).toBe("222222");
     await expect(store.resolve(first.resourceUri)).rejects.toMatchObject({ code: "ENOENT" });
     const database = new Database(resolveAgentWorkspaceLayout(root).databases.resources);

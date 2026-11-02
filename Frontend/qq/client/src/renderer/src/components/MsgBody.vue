@@ -320,7 +320,7 @@ import { toggleMessageReaction } from '@renderer/function/messageAnnotations'
 import { dateTimeFormat } from '@renderer/runtime/time'
 import ChannelMarkdown from './ChannelMarkdown.vue'
 import FileAttachment from './FileAttachment.vue'
-import { addDownloadTask } from './FileManager.vue'
+import { addDownloadTask } from '@renderer/runtime/fileTransfers'
 
 import { MsgBodyFuns as ViewFuns } from '@renderer/function/model/msg-body'
 import { computed, onMounted, nextTick, provide, inject, useTemplateRef, ref } from 'vue'
@@ -362,7 +362,7 @@ import XmlSegComp from './msg-component/XmlSegComp.vue'
 import VoiceMsg from './VoiceMsg.vue'
 import QuotePreview from './QuotePreview.vue'
 import QQMessageFrame from './QQMessageFrame.vue'
-import { addMusic, MusicInfo } from './MusicPlayer.vue'
+import { addMusic, MusicInfo } from '@renderer/runtime/musicPlayer'
 
 type Msg = any
 type IUser = any
@@ -691,25 +691,23 @@ async function parseText(index: number) {
 function loadLinkPreview(domain: string, res: any) {
     const logger = new Logger()
     logger.debug('获取链接预览成功: ' + res['og:title'])
-    if(res != undefined) {
-        if (res.type == undefined) {
-            if(Object.keys(res).length > 0) {
-                let imgUrl = res['og:image']
-                if (imgUrl && !imgUrl.startsWith('http') && !imgUrl.startsWith('www')) {
-                    imgUrl = new URL(imgUrl.startsWith('/') ? imgUrl : '/' + imgUrl, domain).toString()
-                }
-                const pageData = {
-                    site: res['og:site_name'] === undefined ? '' : res['og:site_name'],
-                    title: res['og:title'] === undefined ? '' : res['og:title'],
-                    desc: res['og:description'] === undefined ? '' : res['og:description'],
-                    img: imgUrl,
-                    link: res['og:url'],
-                }
-                pageViewInfo.value = pageData
+    if (res.type == undefined) {
+        if(Object.keys(res).length > 0) {
+            let imgUrl = res['og:image']
+            if (imgUrl && !imgUrl.startsWith('http') && !imgUrl.startsWith('www')) {
+                imgUrl = new URL(imgUrl.startsWith('/') ? imgUrl : '/' + imgUrl, domain).toString()
             }
-        } else {
-            pageViewInfo.value = res
+            const pageData = {
+                site: res['og:site_name'] === undefined ? '' : res['og:site_name'],
+                title: res['og:title'] === undefined ? '' : res['og:title'],
+                desc: res['og:description'] === undefined ? '' : res['og:description'],
+                img: imgUrl,
+                link: res['og:url'],
+            }
+            pageViewInfo.value = pageData
         }
+    } else {
+        pageViewInfo.value = res
     }
 }
 

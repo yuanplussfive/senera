@@ -1269,7 +1269,7 @@ export class AgentOneBot11ChannelAdapter implements AgentChannelAdapter {
       this.setConnectionState(connectionSignal.aborted ? "stopped" : "degraded");
       if (!connectionSignal.aborted) throw error;
     } finally {
-      if (this.connectTask === task) this.connectTask = undefined;
+      this.connectTask = undefined;
     }
   }
 
@@ -1385,7 +1385,7 @@ export class AgentOneBot11ChannelAdapter implements AgentChannelAdapter {
     try {
       await task;
     } finally {
-      if (this.disconnectTask === task) this.disconnectTask = undefined;
+      this.disconnectTask = undefined;
     }
   }
 

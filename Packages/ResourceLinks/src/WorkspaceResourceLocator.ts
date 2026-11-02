@@ -8,7 +8,6 @@ const ExternalProtocolPattern = /^(?:https?|mailto|tel|data|blob|senera):/iu;
 const UriSchemePattern = /^[a-z][a-z0-9+.-]*:/iu;
 const WindowsAbsolutePathPattern = /^[a-z]:[\\/]/iu;
 const ProtocolRelativeUrlPattern = /^\/\/[^/]/u;
-const FileExtensionPattern = /(?:^|[\\/])[^\\/]+\.[a-z0-9][a-z0-9._-]*$/iu;
 
 export function parseWorkspaceResourceLocator(value: string | undefined): WorkspaceResourceLocator | undefined {
   const source = decodeLocator(value?.trim());
@@ -93,8 +92,18 @@ function isWorkspacePathCandidate(value: string): boolean {
     value.startsWith("../") ||
     value.includes("\\") ||
     value.includes("/") ||
-    FileExtensionPattern.test(value)
+    hasFileExtension(value)
   );
+}
+
+function hasFileExtension(value: string): boolean {
+  // Paths with separators are handled above. Walk the valid suffix once,
+  // including multi-dot extensions, without retrying overlapping matches.
+  for (let index = value.length - 1; index > 0; index--) {
+    if (value[index] === "." && /^[a-z0-9]$/iu.test(value[index + 1] ?? "")) return true;
+    if (!/^[a-z0-9._-]$/iu.test(value[index]!)) return false;
+  }
+  return false;
 }
 
 function splitFragment(value: string): [string, string | undefined] {

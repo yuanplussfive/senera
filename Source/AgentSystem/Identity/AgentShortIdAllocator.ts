@@ -9,10 +9,9 @@ export function allocateAgentShortId<Domain extends AgentIdentityDomain>(
 ): AgentShortId<Domain> {
   const { alphabet, length } = AgentShortIdContract;
   for (;;) {
-    // The alphabet has 32 symbols, which divides 256 without modulo bias.
-    const candidate = [...crypto.randomBytes(length)]
-      .map((byte) => alphabet[byte % alphabet.length])
-      .join("") as AgentShortId<Domain>;
+    const candidate = Array.from({ length }, () => alphabet[crypto.randomInt(alphabet.length)]).join(
+      "",
+    ) as AgentShortId<Domain>;
     if (reserve(candidate)) return candidate;
     if (occupied() >= alphabet.length ** length) throw new Error(`The ${domain} identity namespace is exhausted.`);
   }

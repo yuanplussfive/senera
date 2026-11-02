@@ -63,11 +63,11 @@ export class AgentSessionInsightsHttpApi {
           page ? 200 : 404,
           page ? { ok: true, ...page } : { ok: false, error: { code: "session_not_found" } },
         );
-    } catch (error) {
+    } catch {
       if (!abort.signal.aborted)
         this.send(response, 500, {
           ok: false,
-          error: { code: "insights_unavailable", message: error instanceof Error ? error.message : String(error) },
+          error: { code: "insights_unavailable" },
         });
     } finally {
       response.off("close", onClose);

@@ -278,9 +278,10 @@ async function harness(options: { local?: boolean } = {}) {
   const api = new AgentAuthenticationHttpApi(guard);
   const sockets = new WebSocketServer({ noServer: true });
   const server = http.createServer((request, response) => {
-    void api.handle(request, response).catch((error: unknown) => {
+    void api.handle(request, response).catch(() => {
       response.statusCode = 500;
-      response.end(String(error));
+      response.setHeader("Content-Type", "application/json; charset=utf-8");
+      response.end(JSON.stringify({ error: "authentication_failed" }));
     });
   });
   server.on("upgrade", (request, stream, head) => {

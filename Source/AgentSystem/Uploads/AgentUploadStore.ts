@@ -19,7 +19,7 @@ import {
 } from "../Resources/AgentResourceUri.js";
 import { detectAgentUploadMime } from "./AgentUploadMime.js";
 import { allocateAgentResourceId } from "../Resources/AgentResourceIdAllocator.js";
-import { isMissingFileError, removeAgentPathWithRetry, writeFileAtomic } from "../Core/AgentFs.js";
+import { isMissingFileError, readRegularFile, removeAgentPathWithRetry, writeFileAtomic } from "../Core/AgentFs.js";
 import {
   type AgentUploadAttachment,
   type AgentUploadImageAnalysisAsset,
@@ -591,11 +591,9 @@ export class AgentUploadStore implements AgentResourcePublisher {
 }
 
 async function readVerifiedAnalysisAsset(filePath: string, asset: AgentUploadImageAnalysisAsset): Promise<Buffer> {
-  const stat = await fsp.lstat(filePath);
-  if (!stat.isFile() || stat.size !== asset.size)
+  const bytes = await readRegularFile(filePath, "Cached image analysis asset", { maxBytes: asset.size });
+  if (bytes.length !== asset.size || sha256Hex(bytes) !== asset.sha256)
     throw new Error(`Cached image analysis asset is invalid: ${asset.fileName}`);
-  const bytes = await fsp.readFile(filePath);
-  if (sha256Hex(bytes) !== asset.sha256) throw new Error(`Cached image analysis asset is invalid: ${asset.fileName}`);
   return bytes;
 }
 
