@@ -57,7 +57,7 @@ describe("Pi native tool provider stream lifecycle", () => {
     expect(turnState.context.usageLedger.aggregate()?.cost?.total).toBeCloseTo(0.00024);
   });
 
-  test("reports the provider request deadline as an error instead of caller cancellation", async () => {
+  test("enforces the provider deadline even when the upstream never sends a terminal event", async () => {
     const modelProvider = createModelProvider({
       ToolPlanningMode: "native",
       Capabilities: { ToolCalling: true },
@@ -72,19 +72,7 @@ describe("Pi native tool provider stream lifecycle", () => {
       projection,
       modelProvider,
       frame,
-      apiStreams: nativeApiStreams((model, _context, options) => {
-        const stream = createAssistantMessageEventStream();
-        options?.signal?.addEventListener(
-          "abort",
-          () => {
-            const failure = failureMessage(model, "upstream aborted after the provider deadline");
-            stream.push({ type: "error", reason: "aborted", error: failure });
-            stream.end(failure);
-          },
-          { once: true },
-        );
-        return stream;
-      }),
+      apiStreams: nativeApiStreams(() => createAssistantMessageEventStream()),
     }).create();
     const model = provider.getModels()[0];
     if (!model) throw new Error("Expected the native Pi model.");
@@ -97,10 +85,10 @@ describe("Pi native tool provider stream lifecycle", () => {
       .result();
 
     expect(result.stopReason).toBe("error");
-    expect(result.errorMessage).not.toContain("upstream aborted after the provider deadline");
+    expect(result.errorMessage).toContain("max_request");
   });
 
-  test("preserves caller cancellation when the upstream reports an error after abort", async () => {
+  test("preserves caller cancellation without dispatching an already cancelled request", async () => {
     const modelProvider = createModelProvider({
       ToolPlanningMode: "native",
       Capabilities: { ToolCalling: true },
@@ -137,7 +125,7 @@ describe("Pi native tool provider stream lifecycle", () => {
       )
       .result();
 
-    expect(observedSignal?.aborted).toBe(true);
+    expect(observedSignal).toBeUndefined();
     expect(result).toMatchObject({ stopReason: "aborted", errorMessage: "User stopped the run." });
   });
 });

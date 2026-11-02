@@ -27,6 +27,7 @@ import {
   AgentModelResponseBudgetError,
 } from "../ModelEndpoints/ModelResponseBudget.js";
 import { isAgentUnknownRecord } from "../Core/AgentUnknownValue.js";
+import { ModelRequestTimeoutError, normalizeModelHttpError } from "../ModelEndpoints/ModelHttpErrors.js";
 
 export interface AgentImageGenerationRequest {
   readonly context: ImagesContext;
@@ -95,37 +96,36 @@ export class AgentImageGenerationClient {
     const timeout =
       configuration.MaxRequestMs > 0
         ? setTimeout(
-            () => controller.abort(new Error("Image generation exceeded the configured maximum request duration.")),
+            () => controller.abort(normalizeModelHttpError(configuration, new ModelRequestTimeoutError("max_request"))),
             configuration.MaxRequestMs,
           )
         : undefined;
-    const models = createModels();
-    const adapter: ProviderImages =
-      declaration.Api === "openrouter-images"
-        ? { generateImages: generateOpenRouterImages }
-        : createAgentOpenAIImagesAdapter({
-            options: imageOptions,
-            mask: input.mask,
-            maxRetries: configuration.MaxNetworkRetries,
-            download: input.download,
-          });
-    models.setProvider(
-      createProvider({
-        id: model.provider,
-        name: `Senera images (${model.provider})`,
-        models: [model],
-        auth: {
-          apiKey: {
-            name: "Senera model credential",
-            resolve: async () => ({ auth: { apiKey: configuration.ApiKey }, source: "Senera model configuration" }),
-          },
-        },
-        images: { [model.api]: adapter },
-      }),
-    );
     let status: "completed" | "failed" | "aborted" = "failed";
     let failure: unknown;
     try {
+      const models = createModels();
+      const adapter: ProviderImages =
+        declaration.Api === "openrouter-images"
+          ? { generateImages: generateOpenRouterImages }
+          : createAgentOpenAIImagesAdapter({
+              options: imageOptions,
+              mask: input.mask,
+              download: input.download,
+            });
+      models.setProvider(
+        createProvider({
+          id: model.provider,
+          name: `Senera images (${model.provider})`,
+          models: [model],
+          auth: {
+            apiKey: {
+              name: "Senera model credential",
+              resolve: async () => ({ auth: { apiKey: configuration.ApiKey }, source: "Senera model configuration" }),
+            },
+          },
+          images: { [model.api]: adapter },
+        }),
+      );
       const options: ImagesOptions = {
         signal,
         timeoutMs: configuration.TimeoutMs,
@@ -162,11 +162,12 @@ export class AgentImageGenerationClient {
       status = "completed";
       return result;
     } catch (error) {
-      failure = error;
-      status = signal.aborted ? "aborted" : "failed";
-      throw error;
+      failure = signal.aborted ? signal.reason : error;
+      status = input.signal?.aborted ? "aborted" : "failed";
+      throw failure;
     } finally {
       if (timeout) clearTimeout(timeout);
+      controller.abort();
       capture?.finish(status, failure);
     }
   }

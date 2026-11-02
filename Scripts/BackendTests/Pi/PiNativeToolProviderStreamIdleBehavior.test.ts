@@ -14,7 +14,7 @@ import {
 describe("Pi native tool provider stream idle timeout", () => {
   afterEach(() => vi.useRealTimers());
 
-  test("aborts a native provider after the derived stream idle budget", async () => {
+  test("enforces the stream idle budget even when the upstream ignores cancellation", async () => {
     vi.useFakeTimers();
     const modelProvider = createModelProvider({
       ToolPlanningMode: "native",
@@ -30,7 +30,7 @@ describe("Pi native tool provider stream idle timeout", () => {
       projection,
       modelProvider,
       frame,
-      apiStreams: nativeApiStreams((model, _context, options) => {
+      apiStreams: nativeApiStreams((model) => {
         const stream = createAssistantMessageEventStream();
         const partial = {
           ...failureMessage(model, "partial"),
@@ -38,15 +38,6 @@ describe("Pi native tool provider stream idle timeout", () => {
           stopReason: "pending" as const,
         };
         stream.push({ type: "text_delta", contentIndex: 0, delta: "partial", partial });
-        options?.signal?.addEventListener(
-          "abort",
-          () => {
-            const failure = failureMessage(model, "upstream aborted after stream idle timeout");
-            stream.push({ type: "error", reason: "aborted", error: failure });
-            stream.end(failure);
-          },
-          { once: true },
-        );
         return stream;
       }),
     }).create();

@@ -129,6 +129,7 @@ export class AgentPiModelRequestExecutor {
     let firstTokenMs: number | undefined;
     let responseCharacters = 0;
     let message: AssistantMessage | undefined;
+    let stream: AssistantMessageEventStream | undefined;
     let snapshot: AgentPromptWireSnapshot | undefined;
     let wireCompleted = false;
     let usageRecorded = false;
@@ -202,7 +203,7 @@ export class AgentPiModelRequestExecutor {
           ? {}
           : { maxTokens: this.configuration.MaxOutputTokens }),
       };
-      const stream = input.stream
+      stream = input.stream
         ? input.stream(signal)
         : input.omitOutputTokenLimit || input.toolChoice !== undefined
           ? this.pi.provider.stream(this.pi.model, context, {
@@ -259,6 +260,7 @@ export class AgentPiModelRequestExecutor {
       throw normalizeModelHttpError(this.configuration, failure);
     } finally {
       lifetime.abort();
+      stream?.end(message);
       if (firstTokenTimer) clearTimeout(firstTokenTimer);
       if (requestTimer) clearTimeout(requestTimer);
       streamIdleWatchdog.clear();
