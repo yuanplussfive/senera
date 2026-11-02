@@ -78,15 +78,7 @@ function parseSourceSuffix(value: string): { path: string; line: number; column?
 }
 
 function isWorkspacePathCandidate(value: string): boolean {
-  return (
-    WindowsAbsolutePathPattern.test(value) ||
-    value.startsWith("/") ||
-    value.startsWith("./") ||
-    value.startsWith("../") ||
-    value.includes("\\") ||
-    value.includes("/") ||
-    hasFileExtension(value)
-  );
+  return value.includes("\\") || value.includes("/") || hasFileExtension(value);
 }
 
 function hasFileExtension(value: string): boolean {
