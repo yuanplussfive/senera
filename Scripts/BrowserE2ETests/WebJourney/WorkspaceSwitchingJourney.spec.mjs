@@ -373,6 +373,17 @@ test("renders Markdown and offers expandable JSON without entering edit mode", a
   await expect(markdown.locator(".markdown-renderer")).toContainText("Senera");
   await expect(markdown.locator(".resource-header").getByRole("button", { name: "预览", exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("pierre-markdown-preview.png") });
+  const browser = page.locator("[data-workspace-browser]:visible");
+  await browser.getByRole("button", { name: "新标签页", exact: true }).click();
+  const tabs = browser.getByRole("tab");
+  await tabs.last().focus();
+  await tabs.last().press("ArrowRight");
+  await expect(tabs.first()).toBeFocused();
+  await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
+  await tabs.first().press("ArrowLeft");
+  await expect(tabs.last()).toBeFocused();
+  await tabs.last().press("ArrowRight");
+  await expect(tabs.first()).toBeFocused();
   await markdown.getByRole("button", { name: "关闭", exact: true }).click();
   await expect(markdown).toBeHidden();
   const json = await openFile(page, "data.json");

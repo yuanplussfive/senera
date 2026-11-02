@@ -148,7 +148,7 @@ describe("workspace browser surface", () => {
     expect(controller.newBlankTab).toHaveBeenCalledTimes(1);
   });
 
-  it("moves tab focus with arrow keys and wraps at the ends", () => {
+  it("selects adjacent tabs with arrow keys and wraps at the ends", () => {
     const controller = createController({
       tabs: [createBlankWorkspaceTab("tab-1"), createWorkspaceTab("tab-2", { path: "README.md" })],
       activeTabId: "tab-1",
@@ -158,7 +158,6 @@ describe("workspace browser surface", () => {
     const tabs = screen.getAllByRole("tab");
     fireEvent.keyDown(tabs[0], { key: "ArrowRight" });
     expect(controller.activateTab).toHaveBeenCalledWith("tab-2");
-    expect(tabs[1]).toHaveFocus();
 
     fireEvent.keyDown(tabs[0], { key: "ArrowLeft" });
     expect(controller.activateTab).toHaveBeenLastCalledWith("tab-2");
