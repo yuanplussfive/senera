@@ -2,6 +2,13 @@
 
 这里记录 Senera 每个正式版本中的新增功能、问题修复和兼容性变化。
 
+## [1.21.3](https://github.com/yuanplussfive/senera/compare/v1.21.2...v1.21.3) (2026-11-02)
+
+
+### 问题修复
+
+* preserve sandbox release identity and harden build boundaries ([#161](https://github.com/yuanplussfive/senera/issues/161)) ([dbbc735](https://github.com/yuanplussfive/senera/commit/dbbc73517a370ca97f00c5eaf3b9fafba0888605))
+
 ## [1.21.2](https://github.com/yuanplussfive/senera/compare/v1.21.1...v1.21.2) (2026-11-02)
 
 
