@@ -333,7 +333,9 @@ export async function readRegularFile(
 
 function assertRegularFileIdentity(entry: fs.Stats, opened: fs.Stats, filePath: string, subject: string): void {
   if (!entry.isFile() || !opened.isFile() || entry.dev !== opened.dev || entry.ino !== opened.ino) {
-    throw new Error(`${subject} is not the same regular file (symbolic links are not allowed): ${filePath}`);
+    throw new Error(
+      `${subject} is not a regular file or changed after opening (symbolic links are not allowed): ${filePath}`,
+    );
   }
 }
 

@@ -63,15 +63,8 @@ function withSourcePosition(pathValue: string, fragment?: string): WorkspaceReso
 
 function parseSourceFragment(fragment: string | undefined): { line: number; column?: number } | undefined {
   if (!fragment) return undefined;
-  const match = /^(?:L|line-?)(\d+)(?:C|:)(\d+)?(?:-L?\d+)?$/iu.exec(fragment);
-  if (match?.[1]) {
-    return {
-      line: Number(match[1]),
-      ...(match[2] ? { column: Number(match[2]) } : {}),
-    };
-  }
-  const lineOnly = /^(?:L|line-?)(\d+)(?:-L?\d+)?$/iu.exec(fragment);
-  return lineOnly?.[1] ? { line: Number(lineOnly[1]) } : undefined;
+  const match = /^(?:L|line-?)(\d+)(?:(?:C|:)(\d+)?)?(?:-L?\d+)?$/iu.exec(fragment);
+  return match?.[1] ? { line: Number(match[1]), ...(match[2] ? { column: Number(match[2]) } : {}) } : undefined;
 }
 
 function parseSourceSuffix(value: string): { path: string; line: number; column?: number } | undefined {

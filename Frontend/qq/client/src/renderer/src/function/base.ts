@@ -10,6 +10,7 @@ import { reactive } from 'vue'
 import { getActivePinia } from 'pinia'
 import { useSettingsStore } from '@renderer/state/settings'
 import type { PopInfoElem } from './elements/system'
+import { serializeLogPayload } from './utils/logPayload'
 
 // =============== 日志 ===============
 
@@ -136,12 +137,13 @@ export class Logger {
 
         const [background, foreground] = this.logTypeInfo[type]
         const badge = `background:#${background};color:#${foreground};border-radius:7px;padding:2px 4px 2px 7px;`
-        const clean = (value: string) => value.replace(/[\r\n\u2028\u2029]/g, ' ')
+        const clean = (value: string) => value.replace(/[\r\n\u2028\u2029]/g, '')
+        const payload = serializeLogPayload(data)
         if (!hidden && from) {
             console.log('%c%s%c%s%c\n%s', badge, clean(typeStr),
-                'background:#e3e8ec;color:#000;padding:2px 7px 4px 4px;', clean(from), '', clean(args), data)
+                'background:#e3e8ec;color:#000;padding:2px 7px 4px 4px;', clean(from), '', clean(args), payload)
         } else {
-            console.log('%c%s%c %s', badge, clean(typeStr), '', clean(args), data)
+            console.log('%c%s%c %s', badge, clean(typeStr), '', clean(args), payload)
         }
     }
 }
