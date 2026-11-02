@@ -398,6 +398,7 @@ jobs:
       - clients
     if: always() && needs.metadata.result == 'success' && needs.clients.result == 'success'
     runs-on: windows-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
         with:
@@ -409,9 +410,8 @@ jobs:
         with:
           name: release-web
           path: Frontend/dist
-      # `desktop.pack` also launches the packaged build (`npm run desktop.smoke`), so a
-      # packaged build that cannot start fails this job before anything is uploaded.
       - run: npm run desktop.pack -- --frontend-built
+        timeout-minutes: 30
       - name: Verify differential update assets
         shell: pwsh
         env:

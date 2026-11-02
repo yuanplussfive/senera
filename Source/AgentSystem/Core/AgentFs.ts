@@ -16,6 +16,27 @@ export function isFileExistsError(error: unknown): boolean {
   return nodeErrorCode(error) === "EEXIST";
 }
 
+/** Resolves aliases through the nearest existing ancestor, including paths not created yet. */
+export function resolveCanonicalPathSync(value: string): string {
+  let ancestor = path.resolve(value);
+  const missing: string[] = [];
+  for (;;) {
+    try {
+      fs.lstatSync(ancestor);
+    } catch (error) {
+      if (!isMissingFileError(error)) throw error;
+      const parent = path.dirname(ancestor);
+      if (parent === ancestor) throw error;
+      missing.unshift(path.basename(ancestor));
+      ancestor = parent;
+      continue;
+    }
+    // Resolve existing links outside the catch: a broken link must fail rather
+    // than being treated as a missing component of an allowed directory.
+    return path.resolve(fs.realpathSync.native(ancestor), ...missing);
+  }
+}
+
 /** Entry names of an optional directory; empty when it has not been created yet. */
 export function listDirectoryNamesSync(directory: string): string[] {
   try {
