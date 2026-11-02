@@ -3,6 +3,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { assertAndroidReleaseSigning, resolveAndroidApkArtifact } from "./AndroidBuildContract.js";
 
 const androidRoot = fileURLToPath(new URL("./android/", import.meta.url));
 const root = path.resolve(androidRoot, "../../..");
@@ -12,18 +13,7 @@ const abis = values.abi?.split(",");
 const supportedAbis = new Set(["arm64-v8a", "armeabi-v7a", "x86", "x86_64"]);
 if (abis?.some((abi) => !supportedAbis.has(abi)))
   throw new Error("Unsupported Android ABI. Use arm64-v8a, armeabi-v7a, x86 or x86_64.");
-if (
-  release &&
-  [
-    "SENERA_ANDROID_KEYSTORE",
-    "SENERA_ANDROID_STORE_PASSWORD",
-    "SENERA_ANDROID_KEY_ALIAS",
-    "SENERA_ANDROID_KEY_PASSWORD",
-  ].some((key) => !process.env[key])
-)
-  throw new Error(
-    "Release APKs require the SENERA_ANDROID signing environment. Use the debug command for unsigned development builds.",
-  );
+if (release) assertAndroidReleaseSigning(process.env, "file");
 const wrapper = path.join(androidRoot, process.platform === "win32" ? "gradlew.bat" : "gradlew");
 const task = release ? "assembleRelease" : "assembleDebug";
 const checks = release ? ":app:lintRelease" : ":app:lintDebug";
@@ -58,8 +48,8 @@ child.once("exit", (code) => {
     );
   }
   const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")) as { version: string };
-  const architecture = abis ? abis.join("_") : "universal";
-  const target = path.join(root, "Release", `Senera-${pkg.version}-android-${architecture}-${variant}.apk`);
+  const artifact = resolveAndroidApkArtifact(pkg.version, variant, abis);
+  const target = path.resolve(root, artifact.path);
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.copyFileSync(source, target);
   console.log(`Android APK: ${target}`);

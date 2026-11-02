@@ -274,6 +274,8 @@ jobs:
       tag: ${{ steps.release.outputs.tag }}
       desktop_artifact_name: ${{ steps.release.outputs.desktop_artifact_name }}
       desktop_artifact_path: ${{ steps.release.outputs.desktop_artifact_path }}
+      android_artifact_name: ${{ steps.release.outputs.android_artifact_name }}
+      android_artifact_path: ${{ steps.release.outputs.android_artifact_path }}
       container_version_tag: ${{ steps.release.outputs.container_version_tag }}
       container_minor_tag: ${{ steps.release.outputs.container_minor_tag }}
       sandbox_runtime_source_image: ${{ steps.release.outputs.sandbox_runtime_source_image }}
@@ -314,6 +316,14 @@ jobs:
           SENERA_VERIFY_WORKFLOW: verify.yml
         run: npx tsx Scripts/VerifyProductReleaseSource.ts
 
+      - name: Require Android release signing configuration
+        env:
+          SENERA_ANDROID_KEYSTORE_BASE64: ${{ secrets.SENERA_ANDROID_KEYSTORE_BASE64 }}
+          SENERA_ANDROID_STORE_PASSWORD: ${{ secrets.SENERA_ANDROID_STORE_PASSWORD }}
+          SENERA_ANDROID_KEY_ALIAS: ${{ secrets.SENERA_ANDROID_KEY_ALIAS }}
+          SENERA_ANDROID_KEY_PASSWORD: ${{ secrets.SENERA_ANDROID_KEY_PASSWORD }}
+        run: npx tsx Build/VerifyAndroidReleaseSigning.ts
+
   clients:
     name: Build Optional Clients
     needs: metadata
@@ -349,7 +359,7 @@ jobs:
     needs:
       - metadata
       - clients
-    if: always() && needs.clients.result == 'success' && vars.SENERA_ANDROID_RELEASE_ENABLED == 'true'
+    if: always() && !cancelled() && needs.metadata.result == 'success' && needs.clients.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -379,16 +389,16 @@ jobs:
           SENERA_ANDROID_KEY_PASSWORD: ${{ secrets.SENERA_ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          test -n "$ANDROID_KEYSTORE_BASE64"
+          umask 077
           trap 'rm -f "$SENERA_ANDROID_KEYSTORE"' EXIT
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$SENERA_ANDROID_KEYSTORE"
           chmod +x Apps/Mobile/android/gradlew
           npm run mobile.android.from-build -- --release
       - uses: actions/upload-artifact@v6
         with:
-          name: release-android-apk
+          name: ${{ needs.metadata.outputs.android_artifact_name }}
           compression-level: 0
-          path: Release/Senera-*-android-*-release.apk
+          path: ${{ needs.metadata.outputs.android_artifact_path }}
           if-no-files-found: error
 
   desktop:
@@ -610,7 +620,7 @@ jobs:
       needs.metadata.result == 'success' &&
       needs.desktop.result == 'success' &&
       needs.clients.result == 'success' &&
-      (needs.android.result == 'success' || needs.android.result == 'skipped') &&
+      needs.android.result == 'success' &&
       needs.container-build.result == 'success' &&
       needs.sandbox-runtime-build.result == 'success' &&
       needs.container-smoke.result == 'success'
@@ -628,29 +638,44 @@ jobs:
         with:
           name: ${{ needs.metadata.outputs.desktop_artifact_name }}
           path: ${{ runner.temp }}/release-assets
-      - name: Attach verified installer to the draft release
+      - name: Download verified Android APK
+        uses: actions/download-artifact@v7
+        with:
+          name: ${{ needs.metadata.outputs.android_artifact_name }}
+          path: ${{ runner.temp }}/release-assets
+      - name: Attach verified application packages to the draft release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
           RELEASE_ASSET_ROOT: ${{ runner.temp }}/release-assets
+          DESKTOP_ARTIFACT_NAME: ${{ needs.metadata.outputs.desktop_artifact_name }}
+          ANDROID_ARTIFACT_NAME: ${{ needs.metadata.outputs.android_artifact_name }}
         run: |
           set -euo pipefail
+          required_assets=(
+            "$DESKTOP_ARTIFACT_NAME"
+            "$DESKTOP_ARTIFACT_NAME.blockmap"
+            "latest.yml"
+            "senera-update.json"
+            "$ANDROID_ARTIFACT_NAME"
+          )
+          for name in "${required_assets[@]}"; do
+            if [ ! -s "$RELEASE_ASSET_ROOT/$name" ]; then
+              echo "Required release asset is missing or empty: $name" >&2
+              exit 1
+            fi
+          done
           mapfile -d '' release_assets < <(find "$RELEASE_ASSET_ROOT" -type f -print0)
-          if [ "${#release_assets[@]}" -ne 4 ]; then
-            echo "Expected four verified desktop release assets, found ${#release_assets[@]}." >&2
+          if [ "${#release_assets[@]}" -ne "${#required_assets[@]}" ]; then
+            echo "Release assets do not match the verified package set." >&2
             exit 1
           fi
           gh release upload "$RELEASE_TAG" "${release_assets[@]}" --repo "$REPOSITORY" --clobber
       - uses: actions/download-artifact@v7
         with:
           name: release-qq-client
-          path: ${{ runner.temp }}/client-assets
-      - if: needs.android.result == 'success'
-        uses: actions/download-artifact@v7
-        with:
-          name: release-android-apk
           path: ${{ runner.temp }}/client-assets
       - name: Attach verified optional clients
         shell: bash
