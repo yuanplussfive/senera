@@ -1,0 +1,206 @@
+import { useRef, useState } from "react";
+import { motion } from "framer-motion";
+import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
+import { cn } from "../../../lib/util";
+import { FluidHoverHighlight, motionTimings, useFluidHover, useMotionLevel } from "../../../shared/motion";
+import { AppIcon, IconButton, ScrollArea, Tooltip } from "../../../shared/ui";
+import { inferModelProviderEndpointIcon, ProviderMark } from "../../../shared/models/ModelProviderIcon";
+import { EmptyList, SearchInput } from "../../chat/ModelConfigPrimitives";
+import { providerEnabled, providerIdLabel, sortProviderRows } from "../../chat/modelConfigData";
+import type { ProviderEndpointDraft } from "../../chat/modelConfigTypes";
+import { DefaultModelProviderTag } from "./ProviderConnectionFeedback";
+
+export function ProviderConnectionList({
+  providers,
+  selectedProviderId,
+  defaultModelProviderId = null,
+  compact = false,
+  disabled,
+  onRequestAdd,
+  onSelect,
+  providerDisableReason,
+}: {
+  providers: ProviderEndpointDraft[];
+  selectedProviderId: string | null;
+  defaultModelProviderId?: string | null;
+  compact?: boolean;
+  disabled: boolean;
+  onRequestAdd: () => void;
+  onSelect: (provider: ProviderEndpointDraft) => void;
+  providerDisableReason?: (provider: ProviderEndpointDraft) => string | null;
+}): JSX.Element {
+  const [providerSearch, setProviderSearch] = useState("");
+  const { reduceMotion, disableMotion } = useMotionLevel();
+  const animateSelection = !reduceMotion && !disableMotion;
+  const providerListRef = useRef<HTMLDivElement>(null);
+  const providerHover = useFluidHover(providerListRef, {
+    axis: "y",
+    gapClick: false,
+    isItemDisabled: (element) => element.hasAttribute("disabled"),
+  });
+  const providerQuery = providerSearch.trim().toLowerCase();
+  const sortedProviders = sortProviderRows(providers);
+  const defaultProviderRow = defaultModelProviderId
+    ? sortedProviders.find(({ provider }) => provider.Id === defaultModelProviderId)
+    : undefined;
+  const orderedProviders = defaultProviderRow
+    ? [defaultProviderRow, ...sortedProviders.filter((row) => row !== defaultProviderRow)]
+    : sortedProviders;
+  const providerResults = orderedProviders.filter(({ provider }) => {
+    if (!providerQuery) return true;
+    return [providerIdLabel(provider), provider.Id, provider.BaseUrl, provider.ApiVersion].some((value) =>
+      String(value ?? "")
+        .toLowerCase()
+        .includes(providerQuery),
+    );
+  });
+  const selectedProviderIndex = providerResults.findIndex(({ provider }) => provider.Id === selectedProviderId);
+
+  const providerRows =
+    providers.length > 0 ? (
+      <div className="p-2">
+        <div ref={providerListRef} className="relative flex flex-col gap-1.5" {...providerHover.handlers}>
+          <FluidHoverHighlight
+            hover={providerHover}
+            hidden={disableMotion || providerHover.activeIndex === selectedProviderIndex}
+            className="rounded-md"
+          />
+          {providerResults.map(({ provider }, index) => {
+            const active = provider.Id === selectedProviderId;
+            const enabled = providerEnabled(provider);
+            const disableReason = disabled ? null : providerDisableReason?.(provider);
+            return (
+              <div
+                ref={providerHover.getItemRef(index)}
+                key={provider.Id}
+                className={cn(
+                  "relative z-10 min-w-0 select-none rounded-md px-2 py-1.5 transition-colors",
+                  disabled ? "cursor-default" : "cursor-pointer",
+                  active
+                    ? "text-ink-900"
+                    : cn(
+                        "text-ink-650 hover:text-ink-900",
+                        disableMotion ? "hover:bg-surface-hover" : "hover:bg-transparent",
+                      ),
+                )}
+              >
+                {active ? (
+                  <motion.span
+                    layoutId={animateSelection ? "settings-provider-selection" : undefined}
+                    className="absolute inset-0 rounded-md bg-surface-hover"
+                    transition={animateSelection ? motionTimings.selection : { duration: 0 }}
+                    aria-hidden="true"
+                    data-provider-selection-indicator
+                  />
+                ) : null}
+                <button
+                  type="button"
+                  disabled={disabled}
+                  className={cn(
+                    "relative z-[1] grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 text-left disabled:pointer-events-none disabled:opacity-60",
+                    !enabled && "opacity-50",
+                  )}
+                  aria-label={frontendMessage("settings.provider.rowAria", {
+                    provider: providerIdLabel(provider),
+                    state: frontendMessage(enabled ? "settings.provider.enabled" : "settings.provider.disabled"),
+                    selected: active ? frontendMessage("settings.provider.selectedSuffix") : "",
+                  })}
+                  aria-pressed={active}
+                  onClick={() => onSelect(provider)}
+                >
+                  <span
+                    className={cn(
+                      "grid h-5 w-5 place-items-center overflow-hidden rounded-md border border-line-subtle bg-surface-subtle",
+                      active && "border-ink-300 bg-surface-panel",
+                    )}
+                  >
+                    <ProviderMark
+                      icon={provider.Icon || inferModelProviderEndpointIcon(provider.Id)}
+                      label={provider.Id}
+                      size={14}
+                    />
+                  </span>
+                  <span className="min-w-0 self-center">
+                    <Tooltip content={providerIdLabel(provider)}>
+                      <span className={cn("block truncate text-[12.5px] font-medium", active && "font-semibold")}>
+                        {providerIdLabel(provider)}
+                      </span>
+                    </Tooltip>
+                  </span>
+                  {disableReason ? (
+                    <DefaultModelProviderTag reason={disableReason} focusable={false} />
+                  ) : (
+                    <span className="flex h-8 w-5 shrink-0 items-center justify-center" aria-hidden="true">
+                      <span
+                        className={cn(
+                          "h-1.5 w-1.5 rounded-full",
+                          enabled ? "bg-content-secondary" : "bg-content-disabled",
+                        )}
+                      />
+                    </span>
+                  )}
+                </button>
+              </div>
+            );
+          })}
+          {providerResults.length === 0 ? <EmptyList text={frontendMessage("settings.provider.searchEmpty")} /> : null}
+        </div>
+      </div>
+    ) : (
+      <div className="p-2 pt-4">
+        <EmptyList text={frontendMessage("settings.provider.addDescription")} />
+      </div>
+    );
+  const addProviderButton = (
+    <IconButton
+      label={frontendMessage("settings.provider.add")}
+      tooltip={frontendMessage("settings.provider.add")}
+      tone="muted"
+      disabled={disabled}
+      onClick={onRequestAdd}
+    >
+      <AppIcon icon="plus" size={16} aria-hidden="true" />
+    </IconButton>
+  );
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      {compact ? (
+        <div
+          className="flex h-[var(--senera-top-chrome-height)] shrink-0 items-center gap-2 border-b border-line-subtle px-3"
+          data-provider-list-toolbar="compact"
+          data-window-drag-region
+        >
+          <SearchInput
+            value={providerSearch}
+            disabled={providers.length === 0}
+            placeholder={frontendMessage("settings.provider.searchPlaceholder")}
+            className="flex-1"
+            onChange={setProviderSearch}
+          />
+          {addProviderButton}
+        </div>
+      ) : (
+        <>
+          <div className="flex h-[var(--senera-top-chrome-height)] shrink-0 items-center px-3" data-window-drag-region>
+            <div className="min-w-0 flex-1 truncate pl-1 text-[13px] font-semibold text-content-primary">
+              {frontendMessage("settings.model.serviceTitle")}
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2 border-b border-line-subtle/50 px-3 pb-2 pt-1.5">
+            <SearchInput
+              value={providerSearch}
+              disabled={providers.length === 0}
+              placeholder={frontendMessage("settings.provider.searchPlaceholder")}
+              className="flex-1"
+              onChange={setProviderSearch}
+            />
+            {addProviderButton}
+          </div>
+        </>
+      )}
+      <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full">
+        {providerRows}
+      </ScrollArea>
+    </div>
+  );
+}

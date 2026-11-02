@@ -1,0 +1,14 @@
+{
+  "id": "artifact-manifest-index",
+  "dataClass": "derived",
+  "versions": [
+    {
+      "version": 1,
+      "name": "artifact-manifest-index-baseline",
+      "migration": "migrations/0001-artifact-manifest-index.sql",
+      "snapshot": "snapshots/0001.schema.sql",
+      "migrationSha256": "0c28a028536e06da16add37d419aa0238db9b9ca6fe666405bd1a1f0b454b8ed",
+      "snapshotSha256": "592b4d19c63bdc808fd32da6099d1bbdf6bab8d45677b53098640c73edc72a72"
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "workspace-patch",
+  "domain": "change",
+  "settingsSurface": "system-tools",
+  "presentation": {
+    "category": "workspace-change",
+    "icon": "pencil",
+    "group": {
+      "id": "workspace-change",
+      "title": {
+        "zh-CN": "修改工作区",
+        "en-US": "Edit workspace"
+      }
+    },
+    "activity": {
+      "action": {
+        "zh-CN": "修改工作区",
+        "en-US": "Edit workspace"
+      }
+    }
+  },
+  "usageExamples": [
+    {
+      "title": { "zh-CN": "修改文件", "en-US": "Edit files" },
+      "prompt": {
+        "zh-CN": "把设置页的标题改得简洁一些，保留现有功能。",
+        "en-US": "Simplify the settings page headings while keeping its functionality."
+      },
+      "outcome": {
+        "zh-CN": "读取相关文件，应用可审阅的补丁，并校验修改结果。",
+        "en-US": "Read the relevant files, apply a reviewable patch, and verify the result."
+      }
+    }
+  ],
+  "documentation": {
+    "zh-CN": "### 把修改落实到文件\n\n用于代码、配置和文本文件的精确编辑。先理解文件内容，再通过补丁表达修改，方便检查本轮到底改了什么。\n\n- 创建文件、修改指定片段，或按任务需要删除文件。\n- 使用补丁上下文定位改动，避免把整份文件重写成另一套内容。\n- 配合工作区读取与检查工具核对结果。\n\n开始时说清目标文件和希望改变的行为。已有的未提交修改属于当前工作区状态，不应随意覆盖。",
+    "en-US": "### Apply reviewable file changes\n\nEdit code, configuration and text through scoped patches after reading the existing content.\n\n- Create files, update selected sections or delete requested files.\n- Locate edits using patch context rather than replacing entire documents.\n- Combine file inspection and validation to check the result.\n\nDescribe the target and intended behavior. Preserve existing unrelated workspace changes."
+  },
+  "displayName": {
+    "zh-CN": "工作区补丁",
+    "en-US": "Workspace Patch"
+  },
+  "description": {
+    "zh-CN": "编辑工作区文件，应用补丁并校验改动。",
+    "en-US": "Edit workspace files, apply patches, and validate changes."
+  },
+  "priority": 92,
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/WorkspaceApplyPatch.tool.json",
+      "capability": "workspace.apply_patch",
+      "recommendedForSkills": []
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/WorkspaceRestoreCheckpoint.tool.json",
+      "capability": "workspace.restore_checkpoint",
+      "recommendedForSkills": []
+    }
+  ]
+}

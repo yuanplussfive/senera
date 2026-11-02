@@ -1,0 +1,67 @@
+import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
+import {
+  ToolSchedulingModes,
+  type ToolRuntimeCapabilitiesManifest,
+  type ToolRuntimeManifest,
+} from "../Types/AgentToolContractTypes.js";
+import {
+  inspectAgentToolRuntimeCapabilityContract,
+  inspectAgentToolRuntimeContract,
+} from "../Types/AgentToolRuntimeContract.js";
+
+export interface AgentToolRuntimeCapabilities {
+  lifecycle: "immediate" | "one-shot" | "persistent" | "remote-job";
+  progress: boolean;
+  outputStreaming: boolean;
+  interactiveInput: boolean;
+  cancellation: boolean;
+  resumableEvents: boolean;
+  scheduling: "parallel" | "resource-claims" | "self-managed";
+}
+
+const LifecycleProjection = {
+  Immediate: "immediate",
+  OneShot: "one-shot",
+  Persistent: "persistent",
+  RemoteJob: "remote-job",
+} as const satisfies Record<ToolRuntimeManifest["Lifecycle"], AgentToolRuntimeCapabilities["lifecycle"]>;
+
+export function resolveAgentToolRuntimeCapabilities(tool: RegisteredTool): AgentToolRuntimeCapabilities {
+  const runtime = tool.runtime;
+  const capabilities = runtime.Capabilities ?? {};
+  return {
+    lifecycle: LifecycleProjection[runtime.Lifecycle],
+    progress: enabled(capabilities, "Progress"),
+    outputStreaming: enabled(capabilities, "OutputStreaming"),
+    interactiveInput: enabled(capabilities, "InteractiveInput"),
+    cancellation: enabled(capabilities, "Cancellation"),
+    resumableEvents: enabled(capabilities, "ResumableEvents"),
+    scheduling:
+      runtime.Scheduling === ToolSchedulingModes.ResourceClaims
+        ? "resource-claims"
+        : runtime.Scheduling === ToolSchedulingModes.SelfManaged
+          ? "self-managed"
+          : "parallel",
+  };
+}
+
+export function explainUnsupportedAgentToolRuntime(tool: RegisteredTool): string[] {
+  return [
+    ...inspectAgentToolRuntimeContract({
+      handlerKind: tool.handler.kind,
+      lifecycle: tool.runtime.Lifecycle,
+    }),
+    ...inspectAgentToolRuntimeCapabilityContract({
+      handlerKind: tool.handler.kind,
+      lifecycle: tool.runtime.Lifecycle,
+      capabilities: tool.runtime.Capabilities,
+    }),
+  ].map((issue) => issue.message);
+}
+
+function enabled(
+  capabilities: ToolRuntimeCapabilitiesManifest,
+  capability: keyof ToolRuntimeCapabilitiesManifest,
+): boolean {
+  return capabilities[capability] === true;
+}

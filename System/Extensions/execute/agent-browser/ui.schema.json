@@ -1,0 +1,286 @@
+{
+  "form": {
+    "version": 1,
+    "sections": [
+      {
+        "id": "runtime",
+        "label": {
+          "zh-CN": "浏览器运行时",
+          "en-US": "Browser runtime"
+        },
+        "description": {
+          "zh-CN": "Senera 管理受控浏览器会话；模型不能读取或修改浏览器启动参数、用户资料或认证状态。",
+          "en-US": "Senera manages controlled browser sessions. Models cannot read or change browser launch arguments, profiles, or authentication state."
+        },
+        "fields": [
+          {
+            "path": ["runtime", "context"],
+            "label": {
+              "zh-CN": "浏览器状态",
+              "en-US": "Browser state"
+            },
+            "description": {
+              "zh-CN": "记住登录会使用 Senera 专属浏览器保存网站登录与站点数据；临时浏览器会在会话结束后清除这些状态。",
+              "en-US": "Remember sign-ins uses a Senera-only browser that keeps website sign-ins and site data. A temporary browser clears that state when the session ends."
+            },
+            "type": "string",
+            "options": ["persistent", "temporary"],
+            "optionLabels": {
+              "persistent": {
+                "zh-CN": "记住登录（推荐）",
+                "en-US": "Remember sign-ins (recommended)"
+              },
+              "temporary": {
+                "zh-CN": "临时浏览器",
+                "en-US": "Temporary browser"
+              }
+            },
+            "required": true,
+            "essential": true
+          },
+          {
+            "path": ["runtime", "browser"],
+            "label": {
+              "zh-CN": "浏览器",
+              "en-US": "Browser"
+            },
+            "description": {
+              "zh-CN": "自动检测本机安装的 Chrome、Edge、Brave 或 Chromium，并使用 Senera 专属资料目录启动。未检测到时使用 Senera 自带浏览器；填写浏览器可执行文件路径时始终以该路径为准。",
+              "en-US": "Detects installed Chrome, Edge, Brave, or Chromium and launches it with the Senera-only profile. Falls back to the Senera-managed browser when none is found. A configured executable path always takes precedence."
+            },
+            "type": "string",
+            "options": ["auto", "bundled", "chrome", "edge", "brave", "chromium"],
+            "optionLabels": {
+              "auto": {
+                "zh-CN": "自动检测（推荐）",
+                "en-US": "Auto-detect (recommended)"
+              },
+              "bundled": {
+                "zh-CN": "Senera 自带浏览器",
+                "en-US": "Senera-managed browser"
+              },
+              "chrome": {
+                "zh-CN": "Google Chrome",
+                "en-US": "Google Chrome"
+              },
+              "edge": {
+                "zh-CN": "Microsoft Edge",
+                "en-US": "Microsoft Edge"
+              },
+              "brave": {
+                "zh-CN": "Brave",
+                "en-US": "Brave"
+              },
+              "chromium": {
+                "zh-CN": "Chromium",
+                "en-US": "Chromium"
+              }
+            },
+            "required": true,
+            "essential": true
+          },
+          {
+            "path": ["runtime", "headed"],
+            "label": {
+              "zh-CN": "显示浏览器窗口",
+              "en-US": "Show browser window"
+            },
+            "type": "boolean",
+            "required": true,
+            "essential": true
+          },
+          {
+            "path": ["runtime", "executablePath"],
+            "label": {
+              "zh-CN": "浏览器可执行文件",
+              "en-US": "Browser executable"
+            },
+            "description": {
+              "zh-CN": "留空时使用上面的浏览器选择；需要固定某个安装路径时填写。",
+              "en-US": "Leave empty to use the browser selection above. Set only when a fixed executable path is required."
+            },
+            "type": "string",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["runtime", "controllerPath"],
+            "label": {
+              "zh-CN": "agent-browser 控制器",
+              "en-US": "agent-browser controller"
+            },
+            "description": {
+              "zh-CN": "留空时从已安装的 agent-browser 包和打包资源中按平台自动解析。",
+              "en-US": "Leave empty to resolve the native agent-browser controller from the installed package and packaged resources."
+            },
+            "type": "string",
+            "required": false,
+            "essential": false
+          },
+          {
+            "path": ["runtime", "requestTimeoutMs"],
+            "label": {
+              "zh-CN": "浏览器操作超时",
+              "en-US": "Browser operation timeout"
+            },
+            "description": {
+              "zh-CN": "单次操作的总时间，包含启动浏览器、执行和读取结果。修改后在新会话中生效。",
+              "en-US": "Total time for startup, execution and result reads. Changes apply to new sessions."
+            },
+            "type": "number",
+            "min": 5000,
+            "max": 3600000,
+            "step": 1000,
+            "required": true,
+            "essential": false,
+            "durationUnit": "milliseconds"
+          },
+          {
+            "path": ["runtime", "idleTimeoutMs"],
+            "label": {
+              "zh-CN": "空闲会话回收",
+              "en-US": "Idle session cleanup"
+            },
+            "type": "number",
+            "min": 10000,
+            "max": 86400000,
+            "step": 10000,
+            "required": true,
+            "essential": false,
+            "durationUnit": "milliseconds"
+          },
+          {
+            "path": ["runtime", "outputMaxChars"],
+            "label": {
+              "zh-CN": "页面输出字符上限",
+              "en-US": "Page output character limit"
+            },
+            "type": "number",
+            "min": 1024,
+            "max": 2000000,
+            "step": 1024,
+            "required": true,
+            "essential": false
+          },
+          {
+            "path": ["runtime", "maxUrlLength"],
+            "label": {
+              "zh-CN": "URL 长度上限",
+              "en-US": "URL length limit"
+            },
+            "type": "number",
+            "min": 256,
+            "max": 65536,
+            "step": 1,
+            "required": true,
+            "essential": false
+          },
+          {
+            "path": ["runtime", "maxSelectorLength"],
+            "label": {
+              "zh-CN": "元素定位符长度上限",
+              "en-US": "Selector length limit"
+            },
+            "type": "number",
+            "min": 64,
+            "max": 32768,
+            "step": 1,
+            "required": true,
+            "essential": false
+          },
+          {
+            "path": ["runtime", "maxTextChars"],
+            "label": {
+              "zh-CN": "单次文本输入上限",
+              "en-US": "Text input character limit"
+            },
+            "type": "number",
+            "min": 1024,
+            "max": 2000000,
+            "step": 1024,
+            "required": true,
+            "essential": false
+          }
+        ]
+      },
+      {
+        "id": "network",
+        "label": {
+          "zh-CN": "网络边界",
+          "en-US": "Network boundary"
+        },
+        "description": {
+          "zh-CN": "默认可访问网络地址；这里配置的域名始终拒绝访问。本地文件和私有网络地址在完全权限模式下开放，其他模式需要审批。",
+          "en-US": "Network addresses are allowed by default; listed domains are always blocked. Local files and private networks require approval outside Full Access mode."
+        },
+        "fields": [
+          {
+            "path": ["network", "blockedDomains"],
+            "label": {
+              "zh-CN": "拒绝访问的域名",
+              "en-US": "Blocked domains"
+            },
+            "description": {
+              "zh-CN": "使用 example.com 拒绝该域名，使用 *.example.com 拒绝其子域名；* 拒绝所有带主机名的地址。",
+              "en-US": "Use example.com to block one host, *.example.com to block its subdomains, or * to block all hostnames."
+            },
+            "type": "array",
+            "itemType": "string",
+            "required": false,
+            "essential": true
+          }
+        ]
+      },
+      {
+        "id": "capture",
+        "label": {
+          "zh-CN": "截图",
+          "en-US": "Screenshots"
+        },
+        "fields": [
+          {
+            "path": ["capture", "defaultFormat"],
+            "label": {
+              "zh-CN": "默认格式",
+              "en-US": "Default format"
+            },
+            "type": "string",
+            "options": ["png", "jpeg"],
+            "required": true,
+            "essential": false
+          },
+          {
+            "path": ["capture", "maxScreenshotBytes"],
+            "label": {
+              "zh-CN": "截图字节上限",
+              "en-US": "Screenshot byte limit"
+            },
+            "type": "number",
+            "min": 131072,
+            "max": 134217728,
+            "step": 1024,
+            "required": true,
+            "essential": false
+          },
+          {
+            "path": ["capture", "maxDownloadBytes"],
+            "label": {
+              "zh-CN": "下载文件大小上限",
+              "en-US": "Download file size limit"
+            },
+            "description": {
+              "zh-CN": "浏览器下载会作为 Artifact 保存，超过此大小的文件会被拒绝。",
+              "en-US": "Browser downloads are stored as Artifacts; files above this size are rejected."
+            },
+            "type": "number",
+            "min": 131072,
+            "max": 536870912,
+            "step": 1048576,
+            "required": true,
+            "essential": false
+          }
+        ]
+      }
+    ]
+  }
+}

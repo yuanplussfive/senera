@@ -1,0 +1,49 @@
+{
+  "name": "ImageModels",
+  "loading": "Dynamic",
+  "description": "List available configured image models and their actual generation protocol, reference-image editing and mask capabilities. Use an exact returned ID with ImageGenerate.",
+  "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "models": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "model": { "type": "string" },
+            "api": { "type": "string", "enum": ["openrouter-images", "openai-images"] },
+            "editing": { "type": "boolean" },
+            "mask": { "type": "boolean" }
+          },
+          "required": ["id", "model", "api", "editing", "mask"],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": ["models"],
+    "additionalProperties": false
+  },
+  "permissions": [],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": { "Lifecycle": "Immediate", "ResultAssessment": "ProcessExit", "Scheduling": "Parallel" },
+  "presentation": {
+    "category": "image-generate",
+    "icon": "list",
+    "activity": { "action": { "zh-CN": "查看图像模型", "en-US": "List image models" } }
+  },
+  "search": {
+    "Summary": "查询图像生成与编辑模型",
+    "Capabilities": [
+      {
+        "Id": "host.image.models",
+        "Title": "Discover image models",
+        "Description": "Inspect image model availability and editing capabilities.",
+        "Aliases": ["图像模型", "image models"]
+      }
+    ],
+    "UseCases": ["需要确认可用图像模型及编辑能力。"]
+  }
+}

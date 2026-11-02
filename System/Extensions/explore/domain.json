@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schemas.senera.ai/extension-domain/v1.json",
+  "schemaVersion": 1,
+  "id": "explore",
+  "displayName": {
+    "zh-CN": "探索与检索",
+    "en-US": "Explore and Retrieve"
+  },
+  "description": {
+    "zh-CN": "读取工作区、归档、文档、图像和公开网络信息的只读能力。",
+    "en-US": "Read-only capabilities for workspaces, artifacts, documents, images, and public web information."
+  },
+  "presentation": {
+    "category": "explore",
+    "icon": "search",
+    "group": {
+      "id": "explore",
+      "title": {
+        "zh-CN": "探索资源",
+        "en-US": "Explore resources"
+      }
+    },
+    "activity": {
+      "action": {
+        "zh-CN": "探索",
+        "en-US": "Explore"
+      }
+    }
+  }
+}

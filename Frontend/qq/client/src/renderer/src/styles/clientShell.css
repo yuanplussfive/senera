@@ -1,0 +1,337 @@
+/* Senera's hosted shell and FakeQQ-UI theme share the existing light/dark palette. */
+:root {
+    text-size-adjust: 100%;
+    -webkit-text-size-adjust: 100%;
+    --qq-font_size_1: 11px;
+    --qq-font_size_2: 12px;
+    --qq-font_size_main_1: 13px;
+    --qq-font_size_main_2: 14px;
+    --qq-line_height_1: 16px;
+    --qq-line_height_2: 18px;
+    --qq-line_height_main_1: 20px;
+    --qq-line_height_main_2: 22px;
+    --client-accent: #0099ff;
+    --client-divider: color-mix(in srgb, var(--color-font) 10%, transparent);
+    --client-hover: color-mix(in srgb, var(--color-font) 6%, transparent);
+    --client-selected: color-mix(in srgb, var(--color-font) 10%, var(--color-bg));
+    --qq-avatar_size_2: 36px;
+    --qq-background-03: var(--color-card-1);
+    --qq-border_standard: var(--client-divider);
+    --qq-bg_bottom_light: var(--color-card);
+    --qq-bubble_guest: var(--color-card);
+    --qq-bubble_guest_text: var(--color-font);
+    --qq-fill_light_primary: var(--color-card-2);
+    --qq-host_bubble_bg_css_value: color-mix(in srgb, var(--client-accent) 22%, var(--color-card));
+    --qq-host_bubble_text_link: var(--qq-text_link);
+    --qq-icon_primary: var(--color-font-1);
+    --qq-icon_tertiary: var(--color-font-2);
+    --qq-on_bg_text: var(--color-font);
+    --on_brand_primary: #fff;
+    --on_bubble_host_text: var(--color-font);
+    --qq-overlay_hover: var(--client-hover);
+    --qq-overlay_hover_brand: var(--client-selected);
+    --qq-text-secondary-01: var(--color-font-2);
+    --qq-text_white: #fff;
+    --qq-text_link: var(--client-accent);
+    --qq-text_primary: var(--color-font);
+    --qq-text_primary_light: var(--color-font);
+    --qq-text_secondary: var(--color-font-2);
+    --qq-tag_blue_text: var(--client-accent);
+    --qq-tag_blue_bg: color-mix(in srgb, var(--client-accent) 12%, transparent);
+    --qq-tag_orange_text: var(--color-yellow);
+    --qq-tag_orange_bg: color-mix(in srgb, var(--color-yellow) 12%, transparent);
+    --qq-tag_purple_text: var(--color-main);
+    --qq-tag_purple_bg: var(--client-hover);
+    --qq-tag_gray_text: var(--color-font-2);
+    --qq-tag_gray_bg: var(--client-hover);
+}
+
+#base-app.senera-client {
+    font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Segoe UI", sans-serif;
+    background: var(--color-bg);
+    color: var(--color-font);
+}
+/* Startup and reconnection may fade, but never resize the document or navigation. */
+.senera-client .main-body, .senera-client #side-bar { transform: none; transition: opacity 140ms ease; }
+.senera-client button, .senera-client input, .senera-client textarea { font-family: inherit; }
+.senera-client button:focus-visible, .senera-client input:focus-visible {
+    outline: 2px solid var(--client-accent);
+    outline-offset: 2px;
+}
+.senera-client #send-more textarea:focus-visible { outline: none; }
+.senera-client .senera-account > img { width: 34px; height: 34px; object-fit: cover; border-radius: 50%; }
+.senera-client .friend-list .senera-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-sizing: border-box;
+    height: 32px;
+    padding: 0 10px;
+    min-width: 0;
+    margin: 0;
+    border: 0;
+    border-radius: 8px;
+    background: var(--client-hover);
+    color: var(--color-font-2);
+    opacity: 1;
+}
+.senera-client .friend-list .senera-search > svg { flex: 0 0 13px; width: 13px; margin: 0; }
+.senera-client .friend-list .senera-search > input {
+    min-width: 0;
+    flex: 1;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+    border: 0;
+    color: var(--color-font);
+    font: inherit;
+    font-size: 12px;
+}
+
+/* QText supplies the avatar/name/content grid; content keeps its existing handlers. */
+.message.senera-message {
+    box-sizing: border-box;
+    position: relative;
+    width: 100%;
+    padding: 8px 20px;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    display: block;
+    font-size: 14px;
+    line-height: 1.65;
+}
+.senera-message .senera-message-frame { width: 100%; min-width: 0; margin: 0; padding-top: 0; grid-template-columns: var(--qq-avatar_size_2) 8px minmax(0, 1fr); }
+.senera-message .senera-message-frame.message-container--align-right { grid-template-columns: minmax(0, 1fr) 8px var(--qq-avatar_size_2); }
+.senera-message .message-content__wrapper { min-width: 0; max-width: min(85%, 760px); width: fit-content; }
+.senera-message .qq-message__avatar { border-radius: 50%; }
+.senera-message .qq-message__avatar-span { cursor: pointer; }
+.senera-message-frame.message-container--align-right:not(.media-only) .msg-content-container {
+    border: 1px solid var(--client-bubble-border, transparent);
+    border-radius: var(--client-bubble-radius, 10px);
+    background-size: 100% 100%;
+}
+.senera-message .qq-message__user-name { color: var(--color-font-2); font-size: 12px; }
+.senera-message .qq-message__user-label { font-size: 10px; }
+.senera-message .direct-message .qq-message__user-name { visibility: hidden; height: 0; min-height: 0; }
+.senera-message .direct-message { row-gap: 0; }
+.senera-message .msg-content-container { max-width: 100%; box-sizing: border-box; }
+.senera-message-content {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    --color-font-r: var(--color-font);
+    --color-font-1-r: var(--color-font-1);
+    --color-font-2-r: var(--color-font-2);
+}
+.senera-message-content > span { white-space: pre-wrap; }
+.senera-message-content a { color: var(--qq-text_link); text-decoration: none; }
+.senera-message-content a:hover { text-decoration: underline; }
+.senera-message-content .channel-markdown { color: inherit; }
+.senera-message .mix-message__inner .msg-face { display: inline-block; width: 1.5rem; height: 1.5rem; margin: 0 2px -5px; border-radius: 0; }
+.senera-message .mix-message__inner .msg-img { width: auto; height: auto; max-width: 100%; }
+.senera-message .media-only { --qq-host_bubble_bg_css_value: transparent; --qq-bubble_guest: transparent; }
+.senera-message .media-only .msg-content-container { padding: 0; }
+.senera-message .msg-img { box-sizing: border-box; display: block; width: auto; height: auto; max-width: 100%; max-height: min(48dvh, 420px); margin: 5px 0; border: 0; border-radius: 8px; object-fit: contain; }
+.senera-message .media-only .msg-img { margin: 0; }
+.senera-message .msg-img.face { max-width: 120px; max-height: 120px; }
+.senera-message .msg-img.long-img { width: min(280px, 100%); height: 40dvh; object-fit: cover; object-position: top; }
+.senera-message .msg-video > video { display: block; max-width: 100%; max-height: 48dvh; border-radius: 8px; }
+.senera-message .senera-quote { min-width: 0; margin-bottom: 8px; background: var(--client-hover); color: var(--color-font-1); }
+.senera-image-error { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 7px; width: 180px; max-width: 100%; min-height: 110px; padding: 16px; border: 1px solid var(--client-divider); border-radius: 8px; background: var(--client-hover); color: var(--color-font-2); font: inherit; font-size: 12px; cursor: pointer; }
+.senera-image-error > svg { width: 25px; height: 25px; }
+.senera-image-error > small { color: var(--client-accent); font-size: inherit; }
+.senera-message .senera-message-content > div:first-child { margin-top: 0; }
+.senera-message .senera-message-content > div:last-child { margin-bottom: 0; }
+.message.senera-message > .sending.me { display: flex; position: absolute; bottom: 13px; right: 10px; margin: 0; width: 12px; }
+.message.senera-message > .respond { margin: 5px 44px 0; }
+.message.senera-message.body-only { padding: 0; }
+.message.senera-message.revoke { display: none; }
+.message.senera-message.revoke.me { display: block; }
+.senera-client .note.senera-notice { padding: 0; margin: 14px 16px; background: transparent; }
+.senera-notice .gray-tip-content, .senera-notice .babble { color: var(--color-font-2); font-size: 12px; line-height: 1.65; }
+.senera-notice .note-base { background: transparent; margin: 0; padding: 0; display: inline-flex; align-items: center; gap: 4px; }
+.senera-notice .note-base > div { display: none; }
+.senera-notice .note-reedit { color: var(--client-accent); background: transparent; border: 0; padding: 0 2px; font: inherit; cursor: pointer; }
+
+.senera-file-attachment { box-sizing: border-box; display: flex; align-items: center; gap: 20px; width: 280px; max-width: 100%; min-height: 88px; padding: 16px; margin: 4px 0; border: 1px solid var(--client-divider); border-radius: 9px; background: var(--color-card); color: var(--color-font); text-align: left; font: inherit; cursor: pointer; }
+.senera-file-attachment:hover { border-color: color-mix(in srgb, var(--color-font) 20%, transparent); }
+.senera-file-copy { display: grid; gap: 9px; min-width: 0; flex: 1; }
+.senera-file-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; font-size: 15px; line-height: 21px; }
+.senera-file-meta { display: flex; align-items: center; gap: 6px; color: var(--color-font-2); font-size: 12px; line-height: 16px; }
+.senera-file-meta > span + span::before { content: '/'; padding-right: 6px; }
+.senera-file-meta > svg { width: 10px; height: 10px; }
+.senera-file-glyph { display: grid; justify-items: center; gap: 2px; flex-shrink: 0; color: var(--color-font-2); }
+.senera-file-glyph > svg { width: 34px; height: 40px; }
+.senera-file-glyph > small { max-width: 44px; overflow: hidden; font-size: 9px; line-height: 12px; text-overflow: ellipsis; }
+.senera-file-glyph.audio, .senera-file-glyph.pdf { color: var(--color-red); }
+.senera-file-glyph.video, .senera-file-glyph.presentation { color: var(--color-yellow); }
+.senera-file-glyph.image, .senera-file-glyph.document { color: var(--client-accent); }
+.senera-file-glyph.sheet { color: var(--color-green); }
+.senera-file-attachment.compact { width: auto; min-height: 24px; max-width: 100%; flex-direction: row-reverse; gap: 7px; padding: 0; margin: 0; border: 0; background: transparent; color: inherit; cursor: inherit; }
+.senera-file-attachment.compact .senera-file-name { -webkit-line-clamp: 2; font-size: 13px; line-height: 20px; }
+.senera-file-attachment.compact .senera-file-glyph > svg { width: 16px; height: 20px; }
+.senera-file-attachment.compact .senera-file-glyph > small { display: none; }
+
+.senera-disconnected > .main-body { visibility: hidden; }
+.senera-connection-view { position: absolute; inset: 0; z-index: 25; display: grid; place-items: center; overflow: auto; padding: 24px; background: var(--color-bg); }
+.senera-connection-view > .senera-console-link { position: absolute; top: calc(12px + env(safe-area-inset-top)); right: 16px; width: 40px; height: 40px; }
+.senera-connection-card { box-sizing: border-box; display: flex; flex-direction: column; align-items: center; width: min(340px, 100%); padding: 36px 32px; border: 1px solid var(--client-divider); border-radius: 12px; background: var(--color-card-1); box-shadow: 0 8px 32px #00000008; }
+.senera-connection-brand { color: var(--color-font-2); font-size: 20px; letter-spacing: 1px; }
+.senera-connection-avatar { display: grid; place-items: center; width: 96px; height: 96px; margin: 36px 0 20px; overflow: hidden; border-radius: 50%; background: var(--client-hover); color: var(--color-font-2); }
+.senera-connection-avatar > img { width: 100%; height: 100%; object-fit: cover; }
+.senera-connection-avatar > svg { width: 40px; height: 40px; }
+.senera-connection-card > h1 { margin: 0; font-size: 18px; font-weight: 500; line-height: 26px; }
+.senera-connection-caption { margin: 8px 0 24px; color: var(--color-font-2); font-size: 12px; line-height: 20px; }
+.senera-auto-connect { display: flex; align-items: center; gap: 7px; color: var(--color-font-2); font-size: 12px; cursor: pointer; }
+.senera-auto-connect > input { width: 14px; height: 14px; margin: 0; accent-color: var(--client-accent); }
+.senera-connect-button { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 42px; margin-top: 28px; border: 0; border-radius: 7px; background: var(--client-accent); color: white; font: inherit; font-size: 15px; cursor: pointer; }
+.senera-connect-button:disabled { opacity: .6; cursor: default; }
+.senera-connect-button > svg { width: 14px; height: 14px; }
+
+/* One shell owns both layouts. Legacy standalone skins do not load in hosted mode. */
+.senera-client .senera-conversation-header { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) repeat(3, auto); align-items: center; gap: 6px; min-height: 64px; }
+.senera-client .senera-console-link { flex-shrink: 0; text-decoration: none; color: var(--color-font-1); }
+.senera-client .senera-console-link > svg { width: 18px; height: 18px; }
+.senera-client .senera-mobile-account { display: none; }
+.senera-client .senera-list-menu { position: relative; }
+.senera-client .senera-list-menu > summary { list-style: none; }
+.senera-client .senera-list-menu > summary::-webkit-details-marker { display: none; }
+.senera-client .senera-list-menu[open] > summary { background: var(--client-hover); }
+.senera-client .senera-list-menu-content { position: absolute; top: calc(100% + 8px); right: 0; z-index: 30; min-width: 164px; padding: 5px; border: 1px solid var(--client-divider); border-radius: 8px; background: var(--color-card); box-shadow: 0 5px 20px #0002; }
+.senera-client .senera-list-menu-content > button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; padding: 6px 10px; border: 0; border-radius: 4px; background: transparent; color: var(--color-font); font: inherit; font-size: 13px; text-align: left; cursor: pointer; white-space: nowrap; }
+.senera-client .senera-list-menu-content > button:hover { background: var(--client-hover); }
+.senera-client .senera-list-menu-content > button > svg { width: 14px; color: var(--color-font-1); }
+.senera-client .friend-list { box-sizing: border-box; flex-shrink: 0; background: var(--color-bg); }
+.senera-client .friend-list > div:first-child { flex-shrink: 0; overflow: visible; margin: 0 14px; z-index: 3; }
+.senera-client .friend-list > div:last-child { min-height: 0; padding: 0 4px 8px; margin: 0; }
+.senera-client .friend-body { box-sizing: border-box; position: relative; width: 100%; min-height: 76px; margin: 0; padding: 10px 12px; border-radius: 4px; gap: 12px; background: transparent; }
+.senera-client .friend-body.active, .senera-client .friend-body.active:hover { background: var(--client-selected); }
+.senera-client .friend-body:hover { background: var(--client-hover); }
+.senera-client .friend-body img { flex-shrink: 0; width: 48px; height: 48px; margin: 0; border: 0; border-radius: 50%; }
+.senera-client .friend-body > svg { box-sizing: border-box; flex-shrink: 0; width: 48px; height: 48px; padding: 14px; margin: 0; border-radius: 50%; background: var(--color-card-2); }
+.senera-client .friend-body > div:nth-child(1) { position: absolute; height: 7px; width: 7px; border-radius: 50%; margin: 0; left: 51px; top: 10px; transform: none; }
+.senera-client .friend-body > div:last-child { min-width: 0; flex: 1; margin-left: 0; }
+.senera-client .friend-body > div p { margin: 0; font-size: 15px; font-weight: 400; color: var(--color-font); }
+.senera-client .friend-body > div > div a { color: var(--color-font-2); font-size: 13px; }
+.senera-client .friend-body > div > div a.time { font-size: 11px; margin-left: 8px; }
+.senera-client #chat-pan { background-color: var(--color-card-1); transition: opacity 160ms ease, transform 160ms ease; }
+.senera-client #chat-pan > .info { box-sizing: border-box; flex-shrink: 0; width: 100%; min-height: 64px; padding: 10px 22px; margin: 0; border: 0; border-bottom: 1px solid var(--client-divider); border-radius: 0; background: var(--color-card-1); backdrop-filter: none; box-shadow: none; gap: 6px; }
+.senera-client #chat-pan > .info > .info { min-width: 0; }
+.senera-client #chat-pan > .info p { font-size: 17px; font-weight: 500; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.senera-client #chat-pan > .info > .info > span { font-size: 11px; color: var(--color-font-2); }
+.senera-client #chat-pan > .info > img { display: none; }
+.senera-client #chat-pan > .chat { box-sizing: border-box; max-width: 100%; width: 100%; min-height: 0; margin: 0; padding: 12px 0 0; }
+.senera-client #chat-pan > .loading { flex-shrink: 0; margin: 0; border-radius: 0; }
+.senera-client #chat-pan > .new-msg { position: relative; align-self: flex-end; flex: 0 0 0; width: auto; height: 0; margin: 0 20px; border: 0; transform: translateY(-50px); }
+.senera-client #chat-pan > .new-msg > .ss-card { box-sizing: border-box; min-width: 36px; min-height: 0; width: auto; height: 36px; margin: 0; border-radius: 18px; background: var(--color-card); box-shadow: 0 2px 8px var(--client-divider); }
+.senera-client #send-more { box-sizing: border-box; position: relative; flex: 0 0 auto; border-top: 1px solid var(--client-divider); background: var(--color-card-1); }
+.senera-client #send-more .more-detail { box-sizing: border-box; height: 44px; margin: 0; padding: 4px 20px; display: flex; align-items: center; opacity: 1; overflow: visible; gap: 8px; }
+.senera-client #send-more .more-detail > .space { flex: 1; height: auto; }
+.senera-client #send-more .senera-quick-action { display: none; }
+.senera-client #send-more .senera-compose-row { padding: 0 24px 16px; }
+.senera-client #send-more .senera-compose-body { min-width: 0; background: transparent; flex-direction: column; align-items: stretch; }
+.senera-client #send-more .senera-compose-body > form { display: block; width: 100%; }
+.senera-client #send-more .senera-compose-body textarea { box-sizing: border-box; width: 100%; min-height: 112px; max-height: 30dvh; margin: 0 0 8px; padding: 3px 0; border-radius: 0; font-size: 14px; line-height: 22px; }
+.senera-client #send-more .senera-send-button { display: inline-flex; justify-content: center; align-items: center; flex-shrink: 0; align-self: flex-end; width: auto; min-width: 88px; height: 34px; padding: 0 20px; border: 0; border-radius: 8px; background: var(--client-accent); color: white; font: inherit; font-size: 14px; cursor: pointer; transition: filter 140ms ease; }
+.senera-client #send-more .senera-send-button:hover { filter: brightness(1.06); }
+.senera-client #send-more .senera-send-button:disabled { opacity: .45; cursor: default; }
+.senera-client #send-more .senera-send-button > svg { display: none; }
+.senera-client #send-more .senera-send-button > span { display: inline; }
+
+@media (min-width: 701px) {
+    #base-app.senera-client { --client-rail-width: 70px; --client-list-width: 290px; }
+    .senera-client .main-body > ul { box-sizing: border-box; width: var(--client-rail-width); min-width: var(--client-rail-width); padding: 18px 0 12px; background: var(--color-card-2); border-right: 1px solid var(--client-divider); gap: 10px; }
+    .senera-client .main-body > ul > li { min-width: 0; width: 42px; min-height: 40px; margin: 0 auto; padding: 0; border-radius: 7px; }
+    .senera-client .main-body > ul > li > svg { width: 21px; height: 21px; padding: 10px !important; color: var(--color-font-1); background: transparent; }
+    .senera-client .main-body > ul > li.active > svg { color: var(--client-accent); }
+    .senera-client .main-body > ul > li:hover { background: var(--client-hover); }
+    .senera-client .main-body > ul > li.senera-account { margin-bottom: 12px; }
+    .senera-client .friend-list { flex-basis: var(--client-list-width); width: var(--client-list-width); border-right: 1px solid var(--client-divider); }
+    .senera-client .group-assist-message-list { margin-right: calc(-1 * var(--client-list-width)); }
+    .senera-client .group-assist-message-list.show { margin-left: calc(-1 * var(--client-list-width)); margin-right: 0; }
+    .senera-client #chat-pan:not(.full) { left: calc(var(--client-rail-width) + var(--client-list-width)); }
+    .senera-client #chat-pan > .info > .senera-chat-back { display: none; }
+    .senera-client #send-more .action-emoji { order: 0; }
+    .senera-client #send-more .action-file { order: 1; }
+    .senera-client #send-more .action-image { order: 2; }
+    .senera-client #send-more .action-poke, .senera-client #send-more .action-essence { order: 3; }
+    .senera-client #send-more .more-detail > .space { order: 4; }
+    .senera-client #send-more .action-history { order: 5; }
+}
+
+@media (max-width: 700px) {
+    #base-app.senera-client:has(.qq-settings.has-detail) .main-body > ul { display: none; }
+    #base-app.senera-client { --client-list-width: 100%; height: 100dvh; }
+    #base-app.senera-client .main-body { flex-direction: column-reverse; }
+    #base-app.senera-client .main-body > div { flex: 1; min-height: 0; height: auto; padding: 0; margin: 0; }
+    #base-app.senera-client .main-body > ul { box-sizing: border-box; flex: 0 0 auto; width: 100%; min-width: 0 !important; height: auto !important; min-height: 60px; padding: 4px 8px max(5px, env(safe-area-inset-bottom)) !important; margin: 0; border-top: 1px solid var(--client-divider); background: var(--color-bg); justify-content: space-around; }
+    #base-app.senera-client .main-body > ul > li { flex: 1; min-width: 0; min-height: 48px; padding: 0; margin: 0 !important; gap: 3px; }
+    #base-app.senera-client .main-body > ul > li > svg { width: 22px; height: 22px; padding: 0 !important; border-radius: 0; background: transparent; color: var(--color-font-1); }
+    #base-app.senera-client .main-body > ul > li > span { display: block; font-size: 11px; line-height: 16px; }
+    #base-app.senera-client .main-body > ul > li.active > svg, #base-app.senera-client .main-body > ul > li.active > span { color: var(--client-accent); }
+    #base-app.senera-client .main-body > ul > .senera-account, #base-app.senera-client .side-bar-space { display: none; }
+    #base-app.senera-chat-open > .main-body { visibility: hidden; pointer-events: none; }
+    #base-app.senera-client .friend-view { position: relative; }
+    #base-app.senera-client .friend-list-container { flex: 1; min-width: 0; overflow: hidden; }
+    #base-app.senera-client .friend-view > .friend-list-space { display: none; }
+    #base-app.senera-client .friend-list { flex: 0 0 100%; width: 100% !important; transition: none; }
+    #base-app.senera-client .friend-list { background: var(--color-card-1); }
+    #base-app.senera-client .friend-list > div:first-child { margin: 0 !important; padding: 0 16px 12px; background: var(--color-bg); }
+    #base-app.senera-client .friend-list > div:first-child > .small { display: none !important; }
+    #base-app.senera-client .friend-list > div:first-child > .base { display: flex; padding: 12px 0; }
+    #base-app.senera-client .friend-list > div:last-child { padding: 0 0 8px; }
+    #base-app.senera-client .friend-list .senera-conversation-header { grid-template-columns: minmax(0, 1fr) repeat(3, auto); padding-top: env(safe-area-inset-top); column-gap: 2px; row-gap: 4px; }
+    #base-app.senera-client .senera-mobile-account { grid-column: 1; grid-row: 1; display: flex; min-width: 0; align-items: center; gap: 10px; min-height: 76px; padding: 10px 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+    #base-app.senera-client .senera-mobile-account > img { flex-shrink: 0; width: 42px; height: 42px; border-radius: 50%; object-fit: cover; }
+    #base-app.senera-client .senera-mobile-account > span { display: grid; gap: 3px; min-width: 0; }
+    #base-app.senera-client .senera-mobile-account strong { overflow: hidden; font-size: 17px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+    #base-app.senera-client .senera-mobile-account small { display: flex; align-items: center; gap: 5px; color: var(--color-font-2); font-size: 11px; }
+    #base-app.senera-client .senera-mobile-account i { width: 6px; height: 6px; border-radius: 50%; background: var(--color-font-2); }
+    #base-app.senera-client .senera-mobile-account i.connected { background: var(--color-green); }
+    #base-app.senera-client .senera-conversation-header > .senera-icon-button { grid-column: 2; grid-row: 1; width: 36px; height: 40px; }
+    #base-app.senera-client .senera-conversation-header > .senera-icon-button > svg { width: 21px; height: 21px; }
+    #base-app.senera-client .senera-conversation-header > .senera-console-link { grid-column: 3; }
+    #base-app.senera-client .senera-conversation-header > .senera-console-link > svg { width: 17px; height: 17px; }
+    #base-app.senera-client .senera-list-menu { grid-column: 4; grid-row: 1; }
+    #base-app.senera-client .friend-list .senera-search { grid-column: 1 / -1; grid-row: 2; display: flex; height: 36px; border-radius: 9px; background: var(--color-card); }
+    #base-app.senera-client .friend-list .senera-search > input { font-size: 16px; }
+    #base-app.senera-client .friend-body { justify-content: flex-start; min-height: 82px; padding: 12px 16px !important; margin: 0 !important; border-radius: 0; gap: 12px; }
+    #base-app.senera-client .friend-body img, #base-app.senera-client .friend-body > svg { width: 54px; height: 54px; border: 0; object-fit: cover; }
+    #base-app.senera-client .friend-body > div { display: block; }
+    #base-app.senera-client .friend-body > div > div { display: flex; }
+    #base-app.senera-client .friend-body > div p { font-size: 17px; line-height: 25px; }
+    #base-app.senera-client .friend-body > div > div a { font-size: 14px; line-height: 23px; }
+    #base-app.senera-client .friend-body > div > div a.time { flex-shrink: 0; font-size: 11px; }
+    #base-app.senera-client .friend-body > div:nth-child(1) { left: 61px; top: 11px; }
+    #base-app.senera-client .friend-body.active { background: transparent; }
+    #base-app.senera-client .group-assist-message-list { margin-right: -100%; }
+    #base-app.senera-client .group-assist-message-list.show { margin-left: -100%; margin-right: 0; }
+    #base-app.senera-client #chat-pan { inset: 0; left: 0 !important; width: 100%; height: 100%; transform: none; }
+    #base-app.senera-client #chat-pan > .info { min-height: 54px; padding: calc(5px + env(safe-area-inset-top)) 10px 5px 4px; gap: 2px; }
+    #base-app.senera-client #chat-pan > .info > .senera-console-link { width: 32px; height: 40px; }
+    #base-app.senera-client #chat-pan .senera-chat-back { width: 32px; height: 40px; flex-shrink: 0; }
+    #base-app.senera-client #chat-pan .senera-chat-back > svg { width: 18px; height: 22px; }
+    #base-app.senera-client #chat-pan > .info > .info { flex: 1; }
+    #base-app.senera-client #chat-pan > .info > .space { display: none; }
+    #base-app.senera-client #chat-pan > .chat { padding-top: 6px; }
+    #base-app.senera-client #send-more { display: flex; flex-direction: column; padding-top: 8px; border-top: 0; }
+    #base-app.senera-client #send-more .senera-composer-extras { display: contents; }
+    #base-app.senera-client #send-more .senera-composer-extras > :not(.more-detail) { order: 0; }
+    #base-app.senera-client #send-more .senera-compose-row { order: 1; padding: 0 12px; }
+    #base-app.senera-client #send-more .senera-compose-body { flex-direction: row; align-items: flex-end; gap: 8px; }
+    #base-app.senera-client #send-more .senera-compose-body > form { flex: 1; min-width: 0; }
+    #base-app.senera-client #send-more .senera-compose-body textarea { display: block; min-height: 38px; max-height: 28dvh; margin: 0; padding: 8px 12px; border-radius: 10px; background: var(--color-card); font-size: 16px; line-height: 22px; }
+    #base-app.senera-client #send-more .senera-send-button { align-self: flex-end; min-width: 64px; height: 40px; padding: 0 12px; font-size: 15px; border-radius: 10px; }
+    #base-app.senera-client #send-more .more-detail { order: 2; justify-content: space-between; width: 100%; height: 46px; padding: 4px 16px; gap: 8px; }
+    #base-app.senera-client #send-more .more-detail > button { flex: 0 0 36px; width: 36px; height: 36px; }
+    #base-app.senera-client #send-more .more-detail > button > svg { width: 22px; height: 22px; }
+    #base-app.senera-client #send-more .more-detail > .space { display: none; }
+    #base-app.senera-client #send-more .senera-compose-safe-area { order: 3; height: env(safe-area-inset-bottom); }
+    .message.senera-message { padding: 8px 12px; }
+    .senera-message .message-content__wrapper { max-width: calc(100% - 46px); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .senera-client *, .senera-client *::before, .senera-client *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}

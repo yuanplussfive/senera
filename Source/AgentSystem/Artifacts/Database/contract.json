@@ -1,0 +1,30 @@
+{
+  "id": "workspace-observer",
+  "dataClass": "derived",
+  "versions": [
+    {
+      "version": 1,
+      "name": "workspace-observer-baseline",
+      "migration": "migrations/0001-workspace-observer-baseline.sql",
+      "snapshot": "snapshots/0001.schema.sql",
+      "migrationSha256": "92f671fa4d97a67cd1bf8260a13f032263a51b5eb26650e616ab9a248345f2e3",
+      "snapshotSha256": "3c222de34b60616de9ffceda9716da8d0fb350daaceb7e72c61a3c6ea7ca331e"
+    },
+    {
+      "version": 2,
+      "name": "workspace-observer-scan-generation",
+      "migration": "migrations/0002-workspace-observer-scan-generation.sql",
+      "snapshot": "snapshots/0002.schema.sql",
+      "migrationSha256": "5ea73c8092ef232dd3ddbe70f6babda50851a355894cdf2b5edd413c49fe4b70",
+      "snapshotSha256": "9ae717c911b7cbb4a61e6c52792f13de6dca984899b76b27132618a81110a781"
+    },
+    {
+      "version": 3,
+      "name": "workspace-observer-binary-content",
+      "migration": "migrations/0003-workspace-observer-binary-content.sql",
+      "snapshot": "snapshots/0003.schema.sql",
+      "migrationSha256": "29d41a842f1b3d37eb1e30c76dc790b9894a285e22bfbc89dd4270764bfd04bd",
+      "snapshotSha256": "7d3c230cf6d6d2a80ab9af2169e4a2aae466d0afbda4a02ef56fd1f1f7e0c8a8"
+    }
+  ]
+}

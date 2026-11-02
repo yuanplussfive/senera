@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schemas.senera.ai/extension-domain/v1.json",
+  "schemaVersion": 1,
+  "id": "change",
+  "displayName": {
+    "zh-CN": "变更与版本控制",
+    "en-US": "Change and Version Control"
+  },
+  "description": {
+    "zh-CN": "以受控、可验证的方式修改工作区和版本控制状态。",
+    "en-US": "Makes governed, verifiable changes to the workspace and version-control state."
+  },
+  "presentation": {
+    "category": "change",
+    "icon": "pencil",
+    "group": {
+      "id": "change",
+      "title": {
+        "zh-CN": "修改项目",
+        "en-US": "Modify the project"
+      }
+    },
+    "activity": {
+      "action": {
+        "zh-CN": "修改",
+        "en-US": "Change"
+      }
+    }
+  }
+}

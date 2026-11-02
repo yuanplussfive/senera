@@ -1,0 +1,59 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "memory-recall",
+  "domain": "knowledge",
+  "settingsSurface": "system-tools",
+  "presentation": {
+    "category": "memory-recall",
+    "icon": "book-open",
+    "group": {
+      "id": "memory-recall",
+      "title": {
+        "zh-CN": "回忆历史",
+        "en-US": "Recall memory"
+      }
+    },
+    "activity": {
+      "action": {
+        "zh-CN": "召回记忆",
+        "en-US": "Recall memory"
+      },
+      "argumentPath": "/query"
+    }
+  },
+  "usageExamples": [
+    {
+      "title": { "zh-CN": "找回之前的信息", "en-US": "Recall information" },
+      "prompt": {
+        "zh-CN": "我之前说过，项目配色偏好是什么？",
+        "en-US": "What color preferences did I mention for this project?"
+      },
+      "outcome": {
+        "zh-CN": "检索当前 Agent 保存的记忆，读取相关记录并说明内容。",
+        "en-US": "Search the current Agent's stored memories and read relevant records."
+      }
+    }
+  ],
+  "documentation": {
+    "zh-CN": "### 找回当前 Agent 保存的信息\n\n记忆召回检索当前 Agent 的记录，用来核对之前保存的事实、偏好、关系和临时上下文。不同 Agent 的记忆相互隔离。\n\n工具是**显式读取**入口，读取范围与会话自动注入的冻结记忆快照不同。你可以指定主题、时间或需要核对的内容，再让 Agent 查看相关记录。\n\n召回结果用于补充依据，不应把旧任务进度当成当前指令，也不应因检索到角色名称就替换当前身份。",
+    "en-US": "### Retrieve the current Agent's information\n\nSearch this Agent's stored facts, preferences, relationships and temporary context. Agents have isolated memories.\n\nThis is explicit access, distinct from the session's automatically injected frozen memory snapshot. Specify a subject, time or question. Use retrieved records as evidence; old task progress does not become a current instruction or override current identity."
+  },
+  "displayName": {
+    "zh-CN": "长期记忆召回",
+    "en-US": "Long-Term Memory Recall"
+  },
+  "description": {
+    "zh-CN": "检索已保存的事实、偏好与其他记忆。",
+    "en-US": "Search saved facts, preferences, and other memories."
+  },
+  "priority": 8,
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/MemoryRecallTool.tool.json",
+      "capability": "memory.recall",
+      "recommendedForSkills": []
+    }
+  ]
+}

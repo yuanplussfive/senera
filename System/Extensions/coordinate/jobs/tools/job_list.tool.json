@@ -1,0 +1,86 @@
+{
+  "name": "job_list",
+  "loading": "Bootstrap",
+  "presentation": {
+    "category": "jobs",
+    "icon": "list",
+    "activity": {
+      "action": {
+        "zh-CN": "查询任务",
+        "en-US": "List jobs"
+      }
+    }
+  },
+  "description": "List session-owned background commands, PTYs and child-agent activations, including retained results. Start background shell work with ShellCommandTool timeoutMs=0 or launch a subagent.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "jobs": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        }
+      },
+      "delivery": {
+        "type": "object",
+        "description": "Current completion delivery mode, ability to wake an idle session, remaining wake budget and effective wait limits."
+      }
+    },
+    "required": ["jobs"],
+    "additionalProperties": false
+  },
+  "permissions": ["orchestration:jobs"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ResultAssessment": "Unassessed",
+    "Scheduling": "SelfManaged",
+    "Capabilities": {
+      "Cancellation": true
+    }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "orchestration.jobs",
+      "Title": "Background jobs",
+      "Description": "Session-owned command, PTY and agent activation control."
+    }
+  ],
+  "search": {
+    "Summary": "List session-owned background commands, PTYs and child-agent activations, including retained results. Start background shell work with ShellCommandTool timeoutMs=0 or launch a subagent.",
+    "Tags": ["coordination"],
+    "Capabilities": [
+      {
+        "Id": "orchestration.job.list",
+        "Title": "job_list",
+        "Description": "List session-owned background commands, PTYs and child-agent activations, including retained results. Start background shell work with ShellCommandTool timeoutMs=0 or launch a subagent.",
+        "Facets": {
+          "Actions": ["job_list"],
+          "Targets": ["session-work"],
+          "Inputs": [],
+          "Outputs": ["jobs"],
+          "Effects": ["session-state"]
+        },
+        "Risk": {
+          "SideEffect": "session-state",
+          "Permission": "orchestration"
+        },
+        "Aliases": ["job_list"]
+      }
+    ],
+    "UseCases": ["Coordinate persistent work."],
+    "Avoid": ["Do not poll with empty messages."]
+  },
+  "evidenceCapabilities": []
+}

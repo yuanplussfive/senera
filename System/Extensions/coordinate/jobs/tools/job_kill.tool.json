@@ -1,0 +1,93 @@
+{
+  "name": "job_kill",
+  "loading": "Bootstrap",
+  "presentation": {
+    "category": "jobs",
+    "icon": "square",
+    "activity": {
+      "action": {
+        "zh-CN": "停止任务",
+        "en-US": "Stop job"
+      },
+      "argumentPath": "/job_id"
+    }
+  },
+  "description": "Stop one owned background command, PTY or agent activation. Repeated termination returns its current state. An older activation never stops a newer activation of the same agent.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "job_id": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Activation or resource ID returned by subagent, shell execution, list_agents or job_list."
+      }
+    },
+    "required": ["job_id"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "job_id": {
+        "type": "string"
+      },
+      "state": {
+        "type": "string"
+      }
+    },
+    "required": ["job_id", "state"],
+    "additionalProperties": false
+  },
+  "permissions": ["orchestration:jobs"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ResultAssessment": "Unassessed",
+    "Scheduling": "SelfManaged",
+    "Capabilities": {
+      "Cancellation": true
+    }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "orchestration.jobs",
+      "Title": "Background jobs",
+      "Description": "Session-owned command, PTY and agent activation control."
+    }
+  ],
+  "search": {
+    "Summary": "Stop one owned background command, PTY or agent activation. Repeated termination returns its current state. An older activation never stops a newer activation of the same agent.",
+    "Tags": ["coordination"],
+    "Capabilities": [
+      {
+        "Id": "orchestration.job.kill",
+        "Title": "job_kill",
+        "Description": "Stop one owned background command, PTY or agent activation. Repeated termination returns its current state. An older activation never stops a newer activation of the same agent.",
+        "Facets": {
+          "Actions": ["job_kill"],
+          "Targets": ["session-work"],
+          "Inputs": ["job_id"],
+          "Outputs": ["job_id", "state"],
+          "Effects": ["session-state"]
+        },
+        "Risk": {
+          "SideEffect": "session-state",
+          "Permission": "orchestration"
+        },
+        "Aliases": ["job_kill"]
+      }
+    ],
+    "UseCases": ["Coordinate persistent work."],
+    "Avoid": ["Do not poll with empty messages."]
+  },
+  "evidenceCapabilities": [],
+  "approval": {
+    "Mode": "ask",
+    "Reason": "停止本会话拥有的后台命令、终端或子代理执行。"
+  }
+}

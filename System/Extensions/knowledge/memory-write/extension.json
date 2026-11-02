@@ -1,0 +1,58 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "memory-write",
+  "domain": "knowledge",
+  "settingsSurface": "system-tools",
+  "presentation": {
+    "category": "memory-write",
+    "icon": "brain",
+    "group": {
+      "id": "memory-write",
+      "title": {
+        "zh-CN": "保存记忆",
+        "en-US": "Save memory"
+      }
+    },
+    "activity": {
+      "action": {
+        "zh-CN": "保存记忆",
+        "en-US": "Save memory"
+      }
+    }
+  },
+  "usageExamples": [
+    {
+      "title": { "zh-CN": "记住重要偏好", "en-US": "Remember a preference" },
+      "prompt": {
+        "zh-CN": "记住：给我写说明时，尽量简洁，先说结论。",
+        "en-US": "Remember: keep explanations concise and lead with the result."
+      },
+      "outcome": {
+        "zh-CN": "保存你明确要求保留的信息，供当前 Agent 之后检索。",
+        "en-US": "Save explicitly requested information for the current Agent to recall later."
+      }
+    }
+  ],
+  "documentation": {
+    "zh-CN": "### 保存你明确要求记住的内容\n\n适合稳定偏好、长期事实、关系，以及需要记录的任务上下文。数据归属当前 Agent，不会自动共享给其他 Agent。\n\n说清“记住什么”即可。信息应简洁、具体，区分长期有效内容与临时状态；涉及对话双方时用稳定的身份指代，避免把当前昵称或角色卡中的名字固化成事实。\n\n写入记忆不等于立即改写当前会话已经冻结的 system 记忆快照。需要核对时，可以显式召回。",
+    "en-US": "### Save explicitly requested information\n\nStore stable preferences, facts, relationships and relevant temporary context for the current Agent. Records are not automatically shared with other Agents.\n\nState what to remember. Keep it concise, distinguish durable information from temporary state, and avoid turning current nicknames or role names into permanent identity facts.\n\nA write does not rewrite the current session's frozen system memory snapshot. Use explicit recall to check it."
+  },
+  "displayName": {
+    "zh-CN": "长期记忆写入",
+    "en-US": "Long-Term Memory Write"
+  },
+  "description": {
+    "zh-CN": "记住用户明确要求保留的信息。",
+    "en-US": "Save information the user explicitly asks to remember."
+  },
+  "priority": 8,
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/MemoryWriteTool.tool.json",
+      "capability": "memory.write",
+      "recommendedForSkills": []
+    }
+  ]
+}

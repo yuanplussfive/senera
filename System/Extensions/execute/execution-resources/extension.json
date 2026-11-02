@@ -1,0 +1,100 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "execution-resources",
+  "domain": "execute",
+  "settingsSurface": "system-tools",
+  "presentation": {
+    "category": "execution-resource",
+    "icon": "activity",
+    "group": {
+      "id": "execution-resource",
+      "title": {
+        "zh-CN": "执行资源",
+        "en-US": "Execution resources"
+      }
+    },
+    "activity": {
+      "action": {
+        "zh-CN": "管理执行任务",
+        "en-US": "Manage execution"
+      }
+    }
+  },
+  "usageExamples": [
+    {
+      "title": { "zh-CN": "跟进运行中的任务", "en-US": "Follow running work" },
+      "prompt": {
+        "zh-CN": "看看刚才的命令运行到哪了，把最新输出给我。",
+        "en-US": "Check the command we started and show its latest output."
+      },
+      "outcome": {
+        "zh-CN": "读取执行输出、发送必要输入，也能按你的要求停止进程。",
+        "en-US": "Read execution output, supply input, or stop a process when requested."
+      }
+    }
+  ],
+  "documentation": {
+    "zh-CN": "### 长任务可以继续跟进\n\n命令没有立即结束时，执行资源保存它的运行状态与输出入口。后续不用重新启动同一条命令。\n\n你可以要求读取最新输出、向支持交互的执行发送输入，或停止不再需要的进程。资源标识由宿主返回；选择已有执行继续处理，避免重复启动。\n\n这里管理的是运行中的执行，不是历史文档或聊天附件。",
+    "en-US": "### Follow work that is still running\n\nExecution resources retain status and output access when a command does not finish immediately. Continue with the existing execution instead of launching it again.\n\nRead output, send input where supported or stop an unwanted process. Use resource identifiers returned by the host. These resources represent executions, not historical documents or chat attachments."
+  },
+  "displayName": {
+    "zh-CN": "执行资源",
+    "en-US": "Execution Resources"
+  },
+  "description": {
+    "zh-CN": "查看运行中的任务，读取输出、发送输入或停止执行。",
+    "en-US": "Inspect running tasks, read output, send input, or stop execution."
+  },
+  "priority": 91,
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/ExecutionResourceInspect.tool.json",
+      "capability": "execution.resource.inspect",
+      "recommendedForSkills": []
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/ExecutionResourceList.tool.json",
+      "capability": "execution.resource.list",
+      "recommendedForSkills": []
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/ExecutionResourceResize.tool.json",
+      "capability": "execution.resource.resize",
+      "recommendedForSkills": []
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/ExecutionResourceSignal.tool.json",
+      "capability": "execution.resource.signal",
+      "recommendedForSkills": []
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/ExecutionResourceStopAll.tool.json",
+      "capability": "execution.resource.stop_all",
+      "recommendedForSkills": []
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/ExecutionResourceWait.tool.json",
+      "capability": "execution.resource.wait",
+      "recommendedForSkills": []
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/ExecutionResourceWrite.tool.json",
+      "capability": "execution.resource.write",
+      "recommendedForSkills": []
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/TerminalStartTool.tool.json",
+      "capability": "terminal.start",
+      "recommendedForSkills": []
+    }
+  ]
+}

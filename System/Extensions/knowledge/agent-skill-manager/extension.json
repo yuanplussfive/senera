@@ -1,0 +1,58 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "agent-skill-manager",
+  "domain": "knowledge",
+  "settingsSurface": "system-tools",
+  "usageExamples": [
+    {
+      "title": { "zh-CN": "整理可复用技能", "en-US": "Create a reusable skill" },
+      "prompt": {
+        "zh-CN": "把这套操作步骤整理成技能，下次可以直接使用。",
+        "en-US": "Turn this workflow into a reusable skill."
+      },
+      "outcome": {
+        "zh-CN": "创建和编辑技能文件，校验结构与内容，管理工作区技能包。",
+        "en-US": "Create and edit skill files, validate them, and manage workspace skills."
+      }
+    }
+  ],
+  "documentation": {
+    "zh-CN": "### 把重复操作整理成技能\n\n技能保存可复用的工作步骤和约束。适合把已经验证过的流程整理下来，而不是把一次聊天原文直接堆成文档。\n\n可以创建、读取、修改和校验工作区技能包。编写时说明触发条件、必要输入、操作过程与验证标准；辅助文件与技能放在同一包里维护。\n\n在对话中通过技能选择入口明确使用；是否能自动匹配，还取决于技能声明和当前激活规则。",
+    "en-US": "### Turn a proven workflow into a skill\n\nSkills preserve reusable steps and constraints. Document a validated process instead of copying an entire conversation.\n\nCreate, read, edit and validate workspace skill packages. Describe triggers, required input, procedure and verification, and keep supporting files with the skill. Explicit selection uses the chat skill picker; automatic matching depends on declarations and activation rules."
+  },
+  "displayName": {
+    "zh-CN": "技能管理",
+    "en-US": "Skill Management"
+  },
+  "description": {
+    "zh-CN": "创建、编辑与校验技能，管理工作区中的技能包。",
+    "en-US": "Create, edit, and validate skills and manage workspace skill packages."
+  },
+  "priority": 2,
+  "presentation": {
+    "category": "skill",
+    "icon": "puzzle",
+    "group": {
+      "id": "skill",
+      "title": {
+        "zh-CN": "技能库",
+        "en-US": "Skills"
+      }
+    },
+    "activity": {
+      "action": {
+        "zh-CN": "管理 Skill",
+        "en-US": "Manage Skill"
+      }
+    }
+  },
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/SkillManage.tool.json",
+      "capability": "system.tool.agent-skill-manager.SkillManage",
+      "recommendedForSkills": ["skill-creator"]
+    }
+  ]
+}

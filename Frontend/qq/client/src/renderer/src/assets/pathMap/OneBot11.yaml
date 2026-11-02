@@ -1,0 +1,94 @@
+# OneBot 11 protocol contract, independent of the server implementation.
+name: OneBot 11
+protocol_version: v11
+poke:
+    name: send_poke
+    private_name: send_poke
+send_respond:
+    name: set_msg_emoji_like
+set_essence:
+    name: set_essence_msg
+delete_essence:
+    name: delete_essence_msg
+group_essence:
+    name: get_essence_msg_list
+    source: $.data[*]
+    list:
+        message_id: /message_id
+        sender_uin: /sender_id
+        sender_nick: /sender_nick
+        sender_time: /sender_time
+        msg_content: /content
+        add_digest_uin: /operator_id
+        add_digest_nick: /operator_nick
+        add_digest_time: /operator_time
+    is_end: null
+# A protocol declaration does not imply QQ website credentials.
+get_cookies: null
+version_info: $.data
+login_info:
+    uin: $.data.user_id
+    nickname: $.data.nickname
+user_list:
+    name: get_friend_list|get_group_list
+    source: $.data[*]
+    list:
+        group_id: /group_id
+        group_name: /group_name
+        member_count: /member_count
+        user_id: /user_id
+        nickname: /nickname
+        remark: /remark
+message_list:
+    name_user_send: send_private_msg
+    name_group_send: send_group_msg
+    name: get_group_msg_history
+    private_name: get_friend_msg_history
+    source: $.data.messages[*]
+    type: $.data
+    message_type:
+        user: private
+        group: group
+    list:
+        message_id: /message_id
+        target_id: /target_id
+        message_type: /message_type
+        time: /time
+        group_id: /group_id
+        sender: /sender
+        message: /message
+        raw_message: /raw_message
+        emoji_like: /emoji_like
+        emojis: /emojis
+        is_essence: /is_essence
+message_info:
+    message_id: $.message_id
+    private_id: $.user_id
+    group_id: $.group_id
+    target_id: $.target_id
+    sender: $.sender.user_id
+get_message: $.message
+message_value:
+    image:
+        url: $.url
+friend_info:
+    name: get_stranger_info
+    source: $.data
+    list:
+        age: /age
+        sex: /sex
+group_member_info:
+    name: get_group_member_info
+    source: $.data
+    list:
+        group_id: /group_id
+        user_id: /user_id
+        nickname: /nickname
+        card: /card
+        role: /role
+delete_msg:
+    name: delete_msg
+get_record:
+    name: get_record
+    file: $..file
+    url: $..url

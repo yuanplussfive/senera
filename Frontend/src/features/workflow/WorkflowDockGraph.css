@@ -1,0 +1,408 @@
+[data-workflow-dock-graph] {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.workflow-dock-flow {
+  --workflow-dock-rail-width: 2rem;
+  --workflow-dock-column-gap: 0.5rem;
+  position: relative;
+  isolation: isolate;
+}
+
+.workflow-dock-flow__rail {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.workflow-dock-flow__rail .organic-timeline-rail__base {
+  fill: none;
+  stroke: color-mix(in srgb, var(--surface-canvas) 57%, var(--line-strong));
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.76;
+}
+
+/* The active trace follows the same measured rope and ends at the row under
+ * the pointer; opening the detail drawer does not alter the rail. */
+.workflow-dock-flow__rail .organic-timeline-rail__active {
+  fill: none;
+  stroke: color-mix(in srgb, var(--accent-content) 44%, var(--line-strong));
+  stroke-width: 1.45;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.82;
+}
+
+.workflow-dock-timeline {
+  position: relative;
+  /* The thread runs beneath the numbered attachment points. */
+  z-index: 3;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.workflow-dock-entry {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  grid-template-columns: var(--workflow-dock-rail-width) minmax(0, 1fr);
+  column-gap: var(--workflow-dock-column-gap);
+}
+
+.workflow-dock-timeline-rail {
+  position: relative;
+  min-width: 0;
+  min-height: 1.125rem;
+}
+
+.workflow-dock-ordinal {
+  position: absolute;
+  top: 0;
+  right: 0.625rem;
+  z-index: 1;
+  display: block;
+  color: color-mix(in srgb, var(--content-secondary) 78%, var(--content-primary));
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.125rem;
+  text-align: right;
+  opacity: 0.9;
+}
+
+.workflow-dock-ordinal--running,
+.workflow-dock-ordinal--cancelling,
+.workflow-dock-ordinal--pending {
+  color: var(--accent-content);
+}
+
+.workflow-dock-ordinal--failed,
+.workflow-dock-ordinal--cancelled {
+  color: rgb(var(--color-brick-500));
+  opacity: 1;
+}
+
+.workflow-dock-ordinal[data-workflow-dock-flow-node-active="true"] {
+  color: var(--accent-content);
+  font-weight: 650;
+  opacity: 1;
+}
+
+.workflow-dock-entry:hover .workflow-dock-ordinal {
+  color: var(--content-primary);
+  opacity: 1;
+}
+
+.workflow-dock-entry:hover .workflow-dock-ordinal[data-workflow-dock-flow-node-active="true"] {
+  color: var(--accent-content);
+}
+
+.workflow-dock-entry-content {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.1875rem;
+  padding-bottom: 0.625rem;
+}
+
+.workflow-dock-entry-row {
+  position: relative;
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  margin: -0.125rem -0.25rem;
+  padding: 0.125rem 0.25rem;
+  border: 0;
+  border-radius: 0.3125rem;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  column-gap: 0.5rem;
+}
+
+button.workflow-dock-entry-row {
+  cursor: pointer;
+  transition:
+    background-color 150ms ease-out,
+    color 150ms ease-out;
+}
+
+button.workflow-dock-entry-row:hover {
+  background: var(--surface-hover);
+}
+
+button.workflow-dock-entry-row:focus-visible,
+button.workflow-dock-batch-heading:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-focus);
+}
+
+.workflow-dock-entry-phrase {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 0.375rem;
+}
+
+.workflow-dock-entry-title,
+.workflow-dock-entry-subject,
+.workflow-dock-entry-summary,
+.workflow-dock-entry-status,
+.workflow-dock-duration {
+  min-width: 0;
+}
+
+.workflow-dock-entry-title {
+  flex: none;
+  overflow: hidden;
+  color: var(--content-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-dock-entry-subject {
+  flex: 1;
+  overflow: hidden;
+  color: var(--content-primary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-dock-entry-summary {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--content-muted);
+  font-size: 11px;
+  line-height: 1.0625rem;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.workflow-dock-entry-status,
+.workflow-dock-duration {
+  font-size: 10px;
+  line-height: 1.125rem;
+  white-space: nowrap;
+}
+
+.workflow-dock-duration {
+  color: var(--content-muted);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  opacity: 0;
+  transition: opacity 150ms ease-out;
+}
+
+.workflow-dock-entry-row:hover .workflow-dock-duration,
+.workflow-dock-entry-row:focus-visible .workflow-dock-duration,
+.workflow-dock-entry[data-workflow-dock-expanded="true"] .workflow-dock-duration,
+.workflow-dock-duration--persistent {
+  opacity: 1;
+}
+
+.workflow-dock-batch {
+  position: relative;
+  min-width: 0;
+  margin: 0.125rem 0;
+}
+
+.workflow-dock-batch-heading {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0.125rem 0 0.25rem calc(var(--workflow-dock-rail-width) + var(--workflow-dock-column-gap));
+  border: 0;
+  background: transparent;
+  color: var(--content-muted);
+  font-size: 10px;
+  line-height: 1.125rem;
+  text-align: left;
+}
+
+.workflow-dock-batch-count {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--content-muted);
+  font-size: 10px;
+  line-height: 1.125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.workflow-dock-batch-heading {
+  cursor: pointer;
+}
+
+button.workflow-dock-batch-heading:hover {
+  color: var(--content-secondary);
+}
+
+.workflow-dock-parameters,
+.workflow-dock-failure,
+.workflow-dock-result-text,
+.workflow-dock-result-values,
+.workflow-dock-result-pairs,
+.workflow-dock-result-rows {
+  min-width: 0;
+  color: var(--content-muted);
+  font-size: 11px;
+  line-height: 1.0625rem;
+}
+
+.workflow-dock-parameters {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 0.75rem;
+  row-gap: 0.125rem;
+}
+
+.workflow-dock-failure {
+  display: -webkit-box;
+  overflow: hidden;
+  color: rgb(var(--color-brick-600));
+  white-space: pre-wrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.workflow-dock-parameter {
+  display: inline-flex;
+  min-width: 0;
+  gap: 0.25rem;
+}
+
+.workflow-dock-parameter-label {
+  flex: none;
+  color: var(--content-secondary);
+}
+
+.workflow-dock-parameter-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-dock-result-text {
+  display: -webkit-box;
+  overflow: hidden;
+  white-space: pre-wrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.workflow-dock-result-values,
+.workflow-dock-result-pairs,
+.workflow-dock-result-rows {
+  display: grid;
+  gap: 0.125rem;
+}
+
+.workflow-dock-result-values > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-dock-result-pair,
+.workflow-dock-result-row {
+  display: grid;
+  min-width: 0;
+  column-gap: 0.5rem;
+}
+
+.workflow-dock-result-pair {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+}
+
+.workflow-dock-result-row {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 6.5rem);
+}
+
+.workflow-dock-result-row--link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.workflow-dock-result-row--link:hover .workflow-dock-result-row-title,
+.workflow-dock-result-row--link:focus-visible .workflow-dock-result-row-title {
+  color: var(--accent-content);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.125rem;
+}
+
+.workflow-dock-result-row--link:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-focus);
+}
+
+.workflow-dock-result-pair > :first-child,
+.workflow-dock-result-row > :first-child {
+  color: var(--content-secondary);
+}
+
+.workflow-dock-result-pair > :last-child,
+.workflow-dock-result-row-title,
+.workflow-dock-result-row-locator {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-dock-result-row-locator {
+  color: var(--content-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-align: right;
+}
+
+.workflow-dock-result-more {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--content-muted);
+  font: inherit;
+  text-align: left;
+}
+
+button.workflow-dock-result-more {
+  cursor: pointer;
+}
+
+button.workflow-dock-result-more:hover,
+button.workflow-dock-result-more:focus-visible {
+  color: var(--content-secondary);
+  text-decoration: underline;
+  text-underline-offset: 0.125rem;
+}
+
+button.workflow-dock-result-more:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-focus);
+}
+
+[data-workflow-dock-graph] button,
+[data-workflow-dock-graph] [role="button"] {
+  pointer-events: auto;
+}

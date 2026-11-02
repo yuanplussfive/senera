@@ -1,0 +1,196 @@
+{
+  "name": "ArtifactReadTool",
+  "loading": "Bootstrap",
+  "presentation": {
+    "category": "artifact-read",
+    "icon": "file-text",
+    "activity": {
+      "action": { "zh-CN": "读取", "en-US": "Read" },
+      "detailPaths": ["/requests/*/uri", "/requests/*/part"]
+    },
+    "preview": { "body": { "pointer": "/artifacts/item", "from": "result" } }
+  },
+  "description": "Inspect a saved tool result through its senera://resource/<six-character-id> URI. By default, without paths return a bounded structure outline. Its fields/items expose source entries; descriptor paths are the actual source JSON Pointers. Select fields with a paths array; use view=structure to inspect a nested object without summarizing it, or omit view to read its content. An empty pointer selects the whole part; view=content without paths also selects the whole part. Missing fields are distinct from null. Oversized selected content is summarized, mechanically reduced, then truncated if necessary; representation and completeness are explicit. Reads never repeat the original tool action.",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "requests": {
+        "minItems": 1,
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "uri": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Saved result URI, normally senera://resource/<six-character-id>. Historical Artifact references remain readable."
+            },
+            "part": {
+              "type": "string",
+              "enum": ["result", "source", "summary", "process", "outcome", "stdout", "stderr", "changes", "assets"],
+              "default": "result",
+              "description": "Read result content, original source, process streams or execution outcome. Outcome exposes /assessment/error for the exact failure message and diagnostics."
+            },
+            "paths": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "type": "string", "pattern": "^(?:/(?:[^~]|~[01])*)*$" },
+              "description": "Exact JSON Pointers within the selected part, for example /links/0/url. Empty string selects the whole part. Omit for a structure outline."
+            },
+            "view": {
+              "type": "string",
+              "enum": ["structure", "content"],
+              "description": "Structure inspects the selected subtrees without LLM summarization and is the default without paths. Content returns selected values, defaults when paths are provided, and selects the whole part when paths are omitted."
+            }
+          },
+          "required": ["uri"],
+          "additionalProperties": false
+        },
+        "description": "Resource references and optional exact field selections."
+      }
+    },
+    "required": ["requests"],
+    "additionalProperties": false
+  },
+  "permissions": ["filesystem:read:artifacts"],
+  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ResultAssessment": "ProcessExit",
+    "ResultStorage": "SourceView",
+    "Scheduling": "Parallel",
+    "Capabilities": { "Cancellation": true }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "artifact",
+      "Title": "Artifact",
+      "Description": "Persisted artifact content and evidence available to the current agent."
+    }
+  ],
+  "search": {
+    "Summary": "查看工具结果结构，并按资源 URI 和字段路径读取所需内容。",
+    "Tags": ["证据读取", "产物读取", "完整结果", "历史资料"],
+    "Capabilities": [
+      {
+        "Id": "artifact.read",
+        "Title": "Artifact resource read",
+        "Description": "Inspect saved result structures and read selected fields through resource URIs and JSON Pointers.",
+        "Facets": {
+          "Actions": ["read", "hydrate", "inspect"],
+          "Targets": ["artifact-resource", "artifact-projection", "artifact-evidence"],
+          "Inputs": ["resource-uri", "part", "json-pointers"],
+          "Outputs": ["structure", "selected-result"],
+          "Evidence": ["artifact-resource"],
+          "Effects": ["read-only"]
+        },
+        "Aliases": ["读取产物", "展开证据", "read artifact", "hydrate artifact evidence"],
+        "Risk": { "SideEffect": "read-only", "Permission": "artifact-read" }
+      }
+    ],
+    "UseCases": ["检查历史结果结构，并按字段读取所需原文。"],
+    "Examples": ["查看这个资源的字段结构", "读取 /links/0/url 和 /content 字段"],
+    "Avoid": [
+      "artifactUri 缺失时先使用当前上下文或检索工具定位 Artifact URI。",
+      "先使用当前工具反馈；需要细节时按准确字段路径读取，不重复展开整份结果。"
+    ]
+  },
+  "evidenceCapabilities": [],
+  "artifacts": {
+    "Evidence": [
+      {
+        "Kind": "artifact_memory",
+        "Records": "$.artifacts.item[*]",
+        "Slots": {
+          "artifactUri": "$.artifactUri",
+          "artifactId": "$.artifactId",
+          "status": "$.status",
+          "message": "$.message",
+          "view": "$.view",
+          "artifactRefs": "$.artifactRefs[*]",
+          "compressionMethod": "$.compressionMethod",
+          "sourceSha256": "$.sourceSha256"
+        },
+        "Identity": { "Parts": ["artifactUri", "view"] },
+        "Presentation": {
+          "Locator": "{{ artifactUri }}",
+          "Display": "artifact {{ view }} {{ status }}: {{ artifactUri }}",
+          "Label": "{{ artifactUri }}",
+          "Source": "{{ message }}"
+        },
+        "ModelProjection": {
+          "Slots": [
+            "artifactUri",
+            "artifactId",
+            "status",
+            "message",
+            "view",
+            "artifactRefs",
+            "compressionMethod",
+            "sourceSha256"
+          ]
+        },
+        "PlannerMemory": {
+          "Facts": ["artifactUri", "artifactId", "status", "view", "artifactRefs", "compressionMethod", "sourceSha256"],
+          "ArtifactUri": "artifactUri",
+          "ArtifactRefsSlot": "artifactRefs"
+        },
+        "Projection": {
+          "SummaryTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} {{ e.slots.view }} {{ e.slots.status }} {{ e.slots.artifactUri }}{% if e.slots.compressionMethod %} ({{ e.slots.compressionMethod }}){% endif %}\n{% endfor %}",
+          "ArtifactTemplate": "{% for e in evidence %}- evidenceUri: {{ e.evidenceUri }} artifact read\n  uri: {{ e.slots.artifactUri }}\n  view: {{ e.slots.view }}\n  status: {{ e.slots.status }}\n  compressionMethod: {{ e.slots.compressionMethod }}\n  sourceSha256: {{ e.slots.sourceSha256 }}\n  message: {{ e.slots.message }}\n{% endfor %}"
+        },
+        "Confidence": 0.9,
+        "Metadata": {
+          "status": "$.status",
+          "view": "$.view",
+          "compressionMethod": "$.compressionMethod",
+          "sourceSha256": "$.sourceSha256"
+        }
+      }
+    ]
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "type": { "const": "senera.artifact-read/v1" },
+      "artifacts": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "requestedUri": { "type": "string" },
+                "artifactUri": { "type": "string" },
+                "artifactId": { "type": "string" },
+                "status": { "type": "string", "enum": ["found", "not_found", "invalid", "failed"] },
+                "view": { "type": "string", "enum": ["compact", "full", "structure", "selected"] },
+                "part": {
+                  "type": "string",
+                  "enum": ["result", "source", "summary", "process", "outcome", "stdout", "stderr", "changes", "assets"]
+                },
+                "availableParts": { "type": "array", "items": { "type": "string" } },
+                "message": { "type": "string" },
+                "artifactRefs": { "type": "array", "items": { "type": "string" } },
+                "compressionMethod": { "type": "string", "enum": ["mechanical", "llm"] },
+                "sourceSha256": { "type": "string" },
+                "content": {}
+              },
+              "required": ["requestedUri", "artifactUri", "artifactId", "status", "view", "message"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["item"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["type", "artifacts"],
+    "additionalProperties": false
+  }
+}

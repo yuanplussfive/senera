@@ -1,0 +1,300 @@
+import { constants } from "node:fs";
+import { lstat, open, realpath, type FileHandle } from "node:fs/promises";
+import path from "node:path";
+import {
+  AgentResourceAccessAuthorities,
+  AgentResourceAccessIntents,
+  type AgentResourceAccessAuthority,
+  type AgentResourceAccessFacts,
+  type AgentResourceAccessGrant,
+  type AgentResourceAccessIntent,
+  type SeneraResourceAccessAuthorizer,
+} from "./SeneraResourceAccess.js";
+import { resourceAccessGrantAllows } from "./SeneraResourceAccess.js";
+import { errorMessage } from "../Core/AgentErrors.js";
+import { AgentBaseError } from "../Core/AgentBaseError.js";
+import { isPathWithin, isSamePath } from "../Core/AgentPath.js";
+import { classifyAgentWorkspaceResource } from "../Core/AgentWorkspaceLayout.js";
+
+declare const CanonicalWorkspacePathBrand: unique symbol;
+
+export type CanonicalWorkspacePath = string & {
+  readonly [CanonicalWorkspacePathBrand]: true;
+};
+
+export interface SeneraResolvedWorkspaceTarget {
+  readonly addressedPath: string;
+  readonly absolutePath: CanonicalWorkspacePath;
+  readonly facts: AgentResourceAccessFacts;
+}
+
+export interface SeneraOpenedWorkspaceFile {
+  readonly target: SeneraResolvedWorkspaceTarget;
+  readonly handle: FileHandle;
+}
+
+export class SeneraWorkspaceBoundaryError extends AgentBaseError {
+  constructor(
+    readonly code:
+      "invalid_path" | "outside_workspace" | "link_not_allowed" | "unresolved_path" | "path_changed" | "policy_denied",
+    message: string,
+    readonly facts?: AgentResourceAccessFacts,
+    cause?: Error,
+  ) {
+    super(message, cause ? { cause } : undefined);
+  }
+}
+
+export interface SeneraWorkspaceBoundaryOptions {
+  readonly workspaceRoot: string;
+  readonly scope?: AgentResourceAccessFacts["scope"];
+  readonly policy?: SeneraResourceAccessAuthorizer;
+  readonly authority?: AgentResourceAccessAuthority;
+  readonly linkPolicy?: "allow_internal" | "deny";
+  readonly allowOutside?: boolean;
+  readonly resourceAccessGrant?: AgentResourceAccessGrant;
+}
+
+export class SeneraWorkspaceBoundary {
+  readonly workspaceRoot: string;
+  private canonicalRoot?: Promise<CanonicalWorkspacePath>;
+
+  constructor(private readonly options: SeneraWorkspaceBoundaryOptions) {
+    this.workspaceRoot = path.resolve(options.workspaceRoot);
+  }
+
+  async resolve(value: string | undefined, intent: AgentResourceAccessIntent): Promise<SeneraResolvedWorkspaceTarget> {
+    const inspection = await this.inspect(value, intent);
+    const grantedOutside =
+      inspection.facts.containment === "outside" &&
+      inspection.absolutePath !== undefined &&
+      this.options.resourceAccessGrant !== undefined &&
+      resourceAccessGrantAllows(this.options.resourceAccessGrant, inspection.absolutePath, intent);
+    if (this.options.policy && !grantedOutside) {
+      try {
+        await this.options.policy.authorize(inspection.facts);
+      } catch (error) {
+        throw new SeneraWorkspaceBoundaryError(
+          "policy_denied",
+          errorMessage(error),
+          inspection.facts,
+          error instanceof Error ? error : undefined,
+        );
+      }
+    }
+    if (!inspection.absolutePath || (inspection.facts.containment === "outside" && !grantedOutside)) {
+      const deniedLink = this.options.linkPolicy === "deny" && inspection.facts.linkTraversal !== "none";
+      throw new SeneraWorkspaceBoundaryError(
+        deniedLink
+          ? "link_not_allowed"
+          : inspection.facts.containment === "outside"
+            ? "outside_workspace"
+            : "unresolved_path",
+        `路径不属于可执行工作区边界：${value ?? "."}`,
+        inspection.facts,
+      );
+    }
+    return {
+      addressedPath: inspection.addressedPath ?? inspection.absolutePath,
+      absolutePath: inspection.absolutePath,
+      facts: inspection.facts,
+    };
+  }
+
+  async openFile(value: string, intent: AgentResourceAccessIntent): Promise<SeneraOpenedWorkspaceFile> {
+    const initial = await this.resolve(value, intent);
+    const handle = await open(initial.absolutePath, constants.O_RDONLY | noFollowFlag());
+    try {
+      const current = await this.resolve(initial.addressedPath, intent);
+      const [openedStat, currentStat] = await Promise.all([handle.stat(), lstat(current.absolutePath)]);
+      if (
+        !isSamePath(initial.absolutePath, current.absolutePath) ||
+        currentStat.isSymbolicLink() ||
+        !sameFileIdentity(openedStat, currentStat)
+      ) {
+        throw new SeneraWorkspaceBoundaryError("path_changed", `路径在打开期间发生变化：${value}`, current.facts);
+      }
+      return { target: current, handle };
+    } catch (error) {
+      await handle.close().catch(() => undefined);
+      throw error;
+    }
+  }
+
+  async inspect(
+    value: string | undefined,
+    intent: AgentResourceAccessIntent,
+  ): Promise<{
+    readonly addressedPath?: string;
+    readonly absolutePath?: CanonicalWorkspacePath;
+    readonly facts: AgentResourceAccessFacts;
+  }> {
+    const requested = value?.trim() || ".";
+    if (requested.includes("\0")) {
+      throw new SeneraWorkspaceBoundaryError("invalid_path", "路径包含 NUL 字符。");
+    }
+
+    const candidate = path.isAbsolute(requested)
+      ? path.resolve(requested)
+      : path.resolve(this.workspaceRoot, requested);
+    const lexicalRelative = path.relative(this.workspaceRoot, candidate);
+    const relativePath = toPortableRelativePath(lexicalRelative);
+    if (!isInsidePath(this.workspaceRoot, candidate) && !this.options.allowOutside) {
+      return {
+        facts: this.resourceFacts(intent, relativePath, "outside", "none", "unknown", candidate),
+      };
+    }
+
+    const canonicalRoot = await this.resolveCanonicalRoot();
+    const finalStat = await lstatIfPresent(candidate);
+    if (finalStat.kind === "error") {
+      return {
+        facts: this.resourceFacts(intent, relativePath, "unknown", finalStat.linkTraversal, "unknown", candidate),
+      };
+    }
+
+    const finalEntry = finalStat.value ? entryKind(finalStat.value) : "missing";
+    const anchor = finalStat.value
+      ? candidate
+      : this.options.allowOutside
+        ? await nearestExistingAncestorAnywhere(candidate)
+        : await nearestExistingAncestor(candidate, this.workspaceRoot);
+    if (!anchor) {
+      return {
+        facts: this.resourceFacts(intent, relativePath, "unknown", "broken", finalEntry, candidate),
+      };
+    }
+
+    try {
+      const canonicalAnchor = await realpath(anchor);
+      const suffix = path.relative(anchor, candidate);
+      const canonicalTarget = path.resolve(canonicalAnchor, suffix);
+      const containment = isInsidePath(canonicalRoot, canonicalTarget) ? "inside" : "outside";
+      const traversedLink = !isSamePath(anchor, canonicalAnchor) || finalEntry === "link";
+      const linkTraversal = traversedLink ? (containment === "inside" ? "internal" : "external") : "none";
+      const executable =
+        (containment === "inside" || this.options.allowOutside) &&
+        linkTraversal !== "external" &&
+        !(this.options.linkPolicy === "deny" && traversedLink) &&
+        !(finalEntry === "link" && MutationIntents.has(intent));
+      return {
+        addressedPath: candidate,
+        absolutePath: executable ? asCanonicalPath(canonicalTarget) : undefined,
+        facts: this.resourceFacts(intent, relativePath, containment, linkTraversal, finalEntry, canonicalTarget),
+      };
+    } catch (error) {
+      return {
+        facts: this.resourceFacts(
+          intent,
+          relativePath,
+          "unknown",
+          isMissingError(error) ? "broken" : "none",
+          finalEntry,
+          candidate,
+        ),
+      };
+    }
+  }
+
+  private resourceFacts(
+    intent: AgentResourceAccessIntent,
+    relativePath: string,
+    containment: AgentResourceAccessFacts["containment"],
+    linkTraversal: AgentResourceAccessFacts["linkTraversal"],
+    finalEntry: AgentResourceAccessFacts["finalEntry"],
+    canonicalTarget: string,
+  ): AgentResourceAccessFacts {
+    const scope = this.options.scope ?? "workspace";
+    const classification = classifyAgentWorkspaceResource(this.workspaceRoot, canonicalTarget, scope);
+    return {
+      scope,
+      intent,
+      authority: this.options.authority ?? AgentResourceAccessAuthorities.Tool,
+      ...classification,
+      relativePath,
+      containment,
+      linkTraversal,
+      finalEntry,
+    };
+  }
+
+  private resolveCanonicalRoot(): Promise<CanonicalWorkspacePath> {
+    return (this.canonicalRoot ??= realpath(this.workspaceRoot).then(asCanonicalPath));
+  }
+}
+
+const MutationIntents = new Set<AgentResourceAccessIntent>([
+  AgentResourceAccessIntents.Create,
+  AgentResourceAccessIntents.Replace,
+  AgentResourceAccessIntents.Remove,
+]);
+
+type LstatResult =
+  | { readonly kind: "ok"; readonly value: Awaited<ReturnType<typeof lstat>> | undefined }
+  | { readonly kind: "error"; readonly linkTraversal: "none" | "broken" };
+
+async function lstatIfPresent(value: string): Promise<LstatResult> {
+  try {
+    return { kind: "ok", value: await lstat(value) };
+  } catch (error) {
+    return isMissingError(error) ? { kind: "ok", value: undefined } : { kind: "error", linkTraversal: "none" };
+  }
+}
+
+async function nearestExistingAncestor(candidate: string, root: string): Promise<string | undefined> {
+  let current = path.dirname(candidate);
+  while (isInsidePath(root, current)) {
+    const stat = await lstatIfPresent(current);
+    if (stat.kind === "error") return undefined;
+    if (stat.value) return current;
+    if (isSamePath(current, root)) return undefined;
+    current = path.dirname(current);
+  }
+  return undefined;
+}
+
+async function nearestExistingAncestorAnywhere(candidate: string): Promise<string | undefined> {
+  let current = path.dirname(candidate);
+  while (true) {
+    const stat = await lstatIfPresent(current);
+    if (stat.kind === "error") return undefined;
+    if (stat.value) return current;
+    const parent = path.dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
+  }
+}
+
+function entryKind(stat: Awaited<ReturnType<typeof lstat>>): AgentResourceAccessFacts["finalEntry"] {
+  if (stat.isSymbolicLink()) return "link";
+  if (stat.isFile()) return "file";
+  if (stat.isDirectory()) return "directory";
+  return "other";
+}
+
+function isInsidePath(root: string, target: string): boolean {
+  return isPathWithin(root, target);
+}
+
+function toPortableRelativePath(value: string): string {
+  return (value || ".").split(path.sep).join("/");
+}
+
+function asCanonicalPath(value: string): CanonicalWorkspacePath {
+  return value as CanonicalWorkspacePath;
+}
+
+function noFollowFlag(): number {
+  return typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0;
+}
+
+function sameFileIdentity(
+  left: Awaited<ReturnType<FileHandle["stat"]>>,
+  right: Awaited<ReturnType<typeof lstat>>,
+): boolean {
+  return left.dev === right.dev && left.ino === right.ino;
+}
+
+function isMissingError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT";
+}

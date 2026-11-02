@@ -1,0 +1,199 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "search": {
+      "default": {
+        "provider": "exa",
+        "endpoint": "",
+        "exaApiKey": "",
+        "codexEndpoint": "",
+        "codexModel": "",
+        "codexApiKey": "",
+        "tavilyApiKey": "",
+        "braveApiKey": "",
+        "defaultMaxResults": 8,
+        "maxMaxResults": 20,
+        "responseMaxBytes": 2000000,
+        "cacheTtlSeconds": 60,
+        "cacheMaxEntries": 256,
+        "requestTimeoutMs": 180000,
+        "maxOperationTimeoutMs": 900000,
+        "allowPrivateNetworks": false,
+        "allowSyntheticProxyAddresses": true
+      },
+      "type": "object",
+      "properties": {
+        "provider": { "default": "exa", "type": "string", "enum": ["exa", "codex", "tavily", "brave", "searxng"] },
+        "endpoint": { "default": "", "type": "string" },
+        "exaApiKey": { "default": "", "type": "string", "maxLength": 4096 },
+        "codexEndpoint": { "default": "", "type": "string" },
+        "codexModel": { "default": "", "type": "string", "maxLength": 256 },
+        "codexApiKey": { "default": "", "type": "string", "maxLength": 4096 },
+        "tavilyApiKey": { "default": "", "type": "string", "maxLength": 4096 },
+        "braveApiKey": { "default": "", "type": "string", "maxLength": 4096 },
+        "defaultMaxResults": { "default": 8, "type": "integer", "minimum": 1, "maximum": 100 },
+        "maxMaxResults": { "default": 20, "type": "integer", "minimum": 1, "maximum": 100 },
+        "responseMaxBytes": { "default": 2000000, "type": "integer", "minimum": 1024, "maximum": 67108864 },
+        "cacheTtlSeconds": { "default": 60, "type": "integer", "minimum": 0, "maximum": 86400 },
+        "cacheMaxEntries": { "default": 256, "type": "integer", "minimum": 0, "maximum": 4096 },
+        "requestTimeoutMs": { "default": 180000, "type": "integer", "minimum": 1000, "maximum": 900000 },
+        "maxOperationTimeoutMs": { "default": 900000, "type": "integer", "minimum": 1000, "maximum": 900000 },
+        "allowPrivateNetworks": { "default": false, "type": "boolean" },
+        "allowSyntheticProxyAddresses": { "default": true, "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "fetch": {
+      "default": {
+        "responseMaxBytes": 5000000,
+        "markdownMaxChars": 120000,
+        "maxRedirects": 5,
+        "maxUrlLength": 4096,
+        "maxLinks": 128,
+        "maxExtractBlocks": 12,
+        "defaultContentMode": "auto",
+        "render": {
+          "strategy": "auto",
+          "detection": {
+            "minimumUsefulTextChars": 240,
+            "minimumContentDensity": 0.04,
+            "minimumContentBlocks": 2,
+            "maximumScriptShare": 0.5,
+            "dynamicScoreThreshold": 0.58,
+            "reasonScoreThreshold": 0.35,
+            "weights": { "textDeficit": 0.34, "densityDeficit": 0.26, "scriptPressure": 0.24, "structureDeficit": 0.16 }
+          },
+          "browser": {
+            "minimumRemainingTimeoutMs": 1000,
+            "settleTimeoutMs": 8000,
+            "settlePollMs": 250,
+            "stableSamples": 2,
+            "maxHtmlChars": 96000,
+            "minimumContentGainChars": 80,
+            "minimumContentGainRatio": 0.15
+          }
+        },
+        "requestTimeoutMs": 180000,
+        "maxOperationTimeoutMs": 900000,
+        "allowPrivateNetworks": false,
+        "allowSyntheticProxyAddresses": true,
+        "userAgent": "Senera-WebTools/1.0"
+      },
+      "type": "object",
+      "properties": {
+        "responseMaxBytes": { "default": 5000000, "type": "integer", "minimum": 1024, "maximum": 268435456 },
+        "markdownMaxChars": { "default": 120000, "type": "integer", "minimum": 1024, "maximum": 10000000 },
+        "maxRedirects": { "default": 5, "type": "integer", "minimum": 0, "maximum": 20 },
+        "maxUrlLength": { "default": 4096, "type": "integer", "minimum": 256, "maximum": 32768 },
+        "maxLinks": { "default": 128, "type": "integer", "minimum": 0, "maximum": 2000 },
+        "maxExtractBlocks": { "default": 12, "type": "integer", "minimum": 1, "maximum": 256 },
+        "defaultContentMode": { "default": "auto", "type": "string", "enum": ["auto", "article", "page", "text"] },
+        "render": {
+          "default": {
+            "strategy": "auto",
+            "detection": {
+              "minimumUsefulTextChars": 240,
+              "minimumContentDensity": 0.04,
+              "minimumContentBlocks": 2,
+              "maximumScriptShare": 0.5,
+              "dynamicScoreThreshold": 0.58,
+              "reasonScoreThreshold": 0.35,
+              "weights": {
+                "textDeficit": 0.34,
+                "densityDeficit": 0.26,
+                "scriptPressure": 0.24,
+                "structureDeficit": 0.16
+              }
+            },
+            "browser": {
+              "minimumRemainingTimeoutMs": 1000,
+              "settleTimeoutMs": 8000,
+              "settlePollMs": 250,
+              "stableSamples": 2,
+              "maxHtmlChars": 96000,
+              "minimumContentGainChars": 80,
+              "minimumContentGainRatio": 0.15
+            }
+          },
+          "type": "object",
+          "properties": {
+            "strategy": { "default": "auto", "type": "string", "enum": ["http", "auto", "browser"] },
+            "detection": {
+              "default": {
+                "minimumUsefulTextChars": 240,
+                "minimumContentDensity": 0.04,
+                "minimumContentBlocks": 2,
+                "maximumScriptShare": 0.5,
+                "dynamicScoreThreshold": 0.58,
+                "reasonScoreThreshold": 0.35,
+                "weights": {
+                  "textDeficit": 0.34,
+                  "densityDeficit": 0.26,
+                  "scriptPressure": 0.24,
+                  "structureDeficit": 0.16
+                }
+              },
+              "type": "object",
+              "properties": {
+                "minimumUsefulTextChars": { "default": 240, "type": "integer", "minimum": 1, "maximum": 1000000 },
+                "minimumContentDensity": { "default": 0.04, "type": "number", "minimum": 0, "maximum": 1 },
+                "minimumContentBlocks": { "default": 2, "type": "integer", "minimum": 0, "maximum": 10000 },
+                "maximumScriptShare": { "default": 0.5, "type": "number", "minimum": 0, "maximum": 1 },
+                "dynamicScoreThreshold": { "default": 0.58, "type": "number", "minimum": 0, "maximum": 1 },
+                "reasonScoreThreshold": { "default": 0.35, "type": "number", "minimum": 0, "maximum": 1 },
+                "weights": {
+                  "default": {
+                    "textDeficit": 0.34,
+                    "densityDeficit": 0.26,
+                    "scriptPressure": 0.24,
+                    "structureDeficit": 0.16
+                  },
+                  "type": "object",
+                  "properties": {
+                    "textDeficit": { "default": 0.34, "type": "number", "minimum": 0, "maximum": 1 },
+                    "densityDeficit": { "default": 0.26, "type": "number", "minimum": 0, "maximum": 1 },
+                    "scriptPressure": { "default": 0.24, "type": "number", "minimum": 0, "maximum": 1 },
+                    "structureDeficit": { "default": 0.16, "type": "number", "minimum": 0, "maximum": 1 }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "browser": {
+              "default": {
+                "minimumRemainingTimeoutMs": 1000,
+                "settleTimeoutMs": 8000,
+                "settlePollMs": 250,
+                "stableSamples": 2,
+                "maxHtmlChars": 96000,
+                "minimumContentGainChars": 80,
+                "minimumContentGainRatio": 0.15
+              },
+              "type": "object",
+              "properties": {
+                "minimumRemainingTimeoutMs": { "default": 1000, "type": "integer", "minimum": 250, "maximum": 60000 },
+                "settleTimeoutMs": { "default": 8000, "type": "integer", "minimum": 250, "maximum": 300000 },
+                "settlePollMs": { "default": 250, "type": "integer", "minimum": 50, "maximum": 10000 },
+                "stableSamples": { "default": 2, "type": "integer", "minimum": 1, "maximum": 20 },
+                "maxHtmlChars": { "default": 96000, "type": "integer", "minimum": 1024, "maximum": 10000000 },
+                "minimumContentGainChars": { "default": 80, "type": "integer", "minimum": 1, "maximum": 10000000 },
+                "minimumContentGainRatio": { "default": 0.15, "type": "number", "minimum": 0, "maximum": 1000 }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "requestTimeoutMs": { "default": 180000, "type": "integer", "minimum": 1000, "maximum": 900000 },
+        "maxOperationTimeoutMs": { "default": 900000, "type": "integer", "minimum": 1000, "maximum": 900000 },
+        "allowPrivateNetworks": { "default": false, "type": "boolean" },
+        "allowSyntheticProxyAddresses": { "default": true, "type": "boolean" },
+        "userAgent": { "default": "Senera-WebTools/1.0", "type": "string", "minLength": 1, "maxLength": 256 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

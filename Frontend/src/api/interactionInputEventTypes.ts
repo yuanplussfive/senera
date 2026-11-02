@@ -1,0 +1,10 @@
+export type {
+  AgentInteractionInputAction as InteractionInputAction,
+  AgentInteractionInputValue as InteractionInputValue,
+  AgentInteractionInputContent as InteractionInputContent,
+  AgentInteractionInputProperty as InteractionInputProperty,
+  AgentInteractionInputSchema as InteractionInputSchema,
+  AgentInteractionInputEventPayload as InteractionInputEventPayload,
+  AgentInteractionInputRequestedData as InteractionInputRequestedData,
+  AgentInteractionInputResolvedData as InteractionInputResolvedData,
+} from "./generatedInteractionInputContract.js";

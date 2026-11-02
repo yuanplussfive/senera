@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schemas.senera.ai/extension-domain/v1.json",
+  "schemaVersion": 1,
+  "id": "platform",
+  "displayName": {
+    "zh-CN": "工作台平台",
+    "en-US": "Workbench Platform"
+  },
+  "description": {
+    "zh-CN": "管理 Senera 自身配置、渠道接入和角色表达等平台能力。",
+    "en-US": "Manages Senera configuration, channel integration, and platform-level resident expression."
+  },
+  "presentation": {
+    "category": "platform",
+    "icon": "tools",
+    "group": {
+      "id": "platform",
+      "title": {
+        "zh-CN": "管理工作台",
+        "en-US": "Manage the workbench"
+      }
+    },
+    "activity": {
+      "action": {
+        "zh-CN": "管理",
+        "en-US": "Manage"
+      }
+    }
+  }
+}

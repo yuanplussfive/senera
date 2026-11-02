@@ -1,0 +1,76 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "tool-search",
+  "domain": "knowledge",
+  "settingsSurface": "system-tools",
+  "presentation": {
+    "category": "tool-discovery",
+    "icon": "scan-search",
+    "group": {
+      "id": "tool-discovery",
+      "title": {
+        "zh-CN": "查找工具",
+        "en-US": "Find tools"
+      }
+    },
+    "activity": {
+      "action": {
+        "zh-CN": "检索工具",
+        "en-US": "Find tools"
+      }
+    }
+  },
+  "usageExamples": [
+    {
+      "title": { "zh-CN": "按需发现能力", "en-US": "Discover tools" },
+      "prompt": {
+        "zh-CN": "先看看有没有适合处理这个文件的工具。",
+        "en-US": "Find a suitable tool for processing this file."
+      },
+      "outcome": {
+        "zh-CN": "搜索可用工具并读取参数要求，按任务需要加载。",
+        "en-US": "Search available tools, inspect their parameters, and load them as needed."
+      }
+    }
+  ],
+  "documentation": {
+    "zh-CN": "### 先找到工具，再按需加载\n\n工具检索让 Agent 根据任务发现可用能力，而不是把所有工具说明一直放在上下文里。\n\n可以搜索名称、用途与关键词，查看候选工具的参数和要求，再选择需要的工具。不可用或尚未配置的服务应先处理配置问题，不能只靠在消息里写出工具名启用。\n\n输入框里的 `@` 是用户明确选择能力的入口；检索工具则供 Agent 按任务主动发现能力。",
+    "en-US": "### Discover tools before loading them\n\nFind capabilities for a task without keeping every tool description in context.\n\nSearch names, purposes and keywords, inspect parameters, then load the needed tool. Configure unavailable services first; mentioning a tool name does not activate it.\n\nThe composer `@` picker explicitly selects capabilities, while tool search lets the Agent discover them for its task."
+  },
+  "displayName": {
+    "zh-CN": "工具检索",
+    "en-US": "Tool Search"
+  },
+  "description": {
+    "zh-CN": "查找可用工具，查看用法并按需加载。",
+    "en-US": "Find available tools, inspect their usage, and load them when needed."
+  },
+  "priority": 10,
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/ToolSearch.tool.json",
+      "capability": "tool.search",
+      "recommendedForSkills": []
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/ToolDescribe.tool.json",
+      "capability": "tool.describe",
+      "recommendedForSkills": []
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/ToolLoad.tool.json",
+      "capability": "tool.load",
+      "recommendedForSkills": []
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/ToolUnload.tool.json",
+      "capability": "tool.unload",
+      "recommendedForSkills": []
+    }
+  ]
+}

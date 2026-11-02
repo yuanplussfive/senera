@@ -1,0 +1,60 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "shell",
+  "domain": "execute",
+  "settingsSurface": "system-tools",
+  "presentation": {
+    "category": "shell",
+    "icon": "terminal",
+    "group": {
+      "id": "shell",
+      "title": {
+        "zh-CN": "运行命令",
+        "en-US": "Run commands"
+      }
+    },
+    "activity": {
+      "action": {
+        "zh-CN": "运行命令",
+        "en-US": "Run"
+      },
+      "argumentPath": "/script",
+      "detailPaths": ["/cwd"]
+    }
+  },
+  "usageExamples": [
+    {
+      "title": { "zh-CN": "运行项目命令", "en-US": "Run project commands" },
+      "prompt": {
+        "zh-CN": "运行项目的类型检查，告诉我需要修复哪些错误。",
+        "en-US": "Run the project type check and explain any errors."
+      },
+      "outcome": {
+        "zh-CN": "在授权的执行环境中运行命令，读取输出并报告结果。",
+        "en-US": "Run commands in the authorized environment, read output, and report results."
+      }
+    }
+  ],
+  "documentation": {
+    "zh-CN": "### 在当前执行环境中运行命令\n\n适合类型检查、测试、构建、批量处理和其他终端任务。具体命令由 Agent 根据项目与环境选择，而不是固定的一组脚本。\n\n- 短命令直接读取结果。\n- 长时间运行的命令通过执行资源继续查看输出和状态。\n- 需要交互时使用已有执行的输入能力。\n\n执行前应明确工作目录。涉及安装、外部写入或破坏性操作时，仍由现有审批与权限控制。工具成功启动不等于命令成功完成，需要检查退出状态和输出。",
+    "en-US": "### Run commands in the current environment\n\nUse terminal commands for type checks, tests, builds and batch processing. Commands depend on the project and environment.\n\n- Read results of short commands directly.\n- Follow longer commands through execution resources.\n- Supply input to existing interactive executions.\n\nConfirm the working directory and respect approvals. A launched process is not a completed command; inspect output and exit status."
+  },
+  "displayName": {
+    "zh-CN": "命令执行",
+    "en-US": "Shell Commands"
+  },
+  "description": {
+    "zh-CN": "运行终端命令，处理短任务与持续运行的进程。",
+    "en-US": "Run terminal commands and manage short tasks and long-running processes."
+  },
+  "priority": 90,
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/ShellCommandTool.tool.json",
+      "capability": "shell.run",
+      "recommendedForSkills": ["senera-workbench", "memory-formation"]
+    }
+  ]
+}

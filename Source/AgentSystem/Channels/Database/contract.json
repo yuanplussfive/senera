@@ -1,0 +1,70 @@
+{
+  "id": "agent-channels",
+  "dataClass": "authoritative",
+  "versions": [
+    {
+      "version": 1,
+      "name": "channel-session-map",
+      "migration": "migrations/0001-channel-session-map.sql",
+      "snapshot": "snapshots/0001.schema.sql",
+      "migrationSha256": "6d06183183656de768db728f050958af007396206e997761b8d52446aa6350a7",
+      "snapshotSha256": "3a3ffcecaef56c3a46dd839bc0dec04b14c3d121094bca980e373378a54065b0"
+    },
+    {
+      "version": 2,
+      "name": "agent-conversation-lanes",
+      "migration": "migrations/0002-agent-conversation-lanes.sql",
+      "snapshot": "snapshots/0002.schema.sql",
+      "migrationSha256": "2ce54c5dc9059200fc21c0002efb2929a0d417898afcfc897f23d6b67070a796",
+      "snapshotSha256": "b0aabfd057d10528b2785ee2eac605ba802296e2288020439b600fa359a616e4"
+    },
+    {
+      "version": 3,
+      "name": "channel-participation",
+      "migration": "migrations/0003-channel-participation.sql",
+      "snapshot": "snapshots/0003.schema.sql",
+      "migrationSha256": "086047b094e48cd601c1aceea5c334a7b6cf3a5fa944e756c4d6a58568a179b0",
+      "snapshotSha256": "de0b3c8d8d151566c5397b4be10b1da8151752aa5593e201b7f64ba82fe1449a"
+    },
+    {
+      "version": 4,
+      "name": "participation-lifecycle",
+      "migration": "migrations/0004-participation-lifecycle.sql",
+      "snapshot": "snapshots/0004.schema.sql",
+      "migrationSha256": "e25829f752ff6e2543a58f6365cab8432fe371cc3825a84685a56af345e3cca4",
+      "snapshotSha256": "02a0a44709a3fb444497789d218528ace0090bc914e0be10ddc18a1816bcdd13"
+    },
+    {
+      "version": 5,
+      "name": "channel-outbox",
+      "migration": "migrations/0005-channel-outbox.sql",
+      "snapshot": "snapshots/0005.schema.sql",
+      "migrationSha256": "5d053c482ae39f8c31ed0215d53e91d386fbd8a373398ed185a3528ea340677f",
+      "snapshotSha256": "1bfca225a74e16a394b3759e4cc1db6e49c85ee306931320e48bf80dc77c1c37"
+    },
+    {
+      "version": 6,
+      "name": "channel-ingress",
+      "migration": "migrations/0006-channel-ingress.sql",
+      "snapshot": "snapshots/0006.schema.sql",
+      "migrationSha256": "e38019855be940ee87a9210b72760436e0b312f30757031359e65150bbd6429f",
+      "snapshotSha256": "d669c534fe3f183a5373ad683d9f639327bc659ab9d37d28b3cd015cfdf102bd"
+    },
+    {
+      "version": 7,
+      "name": "conversation-coordination",
+      "migration": "migrations/0007-conversation-coordination.sql",
+      "snapshot": "snapshots/0007.schema.sql",
+      "migrationSha256": "c7da32384f567401b70e22afa6bf47da023cbdfd5aa1790461717acae909ce9d",
+      "snapshotSha256": "a0a774f6fcaa15d8ac1ae424b8126792e6a475af10e23e9512c5f8d1450fe974"
+    },
+    {
+      "version": 8,
+      "name": "channel-authority",
+      "migration": "migrations/0008-channel-authority.sql",
+      "snapshot": "snapshots/0008.schema.sql",
+      "migrationSha256": "bf95344db488a607a489b4696f6514fb7402dab209ca0c49260436659aa11185",
+      "snapshotSha256": "8718f0444bee6dd1f1c50ba0332fe31d872ea28c7208c3df3c9719574d4f0fa7"
+    }
+  ]
+}

@@ -1,0 +1,223 @@
+import { motion } from "framer-motion";
+import { useMemo } from "react";
+import { useComposerDraft } from "./useComposerDraft";
+import { readActiveRun, useStore, DEFAULT_SESSION_TITLE } from "../../store/sessionStore";
+import type { ChatMessage, RunRecord } from "../../store/sessionStore";
+import { useChatState } from "../../store/selectors/chatSelectors";
+import { ErrorBoundary } from "../../shared/ui";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { ChatComposer } from "./ChatComposer";
+import { ChatActivityDock } from "./ChatActivityDock";
+import { ChatHeader } from "./ChatHeader";
+import { EmptyChatState } from "./EmptyChatState";
+import { HistoryRecoveryState } from "./HistoryRecoveryState";
+import { MessageList } from "./MessageList";
+import { UploadPreviewProvider } from "./UploadPreviewRegistry";
+import { motionTimings, useMotionLevel, type MotionLevel } from "../../shared/motion";
+import type { ChatPanelProps } from "./ChatPanelContracts";
+import { blocksSessionInput } from "../../store/session/sessionHydration";
+import { projectRuntimeUsageFromSessionSnapshot } from "../observability/runtimeDiagnosticProjection";
+import { readConversationAgent, readConversationDefaultModelId } from "../../store/session/sessionAgentSelection";
+
+export function ChatPanel({
+  userProfile,
+  modelConfig,
+  runtime,
+  messageActions,
+  navigationActions,
+}: ChatPanelProps): JSX.Element {
+  const activeId = useStore((s) => s.activeSessionId);
+  const activeAgent = useStore(readConversationAgent);
+  const conversationDefaultModelId = useStore(readConversationDefaultModelId);
+  const draftKey = JSON.stringify([runtime.uploadUrl, runtime.workspaceId, activeId ?? activeAgent?.id]);
+  const [composerValue, setComposerValue] = useComposerDraft(draftKey);
+  const approvalMode = useStore((s) => s.executionApprovalMode);
+  const activationCatalog = useStore((s) => s.activationCatalog);
+  const setApprovalMode = useStore((s) => s.setExecutionApprovalMode);
+  const { session, historyFailed, historyLoading, historyHydrating, hydrationState } = useChatState(activeId);
+  const assistantProfile = useMemo(
+    () =>
+      activeAgent
+        ? { name: activeAgent.name, avatarPath: activeAgent.avatarPath, avatarDataUrl: null }
+        : userProfile.assistant,
+    [activeAgent, userProfile.assistant],
+  );
+  const { level, reduceMotion, disableMotion } = useMotionLevel();
+  const effectiveMotionLevel = disableMotion ? "none" : reduceMotion ? "reduced" : level;
+  const messages = session?.messages ?? [];
+  const runs = session?.runs ?? [];
+  const hasConversationContent = hasRenderableConversationContent(messages, runs);
+  const currentRun = readActiveRun(session ?? undefined);
+  const runtimeUsage = useMemo(
+    () => projectRuntimeUsageFromSessionSnapshot(session?.runtimeSnapshot),
+    [session?.runtimeSnapshot],
+  );
+  const composerModelConfig = useMemo(
+    () => ({ ...modelConfig, defaultModelProviderId: conversationDefaultModelId }),
+    [modelConfig, conversationDefaultModelId],
+  );
+  const composerApprovalConfig = useMemo(
+    () => ({ mode: approvalMode, onSelectMode: setApprovalMode }),
+    [approvalMode, setApprovalMode],
+  );
+  const composerRuntime = useMemo(
+    () => ({
+      draftKey,
+      socketStatus: runtime.socketStatus,
+      uploadUrl: runtime.uploadUrl,
+      uploadCsrfToken: runtime.uploadCsrfToken,
+    }),
+    [draftKey, runtime.socketStatus, runtime.uploadUrl, runtime.uploadCsrfToken],
+  );
+  const isRunning = currentRun?.status === "running";
+  const isSettling = isRunning && (currentRun.outputState === "available" || currentRun.outputState === "committed");
+  const isCancelling = currentRun?.status === "cancelling";
+  const isActive = isRunning || isCancelling;
+  const composerDisabled = runtime.socketStatus !== "open" || blocksSessionInput(hydrationState) || isCancelling;
+  const shouldShowSessionCatalogLoading = hydrationState === "catalog_loading";
+  const shouldShowHistoryRecovery =
+    messages.length === 0 &&
+    !hasConversationContent &&
+    !isActive &&
+    !!session &&
+    session.messageCount > 0 &&
+    (hydrationState === "history_loading" || hydrationState === "history_failed");
+  return (
+    <UploadPreviewProvider>
+      <main className="relative flex h-full min-w-0 flex-1 flex-col bg-transparent" data-agent-workspace>
+        <ChatHeader
+          title={session?.title ?? DEFAULT_SESSION_TITLE}
+          runStatus={currentRun?.status}
+          waitingForApproval={currentRun?.activeFlags?.includes("waiting_for_approval") === true}
+          waitingForInput={currentRun?.activeFlags?.includes("waiting_for_input") === true}
+          sandboxStatus={runtime.sandboxStatus}
+          onOpenSessionPanel={navigationActions?.onOpenSessionPanel}
+          onOpenWorkflowPanel={navigationActions?.onOpenWorkflowPanel}
+        />
+        <>
+          {shouldShowSessionCatalogLoading ? (
+            <ChatContentMotion key={`catalog:${activeId ?? "none"}`} motionLevel={effectiveMotionLevel}>
+              <div className="flex min-h-0 flex-1" aria-busy="true" data-session-catalog-loading>
+                <span className="sr-only">{frontendMessage("app.loading")}</span>
+              </div>
+            </ChatContentMotion>
+          ) : shouldShowHistoryRecovery ? (
+            <ChatContentMotion
+              key={`history:${activeId}:${historyFailed ? "failed" : "loading"}`}
+              motionLevel={effectiveMotionLevel}
+            >
+              <HistoryRecoveryState
+                failed={historyFailed}
+                messageCount={session.messageCount}
+                onRetry={
+                  activeId && navigationActions?.onRetryHistory
+                    ? () => navigationActions.onRetryHistory?.(activeId)
+                    : undefined
+                }
+                retryDisabled={runtime.socketStatus !== "open"}
+              />
+            </ChatContentMotion>
+          ) : !hasConversationContent && !isActive ? (
+            <ChatContentMotion key={`empty:${activeId ?? "none"}`} motionLevel={effectiveMotionLevel}>
+              <div className="flex flex-1 items-center justify-center px-8 py-16 sm:px-12">
+                <EmptyChatState onSelectSuggestion={runtime.socketStatus === "open" ? setComposerValue : undefined} />
+              </div>
+            </ChatContentMotion>
+          ) : (
+            <ChatContentMotion key={`messages:${activeId ?? "none"}`} motionLevel={effectiveMotionLevel}>
+              <ErrorBoundary resetKey={activeId}>
+                <MessageList
+                  sessionId={session?.sessionId ?? activeId ?? ""}
+                  uploadUrl={runtime.uploadUrl}
+                  historyHydrating={historyHydrating}
+                  historyLoading={historyLoading || historyHydrating}
+                  historyWindow={session?.historyWindow}
+                  historyWindowLoading={historyLoading}
+                  historyWindowFailed={historyFailed}
+                  historyWindowDisabled={runtime.socketStatus !== "open"}
+                  onLoadHistory={navigationActions?.onLoadHistory}
+                  messages={messages}
+                  runs={runs}
+                  currentRun={isActive ? currentRun : undefined}
+                  userProfile={userProfile}
+                  assistantProfile={assistantProfile}
+                  onForkFromMessage={messageActions.onForkFromMessage}
+                  onRegenerate={messageActions.onRegenerate}
+                  onRetryRun={messageActions.onRetryRun}
+                  onContinueRun={messageActions.onContinueRun}
+                  onEditUserMessage={messageActions.onEditUserMessage}
+                  onDeleteFromMessage={messageActions.onDeleteFromMessage}
+                  onViewWorkflow={messageActions.onViewWorkflow}
+                  onResolveInteractionInput={messageActions.onResolveInteractionInput}
+                  onRecordMessageFeedback={messageActions.onRecordMessageFeedback}
+                />
+              </ErrorBoundary>
+            </ChatContentMotion>
+          )}
+        </>
+        <ChatActivityDock
+          sessionId={activeId ?? undefined}
+          runs={runs}
+          approvalDisabled={runtime.socketStatus !== "open"}
+          onResolveApproval={messageActions.onResolveApproval}
+          onResolveApprovalBatch={messageActions.onResolveApprovalBatch}
+        />
+        <ChatComposer
+          disabled={composerDisabled}
+          cancelDisabled={isCancelling}
+          running={!!isRunning}
+          settling={!!isSettling}
+          cancelling={!!isCancelling}
+          value={composerValue}
+          onValueChange={setComposerValue}
+          modelConfig={composerModelConfig}
+          approvalConfig={composerApprovalConfig}
+          runtime={composerRuntime}
+          runtimeUsage={runtimeUsage}
+          activationCatalog={activationCatalog}
+          onSend={messageActions.onSend}
+          onCancel={messageActions.onCancel}
+          onOpenSettings={navigationActions?.onOpenSettings}
+          onOpenLocalClient={navigationActions?.onOpenLocalClient}
+        />
+      </main>
+    </UploadPreviewProvider>
+  );
+}
+
+export function hasRenderableConversationContent(
+  messages: readonly ChatMessage[],
+  runs: readonly RunRecord[],
+): boolean {
+  return messages.length > 0 || runs.length > 0;
+}
+
+function ChatContentMotion({
+  children,
+  motionLevel,
+}: {
+  children: JSX.Element;
+  motionLevel: MotionLevel;
+}): JSX.Element {
+  return (
+    <motion.div
+      className="flex min-h-0 flex-1 flex-col"
+      initial={false}
+      animate="show"
+      variants={readChatContentVariants(motionLevel)}
+      transition={motionLevel === "none" ? { duration: 0 } : motionTimings.chatSwitch}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+function readChatContentVariants(level: MotionLevel) {
+  if (level === "none") {
+    return { show: { opacity: 1 } };
+  }
+  if (level === "reduced") {
+    return { show: { opacity: 1 } };
+  }
+  return { show: { opacity: 1, y: 0 } };
+}

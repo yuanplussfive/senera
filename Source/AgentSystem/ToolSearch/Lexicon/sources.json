@@ -1,0 +1,118 @@
+{
+  "version": 2,
+  "updatedAt": "2026-10-28",
+  "description": "Tokenization and retrieval word lists for the tool-search tokenizer. UTF-8, LF, one entry per line, no comments.",
+  "files": [
+    {
+      "path": "stopwords/en-core.txt",
+      "language": "en",
+      "kind": "stopwords",
+      "tier": "core",
+      "entries": 159,
+      "inputSha256": "591db6d0b145913802ba4faf4fdea099a6350cdc1b0850b73956bdb35d19c09d",
+      "licenses": ["Apache-2.0", "BSD-3-Clause"],
+      "derivedFrom": [
+        {
+          "name": "Apache Lucene EnglishAnalyzer.ENGLISH_STOP_WORDS_SET",
+          "url": "https://github.com/apache/lucene/blob/main/lucene/analysis/common/src/java/org/apache/lucene/analysis/en/EnglishAnalyzer.java",
+          "license": "Apache-2.0",
+          "usage": "core set"
+        },
+        {
+          "name": "Snowball English stop word list",
+          "url": "https://snowballstem.org/algorithms/english/stop.txt",
+          "license": "BSD-3-Clause",
+          "usage": "pronouns, auxiliaries, contractions, qualifiers"
+        }
+      ],
+      "curation": [
+        "Lowercase only; one token per line.",
+        "Negators (no, not, nor, never) and negative contractions are excluded so query polarity survives.",
+        "Content verbs and nouns from the Snowball list (get, make, take, way, well, now, just) are excluded.",
+        "Snowball flags will, can, may, might and must as homonym-prone; they are kept because tool-search queries use them as function words.",
+        "Positive contractions are kept as single tokens."
+      ]
+    },
+    {
+      "path": "stopwords/en-extended.txt",
+      "language": "en",
+      "kind": "stopwords",
+      "tier": "extended",
+      "entries": 132,
+      "inputSha256": "41d4f819deaa2acc51cb83ab16b643be0d656770ca8bf63069a06c32e930d716",
+      "licenses": ["Apache-2.0", "BSD-3-Clause"],
+      "derivedFrom": [
+        {
+          "name": "Apache Lucene EnglishAnalyzer.ENGLISH_STOP_WORDS_SET",
+          "url": "https://github.com/apache/lucene/blob/main/lucene/analysis/common/src/java/org/apache/lucene/analysis/en/EnglishAnalyzer.java",
+          "license": "Apache-2.0",
+          "usage": "closed-class additions"
+        },
+        {
+          "name": "Snowball English stop word list",
+          "url": "https://snowballstem.org/algorithms/english/stop.txt",
+          "license": "BSD-3-Clause",
+          "usage": "closed-class additions"
+        }
+      ],
+      "curation": [
+        "Adds closed-class pronouns, determiners, prepositions, conjunctions, auxiliaries and discourse markers only.",
+        "Negators and negative contractions remain excluded.",
+        "Content nouns and content verbs are excluded; quantity and degree words are kept only where they act as modifiers."
+      ]
+    },
+    {
+      "path": "stopwords/zh-core.txt",
+      "language": "zh",
+      "kind": "stopwords",
+      "tier": "core",
+      "entries": 208,
+      "inputSha256": "edb3aab8dcda0110de43aff576eca53d4db2bc02831ee0e9ef391a1b3e1af4c8",
+      "licenses": ["self-authored"],
+      "derivedFrom": [
+        {
+          "name": "Modern Chinese function-word inventory: particles, pronouns, conjunctions, prepositions, auxiliaries, numerals and classifiers",
+          "url": null,
+          "license": "self-authored",
+          "usage": "curated by this project"
+        }
+      ],
+      "curation": [
+        "Negators and negative forms excluded: 不, 没, 没有, 未, 无, 非, 否, 别, 勿, 莫.",
+        "Content, existence and modal verbs excluded: 有, 会, 要, 说, 看, 做, 来, 去, 到.",
+        "Ambiguous degree and scope adverbs excluded: 只, 仅, 仅仅, 最, 总, 光.",
+        "Time units and direction nouns excluded so temporal and positional queries keep their meaning.",
+        "Unlicensed third-party Chinese lists (HIT, Baidu, SCU, stopwords-iso) were not copied."
+      ]
+    },
+    {
+      "path": "stopwords/zh-extended.txt",
+      "language": "zh",
+      "kind": "stopwords",
+      "tier": "extended",
+      "entries": 117,
+      "inputSha256": "3f605fad5320b9c1764120f8ff4fcc25adf7822cb52b49fafe19ea3b1580e373",
+      "licenses": ["MIT"],
+      "derivedFrom": [
+        {
+          "name": "jieba dictionary exposed by @node-rs/jieba/dict",
+          "url": "https://www.npmjs.com/package/@node-rs/jieba",
+          "license": "MIT",
+          "usage": "candidate validation: every entry carries a function POS tag and a dictionary frequency of at least 100"
+        }
+      ],
+      "curation": [
+        "Only words tagged u, y, p, r, c or d in jieba's dictionary were accepted.",
+        "Every entry was hand-reviewed; content nouns, time nouns and verb phrases were rejected.",
+        "Negators and polarity-bearing forms remain excluded.",
+        "No third-party Chinese stopword list was copied."
+      ]
+    }
+  ],
+  "notes": [
+    "These files are data only; AgentDefaultCatalog still holds the active retrieval defaults.",
+    "English totals 291 entries across core and extended; Chinese totals 325.",
+    "The active default list has 65 entries; en-core plus en-extended covers all of them except 'not', which is intentionally retained as a query token.",
+    "Chinese tokenization continues to rely on jieba part-of-speech filtering; zh-core and zh-extended are for consumers that need a literal list."
+  ]
+}

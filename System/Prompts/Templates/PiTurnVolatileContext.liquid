@@ -1,0 +1,7 @@
+{% if DelegatedRole.enabled and DelegatedRole.mode == "append" %}
+<delegated_role mode="{{ DelegatedRole.mode | escape }}">
+  {{ DelegatedRole.content | escape }}
+</delegated_role>
+{% endif %}
+
+{{ LiveStateWire }}

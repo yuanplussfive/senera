@@ -1,0 +1,29 @@
+.workspace-json-tree {
+  color: var(--content-primary);
+  font-family: var(--theme-mono-font-family);
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+
+.workspace-json-surface button {
+  color: var(--content-muted);
+}
+
+[data-workspace-code] diffs-container {
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+[data-workspace-code] {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+[data-workspace-code] .workspace-source-viewport {
+  min-width: 0;
+  min-height: 0;
+  overscroll-behavior: contain;
+  overflow-anchor: none;
+}

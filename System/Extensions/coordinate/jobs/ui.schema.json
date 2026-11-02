@@ -1,0 +1,103 @@
+{
+  "form": {
+    "version": 1,
+    "sections": [
+      {
+        "id": "delivery",
+        "label": {
+          "zh-CN": "后台任务交付",
+          "en-US": "Background job delivery"
+        },
+        "fields": [
+          {
+            "path": ["waitTimeoutMs"],
+            "label": {
+              "zh-CN": "默认等待时间",
+              "en-US": "Default wait"
+            },
+            "type": "number",
+            "required": false,
+            "essential": true,
+            "defaultValue": 30000,
+            "min": 0,
+            "step": 1,
+            "durationUnit": "milliseconds"
+          },
+          {
+            "path": ["maxWaitTimeoutMs"],
+            "label": {
+              "zh-CN": "最长等待时间",
+              "en-US": "Maximum wait"
+            },
+            "type": "number",
+            "required": false,
+            "essential": true,
+            "defaultValue": 600000,
+            "min": 1,
+            "step": 1,
+            "durationUnit": "milliseconds"
+          },
+          {
+            "path": ["completionDelivery"],
+            "label": {
+              "zh-CN": "完成交付方式",
+              "en-US": "Completion delivery"
+            },
+            "type": "string",
+            "required": false,
+            "essential": true,
+            "defaultValue": "wakeup",
+            "description": {
+              "zh-CN": "唤醒会自动继续会话；静默仅保存通知，等待下一次正常对话读取。",
+              "en-US": "Wakeup continues an idle session. Quiet keeps notices for the next ordinary turn."
+            },
+            "options": ["wakeup", "quiet"],
+            "optionLabels": {
+              "wakeup": {
+                "zh-CN": "自动唤醒",
+                "en-US": "Wakeup"
+              },
+              "quiet": {
+                "zh-CN": "静默保存",
+                "en-US": "Quiet"
+              }
+            }
+          },
+          {
+            "path": ["maxConsecutiveWakes"],
+            "label": {
+              "zh-CN": "连续自动唤醒上限",
+              "en-US": "Consecutive wake limit"
+            },
+            "type": "number",
+            "required": false,
+            "essential": true,
+            "min": 0,
+            "step": 1,
+            "description": {
+              "zh-CN": "留空表示不限；0 表示禁止完成通知单独启动新一轮。用户新消息会重置计数，正在运行的会话仍可读取结果。",
+              "en-US": "Empty is unlimited; zero prevents completion-only turns. Human input resets the budget; active work may still receive results."
+            }
+          },
+          {
+            "path": ["inlineOutputBytes"],
+            "label": {
+              "zh-CN": "通知内附结果上限",
+              "en-US": "Inline result bytes"
+            },
+            "type": "number",
+            "required": false,
+            "essential": true,
+            "defaultValue": 2048,
+            "min": 0,
+            "step": 1,
+            "description": {
+              "zh-CN": "较小的结果直接附在完成通知中；超过上限时按需使用 job_output 读取。0 关闭。",
+              "en-US": "Small results are included in notices. Read larger results with job_output; zero disables inline output."
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

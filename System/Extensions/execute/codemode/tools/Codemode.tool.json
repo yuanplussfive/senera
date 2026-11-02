@@ -1,0 +1,124 @@
+{
+  "name": "Codemode",
+  "loading": "Bootstrap",
+  "description": "Run an async JavaScript body in QuickJS. Reuse known current contracts; for unknown tools use await searchTools(query, {limit?, namespace?}), await describeTool(name), or await describeNamespace(namespace) with producer namespaces returned by discovery. searchTools returns {tools:[{name,namespace?,description,inputSchema,outputSchema?,declaration}],hasMore,status?,reason?,diagnostics?}; describeTool returns one such entry; describeNamespace returns {name,title?,description?,tools:string[]}. ALL_TOOLS lists callable names and declarations. No source-code search is needed to learn a tool contract. Call tools.<name>(args) directly: it resolves to the business value described by outputSchema, without observation/detail/result wrappers. A failed call rejects; a valid empty collection is a successful result. Check required fields and throw on a structure mismatch instead of silently substituting empty objects or arrays. Await every call. Use Promise.allSettled for independent reads, inspect every rejection, and sequence dependent operations or mutations. Reuse variables for prior results; store(key,value)/load(key) persist small JSON values, resource references and cursors on this session branch after success. Large child results remain in Artifacts. Use text(value) or return value to deliver only needed fields, sources, completeness and failures; image({data,mimeType}) emits images. No Node, require, imports, filesystem, fetch or timers; external work uses authorized tools with normal approvals and scheduling. The callable catalog is frozen per script; searchTools only searches this catalog, and newly registered tools become available next script. Interactive and inference-control tools must be called directly. Failed scripts keep partial output and call statuses; inspect them before retrying side effects, which are not rolled back.",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S",
+        "description": "Async JavaScript function body; top-level await and return are supported."
+      }
+    },
+    "required": ["code"],
+    "additionalProperties": false
+  },
+  "permissions": [],
+  "execution": { "Targets": ["Sandbox", "Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "OneShot",
+    "ResultAssessment": "Unassessed",
+    "Scheduling": "SelfManaged",
+    "Composition": "orchestrator",
+    "Capabilities": { "Cancellation": true }
+  },
+  "presentation": {
+    "category": "codemode",
+    "icon": "terminal",
+    "activity": { "action": { "zh-CN": "组合工具", "en-US": "Compose tools" }, "argumentPath": "/code" },
+    "preview": { "body": { "pointer": "/output", "from": "result" } }
+  },
+  "search": {
+    "Summary": "用 JavaScript 组合授权工具，批量读取、计算和筛选结果。",
+    "Capabilities": [
+      {
+        "Id": "host.codemode",
+        "Title": "Compose tools with JavaScript",
+        "Description": "Run sandboxed JavaScript over the current authorized tool catalog.",
+        "Aliases": ["codemode", "工具编排", "batch tools", "parallel queries"]
+      }
+    ],
+    "UseCases": ["需要组合多个工具、批量查询或在交给模型前筛选大型结果。"]
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "status": { "type": "string", "enum": ["completed", "failed"] },
+      "output": {
+        "type": "array",
+        "items": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string", "const": "text" },
+                "text": { "type": "string" },
+                "console": { "type": "boolean", "const": true }
+              },
+              "required": ["type", "text"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string", "const": "image" },
+                "data": { "type": "string" },
+                "mimeType": { "type": "string" }
+              },
+              "required": ["type", "data", "mimeType"],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "value": { "allOf": [{ "$ref": "#/definitions/__schema0" }] },
+      "calls": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "status": { "type": "string", "enum": ["ok", "error", "cancelled"] },
+            "durationMs": { "type": "number", "minimum": 0 }
+          },
+          "required": ["name", "status", "durationMs"],
+          "additionalProperties": false
+        }
+      },
+      "durationMs": { "type": "number", "minimum": 0 },
+      "error": {
+        "type": "object",
+        "properties": {
+          "kind": { "type": "string", "enum": ["script", "timeout", "aborted", "sandbox"] },
+          "name": { "type": "string" },
+          "message": { "type": "string" },
+          "stack": { "type": "string" }
+        },
+        "required": ["kind", "message"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["status", "output", "calls", "durationMs"],
+    "additionalProperties": false,
+    "definitions": {
+      "__schema0": {
+        "anyOf": [
+          { "type": "string" },
+          { "type": "number" },
+          { "type": "boolean" },
+          { "type": "null" },
+          { "type": "array", "items": { "$ref": "#/definitions/__schema0" } },
+          {
+            "type": "object",
+            "propertyNames": { "type": "string" },
+            "additionalProperties": { "$ref": "#/definitions/__schema0" }
+          }
+        ]
+      }
+    }
+  }
+}
