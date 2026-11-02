@@ -197,7 +197,7 @@ describe("AgentNativeBrowserDriver command budgets", () => {
     const session = await fixture.driver.createSession(fixture.sessionOptions);
     try {
       await expect(session.execute("wait_ms", { ms: 5_000 }, { timeoutMs: 1_000 })).rejects.toThrow(
-        /timed out|exceeds the \d+ms operation budget/u,
+        /timed out|exceeds the (?:remaining )?\d+ms operation budget/u,
       );
     } finally {
       await fixture.dispose();

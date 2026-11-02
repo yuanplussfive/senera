@@ -1,7 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import vue from "@vitejs/plugin-vue";
-import yaml from "@modyfi/vite-plugin-yaml";
+import yaml from "@rollup/plugin-yaml";
 import { viteStaticCopy } from "vite-plugin-static-copy";
 import type { PluginOption } from "vite";
 import qfaceInfo from "../client/src/renderer/src/assets/img/qq-face/public/assets/qq_emoji/_index.json" with { type: "json" };

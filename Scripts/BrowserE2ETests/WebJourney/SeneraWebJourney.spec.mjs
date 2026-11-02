@@ -121,7 +121,7 @@ test.describe("authenticationMode=disabled", () => {
     const executionTab = dock.getByRole("tab", { name: "执行" });
     const workspaceTab = dock.getByRole("tab", { name: "工作区", exact: true });
     const agentsTab = dock.getByRole("tab", { name: "子代理" });
-    const terminalTab = dock.getByRole("tab", { name: "终端" });
+    const insightsTab = dock.getByRole("tab", { name: "洞察" });
 
     await executionTab.focus();
     await expect(executionTab).toBeFocused();
@@ -136,11 +136,11 @@ test.describe("authenticationMode=disabled", () => {
     await expect(dock.locator("[data-agent-board-panel]")).toBeVisible();
 
     await agentsTab.press("ArrowRight");
-    await expect(terminalTab).toBeFocused();
-    await expect(terminalTab).toHaveAttribute("aria-selected", "true");
-    await expect(dock.locator('[data-terminal-dock="dock"]')).toBeVisible();
+    await expect(insightsTab).toBeFocused();
+    await expect(insightsTab).toHaveAttribute("aria-selected", "true");
+    await expect(dock.getByRole("tabpanel", { name: "洞察", exact: true })).toBeVisible();
 
-    await terminalTab.press("ArrowLeft");
+    await insightsTab.press("ArrowLeft");
     await expect(agentsTab).toBeFocused();
     await expect(agentsTab).toHaveAttribute("aria-selected", "true");
     await expect(dock.locator("[data-agent-board-panel]")).toBeVisible();

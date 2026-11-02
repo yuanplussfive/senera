@@ -55,8 +55,9 @@ test("packaged mobile console authenticates, uploads and previews through the re
   await expect.poll(() => image.evaluate((node) => node.naturalWidth)).toBeGreaterThan(0);
   await image.click();
   await expect(page.locator("[data-image-canvas-viewer]")).toBeVisible();
-  await page.locator("[data-image-preview-dialog]").getByRole("button", { name: "关闭", exact: true }).click();
-  await expect(page.locator("[data-image-preview-dialog]")).toHaveCount(0);
+  const previewDrawer = page.getByRole("dialog", { name: "工作区", exact: true });
+  await previewDrawer.getByRole("button", { name: "关闭", exact: true }).click();
+  await expect(previewDrawer).toBeHidden();
 
   await page.getByRole("button", { name: "工具", exact: true }).click();
   await page.locator("[data-workspace-menu-trigger]").click();

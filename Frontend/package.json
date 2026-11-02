@@ -131,12 +131,12 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.3",
-    "@modyfi/vite-plugin-yaml": "^1.1.0",
+    "@rollup/plugin-yaml": "^5.0.1",
     "@types/animejs": "^3.1.13",
     "@types/jsonpath": "^0.2.4",
     "@types/node": "^25.6.2",
     "@vitejs/plugin-vue": "^6.0.0",
-    "shadcn": "4.14.1",
+    "shadcn": "4.23.0",
     "vite-plugin-static-copy": "^3.1.2",
     "vue-tsc": "^3.3.8"
   }

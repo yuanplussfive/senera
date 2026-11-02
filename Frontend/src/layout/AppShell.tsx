@@ -288,6 +288,7 @@ export function AppShell({
 
   useEffect(() => {
     if (previousResponsiveLayoutKeyRef.current === responsiveLayoutKey) return;
+    const hadLayout = previousResponsiveLayoutKeyRef.current !== null;
     previousResponsiveLayoutKeyRef.current = responsiveLayoutKey;
     const hadPersistentWorkflowPanel = previousPersistentWorkflowPanelRef.current;
     previousPersistentWorkflowPanelRef.current = responsiveMode.hasPersistentWorkflowPanel;
@@ -296,9 +297,19 @@ export function AppShell({
       setSidebarCollapsed(entryPlan.sidebarCollapsed);
     }
     if (entryPlan.rightPanelCollapsed !== null && !hadPersistentWorkflowPanel) {
-      setRightPanelCollapsed(entryPlan.rightPanelCollapsed);
+      setRightPanelCollapsed(hadLayout && workflowDrawerOpen ? false : entryPlan.rightPanelCollapsed);
+    } else if (hadLayout && hadPersistentWorkflowPanel && !responsiveMode.hasPersistentWorkflowPanel) {
+      onWorkflowDrawerOpenChange(!rightPanelCollapsed);
     }
-  }, [responsiveLayoutKey, responsiveMode, setRightPanelCollapsed, setSidebarCollapsed]);
+  }, [
+    onWorkflowDrawerOpenChange,
+    responsiveLayoutKey,
+    responsiveMode,
+    rightPanelCollapsed,
+    setRightPanelCollapsed,
+    setSidebarCollapsed,
+    workflowDrawerOpen,
+  ]);
 
   const workflowPanelInline = renderPlan.workflowPanelLayout === "inline";
   const sessionPanelTransition: Transition =

@@ -68,7 +68,7 @@ const modelProvider: ResolvedAgentModelProviderConfig = {
   RetryMaxDelayMs: 10_000,
   RetryAfterMaxDelayMs: 60_000,
   Headers: {},
-  Capabilities: {},
+  Capabilities: { Chat: true },
 };
 
 const diagnostics: AgentPiDiagnosticEvent[] = [];

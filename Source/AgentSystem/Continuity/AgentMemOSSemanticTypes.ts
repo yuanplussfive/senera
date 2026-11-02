@@ -4,6 +4,7 @@ import { z } from "zod";
 import { AgentMemoryRetentionSchema } from "./AgentMemoryRetention.js";
 import { DefaultAgentTimeZone, formatAgentTimeOffset } from "../Time/AgentTime.js";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
+import { defineSeneraProtocol } from "../Core/AgentProtocolIdentity.js";
 import { agentMemOSReference } from "./AgentMemOSReference.js";
 import type { AgentMemoryEpisodeRecord, AgentMemorySourceRecord } from "../Memory/AgentMemorySourceRepository.js";
 import type { AgentStateCard } from "../StateCard/AgentStateCardTypes.js";
@@ -19,7 +20,7 @@ export const AgentMemOSTags = {
   stateCard: "state-card",
 } as const;
 
-export const AgentMemOSSchemaVersion = "senera.memory.v2";
+export const AgentMemOSSchemaVersion = defineSeneraProtocol("memory", 2).type;
 const SemanticDomain = "semantic";
 const ToolRoutingDomain = "tool-routing";
 const SemanticScopes = ["workspace", "session", "period"] as const;

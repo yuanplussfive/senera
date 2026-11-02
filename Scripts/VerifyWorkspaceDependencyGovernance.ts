@@ -82,26 +82,25 @@ const RootRuntimeEntrypoints = Object.freeze({
   source: "./Source/AgentSystem/Runtime/AgentSystemRuntime.ts",
   compiled: "./Dist/Source/AgentSystem/Runtime/AgentSystemRuntime.js",
 });
-const rootOwnedToolchainDependencies = new Map(
-  Object.entries({
-    "@playwright/test": "^1.62.0",
-    "@tailwindcss/vite": "^4.3.3",
-    "@testing-library/jest-dom": "^6.9.1",
-    "@testing-library/react": "^16.3.2",
-    "@testing-library/user-event": "^14.6.1",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
-    "@vitejs/plugin-react": "^4.7.0",
-    "@vitest/coverage-v8": "^4.1.11",
-    jsdom: "^29.1.1",
-    prettier: "^3.9.5",
-    tailwindcss: "^4.3.3",
-    typescript: "^6.0.3",
-    tsx: "^4.22.4",
-    vite: "^7.3.6",
-    vitest: "^4.1.11",
-  }),
-);
+// package.json owns versions; this policy only owns the installation boundary.
+const rootOwnedToolchainDependencies = new Set([
+  "@playwright/test",
+  "@tailwindcss/vite",
+  "@testing-library/jest-dom",
+  "@testing-library/react",
+  "@testing-library/user-event",
+  "@types/react",
+  "@types/react-dom",
+  "@vitejs/plugin-react",
+  "@vitest/coverage-v8",
+  "jsdom",
+  "prettier",
+  "tailwindcss",
+  "typescript",
+  "tsx",
+  "vite",
+  "vitest",
+]);
 const productReleaseWorkflow = readTextFile(path.join(workspaceRoot, ".github", "workflows", "release.yml"));
 const violations = [
   ...inspectWorkspaceCoverage(),
@@ -311,12 +310,15 @@ function inspectRootDependencyHygiene(): string[] {
 }
 
 function inspectRootToolchainDependencies(): string[] {
-  return inspectDependencies(
-    rootPackage,
-    "package.json",
-    Object.fromEntries(rootOwnedToolchainDependencies),
-    "devDependencies",
-  );
+  const dependencies = rootPackage.devDependencies ?? {};
+  return [
+    ...[...rootOwnedToolchainDependencies]
+      .filter((name) => !dependencies[name]?.trim())
+      .map((name) => `package.json devDependencies must declare root-owned toolchain dependency ${name}.`),
+    ...(dependencies.vitest === dependencies["@vitest/coverage-v8"]
+      ? []
+      : ["package.json must keep vitest and @vitest/coverage-v8 on the same version range."]),
+  ];
 }
 
 function inspectWorkspaceToolchainDependencyBoundaries(): string[] {
@@ -618,17 +620,6 @@ function inspectWorkspaceLockFiles(): string[] {
         "Keep dependency resolution in the root package-lock.json; do not commit workspace-local package-lock.json files.",
       ].join(" "),
     );
-}
-
-function inspectDependencies(
-  packageJson: PackageJson,
-  packagePath: string,
-  expectedDependencies: Record<string, string>,
-  dependencyField: "dependencies" | "devDependencies" = "dependencies",
-): string[] {
-  return Object.entries(expectedDependencies)
-    .filter(([name, version]) => packageJson[dependencyField]?.[name] !== version)
-    .map(([name, version]) => `${packagePath} ${dependencyField} ${name} must be: ${version}`);
 }
 
 function isElectronBuilderFileSet(value: string | ElectronBuilderFileSet): value is ElectronBuilderFileSet {

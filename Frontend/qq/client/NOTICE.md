@@ -71,6 +71,10 @@ server state; essence contents reuse the client's complete message renderer.
 
 Bundled upstream resources retain their own license notices:
 
+Senera retains QFace as a resource snapshot. Its standalone demonstration site,
+development dependencies, lockfile and resource-generation tooling are omitted;
+the client uses the root workspace dependency manifest and lockfile.
+
 - QFace: https://github.com/koishijs/QFace,
   revision `8fac1fa62c16e91e3221b439ad3f9f2f5c4b1f1d`,
   in `src/renderer/src/assets/img/qq-face/`.
