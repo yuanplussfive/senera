@@ -175,8 +175,8 @@ function projectSessionListItem(state: StoreState, item: SessionListItem): void 
       const persistedRuntimeSnapshot = state.runtimeSnapshotsBySession[item.sessionId];
       if (persistedRuntimeSnapshot) existing.runtimeSnapshot = persistedRuntimeSnapshot;
     }
-    if (item.modelProviderId) {
-      state.selectedModelProviderIdsBySession[item.sessionId] = item.modelProviderId;
+    if (item.modelPreference) {
+      state.selectedModelProviderIdsBySession[item.sessionId] = item.modelPreference.modelProviderId;
     }
     if (state.historyLoadingIds[item.sessionId]) {
       state.historyActiveRequestIds[item.sessionId] = item.activeRequestId ?? null;
@@ -203,8 +203,8 @@ function projectSessionListItem(state: StoreState, item: SessionListItem): void 
     ...(item.effectiveModel ? { effectiveModel: item.effectiveModel } : {}),
     ...(item.modelPreference ? { modelPreference: item.modelPreference } : {}),
   };
-  if (item.modelProviderId) {
-    state.selectedModelProviderIdsBySession[item.sessionId] = item.modelProviderId;
+  if (item.modelPreference) {
+    state.selectedModelProviderIdsBySession[item.sessionId] = item.modelPreference.modelProviderId;
   }
   state.sessions[item.sessionId] = session;
   settleStaleHistoryLoading(state, session);

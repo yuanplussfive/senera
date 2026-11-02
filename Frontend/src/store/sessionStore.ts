@@ -254,9 +254,10 @@ export const useStore = create<StoreState>()(
         set((state) => {
           delete state.pendingDeletedSessionIds[sessionId];
           state.pendingCreatedSessionIds[sessionId] = true;
-          const initialModelId = modelProviderId ?? state.defaultModelProviderId;
-          if (initialModelId) {
-            state.selectedModelProviderIdsBySession[sessionId] = initialModelId;
+          // Only an explicit choice is remembered; a conversation without one inherits the
+          // configured default and keeps following it when that default changes.
+          if (modelProviderId) {
+            state.selectedModelProviderIdsBySession[sessionId] = modelProviderId;
           }
           if (state.sessions[sessionId]) {
             if (!state.sessionOrder.includes(sessionId)) {

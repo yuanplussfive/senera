@@ -41,6 +41,7 @@ export interface GroupedSettingsSectionSearchResult {
 
 export const settingsSectionGroups = [
   defineSettingsSectionGroup("model", "settings.group.model", ["model-service", "model-roles"]),
+  defineSettingsSectionGroup("personal", "settings.group.personal", ["general", "appearance"]),
   defineSettingsSectionGroup("capabilities", "settings.group.capabilities", [
     "runtime",
     "prompt",
@@ -48,7 +49,6 @@ export const settingsSectionGroups = [
     "retrieval",
   ]),
   defineSettingsSectionGroup("tools", "settings.group.tools", ["system-tools", "dependencies", "channels"]),
-  defineSettingsSectionGroup("personal", "settings.group.personal", ["general", "appearance"]),
   defineSettingsSectionGroup("system", "settings.group.system", ["storage", "about"]),
 ] as const satisfies readonly SettingsSectionGroupDefinition[];
 

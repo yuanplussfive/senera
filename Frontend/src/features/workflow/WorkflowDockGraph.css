@@ -148,7 +148,7 @@ button.workflow-dock-entry-row:hover {
 button.workflow-dock-entry-row:focus-visible,
 button.workflow-dock-batch-heading:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--accent-focus);
+  box-shadow: 0 0 0 2px var(--accent-focus-ring);
 }
 
 .workflow-dock-entry-phrase {
@@ -353,7 +353,7 @@ button.workflow-dock-batch-heading:hover {
 
 .workflow-dock-result-row--link:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--accent-focus);
+  box-shadow: 0 0 0 2px var(--accent-focus-ring);
 }
 
 .workflow-dock-result-pair > :first-child,
@@ -399,7 +399,7 @@ button.workflow-dock-result-more:focus-visible {
 
 button.workflow-dock-result-more:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--accent-focus);
+  box-shadow: 0 0 0 2px var(--accent-focus-ring);
 }
 
 [data-workflow-dock-graph] button,

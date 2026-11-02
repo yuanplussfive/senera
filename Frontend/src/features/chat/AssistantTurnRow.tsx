@@ -1,5 +1,6 @@
 import { lazy, memo, Suspense, useEffect, useId, useState } from "react";
 import type { InteractionInputAction, InteractionInputContent } from "../../api/eventTypes";
+import type { FeedbackCategory, FeedbackRating } from "../../api/feedbackEventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import type { ChatMessage, ConversationIdentity } from "../../store/sessionStore";
@@ -11,6 +12,7 @@ import { readRunStatusLabel } from "../workflow/stepPresentation";
 import { AssistantMessageBody } from "./AssistantMessageBody";
 import { InteractionInputStrip } from "./InteractionInputStrip";
 import { MessageActions } from "./MessageActions";
+import { MessageFeedbackControl } from "./MessageFeedbackControl";
 import { MessageMetrics } from "./MessageMetrics";
 import { AssistantMessageAvatar, MessageMeta } from "./MessageChrome";
 import {
@@ -58,9 +60,16 @@ export interface AssistantTurnRowProps {
     action: InteractionInputAction,
     content?: InteractionInputContent,
   ) => void;
+  onRecordMessageFeedback?: (
+    sessionId: string,
+    requestId: string,
+    rating: FeedbackRating | null,
+    category?: FeedbackCategory,
+  ) => void;
 }
 
 export const AssistantTurnRow = memo(function AssistantTurnRow({
+  sessionId,
   turn,
   assistantProfile = DEFAULT_ASSISTANT_PROFILE,
   showInlineActions,
@@ -69,6 +78,7 @@ export const AssistantTurnRow = memo(function AssistantTurnRow({
   onDeleteFromMessage,
   onViewWorkflow,
   onResolveInteractionInput,
+  onRecordMessageFeedback,
 }: AssistantTurnRowProps): JSX.Element {
   const { run } = turn;
   const runRequestId = run?.requestId;
@@ -193,39 +203,54 @@ export const AssistantTurnRow = memo(function AssistantTurnRow({
             </Suspense>
           ) : null}
 
-          <div
-            className={cn(
-              "mt-3 flex min-h-6 min-w-0 items-center gap-3 overflow-hidden opacity-0 pointer-events-none transition-opacity group-hover/msg:opacity-100 group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto empty:hidden",
-              showInlineActions && "opacity-100 pointer-events-auto",
-            )}
-          >
-            <MessageMetrics
-              role="assistant"
-              usage={run?.usage ?? actionMessage?.metadata?.run?.usage}
-              run={run}
-              modelProvider={run?.modelProvider ?? actionMessage?.metadata?.run?.modelProvider}
-            />
+          {/* Hover-only metadata is suspended below the turn without reserving
+              layout. When it is always visible (touch/compact), it returns to
+              flow so it cannot overlap the next turn. */}
+          <div className={cn("relative", !showInlineActions && "h-0")}>
+            <div
+              className={cn(
+                "flex min-h-6 min-w-0 items-center gap-3 select-none empty:hidden",
+                showInlineActions
+                  ? "mt-3"
+                  : "absolute inset-x-0 top-0 pt-1 opacity-0 pointer-events-none transition-opacity group-hover/msg:opacity-100 group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto",
+              )}
+              data-message-hover-meta
+            >
+              <MessageMetrics
+                role="assistant"
+                usage={run?.usage ?? actionMessage?.metadata?.run?.usage}
+                run={run}
+                modelProvider={run?.modelProvider ?? actionMessage?.metadata?.run?.modelProvider}
+              />
 
-            {forkBoundary ? (
-              <div className="ml-auto flex min-w-0">
-                <MessageActions
-                  content={copyContent}
-                  placement="left"
-                  hasRequestId
-                  hasWorkflow={!!run && !!(actionMessage ?? fallbackMessage)}
-                  allowFork
-                  allowMutation={!!actionMessage}
-                  allowCopy={!!copyContent}
-                  onFork={() => onForkFromMessage(forkBoundary)}
-                  onRegenerate={() => actionMessage && onRegenerate(actionMessage)}
-                  onDelete={() => actionMessage && onDeleteFromMessage(actionMessage)}
-                  onViewWorkflow={() => {
-                    const workflowMessage = actionMessage ?? fallbackMessage;
-                    if (workflowMessage) onViewWorkflow(workflowMessage);
-                  }}
-                />
-              </div>
-            ) : null}
+              {forkBoundary ? (
+                <div className="ml-auto flex min-w-0 items-center gap-1">
+                  {actionMessage && turn.requestId && onRecordMessageFeedback ? (
+                    <MessageFeedbackControl
+                      sessionId={sessionId}
+                      requestId={turn.requestId}
+                      onRecord={onRecordMessageFeedback}
+                    />
+                  ) : null}
+                  <MessageActions
+                    content={copyContent}
+                    placement="left"
+                    hasRequestId
+                    hasWorkflow={!!run && !!(actionMessage ?? fallbackMessage)}
+                    allowFork
+                    allowMutation={!!actionMessage}
+                    allowCopy={!!copyContent}
+                    onFork={() => onForkFromMessage(forkBoundary)}
+                    onRegenerate={() => actionMessage && onRegenerate(actionMessage)}
+                    onDelete={() => actionMessage && onDeleteFromMessage(actionMessage)}
+                    onViewWorkflow={() => {
+                      const workflowMessage = actionMessage ?? fallbackMessage;
+                      if (workflowMessage) onViewWorkflow(workflowMessage);
+                    }}
+                  />
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       </div>
@@ -299,7 +324,8 @@ function areAssistantTurnRowPropsEqual(previous: AssistantTurnRowProps, next: As
     previous.onRegenerate !== next.onRegenerate ||
     previous.onDeleteFromMessage !== next.onDeleteFromMessage ||
     previous.onViewWorkflow !== next.onViewWorkflow ||
-    previous.onResolveInteractionInput !== next.onResolveInteractionInput
+    previous.onResolveInteractionInput !== next.onResolveInteractionInput ||
+    previous.onRecordMessageFeedback !== next.onRecordMessageFeedback
   ) {
     return false;
   }

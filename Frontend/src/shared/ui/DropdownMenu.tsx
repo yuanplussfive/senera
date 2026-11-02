@@ -4,7 +4,7 @@ import { cn } from "../../lib/util";
 import { useResponsiveMode } from "../responsive";
 import { AppIcon } from "./AppIcon";
 import { metaLabelClassName } from "./MetaLabel";
-import { MenuItemContent, menuItemClassName, menuSeparatorClassName, menuSurfaceClassName } from "./MenuShared";
+import { MenuItemContent, menuItemClassName, menuSeparatorClassName, overlaySurfaceClassName } from "./MenuShared";
 
 export function DropdownMenu({
   modal = false,
@@ -52,7 +52,7 @@ export const DropdownMenuContent = forwardRef<HTMLDivElement, ContentProps>(
         align={align}
         sideOffset={sideOffset}
         collisionPadding={collisionPadding}
-        className={cn(menuSurfaceClassName, "dropdown-menu-surface", className)}
+        className={cn(overlaySurfaceClassName, "dropdown-menu-surface", className)}
         onPointerDown={(event) => {
           onPointerDown?.(event);
           event.stopPropagation();
@@ -114,7 +114,7 @@ export const DropdownMenuSubContent = forwardRef<HTMLDivElement, SubContentProps
         sideOffset={sideOffset}
         alignOffset={alignOffset}
         collisionPadding={collisionPadding}
-        className={cn(menuSurfaceClassName, "dropdown-menu-surface", className)}
+        className={cn(overlaySurfaceClassName, "dropdown-menu-surface", className)}
         onPointerDown={(event) => {
           onPointerDown?.(event);
           event.stopPropagation();
@@ -137,10 +137,12 @@ interface ItemProps extends React.ComponentPropsWithoutRef<typeof DropdownMenuPr
   destructive?: boolean;
   shortcut?: string;
   trailing?: ReactNode;
+  /** Let the item render multiple lines (title plus description) instead of one truncated line. */
+  stacked?: boolean;
 }
 
 export const DropdownMenuItem = forwardRef<HTMLDivElement, ItemProps>(
-  ({ className, icon, destructive, shortcut, trailing, children, ...props }, ref) => {
+  ({ className, icon, destructive, shortcut, trailing, stacked, children, ...props }, ref) => {
     const { isCoarsePointer } = useResponsiveMode();
 
     return (
@@ -149,7 +151,13 @@ export const DropdownMenuItem = forwardRef<HTMLDivElement, ItemProps>(
         className={menuItemClassName({ className, destructive, isCoarsePointer })}
         {...props}
       >
-        <MenuItemContent icon={icon} destructive={destructive} shortcut={shortcut} trailing={trailing}>
+        <MenuItemContent
+          icon={icon}
+          destructive={destructive}
+          shortcut={shortcut}
+          trailing={trailing}
+          stacked={stacked}
+        >
           {children}
         </MenuItemContent>
       </DropdownMenuPrimitive.Item>

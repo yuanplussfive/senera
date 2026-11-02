@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { openDesktopSettings, openExternalUrl, readDesktopBridge } from "../../../Frontend/src/app/desktopBridge.ts";
+import {
+  openDesktopSettings,
+  openExternalUrl,
+  openFileWithDefaultApp,
+  readDesktopBridge,
+} from "../../../Frontend/src/app/desktopBridge.ts";
 import { isTrustedDesktopNavigation, resolveExternalHttpUrl } from "../../../Apps/Desktop/DesktopNavigationPolicy.ts";
 import { DesktopClosePolicy } from "../../../Apps/Desktop/DesktopClosePolicy.ts";
 
@@ -41,6 +46,51 @@ describe("openExternalUrl", () => {
       openExternalUrl("https://user:secret@accounts.example.com/login", { bridge: undefined, openWindow }),
     ).resolves.toBe("blocked");
     expect(openWindow).not.toHaveBeenCalled();
+  });
+});
+
+describe("openFileWithDefaultApp", () => {
+  const source = "http://127.0.0.1:8788/api/resources/res_1";
+
+  it("hands fetched resource bytes to the desktop main process", async () => {
+    const openFileExternally = vi.fn().mockResolvedValue({ ok: true });
+    const fetchBytes = vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3]));
+
+    await expect(
+      openFileWithDefaultApp(
+        { name: "report.docx", source },
+        { bridge: { isDesktop: true, openFileExternally }, fetchBytes },
+      ),
+    ).resolves.toBe("desktop");
+
+    expect(fetchBytes).toHaveBeenCalledWith(source);
+    expect(openFileExternally).toHaveBeenCalledWith({ name: "report.docx", bytes: new Uint8Array([1, 2, 3]) });
+  });
+
+  it("reports the browser surface as unsupported without fetching", async () => {
+    const fetchBytes = vi.fn();
+    await expect(openFileWithDefaultApp({ name: "report.docx", source }, { fetchBytes })).resolves.toBe("unsupported");
+    expect(fetchBytes).not.toHaveBeenCalled();
+  });
+
+  it("reports failure when the resource cannot be read or the shell cannot open it", async () => {
+    const openFileExternally = vi.fn().mockResolvedValue({ ok: false, code: "open-failed" });
+    const bridge = { isDesktop: true, openFileExternally };
+
+    await expect(
+      openFileWithDefaultApp(
+        { name: "report.docx", source },
+        { bridge, fetchBytes: vi.fn().mockRejectedValue(new Error("offline")) },
+      ),
+    ).resolves.toBe("failed");
+    expect(openFileExternally).not.toHaveBeenCalled();
+
+    await expect(
+      openFileWithDefaultApp(
+        { name: "report.docx", source },
+        { bridge, fetchBytes: vi.fn().mockResolvedValue(new Uint8Array([9])) },
+      ),
+    ).resolves.toBe("failed");
   });
 });
 

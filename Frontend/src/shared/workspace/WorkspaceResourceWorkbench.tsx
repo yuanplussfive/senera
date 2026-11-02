@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { useWorkspaceFileChanges } from "./useWorkspaceFileChanges";
 import { toast } from "sonner";
 import {
+  buildWorkspaceResourceUrl,
   createWorkspaceEntry,
   readWorkspaceResource,
   readWorkspaceResourceBlob,
@@ -14,6 +15,7 @@ import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { motionDurations } from "../../shared/motion";
 import { ImageCanvasViewer } from "../media/ImageCanvasViewer";
+import { OpenWithDefaultAppButton } from "../media/OpenWithDefaultAppButton";
 import {
   AppIcon,
   Button,
@@ -709,7 +711,7 @@ function DeleteResourceBar({
   readonly onDelete: () => void;
 }): JSX.Element {
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 shadow-soft">
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-brick-500/30 bg-brick-500/5 px-4 py-3 shadow-soft">
       <span className="min-w-0 flex-1 text-[12px] text-content-secondary">
         {frontendMessage("resource.confirmDelete")}
       </span>
@@ -782,6 +784,12 @@ function ResourceBody({
         <p className="mt-1 text-[12px] leading-5 text-content-muted">
           {frontendMessage("resource.downloadDescription")}
         </p>
+        <OpenWithDefaultAppButton
+          name={resource.name}
+          source={buildWorkspaceResourceUrl(httpBaseUrl, locator.path, true)}
+          variant="labeled"
+          className="mt-3"
+        />
       </div>
     </div>
   );

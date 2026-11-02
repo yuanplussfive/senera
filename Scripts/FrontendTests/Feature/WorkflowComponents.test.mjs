@@ -63,7 +63,7 @@ test("completed run summary keeps disclosure semantics when motion is disabled",
   const trigger = document.querySelector("[data-ui-chrome] button[aria-expanded]");
   expect(trigger).toBeInstanceOf(HTMLButtonElement);
   expect(trigger).toHaveAttribute("aria-expanded", "false");
-  expect(trigger).toHaveAccessibleName("Thinking 2.0s");
+  expect(trigger).toHaveAccessibleName(frontendMessage("chat.metrics.elapsed", { duration: "2.0s" }));
   expect(trigger).not.toHaveTextContent("1 步");
 
   await user.click(trigger);
@@ -285,12 +285,7 @@ test("expanding the workflow keeps the dock vertical and opens a horizontal canv
 test("chat header exposes one neutral workflow tool entry for panel toggling", async () => {
   const onToggle = vi.fn();
   const user = userEvent.setup();
-  renderWithFrontendProviders(
-    React.createElement(ChatHeader, {
-      title: "Workflow tool test",
-      onOpenWorkflowPanel: onToggle,
-    }),
-  );
+  renderWithFrontendProviders(React.createElement(ChatHeader, { onOpenWorkflowPanel: onToggle }));
 
   const expandButton = screen.getByRole("button", { name: frontendMessage("workflow.panel.expand") });
   expect(document.querySelector("[data-testid='chat-header']")).toHaveClass("h-[var(--senera-top-chrome-height)]");
@@ -303,22 +298,28 @@ test("chat header exposes one neutral workflow tool entry for panel toggling", a
   expect(onToggle).toHaveBeenCalledTimes(1);
 });
 
-test("chat header leaves execution environment details to settings", () => {
-  renderWithFrontendProviders(React.createElement(ChatHeader, { title: "Focused conversation" }));
+test("chat header is chrome only: no session title and no run status", () => {
+  renderWithFrontendProviders(React.createElement(ChatHeader, { sandboxStatus: null }));
 
-  expect(screen.getByRole("heading", { name: "Focused conversation" })).toBeVisible();
-  expect(document.querySelector("[data-sandbox-status]")).not.toBeInTheDocument();
-  expect(document.querySelector("[data-execution-mode]")).not.toBeInTheDocument();
+  // The session title lives in the session list; repeating it here adds no
+  // information and competes with the transcript for the reader's attention.
+  expect(screen.queryByRole("heading")).not.toBeInTheDocument();
+  expect(screen.queryByText("Focused conversation")).not.toBeInTheDocument();
+  // Run state is announced inside the message stream instead.
+  expect(document.querySelector("[data-chat-run-status]")).not.toBeInTheDocument();
+  // Remaining chrome is the drag surface plus controls that have no other home.
+  expect(document.querySelector("[data-chat-header-drag-fill]")).toBeInTheDocument();
+  expect(document.querySelector("[data-chat-header][data-window-drag-region]")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: frontendMessage("terminal.panel.open") })).not.toBeInTheDocument();
 });
 
-test("chat header keeps live run status as a flat activity line", () => {
-  renderWithFrontendProviders(React.createElement(ChatHeader, { title: "Focused conversation", runStatus: "running" }));
+test("chat header carries no execution state: the composer chip owns it", () => {
+  renderWithFrontendProviders(React.createElement(ChatHeader, {}));
 
-  const status = document.querySelector("[data-chat-run-status='running']");
-  expect(status).toBeInTheDocument();
-  expect(status).not.toHaveClass("rounded-full", "border", "bg-moss-50");
-  expect(status?.querySelector("[data-execution-status-icon='running']")).toBeInTheDocument();
+  // The boundary used to be a 20px icon here. It now belongs to the execution
+  // context chip beside the composer, where it can show its label and tone.
+  expect(document.querySelector("[data-sandbox-status]")).not.toBeInTheDocument();
+  expect(document.querySelector("[data-execution-context]")).not.toBeInTheDocument();
 });
 
 test("persistent workflow panel owns its tool header and only collapse control", async () => {

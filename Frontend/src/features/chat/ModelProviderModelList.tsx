@@ -1,21 +1,20 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { ProviderModelsFailedData, ProviderModelsSnapshotData } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
 import { FluidHoverHighlight, MotionIconSwap, motionTimings, useFluidHover, useMotionLevel } from "../../shared/motion";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
   AppIcon,
   Button,
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
   IconButton,
   ScrollArea,
   Spinner,
-  StatusToken,
   Tooltip,
 } from "../../shared/ui";
 import { inferModelProviderEndpointIcon, inferModelProviderIcon, ModelProviderIcon } from "./ModelProviderIcon";
@@ -483,14 +482,24 @@ function ProviderModelRow({
   const capabilities = configured
     ? readModelCapabilities(configured, modelTemplate, model.modelsDev)
     : defaultModelCapabilities(modelTemplate, model.id, providerId, model.modelsDev);
-  const modelActionClassName = groupedCards
-    ? "grid h-6 w-6 shrink-0 place-items-center rounded-[5px] border border-transparent bg-transparent text-content-secondary transition hover:border-line-subtle hover:bg-surface-hover hover:text-content-primary active:scale-[0.97] disabled:pointer-events-none disabled:opacity-45"
-    : iconButtonClassName;
   const modelConfigClassName = groupedCards
     ? "grid h-6 w-6 shrink-0 place-items-center rounded-[5px] border border-transparent bg-transparent text-content-secondary transition hover:bg-surface-hover hover:text-content-primary active:scale-[0.97] disabled:pointer-events-none disabled:opacity-45"
     : iconButtonClassName;
+  const handleContextMenuShortcut = (event: KeyboardEvent<HTMLElement>): void => {
+    if (!(event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) return;
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    event.currentTarget.dispatchEvent(
+      new MouseEvent("contextmenu", {
+        bubbles: true,
+        clientX: rect.left + Math.min(rect.width / 2, 120),
+        clientY: rect.top + Math.min(rect.height / 2, 24),
+      }),
+    );
+  };
 
-  return (
+  const canOpenActions = Boolean(configured && (onSetDefaultModel || onRemoveModel));
+  const row = (
     <div
       ref={itemRef}
       className={cn(
@@ -499,9 +508,11 @@ function ProviderModelRow({
           ? "grid-cols-[20px_minmax(0,1fr)_minmax(56px,auto)] gap-2.5 rounded-md py-1.5 pl-2.5 pr-2"
           : "grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 px-3 py-2.5",
         isDefault && "bg-accent-surface/45",
+        "data-[state=open]:bg-surface-hover/80",
         !groupedCards && (fluidHoverEnabled ? "hover:bg-transparent" : "hover:bg-surface-hover/80"),
       )}
       data-model-default={isDefault}
+      onKeyDown={canOpenActions ? handleContextMenuShortcut : undefined}
     >
       <span className="grid h-5 w-[20px] shrink-0 place-items-center">
         <ModelProviderIcon
@@ -542,55 +553,6 @@ function ProviderModelRow({
           <span className="inline-flex items-center gap-1.5 text-[10.5px] font-medium text-ink-600">
             <Spinner size="xs" className="text-accent-content" /> {pendingModelOperationLabel(pendingKind)}
           </span>
-        ) : configured ? (
-          <>
-            <Tooltip content={frontendMessage("chat.model.configure")} side="top">
-              <button
-                type="button"
-                disabled={disabled || !providerId}
-                className={modelConfigClassName}
-                aria-label={frontendMessage("chat.model.configure")}
-                onClick={() => onConfigureModel(model)}
-              >
-                {groupedCards ? <AppIcon icon="settings" size={14} /> : <AppIcon icon="sliders" size={14} />}
-              </button>
-            </Tooltip>
-            {onRemoveModel || (!isDefault && onSetDefaultModel) ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    disabled={disabled || !providerId}
-                    className={modelActionClassName}
-                    aria-label={frontendMessage("chat.action.more")}
-                  >
-                    <AppIcon icon="more" size={14} />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-44 bg-paper-50">
-                  {onSetDefaultModel ? (
-                    <DropdownMenuItem
-                      disabled={isDefault}
-                      icon={<AppIcon icon="star" size={14} />}
-                      onSelect={() => onSetDefaultModel(configured)}
-                    >
-                      {frontendMessage(isDefault ? "chat.model.currentDefault" : "chat.model.setDefault")}
-                    </DropdownMenuItem>
-                  ) : null}
-                  {onSetDefaultModel && onRemoveModel ? <DropdownMenuSeparator /> : null}
-                  {onRemoveModel ? (
-                    <DropdownMenuItem
-                      icon={<AppIcon icon="trash" size={14} />}
-                      destructive
-                      onSelect={() => onRemoveModel(configured)}
-                    >
-                      {frontendMessage("chat.model.remove")}
-                    </DropdownMenuItem>
-                  ) : null}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : null}
-          </>
         ) : (
           <Tooltip content={frontendMessage("chat.model.configure")} side="top">
             <button
@@ -607,19 +569,48 @@ function ProviderModelRow({
       </span>
     </div>
   );
+
+  if (!configured || (!onSetDefaultModel && !onRemoveModel)) {
+    return row;
+  }
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
+      <ContextMenuContent className="min-w-[168px]">
+        {onSetDefaultModel ? (
+          <ContextMenuItem
+            disabled={isDefault}
+            icon={<AppIcon icon="star" size={14} />}
+            onSelect={() => onSetDefaultModel(configured)}
+          >
+            {frontendMessage(isDefault ? "chat.model.currentDefault" : "chat.model.setDefault")}
+          </ContextMenuItem>
+        ) : null}
+        {onSetDefaultModel && onRemoveModel ? <ContextMenuSeparator /> : null}
+        {onRemoveModel ? (
+          <ContextMenuItem
+            icon={<AppIcon icon="trash" size={14} />}
+            destructive
+            onSelect={() => onRemoveModel(configured)}
+          >
+            {frontendMessage("chat.model.remove")}
+          </ContextMenuItem>
+        ) : null}
+      </ContextMenuContent>
+    </ContextMenu>
+  );
 }
 
 function DefaultModelBadge(): JSX.Element {
   return (
-    <StatusToken
-      size="compact"
-      className="gap-1 border border-accent-border bg-accent-surface text-accent-content"
+    <span
       data-model-default-badge
       aria-label={frontendMessage("chat.model.currentDefault")}
+      className="shrink-0 text-[11px] font-semibold leading-4 tracking-[0.01em] text-accent-content"
     >
-      <AppIcon icon="star" size={10} strokeWidth={2} aria-hidden="true" />
       {frontendMessage("config.model.defaultBadge")}
-    </StatusToken>
+    </span>
   );
 }
 

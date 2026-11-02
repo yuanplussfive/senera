@@ -9,11 +9,11 @@ import {
 import { cn } from "../../lib/util";
 import { ConfirmationDialog, RenameDialog } from "./SessionDialogs";
 import { UserFooter } from "./ProfileFooter";
-import { SessionHeader } from "./SessionChrome";
+import { SessionHeader, type SessionChannelFilter as SessionChannelFilterValue } from "./SessionChrome";
 import { SessionPanelBody } from "./SessionPanelBody";
 import type { ConfirmationIntent } from "./types";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import type { EventSourceChannel } from "../../api/eventTypes";
+import type { SocketStatus } from "../../api/useAgentSocket";
 import type { SettingsSectionId } from "../settings/types";
 
 interface Props {
@@ -27,7 +27,8 @@ interface Props {
   userProfile: UserProfile;
   onUpdateUserProfile: (profile: ConversationProfileUpdate) => void;
   onLogout?: () => Promise<void>;
-  socketStatus: string;
+  socketStatus: SocketStatus;
+  onReconnectSocket?: () => void;
   onSettingsIntent?: () => void;
   onOpenSettings: (section?: SettingsSectionId, returnFocus?: HTMLElement | null) => void;
   httpBaseUrl?: string;
@@ -42,7 +43,7 @@ type RenameIntent = {
   title: string;
 };
 
-type SessionChannelFilter = "all" | EventSourceChannel;
+type SessionChannelFilter = SessionChannelFilterValue;
 
 export function SessionList({
   onNewSession,
@@ -53,6 +54,7 @@ export function SessionList({
   onUpdateUserProfile,
   onLogout,
   socketStatus,
+  onReconnectSocket,
   onSettingsIntent,
   onOpenSettings,
   httpBaseUrl,
@@ -78,6 +80,7 @@ export function SessionList({
   const [channelFilter, setChannelFilter] = useState<SessionChannelFilter>("all");
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedSessionIds, setSelectedSessionIds] = useState<ReadonlySet<string>>(() => new Set());
+  const selectionAnchorRef = useRef<string | null>(null);
 
   const sessionList = useMemo(
     () =>
@@ -99,6 +102,8 @@ export function SessionList({
     [channelFilter, normalizedSearchQuery, sessionList],
   );
   const selectedSessionCount = sessionList.filter((session) => selectedSessionIds.has(session.sessionId)).length;
+  const visibleSelectedCount = filteredSessions.filter((session) => selectedSessionIds.has(session.sessionId)).length;
+  const hiddenSelectedCount = selectedSessionCount - visibleSelectedCount;
 
   useEffect(() => {
     const availableIds = new Set(sessionList.map((session) => session.sessionId));
@@ -133,10 +138,7 @@ export function SessionList({
       description: frontendMessage("session.deleteCurrentDescription", { title: session.title }),
       confirmLabel: frontendMessage("session.deleteCurrentConfirm"),
       tone: "danger",
-      details: [
-        frontendMessage("session.deleteCurrentDetailRecords"),
-        frontendMessage("session.deleteCurrentDetailRefresh"),
-      ],
+      details: [frontendMessage("session.deleteCurrentDetailRecords")],
       onConfirm: () => {
         if (onCloseSession(session.sessionId)) {
           toast.success(frontendMessage("session.deleteRequested"));
@@ -157,10 +159,7 @@ export function SessionList({
       description: frontendMessage("session.deleteSelectedDescription", { count: sessionIds.length }),
       confirmLabel: frontendMessage("session.deleteSelectedConfirm"),
       tone: "danger",
-      details: [
-        frontendMessage("session.deleteCurrentDetailRecords"),
-        frontendMessage("session.deleteCurrentDetailRefresh"),
-      ],
+      details: [frontendMessage("session.deleteCurrentDetailRecords")],
       onConfirm: () => {
         const { acceptedSessionIds, rejectedSessionIds } = onCloseSessions(sessionIds);
         setSelectedSessionIds(new Set(rejectedSessionIds));
@@ -169,6 +168,7 @@ export function SessionList({
         }
         if (rejectedSessionIds.length > 0) {
           toast.error(frontendMessage("session.bulkDeletePartialFailed", { count: rejectedSessionIds.length }));
+          setSelectionMode(true);
         } else {
           setSelectionMode(false);
         }
@@ -209,8 +209,6 @@ export function SessionList({
   }, [compactSidebar, presentation]);
 
   const sessionHeaderProps = {
-    channelFilter,
-    onChannelFilterChange: setChannelFilter,
     onNewSession,
     onToggleSidebar: onClosePanel ?? toggleSidebar,
   };
@@ -221,6 +219,8 @@ export function SessionList({
     catalogSynced: sessionCatalogSynced,
     query: searchQuery,
     onQueryChange: setSearchQuery,
+    channelFilter,
+    onChannelFilterChange: setChannelFilter,
     activeSessionId: active,
     historyLoadingIds,
     onNewSession,
@@ -233,21 +233,48 @@ export function SessionList({
     selectionMode,
     selectedSessionIds,
     selectedSessionCount,
+    hiddenSelectedCount,
     onToggleSelectionMode: () => {
       if (selectionMode) {
         setSelectionMode(false);
         setSelectedSessionIds(new Set());
+        selectionAnchorRef.current = null;
       } else {
         setSelectionMode(true);
       }
     },
-    onToggleSessionSelection: (sessionId: string) => {
+    onEnterSelectionMode: (sessionId: string) => {
+      setSelectionMode(true);
+      selectionAnchorRef.current = sessionId;
+      setSelectedSessionIds(new Set([sessionId]));
+    },
+    onToggleSessionSelection: (sessionId: string, shift = false) => {
+      const visibleIds = filteredSessions.map((session) => session.sessionId);
+      if (shift) {
+        const anchorId = selectionAnchorRef.current;
+        const from = anchorId ? visibleIds.indexOf(anchorId) : -1;
+        const to = visibleIds.indexOf(sessionId);
+        if (from !== -1 && to !== -1) {
+          const [start, end] = from <= to ? [from, to] : [to, from];
+          setSelectedSessionIds((current) => {
+            const next = new Set(current);
+            for (let index = start; index <= end; index += 1) next.add(visibleIds[index]);
+            return next;
+          });
+          return;
+        }
+      }
+      selectionAnchorRef.current = sessionId;
       setSelectedSessionIds((current) => {
         const next = new Set(current);
         if (next.has(sessionId)) next.delete(sessionId);
         else next.add(sessionId);
         return next;
       });
+    },
+    onClearSelection: () => {
+      selectionAnchorRef.current = null;
+      setSelectedSessionIds(new Set());
     },
     onToggleVisibleSelection: () => {
       setSelectedSessionIds((current) => {
@@ -260,6 +287,7 @@ export function SessionList({
         }
         return next;
       });
+      selectionAnchorRef.current = null;
     },
     onDeleteSelected: confirmDeleteSelected,
   };
@@ -267,6 +295,7 @@ export function SessionList({
   const userFooterProps = {
     profile: userProfile,
     socketStatus,
+    onReconnectSocket,
     onSettingsIntent,
     onOpenSettings,
     onUpdateProfile: onUpdateUserProfile,

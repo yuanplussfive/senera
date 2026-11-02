@@ -1,6 +1,7 @@
 import { useCallback, useRef, type MutableRefObject, type ReactNode, type Ref } from "react";
 import { motion } from "framer-motion";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { DesktopReleaseChannelBadge } from "../../app/DesktopReleaseChannelBadge";
 import { cn } from "../../lib/util";
 import { FluidHoverHighlight, motionTimings, useFluidHover, useMotionLevel } from "../../shared/motion";
 import { AppIcon, IconButton, ScrollArea, Sheet, SheetContent } from "../../shared/ui";
@@ -57,8 +58,9 @@ export function SettingsWorkbenchLayout({
           >
             <AppIcon icon="menu" size={16} aria-hidden="true" />
           </IconButton>
-          <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
             <div className="truncate text-[13px] font-semibold text-content-strong">{activeSection.label}</div>
+            <DesktopReleaseChannelBadge />
           </div>
           {shellActions}
         </header>
@@ -78,6 +80,7 @@ export function SettingsWorkbenchLayout({
                 <span className="min-w-0 truncate pl-2.5 text-[13px] font-semibold text-content-primary">
                   {frontendMessage("settings.header.title")}
                 </span>
+                <DesktopReleaseChannelBadge />
                 {shellActions}
               </div>
             </div>
@@ -152,7 +155,7 @@ export function SettingsNavigation({
   return (
     <>
       <div className="shrink-0 px-3 pb-2 pt-1.5">
-        <label className="flex h-8 items-center gap-2 rounded-md border border-transparent bg-surface-hover px-2.5 text-content-muted transition-[background-color,border-color,box-shadow] focus-within:border-accent-border focus-within:bg-surface-panel focus-within:ring-2 focus-within:ring-accent-focus">
+        <label className="flex h-8 items-center gap-2 rounded-md border border-transparent bg-surface-hover px-2.5 text-content-muted transition-[background-color,border-color,box-shadow] focus-within:bg-surface-panel">
           <AppIcon icon="search" size={14} aria-hidden="true" />
           <input
             value={search}

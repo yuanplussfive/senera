@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import type { InteractionInputAction, InteractionInputContent } from "../../api/eventTypes";
+import type { FeedbackCategory, FeedbackRating } from "../../api/feedbackEventTypes";
 import type { ChatMessage, ConversationIdentity, RunRecord, UserProfile } from "../../store/sessionStore";
 import type { CalculateViewLocation } from "react-virtuoso";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
@@ -60,6 +61,12 @@ interface MessageListProps {
     interactionId: string,
     action: InteractionInputAction,
     content?: InteractionInputContent,
+  ) => void;
+  onRecordMessageFeedback?: (
+    sessionId: string,
+    requestId: string,
+    rating: FeedbackRating | null,
+    category?: FeedbackCategory,
   ) => void;
 }
 
@@ -123,6 +130,7 @@ export function MessageList({
   onDeleteFromMessage,
   onViewWorkflow,
   onResolveInteractionInput,
+  onRecordMessageFeedback,
 }: MessageListProps): JSX.Element {
   const { reduceMotion, disableMotion } = useMotionLevel();
   const { prefersCompactControls, supportsHover } = useResponsiveMode();
@@ -488,6 +496,7 @@ export function MessageList({
                         onDeleteFromMessage={setDeleting}
                         onViewWorkflow={onViewWorkflow}
                         onResolveInteractionInput={onResolveInteractionInput}
+                        onRecordMessageFeedback={onRecordMessageFeedback}
                       />
                     </MotionMessageItem>
                   </div>
@@ -577,7 +586,7 @@ const LazyMessageListVirtualizer = lazy(() =>
 
 function MessageListVirtualizerLoadingState(): JSX.Element {
   return (
-    <div className="min-h-0 flex-1" data-message-list-loading>
+    <div className="flex min-h-0 flex-1 flex-col" data-message-list-loading>
       <ChatLoadingSurface label={frontendMessage("ui.loading")} />
     </div>
   );

@@ -20,6 +20,7 @@ import {
   type ChannelStatusSnapshotData,
 } from "../../api/eventTypes";
 import { readEventSessionId } from "../../api/eventCorrelation";
+import { readFeedbackRecordedData } from "../../api/feedbackEventTypes";
 import { projectRunEvent } from "./runEventProjector";
 import { applyScopedRunEvent } from "./scopedRunProjector";
 import { advanceSessionHistoryHydration, projectSessionHistoryEvent } from "./sessionHistoryProjector";
@@ -124,6 +125,18 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
       }
       return;
     }
+    case EventKinds.FeedbackRecorded: {
+      const session = sessionId ? state.sessions[sessionId] : undefined;
+      if (!session) return;
+      const record = readFeedbackRecordedData(env.data);
+      if (!record) return;
+      const feedback = (session.messageFeedback ??= {});
+      // Retraction removes the entry so "not rated" has exactly one shape.
+      if (record.rating === null) delete feedback[record.requestId];
+      else feedback[record.requestId] = record;
+      return;
+    }
+
     case EventKinds.ModelListSnapshot: {
       applyModelListSnapshotSelection(state, env.data as ModelListSnapshotData);
       return;
@@ -193,8 +206,8 @@ function applyEventProjection(state: StoreState, env: EventEnvelope): void {
     case EventKinds.SessionSnapshot: {
       if (!sessionId) return;
       const data = env.data as SessionSnapshotData;
-      if (data.modelProviderId) {
-        state.selectedModelProviderIdsBySession[sessionId] = data.modelProviderId;
+      if (data.modelPreference) {
+        state.selectedModelProviderIdsBySession[sessionId] = data.modelPreference.modelProviderId;
       }
       delete state.pendingCreatedSessionIds[sessionId];
       if (state.pendingDeletedSessionIds[sessionId]) return;

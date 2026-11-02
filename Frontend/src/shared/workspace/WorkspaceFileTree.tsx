@@ -319,7 +319,7 @@ export function WorkspaceFileTree({
     "--trees-selected-bg-override": "var(--surface-selected)",
     "--trees-theme-list-hover-bg": "var(--surface-hover)",
     "--trees-border-color-override": "var(--line-subtle)",
-    "--trees-focus-ring-color-override": "var(--accent-focus)",
+    "--trees-focus-ring-color-override": "var(--accent-focus-ring)",
   } as CSSProperties;
   return (
     <div className="flex h-full min-h-0 flex-col" data-workspace-file-tree aria-busy={loading || searching}>
@@ -339,7 +339,7 @@ export function WorkspaceFileTree({
         {loading || searching ? <Spinner size="sm" className="absolute right-2 top-2" /> : null}
       </div>
       {error ? (
-        <div role="alert" className="px-3 text-xs text-danger">
+        <div role="alert" className="px-3 text-xs text-brick-600">
           {error}
           <Button
             variant="ghost"

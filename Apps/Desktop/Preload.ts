@@ -29,6 +29,8 @@ contextBridge.exposeInMainWorld("seneraDesktop", {
   confirmSettingsClose: () => ipcRenderer.invoke("senera:settings.confirm-close"),
   cancelSettingsClose: () => ipcRenderer.invoke("senera:settings.cancel-close"),
   openExternalUrl: (url: string) => ipcRenderer.invoke("senera:external-url.open", url),
+  openFileExternally: (payload: { name: string; bytes: Uint8Array }) =>
+    ipcRenderer.invoke("senera:file.open-external", payload),
   chooseWorkspaceFolder: () => ipcRenderer.invoke("senera:workspace.choose-folder"),
   onWorkspaceFolderRequested: (listener: () => void) => {
     const handler = (): void => listener();

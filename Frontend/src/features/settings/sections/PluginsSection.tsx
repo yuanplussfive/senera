@@ -149,7 +149,7 @@ export function PluginsSection({
             onChange={setFilter}
           />
           <div className="flex min-w-[min(100%,280px)] flex-1 items-center justify-end sm:flex-none">
-            <label className="flex h-9 min-w-0 max-w-[320px] flex-1 items-center gap-2 rounded-lg border border-line-subtle/70 bg-surface-subtle/55 px-3 text-content-muted transition focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus sm:w-[260px]">
+            <label className="flex h-9 min-w-0 max-w-[320px] flex-1 items-center gap-2 rounded-lg border border-line-subtle/70 bg-surface-subtle/55 px-3 text-content-muted transition sm:w-[260px]">
               <AppIcon icon="search" size={15} aria-hidden="true" />
               <input
                 value={search}

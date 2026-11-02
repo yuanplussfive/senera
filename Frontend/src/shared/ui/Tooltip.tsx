@@ -24,14 +24,15 @@ export const Tooltip = forwardRef<HTMLButtonElement, TooltipProps>(
           align={align}
           sideOffset={6}
           className={cn(
-            "theme-tooltip z-50 inline-flex items-center gap-2 rounded-md px-2 py-1 text-[11.5px]",
+            "theme-tooltip z-50 inline-flex max-w-[min(24rem,calc(100vw-2rem))] items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12px] leading-4",
             "data-[state=delayed-open]:animate-fade-in",
             className,
           )}
         >
           {content}
-          {shortcut ? <span className="font-mono text-[10px] opacity-70">{shortcut}</span> : null}
-          <TooltipPrimitive.Arrow className="theme-tooltip__arrow" width={8} height={4} />
+          {shortcut ? (
+            <span className="ml-1 shrink-0 font-mono text-[10.5px] tracking-tight text-content-muted">{shortcut}</span>
+          ) : null}
         </TooltipPrimitive.Content>
       </TooltipPrimitive.Portal>
     </TooltipPrimitive.Root>

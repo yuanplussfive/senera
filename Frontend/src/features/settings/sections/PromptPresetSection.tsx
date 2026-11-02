@@ -382,7 +382,7 @@ function PromptPresetEditor({ resources }: { resources: WorkspaceResourceControl
             </IconButton>
           </div>
           {createError ? (
-            <p className="mx-auto mt-1.5 max-w-2xl px-1 text-[11px] leading-4 text-danger">{createError}</p>
+            <p className="mx-auto mt-1.5 max-w-2xl px-1 text-[11px] leading-4 text-brick-600">{createError}</p>
           ) : null}
         </form>
       ) : null}
@@ -549,7 +549,7 @@ function PromptPresetEditor({ resources }: { resources: WorkspaceResourceControl
             ) : loadState.status === "error" ? (
               <div
                 role="alert"
-                className="grid h-full place-items-center bg-[var(--theme-config-stage-bg)] px-6 text-center text-xs text-danger"
+                className="grid h-full place-items-center bg-[var(--theme-config-stage-bg)] px-6 text-center text-xs text-brick-600"
               >
                 {loadState.message}
               </div>

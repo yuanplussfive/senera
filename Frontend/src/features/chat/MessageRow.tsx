@@ -114,30 +114,38 @@ export function MessageRow({
             />
           ) : null}
           <AssistantMessageBody message={{ ...message, content: displayContent }} streaming={isStreamingPreface} />
-          <div
-            className={cn(
-              "mt-3 flex min-h-6 min-w-0 items-center gap-3 overflow-hidden opacity-0 pointer-events-none transition-opacity group-hover/msg:opacity-100 group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto",
-              showInlineActions && "opacity-100 pointer-events-auto",
-            )}
-          >
-            <MessageMetrics
-              role="assistant"
-              usage={run?.usage ?? message.metadata?.run?.usage}
-              run={run}
-              modelProvider={run?.modelProvider ?? message.metadata?.run?.modelProvider}
-            />
-            <div className="ml-auto flex min-w-0">
-              <MessageActions
-                content={displayContent}
-                placement="left"
-                hasRequestId={!!message.requestId}
-                hasWorkflow={!!run}
-                allowMutation={message.kind !== "AssistantToolPreface"}
-                onFork={onFork}
-                onRegenerate={onRegenerate}
-                onDelete={onDelete}
-                onViewWorkflow={onViewWorkflow}
+          {/* Hover-only metadata is suspended below the bubble without
+              reserving layout. When it is always visible (touch/compact), it
+              returns to flow so it cannot overlap the next turn. */}
+          <div className={cn("relative", !showInlineActions && "h-0")}>
+            <div
+              className={cn(
+                "flex min-h-6 min-w-0 items-center gap-3 select-none",
+                showInlineActions
+                  ? "mt-3"
+                  : "absolute inset-x-0 top-0 pt-1 opacity-0 pointer-events-none transition-opacity group-hover/msg:opacity-100 group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto",
+              )}
+              data-message-hover-meta
+            >
+              <MessageMetrics
+                role="assistant"
+                usage={run?.usage ?? message.metadata?.run?.usage}
+                run={run}
+                modelProvider={run?.modelProvider ?? message.metadata?.run?.modelProvider}
               />
+              <div className="ml-auto flex min-w-0">
+                <MessageActions
+                  content={displayContent}
+                  placement="left"
+                  hasRequestId={!!message.requestId}
+                  hasWorkflow={!!run}
+                  allowMutation={message.kind !== "AssistantToolPreface"}
+                  onFork={onFork}
+                  onRegenerate={onRegenerate}
+                  onDelete={onDelete}
+                  onViewWorkflow={onViewWorkflow}
+                />
+              </div>
             </div>
           </div>
         </div>

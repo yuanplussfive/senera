@@ -5,6 +5,7 @@ import type { AgentSandboxDomainEvent } from "../Sandbox/AgentSandboxEventTypes.
 import type { AgentSessionDomainEvent } from "../Session/AgentSessionEventTypes.js";
 import type { AgentToolDomainEvent } from "../ToolRuntime/AgentToolEventTypes.js";
 import type { AgentInteractionInputDomainEvent } from "../Interaction/AgentInteractionInputEventTypes.js";
+import type { AgentFeedbackDomainEvent } from "../Interaction/AgentFeedbackEventTypes.js";
 import type { AgentMcpSettingsDomainEvent } from "../McpPackages/AgentMcpSettingsEventTypes.js";
 import type { AgentOrchestrationDomainEvent } from "../Orchestration/AgentOrchestrationEventTypes.js";
 import type { AgentExecutionLedgerDomainEvent } from "../Goals/AgentExecutionEventTypes.js";
@@ -19,6 +20,7 @@ type AgentDomainEventPayload =
   | AgentToolDomainEvent
   | AgentApprovalDomainEvent
   | AgentInteractionInputDomainEvent
+  | AgentFeedbackDomainEvent
   | AgentSandboxDomainEvent
   | AgentConfigDomainEvent
   | AgentMcpSettingsDomainEvent

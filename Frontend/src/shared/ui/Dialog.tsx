@@ -22,6 +22,16 @@ const dialogPresenceStyle = {
   "--dialog-presence-exit-dur": `${dialogPresenceExitMs}ms`,
 } satisfies DialogPresenceStyle;
 
+/**
+ * Radix portals every surface straight into `body`, so surfaces on the same
+ * z-layer paint in mount order. Menus, popovers and tooltips therefore stay at
+ * `z-50`: one opened *inside* a dialog mounts later and must cover it. A dialog
+ * opened from a menu mounts later than its opener, and the opener closes in the
+ * same gesture, so it still wins. Raising dialogs above the menu layer would
+ * hide every select menu rendered inside a dialog.
+ */
+const dialogLayerClassName = "z-50";
+
 function mergeDialogPresenceStyle(style?: CSSProperties): DialogPresenceStyle {
   return style ? { ...dialogPresenceStyle, ...style } : dialogPresenceStyle;
 }
@@ -31,7 +41,8 @@ export const DialogOverlay = forwardRef<HTMLDivElement, React.ComponentPropsWith
     <DialogPrimitive.Overlay ref={ref} asChild {...props}>
       <MotionDialogOverlay
         className={cn(
-          "dialog-presence fixed inset-0 z-50 bg-[var(--theme-dialog-backdrop)] [will-change:opacity]",
+          "dialog-presence fixed inset-0 bg-[var(--theme-dialog-backdrop)] [will-change:opacity]",
+          dialogLayerClassName,
           className,
         )}
         style={mergeDialogPresenceStyle(style)}
@@ -47,7 +58,7 @@ type DialogContentSnapshot = {
   contentInitial?: false | VariantLabels;
   contentTransition?: Transition;
   contentVariants?: Variants;
-  description?: string;
+  description?: ReactNode;
   footer?: ReactNode;
   footerClassName?: string;
   motionPreset: DialogMotionPreset;
@@ -61,7 +72,7 @@ const DialogContentFrame = forwardRef<
   HTMLDivElement,
   React.ComponentPropsWithoutRef<"div"> & {
     title?: string;
-    description?: string;
+    description?: ReactNode;
     bodyClassName?: string;
     footer?: ReactNode;
     footerClassName?: string;
@@ -189,7 +200,7 @@ export const DialogContent = forwardRef<
   HTMLDivElement,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     title?: string;
-    description?: string;
+    description?: ReactNode;
     bodyClassName?: string;
     footer?: ReactNode;
     footerClassName?: string;
@@ -235,7 +246,8 @@ export const DialogContent = forwardRef<
         <DialogContentFrame
           className={cn(
             "dialog-presence",
-            placement === "center" ? "fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2" : "fixed z-50",
+            dialogLayerClassName,
+            placement === "center" ? "fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" : "fixed",
             placement === "inset" && "flex",
             frameClassName,
           )}
@@ -280,7 +292,7 @@ export interface DialogActionButtonProps extends Omit<ButtonProps, "variant" | "
 
 export function DialogActions({ children, className }: DialogActionsProps): JSX.Element {
   return (
-    <div className={cn("flex justify-end gap-2.5", className)} data-dialog-actions>
+    <div className={cn("flex items-center justify-end gap-2", className)} data-dialog-actions>
       {children}
     </div>
   );
@@ -295,9 +307,13 @@ export const DialogActionButton = forwardRef<HTMLButtonElement, DialogActionButt
         size="sm"
         variant={variant === "primary" ? "default" : variant === "danger" ? "destructive" : "outline"}
         className={cn(
-          "min-w-[96px]",
+          "min-w-[64px] h-7",
+          variant === "secondary" &&
+            "border-transparent bg-transparent text-content-muted shadow-none hover:border-transparent hover:bg-surface-hover hover:text-content-primary hover:shadow-none",
           variant === "primary" &&
             "bg-content-strong text-content-inverse shadow-soft hover:bg-content-strong/90 hover:shadow-soft active:bg-content-strong/80",
+          variant === "danger" &&
+            "border-brick-200 bg-brick-50 text-brick-700 shadow-none hover:border-brick-200 hover:bg-brick-100 hover:text-brick-700 hover:shadow-none active:bg-brick-100",
           className,
         )}
         {...props}

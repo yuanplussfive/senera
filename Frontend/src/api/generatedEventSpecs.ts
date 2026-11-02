@@ -530,6 +530,14 @@ export const EventSpecs = {
       projectionPointers: ["/data/interactionId", "/data/toolName", "/data/callId", "/data/action"],
     },
   },
+  "feedback.recorded": {
+    layer: "snapshot",
+    phase: "session",
+    observation: {
+      retention: "projection",
+      projectionPointers: ["/data/requestId", "/data.rating", "/data/category"],
+    },
+  },
   "execution.resource.created": {
     layer: "snapshot",
     phase: "tool",

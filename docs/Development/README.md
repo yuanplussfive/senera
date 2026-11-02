@@ -9,11 +9,13 @@
 - [学习系统边界与诊断](./Learning.md)
 - [浏览器端到端测试](./BrowserE2ETesting.md)
 - [桌面运行时审计](./DesktopRuntimeAudit.md)
+- [桌面智能体边界：无窗口执行、文档生成与文件交付](./DesktopAgentBoundaries.md)
 - [前端设置工作台约束](./FrontendSettingsWorkbench.md)
 - [前端组件 Registry 接入约束](./FrontendComponentRegistry.md)
 - [前端 Ladle 组件约束](./FrontendLadleConstraints.md)
 - [图标像素相位](./FrontendIconPixelPhase.md)
 - [后续改进清单](./FollowUpBacklog.md)
+- [工作区模型待办：默认工作区、会话绑定与多根](./WorkspaceModelTodo.md)
 - [前端动效策略](./FrontendMotionPolicy.md)
 - [前端性能预算](./FrontendPerformanceBudgets.md)
 

@@ -54,12 +54,12 @@ export function ModelThinkingControls({
   };
 
   return (
-    <div className="mt-3 border-t border-ink-200/75 pt-3" data-model-thinking-controls>
+    <div className="mt-3 border-t border-line-subtle/70 pt-3" data-model-thinking-controls>
       <SectionLabel
         icon={<AppIcon icon="lightbulb" size={16} />}
         title={frontendMessage("config.model.thinking.title")}
       />
-      <p className="mb-3 text-[11px] leading-4 text-ink-500">{frontendMessage("config.model.thinking.description")}</p>
+      <p className="mb-3 text-[11px] leading-4 text-content-secondary">{frontendMessage("config.model.thinking.description")}</p>
 
       <SettingsTable>
         <SettingRow
@@ -80,10 +80,10 @@ export function ModelThinkingControls({
 
       <div className="mt-4 flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-[12.5px] font-medium text-ink-800">
+          <div className="text-[12.5px] font-medium text-content-primary">
             {frontendMessage("config.model.thinking.profilesTitle")}
           </div>
-          <div className="mt-0.5 text-[11px] leading-4 text-ink-500">
+          <div className="mt-0.5 text-[11px] leading-4 text-content-secondary">
             {frontendMessage("config.model.thinking.profilesDescription")}
           </div>
         </div>
@@ -92,26 +92,26 @@ export function ModelThinkingControls({
           {frontendMessage("config.model.thinking.addProfile")}
         </Button>
       </div>
-      <div className="mt-2 overflow-hidden rounded-md border border-ink-200/65 bg-paper-100/65">
+      <div className="mt-2 overflow-hidden rounded-md border border-line-subtle/70 bg-surface-subtle/65">
         {profiles.length > 0 ? (
-          <div className="divide-y divide-ink-200/70">
+          <div className="divide-y divide-line-subtle/70">
             {profiles.map((profile, index) => (
               <div
                 key={`${profile.Id}-${index}`}
-                className="grid min-w-0 gap-2 bg-paper-50 px-3 py-2.5 sm:grid-cols-[minmax(120px,0.8fr)_minmax(140px,1fr)_140px_32px] sm:items-center"
+                className="grid min-w-0 gap-2 bg-surface-panel px-3 py-2.5 sm:grid-cols-[minmax(120px,0.8fr)_minmax(140px,1fr)_140px_32px] sm:items-center"
               >
                 <input
                   value={profile.Id}
                   disabled={disabled}
                   aria-label={frontendMessage("config.model.thinking.profileId")}
-                  className="h-8 min-w-0 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[12px] text-ink-800 outline-none focus:border-accent-border focus:ring-2 focus:ring-accent-focus disabled:opacity-55"
+                  className="h-8 min-w-0 rounded-md border border-line bg-surface-panel px-2.5 text-[12px] text-content-primary outline-none transition placeholder:text-content-muted disabled:opacity-55"
                   onChange={(event) => updateProfile(index, { Id: event.currentTarget.value })}
                 />
                 <input
                   value={profile.Label}
                   disabled={disabled}
                   aria-label={frontendMessage("config.model.thinking.profileLabel")}
-                  className="h-8 min-w-0 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[12px] text-ink-800 outline-none focus:border-accent-border focus:ring-2 focus:ring-accent-focus disabled:opacity-55"
+                  className="h-8 min-w-0 rounded-md border border-line bg-surface-panel px-2.5 text-[12px] text-content-primary outline-none transition placeholder:text-content-muted disabled:opacity-55"
                   onChange={(event) => updateProfile(index, { Label: event.currentTarget.value })}
                 />
                 <input
@@ -119,7 +119,7 @@ export function ModelThinkingControls({
                   disabled={disabled}
                   aria-label={frontendMessage("config.model.thinking.level")}
                   placeholder={frontendMessage("config.model.thinking.levelPlaceholder")}
-                  className="h-8 min-w-0 rounded-md border border-ink-200 bg-paper-50 px-2.5 text-[12px] text-ink-800 outline-none focus:border-accent-border focus:ring-2 focus:ring-accent-focus disabled:opacity-55"
+                  className="h-8 min-w-0 rounded-md border border-line bg-surface-panel px-2.5 text-[12px] text-content-primary outline-none transition placeholder:text-content-muted disabled:opacity-55"
                   onChange={(event) => updateProfile(index, { Level: event.currentTarget.value as ModelThinkingLevel })}
                 />
                 <button

@@ -112,7 +112,7 @@ function LoginForm({
             name="username"
             autoComplete="username"
             autoFocus
-            className="h-10 w-full border border-ink-200 bg-paper-50 px-3 text-[13px] outline-none transition focus:border-ink-400 focus:ring-2 focus:ring-accent-focus"
+            className="h-10 w-full rounded-md border border-line bg-surface-panel px-3 text-[13px] text-content-primary outline-none transition placeholder:text-content-muted"
             value={loginName}
             onChange={(event) => setLoginName(event.target.value)}
             required
@@ -124,7 +124,7 @@ function LoginForm({
             name="password"
             type="password"
             autoComplete="current-password"
-            className="h-10 w-full border border-ink-200 bg-paper-50 px-3 text-[13px] outline-none transition focus:border-ink-400 focus:ring-2 focus:ring-accent-focus"
+            className="h-10 w-full rounded-md border border-line bg-surface-panel px-3 text-[13px] text-content-primary outline-none transition placeholder:text-content-muted"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             required

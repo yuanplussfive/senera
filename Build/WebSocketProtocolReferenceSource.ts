@@ -32,6 +32,7 @@ const requestDescriptions = {
   "session.list": "获取服务端当前可用会话的摘要列表。",
   "session.history": "拉取指定会话的可重放历史；`refresh` 用于主动重新同步。",
   "session.rename": "更新会话显示标题。",
+  "session.feedback": "记录或撤回当前用户对某个已完成轮次的评价；rating 为 null 表示撤回。",
   "model.list": "获取已配置模型提供方及默认模型。",
   "provider.models.fetch": "从指定模型端点刷新可用模型列表。",
   "config.get": "获取当前有效系统配置及表单投影。",
@@ -142,6 +143,10 @@ const eventPayloadSourceOverrides: Partial<Record<AgentEventKind, { label: strin
   [AgentEventKinds.InteractionInputResolved]: {
     label: "交互输入事件类型",
     path: "../../Source/AgentSystem/Interaction/AgentInteractionInputEventTypes.ts",
+  },
+  [AgentEventKinds.FeedbackRecorded]: {
+    label: "反馈事件类型",
+    path: "../../Source/AgentSystem/Interaction/AgentFeedbackEventTypes.ts",
   },
 };
 

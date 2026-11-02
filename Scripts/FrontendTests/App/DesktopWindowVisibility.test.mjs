@@ -1,5 +1,9 @@
 import { expect, test, vi } from "vitest";
-import { hideDesktopWindows, showDesktopWindows } from "../../../Apps/Desktop/DesktopWindowVisibility.ts";
+import {
+  hideDesktopWindows,
+  revealDesktopWindow,
+  showDesktopWindows,
+} from "../../../Apps/Desktop/DesktopWindowVisibility.ts";
 
 test("desktop close hides every live window without destroying it", () => {
   const main = visibilityWindow();
@@ -38,26 +42,50 @@ test("desktop restore can focus an explicitly requested window", () => {
   expect(settings.focus).not.toHaveBeenCalled();
 });
 
-function visibilityWindow({ destroyed = false, minimized = false } = {}) {
+test("revealing an already open window raises it above the other surfaces", () => {
+  const settings = visibilityWindow({ minimized: true, visible: true });
+
+  revealDesktopWindow(settings.window);
+
+  expect(settings.restore).toHaveBeenCalledTimes(1);
+  expect(settings.show).toHaveBeenCalledTimes(1);
+  expect(settings.moveTop).toHaveBeenCalledTimes(1);
+  expect(settings.focus).toHaveBeenCalledTimes(1);
+});
+
+test("revealing a destroyed window is a no-op", () => {
+  const settings = visibilityWindow({ destroyed: true });
+
+  revealDesktopWindow(settings.window);
+  revealDesktopWindow(undefined);
+
+  expect(settings.show).not.toHaveBeenCalled();
+  expect(settings.focus).not.toHaveBeenCalled();
+});
+
+function visibilityWindow({ destroyed = false, minimized = false, visible = false } = {}) {
   const hide = vi.fn();
   const restore = vi.fn();
   const show = vi.fn();
   const showInactive = vi.fn();
+  const moveTop = vi.fn();
   const focus = vi.fn();
   return {
     hide,
     restore,
     show,
     showInactive,
+    moveTop,
     focus,
     window: {
       isDestroyed: () => destroyed,
       isMinimized: () => minimized,
-      isVisible: () => false,
+      isVisible: () => visible,
       hide,
       restore,
       show,
       showInactive,
+      moveTop,
       focus,
     },
   };

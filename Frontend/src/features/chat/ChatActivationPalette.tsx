@@ -10,6 +10,7 @@ import { resolveFrontendLocalizedText, type FrontendLocale } from "../../i18n/fr
 import { cn } from "../../lib/util";
 import { MotionList, MotionListItem } from "../../shared/motion";
 import { AppIcon, isAppIconName, type AppIconName } from "../../shared/ui";
+import { overlaySurfaceClassName } from "../../shared/ui/MenuShared";
 import {
   AgentToolPresentationIcon,
   isAgentToolPresentationIcon,
@@ -177,10 +178,11 @@ export function ActivationPalette({
 
   return (
     <div
-      className="absolute bottom-full left-3 z-20 mb-2 flex w-80 max-w-[90vw] flex-col overflow-hidden rounded-[13px] border border-line-subtle bg-surface-panel/95 shadow-[0_18px_42px_-24px_rgb(43_40_32_/_0.42)] backdrop-blur-md"
+      className={cn(
+        overlaySurfaceClassName,
+        "absolute bottom-full left-3 z-20 mb-2 flex w-80 max-w-[90vw] flex-col p-0",
+      )}
       role="listbox"
-      aria-label={frontendChatMessage("chat.composer.activation.ariaLabel", {}, locale)}
-      aria-activedescendant={candidates[activeIndex] ? activationOptionId(candidates[activeIndex]) : undefined}
     >
       <div className="flex items-center justify-between gap-3 border-b border-line-subtle px-3.5 py-2.5">
         <div className="flex min-w-0 items-center gap-2">

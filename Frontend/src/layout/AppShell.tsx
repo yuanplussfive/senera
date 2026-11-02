@@ -49,6 +49,7 @@ interface AppShellProps {
   terminalPanel: ReactNode;
   eventPanel: ReactNode;
   statePanel?: ReactNode;
+  agentsPanel?: ReactNode;
   workflowDockTool: WorkflowDockTool;
   onWorkflowDockToolChange: (tool: WorkflowDockTool) => void;
   sessionDrawerOpen: boolean;
@@ -77,13 +78,18 @@ interface ResponsiveDrawerProps {
 
 type AppShellSurface = "drawer" | "persistent";
 type WorkflowPanelLayout = "drawer" | "overlay" | "inline";
-export type WorkflowDockTool = "execution" | "terminal" | "events" | "state";
+export type WorkflowDockTool = "execution" | "agents" | "terminal" | "events" | "state";
 
 const WORKFLOW_DOCK_ITEMS = [
   {
     id: "execution",
     messageKey: "workflow.dock.execution",
     icon: "list-tree",
+  },
+  {
+    id: "agents",
+    messageKey: "workflow.dock.agents",
+    icon: "git-branch",
   },
   {
     id: "terminal",
@@ -177,6 +183,7 @@ export function AppShell({
   terminalPanel,
   eventPanel,
   statePanel,
+  agentsPanel,
   workflowDockTool,
   onWorkflowDockToolChange,
   sessionDrawerOpen,
@@ -429,6 +436,9 @@ export function AppShell({
         </div>
         <TabsContent value="execution" className="min-h-0 flex-1 overflow-hidden">
           {renderWorkflowPanel(executionPanel)}
+        </TabsContent>
+        <TabsContent value="agents" className="min-h-0 flex-1 overflow-hidden">
+          {agentsPanel}
         </TabsContent>
         <TabsContent value="terminal" className="min-h-0 flex-1 overflow-hidden">
           {renderTerminalContent(presentation)}

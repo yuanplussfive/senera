@@ -11,23 +11,17 @@ import { TooltipProvider } from "../../../Frontend/src/shared/ui/Tooltip.tsx";
 globalThis.__SENERA_EMPTY_SUGGESTIONS__ = "整理日志|检查项目";
 globalThis.window.__SENERA_RUNTIME_CONFIG__ = {};
 
-test("chat header and empty state render stable first-screen copy", () => {
-  const header = renderToStaticMarkup(
-    withUiProviders(
-      React.createElement(ChatHeader, {
-        title: "会话标题",
-        runStatus: "failed",
-      }),
-    ),
-  );
+test("chat header chrome and empty state render stable first-screen copy", () => {
+  const header = renderToStaticMarkup(withUiProviders(React.createElement(ChatHeader, {})));
   const empty = renderToStaticMarkup(
     React.createElement(EmptyChatState, {
       onSelectSuggestion: () => undefined,
     }),
   );
 
-  expect(header).toMatch(/会话标题/);
-  expect(header).toMatch(/失败/);
+  // The title bar carries no copy of its own; the empty state is the only
+  // first-screen text and must survive server rendering verbatim.
+  expect(header).toMatch(/data-chat-header/);
   expect(empty).toMatch(/今天想做点什么/);
   expect(empty).toMatch(/整理日志/);
 });

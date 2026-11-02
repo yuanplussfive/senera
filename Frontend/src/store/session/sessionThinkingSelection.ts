@@ -12,6 +12,11 @@ export function selectThinkingLevelForActiveSession(state: StoreState, level: Mo
   }
 }
 
+/**
+ * Resolves the reasoning level of the active conversation. Only an explicit per-conversation
+ * choice is remembered; an inherited model keeps deriving its own level, so switching the
+ * model — including through a changed default — never carries a foreign level along.
+ */
 export function syncActiveSessionThinkingSelection(state: StoreState): void {
   const selected = readSelectedModel(state);
   const sessionId = state.activeSessionId;
@@ -20,15 +25,13 @@ export function syncActiveSessionThinkingSelection(state: StoreState): void {
     : (state.selectedThinkingLevel ?? undefined);
   const next = normalizeThinkingLevel(selected, remembered);
   state.selectedThinkingLevel = selected ? next : null;
-  if (sessionId && selected) {
-    (state.selectedThinkingLevelsBySession ??= {})[sessionId] = next;
-  }
 }
 
 function readSelectedModel(state: StoreState): ModelProviderListItem | undefined {
   const selectedId = state.selectedModelProviderId;
   return (
     state.modelProviders.find((model) => model.id === selectedId) ??
+    state.modelProviders.find((model) => model.id === state.defaultModelProviderId) ??
     state.modelProviders.find((model) => model.isDefault)
   );
 }

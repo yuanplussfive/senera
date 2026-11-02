@@ -176,10 +176,34 @@ Skills 没有代码执行路径，失败时是 fail-closed。原先排在第 5 �
 2. **`replacePackage` 的存在性**——全仓不存在，任何依赖它存在的前提都不成立。
 3. **存储视图缺少逐工作区数据**——不成立，`StorageSettings.tsx` 已经在渲染。
 
-## 12. 相关文档
+## 12. 桌面 server 懒加载 pi 运行时（2026-10-26 决策：记录预算上限，暂不实施）
+
+**结论**：采用候选方案 C。方案 A/B 的收益低于原判断，且 A 需要产品决策，`server≈2s` 记为预算上限；实测口径与打包基线见[桌面运行时](../Architecture/DesktopRuntime.md)第 5 节。
+
+**背景**：桌面 server 的模块图已在 2026-10-26 改成单文件打包，`desktop.log` 的 `server=` 从 5.1–5.4s 降到 1.8–2.4s。剩下的约 2s 是「boot 时就把整个 agent runtime 装起来」加上 31.4MB 单文件 bundle 的解析成本。
+
+**判据点（2026-10-26 复核，修正原文三处）**：
+
+- `new AgentPiSubstrate` 不在 server 启动时执行：它在 `AgentSystemRuntime` 的私有构造函数里（`Source/AgentSystem/Runtime/AgentSystemRuntimeComposition.ts:468`），只在 `AgentSystemRuntimeCache.acquire()` 时触发，而 `acquire()` 的两个调用点（`Apps/ServerRuntime.ts:742`、`:787`）都在 async 路径内。所以「引入异步边界」不是主要成本。
+- 即使 `AgentPiSubstrate` 惰性化，pi 栈仍留在启动图里：`AgentSystemRuntimeComposition.ts:54 → AgentSystemTools.ts:7 → PiWorkspaceSystemTools.ts:40-51`，该模块在**顶层**用 pi 构造工具定义。
+- `tesseract.js`、`@napi-rs/canvas`、`photon`、`sharp` 在 `Source` 下没有静态 import，方案 B 的「图像」部分没有可下沉入口；`Source` 下现有 `await import()` 是 8 处而非 4 处。
+- 单文件 bundle（`Build/BundleDesktopServer.ts` 未开 `splitting`）下，动态 `import()` 只延后求值、不省解析。
+
+**量化**（`module.register` 钩子统计一次 `import("Dist/Apps/ServerRuntime.js")`）：4940 个模块里 pi 栈 + typebox 占 2672（`pi-coding-agent` 974、`pi-ai` 862、`pi-agent-core` 467、`typebox` 369），workspace 自身 983。
+
+**候选方案与取舍**：
+
+- A：`AgentPiSubstrate` 及其下游改为首次 run 时才 `await import()`。单做 A0（把构造搬进已经是 async 的 `AgentSystemRuntime.initialize()`）不足以降低启动时间，必须同时拆 `PiWorkspaceSystemTools` 的同步工具目录契约（≥5 文件）并给 bundle 开 `splitting`；代价还包括配置错误从「启动期同步抛」变成「首个 turn 抛」——用户可见的语义变化，需要产品确认。
+- B：只下沉非核心部分（`linkedom` 零风险；`markdown-it`/`liquidjs` 是顶层单例，惰性化要求调用点变 async）。在单文件 bundle 下收益落在噪声内。
+- C：接受现状，把 `server≈2s` 记为预算上限。**已采用**。
+
+**验收**：`desktop.log` 的 `server=` 是唯一口径，打包基线在[桌面运行时](../Architecture/DesktopRuntime.md)第 5 节。若将来做 A，应进 1s 以内，且首次 run 的额外延迟不得让用户可感知地变差。
+
+## 13. 相关文档
 
 - [图标像素相位](./FrontendIconPixelPhase.md)——第 1 项的完整推导与度量方法
 - [前端设置工作台约束](./FrontendSettingsWorkbench.md)——第 5 项的周边约束
 - [核心链路导览](../Architecture/CoreFlow.md)——第 2、3 项涉及的执行与事件链路
 - [工作区宿主](../Architecture/WorkspaceHost.md)——第 2 项涉及的根路径与宿主关系
-- [桌面运行时审计](./DesktopRuntimeAudit.md)——Electron IPC、打包冒烟与启动成本
+- [桌面运行时](../Architecture/DesktopRuntime.md)——进程边界、IPC 契约、打包冒烟与启动成本
+- [桌面运行时审计](./DesktopRuntimeAudit.md)——Electron IPC、打包冒烟与启动成本的历史判据（删除与否由 PR 作者在合并后决定）

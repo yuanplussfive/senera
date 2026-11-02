@@ -335,6 +335,7 @@ export const AgentEventObservationSpecTable = {
     "/data/callId",
     "/data/action",
   ),
+  [AgentEventKinds.FeedbackRecorded]: projection("/data/requestId", "/data.rating", "/data/category"),
   [AgentEventKinds.ExecutionResourceCreated]: projectionWithResourceId("/data/resourceId", "/data/kind", "/data/state"),
   [AgentEventKinds.ExecutionResourceOutput]: projectionWithResourceId(
     "/data/resourceId",
