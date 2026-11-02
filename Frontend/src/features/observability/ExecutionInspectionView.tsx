@@ -3,7 +3,7 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { frontendFeatureMessage as t } from "../../i18n/frontendFeatureMessageCatalog";
 import { formatInteger } from "../../lib/util";
-import { formatModelCost } from "../../lib/modelCost";
+import { formatModelCharge } from "../../lib/modelCost";
 import type { RunRecord } from "../../store/sessionStore";
 import { AppIcon, Button, Input, MenuSelect, SegmentedControl } from "../../shared/ui";
 import { insightTotals } from "./sessionInsightsModel";
@@ -166,7 +166,7 @@ export function ExecutionInspectionView({
           </div>
           <div>
             <dt>{t(scopeId === undefined ? "insights.process.cost" : "insights.process.agentCost")}</dt>
-            <dd>{formatModelCost(totals.cost)}</dd>
+            <dd>{formatModelCharge(totals.charge)}</dd>
           </div>
         </dl>
         {loading ? (

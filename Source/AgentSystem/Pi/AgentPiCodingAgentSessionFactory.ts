@@ -33,6 +33,10 @@ import {
 import { projectAgentPiActivatedSkills, projectAgentPiSkillCatalog } from "./AgentPiSkillCatalog.js";
 import { resolveAgentPiCompactionSettings } from "./AgentPiCompactionSettings.js";
 import type { AgentPiToolSet } from "./AgentPiToolRegistryProjector.js";
+import {
+  materializeToolContractArguments,
+  formatAgentToolContractValidationIssue,
+} from "../ToolRuntime/AgentToolSignatureArgumentValidator.js";
 
 const NativeProviderRetryAttempts = 0;
 const SessionDiagnosticEventTypes = new Set([
@@ -298,6 +302,16 @@ export class AgentPiCodingAgentSessionFactory {
       .materialize(() => projectAgentPiToolContext(frame.snapshot()))
       .map((tool) => ({
         ...tool,
+        prepareArguments: (params) => {
+          const args = readAgentUnknownRecord(params);
+          if (!args) throw new Error(`Tool ${tool.name} requires an argument object.`);
+          const prepared = materializeToolContractArguments({ schema: tool.parameters, args });
+          if (!prepared.ok)
+            throw new Error(
+              prepared.issues.map((issue) => formatAgentToolContractValidationIssue(issue, tool.name)).join("\n"),
+            );
+          return prepared.value;
+        },
         execute: (toolCallId, params, signal, onUpdate, context) => {
           const args = readAgentUnknownRecord(params);
           if (!args) throw new Error(`Tool ${tool.name} requires an argument object.`);

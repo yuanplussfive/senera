@@ -169,6 +169,7 @@ export interface TimelineStep {
   /** A terminal placeholder used only when no durable process data exists. */
   historyFallback?: "missing_reply";
   modelName?: string;
+  responseModel?: string;
   contextSnapshot?: import("../../../../Source/AgentSystem/Events/AgentModelContextSnapshot").AgentModelContextSnapshot;
   modelUsage?: import("../../api/eventTypes").ModelUsageMetadata;
   promptChars?: number;

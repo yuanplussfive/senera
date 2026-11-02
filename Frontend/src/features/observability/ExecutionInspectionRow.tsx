@@ -1,4 +1,5 @@
 import { frontendFeatureMessage as t } from "../../i18n/frontendFeatureMessageCatalog";
+import { frontendChatMessage } from "../../i18n/frontendChatMessageCatalog";
 import { formatDurationMs, formatInteger } from "../../lib/util";
 import { ActivityStatusIcon, AppIcon, Button, IconButton } from "../../shared/ui";
 import { ToolStepInspector } from "../workflow/ToolStepInspector";
@@ -65,7 +66,10 @@ export function ExecutionInspectionRow({
   const usage = step.kind === "model" ? requestContextUsage(step) : undefined;
   const kind = step.kind === "model" ? "model" : step.childRun ? "agent" : step.callId ? "tool" : "event";
   const title = executionRecordTitle(row);
-  const target = step.kind === "model" ? step.modelName : [tool?.subject, tool?.detail].filter(Boolean).join(" · ");
+  const target =
+    step.kind === "model"
+      ? (step.responseModel ?? step.modelName)
+      : [tool?.subject, tool?.detail].filter(Boolean).join(" · ");
   const summary = executionStepSummary(step);
   const outcome =
     step.status === "failed"
@@ -183,6 +187,11 @@ export function ExecutionInspectionDetail({
         ) : (
           <>
             {step.modelName ? <p className="insights-note">{step.modelName}</p> : null}
+            {step.responseModel ? (
+              <p className="insights-note">
+                {frontendChatMessage("chat.metrics.responseModel", { model: step.responseModel })}
+              </p>
+            ) : null}
             {step.description ? <p>{step.description}</p> : null}
             {step.kind === "model" ? (
               <Button variant="ghost" size="sm" onClick={() => onInspectRequest(step.id)}>

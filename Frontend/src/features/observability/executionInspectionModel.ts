@@ -117,6 +117,7 @@ export function executionInspectionRows(
               step.title,
               step.toolName,
               step.modelName,
+              step.responseModel,
               step.scope?.agentName,
               executionStepSummary(step),
               step.callId ? executionToolSummary(step)?.accessibleLabel : undefined,

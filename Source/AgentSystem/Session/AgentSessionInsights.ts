@@ -10,7 +10,10 @@ import type { AgentToolEventOrigin } from "../ToolRuntime/AgentToolEventOrigin.j
 // Analytics retains declared action targets, never raw prompts, tool bodies or results.
 const InsightFields = new Map<string, readonly string[]>([
   [AgentEventKinds.ModelStarted, ["model", "provider", "messageIndex", "contextSnapshot"]],
-  [AgentEventKinds.ModelCompleted, ["model", "provider", "messageIndex", "outcome", "errorMessage", "usage"]],
+  [
+    AgentEventKinds.ModelCompleted,
+    ["model", "responseModel", "provider", "messageIndex", "outcome", "errorMessage", "usage"],
+  ],
   [AgentEventKinds.RunCompleted, ["usage"]],
   [AgentEventKinds.SessionCompacted, ["sessionId", "tokensBefore", "estimatedTokensAfter", "boundaryId"]],
   [

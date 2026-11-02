@@ -26,6 +26,8 @@ export type AgentModelUsageField = (typeof AgentModelUsageFields)[number];
 
 export interface AgentModelUsageValue {
   cost?: AgentModelCost;
+  /** Concrete serving model, only when reported by the provider for this call. */
+  responseModel?: string;
   source: AgentModelUsageSource;
   inputTokens?: number;
   outputTokens?: number;
@@ -140,6 +142,7 @@ export class AgentModelUsageResolver {
       cacheReadTokens,
       cacheWriteTokens,
       reasoningTokens: reported?.reasoningTokens,
+      ...(reported?.responseModel ? { responseModel: reported.responseModel } : {}),
       estimatedFields: estimatedFields.length > 0 ? estimatedFields : undefined,
       cost: calculateAgentModelCost(
         {
@@ -149,6 +152,7 @@ export class AgentModelUsageResolver {
           cacheWrite: cacheWriteTokens ?? 0,
         },
         this.pricing,
+        reported?.cost,
       ),
     };
   }
@@ -231,7 +235,7 @@ export function mergeProviderReportedUsage(
 ): AgentModelUsageValue | undefined {
   if (!update) return current;
   if (!current) return cloneUsageValue(update);
-  return createProviderReportedUsage({
+  const usage = createProviderReportedUsage({
     inputTokens: update.inputTokens ?? current.inputTokens,
     outputTokens: update.outputTokens ?? current.outputTokens,
     totalTokens: update.totalTokens ?? current.totalTokens,
@@ -239,6 +243,13 @@ export function mergeProviderReportedUsage(
     cacheWriteTokens: update.cacheWriteTokens ?? current.cacheWriteTokens,
     reasoningTokens: update.reasoningTokens ?? current.reasoningTokens,
   });
+  return usage
+    ? {
+        ...usage,
+        cost: update.cost ?? current.cost,
+        responseModel: update.responseModel ?? current.responseModel,
+      }
+    : undefined;
 }
 
 function resolveCompletedUsageSource(
@@ -262,6 +273,7 @@ function uniqueEstimatedFields(values: readonly AgentModelUsageValue[]): AgentMo
 function cloneUsageValue(usage: AgentModelUsageValue): AgentModelUsageValue {
   return {
     ...usage,
+    ...(usage.cost ? { cost: { ...usage.cost } } : {}),
     estimatedFields: usage.estimatedFields ? [...usage.estimatedFields] : undefined,
   };
 }

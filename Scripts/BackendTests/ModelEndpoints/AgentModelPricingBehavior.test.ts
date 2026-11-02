@@ -2,12 +2,33 @@ import { describe, expect, test } from "vitest";
 import {
   aggregateAgentModelCosts,
   calculateAgentModelCost,
+  priceAgentPiUsage,
+  type AgentPricedPiUsage,
   withAgentModelsDevPricing,
 } from "../../../Source/AgentSystem/ModelEndpoints/AgentModelPricing.js";
 import { AgentModelUsageLedger } from "../../../Source/AgentSystem/ModelEndpoints/AgentModelUsage.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 describe("model reference pricing", () => {
+  test.each([0, 0.42])("preserves a provider billed total of %s across repeated pricing", (total) => {
+    const usage: AgentPricedPiUsage = {
+      input: 100,
+      output: 10,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 110,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total, totalFromProvider: true },
+    };
+    priceAgentPiUsage(usage, { input: 2, output: 8 });
+    priceAgentPiUsage(usage);
+    expect(usage.cost).toMatchObject({ total, totalFromProvider: true });
+    expect(usage.seneraCost).toMatchObject({ total, totalFromProvider: true });
+    const reported = usage.seneraCost!;
+    expect(aggregateAgentModelCosts([reported, reported])).toMatchObject({ total: total * 2, totalFromProvider: true });
+    expect(aggregateAgentModelCosts([reported, { currency: "USD", total: 0.1 }]).totalFromProvider).not.toBe(true);
+    expect(aggregateAgentModelCosts([reported, undefined]).total).toBeUndefined();
+  });
+
   test("charges disjoint cache categories without charging reasoning twice", () => {
     const cost = calculateAgentModelCost(
       { input: 1_000, output: 200, cacheRead: 5_000, cacheWrite: 100 },

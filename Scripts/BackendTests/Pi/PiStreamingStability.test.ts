@@ -23,6 +23,7 @@ import {
 import type { AgentPiModelProjection } from "../../../Source/AgentSystem/Pi/AgentPiTypes.js";
 import { emptyAgentToolAccessGrant } from "../../../Source/AgentSystem/ToolRuntime/AgentToolAccessGrant.js";
 import { toolRootCommand } from "../Support/AgentTestFixtures.js";
+import { testPiAssistantMessage } from "../Support/AgentPiModelTestStream.js";
 import { AgentPiTurnState } from "../../../Source/AgentSystem/Pi/AgentPiTurnState.js";
 import { AgentModelUsageLedger } from "../../../Source/AgentSystem/ModelEndpoints/AgentModelUsage.js";
 import { AgentToolExposureState } from "../../../Source/AgentSystem/ToolRuntime/AgentToolExposureState.js";
@@ -30,7 +31,7 @@ import { AgentPiToolPlanCoordinator } from "../../../Source/AgentSystem/PiShared
 import { AgentTurnTokenBudget } from "../../../Source/AgentSystem/Text/AgentTurnTokenBudget.js";
 
 describe("Pi streaming stability", () => {
-  test("projects ordered model deltas without emitting internal diagnostics as domain events", async () => {
+  test("projects queued immutable deltas and terminal-only blocks without scanning shared partials", async () => {
     const emitted: Array<{ kind: string; data: unknown }> = [];
     const turnState = createTurnState("streaming-request", 1);
     const collector = new AgentPiRunCollector({
@@ -44,17 +45,39 @@ describe("Pi streaming stability", () => {
 
     turnState.beginModelRequest();
     await collector.collect(assistantMessageEvent("message_start", ""));
-    await collector.collect(messageUpdate("first"));
-    await collector.collect(messageUpdate("first second"));
-    await collector.collect(assistantMessageEvent("message_end", "first second"));
+    const block = { type: "text" as const, text: "" };
+    const shared = testPiAssistantMessage([block]);
+    const deliveries = ["first", " second"].map((delta) => {
+      block.text += delta;
+      return collector.collect({
+        type: "message_update",
+        message: shared,
+        assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta, partial: shared },
+      });
+    });
+    await Promise.all(deliveries);
+    await collector.collect({
+      type: "message_update",
+      message: shared,
+      assistantMessageEvent: { type: "text_end", contentIndex: 0, content: block.text, partial: shared },
+    });
+    shared.content.push({ type: "text", text: " third" });
+    await collector.collect({
+      type: "message_update",
+      message: shared,
+      assistantMessageEvent: { type: "text_end", contentIndex: 1, content: " third", partial: shared },
+    });
+    await collector.collect(assistantMessageEvent("message_end", "first second third"));
     await collector.drain();
 
     expect(emitted.filter((event) => event.kind === AgentEventKinds.ModelDelta)).toEqual([
       expect.objectContaining({ data: { text: "first", messageIndex: 0 } }),
       expect.objectContaining({ data: { text: " second", messageIndex: 0 } }),
+      expect.objectContaining({ data: { text: " third", messageIndex: 0 } }),
     ]);
     expect(emitted.map((event) => event.kind).filter((kind) => kind !== AgentEventKinds.RunActivityChanged)).toEqual([
       AgentEventKinds.ModelStarted,
+      AgentEventKinds.ModelDelta,
       AgentEventKinds.ModelDelta,
       AgentEventKinds.ModelDelta,
       AgentEventKinds.ModelCompleted,
@@ -442,19 +465,12 @@ describe("Pi streaming stability", () => {
 });
 
 function messageUpdate(text: string): AgentPiRunEvent {
+  const message = testPiAssistantMessage([{ type: "text", text }]);
   return {
     type: "message_update",
-    message: {
-      role: "assistant",
-      content: [
-        {
-          type: "text",
-          text,
-        },
-      ],
-    },
-    assistantMessageEvent: {},
-  } as unknown as AgentPiRunEvent;
+    message,
+    assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: text, partial: message },
+  };
 }
 
 function thinkingUpdate(

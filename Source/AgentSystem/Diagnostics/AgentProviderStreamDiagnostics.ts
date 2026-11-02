@@ -11,6 +11,7 @@ import type {
   AgentProviderStreamCapture,
   AgentProviderStreamFactory,
   AgentProviderStreamRequestStatus,
+  AgentProviderTerminalResult,
 } from "../PiShared/AgentPiDiagnosticsTypes.js";
 
 const Limits = {
@@ -160,6 +161,7 @@ class ProviderStreamCapture implements AgentProviderStreamCapture {
   private stopReason?: string;
   private rawStopReason?: string;
   private usage?: unknown;
+  private responseModel?: string;
   private providerTerminal = false;
   private projectionFailures = 0;
 
@@ -228,15 +230,26 @@ class ProviderStreamCapture implements AgentProviderStreamCapture {
       if (block?.type === "toolCall") this.rememberTool(block);
     }
     if (event.type === "done" || event.type === "error") {
-      this.providerTerminal = true;
       const message = event.type === "done" ? event.message : event.error;
-      this.stopReason = message.stopReason;
-      this.rawStopReason = message.rawStopReason;
-      this.usage = sanitizeDiagnosticDetails(message.usage);
+      this.observeResult(message);
       // A streamed name/ID may be incomplete at toolcall_start. The terminal message is authoritative.
       this.tools.clear();
       for (const block of message.content) if (block.type === "toolCall") this.rememberTool(block);
       this.toolCount = message.content.filter((block) => block.type === "toolCall").length;
+    }
+  }
+
+  observeResult(result: AgentProviderTerminalResult): void {
+    if (this.finished) return;
+    try {
+      this.providerTerminal = true;
+      this.stopReason = result.stopReason;
+      this.rawStopReason = result.rawStopReason;
+      this.responseModel = result.responseModel;
+      this.actual = { provider: result.provider, api: result.api, model: result.responseModel ?? result.model };
+      this.usage = sanitizeDiagnosticDetails(result.usage);
+    } catch {
+      this.projectionFailures += 1;
     }
   }
 
@@ -263,11 +276,17 @@ class ProviderStreamCapture implements AgentProviderStreamCapture {
       providerId: this.metadata(this.input.providerId),
       stage: this.metadata(this.input.stage),
       invocationId: this.input.invocationId ? this.metadata(this.input.invocationId) : undefined,
+      requested: {
+        provider: this.metadata(this.input.model.provider),
+        api: this.metadata(this.input.model.api),
+        model: this.metadata(this.input.model.id),
+      },
       actual: {
         provider: this.metadata(this.actual.provider),
         api: this.metadata(this.actual.api),
         model: this.metadata(this.actual.model),
       },
+      ...(this.responseModel ? { responseModel: this.metadata(this.responseModel) } : {}),
       startedAt: this.startedAt,
       durationMs: this.elapsed(),
       firstEventMs: this.firstEventMs,

@@ -1,7 +1,7 @@
 import { lazy, memo, Suspense, useEffect, useId, useState } from "react";
 import type { InteractionInputAction, InteractionInputContent } from "../../api/eventTypes";
 import type { FeedbackCategory, FeedbackRating } from "../../api/feedbackEventTypes";
-import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { frontendChatMessage } from "../../i18n/frontendChatMessageCatalog";
 import { useFrontendLocale } from "../../i18n/useFrontendLocale";
 import { cn } from "../../lib/util";
 import type { ChatMessage, ConversationIdentity, ModelThinkingBlock } from "../../store/sessionStore";
@@ -262,7 +262,7 @@ function AssistantTurnPresentation({
           }}
           data-settled-turn-toggle
         >
-          <SettledRunSummary run={run} fallback={frontendMessage("chat.metrics.process")} />
+          <SettledRunSummary run={run} fallback={frontendChatMessage("chat.metrics.process")} />
           <AppIcon
             icon="chevron-right"
             size="1em"
@@ -418,7 +418,7 @@ function RunElapsedText({
   const text =
     durationMs === undefined
       ? fallback
-      : frontendMessage("chat.metrics.elapsed", { duration: formatElapsedDurationMs(durationMs) });
+      : frontendChatMessage("chat.metrics.elapsed", { duration: formatElapsedDurationMs(durationMs) });
   return text ? <span className="min-w-0 truncate">{text}</span> : null;
 }
 
@@ -440,14 +440,15 @@ function formatElapsedDurationMs(milliseconds: number): string {
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
   const parts: string[] = [];
-  if (hours > 0) parts.push(frontendMessage("chat.metrics.elapsed.hour", { count: hours }));
-  if (minutes > 0 || hours > 0) parts.push(frontendMessage("chat.metrics.elapsed.minute", { count: minutes }));
-  if (seconds > 0 || parts.length === 0) parts.push(frontendMessage("chat.metrics.elapsed.second", { count: seconds }));
+  if (hours > 0) parts.push(frontendChatMessage("chat.metrics.elapsed.hour", { count: hours }));
+  if (minutes > 0 || hours > 0) parts.push(frontendChatMessage("chat.metrics.elapsed.minute", { count: minutes }));
+  if (seconds > 0 || parts.length === 0)
+    parts.push(frontendChatMessage("chat.metrics.elapsed.second", { count: seconds }));
   return parts.join(getElapsedUnitSeparator());
 }
 
 function getElapsedUnitSeparator(): string {
-  return frontendMessage("chat.metrics.elapsed.separator");
+  return frontendChatMessage("chat.metrics.elapsed.separator");
 }
 
 interface AssistantStageProps {

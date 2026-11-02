@@ -155,12 +155,6 @@
       "splitTarget": "Extract process environment projection and worker lifecycle helpers."
     },
     {
-      "path": "Frontend/src/features/observability/runtimeDiagnosticProjection.ts",
-      "baselineLines": 974,
-      "owner": "frontend-platform",
-      "splitTarget": "Extract diagnostic event normalization and run projection into focused observability modules."
-    },
-    {
       "path": "Frontend/src/shared/workspace/WorkspaceResourceWorkbench.tsx",
       "baselineLines": 957,
       "owner": "frontend-platform",

@@ -21,13 +21,14 @@ import {
   type AgentNativeToolApi,
 } from "../ModelEndpoints/AgentModelEndpointContract.js";
 import { errorMessage } from "../Core/AgentErrors.js";
+import { awaitWithAbortSignal, throwAbortReason } from "../Core/AgentCancellation.js";
 import {
   findModelRequestTimeoutError,
   ModelRequestTimeoutError,
   normalizeModelHttpError,
 } from "../ModelEndpoints/ModelHttpErrors.js";
-import { AgentModelUsageSources, type AgentModelUsageValue } from "../ModelEndpoints/AgentModelUsage.js";
 import { priceAgentPiUsage, type AgentPricedPiUsage } from "../ModelEndpoints/AgentModelPricing.js";
+import { AgentPiModelResponseBudget } from "../ModelEndpoints/ModelResponseBudget.js";
 import { projectAgentPiAssistantUsage } from "../ModelEndpoints/AgentPiModelUsage.js";
 import type { AgentPiMutableSessionFrame } from "./AgentPiCodingAgentSessionFrame.js";
 import { registerAgentPiToolCallBatch } from "./AgentPiToolCallBatchProjector.js";
@@ -160,11 +161,13 @@ export class AgentPiNativeToolProvider {
     const firstTokenController = new AbortController();
     const maxRequestController = new AbortController();
     const streamIdleController = new AbortController();
+    const lifetime = new AbortController();
     const signal = combineSignals(
       options?.signal,
       firstTokenController.signal,
       maxRequestController.signal,
       streamIdleController.signal,
+      lifetime.signal,
     );
     const firstTokenTimer = startTimeout(
       firstTokenController,
@@ -177,6 +180,7 @@ export class AgentPiNativeToolProvider {
       this.options.modelProvider.MaxRequestMs,
       this.options.modelProvider.FirstTokenTimeoutMs,
     );
+    const responseBudget = new AgentPiModelResponseBudget(this.options.modelProvider);
     const deadlineFailure = (): ModelRequestTimeoutError | undefined =>
       findModelRequestTimeoutError(firstTokenController.signal.reason) ??
       findModelRequestTimeoutError(maxRequestController.signal.reason) ??
@@ -184,10 +188,16 @@ export class AgentPiNativeToolProvider {
       findModelRequestTimeoutError(signal.reason);
     const callerAborted = (): boolean => signal.aborted && deadlineFailure() === undefined;
     let started = false;
+    let terminal: AssistantMessage | undefined;
+    let source: AssistantMessageEventStream | undefined;
     try {
+      throwAbortReason(signal);
       const sourceRequest = this.requestContext(context, compactionRequest ? [] : frame.nativeProviderToolNames);
       const preparedRequest =
-        !compactionRequest && frame.prepareModelInput ? await frame.prepareModelInput(sourceRequest) : sourceRequest;
+        !compactionRequest && frame.prepareModelInput
+          ? await awaitWithAbortSignal(frame.prepareModelInput(sourceRequest), signal)
+          : sourceRequest;
+      throwAbortReason(signal);
       // ModelRuntime already gives this provider Pi's normalized transcript.
       // Keep it intact; normalizeContext only handles the optional preparer
       // compatibility path and is a no-op for an existing transcript.
@@ -256,10 +266,19 @@ export class AgentPiNativeToolProvider {
         maxRetries: 0,
         maxRetryDelayMs: this.options.modelProvider.RetryAfterMaxDelayMs,
       };
-      const source = this.delegate(model, request, requestOptions, simple);
+      source = this.delegate(model, request, requestOptions, simple);
+      const iterator = source[Symbol.asyncIterator]();
       let memoryAcknowledged = false;
-      for await (const event of source) {
+      for (;;) {
+        const next = await awaitWithAbortSignal(iterator.next(), signal);
+        if (next.done) break;
+        const event = next.value;
         streamDiagnostic?.observe(event);
+        if (event.type === "done" || event.type === "error") {
+          terminal = event.type === "done" ? event.message : event.error;
+          if (event.type === "done" || projectAgentPiAssistantUsage(terminal)) this.recordUsage(turnState, terminal);
+        }
+        responseBudget.observe(event);
         if (!compactionRequest && !memoryAcknowledged && event.type !== "error" && isFirstTokenEvent(event)) {
           frame.onModelMemoryDelivered?.();
           memoryAcknowledged = true;
@@ -269,7 +288,6 @@ export class AgentPiNativeToolProvider {
         if (event.type === "start") started = true;
         if (event.type === "done") {
           diagnosticStatus = "completed";
-          this.recordUsage(turnState, event.message.usage);
           turnState.context.tokenBudget.recordProviderUsage(event.message.usage, event.message);
           firstTokenTimer?.clear();
           maxRequestTimer?.clear();
@@ -297,8 +315,6 @@ export class AgentPiNativeToolProvider {
           const callerCancelled = callerAborted();
           diagnosticStatus = callerCancelled ? "aborted" : "failed";
           diagnosticError = signal.reason ?? event.error.errorMessage;
-          const reportedUsage = projectAgentPiAssistantUsage(event.error) ? event.error.usage : undefined;
-          if (reportedUsage) this.recordUsage(turnState, reportedUsage);
           streamDiagnostic?.finish(diagnosticStatus, diagnosticError);
           this.fail(
             output,
@@ -308,7 +324,7 @@ export class AgentPiNativeToolProvider {
               : (timeoutFailure ?? new Error(event.error.errorMessage ?? "Pi native provider request failed.")),
             started,
             callerCancelled,
-            reportedUsage,
+            event.error,
           );
           await this.emitPromptCacheObservation(frame, model, cache, wireCapture, {
             sessionId: requireAgentPiPromptCacheSessionId(frame.sessionId),
@@ -330,8 +346,10 @@ export class AgentPiNativeToolProvider {
       diagnosticStatus = cancelled ? "aborted" : "failed";
       diagnosticError = failure;
       streamDiagnostic?.finish(diagnosticStatus, diagnosticError);
-      this.fail(output, model, failure, started, cancelled);
+      this.fail(output, model, failure, started, cancelled, terminal);
     } finally {
+      lifetime.abort();
+      source?.end(terminal);
       firstTokenTimer?.clear();
       maxRequestTimer?.clear();
       streamIdleWatchdog.clear();
@@ -361,19 +379,10 @@ export class AgentPiNativeToolProvider {
     return restrictAgentPiNativeTools(context, providerToolNames);
   }
 
-  private recordUsage(turnState: AgentPiTurnState, usage: AssistantMessage["usage"]): void {
-    priceAgentPiUsage(usage, this.options.modelProvider.Pricing);
-    const value: AgentModelUsageValue = {
-      cost: (usage as AgentPricedPiUsage).seneraCost,
-      source: AgentModelUsageSources.ProviderReported,
-      inputTokens: usage.input,
-      outputTokens: usage.output,
-      totalTokens: usage.totalTokens,
-      cacheReadTokens: usage.cacheRead,
-      cacheWriteTokens: usage.cacheWrite,
-      reasoningTokens: usage.reasoning,
-    };
-    turnState.context.usageLedger.record({ stage: "pi.native.tool_calling", usage: value });
+  private recordUsage(turnState: AgentPiTurnState, message: AssistantMessage): void {
+    priceAgentPiUsage(message.usage, this.options.modelProvider.Pricing);
+    const usage = projectAgentPiAssistantUsage(message);
+    if (usage) turnState.context.usageLedger.record({ stage: "pi.native.tool_calling", usage });
   }
 
   private async emitPromptCacheObservation(
@@ -416,11 +425,13 @@ export class AgentPiNativeToolProvider {
     error: unknown,
     started = false,
     aborted = false,
-    usage?: AssistantMessage["usage"],
+    terminal?: AssistantMessage,
   ): void {
     const normalized = aborted ? error : normalizeModelHttpError(this.options.modelProvider, error);
     const failed = createFailureMessage(model, normalized, aborted);
-    failed.usage = usage ?? ({ ...failed.usage, seneraCost: { currency: "USD" } } as AgentPricedPiUsage);
+    failed.usage = terminal?.usage ?? ({ ...failed.usage, seneraCost: { currency: "USD" } } as AgentPricedPiUsage);
+    if (terminal?.responseModel) failed.responseModel = terminal.responseModel;
+    if (terminal?.rawStopReason) failed.rawStopReason = terminal.rawStopReason;
     if (!started) output.push({ type: "start", partial: { ...failed, stopReason: "pending" } });
     output.push({ type: "error", reason: failed.stopReason === "aborted" ? "aborted" : "error", error: failed });
     output.end(failed);

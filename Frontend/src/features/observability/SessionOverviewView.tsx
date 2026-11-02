@@ -1,7 +1,7 @@
 import { useDeferredValue, useMemo, useState } from "react";
 import { frontendFeatureMessage as t } from "../../i18n/frontendFeatureMessageCatalog";
 import { formatDurationMs, formatInteger } from "../../lib/util";
-import { formatModelCost } from "../../lib/modelCost";
+import { formatModelCharge } from "../../lib/modelCost";
 import type { RunRecord, TimelineStep } from "../../store/session/types";
 import { Button, Input, MenuSelect, Tooltip } from "../../shared/ui";
 import { readWorkflowStepDurationMs } from "../workflow/workflowPresentationProjection";
@@ -82,7 +82,7 @@ export function SessionOverviewView({
             label={t("insights.process.tokens")}
             value={totals.tokens.value === undefined ? "—" : formatInteger(totals.tokens.value)}
           />
-          <Metric label={t("insights.process.cost")} value={formatModelCost(totals.cost)} />
+          <Metric label={t("insights.process.cost")} value={formatModelCharge(totals.charge)} />
         </dl>
         <p className="insights-note">
           {t("insights.stats.coverage", {
@@ -116,8 +116,8 @@ export function SessionOverviewView({
                   type="button"
                   data-series={step.kind}
                   style={{ flexGrow: duration }}
-                  title={`${step.toolName ?? step.modelName ?? step.title} · ${formatDurationMs(duration)}`}
-                  aria-label={`${step.toolName ?? step.modelName ?? step.title} · ${formatDurationMs(duration)}`}
+                  title={`${step.toolName ?? step.responseModel ?? step.modelName ?? step.title} · ${formatDurationMs(duration)}`}
+                  aria-label={`${step.toolName ?? step.responseModel ?? step.modelName ?? step.title} · ${formatDurationMs(duration)}`}
                   onClick={() => onInspectRequest(step.id)}
                 />
               );
@@ -192,7 +192,7 @@ function SessionTrend({ requests, onSelect }: { requests: readonly InsightReques
           {bars.map(({ entry, usage, value }, index) => (
             <Tooltip
               key={entry.step.id}
-              content={`${t("insights.turn", { index: entry.turn })} · ${entry.step.modelName ?? ""} · ${value === undefined ? "—" : `${usage?.source === "local_estimate" ? "≈" : ""}${formatInteger(value)}`}`}
+              content={`${t("insights.turn", { index: entry.turn })} · ${entry.step.responseModel ?? entry.step.modelName ?? ""} · ${value === undefined ? "—" : `${usage?.source === "local_estimate" ? "≈" : ""}${formatInteger(value)}`}`}
             >
               <button
                 type="button"

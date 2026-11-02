@@ -361,7 +361,7 @@ export const EventSpecs = {
     phase: "model",
     observation: {
       retention: "projection",
-      projectionPointers: ["/data/provider", "/data/usage", "/data/messageIndex"],
+      projectionPointers: ["/data/provider", "/data/responseModel", "/data/usage", "/data/messageIndex"],
     },
   },
   "tool.calls.planned": {

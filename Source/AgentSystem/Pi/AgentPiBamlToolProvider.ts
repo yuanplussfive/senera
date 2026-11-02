@@ -332,7 +332,7 @@ function projectPiUsage(
           estimatedFields: ["outputTokens", "totalTokens"],
           cost,
         },
-    cost: { ...projectAgentPiModelPrices(cost), total: cost?.total ?? 0 },
+    cost: { ...projectAgentPiModelPrices(cost), total: cost?.total ?? 0, totalFromProvider: cost?.totalFromProvider },
   };
 }
 

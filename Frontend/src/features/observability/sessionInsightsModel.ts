@@ -9,6 +9,7 @@ import { createRunRecord } from "../../store/session/sessionRunProjection";
 import { readWorkflowStepDurationMs } from "../workflow/workflowPresentationProjection";
 import { modelRequests } from "./contextInspectionModel";
 import { inspectionSteps } from "./inspectionScopeModel";
+import { aggregateAgentModelCosts } from "../../../../Source/AgentSystem/ModelEndpoints/AgentModelPricing";
 
 /** Keep streamed answer/reasoning text out of the observation subscription and its working set. */
 export function createInsightRunSelector({ overviewOnly = false }: { overviewOnly?: boolean } = {}) {
@@ -69,6 +70,7 @@ function overviewSteps(steps: readonly TimelineStep[], previous: TimelineStep[] 
       callId: step.callId,
       toolName: step.toolName,
       modelName: step.modelName,
+      responseModel: step.responseModel,
       modelUsage: step.modelUsage,
       contextSnapshot: step.contextSnapshot,
     };
@@ -186,7 +188,7 @@ export function insightBreakdown(steps: readonly TimelineStep[], kind: "tool" | 
   >();
   for (const step of steps) {
     if (step.kind !== kind || (kind === "tool" && !step.callId)) continue;
-    const name = (kind === "tool" ? step.toolName : step.modelName) ?? step.title;
+    const name = (kind === "tool" ? step.toolName : (step.responseModel ?? step.modelName)) ?? step.title;
     const group = groups.get(name) ?? { name, count: 0, failed: 0, duration: 0, timed: 0, tokens: 0, metered: 0 };
     group.count++;
     if (step.status === "failed") group.failed++;
@@ -212,12 +214,14 @@ export function insightTotals(runs: readonly RunRecord[], scopeId?: string) {
   const usages = scopeId === undefined ? runs.map((run) => run.usage) : models.map((step) => step.modelUsage);
   const tokens = sumInsightField(usages, "totalTokens");
   const priced = usages.flatMap((usage) => (usage?.cost?.total === undefined ? [] : [usage.cost.total]));
+  const charge = usages.length ? aggregateAgentModelCosts(usages.map((usage) => usage?.cost)) : undefined;
   return {
     steps,
     models,
     tools,
     tokens,
-    cost: priced.length ? priced.reduce((sum, value) => sum + value, 0) : undefined,
+    cost: charge?.total,
+    charge,
     priced: priced.length,
     usageCount: usages.length,
   };

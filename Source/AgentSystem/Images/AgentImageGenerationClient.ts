@@ -14,12 +14,9 @@ import { AgentImageGenerationOptionsSchema, type AgentImageGenerationOptions } f
 import { createAgentOpenAIImagesAdapter } from "./AgentOpenAIImagesAdapter.js";
 import { assertAgentModelRequirements } from "../ModelEndpoints/AgentModelRequirements.js";
 import { AgentModelRequestRequirements } from "../Core/AgentModelCapabilityContract.js";
-import {
-  calculateAgentModelCost,
-  priceAgentPiUsage,
-  projectAgentPiModelPrices,
-} from "../ModelEndpoints/AgentModelPricing.js";
-import { createProviderReportedUsage, recordActiveAgentModelUsage } from "../ModelEndpoints/AgentModelUsage.js";
+import { priceAgentPiUsage, projectAgentPiModelPrices } from "../ModelEndpoints/AgentModelPricing.js";
+import { projectAgentPiUsage } from "../ModelEndpoints/AgentPiModelUsage.js";
+import { recordActiveAgentModelUsage } from "../ModelEndpoints/AgentModelUsage.js";
 import { throwAbortReason, awaitWithAbortSignal } from "../Core/AgentCancellation.js";
 import {
   collectAgentProviderDiagnosticSecrets,
@@ -30,6 +27,7 @@ import {
   AgentModelResponseBudgetError,
 } from "../ModelEndpoints/ModelResponseBudget.js";
 import { isAgentUnknownRecord } from "../Core/AgentUnknownValue.js";
+import { ModelRequestTimeoutError, normalizeModelHttpError } from "../ModelEndpoints/ModelHttpErrors.js";
 
 export interface AgentImageGenerationRequest {
   readonly context: ImagesContext;
@@ -97,38 +95,40 @@ export class AgentImageGenerationClient {
     const signal = AbortSignal.any(signals);
     const timeout =
       configuration.MaxRequestMs > 0
-        ? setTimeout(
-            () => controller.abort(new Error("Image generation exceeded the configured maximum request duration.")),
-            configuration.MaxRequestMs,
-          )
+        ? setTimeout(() => {
+            const error = normalizeModelHttpError(
+              { Model: model.id, BaseUrl: model.baseUrl, Endpoint: model.api },
+              new ModelRequestTimeoutError("max_request"),
+            );
+            controller.abort(error);
+          }, configuration.MaxRequestMs)
         : undefined;
-    const models = createModels();
-    const adapter: ProviderImages =
-      declaration.Api === "openrouter-images"
-        ? { generateImages: generateOpenRouterImages }
-        : createAgentOpenAIImagesAdapter({
-            options: imageOptions,
-            mask: input.mask,
-            maxRetries: configuration.MaxNetworkRetries,
-            download: input.download,
-          });
-    models.setProvider(
-      createProvider({
-        id: model.provider,
-        name: `Senera images (${model.provider})`,
-        models: [model],
-        auth: {
-          apiKey: {
-            name: "Senera model credential",
-            resolve: async () => ({ auth: { apiKey: configuration.ApiKey }, source: "Senera model configuration" }),
-          },
-        },
-        images: { [model.api]: adapter },
-      }),
-    );
     let status: "completed" | "failed" | "aborted" = "failed";
     let failure: unknown;
     try {
+      const models = createModels();
+      const adapter: ProviderImages =
+        declaration.Api === "openrouter-images"
+          ? { generateImages: generateOpenRouterImages }
+          : createAgentOpenAIImagesAdapter({
+              options: imageOptions,
+              mask: input.mask,
+              download: input.download,
+            });
+      models.setProvider(
+        createProvider({
+          id: model.provider,
+          name: `Senera images (${model.provider})`,
+          models: [model],
+          auth: {
+            apiKey: {
+              name: "Senera model credential",
+              resolve: async () => ({ auth: { apiKey: configuration.ApiKey }, source: "Senera model configuration" }),
+            },
+          },
+          images: { [model.api]: adapter },
+        }),
+      );
       const options: ImagesOptions = {
         signal,
         timeoutMs: configuration.TimeoutMs,
@@ -150,20 +150,11 @@ export class AgentImageGenerationClient {
           : {}),
       };
       const result = await awaitWithAbortSignal(models.generateImages(model, input.context, options), signal);
+      capture?.observeResult(result);
       if (result.usage) {
         priceAgentPiUsage(result.usage, configuration.Pricing);
-        const usage = createProviderReportedUsage({
-          inputTokens: result.usage.input,
-          outputTokens: result.usage.output,
-          totalTokens: result.usage.totalTokens,
-          cacheReadTokens: result.usage.cacheRead,
-          cacheWriteTokens: result.usage.cacheWrite,
-        });
-        if (usage)
-          recordActiveAgentModelUsage({
-            stage: "image.generate",
-            usage: { ...usage, cost: calculateAgentModelCost(result.usage, configuration.Pricing) },
-          });
+        const usage = projectAgentPiUsage(result.usage);
+        if (usage) recordActiveAgentModelUsage({ stage: "image.generate", usage });
       }
       throwAbortReason(signal);
       if (result.stopReason !== "stop") throw new Error(result.errorMessage ?? "Image generation did not complete.");
@@ -174,11 +165,12 @@ export class AgentImageGenerationClient {
       status = "completed";
       return result;
     } catch (error) {
-      failure = error;
-      status = signal.aborted ? "aborted" : "failed";
-      throw error;
+      failure = signal.aborted ? signal.reason : error;
+      status = input.signal?.aborted ? "aborted" : "failed";
+      throw failure;
     } finally {
       if (timeout) clearTimeout(timeout);
+      controller.abort();
       capture?.finish(status, failure);
     }
   }

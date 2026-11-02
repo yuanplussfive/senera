@@ -51,6 +51,7 @@ export type AgentModelDomainEvent =
       data: {
         text: string;
         provider?: AgentModelProviderMetadata;
+        responseModel?: string;
         usage?: AgentModelUsageValue;
         messageIndex?: number;
         outcome?: "completed" | "failed" | "cancelled";

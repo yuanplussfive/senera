@@ -6,6 +6,29 @@ import {
 } from "../../../Source/AgentSystem/ModelEndpoints/AgentModelUsage.js";
 
 describe("agent model usage", () => {
+  test("preserves billed charges and response identity while estimating missing token fields", () => {
+    const resolver = new AgentModelUsageResolver("virtual-model", { input: 1, output: 2 });
+    const usage = resolver.resolve({ messages: [] }, "A result", {
+      source: "provider_reported",
+      inputTokens: 120,
+      responseModel: "serving-model",
+      cost: { currency: "USD", total: 0.75, totalFromProvider: true },
+    });
+    expect(usage).toMatchObject({
+      source: "mixed",
+      responseModel: "serving-model",
+      cost: { total: 0.75, totalFromProvider: true },
+    });
+    const ledger = new AgentModelUsageLedger();
+    ledger.record({ stage: "call", usage });
+    usage.cost = { currency: "USD", total: 1 };
+    expect(ledger.aggregate()).toMatchObject({
+      cost: { total: 0.75, totalFromProvider: true },
+      calls: [{ usage: { responseModel: "serving-model" } }],
+    });
+    expect(ledger.aggregate()?.responseModel).toBeUndefined();
+  });
+
   test("normalizes provider values and rejects invalid token counts", () => {
     expect(
       createProviderReportedUsage({

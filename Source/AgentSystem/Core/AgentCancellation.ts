@@ -30,7 +30,6 @@ export function throwAbortReason(signal?: AbortSignal): void {
  * observes a signal after it has already started work.
  */
 export function awaitWithAbortSignal<T>(work: Promise<T>, signal?: AbortSignal): Promise<T> {
-  throwAbortReason(signal);
   if (!signal) return work;
 
   return new Promise<T>((resolve, reject) => {
@@ -50,11 +49,17 @@ export function awaitWithAbortSignal<T>(work: Promise<T>, signal?: AbortSignal):
         }
       });
 
-    signal.addEventListener("abort", onAbort, { once: true });
+    // The work already exists. Observe its rejection even when the caller has
+    // cancelled before entering this helper.
     work.then(
       (value) => settle(() => resolve(value)),
       (error) => settle(() => reject(error)),
     );
+    if (signal.aborted) {
+      onAbort();
+      return;
+    }
+    signal.addEventListener("abort", onAbort, { once: true });
   });
 }
 

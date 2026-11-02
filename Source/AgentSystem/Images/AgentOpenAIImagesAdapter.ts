@@ -5,6 +5,7 @@ import type {
   ImagesResponse,
 } from "openai/resources/images";
 import type { AssistantImages, ImageContent, ProviderImages, Usage } from "@earendil-works/pi-ai";
+import { retryProviderRequest } from "@earendil-works/pi-ai/utils/provider-retry";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { isAgentUnknownRecord } from "../Core/AgentUnknownValue.js";
 import type { AgentImageGenerationOptions } from "./AgentImageGenerationContract.js";
@@ -13,7 +14,6 @@ import type { AgentImageGenerationOptions } from "./AgentImageGenerationContract
 export function createAgentOpenAIImagesAdapter(input: {
   readonly options: AgentImageGenerationOptions;
   readonly mask?: ImageContent;
-  readonly maxRetries: number;
   readonly download: (url: string, signal?: AbortSignal) => Promise<ImageContent>;
 }): ProviderImages {
   return {
@@ -31,7 +31,7 @@ export function createAgentOpenAIImagesAdapter(input: {
           apiKey: options?.apiKey || "",
           baseURL: model.baseUrl,
           defaultHeaders: { ...model.headers, ...options?.headers },
-          maxRetries: input.maxRetries,
+          maxRetries: 0,
           timeout: options?.timeoutMs,
           fetch: options?.fetch,
         });
@@ -52,26 +52,27 @@ export function createAgentOpenAIImagesAdapter(input: {
           moderation: input.options.moderation,
         };
         const requestOptions = { signal: options?.signal, timeout: options?.timeoutMs };
-        const response = images.length
-          ? await client.images
-              .edit(
-                {
-                  ...body,
-                  image: await Promise.all(
-                    images.map((image, index) =>
-                      toFile(Buffer.from(image.data, "base64"), `input-${index}.${image.mimeType.split("/")[1]}`, {
-                        type: image.mimeType,
-                      }),
-                    ),
-                  ),
-                  ...(input.mask
-                    ? { mask: await toFile(Buffer.from(input.mask.data, "base64"), "mask.png", { type: "image/png" }) }
-                    : {}),
-                } as ImageEditParamsNonStreaming,
-                requestOptions,
-              )
-              .withResponse()
-          : await client.images.generate(body as ImageGenerateParamsNonStreaming, requestOptions).withResponse();
+        const edit = images.length
+          ? {
+              image: await Promise.all(
+                images.map((image, index) =>
+                  toFile(Buffer.from(image.data, "base64"), `input-${index}.${image.mimeType.split("/")[1]}`, {
+                    type: image.mimeType,
+                  }),
+                ),
+              ),
+              ...(input.mask
+                ? { mask: await toFile(Buffer.from(input.mask.data, "base64"), "mask.png", { type: "image/png" }) }
+                : {}),
+            }
+          : undefined;
+        const response = await retryProviderRequest(
+          () =>
+            edit
+              ? client.images.edit({ ...body, ...edit } as ImageEditParamsNonStreaming, requestOptions).withResponse()
+              : client.images.generate(body as ImageGenerateParamsNonStreaming, requestOptions).withResponse(),
+          { signal: options?.signal, maxRetries: options?.maxRetries, maxRetryDelayMs: options?.maxRetryDelayMs },
+        );
         await options?.onResponse?.(
           { status: response.response.status, headers: Object.fromEntries(response.response.headers) },
           model,

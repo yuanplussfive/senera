@@ -1,19 +1,27 @@
-import type { AssistantMessage } from "@earendil-works/pi-ai";
+import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
 import { createProviderReportedUsage, type AgentModelUsageValue } from "./AgentModelUsage.js";
-import type { AgentPricedPiUsage } from "./AgentModelPricing.js";
+import { calculateAgentModelCost, type AgentPricedPiUsage } from "./AgentModelPricing.js";
 
 export function projectAgentPiAssistantUsage(message: AssistantMessage): AgentModelUsageValue | undefined {
-  const usage = message.usage;
+  return projectAgentPiUsage(message.usage, message.responseModel);
+}
+
+/** One projection for streamed chat, auxiliary requests and image operations. */
+export function projectAgentPiUsage(
+  usage: Usage | undefined,
+  responseModel?: string,
+): AgentModelUsageValue | undefined {
   if (!usage) return undefined;
   const hostUsage = (usage as AgentPricedPiUsage).seneraUsage;
-  if (hostUsage) return hostUsage;
+  if (hostUsage) return { ...hostUsage, ...(responseModel ? { responseModel } : {}) };
   if (
     usage.input === 0 &&
     usage.output === 0 &&
     usage.totalTokens === 0 &&
     usage.cacheRead === 0 &&
     usage.cacheWrite === 0 &&
-    usage.reasoning === undefined
+    usage.reasoning === undefined &&
+    usage.cost.totalFromProvider !== true
   ) {
     return undefined;
   }
@@ -25,5 +33,13 @@ export function projectAgentPiAssistantUsage(message: AssistantMessage): AgentMo
     cacheWriteTokens: usage.cacheWrite,
     reasoningTokens: usage.reasoning,
   });
-  return reported ? { ...reported, cost: (usage as AgentPricedPiUsage).seneraCost } : undefined;
+  return reported
+    ? {
+        ...reported,
+        cost:
+          (usage as AgentPricedPiUsage).seneraCost ??
+          (usage.cost.totalFromProvider === true ? calculateAgentModelCost(usage, undefined, usage.cost) : undefined),
+        ...(responseModel ? { responseModel } : {}),
+      }
+    : undefined;
 }

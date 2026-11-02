@@ -1,6 +1,5 @@
 import type { AgentToolResult, AgentToolUpdateCallback } from "@earendil-works/pi-agent-core";
 import type { Model } from "@earendil-works/pi-ai";
-import type { TSchema } from "typebox";
 import type { AgentEventSink } from "../Events/AgentEvent.js";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
 import type { AgentActivatedSkill } from "../Skills/AgentSkillActivation.js";
@@ -25,7 +24,7 @@ export {
   type AgentPiToolDetails,
 } from "./AgentPiToolResultDetails.js";
 
-export type AgentPiToolSchema = TSchema & Record<string, unknown>;
+export type AgentPiToolSchema = Record<string, unknown>;
 export type AgentPiToolDefinition = Pick<
   ToolDefinition<AgentPiToolSchema, AgentPiToolDetails>,
   "name" | "label" | "description" | "parameters" | "executionMode" | "exposure"

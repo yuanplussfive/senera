@@ -5,6 +5,7 @@ export interface AgentModelTimingRecord {
   requestId: string;
   providerId: string;
   model: string;
+  responseModel?: string;
   status: "completed" | "failed";
   firstTokenMs?: number;
   durationMs: number;
