@@ -1,4 +1,4 @@
-import type { Api, AssistantMessageEvent, Model } from "@earendil-works/pi-ai";
+import type { Api, AssistantImages, AssistantMessage, AssistantMessageEvent, Model } from "@earendil-works/pi-ai";
 
 /**
  * Diagnostic type definitions and source identifiers for the Pi agent.
@@ -60,7 +60,15 @@ export interface AgentProviderStreamInput {
 export interface AgentProviderStreamCapture {
   onProviderStreamEvent(data: unknown, model: Model<Api>): void;
   observe(event: AssistantMessageEvent): void;
+  observeResult(result: AgentProviderTerminalResult): void;
   finish(status: AgentProviderStreamRequestStatus, error?: unknown): void;
 }
+
+/** Common Pi terminal metadata; image operations do not manufacture chat stream events. */
+export type AgentProviderTerminalResult = Pick<
+  AssistantMessage | AssistantImages,
+  "api" | "provider" | "model" | "stopReason" | "usage"
+> &
+  Partial<Pick<AssistantMessage, "rawStopReason" | "responseModel">>;
 
 export type AgentProviderStreamFactory = (input: AgentProviderStreamInput) => AgentProviderStreamCapture;

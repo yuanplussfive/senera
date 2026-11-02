@@ -14,12 +14,9 @@ import { AgentImageGenerationOptionsSchema, type AgentImageGenerationOptions } f
 import { createAgentOpenAIImagesAdapter } from "./AgentOpenAIImagesAdapter.js";
 import { assertAgentModelRequirements } from "../ModelEndpoints/AgentModelRequirements.js";
 import { AgentModelRequestRequirements } from "../Core/AgentModelCapabilityContract.js";
-import {
-  calculateAgentModelCost,
-  priceAgentPiUsage,
-  projectAgentPiModelPrices,
-} from "../ModelEndpoints/AgentModelPricing.js";
-import { createProviderReportedUsage, recordActiveAgentModelUsage } from "../ModelEndpoints/AgentModelUsage.js";
+import { priceAgentPiUsage, projectAgentPiModelPrices } from "../ModelEndpoints/AgentModelPricing.js";
+import { projectAgentPiUsage } from "../ModelEndpoints/AgentPiModelUsage.js";
+import { recordActiveAgentModelUsage } from "../ModelEndpoints/AgentModelUsage.js";
 import { throwAbortReason, awaitWithAbortSignal } from "../Core/AgentCancellation.js";
 import {
   collectAgentProviderDiagnosticSecrets,
@@ -150,20 +147,11 @@ export class AgentImageGenerationClient {
           : {}),
       };
       const result = await awaitWithAbortSignal(models.generateImages(model, input.context, options), signal);
+      capture?.observeResult(result);
       if (result.usage) {
         priceAgentPiUsage(result.usage, configuration.Pricing);
-        const usage = createProviderReportedUsage({
-          inputTokens: result.usage.input,
-          outputTokens: result.usage.output,
-          totalTokens: result.usage.totalTokens,
-          cacheReadTokens: result.usage.cacheRead,
-          cacheWriteTokens: result.usage.cacheWrite,
-        });
-        if (usage)
-          recordActiveAgentModelUsage({
-            stage: "image.generate",
-            usage: { ...usage, cost: calculateAgentModelCost(result.usage, configuration.Pricing, result.usage.cost) },
-          });
+        const usage = projectAgentPiUsage(result.usage);
+        if (usage) recordActiveAgentModelUsage({ stage: "image.generate", usage });
       }
       throwAbortReason(signal);
       if (result.stopReason !== "stop") throw new Error(result.errorMessage ?? "Image generation did not complete.");

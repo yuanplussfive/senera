@@ -10,7 +10,7 @@ import {
 } from "@earendil-works/pi-ai";
 
 /**
- * Pi 0.87 providers receive normalized transcripts internally. Senera's host
+ * Pi providers receive normalized transcripts internally. Senera's host
  * tests and extension-facing callers still pass the public Context shape, so
  * this adapter makes that boundary explicit without changing provider wire
  * behavior or maintaining a second request path.

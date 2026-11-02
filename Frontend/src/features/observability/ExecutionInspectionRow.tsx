@@ -66,7 +66,10 @@ export function ExecutionInspectionRow({
   const usage = step.kind === "model" ? requestContextUsage(step) : undefined;
   const kind = step.kind === "model" ? "model" : step.childRun ? "agent" : step.callId ? "tool" : "event";
   const title = executionRecordTitle(row);
-  const target = step.kind === "model" ? step.modelName : [tool?.subject, tool?.detail].filter(Boolean).join(" · ");
+  const target =
+    step.kind === "model"
+      ? (step.responseModel ?? step.modelName)
+      : [tool?.subject, tool?.detail].filter(Boolean).join(" · ");
   const summary = executionStepSummary(step);
   const outcome =
     step.status === "failed"

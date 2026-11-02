@@ -26,7 +26,6 @@ import {
   ModelRequestTimeoutError,
   normalizeModelHttpError,
 } from "../ModelEndpoints/ModelHttpErrors.js";
-import { AgentModelUsageSources, type AgentModelUsageValue } from "../ModelEndpoints/AgentModelUsage.js";
 import { priceAgentPiUsage, type AgentPricedPiUsage } from "../ModelEndpoints/AgentModelPricing.js";
 import { projectAgentPiAssistantUsage } from "../ModelEndpoints/AgentPiModelUsage.js";
 import type { AgentPiMutableSessionFrame } from "./AgentPiCodingAgentSessionFrame.js";
@@ -362,20 +361,9 @@ export class AgentPiNativeToolProvider {
   }
 
   private recordUsage(turnState: AgentPiTurnState, message: AssistantMessage): void {
-    const usage = message.usage;
-    priceAgentPiUsage(usage, this.options.modelProvider.Pricing);
-    const value: AgentModelUsageValue = {
-      cost: (usage as AgentPricedPiUsage).seneraCost,
-      source: AgentModelUsageSources.ProviderReported,
-      inputTokens: usage.input,
-      outputTokens: usage.output,
-      totalTokens: usage.totalTokens,
-      cacheReadTokens: usage.cacheRead,
-      cacheWriteTokens: usage.cacheWrite,
-      reasoningTokens: usage.reasoning,
-      ...(message.responseModel ? { responseModel: message.responseModel } : {}),
-    };
-    turnState.context.usageLedger.record({ stage: "pi.native.tool_calling", usage: value });
+    priceAgentPiUsage(message.usage, this.options.modelProvider.Pricing);
+    const usage = projectAgentPiAssistantUsage(message);
+    if (usage) turnState.context.usageLedger.record({ stage: "pi.native.tool_calling", usage });
   }
 
   private async emitPromptCacheObservation(

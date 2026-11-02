@@ -1,12 +1,19 @@
-import type { AssistantMessage } from "@earendil-works/pi-ai";
+import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
 import { createProviderReportedUsage, type AgentModelUsageValue } from "./AgentModelUsage.js";
 import { calculateAgentModelCost, type AgentPricedPiUsage } from "./AgentModelPricing.js";
 
 export function projectAgentPiAssistantUsage(message: AssistantMessage): AgentModelUsageValue | undefined {
-  const usage = message.usage;
+  return projectAgentPiUsage(message.usage, message.responseModel);
+}
+
+/** One projection for streamed chat, auxiliary requests and image operations. */
+export function projectAgentPiUsage(
+  usage: Usage | undefined,
+  responseModel?: string,
+): AgentModelUsageValue | undefined {
   if (!usage) return undefined;
   const hostUsage = (usage as AgentPricedPiUsage).seneraUsage;
-  if (hostUsage) return { ...hostUsage, ...(message.responseModel ? { responseModel: message.responseModel } : {}) };
+  if (hostUsage) return { ...hostUsage, ...(responseModel ? { responseModel } : {}) };
   if (
     usage.input === 0 &&
     usage.output === 0 &&
@@ -32,7 +39,7 @@ export function projectAgentPiAssistantUsage(message: AssistantMessage): AgentMo
         cost:
           (usage as AgentPricedPiUsage).seneraCost ??
           (usage.cost.totalFromProvider === true ? calculateAgentModelCost(usage, undefined, usage.cost) : undefined),
-        ...(message.responseModel ? { responseModel: message.responseModel } : {}),
+        ...(responseModel ? { responseModel } : {}),
       }
     : undefined;
 }

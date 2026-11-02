@@ -50,6 +50,7 @@ export interface RuntimeDiagnosticSpan {
   readonly operation?: RunActivity;
   readonly label?: string;
   readonly modelName?: string;
+  readonly responseModel?: string;
   readonly toolName?: string;
   readonly toolOrigin?: ToolEventOrigin;
   readonly toolArguments?: unknown;
@@ -490,6 +491,7 @@ function spanFromTimelineStep(run: RunRecord, step: TimelineStep): RuntimeDiagno
     ...(step.kind === "model" && (step.modelName ?? run.modelProvider?.model)
       ? { modelName: step.modelName ?? run.modelProvider?.model }
       : {}),
+    ...(step.kind === "model" && step.responseModel ? { responseModel: step.responseModel } : {}),
     ...(step.purpose ? { purpose: step.purpose } : {}),
     startedAtEpoch,
     endedAtEpoch: parseTimestamp(step.endedAt ?? ""),

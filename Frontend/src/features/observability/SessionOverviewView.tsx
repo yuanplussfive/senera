@@ -116,8 +116,8 @@ export function SessionOverviewView({
                   type="button"
                   data-series={step.kind}
                   style={{ flexGrow: duration }}
-                  title={`${step.toolName ?? step.modelName ?? step.title} · ${formatDurationMs(duration)}`}
-                  aria-label={`${step.toolName ?? step.modelName ?? step.title} · ${formatDurationMs(duration)}`}
+                  title={`${step.toolName ?? step.responseModel ?? step.modelName ?? step.title} · ${formatDurationMs(duration)}`}
+                  aria-label={`${step.toolName ?? step.responseModel ?? step.modelName ?? step.title} · ${formatDurationMs(duration)}`}
                   onClick={() => onInspectRequest(step.id)}
                 />
               );
@@ -192,7 +192,7 @@ function SessionTrend({ requests, onSelect }: { requests: readonly InsightReques
           {bars.map(({ entry, usage, value }, index) => (
             <Tooltip
               key={entry.step.id}
-              content={`${t("insights.turn", { index: entry.turn })} · ${entry.step.modelName ?? ""} · ${value === undefined ? "—" : `${usage?.source === "local_estimate" ? "≈" : ""}${formatInteger(value)}`}`}
+              content={`${t("insights.turn", { index: entry.turn })} · ${entry.step.responseModel ?? entry.step.modelName ?? ""} · ${value === undefined ? "—" : `${usage?.source === "local_estimate" ? "≈" : ""}${formatInteger(value)}`}`}
             >
               <button
                 type="button"

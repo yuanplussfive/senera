@@ -8,6 +8,7 @@ Pi 负责会话树、流式文本、工具调用、多步循环、compaction 和
 - 供应商流使用 Pi 的增量工具参数解析器；会话写入使用 `SessionManager` 的失败回滚，避免未落盘的 entry 成为后续消息的父节点。宿主不维护第二套解析器或会话树。工具参数以普通 JSON Schema 声明，在 Pi 的 `prepareArguments` 阶段先经过宿主现有严格校验，再交给上游验证，避免宽松类型转换掩盖原始参数错误。
 - 费用总额优先保留 Pi `usage.cost.totalFromProvider` 标识的供应商实报金额，包括零费用；分类费用仍按配置或参考价格估算。总额只有在所有调用均实报时才标记为实报，缺少任一调用价格则保留未知。原生请求、辅助请求、生图和 BAML 使用同一计费合同；前端复用宿主类型和聚合函数，以 `≈` 区分含估算的金额。
 - 终态 `responseModel` 只来自供应商返回，作为独立字段保存在用量、模型完成事件、洞察和诊断中，重启恢复不丢失。配置选择的模型保持原身份，便于比较请求入口与实际响应模型；供应商未报告时不推断。
+- 原生、辅助和图像调用共享 Pi 用量投影，保留推理 token 与费用来源；未报告的零值不冒充供应商统计。供应商诊断使用同一终态元数据入口记录聊天和图像结果，图像调用不伪造流事件，也不保存图片正文。
 - 不再使用 Pi 已删除的实验性 harness。文件错误、文件元信息、取消上下文与操作结果由 Senera 执行层声明；读取、查找和目录工具接入 Coding Agent 正式 SDK 的 operations。读取和 MIME 探测共用经过宿主授权的文件快照，结果按 Senera 已发布的 `content + details` 合同投影。
 
 - Senera 是 Pi session system prompt 的唯一 owner。`AgentPiCodingAgentSessionFactory` 通过受管的 `PiSessionBaseSystemPrompt.liquid` 创建 `DefaultResourceLoader.systemPrompt`，让 Pi 把它作为 `customPrompt` 使用；Pi 自带的身份、内置工具目录和 Pi 文档导航不会进入模型上下文。稳定 Skill 目录由 runtime extension 注入一次；每轮的活动 Skill 索引、受控项目上下文和选中的 prompt templates 则随 durable `senera.turn-context/v1` 进入当前普通 user message。
